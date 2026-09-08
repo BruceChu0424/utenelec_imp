@@ -59,7 +59,27 @@ public record SalesOrderFinanceReviewDto(
         String financeRejectedReason,
         String financeRejectedByName,
         OffsetDateTime financeRejectedAt,
-        List<Line> items) {
+        List<Line> items,
+        /** 上次财务确认之后的改量清单（以前→现在；空 = 未修改过或清单已随重新确认归档）。 */
+        List<QtyChange> qtyChanges,
+        List<com.uten.imp.features.sales.order.SalesOrderRevisionService.FieldChange> commercialChanges,
+        long financeReviewRevision) {
+
+    /**
+     * 修改清单行（2026-09-05 确认后改量）：一行一次数量修改，
+     * 财务按 oldQty→newQty 对照复核。
+     */
+    public record QtyChange(
+            @JsonSerialize(using = ToStringSerializer.class) UUID orderItemId,
+            String goodsCode,
+            String goodsName,
+            String colorName,
+            String unitName,
+            BigDecimal oldQty,
+            BigDecimal newQty,
+            String changedByName,
+            OffsetDateTime changedAt) {
+    }
 
     /** 审核明细行（货品快照优先，颜色/单位按主档解析名称）。 */
     public record Line(

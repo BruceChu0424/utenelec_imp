@@ -33,6 +33,7 @@ public record SalesGoodsSnapshot(String code, String name, String source) {
         if (ids.isEmpty()) {
             return Map.of();
         }
+        com.uten.imp.common.concurrency.GoodsQuantityBasisLocks.lockUnused(em, ids);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                 SELECT goods.id, goods.code, goods.name

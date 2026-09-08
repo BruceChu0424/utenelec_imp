@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/warehouse_iqc_stock_in.dart'
     show WarehouseIqcStockInConfirmItem;
@@ -197,9 +198,8 @@ class WarehouseQualitySliceTable extends StatelessWidget {
                         ),
                         inputFormatters: [LengthLimitingTextInputFormatter(24)],
                         errorBuilder: utenTextFieldErrorBuilder,
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          counterText: '',
+                        decoration: const UtenInputDecoration(
+                          InputDecoration(isDense: true, counterText: ''),
                         ),
                         onChanged: (_) => onChanged(),
                       ),
@@ -216,10 +216,12 @@ class WarehouseQualitySliceTable extends StatelessWidget {
                         enabled: draft.selected && !saving,
                         maxLength: 100,
                         errorBuilder: utenTextFieldErrorBuilder,
-                        decoration: InputDecoration(
-                          isDense: true,
-                          counterText: '',
-                          hintText: draft.slice.placeHint ?? '实际库位',
+                        decoration: UtenInputDecoration(
+                          InputDecoration(
+                            isDense: true,
+                            counterText: '',
+                            hintText: draft.slice.placeHint ?? '实际库位',
+                          ),
                         ),
                         onChanged: (_) => onChanged(),
                       ),

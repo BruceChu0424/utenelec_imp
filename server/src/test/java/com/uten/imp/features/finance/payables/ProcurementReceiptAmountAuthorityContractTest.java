@@ -34,6 +34,8 @@ class ProcurementReceiptAmountAuthorityContractTest {
         String approvalPort = Files.readString(Path.of(
                 "src/main/java/com/uten/imp/application/port/ProcurementOrderApprovalPort.java"));
         String approval = source("finance/procurement/ProcurementFinanceApprovalService.java");
+        String reconfirmation = source("finance/procurement/ProcurementApprovalReconfirmationService.java");
+        String snapshot = source("finance/procurement/ProcurementApprovalSnapshot.java");
 
         assertThat(migration)
                 .contains("ADD COLUMN settlement_method_id UUID")
@@ -44,7 +46,14 @@ class ProcurementReceiptAmountAuthorityContractTest {
         assertThat(detail).contains("private UUID settlementMethodId;");
         assertThat(list).contains("private UUID settlementMethodId;");
         assertThat(approvalPort).contains("UUID settlementMethodId");
-        assertThat(approval).contains("header.put(\"settlementMethodId\", snapshot.settlementMethodId())");
+        assertThat(approval).contains("ProcurementApprovalSnapshot.json(snapshot, objectMapper)")
+                .contains("HashUtil.sha256(snapshotJson)");
+        assertThat(reconfirmation).contains("ProcurementApprovalSnapshot.json(snapshot, objectMapper)")
+                .contains("HashUtil.sha256(snapshotJson)");
+        assertThat(snapshot).contains("header.put(\"settlementMethodId\", snapshot.settlementMethodId())")
+                .contains("header.put(\"currencyId\", snapshot.currencyId())")
+                .contains("header.put(\"taxRate\", decimal(snapshot.taxRate()))")
+                .contains("new LinkedHashMap<>()");
     }
 
     private static void assertReceiptAuthority(

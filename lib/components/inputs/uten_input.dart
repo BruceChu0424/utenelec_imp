@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'required_field_decoration.dart';
 import 'uten_field_message.dart';
+import 'uten_input_decoration.dart';
 
 /// Uten 输入框
 class UtenInput extends StatefulWidget {
@@ -15,6 +16,8 @@ class UtenInput extends StatefulWidget {
     this.hint,
     this.info,
     this.errorMessage,
+    this.autofilled = false,
+    this.warningMessage,
     this.controller,
     this.obscureText = false,
     this.isPassword = false,
@@ -40,12 +43,15 @@ class UtenInput extends StatefulWidget {
   /// 占位提示
   final String? hint;
 
-  /// 字段说明：收进标签旁 ⓘ 悬停提示，不常驻输入框下方（全站约定，
-  /// 同 UtenEditableGrid.headerInfo）。
+  /// Field guidance disclosed by the info icon inside the input.
   final String? info;
 
   /// 外部字段错误；与 [validator] 生成的错误共用统一长提示外观。
   final String? errorMessage;
+
+  /// The caller clears this flag after an explicit edit or confirmation.
+  final bool autofilled;
+  final String? warningMessage;
 
   /// 文本控制器
   final TextEditingController? controller;
@@ -102,9 +108,9 @@ class UtenInput extends StatefulWidget {
 }
 
 class _UtenInputState extends State<UtenInput> {
-  late final TextEditingController _controller;
+  late TextEditingController _controller;
   bool _isObscured = true;
-  bool _wasEverInitialized = false;
+  bool _ownsController = false;
   bool _empty = true;
 
   @override
@@ -112,7 +118,7 @@ class _UtenInputState extends State<UtenInput> {
     super.initState();
     _controller = widget.controller ?? TextEditingController();
     _isObscured = widget.isPassword;
-    _wasEverInitialized = widget.controller == null;
+    _ownsController = widget.controller == null;
     _empty = _controller.text.trim().isEmpty;
     _controller.addListener(_onTextChanged);
   }
@@ -123,9 +129,27 @@ class _UtenInputState extends State<UtenInput> {
   }
 
   @override
+  void didUpdateWidget(covariant UtenInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      final previousValue = _controller.value;
+      _controller.removeListener(_onTextChanged);
+      if (_ownsController) _controller.dispose();
+      _controller =
+          widget.controller ?? TextEditingController.fromValue(previousValue);
+      _ownsController = widget.controller == null;
+      _empty = _controller.text.trim().isEmpty;
+      _controller.addListener(_onTextChanged);
+    }
+    if (oldWidget.isPassword != widget.isPassword) {
+      _isObscured = widget.isPassword;
+    }
+  }
+
+  @override
   void dispose() {
     _controller.removeListener(_onTextChanged);
-    if (_wasEverInitialized) {
+    if (_ownsController) {
       _controller.dispose();
     }
     super.dispose();
@@ -135,18 +159,19 @@ class _UtenInputState extends State<UtenInput> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final requiredEmpty = widget.required && widget.enabled && _empty;
+    final autofilled =
+        !_empty && (widget.autofilled || widget.warningMessage != null);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         if (widget.label != null) ...[
-          // 标签（必填时附红 *；说明收进旁侧 ⓘ）
+          // Label keeps its required marker; help lives inside the field.
           fieldLabel(
             widget.label!,
             theme,
             required: widget.required,
-            info: widget.info,
             base: theme.textTheme.bodyMedium?.copyWith(
               fontWeight: FontWeight.w500,
               color: theme.colorScheme.onSurface,
@@ -163,6 +188,7 @@ class _UtenInputState extends State<UtenInput> {
           errorBuilder: utenTextFieldErrorBuilder,
           onChanged: widget.onChanged,
           onFieldSubmitted: widget.onFieldSubmitted,
+          ignorePointers: false,
           enabled: widget.enabled,
           maxLines: widget.obscureText ? 1 : widget.maxLines,
           textInputAction: widget.textInputAction,
@@ -172,15 +198,25 @@ class _UtenInputState extends State<UtenInput> {
           textCapitalization: widget.textCapitalization,
           style: theme.textTheme.bodyLarge,
           decoration: applyRequiredEmpty(
-            InputDecoration(
-              hintText: widget.hint,
-              error: widget.errorMessage == null
-                  ? null
-                  : UtenFieldMessage.error(widget.errorMessage!),
-              prefixIcon: widget.prefixIcon != null
-                  ? Icon(widget.prefixIcon, size: 20)
-                  : null,
-              suffixIcon: _buildSuffix(),
+            applyAutofillHint(
+              UtenInputDecoration(
+                InputDecoration(
+                  hintText: widget.hint,
+                  error: widget.errorMessage == null
+                      ? null
+                      : UtenFieldMessage.error(widget.errorMessage!),
+                  prefixIcon: widget.prefixIcon != null
+                      ? Icon(widget.prefixIcon, size: 20)
+                      : null,
+                  suffixIcon: _buildSuffix(),
+                  helper: autofilled && widget.warningMessage != null
+                      ? UtenFieldMessage.autofill(widget.warningMessage!)
+                      : null,
+                ),
+                info: widget.info,
+              ),
+              theme,
+              autofilled: autofilled,
             ),
             theme,
             requiredEmpty: requiredEmpty,
@@ -199,7 +235,9 @@ class _UtenInputState extends State<UtenInput> {
               : Icons.visibility_off_outlined,
           size: 20,
         ),
-        onPressed: () => setState(() => _isObscured = !_isObscured),
+        onPressed: widget.enabled
+            ? () => setState(() => _isObscured = !_isObscured)
+            : null,
         splashRadius: 18,
       );
     }

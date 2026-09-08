@@ -38,6 +38,7 @@ class ProductionExecutionPackageCommandReplayTest {
                         null}));
         Query legacyPackage = query();
         when(legacyPackage.getSingleResult()).thenReturn(false);
+        when(legacyPackage.getResultList()).thenReturn(List.of(packageId));
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             return sql.contains("FROM production_plans")
@@ -62,7 +63,8 @@ class ProductionExecutionPackageCommandReplayTest {
                         null, null, null, null, null,
                         mock(TxSessionVars.class), null, validator,
                         mock(com.uten.imp.features.notice.ChainNoticeService.class),
-                        mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class)));
+                        mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS)));
         PlanningPackageResult replay = new PlanningPackageResult(
                 packageId, ProductionPlanningPackage.STATUS_CONFIRMED, true,
                 List.of(), null, null, null, List.of(), List.of());

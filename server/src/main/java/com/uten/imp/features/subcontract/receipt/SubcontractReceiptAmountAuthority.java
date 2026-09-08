@@ -10,7 +10,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -120,10 +119,14 @@ public class SubcontractReceiptAmountAuthority {
             var released=replacementAllocation.releasedCapacity(
                     "SUBCONTRACT",item.getOrderItemId());
             BigDecimal effectivePriorQty=rawPriorQty.subtract(released.qty());
-            BigDecimal effectivePriorOriginal=money(
-                    rawPriorOriginal.subtract(released.amountOriginal()));
-            BigDecimal effectivePriorLocal=money(
-                    rawPriorLocal.subtract(released.amountLocal()));
+            boolean exactPriceBasis=sourceQty.multiply(sourcePrice).compareTo(sourceOriginal)==0
+                    &&sourceOriginal.multiply(sourceRate).compareTo(sourceLocal)==0;
+            if(!exactPriceBasis&&(released.amountOriginal()==null||released.amountLocal()==null))
+                throw conflict("历史原单金额与单价不一致且退回金额没有有限表示，请保留来源待核对");
+            BigDecimal effectivePriorOriginal=exactPriceBasis?money(effectivePriorQty.multiply(sourcePrice))
+                    :money(rawPriorOriginal.subtract(released.amountOriginal()));
+            BigDecimal effectivePriorLocal=exactPriceBasis?money(effectivePriorOriginal.multiply(sourceRate))
+                    :money(rawPriorLocal.subtract(released.amountLocal()));
             if(effectivePriorQty.signum()<0||effectivePriorOriginal.signum()<0
                     ||effectivePriorLocal.signum()<0){
                 throw conflict("委外IQC失败退回释放额度超过历史有效进仓累计");
@@ -136,11 +139,10 @@ public class SubcontractReceiptAmountAuthority {
             item.setAmountOriginal(amounts.original());
             item.setAmountLocal(amounts.local());
             itemRepo.saveAndFlush(item);
-            replacementAllocation.allocateForReceiptItem(
+            item.setReplacementIntent(replacementAllocation.allocateForReceiptItem(
                     "SUBCONTRACT",receipt.getId(),item.getId(),item.getOrderItemId(),
                     item.getQty(),item.getUnitRate(),amounts.original(),amounts.local(),
-                    authorized.qty(),authorized.original(),authorized.local(),
-                    rawPriorQty,rawPriorOriginal,rawPriorLocal);
+                    authorized.qty(),rawPriorQty,item.getReplacementIntent()));
             totalOriginal = totalOriginal.add(amounts.original());
             totalLocal = totalLocal.add(amounts.local());
         }
@@ -229,7 +231,7 @@ public class SubcontractReceiptAmountAuthority {
     }
 
     private static BigDecimal money(BigDecimal value) {
-        return value.setScale(4, RoundingMode.HALF_UP);
+        return com.uten.imp.common.util.FinancialExactAmount.canonicalMoney(value,"委外收货金额");
     }
 
     private static ApiException conflict(String message) {

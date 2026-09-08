@@ -115,7 +115,8 @@ class ProductionDrawOwnershipAndReverseGuardContractTest {
     }
 
     private static String source(String relative) throws Exception {
-        return Files.readString(MAIN.resolve(relative), StandardCharsets.UTF_8);
+        return Files.readString(MAIN.resolve(relative), StandardCharsets.UTF_8)
+                .replace("\r\n", "\n");
     }
 
     private static String slice(String source, String startMarker, String endMarker) {

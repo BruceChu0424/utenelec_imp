@@ -174,7 +174,7 @@ class GoodsImportPlanSafetyTest {
         when(colorService.create(any())).thenReturn(
                 new ColorDetail(colorId, "C1", "新红", "使用", null));
         when(unitService.create(any())).thenReturn(
-                new UnitDetail(unitId, "U1", "箱", "使用", null));
+                new UnitDetail(unitId, "U1", "箱", "使用", null, null));
         when(goodsService.saveImported(any())).thenReturn(UUID.randomUUID());
         SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
         when(currentUser.requireId()).thenReturn(UUID.randomUUID());

@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/widgets/sales_order_picker.dart';
 import '../../../shared/widgets/sales_order_money_summary_card.dart';
+import '../../../shared/presentation/workflow_field_guidance.dart';
 
 class CustomerPrepaymentReceiptFields extends ConsumerWidget {
   const CustomerPrepaymentReceiptFields({
@@ -43,25 +45,13 @@ class CustomerPrepaymentReceiptFields extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          padding: const EdgeInsets.all(UtenSpacing.s8),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.primaryContainer.withValues(alpha: 0.38),
-            borderRadius: BorderRadius.circular(UtenRadius.md),
-          ),
-          child: Text(
-            '客户预收由财务登记实际到账。必须绑定已审核销售订单；客户和币种随订单锁定，'
-            '不生成普通应收核销明细。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onPrimaryContainer,
-            ),
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s8),
         UtenFormGrid(
           children: [
             InputDecorator(
-              decoration: const InputDecoration(labelText: '销售订单(必选)'),
+              decoration: UtenInputDecoration(
+                const InputDecoration(labelText: '销售订单(必选)'),
+                info: workflowFieldText(context).workflowPrepaymentOrderHint,
+              ),
               child: Row(
                 children: [
                   Expanded(
@@ -81,27 +71,29 @@ class CustomerPrepaymentReceiptFields extends ConsumerWidget {
                 ],
               ),
             ),
-            InputDecorator(
-              decoration: const InputDecoration(labelText: '客户(订单锁定)'),
-              child: Text(clientLabel),
-            ),
-            InputDecorator(
-              decoration: const InputDecoration(labelText: '币种(订单锁定)'),
-              child: Text(currencyLabel),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+              child: Text(
+                '客户：$clientLabel\n币种：$currencyLabel',
+                style: theme.textTheme.bodyMedium,
+              ),
             ),
             if (showSettlementFields) ...[
               TextField(
                 key: const ValueKey('customer-prepayment-receipt-rate'),
                 controller: exchangeRateController,
+                ignorePointers: false,
                 enabled: enabled && salesOrderId != null,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: InputDecoration(
-                  label: fieldLabel(
-                    '当前批次实际到账汇率(必填)',
-                    Theme.of(context),
-                    info: '每一批预收单独填写当批实际汇率；服务端以六位精度校验',
+                decoration: UtenInputDecoration(
+                  InputDecoration(
+                    label: fieldLabel(
+                      '当前批次实际到账汇率(必填)',
+                      Theme.of(context),
+                      info: workflowFieldText(context).workflowExchangeRateHint,
+                    ),
                   ),
                 ),
               ),
@@ -112,7 +104,10 @@ class CustomerPrepaymentReceiptFields extends ConsumerWidget {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(labelText: '本批预收原币金额(必填)'),
+                decoration: UtenInputDecoration(
+                  const InputDecoration(labelText: '本批预收原币金额(必填)'),
+                  info: workflowFieldText(context).workflowPrepaymentAmountHint,
+                ),
               ),
             ],
           ],

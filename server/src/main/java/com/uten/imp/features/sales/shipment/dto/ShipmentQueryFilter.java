@@ -13,5 +13,10 @@ public record ShipmentQueryFilter(
         Short financeAudit,
         String warehouseWorkStatus,
         LocalDate dateFrom,
-        LocalDate dateTo) {
+        LocalDate dateTo,
+        String shipmentKind) {
+    public ShipmentQueryFilter(String keyword,UUID clientId,UUID warehouseId,Short status,Boolean arPosted,
+            Short financeAudit,String warehouseWorkStatus,LocalDate dateFrom,LocalDate dateTo) {
+        this(keyword,clientId,warehouseId,status,arPosted,financeAudit,warehouseWorkStatus,dateFrom,dateTo,null);
+    }
 }

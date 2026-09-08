@@ -12,6 +12,7 @@
 // 权限分别门控：IQC 读 procurement_inspection:view、写 :handle；
 // FQC 读 production_quality_inspection:view、决定 :approve + 服务端品质组织校验。
 import 'package:flutter/material.dart';
+import '../presentation/procurement_inspection_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
@@ -21,10 +22,9 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
-import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -37,8 +37,6 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/uten_notify.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/measurement/measurement_totals.dart';
-import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/providers/production_fqc_pending_count_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -48,7 +46,9 @@ import '../../warehouse/providers/warehouse_quality_result_count_provider.dart';
 import '../../warehouse/repositories/procurement_inspection_repository.dart';
 import '../models/production_fqc_inspection.dart';
 import '../repositories/production_fqc_repository.dart';
+import '../widgets/inspection_report_confirm_dialog.dart';
 import '../widgets/production_fqc_dialogs.dart';
+import 'quality_batch_approval_page.dart';
 
 class QualityPendingDisposalPage extends ConsumerStatefulWidget {
   const QualityPendingDisposalPage({super.key});
@@ -88,9 +88,6 @@ class _QualityPendingDisposalPageState
   /// FQC 决定能力 = 审批权限 + 服务端品质组织校验（canDecide）。
   bool _canDecideFqc = false;
   final Set<String> _selectedIds = <String>{};
-  bool _batchPassing = false;
-  String? _batchSelectionFingerprint;
-  String? _batchIdempotencyKey;
 
   bool get _canViewIqc {
     final permissions = ref.read(currentPermissionsProvider);
@@ -191,9 +188,14 @@ class _QualityPendingDisposalPageState
       _loading = false;
       _error = errors.isEmpty ? null : errors.join('；');
       if (_page > _totalPages) _page = _totalPages;
-      final fqcIds =
-          _fqcInspections?.map((item) => item.id).toSet() ?? const <String>{};
-      _selectedIds.removeWhere((id) => !fqcIds.contains(id));
+      // 选择清理口径与 idOf 同源：FQC 任务 id + IQC 收货单复合 id。
+      final currentIds = <String>{
+        if (_canDecideFqc) ...?(_fqcInspections?.map((item) => item.id)),
+        if (_canHandleIqc)
+          for (final receipt in _receipts ?? const <PendingInspectionReceipt>[])
+            'iqc:${receipt.receiptType}:${receipt.receiptId}',
+      };
+      _selectedIds.removeWhere((id) => !currentIds.contains(id));
     });
     ref.invalidate(procurementInspectionPendingCountProvider);
     ref.invalidate(productionFqcPendingCountProvider);
@@ -324,97 +326,57 @@ class _QualityPendingDisposalPageState
     setState(() => _fqcInspections = next);
   }
 
-  String _batchKey(Set<String> ids) {
-    final sorted = ids.toList()..sort();
-    final fingerprint = sorted.join('|');
-    if (_batchSelectionFingerprint != fingerprint ||
-        _batchIdempotencyKey == null) {
-      _batchSelectionFingerprint = fingerprint;
-      _batchIdempotencyKey = 'fqc-pass-all-${const Uuid().v4()}';
-    }
-    return _batchIdempotencyKey!;
-  }
-
-  Future<void> _passSelected(Set<String> selectedIds) async {
-    if (_batchPassing || selectedIds.isEmpty) {
-      if (selectedIds.isEmpty) context.appWarning('请先选择待处理质检任务');
+  /// 「批量审批」（2026-09-05 用户口径）：多选的 IQC 收货单与 FQC 任务汇总到
+  /// 一个页面——逐行填合格/不合格数量（默认全合格）后一次「提交报告」。
+  Future<void> _openBatchApproval(Set<String> selectedIds) async {
+    if (selectedIds.isEmpty) {
+      context.appWarning('请先选择待检任务（IQC 收货单或自制产成品）');
       return;
     }
-    final ids = selectedIds.toList()..sort();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('批量全部合格 ${ids.length} 项'),
-        content: const Text(
-          '系统将把所选任务当前全部待检数量登记为合格，并在同一事务生成对应的仓库待最终点收任务。'
-          '本操作不会直接增加库存或 iqty；任一任务状态、权限、品质组织、放行或并发校验失败，整批都会回滚。'
-          '存在不合格或部分合格时，请取消并双击对应任务逐项登记。',
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            icon: const Icon(Icons.rule_rounded),
-            label: const Text('确认全部合格'),
-          ),
-        ],
+    final receipts = [
+      for (final receipt in _receipts ?? const <PendingInspectionReceipt>[])
+        if (selectedIds.contains(
+          'iqc:${receipt.receiptType}:${receipt.receiptId}',
+        ))
+          receipt,
+    ];
+    final inspections = [
+      for (final inspection
+          in _fqcInspections ?? const <ProductionFqcInspection>[])
+        if (selectedIds.contains(inspection.id)) inspection,
+    ];
+    if (receipts.isEmpty && inspections.isEmpty) {
+      context.appWarning('所选任务状态已变化，请刷新后重新选择');
+      return;
+    }
+    final done = await context.push<bool>(
+      RouteName.warehouseInspectionBatchApproval,
+      extra: QualityBatchApprovalSelection(
+        receipts: receipts,
+        inspections: inspections,
       ),
     );
-    if (confirmed != true || !mounted) return;
-    setState(() => _batchPassing = true);
-    try {
-      final result = await ref
-          .read(productionFqcRepositoryProvider)
-          .passAll(inspectionIds: ids, idempotencyKey: _batchKey(selectedIds));
-      if (!mounted) return;
-      for (final inspection in result.inspections) {
-        _applyFqcDecisionResult(inspection);
-      }
-      setState(() {
-        _selectedIds.clear();
-        _batchSelectionFingerprint = null;
-        _batchIdempotencyKey = null;
-      });
-      ref.invalidate(productionFqcPendingCountProvider);
-      ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
-      if (mounted) {
-        context.appSuccess(
-          result.replay
-              ? '该批次已完成，已安全重放 ${result.processedCount} 项结果'
-              : '已将 ${result.processedCount} 项质检任务批量登记为全部合格',
-        );
-      }
-      await _load();
-    } on ApiException catch (error) {
-      if (mounted) context.appError(error.message);
-    } catch (_) {
-      if (mounted) context.appError('批量全部合格失败，请保持当前选择后重试');
-    } finally {
-      if (mounted) setState(() => _batchPassing = false);
-    }
+    if (!mounted) return;
+    setState(() => _selectedIds.clear());
+    if (done == true) await _load();
   }
 
   List<Widget> _batchActions(BuildContext context, Set<String> selectedIds) {
     final count = selectedIds.length;
     return [
       Tooltip(
-        message: count == 0 ? '请选择待检或部分已决定的自制产成品任务' : '将所选任务全部剩余待检数量原子登记为合格',
+        message: count == 0
+            ? '请选择待检任务（IQC 收货单 / 自制产成品）'
+            : '所选任务汇总到一个页面：逐行填合格/不合格数量后一次提交报告',
         child: UtenButton(
-          key: const Key('production-fqc-batch-pass-all'),
+          key: const Key('quality-batch-approval'),
           size: UtenButtonSize.large,
-          icon: Icons.rule_rounded,
-          isLoading: _batchPassing,
-          onPressed: _batchPassing || count == 0
-              ? null
-              : () => _passSelected(selectedIds),
+          icon: Icons.fact_check_outlined,
+          onPressed: count == 0 ? null : () => _openBatchApproval(selectedIds),
           onDisabledTap: count == 0
-              ? () => context.appWarning('请先选择待处理质检任务')
+              ? () => context.appWarning('请先选择待检任务（IQC 收货单或自制产成品）')
               : null,
-          child: Text(count == 0 ? '批量全部合格' : '批量全部合格($count)'),
+          child: Text(count == 0 ? '批量审批' : '批量审批($count)'),
         ),
       ),
     ];
@@ -515,11 +477,16 @@ class _QualityPendingDisposalPageState
                   if (key != 'docType') return;
                   _selectType(value);
                 },
-                selectable: _canDecideFqc,
-                idOf: (row) => row.isFqc && row.inspection!.active
-                    ? row.inspection!.id
-                    : null,
-                // 勾选门控与 idOf 同源（IQC 行返回 null 不可勾选），
+                // 2026-09-05 起 IQC 收货单也可多选（此前只有 FQC 可勾）：
+                // 勾选后走「批量审批」汇总页。
+                selectable: _canDecideFqc || _canHandleIqc,
+                idOf: (row) => row.isFqc
+                    ? (_canDecideFqc && row.inspection!.active
+                          ? row.inspection!.id
+                          : null)
+                    : (_canHandleIqc
+                          ? 'iqc:${row.receipt!.receiptType}:${row.receipt!.receiptId}'
+                          : null),
                 // 行稳定键单独给：IQC 用收货单 id，FQC 用任务 id。
                 rowKeyOf: (row) =>
                     row.isFqc ? row.inspection!.id : row.receipt!.receiptId,
@@ -529,7 +496,9 @@ class _QualityPendingDisposalPageState
                     ..clear()
                     ..addAll(next),
                 ),
-                batchActionsBuilder: _canDecideFqc ? _batchActions : null,
+                batchActionsBuilder: _canDecideFqc || _canHandleIqc
+                    ? _batchActions
+                    : null,
                 onRowTap: (row) => row.isFqc
                     ? _openFqcDetail(row)
                     : _openIqcDetail(row.receipt!),
@@ -686,8 +655,8 @@ class _QualityPendingDisposalPageState
           '自制产成品决定需要 production_quality_inspection:approve 权限。';
     }
     return '采购/委外收货与自制产成品送检后出现在这里：双击进入处置；'
-        'IQC 常规合格可多行一次放行，自制产成品可勾选批量全部合格；'
-        '部分合格或不合格逐项登记。';
+        '勾选多张任务后点「批量审批」——汇总到一个页面逐行填合格/不合格数量，'
+        '一次「提交报告」办结。';
   }
 
   List<MasterColumnDef<_DisposalRow>> get _columns => [
@@ -816,17 +785,28 @@ class _ProcurementInspectionDetailPageState
     extends ConsumerState<ProcurementInspectionDetailPage> {
   PendingInspectionReceipt? _receipt;
   List<ProcurementInspectionItem> _items = const [];
+
+  /// 逐行可编辑的检验报告状态（合格默认=剩余待检、不合格默认=0），
+  /// 键为 inspection item id；_load 重建（旧控制器先 dispose）。
+  final Map<String, _InspectionReportRow> _reportRows = {};
   bool _loading = true;
   bool _busyDecision = false;
   String? _error;
   Set<String> _selectedItemIds = const {};
-  final Map<String, String> _decisionKeys = {};
   int _requestVersion = 0;
 
   bool get _canHandle {
     final permissions = ref.read(currentPermissionsProvider);
     return ref.read(isSuperAdminProvider) ||
         permissions.contains(Perm.procurementInspectionHandle);
+  }
+
+  @override
+  void dispose() {
+    for (final row in _reportRows.values) {
+      row.dispose();
+    }
+    super.dispose();
   }
 
   PendingInspectionReceipt? get _snapshot =>
@@ -877,6 +857,15 @@ class _ProcurementInspectionDetailPageState
       setState(() {
         if (summary != null) _receipt = summary;
         _items = openRows;
+        for (final row in _reportRows.values) {
+          row.dispose();
+        }
+        _reportRows
+          ..clear()
+          ..addEntries([
+            for (final item in openRows)
+              MapEntry(item.id, _InspectionReportRow(item)),
+          ]);
         _selectedItemIds = const {};
         _loading = false;
       });
@@ -901,109 +890,92 @@ class _ProcurementInspectionDetailPageState
   ];
 
   String get _pendingSummary {
-    final names = ref.read(masterNameServiceProvider);
-    return measurementTotalsText(
-      _items.map(
-        (item) => MeasuredAmount(
-          value: item.remainingBaseQty ?? 0,
-          unitId: item.unitId,
-          unitName: names.unit(item.unitId),
-        ),
-      ),
+    return inspectionQuantityTotalText(
+      context,
+      _items.map((item) => (item, item.remainingBaseQty ?? 0)),
     );
   }
 
-  String _idempotencyKeyFor(
-    ProcurementInspectionItem item,
-    String action,
-    double? qty,
-    String? reason,
-  ) {
-    final canonical = [
-      '${widget.receiptType}:${widget.receiptId}',
-      item.id,
-      action,
-      qty?.toString() ?? 'ALL',
-      reason?.trim() ?? '',
-    ].join('|');
-    return _decisionKeys.putIfAbsent(canonical, () => const Uuid().v4());
-  }
-
-  Future<String?> _submitSingle(
-    ProcurementInspectionItem item,
-    String action,
-    double? qty,
-    String? reason,
-  ) async {
-    final key = _idempotencyKeyFor(item, action, qty, reason);
-    setState(() => _busyDecision = true);
-    try {
-      await ref
-          .read(procurementInspectionRepositoryProvider)
-          .dispose(
-            receiptType: widget.receiptType,
-            receiptId: widget.receiptId,
-            inspectionItemId: item.id,
-            action: action,
-            baseQty: qty,
-            reason: reason,
-            idempotencyKey: key,
-          );
-      if (!mounted) return null;
-      setState(() {
-        _items = [
-          for (final row in _items)
-            if (row.id != item.id) row,
-        ];
-        _selectedItemIds = const {};
-      });
-      await _load();
-      ref.invalidate(procurementInspectionPendingCountProvider);
-      if (action == 'PASS') {
-        ref.invalidate(warehouseQualityResultPendingCountProvider);
-      }
-      if (mounted) {
-        UtenNotify.success(
-          context,
-          action == 'PASS' ? '合格决定已保存；已转仓库待入库，尚未增加可用库存' : '不合格决定已保存',
-        );
-      }
-      return null;
-    } catch (error) {
-      return error.toString();
-    } finally {
-      if (mounted) setState(() => _busyDecision = false);
-    }
-  }
-
-  Future<String?> _submitBatchPass(String? reason) async {
+  /// 「提交报告」（2026-09-05 用户口径：唯一动作按钮）：所选行合格/不合格数量
+  /// 一次提交——总结确认弹窗（仿计划部下达采购）后走 decide-batch 单事务。
+  Future<void> _submitReport() async {
+    if (_busyDecision) return;
     final selected = _selectedItems;
-    if (selected.isEmpty) return '请先选择待检明细';
-    if (selected.length > 100) return '一次最多合格放行 100 条明细';
-    final commands = [
-      for (final item in selected)
-        ProcurementInspectionBatchPassItem(
-          inspectionItemId: item.id,
-          expectedRemainingBaseQty: item.remainingBaseQty ?? 0,
-          idempotencyKey: _idempotencyKeyFor(
-            item,
-            'PASS',
-            item.remainingBaseQty,
-            reason,
+    if (selected.isEmpty) {
+      UtenNotify.warning(context, '请先勾选要提交的明细行');
+      return;
+    }
+    if (selected.length > 100) {
+      UtenNotify.warning(context, '一次最多提交 100 条明细');
+      return;
+    }
+    for (final item in selected) {
+      final problem = _reportRows[item.id]?.validate();
+      if (problem != null) {
+        UtenNotify.warning(
+          context,
+          '${item.goodsName ?? item.goodsCode ?? '明细'}：$problem',
+        );
+        return;
+      }
+    }
+    final rows = [for (final item in selected) _reportRows[item.id]!];
+    final passTotalText = inspectionQuantityTotalText(
+      context,
+      rows.map((row) => (row.item, row.passValue)),
+    );
+    final failTotalText = inspectionQuantityTotalText(
+      context,
+      rows.map((row) => (row.item, row.failValue)),
+    );
+    final hasFail = rows.any((row) => row.failValue > 0);
+    final reason = await showInspectionReportConfirmDialog(
+      context,
+      lineCount: rows.length,
+      passTotalText: inspectionQuantityTotalText(
+        context,
+        rows.map((row) => (row.item, row.passValue)),
+      ),
+      failTotalText: inspectionQuantityTotalText(
+        context,
+        rows.map((row) => (row.item, row.failValue)),
+      ),
+      requireReason: hasFail,
+      lines: [
+        for (final row in rows)
+          InspectionReportConfirmLine(
+            label: [
+              row.item.goodsName,
+              row.item.goodsCode,
+              row.item.colorName,
+            ].where((text) => text?.isNotEmpty == true).join(' · '),
+            passText: _fmt(row.passValue),
+            failText: _fmt(row.failValue),
+            dim: inspectionQuantityUnit(context, row.item),
           ),
-        ),
-    ];
+      ],
+    );
+    if (reason == null || !mounted) return;
     setState(() => _busyDecision = true);
     try {
       await ref
           .read(procurementInspectionRepositoryProvider)
-          .passBatch(
+          .decideBatch(
             receiptType: widget.receiptType,
             receiptId: widget.receiptId,
-            items: commands,
-            reason: reason,
+            reason: reason.isEmpty ? null : reason,
+            items: [
+              for (final row in rows)
+                ProcurementInspectionDecideItem(
+                  inspectionItemId: row.item.id,
+                  expectedRemainingBaseQty: row.item.remainingBaseQty ?? 0,
+                  passBaseQty: row.passValue,
+                  failBaseQty: row.failValue,
+                  idempotencyKey: row.idempotencyKey,
+                ),
+            ],
           );
-      if (!mounted) return null;
+      if (!mounted) return;
       final completedIds = selected.map((item) => item.id).toSet();
       setState(() {
         _items = [
@@ -1018,81 +990,46 @@ class _ProcurementInspectionDetailPageState
       if (mounted) {
         UtenNotify.success(
           context,
-          '已原子合格放行 ${selected.length} 条明细；已转仓库待入库，尚未增加可用库存',
+          '检验报告已提交（合格 $passTotalText'
+          '${hasFail ? '、不合格 $failTotalText' : ''}）；'
+          '合格部分已转仓库待入库，尚未增加可用库存',
         );
       }
-      return null;
-    } catch (error) {
-      return error.toString();
+    } on ApiException catch (error) {
+      if (mounted) {
+        UtenNotify.error(context, '提交被拒：${error.message}；请刷新后按最新待检量重填');
+      }
+    } catch (_) {
+      if (mounted) {
+        UtenNotify.error(context, '提交检验报告失败，请稍后重试');
+      }
     } finally {
       if (mounted) setState(() => _busyDecision = false);
     }
   }
 
-  Future<void> _openItemDecision(
-    ProcurementInspectionItem item, {
-    String initialAction = 'PASS',
-    bool requireQuantity = false,
-  }) async {
-    await showDialog<bool>(
-      context: context,
-      barrierDismissible: !_busyDecision,
-      builder: (dialogContext) => _InspectionDecisionDialog(
-        item: item,
-        unitName: ref.read(masterNameServiceProvider).unit(item.unitId),
-        initialAction: initialAction,
-        requireQuantity: requireQuantity,
-        onSubmit: (action, qty, reason) =>
-            _submitSingle(item, action, qty, reason),
-      ),
-    );
-  }
-
-  Future<void> _openBatchPass() async {
-    final selected = _selectedItems;
-    if (selected.isEmpty) {
-      UtenNotify.warning(context, '请先选择要合格放行的明细');
-      return;
-    }
-    await showDialog<bool>(
-      context: context,
-      barrierDismissible: !_busyDecision,
-      builder: (dialogContext) =>
-          _BatchPassDialog(items: selected, onSubmit: _submitBatchPass),
-    );
-  }
-
   List<Widget> _batchActions(BuildContext context, Set<String> selectedIds) {
-    final selected = _selectedItems;
-    final single = selected.length == 1 ? selected.single : null;
     return [
-      UtenButton(
-        key: const Key('iqc-single-fail'),
-        type: UtenButtonType.danger,
-        size: UtenButtonSize.large,
-        onPressed: single == null || _busyDecision
-            ? null
-            : () => _openItemDecision(single, initialAction: 'FAIL'),
-        child: const Text('登记不合格(单行)'),
+      Padding(
+        padding: const EdgeInsets.only(right: UtenSpacing.s12),
+        child: Text(
+          '已选 ${selectedIds.length} 项',
+          key: const Key('iqc-report-selected-count'),
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+        ),
       ),
       UtenButton(
-        key: const Key('iqc-single-partial-pass'),
-        type: UtenButtonType.tonal,
+        key: const Key('iqc-submit-report'),
         size: UtenButtonSize.large,
-        onPressed: single == null || _busyDecision
-            ? null
-            : () => _openItemDecision(single, requireQuantity: true),
-        child: const Text('部分合格(单行)'),
-      ),
-      UtenButton(
-        key: const Key('iqc-batch-pass'),
-        size: UtenButtonSize.large,
+        icon: Icons.fact_check_outlined,
         isLoading: _busyDecision,
-        onPressed:
-            selectedIds.isEmpty || selectedIds.length > 100 || _busyDecision
-            ? null
-            : _openBatchPass,
-        child: Text('批量合格放行(${selectedIds.length})'),
+        onPressed: selectedIds.isEmpty || _busyDecision ? null : _submitReport,
+        onDisabledTap: selectedIds.isEmpty
+            ? () => UtenNotify.warning(context, '请先勾选要提交的明细行')
+            : null,
+        child: const Text('提交报告'),
       ),
     ];
   }
@@ -1180,7 +1117,14 @@ class _ProcurementInspectionDetailPageState
   }
 
   Widget _buildSummaryCard(ThemeData theme) {
-    final receipt = _receipt!;
+    // A deep link can still load exact receipt items after the pending queue no
+    // longer contains its summary. The queue is not the detail data authority.
+    final receipt =
+        _receipt ??
+        PendingInspectionReceipt(
+          receiptType: widget.receiptType,
+          receiptId: widget.receiptId,
+        );
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -1242,7 +1186,8 @@ class _ProcurementInspectionDetailPageState
                 Expanded(
                   child: Text(
                     _canHandle
-                        ? '勾选多行可一次批量合格放行；双击行或右键菜单做单行检验、部分合格与不合格。'
+                        ? '行内直接修改合格数量/不合格数量（默认全合格），勾选后点'
+                              '「提交报告」一次办结；含不合格数量时结论原因必填。'
                         : '当前为只读查看；品质处置需要 procurement_inspection:handle 权限。',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.primary,
@@ -1274,28 +1219,9 @@ class _ProcurementInspectionDetailPageState
         selectedIds: _selectedItemIds,
         onSelectedIdsChanged: (next) => setState(() => _selectedItemIds = next),
         batchActionsBuilder: _canHandle ? _batchActions : null,
-        onRowTap: _canHandle ? _openItemDecision : null,
+        // 2026-09-05 起行内直接编辑合格/不合格数量，唯一动作是底部「提交报告」；
+        // 单行弹窗（登记不合格/部分合格/批量合格放行）与右键菜单一并下线。
         canOpenRow: _isOpenItem,
-        rowMenuBuilder: _canHandle
-            ? (item) => [
-                UtenMenuItem(
-                  label: '检验本行',
-                  icon: Icons.fact_check_outlined,
-                  onTap: () => _openItemDecision(item),
-                ),
-                UtenMenuItem(
-                  label: '部分合格',
-                  icon: Icons.rule_rounded,
-                  onTap: () => _openItemDecision(item, requireQuantity: true),
-                ),
-                UtenMenuItem(
-                  label: '登记不合格',
-                  icon: Icons.block_rounded,
-                  onTap: () => _openItemDecision(item, initialAction: 'FAIL'),
-                ),
-              ]
-            : null,
-        canShowRowMenu: _isOpenItem,
         isLoading: _loading,
         error: _items.isEmpty ? _error : null,
         onRetry: _load,
@@ -1323,9 +1249,9 @@ class _ProcurementInspectionDetailPageState
     ),
     MasterColumnDef(
       key: 'unit',
-      label: '单位',
+      label: '验收单位',
       width: 90,
-      value: (item) => ref.read(masterNameServiceProvider).unit(item.unitId),
+      value: (item) => inspectionQuantityUnit(context, item),
     ),
     MasterColumnDef(
       key: 'sourceOrderNo',
@@ -1341,18 +1267,61 @@ class _ProcurementInspectionDetailPageState
       value: (item) => _fmt(item.receivedBaseQty ?? 0),
     ),
     MasterColumnDef(
-      key: 'passedBaseQty',
-      label: '已合格',
-      width: 100,
+      key: 'passQty',
+      label: '合格数量',
+      width: 120,
       type: 'number',
-      value: (item) => _fmt(item.passedBaseQty ?? 0),
+      value: (item) => _reportRows[item.id]?.pass.text ?? '0',
+      cellBuilder: (context, item) {
+        final row = _reportRows[item.id];
+        if (row == null) return const Text('—');
+        return Semantics(
+          textField: true,
+          label: '${item.goodsName ?? '明细'} 本次合格数量',
+          child: TextField(
+            key: ValueKey('iqc-report-pass-${item.id}'),
+            controller: row.pass,
+            enabled: _canHandle && !_busyDecision,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            textAlign: TextAlign.right,
+            decoration: UtenInputDecoration(
+              const InputDecoration(isDense: true),
+              info: inspectionQuantityHint(context, item, passed: true),
+            ),
+          ),
+        );
+      },
     ),
     MasterColumnDef(
-      key: 'failedBaseQty',
-      label: '不合格',
-      width: 100,
+      key: 'failQty',
+      label: '不合格数量',
+      width: 120,
       type: 'number',
-      value: (item) => _fmt(item.failedBaseQty ?? 0),
+      value: (item) => _reportRows[item.id]?.fail.text ?? '0',
+      cellBuilder: (context, item) {
+        final row = _reportRows[item.id];
+        if (row == null) return const Text('—');
+        return Semantics(
+          textField: true,
+          label: '${item.goodsName ?? '明细'} 本次不合格数量',
+          child: TextField(
+            key: ValueKey('iqc-report-fail-${item.id}'),
+            controller: row.fail,
+            enabled: _canHandle && !_busyDecision,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            textAlign: TextAlign.right,
+            decoration: UtenInputDecoration(
+              InputDecoration(
+                isDense: true,
+                error: row.validate() == null
+                    ? null
+                    : UtenFieldMessage.error(row.validate()!),
+              ),
+              info: inspectionQuantityHint(context, item, passed: false),
+            ),
+          ),
+        );
+      },
     ),
     MasterColumnDef(
       key: 'remainingBaseQty',
@@ -1375,327 +1344,35 @@ class _ProcurementInspectionDetailPageState
   ];
 }
 
-class _InspectionDecisionDialog extends StatefulWidget {
-  const _InspectionDecisionDialog({
-    required this.item,
-    required this.unitName,
-    required this.initialAction,
-    required this.requireQuantity,
-    required this.onSubmit,
-  });
+/// 检验报告一行的可编辑状态：合格默认=剩余待检、不合格默认=0；
+/// 幂等键随行生成一次，同页重试复用。
+class _InspectionReportRow {
+  _InspectionReportRow(this.item)
+    : pass = TextEditingController(text: _fmt(item.remainingBaseQty ?? 0)),
+      fail = TextEditingController(text: '0');
 
   final ProcurementInspectionItem item;
-  final String unitName;
-  final String initialAction;
-  final bool requireQuantity;
-  final Future<String?> Function(String action, double? qty, String? reason)
-  onSubmit;
+  final TextEditingController pass;
+  final TextEditingController fail;
+  final String idempotencyKey = 'iqc-report-${const Uuid().v4()}';
 
-  @override
-  State<_InspectionDecisionDialog> createState() =>
-      _InspectionDecisionDialogState();
-}
+  double get passValue => double.tryParse(pass.text.trim()) ?? 0;
+  double get failValue => double.tryParse(fail.text.trim()) ?? 0;
 
-class _InspectionDecisionDialogState extends State<_InspectionDecisionDialog> {
-  late String _action = widget.initialAction;
-  final TextEditingController _qty = TextEditingController();
-  final TextEditingController _reason = TextEditingController();
-  String? _qtyError;
-  String? _reasonError;
-  String? _submitError;
-  bool _saving = false;
+  /// null = 校验通过；否则为错误文案。
+  String? validate() {
+    final remaining = item.remainingBaseQty ?? 0;
+    if (passValue < 0 || failValue < 0) return '数量不能为负';
+    if (passValue + failValue <= 0) return '合格与不合格不能同时为 0';
+    if (passValue + failValue > remaining + 1e-9) {
+      return '合计不能超过剩余待检 ${_fmt(remaining)}';
+    }
+    return null;
+  }
 
-  @override
   void dispose() {
-    _qty.dispose();
-    _reason.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    final pass = _action == 'PASS';
-    final qtyText = _qty.text.trim();
-    final reason = _reason.text.trim();
-    double? qty;
-    String? qtyError;
-    if (qtyText.isNotEmpty) {
-      qty = double.tryParse(qtyText);
-      if (qty == null ||
-          qty <= 0 ||
-          qty > (widget.item.remainingBaseQty ?? 0)) {
-        qtyError = '须为正数且不超过剩余 ${_fmt(widget.item.remainingBaseQty ?? 0)}';
-      }
-    } else if (widget.requireQuantity) {
-      qtyError = '部分合格必须填写本次合格数量';
-    }
-    final reasonError = !pass && reason.isEmpty ? '不合格原因必填' : null;
-    if (qtyError != null || reasonError != null) {
-      setState(() {
-        _qtyError = qtyError;
-        _reasonError = reasonError;
-      });
-      return;
-    }
-    setState(() {
-      _saving = true;
-      _submitError = null;
-      _qtyError = null;
-      _reasonError = null;
-    });
-    final error = await widget.onSubmit(
-      _action,
-      qty,
-      reason.isEmpty ? null : reason,
-    );
-    if (!mounted) return;
-    if (error == null) {
-      Navigator.of(context).pop(true);
-      return;
-    }
-    setState(() {
-      _saving = false;
-      _submitError = error;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final pass = _action == 'PASS';
-    final goodsLabel = [
-      widget.item.goodsName,
-      widget.item.goodsCode,
-      widget.item.colorName,
-    ].where((text) => text?.isNotEmpty == true).join(' · ');
-    return AlertDialog(
-      title: const Text('检验本行'),
-      content: SizedBox(
-        width: 440,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              UtenReviewerResponsibilityNotice(
-                actionLabel: pass ? '合格放行' : '不合格处置',
-                description: '系统将记录审核员、结论、数量与时间，请依据本行实物检验结果确认。',
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Text(
-                goodsLabel,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                '剩余待检 ${_fmt(widget.item.remainingBaseQty ?? 0)} '
-                '${widget.unitName}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(
-                    value: 'PASS',
-                    label: Text('合格', key: Key('iqc-action-pass')),
-                  ),
-                  ButtonSegment(
-                    value: 'FAIL',
-                    label: Text('不合格', key: Key('iqc-action-fail')),
-                  ),
-                ],
-                selected: {_action},
-                onSelectionChanged: _saving
-                    ? null
-                    : (selection) => setState(() {
-                        _action = selection.first;
-                        _reasonError = null;
-                        _submitError = null;
-                      }),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              TextField(
-                controller: _qty,
-                enabled: !_saving,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: InputDecoration(
-                  label: fieldLabel(
-                    '${pass ? '合格数量' : '不合格数量'}（${widget.unitName}）',
-                    theme,
-                    info: widget.requireQuantity
-                        ? '必填；部分处置后本行继续保留'
-                        : '留空 = 全部剩余待检量',
-                  ),
-                  error: _qtyError == null
-                      ? null
-                      : UtenFieldMessage.error(_qtyError!),
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              TextField(
-                controller: _reason,
-                enabled: !_saving,
-                maxLines: 3,
-                maxLength: 500,
-                decoration: InputDecoration(
-                  labelText: pass ? '放行说明(选填)' : '不合格原因(必填)',
-                  error: _reasonError == null
-                      ? null
-                      : UtenFieldMessage.error(_reasonError!),
-                ),
-              ),
-              if (_submitError != null) ...[
-                const SizedBox(height: UtenSpacing.s8),
-                Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    _submitError!,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.error,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: _saving ? null : () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        UtenButton(
-          isLoading: _saving,
-          type: pass ? UtenButtonType.primary : UtenButtonType.danger,
-          onPressed: _saving ? null : _submit,
-          child: Text(pass ? '确认合格' : '确认不合格'),
-        ),
-      ],
-    );
-  }
-}
-
-class _BatchPassDialog extends StatefulWidget {
-  const _BatchPassDialog({required this.items, required this.onSubmit});
-
-  final List<ProcurementInspectionItem> items;
-  final Future<String?> Function(String? reason) onSubmit;
-
-  @override
-  State<_BatchPassDialog> createState() => _BatchPassDialogState();
-}
-
-class _BatchPassDialogState extends State<_BatchPassDialog> {
-  final TextEditingController _reason = TextEditingController();
-  String? _submitError;
-  bool _saving = false;
-
-  @override
-  void dispose() {
-    _reason.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    setState(() {
-      _saving = true;
-      _submitError = null;
-    });
-    final reason = _reason.text.trim();
-    final error = await widget.onSubmit(reason.isEmpty ? null : reason);
-    if (!mounted) return;
-    if (error == null) {
-      Navigator.of(context).pop(true);
-      return;
-    }
-    setState(() {
-      _saving = false;
-      _submitError = error;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return AlertDialog(
-      title: Text('批量合格放行 ${widget.items.length} 条'),
-      content: SizedBox(
-        width: 480,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const UtenReviewerResponsibilityNotice(
-                actionLabel: '批量合格放行',
-                description: '本次仅处理当前收货单中已勾选的明细；任一行状态变化都会整批回滚。',
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Text(
-                '将按各行当前全部剩余待检量放行：',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s4),
-              for (final item in widget.items.take(6))
-                Padding(
-                  padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-                  child: Text(
-                    '• ${item.goodsName ?? item.goodsCode ?? item.id} · '
-                    '${_fmt(item.remainingBaseQty ?? 0)}',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-              if (widget.items.length > 6)
-                Text(
-                  '另有 ${widget.items.length - 6} 条',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              const SizedBox(height: UtenSpacing.s8),
-              TextField(
-                controller: _reason,
-                enabled: !_saving,
-                maxLines: 3,
-                maxLength: 500,
-                decoration: const InputDecoration(labelText: '统一放行说明(选填)'),
-              ),
-              if (_submitError != null) ...[
-                const SizedBox(height: UtenSpacing.s8),
-                Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    _submitError!,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.error,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: _saving ? null : () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        UtenButton(
-          isLoading: _saving,
-          onPressed: _saving ? null : _submit,
-          child: const Text('确认整批合格'),
-        ),
-      ],
-    );
+    pass.dispose();
+    fail.dispose();
   }
 }
 

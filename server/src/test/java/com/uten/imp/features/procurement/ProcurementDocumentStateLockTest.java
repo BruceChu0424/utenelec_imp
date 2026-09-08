@@ -42,13 +42,13 @@ class ProcurementDocumentStateLockTest {
             service("purchase/request/PurchaseRequestService.java", "PurchaseRequest", "requireRequestForUpdate"),
             financeOrderService(
                     "purchase/order/PurchaseOrderService.java",
-                    "PurchaseOrder", "requireOrderForUpdate"),
+                    "PurchaseOrder", "requireOrderForUpdate", 10),
             service("purchase/receipt/PurchaseReceiptService.java", "PurchaseReceipt", "requireReceiptForUpdate"),
             service("purchase/ret/PurchaseReturnService.java", "PurchaseReturn", "requireReturnForUpdate"),
             service("subcontract/application/SubcontractApplicationService.java", "SubcontractApplication", "requireApplicationForUpdate"),
             financeOrderService(
                     "subcontract/order/SubcontractOrderService.java",
-                    "SubcontractOrder", "requireOrderForUpdate"),
+                    "SubcontractOrder", "requireOrderForUpdate", 9),
             service("subcontract/receipt/SubcontractReceiptService.java", "SubcontractReceipt", "requireReceiptForUpdate"),
             service("subcontract/ret/SubcontractReturnService.java", "SubcontractReturn", "requireReturnForUpdate"),
             service("subcontract/material_issue/SubcontractMaterialIssueService.java", "SubcontractMaterialIssue", "requireIssueForUpdate"),
@@ -120,7 +120,8 @@ class ProcurementDocumentStateLockTest {
                 mock(EmployeeNameResolver.class),
                 mock(DocNumberService.class),
                 mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class),
-                        mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class));
+                        mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class),
+                org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
         UUID id = UUID.randomUUID();
         SubcontractMaterialIssue committed = new SubcontractMaterialIssue();
         committed.setStatus((short) 1);
@@ -142,9 +143,11 @@ class ProcurementDocumentStateLockTest {
     }
 
     private static LockedService financeOrderService(
-            String relativePath, String entity, String helper) {
-        // update/delete/submitter-owner-guard/snapshot-validation/apply-finance-approval/reverse
-        return new LockedService(relativePath, entity, helper, 6);
+            String relativePath, String entity, String helper, int expectedLockCount) {
+        // 基线：update/delete/submitter-owner-guard/snapshot-validation/
+        // apply-finance-approval/reverse；采购侧 + cancel（2026-09-05 草稿取消：
+        // 在审单同步撤回财务审批）= 7，委外侧暂无 cancel = 6。
+        return new LockedService(relativePath, entity, helper, expectedLockCount);
     }
 
     private static int occurrences(String source, String needle) {

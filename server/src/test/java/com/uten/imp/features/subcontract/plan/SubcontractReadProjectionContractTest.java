@@ -31,41 +31,27 @@ class SubcontractReadProjectionContractTest {
     }
 
     @Test
-    void preparationAndOrderReadsDeriveEffectiveStatusFromExactProductionFacts()
+    void orderProgressDerivesEffectiveStatusFromExactProductionFacts()
             throws IOException {
-        String tasks = read(
-                "subcontract/preparation/SubcontractPreparationTaskAdapter.java");
+        // 2026-09-05 委外收敛：准备中心读模型（SubcontractPreparationTaskAdapter.tasks）
+        // 随页面退役删除；车间进度的事实推导契约保留在订货单进度服务。
         String order = read(
                 "subcontract/order/SubcontractOrderProgressService.java");
 
-        for (String source : new String[]{tasks, order}) {
-            assertThat(source)
-                    .contains("CROSS JOIN LATERAL")
-                    .contains("preparation_status <> 'IN_PREPARATION'")
-                    .contains("production_plan.material_analysis_id")
-                    .contains("production_plan.material_analysis_item_id")
-                    .contains("inspection.source_plan_item_id")
-                    .contains("inspection.passed_qty > 0")
-                    .contains("report_item.plan_item_id")
-                    .contains("report.status = 1")
-                    .contains("finished_in.doc_type = 'FINISHED_IN'")
-                    .contains("finished_in.status = 0")
-                    .contains("THEN 'WAITING_INBOUND'")
-                    .contains("THEN 'WAITING_FQC'");
-        }
-        assertThat(tasks)
-                .contains("AND effective.status = ?")
-                .contains("order_header.deliver_date, effective.status")
-                .contains("source_allocation.analysis_id = ?")
-                .contains("source_allocation.analysis_material_id = ?")
-                // V463：订货行多来源锚定——筛选子句按 sources 展开（IN 子查询）。
-                .contains("source_allocation.external_item_id IN (")
-                .contains("src.application_item_id")
-                .contains("source_action.route = 'SUBCONTRACT'")
-                .contains("source_action.status <> 'CANCELLED'")
-                .contains("source_action.external_document_type =")
-                .contains("'SUBCONTRACT_APPLICATION'");
-        assertThat(order).contains("pi.flow_mode, effective.status");
+        assertThat(order)
+                .contains("CROSS JOIN LATERAL")
+                .contains("preparation_status <> 'IN_PREPARATION'")
+                .contains("production_plan.material_analysis_id")
+                .contains("production_plan.material_analysis_item_id")
+                .contains("inspection.source_plan_item_id")
+                .contains("inspection.passed_qty > 0")
+                .contains("report_item.plan_item_id")
+                .contains("report.status = 1")
+                .contains("finished_in.doc_type = 'FINISHED_IN'")
+                .contains("finished_in.status = 0")
+                .contains("THEN 'WAITING_INBOUND'")
+                .contains("THEN 'WAITING_FQC'")
+                .contains("pi.flow_mode, effective.status");
     }
 
     @Test

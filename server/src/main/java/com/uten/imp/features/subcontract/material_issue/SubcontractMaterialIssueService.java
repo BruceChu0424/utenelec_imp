@@ -81,6 +81,7 @@ public class SubcontractMaterialIssueService {
     private final DocNumberService docNumberService;
     private final SubcontractDocumentAccessPolicy access;
     private final com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService planService;
+    private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
 
     @Autowired
     private CommercialPriceVisibility commercialPriceVisibility;
@@ -139,7 +140,7 @@ public class SubcontractMaterialIssueService {
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SubcontractMaterialIssue> p = issueRepo.findAll(spec, pageable);
         return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
-                page, size, p.getTotalElements(), p.getTotalPages());
+                p);
     }
 
     @Transactional(readOnly = true)
@@ -155,6 +156,7 @@ public class SubcontractMaterialIssueService {
     @PreAuthorize("hasAuthority('subcontract_material_issue:create')")
     public MaterialIssueDetail create(MaterialIssueSaveRequest req) {
         tx.bind();
+        lockIssueRequest(null,req).verifyUnchanged();
         // 计划挂接单只能由计划服务生成；旧通用新建端点不得占用/伪造计划行。
         canonicalizePlanLines(req.getItems(), Set.of(), false);
         SubcontractMaterialIssue r = new SubcontractMaterialIssue();
@@ -173,11 +175,13 @@ public class SubcontractMaterialIssueService {
     @PreAuthorize("hasAuthority('subcontract_material_issue:edit')")
     public MaterialIssueDetail update(UUID id, MaterialIssueSaveRequest req) {
         tx.bind();
+        var mutationGuard=lockIssueRequest(id,req);
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
         Set<UUID> existingPlanItemIds = requireIssueWritable(r, "subcontract_material_issue:edit");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
+        mutationGuard.verifyUnchanged();
         canonicalizePlanLines(req.getItems(), existingPlanItemIds, !existingPlanItemIds.isEmpty());
         applyHeader(req, r);
         itemRepo.deleteByIssueId(id);
@@ -192,13 +196,23 @@ public class SubcontractMaterialIssueService {
     @PreAuthorize("hasAuthority('subcontract_material_issue:delete')")
     public void delete(UUID id) {
         tx.bind();
+        var mutationGuard=mutationLocks.materialIssue(id);
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
         requireIssueWritable(r, "subcontract_material_issue:delete");
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
+        mutationGuard.verifyUnchanged();
         planService.releaseDraftReservations(id);
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         issueRepo.save(r);
+    }
+
+    private com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard lockIssueRequest(UUID id,MaterialIssueSaveRequest req) {
+        List<MaterialIssueItemLine> lines=req==null||req.getItems()==null?List.of():req.getItems();
+        return mutationLocks.materialIssueInputs(id,lines.stream().filter(Objects::nonNull).map(MaterialIssueItemLine::getOrderItemId).toList(),
+                lines.stream().filter(Objects::nonNull).filter(line->line.getGoodsId()!=null)
+                        .map(line->new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(line.getGoodsId(),line.getColorId())).toList(),
+                req==null?null:req.getWarehouseId());
     }
 
     /**
@@ -282,6 +296,7 @@ public class SubcontractMaterialIssueService {
     @PreAuthorize("hasAuthority('subcontract_material_issue:approve')")
     public MaterialIssueDetail approve(UUID id) {
         tx.bind();
+        var mutationGuard=mutationLocks.materialIssue(id);
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -289,6 +304,7 @@ public class SubcontractMaterialIssueService {
         // 幂等/状态门禁只依赖已加锁的单据头，必须先于权限所需的计划明细读取，
         // 避免重复审核触碰任何明细，更不能重复产生库存移动。
         requireIssueWritable(r, "subcontract_material_issue:approve");
+        mutationGuard.verifyUnchanged();
         if (r.getWarehouseId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "发料单需指定发出仓");
         }
@@ -305,6 +321,8 @@ public class SubcontractMaterialIssueService {
             }
         }
         lockAndValidateOrderItems(r, items);
+        com.uten.imp.common.finance.ProcurementOrderQuantityBounds.requireConsistentTargetBasis(em,
+                items.stream().map(SubcontractMaterialIssueItem::getOrderItemId).distinct().toList());
         captureGoodsSnapshots(
                 items,
                 SubcontractGoodsSnapshot.ORDER_ITEM_AT_APPROVAL,
@@ -415,8 +433,10 @@ public class SubcontractMaterialIssueService {
     @PreAuthorize("hasAuthority('subcontract_material_issue:reverse')")
     public MaterialIssueDetail reverse(UUID id) {
         tx.bind();
+        var mutationGuard=mutationLocks.materialIssue(id);
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
         requireIssueWritable(r, "subcontract_material_issue:reverse");
+        mutationGuard.verifyUnchanged();
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }

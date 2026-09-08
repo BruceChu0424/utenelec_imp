@@ -13,6 +13,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SalesShipmentFinanceRatePolicyTest {
 
     @Test
+    void newDirectShipmentNeverRoundsAwayLocalMoney() {
+        SalesShipment shipment=new SalesShipment();shipment.setShipmentKind("DIRECT_CUSTOMER");
+        var item=item("0.0001");
+        assertThatThrownBy(()->SalesShipmentService.applyPostingRateSnapshot(shipment,List.of(item),new BigDecimal("0.0001")))
+                .isInstanceOf(ApiException.class).hasMessageContaining("未自动四舍五入");
+        assertThat(item.getAmountLocal()).isNull();
+        SalesShipmentService.applyPostingRateSnapshot(shipment,List.of(item),new BigDecimal("7"));
+        assertThat(item.getAmountLocal()).isEqualByComparingTo("0.0007");
+    }
+
+    @Test
     void financeRateRecalculatesEveryShipmentLineAndHeaderSnapshot() {
         SalesShipment shipment = new SalesShipment();
 

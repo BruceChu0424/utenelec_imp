@@ -277,8 +277,6 @@ abstract final class Perm {
   static const subcontractReportView = 'subcontract_report:view';
   static const subcontractReportExport = 'subcontract_report:export';
   static const subcontractReportPriceView = 'subcontract_report:price:view';
-  static const subcontractPreparationView = 'subcontract_preparation:view';
-  static const subcontractPreparationStart = 'subcontract_preparation:start';
   // 委外出仓工作台（V305）：仓库 hub「委外出仓」任务中心显隐与拣货/审核操作。
   static const subcontractOutboundView = 'subcontract_outbound:view';
 
@@ -388,7 +386,6 @@ abstract final class Perm {
   // ===== 通知、建议与报表导出 =====
   static const noticeRead = 'notice:read';
   static const noticePublish = 'notice:publish';
-  static const reviewInboxView = 'review_inbox:view';
   static const suggestionSubmit = 'suggestion:submit';
   static const suggestionReply = 'suggestion:reply';
   // 官网询盘（综合营销统一收件箱；部门授权非全员基础包）
@@ -486,8 +483,12 @@ abstract final class Perm {
   static const salesReturnReverse = 'sales_return:reverse';
   static const purchaseOrderCreate = 'purchase_order:create';
   static const purchaseOrderDelete = 'purchase_order:delete';
+  static const purchaseOrderCancel = 'purchase_order:cancel';
   static const purchaseOrderReverse = 'purchase_order:reverse';
   static const purchaseOrderDecompose = 'purchase_order:decompose';
+
+  /// 批准后改量（财务批准后的订货单逐行改数量，改后自动重回财务复核）。
+  static const purchaseOrderChangeQty = 'purchase_order:change_qty';
   static const purchaseReceiptCreate = 'purchase_receipt:create';
   static const purchaseReceiptDelete = 'purchase_receipt:delete';
   static const purchaseReceiptApprove = 'purchase_receipt:approve';
@@ -543,6 +544,9 @@ abstract final class Perm {
   static const subcontractOrderDelete = 'subcontract_order:delete';
   static const subcontractOrderReverse = 'subcontract_order:reverse';
   static const subcontractOrderDecompose = 'subcontract_order:decompose';
+
+  /// 批准后改量（财务批准后的委外订货单逐行改数量，改后自动重回财务复核）。
+  static const subcontractOrderChangeQty = 'subcontract_order:change_qty';
   static const subcontractReceiptCreate = 'subcontract_receipt:create';
   static const subcontractReceiptDelete = 'subcontract_receipt:delete';
   static const subcontractReceiptApprove = 'subcontract_receipt:approve';
@@ -724,8 +728,10 @@ abstract final class Perm {
     salesReturnReverse,
     purchaseOrderCreate,
     purchaseOrderDelete,
+    purchaseOrderCancel,
     purchaseOrderReverse,
     purchaseOrderDecompose,
+    purchaseOrderChangeQty,
     purchaseReceiptCreate,
     purchaseReceiptDelete,
     purchaseReceiptApprove,
@@ -775,6 +781,7 @@ abstract final class Perm {
     subcontractOrderDelete,
     subcontractOrderReverse,
     subcontractOrderDecompose,
+    subcontractOrderChangeQty,
     subcontractReceiptCreate,
     subcontractReceiptDelete,
     subcontractReceiptApprove,
@@ -864,7 +871,6 @@ abstract final class Perm {
     procurementIqcRejectionReverse,
     visitorVerify,
     visitorCheckIn,
-    subcontractPreparationStart,
     subcontractOutboundExecute,
     subcontractOutboundClose,
     warehouseInboundStockIn,
@@ -1034,7 +1040,6 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.subcontractWasteSuggestionView,
       Perm.subcontractReportView, Perm.subcontractReportExport,
       Perm.subcontractReportPriceView,
-      Perm.subcontractPreparationView, Perm.subcontractPreparationStart,
       Perm.subcontractOutboundView,
       Perm.subcontractOutboundExecute, Perm.subcontractOutboundClose,
       Perm.subcontractViewAll,

@@ -149,7 +149,7 @@ public class AccountService {
                         .map(account -> toList(
                                 account, currencyMetaOf(account.getCurrencyId(), currencyMeta)))
                         .toList(),
-                page, size, p.getTotalElements(), p.getTotalPages());
+                p);
     }
 
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Account> root,

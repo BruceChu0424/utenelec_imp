@@ -26,8 +26,6 @@ import com.uten.imp.features.production.plan.dto.PlanDetail;
 import com.uten.imp.features.production.plan.dto.PlanItemLine;
 import com.uten.imp.features.production.plan.dto.PlanSaveRequest;
 import com.uten.imp.features.purchase.request.ProductionPurchaseRequestFacade;
-import com.uten.imp.features.stock.InventoryKey;
-import com.uten.imp.features.stock.InventoryMutationLock;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -39,6 +37,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -81,7 +80,11 @@ public class MaterialAnalysisCommandService {
     private final PreplanStockEntitlementService stockEntitlement;
     private final SubcontractPreparationEntitlementHandoffService
             subcontractPreparationHandoffs;
-    private final InventoryMutationLock inventoryLock;
+    private final SubcontractMakeTaskService subcontractMakeTasks;
+    private final com.uten.imp.application.concurrency.FulfillmentMutationLocks mutationLocks;
+    private final com.uten.imp.application.port.ProductionMutationFootprintPort mutationFootprints;
+    @org.springframework.beans.factory.annotation.Autowired
+    private MaterialAnalysisRootSupplyService rootSupply;
 
     /**
      * 下达备料任务（采购/委外/自制）：先重算分配（库存与到货变化不触动分析头），再按操作组只补建「超过既有未结任务量」的增量，
@@ -90,8 +93,8 @@ public class MaterialAnalysisCommandService {
     @Transactional
     public AnalysisView notifySupply(UUID analysisId, NotifyRequest request) {
         tx.bind();
-        lockAnalysisInventoryDimensions(analysisId);
-        MaterialAnalysisService.AnalysisHeader header = analysisService.lockHeader(analysisId);
+        var mutationGuard = lockAnalysisInventoryDimensions(analysisId);
+        MaterialAnalysisService.AnalysisHeader header = analysisService.headerAfterPrelock(analysisId);
         requireNotFqcRecoveryWorkspace(analysisId);
         requireWritable(header, "只能下达本人负责的物料分析备料任务");
         String requestHash = notifyHash(analysisId, request);
@@ -100,12 +103,28 @@ public class MaterialAnalysisCommandService {
         if (replay != null) {
             return analysisService.detailInternal(analysisId, false);
         }
+        mutationGuard.verifyUnchanged();
         analysisService.requireCurrent(header, request.version(), request.fingerprint());
         // Stock, receipts and downstream document lifecycle can change without touching the
         // analysis header. Rebuild the authoritative allocation before calculating a delta.
         analysisService.refreshLocked(analysisId);
         AnalysisView view = analysisService.detailInternal(analysisId, false);
         List<ActionGroup> groups = selectedGroups(view, request);
+        for (ActionGroup group : groups) {
+            // 2026-09-05 简化（ADR-71 后续）：自制路线退役单独「创建子件任务」——
+            // 车间桶「创建生产计划」单次原子完成（锚点行+计划+可选审核）。
+            if ("MAKE".equals(group.route())) {
+                throw validation("自制路线请直接「创建生产计划」下达车间，不再单独创建子件任务");
+            }
+        }
+        if (rootSupply != null && rootSupply.fulfillExisting(analysisId,
+                groups.stream().flatMap(group -> group.materials().stream())
+                        .filter(material -> "ROOT_SUPPLY".equals(material.nodeRole()))
+                        .map(MaterialView::materialLineId).toList(), request.idempotencyKey())) {
+            analysisService.refreshLocked(analysisId);
+            view = analysisService.detailInternal(analysisId, false);
+            groups = selectedGroups(view, request);
+        }
         requireNoActiveBorrowForSupplyMaterials(
                 analysisId,
                 groups.stream().flatMap(group -> group.materials().stream())
@@ -113,6 +132,9 @@ public class MaterialAnalysisCommandService {
                         .collect(Collectors.toSet()));
         Map<String, SupplyQuantityInput> quantityInputs =
                 quantityInputs(view, request, groups);
+        Set<UUID> subcontractBomParents = activeBomParentIds(groups.stream()
+                .filter(group -> "SUBCONTRACT".equals(group.route()))
+                .map(group -> group.dimension().goodsId()).toList());
         List<ActionPlan> plans = new ArrayList<>();
         for (ActionGroup group : groups) {
             BigDecimal existingOpen = activeOpenActionQty(
@@ -132,7 +154,7 @@ public class MaterialAnalysisCommandService {
             BigDecimal publicExtraQty = BigDecimal.ZERO.setScale(4);
             boolean createsChildOwnership = "MAKE".equals(group.route())
                     || ("SUBCONTRACT".equals(group.route())
-                        && hasActiveBomChildren(group.dimension().goodsId()));
+                        && subcontractBomParents.contains(group.dimension().goodsId()));
             if (input != null) {
                 BigDecimal requested = input.qty().setScale(4, RoundingMode.CEILING);
                 if (createsChildOwnership && requested.compareTo(delta) != 0) {
@@ -285,7 +307,7 @@ public class MaterialAnalysisCommandService {
         // SUBCONTRACT 合并生成一张委外申请；明细行仍逐 action 锚定（撤回/绑定粒度不变），
         // 订货侧照旧按供应商分组拆订货单。MAKE 与委外前置自制保持逐条任务。
         PreparedExternalDocuments prepared =
-                prepareExternalDocuments(analysisId, created);
+                prepareExternalDocuments(analysisId, created, subcontractBomParents);
         for (ActionDraft action : created) {
             createExternalDocument(analysisId, action, prepared);
         }
@@ -302,23 +324,10 @@ public class MaterialAnalysisCommandService {
                     "SUBCONTRACT_APPLICATION");
         }
         if (!created.isEmpty()) {
+            // 2026-09-05 简化：子件行不再接管原子树需求、不迁移 exact 权益
+            // （物料行保持原位单一份数据，计划侧不搬家）；旧模式遗留的委托
+            // 由 refreshLocked 开头的批量归还收敛。
             analysisService.refreshLocked(analysisId);
-            boolean entitlementMoved = false;
-            for (ActionDraft action : created) {
-                // V458/ADR-062 修订二：MAKE 与有子层 SUBCONTRACT 委外同构——两者的
-                // 子任务行都会接管原父树子件需求，exact 权益必须一并迁入新行，
-                // 否则预留被钉死在需求已归零的旧节点，委外子树永远缺料。
-                // 无子层委外（SUBCONTRACT_APPLICATION）在委托查询中自然无匹配。
-                if (!"MAKE".equals(action.group().route())
-                        && !"SUBCONTRACT".equals(action.group().route())) {
-                    continue;
-                }
-                entitlementMoved |= stockEntitlement.delegateMakeEntitlements(
-                        analysisId, action.actionId()).signum() > 0;
-            }
-            if (entitlementMoved) {
-                analysisService.refreshLocked(analysisId);
-            }
         }
         recordCommand(analysisId, OP_NOTIFY, request.idempotencyKey(), requestHash,
                 Map.of("actionIds", created.stream().map(ActionDraft::actionId).toList()));
@@ -334,8 +343,8 @@ public class MaterialAnalysisCommandService {
     public AnalysisView claimSharedFuture(
             UUID analysisId, ClaimSharedFutureRequest request) {
         tx.bind();
-        lockAnalysisInventoryDimensions(analysisId);
-        MaterialAnalysisService.AnalysisHeader header = analysisService.lockHeader(analysisId);
+        var mutationGuard = mutationLocks.acquire(() -> mutationFootprints.forSharedFutureClaim(analysisId));
+        MaterialAnalysisService.AnalysisHeader header = analysisService.headerAfterPrelock(analysisId);
         requireWritable(header, "只能为本人负责的物料分析采用公共在途");
         String requestHash = claimSharedFutureHash(analysisId, request);
         CommandReplay replay = commandReplay(analysisId, OP_CLAIM_SHARED_FUTURE,
@@ -343,6 +352,7 @@ public class MaterialAnalysisCommandService {
         if (replay != null) {
             return analysisService.detailInternal(analysisId, false);
         }
+        mutationGuard.verifyUnchanged();
         analysisService.requireCurrent(header, request.version(), request.fingerprint());
         analysisService.refreshLocked(analysisId);
         AnalysisView view = analysisService.detailInternal(analysisId, false);
@@ -350,13 +360,16 @@ public class MaterialAnalysisCommandService {
                 view.version(), view.fingerprint(), request.idempotencyKey(),
                 null, List.of(), request.actionGroupKeys(), List.of());
         List<ActionGroup> groups = selectedGroups(view, selector);
+        Set<UUID> subcontractBomParents = activeBomParentIds(groups.stream()
+                .filter(group -> "SUBCONTRACT".equals(group.route()))
+                .map(group -> group.dimension().goodsId()).toList());
         List<UUID> createdIds = new ArrayList<>();
         for (ActionGroup group : groups) {
             if (!Set.of("BUY", "SUBCONTRACT").contains(group.route())) {
                 throw validation("只有采购或叶子委外物料可以采用公共在途");
             }
             if ("SUBCONTRACT".equals(group.route())
-                    && hasActiveBomChildren(group.dimension().goodsId())) {
+                    && subcontractBomParents.contains(group.dimension().goodsId())) {
                 throw validation("有我方供料 BOM 的委外件不能采用公共超量在途");
             }
             BigDecimal existingOpen = activeOpenActionQty(analysisId, group);
@@ -541,19 +554,22 @@ public class MaterialAnalysisCommandService {
     }
 
     /**
-     * 由物料分析生成正式生产计划：临时路线须先经 saveRoutes 落库，联合预览
-     * 指纹须与冻结结果一致。未齐套批次允许先冻结车间/负责人，但只能生成自动
-     * 提升的 WAITING 段；READY 仍必须由真实完整套料支持。
-     * approveNow 需独立的生产计划审核权限。幂等键命中时回放已生成的计划标识。
+     * 下达车间（ADR-071）：所有自制行一视同仁，单事务原子完成——候选行先按
+     * 全部剩余需求建子件任务（复用 notifySupply 的增量/幂等口径），随后按行内
+     * 数量/车间/负责人逐行生成生产计划，有审核权限同事务审核下达。物料齐不齐
+     * 不在本层判断：缺料批次生成自动提升的 WAITING 段，由车间侧等料齐套。
+     * 任一行失败整体回滚，不会留下「已建子件、未出计划」的残留行；重试时
+     * 幂等键回放，子件增量口径保证不重复建行。
      */
     @Transactional
-    public GenerateResult generatePlan(UUID analysisId, GeneratePlanRequest request) {
+    public GenerateResult issueWorkshopPlans(
+            UUID analysisId, IssueWorkshopPlansRequest request) {
         tx.bind();
-        lockAnalysisInventoryDimensions(analysisId);
-        MaterialAnalysisService.AnalysisHeader header = analysisService.lockHeader(analysisId);
+        var mutationGuard = lockAnalysisInventoryDimensions(analysisId);
+        MaterialAnalysisService.AnalysisHeader header = analysisService.headerAfterPrelock(analysisId);
         requireNotFqcRecoveryWorkspace(analysisId);
-        requireWritable(header, "只能从本人负责的物料分析生成生产计划");
-        String requestHash = generateHash(analysisId, request);
+        requireWritable(header, "只能从本人负责的物料分析下达车间");
+        String requestHash = issueHash(analysisId, request);
         CommandReplay replay = commandReplay(analysisId, OP_GENERATE,
                 request.idempotencyKey(), requestHash);
         if (replay != null) {
@@ -561,43 +577,102 @@ public class MaterialAnalysisCommandService {
             return new GenerateResult(analysisService.detailInternal(analysisId, false), true,
                     planIds.stream().map(this::generatedPlan).toList());
         }
+        mutationGuard.verifyUnchanged();
         analysisService.requireCurrent(header, request.version(), request.fingerprint());
-        if (request.routes() != null && !request.routes().isEmpty()) {
-            throw validation("生成前必须先保存路线，generate-plan 不接受临时路线");
-        }
-        PlanPreview preview = analysisService.buildPlanPreviewLocked(
-                analysisId, request.warehouseId(), request.items(), request.routes());
-        if (!preview.previewFingerprint().equalsIgnoreCase(request.previewFingerprint())) {
-            throw conflict("联合预览已过期，请重新计算可生成数量");
-        }
-        if (preview.items().stream().anyMatch(item -> !item.canSchedule())) {
-            throw conflict("所选批次不再满足排产条件，请刷新后重新选择");
+        if (!Objects.equals(header.warehouseId(), request.warehouseId())) {
+            throw conflict("目标仓库与分析当前仓库不一致，请刷新后重试");
         }
         if (request.approveNow() && !access.hasAuthority("production_plan:approve")) {
             throw new ApiException(ErrorCode.FORBIDDEN, "生成并审核需要独立的生产计划审核权限");
         }
-
+        // 1) 候选行建「子件锚点行」（2026-09-05 简化：计划侧不再接管子树需求、
+        //    不搬权益——物料行保持原位单一份数据，计划员照常在采购/委外桶下达；
+        //    锚点行仅承载计划链接与执行进度）。MAKE 只建锚点行；有子层委外
+        //    同时登记「先自制后通知」台账（notifySupply 既有链路，无权益委托）。
+        AnalysisView preArrange = analysisService.detailInternal(analysisId, false);
+        Map<UUID, String> candidateRoutes = candidateRoutesByMaterialLine(preArrange);
+        List<UUID> makeLines = new ArrayList<>();
+        List<UUID> subcontractLines = new ArrayList<>();
+        for (IssueWorkshopPlansRequest.IssuePlanLine line : request.lines()) {
+            if (line.materialLineId() == null) continue;
+            String route = candidateRoutes.get(line.materialLineId());
+            if (route == null) {
+                throw validation("候选物料节点不存在或路线未确认，请刷新后重试");
+            }
+            if ("MAKE".equals(route)) {
+                makeLines.add(line.materialLineId());
+                continue;
+            }
+            if (!"SUBCONTRACT".equals(route)) {
+                throw validation("只有自制路线的物料才能直接下达车间");
+            }
+            UUID goodsId = preArrange.flatMaterials().stream()
+                    .filter(material -> material.materialLineId()
+                            .equals(line.materialLineId()))
+                    .map(MaterialView::goodsId)
+                    .findFirst().orElse(null);
+            if (!activeBomParentIds(List.of(goodsId)).contains(goodsId)) {
+                throw validation("无自制子层的委外件请走委外下达，不能直接建生产计划");
+            }
+            subcontractLines.add(line.materialLineId());
+        }
+        if (!subcontractLines.isEmpty()) {
+            notifySupply(analysisId, new NotifyRequest(
+                    request.version(), request.fingerprint(),
+                    request.idempotencyKey() + "-ARRANGE", "SUBCONTRACT",
+                    subcontractLines, null, null));
+        }
+        if (!makeLines.isEmpty()) {
+            ensureWorkshopChildAnchors(analysisId, preArrange, makeLines);
+        }
+        // 2) 以最新快照逐行生成计划：产品行直接用行 id，候选行解析到刚建/既有子件行。
+        analysisService.refreshLocked(analysisId);
         AnalysisView view = analysisService.detailInternal(analysisId, false);
         Map<UUID, ProductView> products = view.products().stream()
                 .collect(Collectors.toMap(ProductView::analysisLineId, value -> value));
-        Map<UUID, PlanPreviewItem> previewItems = preview.items().stream()
-                .collect(Collectors.toMap(PlanPreviewItem::analysisLineId, value -> value));
+        Map<UUID, IssueWorkshopPlansRequest.IssuePlanLine> lineByAnalysisLine =
+                new LinkedHashMap<>();
+        for (IssueWorkshopPlansRequest.IssuePlanLine line : request.lines()) {
+            UUID lineId = line.analysisLineId() != null
+                    ? line.analysisLineId() : makeChildLineId(analysisId, line.materialLineId());
+            if (lineId == null || lineByAnalysisLine.put(lineId, line) != null) {
+                throw validation("计划行为空、重复或子件任务未生成，请刷新后重试");
+            }
+        }
+        // BOM/订单来源漂移闸：分析快照之后 BOM 或销售订单状态变了就拒绝下达。
+        analysisService.requireCurrentBomSnapshot(analysisId, lineByAnalysisLine.keySet());
+        PlanScheduleDefaults defaults = new PlanScheduleDefaults(
+                request.billDate(), request.deliveryDate());
         List<GeneratedPlan> generated = new ArrayList<>();
-        for (PlanQuantity quantity : request.items()) {
-            ProductView product = products.get(quantity.analysisLineId());
-            PlanPreviewItem previewItem = previewItems.get(quantity.analysisLineId());
-            if (product == null || previewItem == null) {
+        for (Map.Entry<UUID, IssueWorkshopPlansRequest.IssuePlanLine> entry
+                : lineByAnalysisLine.entrySet()) {
+            UUID lineId = entry.getKey();
+            IssueWorkshopPlansRequest.IssuePlanLine line = entry.getValue();
+            ProductView product = products.get(lineId);
+            if (product == null) {
                 throw validation("待生成计划产品不属于当前分析");
             }
-            if (!previewItem.canSchedule()) {
-                throw conflict(previewItem.scheduleBlockedReason() == null
-                        ? "当前产品不可排产" : previewItem.scheduleBlockedReason());
+            if (!product.canSchedule()) {
+                throw conflict(product.scheduleBlockedReason() == null
+                        ? "当前产品不可排产" : product.scheduleBlockedReason());
             }
-            validatePlanSchedule(quantity, request);
-            PlanDetail plan = createDraftPlan(analysisId, product, quantity, request);
+            if (line.qty().compareTo(product.remainingQty()) > 0) {
+                throw validation("「" + product.goodsName() + "」生成数量 "
+                        + line.qty().stripTrailingZeros().toPlainString()
+                        + " 超过剩余需求 "
+                        + product.remainingQty().stripTrailingZeros().toPlainString());
+            }
+            PlanQuantity quantity = new PlanQuantity(lineId, line.qty(),
+                    line.billDate(), line.deliveryDate(), line.departmentId(),
+                    line.workshopName(), line.workerId(), line.teamDepartmentId(),
+                    line.productNo());
+            validatePlanSchedule(quantity, defaults);
+            // 客观齐套结论只决定 READY/WAITING，不再拦截：缺料批次进 WAITING，
+            // 车间侧等料（执行段齐套后自动提升）。
+            PlanDetail plan = createDraftPlan(analysisId, product, quantity, defaults);
             ProductionPlanningDraftView draft = savePlanningDraft(
-                    analysisId, product, plan, quantity, request,
-                    previewItem.canGenerate());
+                    analysisId, product, plan, quantity, defaults,
+                    request.warehouseId());
             PlanningPackageResult applied = null;
             if (request.approveNow()) {
                 planService.approve(plan.getId());
@@ -607,7 +682,7 @@ public class MaterialAnalysisCommandService {
             generated.add(toGenerated(plan, draft, applied));
         }
         MaterialAnalysisService.AnalysisHeader postPlanHeader =
-                analysisService.lockHeader(analysisId);
+                analysisService.headerAfterPrelock(analysisId);
         if ("ACTIVE".equals(postPlanHeader.status())
                 || "PARTIALLY_PLANNED".equals(postPlanHeader.status())) {
             analysisService.refreshLocked(analysisId);
@@ -618,12 +693,119 @@ public class MaterialAnalysisCommandService {
                 List.copyOf(generated));
     }
 
+    /**
+     * 下达车间的候选锚点（2026-09-05 简化）：按操作组只补建「剩余缺口」的
+     * MAKE_COMPONENT 锚点行——不建 preplan action、不委托权益、不展开子树，
+     * 物料行保持原位（计划员照常在采购/委外桶下达）；重试/重复下达按增量
+     * 归零自然跳过。锚点行的 requested_qty = 组的实时剩余缺口（首建全量、
+     * 重开增量），与 notify 的增量口径一致。
+     */
+    private void ensureWorkshopChildAnchors(
+            UUID analysisId, AnalysisView view, List<UUID> makeLineIds) {
+        List<ActionGroup> groups = selectedGroups(view, new NotifyRequest(
+                null, null, "issue-anchor-" + analysisId, "MAKE",
+                makeLineIds, null, null));
+        for (ActionGroup group : groups) {
+            BigDecimal delta = group.demandRequiredQty()
+                    .subtract(activeOpenActionQty(analysisId, group))
+                    .subtract(cancelledIqcReplacementInFlight(analysisId, group))
+                    .max(BigDecimal.ZERO)
+                    .setScale(4, RoundingMode.CEILING);
+            if (delta.signum() <= 0) continue;
+            createOrIncrementMakeDemand(analysisId, group, delta);
+        }
+    }
+
+    /** 候选行的已确认路线（仅 actionable 物料节点；根产品现货行不在其列）。 */
+    private Map<UUID, String> candidateRoutesByMaterialLine(AnalysisView view) {
+        return view.flatMaterials().stream()
+                .filter(material -> material.actionable()
+                        && !"ROOT_SUPPLY".equals(material.nodeRole()))
+                .filter(material -> material.sourceConfirmed() != null)
+                .collect(Collectors.toMap(MaterialView::materialLineId,
+                        MaterialView::sourceConfirmed, (left, right) -> left));
+    }
+
+    /** 候选物料对应的分析子件行（MAKE_COMPONENT / SUBCONTRACT_MAKE，按父锚点）。 */
+    private UUID makeChildLineId(UUID analysisId, UUID materialLineId) {
+        // 单列原生查询返回标量（UUID）而非 Object[]，不能走 objectArrayRows（CCE）。
+        List<?> rows = em.createNativeQuery("""
+                SELECT item.id
+                FROM production_material_analysis_items item
+                WHERE item.analysis_id = :analysisId
+                  AND item.parent_analysis_material_id = :materialLineId
+                  AND item.source_type IN ('MAKE_COMPONENT', 'SUBCONTRACT_MAKE')
+                  AND item.is_deleted = FALSE
+                """).setParameter("analysisId", analysisId)
+                .setParameter("materialLineId", materialLineId)
+                .getResultList();
+        return rows.isEmpty() ? null : (UUID) rows.getFirst();
+    }
+
+    /** 计划级日期缺省（行内日期优先，缺省回退到本次下达的请求级日期）。 */
+    private record PlanScheduleDefaults(LocalDate billDate, LocalDate deliveryDate) {
+    }
+
+    private static String issueHash(UUID analysisId, IssueWorkshopPlansRequest request) {
+        List<String> parts = new ArrayList<>(List.of(
+                "ISSUE-WORKSHOP-PLANS-V1", analysisId.toString(),
+                Long.toString(request.version()), request.fingerprint(),
+                request.warehouseId().toString(), request.billDate().toString(),
+                Objects.toString(request.deliveryDate(), ""),
+                Boolean.toString(request.approveNow())));
+        request.lines().forEach(line -> {
+            String itemHash = "LINE|" + Objects.toString(line.materialLineId(), "")
+                    + "|" + Objects.toString(line.analysisLineId(), "")
+                    + "|" + MaterialAnalysisService.decimalText(line.qty())
+                    + "|" + Objects.toString(line.billDate(), "")
+                    + "|" + Objects.toString(line.deliveryDate(), "")
+                    + "|" + Objects.toString(line.departmentId(), "")
+                    + "|" + Objects.toString(line.workshopName(), "")
+                    + "|" + Objects.toString(line.workerId(), "")
+                    + "|" + Objects.toString(line.teamDepartmentId(), "");
+            String productNo = MaterialAnalysisService.blankToNull(line.productNo());
+            if (productNo != null) {
+                itemHash += "|PRODUCT_NO|" + productNo.length() + ":" + productNo;
+            }
+            parts.add(itemHash);
+        });
+        return PlanningPackageFingerprint.sha256(parts);
+    }
+
+
+    @Transactional
+    public AnalysisView revokeRootOutput(UUID analysisId, UUID eventId, CancelRequest request) {
+        tx.bind();
+        var mutationGuard = lockAnalysisInventoryDimensions(analysisId);
+        MaterialAnalysisService.AnalysisHeader header=analysisService.headerAfterPrelock(analysisId);
+        requireWritable(header,"只能撤回本人负责的根产品现货交接");
+        if (!access.hasAuthority("production_material_analysis:notify") || rootSupply==null) {
+            throw new ApiException(ErrorCode.FORBIDDEN,"撤回根产品现货交接需要备料下达权限");
+        }
+        String hash=PlanningPackageFingerprint.sha256(List.of("ROOT_OUTPUT_REVOKE",
+                analysisId.toString(),eventId.toString(),Long.toString(request.version()),
+                request.fingerprint(),request.reason()));
+        if (commandReplay(analysisId,"ROOT_OUTPUT_REVOKE",request.idempotencyKey(),hash)!=null) {
+            return analysisService.detailInternal(analysisId,false);
+        }
+        if (!List.of("ACTIVE","PARTIALLY_PLANNED","COMPLETED").contains(header.status())
+                || request.version()==null || request.version()!=header.version()
+                || request.fingerprint()==null || !request.fingerprint().equalsIgnoreCase(header.fingerprint())) {
+            throw conflict("物料分析或交接状态已变化，请刷新后再撤回");
+        }
+        mutationGuard.verifyUnchanged();
+        rootSupply.revokeExistingOutput(analysisId,eventId,request.reason());
+        analysisService.refreshLocked(analysisId);
+        recordCommand(analysisId,"ROOT_OUTPUT_REVOKE",request.idempotencyKey(),hash,Map.of("eventId",eventId));
+        return analysisService.detailInternal(analysisId,false);
+    }
+
     @Transactional
     public AnalysisView cancelAction(
             UUID analysisId, UUID actionId, CancelRequest request) {
         tx.bind();
-        lockAnalysisInventoryDimensions(analysisId);
-        MaterialAnalysisService.AnalysisHeader header = analysisService.lockHeader(analysisId);
+        var mutationGuard = lockAnalysisInventoryDimensions(analysisId);
+        MaterialAnalysisService.AnalysisHeader header = analysisService.headerAfterPrelock(analysisId);
         requireWritable(header, "只能撤回本人负责的物料分析备料任务");
         String operationType = Objects.toString(em.createNativeQuery("""
                 SELECT operation_type FROM preplan_supply_actions
@@ -649,6 +831,7 @@ public class MaterialAnalysisCommandService {
         if (replay != null) {
             return analysisService.detailInternal(analysisId, false);
         }
+        mutationGuard.verifyUnchanged();
         analysisService.requireCurrent(header, request.version(), request.fingerprint());
         List<UUID> cancelledActionIds = cancelActionLocked(analysisId, actionId, request.reason());
         analysisService.refreshLocked(analysisId);
@@ -660,8 +843,8 @@ public class MaterialAnalysisCommandService {
     @Transactional
     public AnalysisView cancelAnalysis(UUID analysisId, CancelRequest request) {
         tx.bind();
-        lockAnalysisInventoryDimensions(analysisId);
-        MaterialAnalysisService.AnalysisHeader header = analysisService.lockHeader(analysisId);
+        var mutationGuard = lockAnalysisInventoryDimensions(analysisId);
+        MaterialAnalysisService.AnalysisHeader header = analysisService.headerAfterPrelock(analysisId);
         requireWritable(header, "只能取消本人负责的物料分析");
         String hash = PlanningPackageFingerprint.sha256(List.of(
                 OP_CANCEL_ANALYSIS, analysisId.toString(), Long.toString(request.version()),
@@ -671,7 +854,9 @@ public class MaterialAnalysisCommandService {
         if (replay != null) {
             return analysisService.detailInternal(analysisId, false);
         }
+        mutationGuard.verifyUnchanged();
         analysisService.requireCurrent(header, request.version(), request.fingerprint());
+        if (rootSupply != null) rootSupply.requireAnalysisCancellationSafe(analysisId);
         subcontractPreparationHandoffs.requireSourceAnalysisCancellationSafe(
                 analysisId);
         Number planned = (Number) em.createNativeQuery("""
@@ -717,44 +902,12 @@ public class MaterialAnalysisCommandService {
     }
 
     /**
-     * 统一并发锁序 inventory -> analysis header -> action/reservation。
+     * 商业来源 -> 全部库存 -> 所有主仓协调器 -> 全部分析头 -> action/reservation。
      * IQC PASS 也先持有同一 inventory advisory lock，再锁供应分摊行；这样取消、
      * 计划生成与合格入库不会形成 action->inventory / inventory->action 反序。
      */
-    void lockAnalysisInventoryDimensions(UUID analysisId) {
-        List<Object[]> dimensions = NativeQueryResults.objectArrayRows(
-                em.createNativeQuery("""
-                        SELECT dimension.goods_id, dimension.color_id
-                        FROM (
-                            SELECT material.goods_id, material.color_id
-                            FROM production_material_analysis_materials material
-                            WHERE material.analysis_id = :analysisId
-                              AND material.active = TRUE
-                            UNION
-                            SELECT reservation.goods_id, reservation.color_id
-                            FROM stock_reservations reservation
-                            WHERE reservation.owner_type = 'PREPLAN_ANALYSIS'
-                              AND reservation.owner_id = :analysisId
-                              AND reservation.is_deleted = FALSE
-                              AND reservation.status = 0
-                              AND GREATEST(reservation.qty - reservation.consumed_qty
-                                  - reservation.released_qty, 0) > 0
-                            UNION
-                            SELECT reservation.goods_id, reservation.color_id
-                            FROM v_preplan_stock_entitlement_beneficiary_balance
-                                 entitlement
-                            JOIN stock_reservations reservation
-                              ON reservation.id = entitlement.stock_reservation_id
-                             AND reservation.is_deleted = FALSE
-                             AND reservation.status = 0
-                            WHERE entitlement.beneficiary_analysis_id = :analysisId
-                              AND entitlement.effective_qty > 0
-                        ) dimension
-                        ORDER BY dimension.goods_id, dimension.color_id NULLS FIRST
-                        """).setParameter("analysisId", analysisId));
-        inventoryLock.lockAll(dimensions.stream()
-                .map(row -> new InventoryKey((UUID) row[0], (UUID) row[1]))
-                .toList());
+    com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard lockAnalysisInventoryDimensions(UUID analysisId) {
+        return mutationLocks.acquire(() -> mutationFootprints.forAnalyses(List.of(analysisId)));
     }
 
     /**
@@ -780,14 +933,14 @@ public class MaterialAnalysisCommandService {
 
     private List<ActionGroup> selectedGroups(AnalysisView view, NotifyRequest request) {
         Map<String, List<MaterialView>> allGroups = view.flatMaterials().stream()
-                .filter(MaterialView::actionable)
+                .filter(material -> material.actionable() || "ROOT_SUPPLY".equals(material.nodeRole()))
                 .collect(Collectors.groupingBy(MaterialView::actionGroupKey,
                         LinkedHashMap::new, Collectors.toList()));
         Set<String> selected = new LinkedHashSet<>();
         if (request.actionGroupKeys() != null) selected.addAll(request.actionGroupKeys());
         if (request.materialLineIds() != null) {
             Map<UUID, String> lineGroups = view.flatMaterials().stream()
-                    .filter(MaterialView::actionable).collect(
+                    .filter(material -> material.actionable() || "ROOT_SUPPLY".equals(material.nodeRole())).collect(
                     Collectors.toMap(MaterialView::materialLineId,
                             MaterialView::actionGroupKey));
             for (UUID lineId : request.materialLineIds()) {
@@ -816,6 +969,14 @@ public class MaterialAnalysisCommandService {
         for (String key : selected) {
             List<MaterialView> lines = allGroups.get(key);
             if (lines == null || lines.isEmpty()) throw validation("物料操作组不存在或已过期");
+            for (MaterialView line : lines) {
+                String reason = view.planningBlockedReasons().get(line.analysisLineId());
+                if (reason != null) throw conflict(reason);
+            }
+            if (lines.stream().flatMap(line -> line.downstreamReferences().stream())
+                    .anyMatch(DownstreamReference::notificationReversalPending)) {
+                throw conflict("该物料有历史委外通知待同步撤回，请先在详情完成同步后再下达");
+            }
             Set<String> routes = lines.stream().map(MaterialView::sourceConfirmed)
                     .filter(Objects::nonNull).collect(Collectors.toSet());
             if (routes.size() != 1 || lines.stream().anyMatch(line -> !line.routeConfirmed())) {
@@ -862,7 +1023,7 @@ public class MaterialAnalysisCommandService {
             return Map.of();
         }
         Map<UUID, String> lineGroups = view.flatMaterials().stream()
-                .filter(MaterialView::actionable)
+                .filter(material -> material.actionable() || "ROOT_SUPPLY".equals(material.nodeRole()))
                 .collect(Collectors.toMap(MaterialView::materialLineId,
                         MaterialView::actionGroupKey));
         Set<String> selectedKeys = selected.stream()
@@ -968,7 +1129,8 @@ public class MaterialAnalysisCommandService {
      * 明细交期仍逐行保留各自操作组的 need_date。
      */
     private PreparedExternalDocuments prepareExternalDocuments(
-            UUID analysisId, List<ActionDraft> created) {
+            UUID analysisId, List<ActionDraft> created,
+            Set<UUID> subcontractBomParents) {
         UUID employeeId = currentUser.requireEmployeeId();
         // 来源单据展示可读标签（计划前物料分析 + 分析日期），不再把分析 UUID 暴露给单据号/备注；
         // 谱系回溯改走 materialAnalysisId，与展示解耦。analyzed_at 实时查（refreshLocked 会推进）。
@@ -1027,7 +1189,7 @@ public class MaterialAnalysisCommandService {
                 }
                 purchaseNeedDate = earliest(purchaseNeedDate, needDate);
             } else if ("SUBCONTRACT".equals(action.group().route())
-                    && !hasActiveBomChildren(action.group().dimension().goodsId())) {
+                    && !subcontractBomParents.contains(action.group().dimension().goodsId())) {
                 subcontractLeafActionIds.add(action.actionId());
                 if (action.demandQty().signum() > 0) {
                     subcontractLines.add(new ProductionSubcontractRequestPort.DraftLine(
@@ -1143,7 +1305,14 @@ public class MaterialAnalysisCommandService {
     }
 
     private UUID createOrIncrementMakeDemand(UUID analysisId, ActionDraft action) {
-        UUID representative = action.group().materials().getFirst().materialLineId();
+        return createOrIncrementMakeDemand(
+                analysisId, action.group(), action.demandQty());
+    }
+
+    /** 锚点行按组创建/增量（不经 NotifyRequest；下达车间直发用）。 */
+    private UUID createOrIncrementMakeDemand(
+            UUID analysisId, ActionGroup group, BigDecimal demandQty) {
+        UUID representative = group.materials().getFirst().materialLineId();
         List<Object[]> existing = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT id, requested_qty
                 FROM production_material_analysis_items
@@ -1163,8 +1332,8 @@ public class MaterialAnalysisCommandService {
                         updated_at = now(), updated_by = :actorId
                     WHERE id = :id
                     """)
-                    .setParameter("qty", action.demandQty())
-                    .setParameter("needDate", action.group().needDate())
+                    .setParameter("qty", demandQty)
+                    .setParameter("needDate", group.needDate())
                     .setParameter("actorId", currentUser.requireId())
                     .setParameter("id", itemId).executeUpdate();
             return itemId;
@@ -1189,13 +1358,13 @@ public class MaterialAnalysisCommandService {
                 """)
                 .setParameter("id", itemId)
                 .setParameter("analysisId", analysisId)
-                .setParameter("goodsId", action.group().dimension().goodsId())
-                .setParameter("colorId", action.group().dimension().colorId())
-                .setParameter("unitId", action.group().dimension().unitId())
+                .setParameter("goodsId", group.dimension().goodsId())
+                .setParameter("colorId", group.dimension().colorId())
+                .setParameter("unitId", group.dimension().unitId())
                 .setParameter("sourceRef", sourceRef)
                 .setParameter("sourceReason", "父级物料缺口确认自制备料")
-                .setParameter("qty", action.demandQty())
-                .setParameter("needDate", action.group().needDate())
+                .setParameter("qty", demandQty)
+                .setParameter("needDate", group.needDate())
                 .setParameter("linePriority", linePriority)
                 .setParameter("parentId", representative)
                 .setParameter("actorId", currentUser.requireId())
@@ -1357,17 +1526,18 @@ public class MaterialAnalysisCommandService {
                 """).setParameter("ref", ref).getResultList().isEmpty();
     }
 
-    /** 目标件当前是否存在活动直接 BOM 子件（与 V436 订货批准分流同口径）。 */
-    private boolean hasActiveBomChildren(UUID goodsId) {
-        Number count = (Number) em.createNativeQuery("""
-                SELECT COUNT(*)
+    /** 同批委外分流共用一次查询快照，避免多产品重复物料造成逐行往返。 */
+    Set<UUID> activeBomParentIds(Collection<UUID> goodsIds) {
+        List<UUID> distinctGoodsIds = goodsIds.stream().distinct().sorted().toList();
+        if (distinctGoodsIds.isEmpty()) return Set.of();
+        return Set.copyOf(NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT DISTINCT bom.goods_id
                 FROM goods_bom_items bom
                 JOIN goods child ON child.id = bom.component_goods_id
                  AND child.is_deleted = FALSE
                  AND COALESCE(child.auto_created, FALSE) = FALSE
-                WHERE bom.goods_id = :goodsId AND bom.is_deleted = FALSE
-                """).setParameter("goodsId", goodsId).getSingleResult();
-        return count.longValue() > 0;
+                WHERE bom.goods_id IN (:goodsIds) AND bom.is_deleted = FALSE
+                """, UUID.class).setParameter("goodsIds", distinctGoodsIds), UUID.class));
     }
 
     /** 分析内下一行序（与既有 line_priority 递增口径一致；行锁由调用方 lockHeader 保证串行）。 */
@@ -1439,13 +1609,13 @@ public class MaterialAnalysisCommandService {
 
     private PlanDetail createDraftPlan(
             UUID analysisId, ProductView product, PlanQuantity quantity,
-            GeneratePlanRequest request) {
+            PlanScheduleDefaults defaults) {
         BigDecimal qty = quantity.qty();
-        LocalDate billDate = itemBillDate(quantity, request);
-        LocalDate deliveryDate = itemDeliveryDate(quantity, request);
-        UUID departmentId = itemDepartmentId(quantity, request);
-        String workshopName = itemWorkshopName(quantity, request);
-        UUID workerId = itemWorkerId(quantity, request);
+        LocalDate billDate = itemBillDate(quantity, defaults);
+        LocalDate deliveryDate = itemDeliveryDate(quantity, defaults);
+        UUID departmentId = quantity.departmentId();
+        String workshopName = quantity.workshopName();
+        UUID workerId = quantity.workerId();
         PlanItemLine line = new PlanItemLine();
         line.setLineNo(1);
         // Preserve an explicit business product number. Blank input remains
@@ -1517,14 +1687,14 @@ public class MaterialAnalysisCommandService {
 
     private ProductionPlanningDraftView savePlanningDraft(
             UUID analysisId, ProductView product, PlanDetail plan,
-            PlanQuantity quantity, GeneratePlanRequest request,
-            boolean materialReady) {
-        LocalDate billDate = itemBillDate(quantity, request);
-        LocalDate deliveryDate = itemDeliveryDate(quantity, request);
-        UUID departmentId = itemDepartmentId(quantity, request);
-        UUID workerId = itemWorkerId(quantity, request);
+            PlanQuantity quantity, PlanScheduleDefaults defaults,
+            UUID warehouseId) {
+        LocalDate billDate = itemBillDate(quantity, defaults);
+        LocalDate deliveryDate = itemDeliveryDate(quantity, defaults);
+        UUID departmentId = quantity.departmentId();
+        UUID workerId = quantity.workerId();
         PlanningPreviewResult preview = planningPackages.preview(
-                plan.getId(), request.warehouseId());
+                plan.getId(), warehouseId);
         if (preview.executionSegments().isEmpty()) {
             throw conflict("正式生产计划未形成可下达的执行分段");
         }
@@ -1537,12 +1707,8 @@ public class MaterialAnalysisCommandService {
         if (expectedQty.compareTo(proposedQty) != 0) {
             throw conflict("正式计划预览数量与分析结论不一致，事务已回滚，请重新分析");
         }
-        if (materialReady && preview.executionSegments().stream().anyMatch(segment ->
-                !"READY".equals(segment.suggestedStatus()))) {
-            throw conflict("正式计划预览与分析齐套结论不一致，事务已回滚，请重新分析");
-        }
         GeneratePlanningPackageRequest formal = new GeneratePlanningPackageRequest();
-        formal.setWarehouseId(request.warehouseId());
+        formal.setWarehouseId(warehouseId);
         formal.setIdempotencyKey("ANALYSIS-" + analysisId + "-" + product.analysisLineId());
         formal.setPreviewFingerprint(preview.fingerprint());
         formal.setGeneratePurchaseRequest(false);
@@ -1592,40 +1758,23 @@ public class MaterialAnalysisCommandService {
     }
 
     private static void validatePlanSchedule(
-            PlanQuantity quantity, GeneratePlanRequest request) {
-        LocalDate billDate = itemBillDate(quantity, request);
-        LocalDate deliveryDate = itemDeliveryDate(quantity, request);
+            PlanQuantity quantity, PlanScheduleDefaults defaults) {
+        LocalDate billDate = itemBillDate(quantity, defaults);
+        LocalDate deliveryDate = itemDeliveryDate(quantity, defaults);
         if (deliveryDate != null && deliveryDate.isBefore(billDate)) {
             throw validation("计划完成日期不能早于计划开始日期");
         }
     }
 
     private static LocalDate itemBillDate(
-            PlanQuantity quantity, GeneratePlanRequest request) {
-        return quantity.billDate() == null ? request.billDate() : quantity.billDate();
+            PlanQuantity quantity, PlanScheduleDefaults defaults) {
+        return quantity.billDate() == null ? defaults.billDate() : quantity.billDate();
     }
 
     private static LocalDate itemDeliveryDate(
-            PlanQuantity quantity, GeneratePlanRequest request) {
+            PlanQuantity quantity, PlanScheduleDefaults defaults) {
         return quantity.deliveryDate() == null
-                ? request.deliveryDate() : quantity.deliveryDate();
-    }
-
-    private static UUID itemDepartmentId(
-            PlanQuantity quantity, GeneratePlanRequest request) {
-        return quantity.departmentId() == null
-                ? request.departmentId() : quantity.departmentId();
-    }
-
-    private static String itemWorkshopName(
-            PlanQuantity quantity, GeneratePlanRequest request) {
-        return quantity.workshopName() == null
-                ? request.workshopName() : quantity.workshopName();
-    }
-
-    private static UUID itemWorkerId(
-            PlanQuantity quantity, GeneratePlanRequest request) {
-        return quantity.workerId() == null ? request.workerId() : quantity.workerId();
+                ? defaults.deliveryDate() : quantity.deliveryDate();
     }
 
     private GeneratedPlan toGenerated(
@@ -1705,11 +1854,16 @@ public class MaterialAnalysisCommandService {
                 """).setParameter("actionId", actionId)
                 .setParameter("analysisId", analysisId), "备料任务不存在");
         String status = Objects.toString(row[1], "");
-        if ("CANCELLED".equals(status)) return List.of();
         String type = Objects.toString(row[4], null);
         UUID documentId = (UUID) row[5];
         boolean sharedFutureClaim = "SHARED_FUTURE_CLAIM".equals(
                 Objects.toString(row[6], "SUPPLY"));
+        if ("CANCELLED".equals(status)) {
+            if (!sharedFutureClaim && "SUBCONTRACT_APPLICATION".equals(type)) {
+                subcontractMakeTasks.reverseNotificationBatchesForApplication(documentId, reason);
+            }
+            return List.of();
+        }
         List<UUID> batch = !sharedFutureClaim
                 && sharesExternalDocument(type, documentId)
                 ? sharedDocumentActionIds(analysisId, documentId)
@@ -1733,7 +1887,7 @@ public class MaterialAnalysisCommandService {
                         FROM preplan_supply_actions
                         WHERE analysis_id = :analysisId
                           AND external_document_id = :documentId
-                          AND status IN ('OPEN','CREATED','IN_PROGRESS')
+                          AND status IN ('OPEN','CREATED','IN_PROGRESS','DONE')
                         ORDER BY created_at, id
                         FOR UPDATE
                         """)
@@ -1789,6 +1943,9 @@ public class MaterialAnalysisCommandService {
                 .setParameter("actorId", currentUser.requireId())
                 .setParameter("reason", reason.strip())
                 .setParameter("id", actionId).executeUpdate();
+        if (!sharedFutureClaim && "SUBCONTRACT_APPLICATION".equals(type)) {
+            subcontractMakeTasks.reverseNotificationBatchesForApplication(documentId, reason);
+        }
         // 分析备料绑定对称释放（V298）：该任务外部单据明细（申请行/委外申请行）
         // 已收货入库并被绑定的量，随任务撤回回到公共现货池。
         List<UUID> externalItemIds = NativeQueryResults.typedRows(em.createNativeQuery("""
@@ -2297,7 +2454,7 @@ public class MaterialAnalysisCommandService {
     }
 
     private void requireWritable(MaterialAnalysisService.AnalysisHeader header, String message) {
-        access.requireWritable(header.makerId(), message, access.scope());
+        access.requireWritable(header.makerId(), message, analysisService.scopeForAnalysis(header));
     }
 
     private CommandReplay commandReplay(
@@ -2386,34 +2543,6 @@ public class MaterialAnalysisCommandService {
         return value == null
                 ? "NULL"
                 : MaterialAnalysisService.decimalText(value);
-    }
-
-    private static String generateHash(UUID analysisId, GeneratePlanRequest request) {
-        List<String> parts = new ArrayList<>(List.of(
-                "GENERATE-PLAN-V1", analysisId.toString(), Long.toString(request.version()),
-                request.fingerprint(), request.previewFingerprint(),
-                request.warehouseId().toString(), request.billDate().toString(),
-                Objects.toString(request.deliveryDate(), ""),
-                Objects.toString(request.departmentId(), ""),
-                Objects.toString(request.workshopName(), ""),
-                Objects.toString(request.workerId(), ""),
-                Boolean.toString(request.approveNow())));
-        request.items().forEach(item -> {
-            String itemHash = "ITEM|" + item.analysisLineId()
-                    + "|" + MaterialAnalysisService.decimalText(item.qty())
-                    + "|" + Objects.toString(item.billDate(), "")
-                    + "|" + Objects.toString(item.deliveryDate(), "")
-                    + "|" + Objects.toString(item.departmentId(), "")
-                    + "|" + Objects.toString(item.workshopName(), "")
-                    + "|" + Objects.toString(item.workerId(), "")
-                    + "|" + Objects.toString(item.teamDepartmentId(), "");
-            String productNo = MaterialAnalysisService.blankToNull(item.productNo());
-            if (productNo != null) {
-                itemHash += "|PRODUCT_NO|" + productNo.length() + ":" + productNo;
-            }
-            parts.add(itemHash);
-        });
-        return PlanningPackageFingerprint.sha256(parts);
     }
 
     private UUID scalarUuid(String sql, UUID id) {

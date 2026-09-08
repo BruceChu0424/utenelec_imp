@@ -8,6 +8,8 @@
 // 单位列紧跟数量。折扣列表头 ⓘ 悬停说明「1 = 原价；0.9 = 9折」。
 // salesGridColumns：货品/颜色/数量/单位/单价/金额 + 补列（条件）。
 import 'package:flutter/material.dart';
+import '../../../shared/presentation/workflow_field_guidance.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/ui/app_notification.dart';
@@ -95,6 +97,7 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   String? get unitId => unitIdNotifier.value;
   set unitId(String? v) => unitIdNotifier.value = v;
   double? unitRate;
+  String? unitRateExact;
 
   /// 库位号（只读，货品主档带出；出货/其它出货/退货实物单据的拣货/上架指引，
   /// 异步补全后自动刷新）。
@@ -158,7 +161,7 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
         ? 0.0
         : d == 0
         ? 1.0
-        : (d * 10000).roundToDouble() / 10000;
+        : d;
     return q * p * mult;
   });
 
@@ -171,7 +174,8 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
       ..outItemId = outItemId
       ..colorId = colorId
       ..unitId = unitId
-      ..unitRate = unitRate;
+      ..unitRate = unitRate
+      ..unitRateExact = unitRateExact;
     c.qty.text = qty.text;
     c.weight.text = weight.text;
     c.requiresOrderPriceRefresh =
@@ -218,8 +222,10 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
   required SalesDocType docType,
   required Map<String, String> colorEntries,
   required Map<String, String> unitEntries,
+  bool freeCustomerShipment = false,
 }) {
-  final priceRequired = docType != SalesDocType.otherShipment;
+  final priceRequired =
+      docType != SalesDocType.otherShipment && !freeCustomerShipment;
   return [
     EditableGridColumn<SalesGridRow>(
       key: 'goods',
@@ -294,7 +300,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
     EditableGridColumn<SalesGridRow>(
       key: 'qty',
       label: '数量',
-      width: 96,
+      width: 128,
       numeric: true,
       required: true,
       cellBuilder: (context, row) => RequiredCellFrame(
@@ -304,7 +310,14 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
           controller: row.qty,
           textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+          decoration: UtenInputDecoration(
+            const InputDecoration(isDense: true, hintText: '0'),
+            info: docType == SalesDocType.order
+                ? workflowFieldText(context).workflowOrderQuantityHint
+                : docType == SalesDocType.returnDoc
+                ? workflowFieldText(context).workflowReturnQuantityHint
+                : workflowFieldText(context).workflowQuantityHint,
+          ),
         ),
       ),
     ),
@@ -319,45 +332,54 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       cellBuilder: (context, row) =>
           _readOnlyMasterCell(context, row.unitIdNotifier, unitEntries),
     ),
-    EditableGridColumn<SalesGridRow>(
-      key: 'price',
-      label: '单价',
-      width: 96,
-      numeric: true,
-      required: priceRequired,
-      cellBuilder: (context, row) => RequiredCellFrame(
-        listenable: row.price,
-        isEmpty: () =>
-            priceRequired &&
-            (row.price.text.trim().isEmpty ||
-                double.tryParse(row.price.text.trim()) == null),
-        // 订单/出货：单价由货品主档或受信任来源单据带入、锁定不可改。
-        // 复制订单行会清空冻结价；重新选择货品即可取得当前主档价。
-        child:
-            (docType == SalesDocType.order || docType == SalesDocType.shipment)
-            ? _lockedCell(
-                context,
-                row.price,
-                message:
-                    '单价由货品资料或来源单据带入，并由服务端锁定，不可在订货单修改。'
-                    '复制的新行如单价为空，请重新选择货品取得当前价格',
-              )
-            : TextField(
-                controller: row.price,
-                textAlign: TextAlign.right,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
+    if (!freeCustomerShipment)
+      EditableGridColumn<SalesGridRow>(
+        key: 'price',
+        label: '单价',
+        width: 128,
+        numeric: true,
+        required: priceRequired,
+        cellBuilder: (context, row) => RequiredCellFrame(
+          listenable: row.price,
+          isEmpty: () =>
+              priceRequired &&
+              (row.price.text.trim().isEmpty ||
+                  double.tryParse(row.price.text.trim()) == null),
+          // 订单/出货：单价由货品主档或受信任来源单据带入、锁定不可改。
+          // 复制订单行会清空冻结价；重新选择货品即可取得当前主档价。
+          child:
+              (docType == SalesDocType.order ||
+                  docType == SalesDocType.shipment)
+              ? _lockedCell(
+                  context,
+                  row.price,
+                  message:
+                      '单价由货品资料或来源单据带入，并由服务端锁定，不可在订货单修改。'
+                      '复制的新行如单价为空，请重新选择货品取得当前价格',
+                )
+              : TextField(
+                  controller: row.price,
+                  textAlign: TextAlign.right,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: UtenInputDecoration(
+                    const InputDecoration(isDense: true, hintText: '0'),
+                    info: docType == SalesDocType.returnDoc
+                        ? workflowFieldText(context).workflowReturnPriceHint
+                        : workflowFieldText(context).workflowPriceHint,
+                  ),
                 ),
-                decoration: const InputDecoration(isDense: true, hintText: '0'),
-              ),
+        ),
       ),
-    ),
     // 订单折扣：紧跟单价；货品主档 zk 仅作为初始建议，销售可按订单调整。
-    if (docType == SalesDocType.order)
+    if (!freeCustomerShipment &&
+        (docType == SalesDocType.order ||
+            docType == SalesDocType.customerShipment))
       EditableGridColumn<SalesGridRow>(
         key: 'discount',
         label: '折扣',
-        width: 104,
+        width: 128,
         numeric: true,
         required: true,
         // 表头 ⓘ 悬停说明折扣口径（2026-09-04 用户口径）。
@@ -369,26 +391,35 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
             controller: row.discount,
             textAlign: TextAlign.right,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(isDense: true, hintText: '1=原价'),
+            decoration: UtenInputDecoration(
+              const InputDecoration(isDense: true, hintText: '1=原价'),
+              info: workflowFieldText(context).workflowDiscountHint,
+            ),
           ),
         ),
       ),
-    EditableGridColumn<SalesGridRow>(
-      key: 'amount',
-      // 销售订单金额是所选订单币种的原币金额；销售端不展示人民币换算，
-      // 也不要用“¥”让外币订单看起来像人民币。
-      label: docType == SalesDocType.order ? '金额(订单币种)' : '金额',
-      width: 110,
-      numeric: true,
-      cellBuilder: (context, row) => ValueListenableBuilder<double>(
-        valueListenable: row.amountNotifier,
-        builder: (_, v, _) => Text(
-          docType == SalesDocType.order
-              ? v.toStringAsFixed(2)
-              : '¥${v.toStringAsFixed(2)}',
+    if (!freeCustomerShipment)
+      EditableGridColumn<SalesGridRow>(
+        key: 'amount',
+        // 销售订单金额是所选订单币种的原币金额；销售端不展示人民币换算，
+        // 也不要用“¥”让外币订单看起来像人民币。
+        label: docType == SalesDocType.order
+            ? '金额(订单币种)'
+            : docType == SalesDocType.customerShipment
+            ? '金额预览(所选币种)'
+            : '金额',
+        width: 110,
+        numeric: true,
+        cellBuilder: (context, row) => ValueListenableBuilder<double>(
+          valueListenable: row.amountNotifier,
+          builder: (_, v, _) => Text(
+            docType == SalesDocType.order ||
+                    docType == SalesDocType.customerShipment
+                ? v.toStringAsFixed(2)
+                : '¥${v.toStringAsFixed(2)}',
+          ),
         ),
       ),
-    ),
     // 报表补列（与 _save/_init 字段映射一致；按 docType 显隐）。
     // 出货单(shipment)只留 货品/颜色/单位/数量/单价/金额/备注：成本分项/折扣等补列不展示
     //（出货是发货履约，价格/折扣沿用订货单）。隐藏列的字段仍在行模型里，编辑既有出货单时
@@ -482,7 +513,10 @@ Widget _lockedCell(
     readOnly: true,
     textAlign: TextAlign.right,
     style: TextStyle(color: theme.colorScheme.onSurface),
-    decoration: const InputDecoration(isDense: true, hintText: '请重新选择货品取价'),
+    decoration: UtenInputDecoration(
+      const InputDecoration(isDense: true, hintText: '重新选货取价'),
+      info: message,
+    ),
     onTap: () => context.appInfo(message),
   );
 }

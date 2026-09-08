@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../shared/repositories/account_history_store.dart';
 
 class AccountField extends ConsumerStatefulWidget {
@@ -126,15 +127,17 @@ class _AccountFieldState extends ConsumerState<AccountField> {
         validator: widget.validator,
         errorBuilder: utenTextFieldErrorBuilder,
         autofillHints: const ['username'],
-        decoration: InputDecoration(
-          hintText: widget.hint,
-          prefixIcon: const Icon(Icons.person_outline_rounded),
-          suffixIcon: IconButton(
-            icon: Icon(_open ? Icons.arrow_drop_up : Icons.arrow_drop_down),
-            tooltip: '历史账号',
-            onPressed: _toggleDropdown,
+        decoration: UtenInputDecoration(
+          InputDecoration(
+            hintText: widget.hint,
+            prefixIcon: const Icon(Icons.person_outline_rounded),
+            suffixIcon: IconButton(
+              icon: Icon(_open ? Icons.arrow_drop_up : Icons.arrow_drop_down),
+              tooltip: '历史账号',
+              onPressed: _toggleDropdown,
+            ),
+            border: const OutlineInputBorder(),
           ),
-          border: const OutlineInputBorder(),
         ),
         onFieldSubmitted: widget.onSubmitted == null
             ? null

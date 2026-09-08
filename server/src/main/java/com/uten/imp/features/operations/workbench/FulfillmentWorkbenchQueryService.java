@@ -33,6 +33,8 @@ public class FulfillmentWorkbenchQueryService {
 
     private static final Set<String> DEPARTMENTS =
             Set.of("WAREHOUSE", "PURCHASE", "SUBCONTRACT");
+    private static final String PENDING_MAKE =
+            "task.status = 'ACTIVE' AND task.notified_qty < task.required_qty";
 
     private final EntityManager em;
     private final FulfillmentWorkbenchAccessPolicy accessPolicy;
@@ -193,6 +195,9 @@ public class FulfillmentWorkbenchQueryService {
                    FROM v_procurement_decomposition_tasks v
                    GROUP BY v.department, v.action_doc_type, v.action_doc_id, v.task_status)
                   """;
+        if ("SUBCONTRACT".equals(department) && accessPolicy.canViewSubcontractPreparationTasks()) {
+            sourceView = "(" + sourceView + " UNION ALL " + subcontractPreparationRows() + ")";
+        }
         String filters = """
                 department = :department
                   AND (:status = ''
@@ -232,7 +237,7 @@ public class FulfillmentWorkbenchQueryService {
                 """.formatted(sourceView, filters));
         bind(rowsQuery, department, normalizedStatus, normalizedKeyword,
                 normalizedException, dateFrom, dateTo);
-        rowsQuery.setParameter("offset", (safePage - 1) * safeSize);
+        rowsQuery.setParameter("offset", (long) (safePage - 1) * safeSize);
         rowsQuery.setParameter("limit", safeSize);
         List<FulfillmentTaskRow> items =
                 NativeQueryResults.objectArrayRows(rowsQuery).stream()
@@ -329,14 +334,20 @@ public class FulfillmentWorkbenchQueryService {
                 || "SUBCONTRACT".equals(department);
         // 与列表同口径：采购/委外按单据归组计数（一张申请/订货单=一个待办）；
         // 仓库按领料单张数计数（一张 DRAW=一个待办，未挂单的行退回行级）。
+        boolean includePreparation = "SUBCONTRACT".equals(department)
+                && accessPolicy.canViewSubcontractPreparationTasks();
+        String preparation = includePreparation
+                ? " UNION ALL SELECT task.id FROM preplan_subcontract_make_tasks task WHERE " + PENDING_MAKE
+                : "";
         Query query = em.createNativeQuery(decomposition
                 ? """
                     SELECT COUNT(*) FROM (
                         SELECT DISTINCT action_doc_id
                         FROM v_procurement_decomposition_tasks
                         WHERE department = :department AND open_qty > 0
+                        %s
                     ) documents
-                    """
+                    """.formatted(preparation)
                 : """
                     SELECT COUNT(*) FROM (
                         SELECT DISTINCT COALESCE(action_doc_id, task_id)
@@ -346,6 +357,44 @@ public class FulfillmentWorkbenchQueryService {
                     """);
         query.setParameter("department", department);
         return ((Number) query.getSingleResult()).longValue();
+    }
+
+    /** Pending preparation is a server-paged read-only task, never a client-side extra row. */
+    private static String subcontractPreparationRows() {
+        return """
+                SELECT 'SUBCONTRACT'::text AS department, task.id AS task_id,
+                       NULL::uuid AS package_id, NULL::uuid AS plan_id,
+                       COALESCE(item.source_ref, '') AS plan_no,
+                       task.warehouse_id, warehouse.name AS warehouse_name,
+                       task.goods_id, goods.code AS goods_code, goods.name AS goods_name,
+                       ''::text AS spec, task.color_id, color.name AS color_name,
+                       task.unit_id, unit.name AS unit_name, 'SUBCONTRACT'::text AS supply_route,
+                       task.required_qty, 0::numeric AS allocated_qty,
+                       task.produced_qty AS fulfilled_qty, task.notified_qty AS supply_pegged_qty,
+                       task.required_qty - task.notified_qty AS open_qty,
+                       'WAITING_ORDER'::text AS task_status, item.delivery_date AS need_date,
+                       NULL::date AS expected_date, NULL::text AS exception_code, task.updated_at,
+                       'SUBCONTRACT_MAKE_TASK'::text AS action_doc_type,
+                       task.id AS action_doc_id, COALESCE(item.source_ref, '') AS action_doc_no,
+                       NULL::uuid AS action_item_id,
+                       CASE WHEN task.produced_qty > 0 THEN 'PRODUCED'
+                            WHEN EXISTS (
+                                SELECT 1 FROM production_plans plan
+                                JOIN production_execution_segments segment ON segment.plan_id = plan.id
+                                WHERE plan.material_analysis_item_id = task.preparation_item_id
+                                  AND NOT plan.is_deleted AND NOT plan.is_canceled
+                                  AND NOT segment.is_deleted AND segment.status NOT IN ('CANCELLED','REVERSED')
+                            ) THEN 'IN_PRODUCTION' ELSE 'NOTIFYING_WORKSHOP' END AS action_doc_status,
+                       1::bigint AS goods_count, 1::bigint AS open_line_count,
+                       ARRAY[]::text[] AS action_item_ids
+                FROM preplan_subcontract_make_tasks task
+                JOIN goods ON goods.id = task.goods_id
+                LEFT JOIN colors color ON color.id = task.color_id
+                LEFT JOIN units unit ON unit.id = task.unit_id
+                LEFT JOIN warehouses warehouse ON warehouse.id = task.warehouse_id
+                LEFT JOIN production_material_analysis_items item ON item.id = task.preparation_item_id
+                WHERE %s
+                """.formatted(PENDING_MAKE);
     }
 
     private static FulfillmentWorkbenchPage emptyPage(int page, int size) {
@@ -416,21 +465,35 @@ public class FulfillmentWorkbenchQueryService {
     }
 
     /** text[] 聚合列（归组行的明细 id 集合）→ 不可变字符串列表；空值回空表。 */
-    private static List<String> stringArray(Object value) {
+    static List<String> stringArray(Object value) {
         if (value == null) return List.of();
         try {
             if (value instanceof java.sql.Array array) {
-                Object[] elements = (Object[]) array.getArray();
-                List<String> ids = new java.util.ArrayList<>(elements.length);
-                for (Object element : elements) {
-                    if (element != null) ids.add(element.toString());
-                }
-                return List.copyOf(ids);
+                return stringifyArray((Object[]) array.getArray());
             }
         } catch (java.sql.SQLException ignored) {
             // 聚合列读取失败按空集处理，不阻断列表展示。
         }
+        // Hibernate 6 原生查询常把 text[] 直接映射为 String[]/Object[]（不经过
+        // java.sql.Array）：只认 Array 会让归组行的明细 id 集恒为空，前端
+        // 误报「先生成/挂接采购申请」且批量生成订货单永远不可用（2026-09-05
+        // 实测修复——按单据归组后 action_item_id 恒 NULL，明细集只走本列）。
+        if (value instanceof Object[] elements) {
+            return stringifyArray(elements);
+        }
+        if (value instanceof java.util.Collection<?> collection) {
+            return stringifyArray(collection.toArray());
+        }
         return List.of();
+    }
+
+    private static List<String> stringifyArray(Object[] elements) {
+        if (elements.length == 0) return List.of();
+        List<String> ids = new java.util.ArrayList<>(elements.length);
+        for (Object element : elements) {
+            if (element != null) ids.add(element.toString());
+        }
+        return List.copyOf(ids);
     }
 
     private FulfillmentTaskRow applyActionAccess(FulfillmentTaskRow row) {

@@ -71,13 +71,16 @@ public class PurchaseReceiptItem extends BaseEntity {
     @Column(name = "qty", nullable = false, precision = 18, scale = 4)
     private BigDecimal qty;
 
-    @Column(name = "price", precision = 18, scale = 4)
+    @Column(name = "replacement_intent", length = 24)
+    private String replacementIntent;
+
+    @Column(name = "price", columnDefinition = "numeric")
     private BigDecimal price;
 
-    @Column(name = "amount_original", precision = 18, scale = 4)
+    @Column(name = "amount_original", columnDefinition = "numeric")
     private BigDecimal amountOriginal;
 
-    @Column(name = "amount_local", precision = 18, scale = 4)
+    @Column(name = "amount_local", columnDefinition = "numeric")
     private BigDecimal amountLocal;
 
     /** 被退货量（退货单审核回写）。 */

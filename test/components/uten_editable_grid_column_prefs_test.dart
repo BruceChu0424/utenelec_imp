@@ -41,11 +41,11 @@ Widget _app({
   );
 }
 
-Finder _option(String key) =>
-    find.byKey(ValueKey('editable-grid-column-option-$key'));
+Finder _option(String key) => find.byKey(ValueKey('uten-column-option-$key'));
 
+/// 点弹层外空白关闭（锚定浮层与货品资料同款：无关闭钮，点外部即关）。
 Future<void> _closeSheet(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.close_rounded).last);
+  await tester.tapAt(const Offset(10, 10));
   await tester.pumpAndSettle();
 }
 

@@ -80,6 +80,7 @@ public class SubcontractMaterialReturnService {
     private final DocNumberService docNumberService;
     private final SubcontractDocumentAccessPolicy access;
     private final com.uten.imp.features.subcontract.LinkedOrderReadGate linkedOrderReadGate;
+    private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
 
     @Autowired
     private CommercialPriceVisibility commercialPriceVisibility;
@@ -109,7 +110,7 @@ public class SubcontractMaterialReturnService {
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SubcontractMaterialReturn> p = returnRepo.findAll(spec, pageable);
         return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
-                page, size, p.getTotalElements(), p.getTotalPages());
+                p);
     }
 
     @Transactional(readOnly = true)
@@ -128,6 +129,7 @@ public class SubcontractMaterialReturnService {
     @PreAuthorize("hasAuthority('subcontract_material_return:create')")
     public MaterialReturnDetail create(MaterialReturnSaveRequest req) {
         tx.bind();
+        lockReturnRequest(null,req).verifyUnchanged();
         SubcontractMaterialReturn r = new SubcontractMaterialReturn();
         applyHeader(req, r);
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
@@ -143,11 +145,13 @@ public class SubcontractMaterialReturnService {
     @PreAuthorize("hasAuthority('subcontract_material_return:edit')")
     public MaterialReturnDetail update(UUID id, MaterialReturnSaveRequest req) {
         tx.bind();
+        var mutationGuard=lockReturnRequest(id,req);
         SubcontractMaterialReturn r = requireReturnForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料退货单");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
+        mutationGuard.verifyUnchanged();
         applyHeader(req, r);
         itemRepo.deleteByMaterialReturnId(id);
         itemRepo.flush();
@@ -160,12 +164,23 @@ public class SubcontractMaterialReturnService {
     @PreAuthorize("hasAuthority('subcontract_material_return:delete')")
     public void delete(UUID id) {
         tx.bind();
+        var mutationGuard=mutationLocks.materialReturn(id);
         SubcontractMaterialReturn r = requireReturnForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料退货单");
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
+        mutationGuard.verifyUnchanged();
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         returnRepo.save(r);
+    }
+
+    private com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard lockReturnRequest(UUID id,MaterialReturnSaveRequest req) {
+        List<MaterialReturnItemLine> lines=req==null||req.getItems()==null?List.of():req.getItems();
+        var present=lines.stream().filter(java.util.Objects::nonNull).toList();
+        return mutationLocks.returnInputs("SUBCONTRACT",id,true,present.stream().map(MaterialReturnItemLine::getOrderItemId).toList(),
+                present.stream().map(MaterialReturnItemLine::getMaterialIssueItemId).toList(),present.stream().filter(line->line.getGoodsId()!=null)
+                        .map(line->new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(line.getGoodsId(),line.getColorId())).toList(),
+                req==null?null:req.getWarehouseId());
     }
 
     /**
@@ -175,8 +190,10 @@ public class SubcontractMaterialReturnService {
     @PreAuthorize("hasAuthority('subcontract_material_return:approve')")
     public MaterialReturnDetail approve(UUID id) {
         tx.bind();
+        var mutationGuard=mutationLocks.materialReturn(id);
         SubcontractMaterialReturn r = requireReturnForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料退货单");
+        mutationGuard.verifyUnchanged();
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -247,8 +264,10 @@ public class SubcontractMaterialReturnService {
     @PreAuthorize("hasAuthority('subcontract_material_return:reverse')")
     public MaterialReturnDetail reverse(UUID id) {
         tx.bind();
+        var mutationGuard=mutationLocks.materialReturn(id);
         SubcontractMaterialReturn r = requireReturnForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料退货单");
+        mutationGuard.verifyUnchanged();
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }

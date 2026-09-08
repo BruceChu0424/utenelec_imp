@@ -97,6 +97,9 @@ public class PurchaseReceiptService {
     private final OrganizationReferencePort organizationReferences;
     private final com.uten.imp.application.port.PreplanAnalysisPegPort preplanAnalysisPeg;
     private final ReceiptPriceMasker priceMasker;
+    private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
+    private final com.uten.imp.common.finance.ProcurementReceiptConsiderationService consideration;
+    private final com.uten.imp.application.port.ProcurementInventoryValuePort procurementValue;
 
     @Transactional(readOnly = true)
     public PageResponse<ReceiptListItem> list(ReceiptQueryFilter f, int page, int size, String sort, String order) {
@@ -124,7 +127,7 @@ public class PurchaseReceiptService {
                                 ? Map.of("billDate", "billDate")
                                 : Map.of("billDate", "billDate", "total", "totalLocal")));
         Page<PurchaseReceipt> p = receiptRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+        return new PageResponse<>(p.map(this::toList).getContent(), p);
     }
 
     @Transactional(readOnly = true)
@@ -143,6 +146,7 @@ public class PurchaseReceiptService {
     @PreAuthorize("hasAuthority('purchase_receipt:create')")
     public ReceiptDetail create(ReceiptSaveRequest req) {
         tx.bind();
+        lockReceiptRequest(null,req).verifyUnchanged();
         PurchaseReceipt r = new PurchaseReceipt();
         applyHeader(req, r);
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户
@@ -164,11 +168,13 @@ public class PurchaseReceiptService {
     @PreAuthorize("hasAuthority('purchase_receipt:edit')")
     public ReceiptDetail update(UUID id, ReceiptSaveRequest req) {
         tx.bind();
+        var mutationGuard=lockReceiptRequest(id,req);
         PurchaseReceipt r = requireReceiptForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
+        mutationGuard.verifyUnchanged();
         applyHeader(req, r);
         itemRepo.deleteByReceiptId(id);
         itemRepo.flush();
@@ -181,12 +187,22 @@ public class PurchaseReceiptService {
     @PreAuthorize("hasAuthority('purchase_receipt:delete')")
     public void delete(UUID id) {
         tx.bind();
+        var mutationGuard=mutationLocks.receipt("PURCHASE",id);
         PurchaseReceipt r = requireReceiptForUpdate(id);
+        mutationGuard.verifyUnchanged();
         access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         receiptRepo.save(r);
+    }
+
+    private com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard lockReceiptRequest(UUID id,ReceiptSaveRequest req) {
+        List<ReceiptItemLine> lines=req==null||req.getItems()==null?List.of():req.getItems();
+        return mutationLocks.receiptInputs("PURCHASE",id,lines.stream().filter(java.util.Objects::nonNull).map(ReceiptItemLine::getOrderItemId).toList(),
+                lines.stream().filter(java.util.Objects::nonNull).filter(line->line.getGoodsId()!=null)
+                        .map(line->new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(line.getGoodsId(),line.getColorId())).toList(),
+                req==null?null:req.getWarehouseId());
     }
 
     /** 审核：status 0→1，库存入库 + 回写订货 received_qty + 结案重算。 */
@@ -197,9 +213,11 @@ public class PurchaseReceiptService {
         SupplierPeriodIdentityGuard.Identity periodIdentity =
         periodIdentityGuard.requireIdentity(SourceTable.PURCHASE_RECEIPT, id);
         periodIdentityGuard.requireOpenAtBillDate(periodIdentity, "采购收货审核");
+        var mutationGuard=mutationLocks.receipt("PURCHASE",id);
         productionSupply.lockPurchaseReceiptMutationDimensions(
                 id);
         PurchaseReceipt r = requireReceiptForUpdate(id);
+        mutationGuard.verifyUnchanged();
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);
@@ -234,6 +252,7 @@ public class PurchaseReceiptService {
         arrivalControl.validateBeforeApproval(
                 ProcurementArrivalControlPort.PURCHASE, id);
         receiptAmountAuthority.apply(r, items);
+        var payable=consideration.freezeReceipt("PURCHASE",id);
         productionSupply.lockReceiptProductionDemands(
                 id, r.getWarehouseId());
         stockService.lockInventory(items.stream()
@@ -264,13 +283,17 @@ public class PurchaseReceiptService {
         // 立应付（AP, PURCHASE_RECEIPT）。
         LocalDate dueDate = paymentTerms.resolveDueDate(
                 r.getSupplierId(), r.getSettlementMethodId(), r.getBillDate());
-        arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
+        if(payable.original().signum()!=0||payable.local().signum()!=0){
+            arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
                 "AP", StockService.SRC_PURCHASE_RECEIPT, r.getId(), r.getBillNo(), r.getBillDate(),
                 null, r.getSupplierId(), r.getCurrencyId(), r.getExchangeRate(),
-                r.getTotalLocal(), (short) 1, null, r.getTotalOriginal(), dueDate,
+                payable.local(), (short) 1, null, payable.original(), dueDate,
                 r.getSettlementStyleLegacy(), List.of(), r.getSettlementMethodId()));
+        }
         arrivalControl.recordApproval(
                 ProcurementArrivalControlPort.PURCHASE, id);
+        em.flush();
+        procurementValue.receiptApproved("PURCHASE",id,currentUser.requireId());
         return detail(id);
     }
     /** Dedicated warehouse-arrival gateway; normal approval keeps its exact action authority. */
@@ -294,6 +317,7 @@ public class PurchaseReceiptService {
         SupplierPeriodIdentityGuard.Identity periodIdentity =
         periodIdentityGuard.requireIdentity(SourceTable.PURCHASE_RECEIPT, id);
         periodIdentityGuard.requireOpenToday(periodIdentity, "采购收货红冲");
+        var mutationGuard=mutationLocks.receipt("PURCHASE",id);
         List<PurchaseReceiptItem> prelockItems =
                 itemRepo.findByReceiptIdOrderByLineNoAsc(id);
         stockService.lockInventory(prelockItems.stream()
@@ -302,6 +326,7 @@ public class PurchaseReceiptService {
         productionSupply.lockPurchaseReceiptMutationDimensions(
                 id);
         PurchaseReceipt r = requireReceiptForUpdate(id);
+        mutationGuard.verifyUnchanged();
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);
@@ -322,6 +347,7 @@ public class PurchaseReceiptService {
         // 分析备料绑定对称反向：释放本收货单建立的分析归属预留（V298）。
         preplanAnalysisPeg.releaseForReceipt(ProcurementInspectionPort.PURCHASE, id);
         // 库存 advisory 锁已在任何 receipt/inspection/AP 行锁之前取得。
+        consideration.reverseReceipt("PURCHASE",id,UUID.randomUUID(),"采购收货红冲");
         arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RECEIPT);
         iqcReplacementAllocation.reverseForReceipt(
                 "PURCHASE",r.getId(),"补货采购收货红冲");
@@ -349,6 +375,7 @@ public class PurchaseReceiptService {
         arrivalControl.recordReversal(
                 ProcurementArrivalControlPort.PURCHASE, id);
         productionSupply.afterPurchaseReceiptReversed(id);
+        procurementValue.receiptReversed("PURCHASE",id,currentUser.requireId());
         return detail(id);
     }
 
@@ -402,7 +429,7 @@ public class PurchaseReceiptService {
         }
         r.setWarehouseId(req.getWarehouseId());
         r.setCurrencyId(req.getCurrencyId());
-        r.setExchangeRate(req.getExchangeRate());
+        r.setExchangeRate(req.getExchangeRate()==null?null:com.uten.imp.common.util.FinancialExactAmount.rate(req.getExchangeRate(),"采购收货汇率"));
         r.setTaxRate(req.getTaxRate());
         r.setSenderId(req.getSenderId());
         r.setReceiverId(req.getReceiverId());
@@ -476,7 +503,8 @@ public class PurchaseReceiptService {
             it.setUnitId(resolvedUnit.unitId());
             it.setUnitRate(resolvedUnit.unitRate());
             it.setQty(l.getQty());
-            it.setPrice(l.getPrice());
+            it.setReplacementIntent(l.getReplacementIntent());
+            it.setPrice(l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"采购收货单价"));
             it.setAmountOriginal(l.getAmountOriginal());
             it.setAmountLocal(l.getAmountLocal() != null ? l.getAmountLocal() : l.getAmountOriginal());
             it.setGiftQty(l.getGiftQty() != null ? l.getGiftQty() : BigDecimal.ZERO);

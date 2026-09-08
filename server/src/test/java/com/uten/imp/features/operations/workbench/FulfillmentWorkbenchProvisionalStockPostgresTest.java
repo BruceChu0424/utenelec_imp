@@ -23,6 +23,7 @@ import java.sql.ResultSet;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
 
@@ -202,6 +203,44 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
         assertNotNull(task.updatedAt());
         assertEquals(ZoneOffset.UTC, task.updatedAt().getOffset());
         assertEquals(projectedUpdatedAt, task.updatedAt().toInstant());
+
+        // 2026-09-05 修复回归锁：归组行的明细 id 集不能为空——stringArray
+        // 需兼容 Hibernate 直接返回的 String[]/Object[]（只认 java.sql.Array
+        // 时恒为空，前端批量「生成采购订货单」会永远报「先生成/挂接采购申请」）。
+        Object rawIds = transactions.execute(status ->
+                entityManager.createNativeQuery("""
+                                SELECT COALESCE(
+                                           ARRAY_AGG(action_item_id::TEXT)
+                                               FILTER (WHERE action_item_id IS NOT NULL),
+                                           ARRAY[]::TEXT[])
+                                FROM v_procurement_decomposition_tasks
+                                WHERE department = 'PURCHASE'
+                                  AND action_doc_id = :requestId
+                                """)
+                        .setParameter("requestId", requestId)
+                        .getSingleResult());
+        assertTrue(
+                !FulfillmentWorkbenchQueryService.stringArray(rawIds).isEmpty(),
+                () -> "aggregate text[] must map to non-empty ids, raw type: "
+                        + rawIds.getClass().getName());
+        // 受限行（上方 canView=false mock）单据元数据必须脱敏为空集；
+        // 放开可见性后同一行必须带回完整明细 id 集。
+        assertTrue(task.actionItemIds().isEmpty(),
+                "restricted row must not leak document item ids");
+        when(accessPolicy.documentAccess("PURCHASE", "PURCHASE_REQUEST"))
+                .thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(
+                        true,
+                        false));
+        FulfillmentWorkbenchPage openPage = transactions.execute(status ->
+                service.query("PURCHASE", "", "", "", null, null, 1, 100));
+        FulfillmentTaskRow openTask = openPage.items().stream()
+                .filter(row -> row.taskId().equals(requestId))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(
+                List.of(purchaseTaskId.toString()),
+                openTask.actionItemIds(),
+                "visible grouped row must expose its request item ids");
     }
 
     private static Fixture fixture(Connection connection) throws Exception {

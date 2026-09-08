@@ -5,6 +5,28 @@
 
 import 'master_facet.dart';
 
+/// 计量维度的中文标签（COUNT 数量 / MASS 重量 / LENGTH 长度 / AREA 面积 /
+/// VOLUME 体积 / OTHER 其他）；null/未知 → 未设置。
+String unitDimensionLabel(String? dimension) => switch (dimension) {
+  'COUNT' => '数量',
+  'MASS' => '重量',
+  'LENGTH' => '长度',
+  'AREA' => '面积',
+  'VOLUME' => '体积',
+  'OTHER' => '其他',
+  _ => '未设置',
+};
+
+/// 全部可选计量维度（编辑弹窗下拉用）。
+const Map<String, String> kUnitMeasurementDimensions = {
+  'COUNT': '数量',
+  'MASS': '重量',
+  'LENGTH': '长度',
+  'AREA': '面积',
+  'VOLUME': '体积',
+  'OTHER': '其他',
+};
+
 /// 单位列表项。
 class UnitListItem {
   const UnitListItem({
@@ -13,6 +35,7 @@ class UnitListItem {
     this.name,
     this.status,
     this.legacyId,
+    this.measurementDimension,
   });
 
   final String id;
@@ -21,12 +44,16 @@ class UnitListItem {
   final String? status;
   final int? legacyId;
 
+  /// 计量维度（数量/重量/…；null = 未设置，落 unit_measurement_profiles）。
+  final String? measurementDimension;
+
   factory UnitListItem.fromJson(Map<String, dynamic> json) => UnitListItem(
     id: json['id'] as String,
     code: json['code'] as String?,
     name: json['name'] as String?,
     status: json['status'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),
+    measurementDimension: json['measurementDimension'] as String?,
   );
 }
 
@@ -38,6 +65,7 @@ class UnitDetail {
     this.name,
     this.status,
     this.legacyId,
+    this.measurementDimension,
   });
 
   final String id;
@@ -46,12 +74,16 @@ class UnitDetail {
   final String? status;
   final int? legacyId;
 
+  /// 计量维度（数量/重量/…；null = 未设置）。
+  final String? measurementDimension;
+
   factory UnitDetail.fromJson(Map<String, dynamic> json) => UnitDetail(
     id: json['id'] as String,
     code: json['code'] as String?,
     name: json['name'] as String?,
     status: json['status'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),
+    measurementDimension: json['measurementDimension'] as String?,
   );
 }
 

@@ -25,7 +25,12 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
         assertMethods("features/sales/shipment/SalesShipmentService.java",
                 " update(", " delete(", " approve(", " reverse(");
         assertMethods("features/sales/other_shipment/SalesOtherShipmentService.java",
-                " update(", " delete(", " approve(", " reverse(");
+                " reverse(");
+        String historicalOther=source("features/sales/other_shipment/SalesOtherShipmentService.java");
+        for(String retired:List.of(" create("," update("," delete("," approve(")) {
+            assertThat(method(historicalOther,retired)).contains("throw retiredWrite()")
+                    .doesNotContain("recordMovement(","shipmentRepo.save(","itemRepo.delete");
+        }
         assertMethods("features/sales/ret/SalesReturnService.java",
                 " update(", " delete(", " approve(", " reverse(", " setDisposition(");
     }
@@ -71,9 +76,12 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
 
         assertMethods("features/stock/StockDocService.java", " update(", " delete(");
         String stock = source("features/stock/StockDocService.java");
-        assertThat(lastMethod(stock, " approveInternal(")).contains("requireOperationWritable(");
-        assertThat(lastMethod(stock, " reverseInternal(")).contains("requireOperationWritable(");
-        assertThat(lastMethod(stock, " requireOperationWritable(")).contains(
+        assertThat(method(stock, " approveInternal(")).contains("requireOperationWritable(");
+        assertThat(method(stock, " reverseInternal(")).contains("requireOperationWritable(");
+        assertThat(method(stock, " issue(")).contains("issueAfterPrelock(");
+        assertThat(method(stock, " issueAfterPrelock(")).contains("requireOperationWritable(");
+        assertThat(method(stock, " reverseIssue(")).contains("requireOperationWritable(");
+        assertThat(method(stock, " requireOperationWritable(")).contains(
                 "access.requireWritable(document.getMakerId(), message)",
                 "productionStockTaskAccess.requireWarehouseTaskAccess(message)");
     }
@@ -110,7 +118,10 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
     }
 
     private static String method(String source, String signature) {
-        int start = source.indexOf(signature);
+        var declaration = java.util.regex.Pattern.compile(
+                "(?m)^\\s*(?:public|protected|private)\\s+[^\\r\\n{;]*?"
+                        + java.util.regex.Pattern.quote(signature)).matcher(source);
+        int start = declaration.find() ? declaration.end() - signature.length() : -1;
         assertThat(start).as("method %s", signature.trim()).isGreaterThanOrEqualTo(0);
         int bodyStart = source.indexOf('{', start + signature.length());
         int depth = 0;
@@ -122,16 +133,4 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
         throw new IllegalStateException("Unclosed method: " + signature.trim());
     }
 
-    private static String lastMethod(String source, String signature) {
-        int start = source.lastIndexOf(signature);
-        assertThat(start).as("method %s", signature.trim()).isGreaterThanOrEqualTo(0);
-        int bodyStart = source.indexOf('{', start + signature.length());
-        int depth = 0;
-        for (int index = bodyStart; index < source.length(); index++) {
-            char token = source.charAt(index);
-            if (token == '{') depth++;
-            if (token == '}' && --depth == 0) return source.substring(start, index + 1);
-        }
-        throw new IllegalStateException("Unclosed method: " + signature.trim());
-    }
 }

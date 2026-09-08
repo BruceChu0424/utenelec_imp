@@ -136,7 +136,9 @@ public class ProcurementApprovalProjectionQuery {
         if (row == null) {
             String status = orderStatus == 1
                     ? "LEGACY_EFFECTIVE"
-                    : orderStatus == -1 ? "LEGACY_REVERSED" : "DRAFT";
+                    : orderStatus == -1 ? "LEGACY_REVERSED"
+                    : orderStatus == 2 ? "CANCELED"
+                    : "DRAFT";
             return new FinanceApproval(
                     null, status, 0, 0,
                     null, null, null, null, null,

@@ -150,9 +150,19 @@ class ProductionMaterialIssueReturnPostgresTest {
                     """, settlementEvent, f.planId(), "a".repeat(64));
             insert(connection, """
                     insert into production_material_settlement_postings(
-                        id, event_id, demand_id, settlement_type, qty_base
-                    ) values (?, ?, ?, 'CONSUMED', 10)
-                    """, UUID.randomUUID(), settlementEvent, f.demandId());
+                        id, event_id, demand_id, settlement_type, qty_base,issue_posting_id
+                    ) values (?, ?, ?, 'CONSUMED', 10,?)
+                    """, UUID.randomUUID(), settlementEvent, f.demandId(),issuePosting);
+            assertDecimal(connection,"""
+                    SELECT COUNT(*) FROM production_material_settlement_postings settlement
+                    JOIN production_material_stock_postings issue ON issue.id=settlement.issue_posting_id
+                    JOIN production_material_movement_links link ON link.event_id=issue.event_id
+                        AND link.document_item_id=issue.stock_document_item_id
+                    JOIN stock_movements movement ON movement.id=link.movement_id
+                    WHERE settlement.event_id=? AND issue.id=? AND issue.demand_id=settlement.demand_id
+                        AND issue.posting_type='ISSUE' AND issue.qty_base=20
+                        AND movement.source_item_id=issue.stock_document_item_id AND movement.direction=-1 AND movement.qty=20
+                    """,settlementEvent,issuePosting,"1");
             assertTrue(booleanValue(connection, """
                     select can_close from v_production_material_clearance
                     where demand_id = ?
@@ -194,9 +204,9 @@ class ProductionMaterialIssueReturnPostgresTest {
                     PSQLException.class,
                     () -> insert(connection, """
                             insert into production_material_settlement_postings(
-                                id, event_id, demand_id, settlement_type, qty_base
-                            ) values (?, ?, ?, 'APPROVED_LOSS', 1)
-                            """, UUID.randomUUID(), settlementEvent, f.demandId()));
+                                id, event_id, demand_id, settlement_type, qty_base,issue_posting_id
+                            ) values (?, ?, ?, 'APPROVED_LOSS', 1,?)
+                            """, UUID.randomUUID(), settlementEvent, f.demandId(),issuePosting));
             assertEquals("23514", overSettlement.getSQLState());
 
             UUID orderItemId = UUID.randomUUID();
@@ -398,25 +408,24 @@ class ProductionMaterialIssueReturnPostgresTest {
 
     private static UUID event(
             Connection c, UUID doc, String type, String key) throws Exception {
-        UUID id = UUID.randomUUID();
-        insert(c, """
-                insert into production_material_stock_events(
-                    id,stock_document_id,event_type,idempotency_key,request_hash
-                ) values(?,?,?,?,?)
-                """, id, doc, type, key, "c".repeat(64));
-        return id;
+        return com.uten.imp.support.ProductionMaterialMovementTestSupport.beginEvent(c,doc,type,key);
     }
 
     private static UUID stockPosting(
             Connection c, UUID event, UUID item, UUID demand,
             UUID reservation, UUID source, String type, String qty) throws Exception {
         UUID id = UUID.randomUUID();
-        insert(c, """
+        try { insert(c, """
                 insert into production_material_stock_postings(
                     id,event_id,stock_document_item_id,demand_id,reservation_id,
                     source_posting_id,posting_type,qty_base
                 ) values(?,?,?,?,?,?,?,?)
                 """, id, event, item, demand, reservation, source, type, decimal(qty));
+            com.uten.imp.support.ProductionMaterialMovementTestSupport.bindAndCommit(c,event,item);
+        } catch(Exception failure) {
+            com.uten.imp.support.ProductionMaterialMovementTestSupport.abort(c);
+            throw failure;
+        }
         return id;
     }
 

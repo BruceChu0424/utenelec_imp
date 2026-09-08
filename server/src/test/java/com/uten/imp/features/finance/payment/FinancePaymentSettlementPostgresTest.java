@@ -71,6 +71,8 @@ class FinancePaymentSettlementPostgresTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+        String locations=System.getProperty("uten.test.financial.migration.locations");
+        if(locations!=null&&!locations.isBlank())registry.add("spring.flyway.locations",()->locations);
     }
 
     @Autowired
@@ -81,6 +83,8 @@ class FinancePaymentSettlementPostgresTest {
 
     @Autowired
     private GlPostingService glPostingService;
+
+    @Autowired private org.springframework.transaction.PlatformTransactionManager transactionManager;
 
     @AfterEach
     void clearSecurityContext() {
@@ -113,7 +117,7 @@ class FinancePaymentSettlementPostgresTest {
         assertMoney(draft.getItems().getFirst().getAppliedAmountLocal(), "210.0000");
         assertThat(jdbc.queryForObject("""
                 SELECT amount_authority_version FROM finance_payments WHERE id=?
-                """, Short.class, draft.getId())).isEqualTo((short) 1);
+                """, Short.class, draft.getId())).isEqualTo((short) 2);
 
         loginAsSuperAdmin(UUID.randomUUID(), UUID.randomUUID(), "payment-approver");
         service.approve(draft.getId());
@@ -211,7 +215,8 @@ class FinancePaymentSettlementPostgresTest {
         assertThat(jdbc.queryForObject("""
                 SELECT COUNT(*) FROM gl_vouchers
                 WHERE source='AUTO' AND source_type='PAYMENT' AND voucher_no=?
-                """, Long.class, draft.getBillNo())).isZero();
+                """, Long.class, draft.getBillNo())).isEqualTo(1L);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM gl_vouchers WHERE source='AUTO' AND source_type='PAYMENT_REV' AND source_doc_id=?",Long.class,draft.getId())).isEqualTo(1L);
         assertThatThrownBy(() -> service.delete(draft.getId()))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("仅草稿单据可删除");
@@ -404,7 +409,7 @@ class FinancePaymentSettlementPostgresTest {
     }
 
     @Test
-    void reverseAndPeriodRegenerationSerializeToNoPaymentVoucher() throws Exception {
+    void reverseAndPeriodRegenerationPreserveTheImmutableOriginalAndLinkedReversal() throws Exception {
         UUID currencyId = UUID.randomUUID();
         UUID supplierId = UUID.randomUUID();
         UUID accountId = UUID.randomUUID();
@@ -457,7 +462,8 @@ class FinancePaymentSettlementPostgresTest {
         assertThat(jdbc.queryForObject("""
                 SELECT status FROM finance_payments WHERE id=?
                 """, Short.class, draft.getId())).isEqualTo((short) -1);
-        assertThat(paymentVoucherCount(draft.getBillNo())).isZero();
+        assertThat(paymentVoucherCount(draft.getBillNo())).isEqualTo(1L);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM gl_vouchers WHERE source='AUTO' AND source_type='PAYMENT_REV' AND source_doc_id=?",Long.class,draft.getId())).isEqualTo(1L);
     }
 
     private void seedPayable(
@@ -484,6 +490,15 @@ class FinancePaymentSettlementPostgresTest {
                         (SELECT id FROM payment_styles WHERE path='/102/' AND category='ACCOUNT'
                            AND status='使用' AND COALESCE(is_deleted,false)=false))
                 """, accountId, "ACC-PAY-" + accountId, currencyId);
+        UUID receiptId=UUID.randomUUID(),receiptItemId=UUID.randomUUID(),unitId=UUID.randomUUID(),goodsId=UUID.randomUUID(),warehouseId=UUID.randomUUID();
+        String receiptNo="CJ20260801%06d".formatted(BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet());
+        new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(transaction->{
+        jdbc.update("INSERT INTO units(id,code,name) VALUES(?,?,'付款来源单位')",unitId,"U-PAY-"+unitId);
+        jdbc.update("INSERT INTO goods(id,code,name,unit_id,code_sequence) VALUES(?,?,'付款来源物料',?,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",goodsId,"G-PAY-"+goodsId,unitId);
+        jdbc.update("INSERT INTO warehouses(id,code,name) VALUES(?,?,'付款来源收货仓')",warehouseId,"WH-PAY-"+warehouseId);
+        jdbc.update("INSERT INTO purchase_receipts(id,bill_no,bill_date,supplier_id,currency_id,exchange_rate,total_original,total_local,warehouse_id,status) VALUES(?,?,DATE '2026-08-01',?,?,7,100,700,?,1)",receiptId,receiptNo,supplierId,currencyId,warehouseId);
+        jdbc.update("INSERT INTO purchase_receipt_items(id,bill_no,bill_date,receipt_id,goods_id,unit_id,unit_rate,qty,price,amount_original,amount_local,replacement_intent,goods_snapshot_source) VALUES(?,?,DATE '2026-08-01',?,?,?,1,100,1,100,700,'NORMAL','MASTER_AT_SAVE')",receiptItemId,receiptNo,receiptId,goodsId,unitId);
+        jdbc.update("INSERT INTO procurement_receipt_consideration_parts(id,receipt_type,receipt_id,receipt_item_id,billing_mode,base_qty,nominal_original,nominal_local,payable_original,payable_local,created_by) SELECT ?,'PURCHASE',?,?,'STANDARD',100,100,700,100,700,id FROM users WHERE is_super_admin AND status='active' ORDER BY id LIMIT 1",UUID.randomUUID(),receiptId,receiptItemId);
         jdbc.update("""
                 INSERT INTO ar_ap_ledger (
                     id, direction, business_type, open_item_kind,
@@ -496,13 +511,14 @@ class FinancePaymentSettlementPostgresTest {
                     is_settled, status, is_deleted)
                 VALUES (
                     ?, 'AP', 'PURCHASE', 'PAYABLE',
-                    'PURCHASE_RECEIPT', ?, 'CJ-PAYMENT-TEST',
+                    'PURCHASE_RECEIPT', ?, ?,
                     ?, DATE '2026-08-01', ?, ?, 7.000000,
                     100.0000, 700.0000,
                     0, 0, 0, 0, 100.0000, 0, 700.0000,
                     false, 1, false)
-                """, ledgerId, UUID.randomUUID(),
-                "CJ-PAYMENT-" + ledgerId, supplierId, currencyId);
+                """, ledgerId, receiptId,receiptNo,
+                receiptNo, supplierId, currencyId);
+        });
     }
 
     private void seedAccountingStyles() {
@@ -571,6 +587,11 @@ class FinancePaymentSettlementPostgresTest {
         request.setBillDate(BusinessTime.today());
         request.setSupplierId(supplierId);
         request.setAccountId(accountId);
+        request.setAccountCurrencyId(currencyId);
+        request.setAccountAmount(new BigDecimal("30.0000"));
+        request.setBankFeeAccountAmount(BigDecimal.ZERO);
+        request.setBankReference("PAYMENT-PG-"+ledgerId);
+        request.setBankBookedAt(java.time.OffsetDateTime.now());
         request.setCurrencyId(currencyId);
         request.setExchangeRate(new BigDecimal("7.200000"));
         request.setAmountOriginal(new BigDecimal("999.0000"));

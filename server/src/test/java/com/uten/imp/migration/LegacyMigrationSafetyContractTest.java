@@ -107,12 +107,13 @@ class LegacyMigrationSafetyContractTest {
 
         String migrationReadme = compact(Files.readString(
                 Path.of("../docs/数据迁移/README.md")));
-        // 目录头横幅随共享候选演进而更新（V463/V464 订货行多来源锚定、V465 超采守卫
-        // 对齐、V466 IQC 退回补货单通道收口、V467 委外权益委托触发器放开双路线）；
-        // 离线 bootstrap 常量仍冻结在 v426/388 旧基线。
+        // Application migration head and the separate frozen offline-import
+        // baseline have different responsibilities; neither may impersonate the other.
         assertThat(migrationReadme)
-                .contains("迁移目录头为 v467，共 429 个迁移文件、429 个唯一版本且无重号")
-                .contains("源码校验已同步 v426/388 与 `bootstrap-v10-v426`")
+                .contains("当前正式目录：v" + MigrationRehearsalSupport.CURRENT_HEAD_VERSION
+                        + "/" + MigrationRehearsalSupport.CURRENT_MIGRATION_COUNT)
+                .contains("离线 bootstrap 目标冻结为 v426/388")
+                .contains("`bootstrap-v10-v426`")
                 .contains("受保护 388 行 manifest")
                 .contains("v426 不授权跨越或执行尚未获准的破坏性 v425");
     }

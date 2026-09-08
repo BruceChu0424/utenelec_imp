@@ -55,8 +55,7 @@ void main() {
       final repository = ProductionPlanRepository(
         _api((request) {
           requests.add(request);
-          if (request.path.endsWith('/plan-preview')) return _planPreviewJson;
-          if (request.path.endsWith('/generate-plan')) {
+          if (request.path.endsWith('/issue-plans')) {
             return {
               'analysis': _analysisJson,
               'replayed': false,
@@ -104,43 +103,27 @@ void main() {
         target: MaterialSupplyRoute.make,
         actionGroupKeys: const ['action-group-1'],
       );
-      final planPreview = await repository.previewMaterialAnalysisPlan(
+      await repository.issueWorkshopPlans(
         analysis: analysis,
         warehouseId: 'warehouse-1',
-        items: const [
-          MaterialAnalysisPlanItemInput(
-            analysisLineId: 'product-line-1',
-            qty: 5,
-            billDate: '2026-08-09',
-            deliveryDate: '2026-08-18',
-            departmentId: 'workshop-1',
-            workshopName: '装配一车间',
-            workerId: 'worker-1',
-            teamDepartmentId: 'team-1',
-            productNo: 'V6-0001',
-          ),
-        ],
-      );
-      await repository.generateMaterialAnalysisPlan(
-        preview: planPreview,
-        warehouseId: 'warehouse-1',
-        idempotencyKey: 'generate-command-1',
+        idempotencyKey: 'issue-command-1',
         billDate: '2026-08-08',
         deliveryDate: '2026-08-20',
-        departmentId: 'fallback-workshop',
-        workshopName: '默认车间',
-        workerId: 'fallback-worker',
-        items: const [
-          MaterialAnalysisPlanItemInput(
+        approveNow: true,
+        lines: const [
+          MaterialAnalysisIssueLine(
             analysisLineId: 'product-line-1',
             qty: 5,
-            billDate: '2026-08-09',
-            deliveryDate: '2026-08-18',
             departmentId: 'workshop-1',
             workshopName: '装配一车间',
             workerId: 'worker-1',
-            teamDepartmentId: 'team-1',
-            productNo: 'V6-0001',
+          ),
+          MaterialAnalysisIssueLine(
+            materialLineId: 'material-line-1',
+            qty: 8,
+            departmentId: 'workshop-2',
+            workshopName: '装配二车间',
+            workerId: 'worker-2',
           ),
         ],
       );
@@ -203,46 +186,33 @@ void main() {
         'version': 7,
         'fingerprint': 'b' * 64,
         'warehouseId': 'warehouse-1',
-        'items': [
-          {
-            'analysisLineId': 'product-line-1',
-            'qty': 5.0,
-            'productNo': 'V6-0001',
-          },
-        ],
-      });
-      expect(requests[4].data, {
-        'version': 7,
-        'fingerprint': 'b' * 64,
-        'previewFingerprint': 'c' * 64,
-        'warehouseId': 'warehouse-1',
-        'idempotencyKey': 'generate-command-1',
+        'idempotencyKey': 'issue-command-1',
         'billDate': '2026-08-08',
         'deliveryDate': '2026-08-20',
-        'departmentId': 'fallback-workshop',
-        'workshopName': '默认车间',
-        'workerId': 'fallback-worker',
-        'approveNow': false,
-        'items': [
+        'approveNow': true,
+        'lines': [
           {
             'analysisLineId': 'product-line-1',
             'qty': 5.0,
-            'billDate': '2026-08-09',
-            'deliveryDate': '2026-08-18',
             'departmentId': 'workshop-1',
             'workshopName': '装配一车间',
             'workerId': 'worker-1',
-            'teamDepartmentId': 'team-1',
-            'productNo': 'V6-0001',
+          },
+          {
+            'materialLineId': 'material-line-1',
+            'qty': 8.0,
+            'departmentId': 'workshop-2',
+            'workshopName': '装配二车间',
+            'workerId': 'worker-2',
           },
         ],
       });
-      expect(requests[5].method, 'PUT');
+      expect(requests[4].method, 'PUT');
       expect(
-        requests[5].path,
+        requests[4].path,
         '/production/material-analyses/analysis-1/allocation-priorities',
       );
-      expect(requests[5].data, {
+      expect(requests[4].data, {
         'version': 7,
         'fingerprint': 'b' * 64,
         'idempotencyKey': 'priority-command-1',
@@ -457,26 +427,6 @@ final _analysisJson = <String, dynamic>{
   'flatMaterials': <Map<String, dynamic>>[],
   'warehouses': <Map<String, dynamic>>[],
   'allowedActions': ['PLAN_PREVIEW', 'GENERATE_PLAN'],
-};
-
-final _planPreviewJson = <String, dynamic>{
-  'analysisId': 'analysis-1',
-  'version': 7,
-  'fingerprint': 'b' * 64,
-  'previewFingerprint': 'c' * 64,
-  'warehouseId': 'warehouse-1',
-  'allReady': true,
-  'items': [
-    {
-      'analysisLineId': 'product-line-1',
-      'requestedQty': 8,
-      'readyNowQty': 5,
-      'selectedQty': 5,
-      'canGenerate': true,
-    },
-  ],
-  'plans': <Map<String, dynamic>>[],
-  'allowedActions': ['GENERATE_PLAN'],
 };
 
 ApiClient _api(Object? Function(RequestOptions request) responder) {

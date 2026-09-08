@@ -64,6 +64,14 @@ public class ProductionExecutionSegmentController {
         return service.start(planId, segmentId, request);
     }
 
+    @PostMapping("/{segmentId}/recheck-material")
+    @PreAuthorize("hasAuthority('production_execution:start')")
+    public ExecutionSegmentView recheckMaterial(
+            @PathVariable UUID planId, @PathVariable UUID segmentId,
+            @Valid @RequestBody SegmentTransitionRequest request) {
+        return service.recheckMaterial(planId, segmentId, request);
+    }
+
     @PostMapping("/batch-start")
     @PreAuthorize("hasAuthority('production_execution:start')")
     public List<ExecutionSegmentView> batchStart(

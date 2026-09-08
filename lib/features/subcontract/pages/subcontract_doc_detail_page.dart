@@ -15,6 +15,7 @@ import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -97,6 +98,14 @@ class _SubcontractDocDetailPageState
       widget.docType == SubcontractDocType.order &&
       _hasPermission(Perm.financeOrderApprovalView) &&
       !_hasPermission(_cfg.listPerm);
+
+  /// 批准后改量（对齐采购/销售）：财务批准后的委外订货单可逐行改数量；改后
+  /// 服务端自动重回财务复核，财务在审批详情看到修改清单（以前→现在）。
+  bool get _canChangeQty =>
+      widget.docType == SubcontractDocType.order &&
+      _detail?.status == kSubcontractStatusApproved &&
+      _detail?.financeApproval?.isPending != true &&
+      _hasPermission(Perm.subcontractOrderChangeQty);
 
   String get _defaultBackPath =>
       _financeReviewOnly ? _financeApprovalTasksPath : '/subcontract';
@@ -183,6 +192,145 @@ class _SubcontractDocDetailPageState
 
   Future<void> _reverse() async =>
       _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
+
+  /// 批准后改量：弹窗逐行改数量（照销售订货详情 _changeQty 结构）。改后自动
+  /// 重回财务复核；驳回不会自动还原数量。
+  Future<void> _changeQty() async {
+    if (_busy) {
+      context.appInfo('正在处理，请稍候…');
+      return;
+    }
+    final detail = _detail;
+    if (detail == null) return;
+    final l10n = AppLocalizations.of(context);
+    final names = ref.read(mn.masterNameServiceProvider);
+    final ctrls = <String, TextEditingController>{};
+    for (final it in detail.items) {
+      if (it.id != null) {
+        ctrls[it.id!] = TextEditingController(
+          text: it.qty?.toStringAsFixed(2) ?? '',
+        );
+      }
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        key: const Key('subcontract-order-change-qty-dialog'),
+        title: Text(l10n.orderChangeQtyTitle),
+        content: SizedBox(
+          width: 420,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                child: Text(
+                  l10n.orderChangeQtyWarning,
+                  style: Theme.of(ctx).textTheme.labelMedium?.copyWith(
+                    color: Theme.of(ctx).colorScheme.error,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              for (final it in detail.items)
+                if (it.id != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${names.goods(it.goodsId)}'
+                            '(${names.color(it.colorId)} · ${names.unit(it.unitId)}) '
+                            '${l10n.orderChangeQtyCurrent(it.qty?.toStringAsFixed(2) ?? '—')}',
+                            style: Theme.of(ctx).textTheme.labelMedium
+                                ?.copyWith(fontWeight: FontWeight.w400),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        SizedBox(
+                          width: 100,
+                          child: TextField(
+                            key: Key('subcontract-order-change-qty-${it.id}'),
+                            controller: ctrls[it.id!],
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: InputDecoration(
+                              isDense: true,
+                              labelText: l10n.orderChangeQtyNewQty,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+            ],
+          ),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.commonCancel),
+          ),
+          FilledButton(
+            key: const Key('subcontract-order-change-qty-submit'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.orderChangeQtyConfirm),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) {
+      _disposeChangeQtyControllers(ctrls.values);
+      return;
+    }
+    final changes = <Map<String, dynamic>>[];
+    for (final it in detail.items) {
+      if (it.id == null) continue;
+      final v = double.tryParse(ctrls[it.id!]!.text.trim());
+      // 行内校验：新数量必须解析成功且 > 0。
+      if (v == null || v <= 0) {
+        _disposeChangeQtyControllers(ctrls.values);
+        if (mounted) context.appError(l10n.orderChangeQtyInvalid);
+        return;
+      }
+      if (v != it.qty) {
+        changes.add({'orderItemId': it.id, 'newQty': v});
+      }
+    }
+    _disposeChangeQtyControllers(ctrls.values);
+    if (changes.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      await ref
+          .read(subcontractRepositoryProvider(widget.docType))
+          .changeQty(widget.id, changes);
+      if (!mounted) return;
+      context.appSuccess(l10n.orderChangeQtySuccess);
+      bumpListRefresh(ref, _cfg.refreshKey);
+      await _load();
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError(l10n.orderChangeQtyFailed);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// 弹窗关闭动画期间 TextField 仍持有 controller：延迟 dispose，避免构建期
+  /// 使用已释放对象（与审核备注弹窗同款处理）。
+  void _disposeChangeQtyControllers(
+    Iterable<TextEditingController> controllers,
+  ) {
+    Future<void>.delayed(const Duration(milliseconds: 300), () {
+      for (final controller in controllers) {
+        controller.dispose();
+      }
+    });
+  }
 
   Future<void> _doAction(
     String confirm,
@@ -909,17 +1057,30 @@ class _SubcontractDocDetailPageState
           ),
         );
       }
-    } else if (d.status == kSubcontractStatusApproved &&
-        _canReverse &&
-        d.canReverse) {
-      addAction(
-        UtenButton(
-          type: UtenButtonType.danger,
-          icon: Icons.undo_outlined,
-          onPressed: _reverse,
-          child: const Text('红冲'),
-        ),
-      );
+    } else if (d.status == kSubcontractStatusApproved) {
+      // 批准后改量（2026-09-05）：财务批准后的订货单逐行改数量，
+      // 改后自动重回财务复核；无 PENDING 审批任务时可操作。
+      if (_canChangeQty) {
+        addAction(
+          UtenButton(
+            key: const Key('subcontract-order-change-qty'),
+            type: UtenButtonType.secondary,
+            icon: Icons.edit_note_outlined,
+            onPressed: _changeQty,
+            child: Text(AppLocalizations.of(context).orderChangeQtyButton),
+          ),
+        );
+      }
+      if (_canReverse && d.canReverse) {
+        addAction(
+          UtenButton(
+            type: UtenButtonType.danger,
+            icon: Icons.undo_outlined,
+            onPressed: _reverse,
+            child: const Text('红冲'),
+          ),
+        );
+      }
     }
 
     if (children.isEmpty) {

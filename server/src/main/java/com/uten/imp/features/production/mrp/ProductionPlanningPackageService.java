@@ -51,6 +51,7 @@ public class ProductionPlanningPackageService {
     private final ProductionSubcontractRequestPort subcontractRequests;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
+    private final com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService mutationFootprint;
 
     @Transactional(readOnly = true)
     public PlanningPreviewResult preview(UUID planId, UUID warehouseId) {
@@ -132,6 +133,7 @@ public class ProductionPlanningPackageService {
         if (request == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "缺少计划包生命周期请求");
         }
+        var sourceGuard = mutationFootprint.beginPlan(planId, List.of());
         UUID prelockedAnalysisId =
                 preplanAnalysisPeg.lockPlanningPackageInventoryDimensions(planId);
         PlanHeader plan = lockPlan(planId);
@@ -146,6 +148,7 @@ public class ProductionPlanningPackageService {
             return new PlanningPackageLifecycleResult(
                     packageId, handle.planningPackage().getStatus(), true);
         }
+        sourceGuard.verifyUnchanged();
         preplanAnalysisPeg.requirePlanningPackageLifecycleReversible(planId);
         List<ProductionFulfillmentLedgerService.PackageDocument> documents =
                 ledger.lockPackageDocuments(packageId);

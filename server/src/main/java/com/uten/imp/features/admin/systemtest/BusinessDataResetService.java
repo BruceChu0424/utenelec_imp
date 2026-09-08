@@ -18,7 +18,7 @@ import java.util.UUID;
 /**
  * 工作台「系统测试 · 清空业务数据」的服务端编排。
  *
- * <p>清空口径（318 表 CLEAR/PRESERVE 分类、TRUNCATE RESTART IDENTITY、主档金额/
+ * <p>清空口径（迁移维护的逐表 CLEAR/PRESERVE 分类、TRUNCATE RESTART IDENTITY、主档金额/
  * 期初/安全库存/成本预算归零、六物化视图刷新、全套失败关闭校验、终局全员下线）
  * 全部实现在 V462 迁移创建的数据库函数 {@code business_data_reset()} 里，
  * 与 {@code server/ops/reset_business_data.sql}（psql 停机版）同一份清单，

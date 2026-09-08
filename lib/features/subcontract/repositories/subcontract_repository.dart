@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_commercial_terms.dart';
+import '../../../shared/repositories/procurement_terms_loader.dart';
 import '../models/subcontract_doc.dart';
 import '../models/subcontract_order_progress.dart';
 
@@ -112,20 +113,7 @@ class SubcontractRepository {
   /// （旧 /last-suppliers 仅回委外商的端点保留一个发布周期兼容旧客户端，前端已不再使用。）
   Future<Map<String, ProcurementLastTerms>> lastTermsByGoods(
     Set<String> goodsIds,
-  ) async {
-    if (goodsIds.isEmpty) return const {};
-    final json = await api.get(
-      '$_base/last-terms',
-      query: {'goodsIds': goodsIds.join(',')},
-    );
-    return {
-      for (final entry in json.entries)
-        if (entry.value is Map<String, dynamic>)
-          entry.key: ProcurementLastTerms.fromJson(
-            entry.value as Map<String, dynamic>,
-          ),
-    };
-  }
+  ) => loadProcurementTerms(api, '$_base/last-terms', goodsIds);
 
   Future<SubcontractDocDetail> update(
     String id,
@@ -146,6 +134,19 @@ class SubcontractRepository {
 
   Future<SubcontractDocDetail> submitFinance(String id) async {
     final json = await api.post('${_doc(id)}/submit-finance');
+    return SubcontractDocDetail.fromJson(json);
+  }
+
+  /// 批准后改量（POST /subcontract/orders/{id}/change-qty，仅 orders 族）：
+  /// 财务批准后逐行改数量，成功返回最新订单详情；服务端会自动重回财务复核。
+  Future<SubcontractDocDetail> changeQty(
+    String id,
+    List<Map<String, dynamic>> items,
+  ) async {
+    final json = await api.post(
+      '${_doc(id)}/change-qty',
+      body: {'items': items},
+    );
     return SubcontractDocDetail.fromJson(json);
   }
 

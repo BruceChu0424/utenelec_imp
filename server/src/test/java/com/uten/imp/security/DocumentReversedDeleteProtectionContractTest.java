@@ -18,6 +18,12 @@ class DocumentReversedDeleteProtectionContractTest {
         for (Contract contract : contracts()) {
             String command = method(source(contract.relativePath()),
                     "public void delete(UUID id)");
+            if (contract.relativePath().contains("sales/other_shipment/")) {
+                // Retired records deny deletion even to their owner; they do not use the draft-delete lane.
+                assertThat(command).contains("throw retiredWrite();")
+                        .doesNotContain("setDeleted(true)");
+                continue;
+            }
             int ownerGate = command.indexOf(contract.ownerGate());
             int draftGate = command.indexOf(
                     "StandardDocumentLifecycleCapabilities.requireDraftForDelete(");

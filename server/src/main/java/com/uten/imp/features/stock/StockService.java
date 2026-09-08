@@ -3,6 +3,7 @@ package com.uten.imp.features.stock;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.application.port.InventoryMovementCostReference;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.Collection;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -71,6 +73,7 @@ public class StockService {
     private final StockBalanceRepository balanceRepo;
     private final TxSessionVars tx;
     private final InventoryMutationLock inventoryLock;
+    private final com.uten.imp.features.stock.valuation.StockValuationCoordinator valuation;
 
     /**
      * Pre-locks all dimensions of a multi-line document in stable order.
@@ -79,6 +82,10 @@ public class StockService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void lockInventory(Collection<InventoryKey> keys) {
         inventoryLock.lockAll(keys);
+    }
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void bindProductionMovements(UUID event,java.util.Map<UUID,UUID> movements){
+        valuation.bindProductionMovements(event,movements);
     }
 
     /** 出入库请求值对象。qty 为基本单位量（已乘 unit_rate）；amountLocal 为本币金额。
@@ -100,7 +107,16 @@ public class StockService {
             BigDecimal amountLocal,
             String remark,
             BigDecimal weight,
-            UUID weightUnitId) {
+            UUID weightUnitId,
+            InventoryMovementCostReference costReference) {
+
+        public MovementRequest(OffsetDateTime transactionDate,short movementType,String sourceDocType,
+                UUID sourceDocId,UUID sourceItemId,UUID goodsId,UUID colorId,UUID warehouseId,short direction,
+                BigDecimal qty,UUID unitId,BigDecimal unitRate,BigDecimal amountLocal,String remark,
+                BigDecimal weight,UUID weightUnitId){
+            this(transactionDate,movementType,sourceDocType,sourceDocId,sourceItemId,goodsId,colorId,warehouseId,direction,
+                    qty,unitId,unitRate,amountLocal,remark,weight,weightUnitId,null);
+        }
 
         /** 兼容已传重量但尚未传 V442 显式重量单位的调用方。 */
         public MovementRequest(
@@ -153,6 +169,19 @@ public class StockService {
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public UUID recordMovement(MovementRequest req) {
+        return recordMovementInternal(null,req);
+    }
+
+    /** Reserved for a real IQC item which is inserted before its deferred physical FK is completed. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public UUID recordMovementWithId(UUID reservedMovementId,MovementRequest req){
+        if(reservedMovementId==null||req==null||!(req.costReference() instanceof InventoryMovementCostReference.ProcurementStockIn stock)
+                ||stock.stockInItemId()==null||!stock.stockInItemId().equals(req.sourceItemId()))
+            throw new IllegalArgumentException("a reserved movement requires its exact procurement stock-in reference");
+        return recordMovementInternal(reservedMovementId,req);
+    }
+
+    private UUID recordMovementInternal(UUID reservedMovementId,MovementRequest req){
         tx.bind();
         if (req == null || req.goodsId() == null || req.warehouseId() == null
                 || req.sourceDocType() == null || req.sourceDocType().isBlank()) {
@@ -174,20 +203,18 @@ public class StockService {
         // Re-entrant when the top-level document already batch-locked its keys;
         // mandatory as a safe fallback for future single-movement callers.
         inventoryLock.lock(new InventoryKey(req.goodsId(), req.colorId()));
+        var physicalRows=balanceRepo.readPhysicalSnapshot(req.warehouseId(),req.goodsId(),req.colorId());
+        if(physicalRows.size()>1)throw new ApiException(ErrorCode.CONFLICT,"库存维度存在重复余额，请先核对");
+        var physical=physicalRows.isEmpty()?null:physicalRows.getFirst();
         if (req.direction() == DIR_OUT) {
-            StockBalance balance = balanceRepo
-                    .findByWarehouseIdAndGoodsIdAndColorId(
-                            req.warehouseId(), req.goodsId(), req.colorId())
-                    .orElse(null);
-            BigDecimal available = balance == null
-                    ? BigDecimal.ZERO : balance.getQty();
+            BigDecimal available = physical == null ? BigDecimal.ZERO : physical.getQty();
             if (available.compareTo(req.qty()) < 0) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
                         "目标仓库存不足：当前 " + available.stripTrailingZeros().toPlainString()
                                 + "，本次出库 " + req.qty().stripTrailingZeros().toPlainString());
             }
-            BigDecimal availableWeight = balance == null ? null : balance.getWeight();
+            BigDecimal availableWeight = physical == null ? null : physical.getWeight();
             if (req.weight() != null
                     && availableWeight != null
                     && availableWeight.compareTo(req.weight()) < 0) {
@@ -222,6 +249,20 @@ public class StockService {
         OffsetDateTime ts = req.transactionDate() != null ? req.transactionDate() : OffsetDateTime.now();
 
         StockMovement m = new StockMovement();
+        if(reservedMovementId!=null){
+            var prior=movementRepo.findById(reservedMovementId);
+            if(prior.isPresent()){
+                StockMovement old=prior.get();
+                if(Objects.equals(old.getSourceDocType(),req.sourceDocType())&&Objects.equals(old.getSourceDocId(),req.sourceDocId())
+                        &&Objects.equals(old.getSourceItemId(),req.sourceItemId())&&Objects.equals(old.getGoodsId(),req.goodsId())
+                        &&Objects.equals(old.getColorId(),req.colorId())&&Objects.equals(old.getWarehouseId(),req.warehouseId())
+                        &&old.getDirection()==req.direction()&&old.getMovementType()==req.movementType()&&old.getQty().compareTo(req.qty())==0
+                        &&Objects.equals(old.getUnitId(),req.unitId())&&Objects.equals(old.getActualWeightUnitId(),req.weightUnitId())
+                        &&sameDecimal(old.getUnitRate(),req.unitRate())&&sameDecimal(old.getWeight(),req.weight()))return old.getId();
+                throw new ApiException(ErrorCode.CONFLICT,"预留库存流水UUID对应不同来源或数量，不能覆盖");
+            }
+            m.setId(reservedMovementId);
+        }
         m.setTransactionDate(ts);
         m.setMovementType(req.movementType());
         m.setSourceDocType(req.sourceDocType());
@@ -234,7 +275,10 @@ public class StockService {
         m.setQty(req.qty());
         m.setUnitId(req.unitId());
         m.setUnitRate(req.unitRate());
-        m.setAmountLocal(req.amountLocal());
+        BigDecimal quantityBefore=physical==null?BigDecimal.ZERO:physical.getQty();
+        var valued=valuation.value(m.getId(),req,quantityBefore,ts);
+        if(valued.replayed())return valued.movementId();
+        m.setAmountLocal(valued.knownValueLocal());
         m.setWeight(req.weight());
         m.setActualWeightUnitId(req.weightUnitId());
         m.setRemark(req.remark());
@@ -242,11 +286,13 @@ public class StockService {
 
         BigDecimal dir = BigDecimal.valueOf(req.direction());
         BigDecimal signedQty = req.qty().multiply(dir);
-        BigDecimal signedAmt = (req.amountLocal() == null ? BigDecimal.ZERO : req.amountLocal()).multiply(dir);
+        BigDecimal signedAmt = valued.knownValueLocal().multiply(dir);
         // 重量：null=调用方不维护（旧调用方/无重量业务），upsert 内部保持原值；非 null 才按方向增减。
         BigDecimal signedWgt = req.weight() == null ? null : req.weight().multiply(dir);
         balanceRepo.upsertBalance(req.warehouseId(), req.goodsId(), req.colorId(),
                 signedQty, signedAmt, signedWgt, ts);
         return m.getId();
     }
+
+    private static boolean sameDecimal(BigDecimal a,BigDecimal b){return a==null?b==null:b!=null&&a.compareTo(b)==0;}
 }

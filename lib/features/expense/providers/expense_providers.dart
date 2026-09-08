@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/master_name_provider.dart'
+    show masterDataSessionKeyProvider;
 import '../../basic_data/models/account_node.dart';
 import '../../basic_data/models/payment_style_node.dart';
 import '../../basic_data/repositories/account_repository.dart';
@@ -48,18 +50,26 @@ final expenseListProvider =
 
 class ExpenseListNotifier
     extends AutoDisposeAsyncNotifier<PagedResult<ExpenseClaim>> {
+  int _page = 1;
+  ExpenseFilter? _lastFilter;
+
   @override
   Future<PagedResult<ExpenseClaim>> build() async {
+    ref.listen(masterDataSessionKeyProvider, (previous, next) {
+      if (previous == next) return;
+      _page = 1;
+      state = const AsyncLoading();
+      ref.invalidateSelf();
+    });
     final filter = ref.watch(expenseFilterProvider);
+    if (_lastFilter != filter) _page = 1;
+    _lastFilter = filter;
     return ref
         .watch(expenseRepositoryProvider)
-        .listMine(statuses: filter.apiStatuses);
+        .listMine(statuses: filter.apiStatuses, page: _page);
   }
 
-  Future<void> refresh() async {
-    state = const AsyncLoading();
-    state = await AsyncValue.guard(() => _fetch(1));
-  }
+  Future<void> refresh() => _reloadPage(1);
 
   Future<void> previousPage() async {
     final current = state.valueOrNull;
@@ -75,22 +85,24 @@ class ExpenseListNotifier
 
   Future<void> _goTo(int page) async {
     if (state.isLoading) return;
-    state = const AsyncLoading<PagedResult<ExpenseClaim>>().copyWithPrevious(
-      state,
-    );
-    state = await AsyncValue.guard(() => _fetch(page));
+    await _reloadPage(page);
   }
 
-  Future<PagedResult<ExpenseClaim>> _fetch(int page) {
-    final filter = ref.read(expenseFilterProvider);
-    return ref
-        .read(expenseRepositoryProvider)
-        .listMine(statuses: filter.apiStatuses, page: page);
+  Future<void> _reloadPage(int page) async {
+    _page = page;
+    state = const AsyncLoading();
+    ref.invalidateSelf();
+    try {
+      await future;
+    } catch (_) {
+      // The current error is exposed in provider state, as before.
+    }
   }
 }
 
 final expenseDetailProvider = FutureProvider.autoDispose
     .family<ExpenseClaim, String>((ref, id) {
+      ref.watch(masterDataSessionKeyProvider);
       return ref.watch(expenseRepositoryProvider).getById(id);
     });
 

@@ -31,9 +31,10 @@ class ProductionHubPage extends ConsumerWidget {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
-    final canCreatePlan = permissions.contains(
-      Perm.productionMaterialAnalysisCreate,
-    );
+    final newPlanLocation = RoutePath.productionPlanNew();
+    final canCreatePlan =
+        requiredAnyPermFor(newPlanLocation)!.any(permissions.contains) &&
+        requiredAllPermsFor(newPlanLocation).every(permissions.contains);
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.productionHubTitle,

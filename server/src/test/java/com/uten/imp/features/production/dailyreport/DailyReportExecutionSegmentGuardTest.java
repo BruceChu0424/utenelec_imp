@@ -65,23 +65,18 @@ class DailyReportExecutionSegmentGuardTest {
     }
 
     @Test
-    void dispatchedZeroMaterialSegmentAutoStartsWithTheFirstReport() {
-        Fixture fixture = fixture("DISPATCHED", "10", "0");
-        UUID reportId = UUID.randomUUID();
-
-        assertDoesNotThrow(() -> fixture.guard.validateDraft(
-                reportId,
-                fixture.workshopId,
-                List.of(fixture.line("2"))));
-
-        verify(fixture.notices).resolveProductionWorkshopTasks(
-                List.of(fixture.segmentId), "REPORT_STARTED");
-        verify(fixture.notices).notifyExecutionSegmentTransition(
-                fixture.segmentId, true);
+    void unstartedSegmentsCannotUseReportingToStartEvenWithNoMaterialRequirement() {
+        for (String status : List.of("READY", "DISPATCHED")) {
+            Fixture fixture = fixture(status, "10", "0");
+            ApiException error = assertThrows(ApiException.class,
+                    () -> fixture.guard.validateDraft(UUID.randomUUID(),
+                            fixture.workshopId, List.of(fixture.line("2"))));
+            assertTrue(error.getMessage().contains("开工后才能报工"));
+        }
     }
 
     @Test
-    void demandedReadySegmentCannotAutoStartBeforeEveryDemandIsIssued() {
+    void demandedReadySegmentCannotReportBeforeExplicitStart() {
         Fixture fixture = fixture(
                 "READY", "10", "0", "DEMANDED", "ALLOCATED");
 
@@ -92,7 +87,7 @@ class DailyReportExecutionSegmentGuardTest {
                         fixture.workshopId,
                         List.of(fixture.line("2"))));
 
-        assertTrue(error.getMessage().contains("仓库尚未完成全部生产领料"));
+        assertTrue(error.getMessage().contains("开工后才能报工"));
     }
 
     @Test
@@ -261,7 +256,7 @@ class DailyReportExecutionSegmentGuardTest {
         }
         return new Fixture(
                 new DailyReportExecutionSegmentGuard(
-                        em, access, currentUser, notices),
+                        em, access, currentUser),
                 segmentId,
                 planItemId,
                 goodsId,

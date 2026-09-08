@@ -98,15 +98,13 @@ void main() {
         find.byKey(const Key('operations-workbench-purchase-batch')),
       );
       expect(batchButton.onPressed, isNull);
+      // 2026-09-06 顶部选中条退役：已选计数走右下角悬浮组标准胶囊
+      // （与物料分桶页/我的车间任务同款），业务按钮与胶囊同框。
       expect(
-        find.descendant(
-          of: find.byKey(const Key('operations-workbench-selection-bar')),
-          matching: find.byKey(
-            const Key('operations-workbench-purchase-batch'),
-          ),
-        ),
+        find.byKey(const Key('operations-workbench-selection-bar')),
         findsNothing,
       );
+      expect(find.text('已选 0 项'), findsOneWidget);
 
       await tester.tap(find.byType(Checkbox).at(0));
       await tester.pump();
@@ -132,7 +130,7 @@ void main() {
       await tester.tap(find.byType(Checkbox).at(2));
       await tester.tap(find.byType(Checkbox).at(3));
       await tester.pump();
-      expect(find.text('先生成/挂接采购申请'), findsOneWidget);
+      // 选中不可执行任务：按钮置灰，原因在 Tooltip/点击提示里（不再占选中条）。
       batchButton = tester.widget<UtenButton>(
         find.byKey(const Key('operations-workbench-purchase-batch')),
       );
@@ -141,7 +139,10 @@ void main() {
       await tester.tap(find.byType(Checkbox).at(3));
       await tester.tap(find.byType(Checkbox).at(4));
       await tester.pump();
-      expect(find.text('计划申请尚未下达，请刷新后重试'), findsOneWidget);
+      batchButton = tester.widget<UtenButton>(
+        find.byKey(const Key('operations-workbench-purchase-batch')),
+      );
+      expect(batchButton.onPressed, isNull);
     },
   );
 

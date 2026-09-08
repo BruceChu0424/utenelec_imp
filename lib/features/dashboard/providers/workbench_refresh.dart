@@ -13,12 +13,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../notice/providers/notice_providers.dart';
 import '../../production/providers/production_pending_provider.dart';
+import '../../production/providers/production_workshop_task_count_provider.dart';
 import '../../purchase/providers/purchase_task_count_provider.dart';
 import '../../rd_task/providers/rd_task_count_provider.dart';
 import '../../subcontract/providers/subcontract_task_count_provider.dart';
 import '../../visitor_approval/providers/visitor_pending_count_provider.dart';
 import '../../finance/providers/finance_procurement_approval_count_provider.dart';
 import '../../finance/providers/sales_order_finance_confirmation_count_provider.dart';
+import '../../../shared/providers/sales_shipment_finance_count_provider.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/providers/production_draw_count_provider.dart';
 import '../../warehouse/providers/production_finished_inbound_task_count_provider.dart';
@@ -39,6 +41,7 @@ import '../../../shared/models/procurement_inbound.dart';
 /// 时存活，invalidate 触发重拉，使「返回工作台」「新通知到达」时这些角标即时更新。
 void refreshGlobalBadges(WidgetRef ref) {
   ref.read(productionPendingCountProvider.notifier).refresh();
+  ref.read(productionWorkshopTaskCountProvider.notifier).refresh();
   ref.read(purchaseTaskCountProvider.notifier).refresh();
   ref.read(subcontractTaskCountProvider.notifier).refresh();
   ref.read(rdTaskCountProvider.notifier).refresh();
@@ -49,6 +52,7 @@ void refreshGlobalBadges(WidgetRef ref) {
   // 钱流/仓库/委外 autoDispose 计数（工作台卡片角标聚合源）
   ref.invalidate(financeProcurementApprovalCountProvider);
   ref.invalidate(salesOrderFinanceConfirmationCountProvider);
+  ref.invalidate(salesShipmentFinanceCountProvider);
   ref.invalidate(financeArrivalExceptionCountProvider);
   ref.invalidate(warehouseSalesOutboundPendingCountProvider);
   ref.invalidate(warehouseSubcontractOutboundCountProvider);

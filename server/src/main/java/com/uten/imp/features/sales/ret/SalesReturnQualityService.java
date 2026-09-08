@@ -53,6 +53,8 @@ public class SalesReturnQualityService {
     private final TxSessionVars tx;
     private final SalesReturnRepository returnRepo;
     private final SalesDocumentAccessPolicy accessPolicy;
+    private final com.uten.imp.features.sales.SalesMutationFootprintService mutationFootprint;
+    private final com.uten.imp.application.port.SalesReturnInventoryValuePort inventoryValue;
 
     /** Creates immutable receipt evidence and the mutable quarantine projection. */
     @Transactional(propagation = Propagation.MANDATORY)
@@ -159,6 +161,7 @@ public class SalesReturnQualityService {
     public List<ReturnQualityItemDto> dispose(
             UUID returnId, UUID returnItemId, ReturnQualityDispositionRequest request) {
         tx.bind();
+        var sourceGuard = mutationFootprint.beginReturn(returnId);
         SalesReturn salesReturn = returnRepo.findById(returnId)
                 .filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(
@@ -217,6 +220,7 @@ public class SalesReturnQualityService {
                 eventId, qualityItemId, action, requested, reason)) {
             return loadProjection(returnId);
         }
+        sourceGuard.verifyUnchanged();
         String currentStatus = (String) row[10];
         if (!PENDING.equals(currentStatus) && !PARTIAL.equals(currentStatus)) {
             throw new ApiException(ErrorCode.CONFLICT, "该退货质检冻结明细已全部处置或已撤销");
@@ -240,20 +244,12 @@ public class SalesReturnQualityService {
         BigDecimal unitRate = decimal(row[5]);
         OffsetDateTime now = OffsetDateTime.now();
         UUID actor = currentUser.requireEmployeeId();
+        BigDecimal releasedWeight=null;
 
         if ("GOOD_RELEASE".equals(action)) {
             stockService.lockInventory(List.of(new InventoryKey(goodsId, colorId)));
-            BigDecimal sourceAmount = decimal(row[11]);
-            BigDecimal releasedAmount = proratedIncrement(
-                    sourceAmount, received, released, requested);
-            BigDecimal releasedWeight = proratedIncrementNullable(
+            releasedWeight = proratedIncrementNullable(
                     nullableDecimal(row[13]), received, released, requested);
-            stockService.recordMovement(new StockService.MovementRequest(
-                    now, StockService.TYPE_SALES_RETURN, StockService.SRC_SALES_RETURN,
-                    returnId, eventId, goodsId, colorId, warehouseId,
-                    StockService.DIR_IN, requested, unitId, unitRate,
-                    releasedAmount, "退货质检良品释放：" + reason,
-                    releasedWeight));
             released = released.add(requested);
         } else if ("SCRAP".equals(action)) {
             scrapped = scrapped.add(requested);
@@ -284,6 +280,14 @@ public class SalesReturnQualityService {
             throw new ApiException(ErrorCode.CONFLICT, "退货质检冻结状态已变化，请刷新后重试");
         }
         appendEvent(eventId, qualityItemId, action, requested, reason, actor, now);
+        if ("GOOD_RELEASE".equals(action)) {
+            stockService.recordMovement(new StockService.MovementRequest(
+                    now,StockService.TYPE_SALES_RETURN,StockService.SRC_SALES_RETURN,
+                    returnId,eventId,goodsId,colorId,warehouseId,StockService.DIR_IN,requested,unitId,unitRate,
+                    null,"退货质检良品释放："+reason,releasedWeight,null,
+                    new com.uten.imp.application.port.InventoryMovementCostReference.SalesReturnQuality(qualityItemId,eventId)));
+        }
+        inventoryValue.qualityEventRecorded(eventId,currentUser.requireId());
         return loadProjection(returnId);
     }
 
@@ -301,6 +305,7 @@ public class SalesReturnQualityService {
     public List<ReturnQualityItemDto> correct(
             UUID returnId, UUID returnItemId, ReturnQualityCorrectionRequest request) {
         tx.bind();
+        var sourceGuard = mutationFootprint.beginReturn(returnId);
         SalesReturn salesReturn = returnRepo.findById(returnId)
                 .filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(
@@ -356,6 +361,7 @@ public class SalesReturnQualityService {
         if (isCorrectionReplay(eventId, qualityItemId, action, requested, reason)) {
             return loadProjection(returnId);
         }
+        sourceGuard.verifyUnchanged();
         String currentStatus = (String) row[10];
         if (!PARTIAL.equals(currentStatus) && !DISPOSED.equals(currentStatus)) {
             throw new ApiException(ErrorCode.CONFLICT,
@@ -385,23 +391,14 @@ public class SalesReturnQualityService {
         BigDecimal unitRate = decimal(row[5]);
         OffsetDateTime now = OffsetDateTime.now();
         UUID actor = currentUser.requireEmployeeId();
+        BigDecimal revokedWeight=null;
 
         if ("GOOD_RELEASE".equals(action)) {
             stockService.lockInventory(List.of(new InventoryKey(goodsId, colorId)));
             requireUnpromisedStock(warehouseId, goodsId, colorId, requested);
-            // 金额按累计舍入口径反取该切片（全量撤回时与原释放金额严格互抵）。
-            BigDecimal sourceAmount = decimal(row[11]);
-            BigDecimal revokedAmount = proratedIncrement(
-                    sourceAmount, received, released.subtract(requested), requested);
-            BigDecimal revokedWeight = proratedIncrementNullable(
+            revokedWeight = proratedIncrementNullable(
                     nullableDecimal(row[13]), received,
                     released.subtract(requested), requested);
-            stockService.recordMovement(new StockService.MovementRequest(
-                    now, StockService.TYPE_SALES_RETURN, StockService.SRC_SALES_RETURN,
-                    returnId, eventId, goodsId, colorId, warehouseId,
-                    StockService.DIR_OUT, requested, unitId, unitRate,
-                    revokedAmount, "退货质检良品释放撤回：" + reason,
-                    revokedWeight));
             released = released.subtract(requested);
         } else if ("SCRAP".equals(action)) {
             scrapped = scrapped.subtract(requested);
@@ -437,11 +434,19 @@ public class SalesReturnQualityService {
             throw new ApiException(ErrorCode.CONFLICT, "退货质检冻结状态已变化，请刷新后重试");
         }
         appendEvent(eventId, qualityItemId, action + "_REVOKED", requested, reason, actor, now);
+        if ("GOOD_RELEASE".equals(action)) {
+            stockService.recordMovement(new StockService.MovementRequest(
+                    now,StockService.TYPE_SALES_RETURN,StockService.SRC_SALES_RETURN,
+                    returnId,eventId,goodsId,colorId,warehouseId,StockService.DIR_OUT,requested,unitId,unitRate,
+                    null,"退货质检良品释放撤回："+reason,revokedWeight,null,
+                    new com.uten.imp.application.port.InventoryMovementCostReference.SalesReturnQuality(qualityItemId,eventId)));
+        }
+        inventoryValue.qualityEventRecorded(eventId,currentUser.requireId());
         return loadProjection(returnId);
     }
 
     /**
-     * 良品释放撤回的库存充分性：该仓余额 − 本仓生效预留 ≥ 撤回量。
+     * 良品释放撤回的库存充分性：该仓余额减本仓与全局生效预留，不得小于撤回量。
      * 已被订单预留（承诺）或已出库的释放量不得凭纠错抽走——那会破坏既有承诺，
      * 须先让单处置预留或走盘点/人工流程。
      */
@@ -459,7 +464,7 @@ public class SalesReturnQualityService {
                              FROM stock_reservations r
                             WHERE COALESCE(r.is_deleted, FALSE) = FALSE
                               AND r.status = 0
-                              AND r.warehouse_id = :wid
+                              AND (r.warehouse_id IS NULL OR r.warehouse_id = :wid)
                               AND r.goods_id = :gid
                               AND (r.color_id IS NOT DISTINCT FROM :cid))
                         """)

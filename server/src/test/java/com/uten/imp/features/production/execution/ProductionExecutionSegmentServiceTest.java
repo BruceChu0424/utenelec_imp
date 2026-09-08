@@ -21,6 +21,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -135,6 +136,46 @@ class ProductionExecutionSegmentServiceTest {
     }
 
     @Test
+    void materialRecheckUsesInventoryLocksBeforeSegmentAndRecordsReadyVersion() {
+        UUID warehouseId = UUID.randomUUID();
+        when(readiness.lockManualReleaseDimensions(planId, segmentId)).thenReturn(warehouseId);
+        Query owner = query();
+        when(owner.getResultList()).thenReturn(List.of(planMakerId));
+        Query lock = locked("WAITING", 5L, "CONFIRMED", null, true);
+        Query replay = query();
+        when(replay.getResultList()).thenReturn(List.of());
+        Query view = query();
+        when(view.getResultList()).thenReturn(Collections.singletonList(viewRow(null, 6L)));
+        Query event = query();
+        when(em.createNativeQuery(anyString())).thenReturn(owner, lock, replay, view, event);
+        service.recheckMaterial(planId, segmentId,
+                new SegmentTransitionRequest(5L, "material-recheck-key-0001"));
+        var ordered = inOrder(readiness, lock);
+        ordered.verify(readiness).lockManualReleaseDimensions(planId, segmentId);
+        ordered.verify(lock).setParameter("planId", planId);
+        ordered.verify(readiness).promoteAfterMaterialRecheck(segmentId, warehouseId);
+        verify(event).setParameter("action", "RECHECK_MATERIAL");
+        verify(event).setParameter("resultingVersion", 6L);
+        verify(access, times(2)).requireScopedOperationWritable(planMakerId,
+                "无权操作此生产计划的执行任务", "production_execution:start");
+    }
+
+    @Test
+    void materialRecheckCannotOverrideAnExplicitManualDefer() {
+        Query owner = query();
+        when(owner.getResultList()).thenReturn(List.of(planMakerId));
+        Query lock = locked("WAITING", 5L, "CONFIRMED", null, false);
+        Query replay = query();
+        when(replay.getResultList()).thenReturn(List.of());
+        when(em.createNativeQuery(anyString())).thenReturn(owner, lock, replay);
+        assertThat(assertThrows(ApiException.class, () -> service.recheckMaterial(
+                planId, segmentId, new SegmentTransitionRequest(5L, "recheck-defer-blocked"))))
+                .hasMessageContaining("人工暂缓");
+        verify(readiness, never()).promoteAfterMaterialRecheck(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void confirmedPackageCannotCancelOneSegment() {
         stubLockAndReplay("READY", 2L, "CONFIRMED");
 
@@ -194,7 +235,7 @@ class ProductionExecutionSegmentServiceTest {
                 1L, "assign-key-0001", workshopId, null, null, null, null));
 
         verify(workshopPreferences).learnSelection(
-                goodsId, workshopId, employeeId);
+                goodsId, workshopId, null, employeeId);
     }
 
     @Test
@@ -245,7 +286,7 @@ class ProductionExecutionSegmentServiceTest {
         service.assign(planId, segmentId, request);
 
         verify(workshopPreferences, never()).learnSelection(
-                goodsId, workshopId, employeeId);
+                goodsId, workshopId, null, employeeId);
     }
 
     @Test
@@ -321,6 +362,80 @@ class ProductionExecutionSegmentServiceTest {
                 new SegmentTransitionRequest(5L, "start-key-fulfilled")));
 
         verify(chainNotice).notifyExecutionSegmentTransition(segmentId, true);
+    }
+
+    @Test
+    void readySegmentStartRequiresCompleteAssignmentBeforeStarting() {
+        // 2026-09-06 车间任务页改版：READY（物料齐套）可直接开工，但必须先完整
+        // 分配车间/负责人/日期（与派工同口径）——未分配完整时 fail-closed。
+        when(currentUser.requireId()).thenReturn(UUID.randomUUID());
+        Query lock = locked("READY", 2L, "CONFIRMED");
+        Query replay = query();
+        when(replay.getResultList()).thenReturn(List.of());
+        Query view = query();
+        when(view.getResultList()).thenReturn(Collections.singletonList(
+                viewRow("READY", null, 2L, 2, 2, true)));
+        when(em.createNativeQuery(anyString())).thenReturn(lock, replay, view);
+
+        ApiException error = assertThrows(ApiException.class, () -> service.start(
+                planId, segmentId, new SegmentTransitionRequest(2L, "start-key-ready")));
+        assertThat(error.getMessage()).contains("工单尚未保存完整的生产车间和负责人");
+    }
+
+    @Test
+    void plannedWorkshopAndResponsibleEmployeeStartWithoutAnOptionalEndDate() {
+        UUID workshop = UUID.randomUUID(), responsible = UUID.randomUUID();
+        Query lock = locked("READY", 2L, "CONFIRMED", workshop);
+        Query replay = query();
+        when(replay.getResultList()).thenReturn(List.of());
+        Object[] current = viewRow("READY", workshop, 2L, 2, 2, true);
+        current[19] = responsible;
+        current[21] = java.time.LocalDate.of(2026, 9, 6);
+        current[22] = null;
+        Query before = query();
+        when(before.getResultList()).thenReturn(Collections.singletonList(current));
+        Query demands = query();
+        when(demands.getResultList()).thenReturn(Collections.singletonList(
+                new Object[]{UUID.randomUUID(), "FULFILLED"}));
+        Query update = query();
+        when(update.executeUpdate()).thenReturn(1);
+        Query event = query();
+        Query after = query();
+        when(after.getResultList()).thenReturn(Collections.singletonList(
+                viewRow("IN_PROGRESS", workshop, 3L, 2, 2, true)));
+        Query manualStart = query(), cleanup = query();
+        when(em.createNativeQuery(anyString())).thenReturn(
+                lock, replay, before, demands, manualStart, update, event, after, cleanup);
+        var result = service.start(planId, segmentId,
+                new SegmentTransitionRequest(2L, "start-planned-assignment"));
+        assertThat(result.status()).isEqualTo("IN_PROGRESS");
+        verify(assignmentValidator).validate(new ProductionAssignmentValidator.Assignment(
+                workshop, null, responsible, java.time.LocalDate.of(2026, 9, 6), null));
+        verifyNoInteractions(workshopPreferences);
+        verify(event).setParameter("action", "START");
+        verify(manualStart).setParameter("segmentId", segmentId.toString());
+        verify(manualStart).setParameter("expectedVersion", "2");
+        var ordered = inOrder(manualStart, update, event, cleanup);
+        ordered.verify(manualStart).getSingleResult();
+        ordered.verify(update).executeUpdate();
+        ordered.verify(event).executeUpdate();
+        ordered.verify(cleanup).setParameter("segmentId", "");
+        ordered.verify(cleanup).setParameter("expectedVersion", "");
+        ordered.verify(cleanup).getSingleResult();
+    }
+
+    @Test
+    void waitingSegmentCannotStartDirectly() {
+        // 等料段（WAITING）不在开工白名单内：状态已变化 fail-closed。
+        when(currentUser.requireId()).thenReturn(UUID.randomUUID());
+        Query lock = locked("WAITING", 2L, "CONFIRMED");
+        Query replay = query();
+        when(replay.getResultList()).thenReturn(List.of());
+        when(em.createNativeQuery(anyString())).thenReturn(lock, replay);
+
+        ApiException error = assertThrows(ApiException.class, () -> service.start(
+                planId, segmentId, new SegmentTransitionRequest(2L, "start-key-waiting")));
+        assertThat(error.getMessage()).contains("执行段状态已经变化");
     }
 
     @Test
@@ -632,7 +747,9 @@ class ProductionExecutionSegmentServiceTest {
                 BigDecimal.ZERO,
                 BigDecimal.ONE, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                version
+                version,
+                // V487：zero_material（零料直制段展示「无需领料 · 可开工」）。
+                false
         };
     }
     private void stubLockAndReplay(

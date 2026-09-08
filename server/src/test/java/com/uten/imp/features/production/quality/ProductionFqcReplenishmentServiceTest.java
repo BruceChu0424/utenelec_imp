@@ -60,7 +60,8 @@ class ProductionFqcReplenishmentServiceTest {
                         mock(MaterialAnalysisService.class),
                         productionAccess,
                         mock(SecurityContextCurrentUser.class),
-                        mock(TxSessionVars.class));
+                        mock(TxSessionVars.class),
+                org.mockito.Mockito.mock(com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
 
         assertThat(service.pending(1, 20).getTotal()).isZero();
 

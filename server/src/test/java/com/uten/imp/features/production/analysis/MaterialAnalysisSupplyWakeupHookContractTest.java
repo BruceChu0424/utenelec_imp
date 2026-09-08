@@ -83,13 +83,13 @@ class MaterialAnalysisSupplyWakeupHookContractTest {
                 .doesNotContain("purchaseSupply.afterPurchaseInspectionStockInConfirmed(")
                 .doesNotContain("subcontractSupply.afterSubcontractInspectionStockInConfirmed(");
         assertThat(stockIn)
-                .contains("stockService.recordMovement(")
+                .contains("stockService.recordMovementWithId(")
                 .contains("incrementStockedProjection(")
                 .contains("advanceProductionAfterStockIn(")
                 .contains("purchaseSupply.afterPurchaseInspectionStockInConfirmed(")
                 .contains("subcontractSupply.afterSubcontractInspectionStockInConfirmed(");
         assertOrdered(stockIn,
-                "stockService.recordMovement(",
+                "stockService.recordMovementWithId(",
                 "incrementStockedProjection(");
         assertOrdered(stockIn,
                 "incrementStockedProjection(",

@@ -248,7 +248,7 @@ class _ProductionMaterialAnalysisHistoryPageState
           size: UtenButtonSize.large,
           icon: Icons.refresh_rounded,
           isLoading: _loading,
-          onPressed: _loading ? null : () => _load(page: _page?.page ?? 1),
+          onPressed: _loading ? null : () => _load(),
           child: const Text('刷新'),
         ),
       ],

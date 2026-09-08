@@ -322,7 +322,7 @@ class _ProductionFqcInspectionsPageState
               type: UtenButtonType.tonal,
               icon: Icons.refresh_rounded,
               isLoading: _loading && result != null,
-              onPressed: _loading ? null : _load,
+              onPressed: _loading ? null : () => _load(page: 1),
               child: const Text('刷新'),
             ),
           ),

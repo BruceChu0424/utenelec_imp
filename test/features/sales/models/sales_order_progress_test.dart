@@ -62,4 +62,30 @@ void main() {
       expect(salesProgressStageLabel(row.stage), '财务驳回');
     },
   );
+
+  test(
+    'terminal stages (canceled/closed) parse and label for history view',
+    () {
+      final canceled = SalesOrderProgressRow.fromJson(const {
+        'orderId': 'order-x',
+        'billNo': 'SO-X',
+        'orderQty': 10,
+        'stage': 'CANCELED',
+        'stopped': true,
+      });
+      final closed = SalesOrderProgressRow.fromJson(const {
+        'orderId': 'order-y',
+        'billNo': 'SO-Y',
+        'orderQty': 10,
+        'stage': 'CLOSED',
+        'closed': true,
+      });
+
+      expect(canceled.stopped, isTrue);
+      expect(canceled.closed, isFalse);
+      expect(salesProgressStageLabel(canceled.stage), '已中止');
+      expect(closed.closed, isTrue);
+      expect(salesProgressStageLabel(closed.stage), '已结案');
+    },
+  );
 }

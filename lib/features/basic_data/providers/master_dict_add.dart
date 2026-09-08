@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
@@ -99,20 +100,16 @@ Future<String?> showNameAddSheet({
                           TextField(
                             controller: ctl,
                             autofocus: true,
-                            decoration: InputDecoration(
-                              labelText: '名称',
-                              border: const OutlineInputBorder(),
-                              isDense: true,
-                              error: utenFieldError(error),
+                            decoration: UtenInputDecoration(
+                              InputDecoration(
+                                labelText: '名称',
+                                border: const OutlineInputBorder(),
+                                isDense: true,
+                                error: utenFieldError(error),
+                              ),
+                              info: '编号保存后自动生成，状态默认「使用」',
                             ),
                             onSubmitted: (_) => doSave(),
-                          ),
-                          const SizedBox(height: UtenSpacing.s4),
-                          Text(
-                            '编号保存后自动生成，状态默认「使用」',
-                            style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-                            ),
                           ),
                         ],
                       ),

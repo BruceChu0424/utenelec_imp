@@ -34,7 +34,14 @@ void main() {
     await tester.tap(find.text('保存成本预算'));
     await tester.pump();
 
-    expect(find.text('加工费不能为负数'), findsOneWidget);
+    // 2026-09-05 ⓘ 约定：字段错误经 UtenInputDecoration 收进 ⓘ 披露
+    //（Tooltip.message 携带全文），按消息谓词断言。
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is Tooltip && (w.message ?? '').contains('加工费不能为负数'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('请先修正标红的成本字段后再保存'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -61,7 +68,12 @@ void main() {
     await tester.tap(find.text('保存成本预算'));
     await tester.pump();
 
-    expect(find.text('人工比率必须在 0% 到 100% 之间'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is Tooltip && (w.message ?? '').contains('人工比率必须在 0% 到 100%'),
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 

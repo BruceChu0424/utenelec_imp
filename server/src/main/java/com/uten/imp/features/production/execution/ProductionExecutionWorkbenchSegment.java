@@ -39,5 +39,7 @@ public record ProductionExecutionWorkbenchSegment(
         String blockedReason,
         LocalDate planBeginDate,
         LocalDate planEndDate,
-        long lockVersion) {
+        long lockVersion,
+        boolean zeroMaterial,
+        boolean canRecheckMaterial) {
 }

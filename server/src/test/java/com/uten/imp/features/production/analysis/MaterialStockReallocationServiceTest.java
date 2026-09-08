@@ -4,8 +4,8 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
-import com.uten.imp.features.stock.InventoryKey;
-import com.uten.imp.features.stock.InventoryMutationLock;
+import com.uten.imp.application.concurrency.FulfillmentMutationLocks;
+import com.uten.imp.application.port.ProductionMutationFootprintPort;
 import com.uten.imp.security.OwnerVisibility;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -57,7 +57,8 @@ class MaterialStockReallocationServiceTest {
                 eq("REALLOCATE_IN"), eq(f.targetAnalysisId()),
                 eq(f.targetMaterialId()), any(), qty.capture(), anyString());
         assertThat(qty.getValue()).isEqualByComparingTo("4.0000");
-        verify(f.inventoryLock()).lock(new InventoryKey(f.goodsId(), null));
+        verify(f.mutationLocks()).acquire(any());
+        verify(f.footprints()).forAnalyses(List.of(f.sourceAnalysisId(),f.targetAnalysisId()));
         verify(f.analysisService()).requireCurrent(
                 f.sourceHeader(), 3L, SOURCE_FP);
         verify(f.analysisService()).requireCurrent(
@@ -269,7 +270,7 @@ class MaterialStockReallocationServiceTest {
         MaterialStockReallocationService service = new MaterialStockReallocationService(
                 em, mock(MaterialAnalysisService.class), entitlements,
                 mock(ProductionDocumentAccessPolicy.class),
-                mock(InventoryMutationLock.class), user, mock(TxSessionVars.class));
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),mock(ProductionMutationFootprintPort.class), user, mock(TxSessionVars.class));
 
         service.applyPriorityForOriginEvent(originEventId);
 
@@ -318,7 +319,7 @@ class MaterialStockReallocationServiceTest {
         MaterialStockReallocationService service = new MaterialStockReallocationService(
                 em, mock(MaterialAnalysisService.class), entitlements,
                 mock(ProductionDocumentAccessPolicy.class),
-                mock(InventoryMutationLock.class), user, mock(TxSessionVars.class));
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),mock(ProductionMutationFootprintPort.class), user, mock(TxSessionVars.class));
 
         service.applyPriorityForOriginEvent(originEventId);
 
@@ -394,7 +395,7 @@ class MaterialStockReallocationServiceTest {
         MaterialStockReallocationService service =
                 new MaterialStockReallocationService(
                         em, mock(MaterialAnalysisService.class), entitlements,
-                        access, mock(InventoryMutationLock.class),
+                        access, com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),mock(ProductionMutationFootprintPort.class),
                         mock(SecurityContextCurrentUser.class),
                         mock(TxSessionVars.class));
 
@@ -451,7 +452,12 @@ class MaterialStockReallocationServiceTest {
                 mock(PreplanStockEntitlementService.class);
         ProductionDocumentAccessPolicy access =
                 mock(ProductionDocumentAccessPolicy.class);
-        InventoryMutationLock inventory = mock(InventoryMutationLock.class);
+        FulfillmentMutationLocks locks=mock(FulfillmentMutationLocks.class);
+        ProductionMutationFootprintPort footprints=mock(ProductionMutationFootprintPort.class);
+        when(locks.acquire(any())).thenAnswer(invocation->{
+            ((java.util.function.Supplier<?>)invocation.getArgument(0)).get();
+            return mock(FulfillmentMutationLocks.Guard.class);
+        });
         SecurityContextCurrentUser currentUser =
                 mock(SecurityContextCurrentUser.class);
         TxSessionVars tx = mock(TxSessionVars.class);
@@ -464,8 +470,8 @@ class MaterialStockReallocationServiceTest {
                 new MaterialAnalysisService.AnalysisHeader(
                         targetAnalysis, warehouse, "ACTIVE", 7L,
                         TARGET_FP, OffsetDateTime.now(), targetMaker);
-        when(analysis.lockHeader(sourceAnalysis)).thenReturn(sourceHeader);
-        when(analysis.lockHeader(targetAnalysis)).thenReturn(targetHeader);
+        when(analysis.headerAfterPrelock(sourceAnalysis)).thenReturn(sourceHeader);
+        when(analysis.headerAfterPrelock(targetAnalysis)).thenReturn(targetHeader);
         when(analysis.detailInternal(sourceAnalysis, false)).thenReturn(view);
         when(access.scope()).thenReturn(new OwnerVisibility.OwnerScope(true, Set.of()));
         when(currentUser.requireId()).thenReturn(actor);
@@ -520,10 +526,10 @@ class MaterialStockReallocationServiceTest {
 
         MaterialStockReallocationService service =
                 new MaterialStockReallocationService(
-                        em, analysis, entitlements, access, inventory,
+                        em, analysis, entitlements, access, locks, footprints,
                         currentUser, tx);
         return new Fixture(
-                service, em, analysis, entitlements, access, inventory,
+                service, em, analysis, entitlements, access, locks, footprints,
                 view, sourceHeader, targetHeader, lot,
                 sourceAnalysis, targetAnalysis, sourceMaterial, targetMaterial,
                 warehouse, goods, unit, sourceMaker, targetMaker,
@@ -574,7 +580,8 @@ class MaterialStockReallocationServiceTest {
             MaterialAnalysisService analysisService,
             PreplanStockEntitlementService entitlements,
             ProductionDocumentAccessPolicy access,
-            InventoryMutationLock inventoryLock,
+            FulfillmentMutationLocks mutationLocks,
+            ProductionMutationFootprintPort footprints,
             AnalysisView view,
             MaterialAnalysisService.AnalysisHeader sourceHeader,
             MaterialAnalysisService.AnalysisHeader targetHeader,

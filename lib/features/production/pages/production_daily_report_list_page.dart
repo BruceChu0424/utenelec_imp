@@ -142,7 +142,7 @@ class _ProductionDailyReportListPageState
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新',
-            onPressed: () => _reload(),
+            onPressed: () => _reload(1),
           ),
         ],
       ),

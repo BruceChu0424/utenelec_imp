@@ -23,6 +23,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -127,18 +128,18 @@ class SubcontractChainNoticeTest {
         when(users.findById(makerUserId)).thenReturn(Optional.of(maker));
         when(permissions.permsOf(planner)).thenReturn(Set.of(
                 "notice:read",
-                "subcontract_preparation:view",
-                "subcontract_preparation:start"));
+                "production_material_analysis:view",
+                "production_material_analysis:route"));
         when(permissions.permsOf(production)).thenReturn(Set.of(
                 "notice:read",
-                "subcontract_preparation:view",
-                "subcontract_preparation:start"));
+                "production_material_analysis:view",
+                "production_material_analysis:route"));
         when(permissions.permsOf(oldProductionOnly)).thenReturn(Set.of(
                 "notice:read",
                 "production_material_analysis:view",
                 "production_material_analysis:create"));
         when(permissions.permsOf(preparationViewOnly)).thenReturn(Set.of(
-                "notice:read", "subcontract_preparation:view"));
+                "notice:read", "production_material_analysis:view"));
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc,
                 mock(BusinessEventPublisher.class));
@@ -148,23 +149,28 @@ class SubcontractChainNoticeTest {
                 planItemId,
                 new ObjectMapper().createObjectNode());
 
-        String taskRoute = "/subcontract/preparations?planItemId=" + planItemId;
+        String taskRoute = "/subcontract/orders/" + orderId;
+        // 2026-09-05 起为居中行动卡：aggregate 绑定计划行，目标件真实出仓后撤回。
         verify(notice).publishForUser(
                 eq(plannerId),
                 eq("待启动委外前置自制：WO-PREP-001"),
-                contains("allowedActions"),
+                contains("自动创建前置生产"),
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq(taskRoute),
-                eq(ChainNoticeService.EVENT_SUBCONTRACT_PREPARATION_REQUIRED));
+                eq(ChainNoticeService.EVENT_SUBCONTRACT_PREPARATION_REQUIRED),
+                isNull(),
+                eq(planItemId));
         verify(notice).publishForUser(
                 eq(productionId),
                 eq("待启动委外前置自制：WO-PREP-001"),
-                contains("allowedActions"),
+                contains("自动创建前置生产"),
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq(taskRoute),
-                eq(ChainNoticeService.EVENT_SUBCONTRACT_PREPARATION_REQUIRED));
+                eq(ChainNoticeService.EVENT_SUBCONTRACT_PREPARATION_REQUIRED),
+                isNull(),
+                eq(planItemId));
         verify(notice).publishForUser(
                 eq(makerUserId),
                 eq("委外前置自制待安排：WO-PREP-001"),
@@ -225,14 +231,14 @@ class SubcontractChainNoticeTest {
         when(users.findById(makerUserId)).thenReturn(Optional.of(maker));
         when(permissions.permsOf(planner)).thenReturn(Set.of(
                 "notice:read",
-                "subcontract_preparation:view",
-                "subcontract_preparation:start"));
+                "production_material_analysis:view",
+                "production_material_analysis:route"));
         when(permissions.permsOf(production)).thenReturn(Set.of(
                 "notice:read",
-                "subcontract_preparation:view",
-                "subcontract_preparation:start"));
+                "production_material_analysis:view",
+                "production_material_analysis:route"));
         when(permissions.permsOf(preparationViewOnly)).thenReturn(Set.of(
-                "notice:read", "subcontract_preparation:view"));
+                "notice:read", "production_material_analysis:view"));
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc,
                 mock(BusinessEventPublisher.class));
@@ -242,7 +248,7 @@ class SubcontractChainNoticeTest {
                 planItemId,
                 new ObjectMapper().createObjectNode());
 
-        String taskRoute = "/subcontract/preparations?planItemId=" + planItemId;
+        String taskRoute = "/subcontract/orders/" + orderId;
         verify(notice).publishForUser(
                 eq(plannerId),
                 eq("待补产委外缺口：WO-SHORT-001"),

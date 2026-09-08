@@ -69,6 +69,7 @@ class SalesOrderExchangeRateAuthorityTest {
     @Mock private AuditService auditService;
     @Mock private SalesMasterReferenceValidator referenceValidator;
     @Mock private TaskClaimService taskClaim;
+    @Mock private com.uten.imp.features.sales.SalesMutationFootprintService mutationFootprint;
 
     @InjectMocks private SalesOrderService service;
 
@@ -76,6 +77,10 @@ class SalesOrderExchangeRateAuthorityTest {
 
     @BeforeEach
     void stubGoodsSnapshots() {
+        Query basisLock = mock(Query.class);
+        lenient().when(em.createNativeQuery(contains("FOR NO KEY UPDATE"))).thenReturn(basisLock);
+        lenient().when(basisLock.setParameter(eq("ids"), any())).thenReturn(basisLock);
+        lenient().when(basisLock.getResultList()).thenReturn(List.of());
         Query goodsQuery = mock(Query.class);
         AtomicReference<List<UUID>> ids = new AtomicReference<>(List.of());
         lenient().when(em.createNativeQuery(contains("SELECT goods.id, goods.code, goods.name")))

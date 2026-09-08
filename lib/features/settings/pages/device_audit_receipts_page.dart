@@ -10,6 +10,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/audit/device_audit_store.dart';
@@ -317,11 +318,13 @@ class _SearchCard extends StatelessWidget {
             enableSuggestions: false,
             textInputAction: TextInputAction.search,
             onSubmitted: (_) => onSearch(),
-            decoration: InputDecoration(
-              labelText: '本地操作 ID',
-              hintText: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
-              error: utenFieldError(error),
-              prefixIcon: const Icon(Icons.fingerprint_rounded),
+            decoration: UtenInputDecoration(
+              InputDecoration(
+                labelText: '本地操作 ID',
+                hintText: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+                error: utenFieldError(error),
+                prefixIcon: const Icon(Icons.fingerprint_rounded),
+              ),
             ),
           ),
           const SizedBox(height: UtenSpacing.s12),

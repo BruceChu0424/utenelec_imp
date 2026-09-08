@@ -11,12 +11,16 @@ import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/concurrency/task_claim_session.dart';
+import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../finance_workflow_routes.dart';
@@ -52,6 +56,63 @@ class _FinanceProcurementApprovalTasksPageState
   Set<String> _selectedIds = <String>{};
   final Map<String, FinanceProcurementApprovalTask> _selectedTasksById = {};
   bool _busyDecision = false;
+  TaskClaimSession? _batchClaim;
+
+  @override
+  void dispose() {
+    _batchClaim?.releaseAll().ignore();
+    super.dispose();
+  }
+
+  Future<TaskClaimSession?> _claimSelection(
+    List<FinanceProcurementDecisionItem> commands,
+    String action,
+  ) async {
+    final claim = financeReviewClaim(
+      ProviderScope.containerOf(context, listen: false),
+    );
+    _batchClaim = claim;
+    setState(() => _busyDecision = true);
+    try {
+      await claim.claimAll(
+        'PROCUREMENT_FINANCE_APPROVE',
+        commands.map((command) => command.caseId),
+      );
+      if (!mounted || !claim.isReady) {
+        if (mounted) {
+          context.appWarning(claim.failureMessage ?? '整批未取得审核占用，请重试');
+        }
+        await _releaseBatchClaim(claim);
+        return null;
+      }
+      for (final command in commands) {
+        final review = await ref
+            .read(financeProcurementWorkflowRepositoryProvider)
+            .review(command.caseId);
+        if (!mounted ||
+            !claim.isReady ||
+            review.version != command.expectedVersion ||
+            !review.isPending ||
+            !review.allowedActions.contains(action)) {
+          if (mounted) context.appWarning('部分订货内容、资格或占用已变化，请刷新后重新核对');
+          await _releaseBatchClaim(claim);
+          return null;
+        }
+      }
+      if (mounted) setState(() => _busyDecision = false);
+      return claim;
+    } on Object {
+      if (mounted) context.appError('无法核对整批审核内容，请检查网络或权限后重试');
+      await _releaseBatchClaim(claim);
+      return null;
+    }
+  }
+
+  Future<void> _releaseBatchClaim(TaskClaimSession claim) async {
+    await claim.releaseAll();
+    if (identical(_batchClaim, claim)) _batchClaim = null;
+    if (mounted) setState(() => _busyDecision = false);
+  }
 
   bool get _allowed {
     return ref.read(isSuperAdminProvider) ||
@@ -199,6 +260,7 @@ class _FinanceProcurementApprovalTasksPageState
           task.allowedActions.contains('REJECT'));
 
   void _setSelectedIds(Set<String> next) {
+    if (_batchClaim != null) return;
     final currentItems =
         _result?.items ?? const <FinanceProcurementApprovalTask>[];
     final capped = next.length > _maxBatchSize;
@@ -243,102 +305,155 @@ class _FinanceProcurementApprovalTasksPageState
   }
 
   Future<void> _approveSelected() async {
-    if (_busyDecision) return;
+    if (_busyDecision || _batchClaim != null) return;
     final issue = _selectionIssue('APPROVE');
     if (issue != null) {
       context.appWarning(issue);
       return;
     }
     final count = _selectedIds.length;
-    final confirmed = await showUtenReviewerConfirmDialog(
-      context,
-      title: '批量通过($count 笔)',
-      confirmLabel: '确认批量通过',
-      actionLabel: '批量订货财务审核',
-      responsibilityDescription: '确认后，系统将以此登录员工记录整批订货财务审核责任。',
-      message: '${_selectedBillSummary()}。整批通过后订货立即生效，并分别生成仓库预计到货任务。',
-    );
-    if (!confirmed || !mounted) return;
     final commands = _selectedCommands;
-    await _runBatchAction(
-      () => ref
-          .read(financeProcurementWorkflowRepositoryProvider)
-          .approveOrdersBatch(commands),
-      '已批量通过 $count 笔订货审批',
-    );
+    final summary = _selectedBillSummary();
+    final claim = await _claimSelection(commands, 'APPROVE');
+    if (claim == null || !mounted) return;
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('批量通过($count 笔)'),
+          content: SizedBox(
+            width: 440,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const UtenReviewerResponsibilityNotice(
+                  actionLabel: '批量订货财务审核',
+                  description: '确认后，系统将以此登录员工记录整批订货财务审核责任。',
+                ),
+                const SizedBox(height: 12),
+                Text('$summary。整批通过后订货立即生效，并分别生成仓库预计到货任务。'),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FinanceReviewClaimButton(
+              claim: claim,
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('确认批量通过'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      await _runBatchAction(
+        () => ref
+            .read(financeProcurementWorkflowRepositoryProvider)
+            .approveOrdersBatch([
+              for (final command in commands)
+                command.withClaimId(
+                  claim.claimIdFor(
+                    'PROCUREMENT_FINANCE_APPROVE',
+                    command.caseId,
+                  )!,
+                ),
+            ]),
+        '已批量通过 $count 笔订货审批',
+      );
+    } finally {
+      await _releaseBatchClaim(claim);
+    }
   }
 
   Future<void> _rejectSelected() async {
-    if (_busyDecision) return;
+    if (_busyDecision || _batchClaim != null) return;
     final issue = _selectionIssue('REJECT');
     if (issue != null) {
       context.appWarning(issue);
       return;
     }
     final count = _selectedIds.length;
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (ctx) {
-        var value = '';
-        return StatefulBuilder(
-          builder: (ctx, setDialogState) => AlertDialog(
-            title: Text('批量驳回($count 笔)'),
-            content: SizedBox(
-              width: 440,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const UtenReviewerResponsibilityNotice(
-                    actionLabel: '批量驳回订货财务审核',
-                    description: '确认后，系统将以此登录员工记录整批退回责任。',
-                  ),
-                  const SizedBox(height: UtenSpacing.s12),
-                  Text('${_selectedBillSummary()}将使用同一个驳回原因，整批原子提交。'),
-                  const SizedBox(height: UtenSpacing.s12),
-                  TextField(
-                    autofocus: true,
-                    minLines: 3,
-                    maxLines: 5,
-                    maxLength: 1000,
-                    onChanged: (v) => setDialogState(() => value = v.trim()),
-                    decoration: const InputDecoration(
-                      labelText: '退回原因(必填)',
-                      hintText: '请写清需要制单人修改的内容',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actionsAlignment: MainAxisAlignment.center,
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: Theme.of(ctx).colorScheme.error,
-                  foregroundColor: Theme.of(ctx).colorScheme.onError,
-                ),
-                onPressed: value.isEmpty
-                    ? null
-                    : () => Navigator.pop(ctx, value),
-                child: const Text('确认批量驳回'),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-    if (reason == null || reason.isEmpty || !mounted) return;
     final commands = _selectedCommands;
-    await _runBatchAction(
-      () => ref
-          .read(financeProcurementWorkflowRepositoryProvider)
-          .rejectOrdersBatch(commands, reason),
-      '已批量驳回 $count 笔订货审批',
-    );
+    final claim = await _claimSelection(commands, 'REJECT');
+    if (claim == null || !mounted) return;
+    try {
+      final reason = await showDialog<String>(
+        context: context,
+        builder: (ctx) {
+          var value = '';
+          return StatefulBuilder(
+            builder: (ctx, setDialogState) => AlertDialog(
+              title: Text('批量驳回($count 笔)'),
+              content: SizedBox(
+                width: 440,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const UtenReviewerResponsibilityNotice(
+                      actionLabel: '批量驳回订货财务审核',
+                      description: '确认后，系统将以此登录员工记录整批退回责任。',
+                    ),
+                    const SizedBox(height: UtenSpacing.s12),
+                    Text('${_selectedBillSummary()}将使用同一个驳回原因，整批原子提交。'),
+                    const SizedBox(height: UtenSpacing.s12),
+                    TextField(
+                      autofocus: true,
+                      minLines: 3,
+                      maxLines: 5,
+                      maxLength: 1000,
+                      onChanged: (v) => setDialogState(() => value = v.trim()),
+                      decoration: const InputDecoration(
+                        labelText: '退回原因(必填)',
+                        hintText: '请写清需要制单人修改的内容',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actionsAlignment: MainAxisAlignment.center,
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('取消'),
+                ),
+                FinanceReviewClaimButton(
+                  claim: claim,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Theme.of(ctx).colorScheme.error,
+                    foregroundColor: Theme.of(ctx).colorScheme.onError,
+                  ),
+                  onPressed: value.isEmpty
+                      ? null
+                      : () => Navigator.pop(ctx, value),
+                  child: const Text('确认批量驳回'),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+      if (reason == null || reason.isEmpty || !mounted) return;
+      await _runBatchAction(
+        () => ref
+            .read(financeProcurementWorkflowRepositoryProvider)
+            .rejectOrdersBatch([
+              for (final command in commands)
+                command.withClaimId(
+                  claim.claimIdFor(
+                    'PROCUREMENT_FINANCE_APPROVE',
+                    command.caseId,
+                  )!,
+                ),
+            ], reason),
+        '已批量驳回 $count 笔订货审批',
+      );
+    } finally {
+      await _releaseBatchClaim(claim);
+    }
   }
 
   Future<void> _runBatchAction(
@@ -347,6 +462,13 @@ class _FinanceProcurementApprovalTasksPageState
   ) async {
     setState(() => _busyDecision = true);
     try {
+      final claim = _batchClaim;
+      if (claim == null || !await claim.validateForDecision() || !mounted) {
+        if (mounted) {
+          context.appWarning(claim?.failureMessage ?? '审核占用已失效，请重新核对');
+        }
+        return;
+      }
       await action();
       if (!mounted) return;
       context.appSuccess(okMsg);
@@ -357,8 +479,6 @@ class _FinanceProcurementApprovalTasksPageState
       if (mounted) context.appError('整批未提交：${e.message}');
     } catch (_) {
       if (mounted) context.appError('整批未提交，请检查网络后重试');
-    } finally {
-      if (mounted) setState(() => _busyDecision = false);
     }
   }
 
@@ -465,7 +585,7 @@ class _FinanceProcurementApprovalTasksPageState
                 absorbing: _busyDecision,
                 child: MasterDataTableView<FinanceProcurementApprovalTask>(
                   key: const Key('finance-approval-task-table'),
-                  columns: _columns,
+                  columns: _columns(context),
                   items: result.items,
                   facets: const {
                     'orderType': [
@@ -607,7 +727,9 @@ class _FinanceProcurementApprovalTasksPageState
     );
   }
 
-  List<MasterColumnDef<FinanceProcurementApprovalTask>> get _columns => [
+  List<MasterColumnDef<FinanceProcurementApprovalTask>> _columns(
+    BuildContext context,
+  ) => [
     MasterColumnDef(
       key: 'orderType',
       label: '订货类型',
@@ -662,6 +784,23 @@ class _FinanceProcurementApprovalTasksPageState
       width: 100,
       type: 'number',
       value: (task) => task.attempt?.toString() ?? '—',
+    ),
+    // 批准后改量（2026-09-05）：改过数量的任务显示浅黄底徽标，
+    // 提醒财务在审核详情先看「修改清单」（照销售确认列表样式）。
+    MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 200,
+      value: (task) => task.changeCount > 0
+          ? AppLocalizations.of(
+              context,
+            ).procurementApprovalStatusChanged(task.changeCount)
+          : AppLocalizations.of(context).procurementApprovalStatusPending,
+      cellColor: (context, task) => task.changeCount > 0
+          ? (Theme.of(context).brightness == Brightness.dark
+                ? UtenColors.warning.withValues(alpha: 0.18)
+                : UtenColors.warningBg)
+          : null,
     ),
   ];
 

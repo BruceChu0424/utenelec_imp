@@ -48,7 +48,8 @@ class ProductionDemandRequestReleaseTest {
         when(numbers.nextNumber(any())).thenReturn("CS-PLAN");
         ProductionPurchaseRequestFacade facade = new ProductionPurchaseRequestFacade(
                 requestRepo, itemRepo, numbers, em,
-                mock(com.uten.imp.application.port.OrganizationReferencePort.class));
+                mock(com.uten.imp.application.port.OrganizationReferencePort.class),
+                mock(com.uten.imp.application.concurrency.FulfillmentMutationLocks.class));
         UUID applicantEmployeeId = UUID.randomUUID();
 
         facade.createProductionDraft(
@@ -103,7 +104,8 @@ class ProductionDemandRequestReleaseTest {
         stubMasterSnapshot(em, goodsId);
         when(numbers.nextNumber(any())).thenReturn("WS-PLAN");
         ProductionSubcontractRequestFacade facade = new ProductionSubcontractRequestFacade(
-                applicationRepo, itemRepo, numbers, em);
+                applicationRepo, itemRepo, numbers, em,
+                mock(com.uten.imp.application.concurrency.FulfillmentMutationLocks.class));
         UUID applicantEmployeeId = UUID.randomUUID();
 
         facade.createProductionDraft(

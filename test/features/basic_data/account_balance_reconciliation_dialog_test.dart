@@ -109,7 +109,11 @@ void main() {
       await tester.enterText(reason, '美元账户上线余额复核');
       await tester.tap(find.text('提交核对（1）'));
       await tester.pump();
-      expect(find.text('外币余额变化时必须填写本位币调账额'), findsOneWidget);
+      expect(find.text('外币余额变化时必须填写本位币调账额'), findsNothing);
+      expect(
+        find.byTooltip('外币余额变化时必须填写本位币调账额\n\n只用于总账，不改变账户原币余额'),
+        findsOneWidget,
+      );
 
       await tester.enterText(localDelta, '7.2000');
       await tester.tap(find.text('提交核对（1）'));
@@ -232,7 +236,11 @@ void main() {
       await tester.enterText(reason, '新系统启用前使用中账户当前余额归零');
       await tester.tap(find.text('提交核对（2）'));
       await tester.pump();
-      expect(find.text('外币余额变化时必须填写本位币调账额'), findsOneWidget);
+      expect(find.text('外币余额变化时必须填写本位币调账额'), findsNothing);
+      expect(
+        find.byTooltip('外币余额变化时必须填写本位币调账额\n\n只用于总账，不改变账户原币余额'),
+        findsOneWidget,
+      );
 
       final localDelta = find.byKey(
         const ValueKey('account-local-delta-account-usd'),

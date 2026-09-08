@@ -148,7 +148,7 @@ class _ProcurementIqcRejectionListPageState
               type: UtenButtonType.tonal,
               icon: Icons.refresh_rounded,
               isLoading: _loading && result != null,
-              onPressed: _loading ? null : () => _load(result?.page ?? 1),
+              onPressed: _loading ? null : () => _load(1),
               child: const Text('刷新'),
             ),
           ),

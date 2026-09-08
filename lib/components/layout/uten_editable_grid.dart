@@ -13,23 +13,28 @@
 //   内容变宽时列自动加长——只增不减、封顶 480；用户手动拖拽过的列锁定用户宽度，不再
 //   自动加宽（列集合变化才解锁）。详见 EditableGridColumn.textOf 文档。
 // - "添加行"(加1) + "添加多行"(对话框填 N，1-50)；行尾删除。
-// - 可选表头设置：勾选显隐、拖拽排序；表头纵向拖出可快速隐藏(与
-//   MasterDataTableView 同一交互语义，编辑页按需开启)。必填列(required)锁定
-//   不可隐藏；表头设置入口为深绿实心大按钮（与主数据页同款）。
+// - 表头体系与 MasterDataTableView 共用同一份实现（2026-09-05 收敛，见
+//   uten_table_column_kit.dart）：可选表头设置（按钮处锚定的浮层勾选列表：勾选显隐、
+//   拖拽排序、恢复默认）；表头纵向拖出隐藏 = 跟手浮层升 root Overlay 最顶层、过阈值
+//   变红底红×、原格变淡；必填列(required)锁定不可隐藏。设置入口为深绿实心大按钮
+//   （与主数据页同款）。
 // - 列可带 headerInfo：表头 ⓘ 信息图标，悬停/长按弹说明（如折扣「1 = 原价；
 //   0.9 = 9折」）。
 // - 行级右键/长按操作菜单（2026-09-03，可编辑模式）：复用 UtenContextMenu——
-//   复制选中/粘贴/批量粘贴/在上方插入空行/删除选中，与操作条同一套 controller 逻辑。
+//   复制选中/粘贴/批量粘贴/在上方插入空行/删除选中，与 controller 同一套逻辑。
+//   编辑模式操作条（2026-09-05 起精简）只保留「表头设置」与宿主注入的批量动作
+//   （batchActionsBuilder）；全选走表头复选框、复制/粘贴/删除走行菜单。
 // - 全尺寸 Excel(手机横向滚动，与报表一致)；列隐藏只改变呈现，不销毁行控制器或数据。
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
-import '../buttons/uten_button.dart';
 import '../feedback/uten_context_menu.dart';
 import '../feedback/uten_dialog.dart';
+import 'uten_grid_header_filter_cell.dart';
 import 'uten_h_scroll_area.dart';
+import 'uten_table_column_kit.dart';
 
 /// 行模型基类。行持有自己的 TextEditingController / ValueNotifier（跨重建存活）。
 /// 删行/清空/替换时由 [UtenEditableGridController] 调 [dispose] 释放，避免泄漏。
@@ -86,6 +91,7 @@ class EditableGridColumn<T extends EditableGridRow> {
     this.headerInfo,
     this.textOf,
     this.listenableOf,
+    this.filterValueOf,
   });
 
   final String key;
@@ -117,6 +123,13 @@ class EditableGridColumn<T extends EditableGridRow> {
   /// 超宽自动加列宽。仅提供 [textOf] 而不提供本字段时，只在行集变化时整体量一次
   /// （适合行model普通字段的只读列）。数值/日期等短内容列建议不接，保持固定宽。
   final Listenable? Function(T row)? listenableOf;
+
+  /// 表头筛选（可选，2026-09-05）：返回该列在 [row] 上的当前取值（如车间名、
+  /// 负责人名、状态文案）。提供后表头变为可点的筛选单元格（与 MasterDataTableView
+  /// 同款锚定下拉）：点开显示去重值清单（含计数），单选后网格只显示匹配行。
+  /// 纯视图级过滤——行数据与勾选（按行身份持有）都不动，清除筛选即全部恢复。
+  /// null（默认）= 普通表头。
+  final String? Function(T row)? filterValueOf;
 }
 
 /// 必填单元的**实时**红框：订阅 [listenable]，当 [isEmpty] 为真时给 [child] 描红边，
@@ -478,6 +491,7 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     this.initialColumnOrder,
     this.initialHiddenColumnKeys,
     this.onColumnSettingsChanged,
+    this.showSelectAllToggle = true,
   }) : assert(
          !showAddRow || createBlankRow != null,
          'showAddRow=true 必须提供 createBlankRow（「添加行」按钮需要构造空行）',
@@ -563,6 +577,10 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
   final void Function(List<String> order, Set<String> hidden)?
   onColumnSettingsChanged;
 
+  /// 操作条是否渲染「全选/取消全选」按钮（默认 true）。批量下达类页面（表头
+  /// 复选框已覆盖当页选择、跨页由页面自管）传 false 收敛入口。
+  final bool showSelectAllToggle;
+
   /// 是否渲染行首选选列。
   bool get _showSelect => showAddRow || selectable;
 
@@ -571,7 +589,8 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
 }
 
 class _UtenEditableGridState<T extends EditableGridRow>
-    extends State<UtenEditableGrid<T>> {
+    extends State<UtenEditableGrid<T>>
+    with UtenColumnHeaderDragHost<UtenEditableGrid<T>> {
   // 表头/表体 双向横滚同步（两 ScrollController + _syncing 防回环）；表体横滚条
   // （含钉底条）整体走共用 UtenHScrollArea，其内部自行与注入的 _bodyH 同步。
   late final ScrollController _headerH;
@@ -609,11 +628,67 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// 覆盖本地（详见 [_applyInitialColumnSettings]）。
   bool _userTouchedColumns = false;
 
-  /// 表头纵向拖出隐藏的轻量状态；拖动帧只重绘表头格，不重建大表体。
-  final ValueNotifier<_EditableHeaderDrag> _headerDrag = ValueNotifier(
-    const _EditableHeaderDrag(),
-  );
-  static const double _hideColumnDragThreshold = 32;
+  /// 列下标→LayerLink：每列表头包一个 CompositedTransformTarget，跟手浮层（共用
+  /// [UtenColumnDragHideHost]）锚定到"当前拖拽列"的 target。列集合变化时清空重建。
+  final Map<int, LayerLink> _colLinks = {};
+
+  @override
+  LayerLink columnDragLink(int i) =>
+      _colLinks.putIfAbsent(i, () => LayerLink());
+
+  @override
+  double columnDragWidth(int i) =>
+      i < _widths.length ? _widths[i] : _minColWidth;
+
+  @override
+  String columnDragLabel(int i) =>
+      i < widget.columns.length ? widget.columns[i].label : '';
+
+  /// 该列当前可否拖出隐藏：仅开启表头设置时可用；至少保留一列可见；
+  /// 必填列锁定（必填项不允许从界面上消失，表头设置同款口径）。
+  @override
+  bool columnCanDragHide(int i) =>
+      widget.showColumnSettings &&
+      i < widget.columns.length &&
+      _visibleColumnCount > 1 &&
+      !widget.columns[i].required;
+
+  @override
+  void onColumnDragHide(int i) => _toggleColumn(widget.columns[i].key);
+
+  /// 编辑明细表的表头手势跟随表头设置开关：未开启列设置的页面保持固定布局。
+  @override
+  bool get columnHeaderHideEnabled => widget.showColumnSettings;
+
+  @override
+  bool get columnHeaderReorderEnabled => widget.showColumnSettings;
+
+  @override
+  List<({int index, double width})> get reorderVisibleColumns => [
+    for (final i in _visibleColumnIndices) (index: i, width: _widths[i]),
+  ];
+
+  /// 长按排序落位：在**可见列序列**内搬移；隐藏列保持原相对锚位（对 _columnOrder
+  /// 做可见子序列替换），随后走既有持久化回调（与表头设置弹窗拖拽同一出口）。
+  @override
+  void onColumnsReordered(int fromOriginalIndex, int slot) {
+    final visible = _visibleColumnIndices;
+    final fromPos = visible.indexOf(fromOriginalIndex);
+    if (fromPos < 0) return;
+    final seq = [...visible]..removeAt(fromPos);
+    final target = slot.clamp(0, seq.length);
+    if (target == fromPos) return;
+    seq.insert(target, fromOriginalIndex);
+    final newVisibleKeys = <String>{for (final i in seq) widget.columns[i].key};
+    final queue = <String>[for (final i in seq) widget.columns[i].key];
+    setState(() {
+      _columnOrder = [
+        for (final key in _columnOrder)
+          newVisibleKeys.contains(key) ? queue.removeAt(0) : key,
+      ];
+    });
+    _notifyColumnSettingsChanged();
+  }
 
   /// 列宽拖拽命中区半宽（贴列右边界，半溢出到相邻列）。
   static const double _gripHalf = 4;
@@ -690,7 +765,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
       _columnOrder = widget.columns.map((column) => column.key).toList();
       _hiddenColumnKeys.clear();
       _applyInitialColumnSettings();
-      _headerDrag.value = const _EditableHeaderDrag();
+      columnHeaderDragReset(); // 拖拽态/跟手浮层可能指向失效下标，重置。
+      _colLinks.clear(); // 旧下标的 LayerLink 作废，按新列集合下标重建。
       _autoGrowDirty = true;
       _rewireAutoGrowListeners(force: true);
     } else if (!_sameInitialColumnSettings(oldWidget)) {
@@ -819,39 +895,39 @@ class _UtenEditableGridState<T extends EditableGridRow>
     if (changed) _notifyColumnSettingsChanged();
   }
 
-  void _startHeaderDrag(int index) {
-    if (!widget.showColumnSettings || _headerDrag.value.index != null) return;
-    _headerDrag.value = _EditableHeaderDrag(index: index);
+  /// 全选(true)=全部显示；取消全选(false)=仅留首列（必填列始终保留）。
+  void _toggleAllColumns(bool showAll) {
+    setState(() {
+      _hiddenColumnKeys.clear();
+      if (!showAll && widget.columns.length > 1) {
+        final keep = <String>{widget.columns.first.key};
+        for (final column in widget.columns) {
+          if (column.required) keep.add(column.key);
+        }
+        _hiddenColumnKeys.addAll(
+          widget.columns.where((c) => !keep.contains(c.key)).map((c) => c.key),
+        );
+      }
+    });
+    _notifyColumnSettingsChanged();
   }
 
-  void _updateHeaderDrag(int index, double delta) {
-    final current = _headerDrag.value;
-    if (current.index != index) return;
-    final dy = current.dy + delta;
-    _headerDrag.value = _EditableHeaderDrag(
-      index: index,
-      dy: dy,
-      // 必填列不可拖出隐藏（表头设置同款锁定口径）。
-      armed:
-          dy.abs() >= _hideColumnDragThreshold &&
-          _visibleColumnCount > 1 &&
-          !widget.columns[index].required,
-    );
+  /// 拖拽排序：[newIndex] 为 removeAt 后的最终插入位（onReorderItem 口径）。
+  void _reorderColumns(int oldIndex, int newIndex) {
+    setState(() {
+      final key = _columnOrder.removeAt(oldIndex);
+      _columnOrder.insert(newIndex, key);
+    });
+    _notifyColumnSettingsChanged();
   }
 
-  void _finishHeaderDrag(int index) {
-    final current = _headerDrag.value;
-    if (current.index != index) return;
-    _headerDrag.value = const _EditableHeaderDrag();
-    if (current.armed && _visibleColumnCount > 1) {
-      _toggleColumn(widget.columns[index].key);
-    }
-  }
-
-  void _cancelHeaderDrag(int index) {
-    if (_headerDrag.value.index == index) {
-      _headerDrag.value = const _EditableHeaderDrag();
-    }
+  /// 恢复默认：清隐藏 + 回默认列序。
+  void _resetColumnSettings() {
+    setState(() {
+      _columnOrder = widget.columns.map((column) => column.key).toList();
+      _hiddenColumnKeys.clear();
+    });
+    _notifyColumnSettingsChanged();
   }
 
   /// 双向横滚同步：表头 / 表体 任一滚动 → 另一个 jumpTo 跟随（[_syncing] 防回环；
@@ -1070,7 +1146,6 @@ class _UtenEditableGridState<T extends EditableGridRow>
       u();
     }
     _autoGrowUnsubs = const [];
-    _headerDrag.dispose();
     _headerY.dispose();
     _headerH.dispose();
     _bodyH.dispose();
@@ -1101,11 +1176,63 @@ class _UtenEditableGridState<T extends EditableGridRow>
     );
   }
 
-  /// 参与全选的行（canSelectRow 门控后；无门控 = 全部行）。
+  /// 参与全选的行（canSelectRow 门控后；无门控 = 全部行）。表头筛选活跃时只含
+  /// 当前可见（未被筛掉）的行——全选作用于眼前所见。
   List<T> _selectableRows() {
     final test = widget.canSelectRow;
-    final rows = widget.controller.rows;
+    var rows = widget.controller.rows;
+    rows = _filterRows(rows);
     return test == null ? rows : rows.where(test).toList();
+  }
+
+  // ======================= 表头筛选（filterValueOf，2026-09-05） =======================
+  /// key=列 key，value=选中筛选值；null（或不在 map）=「所有」。纯视图级过滤：
+  /// 行数据与选中集（按行身份持有）都不动，清除即全部恢复。
+  final Map<String, String?> _columnFilters = {};
+
+  bool get _hasColumnFilters => _columnFilters.values.any((v) => v != null);
+
+  /// 应用全部列筛选后的行集（无筛选 = 原样返回）。
+  List<T> _filterRows(List<T> rows) {
+    if (!_hasColumnFilters || widget.columns.isEmpty) return rows;
+    final active = <(EditableGridColumn<T>, String)>[
+      for (final column in widget.columns)
+        if (column.filterValueOf != null && _columnFilters[column.key] != null)
+          (column, _columnFilters[column.key]!),
+    ];
+    if (active.isEmpty) return rows;
+    return rows
+        .where(
+          (row) =>
+              active.every((entry) => entry.$1.filterValueOf!(row) == entry.$2),
+        )
+        .toList(growable: false);
+  }
+
+  /// 某筛选列的去重取值与计数（按值稳定排序；空值不计入桶，走 nullCount）。
+  List<({String value, String display, int count})> _filterBuckets(
+    EditableGridColumn<T> column,
+  ) {
+    final counts = <String, int>{};
+    for (final row in widget.controller.rows) {
+      final value = column.filterValueOf!(row);
+      if (value == null || value.trim().isEmpty) continue;
+      counts[value] = (counts[value] ?? 0) + 1;
+    }
+    return [
+      ...counts.entries.map(
+        (entry) => (value: entry.key, display: entry.key, count: entry.value),
+      ),
+    ]..sort((a, b) => a.display.compareTo(b.display));
+  }
+
+  int _filterNullCount(EditableGridColumn<T> column) {
+    var nullCount = 0;
+    for (final row in widget.controller.rows) {
+      final value = column.filterValueOf!(row);
+      if (value == null || value.trim().isEmpty) nullCount++;
+    }
+    return nullCount;
   }
 
   /// 行选中判定：外部受控（selectedOf）优先，否则读 controller 内部选中集。
@@ -1181,9 +1308,14 @@ class _UtenEditableGridState<T extends EditableGridRow>
                   child: ListenableBuilder(
                     listenable: widget.controller,
                     builder: (context, _) {
-                      final rows = widget.controller.rows;
-                      if (rows.isEmpty) {
+                      final all = widget.controller.rows;
+                      if (all.isEmpty) {
                         return _EmptyRows(message: widget.emptyMessage);
+                      }
+                      // 表头筛选为视图级过滤：只影响可见行集，不动数据与选中。
+                      final rows = _filterRows(all);
+                      if (rows.isEmpty) {
+                        return const _EmptyRows(message: '没有符合表头筛选条件的行');
                       }
                       return ListView.builder(
                         shrinkWrap: true,
@@ -1243,22 +1375,20 @@ class _UtenEditableGridState<T extends EditableGridRow>
       ],
     );
     // 操作条放在 Stack 之外（外层 Column），随页滚动且永不被 sticky 表头覆盖。
-    // 仅可编辑表格（showAddRow）显示；选择弹层（showAddRow=false）不显示。
+    // 编辑模式（showAddRow）只保留「表头设置」+ 宿主批量动作（全选走表头复选框、
+    // 复制/粘贴/删除走行菜单）；只选/任务模式（含 onRemoveRows）保留全选与移出按钮。
     // 整体 SelectionContainer.disabled：单元格本就是 TextField（自带长按选词复制，
     // 不受 disabled 影响），而行级长按菜单/列宽拖拽把手与区域文字拖选手势打架，
     // 故编辑网格整体不参与页面级 SelectionArea（准则 §3.4）。
-    final showActions =
-        widget.showAddRow ||
-        widget.onRemoveRows != null ||
-        widget.showColumnSettings;
-    if (!showActions) {
+    final actionsBar = _actionsBar(theme);
+    if (actionsBar == null) {
       return SelectionContainer.disabled(child: body);
     }
     return SelectionContainer.disabled(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [_actionsBar(theme), body],
+        children: [actionsBar, body],
       ),
     );
   }
@@ -1289,11 +1419,25 @@ class _UtenEditableGridState<T extends EditableGridRow>
       deleteConfirmLabel: widget.deleteConfirmLabel,
       onDelete: () => widget.controller.removeAt(i),
     );
+    // 纯勾选模式（selectable 且非编辑）：点行身任意非输入区 = 切换选中，与
+    // MasterDataTableView「单击行选中」契约统一（2026-09-05，物料分析车间计划表
+    // 反馈）。输入/按钮格自己消费点按，不会误触；编辑模式（showAddRow）不启用——
+    // 点格输入优先，选中走复选框/行菜单。
+    final tapToggle = widget.selectable && !widget.showAddRow
+        ? _rowOnSelect(row)
+        : null;
+    final rowBody = tapToggle == null
+        ? cell
+        : GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: tapToggle,
+            child: cell,
+          );
     final rowSelectable = widget.canSelectRow?.call(row) ?? true;
     if (!widget.selectionEnabled ||
         !rowSelectable ||
         (!widget.showAddRow && widget.onRemoveRows == null)) {
-      return cell;
+      return rowBody;
     }
     return UtenContextMenuRegion(
       // 组件在手势触发时先调 entriesBuilder 再回调 onMenuOpening——选中归位必须
@@ -1316,7 +1460,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
       // 只在用户真正选择菜单条目且其同步/异步动作结束后清空；点外部取消菜单
       // 保留当前选择，避免误清用户主动勾选的多行。
       onActionCompleted: () => _clearSelection(),
-      child: cell,
+      child: rowBody,
     );
   }
 
@@ -1397,74 +1541,94 @@ class _UtenEditableGridState<T extends EditableGridRow>
     ];
   }
 
-  /// 明细操作条（全选/复制选中/批量删除/粘贴），常驻显示在表体上方。
-  /// cloneRow 非空才显「复制/粘贴」。订阅 controller，选择数/缓冲变化即时刷新。
-  Widget _actionsBar(ThemeData theme) {
+  /// 明细操作条。编辑模式（showAddRow）：仅「表头设置」+ 宿主批量动作——全选走表头
+  /// 复选框，复制/粘贴/批量删除走行级右键/长按菜单（2026-09-05 与货品资料工具条统一，
+  /// 去掉与行菜单重复的常驻按钮）。只选/任务模式（showAddRow=false）：保留
+  /// 全选/移出（删除选中）常驻按钮（无行菜单的纯勾选表的主操作面）。
+  /// 无任何可显内容时返回 null（不渲染空条）。
+  Widget? _actionsBar(ThemeData theme) {
+    final editMode = widget.showAddRow;
     final clone = widget.cloneRow;
-    return ListenableBuilder(
-      listenable: widget.controller,
-      builder: (context, _) {
-        final c = widget.controller;
-        final selectedRows = _selectedRows();
-        final n = selectedRows.length;
-        final targets = _selectableRows();
-        final all = targets.isNotEmpty && targets.every(_rowIsSelected);
-        return Padding(
-          padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-          child: Wrap(
-            spacing: UtenSpacing.s4,
-            runSpacing: UtenSpacing.s4,
-            children: [
-              if (widget.showColumnSettings) _columnSettingsButton(),
-              if (widget._showSelect)
-                _actBtn(
-                  theme,
-                  all ? '取消全选' : '全选',
-                  !widget.selectionEnabled || targets.isEmpty
-                      ? null
-                      : () => _toggleSelectAllRows(targets, all),
-                ),
-              if (widget._showSelect)
+    if (widget.showColumnSettings ||
+        widget.batchActionsBuilder != null ||
+        (!editMode && (widget._showSelect || widget.onRemoveRows != null))) {
+      return ListenableBuilder(
+        listenable: widget.controller,
+        builder: (context, _) {
+          final c = widget.controller;
+          final selectedRows = _selectedRows();
+          final n = selectedRows.length;
+          final targets = _selectableRows();
+          final all = targets.isNotEmpty && targets.every(_rowIsSelected);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+            child: Wrap(
+              spacing: UtenSpacing.s4,
+              runSpacing: UtenSpacing.s4,
+              children: [
+                if (widget.showColumnSettings)
+                  UtenColumnChooserButton(
+                    entries: [
+                      for (final column in widget.columns)
+                        UtenColumnChooserEntry(
+                          key: column.key,
+                          label: column.label,
+                          required: column.required,
+                        ),
+                    ],
+                    hiddenKeys: _hiddenColumnKeys,
+                    order: _columnOrder,
+                    onToggle: _toggleColumn,
+                    onToggleAll: _toggleAllColumns,
+                    onReorder: _reorderColumns,
+                    onReset: _resetColumnSettings,
+                  ),
+                if (!editMode &&
+                    widget._showSelect &&
+                    widget.showSelectAllToggle)
+                  _actBtn(
+                    theme,
+                    all ? '取消全选' : '全选',
+                    !widget.selectionEnabled || targets.isEmpty
+                        ? null
+                        : () => _toggleSelectAllRows(targets, all),
+                  ),
+                // 宿主批量动作（如订货单「统一设供应商」）两种模式都常驻。
                 for (final action
                     in widget.batchActionsBuilder?.call(context, c) ??
                         const <Widget>[])
                   _selectionActionGate(action),
-              if (clone != null)
-                _actBtn(
-                  theme,
-                  '复制选中 ($n)',
-                  widget.selectionEnabled && n > 0
-                      ? () => c.copySelected(clone)
-                      : null,
-                ),
-              if (widget.showAddRow || widget.onRemoveRows != null)
-                _actBtn(
-                  theme,
-                  '${widget.showAddRow && widget.onRemoveRows == null ? '批量删除' : widget.removeRowsActionLabel} ($n)',
-                  widget.selectionEnabled && n > 0
-                      ? () => _confirmBatchDelete(context)
-                      : null,
-                  danger: true,
-                ),
-              if (clone != null && c.hasBuffer) ...[
-                _actBtn(
-                  theme,
-                  '粘贴',
-                  widget.selectionEnabled ? () => c.paste(clone) : null,
-                ),
-                _actBtn(
-                  theme,
-                  '粘贴多行',
-                  widget.selectionEnabled
-                      ? () => _pasteMany(context, clone)
-                      : null,
-                ),
+                if (!editMode &&
+                    (widget.showAddRow || widget.onRemoveRows != null))
+                  _actBtn(
+                    theme,
+                    '${widget.onRemoveRows == null ? '批量删除' : widget.removeRowsActionLabel} ($n)',
+                    widget.selectionEnabled && n > 0
+                        ? () => _confirmBatchDelete(context)
+                        : null,
+                    danger: true,
+                  ),
+                if (!editMode && clone != null && c.hasBuffer) ...[
+                  _actBtn(
+                    theme,
+                    '粘贴',
+                    widget.selectionEnabled ? () => c.paste(clone) : null,
+                  ),
+                  _actBtn(
+                    theme,
+                    '粘贴多行',
+                    widget.selectionEnabled
+                        ? () => _pasteMany(context, clone)
+                        : null,
+                  ),
+                ],
               ],
-            ],
-          ),
-        );
-      },
-    );
+            ),
+          );
+        },
+      );
+    }
+    return null;
   }
 
   Widget _selectionActionGate(Widget child) => ExcludeFocus(
@@ -1496,155 +1660,6 @@ class _UtenEditableGridState<T extends EditableGridRow>
         textStyle: theme.textTheme.titleSmall,
       ),
       child: Text(label),
-    );
-  }
-
-  Widget _columnSettingsButton() {
-    // 深绿大号白字实心（UtenButton 默认 primary），与 MasterDataTableView 工具条
-    // 「表头设置」同款——全站表头设置入口统一观感。
-    return UtenButton(
-      key: const ValueKey('editable-grid-column-settings'),
-      size: UtenButtonSize.large,
-      icon: Icons.view_column_outlined,
-      onPressed: _showColumnSettings,
-      child: Text('表头设置 $_visibleColumnCount/${widget.columns.length}'),
-    );
-  }
-
-  Future<void> _showColumnSettings() {
-    return showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (sheetContext, setSheetState) {
-          final byKey = {
-            for (final column in widget.columns) column.key: column,
-          };
-          final maxHeight = (MediaQuery.sizeOf(sheetContext).height * 0.72)
-              .clamp(320.0, 600.0)
-              .toDouble();
-
-          void update(VoidCallback mutation) {
-            if (!mounted) return;
-            setState(mutation);
-            setSheetState(() {});
-          }
-
-          return SizedBox(
-            height: maxHeight,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    UtenSpacing.s16,
-                    UtenSpacing.s12,
-                    UtenSpacing.s8,
-                    UtenSpacing.s8,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '表头设置',
-                              style: Theme.of(
-                                sheetContext,
-                              ).textTheme.titleLarge,
-                            ),
-                            const SizedBox(height: UtenSpacing.s4),
-                            Text(
-                              '勾选控制显示；拖动右侧把手调整列顺序',
-                              style: Theme.of(sheetContext).textTheme.bodySmall,
-                            ),
-                          ],
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () => update(() {
-                          _columnOrder = widget.columns
-                              .map((column) => column.key)
-                              .toList();
-                          _hiddenColumnKeys.clear();
-                          _notifyColumnSettingsChanged();
-                        }),
-                        child: const Text('恢复默认'),
-                      ),
-                      IconButton(
-                        tooltip: '关闭',
-                        onPressed: () => Navigator.pop(sheetContext),
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: ReorderableListView.builder(
-                    key: const ValueKey('editable-grid-column-chooser'),
-                    buildDefaultDragHandles: false,
-                    itemCount: _columnOrder.length,
-                    onReorderItem: (oldIndex, newIndex) => update(() {
-                      final key = _columnOrder.removeAt(oldIndex);
-                      _columnOrder.insert(newIndex, key);
-                      _notifyColumnSettingsChanged();
-                    }),
-                    itemBuilder: (context, index) {
-                      final key = _columnOrder[index];
-                      final column = byKey[key]!;
-                      final hidden = _hiddenColumnKeys.contains(key);
-                      // 必填列锁定不可隐藏；非必填列再受「至少保留一列」兜底。
-                      final canHide =
-                          !column.required &&
-                          (hidden || _visibleColumnCount > 1);
-                      return Material(
-                        key: ValueKey('editable-grid-column-option-$key'),
-                        color: Theme.of(context).colorScheme.surface,
-                        child: ListTile(
-                          minTileHeight: 48,
-                          leading: Checkbox(
-                            value: !hidden,
-                            onChanged: canHide
-                                ? (_) => update(() => _toggleColumn(key))
-                                : null,
-                          ),
-                          title: Text(
-                            column.required
-                                ? '${column.label} *'
-                                : column.label,
-                          ),
-                          subtitle: column.required
-                              ? const Text('必填列，不可隐藏')
-                              : !canHide
-                              ? const Text('至少保留一列')
-                              : null,
-                          trailing: ReorderableDragStartListener(
-                            index: index,
-                            child: const SizedBox(
-                              width: 48,
-                              height: 48,
-                              child: Tooltip(
-                                message: '拖动排序',
-                                child: Icon(Icons.drag_handle_rounded),
-                              ),
-                            ),
-                          ),
-                          onTap: canHide
-                              ? () => update(() => _toggleColumn(key))
-                              : null,
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
     );
   }
 
@@ -1737,105 +1752,70 @@ class _UtenEditableGridState<T extends EditableGridRow>
             scrollDirection: Axis.horizontal,
             child: SizedBox(
               width: total,
-              child: Row(
-                children: [
-                  if (widget._showSelect) _selectAllHeader(theme),
-                  for (final i in visibleColumnIndices)
-                    SizedBox(
-                      width: _widths[i],
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHigh,
-                          border: Border(
-                            right: BorderSide(color: theme.colorScheme.outline),
-                          ),
-                        ),
-                        child: Stack(
-                          children: [
-                            ValueListenableBuilder<_EditableHeaderDrag>(
-                              valueListenable: _headerDrag,
-                              child: _headerLabel(theme, i),
-                              builder: (context, drag, child) {
-                                final active = drag.index == i;
-                                final translated = active
-                                    ? drag.dy.clamp(-16.0, 16.0)
-                                    : 0.0;
-                                return GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onVerticalDragStart: widget.showColumnSettings
-                                      ? (_) => _startHeaderDrag(i)
-                                      : null,
-                                  onVerticalDragUpdate:
-                                      widget.showColumnSettings
-                                      ? (details) => _updateHeaderDrag(
-                                          i,
-                                          details.primaryDelta ?? 0,
-                                        )
-                                      : null,
-                                  onVerticalDragEnd: widget.showColumnSettings
-                                      ? (_) => _finishHeaderDrag(i)
-                                      : null,
-                                  onVerticalDragCancel:
-                                      widget.showColumnSettings
-                                      ? () => _cancelHeaderDrag(i)
-                                      : null,
-                                  child: Opacity(
-                                    opacity: active ? 0.55 : 1,
-                                    child: Transform.translate(
-                                      offset: Offset(0, translated),
-                                      child: Stack(
-                                        children: [
-                                          child!,
-                                          if (active && drag.armed)
-                                            Positioned(
-                                              right: UtenSpacing.s12,
-                                              top: UtenSpacing.s8,
-                                              child: Icon(
-                                                Icons.close_rounded,
-                                                size: 16,
-                                                color: theme.colorScheme.error,
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                            // 列宽拖拽手柄：贴列右边界、半溢出到相邻列的命中区。
-                            Positioned(
-                              right: -_gripHalf,
-                              top: 0,
-                              bottom: 0,
-                              width: _gripHalf * 2,
-                              child: GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onHorizontalDragUpdate: (d) =>
-                                    _resizeColumn(i, d.delta.dx),
-                                child: const MouseRegion(
-                                  cursor: SystemMouseCursors.resizeColumn,
-                                  child: SizedBox.expand(),
-                                ),
+              // 长按排序拖动中在表头行上渲染插入位指示线（前导选择列让位）。
+              child: columnHeaderIndicatorOverlay(
+                leadingInset: widget._showSelect ? _selectColWidth : 0,
+                child: Row(
+                  children: [
+                    if (widget._showSelect) _selectAllHeader(theme),
+                    for (final i in visibleColumnIndices)
+                      SizedBox(
+                        width: _widths[i],
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHigh,
+                            border: Border(
+                              right: BorderSide(
+                                color: theme.colorScheme.outline,
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  if (widget.showRowDelete)
-                    SizedBox(
-                      width: _deleteColWidth,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHigh,
-                          border: Border(
-                            right: BorderSide(color: theme.colorScheme.outline),
+                          ),
+                          child: Stack(
+                            children: [
+                              // 表头标签区（共用 UtenColumnHeaderDragHost）：
+                              // 竖滑拖出隐藏 + 长按拎起横拖排序。手势识别器在视觉
+                              // 包裹外层，拖拽更新只重建内层视觉，不打断进行中的手势；
+                              // 仅开启表头设置时启用。
+                              columnHeaderGestureArea(
+                                i,
+                                columnHeaderCell(i, _headerLabel(theme, i)),
+                              ),
+                              // 列宽拖拽手柄：贴列右边界、半溢出到相邻列的命中区。
+                              Positioned(
+                                right: -_gripHalf,
+                                top: 0,
+                                bottom: 0,
+                                width: _gripHalf * 2,
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onHorizontalDragUpdate: (d) =>
+                                      _resizeColumn(i, d.delta.dx),
+                                  child: const MouseRegion(
+                                    cursor: SystemMouseCursors.resizeColumn,
+                                    child: SizedBox.expand(),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                    ),
-                ],
+                    if (widget.showRowDelete)
+                      SizedBox(
+                        width: _deleteColWidth,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHigh,
+                            border: Border(
+                              right: BorderSide(
+                                color: theme.colorScheme.outline,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -1851,7 +1831,25 @@ class _UtenEditableGridState<T extends EditableGridRow>
 
   Widget _headerLabel(ThemeData theme, int index) {
     final column = widget.columns[index];
-    Widget label = Text.rich(
+    if (column.filterValueOf != null) {
+      return GridHeaderFilterCell(
+        label: column.label,
+        requiredStar: column.required,
+        buckets: [
+          for (final bucket in _filterBuckets(column))
+            GridHeaderFilterBucket(
+              value: bucket.value,
+              display: bucket.display,
+              count: bucket.count,
+            ),
+        ],
+        nullCount: _filterNullCount(column),
+        selected: _columnFilters[column.key],
+        onChanged: (value) =>
+            setState(() => _columnFilters[column.key] = value),
+      );
+    }
+    final Widget label = Text.rich(
       TextSpan(
         text: column.label,
         style: (theme.textTheme.labelMedium ?? const TextStyle()).copyWith(
@@ -1872,14 +1870,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
       ),
       overflow: TextOverflow.ellipsis,
     );
-    if (widget.showColumnSettings) {
-      // 必填列锁定：拖出隐藏不生效，提示直接说明，避免误导。
-      label = Tooltip(
-        message: column.required ? '必填列，不可隐藏' : '按住上下拖动可隐藏此列',
-        child: label,
-      );
-    }
-    // [headerInfo] 的 ⓘ 与拖动提示分属两个不相交区域，悬停各自弹各自的内容。
+    // 拖动手势提示不挂 Tooltip：触屏长按已让给「拎起排序」（2026-09-05），
+    // Tooltip 的长按弹提示会与之打架；锁定/兜底说明在表头设置弹层的行内副标题。
+    // [headerInfo] 的 ⓘ 独立小图标区，悬停/长按弹各自的内容。
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: UtenSpacing.s12,
@@ -1943,15 +1936,6 @@ class _UtenEditableGridState<T extends EditableGridRow>
       },
     );
   }
-}
-
-/// 表头纵向拖出隐藏的不可变轻量状态。
-class _EditableHeaderDrag {
-  const _EditableHeaderDrag({this.index, this.dy = 0, this.armed = false});
-
-  final int? index;
-  final double dy;
-  final bool armed;
 }
 
 class _DataRow<T extends EditableGridRow> extends StatelessWidget {

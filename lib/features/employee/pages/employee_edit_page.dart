@@ -12,6 +12,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
@@ -604,10 +605,12 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
       return TextFormField(
         errorBuilder: utenTextFieldErrorBuilder,
         controller: c,
-        decoration: InputDecoration(
-          labelText: label,
-          isDense: true,
-          border: const OutlineInputBorder(),
+        decoration: UtenInputDecoration(
+          InputDecoration(
+            labelText: label,
+            isDense: true,
+            border: const OutlineInputBorder(),
+          ),
         ),
         validator: validator,
       );
@@ -621,19 +624,21 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
         return TextFormField(
           errorBuilder: utenTextFieldErrorBuilder,
           controller: c,
-          decoration: applyRequiredEmpty(
-            InputDecoration(
-              label: requiredLabel(
-                label,
-                theme,
-                required: true,
-                base: theme.inputDecorationTheme.labelStyle,
+          decoration: UtenInputDecoration(
+            applyRequiredEmpty(
+              InputDecoration(
+                label: requiredLabel(
+                  label,
+                  theme,
+                  required: true,
+                  base: theme.inputDecorationTheme.labelStyle,
+                ),
+                isDense: true,
+                border: const OutlineInputBorder(),
               ),
-              isDense: true,
-              border: const OutlineInputBorder(),
+              theme,
+              requiredEmpty: empty,
             ),
-            theme,
-            requiredEmpty: empty,
           ),
           validator: validator,
         );
@@ -641,10 +646,12 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
     );
   }
 
-  /// [info] 非空时说明收进标签旁 ⓘ（全站约定），不常驻框下。
-  InputDecoration _deco(String label, {String? info}) => InputDecoration(
-    label: fieldLabel(label, Theme.of(context), info: info),
-    isDense: true,
-    border: const OutlineInputBorder(),
+  /// [info] 非空时说明统一收进框内提示图标。
+  InputDecoration _deco(String label, {String? info}) => UtenInputDecoration(
+    InputDecoration(
+      label: fieldLabel(label, Theme.of(context), info: info),
+      isDense: true,
+      border: const OutlineInputBorder(),
+    ),
   );
 }

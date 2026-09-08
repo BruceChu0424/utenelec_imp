@@ -42,8 +42,6 @@ class ProductionFqcPassAllServiceBehaviorTest {
         var normalized = ProductionFqcInspectionService
                 .normalizePassAllBatch(request);
 
-        Query insert = query(List.of());
-        when(insert.executeUpdate()).thenReturn(0);
         Query header = query(Collections.singletonList(new Object[]{
                 batchId, normalized.requestHash(), 2
         }));
@@ -55,7 +53,7 @@ class ProductionFqcPassAllServiceBehaviorTest {
         Query secondDetail = query(Collections.singletonList(
                 viewRow(second, "RB-2")));
         Fixture fixture = fixture(
-                actorId, insert, header, items, firstDetail, secondDetail);
+                actorId, header, items, firstDetail, secondDetail);
 
         var result = fixture.service().passAll(request);
 
@@ -69,22 +67,22 @@ class ProductionFqcPassAllServiceBehaviorTest {
                 .containsExactly(firstEvent, secondEvent);
         verifyNoInteractions(
                 fixture.finishedInbound(), fixture.recovery(), fixture.outbox());
+        org.mockito.Mockito.verify(fixture.em(),org.mockito.Mockito.never()).createNativeQuery(
+                org.mockito.ArgumentMatchers.argThat((String sql)->sql.contains("INSERT INTO")));
     }
 
     @Test
-    void sameActorAndKeyWithDifferentSelectionConflictsBeforeBusinessLocks() {
+    void sameActorAndKeyWithDifferentSelectionConflictsBeforeDecisionWrites() {
         UUID actorId = UUID.randomUUID();
         UUID batchId = UUID.randomUUID();
         UUID inspectionId = UUID.randomUUID();
         PassAllBatchRequest request = new PassAllBatchRequest(
                 List.of(inspectionId), "fqc-batch-conflict-behavior");
 
-        Query insert = query(List.of());
-        when(insert.executeUpdate()).thenReturn(0);
         Query header = query(Collections.singletonList(new Object[]{
                 batchId, "0".repeat(64), 2
         }));
-        Fixture fixture = fixture(actorId, insert, header);
+        Fixture fixture = fixture(actorId, header);
 
         assertThatThrownBy(() -> fixture.service().passAll(request))
                 .isInstanceOf(ApiException.class)
@@ -119,8 +117,9 @@ class ProductionFqcPassAllServiceBehaviorTest {
                         taskAccess,
                         recovery,
                         finishedInbound,
-                        outbox);
-        return new Fixture(service, recovery, finishedInbound, outbox);
+                        outbox,
+                org.mockito.Mockito.mock(com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
+        return new Fixture(service, recovery, finishedInbound, outbox,em);
     }
 
     private static Query query(List<?> rows) {
@@ -166,6 +165,7 @@ class ProductionFqcPassAllServiceBehaviorTest {
             ProductionFqcInspectionService service,
             ProductionFqcRecoveryPort recovery,
             ProductionFinishedInboundReleasePort finishedInbound,
-            BusinessEventPublisher outbox) {
+            BusinessEventPublisher outbox,
+            EntityManager em) {
     }
 }

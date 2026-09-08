@@ -55,7 +55,7 @@ void main() {
         findsNothing,
       );
       expect(find.text('请先引用已入账应付；供应商预付链尚未开放'), findsOneWidget);
-      expect(find.textContaining('预计本币 ¥720.00'), findsOneWidget);
+      expect(find.textContaining('参考本币 ¥720.00'), findsOneWidget);
 
       final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
         _financeGrid(),
@@ -94,7 +94,12 @@ void main() {
         tester.element(find.byType(FinanceDocEditPage)),
       ).read(appNotificationProvider);
       expect(notifications.single.message, '请填写大于 0 的付款汇率');
-      expect(find.text('请填写大于 0 的付款汇率'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Tooltip && (w.message ?? '').contains('请填写大于 0 的付款汇率'),
+        ),
+        findsOneWidget,
+      );
     },
   );
 
@@ -166,6 +171,10 @@ void main() {
     expect(body['expectedVersion'], 3);
     expect(body['currencyId'], 'currency-usd');
     expect(body['exchangeRate'], '7.200000');
+    expect(body['accountCurrencyId'], 'currency-cny');
+    expect(body['accountAmount'], '360.0000');
+    expect(body['bankFeeAccountAmount'], '0.0000');
+    expect(body['bankReference'], 'PAYMENT-BANK-001');
     final item = Map<String, dynamic>.from(
       (body['items'] as List<dynamic>).single as Map,
     );
@@ -243,6 +252,15 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('ar-ap-close')));
       await tester.pumpAndSettle();
 
+      await tester.enterText(
+        find.byKey(const ValueKey('finance-payment-account-amount')),
+        '576',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('finance-payment-bank-reference')),
+        'PAYMENT-IMPORTED-AP',
+      );
+
       await tester.tap(find.text('保存'));
       await tester.pumpAndSettle();
 
@@ -264,7 +282,7 @@ void main() {
     final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
       _financeGrid(),
     );
-    grid.controller.rows.single.amount.text = '50.12345';
+    grid.controller.rows.single.amount.text = '50.1234567890123456789012345';
 
     await tester.tap(find.text('保存'));
     await tester.pump();
@@ -273,7 +291,7 @@ void main() {
     var notifications = ProviderScope.containerOf(
       tester.element(find.byType(FinanceDocEditPage)),
     ).read(appNotificationProvider);
-    expect(notifications.single.message, contains('最多 4 位小数'));
+    expect(notifications.single.message, contains('最多 24 位有效小数'));
 
     grid.controller.rows.single.amount.text = '50.1234';
     await tester.enterText(
@@ -296,7 +314,9 @@ void main() {
     await _pumpDetail(tester, detail: _appliedPaymentDetail());
 
     expect(find.text('付款原币金额'), findsOneWidget);
-    expect(find.text('付款本币合计'), findsOneWidget);
+    expect(find.text('货款本币'), findsOneWidget);
+    expect(find.text('银行实际总扣款(人民币)'), findsOneWidget);
+    expect(find.text('银行扣款流水号'), findsOneWidget);
 
     final table = tester.widget<MasterDataTableView<FinanceDocItem>>(
       find.byWidgetPredicate(
@@ -314,6 +334,61 @@ void main() {
     expect(columns['exchangeDiff']?.label, '汇兑差额');
     expect(columns['exchangeDiff']?.value(item), '10.00');
   });
+
+  testWidgets(
+    'V2 payment keeps actual bank debit and fee independent from its quote',
+    (tester) async {
+      final detail = _appliedPaymentDetail()
+        ..['accountAmountExact'] = '327.8885'
+        ..['bankFeeAccountAmountExact'] = '3.0000';
+      final api = await _pumpEditor(tester, detail: detail);
+      final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
+        _financeGrid(),
+      );
+      grid.controller.rows.single.amount.text = '50.1234';
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      expect(api.lastPutBody?['accountAmount'], '327.8885');
+      expect(api.lastPutBody?['bankFeeAccountAmount'], '3.0000');
+      expect(api.lastPutBody?['exchangeRate'], '7.200000');
+      expect(api.lastPutBody?['bankBookedAt'], '2026-08-09T02:00:00.000Z');
+    },
+  );
+
+  testWidgets(
+    'same currency payment rejects one fractional unit and preserves a real tiny bank fee',
+    (tester) async {
+      final detail = _appliedPaymentDetail()
+        ..['currencyId'] = 'currency-cny'
+        ..['exchangeRate'] = 1
+        ..['amountLocal'] = 50
+        ..['accountAmountExact'] = '50.000000000000000000000001'
+        ..['accountAmountLocalExact'] = '50.000000000000000000000001';
+      final line = (detail['items'] as List).single as Map<String, dynamic>;
+      line['amountLocal'] = 50;
+      line['appliedAmountLocal'] = 50;
+      line['exchangeDiff'] = 0;
+      final api = await _pumpEditor(tester, detail: detail);
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      expect(api.lastPutBody, isNull);
+      final notices = ProviderScope.containerOf(
+        tester.element(find.byType(FinanceDocEditPage)),
+      ).read(appNotificationProvider);
+      expect(notices.last.message, contains('同币种银行实际扣款'));
+      await tester.enterText(
+        find.byKey(const ValueKey('finance-payment-bank-fee')),
+        '0.000000000000000000000001',
+      );
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      expect(api.lastPutBody?['accountAmount'], '50.000000000000000000000001');
+      expect(
+        api.lastPutBody?['bankFeeAccountAmount'],
+        '0.000000000000000000000001',
+      );
+    },
+  );
 }
 
 Finder _dropdownWithLabel(String label) => find.byWidgetPredicate(
@@ -411,6 +486,15 @@ Map<String, dynamic> _appliedPaymentDetail() => <String, dynamic>{
   'exchangeRate': 7.2,
   'amountOriginal': 50,
   'amountLocal': 360,
+  'settlementAuthorityVersion': 2,
+  'accountCurrencyId': 'currency-cny',
+  'accountExchangeRateExact': '1',
+  'accountAmountExact': '360.0000',
+  'accountAmountLocalExact': '360.0000',
+  'bankFeeAccountAmountExact': '0.0000',
+  'bankFeeExact': '0.0000',
+  'bankReference': 'PAYMENT-BANK-001',
+  'bankBookedAt': '2026-08-09T02:00:00Z',
   'status': 0,
   'items': <Map<String, dynamic>>[
     <String, dynamic>{
@@ -509,13 +593,22 @@ class _PaymentApi extends ApiClient {
     }
     if (path == '/master/accounts/dict') {
       return const [
-        {'id': 'account-1', 'name': '付款账户'},
+        {
+          'id': 'account-1',
+          'name': '付款账户',
+          'currencyId': 'currency-cny',
+          'currencyCode': 'CNY',
+          'currencyName': '人民币',
+          'baseCurrency': true,
+          'status': '使用',
+        },
       ];
     }
     if (path == '/master/currencies/dict') {
       return const [
         {'id': 'currency-usd', 'name': '美元'},
         {'id': 'currency-eur', 'name': '欧元'},
+        {'id': 'currency-cny', 'name': '人民币'},
       ];
     }
     if (path == '/master/reference-methods/finance') {

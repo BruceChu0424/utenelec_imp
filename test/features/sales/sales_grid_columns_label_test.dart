@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/features/sales/widgets/sales_grid_columns.dart';
@@ -103,6 +104,17 @@ void main() {
     );
     expect(tester.widget<TextField>(priceField).readOnly, isTrue);
     expect(tester.widget<TextField>(discountField).readOnly, isFalse);
+    expect(
+      (tester.widget<TextField>(discountField).decoration
+              as UtenInputDecoration)
+          .info,
+      contains('0.9'),
+    );
+    expect(
+      (tester.widget<TextField>(priceField).decoration as UtenInputDecoration)
+          .info,
+      contains('不可在订货单修改'),
+    );
 
     await tester.enterText(discountField, '0.8');
     await tester.pump();

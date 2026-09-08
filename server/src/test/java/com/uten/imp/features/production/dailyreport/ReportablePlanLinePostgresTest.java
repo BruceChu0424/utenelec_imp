@@ -9,6 +9,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -102,9 +103,9 @@ class ReportablePlanLinePostgresTest {
                         + "VALUES (?, 'DW900001', '件', '使用')",
                 UNIT_ID);
         jdbc.update(
-                "INSERT INTO goods(id, code, name, spec, code_sequence) "
-                        + "VALUES (?, 'HP900001', '成品灯', '300mm', 900001)",
-                GOODS_ID);
+                "INSERT INTO goods(id, code, name, spec, code_sequence,unit_id) "
+                        + "VALUES (?, 'HP900001', '成品灯', '300mm', 900001,?)",
+                GOODS_ID,UNIT_ID);
         jdbc.update(
                 "INSERT INTO clients(id, code, name, status, code_sequence, sales_payment_type) "
                         + "VALUES (?, 'KH900001', '测试客户', '使用', 900001, 'MONTHLY')",
@@ -151,7 +152,11 @@ class ReportablePlanLinePostgresTest {
     }
 
     @BeforeEach
-    void prepareFixture() {
+    void prepareFixture(TestInfo testInfo) {
+        boolean readyFixture=java.util.Set.of(
+                "assignedZeroMaterialReadySegmentIsHiddenUntilExplicitStart",
+                "readyToInProgressRequiresExplicitStartTransactionMarker")
+                .contains(testInfo.getTestMethod().orElseThrow().getName());
         transaction.executeWithoutResult(ignored -> {
         jdbc.update("SET LOCAL session_replication_role = replica");
         jdbc.update("DELETE FROM production_daily_report_items");
@@ -178,9 +183,9 @@ class ReportablePlanLinePostgresTest {
                     goods_id, unit_id, unit_rate, qty, fqty
                 ) VALUES (
                     ?, 'SJ20260801000001', DATE '2026-08-01', ?, 'SJ-001-1',
-                    ?, ?, 1, 100, 40
+                    ?, ?, 1, 100, ?
                 )
-                """, PLAN_ITEM_ID, PLAN_ID, GOODS_ID, UNIT_ID);
+                """, PLAN_ITEM_ID, PLAN_ID, GOODS_ID, UNIT_ID,readyFixture?0:40);
         jdbc.update("""
                 UPDATE production_plans
                 SET material_analysis_id = ?, material_analysis_item_id = ?
@@ -189,13 +194,13 @@ class ReportablePlanLinePostgresTest {
         jdbc.update("""
                 INSERT INTO plan_order_item_links(
                     id, plan_item_id, order_item_id, allocated_qty, produced_qty
-                ) VALUES (?, ?, ?, 70, 20)
-                """, LINK_ONE_ID, PLAN_ITEM_ID, ORDER_ITEM_ONE_ID);
+                ) VALUES (?, ?, ?, 70, ?)
+                """, LINK_ONE_ID, PLAN_ITEM_ID, ORDER_ITEM_ONE_ID,readyFixture?0:20);
         jdbc.update("""
                 INSERT INTO plan_order_item_links(
                     id, plan_item_id, order_item_id, allocated_qty, produced_qty
-                ) VALUES (?, ?, ?, 30, 20)
-                """, LINK_TWO_ID, PLAN_ITEM_ID, ORDER_ITEM_TWO_ID);
+                ) VALUES (?, ?, ?, 30, ?)
+                """, LINK_TWO_ID, PLAN_ITEM_ID, ORDER_ITEM_TWO_ID,readyFixture?0:20);
         jdbc.update("""
                 INSERT INTO production_planning_packages(
                     id, plan_id, warehouse_id, idempotency_key,
@@ -246,15 +251,15 @@ class ReportablePlanLinePostgresTest {
                     responsible_employee_id = ?,
                     plan_begin_date = DATE '2026-08-01',
                     plan_end_date = DATE '2026-08-10',
-                    status = 'DISPATCHED'
+                    status = ?
                 WHERE id = ?
-                """, EMPLOYEE_ID, SEGMENT_ID);
-        jdbc.update("""
+                """, EMPLOYEE_ID,readyFixture?"READY":"DISPATCHED", SEGMENT_ID);
+        if(!readyFixture){jdbc.update("""
                 UPDATE production_execution_segments
                 SET status = 'IN_PROGRESS'
                 WHERE id = ?
                 """, SEGMENT_ID);
-        insertDraftProgress();
+        insertDraftProgress();}
         });
 
         ProductionDocumentAccessPolicy access =
@@ -323,10 +328,8 @@ class ReportablePlanLinePostgresTest {
     }
 
     @Test
-    void assignedZeroMaterialReadySegmentIsReportableAndExactIdSetFilters() {
-        writeHistoricalState(() -> jdbc.update(
-                "UPDATE production_execution_segments SET status='READY' WHERE id=?",
-                SEGMENT_ID));
+    void assignedZeroMaterialReadySegmentIsHiddenUntilExplicitStart() {
+        assertEquals("READY",jdbc.queryForObject("SELECT status FROM production_execution_segments WHERE id=?",String.class,SEGMENT_ID));
 
         List<ReportablePlanLine> items = service.list(
                 1,
@@ -335,62 +338,77 @@ class ReportablePlanLinePostgresTest {
                 null,
                 List.of(SEGMENT_ID, UUID.randomUUID())).getItems();
 
-        assertEquals(2, items.size());
-        assertTrue(items.stream().allMatch(item ->
-                SEGMENT_ID.equals(item.executionSegmentId())));
-        assertTrue(items.stream().allMatch(item ->
-                "READY".equals(item.executionSegmentStatus())));
+        assertTrue(items.isEmpty(), "未开工的零料任务也不进入报工选择器");
+        startReadySegment("assigned-zero-start-test");
+        List<ReportablePlanLine> started = service.list(1, 100, null, null,
+                List.of(SEGMENT_ID, UUID.randomUUID())).getItems();
+        assertEquals(2, started.size());
+        assertTrue(started.stream().allMatch(item ->
+                SEGMENT_ID.equals(item.executionSegmentId())
+                        && "IN_PROGRESS".equals(item.executionSegmentStatus())));
     }
 
     @Test
-    void readyToInProgressRequiresExactReportTransactionMarker() {
-        writeHistoricalState(() -> jdbc.update(
-                "UPDATE production_execution_segments "
-                        + "SET status='READY', lock_version=0 WHERE id=?",
-                SEGMENT_ID));
+    void readyToInProgressRequiresExplicitStartTransactionMarker() {
         assertEquals("READY", jdbc.queryForObject(
                 "SELECT status FROM production_execution_segments WHERE id=?",
                 String.class,
                 SEGMENT_ID));
         assertEquals("origin", jdbc.queryForObject(
                 "SHOW session_replication_role", String.class));
+        Long expectedVersion=jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,SEGMENT_ID);
 
         assertThrows(DataIntegrityViolationException.class, () ->
                 transaction.executeWithoutResult(ignored -> jdbc.update(
                         "UPDATE production_execution_segments "
-                                + "SET status='IN_PROGRESS', lock_version=1 "
+                                + "SET status='IN_PROGRESS', lock_version=lock_version+1 "
                                 + "WHERE id=?",
                         SEGMENT_ID)));
 
+        assertThrows(DataIntegrityViolationException.class, () ->
+                transaction.executeWithoutResult(ignored -> {
+                    jdbc.queryForObject("SELECT set_config('app.production_report_auto_start_segment_id',?,true)",
+                            String.class, SEGMENT_ID.toString());
+                    jdbc.queryForObject("SELECT set_config('app.production_report_auto_start_expected_version',?,true)",
+                            String.class,expectedVersion.toString());
+                    jdbc.update("UPDATE production_execution_segments SET status='IN_PROGRESS', lock_version=lock_version+1 WHERE id=?",
+                            SEGMENT_ID);
+                }));
+
+        startReadySegment("explicit-start-test");
+        assertEquals("IN_PROGRESS", jdbc.queryForObject(
+                "SELECT status FROM production_execution_segments WHERE id=?",
+                String.class,
+                SEGMENT_ID));
+    }
+
+    private void startReadySegment(String idempotencyKey){
         transaction.executeWithoutResult(ignored -> {
+            Long expectedVersion=jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=? FOR UPDATE",Long.class,SEGMENT_ID);
             jdbc.queryForObject(
                     "SELECT set_config("
-                            + "'app.production_report_auto_start_segment_id',"
+                            + "'app.production_execution_start_segment_id',"
                             + " ?, true)",
                     String.class,
                     SEGMENT_ID.toString());
             jdbc.queryForObject(
                     "SELECT set_config("
-                            + "'app.production_report_auto_start_expected_version',"
-                            + " '0', true)",
-                    String.class);
+                            + "'app.production_execution_start_expected_version',"
+                            + " ?, true)",
+                    String.class,expectedVersion.toString());
             assertEquals(1, jdbc.update(
                     "UPDATE production_execution_segments "
-                            + "SET status='IN_PROGRESS', lock_version=1 "
-                            + "WHERE id=? AND lock_version=0",
-                    SEGMENT_ID));
+                            + "SET status='IN_PROGRESS', lock_version=lock_version+1 "
+                            + "WHERE id=? AND lock_version=?",
+                    SEGMENT_ID,expectedVersion));
             assertEquals(1, jdbc.update("""
                     INSERT INTO production_execution_segment_events(
                         execution_segment_id, action, idempotency_key,
                         request_hash, expected_version, resulting_version)
-                    VALUES (?, 'AUTO_START_ON_REPORT', 'report-test',
-                            ?, 0, 1)
-                    """, SEGMENT_ID, "e".repeat(64)));
+                    VALUES (?, 'START', ?,
+                            ?, ?, ?)
+                    """, SEGMENT_ID,idempotencyKey, "e".repeat(64),expectedVersion,expectedVersion+1));
         });
-        assertEquals("IN_PROGRESS", jdbc.queryForObject(
-                "SELECT status FROM production_execution_segments WHERE id=?",
-                String.class,
-                SEGMENT_ID));
     }
 
     @Test

@@ -13,7 +13,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.HashMap;
@@ -26,7 +25,6 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SupplierOpenItemOffsetService {
-    private static final int MONEY_SCALE = 4;
 
     private final EntityManager em;
     private final TxSessionVars tx;
@@ -128,7 +126,7 @@ public class SupplierOpenItemOffsetService {
                 || !Objects.equals(source.currencyId(), currencyId)
                 || !(source.kind().equals("CREDIT") || source.kind().equals("CLAIM_CREDIT"))
                 || source.balanceOriginal() == null || source.balanceOriginal().signum() >= 0
-                || source.balanceLocal().signum() >= 0) {
+                || source.balanceLocal().signum() > 0) {
             throw conflict("抵销来源必须是同供应商、同币种且仍有负余额的贷项或索赔");
         }
         BigDecimal requested = targets.stream().map(Target::amountOriginal)
@@ -147,7 +145,7 @@ public class SupplierOpenItemOffsetService {
                     || !Objects.equals(target.supplierId(), supplierId)
                     || !Objects.equals(target.currencyId(), currencyId)
                     || target.balanceOriginal() == null || target.balanceOriginal().signum() <= 0
-                    || target.balanceLocal().signum() <= 0) {
+                    || target.balanceLocal().signum() < 0) {
                 throw conflict("抵销目标必须是同供应商、同币种且仍有正余额的应付");
             }
             if (source.rate() == null || target.rate() == null
@@ -161,6 +159,7 @@ public class SupplierOpenItemOffsetService {
                     amount, sourceOriginalRemaining.abs(), sourceLocalRemaining.abs(), source.rate());
             BigDecimal targetLocal = localSlice(
                     amount, target.balanceOriginal(), target.balanceLocal(), target.rate());
+            if(sourceLocal.compareTo(targetLocal)!=0)throw conflict("来源贷项与目标应付的已确认账面分配不同，请核对来源分摊，不能自动制造汇兑损益");
             BigDecimal sourceAfterOriginal = money(sourceOriginalRemaining.add(amount));
             BigDecimal sourceAfterLocal = money(sourceLocalRemaining.add(sourceLocal));
             BigDecimal targetAfterOriginal = money(target.balanceOriginal().subtract(amount));
@@ -243,7 +242,11 @@ public class SupplierOpenItemOffsetService {
                        source_amount_local, target_amount_local,
                        source_balance_before_original, source_balance_after_original,
                        target_balance_before_original, target_balance_after_original,
-                       effective_date,resolution_id,supplier_id,currency_id
+                       effective_date,resolution_id,supplier_id,currency_id,
+                       (SELECT -(document.book_allocation_plan->>'creditRemainingLocal')::numeric
+                         FROM procurement_iqc_credit_documents document WHERE document.id=offset_batch_id),
+                       (SELECT (document.book_allocation_plan->>'sourceAfterLocal')::numeric
+                         FROM procurement_iqc_credit_documents document WHERE document.id=offset_batch_id)
                 FROM supplier_open_item_offsets
                 WHERE offset_batch_id = :batchId AND status = 'APPLIED'
                 ORDER BY line_sequence DESC
@@ -254,12 +257,13 @@ public class SupplierOpenItemOffsetService {
                 .flatMap(row -> java.util.stream.Stream.of((UUID) row[1], (UUID) row[2]))
                 .distinct().sorted().toList();
         Map<UUID, OpenItem> locked = lock(ledgerIds);
-        LocalDate effectiveDate=(LocalDate)rows.getFirst()[10];
+        LocalDate effectiveDate=com.uten.imp.common.util.NativeValueConverters.toLocalDate(rows.getFirst()[10]);
+        if(effectiveDate==null)throw conflict("抵销批次缺少生效日期，不能撤回");
         UUID resolutionId=(UUID)rows.getFirst()[11];
         UUID supplierId=(UUID)rows.getFirst()[12];
         UUID currencyId=(UUID)rows.getFirst()[13];
         for(Object[] row:rows){
-            if(!Objects.equals(effectiveDate,row[10])||!Objects.equals(resolutionId,row[11])
+            if(!Objects.equals(effectiveDate,com.uten.imp.common.util.NativeValueConverters.toLocalDate(row[10]))||!Objects.equals(resolutionId,row[11])
                     ||!Objects.equals(supplierId,row[12])
                     ||!Objects.equals(currencyId,row[13])){
                 throw conflict("抵销批次的生效日或索赔方案不一致");
@@ -284,7 +288,10 @@ public class SupplierOpenItemOffsetService {
             OpenItem source = require(locked, sourceId);
             OpenItem target = require(locked, targetId);
             if (source.balanceOriginal().compareTo(expectedSourceAfter) != 0
-                    || target.balanceOriginal().compareTo(expectedTargetAfter) != 0) {
+                    || target.balanceOriginal().compareTo(expectedTargetAfter) != 0
+                    || (row.length>15 && row[14]!=null &&
+                        (source.balanceLocal().compareTo(decimal(row[14]))!=0
+                          ||target.balanceLocal().compareTo(decimal(row[15]))!=0))) {
                 throw conflict("抵销后余额已被后续业务使用，必须先反转后续核销");
             }
             BigDecimal sourceAfterOriginal = money(source.balanceOriginal().subtract(amount));
@@ -349,8 +356,8 @@ public class SupplierOpenItemOffsetService {
                     amount_offset_local = amount_offset_local + :offsetLocal,
                     amount_balance_original = :balanceOriginal,
                     amount_balance = :balanceLocal,
-                    is_settled = (:balanceLocal = 0),
-                    settled_date = CASE WHEN :balanceLocal = 0 THEN COALESCE(CAST(:settledDate AS date), CURRENT_DATE) ELSE NULL END,
+                    is_settled = (:balanceLocal = 0 AND :balanceOriginal = 0),
+                    settled_date = CASE WHEN :balanceLocal = 0 AND :balanceOriginal = 0 THEN COALESCE(CAST(:settledDate AS date), CURRENT_DATE) ELSE NULL END,
                     updated_at = now()
                 WHERE id = :id
                 """)
@@ -375,7 +382,7 @@ public class SupplierOpenItemOffsetService {
         if (rate == null || rate.signum() <= 0) {
             throw conflict("抵销项目开账汇率缺失或无效，不能自动换算");
         }
-        BigDecimal calculated = money(amountOriginal.multiply(rate));
+        BigDecimal calculated = com.uten.imp.common.finance.FinancialBookAllocation.part(amountOriginal,availableOriginal,availableLocal);
         if (calculated.compareTo(availableLocal) > 0) {
             throw conflict("抵销账面本币超过可用余额");
         }
@@ -389,7 +396,7 @@ public class SupplierOpenItemOffsetService {
     }
 
     private static BigDecimal money(BigDecimal value) {
-        return value.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        return com.uten.imp.common.util.FinancialExactAmount.canonicalMoney(value,"应付抵销账面金额");
     }
 
     private static BigDecimal decimal(Object value) {

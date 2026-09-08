@@ -37,6 +37,9 @@ void main() {
     // 2026-09-04 口径：采购/销售单据编辑网格下线「实际重量」列（单位已表达重量）；
     // 行模型 weight 字段保留，编辑既有单回填并随保存透传。仓库/生产等实物单据
     // （过磅/收发料）仍保留重量录入。
+    // 2026-09-05 补充：仓库「登记实际到货」页同样下线实称重量列（走单位的
+    // 计量维度：重量型单位实收数量本身即重量），保存不再提交 weight；
+    // 过磅（stock）/生产日报仍保留重量录入与校验。
     for (final grid in [stockGrid, dailyGrid]) {
       expect(grid, contains("key: 'weight'"));
       expect(grid, contains("label: '实际重量'"));
@@ -45,16 +48,12 @@ void main() {
       expect(grid, isNot(contains("key: 'weight'")));
       expect(grid, isNot(contains("label: '实际重量'")));
     }
-    for (final edit in [
-      stockEdit,
-      purchaseEdit,
-      salesEdit,
-      arrival,
-      dailyEdit,
-    ]) {
+    for (final edit in [stockEdit, purchaseEdit, salesEdit, dailyEdit]) {
       expect(edit, contains("'weight'"));
       expect(edit, contains('实际重量必须大于 0'));
     }
+    expect(arrival, isNot(contains("'weight': ?weight")));
+    expect(arrival, isNot(contains('实际重量必须大于 0')));
   });
 
   test('business quantity keeps unit rate and never derives parcel count', () {

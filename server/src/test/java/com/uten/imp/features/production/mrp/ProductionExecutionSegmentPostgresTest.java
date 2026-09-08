@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.mrp;
 
+import com.uten.imp.support.ProcurementReceiptFixtureSupport;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -2108,8 +2109,8 @@ class ProductionExecutionSegmentPostgresTest {
                     insert into purchase_receipt_items(
                         id, bill_no, bill_date, receipt_id,
                         order_item_id, goods_id, unit_id,
-                        unit_rate, qty, goods_snapshot_source
-                    ) values (?, ?, ?, ?, ?, ?, ?, 1, ?, 'MASTER_AT_SAVE')
+                        unit_rate, qty, price, amount_original, amount_local, replacement_intent, goods_snapshot_source
+                    ) values (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 0, 0, 'NORMAL', 'MASTER_AT_SAVE')
                     """,
                     itemId,
                     billNo,
@@ -2130,6 +2131,8 @@ class ProductionExecutionSegmentPostgresTest {
                         decimal(qty),
                         fixture.balanceBId());
             }
+            // Explicit zero-price quantity fixture; never infer monetary zero from NULL.
+            ProcurementReceiptFixtureSupport.appendStandardReceipt(connection, "PURCHASE", receiptId);
             connection.commit();
         } catch (Exception error) {
             connection.rollback();
@@ -2391,6 +2394,8 @@ class ProductionExecutionSegmentPostgresTest {
                     """,
                     receipt.qty(),
                     fixture.balanceBId());
+            // Explicit zero-price quantity fixture; never infer monetary zero from NULL.
+            ProcurementReceiptFixtureSupport.appendReceiptReversal(connection, "PURCHASE", receipt.id());
             connection.commit();
         } catch (Exception error) {
             connection.rollback();
@@ -2608,10 +2613,10 @@ class ProductionExecutionSegmentPostgresTest {
                             id, bill_no, bill_date, receipt_id,
                             order_item_id, line_no, goods_id, unit_id,
                             unit_rate, qty, order_qty, source_doc_no,
-                            goods_snapshot_source)
+                            price, amount_original, amount_local, replacement_intent, goods_snapshot_source)
                         values (
                             ?, ?, ?, ?, ?, 1, ?, ?,
-                            1, ?, 4, ?, 'ORDER_ITEM_AT_SAVE')
+                            1, ?, 4, ?, 0, 0, 0, 'NORMAL', 'ORDER_ITEM_AT_SAVE')
                     """,
                     receiptItemId,
                     receiptNo,
@@ -2640,6 +2645,8 @@ class ProductionExecutionSegmentPostgresTest {
                     """,
                     quantity,
                     fixture.balanceBId());
+            // Explicit zero-price quantity fixture; never infer monetary zero from NULL.
+            ProcurementReceiptFixtureSupport.appendStandardReceipt(connection, "SUBCONTRACT", receiptId);
             connection.commit();
         } catch (Exception error) {
             connection.rollback();

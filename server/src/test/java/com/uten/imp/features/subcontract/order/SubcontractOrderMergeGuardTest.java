@@ -143,7 +143,11 @@ class SubcontractOrderMergeGuardTest {
                 mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class),
                 accessPolicy,
                 mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class),
-                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class));
+                mock(com.uten.imp.features.finance.procurement.ProcurementApprovalReconfirmationService.class),
+                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementReviewCancellationPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementOrderSourceRevisionPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
         return new Wiring(service, itemA, itemB, batchQuery, goodsId);
     }
 

@@ -1,6 +1,10 @@
 package com.uten.imp.features.warehouse.inbound;
 
 import com.uten.imp.application.port.ProcurementInspectionPort;
+import com.uten.imp.application.port.ProcurementInventoryValuePort;
+import com.uten.imp.common.finance.ProcurementReceiptConsiderationService;
+import com.uten.imp.features.finance.arap.ArApLedgerService;
+import com.uten.imp.support.ProcurementReceiptFixtureSupport;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmItem;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest;
@@ -85,6 +89,10 @@ class ProcurementInspectionIntegrityPostgresTest {
     @Autowired private WarehouseQualityResultService qualityResultService;
     @Autowired private ProductionSupplyTransitionPort productionSupply;
     @Autowired private TxSessionVars tx;
+    @Autowired private ProcurementInventoryValuePort procurementValue;
+    @Autowired private ProcurementReceiptConsiderationService consideration;
+    @Autowired private ArApLedgerService arAp;
+    @Autowired private com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
 
     @AfterEach
     void clearSecurity() {
@@ -144,8 +152,16 @@ class ProcurementInspectionIntegrityPostgresTest {
         assertQuantity(stockedProjection(line.inspectionItemId()), "6");
         assertThat(stockInItemCount(receipt.id())).isEqualTo(2L);
 
-        transactions.executeWithoutResult(ignored -> inspectionService.reverseResolvedStock(
-                receipt.type(), receipt.id(), OffsetDateTime.now()));
+        transactions.executeWithoutResult(ignored -> {
+            tx.bind();
+            mutationLocks.receipt(receipt.type(),receipt.id()).verifyUnchanged();
+            consideration.reverseReceipt(receipt.type(), receipt.id(), UUID.randomUUID(), "Fixture original receipt reversal");
+            arAp.reverseArAp(receipt.id(), receipt.type()+"_RECEIPT");
+            inspectionService.reverseResolvedStock(receipt.type(), receipt.id(), OffsetDateTime.now());
+            String table=receipt.type().equals("PURCHASE")?"purchase_receipts":"subcontract_receipts";
+            jdbc.update("UPDATE "+table+" SET status=-1 WHERE id=?",receipt.id());
+            procurementValue.receiptReversed(receipt.type(),receipt.id(),((AuthUser)SecurityContextHolder.getContext().getAuthentication().getPrincipal()).getId());
+        });
 
         assertQuantity(stockQty(receipt.warehouseId(), line.goodsId()), "0");
         assertInspection(line.inspectionItemId(), "REVERSED", "0", "0");
@@ -233,6 +249,24 @@ class ProcurementInspectionIntegrityPostgresTest {
                 fixture.receipt().type(), fixture.receipt().id(),
                 stockInRequest(passEventId, "6", "6",
                         "order-close-stock-in-0001", "CLOSE-01"));
+
+        // One order has two real commercial lines. Completing the production
+        // material cannot close the other line while it is still awaiting IQC.
+        assertThat(jdbc.queryForObject("""
+                SELECT is_closed FROM purchase_orders WHERE id=?
+                """, Boolean.class, fixture.orderId())).isFalse();
+        InspectionLine otherLine = fixture.receipt().lines().get(1);
+        loginCurrentEmployee("order-close-quality");
+        inspectionService.dispose(fixture.receipt().type(), fixture.receipt().id(),
+                otherLine.inspectionItemId(),
+                disposition("PASS", null, "order-close-pass-0002"));
+        assertThat(jdbc.queryForObject("""
+                SELECT is_closed FROM purchase_orders WHERE id=?
+                """, Boolean.class, fixture.orderId())).isFalse();
+        loginCurrentEmployee("order-close-warehouse");
+        stockInService.confirm(fixture.receipt().type(), fixture.receipt().id(),
+                stockInRequest(passEventId(otherLine.inspectionItemId()), "3", "3",
+                        "order-close-stock-in-0002", "CLOSE-02"));
 
         assertThat(jdbc.queryForObject("""
                 SELECT is_closed FROM purchase_orders WHERE id=?
@@ -355,6 +389,9 @@ class ProcurementInspectionIntegrityPostgresTest {
     void concurrentLastQualityLinesSerializeToOneTruthfulReceiptResolution() throws Exception {
         ReceiptFixture receipt = seedReceipt(
                 ProcurementInspectionPort.PURCHASE, 2, "10", "100");
+        List<AuthUser> actors=java.util.stream.IntStream.range(0,receipt.lines().size())
+                .mapToObj(index -> createWarehouseActor("concurrent-iqc-"+index)).toList();
+        java.util.concurrent.atomic.AtomicInteger conflicts=new java.util.concurrent.atomic.AtomicInteger();
         CountDownLatch start = new CountDownLatch(1);
         ExecutorService executor = Executors.newFixedThreadPool(2);
         List<Future<?>> futures = new ArrayList<>();
@@ -363,13 +400,22 @@ class ProcurementInspectionIntegrityPostgresTest {
                 int lineNo = i;
                 InspectionLine line = receipt.lines().get(i);
                 futures.add(executor.submit(() -> {
-                    login("concurrent-iqc-" + lineNo);
+                    authenticate(actors.get(lineNo));
                     try {
                         start.await(10, TimeUnit.SECONDS);
-                        inspectionService.dispose(
-                                receipt.type(), receipt.id(), line.inspectionItemId(),
-                                disposition("PASS", null,
-                                        "concurrent-pass-000" + lineNo));
+                        var request=disposition("PASS",null,"concurrent-pass-000"+lineNo);
+                        try {
+                            inspectionService.dispose(receipt.type(),receipt.id(),line.inspectionItemId(),request);
+                        } catch(ApiException conflict) {
+                            assertThat(conflict.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.CONFLICT);
+                            assertThat(conflicts.incrementAndGet()).isLessThanOrEqualTo(1);
+                            assertInspection(line.inspectionItemId(),"PENDING","0","0");
+                            assertThat(jdbc.queryForObject("SELECT count(*) FROM procurement_inspection_events WHERE inspection_item_id=? AND action='PASS'",
+                                    Long.class,line.inspectionItemId())).isZero();
+                            assertQuantity(stockQty(receipt.warehouseId(),line.goodsId()),"0");
+                            inspectionService.pendingForReceipt(receipt.type(),receipt.id());
+                            inspectionService.dispose(receipt.type(),receipt.id(),line.inspectionItemId(),request);
+                        }
                         return null;
                     } finally {
                         SecurityContextHolder.clearContext();
@@ -528,6 +574,10 @@ class ProcurementInspectionIntegrityPostgresTest {
                             VALUES (?,?,'PASS',1,?,TRUE,999,now())
                             """, forgedEventId, line.inspectionItemId(),
                             actor.getEmployeeId());
+                    jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>)connection -> {
+                        ProcurementReceiptFixtureSupport.appendExistingQualityConsideration(connection,receipt.type(),receipt.id(),actor.getId());
+                        return null;
+                    });
                 }))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("frozen receipt quantity, amount and weight sequence");
@@ -540,10 +590,18 @@ class ProcurementInspectionIntegrityPostgresTest {
 
     private ReceiptFixture seedReceipt(
             String type, int lineCount, String receivedQty, String receivedAmount) {
+        return transactions.execute(ignored -> seedReceiptInTransaction(type,lineCount,receivedQty,receivedAmount));
+    }
+
+    private ReceiptFixture seedReceiptInTransaction(
+            String type, int lineCount, String receivedQty, String receivedAmount) {
         UUID warehouseId = UUID.randomUUID();
         UUID receiptId = UUID.randomUUID();
         String suffix = UUID.randomUUID().toString();
-        LocalDate billDate = LocalDate.of(2026, 8, 14);
+        ReceiptSource source=createReceiptSource();
+        UUID unitId=UUID.randomUUID();
+        jdbc.update("INSERT INTO units(id,code,name) VALUES(?,?,'piece')",unitId,"IQC-U-"+unitId);
+        LocalDate billDate = com.uten.imp.common.time.BusinessTime.today();
         jdbc.update("INSERT INTO warehouses(id,code,name) VALUES (?,?,?)",
                 warehouseId, "W-IQC-" + suffix, "IQC integrity warehouse");
         String receiptTable = ProcurementInspectionPort.PURCHASE.equals(type)
@@ -552,9 +610,18 @@ class ProcurementInspectionIntegrityPostgresTest {
                 ProcurementInspectionPort.PURCHASE.equals(type) ? "CJ" : "EJ",
                 billDate);
         jdbc.update("INSERT INTO " + receiptTable
-                        + "(id,bill_no,bill_date,warehouse_id,status,is_deleted) "
-                        + "VALUES (?,?,?,?,1,FALSE)",
-                receiptId, receiptNo, billDate, warehouseId);
+                        + "(id,bill_no,bill_date,warehouse_id,supplier_id,currency_id,settlement_method_id,exchange_rate,total_original,total_local,status,is_deleted) "
+                        + "VALUES (?,?,?,?,?,?,?,1,?,?,1,FALSE)",
+                receiptId, receiptNo, billDate, warehouseId,source.supplier(),source.currency(),source.settlement(),
+                decimal(receivedAmount).multiply(BigDecimal.valueOf(lineCount)),decimal(receivedAmount).multiply(BigDecimal.valueOf(lineCount)));
+        UUID orderId=UUID.randomUUID();
+        String orderPrefix=type.equals("PURCHASE")?"purchase":"subcontract";
+        String orderNo=businessIdentifier(type.equals("PURCHASE")?"CD":"EO",billDate);
+        jdbc.update("""
+                INSERT INTO %s(id,bill_no,bill_date,warehouse_id,supplier_id,currency_id,settlement_method_id,exchange_rate,
+                    total_original,total_local,status,maker_id,created_by) VALUES(?,?,?,?,?,?,?,1,?,?,1,?,?)
+                """.formatted(orderPrefix+"_orders"),orderId,orderNo,billDate,warehouseId,source.supplier(),source.currency(),source.settlement(),
+                decimal(receivedAmount).multiply(BigDecimal.valueOf(lineCount)),decimal(receivedAmount).multiply(BigDecimal.valueOf(lineCount)),source.actor().getEmployeeId(),source.actor().getId());
 
         List<InspectionLine> lines = new ArrayList<>();
         for (int index = 0; index < lineCount; index++) {
@@ -563,30 +630,38 @@ class ProcurementInspectionIntegrityPostgresTest {
             UUID inspectionItemId = UUID.randomUUID();
             String goodsCode = "G-IQC-" + suffix + '-' + index;
             String goodsName = "IQC integrity goods " + index;
-            jdbc.update("INSERT INTO goods(id,code,name,min_qty,code_sequence) "
-                            + "VALUES (?,?,?,0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
-                    goodsId, goodsCode, goodsName);
+            jdbc.update("INSERT INTO goods(id,code,name,unit_id,min_qty,code_sequence) "
+                            + "VALUES (?,?,?,?,0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
+                    goodsId, goodsCode, goodsName,unitId);
+            UUID orderItemId=UUID.randomUUID();
+            jdbc.update("""
+                    INSERT INTO %s(id,bill_no,bill_date,order_id,line_no,goods_id,unit_id,unit_rate,qty,price,
+                        amount_original,amount_local,received_qty,goods_snapshot_source)
+                    VALUES(?,?,?,?,?,?,?,1,?,?,?,?,?,'MASTER_AT_SAVE')
+                    """.formatted(orderPrefix+"_order_items"),orderItemId,orderNo,billDate,orderId,index+1,goodsId,unitId,decimal(receivedQty),
+                    decimal(receivedAmount).divide(decimal(receivedQty)),decimal(receivedAmount),decimal(receivedAmount),decimal(receivedQty));
             String itemTable = ProcurementInspectionPort.PURCHASE.equals(type)
                     ? "purchase_receipt_items" : "subcontract_receipt_items";
             jdbc.update("INSERT INTO " + itemTable + "("
-                            + "id,bill_no,bill_date,receipt_id,line_no,goods_id,"
+                            + "id,bill_no,bill_date,receipt_id,line_no,goods_id,order_item_id,"
                             + "goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,"
-                            + "goods_snapshot_locked_at,unit_rate,qty,amount_local,is_deleted) "
-                            + "VALUES (?,?,?,?,?,?,?,?,'MASTER_AT_APPROVAL',now(),1,?,?,FALSE)",
+                            + "goods_snapshot_locked_at,unit_id,unit_rate,qty,price,amount_original,amount_local,replacement_intent,is_deleted) "
+                            + "VALUES (?,?,?,?,?,?,?,?,?,'MASTER_AT_APPROVAL',now(),?,1,?,?,?,?, 'NORMAL',FALSE)",
                     receiptItemId, receiptNo, billDate, receiptId, index + 1,
-                    goodsId, goodsCode, goodsName,
-                    decimal(receivedQty), decimal(receivedAmount));
+                    goodsId,orderItemId, goodsCode, goodsName,unitId,
+                    decimal(receivedQty), decimal(receivedAmount).divide(decimal(receivedQty)), decimal(receivedAmount), decimal(receivedAmount));
             jdbc.update("""
                     INSERT INTO procurement_inspection_items (
                         id, receipt_type, receipt_id, receipt_item_id,
-                        warehouse_id, goods_id, unit_rate,
+                        warehouse_id, goods_id, unit_id,unit_rate,
                         received_base_qty, received_amount_local, status)
-                    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, 'PENDING')
+                    VALUES (?, ?, ?, ?, ?, ?, ?,1, ?, ?, 'PENDING')
                     """, inspectionItemId, type, receiptId, receiptItemId,
-                    warehouseId, goodsId, decimal(receivedQty),
+                    warehouseId, goodsId,unitId, decimal(receivedQty),
                     decimal(receivedAmount));
             lines.add(new InspectionLine(goodsId, receiptItemId, inspectionItemId));
         }
+        completeReceiptSource(type,receiptId,source);
         return new ReceiptFixture(type, receiptId, warehouseId, List.copyOf(lines));
     }
 
@@ -596,6 +671,7 @@ class ProcurementInspectionIntegrityPostgresTest {
     }
 
     private ProductionIqcFixture seedProductionIqcReceiptInTransaction() {
+        ReceiptSource source=createReceiptSource();
         UUID unitId = UUID.randomUUID();
         UUID productId = UUID.randomUUID();
         UUID materialId = UUID.randomUUID();
@@ -610,6 +686,7 @@ class ProcurementInspectionIntegrityPostgresTest {
         UUID demandId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         UUID orderItemId = UUID.randomUUID();
+        UUID unrelatedOrderItemId=UUID.randomUUID();
         UUID orderPegId = UUID.randomUUID();
         UUID receiptId = UUID.randomUUID();
         UUID productionReceiptItemId = UUID.randomUUID();
@@ -627,9 +704,9 @@ class ProcurementInspectionIntegrityPostgresTest {
         jdbc.update("INSERT INTO warehouses(id,code,name) VALUES (?,?,?)",
                 warehouseId, "W-IQC-PROD-" + suffix, "IQC production warehouse");
         for (UUID goodsId : List.of(productId, materialId, unrelatedGoodsId)) {
-            jdbc.update("INSERT INTO goods(id,code,name,min_qty,code_sequence) "
-                            + "VALUES (?,?,?,0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
-                    goodsId, "G-IQC-PROD-" + goodsId, "IQC production goods");
+            jdbc.update("INSERT INTO goods(id,code,name,unit_id,min_qty,code_sequence) "
+                            + "VALUES (?,?,?,?,0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
+                    goodsId, "G-IQC-PROD-" + goodsId, "IQC production goods",unitId);
         }
         jdbc.update("INSERT INTO stock_balances(id,warehouse_id,goods_id,qty) VALUES (?,?,?,0)",
                 materialBalanceId, warehouseId, materialId);
@@ -670,15 +747,19 @@ class ProcurementInspectionIntegrityPostgresTest {
                 VALUES (?,?,?,?,?,?,4,?,'BUY','WAITING_SUPPLY',?,?,?,1)
                 """, demandId, packageId, planId, warehouseId, materialId, unitId,
                 billDate.plusDays(3), "demand-" + demandId, segmentId, planItemId);
-        jdbc.update("INSERT INTO purchase_orders(id,bill_no,bill_date,warehouse_id,status) "
-                        + "VALUES (?,?,?,?,1)",
-                orderId, orderNo, billDate, warehouseId);
+        jdbc.update("INSERT INTO purchase_orders(id,bill_no,bill_date,warehouse_id,supplier_id,currency_id,settlement_method_id,exchange_rate,total_original,total_local,status,maker_id,created_by) "
+                        + "VALUES (?,?,?,?,?,?,?,1,90,90,1,?,?)",
+                orderId, orderNo, billDate, warehouseId,source.supplier(),source.currency(),source.settlement(),source.actor().getEmployeeId(),source.actor().getId());
         jdbc.update("""
                 INSERT INTO purchase_order_items(
                     id,bill_no,bill_date,order_id,goods_id,unit_id,
-                    unit_rate,qty,goods_snapshot_source)
-                VALUES (?,?,?,?,?,?,1,6,'MASTER_AT_SAVE')
+                    unit_rate,qty,price,amount_original,amount_local,received_qty,goods_snapshot_source)
+                VALUES (?,?,?,?,?,?,1,6,10,60,60,6,'MASTER_AT_SAVE')
                 """, orderItemId, orderNo, billDate, orderId, materialId, unitId);
+        jdbc.update("""
+                INSERT INTO purchase_order_items(id,bill_no,bill_date,order_id,line_no,goods_id,unit_id,unit_rate,qty,price,amount_original,amount_local,received_qty,goods_snapshot_source)
+                VALUES(?,?,?,?,2,?,?,1,3,10,30,30,3,'MASTER_AT_SAVE')
+                """,unrelatedOrderItemId,orderNo,billDate,orderId,unrelatedGoodsId,unitId);
         jdbc.update("""
                 INSERT INTO production_material_supply_pegs(
                     id,demand_id,supply_type,supply_item_id,allocated_qty,
@@ -694,19 +775,19 @@ class ProcurementInspectionIntegrityPostgresTest {
                     id,bill_no,bill_date,receipt_id,line_no,order_item_id,
                     goods_id,goods_code_snapshot,goods_name_snapshot,
                     goods_snapshot_source,goods_snapshot_locked_at,
-                    unit_id,unit_rate,qty,amount_local,is_deleted)
-                VALUES (?,?,?,?,1,?,?,?,?, 'MASTER_AT_APPROVAL',now(),?,1,6,60,FALSE)
+                    unit_id,unit_rate,qty,price,amount_original,amount_local,replacement_intent,is_deleted)
+                VALUES (?,?,?,?,1,?,?,?,?, 'MASTER_AT_APPROVAL',now(),?,1,6,10,60,60,'NORMAL',FALSE)
                 """, productionReceiptItemId, receiptNo, billDate, receiptId,
                 orderItemId, materialId, "G-IQC-PROD-" + materialId,
                 "IQC production material", unitId);
         jdbc.update("""
                 INSERT INTO purchase_receipt_items(
-                    id,bill_no,bill_date,receipt_id,line_no,goods_id,
+                    id,bill_no,bill_date,receipt_id,line_no,order_item_id,goods_id,
                     goods_code_snapshot,goods_name_snapshot,
                     goods_snapshot_source,goods_snapshot_locked_at,
-                    unit_id,unit_rate,qty,amount_local,is_deleted)
-                VALUES (?,?,?,?,2,?,?,?, 'MASTER_AT_APPROVAL',now(),?,1,3,30,FALSE)
-                """, unrelatedReceiptItemId, receiptNo, billDate, receiptId,
+                    unit_id,unit_rate,qty,price,amount_original,amount_local,replacement_intent,is_deleted)
+                VALUES (?,?,?,?,2,?,?,?,?, 'MASTER_AT_APPROVAL',now(),?,1,3,10,30,30,'NORMAL',FALSE)
+                """, unrelatedReceiptItemId, receiptNo, billDate, receiptId,unrelatedOrderItemId,
                 unrelatedGoodsId, "G-IQC-PROD-" + unrelatedGoodsId,
                 "IQC unrelated material", unitId);
         jdbc.update("""
@@ -726,6 +807,7 @@ class ProcurementInspectionIntegrityPostgresTest {
                 """, unrelatedInspectionId, receiptId, unrelatedReceiptItemId,
                 warehouseId, unrelatedGoodsId, unitId);
 
+        completeReceiptSource(ProcurementInspectionPort.PURCHASE,receiptId,source);
         ReceiptFixture receipt = new ReceiptFixture(
                 ProcurementInspectionPort.PURCHASE,
                 receiptId,
@@ -737,6 +819,36 @@ class ProcurementInspectionIntegrityPostgresTest {
                                 unrelatedGoodsId, unrelatedReceiptItemId, unrelatedInspectionId)));
         return new ProductionIqcFixture(
                 receipt, segmentId, demandId, orderPegId, orderId);
+    }
+
+    private ReceiptSource createReceiptSource() {
+        AuthUser actor=createWarehouseActor("receipt-source");
+        UUID supplier=UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO suppliers(id,code,name,status,category_id,code_sequence,code_managed)
+                SELECT ?,?,'IQC source supplier','使用',id,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM suppliers),FALSE
+                FROM supplier_categories WHERE is_deleted=FALSE ORDER BY id LIMIT 1
+                """,supplier,"IQC-SUP-"+supplier);
+        UUID currency=jdbc.queryForObject("SELECT id FROM currencies WHERE status='使用' AND is_deleted=FALSE ORDER BY id LIMIT 1",UUID.class);
+        UUID settlement=jdbc.queryForObject("SELECT id FROM settlement_methods WHERE status='使用' AND is_deleted=FALSE ORDER BY id LIMIT 1",UUID.class);
+        return new ReceiptSource(supplier,currency,settlement,actor);
+    }
+
+    private record ReceiptSource(UUID supplier,UUID currency,UUID settlement,AuthUser actor) {}
+
+    private void completeReceiptSource(String type,UUID receiptId,ReceiptSource source) {
+        AuthUser actor=source.actor();
+        UUID supplier=source.supplier(),currency=source.currency();
+        String prefix=type.equals("PURCHASE")?"purchase":"subcontract";
+        jdbc.update("UPDATE "+prefix+"_receipts SET supplier_id=?,currency_id=?,settlement_method_id=?,maker_id=?,created_by=?,exchange_rate=1,"
+                +"total_original=(SELECT SUM(amount_original) FROM "+prefix+"_receipt_items WHERE receipt_id=?),"
+                +"total_local=(SELECT SUM(amount_local) FROM "+prefix+"_receipt_items WHERE receipt_id=?) WHERE id=?",supplier,currency,source.settlement(),actor.getEmployeeId(),actor.getId(),receiptId,receiptId,receiptId);
+        jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>)connection -> {
+            ProcurementReceiptFixtureSupport.postOriginalReceiptPayable(connection,type,receiptId,actor.getId());
+            ProcurementReceiptFixtureSupport.appendStandardReceipt(connection,type,receiptId,actor.getId());
+            return null;
+        });
+        procurementValue.receiptApproved(type,receiptId,actor.getId());
     }
 
     private void assertInspection(

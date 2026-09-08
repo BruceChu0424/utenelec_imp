@@ -24,6 +24,9 @@ public class ReceiptItemLine {
     @NotNull
     private BigDecimal qty;
 
+    @jakarta.validation.constraints.Pattern(regexp = "NORMAL|RETURN_REPLACEMENT")
+    private String replacementIntent;
+
     private BigDecimal price;
     private BigDecimal amountOriginal;
     private BigDecimal amountLocal;

@@ -178,8 +178,8 @@ class SalesDocConfig {
 
   static const otherShipment = SalesDocConfig(
     type: SalesDocType.otherShipment,
-    label: '其它出货单',
-    shortLabel: '其它出货',
+    label: '历史其它出货单',
+    shortLabel: '历史其它出货',
     icon: Icons.move_up_outlined,
     permissions: DocumentPermissionCatalog.salesOtherShipment,
     hasWarehouse: true,
@@ -189,6 +189,24 @@ class SalesDocConfig {
     hasSender: true,
     hasShipInfo: true,
     hasOutType: true,
+  );
+
+  static const customerShipment = SalesDocConfig(
+    type: SalesDocType.customerShipment,
+    label: '客户零星发货',
+    shortLabel: '客户零星发货',
+    icon: Icons.outbox_outlined,
+    permissions: DocumentPermissionCatalog.salesOtherShipment,
+    clientRequired: true,
+    hasWarehouse: true,
+    hasCurrency: true,
+    hasExchangeRate: false,
+    hasSettlement: true,
+    hasSeller: true,
+    hasSender: true,
+    hasShipInfo: true,
+    showArPosted: true,
+    showReturned: true,
     skipListOnCreate: true,
   );
 
@@ -217,6 +235,8 @@ class SalesDocConfig {
         return order;
       case SalesDocType.shipment:
         return shipment;
+      case SalesDocType.customerShipment:
+        return customerShipment;
       case SalesDocType.otherShipment:
         return otherShipment;
       case SalesDocType.returnDoc:

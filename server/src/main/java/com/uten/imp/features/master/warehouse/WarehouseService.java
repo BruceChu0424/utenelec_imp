@@ -98,7 +98,7 @@ public class WarehouseService {
         Map<UUID, String> parentNames = parentNames(p.getContent());
         return new PageResponse<>(
                 p.getContent().stream().map(row -> toList(row, workshopNames, parentNames)).toList(),
-                page, size, p.getTotalElements(), p.getTotalPages());
+                p);
     }
 
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Warehouse> root,

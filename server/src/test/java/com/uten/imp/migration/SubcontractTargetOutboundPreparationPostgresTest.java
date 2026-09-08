@@ -281,6 +281,7 @@ class SubcontractTargetOutboundPreparationPostgresTest {
             try {
                 Fixture fixture = seedDirectPlan(connection);
                 setReplica(connection, true);
+                FinishedSource source=insertFinishedSourceWithoutProductionLineage(connection,fixture,"5");
                 execute(connection, """
                         INSERT INTO stock_reservations(
                             id, order_item_id, goods_id, warehouse_id,
@@ -295,11 +296,13 @@ class SubcontractTargetOutboundPreparationPostgresTest {
                                 'SUBCONTRACT_OUTBOUND', NULL,
                                 'PRODUCTION_FINISHED_IN', ?, ?, ?, ?)
                         """, fixture.reservationId(), fixture.goodsId(),
-                        fixture.warehouseId(), UUID.randomUUID(),
-                        fixture.planItemId(), UUID.randomUUID(),
+                        fixture.warehouseId(), source.documentId(),
+                        fixture.planItemId(), source.itemId(),
                         "missing-finished-lineage-" + fixture.reservationId(),
                         fixture.actorUserId(), fixture.actorUserId());
                 setReplica(connection, false);
+                // Capacity is valid (5 received / 5 reserved); this test must reach the lineage guard.
+                assertPreparedCapacity(connection,fixture.reservationId());
                 execute(connection, """
                         UPDATE stock_reservations
                         SET updated_at = now() WHERE id = ?
@@ -311,11 +314,63 @@ class SubcontractTargetOutboundPreparationPostgresTest {
                 assertThat(rejected.getSQLState()).isEqualTo("23514");
                 assertThat(rejected.getMessage())
                         .contains("FINISHED_IN reservation lineage is inconsistent");
+                assertThat(((org.postgresql.util.PSQLException) rejected).getServerErrorMessage().getConstraint())
+                        .isEqualTo("subcontract_preparation_finished_source_guard");
             } finally {
                 connection.rollback();
             }
         }
     }
+
+    @Test
+    void preparedReservationCapacityIsCheckedIndependentlyOfLineage() throws Exception {
+        try (Connection connection=connection()) {
+            connection.setAutoCommit(false);
+            try {
+                Fixture fixture=seedDirectPlan(connection);
+                setReplica(connection,true);
+                FinishedSource source=insertFinishedSourceWithoutProductionLineage(connection,fixture,"4");
+                execute(connection,"""
+                        INSERT INTO stock_reservations(id,goods_id,warehouse_id,qty,consumed_qty,released_qty,status,source,
+                            source_doc_type,source_doc_id,owner_type,owner_id,purpose,supply_type,supply_id,idempotency_key)
+                        VALUES (?,?,?,5,0,0,0,1,'PRODUCTION_INBOUND',?,'SUBCONTRACT_OUTBOUND',?,'SUBCONTRACT_OUTBOUND',
+                            'PRODUCTION_FINISHED_IN',?,?)
+                        """,fixture.reservationId(),fixture.goodsId(),fixture.warehouseId(),source.documentId(),
+                        fixture.planItemId(),source.itemId(),"capacity-only-"+fixture.reservationId());
+                setReplica(connection,false);
+                // Call only the capacity invariant, so missing lineage cannot satisfy this assertion.
+                SQLException rejected=assertThrows(SQLException.class,() -> assertPreparedCapacity(connection,fixture.reservationId()));
+                assertThat(rejected.getSQLState()).isEqualTo("23514");
+                assertThat(((org.postgresql.util.PSQLException) rejected).getServerErrorMessage().getConstraint())
+                        .isEqualTo("subcontract_prepared_source_capacity_guard");
+                assertThat(rejected.getMessage()).contains("prepared reservations exceed their finished receipt source");
+            } finally { connection.rollback(); }
+        }
+    }
+
+    /** Deliberately incomplete historical lineage for guard tests, never a successful business-flow fixture. */
+    private static FinishedSource insertFinishedSourceWithoutProductionLineage(Connection connection,Fixture fixture,String qty) throws Exception {
+        UUID documentId=UUID.randomUUID(), itemId=UUID.randomUUID();
+        String billNo="FI-GUARD-"+documentId;
+        execute(connection,"""
+                INSERT INTO stock_documents(id,doc_type,bill_no,bill_date,warehouse_id,status)
+                VALUES (?,'FINISHED_IN',?,DATE '2026-08-30',?,1)
+                """,documentId,billNo,fixture.warehouseId());
+        execute(connection,"""
+                INSERT INTO stock_document_items(id,doc_id,bill_type,bill_no,bill_date,line_no,goods_id,unit_id,unit_rate,qty,base_qty,
+                    goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,goods_snapshot_locked_at)
+                VALUES (?,?,'FINISHED_IN',?,DATE '2026-08-30',1,?,?,1,?,?,?,'guard target','MASTER_AT_APPROVAL',now())
+                """,itemId,documentId,billNo,fixture.goodsId(),fixture.unitId(),new java.math.BigDecimal(qty),
+                new java.math.BigDecimal(qty),"V436-G-"+fixture.goodsId());
+        return new FinishedSource(documentId,itemId);
+    }
+
+    private static void assertPreparedCapacity(Connection connection,UUID reservationId) throws SQLException {
+        try (PreparedStatement statement=connection.prepareStatement("SELECT fn_assert_subcontract_prepared_source_capacity(?)")) {
+            statement.setObject(1,reservationId); statement.execute();
+        }
+    }
+    private record FinishedSource(UUID documentId,UUID itemId) {}
 
     private static Fixture seedDirectPlan(Connection connection) throws Exception {
         setReplica(connection, true);

@@ -117,6 +117,7 @@ public class GoodsBomService {
     @Transactional
     public BomItemView create(UUID goodsId, BomItemSaveRequest req) {
         tx.bind();
+        references.lockGoodsQuantityBasis(java.util.Arrays.asList(goodsId, req.getComponentGoodsId()));
         references.requireVisibleActiveGoods(goodsId);
         references.requireVisibleActiveGoods(req.getComponentGoodsId());
         Goods parent = requireGoods(goodsId);
@@ -136,6 +137,7 @@ public class GoodsBomService {
     @Transactional
     public BomItemView update(UUID goodsId, UUID itemId, BomItemSaveRequest req) {
         tx.bind();
+        references.lockGoodsQuantityBasis(java.util.Arrays.asList(goodsId, req.getComponentGoodsId()));
         references.requireVisibleGoods(goodsId);
         GoodsBomItem r = requireItem(goodsId, itemId);
         references.requireVisibleActiveGoods(req.getComponentGoodsId());

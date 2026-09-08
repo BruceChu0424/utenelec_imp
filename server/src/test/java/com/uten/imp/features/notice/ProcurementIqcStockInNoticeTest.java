@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -100,6 +101,8 @@ class ProcurementIqcStockInNoticeTest {
                         .put("receiptType", "PURCHASE")
                         .put("receiptId", receiptId.toString()));
 
+        // 2026-09-05 起为居中行动卡：显式 aggregate（passEventId），仓库确认
+        // 入库后按 (PROCUREMENT_INSPECTION_PASS, passEventId) 办结撤回。
         verify(notice).publishForUser(
                 eq(eligibleId),
                 eq("品质已放行，待仓库入库：CJ-001"),
@@ -107,7 +110,9 @@ class ProcurementIqcStockInNoticeTest {
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq("/warehouse/iqc-stock-ins/PURCHASE/" + receiptId),
-                eq(ChainNoticeService.EVENT_IQC_STOCK_IN_PENDING));
+                eq(ChainNoticeService.EVENT_IQC_STOCK_IN_PENDING),
+                isNull(),
+                eq(passEventId));
         verify(notice, never()).publishForUser(
                 eq(noticeOnlyId), anyString(), anyString(), anyString(),
                 anyString(), anyString(), anyString());

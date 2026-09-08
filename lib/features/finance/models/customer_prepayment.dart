@@ -114,8 +114,7 @@ class CustomerPrepaymentItem {
   final int rowVersion;
 
   bool get hasAvailable =>
-      (financeExactDecimalUnits(availableOriginal) ?? BigInt.zero) >
-      BigInt.zero;
+      (financeAmountUnits(availableOriginal) ?? BigInt.zero) > BigInt.zero;
 
   factory CustomerPrepaymentItem.fromJson(Map<String, dynamic> json) =>
       CustomerPrepaymentItem(
@@ -223,6 +222,16 @@ class SalesOrderMoneySummary {
     this.hasUnallocated = false,
     this.unallocatedReceiptLines = const [],
     this.warnings = const [],
+    this.returnCreditOriginal,
+    this.returnCreditLocal,
+    this.unusedReturnCreditOriginal,
+    this.unusedReturnCreditLocal,
+    this.netReceivableOriginal,
+    this.netReceivableLocal,
+    this.customerPendingBalanceOriginal,
+    this.customerPendingBalanceLocal,
+    this.positionComplete = false,
+    this.unresolvedPositionCount = 0,
   });
 
   final String salesOrderId;
@@ -255,6 +264,16 @@ class SalesOrderMoneySummary {
   final bool hasUnallocated;
   final List<Map<String, dynamic>> unallocatedReceiptLines;
   final List<String> warnings;
+  final String? returnCreditOriginal;
+  final String? returnCreditLocal;
+  final String? unusedReturnCreditOriginal;
+  final String? unusedReturnCreditLocal;
+  final String? netReceivableOriginal;
+  final String? netReceivableLocal;
+  final String? customerPendingBalanceOriginal;
+  final String? customerPendingBalanceLocal;
+  final bool positionComplete;
+  final int unresolvedPositionCount;
 
   factory SalesOrderMoneySummary.fromJson(Map<String, dynamic> json) {
     String? money(String key) => financeExactDecimal(json[key]);
@@ -301,6 +320,16 @@ class SalesOrderMoneySummary {
         for (final warning in json['warnings'] as List? ?? const [])
           ?_text(warning),
       ],
+      returnCreditOriginal: money('returnCreditOriginal'),
+      returnCreditLocal: money('returnCreditLocal'),
+      unusedReturnCreditOriginal: money('unusedReturnCreditOriginal'),
+      unusedReturnCreditLocal: money('unusedReturnCreditLocal'),
+      netReceivableOriginal: money('netReceivableOriginal'),
+      netReceivableLocal: money('netReceivableLocal'),
+      customerPendingBalanceOriginal: money('customerPendingBalanceOriginal'),
+      customerPendingBalanceLocal: money('customerPendingBalanceLocal'),
+      positionComplete: json['positionComplete'] == true,
+      unresolvedPositionCount: _int(json['unresolvedPositionCount']),
     );
   }
 }

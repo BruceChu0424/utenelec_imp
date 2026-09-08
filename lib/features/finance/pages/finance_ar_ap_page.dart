@@ -333,7 +333,11 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新',
-            onPressed: () => _load(_pageNum),
+            // 整页刷新：字典重拉 + 回第 1 页（与 initState 同口径）。
+            onPressed: () {
+              ref.read(financeNameServiceProvider).ensureLoaded();
+              _load(1);
+            },
           ),
         ],
       ),

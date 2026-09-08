@@ -16,6 +16,8 @@ import java.sql.ResultSet;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -421,23 +423,27 @@ class ProductionCompletionReversePostgresTest {
                     segment.segmentId());
         }
 
+        Map<UUID,UUID> issuedPostingByDemand = new HashMap<>();
         for (SegmentFixture segment : segments) {
-            UUID stockEvent = UUID.randomUUID();
-            insert(connection, """
-                    INSERT INTO production_material_stock_events(
-                        id,stock_document_id,event_type,
-                        idempotency_key,request_hash
-                    ) VALUES(?,?,'ISSUE',?,?)
-                    """, stockEvent, segment.drawId(),
-                    "issue-" + UUID.randomUUID(), "c".repeat(64));
+            UUID issuePostingId = UUID.randomUUID();
+            issuedPostingByDemand.put(segment.demandId(),issuePostingId);
+            UUID stockEvent = com.uten.imp.support.ProductionMaterialMovementTestSupport.beginEvent(
+                    connection,segment.drawId(),"ISSUE","issue-"+UUID.randomUUID());
+            update(connection,"""
+                    UPDATE stock_balances balance SET qty=balance.qty-10
+                    FROM stock_document_items item JOIN stock_documents document ON document.id=item.doc_id
+                    WHERE item.id=? AND balance.warehouse_id=document.warehouse_id AND balance.goods_id=item.goods_id
+                      AND balance.color_id IS NOT DISTINCT FROM item.color_id
+                    """,segment.drawItemId());
             insert(connection, """
                     INSERT INTO production_material_stock_postings(
                         id,event_id,stock_document_item_id,demand_id,
                         reservation_id,posting_type,qty_base
                     ) VALUES(?,?,?,?,?,'ISSUE',10)
-                    """, UUID.randomUUID(), stockEvent,
+                    """, issuePostingId, stockEvent,
                     segment.drawItemId(), segment.demandId(),
                     segment.reservationId());
+            com.uten.imp.support.ProductionMaterialMovementTestSupport.bindAndCommit(connection,stockEvent,segment.drawItemId());
         }
         UUID settlementEvent = UUID.randomUUID();
         insert(connection, """
@@ -449,10 +455,21 @@ class ProductionCompletionReversePostgresTest {
         for (SegmentFixture segment : segments) {
             insert(connection, """
                     INSERT INTO production_material_settlement_postings(
-                        id,event_id,demand_id,settlement_type,qty_base
-                    ) VALUES(?,?,?,'CONSUMED',10)
+                        id,event_id,demand_id,settlement_type,qty_base,issue_posting_id
+                    ) VALUES(?,?,?,'CONSUMED',10,?)
                     """, UUID.randomUUID(), settlementEvent,
-                    segment.demandId());
+                    segment.demandId(),issuedPostingByDemand.get(segment.demandId()));
+            assertCount(connection,"""
+                    SELECT count(*) FROM production_material_settlement_postings settlement
+                    JOIN production_material_stock_postings issue ON issue.id=settlement.issue_posting_id
+                    JOIN production_material_movement_links link ON link.event_id=issue.event_id
+                        AND link.document_item_id=issue.stock_document_item_id
+                    JOIN stock_movements movement ON movement.id=link.movement_id
+                    WHERE settlement.event_id=? AND settlement.demand_id=? AND issue.posting_type='ISSUE'
+                        AND issue.demand_id=settlement.demand_id AND issue.qty_base=10
+                        AND movement.source_item_id=issue.stock_document_item_id
+                        AND movement.direction=-1 AND movement.qty=10
+                    """,settlementEvent,segment.demandId(),1);
         }
 
         UUID inbound = UUID.randomUUID();

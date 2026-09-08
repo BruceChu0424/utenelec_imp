@@ -107,8 +107,7 @@ class StockDocFinishedInboundBatchContractTest {
         assertThat(batch.indexOf("insertFinishedInboundBatch("))
                 .isGreaterThan(batch.indexOf("confirmFinishedInboundAfterPrelock("));
         assertThat(source)
-                .contains(".distinct()\n                .sorted()")
-                .contains("PRODUCTION_FINISHED_IN_CONFIRM_BATCH_LOCK_ORDER")
+                .contains("mutationLocks.acquire(() -> mutationFootprints.forStockDocuments(orderedIds))")
                 .contains("该批量点收幂等键已用于不同单据集合")
                 .contains("fullFinishedInboundAcceptanceRequest(")
                 .contains("line.setAcceptedQty(item.getQty())");

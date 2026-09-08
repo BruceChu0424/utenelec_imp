@@ -8,6 +8,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_commercial_terms.dart';
+import '../../../shared/repositories/procurement_terms_loader.dart';
 import '../models/purchase_doc.dart';
 
 class PurchaseDocFilter {
@@ -75,6 +76,20 @@ class PurchaseRepository {
         .toList(growable: false);
   }
 
+  /// V477：分解前的明细数量修正（仅计划下达的采购申请；已订货/待财务审核
+  /// 占用的明细服务端会拒绝）。返回刷新后的单据详情。
+  Future<PurchaseDocDetail> adjustRequestItemQty({
+    required String requestId,
+    required String itemId,
+    required double qty,
+  }) async {
+    final json = await api.put(
+      '${ApiEndpoints.purchaseBase('requests')}/$requestId/items/$itemId/qty',
+      body: {'qty': qty},
+    );
+    return PurchaseDocDetail.fromJson(json);
+  }
+
   Future<PurchaseDocDetail> create(Map<String, dynamic> body) async {
     final json = await api.post(_base, body: body);
     return PurchaseDocDetail.fromJson(json);
@@ -95,20 +110,7 @@ class PurchaseRepository {
   /// （旧 /last-suppliers 仅回供应商的端点保留一个发布周期兼容旧客户端，前端已不再使用。）
   Future<Map<String, ProcurementLastTerms>> lastTermsByGoods(
     Set<String> goodsIds,
-  ) async {
-    if (goodsIds.isEmpty) return const {};
-    final json = await api.get(
-      '$_base/last-terms',
-      query: {'goodsIds': goodsIds.join(',')},
-    );
-    return {
-      for (final entry in json.entries)
-        if (entry.value is Map<String, dynamic>)
-          entry.key: ProcurementLastTerms.fromJson(
-            entry.value as Map<String, dynamic>,
-          ),
-    };
-  }
+  ) => loadProcurementTerms(api, '$_base/last-terms', goodsIds);
 
   Future<PurchaseDocDetail> update(String id, Map<String, dynamic> body) async {
     final json = await api.put(
@@ -122,9 +124,30 @@ class PurchaseRepository {
     await api.delete(ApiEndpoints.purchaseDoc(type.pathSegment, id));
   }
 
+  /// 取消草稿订货单（仅 orders 族）：在审单取消时服务端同步撤回财务审批任务。
+  Future<PurchaseDocDetail> cancelOrder(String id) async {
+    final json = await api.post(
+      '${ApiEndpoints.purchaseDoc(type.pathSegment, id)}/cancel',
+    );
+    return PurchaseDocDetail.fromJson(json);
+  }
+
   Future<PurchaseDocDetail> submitFinance(String id) async {
     final json = await api.post(
       '${ApiEndpoints.purchaseDoc(type.pathSegment, id)}/submit-finance',
+    );
+    return PurchaseDocDetail.fromJson(json);
+  }
+
+  /// 批准后改量（POST /purchase/orders/{id}/change-qty，仅 orders 族）：
+  /// 财务批准后逐行改数量，成功返回最新订单详情；服务端会自动重回财务复核。
+  Future<PurchaseDocDetail> changeQty(
+    String id,
+    List<Map<String, dynamic>> items,
+  ) async {
+    final json = await api.post(
+      '${ApiEndpoints.purchaseDoc(type.pathSegment, id)}/change-qty',
+      body: {'items': items},
     );
     return PurchaseDocDetail.fromJson(json);
   }

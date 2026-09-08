@@ -26,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -92,12 +93,18 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
     static final String EVENT_SHIPMENT_FINANCE_REVOKED =
             "SALES_SHIPMENT_FINANCE_RELEASE_REVOKED";
     static final String EVENT_SHIPMENT_REJECTED = "SALES_SHIPMENT_REJECTED";
+    static final String EVENT_SHIPMENT_FINANCE_REJECTED = "SALES_SHIPMENT_FINANCE_REJECTED";
+    static final String EVENT_DIRECT_SHIPMENT_FINANCE_REJECTED = "DIRECT_CUSTOMER_SHIPMENT_FINANCE_REJECTED";
     static final String EVENT_PREPLAN_SUPPLY_ACTION_CREATED =
             "PREPLAN_SUPPLY_ACTION_CREATED";
     static final String EVENT_PREPLAN_SUPPLY_DOCUMENT_CREATED =
             "PREPLAN_SUPPLY_DOCUMENT_CREATED";
     static final String EVENT_SUBCONTRACT_PREPARATION_REQUIRED =
             "SUBCONTRACT_PREPARATION_REQUIRED";
+    static final String EVENT_SUBCONTRACT_ORDER_PREPARATION_DISPATCHED =
+            "SUBCONTRACT_ORDER_PREPARATION_DISPATCHED";
+    static final String EVENT_SUBCONTRACT_ORDER_PREPARATION_ARRIVED =
+            "SUBCONTRACT_ORDER_PREPARATION_ARRIVED";
     static final String EVENT_SUBCONTRACT_PREPARE_SHORTAGE =
             "SUBCONTRACT_PREPARE_SHORTAGE";
     static final String EVENT_SUBCONTRACT_MAKE_TASK_CREATED =
@@ -160,6 +167,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             "SUBCONTRACT_LOSS_CLAIM_REVERSED";
     static final String EVENT_PROCUREMENT_IQC_REJECTION_OPENED =
             "PROCUREMENT_IQC_REJECTION_OPENED";
+    static final String EVENT_PROCUREMENT_FINANCE_CHANGE_SUBMITTED =
+            "PROCUREMENT_FINANCE_CHANGE_SUBMITTED";
     static final String EVENT_PROCUREMENT_IQC_REJECTION_DETECTED =
             "PROCUREMENT_IQC_REJECTION_DETECTED";
     static final String EVENT_PROCUREMENT_IQC_REJECTION_RETURNED =
@@ -278,13 +287,16 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                         notifyExecutionSegmentWorkshopAssigned(aggregateId);
                 case EVENT_SHIPMENT_APPROVED -> notifyShipmentApproved(aggregateId);
                 case EVENT_SHIPMENT_PENDING_FINANCE ->
-                        notifyShipmentPendingFinanceAudit(aggregateId);
+                        notifyShipmentPendingFinanceAudit(aggregateId,payload.path("submissionIdentity").asText(null));
                 case EVENT_SHIPMENT_PENDING_PICK ->
                         notifyShipmentPendingPick(aggregateId);
                 case EVENT_SHIPMENT_FINANCE_REVOKED ->
                         notifyShipmentFinanceReleaseRevoked(aggregateId);
                 case EVENT_SHIPMENT_REJECTED ->
                         notifyShipmentRejected(aggregateId, payload.path("reason").asText(""));
+                case EVENT_SHIPMENT_FINANCE_REJECTED, EVENT_DIRECT_SHIPMENT_FINANCE_REJECTED ->
+                        notifyShipmentFinanceRejected(aggregateId,payload.path("reason").asText(""),
+                                payload.hasNonNull("reviewRevision")?payload.path("reviewRevision").asLong():null);
                 case EVENT_PREPLAN_SUPPLY_ACTION_CREATED ->
                         notifyPreplanSupplyActionCreated(aggregateId);
                 case EVENT_PREPLAN_SUPPLY_DOCUMENT_CREATED ->
@@ -311,7 +323,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                 case EVENT_ORDER_CANCELED -> notifyOrderCanceled(aggregateId);
                 case EVENT_ORDER_APPROVED -> notifyOrderApproved(aggregateId);
                 case EVENT_ORDER_PENDING_FINANCE ->
-                        notifyOrderPendingFinanceConfirmation(aggregateId);
+                        notifyOrderPendingFinanceConfirmation(
+                                aggregateId,
+                                payload.path("afterModification").asBoolean(false));
                 case EVENT_ORDER_FINANCE_CONFIRMED ->
                         notifyOrderFinanceConfirmed(aggregateId);
                 case EVENT_ORDER_FINANCE_REJECTED ->
@@ -336,9 +350,19 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                         notifyReservationYielded(aggregateId, payload.path("qty").asText(""),
                                 payload.path("reason").asText(""), payload.path("yielderOrderNo").asText(""));
                 case EVENT_PROCUREMENT_FINANCE_SUBMITTED,
+                     EVENT_PROCUREMENT_FINANCE_CHANGE_SUBMITTED,
                      EVENT_PROCUREMENT_FINANCE_APPROVED,
                      EVENT_PROCUREMENT_FINANCE_REJECTED ->
                         notifyProcurementFinanceEvent(eventType, aggregateId);
+                case EVENT_SUBCONTRACT_ORDER_PREPARATION_DISPATCHED ->
+                        notifySubcontractOrderPreparationDispatched(
+                                aggregateId,
+                                uuidOrNull(payload.path("orderItemId").asText(null)),
+                                payload.path("billNo").asText(""),
+                                uuidOrNull(payload.path("goodsId").asText(null)),
+                                bd(payload.path("baseQty").asText("0")));
+                case EVENT_SUBCONTRACT_ORDER_PREPARATION_ARRIVED ->
+                        notifySubcontractOrderPreparationArrived(aggregateId);
                 case EVENT_PROCUREMENT_ARRIVAL_DETECTED,
                      EVENT_PROCUREMENT_ARRIVAL_DECIDED,
                      EVENT_PROCUREMENT_RETURN_REQUIRED,
@@ -1037,13 +1061,17 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             for (UUID warehouseUser : departmentUserIdsWithAuthorities(
                     "SUB_WH", "stock_doc:view", "stock_doc:approve",
                     "stock_doc:issue")) {
+                // 2026-09-05 起升级为居中行动卡：aggregate 绑定
+                // (STOCK_DOCUMENT, stockDocId)，DRAW 实际出库后按聚合办结撤回。
                 sendToUser(
                         warehouseUser,
                         TYPE_TASK,
                         "待处理生产领料：" + billNo,
                         content,
                         "/warehouse/DRAW/" + stockDocId,
-                        EVENT_PRODUCTION_DRAW_PENDING);
+                        EVENT_PRODUCTION_DRAW_PENDING,
+                        null,
+                        stockDocId);
             }
         });
     }
@@ -1078,6 +1106,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                       AND stock.is_deleted = FALSE
                     """, stockDocId);
             if (document == null) return;
+            // DRAW 已实际出库：撤回「待处理生产领料」居中行动卡（按单据聚合）。
+            resolveReviewNotices("STOCK_DOCUMENT", stockDocId, "DRAW_ISSUED");
             publishWorkshopTasksForDraw(
                     stockDocId,
                     "仓库已完成领料单 "
@@ -1281,15 +1311,51 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             for (UUID warehouseUser : departmentUserIdsWithAuthorities(
                     "SUB_WH", NOTICE_READ_AUTHORITY,
                     WAREHOUSE_IQC_STOCK_IN_VIEW_AUTHORITY)) {
+                // 2026-09-05 起升级为居中行动卡：aggregate 绑定
+                // (PROCUREMENT_INSPECTION_PASS, passEventId)，该切片全部
+                // 确认入库后按聚合办结撤回。
                 sendToUser(
                         warehouseUser,
                         TYPE_TASK,
                         "品质已放行，待仓库入库：" + billNo,
                         content,
                         route,
-                        EVENT_IQC_STOCK_IN_PENDING);
+                        EVENT_IQC_STOCK_IN_PENDING,
+                        null,
+                        passEventId);
             }
         });
+    }
+
+    /**
+     * 仓库确认入库后的弹卡办结：把该收货单下已无待入库余量的品质放行切片
+     * 按 (PROCUREMENT_INSPECTION_PASS, passEventId) 批量撤回。仍有余量的
+     * 切片保留弹卡（部分入库不改余量口径）。幂等，可直接在入库事务内调用。
+     */
+    public void resolveIqcStockInPendingForWarehouse(
+            String receiptType, UUID receiptId) {
+        if (receiptType == null || receiptId == null) return;
+        List<UUID> fullyStocked = jdbc.queryForList("""
+                SELECT event.id
+                FROM procurement_inspection_events event
+                JOIN procurement_inspection_items inspection
+                  ON inspection.id = event.inspection_item_id
+                 AND inspection.receipt_type = ?
+                 AND inspection.receipt_id = ?
+                 AND inspection.status <> 'REVERSED'
+                WHERE event.action = 'PASS'
+                  AND event.requires_warehouse_stock_in = TRUE
+                  AND event.base_qty - COALESCE((
+                        SELECT SUM(item.base_qty)
+                        FROM procurement_iqc_stock_in_batch_items item
+                        WHERE item.pass_event_id = event.id
+                      ), 0) <= 0
+                """, UUID.class, receiptType, receiptId);
+        for (UUID passEventId : fullyStocked) {
+            resolveReviewNotices(
+                    "PROCUREMENT_INSPECTION_PASS", passEventId,
+                    "WAREHOUSE_STOCKED");
+        }
     }
 
     /**
@@ -1483,16 +1549,23 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
 
     /** 销售创建出货草稿后，只通知具备出货财审权限的人员。 */
     public void notifyShipmentPendingFinanceAudit(UUID shipmentId) {
+        notifyShipmentPendingFinanceAudit(shipmentId,null);
+    }
+
+    private void notifyShipmentPendingFinanceAudit(UUID shipmentId,String expectedIdentity) {
         if (!isOutboxDelivery()) {
+            String identity=shipmentFinanceSubmissionIdentity(shipmentId);
+            if (identity==null) return;
             outbox.publishOnce(
                     EVENT_SHIPMENT_PENDING_FINANCE,
                     "SALES_SHIPMENT",
                     shipmentId,
-                    Map.of(),
-                    EVENT_SHIPMENT_PENDING_FINANCE + ':' + shipmentId);
+                    Map.of("submissionIdentity",identity),
+                    EVENT_SHIPMENT_PENDING_FINANCE + ':' + shipmentId+':'+identity);
             return;
         }
         deliverAtomically(() -> {
+            if (expectedIdentity!=null && !expectedIdentity.equals(shipmentFinanceSubmissionIdentity(shipmentId))) return;
             String billNo = oneStr("""
                     SELECT bill_no
                     FROM sales_shipments
@@ -1501,11 +1574,13 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                       AND COALESCE(is_deleted, FALSE) = FALSE
                       AND COALESCE(rejected, FALSE) = FALSE
                       AND finance_audit = 0
+                      AND NOT finance_rejected
+                      AND (finance_gate_version<2 OR (sales_confirmed_at IS NOT NULL AND sales_confirmed_revision=review_revision))
                       AND warehouse_work_status = 'PENDING_PICK'
                     """, shipmentId);
             if (billNo == null || billNo.isBlank()) return;
-            for (UUID userId : userIdsWithPermissions(
-                    "finance_shipment_audit", NOTICE_READ_AUTHORITY)) {
+            for (UUID userId : departmentUserIdsWithAuthorities(
+                    "DEPT_FIN","finance_shipment_audit", NOTICE_READ_AUTHORITY)) {
                 sendToUser(
                         userId,
                         TYPE_APPROVAL,
@@ -1513,8 +1588,49 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                         "销售出货单 " + billNo
                                 + " 已提交财务审核；财务放行后才会通知仓库拣货。",
                         "/sales/shipments/" + shipmentId,
-                        EVENT_SHIPMENT_PENDING_FINANCE);
+                        EVENT_SHIPMENT_PENDING_FINANCE,"normal",shipmentId);
             }
+        });
+    }
+
+    private String shipmentFinanceSubmissionIdentity(UUID shipmentId) {
+        return oneStr("""
+                SELECT shipment.review_revision::text||':'||COALESCE((SELECT event.id::text
+                    FROM sales_shipment_finance_release_events event WHERE event.shipment_id=shipment.id
+                      AND event.event_type='REVOKED' ORDER BY event.occurred_at DESC,event.id DESC LIMIT 1),'INITIAL')
+                FROM sales_shipments shipment WHERE shipment.id=? AND shipment.status=0 AND NOT shipment.is_deleted
+                  AND NOT shipment.rejected AND NOT shipment.finance_rejected AND shipment.finance_audit=0
+                  AND shipment.warehouse_work_status='PENDING_PICK' AND (shipment.finance_gate_version<2 OR
+                    (shipment.sales_confirmed_at IS NOT NULL AND shipment.sales_confirmed_revision=shipment.review_revision))
+                """,shipmentId);
+    }
+
+    public void notifyShipmentFinanceRejected(UUID shipmentId,String reason) {
+        notifyShipmentFinanceRejected(shipmentId,reason,null);
+    }
+
+    private void notifyShipmentFinanceRejected(UUID shipmentId,String reason,Long expectedRevision) {
+        Map<String,Object> document=one("""
+                SELECT bill_no,shipment_kind,owner_employee_id,review_revision FROM sales_shipments
+                WHERE id=? AND status=0 AND NOT is_deleted AND finance_rejected AND warehouse_work_status='PENDING_PICK'
+                """,shipmentId);
+        if(document==null)return;
+        long revision=((Number)document.get("review_revision")).longValue();
+        if(isOutboxDelivery() && expectedRevision!=null && expectedRevision!=revision)return;
+        boolean direct="DIRECT_CUSTOMER".equals(document.get("shipment_kind"));
+        String event=direct?EVENT_DIRECT_SHIPMENT_FINANCE_REJECTED:EVENT_SHIPMENT_FINANCE_REJECTED;
+        if(!isOutboxDelivery()) {
+            outbox.publishOnce(event,"SALES_SHIPMENT",shipmentId,Map.of("reason",Objects.toString(reason,""),"reviewRevision",revision),
+                    event+":"+shipmentId+":"+document.get("review_revision"));
+            return;
+        }
+        deliverAtomically(()->{
+            UUID owner=userIdOfEmployee((UUID)document.get("owner_employee_id"));
+            String prefix=direct?"sales_other_shipment":"sales_shipment";
+            if(!userHasPermissions(owner,NOTICE_READ_AUTHORITY,prefix+":view",prefix+":edit"))return;
+            sendToUser(owner,TYPE_URGENT,"发货已退回，请修改："+document.get("bill_no"),
+                    "财务退回原因："+Objects.toString(reason,"")+"。请核对修改后重新确认，也可以取消尚未出库的单据。",
+                    (direct?"/sales/customer-shipments/":"/sales/shipments/")+shipmentId,event,"important",shipmentId);
         });
     }
 
@@ -1573,7 +1689,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                         "待拣货发货单：" + billNo,
                         content,
                         "/sales/shipments/" + shipmentId,
-                        EVENT_SHIPMENT_PENDING_PICK);
+                        EVENT_SHIPMENT_PENDING_PICK,"normal",shipmentId);
             }
         });
     }
@@ -1788,9 +1904,12 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
     }
 
     /**
-     * V458：物料分析对有子层级的委外件下达了前置自制任务。
-     * 委外部此时不参与；提醒计划/生产按正常自制链完成齐套、领料、报工、
-     * FQC 与成品实收入库。账本行仍是权威，本通知只是提醒。
+     * V458：物料分析对有子层级的委外件下达了前置自制任务（2026-09-05 委外=自制
+     * 同构直下修订：委外部从下达一刻起即参与跟踪）。
+     * 计划/生产仍按正常自制链完成齐套、领料、报工、FQC 与成品实收入库；
+     * 委外部同步收到「新委外单（车间先产）」提醒，可在委外准备中心·分析来源
+     * 页签查看车间进度（正在通知车间生产/车间正在等物料/车间生产中），
+     * 成品入库后自动/手动生成委外申请并通知取货。账本行仍是权威，通知只是提醒。
      */
     public void notifySubcontractMakeTaskCreated(UUID taskId) {
         if (!isOutboxDelivery()) {
@@ -1831,13 +1950,24 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                         TYPE_TASK,
                         "委外件前置自制待安排：" + goodsLabel,
                         "有子层级的委外件 " + goodsLabel + "，需求量 " + quantity
-                                + " 已转为前置自制任务。请按正常自制流程检查子层级、"
+                                + " 已按自制同构路线下达车间。请按正常自制流程检查子层级、"
                                 + "安排生产并完成领料、报工、FQC 和成品实收入库；"
-                                + "自制成品入库并通知委外前，委外部不会收到任何申请。"
+                                + "委外部已同步收到新委外单提醒并在跟踪车间进度，"
+                                + "成品入库后才会生成委外申请并通知取货。"
                                 + "可执行操作以物料分析实时状态为准。",
                         "/production/material-analyses/" + analysisId + "/summary",
                         EVENT_SUBCONTRACT_MAKE_TASK_CREATED);
             }
+            notifyPreplanSupplyRecipients(
+                    TYPE_TASK,
+                    "新委外单（车间先产）：" + goodsLabel,
+                    "有子层级的委外件 " + goodsLabel + " 需求量 " + quantity
+                            + " 已下达：先由车间按自制流程生产（正在通知车间生产），"
+                            + "成品入库后将自动生成委外申请并通知取货。"
+                            + "车间进度（正在通知车间生产/车间正在等物料/车间生产中）"
+                            + "可在委外准备中心·分析来源页签实时查看。",
+                    "/subcontract/preparations",
+                    SUBCONTRACT_APPLICATION_VIEW_AUTHORITY);
         });
     }
 
@@ -1869,8 +1999,12 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                     JOIN subcontract_applications application
                       ON application.id = batch.application_id
                      AND application.is_deleted = FALSE
+                     AND application.status = 1
                     JOIN goods ON goods.id = make_task.goods_id
                     WHERE batch.id = ?
+                      AND make_task.status='ACTIVE'
+                      AND NOT EXISTS (SELECT 1 FROM preplan_subcontract_make_batch_reversals reversal
+                                      WHERE reversal.batch_id=batch.id)
                     """, batchId);
             if (batch == null) return;
             UUID applicationId = (UUID) batch.get("application_id");
@@ -1914,32 +2048,37 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             String orderNo = str(item.get("order_bill_no"));
             String goods = subcontractGoodsLabel(item);
             String quantity = qty(bd(item.get("planned_qty")));
-            String taskRoute = "/subcontract/preparations?planItemId="
-                    + planItemId;
+            String taskRoute = "/subcontract/orders/" + orderId;
             String taskContent = "委外订货单 " + orderNo + " 的目标件 "
                     + goods + "，数量 " + quantity
-                    + " 存在有效子层级，不能直接委外出仓。请在委外前置自制任务队列"
-                    + "启动物料分析，并按正常自制链完成领料、生产、报工、品质检验和"
-                    + "仓库实收入库；可执行操作以任务实时 allowedActions 为准。";
+                    + " 存在有效子层级，不能直接委外出仓。系统已自动创建前置生产"
+                    + "分析（无分析时由自动启动补偿器补建），请在物料分析工作台安排"
+                    + "车间完成领料、生产、报工、品质检验和仓库实收入库；"
+                    + "进度以订货单详情的全链路跟踪为准。";
             Set<UUID> productionRecipients = new LinkedHashSet<>();
             productionRecipients.addAll(departmentUserIdsWithAuthorities(
                     "SUB_PLAN",
                     NOTICE_READ_AUTHORITY,
-                    "subcontract_preparation:view",
-                    "subcontract_preparation:start"));
+                    "production_material_analysis:view",
+                    "production_material_analysis:route"));
             productionRecipients.addAll(departmentUserIdsWithAuthorities(
                     "DEPT_PROD",
                     NOTICE_READ_AUTHORITY,
-                    "subcontract_preparation:view",
-                    "subcontract_preparation:start"));
+                    "production_material_analysis:view",
+                    "production_material_analysis:route"));
             for (UUID recipient : productionRecipients) {
+                // 2026-09-05 起升级为居中行动卡：aggregate 绑定
+                // (SUBCONTRACT_MATERIAL_PLAN_ITEM, planItemId)，目标件真实
+                // 出仓（OUTBOUND_READY）后按聚合办结撤回。
                 sendToUser(
                         recipient,
                         TYPE_TASK,
                         "待启动委外前置自制：" + orderNo,
                         taskContent,
                         taskRoute,
-                        EVENT_SUBCONTRACT_PREPARATION_REQUIRED);
+                        EVENT_SUBCONTRACT_PREPARATION_REQUIRED,
+                        null,
+                        planItemId);
             }
 
             UUID makerUserId = subcontractMakerUserId(
@@ -1954,6 +2093,114 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                             + "本通知仅作进度提醒，不代表已领料、已完工或已入库。",
                     "/subcontract/orders/" + orderId,
                     EVENT_SUBCONTRACT_PREPARATION_REQUIRED);
+        });
+    }
+
+    /**
+     * 2026-09-05 委外收敛：直接下单的有子层目标件在草稿保存期自动「发单给计划」
+     * ——前置生产分析已创建，计划部在自己的物料分析工作台安排车间（无认领排他，
+     * 完工入库后按分析聚合计办结撤回）。
+     */
+    public void notifySubcontractOrderPreparationDispatched(
+            UUID analysisId, UUID orderItemId, String billNo,
+            UUID goodsId, BigDecimal baseQty) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_SUBCONTRACT_ORDER_PREPARATION_DISPATCHED,
+                    "MATERIAL_ANALYSIS",
+                    analysisId,
+                    Map.of(
+                            "orderItemId", String.valueOf(orderItemId),
+                            "billNo", String.valueOf(billNo),
+                            "goodsId", String.valueOf(goodsId),
+                            "baseQty", baseQty.toPlainString()),
+                    EVENT_SUBCONTRACT_ORDER_PREPARATION_DISPATCHED
+                            + ':' + analysisId);
+            return;
+        }
+        deliverAtomically(() -> {
+            Map<String, Object> row = one("""
+                    SELECT COALESCE(goods.code, '') || ' ' || COALESCE(goods.name, '')
+                           AS goods_label
+                    FROM goods WHERE id = ?
+                    """, goodsId);
+            String goods = row == null ? "" : str(row.get("goods_label"));
+            String content = "委外订货单 " + billNo + " 的目标件 " + goods
+                    + "，缺口数量 " + qty(baseQty)
+                    + " 已创建前置生产分析并等待排产。请在物料分析工作台安排车间"
+                    + "生产（领料 → 报工 → FQC → 仓库实收入库）；产出入库后系统会"
+                    + "自动通知委外提交财务审核。";
+            Set<UUID> recipients = new LinkedHashSet<>();
+            recipients.addAll(departmentUserIdsWithAuthorities(
+                    "SUB_PLAN", NOTICE_READ_AUTHORITY,
+                    "production_material_analysis:view",
+                    "production_material_analysis:route"));
+            recipients.addAll(departmentUserIdsWithAuthorities(
+                    "DEPT_PROD", NOTICE_READ_AUTHORITY,
+                    "production_material_analysis:view",
+                    "production_material_analysis:route"));
+            for (UUID recipient : recipients) {
+                sendToUser(
+                        recipient,
+                        TYPE_TASK,
+                        "委外目标件待生产：" + billNo,
+                        content,
+                        "/production/material-analyses/" + analysisId + "/summary",
+                        EVENT_SUBCONTRACT_ORDER_PREPARATION_DISPATCHED,
+                        null,
+                        analysisId);
+            }
+        });
+    }
+
+    /**
+     * 前置生产产出完工入库：通知委外制单人目标件开始回笼；全部有子层行库存
+     * 备齐后即可提交财务审核（提交时系统按全局可用量严格校验）。
+     */
+    public void notifySubcontractOrderPreparationArrived(UUID orderItemId) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_SUBCONTRACT_ORDER_PREPARATION_ARRIVED,
+                    "SUBCONTRACT_ORDER_PREPARATION_ITEM",
+                    orderItemId,
+                    Map.of(),
+                    EVENT_SUBCONTRACT_ORDER_PREPARATION_ARRIVED
+                            + ':' + orderItemId);
+            return;
+        }
+        deliverAtomically(() -> {
+            Map<String, Object> row = one("""
+                    SELECT item.order_id, orders.bill_no, orders.maker_id,
+                           COALESCE(goods.code, '') || ' ' || COALESCE(goods.name, '')
+                           AS goods_label
+                    FROM subcontract_order_items item
+                    JOIN subcontract_orders orders ON orders.id = item.order_id
+                    LEFT JOIN goods ON goods.id = item.goods_id
+                    WHERE item.id = ?
+                      AND COALESCE(item.is_deleted, FALSE) = FALSE
+                    """, orderItemId);
+            if (row == null) return;
+            UUID orderId = (UUID) row.get("order_id");
+            if (!Integer.valueOf(0).equals(
+                    ((Number) one(
+                            "SELECT status FROM subcontract_orders WHERE id = ?",
+                            orderId).get("status")).intValue())) {
+                // 仅草稿期需要「等生产完再提交财务」的提醒；已批/红冲单不再打扰。
+                return;
+            }
+            String billNo = str(row.get("bill_no"));
+            String goods = str(row.get("goods_label"));
+            UUID makerUserId = subcontractMakerUserId((UUID) row.get("maker_id"));
+            notifyUser(
+                    makerUserId,
+                    TYPE_WORKFLOW,
+                    "委外目标件已生产入库：" + billNo,
+                    "委外订货单 " + billNo + " 的目标件 " + goods
+                            + " 前置生产已有产出入库。请在本单详情核对全部有子层"
+                            + "目标件的备齐情况；全部备齐后即可提交财务审核——"
+                            + "财务批准通过后仓库即可目标件出仓去委外加工。",
+                    "/subcontract/orders/" + orderId,
+                    EVENT_SUBCONTRACT_ORDER_PREPARATION_ARRIVED);
         });
     }
 
@@ -1980,8 +2227,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             String orderNo = str(item.get("order_bill_no"));
             String goods = subcontractGoodsLabel(item);
             String shortage = qty(bd(item.get("planned_qty")));
-            String taskRoute = "/subcontract/preparations?planItemId="
-                    + planItemId;
+            // 2026-09-05 委外收敛：准备中心页面退役，缺口任务直达订货单详情
+            //（前置生产分析已由系统自动创建，计划在物料分析工作台安排车间）。
+            String taskRoute = "/subcontract/orders/" + orderId;
             String taskContent = "委外订货单 " + orderNo + " 的目标件 "
                     + goods + " 仓库现货不足，缺口 " + shortage
                     + "(基本单位) 需按自制链补产（现货部分已另行通知仓库直接出仓）。"
@@ -1992,13 +2240,13 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             productionRecipients.addAll(departmentUserIdsWithAuthorities(
                     "SUB_PLAN",
                     NOTICE_READ_AUTHORITY,
-                    "subcontract_preparation:view",
-                    "subcontract_preparation:start"));
+                    "production_material_analysis:view",
+                    "production_material_analysis:route"));
             productionRecipients.addAll(departmentUserIdsWithAuthorities(
                     "DEPT_PROD",
                     NOTICE_READ_AUTHORITY,
-                    "subcontract_preparation:view",
-                    "subcontract_preparation:start"));
+                    "production_material_analysis:view",
+                    "production_material_analysis:route"));
             for (UUID recipient : productionRecipients) {
                 sendToUser(
                         recipient,
@@ -2038,6 +2286,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         deliverAtomically(() -> {
             Map<String, Object> item = subcontractOutboundReadySnapshot(planItemId);
             if (item == null) return;
+            // 目标件真实出仓：撤回「待启动委外前置自制」居中行动卡（按计划行聚合）。
+            resolveReviewNotices(
+                    "SUBCONTRACT_MATERIAL_PLAN_ITEM", planItemId,
+                    "OUTBOUND_READY");
             UUID planId = (UUID) item.get("plan_id");
             UUID orderId = (UUID) item.get("order_id");
             String orderNo = str(item.get("order_bill_no"));
@@ -2936,6 +3188,27 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                 .toList();
     }
 
+    /**
+     * 预计到货弹卡办结：expectation 离开 OPEN（全部登记完 CLOSED / 订单侧
+     * CANCELED）时，按 (PROCUREMENT_ORDER, orderId) 撤回「预计到货」行动卡。
+     * 仍在 OPEN 时不动作（部分登记不撤卡）。幂等。
+     */
+    public void resolveArrivalExpectationNotices(
+            String orderType, UUID orderId) {
+        if (orderType == null || orderId == null) return;
+        List<String> statuses = jdbc.queryForList("""
+                SELECT status FROM inbound_expectations
+                WHERE order_type = ? AND order_id = ?
+                """, String.class, orderType, orderId);
+        for (String status : statuses) {
+            if (!"OPEN".equals(status)) {
+                resolveReviewNotices(
+                        "PROCUREMENT_ORDER", orderId,
+                        "EXPECTATION_" + status);
+            }
+        }
+    }
+
     /** First report creation resolves every current popup for the exact task. */
     public int resolveProductionWorkshopTasks(
             Collection<UUID> segmentIds, String reason) {
@@ -2962,9 +3235,15 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             return;
         }
         deliverAtomically(() -> {
-            Map<String, Object> h = one("SELECT bill_no, warehouse_id FROM sales_shipments WHERE id = ?", shipmentId);
+            Map<String, Object> h = one("SELECT bill_no, warehouse_id,shipment_kind,owner_employee_id FROM sales_shipments WHERE id = ? AND status=1 AND warehouse_work_status='SHIPPED' AND NOT is_deleted", shipmentId);
             if (h == null) return;
             String wh = oneStr("SELECT name FROM warehouses WHERE id = ?", h.get("warehouse_id"));
+            if ("DIRECT_CUSTOMER".equals(h.get("shipment_kind"))) {
+                notifyUser(userIdOfEmployee((UUID)h.get("owner_employee_id")),TYPE_WORKFLOW,
+                        "客户零星发货已出库："+str(h.get("bill_no")),"仓库已完成实际出库，请查看发货明细。",
+                        "/sales/customer-shipments/"+shipmentId);
+                return;
+            }
             Map<UUID, BigDecimal> byOrder = new LinkedHashMap<>();
             for (Map<String, Object> r : jdbc.queryForList("""
                     SELECT oi.order_id, SUM(si.qty) AS qty
@@ -3058,19 +3337,48 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             Object d = agg == null ? null : agg.get("deliver");
             String deliver = d == null ? "未定" : d.toString();
             String goods = agg == null || agg.get("goods") == null ? "" : str(agg.get("goods"));
-            notifyRoles(List.of("planner"), TYPE_TASK,
-                    "新订单待物料分析：" + o.billNo(),
-                    "订单 " + o.billNo() + " 已审核并通过财务确认，共 " + lines + " 行货品(" + goods
-                            + ")待分析，最早交货日 " + deliver
-                            + "。请先核对库存并按采购、委外、自制拆分需求，再下达生产计划。",
-                    "/production/material-analysis");
+            // V477 办结闭环：绑定 (SALES_ORDER, orderId) 聚合——生产部创建物料
+            // 分析后按聚合撤回全部接收人的这条待办（此前无聚合永不办结）。
+            // 2026-09-05 修弹窗串台：接收池从「planner 角色 ∪ SUB_PLAN 主部门」
+            // （角色不看部门，跨部门挂角色者会收到别的部门的弹窗）收敛为
+            // ADR-063 口径「(主部门 OR 兼职部门) ∈ SUB_PLAN 子树 AND 持有
+            // 物料分析查看权」——与财务/品质弹窗同款双条件，超管不再隐式命中。
+            Set<UUID> targets = new LinkedHashSet<>(
+                    departmentUserIdsWithSecondaryAuthorities(
+                            "SUB_PLAN", NOTICE_READ_AUTHORITY,
+                            "production_material_analysis:view", "production_material_analysis:create"));
+            for (UUID uid : targets) {
+                // 角色/部门池是公共任务广播，即使事件本身重要，也不得阻塞每个成员。
+                sendToUser(uid, TYPE_TASK,
+                        "新订单待物料分析：" + o.billNo(),
+                        "订单 " + o.billNo() + " 已审核并通过财务确认，共 " + lines + " 行货品(" + goods
+                                + ")待分析，最早交货日 " + deliver
+                                + "。请先核对库存并按采购、委外、自制拆分需求，再下达生产计划。",
+                        "/production/material-analysis",
+                        EVENT_ORDER_APPROVED, "normal", orderId);
+            }
         });
     }
 
     /** ⑦.6 订单审核后通知财务确认（V294 闸门：财务确认前计划部不可见该订单）。 */
     public void notifyOrderPendingFinanceConfirmation(UUID orderId) {
+        notifyOrderPendingFinanceConfirmation(orderId, false);
+    }
+
+    /**
+     * 2026-09-05 财务确认后改量：订单重新进入财务确认队列时带「改后待确认」
+     * 口径投递——内容指引财务按审核页「修改清单」复核 以前→现在。
+     */
+    public void notifyOrderPendingFinanceConfirmation(
+            UUID orderId, boolean afterModification) {
         if (!isOutboxDelivery()) {
-            outbox.publish(EVENT_ORDER_PENDING_FINANCE, "SALES_ORDER", orderId, Map.of());
+            outbox.publish(
+                    EVENT_ORDER_PENDING_FINANCE,
+                    "SALES_ORDER",
+                    orderId,
+                    afterModification
+                            ? Map.of("afterModification", true)
+                            : Map.of());
             return;
         }
         deliverAtomically(() -> {
@@ -3081,9 +3389,15 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             List<UUID> confirmers = salesOrderFinanceConfirmers.eligibleUserIds();
             for (UUID userId : confirmers) {
                 sendToUser(userId, TYPE_APPROVAL,
-                        "待财务确认：" + o.billNo(),
-                        "销售订货单 " + o.billNo() + " 已审核，待财务确认；确认后计划部才可见并排产。",
-                        "/finance/sales-order-confirmations/" + orderId,
+                        (afterModification ? "改量后待财务确认：" : "待财务确认：")
+                                + o.billNo(),
+                        afterModification
+                                ? "销售订货单 " + o.billNo()
+                                      + " 在财务确认后修改了数量，已重新进入确认队列；"
+                                      + "请按审核页「修改清单」复核每行 以前→现在 数量后确认。"
+                                : "销售订货单 " + o.billNo() + " 已审核，待财务确认；确认后计划部才可见并排产。",
+                        afterModification ? "/finance/sales-order-changes"
+                                : "/finance/sales-order-confirmations/" + orderId,
                         EVENT_ORDER_PENDING_FINANCE, null, orderId);
             }
         });
@@ -3350,6 +3664,25 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                 }
                 return;
             }
+            if (EVENT_PROCUREMENT_FINANCE_CHANGE_SUBMITTED.equals(eventType)) {
+                Long changeCount = jdbc.queryForObject("""
+                        SELECT count(*) FROM procurement_order_qty_change_logs
+                        WHERE case_id = ?
+                        """, Long.class, approvalCaseId);
+                long changes = changeCount == null ? 0 : changeCount;
+                String title = "改量待财务复核：" + billNo;
+                String content = orderLabel + " " + billNo + " 财务批准后改量 "
+                        + changes + " 处，新数量已生效；请在任务中心打开该 case，"
+                        + "按修改清单（以前 → 现在）复核后通过或驳回。"
+                        + "驳回不会自动还原数量，制单人会收到原因并再次改量。";
+                for (UUID reviewer : financeReviewerUserIds()) {
+                    sendToUser(reviewer, TYPE_APPROVAL, title, content,
+                            "/finance/procurement-approvals",
+                            EVENT_PROCUREMENT_FINANCE_CHANGE_SUBMITTED, null,
+                            approvalCaseId);
+                }
+                return;
+            }
             if (EVENT_PROCUREMENT_FINANCE_REJECTED.equals(eventType)) {
                 UUID orderId = (UUID) approval.get("order_id");
                 String actionRoute = "SUBCONTRACT".equals(
@@ -3392,6 +3725,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                 String expectedDate = str(approval.get("expected_date"));
                 for (UUID warehouseUser : departmentUserIdsWithAuthorities(
                         "SUB_WH", NOTICE_READ_AUTHORITY, "warehouse_inbound:view")) {
+                    // 2026-09-05 起升级为居中行动卡：aggregate 绑定
+                    // (PROCUREMENT_ORDER, orderId)，到货全部登记完
+                    // （expectation CLOSED/CANCELED）后按聚合办结撤回。
                     sendToUser(
                             warehouseUser,
                             TYPE_TASK,
@@ -3404,7 +3740,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                                             ? ""
                                             : "，预计日期 " + expectedDate)
                                     + "。请在仓库预计到货队列跟进。",
-                            "/warehouse/inbound/expectations");
+                            "/warehouse/inbound/expectations",
+                            null,
+                            null,
+                            orderId);
                 }
             }
         });
@@ -3812,14 +4151,36 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                     type = TYPE_URGENT;
                 }
             }
+            // 2026-09-05 通知补齐：OPENED/RETURNED 是「该谁干活」节点，升级为居中
+            // 行动卡（aggregate 绑定拒收 case）；贷项确认/无贷项结案/反向时批量撤卡。
+            boolean actionable = EVENT_PROCUREMENT_IQC_REJECTION_OPENED.equals(
+                    eventType)
+                    || EVENT_PROCUREMENT_IQC_REJECTION_RETURNED.equals(eventType);
             for (UUID recipient : recipients) {
-                sendToUser(
-                        recipient,
-                        type,
-                        title,
-                        content,
-                        route,
-                        eventType);
+                if (actionable) {
+                    sendToUser(
+                            recipient,
+                            type,
+                            title,
+                            content,
+                            route,
+                            eventType,
+                            null,
+                            caseId);
+                } else {
+                    sendToUser(
+                            recipient,
+                            type,
+                            title,
+                            content,
+                            route,
+                            eventType);
+                }
+            }
+            if (EVENT_PROCUREMENT_IQC_CREDIT_CONFIRMED.equals(eventType)
+                    || EVENT_PROCUREMENT_IQC_REJECTION_NO_CREDIT.equals(eventType)
+                    || EVENT_PROCUREMENT_IQC_REJECTION_REVERSED.equals(eventType)) {
+                resolveReviewNotices("IQC_REJECTION_CASE", caseId, eventType);
             }
         });
     }
@@ -3955,7 +4316,11 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                 FROM users user_account
                 JOIN employees employee
                   ON employee.id = user_account.employee_id
-                WHERE employee.department_id IN (SELECT id FROM subtree)
+                WHERE (employee.department_id IN (SELECT id FROM subtree)
+                       OR EXISTS (
+                           SELECT 1 FROM employee_secondary_departments secondary
+                           WHERE secondary.employee_id = employee.id
+                             AND secondary.department_id IN (SELECT id FROM subtree)))
                   AND employee.is_deleted = false
                   AND employee.status <> 'resigned'
                   AND user_account.is_deleted = false
@@ -3984,7 +4349,11 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                 FROM users user_account
                 JOIN employees employee
                   ON employee.id = user_account.employee_id
-                WHERE employee.department_id IN (SELECT id FROM quality_departments)
+                WHERE (employee.department_id IN (SELECT id FROM quality_departments)
+                       OR EXISTS (
+                           SELECT 1 FROM employee_secondary_departments secondary
+                           WHERE secondary.employee_id = employee.id
+                             AND secondary.department_id IN (SELECT id FROM quality_departments)))
                   AND employee.is_deleted = FALSE
                   AND employee.status IN ('active', 'probation', 'onLeave')
                   AND user_account.is_deleted = FALSE
@@ -3996,7 +4365,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                         .filter(account -> !account.isDeleted()
                                 && "active".equals(account.getStatus()))
                         .map(permissionResolver::permsOf)
-                        .map(permissions -> permissions.contains(IQC_VIEW_AUTHORITY))
+                        .map(permissions -> permissions.containsAll(Set.of(
+                                NOTICE_READ_AUTHORITY, IQC_VIEW_AUTHORITY,
+                                "procurement_inspection:handle")))
                         .orElse(false))
                 .toList();
     }
@@ -4022,6 +4393,54 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             String departmentCode, String... authorities) {
         Set<String> required = Set.of(authorities);
         return departmentUserIds(departmentCode).stream()
+                .filter(userId -> userRepo.findById(userId)
+                        .filter(account -> !account.isDeleted()
+                                && "active".equals(account.getStatus()))
+                        .map(permissionResolver::permsOf)
+                        .map(permissions -> permissions.containsAll(required))
+                        .orElse(false))
+                .toList();
+    }
+
+    /**
+     * ADR-063 弹窗口径的接收池：(主部门 ∈ 部门子树 OR 兼职部门 ∈ 部门子树)
+     * AND 持有全部权限码，双条件缺一不可。与 {@link #departmentUserIdsWithAuthorities}
+     * 的差别只在兼职部门也参与命中（与车间树、财务确认池同语义）。
+     */
+    private List<UUID> departmentUserIdsWithSecondaryAuthorities(
+            String departmentCode, String... authorities) {
+        Set<String> required = Set.of(authorities);
+        List<UUID> candidates = jdbc.queryForList("""
+                WITH RECURSIVE subtree(id) AS (
+                    SELECT id
+                    FROM departments
+                    WHERE code = ? AND is_deleted = FALSE
+                    UNION ALL
+                    SELECT child.id
+                    FROM departments child
+                    JOIN subtree parent ON child.parent_id = parent.id
+                    WHERE child.is_deleted = FALSE
+                ), candidate_employee(id) AS (
+                    SELECT employee.id
+                    FROM employees employee
+                    WHERE employee.department_id IN (SELECT id FROM subtree)
+                    UNION
+                    SELECT secondary.employee_id
+                    FROM employee_secondary_departments secondary
+                    WHERE secondary.department_id IN (SELECT id FROM subtree)
+                )
+                SELECT DISTINCT user_account.id
+                FROM candidate_employee candidate
+                JOIN employees employee ON employee.id = candidate.id
+                JOIN users user_account
+                  ON user_account.employee_id = employee.id
+                WHERE employee.is_deleted = FALSE
+                  AND employee.status IN ('active', 'probation', 'onLeave')
+                  AND user_account.is_deleted = FALSE
+                  AND user_account.status = 'active'
+                ORDER BY user_account.id
+                """, UUID.class, departmentCode);
+        return candidates.stream()
                 .filter(userId -> userRepo.findById(userId)
                         .filter(account -> !account.isDeleted()
                                 && "active".equals(account.getStatus()))

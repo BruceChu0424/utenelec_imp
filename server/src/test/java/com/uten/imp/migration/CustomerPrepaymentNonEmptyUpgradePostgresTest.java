@@ -86,8 +86,10 @@ class CustomerPrepaymentNonEmptyUpgradePostgresTest {
         String querySource=java.nio.file.Files.readString(java.nio.file.Path.of(
                 "src/main/java/com/uten/imp/features/finance/receivables/CustomerPrepaymentQueryService.java"));
         assertThat(querySource)
-                .contains("存在历史多销售单应收收款尚未精确分配")
-                .contains("hasUnallocated");
+                .contains("部分客户付款或历史结算缺少准确的订单来源明细")
+                .contains("invoicePosition.unresolvedCashCount()>0")
+                .contains("hasUnallocated ? null : money(cashReceivedOriginal)")
+                .contains("hasUnallocated ? null : money(cashReceivedLocal)");
     }
 
     private static Fixture seedV378(Connection c)throws SQLException{

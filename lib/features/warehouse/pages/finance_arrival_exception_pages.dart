@@ -10,6 +10,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
@@ -93,7 +94,7 @@ class _FinanceArrivalExceptionTasksPageState
               type: UtenButtonType.tonal,
               icon: Icons.refresh_rounded,
               isLoading: _loading && result != null,
-              onPressed: _loading ? null : () => _load(result?.page ?? 1),
+              onPressed: _loading ? null : () => _load(1),
               child: const Text('刷新'),
             ),
           ),
@@ -785,12 +786,14 @@ class _FinanceDecisionPanel extends StatelessWidget {
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,4}')),
                 ],
-                decoration: InputDecoration(
-                  label: fieldLabel(
-                    '批准的额外超量',
-                    theme,
-                    info:
-                        '必须大于 0，且小于 ${procurementQty(task.requestedExcessQty)} ${task.unitName ?? ''}',
+                decoration: UtenInputDecoration(
+                  InputDecoration(
+                    label: fieldLabel(
+                      '批准的额外超量',
+                      theme,
+                      info:
+                          '必须大于 0，且小于 ${procurementQty(task.requestedExcessQty)} ${task.unitName ?? ''}',
+                    ),
                   ),
                 ),
               ),

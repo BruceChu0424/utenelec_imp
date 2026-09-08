@@ -2,7 +2,7 @@
 // 文档：docs/02-组件库/UtenNotify.md §七
 //
 // - 按账号/模拟身份持久化 (publishedAt,id) 游标；首次由服务端补显未读且未确认到达的通知；
-// - 每 10s 增量拉取、每分钟全量待确认对账，补回晚提交游标后方的通知；
+// - 前台每 2s 增量拉取、每分钟全量待确认对账，补回晚提交游标后方的通知；
 // - 所有优先级均进入非阻塞顶部叠放层；重要度只改变视觉与停留时长；
 // - 同一批通知逐条跟踪真实关闭回调，点击才标注已读并跳 actionRoute。
 
@@ -33,6 +33,67 @@ typedef NoticeArrivalDispatcher =
       Notice notice,
       VoidCallback onDelivered,
     );
+
+/// One foreground arrival page may contain many reviews. Coalesce their final
+/// eligibility checks into the existing bounded status endpoint.
+final noticeReviewArrivalStatusProvider =
+    Provider<Future<PendingReviewStatus?> Function(String)>((ref) {
+      final batcher = _ReviewArrivalStatusBatcher(
+        ref.watch(noticeRepositoryProvider),
+      );
+      return batcher.load;
+    });
+
+class _ReviewArrivalStatusBatcher {
+  _ReviewArrivalStatusBatcher(this._repository);
+  final NoticeRepository _repository;
+  final _pending = <String, List<Completer<PendingReviewStatus?>>>{};
+  bool _scheduled = false;
+
+  Future<PendingReviewStatus?> load(String id) {
+    final completer = Completer<PendingReviewStatus?>();
+    _pending.putIfAbsent(id, () => []).add(completer);
+    if (!_scheduled) {
+      _scheduled = true;
+      scheduleMicrotask(_drain);
+    }
+    return completer.future;
+  }
+
+  Future<void> _drain() async {
+    try {
+      while (_pending.isNotEmpty) {
+        final batch = <String, List<Completer<PendingReviewStatus?>>>{};
+        for (final id in _pending.keys.take(50).toList()) {
+          batch[id] = _pending.remove(id)!;
+        }
+        try {
+          final statuses = await _repository.pendingReviewStatus(
+            batch.keys.toList(),
+          );
+          final byId = {for (final status in statuses) status.noticeId: status};
+          for (final entry in batch.entries) {
+            for (final waiter in entry.value) {
+              waiter.complete(byId[entry.key]);
+            }
+          }
+        } catch (error, stack) {
+          // Do not fan out more failing HTTP requests for the rest of a burst.
+          final failed = [...batch.values, ..._pending.values];
+          _pending.clear();
+          for (final waiters in failed) {
+            for (final waiter in waiters) {
+              waiter.completeError(error, stack);
+            }
+          }
+          return;
+        }
+      }
+    } finally {
+      _scheduled = false;
+    }
+  }
+}
 
 /// 轻量到达 feed。服务端按 (publishedAt,id) 高水位升序分页，不受置顶排序影响。
 /// Provider 单独抽出，既便于 Widget 测试，也为后续 SSE/WebSocket 替换保留同一入口。
@@ -144,7 +205,7 @@ class NoticeArrivalListener extends ConsumerStatefulWidget {
     super.key,
     required this.identityKey,
     required this.child,
-    this.pollInterval = const Duration(seconds: 10),
+    this.pollInterval = const Duration(seconds: 2),
     this.fullAuditInterval = const Duration(minutes: 1),
     this.onArrival,
     this.routeContext,
@@ -172,6 +233,8 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
   final Set<String> _deliveredIds = <String>{};
   final Set<String> _queuedIds = <String>{};
   final ListQueue<Notice> _pendingArrivals = ListQueue<Notice>();
+  final ListQueue<Notice> _pendingReviewArrivals = ListQueue<Notice>();
+  bool _normalAuditPending = false;
   final Map<String, Notice> _activeArrivals = <String, Notice>{};
   int _generation = 0;
   int _requestSequence = 0;
@@ -253,6 +316,8 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
     _deliveredIds.clear();
     _queuedIds.clear();
     _pendingArrivals.clear();
+    _pendingReviewArrivals.clear();
+    _normalAuditPending = false;
     _activeArrivals.clear();
     _lastScheduledSnapshot = null;
     _persistDirty = false;
@@ -288,6 +353,7 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
       }
 
       final fullAudit = _fullAuditDue || _cursor == null;
+      if (fullAudit) _normalAuditPending = true;
       var cursor = fullAudit ? null : _cursor;
       final unreadIdsThisAudit = <String>{};
       final seenThisPoll = <String>{};
@@ -309,7 +375,7 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
             if (!_deliveredIds.contains(notice.id) &&
                 _queuedIds.add(notice.id) &&
                 seenThisPoll.add(notice.id)) {
-              _pendingArrivals.addLast(notice);
+              _queueFor(notice).addLast(notice);
               discoveredAny = true;
             }
           }
@@ -319,7 +385,9 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
         _prioritizePendingArrivals();
         // 增量页可以立即入顶部栈；首次登录/全量审计先拉完全部页再排序，
         // 让低优先级先入栈、重要/紧急最后入栈并保持在视觉最上层。
-        if (!fullAudit) _dispatchNext();
+        // Reviews must not wait for every page of old unread announcements.
+        // Ordinary banners still preserve whole-audit priority ordering.
+        _dispatchNext();
         if (!page.hasMore) break;
         pageCount++;
         if (pageCount > 10000) {
@@ -333,6 +401,7 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
         if (_deliveredIds.length != deliveredBefore) _persistDirty = true;
         _retainOnlyUnreadPending(unreadIdsThisAudit);
         _fullAuditDue = false;
+        _normalAuditPending = false;
         _scheduleFullAudit();
       }
       if (discoveredAny) {
@@ -357,18 +426,18 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
   }
 
   void _retainOnlyUnreadPending(Set<String> unreadIds) {
-    if (_pendingArrivals.every((notice) => unreadIds.contains(notice.id))) {
-      return;
+    for (final queue in [_pendingArrivals, _pendingReviewArrivals]) {
+      final retained = queue
+          .where((notice) => unreadIds.contains(notice.id))
+          .toList(growable: false);
+      queue
+        ..clear()
+        ..addAll(retained);
     }
-    final retained = _pendingArrivals
-        .where((notice) => unreadIds.contains(notice.id))
-        .toList(growable: false);
-    _pendingArrivals
-      ..clear()
-      ..addAll(retained);
     _queuedIds
       ..clear()
-      ..addAll(retained.map((notice) => notice.id));
+      ..addAll(_pendingArrivals.map((notice) => notice.id))
+      ..addAll(_pendingReviewArrivals.map((notice) => notice.id));
     _queuedIds.addAll(_activeArrivals.keys);
   }
 
@@ -397,7 +466,11 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
   };
 
   void _dispatchNext() {
-    if (!mounted || _pendingArrivals.isEmpty) return;
+    if (!mounted ||
+        (_pendingReviewArrivals.isEmpty &&
+            (_normalAuditPending || _pendingArrivals.isEmpty))) {
+      return;
+    }
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
 
@@ -411,11 +484,16 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
 
     final dispatchContext = routedContext ?? context;
     final injected = widget.onArrival;
-    while (mounted && _pendingArrivals.isNotEmpty) {
-      final notice = _pendingArrivals.removeFirst();
+    while (mounted &&
+        (_pendingReviewArrivals.isNotEmpty ||
+            (!_normalAuditPending && _pendingArrivals.isNotEmpty))) {
+      final notice = _pendingReviewArrivals.isNotEmpty
+          ? _pendingReviewArrivals.removeFirst()
+          : _pendingArrivals.removeFirst();
       final identityKey = widget.identityKey;
+      final generation = _generation;
       _activeArrivals[notice.id] = notice;
-      void delivered() => _confirmDelivered(identityKey, notice.id);
+      void delivered() => _confirmDelivered(identityKey, generation, notice.id);
       try {
         if (injected != null) {
           injected(dispatchContext, notice, delivered);
@@ -424,20 +502,35 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
             dispatchContext,
             notice,
             onDelivered: delivered,
+            onRetry: () => _retryArrival(identityKey, generation, notice),
+            isCurrent: () => _isDeliveryCurrent(identityKey, generation),
           );
         }
       } catch (_) {
         // 未成功进入顶部宿主，不确认 delivered；保留在队首，下一轮再试。
         _activeArrivals.remove(notice.id);
-        _pendingArrivals.addFirst(notice);
+        _queueFor(notice).addFirst(notice);
         return;
       }
     }
   }
 
-  void _confirmDelivered(String identityKey, String noticeId) {
-    if (!mounted ||
-        widget.identityKey != identityKey ||
+  ListQueue<Notice> _queueFor(Notice notice) =>
+      notice.interactive ? _pendingReviewArrivals : _pendingArrivals;
+
+  bool _isDeliveryCurrent(String identityKey, int generation) =>
+      mounted && widget.identityKey == identityKey && generation == _generation;
+
+  void _retryArrival(String identityKey, int generation, Notice notice) {
+    if (!_isDeliveryCurrent(identityKey, generation)) return;
+    if (_activeArrivals.remove(notice.id) == null) return;
+    _queueFor(notice).addLast(notice);
+    // Retry on the next foreground poll, never a tight retry loop. The cursor
+    // may advance, but this notice is not marked delivered and remains queued.
+  }
+
+  void _confirmDelivered(String identityKey, int generation, String noticeId) {
+    if (!_isDeliveryCurrent(identityKey, generation) ||
         !_activeArrivals.containsKey(noticeId)) {
       return;
     }
@@ -446,7 +539,7 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
     if (_deliveredIds.add(noticeId)) _persistDirty = true;
     _schedulePersist();
     scheduleMicrotask(() {
-      if (mounted && widget.identityKey == identityKey) _dispatchNext();
+      if (_isDeliveryCurrent(identityKey, generation)) _dispatchNext();
     });
   }
 
@@ -503,6 +596,8 @@ void dispatchNoticeArrival(
   Notice notice, {
   VoidCallback? onOpenDetail,
   VoidCallback? onDelivered,
+  VoidCallback? onRetry,
+  bool Function()? isCurrent,
 }) {
   // 点击可能发生在来源页切换后：提前捕获 app 级 container、router 与根
   // Navigator context，避免延迟回调读取已失效的 WidgetRef/页面 context。
@@ -569,7 +664,14 @@ void dispatchNoticeArrival(
   // 弹前先做一次真态校验（已办结不弹）。与普通顶部条同为非阻塞（ADR-063）。
   if (notice.interactive) {
     unawaited(
-      dispatchReviewCard(context, notice, kind: kind, onDelivered: onDelivered),
+      dispatchReviewCard(
+        context,
+        notice,
+        kind: kind,
+        onDelivered: onDelivered,
+        onRetry: onRetry,
+        isCurrent: isCurrent,
+      ),
     );
     return;
   }
@@ -609,11 +711,13 @@ Future<void> dispatchReviewCard(
   Notice notice, {
   required AppNotificationKind kind,
   VoidCallback? onDelivered,
+  VoidCallback? onRetry,
+  bool Function()? isCurrent,
 }) async {
   // 与 dispatchNoticeArrival 相同的失效防护：提前捕获容器与根 Navigator context。
   final container = ProviderScope.containerOf(context, listen: false);
   final detailContext = Navigator.of(context, rootNavigator: true).context;
-  final repository = container.read(noticeRepositoryProvider);
+  final reviewGeneration = reviewPendingDialogGeneration;
 
   container.read(noticeTargetRoutesProvider.notifier).recordRoutes([
     notice.actionRoute,
@@ -621,14 +725,22 @@ Future<void> dispatchReviewCard(
 
   // 弹前真态校验：办结的待办不弹（仍算已送达）。
   try {
-    final statuses = await repository.pendingReviewStatus([notice.id]);
-    final status = statuses.isEmpty ? null : statuses.first;
-    if (status != null && status.resolved) {
+    final status = await container.read(noticeReviewArrivalStatusProvider)(
+      notice.id,
+    );
+    if (isCurrent?.call() == false) return;
+    if (status == null || status.resolved) {
       onDelivered?.call();
       return;
     }
   } catch (_) {
-    // 真态校验失败可容忍：按到达即弹，居中弹窗的心跳会再校验。
+    // A failed authorization/status check cannot authorize an actionable popup.
+    onRetry?.call();
+    return;
+  }
+  if (!detailContext.mounted ||
+      reviewGeneration != reviewPendingDialogGeneration) {
+    return;
   }
 
   // 纯显示顶部条：无按钮/状态行，20s 自然收起（悬停暂停）。

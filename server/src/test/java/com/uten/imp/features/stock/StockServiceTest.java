@@ -21,6 +21,21 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class StockServiceTest {
+    private static StockBalanceRepository.PhysicalSnapshot snapshot(StockBalance balance){
+        return new StockBalanceRepository.PhysicalSnapshot(){
+            public BigDecimal getQty(){return balance.getQty();}
+            public BigDecimal getWeight(){return balance.getWeight();}
+        };
+    }
+
+    private static com.uten.imp.features.stock.valuation.StockValuationCoordinator quantityTestValuation() {
+        return org.mockito.Mockito.mock(com.uten.imp.features.stock.valuation.StockValuationCoordinator.class, invocation -> {
+            if (!invocation.getMethod().getName().equals("value")) return org.mockito.Answers.RETURNS_DEFAULTS.answer(invocation);
+            return new com.uten.imp.application.port.InventoryValuationPort.MovementValue(
+                    UUID.randomUUID(),invocation.getArgument(0),UUID.randomUUID(),UUID.randomUUID(),
+                    BigDecimal.ZERO,com.uten.imp.application.port.InventoryValuationPort.State.PENDING,false);
+        });
+    }
 
     @Mock
     private StockMovementRepository movementRepo;
@@ -32,6 +47,27 @@ class StockServiceTest {
     private InventoryMutationLock inventoryLock;
 
     @Test
+    void outboundPersistsCanonicalCostInsteadOfCallerSellingAmount() {
+        UUID warehouse=UUID.randomUUID(),goods=UUID.randomUUID();
+        StockBalance balance=new StockBalance();balance.setQty(new BigDecimal("20"));balance.setAmountLocal(new BigDecimal("600"));
+        when(balanceRepo.readPhysicalSnapshot(warehouse,goods,null)).thenReturn(java.util.List.of(snapshot(balance)));
+        when(balanceRepo.warehouseAvailableBase(warehouse,goods,null)).thenReturn(new BigDecimal("20"));
+        var valuation=org.mockito.Mockito.mock(com.uten.imp.features.stock.valuation.StockValuationCoordinator.class);
+        when(valuation.value(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(invocation->new com.uten.imp.application.port.InventoryValuationPort.MovementValue(UUID.randomUUID(),invocation.getArgument(0),
+                        UUID.randomUUID(),UUID.randomUUID(),new BigDecimal("600"),com.uten.imp.application.port.InventoryValuationPort.State.FINAL,false));
+        var service=new StockService(movementRepo,balanceRepo,tx,inventoryLock,valuation);
+        service.recordMovement(new StockService.MovementRequest(OffsetDateTime.now(),StockService.TYPE_SALES_OUT,"SALES_SHIPMENT",
+                UUID.randomUUID(),UUID.randomUUID(),goods,null,warehouse,StockService.DIR_OUT,new BigDecimal("20"),
+                UUID.randomUUID(),BigDecimal.ONE,new BigDecimal("2000"),null));
+        var movement=org.mockito.ArgumentCaptor.forClass(StockMovement.class);verify(movementRepo).save(movement.capture());
+        assertEquals(new BigDecimal("600"),movement.getValue().getAmountLocal());
+        verify(balanceRepo).upsertBalance(org.mockito.ArgumentMatchers.eq(warehouse),org.mockito.ArgumentMatchers.eq(goods),org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(new BigDecimal("-20")),org.mockito.ArgumentMatchers.eq(new BigDecimal("-600")),
+                org.mockito.ArgumentMatchers.isNull(),org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void outboundCannotCreateNegativeWarehouseBalance() {
         UUID warehouseId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();
@@ -39,10 +75,10 @@ class StockServiceTest {
         balance.setWarehouseId(warehouseId);
         balance.setGoodsId(goodsId);
         balance.setQty(new BigDecimal("4"));
-        when(balanceRepo.findByWarehouseIdAndGoodsIdAndColorId(
-                warehouseId, goodsId, null)).thenReturn(Optional.of(balance));
+        when(balanceRepo.readPhysicalSnapshot(
+                warehouseId, goodsId, null)).thenReturn(java.util.List.of(snapshot(balance)));
         StockService service =
-                new StockService(movementRepo, balanceRepo, tx, inventoryLock);
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation());
 
         ApiException error = assertThrows(
                 ApiException.class,
@@ -66,7 +102,7 @@ class StockServiceTest {
         UUID warehouseId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();
         StockService service =
-                new StockService(movementRepo, balanceRepo, tx, inventoryLock);
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation());
 
         service.recordMovement(request(
                 warehouseId, goodsId, StockService.DIR_IN, "5"));
@@ -87,7 +123,7 @@ class StockServiceTest {
         UUID warehouseId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();
         StockService service =
-                new StockService(movementRepo, balanceRepo, tx, inventoryLock);
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation());
         BigDecimal actualWeight = new BigDecimal("5.0000");
 
         service.recordMovement(new StockService.MovementRequest(
@@ -109,7 +145,7 @@ class StockServiceTest {
     @Test
     void negativeActualWeightIsRejectedBeforeWritingLedger() {
         StockService service =
-                new StockService(movementRepo, balanceRepo, tx, inventoryLock);
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation());
 
         assertThrows(IllegalArgumentException.class, () -> service.recordMovement(
                 new StockService.MovementRequest(
@@ -140,10 +176,10 @@ class StockServiceTest {
         balance.setGoodsId(goodsId);
         balance.setQty(new BigDecimal("10"));
         balance.setWeight(new BigDecimal("4.5000"));
-        when(balanceRepo.findByWarehouseIdAndGoodsIdAndColorId(
-                warehouseId, goodsId, null)).thenReturn(Optional.of(balance));
+        when(balanceRepo.readPhysicalSnapshot(
+                warehouseId, goodsId, null)).thenReturn(java.util.List.of(snapshot(balance)));
         StockService service =
-                new StockService(movementRepo, balanceRepo, tx, inventoryLock);
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation());
 
         ApiException error = assertThrows(
                 ApiException.class,
@@ -174,12 +210,12 @@ class StockServiceTest {
         balance.setWarehouseId(warehouseId);
         balance.setGoodsId(goodsId);
         balance.setQty(new BigDecimal("10"));
-        when(balanceRepo.findByWarehouseIdAndGoodsIdAndColorId(
-                warehouseId, goodsId, null)).thenReturn(Optional.of(balance));
+        when(balanceRepo.readPhysicalSnapshot(
+                warehouseId, goodsId, null)).thenReturn(java.util.List.of(snapshot(balance)));
         when(balanceRepo.warehouseAvailableBase(warehouseId, goodsId, null))
                 .thenReturn(new BigDecimal("2"));
         StockService service =
-                new StockService(movementRepo, balanceRepo, tx, inventoryLock);
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation());
 
         ApiException error = assertThrows(
                 ApiException.class,
@@ -201,10 +237,10 @@ class StockServiceTest {
         balance.setWarehouseId(warehouseId);
         balance.setGoodsId(goodsId);
         balance.setQty(new BigDecimal("10")); // 在手 10，但 movable 被预留/安全压到 2
-        when(balanceRepo.findByWarehouseIdAndGoodsIdAndColorId(
-                warehouseId, goodsId, null)).thenReturn(Optional.of(balance));
+        when(balanceRepo.readPhysicalSnapshot(
+                warehouseId, goodsId, null)).thenReturn(java.util.List.of(snapshot(balance)));
         StockService service =
-                new StockService(movementRepo, balanceRepo, tx, inventoryLock);
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation());
 
         // qty 3 ≤ 在手 10 → 过非负底线；PURCHASE_RECEIPT 在 REVERSAL_RETURN_TYPES → 跳过 movable
         service.recordMovement(request(
@@ -223,10 +259,10 @@ class StockServiceTest {
         balance.setWarehouseId(warehouseId);
         balance.setGoodsId(goodsId);
         balance.setQty(new BigDecimal("10"));
-        when(balanceRepo.findByWarehouseIdAndGoodsIdAndColorId(
-                warehouseId, goodsId, null)).thenReturn(Optional.of(balance));
+        when(balanceRepo.readPhysicalSnapshot(
+                warehouseId, goodsId, null)).thenReturn(java.util.List.of(snapshot(balance)));
         StockService service =
-                new StockService(movementRepo, balanceRepo, tx, inventoryLock);
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation());
 
         service.recordMovement(request(
                 warehouseId, goodsId, StockService.DIR_OUT, "3",

@@ -28,6 +28,8 @@ public class PurchaseLineUnitPolicy {
 
     private final EntityManager em;
 
+    @org.springframework.transaction.annotation.Transactional(
+            propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public ResolvedUnit normalizeAndValidate(
             UUID goodsId,
             UUID unitId,
@@ -36,6 +38,8 @@ public class PurchaseLineUnitPolicy {
         if (goodsId == null) {
             throw validation(lineNo, "缺少货品");
         }
+
+        com.uten.imp.common.concurrency.GoodsQuantityBasisLocks.lockUnused(em, List.of(goodsId));
 
         List<Object[]> goodsRows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""

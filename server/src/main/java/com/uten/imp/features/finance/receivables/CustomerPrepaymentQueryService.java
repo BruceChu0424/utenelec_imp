@@ -10,7 +10,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,10 +22,9 @@ import static com.uten.imp.features.finance.receivables.CustomerPrepaymentContra
 @Service
 @RequiredArgsConstructor
 public class CustomerPrepaymentQueryService {
-    private static final int MONEY_SCALE = 4;
-    private static final int RATE_SCALE = 6;
 
     private final EntityManager em;
+    private final SalesOrderMoneyPositionQuery positions;
 
     @Transactional(readOnly = true)
     public PrepaymentPage list(
@@ -81,7 +79,7 @@ public class CustomerPrepaymentQueryService {
                 page, size, total, total == 0 ? 0 : (int) Math.ceil((double) total / size));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public SalesOrderMoneySummary salesOrderSummary(UUID salesOrderId) {
         @SuppressWarnings("unchecked")
         List<Object[]> orders = em.createNativeQuery("""
@@ -96,16 +94,11 @@ public class CustomerPrepaymentQueryService {
         BigDecimal orderOriginal = decimal(order[5]);
         BigDecimal orderLocal = decimal(order[6]);
 
-        Object[] formal = (Object[]) em.createNativeQuery("""
-                SELECT COALESCE(SUM(ref.amount_original),0),COALESCE(SUM(ref.amount_local),0)
-                FROM ar_ap_source_refs ref
-                JOIN ar_ap_ledger ledger ON ledger.id=ref.ledger_id
-                WHERE ref.source_type='SALES_ORDER' AND ref.source_id=:orderId
-                  AND ledger.direction='AR' AND ledger.open_item_kind='RECEIVABLE'
-                  AND ledger.status=1 AND COALESCE(ledger.is_deleted,FALSE)=FALSE
-                """).setParameter("orderId", salesOrderId).getSingleResult();
-        BigDecimal formalOriginal = decimal(formal[0]);
-        BigDecimal formalLocal = decimal(formal[1]);
+        var invoicePosition = positions.invoices(salesOrderId);
+        var returnPosition = positions.returns(salesOrderId);
+        var futurePosition = positions.future(salesOrderId);
+        BigDecimal formalOriginal = invoicePosition.grossOriginal();
+        BigDecimal formalLocal = invoicePosition.grossLocal();
 
         Object[] receiptApplied = (Object[]) em.createNativeQuery("""
                 SELECT COALESCE(SUM(cash_original),0),COALESCE(SUM(cash_local),0),
@@ -156,43 +149,61 @@ public class CustomerPrepaymentQueryService {
         BigDecimal generalAppliedSourceLocal = decimal(offsets[5]);
 
         List<UnallocatedReceiptLine> unallocated = unallocatedLines(salesOrderId);
-        boolean hasUnallocated = !unallocated.isEmpty();
+        boolean hasUnallocated = !unallocated.isEmpty() || invoicePosition.unresolvedCashCount()>0;
         List<String> warnings = new ArrayList<>();
         if (hasUnallocated) warnings.add(
-                "存在历史多销售单应收收款尚未精确分配；该金额未计入现金到账、冲销和订单尚需收款，请先财务人工来源对账");
+                "部分客户付款或历史结算缺少准确的订单来源明细，客户已付金额需财务核对");
+        boolean positionComplete = invoicePosition.unresolvedCount()==0 && returnPosition.unresolvedCount()==0
+                && futurePosition.unresolvedCount()==0 && (futurePosition.itemCount()>0 || orderOriginal.signum()==0);
+        if (invoicePosition.unresolvedCount()>0) warnings.add("部分发货应收未准确对应到本订单，当前余额需财务核对");
+        if (returnPosition.unresolvedCount()>0) warnings.add("部分退货金额或已处理金额无法准确对应到本订单，当前余额需财务核对");
+        if (futurePosition.unresolvedCount()>0 || (futurePosition.itemCount()==0 && orderOriginal.signum()!=0)) {
+            warnings.add("订单明细不足以准确计算后续发货金额，请先核对订单");
+        }
 
         BigDecimal exactAppliedOriginal = ordinaryCashOriginal.add(writeOffOriginal)
                 .add(prepaymentAppliedOriginal);
         BigDecimal exactAppliedLocal = receiptBookLocal.add(prepaymentAppliedTargetLocal);
-        BigDecimal arOutstandingOriginal = formalOriginal.subtract(exactAppliedOriginal);
-        BigDecimal arOutstandingLocal = formalLocal.subtract(exactAppliedLocal);
-        if (arOutstandingOriginal.signum() < 0 || arOutstandingLocal.signum() < 0) {
+        if (formalOriginal.subtract(exactAppliedOriginal).signum() < 0 || formalLocal.subtract(exactAppliedLocal).signum() < 0) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "销售单应收来源已被超额核销，资金汇总不守恒；请财务核验来源分配");
         }
+        BigDecimal arOutstandingOriginal = invoicePosition.remainingOriginal();
+        BigDecimal arOutstandingLocal = invoicePosition.remainingLocal();
         BigDecimal cashReceivedOriginal = ordinaryCashOriginal
                 .add(prepaymentReceivedOriginal).add(generalAppliedOriginal);
         BigDecimal cashReceivedLocal = ordinaryCashLocal
                 .add(prepaymentReceivedLocal).add(generalAppliedSourceLocal);
-        BigDecimal recognizedOriginal = formalOriginal.min(orderOriginal.max(BigDecimal.ZERO));
-        BigDecimal recognizedLocal = formalLocal.min(orderLocal.max(BigDecimal.ZERO));
-        BigDecimal unrecognizedOriginal = orderOriginal.subtract(recognizedOriginal).max(BigDecimal.ZERO);
-        BigDecimal unrecognizedLocal = orderLocal.subtract(recognizedLocal).max(BigDecimal.ZERO);
-        BigDecimal funded = cashReceivedOriginal.add(writeOffOriginal);
-        BigDecimal plannedRemaining = orderOriginal.subtract(funded).max(BigDecimal.ZERO);
-        BigDecimal overpaid = funded.subtract(orderOriginal).max(BigDecimal.ZERO);
+        BigDecimal signedNetOriginal = arOutstandingOriginal.subtract(returnPosition.unusedOriginal());
+        BigDecimal signedNetLocal = arOutstandingLocal.subtract(returnPosition.unusedLocal());
+        BigDecimal remainingAfterAvailableMoney = signedNetOriginal.add(futurePosition.original())
+                .subtract(prepaymentAvailableOriginal);
+        BigDecimal plannedRemaining = remainingAfterAvailableMoney.max(BigDecimal.ZERO);
+        BigDecimal overpaid = remainingAfterAvailableMoney.negate().max(BigDecimal.ZERO);
 
         return new SalesOrderMoneySummary((UUID) order[0], Objects.toString(order[1], null),
                 (UUID) order[2], (UUID) order[3], Objects.toString(order[4], null),
                 money(orderOriginal), money(orderLocal), money(formalOriginal), money(formalLocal),
-                money(cashReceivedOriginal), money(cashReceivedLocal), money(writeOffOriginal), money(writeOffLocal),
+                hasUnallocated ? null : money(cashReceivedOriginal), hasUnallocated ? null : money(cashReceivedLocal), money(writeOffOriginal), money(writeOffLocal),
                 money(prepaymentReceivedOriginal), money(prepaymentReceivedLocal),
                 money(prepaymentAppliedOriginal), money(prepaymentAppliedSourceLocal),
                 money(prepaymentAppliedTargetLocal), money(prepaymentFx),
                 money(prepaymentAvailableOriginal), money(prepaymentAvailableLocal),
-                money(arOutstandingOriginal), money(arOutstandingLocal),
-                money(unrecognizedOriginal), money(unrecognizedLocal), money(plannedRemaining), money(overpaid),
-                hasUnallocated, unallocated, List.copyOf(warnings));
+                positionComplete ? money(arOutstandingOriginal) : null, positionComplete ? money(arOutstandingLocal) : null,
+                futurePosition.unresolvedCount()==0 ? money(futurePosition.original()) : null, null,
+                positionComplete ? money(plannedRemaining) : null, positionComplete ? money(overpaid) : null,
+                hasUnallocated, unallocated, List.copyOf(warnings),
+                returnPosition.unresolvedCount()==0 ? money(returnPosition.totalOriginal()) : null,
+                returnPosition.unresolvedCount()==0 ? money(returnPosition.totalLocal()) : null,
+                returnPosition.unresolvedCount()==0 ? money(returnPosition.unusedOriginal()) : null,
+                returnPosition.unresolvedCount()==0 ? money(returnPosition.unusedLocal()) : null,
+                positionComplete ? money(signedNetOriginal.max(BigDecimal.ZERO)) : null,
+                positionComplete ? money(signedNetLocal.max(BigDecimal.ZERO)) : null,
+                positionComplete ? money(signedNetOriginal.negate().max(BigDecimal.ZERO)) : null,
+                positionComplete ? money(signedNetLocal.negate().max(BigDecimal.ZERO)) : null,
+                positionComplete, invoicePosition.unresolvedCount()+returnPosition.unresolvedCount()
+                        +futurePosition.unresolvedCount()
+                        +(futurePosition.itemCount()==0 && orderOriginal.signum()!=0 ? 1 : 0));
     }
 
     @SuppressWarnings("unchecked")
@@ -244,10 +255,10 @@ public class CustomerPrepaymentQueryService {
     }
 
     private static String money(Object value) {
-        return decimal(value).setScale(MONEY_SCALE, RoundingMode.HALF_UP).toPlainString();
+        return value==null?null:com.uten.imp.common.util.DecimalText.of(decimal(value));
     }
 
     private static String rate(Object value) {
-        return decimal(value).setScale(RATE_SCALE, RoundingMode.HALF_UP).toPlainString();
+        return value==null?null:com.uten.imp.common.util.DecimalText.of(decimal(value));
     }
 }

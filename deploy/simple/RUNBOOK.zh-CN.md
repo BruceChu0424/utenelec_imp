@@ -106,6 +106,19 @@ systemctl enable --now uten-imp.service uten-imp-updater.timer
 
 ## 四、日常发版（全自动）
 
+Simple Release现在在构建前强制核验实际检出提交SHA对应的三个既有工作流：
+`quality.yml`（Quality Gate）、`codeql.yml`（CodeQL）、`osv-scanner.yml`
+（Dependency Vulnerability Scan）。每个工作流以文件路径和GitHub数值ID识别，取该SHA的
+最新运行，并重新读取其当前重跑次数；三者都必须为 `completed/success`。
+旧提交的绿灯、同名其他工作流、旧成功记录之后的失败或进行中重跑都不能放行。
+
+构建完成后、签名和OSS凭证注入前再次检查，防止构建期间启动的重跑被旧成功状态掩盖。
+检查只使用当前作业的 `GITHUB_TOKEN`（步骤内名为 `GH_TOKEN`），权限限于
+`contents: read`、`actions: read`，不需要增加发布私钥或云端账号权限。
+没有运行、运行中、失败/取消、SHA/工作流不符或API错误都会停止发布；不自动等待或重试。
+先完成/修复同一SHA的质量工作流，再从GitHub界面手动重新运行失败的Simple Release。
+`.github/scripts/test_release_gate.py`提供离线回归并在发布作业的门禁前执行。
+
 ```bash
 git tag v2026.09.01-1 && git push origin v2026.09.01-1
 ```

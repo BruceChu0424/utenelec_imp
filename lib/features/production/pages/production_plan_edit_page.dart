@@ -21,6 +21,7 @@ import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -669,21 +670,23 @@ class _ProductionPlanEditPageState
                                     errorBuilder: utenTextFieldErrorBuilder,
                                     readOnly: true,
                                     controller: _billNo,
-                                    decoration: InputDecoration(
-                                      labelText: '单据号',
-                                      hintText: _billNo.text.isEmpty
-                                          ? '保存后自动生成'
-                                          : null,
-                                      filled: _billNo.text.isEmpty,
-                                      suffixIcon: _billNo.text.isEmpty
-                                          ? const Icon(
-                                              Icons.autorenew_outlined,
-                                              size: 18,
-                                            )
-                                          : const Icon(
-                                              Icons.lock_outline,
-                                              size: 16,
-                                            ),
+                                    decoration: UtenInputDecoration(
+                                      InputDecoration(
+                                        labelText: '单据号',
+                                        hintText: _billNo.text.isEmpty
+                                            ? '保存后自动生成'
+                                            : null,
+                                        filled: _billNo.text.isEmpty,
+                                        suffixIcon: _billNo.text.isEmpty
+                                            ? const Icon(
+                                                Icons.autorenew_outlined,
+                                                size: 18,
+                                              )
+                                            : const Icon(
+                                                Icons.lock_outline,
+                                                size: 16,
+                                              ),
+                                      ),
                                     ),
                                   ),
                                   // 制单员/制单时间：服务端权威，只读展示（责任制）。
@@ -755,11 +758,13 @@ class _ProductionPlanEditPageState
                                       ),
                                       initialValue: _manualSourceType,
                                       isExpanded: true,
-                                      decoration: InputDecoration(
-                                        label: fieldLabel(
-                                          '手工计划来源',
-                                          theme,
-                                          info: '仅手工添加的货品行必填',
+                                      decoration: UtenInputDecoration(
+                                        InputDecoration(
+                                          label: fieldLabel(
+                                            '手工计划来源',
+                                            theme,
+                                            info: '仅手工添加的货品行必填',
+                                          ),
                                         ),
                                       ),
                                       items: [
@@ -784,11 +789,13 @@ class _ProductionPlanEditPageState
                                       ),
                                       controller: _manualSourceRef,
                                       maxLength: 200,
-                                      decoration: InputDecoration(
-                                        label: fieldLabel(
-                                          '手工计划需求编号',
-                                          theme,
-                                          info: '同一需求后续处理必须沿用同一个编号',
+                                      decoration: UtenInputDecoration(
+                                        InputDecoration(
+                                          label: fieldLabel(
+                                            '手工计划需求编号',
+                                            theme,
+                                            info: '同一需求后续处理必须沿用同一个编号',
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -799,11 +806,13 @@ class _ProductionPlanEditPageState
                                         'production-manual-source-reason',
                                       ),
                                       controller: _manualSourceReason,
-                                      decoration: InputDecoration(
-                                        label: fieldLabel(
-                                          '手工计划原因',
-                                          theme,
-                                          info: '返工、试制、样品、备库或其他计划不得绕过物料分析',
+                                      decoration: UtenInputDecoration(
+                                        InputDecoration(
+                                          label: fieldLabel(
+                                            '手工计划原因',
+                                            theme,
+                                            info: '返工、试制、样品、备库或其他计划不得绕过物料分析',
+                                          ),
                                         ),
                                       ),
                                       minLines: 1,

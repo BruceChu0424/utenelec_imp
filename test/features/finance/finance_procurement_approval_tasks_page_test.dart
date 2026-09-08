@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/finance/models/finance_procurement_workflow.dart';
 import 'package:uten_imp/features/finance/pages/finance_procurement_approval_tasks_page.dart';
@@ -10,6 +11,8 @@ import 'package:uten_imp/features/finance/repositories/finance_procurement_workf
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/repositories/task_claim_repository.dart';
+import '../../helpers/finance_claim_fixture.dart';
 
 class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   _FakeWorkflowRepo(this.items);
@@ -56,15 +59,16 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
 
   @override
   Future<FinanceProcurementApprovalReview> review(String caseId) async {
+    final task = items.firstWhere((task) => task.caseId == caseId);
     return FinanceProcurementApprovalReview.fromJson({
       'caseId': caseId,
-      'orderId': 'order-1',
-      'orderType': 'PURCHASE',
-      'billNo': 'PO-2026-001',
-      'status': 'PENDING',
+      'orderId': task.orderId,
+      'orderType': task.orderType.name.toUpperCase(),
+      'billNo': task.billNo,
+      'status': task.status,
       'attempt': 1,
-      'version': 3,
-      'allowedActions': const ['APPROVE', 'REJECT'],
+      'version': task.version,
+      'allowedActions': task.allowedActions.toList(),
     });
   }
 
@@ -103,6 +107,7 @@ FinanceProcurementApprovalTask _task({
   required String orderType,
   required String billNo,
   List<String> allowedActions = const ['APPROVE', 'REJECT'],
+  int changeCount = 0,
 }) => FinanceProcurementApprovalTask.fromJson({
   'caseId': caseId,
   'orderId': orderId,
@@ -118,12 +123,14 @@ FinanceProcurementApprovalTask _task({
   'status': 'PENDING',
   'version': 3,
   'allowedActions': allowedActions,
+  'changeCount': changeCount,
 });
 
 Future<GoRouter> _pumpPage(
   WidgetTester tester,
   _FakeWorkflowRepo repository, {
   Size size = const Size(1400, 1000),
+  FinanceClaimFixture? claims,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -166,6 +173,9 @@ Future<GoRouter> _pumpPage(
           Perm.financeOrderApprovalReject,
         }),
         sessionProvider.overrideWith(_FinanceReviewerSessionNotifier.new),
+        taskClaimRepositoryProvider.overrideWithValue(
+          claims ?? FinanceClaimFixture(),
+        ),
         financeProcurementApprovalCountProvider.overrideWith(
           (ref) async => repository.items.length,
         ),
@@ -173,7 +183,12 @@ Future<GoRouter> _pumpPage(
           repository,
         ),
       ],
-      child: MaterialApp.router(routerConfig: router),
+      child: MaterialApp.router(
+        routerConfig: router,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('zh'),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -181,6 +196,36 @@ Future<GoRouter> _pumpPage(
 }
 
 void main() {
+  testWidgets('采购委外混合批量任一认领失败则全部不提交并释放已取得租约', (tester) async {
+    final repository = _FakeWorkflowRepo([
+      _task(
+        caseId: 'case-1',
+        orderId: 'order-1',
+        orderType: 'PURCHASE',
+        billNo: 'PO001',
+      ),
+      _task(
+        caseId: 'case-2',
+        orderId: 'order-2',
+        orderType: 'SUBCONTRACT',
+        billNo: 'SC001',
+      ),
+    ]);
+    final claims = FinanceClaimFixture()..failClaimKey = 'case-2';
+    await _pumpPage(tester, repository, claims: claims);
+    final table = tester
+        .widget<MasterDataTableView<FinanceProcurementApprovalTask>>(
+          find.byKey(const Key('finance-approval-task-table')),
+        );
+    table.onSelectedIdsChanged?.call({'case-1', 'case-2'});
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('finance-approval-batch-approve')));
+    await tester.pumpAndSettle();
+    expect(repository.approvedBatches, isEmpty);
+    expect(repository.rejectedBatches, isEmpty);
+    expect(claims.released, ['lease-PROCUREMENT_FINANCE_APPROVE-case-1-1']);
+  });
+
   testWidgets(
     'uses a selectable table and atomic bottom-right approve/reject actions',
     (tester) async {
@@ -258,8 +303,16 @@ void main() {
 
       expect(repository.approvedBatches, hasLength(1));
       expect(repository.approvedBatches.single.map((item) => item.toJson()), [
-        {'caseId': 'case-1', 'expectedVersion': 3},
-        {'caseId': 'case-2', 'expectedVersion': 3},
+        {
+          'caseId': 'case-1',
+          'expectedVersion': 3,
+          'expectedClaimId': 'lease-PROCUREMENT_FINANCE_APPROVE-case-1-1',
+        },
+        {
+          'caseId': 'case-2',
+          'expectedVersion': 3,
+          'expectedClaimId': 'lease-PROCUREMENT_FINANCE_APPROVE-case-2-2',
+        },
       ]);
 
       table = tester
@@ -387,5 +440,37 @@ void main() {
       find.byKey(const Key('finance-approval-batch-reject')),
       findsNothing,
     );
+  });
+
+  // 批准后改量（2026-09-05）：改过数量的任务在状态列显示浅黄底徽标，
+  // 未改过的任务仍显示默认「待财务复核」。
+  testWidgets('qty-changed task shows re-review badge in status column', (
+    tester,
+  ) async {
+    final repository = _FakeWorkflowRepo([
+      _task(
+        caseId: 'case-1',
+        orderId: 'order-1',
+        orderType: 'PURCHASE',
+        billNo: 'PO-2026-001',
+        changeCount: 2,
+      ),
+      _task(
+        caseId: 'case-2',
+        orderId: 'order-2',
+        orderType: 'SUBCONTRACT',
+        billNo: 'SO-2026-002',
+      ),
+    ]);
+    await _pumpPage(tester, repository);
+
+    final table = tester
+        .widget<MasterDataTableView<FinanceProcurementApprovalTask>>(
+          find.byKey(const Key('finance-approval-task-table')),
+        );
+    expect(table.columns.map((column) => column.key), contains('status'));
+    expect(find.text('改后待复核 · 改量 2 处'), findsOneWidget);
+    expect(find.text('待财务复核'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

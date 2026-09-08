@@ -16,7 +16,8 @@ import java.util.UUID;
  * 销售退货明细。源 S_WithdrawItem。
  *
  * <p>双挂真 FK 骨干：out_item_id→sales_shipment_items（审核回写 returned_qty + returned_amount）、
- * order_item_id→sales_order_items（审核回写 returned_qty + 订货结案重算）。均可空=无来源直销退。
+ * order_item_id→sales_order_items(审核回写 returned_qty + 订货结案重算)。空来源保留历史可读，
+ * 新审核必须由实际发运来源与原 AR 证明退货贷项。
  * solution/responsible 为退货专属字段（老库 qlfa/zrdw）。
  */
 @Getter

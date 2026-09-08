@@ -58,7 +58,14 @@ class DemandDecompositionControllerContractTest {
         assertThat(Arrays.stream(controllerType.getDeclaredMethods())
                         .filter(method -> Modifier.isPublic(method.getModifiers()))
                         .map(Method::getName))
-                .containsExactlyInAnyOrder("list", "detail", "decompositionPreview");
+                .containsExactlyInAnyOrder(
+                        // 2026-09-05 申请详情分解前行内改量（读+改量权限同族，
+                        // 非 write 全开）：仅采购申请面有，委外申请面保持只读。
+                        controllerType == PurchaseRequestController.class
+                                ? new String[]{"list", "detail",
+                                        "decompositionPreview", "adjustItemQty"}
+                                : new String[]{"list", "detail",
+                                        "decompositionPreview"});
     }
 
     private static void assertPreviewContract(Method method, String permission) {

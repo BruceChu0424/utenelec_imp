@@ -13,6 +13,118 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 
 void main() {
   testWidgets(
+    'direct customer edit retains exact decimals and stable row revision',
+    (tester) async {
+      final api = await _pumpEditor(
+        tester,
+        type: SalesDocType.customerShipment,
+        id: 'direct-exact',
+        detail: const {
+          'id': 'direct-exact',
+          'shipmentKind': 'DIRECT_CUSTOMER',
+          'billingMode': 'CHARGED',
+          'directPurpose': 'SAMPLE',
+          'reviewRevision': 3,
+          'status': 0,
+          'writable': true,
+          'clientId': 'client-1',
+          'currencyId': 'currency-usd',
+          'warehouseId': 'warehouse-1',
+          'shipAddr': '客户收货处',
+          'linkPhone': '1234567',
+          'warehouseWorkStatus': 'PENDING_PICK',
+          'items': [
+            {
+              'id': 'stable-direct-line',
+              'goodsId': 'goods-1',
+              'unitId': 'unit-box',
+              'unitRate': 1,
+              'unitRateExact': '1.000000',
+              'qty': 2,
+              'qtyExact': '2.0000',
+              'price': 1234567890123.4568,
+              'priceExact': '1234567890123.4567',
+              'discount': 1,
+              'discountExact': '1.0000',
+            },
+          ],
+        },
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.controller?.text == '1234567890123.4567',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      expect(api.lastPutBody, isNotNull);
+      expect(api.lastPutBody!['expectedRevision'], 3);
+      expect(api.lastPutBody!['shipmentKind'], 'DIRECT_CUSTOMER');
+      final line = (api.lastPutBody!['items'] as List).single as Map;
+      expect(line['id'], 'stable-direct-line');
+      expect(line['price'], '1234567890123.4567');
+      expect(line['qty'], '2.0000');
+      expect(line['unitRate'], '1.000000');
+      expect(line['discount'], '1.0000');
+      expect(line.containsKey('amountOriginal'), isFalse);
+      expect(line.containsKey('amountLocal'), isFalse);
+    },
+  );
+
+  testWidgets(
+    'explicit free dispatch hides unnecessary price and currency inputs',
+    (tester) async {
+      final api = await _pumpEditor(
+        tester,
+        type: SalesDocType.customerShipment,
+        id: 'direct-free',
+        detail: const {
+          'id': 'direct-free',
+          'shipmentKind': 'DIRECT_CUSTOMER',
+          'billingMode': 'FREE',
+          'directPurpose': 'GIFT',
+          'freeReason': '客户试用约定',
+          'reviewRevision': 0,
+          'status': 0,
+          'writable': true,
+          'clientId': 'client-1',
+          'warehouseId': 'warehouse-1',
+          'shipAddr': '客户收货处',
+          'linkPhone': '1234567',
+          'warehouseWorkStatus': 'PENDING_PICK',
+          'items': [
+            {
+              'id': 'free-line',
+              'goodsId': 'goods-1',
+              'unitId': 'unit-box',
+              'unitRate': 1,
+              'qty': 2,
+              'price': 0,
+              'discount': 1,
+            },
+          ],
+        },
+      );
+      expect(_dropdownWithLabel('币种'), findsNothing);
+      expect(find.text('单价'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('customer-shipment-free-reason')),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      expect(api.lastPutBody!['billingMode'], 'FREE');
+      expect(api.lastPutBody!['freeReason'], '客户试用约定');
+      final line = (api.lastPutBody!['items'] as List).single as Map;
+      expect(line.containsKey('price'), isFalse);
+      expect(line.containsKey('amountOriginal'), isFalse);
+    },
+  );
+
+  testWidgets(
     'new order defaults to empty shipment policy for sales to choose',
     (tester) async {
       await _pumpEditor(tester, type: SalesDocType.order);
@@ -151,7 +263,7 @@ void main() {
 
       expect(api.lastPutBody, isNotNull);
       expect(api.lastPutBody!['currencyId'], 'currency-usd');
-      expect(api.lastPutBody!['taxRate'], 13);
+      expect(api.lastPutBody!['taxRate'], '13.0');
       expect(api.lastPutBody!.containsKey('exchangeRate'), isFalse);
       expect(api.lastPutBody!.containsKey('deposit'), isFalse);
       final item = Map<String, dynamic>.from(
@@ -159,10 +271,14 @@ void main() {
       );
       expect(item['id'], 'order-item-1');
       expect(item['unitId'], 'unit-box');
-      expect(item['unitRate'], 10);
-      expect(item['weight'], 5.25);
-      expect(item['discount'], 0.75);
-      expect(item['amountOriginal'], 15);
+      expect(item['unitRate'], '10.0');
+      expect(item['weight'], '5.25');
+      expect(item['discount'], '0.75');
+      expect(
+        item.containsKey('amountOriginal'),
+        isFalse,
+        reason: 'binary preview is never submitted as financial authority',
+      );
       expect(item.containsKey('amountLocal'), isFalse);
     },
   );
@@ -176,7 +292,7 @@ void main() {
       find.byKey(const ValueKey('sales-shipment-order-link-guidance')),
       findsOneWidget,
     );
-    expect(find.textContaining('销售出货必须从订货单引入'), findsOneWidget);
+    expect(find.textContaining('订货发货必须从订货单引入'), findsOneWidget);
   });
 
   testWidgets(

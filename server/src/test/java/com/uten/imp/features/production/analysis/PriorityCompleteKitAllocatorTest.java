@@ -74,7 +74,7 @@ class PriorityCompleteKitAllocatorTest {
 
     @Test
     void selectingOnlyAnUnallocatedLowPriorityProductCannotBypassSnapshot() {
-        BigDecimal ready = MaterialAnalysisService.authoritativeReadyForPlanPreview(
+        BigDecimal ready = MaterialAnalysisService.authoritativeReadyQty(
                 bd("6"), BigDecimal.ZERO);
 
         assertThat(ready).isEqualByComparingTo("0.0000");
@@ -83,7 +83,7 @@ class PriorityCompleteKitAllocatorTest {
 
     @Test
     void readyPartialBatchCanGenerateWithoutRoutingTheUnreadyRemainder() {
-        BigDecimal ready = MaterialAnalysisService.authoritativeReadyForPlanPreview(
+        BigDecimal ready = MaterialAnalysisService.authoritativeReadyQty(
                 bd("10"), bd("10"));
 
         assertThat(ready).isEqualByComparingTo("10.0000");

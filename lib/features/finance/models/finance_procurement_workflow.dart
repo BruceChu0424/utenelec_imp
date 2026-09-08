@@ -42,6 +42,7 @@ class FinanceProcurementApprovalTask {
     this.status,
     this.version,
     this.allowedActions = const <String>{},
+    this.changeCount = 0,
   });
 
   final String caseId;
@@ -64,6 +65,10 @@ class FinanceProcurementApprovalTask {
   final String? status;
   final int? version;
   final Set<String> allowedActions;
+
+  /// 批准后改量次数（末字段；旧后端未推时容错为 0）：>0 表示该单在财务批准
+  /// 后被改过数量，正在等待财务按修改清单复核。
+  final int changeCount;
 
   bool get canOpen =>
       caseId.isNotEmpty &&
@@ -172,6 +177,7 @@ class FinanceProcurementApprovalTask {
       ]),
       version: _firstInt([json['version']]),
       allowedActions: _stringSet(json['allowedActions']),
+      changeCount: _firstInt([json['changeCount']]) ?? 0,
     );
   }
 }
@@ -180,14 +186,24 @@ class FinanceProcurementDecisionItem {
   const FinanceProcurementDecisionItem({
     required this.caseId,
     required this.expectedVersion,
+    this.expectedClaimId,
   });
 
   final String caseId;
   final int expectedVersion;
+  final String? expectedClaimId;
+
+  FinanceProcurementDecisionItem withClaimId(String claimId) =>
+      FinanceProcurementDecisionItem(
+        caseId: caseId,
+        expectedVersion: expectedVersion,
+        expectedClaimId: claimId,
+      );
 
   Map<String, dynamic> toJson() => {
     'caseId': caseId,
     'expectedVersion': expectedVersion,
+    'expectedClaimId': ?expectedClaimId,
   };
 }
 
@@ -223,6 +239,7 @@ class FinanceProcurementApprovalReview {
     this.totalLocal,
     this.supplierApBalance,
     this.sourceApplicationCount = 0,
+    this.qtyChanges = const <FinanceProcurementQtyChange>[],
     this.items = const <FinanceProcurementReviewLine>[],
     this.history = const <FinanceProcurementReviewHistoryEntry>[],
   });
@@ -253,6 +270,9 @@ class FinanceProcurementApprovalReview {
   final String? totalLocal;
   final String? supplierApBalance;
   final int sourceApplicationCount;
+
+  /// 批准后改量清单（服务端字段位于 items 之前）：为空表示本单未被改过数量。
+  final List<FinanceProcurementQtyChange> qtyChanges;
   final List<FinanceProcurementReviewLine> items;
   final List<FinanceProcurementReviewHistoryEntry> history;
 
@@ -312,6 +332,13 @@ class FinanceProcurementApprovalReview {
       totalLocal: _firstNullableString([json['totalLocal']]),
       supplierApBalance: _firstNullableString([json['supplierApBalance']]),
       sourceApplicationCount: _firstInt([json['sourceApplicationCount']]) ?? 0,
+      qtyChanges: [
+        for (final change in (json['qtyChanges'] as List? ?? const <dynamic>[]))
+          if (change is Map)
+            FinanceProcurementQtyChange.fromJson(
+              change.cast<String, dynamic>(),
+            ),
+      ],
       items: [
         for (final item in (json['items'] as List? ?? const <dynamic>[]))
           if (item is Map)
@@ -371,6 +398,49 @@ class FinanceProcurementReviewLine {
       amountLocal: _firstNullableString([json['amountLocal']]),
       deliverDate: _firstNullableString([json['deliverDate']]),
       sourceDocNo: _string(json['sourceDocNo']),
+    );
+  }
+}
+
+/// 修改清单行（批准后改量）：货品 + 以前数量 → 现在数量 + 修改人/时间。
+/// 数量保留服务端字符串口径，避免小数转换丢精度。
+class FinanceProcurementQtyChange {
+  const FinanceProcurementQtyChange({
+    required this.orderItemId,
+    this.lineNo,
+    this.goodsCode,
+    this.goodsName,
+    this.colorName,
+    this.unitName,
+    this.oldQty,
+    this.newQty,
+    this.changedByName,
+    this.changedAt,
+  });
+
+  final String orderItemId;
+  final int? lineNo;
+  final String? goodsCode;
+  final String? goodsName;
+  final String? colorName;
+  final String? unitName;
+  final String? oldQty;
+  final String? newQty;
+  final String? changedByName;
+  final String? changedAt;
+
+  factory FinanceProcurementQtyChange.fromJson(Map<String, dynamic> json) {
+    return FinanceProcurementQtyChange(
+      orderItemId: _string(json['orderItemId']) ?? '',
+      lineNo: _firstInt([json['lineNo']]),
+      goodsCode: _string(json['goodsCode']),
+      goodsName: _string(json['goodsName']),
+      colorName: _string(json['colorName']),
+      unitName: _string(json['unitName']),
+      oldQty: _firstNullableString([json['oldQty']]),
+      newQty: _firstNullableString([json['newQty']]),
+      changedByName: _string(json['changedByName']),
+      changedAt: _string(json['changedAt']),
     );
   }
 }

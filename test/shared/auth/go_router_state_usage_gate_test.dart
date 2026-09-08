@@ -34,6 +34,9 @@ void main() {
       'lib/features/production/pages/production_plan_list_page.dart': 1, // B
       'lib/features/purchase/pages/purchase_doc_list_page.dart': 1, // B
       'lib/features/sales/pages/sales_doc_list_page.dart': 1, // B
+      // 2026-09-05 订单进度查询页：GoRoute build 惰性 ??= 记录本页路径供
+      // onPageResume（与各列表页同款 B 类用法）。
+      'lib/features/sales/pages/sales_order_progress_page.dart': 1, // B
       'lib/features/shell/pages/main_shell_page.dart':
           3, // A+B: Tab 回调×2 + 根级 build×1
       'lib/features/subcontract/pages/subcontract_business_list_pages.dart':

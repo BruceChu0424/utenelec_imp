@@ -7,6 +7,7 @@
 // 外壳只收敛到 1600，表单页需自行钳窄居中
 
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_collapsible_section.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -15,6 +16,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_toast.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -100,8 +102,10 @@ class _ExpenseNewPageState extends ConsumerState<ExpenseNewPage> {
 
                   const SizedBox(height: UtenSpacing.s16),
 
-                  // 备注
-                  UtenCard(
+                  // Optional context is kept out of the core title/items flow.
+                  UtenCollapsibleSection(
+                    title: '补充说明(选填)',
+                    initiallyExpanded: false,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -380,10 +384,13 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  decoration: const InputDecoration(
-                    labelText: '金额 *',
-                    prefixText: '¥ ',
-                    hintText: '0.00',
+                  decoration: const UtenInputDecoration(
+                    InputDecoration(
+                      labelText: '金额 *',
+                      prefixText: '¥ ',
+                      hintText: '0.00',
+                    ),
+                    info: '按这项费用的实际票据填写人民币金额，同一笔费用不要拆成重复明细。',
                   ),
                   validator: (v) {
                     final amount = double.tryParse(v ?? '');
@@ -406,9 +413,12 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                 TextFormField(
                   errorBuilder: utenTextFieldErrorBuilder,
                   controller: _descController,
-                  decoration: const InputDecoration(
-                    labelText: '说明(可选)',
-                    hintText: '如：客户名称、项目背景',
+                  decoration: const UtenInputDecoration(
+                    InputDecoration(
+                      labelText: '说明(可选)',
+                      hintText: '如：客户名称、项目背景',
+                    ),
+                    info: '说明这笔费用的用途，便于审批人核对票据；可选，不影响金额计算。',
                   ),
                   maxLines: 2,
                 ),

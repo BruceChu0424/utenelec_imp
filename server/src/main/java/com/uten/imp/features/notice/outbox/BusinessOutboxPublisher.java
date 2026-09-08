@@ -9,6 +9,8 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -33,14 +35,26 @@ public class BusinessOutboxPublisher implements BusinessEventPublisher {
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final SecurityContextCurrentUser currentUser;
+    private final ApplicationEventPublisher events;
 
+    /** Compatibility for explicitly constructed processors without Spring scheduling. */
     public BusinessOutboxPublisher(
             JdbcTemplate jdbc,
             ObjectMapper objectMapper,
             SecurityContextCurrentUser currentUser) {
+        this(jdbc, objectMapper, currentUser, event -> { });
+    }
+
+    @Autowired
+    public BusinessOutboxPublisher(
+            JdbcTemplate jdbc,
+            ObjectMapper objectMapper,
+            SecurityContextCurrentUser currentUser,
+            ApplicationEventPublisher events) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.currentUser = currentUser;
+        this.events = events;
     }
 
     @Override
@@ -88,6 +102,9 @@ public class BusinessOutboxPublisher implements BusinessEventPublisher {
                 normalizedDedupeKey,
                 actorId);
         if (inserted == 1) {
+            // The listener only enqueues AFTER_COMMIT. The durable row remains
+            // authoritative if shutdown or a lost wake-up prevents immediate work.
+            events.publishEvent(new BusinessOutboxReady(eventId));
             return eventId;
         }
         ExistingEvent existing = jdbc.queryForObject("""

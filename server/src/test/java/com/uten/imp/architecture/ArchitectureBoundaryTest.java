@@ -68,6 +68,9 @@ class ArchitectureBoundaryTest {
             "sales->finance",
             "sales->production",
             "sales->stock",
+            // 2026-09-05 全链弹窗补齐：仓库入库确认后按聚合并撤回「待仓库入库」
+            // 居中行动卡（ProcurementIqcStockInService -> ChainNoticeService）。
+            "warehouse->notice",
             "stock->admin",
             "subcontract->admin",
             "subcontract->finance",
@@ -95,11 +98,6 @@ class ArchitectureBoundaryTest {
             "expenseclaim->common",
             "purchase->common",
             "sales->common",
-            // 2026-09-02：我的待审收件台（V459/ADR-063）——跨域待审聚合页。
-            // reviews 是纯读侧导航页：资格判定复用 auth 的权限合成与 admin 的审核组
-            // Eligibility（与 notice 弹卡定向同口径），不写任何业务事实。
-            "reviews->admin",
-            "reviews->auth",
             "stock->common");
 
     @Test

@@ -74,23 +74,27 @@ void main() {
       await tester.pump();
       expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isTrue);
       expect(find.text('联合分析所选 2 项'), findsOneWidget);
-      expect(find.text('已选 2 行'), findsOneWidget);
-      // 混合产品单位不求总量；所选行数徽标与联合分析按钮同一行、同高且在其左侧。
+      expect(find.text('已选 2 项'), findsOneWidget);
+      // 混合产品单位不求总量；标准选择胶囊与联合分析按钮同一悬浮组、垂直居中
+      // 对齐且在其左侧；工具条不再驻留内建胶囊（showSelectionSummary=false，
+      // 同页选择数只出现一处）。
       final totalRect = tester.getRect(
         find.byKey(const Key('production-pending-selected-total')),
       );
       final analysisBtnRect = tester.getRect(
         find.byKey(const Key('pending-enter-analysis-to-generate')),
       );
-      expect(totalRect.top, analysisBtnRect.top);
-      expect(totalRect.height, analysisBtnRect.height);
       expect(totalRect.right, lessThan(analysisBtnRect.left));
+      expect(
+        (totalRect.center.dy - analysisBtnRect.center.dy).abs(),
+        lessThan(2),
+      );
 
       await tester.tap(checkboxes.at(0));
       await tester.pump();
       expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isFalse);
       expect(find.text('新建物料分析'), findsOneWidget);
-      expect(find.text('已选 2 行'), findsNothing);
+      expect(find.text('已选 2 项'), findsNothing);
 
       await tester.tap(checkboxes.at(0));
       await tester.pump();

@@ -94,9 +94,15 @@ class ProcurementRejectedOrderEditTest {
                 sourceGuard,
                 unitPolicy,
                 projection,
+                mock(com.uten.imp.features.finance.procurement.ProcurementApprovalReconfirmationService.class),
+                // 2026-09-05 cancel() 撤回财务弹卡用；本测试不触达，传 mock 即可。
+                mock(com.uten.imp.features.notice.ChainNoticeService.class),
                 mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class),
                 mock(com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy.class),
-                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class));
+                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementReviewCancellationPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementOrderSourceRevisionPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
 
         com.uten.imp.features.purchase.order.dto.OrderSaveRequest request =
                 new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
@@ -182,7 +188,15 @@ class ProcurementRejectedOrderEditTest {
                 mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class),
                 mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class),
                 mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class),
-                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class));
+                mock(com.uten.imp.features.finance.procurement.ProcurementApprovalReconfirmationService.class),
+                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class),
+                mock(com.uten.imp.application.port.ProcurementReviewCancellationPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementOrderSourceRevisionPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
+
+        var preparation = mock(com.uten.imp.application.port.SubcontractOrderPreparationPort.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                service, "orderPreparation", preparation);
 
         var request =
                 new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();

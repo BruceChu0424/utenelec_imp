@@ -19,6 +19,7 @@ class UtenButton extends StatelessWidget {
     this.icon,
     this.onLongPress,
     this.onDisabledTap,
+    this.height,
   });
 
   final VoidCallback? onPressed;
@@ -29,6 +30,10 @@ class UtenButton extends StatelessWidget {
   final bool isExpanded;
   final IconData? icon;
   final VoidCallback? onLongPress;
+
+  /// 覆盖按钮最小高度（宽度仍按 [_minimumExtent]）。用于把工具条内的按钮
+  /// 对齐到同条其它控件（如筛选 chip 的 48），而不动全站默认 44/52。
+  final double? height;
 
   /// Called when the visually disabled button is tapped.
   ///
@@ -119,7 +124,7 @@ class UtenButton extends StatelessWidget {
             child: ConstrainedBox(
               constraints: BoxConstraints(
                 minWidth: _minimumExtent,
-                minHeight: _minimumExtent,
+                minHeight: height ?? _minimumExtent,
               ),
               child: Padding(
                 padding: _padding,

@@ -223,10 +223,15 @@ class FinanceReceiptSettlementTest {
         when(currentUser.requireEmployeeId()).thenReturn(MAKER_ID);
         when(access.hasAuthority("customer_prepayment:view")).thenReturn(true);
         when(access.hasAuthority("finance:view:all")).thenReturn(true);
+        var sourceAllocation=mock(com.uten.imp.features.finance.receivables.FinanceReceiptSourceAllocationService.class);
+        when(sourceAllocation.plannedBookAmount(any(),any())).thenAnswer(invocation->{
+            ArApLedger ledger=invocation.getArgument(0);BigDecimal original=invocation.getArgument(1);
+            return com.uten.imp.common.finance.FinancialBookAllocation.part(original,ledger.getAmountBalanceOriginal(),ledger.getAmountBalance());
+        });
         service = new FinanceReceiptService(
                 receiptRepo, lineRepo, ledgerRepo, arApService, tx,
                 currentUser, names, em, numbers, access, glPosting,
-                mock(com.uten.imp.features.finance.receivables.FinanceReceiptSourceAllocationService.class),
+                sourceAllocation,
                 mock(AccountFlowLedgerService.class));
     }
 
@@ -263,11 +268,13 @@ class FinanceReceiptSettlementTest {
                 ledger,"1000.0000","7.200000","0.0000","0.0000",
                 "0.0000","0.0000");
         request.setAccountCurrencyId(cnyCurrency);
+        request.setAccountAmount(request.getAmountOriginal().multiply(request.getExchangeRate()));
         request.setSettlementChannel("TRADE_AGENT_CONVERSION");
         request.setSettlementAgentSupplierId(AGENT_ID);
         request.setExchangeRateSource("TRADE_AGENT_STATEMENT");
         request.setAgentStatementNo("AGENT-SETTLE-20260808");
         request.setOtherFeeAccountAmount(new BigDecimal("72.0000"));
+        request.setAccountAmount(new BigDecimal("7128.0000"));
         request.setOtherFeeStyleId(EXPENSE_STYLE_ID);
         request.setFeeSettlementMode("DEDUCTED_FROM_PROCEEDS");
         request.setFeeBearer("COMPANY");
@@ -321,6 +328,7 @@ class FinanceReceiptSettlementTest {
                 ledger,"10.0000","7.200000","0.0000","0.0000",
                 "0.0000","0.0000");
         request.setAccountCurrencyId(cnyCurrency);
+        request.setAccountAmount(request.getAmountOriginal().multiply(request.getExchangeRate()));
         request.setSettlementChannel("TRADE_AGENT_CONVERSION");
         request.setSettlementAgentSupplierId(AGENT_ID);
         request.setExchangeRateSource("TRADE_AGENT_STATEMENT");
@@ -344,6 +352,7 @@ class FinanceReceiptSettlementTest {
                 ledger,"1000.0000","7.200000","0.0000","0.0000",
                 "0.0000","0.0000");
         request.setAccountCurrencyId(cnyCurrency);
+        request.setAccountAmount(request.getAmountOriginal().multiply(request.getExchangeRate()));
         request.setBankFeeAccountAmount(new BigDecimal("50.0000"));
         request.setFeeSettlementMode("PAID_SEPARATELY");
         request.setFeeBearer("COMPANY");
@@ -406,6 +415,7 @@ class FinanceReceiptSettlementTest {
                 "0.0000","0.0000");
         request.setBankFeeAccountAmount(null);
         request.setBankFee(new BigDecimal("1.0000"));
+        request.setAccountAmount(new BigDecimal("9.0000"));
         request.setFeeSettlementMode("DEDUCTED_FROM_PROCEEDS");
         request.setFeeBearer("COMPANY");
         FinanceReceiptDetail first=service.create(request);
@@ -504,6 +514,7 @@ class FinanceReceiptSettlementTest {
                 ledger, "30.0000", "7.200000", "2.0000", "0.0000",
                 "9999.0000", "9999.0000");
         request.setOtherFeeAccountAmount(new BigDecimal("2.0000"));
+        request.setAccountAmount(new BigDecimal("28.0000"));
         request.setFeeSettlementMode("DEDUCTED_FROM_PROCEEDS");
         request.setFeeBearer("COMPANY");
         request.setOtherFeeStyleId(EXPENSE_STYLE_ID);
@@ -621,6 +632,7 @@ class FinanceReceiptSettlementTest {
                 ledger, "30.0000", "7.200000", "0.0000", "0.0000",
                 "9999.0000", "9999.0000");
         request.setAccountCurrencyId(cnyCurrency);
+        request.setAccountAmount(request.getAmountOriginal().multiply(request.getExchangeRate()));
         FinanceReceiptDetail draft = service.create(request);
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
         postingCounts.addAll(List.of(0L,0L));
@@ -641,6 +653,7 @@ class FinanceReceiptSettlementTest {
                 ledger, "30.0000", "7.200000", "0.0000", "0.0000",
                 "9999.0000", "9999.0000");
         request.setAccountCurrencyId(baseCurrency);
+        request.setAccountAmount(new BigDecimal("216.0000"));
         FinanceReceiptDetail draft = service.create(request);
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
         postingCounts.addAll(List.of(0L,0L));
@@ -724,7 +737,7 @@ class FinanceReceiptSettlementTest {
                 .hasMessageContaining("实际结算汇率必须完整");
         assertThatThrownBy(() -> service.create(directRequest(CURRENCY_ID, "0.000000")))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("实际结算汇率必须完整");
+                .hasMessageContaining("收款汇率必须大于 0");
         assertThatThrownBy(() -> service.create(missingOriginal))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("原币毛额");
@@ -738,6 +751,7 @@ class FinanceReceiptSettlementTest {
     void directPrepaymentDerivesLocalAmountAndIgnoresClientValue() {
         FinanceReceiptSaveRequest request = directRequest(CURRENCY_ID, "7.200000");
         request.setAmountOriginal(new BigDecimal("10.0000"));
+        request.setAccountAmount(new BigDecimal("10.0000"));
         request.setAmountLocal(new BigDecimal("9999.0000"));
 
         FinanceReceiptDetail draft = service.create(request);
@@ -768,6 +782,117 @@ class FinanceReceiptSettlementTest {
         ledger.setStatus((short) 1);
         ledgers.put(ledger.getId(), ledger);
         return ledger;
+    }
+
+    @Test
+    void receiptsAfterAdvanceApplicationPreserveBothOffsetBalancesAndReverseAtTheOriginalBookRate() {
+        ArApLedger ledger=receivable("100.0000","7.000000");
+        ledger.setAmountOffsetOriginal(new BigDecimal("20.0000"));
+        ledger.setAmountOffsetLocal(new BigDecimal("140.0000"));
+        ledger.setAmountBalanceOriginal(new BigDecimal("80.0000"));
+        ledger.setAmountBalance(new BigDecimal("560.0000"));
+        FinanceReceiptDetail first=service.create(request(ledger,"30.0000","7.100000","0","0","0","0"));
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
+        postingCounts.addAll(List.of(0L,0L));
+        service.approve(first.getId());
+        assertMoney(ledger.getAmountBalanceOriginal(),"50.0000");
+        assertMoney(ledger.getAmountBalance(),"350.0000");
+        assertMoney(ledger.getAmountSettled(),"210.0000");
+        assertMoney(onlyLine(first.getId()).getAmountLocal(),"213.0000");
+        assertMoney(onlyLine(first.getId()).getExchangeDiff(),"3.0000");
+
+        when(currentUser.requireEmployeeId()).thenReturn(MAKER_ID);
+        FinanceReceiptDetail finalReceipt=service.create(request(ledger,"50.0000","7.200000","0","0","0","0"));
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
+        postingCounts.addAll(List.of(0L,0L));
+        service.approve(finalReceipt.getId());
+        assertMoney(ledger.getAmountBalanceOriginal(),"0.0000");
+        assertMoney(ledger.getAmountBalance(),"0.0000");
+        assertMoney(ledger.getAmountSettled(),"560.0000");
+        assertMoney(onlyLine(finalReceipt.getId()).getAppliedAmountLocal(),"350.0000");
+        assertMoney(onlyLine(finalReceipt.getId()).getAmountLocal(),"360.0000");
+        assertMoney(onlyLine(finalReceipt.getId()).getExchangeDiff(),"10.0000");
+
+        postingCounts.addAll(List.of(1L,0L));
+        service.reverse(finalReceipt.getId());
+        assertMoney(ledger.getAmountBalanceOriginal(),"50.0000");
+        assertMoney(ledger.getAmountBalance(),"350.0000");
+        postingCounts.addAll(List.of(1L,0L));
+        service.reverse(first.getId());
+        assertMoney(ledger.getAmountBalanceOriginal(),"80.0000");
+        assertMoney(ledger.getAmountBalance(),"560.0000");
+        assertMoney(ledger.getAmountOffsetOriginal(),"20.0000");
+        assertMoney(ledger.getAmountOffsetLocal(),"140.0000");
+    }
+
+    @Test
+    void v2UsesActualBankAmountEvenWhenTheReferenceQuoteHasMoreDigits() {
+        ArApLedger ledger=receivable("100.0000","7.000000");
+        UUID base=UUID.randomUUID();
+        when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{ACCOUNT_ID,base,true,"CNY","人民币",ACCOUNT_STYLE_ID}));
+        FinanceReceiptSaveRequest req=request(ledger,"88.1234","7.123456","0","0","999","999");
+        req.setAccountCurrencyId(base);req.setAccountAmount(new BigDecimal("624.7432"));
+        req.setBankFeeAccountAmount(new BigDecimal("3.0001"));
+        req.setFeeSettlementMode("DEDUCTED_FROM_PROCEEDS");req.setFeeBearer("COMPANY");
+        FinanceReceiptDetail draft=service.create(req);
+        assertThat(draft.getSettlementAuthorityVersion()).isEqualTo((short)2);
+        assertMoney(draft.getAccountAmount(),"624.7432");assertMoney(draft.getAmountLocal(),"627.7433");
+        assertMoney(draft.getItems().getFirst().getAmountLocal(),"627.7433");
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
+        postingCounts.addAll(List.of(0L,0L));service.approve(draft.getId());
+        assertMoney(onlyLine(draft.getId()).getAppliedAmountLocal(),"616.8638");
+        assertMoney(onlyLine(draft.getId()).getExchangeDiff(),"10.8795");
+        verify(accountUpdate).setParameter("amount",new BigDecimal("624.7432"));
+        postingCounts.addAll(List.of(1L,0L));service.reverse(draft.getId());
+        assertMoney(ledger.getAmountBalanceOriginal(),"100");assertMoney(ledger.getAmountBalance(),"700");
+    }
+
+    @Test
+    void v2SameCurrencyRejectsEvenOneActualFractionalUnitAndKeepsThirtyDigitBookProduct() {
+        ArApLedger ledger=receivable("100","7.000001");
+        FinanceReceiptSaveRequest req=request(ledger,"0.000000000000000000000001","7.000001","0","0","0","0");
+        req.setAccountAmount(new BigDecimal("0.000000000000000000000002"));
+        assertThatThrownBy(()->service.create(req)).isInstanceOf(ApiException.class).hasMessageContaining("同币种银行实收");
+        req.setCreateIdempotencyKey(UUID.randomUUID().toString());
+        req.setAccountAmount(new BigDecimal("0.000000000000000000000001"));
+        FinanceReceiptDetail exact=service.create(req);
+        assertMoney(exact.getAccountAmountLocal(),"0.000000000000000000000007000001");
+        assertMoney(exact.getAmountLocal(),"0.000000000000000000000007000001");
+    }
+
+    @Test
+    void v2MultipleArLinesKeepTheWholeBankFactAndItsFinalRemainder() {
+        ArApLedger one=receivable("1","3.333333");
+        ArApLedger two=receivable("2","3.333333");
+        UUID base=UUID.randomUUID();
+        when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{ACCOUNT_ID,base,true,"CNY","人民币",ACCOUNT_STYLE_ID}));
+        FinanceReceiptSaveRequest req=request(one,"1","3.333333","0","0","0","0");
+        FinanceReceiptLineInput second=request(two,"2","3.333333","0","0","0","0").getItems().getFirst();second.setLineNo(2);
+        req.setItems(List.of(req.getItems().getFirst(),second));req.setAccountCurrencyId(base);req.setAccountAmount(BigDecimal.TEN);
+        FinanceReceiptDetail result=service.create(req);
+        var lines=linesByReceipt.get(result.getId()).stream().sorted(Comparator.comparing(FinanceReceiptLine::getLineNo)).toList();
+        assertMoney(lines.get(0).getAmountLocal(),"3.333333333333333333333333333333");
+        assertMoney(lines.get(1).getAmountLocal(),"6.666666666666666666666666666667");
+        assertMoney(lines.get(1).getBankBasisAfterOriginal(),"0");assertMoney(lines.get(1).getBankBasisAfterLocal(),"0");
+        assertMoney(lines.stream().map(FinanceReceiptLine::getAmountLocal).reduce(BigDecimal.ZERO,BigDecimal::add),"10");
+    }
+
+    @Test
+    void v2ActualNativeFeeKeepsItsThirtyDigitBookValueThroughApproval() {
+        ArApLedger ledger=receivable("1","7.000001");
+        FinanceReceiptSaveRequest req=request(ledger,"0.000000000000000000000003","7.000001","0","0","0","0");
+        req.setAccountAmount(new BigDecimal("0.000000000000000000000002"));
+        req.setBankFeeAccountAmount(new BigDecimal("0.000000000000000000000001"));
+        req.setFeeSettlementMode("DEDUCTED_FROM_PROCEEDS");req.setFeeBearer("COMPANY");
+        FinanceReceiptDetail draft=service.create(req);
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
+        postingCounts.addAll(List.of(0L,0L));FinanceReceiptDetail approved=service.approve(draft.getId());
+        assertMoney(approved.getBankFee(),"0.000000000000000000000007000001");
+        assertMoney(approved.getAmountLocal(),"0.000000000000000000000021000003");
+        assertMoney(approved.getAccountAmountLocal(),"0.000000000000000000000014000002");
+        assertMoney(onlyLine(draft.getId()).getExchangeDiff(),"0");
     }
 
     private static FinanceReceiptSaveRequest request(
@@ -804,6 +929,7 @@ class FinanceReceiptSettlementTest {
                 ? BigDecimal.ZERO
                 : feeLocal.divide(new BigDecimal(receiptRate), 4, java.math.RoundingMode.HALF_UP);
         request.setBankFeeAccountAmount(feeAccount);
+        request.setAccountAmount(new BigDecimal(cashOriginal).subtract(feeAccount));
         request.setOtherFeeAccountAmount(BigDecimal.ZERO);
         request.setFeeSettlementMode(
                 feeAccount.signum() == 0 ? "NONE" : "DEDUCTED_FROM_PROCEEDS");
@@ -830,6 +956,7 @@ class FinanceReceiptSettlementTest {
         request.setCurrencyId(currencyId);
         request.setExchangeRate(exchangeRate == null ? null : new BigDecimal(exchangeRate));
         request.setAmountOriginal(new BigDecimal("10.0000"));
+        request.setAccountAmount(new BigDecimal("10.0000"));
         request.setBankFeeAccountAmount(BigDecimal.ZERO);
         request.setOtherFeeAccountAmount(BigDecimal.ZERO);
         request.setFeeSettlementMode("NONE");

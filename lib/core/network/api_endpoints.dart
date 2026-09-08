@@ -184,6 +184,10 @@ abstract final class ApiEndpoints {
     String receiptType,
     String receiptId,
   ) => '/procurement/inspection/$receiptType/$receiptId/pass-batch';
+  static String procurementInspectionDecideBatch(
+    String receiptType,
+    String receiptId,
+  ) => '/procurement/inspection/$receiptType/$receiptId/decide-batch';
   static const procurementArrivalExceptionTasks =
       '/procurement/arrival-exceptions/tasks';
   static const procurementArrivalExceptionTaskCount =
@@ -409,6 +413,8 @@ abstract final class ApiEndpoints {
       '/stock/production-materials/returnable-sources';
   static String productionMaterialClearance(String planId) =>
       '/stock/production-materials/plans/$planId/clearance';
+  static String productionMaterialCapabilities(String planId) =>
+      '/stock/production-materials/plans/$planId/capabilities';
   static String productionMaterialSettlements(String planId) =>
       '/stock/production-materials/plans/$planId/settlements';
   static String productionMaterialSettlementReverse(String planId) =>
@@ -575,9 +581,6 @@ abstract final class ApiEndpoints {
 
   /// V459 弹卡真态校验（query: ids 逗号分隔）。
   static const noticesPendingReviewStatus = '/notices/pending-review-status';
-
-  /// V459 我的待审收件台聚合。
-  static const reviewsInboxSummary = '/reviews/inbox/summary';
 
   /// V459 居中审核弹窗（登录检查）：我名下未办结且未稍后的待审通知。
   static const noticesPendingReviews = '/notices/pending-reviews';

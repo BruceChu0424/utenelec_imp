@@ -27,6 +27,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/progress_ratio.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -124,8 +125,20 @@ class ProductionPlanRepository {
   }
 
   /// 计划单向导预填（V192）：读取正式排产确认学习出的货品车间偏好。
-  /// 返回 goodsId → (departmentId, departmentName)；无有效偏好的货品不在结果中。
-  Future<Map<String, ({String departmentId, String? departmentName})>>
+  /// 返回 goodsId → (departmentId, departmentName, workerId?, workerName?)；
+  /// 无有效偏好的货品不在结果中。2026-09-06 起同时带出学习到的负责人
+  ///（V488：在职才返回；车间变更时负责人整体跟随、同车间未选时保留旧记忆）。
+  Future<
+    Map<
+      String,
+      ({
+        String departmentId,
+        String? departmentName,
+        String? workerId,
+        String? workerName,
+      })
+    >
+  >
   defaultWorkshops(Set<String> goodsIds, {CancelToken? cancelToken}) async {
     if (goodsIds.isEmpty) return const {};
     // 200 个 UUID 加逗号 URL 编码后接近常见代理的 8KB request-line 上限；
@@ -134,7 +147,16 @@ class ProductionPlanRepository {
     const requestLimit = 100;
     const receiveTimeout = Duration(seconds: 10);
     final orderedIds = goodsIds.toList(growable: false)..sort();
-    final result = <String, ({String departmentId, String? departmentName})>{};
+    final result =
+        <
+          String,
+          ({
+            String departmentId,
+            String? departmentName,
+            String? workerId,
+            String? workerName,
+          })
+        >{};
     final effectiveCancelToken = cancelToken ?? CancelToken();
     final requests = <Future<List<Map<String, dynamic>>> Function()>[];
     for (var start = 0; start < orderedIds.length; start += requestLimit) {
@@ -166,9 +188,12 @@ class ProductionPlanRepository {
         final goodsId = entry['goodsId'] as String?;
         final departmentId = entry['departmentId'] as String?;
         if (goodsId == null || departmentId == null) continue;
+        final workerId = entry['responsibleEmployeeId'] as String?;
         result[goodsId] = (
           departmentId: departmentId,
           departmentName: entry['departmentName'] as String?,
+          workerId: workerId?.isNotEmpty == true ? workerId : null,
+          workerName: entry['responsibleEmployeeName'] as String?,
         );
       }
     }
@@ -464,6 +489,72 @@ class ProductionPlanRepository {
     return ProductionExecutionSegmentView.fromJson(json);
   }
 
+  /// 单段开工（2026-09-06 车间任务页改版）：READY（物料齐套）或 DISPATCHED
+  /// 均可直接开工——与报工自动开工（AUTO_START_ON_REPORT）同口径；服务端会
+  /// 校验齐套、完整分配与领料全部完成。
+  Future<ProductionExecutionSegmentView> startExecutionSegment(
+    String planId,
+    String segmentId, {
+    required int expectedVersion,
+    required String idempotencyKey,
+  }) async {
+    final json = await api.post(
+      '/production/plans/$planId/execution-segments/$segmentId/start',
+      body: {
+        'expectedVersion': expectedVersion,
+        'idempotencyKey': idempotencyKey,
+      },
+    ); // ENDPOINT
+    return ProductionExecutionSegmentView.fromJson(json);
+  }
+
+  Future<ProductionExecutionSegmentView> recheckExecutionSegmentMaterials(
+    String planId,
+    String segmentId, {
+    required int expectedVersion,
+  }) async {
+    final json = await api.post(
+      '/production/plans/$planId/execution-segments/$segmentId/recheck-material',
+      body: {
+        'expectedVersion': expectedVersion,
+        'idempotencyKey': businessIdempotencyKey(
+          'execution-material-recheck',
+          '$planId|$segmentId|$expectedVersion',
+        ),
+      },
+    ); // ENDPOINT
+    return ProductionExecutionSegmentView.fromJson(json);
+  }
+
+  /// 批量开工（同一计划内 1-100 段，单事务原子）：跨计划的批量由调用方按
+  /// planId 分组逐计划调用（计划内原子、计划间串行）。
+  Future<void> batchStartExecutionSegments(
+    String planId, {
+    required List<({String segmentId, int expectedVersion})> items,
+  }) async {
+    if (items.isEmpty) return;
+    await api.post(
+      '/production/plans/$planId/execution-segments/batch-start',
+      body: {
+        'items': [
+          for (final item in items)
+            {
+              'segmentId': item.segmentId,
+              'expectedVersion': item.expectedVersion,
+              'idempotencyKey': businessIdempotencyKey(
+                'execution-segment-start',
+                [
+                  planId,
+                  item.segmentId,
+                  item.expectedVersion.toString(),
+                ].join('|'),
+              ),
+            },
+        ],
+      },
+    ); // ENDPOINT
+  }
+
   /// D3 订单物料分析：已审销售订货单直接 BOM 展开。
   Future<List<MrpRow>> mrpOrderPreview(String orderId) async {
     final list = await api.getList(
@@ -506,58 +597,6 @@ class ProductionPlanRepository {
     return PagedResult.fromJson(json, MaterialAnalysisListItem.fromJson);
   }
 
-  /// Production-owned subcontract preparation queue. The server decides
-  /// visibility, status, blockers and allowed actions per target order line.
-  Future<PagedResult<SubcontractPreparationTask>> subcontractPreparationTasks({
-    int page = 1,
-    int size = 20,
-    String keyword = '',
-    String? status,
-    String? planItemId,
-    String? sourceAnalysisId,
-    String? sourceMaterialLineId,
-  }) async {
-    final json = await api.get(
-      '$_materialAnalysesBase/subcontract-preparations',
-      query: {
-        'page': page,
-        'size': size,
-        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
-        if (status?.trim().isNotEmpty == true) 'status': status!.trim(),
-        if (planItemId?.trim().isNotEmpty == true)
-          'planItemId': planItemId!.trim(),
-        if (sourceAnalysisId?.trim().isNotEmpty == true)
-          'sourceAnalysisId': sourceAnalysisId!.trim(),
-        if (sourceMaterialLineId?.trim().isNotEmpty == true)
-          'sourceMaterialLineId': sourceMaterialLineId!.trim(),
-      },
-    ); // ENDPOINT
-    return PagedResult.fromJson(json, SubcontractPreparationTask.fromJson);
-  }
-
-  /// Starts the server-authoritative MAKE preparation analysis for one
-  /// subcontract target line. [warehouseId] is supplied only when the task
-  /// explicitly says warehouse selection is required.
-  Future<SubcontractPreparationStartResult> startSubcontractPreparation({
-    required String planItemId,
-    required int expectedVersion,
-    required String idempotencyKey,
-    String? warehouseId,
-  }) async {
-    final json = await api.post(
-      '$_materialAnalysesBase/subcontract-preparations/$planItemId/start',
-      body: {
-        'expectedVersion': expectedVersion,
-        'idempotencyKey': idempotencyKey,
-        if (warehouseId?.trim().isNotEmpty == true)
-          'warehouseId': warehouseId!.trim(),
-      },
-    ); // ENDPOINT
-    return SubcontractPreparationStartResult.fromJson(
-      (json as Map).cast<String, dynamic>(),
-    );
-  }
-
   /// V458 有子层级委外件的前置自制任务进度（先自制、后通知委外账本投影）。
   Future<PagedResult<SubcontractMakeTask>> subcontractMakeTasks({
     int page = 1,
@@ -581,6 +620,13 @@ class ProductionPlanRepository {
   }
 
   /// V458 按已产未通知量分批通知委外（服务端生成只读委外申请并通知委外部）。
+  Future<SubcontractMakeTask> subcontractMakeTask(String taskId) async {
+    final json = await api.get(
+      '$_materialAnalysesBase/subcontract-make-tasks/${Uri.encodeComponent(taskId)}',
+    );
+    return SubcontractMakeTask.fromJson(json);
+  }
+
   Future<SubcontractMakeNotifyResult> notifySubcontractMakeBatch({
     required String taskId,
     required double qty,
@@ -697,6 +743,24 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/actions/$actionId/cancel',
+      body: {
+        'version': analysis.version,
+        'fingerprint': analysis.fingerprint,
+        'idempotencyKey': idempotencyKey,
+        'reason': reason,
+      },
+    ); // ENDPOINT
+    return ProductionMaterialAnalysisView.fromJson(json);
+  }
+
+  Future<ProductionMaterialAnalysisView> revokeMaterialRootStockOutput({
+    required ProductionMaterialAnalysisView analysis,
+    required String eventId,
+    required String idempotencyKey,
+    required String reason,
+  }) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/${analysis.analysisId}/root-outputs/$eventId/revoke',
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
@@ -892,60 +956,29 @@ class ProductionPlanRepository {
     return ProductionMaterialAnalysisView.fromJson(json);
   }
 
-  /// Server-side final validation before plan generation. The returned
-  /// preview fingerprint, not the analysis fingerprint, authorises generate.
-  Future<ProductionMaterialPlanPreview> previewMaterialAnalysisPlan({
+  /// 下达车间（ADR-071）：所有自制行一视同仁，单次原子调用——候选行先建
+  /// 子件任务，再按行内数量/车间/负责人逐行生成生产计划，有审核权限同事务
+  /// 审核下达。缺料批次进 WAITING 由车间侧等料；任一行失败整体回滚。
+  Future<ProductionMaterialGenerateResult> issueWorkshopPlans({
     required ProductionMaterialAnalysisView analysis,
     required String warehouseId,
-    required List<MaterialAnalysisPlanItemInput> items,
-    List<MaterialRouteDecision> routes = const [],
+    required String idempotencyKey,
+    required String billDate,
+    required List<MaterialAnalysisIssueLine> lines,
+    String? deliveryDate,
+    bool approveNow = false,
   }) async {
     final json = await api.post(
-      '$_materialAnalysesBase/${analysis.analysisId}/plan-preview',
+      '$_materialAnalysesBase/${analysis.analysisId}/issue-plans',
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
         'warehouseId': warehouseId,
-        'items': [for (final item in items) item.toQuantityJson()],
-        if (routes.isNotEmpty)
-          'routes': [for (final route in routes) route.toJson()],
-      },
-    ); // ENDPOINT
-    return ProductionMaterialPlanPreview.fromJson(json);
-  }
-
-  /// Atomically generates the selected batches after a successful server plan
-  /// preview. Inventory changes between preview and submit fail with 409.
-  Future<ProductionMaterialGenerateResult> generateMaterialAnalysisPlan({
-    required ProductionMaterialPlanPreview preview,
-    required String warehouseId,
-    required String idempotencyKey,
-    required String billDate,
-    required List<MaterialAnalysisPlanItemInput> items,
-    String? deliveryDate,
-    String? departmentId,
-    String? workshopName,
-    String? workerId,
-    bool approveNow = false,
-    List<MaterialRouteDecision> routes = const [],
-  }) async {
-    final json = await api.post(
-      '$_materialAnalysesBase/${preview.analysisId}/generate-plan',
-      body: {
-        'version': preview.version,
-        'fingerprint': preview.analysisFingerprint,
-        'previewFingerprint': preview.previewFingerprint,
-        'warehouseId': warehouseId,
         'idempotencyKey': idempotencyKey,
         'billDate': billDate,
         'deliveryDate': ?deliveryDate,
-        'departmentId': ?departmentId,
-        'workshopName': ?workshopName,
-        'workerId': ?workerId,
         'approveNow': approveNow,
-        'items': [for (final item in items) item.toJson()],
-        if (routes.isNotEmpty)
-          'routes': [for (final route in routes) route.toJson()],
+        'lines': [for (final line in lines) line.toJson()],
       },
     ); // ENDPOINT
     return ProductionMaterialGenerateResult.fromJson(json);
@@ -953,13 +986,12 @@ class ProductionPlanRepository {
 
   // ───────────────────────── 调度工作台（业务链 · 排产段 V90） ─────────────────────────
 
-  /// 待排产订单行（服务端分页；交货升序，urgent=距交货 ≤3 天；dateFrom/dateTo 交货日期范围）。
+  /// 待排产订单行（服务端分页；交货升序，urgent=距交货 ≤3 天）。
+  /// 2026-09-05 起页面不再提供交货日期范围筛选（dateFrom/dateTo 服务端仍兼容）。
   Future<PagedResult<SchedulePendingRow>> schedulePending({
     int page = 1,
     int size = 20,
     String keyword = '',
-    String? dateFrom,
-    String? dateTo,
     String? sort,
     String? order,
     String? status,
@@ -970,8 +1002,6 @@ class ProductionPlanRepository {
         'page': page,
         'size': size,
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
-        'dateFrom': ?dateFrom,
-        'dateTo': ?dateTo,
         'sort': ?sort,
         'order': ?order,
         'status': ?status,
@@ -983,16 +1013,10 @@ class ProductionPlanRepository {
   /// 待排产状态 facets（表头值筛选用）：{status:[MasterFacetBucket]}（紧急/正常）。
   Future<SchedulePendingFacets> schedulePendingFacets({
     String keyword = '',
-    String? dateFrom,
-    String? dateTo,
   }) async {
     final json = await api.get(
       '/production/schedule/pending/facets',
-      query: {
-        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
-        'dateFrom': ?dateFrom,
-        'dateTo': ?dateTo,
-      },
+      query: {if (keyword.trim().isNotEmpty) 'keyword': keyword.trim()},
     ); // ENDPOINT
     return SchedulePendingFacets.fromJson(json);
   }

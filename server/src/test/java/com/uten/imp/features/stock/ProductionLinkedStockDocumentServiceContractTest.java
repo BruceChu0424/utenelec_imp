@@ -13,7 +13,7 @@ class ProductionLinkedStockDocumentServiceContractTest {
     void genericUpdateAndDeleteRejectProductionOwnedDocuments()
             throws Exception {
         String source = Files.readString(Path.of(
-                "src/main/java/com/uten/imp/features/stock/StockDocService.java"));
+                "src/main/java/com/uten/imp/features/stock/StockDocService.java")).replace("\r\n", "\n");
 
         int update = source.indexOf(
                 "public StockDocDetail update(UUID id");
@@ -34,7 +34,7 @@ class ProductionLinkedStockDocumentServiceContractTest {
     void productionDrawCannotBeApprovedWithoutAtomicIssue()
             throws Exception {
         String source = Files.readString(Path.of(
-                "src/main/java/com/uten/imp/features/stock/StockDocService.java"));
+                "src/main/java/com/uten/imp/features/stock/StockDocService.java")).replace("\r\n", "\n");
 
         assertTrue(source.contains(
                 "&& isProductionLinked(id)\n"
@@ -60,7 +60,7 @@ class ProductionLinkedStockDocumentServiceContractTest {
     @Test
     void everyIssueSliceRefreshesExactSegmentReadiness() throws Exception {
         String source = Files.readString(Path.of(
-                "src/main/java/com/uten/imp/features/stock/StockDocService.java"));
+                "src/main/java/com/uten/imp/features/stock/StockDocService.java")).replace("\r\n", "\n");
         int issue = source.indexOf("public StockDocDetail issue(UUID id");
         int reverse = source.indexOf("public StockDocDetail reverseIssue(", issue);
         String method = source.substring(issue, reverse);

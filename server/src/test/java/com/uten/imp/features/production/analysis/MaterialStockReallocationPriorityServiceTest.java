@@ -1,7 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
-import com.uten.imp.features.stock.InventoryMutationLock;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -93,7 +92,8 @@ class MaterialStockReallocationPriorityServiceTest {
                 new MaterialStockReallocationService(
                         em, mock(MaterialAnalysisService.class), entitlements,
                         mock(ProductionDocumentAccessPolicy.class),
-                        mock(InventoryMutationLock.class),
+                        com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
+                        mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
                         mock(SecurityContextCurrentUser.class),
                         mock(TxSessionVars.class));
 
@@ -147,7 +147,8 @@ class MaterialStockReallocationPriorityServiceTest {
                 new MaterialStockReallocationService(
                         em, mock(MaterialAnalysisService.class), entitlements,
                         mock(ProductionDocumentAccessPolicy.class),
-                        mock(InventoryMutationLock.class), currentUser,
+                        com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
+                        mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class), currentUser,
                         mock(TxSessionVars.class));
         return new Fixture(
                 service, entitlements, lot, rows, updateParameters,

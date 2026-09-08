@@ -2,7 +2,9 @@
 
 > 位置：`lib/features/notice/widgets/review_pending_dialog.dart` · 新增于 2026-09-02
 > （V459 / [ADR-063](../99-决策记录-ADR/ADR-063-部门定向审核待办弹窗与通知办结撤回.md) 第二轮）
-> 文档三处同步：本文件 + [UtenNotify.md](UtenNotify.md) §七 + [待审收件台.md](../03-页面/待审收件台.md)
+> 文档同步：本文件 + [UtenNotify.md](UtenNotify.md) §七 + [工作台首页](../03-页面/工作台首页.md)。
+> 2026-09-07：收件台退役，主职/兼职部门与真实动作资格由服务端实时校验；
+> 登出或切换身份取消待执行检查与旧对话框，迟到状态响应不得再弹旧账号待办。
 
 ## 一、定位与形态
 
@@ -18,7 +20,7 @@
 ## 二、API
 
 ```dart
-// 弹出（pending 非空；弹窗单例：已打开时空操作，新待办由心跳/收件台兜底）
+// 弹出(pending 非空；已有弹窗时合并新条目)
 await showReviewPendingDialog(context, pending: [notice, ...]);
 // 仅测试用：重置单例守卫
 resetReviewPendingDialogForTest();
@@ -40,10 +42,14 @@ resetReviewPendingDialogForTest();
   `/finance/sales-order-confirmations`、采购财务审批→`/finance/procurement-approvals`、
   IQC 待检→`/quality/task-center`、完工可发货→`/sales/progress`、生产车间任务→
   `/production/workshop-tasks`）；跨域混合 →
-  待审收件台 `/reviews/inbox`。**单条也去工作台**（行为统一）；弹窗内全部条目
+  工作台首页 `/dashboard`。**单条也去工作台**(行为统一)；弹窗内全部条目
   标已读（提醒已响应；已读不吞待办——未办结下次登录仍会弹）。
 - **点列表行/大卡**：跳该条所属域的工作台（混合列表的精确快捷通道），仅该条标已读。
   单据详情直达仍可从通知中心条目走 actionRoute。
+- 扩展事件同样有明确落点：销售改量复审到销售订单修改，计划排产到物料分析，仓库到货/领料/
+  品质放行分别到入库任务/领料任务/品质结果，IQC退回与贷项到其任务页。旧目录事件无聚合只保留历史。
+- 心跳单飞，每批最多50个ID，超量分批合并后处理；成功响应缺少的旧条目视为失去资格或已删除/稍后，
+  从当前弹窗移除。网络失败保留已展示状态，但新弹窗必须通过服务端真态校验后才可展示。
 - **【稍后再看】（次按钮）**：全部条目标已读 + 服务端 snooze 15 分钟（跨设备一致）→
   关弹窗。**snooze 是唯一静默途径**：到点未办结下次登录/到达再提醒。
 - **右上 X**：仅本次关闭，**不 snooze**——「每次登录检查、有待办就弹」的产品口径；

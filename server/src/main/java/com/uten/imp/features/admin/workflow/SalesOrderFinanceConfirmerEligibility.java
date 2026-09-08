@@ -21,33 +21,36 @@ import java.util.UUID;
  */
 @Service
 @RequiredArgsConstructor
-public class SalesOrderFinanceConfirmerEligibility {
+public class SalesOrderFinanceConfirmerEligibility
+        implements com.uten.imp.application.port.SalesOrderFinanceReviewerEligibilityPort {
 
     public static final String CONFIRM_PERMISSION = "sales_order_finance:confirm";
+    public static final String VIEW_PERMISSION = "sales_order_finance:view";
 
     private final JdbcTemplate jdbc;
     private final UserAccountRepository userRepo;
     private final PermissionResolver permissionResolver;
 
     /** 当前用户是否为合格确认人。 */
+    @Override
     @Transactional(readOnly = true)
     public boolean isEligible(UUID userId) {
         return eligibleRows(userId).stream()
-                .anyMatch(row -> userRepo.findById(row)
-                        .map(permissionResolver::permsOf)
-                        .orElseGet(java.util.Set::of)
-                        .contains(CONFIRM_PERMISSION));
+                .anyMatch(this::hasReviewAccess);
     }
 
     /** 全部合格确认人的用户账号 id（通知接收池）。 */
     @Transactional(readOnly = true)
     public List<UUID> eligibleUserIds() {
         return eligibleRows(null).stream()
-                .filter(row -> userRepo.findById(row)
-                        .map(permissionResolver::permsOf)
-                        .orElseGet(java.util.Set::of)
-                        .contains(CONFIRM_PERMISSION))
+                .filter(this::hasReviewAccess)
                 .toList();
+    }
+
+    private boolean hasReviewAccess(UUID userId) {
+        return userRepo.findById(userId).map(permissionResolver::permsOf)
+                .map(permissions -> permissions.contains(VIEW_PERMISSION) && permissions.contains(CONFIRM_PERMISSION))
+                .orElse(false);
     }
 
     /**
@@ -72,12 +75,19 @@ public class SalesOrderFinanceConfirmerEligibility {
                 JOIN employees e ON e.id = u.employee_id
                 WHERE (
                         e.department_id IN (SELECT id FROM finance_departments)
+                        OR EXISTS (
+                            SELECT 1 FROM employee_secondary_departments secondary
+                            WHERE secondary.employee_id = e.id
+                              AND secondary.department_id IN (SELECT id FROM finance_departments)
+                        )
                         OR u.id IN (
                             SELECT po.user_id
                             FROM user_permission_overrides po
                             JOIN permissions perm ON perm.id = po.permission_id
                             WHERE perm.code = 'sales_order_finance:confirm'
                               AND po.effect = 'grant'
+                              AND po.active = TRUE
+                              AND perm.active = TRUE
                         )
                     )
                   AND u.is_deleted = FALSE

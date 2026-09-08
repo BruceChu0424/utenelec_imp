@@ -13,7 +13,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -34,8 +33,6 @@ import static com.uten.imp.features.finance.receivables.CustomerPrepaymentContra
 @RequiredArgsConstructor
 public class CustomerPrepaymentOffsetService {
     public static final String GL_SOURCE_TYPE = "CUSTOMER_PREPAYMENT_OFFSET";
-    private static final int MONEY_SCALE = 4;
-    private static final int RATE_SCALE = 6;
 
     private final EntityManager em;
     private final TxSessionVars tx;
@@ -126,17 +123,15 @@ public class CustomerPrepaymentOffsetService {
             if (historicalUnallocated.signum() > 0) {
                 throw conflict("该应收存在未精确归属销售单的历史到账/冲销，禁止继续转销；请先财务人工来源对账");
             }
-            BigDecimal amount = money(input.amountOriginal());
+            BigDecimal amount = money(com.uten.imp.common.util.FinancialExactAmount.require(input.amountOriginal(),"预收转销实际原币"));
             if (amount.signum() <= 0 || amount.compareTo(target.balanceOriginal()) > 0
                     || amount.compareTo(ref.availableOriginal()) > 0) {
                 throw conflict("转销金额超过目标应收或销售单来源可用原币余额：" + target.billNo());
             }
-            BigDecimal sourceSlice = amount.compareTo(sourceOriginal.abs()) == 0
-                    ? money(sourceLocal.abs())
-                    : money(amount.multiply(source.rate()));
-            BigDecimal targetSlice = amount.compareTo(ref.availableOriginal()) == 0
-                    ? money(ref.availableLocal())
-                    : money(amount.multiply(target.rate()));
+            BigDecimal sourceSlice = com.uten.imp.common.finance.FinancialBookAllocation.part(
+                    amount,sourceOriginal.abs(),sourceLocal.abs());
+            BigDecimal targetSlice = com.uten.imp.common.finance.FinancialBookAllocation.part(
+                    amount,ref.availableOriginal(),ref.availableLocal());
             if (sourceSlice.compareTo(sourceLocal.abs()) > 0
                     || targetSlice.compareTo(target.balanceLocal()) > 0
                     || targetSlice.compareTo(ref.availableLocal()) > 0) {
@@ -162,7 +157,7 @@ public class CustomerPrepaymentOffsetService {
                         target_balance_before_local,target_balance_after_local,
                         target_ref_balance_before_original,target_ref_balance_after_original,
                         target_ref_balance_before_local,target_ref_balance_after_local,
-                        effective_date,status,row_version,created_by,updated_by)
+                        effective_date,status,row_version,created_by,updated_by,book_allocation_version)
                     VALUES(:id,:batchId,:sequence,:clientId,:currencyId,
                            :sourceId,:targetId,:sourceRefId,:salesOrderId,
                            :amount,:sourceLocal,:targetLocal,:fx,:sourceRate,:targetRate,
@@ -170,7 +165,7 @@ public class CustomerPrepaymentOffsetService {
                            :sourceBeforeLocal,:sourceAfterLocal,:targetBeforeLocal,:targetAfterLocal,
                            :targetRefBefore,:targetRefAfter,
                            :targetRefBeforeLocal,:targetRefAfterLocal,
-                           :effectiveDate,'APPLIED',0,:actor,:actor)
+                           :effectiveDate,'APPLIED',0,:actor,:actor,1)
                     """)
                     .setParameter("id", allocationId).setParameter("batchId", batchId)
                     .setParameter("sequence", sequence++)
@@ -476,11 +471,11 @@ public class CustomerPrepaymentOffsetService {
 
     private static BigDecimal positive(BigDecimal value, String label) {
         if (value == null || value.signum() <= 0) throw conflict(label + "缺失或无效");
-        return value.setScale(RATE_SCALE, RoundingMode.HALF_UP);
+        return com.uten.imp.common.util.FinancialExactAmount.rate(value,label);
     }
 
     private static BigDecimal money(BigDecimal value) {
-        return decimal(value).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        return com.uten.imp.common.util.FinancialExactAmount.canonicalMoney(decimal(value),"客户预收账面金额");
     }
 
     private static BigDecimal decimal(Object value) {
@@ -497,7 +492,7 @@ public class CustomerPrepaymentOffsetService {
     }
 
     private static String text(Object value) {
-        return decimal(value).setScale(MONEY_SCALE, RoundingMode.HALF_UP).toPlainString();
+        return value==null?null:com.uten.imp.common.util.DecimalText.of(decimal(value));
     }
 
     private static ApiException validation(String message) {

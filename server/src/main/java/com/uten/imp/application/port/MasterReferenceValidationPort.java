@@ -11,6 +11,8 @@ import java.util.UUID;
  * a business document persists the reference.</p>
  */
 public interface MasterReferenceValidationPort {
+    /** In the caller's write transaction, lock unused bases before resolving quantities. */
+    void lockGoodsQuantityBasis(java.util.Collection<UUID> goodsIds);
 
     /** Requires only existence and owner-scope visibility; inactive rows remain cleanable. */
     void requireVisibleGoods(UUID goodsId);

@@ -95,7 +95,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
             BigDecimal orderedBase = decimal(orderItemSource[2]);
             LocalDate expectedDate = localDate(orderItemSource[3]);
             BigDecimal replayed = decimal(em.createNativeQuery("""
-                            SELECT COALESCE(SUM(transferred_qty), 0)
+                            SELECT COALESCE(SUM(fn_procurement_transfer_net_qty('PURCHASE', id)), 0)
                             FROM production_material_peg_transfers
                             WHERE order_item_id = :orderItemId
                               AND request_item_id = :requestItemId
@@ -237,7 +237,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
         List<Object[]> transfers = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT t.id, t.demand_id, t.from_peg_id,
-                                       t.to_peg_id, t.transferred_qty,
+                                       t.to_peg_id, fn_procurement_transfer_net_qty('PURCHASE', t.id),
                                        target.consumed_qty,
                                        source.released_qty
                                 FROM production_material_peg_transfers t

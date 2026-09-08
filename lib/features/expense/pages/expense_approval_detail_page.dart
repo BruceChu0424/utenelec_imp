@@ -16,6 +16,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -479,10 +480,12 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
                     errorBuilder: utenTextFieldErrorBuilder,
                     controller: _dateController,
                     readOnly: true,
-                    decoration: const InputDecoration(
-                      labelText: '付款日期 *',
-                      border: OutlineInputBorder(),
-                      suffixIcon: Icon(Icons.calendar_today_outlined),
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(
+                        labelText: '付款日期 *',
+                        border: OutlineInputBorder(),
+                        suffixIcon: Icon(Icons.calendar_today_outlined),
+                      ),
                     ),
                     onTap: _pickPaymentDate,
                     validator: (value) =>

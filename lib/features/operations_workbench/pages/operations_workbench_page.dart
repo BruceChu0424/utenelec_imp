@@ -19,6 +19,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
+import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/connection_recovery.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -296,25 +297,18 @@ class _OperationsWorkbenchPageState
 
   Widget _buildFloatingSelectionAction(_SelectionPrimaryAction action) {
     final disabledReason = action.unavailableReason ?? '当前选择不可执行此操作';
-    return UtenFloatingActionGroup(
-      key: const Key('operations-workbench-floating-primary-action'),
-      children: [
-        Tooltip(
-          message: action.enabled ? action.readyTooltip : disabledReason,
-          child: UtenButton(
-            key: action.buttonKey,
-            size: UtenButtonSize.large,
-            icon: action.icon,
-            onPressed: action.enabled
-                ? () => goFrom(context, action.route!)
-                : null,
-            onDisabledTap: action.enabled
-                ? null
-                : () => context.appWarning(disabledReason),
-            child: Text(action.label),
-          ),
-        ),
-      ],
+    return Tooltip(
+      message: action.enabled ? action.readyTooltip : disabledReason,
+      child: UtenButton(
+        key: action.buttonKey,
+        size: UtenButtonSize.large,
+        icon: action.icon,
+        onPressed: action.enabled ? () => goFrom(context, action.route!) : null,
+        onDisabledTap: action.enabled
+            ? null
+            : () => context.appWarning(disabledReason),
+        child: Text(action.label),
+      ),
     );
   }
 
@@ -341,7 +335,7 @@ class _OperationsWorkbenchPageState
         actions: [
           IconButton(
             tooltip: '刷新',
-            onPressed: _loading ? null : () => _load(),
+            onPressed: _loading ? null : () => _load(page: 1),
             icon: const Icon(Icons.refresh_rounded),
           ),
           const SizedBox(width: UtenSpacing.s8),
@@ -356,11 +350,6 @@ class _OperationsWorkbenchPageState
           child: _buildBody(context, selectionAction),
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: selectionAction == null
-          ? null
-          : _buildFloatingSelectionAction(selectionAction),
     );
   }
 
@@ -463,24 +452,6 @@ class _OperationsWorkbenchPageState
             ],
           ],
         );
-        final selectionBar = selectionAction == null || !_shouldLoad
-            ? null
-            : _SelectionBar(
-                selected: _selectedTasks,
-                pageItems: data.items,
-                unavailableReason:
-                    _selectedIds.isNotEmpty && !selectionAction.enabled
-                    ? selectionAction.unavailableReason
-                    : null,
-                onSelectPage: () => setState(
-                  () => _selectedIds.addAll(
-                    data.items
-                        .where((item) => item.id.isNotEmpty)
-                        .map((item) => item.id),
-                  ),
-                ),
-                onClear: () => setState(_selectedIds.clear),
-              );
 
         final useTaskTable =
             breakpoint.isExpanded ||
@@ -489,7 +460,9 @@ class _OperationsWorkbenchPageState
 
         if (useTaskTable) {
           // 「顶部折叠 + 表格吸顶内滚」：任意位置上滑先把分类工具条收完，
-          // 筛选行与选中操作条随表格上移后钉在顶部常驻，之后表格内部滚动。
+          // 筛选行随表格上移后钉在顶部常驻，之后表格内部滚动。
+          // 2026-09-06 与全站对齐：已选胶囊+批量动作走表格标准右下悬浮组
+          // （MasterDataTableView.batchActionsBuilder），顶部不再占选中条。
           return UtenCollapsingHeaderScrollView(
             collapsingHeader: Padding(
               padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
@@ -507,11 +480,7 @@ class _OperationsWorkbenchPageState
                   )
                 else if (seg.history && _historyTime.isNone)
                   const Expanded(child: UtenHistoryTimePlaceholder())
-                else ...[
-                  if (selectionBar != null) ...[
-                    selectionBar,
-                    const SizedBox(height: UtenSpacing.s12),
-                  ],
+                else
                   Expanded(
                     child: _DesktopTaskTable(
                       key: const Key('operations-workbench-desktop-table'),
@@ -526,71 +495,120 @@ class _OperationsWorkbenchPageState
                         setState(() => _page = page);
                         _load(page: page);
                       },
+                      batchActions: selectionAction == null
+                          ? null
+                          : (_, _) => [
+                              _buildFloatingSelectionAction(selectionAction),
+                            ],
                     ),
                   ),
-                ],
               ],
             ),
           );
         }
 
-        return ListView(
-          key: const Key('operations-workbench-mobile-list'),
-          // 悬浮主操作不占页面布局；仅在滚动尾部留透明避让，防止遮住末张任务卡/分页器。
-          padding: EdgeInsets.only(bottom: selectionAction == null ? 0 : 96),
-          children: [
-            filterRows,
-            const SizedBox(height: UtenSpacing.s12),
-            if (seg == null)
-              const SizedBox(
-                height: 320,
-                child: UtenFilterPlaceholder(
-                  message: '在上方选择阶段后开始办理',
-                  description: '阶段默认不选中；终态任务请用末尾「历史记录」按时间查阅',
+        // 窄屏任务卡列表：已选胶囊+全选本页+批量动作以右下悬浮组钉底
+        // （与宽屏表格悬浮组、物料分桶页同款），列表尾部留透明避让。
+        final mobileFloating = (selectionAction != null && _shouldLoad)
+            ? PositionedDirectional(
+                end: UtenSpacing.s16,
+                bottom: UtenSpacing.s16,
+                child: UtenFloatingActionGroup(
+                  key: const Key(
+                    'operations-workbench-floating-primary-action',
+                  ),
+                  children: [
+                    UtenSelectionSummaryPill(
+                      count: _selectedIds.length,
+                      onClear: _selectedIds.isEmpty
+                          ? null
+                          : () => setState(_selectedIds.clear),
+                    ),
+                    if (data.items.isNotEmpty)
+                      UtenButton(
+                        key: const Key('operations-workbench-select-page'),
+                        type: UtenButtonType.ghost,
+                        size: UtenButtonSize.large,
+                        onPressed: _loading
+                            ? null
+                            : () => setState(
+                                () => _selectedIds.addAll(
+                                  data.items
+                                      .where((item) => item.id.isNotEmpty)
+                                      .map((item) => item.id),
+                                ),
+                              ),
+                        child: const Text('全选本页'),
+                      ),
+                    _buildFloatingSelectionAction(selectionAction),
+                  ],
                 ),
               )
-            else if (seg.history && _historyTime.isNone)
-              const SizedBox(height: 320, child: UtenHistoryTimePlaceholder())
-            else ...[
-              if (selectionBar != null) ...[
-                selectionBar,
-                const SizedBox(height: UtenSpacing.s12),
-              ],
-              if (data.items.isEmpty)
-                const SizedBox(
-                  height: 320,
-                  child: UtenEmpty(
-                    icon: Icons.task_alt_rounded,
-                    message: '当前筛选下没有任务',
-                    description: '可调整阶段、异常或关键词筛选后重试。',
-                  ),
-                )
-              else
-                for (final task in data.items) ...[
-                  _TaskCard(
-                    task: task,
-                    selected:
-                        selectionAction != null &&
-                        _selectedIds.contains(task.id),
-                    onSelected: selectionAction == null
-                        ? null
-                        : () => _toggleSelected(task),
-                    onOpen: !(task.actionDocument?.canView ?? false)
-                        ? null
-                        : () => _openAction(task),
-                  ),
-                  const SizedBox(height: UtenSpacing.s12),
-                ],
-              _MobilePager(
-                page: data.page,
-                totalPages: data.totalPages,
-                loading: _loading,
-                onPageChanged: (page) {
-                  setState(() => _page = page);
-                  _load(page: page);
-                },
+            : null;
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            ListView(
+              key: const Key('operations-workbench-mobile-list'),
+              // 悬浮主操作不占页面布局；仅在滚动尾部留透明避让，防止遮住末张任务卡/分页器。
+              padding: EdgeInsets.only(
+                bottom: selectionAction == null ? 0 : 96,
               ),
-            ],
+              children: [
+                filterRows,
+                const SizedBox(height: UtenSpacing.s12),
+                if (seg == null)
+                  const SizedBox(
+                    height: 320,
+                    child: UtenFilterPlaceholder(
+                      message: '在上方选择阶段后开始办理',
+                      description: '阶段默认不选中；终态任务请用末尾「历史记录」按时间查阅',
+                    ),
+                  )
+                else if (seg.history && _historyTime.isNone)
+                  const SizedBox(
+                    height: 320,
+                    child: UtenHistoryTimePlaceholder(),
+                  )
+                else ...[
+                  if (data.items.isEmpty)
+                    const SizedBox(
+                      height: 320,
+                      child: UtenEmpty(
+                        icon: Icons.task_alt_rounded,
+                        message: '当前筛选下没有任务',
+                        description: '可调整阶段、异常或关键词筛选后重试。',
+                      ),
+                    )
+                  else
+                    for (final task in data.items) ...[
+                      _TaskCard(
+                        task: task,
+                        selected:
+                            selectionAction != null &&
+                            _selectedIds.contains(task.id),
+                        onSelected: selectionAction == null
+                            ? null
+                            : () => _toggleSelected(task),
+                        onOpen: !(task.actionDocument?.canView ?? false)
+                            ? null
+                            : () => _openAction(task),
+                      ),
+                      const SizedBox(height: UtenSpacing.s12),
+                    ],
+                  _MobilePager(
+                    page: data.page,
+                    totalPages: data.totalPages,
+                    loading: _loading,
+                    onPageChanged: (page) {
+                      setState(() => _page = page);
+                      _load(page: page);
+                    },
+                  ),
+                ],
+              ],
+            ),
+            ?mobileFloating,
           ],
         );
       },
@@ -618,71 +636,6 @@ class _SelectionPrimaryAction {
   bool get enabled => route != null;
 }
 
-class _SelectionBar extends StatelessWidget {
-  const _SelectionBar({
-    required this.selected,
-    required this.pageItems,
-    required this.unavailableReason,
-    required this.onSelectPage,
-    required this.onClear,
-  });
-
-  final List<OperationsWorkbenchTask> selected;
-  final List<OperationsWorkbenchTask> pageItems;
-  final String? unavailableReason;
-  final VoidCallback onSelectPage;
-  final VoidCallback onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const Key('operations-workbench-selection-bar'),
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerLow,
-        borderRadius: UtenRadius.lgAll,
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-      ),
-      child: Wrap(
-        spacing: UtenSpacing.s8,
-        runSpacing: UtenSpacing.s8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Semantics(
-            liveRegion: true,
-            child: Text(
-              '已选 ${selected.length} 项',
-              style: Theme.of(
-                context,
-              ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
-            ),
-          ),
-          UtenButton(
-            type: UtenButtonType.secondary,
-            // 选择条与共享表格工具条统一 large（52）；主业务动作移到右下悬浮区。
-            size: UtenButtonSize.large,
-            onPressed: pageItems.isEmpty ? null : onSelectPage,
-            child: const Text('全选本页'),
-          ),
-          UtenButton(
-            type: UtenButtonType.ghost,
-            size: UtenButtonSize.large,
-            onPressed: selected.isEmpty ? null : onClear,
-            child: const Text('清空'),
-          ),
-          if (unavailableReason != null)
-            Text(
-              unavailableReason!,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.error,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 class _DesktopTaskTable extends StatelessWidget {
   const _DesktopTaskTable({
     super.key,
@@ -694,6 +647,7 @@ class _DesktopTaskTable extends StatelessWidget {
     required this.onSelectedIdsChanged,
     required this.onOpenTask,
     required this.onPageChanged,
+    this.batchActions,
   });
 
   final OperationsWorkbenchData data;
@@ -704,6 +658,7 @@ class _DesktopTaskTable extends StatelessWidget {
   final ValueChanged<Set<String>> onSelectedIdsChanged;
   final ValueChanged<OperationsWorkbenchTask> onOpenTask;
   final ValueChanged<int> onPageChanged;
+  final List<Widget> Function(BuildContext, Set<String>)? batchActions;
 
   @override
   Widget build(BuildContext context) {
@@ -845,6 +800,7 @@ class _DesktopTaskTable extends StatelessWidget {
       nullCounts: const {},
       filters: const {},
       onFilterChanged: (_, _) {},
+      batchActionsBuilder: batchActions,
       onRowTap: onOpenTask,
       canOpenRow: (item) => item.actionDocument?.canView ?? false,
       canShowRowMenu: (item) => item.actionDocument?.canView ?? false,
@@ -1140,7 +1096,7 @@ String _departmentSubtitle(OperationsWorkbenchDepartment department) {
     OperationsWorkbenchDepartment.purchase =>
       '采购任务：申请待分解 / 等待财务审核 / 财务已通过 / 财务驳回 / 已完成',
     OperationsWorkbenchDepartment.subcontract =>
-      '委外任务：申请待分解 / 等待财务审核 / 财务已通过 / 财务驳回 / 已完成',
+      '委外任务：待处理 / 等待财务审核 / 财务已通过 / 财务驳回 / 已完成',
     OperationsWorkbenchDepartment.warehouse => '仓库履约：待备料 / 部分领取 / 已领取',
   };
 }

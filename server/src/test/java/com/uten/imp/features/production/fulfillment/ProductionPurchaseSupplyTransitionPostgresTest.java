@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.fulfillment;
 
+import com.uten.imp.support.ProcurementReceiptFixtureSupport;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -619,8 +620,8 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
                          insert into purchase_receipt_items(
                              id, bill_no, bill_date, receipt_id,
                              order_item_id, goods_id, unit_id,
-                             unit_rate, qty, goods_snapshot_source
-                         ) values (?, ?, ?, ?, ?, ?, ?, 1, ?, 'MASTER_AT_SAVE')
+                             unit_rate, qty, price, amount_original, amount_local, replacement_intent, goods_snapshot_source
+                         ) values (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 0, 0, 'NORMAL', 'MASTER_AT_SAVE')
                          """);
                  PreparedStatement balance = connection.prepareStatement("""
                          update stock_balances
@@ -796,6 +797,8 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
                                 + fixture.orderPegId());
                 allocation.executeUpdate();
             }
+            // Explicit zero-price quantity fixture; never infer monetary zero from NULL.
+            ProcurementReceiptFixtureSupport.appendStandardReceipt(connection, "PURCHASE", receiptId);
             connection.commit();
             return new ReceiptConversion(
                     receiptId,
@@ -943,6 +946,8 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
                     connection,
                     "update purchase_receipts set status = -1 where id = ?",
                     conversion.receiptId());
+            // Explicit zero-price quantity fixture; never infer monetary zero from NULL.
+            ProcurementReceiptFixtureSupport.appendReceiptReversal(connection, "PURCHASE", conversion.receiptId());
             connection.commit();
         } catch (Exception error) {
             connection.rollback();

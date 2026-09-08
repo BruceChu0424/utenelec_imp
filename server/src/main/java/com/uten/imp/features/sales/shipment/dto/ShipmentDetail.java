@@ -12,6 +12,8 @@ import java.util.UUID;
 @Getter
 @AllArgsConstructor
 public class ShipmentDetail {
+    @com.fasterxml.jackson.annotation.JsonUnwrapped
+    private final ShipmentWorkflowView workflow=new ShipmentWorkflowView();
     private UUID id;
     private Integer legacyId;
     private String billNo;
@@ -66,4 +68,10 @@ public class ShipmentDetail {
     private boolean canManageWarehouseWork;
     /** 商业数据已对当前用户脱敏（金额/单价/成本置 null，与订单 priceMasked 同口径，前端据此渲染掩码样式）。 */
     private boolean priceMasked;
+
+    // Exact text is derived after permission masking; null stays null.
+    public String getExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(exchangeRate); }
+    public String getTaxRateExact() { return com.uten.imp.common.util.DecimalText.of(taxRate); }
+    public String getTotalOriginalExact() { return com.uten.imp.common.util.DecimalText.of(totalOriginal); }
+    public String getTotalLocalExact() { return com.uten.imp.common.util.DecimalText.of(totalLocal); }
 }

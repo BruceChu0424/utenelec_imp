@@ -29,18 +29,27 @@ public class ProductionMaterialSettlementController {
     private final ProductionMaterialStockLedgerService stockLedgerService;
     private final SecurityContextCurrentUser currentUser;
 
+    @GetMapping("/plans/{planId}/capabilities")
+    @PreAuthorize("hasAnyAuthority('production_plan:view','stock_doc:view','production_execution:view')")
+    public ProductionMaterialTaskAccessPolicy.Capabilities capabilities(@PathVariable UUID planId,
+            @org.springframework.web.bind.annotation.RequestParam(required=false) UUID executionSegmentId) {
+        return settlementService.capabilities(planId,executionSegmentId);
+    }
+
     @GetMapping("/plans/{planId}/clearance")
-    @PreAuthorize("hasAnyAuthority('production_plan:view','stock_doc:view')")
+    @PreAuthorize("hasAnyAuthority('production_plan:view','stock_doc:view','production_execution:view')")
     public List<ProductionMaterialClearanceRow> clearance(
-            @PathVariable UUID planId) {
-        return settlementService.clearance(planId);
+            @PathVariable UUID planId,
+            @org.springframework.web.bind.annotation.RequestParam(required=false) UUID executionSegmentId) {
+        return settlementService.clearance(planId,executionSegmentId);
     }
 
     @GetMapping("/plans/{planId}/settlements")
-    @PreAuthorize("hasAnyAuthority('production_plan:view','stock_doc:view')")
+    @PreAuthorize("hasAnyAuthority('production_plan:view','stock_doc:view','production_execution:view')")
     public List<ProductionMaterialSettlementSourceRow> settlementSources(
-            @PathVariable UUID planId) {
-        return settlementService.settlementSources(planId);
+            @PathVariable UUID planId,
+            @org.springframework.web.bind.annotation.RequestParam(required=false) UUID executionSegmentId) {
+        return settlementService.settlementSources(planId,executionSegmentId);
     }
 
     @PostMapping("/plans/{planId}/settlements")

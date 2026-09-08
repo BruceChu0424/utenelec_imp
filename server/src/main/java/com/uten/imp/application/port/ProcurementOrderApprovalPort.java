@@ -25,6 +25,16 @@ public interface ProcurementOrderApprovalPort {
 
     void applyFinanceApproval(UUID orderId, UUID approverEmployeeId);
 
+    /**
+     * V486 批准后改量（对齐销售 V482）：订单是否已处于财务批准生效状态。
+     * 复核 case 审批时据此跳过草稿校验与重复生效副作用（改量已在 change-qty
+     * 事务内生效，复核通过只是财务确认）。
+     */
+    boolean isFinanceApproved(UUID orderId);
+
+    /** Lock the effective order and snapshot current commercial facts without applying them again. */
+    OrderSnapshot lockFinanceReconfirmationSnapshot(UUID orderId);
+
     record OrderSnapshot(
             String orderType,
             UUID orderId,

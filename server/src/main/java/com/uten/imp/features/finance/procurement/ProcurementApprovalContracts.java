@@ -1,6 +1,7 @@
 package com.uten.imp.features.finance.procurement;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -37,7 +38,8 @@ public final class ProcurementApprovalContracts {
     /** 精确绑定一次待审 case，避免驳回重提后相同版本号误命中新 attempt。 */
     public record BatchDecisionItem(
             @NotNull UUID caseId,
-            @NotNull @Min(1) Long expectedVersion) {
+            @NotNull @Min(1) Long expectedVersion,UUID expectedClaimId) {
+        public BatchDecisionItem(UUID caseId,Long expectedVersion) { this(caseId,expectedVersion,null); }
     }
 
     /**
@@ -76,7 +78,22 @@ public final class ProcurementApprovalContracts {
             UUID submittedByEmployeeId,
             String submittedByName,
             OffsetDateTime submittedAt,
+            long changeCount,
             List<String> allowedActions) {
+    }
+
+    /**
+     * V486 批准后改量请求：逐行新数量（old→new 差异行）。仅已批准订单可用，
+     * 服务端校验下游锁定量后立即生效并自动创建财务复核 case。
+     */
+    public record OrderQtyChangeRequest(
+            @NotEmpty List<@Valid OrderQtyChangeItem> items) {
+    }
+
+    public record OrderQtyChangeItem(
+            @NotNull UUID orderItemId,
+            @NotNull @DecimalMin(value = "0", inclusive = false)
+            BigDecimal newQty) {
     }
 
     /**
@@ -111,13 +128,32 @@ public final class ProcurementApprovalContracts {
             BigDecimal totalLocal,
             BigDecimal supplierApBalance,
             int sourceApplicationCount,
+            List<QtyChange> qtyChanges,
             List<ReviewLine> items,
             List<ReviewHistoryEntry> history) {
         public ApprovalReview {
             items = List.copyOf(items);
             history = List.copyOf(history);
             allowedActions = List.copyOf(allowedActions);
+            qtyChanges = List.copyOf(qtyChanges);
         }
+    }
+
+    /**
+     * V486 修改清单（以前→现在）：本 case 关联的改量事实账行；首次提交审批
+     * 的普通 case 恒为空列表。
+     */
+    public record QtyChange(
+            UUID orderItemId,
+            int lineNo,
+            String goodsCode,
+            String goodsName,
+            String colorName,
+            String unitName,
+            BigDecimal oldQty,
+            BigDecimal newQty,
+            String changedByName,
+            OffsetDateTime changedAt) {
     }
 
     public record ReviewLine(

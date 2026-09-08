@@ -122,7 +122,9 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   bool _hasPermission(String? code) =>
       code != null && ref.read(currentPermissionsProvider).contains(code);
 
-  bool get _canCreate => _hasPermission(_cfg.createPerm);
+  bool get _canCreate =>
+      widget.docType != SalesDocType.otherShipment &&
+      _hasPermission(_cfg.createPerm);
 
   /// 批量发货会生成出货草稿，只检查明确的新增出货权限。
   bool get _canShip => _isOrder && _hasPermission(Perm.salesShipmentCreate);

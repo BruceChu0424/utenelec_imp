@@ -4,11 +4,13 @@
 // 模式由 [ItemMode] 标记（行构造时绑定，不可切换）——与 FinanceDocConfig.itemMode 一致：
 // - 三种模式：amount 列均为 TextField 直接录入 → amountNotifier 同步（驱动表尾合计）；
 //   allocate 的数量/单价为可选明细字段，不强制驱动金额（与老页面一致：金额独立可编辑）。
-// amountNotifier 是所有模式下的「金额」真相源，保存时直接读 .value。
+// 金额控制器原文是输入来源；amountNotifier 仅供短显示，不能回写会计事实。
 //
 // financeGridColumns(mode, ...)：按模式返回不同列集，每列 cellBuilder 编辑对应行字段。
 // 列宽固定 + 横向滚动（UtenEditableGrid 自带 sticky 表头），全尺寸 Excel（与其它模块一致）。
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../shared/presentation/workflow_field_guidance.dart';
 
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -76,6 +78,10 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
   final TextEditingController exchangeRate = TextEditingController();
   final TextEditingController writeOff = TextEditingController(text: '0');
   final TextEditingController remark = TextEditingController();
+  String? originalAmountSnapshot;
+  String? localAmountSnapshot;
+  String? amountInputSnapshot;
+  String? summarySnapshot;
   final ValueNotifier<double> localAmountNotifier = ValueNotifier<double>(0);
   final ValueNotifier<double> writeOffLocalNotifier = ValueNotifier<double>(0);
   final ValueNotifier<double> balanceAfterNotifier = ValueNotifier<double>(0);
@@ -119,20 +125,17 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
     writeOffLocalNotifier.value = offset * rate;
     balanceAfterNotifier.value = (balanceOriginal ?? 0) - cash - offset;
     recalcAmount(() => mode == ItemMode.settle ? cash + offset : cash);
-    final localUnits = financeExactProductUnits(
+    localAmountExactNotifier.value = financeExactMultiplyTexts([
       amount.text.trim(),
       exchangeRate.text.trim(),
-    );
-    localAmountExactNotifier.value = localUnits == null
-        ? null
-        : financeExactDecimalFromUnits(localUnits);
-    final balanceUnits = financeExactDecimalUnits(
+    ]);
+    final balanceUnits = financeAmountUnits(
       balanceOriginalText ?? balanceOriginal?.toString(),
     );
-    final cashUnits = financeExactDecimalUnits(amount.text.trim());
+    final cashUnits = financeAmountUnits(amount.text.trim());
     balanceAfterExactNotifier.value = balanceUnits == null || cashUnits == null
         ? null
-        : financeExactDecimalFromUnits(balanceUnits - cashUnits);
+        : financeAmountFromUnits(balanceUnits - cashUnits);
   }
 
   /// 深拷贝（明细复制/粘贴用，allocate/transfer 模式）：拷用户录入（金额/数量/单价/
@@ -152,6 +155,7 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
     c.exchangeRate.text = exchangeRate.text;
     c.writeOff.text = writeOff.text;
     c.remark.text = remark.text;
+    c.summarySnapshot = summarySnapshot;
     return c;
   }
 
@@ -183,6 +187,7 @@ List<EditableGridColumn<FinanceGridRow>> financeGridColumns(
   required FinanceNameService names,
   required FinanceDocType type,
   bool? accountBaseCurrency,
+  bool showReceiptReconciliation = true,
 }) {
   switch (mode) {
     case ItemMode.settle:
@@ -190,6 +195,7 @@ List<EditableGridColumn<FinanceGridRow>> financeGridColumns(
           ? _receiptSettleColumns(
               names,
               accountBaseCurrency: accountBaseCurrency,
+              showReconciliation: showReceiptReconciliation,
             )
           : _settleColumns();
     case ItemMode.allocate:
@@ -203,11 +209,10 @@ List<EditableGridColumn<FinanceGridRow>> financeGridColumns(
 List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
   FinanceNameService names, {
   bool? accountBaseCurrency,
+  required bool showReconciliation,
 }) {
-  final localAmountLabel = accountBaseCurrency == true
-      ? '本批结汇毛额(人民币)'
-      : '本批本位币毛额(人民币)';
-  return [
+  const localAmountLabel = '按报价折算参考(人民币)';
+  final columns = [
     EditableGridColumn<FinanceGridRow>(
       key: 'appliedBillNo',
       label: '应收单号',
@@ -288,27 +293,30 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'amount',
-      label: '本批 AR 核销(应收原币)',
+      label: '本次分配收款(原币)',
       width: 180,
       numeric: true,
       required: true,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.amount,
         isEmpty: () {
-          final units = financeExactDecimalUnits(row.amount.text.trim());
+          final units = financeAmountUnits(row.amount.text.trim());
           return units == null || units <= BigInt.zero;
         },
         child: TextField(
           controller: row.amount,
           textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+          decoration: UtenInputDecoration(
+            const InputDecoration(isDense: true, hintText: '0'),
+            info: workflowFieldText(context).workflowReceiptAllocationHint,
+          ),
         ),
       ),
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'currency',
-      label: '应收/核销原币',
+      label: '应收币种',
       width: 150,
       required: true,
       // 销售收款只能按被引用应收的原币核销。币别由 AR 带入并保持只读，
@@ -360,7 +368,7 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       cellBuilder: (context, row) => ValueListenableBuilder<String?>(
         valueListenable: row.balanceAfterExactNotifier,
         builder: (_, value, _) {
-          final units = financeExactDecimalUnits(value);
+          final units = financeAmountUnits(value);
           return Text(
             financeExactMoneyDisplay(value),
             style: TextStyle(
@@ -385,6 +393,18 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       ),
     ),
   ];
+  if (showReconciliation) return columns;
+  // Only presentation changes: rows retain source UUIDs, reconciliation
+  // snapshots and rate listeners, and save still validates every authority.
+  const entryKeys = {
+    'appliedBillNo',
+    'balanceOriginal',
+    'amount',
+    'currency',
+    'balanceAfter',
+    'remark',
+  };
+  return columns.where((column) => entryKeys.contains(column.key)).toList();
 }
 
 String _money(double? value) => value == null ? '—' : value.toStringAsFixed(2);

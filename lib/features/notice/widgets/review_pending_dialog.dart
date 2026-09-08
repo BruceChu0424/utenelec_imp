@@ -7,7 +7,7 @@
 // - 弹窗内实时显示「是否有人在处理」（30s 心跳 pending-review-status：
 //   他人认领 → 「XX 正在审核」黄色 chip；办结 → 条目自动移除，清空则弹窗自关）；
 // - 【去工作台处理】（2026-09-03 第四轮：不再直达单据详情）：全部待办同域 →
-//   该域任务工作台；跨域混合 → 待审收件台 /reviews/inbox。点单条条目 →
+//   该域任务工作台；跨域混合 → 工作台首页 /dashboard。点单条条目 →
 //   该条所属域的工作台。去工作台 = 提醒已响应，弹窗内条目全部标已读；
 // - 【稍后再看】：全部条目标已读 + 服务端 snooze 15 分钟（跨设备一致，
 //   到点未办结下次登录/到达再弹）；
@@ -29,21 +29,52 @@ import '../repositories/notice_repository.dart';
 
 /// sourceEvent → 该域任务工作台（汇总列表）。主按钮不再直达单据详情
 /// （2026-09-03 第四轮口径：弹窗只做提醒汇总，处理在工作台做）。
-String workbenchRouteFor(String? sourceEvent) => switch (sourceEvent) {
-  'SALES_ORDER_PENDING_FINANCE_CONFIRM' => '/finance/sales-order-confirmations',
-  'PROCUREMENT_FINANCE_SUBMITTED' => '/finance/procurement-approvals',
+String workbenchRouteFor(
+  String? sourceEvent, {
+  String? actionRoute,
+}) => switch (sourceEvent) {
+  'SALES_ORDER_PENDING_FINANCE_CONFIRM' =>
+    actionRoute == '/finance/sales-order-changes'
+        ? '/finance/sales-order-changes'
+        : '/finance/sales-order-confirmations',
+  'PROCUREMENT_FINANCE_SUBMITTED' ||
+  'PROCUREMENT_FINANCE_CHANGE_SUBMITTED' => '/finance/procurement-approvals',
   'PROCUREMENT_IQC_PENDING' => RouteName.qualityTaskCenter,
   'SALES_ORDER_FULLY_PRODUCED_READY_TO_SHIP' => RouteName.salesOrderProgress,
   'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED' =>
     RouteName.productionWorkshopTasks,
-  // 未注册事件兜底：待审收件台按域聚合展示全部待审。
-  _ => RouteName.reviewsInbox,
+  'SALES_ORDER_APPROVED' ||
+  'SUBCONTRACT_PREPARATION_REQUIRED' ||
+  'SUBCONTRACT_ORDER_PREPARATION_DISPATCHED' =>
+    RouteName.productionMaterialAnalysis,
+  'PROCUREMENT_IQC_STOCK_IN_PENDING' => RouteName.warehouseQualityResults,
+  'PRODUCTION_DRAW_PENDING' => RouteName.warehouseDrawTasks,
+  'PROCUREMENT_FINANCE_APPROVED' => RouteName.warehouseInboundTasks,
+  'PROCUREMENT_IQC_REJECTION_OPENED' ||
+  'PROCUREMENT_IQC_REJECTION_RETURNED' => RouteName.procurementIqcRejections,
+  _ => RouteName.dashboard,
 };
 
 /// 居中弹窗单例守卫：已打开时新待办并入当前弹窗（在线多事件同到
 /// 「一共有 N 项」；登录检查与到达链竞争时只保一层）。
 bool _reviewPendingDialogOpen = false;
+int _dialogGeneration = 0;
+int get reviewPendingDialogGeneration => _dialogGeneration;
 _ReviewPendingDialogState? _openDialogState;
+
+/// Session replacement must remove the old account's exact dialog route.
+void closeReviewPendingDialog() {
+  _dialogGeneration++;
+  final state = _openDialogState;
+  if (state != null && state.mounted) {
+    final route = ModalRoute.of(state.context);
+    if (route != null) {
+      Navigator.of(state.context, rootNavigator: true).removeRoute(route);
+    }
+  }
+  _openDialogState = null;
+  _reviewPendingDialogOpen = false;
+}
 
 /// 仅测试用：重置单例守卫（widget 测试间隔离）。
 @visibleForTesting
@@ -63,6 +94,7 @@ Future<void> showReviewPendingDialog(
     return Future<void>.value();
   }
   _reviewPendingDialogOpen = true;
+  final generation = _dialogGeneration;
   return showDialog<void>(
     context: context,
     barrierDismissible: false,
@@ -70,7 +102,9 @@ Future<void> showReviewPendingDialog(
       key: const ValueKey('review-pending-dialog'),
       pending: pending,
     ),
-  ).whenComplete(() => _reviewPendingDialogOpen = false);
+  ).whenComplete(() {
+    if (generation == _dialogGeneration) _reviewPendingDialogOpen = false;
+  });
 }
 
 class ReviewPendingDialog extends ConsumerStatefulWidget {
@@ -88,6 +122,7 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
   final Map<String, PendingReviewStatus> _statusById = {};
   Timer? _heartbeat;
   bool _busy = false;
+  bool _statusLoading = false;
 
   @override
   void initState() {
@@ -121,35 +156,46 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
   }
 
   Future<void> _refreshStatus() async {
-    if (!mounted || _items.isEmpty) return;
+    if (!mounted || _items.isEmpty || _statusLoading) return;
+    _statusLoading = true;
+    final requestedIds = _items.map((n) => n.id).toSet();
     try {
       final statuses = await ref
           .read(noticeRepositoryProvider)
-          .pendingReviewStatus([for (final n in _items) n.id]);
+          .pendingReviewStatus(requestedIds.toList());
       if (!mounted) return;
       setState(() {
         _statusById
           ..clear()
           ..addAll({for (final s in statuses) s.noticeId: s});
         // 办结撤回：条目自动移除；全部办结则弹窗自关（不打扰已无需处理的人）。
-        _items.removeWhere((n) => _statusById[n.id]?.resolved ?? false);
+        _items.removeWhere(
+          (n) =>
+              requestedIds.contains(n.id) &&
+              (!_statusById.containsKey(n.id) || _statusById[n.id]!.resolved),
+        );
         if (_items.isEmpty) {
           Navigator.of(context, rootNavigator: true).pop();
         }
       });
     } catch (_) {
       // 真态校验失败可容忍：条目保持上次状态。
+    } finally {
+      _statusLoading = false;
     }
   }
 
-  /// 主按钮落点：全部待办同域 → 该域任务工作台；跨域混合 → 待审收件台。
+  /// 主按钮落点：全部待办同域 → 该域任务工作台；跨域混合 → 工作台首页。
   String get _primaryTarget {
-    final routes = {for (final n in _items) workbenchRouteFor(n.sourceEvent)};
-    return routes.length == 1 ? routes.first : RouteName.reviewsInbox;
+    final routes = {
+      for (final n in _items)
+        workbenchRouteFor(n.sourceEvent, actionRoute: n.actionRoute),
+    };
+    return routes.length == 1 ? routes.first : RouteName.dashboard;
   }
 
   /// 去任务工作台（2026-09-03 第四轮：不再直达单据详情）。
-  /// [only] 为空 = 主按钮：跳综合落点（同域工作台/收件台），弹窗内全部
+  /// [only] 为空 = 主按钮：跳综合落点(同域工作台/工作台首页)，弹窗内全部
   /// 条目标已读（提醒已响应）；指定条目 = 点列表行：跳该条所属域工作台，
   /// 仅该条标已读。
   Future<void> _openWorkbench({Notice? only}) async {
@@ -162,7 +208,7 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
     }
     final target = only == null
         ? _primaryTarget
-        : workbenchRouteFor(only.sourceEvent);
+        : workbenchRouteFor(only.sourceEvent, actionRoute: only.actionRoute);
     if (!mounted) return;
     Navigator.of(context, rootNavigator: true).pop();
     try {
@@ -303,7 +349,7 @@ class _Header extends StatelessWidget {
             size: 20,
             color: scheme.onSurfaceVariant,
           ),
-          tooltip: '关闭（本次登录稍后可从收件台进入）',
+          tooltip: '关闭，稍后可从工作台或通知进入',
           onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
         ),
       ],
@@ -532,7 +578,7 @@ class _Actions extends StatelessWidget {
           child: FilledButton.icon(
             onPressed: busy ? null : onReview,
             icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-            // 第四轮口径：一律去任务工作台（同域→域工作台，混合→收件台），
+            // 同域进入对应任务页，混合待办进入工作台首页，
             // 不再直达第一条的详情页。
             label: const Text('去工作台处理'),
             style: FilledButton.styleFrom(

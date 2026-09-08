@@ -2,6 +2,7 @@ package com.uten.imp.features.warehouse.inbound;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
+import com.uten.imp.features.warehouse.inbound.dto.BatchInspectionDecideRequest;
 import com.uten.imp.features.warehouse.inbound.dto.BatchInspectionPassRequest;
 import com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest;
 import com.uten.imp.features.warehouse.inbound.dto.ProcurementInspectionItemDto;
@@ -112,7 +113,8 @@ public class ProcurementInspectionController {
                             (UUID) row[4], dec(row[5]), received, passed, failed,
                             received.subtract(passed).subtract(failed), (String) row[9],
                             (String) row[10], (String) row[11], (String) row[12],
-                            (UUID) row[13], (String) row[14], nullableDec(row[15]));
+                            (UUID) row[13], (String) row[14], nullableDec(row[15]),
+                            (UUID) row[16], (String) row[17], (String) row[18]);
                 })
                 .toList();
     }
@@ -146,6 +148,20 @@ public class ProcurementInspectionController {
             @PathVariable UUID receiptId,
             @Valid @RequestBody BatchInspectionPassRequest request) {
         service.passBatch(receiptType, receiptId, request);
+    }
+
+    /**
+     * 批量检验报告（2026-09-05「提交报告」）：每行合格+不合格数量一次提交；
+     * 含不合格数量时结论原因必填。整批同事务，任一冲突整批回滚。
+     */
+    @PostMapping("/{receiptType}/{receiptId}/decide-batch")
+    @PreAuthorize("hasAuthority('procurement_inspection:view')"
+            + " and hasAuthority('procurement_inspection:handle')")
+    public void decideBatch(
+            @PathVariable String receiptType,
+            @PathVariable UUID receiptId,
+            @Valid @RequestBody BatchInspectionDecideRequest request) {
+        service.decideBatch(receiptType, receiptId, request);
     }
 
     private static BigDecimal dec(Object value) {

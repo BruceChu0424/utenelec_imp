@@ -30,6 +30,7 @@ public class PreplanInboundAllocationProjectionService
         implements PreplanInboundAllocationReadPort {
 
     private final EntityManager em;
+    private final com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScope;
 
     @Override
     @Transactional(readOnly = true)
@@ -43,6 +44,7 @@ public class PreplanInboundAllocationProjectionService
 
         List<Slice> slices = expectedSlices(receiptType, receiptId, passEventIds);
         if (slices.isEmpty()) return Map.of();
+        Map<UUID, UUID> warehouseRoots = warehouseScope.mainWarehouseIds();
         List<SourceAnchor> anchors = sourceAnchors(
                 receiptType,
                 slices.stream().map(Slice::receiptItemId).distinct().toList());
@@ -79,10 +81,10 @@ public class PreplanInboundAllocationProjectionService
                 for (PreplanCandidate candidate : anchor.externalItemId() == null
                         ? List.<PreplanCandidate>of()
                         : preplan.getOrDefault(anchor.externalItemId(), List.of())) {
-                    boolean warehouseMatches = slice.warehouseId().equals(
-                            candidate.targetWarehouseId())
-                            && slice.warehouseId().equals(
-                                    candidate.analysisWarehouseId());
+                    boolean warehouseMatches = sameMainWarehouse(warehouseRoots,
+                            slice.warehouseId(), candidate.targetWarehouseId())
+                            && sameMainWarehouse(warehouseRoots,
+                                    slice.warehouseId(), candidate.analysisWarehouseId());
                     if (!warehouseMatches) {
                         mismatchedReservationIntent |= candidate.headroom().signum() > 0;
                         if (candidate.headroom().signum() > 0
@@ -103,7 +105,7 @@ public class PreplanInboundAllocationProjectionService
                     if (take.signum() <= 0) continue;
                     views.add(candidate.toView(
                             slice.passEventId(), take,
-                            slice.warehouseId(), slice.warehouseName()));
+                            slice.warehouseId(), slice.warehouseName(), true));
                     preplanHeadroom.put(candidate.allocationId(), headroom.subtract(take));
                     if (shared) {
                         sharedBudget = sharedBudget.subtract(take);
@@ -220,7 +222,7 @@ public class PreplanInboundAllocationProjectionService
                     if (candidate.targetWarehouseName() != null) {
                         intendedWarehouses.add(candidate.targetWarehouseName());
                     }
-                    views.add(candidate.toView(null, take, null, null));
+                    views.add(candidate.toView(null, take, null, null, false));
                     preplanHeadroom.put(candidate.allocationId(), headroom.subtract(take));
                     if (shared) {
                         sharedBudget = sharedBudget.subtract(take);
@@ -696,6 +698,7 @@ public class PreplanInboundAllocationProjectionService
 
     private Map<UUID, List<String>> intendedWarehouses(List<ActualSlice> slices) {
         Map<UUID, LinkedHashSet<String>> result = new LinkedHashMap<>();
+        Map<UUID, UUID> warehouseRoots = warehouseScope.mainWarehouseIds();
         for (String type : List.of("PURCHASE", "SUBCONTRACT")) {
             List<ActualSlice> typed = slices.stream()
                     .filter(slice -> type.equals(slice.orderType()))
@@ -718,8 +721,9 @@ public class PreplanInboundAllocationProjectionService
                         slice.batchItemId(), ignored -> new LinkedHashSet<>());
                 for (SourceAnchor anchor : byOrder.getOrDefault(
                         slice.orderItemId(), List.of())) {
-                    preplan.getOrDefault(anchor.externalItemId(), List.of()).stream()
-                            .filter(candidate -> !Objects.equals(
+                    (anchor.externalItemId() == null ? List.<PreplanCandidate>of()
+                            : preplan.getOrDefault(anchor.externalItemId(), List.of())).stream()
+                            .filter(candidate -> !sameMainWarehouse(warehouseRoots,
                                     candidate.targetWarehouseId(), slice.warehouseId()))
                             .map(PreplanCandidate::targetWarehouseName)
                             .filter(Objects::nonNull).forEach(names::add);
@@ -1001,9 +1005,8 @@ public class PreplanInboundAllocationProjectionService
 
         AllocationView toView(
                 UUID passEventId, BigDecimal qty,
-                UUID actualWarehouseId, String actualWarehouseName) {
-            boolean matches = actualWarehouseId != null
-                    && actualWarehouseId.equals(targetWarehouseId);
+                UUID actualWarehouseId, String actualWarehouseName,
+                boolean matches) {
             String formation = segmentId == null
                     ? "尚未形成生产计划或工单"
                     : workshopId == null
@@ -1127,5 +1130,12 @@ public class PreplanInboundAllocationProjectionService
 
     private static List<String> warehouseNames(String value) {
         return value == null || value.isBlank() ? List.of() : List.of(value);
+    }
+
+    private static boolean sameMainWarehouse(Map<UUID, UUID> roots, UUID left, UUID right) {
+        if (left == null || right == null) return false;
+        if (left.equals(right)) return true;
+        UUID main = roots.get(left);
+        return main != null && main.equals(roots.get(right));
     }
 }

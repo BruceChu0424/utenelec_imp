@@ -75,6 +75,7 @@ public class ProductionFqcInspectionService
     private final ProductionFqcRecoveryPort recovery;
     private final ProductionFinishedInboundReleasePort finishedInbound;
     private final BusinessEventPublisher outbox;
+    private final ProductionQualityMutationFootprintService mutationFootprint;
 
     /**
      * Called by the warehouse-arrival registration transaction after the
@@ -298,10 +299,11 @@ public class ProductionFqcInspectionService
             throw validation("生产质检决定请求不能为空");
         }
         NormalizedRequest normalized = normalizeRequest(request);
+        var sourceGuard = mutationFootprint.beginInspections(List.of(inspectionId));
         prelockDecisionDimensions(inspectionId);
         Object[] inspection = lockInspection(inspectionId);
 
-        return decideLocked(inspectionId, normalized, inspection);
+        return decideLocked(inspectionId, normalized, inspection, sourceGuard::verifyUnchanged);
     }
 
     /**
@@ -317,16 +319,17 @@ public class ProductionFqcInspectionService
         taskAccess.requireQualityPool("当前账号不在品质任务组织范围");
         NormalizedPassAllBatch normalized = normalizePassAllBatch(request);
         UUID actorUserId = currentUser.requireId();
-        BatchCommand batch = claimPassAllBatch(actorUserId, normalized);
-        if (batch.replay()) {
-            return loadPassAllBatch(batch.id(), true, normalized.inspectionIds().size());
-        }
-
+        var sourceGuard = mutationFootprint.beginInspections(normalized.inspectionIds());
+        BatchCommand existing = findPassAllBatch(actorUserId, normalized);
+        if (existing != null) return loadPassAllBatch(existing.id(), true, normalized.inspectionIds().size());
         Map<UUID, Object[]> locked = lockPassAllDecisionDimensions(
                 normalized.inspectionIds());
         for (UUID inspectionId : normalized.inspectionIds()) {
             requireActiveDecisionRow(locked.get(inspectionId));
         }
+        sourceGuard.verifyUnchanged();
+        BatchCommand batch = claimPassAllBatch(actorUserId, normalized);
+        if (batch.replay()) return loadPassAllBatch(batch.id(), true, normalized.inspectionIds().size());
 
         List<PassAllBatchItem> items = new ArrayList<>(
                 normalized.inspectionIds().size());
@@ -336,7 +339,7 @@ public class ProductionFqcInspectionService
                     "PASS", null, null, null, null,
                     passAllChildKey(batch.id(), inspectionId)));
             DecisionResult decision = decideLocked(
-                    inspectionId, child, locked.get(inspectionId));
+                    inspectionId, child, locked.get(inspectionId), () -> { /* whole batch verified before its first write */ });
             if (decision.replay()) {
                 throw conflict("批量全合格子结果已存在但缺少批次关联，请联系管理员核查");
             }
@@ -364,7 +367,8 @@ public class ProductionFqcInspectionService
     private DecisionResult decideLocked(
             UUID inspectionId,
             NormalizedRequest normalized,
-            Object[] inspection) {
+            Object[] inspection,
+            Runnable verifyBeforeFirstWrite) {
 
         List<Object[]> replay = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
@@ -394,6 +398,7 @@ public class ProductionFqcInspectionService
         }
         BigDecimal remaining = reported.subtract(passed).subtract(failed);
         ResolvedDecision resolved = normalized.resolve(remaining);
+        verifyBeforeFirstWrite.run();
 
         UUID eventId = UUID.randomUUID();
         UUID actorUserId = currentUser.requireId();
@@ -802,6 +807,17 @@ public class ProductionFqcInspectionService
             throw conflict("批量全合格幂等命令身份冲突，请刷新后重试");
         }
         return new BatchCommand(batchId, inserted == 0);
+    }
+
+    private BatchCommand findPassAllBatch(UUID actorUserId, NormalizedPassAllBatch normalized) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id, request_hash, inspection_count FROM production_fqc_pass_all_batches
+                WHERE created_by=:actorId AND idempotency_key=:key
+                """).setParameter("actorId",actorUserId).setParameter("key",normalized.idempotencyKey()));
+        if(rows.isEmpty())return null;
+        Object[] row=rows.getFirst();
+        requirePassAllReplayCompatible(string(row[1]),((Number)row[2]).intValue(),normalized);
+        return new BatchCommand((UUID)row[0],true);
     }
 
     private PassAllBatchResult loadPassAllBatch(

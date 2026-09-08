@@ -13,21 +13,37 @@ abstract interface class SalesOrderFinanceConfirmationRepository {
     int size = 20,
     bool? rejected,
     String? keyword,
+    bool? changesOnly,
   });
 
-  Future<int> pendingCount();
+  Future<int> pendingCount({bool? changesOnly});
 
   /// 财务审核详情（专用审核页：订单 + 明细 + 客户财务快照）。
   Future<SalesOrderFinanceReview> review(String orderId);
 
   /// 财务确认（remark 可空）。成功无返回体；失败抛 ApiException。
-  Future<void> confirm(String orderId, {String? remark});
+  Future<void> confirm(
+    String orderId, {
+    String? remark,
+    int? expectedRevision,
+    String? expectedClaimId,
+  });
 
   /// 原子批量确认：任一订单校验失败时服务端整批回滚；单次最多 100 笔。
-  Future<void> confirmBatch(Iterable<String> orderIds, {String? remark});
+  Future<void> confirmBatch(
+    Iterable<String> orderIds, {
+    String? remark,
+    Map<String, int>? expectedRevisions,
+    Map<String, String>? expectedClaimIds,
+  });
 
   /// 财务驳回（reason 必填；决策先保留状态/预留，销售须受控修订回草稿并重新审核）。
-  Future<void> reject(String orderId, {required String reason});
+  Future<void> reject(
+    String orderId, {
+    required String reason,
+    int? expectedRevision,
+    String? expectedClaimId,
+  });
 }
 
 class DioSalesOrderFinanceConfirmationRepository
@@ -42,6 +58,7 @@ class DioSalesOrderFinanceConfirmationRepository
     int size = 20,
     bool? rejected,
     String? keyword,
+    bool? changesOnly,
   }) async {
     final normalizedKeyword = keyword?.trim();
     final json = await api.get(
@@ -50,6 +67,7 @@ class DioSalesOrderFinanceConfirmationRepository
         'page': page,
         'size': size,
         'rejected': ?rejected,
+        'changesOnly': ?changesOnly,
         if (normalizedKeyword != null && normalizedKeyword.isNotEmpty)
           'keyword': normalizedKeyword,
       },
@@ -58,8 +76,11 @@ class DioSalesOrderFinanceConfirmationRepository
   }
 
   @override
-  Future<int> pendingCount() async {
-    final json = await api.get(ApiEndpoints.salesOrderFinanceConfirmationCount);
+  Future<int> pendingCount({bool? changesOnly}) async {
+    final json = await api.get(
+      ApiEndpoints.salesOrderFinanceConfirmationCount,
+      query: {'changesOnly': ?changesOnly},
+    );
     final nested = json['data'];
     final value = json['count'] ?? (nested is Map ? nested['count'] : nested);
     final parsed = value is num
@@ -75,17 +96,29 @@ class DioSalesOrderFinanceConfirmationRepository
   }
 
   @override
-  Future<void> confirm(String orderId, {String? remark}) async {
+  Future<void> confirm(
+    String orderId, {
+    String? remark,
+    int? expectedRevision,
+    String? expectedClaimId,
+  }) async {
     await api.post(
       ApiEndpoints.salesOrderFinanceConfirm(orderId),
       body: <String, dynamic>{
+        'expectedRevision': ?expectedRevision,
+        'expectedClaimId': ?expectedClaimId,
         if (remark != null && remark.trim().isNotEmpty) 'remark': remark.trim(),
       },
     );
   }
 
   @override
-  Future<void> confirmBatch(Iterable<String> orderIds, {String? remark}) async {
+  Future<void> confirmBatch(
+    Iterable<String> orderIds, {
+    String? remark,
+    Map<String, int>? expectedRevisions,
+    Map<String, String>? expectedClaimIds,
+  }) async {
     final normalizedIds =
         orderIds
             .map((id) => id.trim())
@@ -97,16 +130,27 @@ class DioSalesOrderFinanceConfirmationRepository
       ApiEndpoints.salesOrderFinanceConfirmationBatch,
       body: <String, dynamic>{
         'orderIds': normalizedIds,
+        'expectedRevisions': ?expectedRevisions,
+        'expectedClaimIds': ?expectedClaimIds,
         if (remark != null && remark.trim().isNotEmpty) 'remark': remark.trim(),
       },
     );
   }
 
   @override
-  Future<void> reject(String orderId, {required String reason}) async {
+  Future<void> reject(
+    String orderId, {
+    required String reason,
+    int? expectedRevision,
+    String? expectedClaimId,
+  }) async {
     await api.post(
       ApiEndpoints.salesOrderFinanceReject(orderId),
-      body: <String, dynamic>{'reason': reason.trim()},
+      body: <String, dynamic>{
+        'reason': reason.trim(),
+        'expectedRevision': ?expectedRevision,
+        'expectedClaimId': ?expectedClaimId,
+      },
     );
   }
 }

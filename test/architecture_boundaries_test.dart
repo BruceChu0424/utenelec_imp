@@ -66,7 +66,6 @@ void main() {
     'sales->department',
     'sales->employee',
     'sales->notice',
-    'sales->production',
     'sales->report',
     'security->visitor',
     'shell->dashboard',
@@ -112,6 +111,11 @@ void main() {
     // 2026-09-01：委外前置准备页（V447）读取生产物料分析模型与仓储——前置准备
     // 本质是生产分析的一个视图，与后端 SubcontractPreparation 依赖同构。
     'subcontract->production',
+    // 2026-09-05：生产计划一键生成后的统一刷新扇出（production_execution_refresh：
+    // 工作台概览/通知未读与列表同批失效），与 dashboard->* 聚合同族；
+    // 仅 ref.invalidate/read 计数 provider，无 UI/业务依赖。
+    'production->dashboard',
+    'production->notice',
   };
 
   test('feature dependency graph does not grow', () {

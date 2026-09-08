@@ -72,10 +72,10 @@ public class PurchaseOrder extends SoftDeletableEntity {
 
     private String remark;
 
-    @Column(name = "total_original", precision = 18, scale = 4)
+    @Column(name = "total_original", columnDefinition = "numeric")
     private BigDecimal totalOriginal;
 
-    @Column(name = "total_local", precision = 18, scale = 4)
+    @Column(name = "total_local", columnDefinition = "numeric")
     private BigDecimal totalLocal;
 
     @Column(name = "status", nullable = false)

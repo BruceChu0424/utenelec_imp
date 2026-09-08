@@ -68,6 +68,8 @@ class InboundExpectationItem {
     this.unitPrice,
     this.expectedDate,
     this.expectedAllocations = const [],
+    this.lastReceiptWarehouseId,
+    this.lastReceiptWarehouseName,
   });
 
   final String id;
@@ -99,6 +101,8 @@ class InboundExpectationItem {
   final num registeredQty;
   final String? expectedDate;
   final List<WarehouseInboundAllocation> expectedAllocations;
+  final String? lastReceiptWarehouseId;
+  final String? lastReceiptWarehouseName;
 
   /// 还可登记量 = 当前服务端释放容量 − 已登记待审核量。
   num get effectiveRemainingQty {
@@ -133,6 +137,8 @@ class InboundExpectationItem {
       registeredQty: _number(json['registeredQty']),
       expectedDate: _text(json['expectedDate']),
       expectedAllocations: _allocationList(json['expectedAllocations']),
+      lastReceiptWarehouseId: _text(json['lastReceiptWarehouseId']),
+      lastReceiptWarehouseName: _text(json['lastReceiptWarehouseName']),
     );
   }
 }
@@ -269,6 +275,8 @@ class InboundExpectation {
               goodsName: item.goodsName,
               goodsSeries: item.goodsSeries,
               goodsStockPlace: item.goodsStockPlace,
+              lastReceiptWarehouseId: item.lastReceiptWarehouseId,
+              lastReceiptWarehouseName: item.lastReceiptWarehouseName,
               colorId: item.colorId,
               colorName: item.colorName,
               unitId: item.unitId,
@@ -360,6 +368,8 @@ class ProcurementReceiptPrefillItem {
     required this.goodsName,
     required this.unitRate,
     required this.approvedRemainingQty,
+    this.lastReceiptWarehouseId,
+    this.lastReceiptWarehouseName,
     this.goodsSeries,
     this.goodsStockPlace,
     this.colorId,
@@ -393,6 +403,8 @@ class ProcurementReceiptPrefillItem {
   final num? unitPrice;
   final num approvedRemainingQty;
   final List<WarehouseInboundAllocation> expectedAllocations;
+  final String? lastReceiptWarehouseId;
+  final String? lastReceiptWarehouseName;
 }
 
 class ProcurementArrivalReturnTask {
@@ -646,6 +658,24 @@ class WarehouseArrivalRegistration {
       exceptionId: _text(json['exceptionId']),
     );
   }
+}
+
+/// 到货登记一次提交的结果（2026-09-05 行级入库仓库起，可能按仓分组生成多张
+/// 收货单）：registrations 按提交顺序逐仓一条；超量隔离张数由 outcome 汇总。
+class WarehouseArrivalRegistrationBatch {
+  const WarehouseArrivalRegistrationBatch({required this.registrations});
+
+  final List<WarehouseArrivalRegistration> registrations;
+
+  int get quarantinedCount => registrations
+      .where(
+        (item) =>
+            item.outcome ==
+            WarehouseArrivalRegistrationOutcome.excessQuarantined,
+      )
+      .length;
+
+  bool get hasQuarantined => quarantinedCount > 0;
 }
 
 /// 预计到货「批量继续送检」结果：逐张收货单送检结果（alreadyCompleted = 同幂等键

@@ -19,15 +19,20 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart' show utenFmtIsoTime;
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/concurrency/task_claim_session.dart';
+import '../../../shared/providers/session_provider.dart';
+import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../finance_workflow_routes.dart';
 import '../models/finance_procurement_workflow.dart';
@@ -50,6 +55,27 @@ class _FinanceProcurementApprovalReviewPageState
   bool _loading = true;
   bool _busy = false;
   String? _error;
+  TaskClaimSession? _reviewClaim;
+  int _loadGeneration = 0;
+  void _claimChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    ++_loadGeneration;
+    _reviewClaim?.removeListener(_claimChanged);
+    _reviewClaim?.releaseAll().ignore();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(
+    covariant FinanceProcurementApprovalReviewPage oldWidget,
+  ) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.caseId != widget.caseId) _load();
+  }
 
   bool get _canView =>
       ref.read(isSuperAdminProvider) ||
@@ -65,27 +91,56 @@ class _FinanceProcurementApprovalReviewPageState
 
   Future<void> _load() async {
     if (!_canView) return;
+    final generation = ++_loadGeneration;
+    final container = ProviderScope.containerOf(context, listen: false);
+    final identity = container.read(sessionProvider);
     setState(() {
       _loading = true;
       _error = null;
+      _review = null;
     });
     try {
+      _reviewClaim?.removeListener(_claimChanged);
+      await _reviewClaim?.releaseAll();
+      if (!mounted ||
+          generation != _loadGeneration ||
+          !identical(container.read(sessionProvider), identity)) {
+        return;
+      }
+      _reviewClaim = null;
+      final permissions = ref.read(currentPermissionsProvider);
+      if (ref.read(isSuperAdminProvider) ||
+          permissions.contains(Perm.financeOrderApprovalApprove) ||
+          permissions.contains(Perm.financeOrderApprovalReject)) {
+        final claim = financeReviewClaim(container)..addListener(_claimChanged);
+        _reviewClaim = claim;
+        await claim.claimAll('PROCUREMENT_FINANCE_APPROVE', [widget.caseId]);
+        if (!mounted || generation != _loadGeneration || !claim.isCurrent) {
+          await claim.releaseAll();
+          return;
+        }
+      }
       final review = await ref
           .read(financeProcurementWorkflowRepositoryProvider)
           .review(widget.caseId);
-      if (!mounted) return;
+      if (!mounted ||
+          generation != _loadGeneration ||
+          !identical(container.read(sessionProvider), identity)) {
+        return;
+      }
       setState(() {
         _review = review;
         _loading = false;
       });
+      if (!review.isPending) await _reviewClaim?.releaseAll();
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _error = '审核详情加载失败，请检查网络或权限后重试';
         _loading = false;
@@ -110,6 +165,12 @@ class _FinanceProcurementApprovalReviewPageState
   Future<void> _approve() async {
     final review = _review;
     if (review == null || _busy) return;
+    final claim = _reviewClaim;
+    final generation = _loadGeneration;
+    if (claim == null || !claim.isReady) {
+      context.appWarning('尚未取得有效审核占用，请重新认领');
+      return;
+    }
     final decision = review.decisionItem;
     if (decision == null || !review.allowedActions.contains('APPROVE')) {
       context.appWarning('当前账号不可办理该笔通过，请刷新后重试');
@@ -152,8 +213,9 @@ class _FinanceProcurementApprovalReviewPageState
             onPressed: () => Navigator.pop(dialogCtx, false),
             child: const Text('取消'),
           ),
-          FilledButton(
+          FinanceReviewClaimButton(
             key: const Key('finance-order-review-approve-submit'),
+            claim: claim,
             onPressed: () => Navigator.pop(dialogCtx, true),
             child: const Text('确认通过'),
           ),
@@ -165,9 +227,22 @@ class _FinanceProcurementApprovalReviewPageState
     if (ok != true || !mounted) return;
     setState(() => _busy = true);
     try {
+      if (!await claim.validateForDecision() ||
+          !mounted ||
+          generation != _loadGeneration ||
+          !identical(review, _review)) {
+        if (mounted) {
+          context.appWarning(claim.failureMessage ?? '审核占用或内容已变化，请重新核对');
+        }
+        return;
+      }
       await ref
           .read(financeProcurementWorkflowRepositoryProvider)
-          .approveOrdersBatch([decision], remark: remark);
+          .approveOrdersBatch([
+            decision.withClaimId(
+              claim.claimIdFor('PROCUREMENT_FINANCE_APPROVE', widget.caseId)!,
+            ),
+          ], remark: remark);
       if (!mounted) return;
       context.appSuccess('已通过 $widgetSafeBillNo，仓库预计到货任务已生成');
       ref.invalidate(financeProcurementApprovalCountProvider);
@@ -184,6 +259,12 @@ class _FinanceProcurementApprovalReviewPageState
   Future<void> _reject() async {
     final review = _review;
     if (review == null || _busy) return;
+    final claim = _reviewClaim;
+    final generation = _loadGeneration;
+    if (claim == null || !claim.isReady) {
+      context.appWarning('尚未取得有效审核占用，请重新认领');
+      return;
+    }
     final decision = review.decisionItem;
     if (decision == null || !review.allowedActions.contains('REJECT')) {
       context.appWarning('当前账号不可办理该笔驳回，请刷新后重试');
@@ -217,10 +298,12 @@ class _FinanceProcurementApprovalReviewPageState
                   minLines: 3,
                   maxLines: 5,
                   onChanged: (_) => setDialogState(() => errorText = null),
-                  decoration: InputDecoration(
-                    hintText: '驳回原因(必填，如：单价待复核 / 供应商资料待更新)',
-                    border: const OutlineInputBorder(),
-                    error: utenFieldError(errorText),
+                  decoration: UtenInputDecoration(
+                    InputDecoration(
+                      hintText: '驳回原因(必填，如：单价待复核 / 供应商资料待更新)',
+                      border: const OutlineInputBorder(),
+                      error: utenFieldError(errorText),
+                    ),
                   ),
                 ),
               ],
@@ -232,8 +315,9 @@ class _FinanceProcurementApprovalReviewPageState
               onPressed: () => Navigator.pop(dialogCtx, false),
               child: const Text('取消'),
             ),
-            FilledButton(
+            FinanceReviewClaimButton(
               key: const Key('finance-order-review-reject-submit'),
+              claim: claim,
               style: FilledButton.styleFrom(
                 backgroundColor: Theme.of(dialogCtx).colorScheme.error,
               ),
@@ -255,9 +339,22 @@ class _FinanceProcurementApprovalReviewPageState
     if (ok != true || !mounted) return;
     setState(() => _busy = true);
     try {
+      if (!await claim.validateForDecision() ||
+          !mounted ||
+          generation != _loadGeneration ||
+          !identical(review, _review)) {
+        if (mounted) {
+          context.appWarning(claim.failureMessage ?? '审核占用或内容已变化，请重新核对');
+        }
+        return;
+      }
       await ref
           .read(financeProcurementWorkflowRepositoryProvider)
-          .rejectOrdersBatch([decision], reason);
+          .rejectOrdersBatch([
+            decision.withClaimId(
+              claim.claimIdFor('PROCUREMENT_FINANCE_APPROVE', widget.caseId)!,
+            ),
+          ], reason);
       if (!mounted) return;
       context.appSuccess('已驳回 $widgetSafeBillNo，制单人将收到修正通知');
       ref.invalidate(financeProcurementApprovalCountProvider);
@@ -273,6 +370,21 @@ class _FinanceProcurementApprovalReviewPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(sessionProvider);
+    ref.listen(sessionProvider, (previous, next) {
+      if (identical(previous, next)) return;
+      ++_loadGeneration;
+      _reviewClaim?.removeListener(_claimChanged);
+      _reviewClaim?.releaseAll().ignore();
+      _reviewClaim = null;
+      if (mounted) {
+        setState(() {
+          _review = null;
+          _loading = false;
+          _error = '登录身份已变化，请重新加载并认领审核';
+        });
+      }
+    });
     final theme = Theme.of(context);
     final canView =
         ref.watch(isSuperAdminProvider) ||
@@ -331,11 +443,22 @@ class _FinanceProcurementApprovalReviewPageState
                 child: ListView(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
+                    if (review.isPending &&
+                        review.allowedActions.isNotEmpty &&
+                        _reviewClaim?.isReady != true)
+                      FinanceReviewClaimNotice(
+                        claim: _reviewClaim,
+                        onRetry: _busy ? null : _load,
+                      ),
                     _statusStrip(theme, review),
                     const SizedBox(height: UtenSpacing.s12),
                     _supplierFinanceCard(theme, review),
                     const SizedBox(height: UtenSpacing.s12),
                     _orderCard(theme, review),
+                    if (review.qtyChanges.isNotEmpty) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      _qtyChangesCard(theme, review),
+                    ],
                     const SizedBox(height: UtenSpacing.s12),
                     _itemsSection(theme, review),
                     const SizedBox(height: UtenSpacing.s12),
@@ -388,7 +511,9 @@ class _FinanceProcurementApprovalReviewPageState
                               key: const Key('finance-order-review-reject'),
                               type: UtenButtonType.danger,
                               icon: Icons.undo_rounded,
-                              onPressed: _reject,
+                              onPressed: _reviewClaim?.isReady == true
+                                  ? _reject
+                                  : null,
                               child: const Text('驳回'),
                             ),
                           if (review.allowedActions.contains('APPROVE'))
@@ -396,7 +521,9 @@ class _FinanceProcurementApprovalReviewPageState
                               key: const Key('finance-order-review-approve'),
                               type: UtenButtonType.success,
                               icon: Icons.check_circle_outline_rounded,
-                              onPressed: _approve,
+                              onPressed: _reviewClaim?.isReady == true
+                                  ? _approve
+                                  : null,
                               child: const Text('通过'),
                             ),
                         ],
@@ -621,6 +748,94 @@ class _FinanceProcurementApprovalReviewPageState
             kv('备注', r.remark),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 修改清单（批准后改量，照销售财务审核页同款）：每行 以前数量 → 现在数量
+  /// （旧行删除线、新值加粗），财务按此复核后再通过；复核通过后清单归档隐藏。
+  Widget _qtyChangesCard(ThemeData theme, FinanceProcurementApprovalReview r) {
+    final l10n = AppLocalizations.of(context);
+    final warning = theme.colorScheme.error;
+    return Container(
+      key: const Key('procurement-approval-qty-changes'),
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      decoration: BoxDecoration(
+        color: warning.withValues(alpha: 0.08),
+        borderRadius: UtenRadius.mdAll,
+        border: Border.all(color: warning.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.edit_note_rounded, size: 20, color: warning),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Text(
+                  l10n.procurementApprovalQtyChangesTitle(r.qtyChanges.length),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: warning,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: UtenSpacing.s4),
+          Text(
+            l10n.procurementApprovalQtyChangesHint,
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          for (final change in r.qtyChanges)
+            Padding(
+              padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      [
+                        if (change.goodsName != null) change.goodsName!,
+                        if (change.goodsCode != null) '(${change.goodsCode!})',
+                        if (change.colorName?.isNotEmpty == true)
+                          change.colorName!,
+                      ].join(' '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Text(
+                    l10n.orderQtyChangeOld(
+                      '${change.oldQty ?? '—'}'
+                      '${change.unitName == null ? '' : ' ${change.unitName}'}',
+                    ),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      decoration: TextDecoration.lineThrough,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: UtenSpacing.s4),
+                  Icon(Icons.arrow_forward_rounded, size: 14, color: warning),
+                  const SizedBox(width: UtenSpacing.s4),
+                  Text(
+                    l10n.orderQtyChangeNew(
+                      '${change.newQty ?? '—'}'
+                      '${change.unitName == null ? '' : ' ${change.unitName}'}',
+                    ),
+                    key: Key('procurement-qty-change-${change.orderItemId}'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: warning,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

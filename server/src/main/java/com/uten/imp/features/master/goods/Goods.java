@@ -45,6 +45,10 @@ public class Goods extends SoftDeletableEntity {
     @Version
     private long version;
 
+    /** Database-owned first quantity/BOM use; business resets must not unlock it. */
+    @Column(name = "quantity_unit_locked", insertable = false, updatable = false, nullable = false)
+    private boolean quantityUnitLocked;
+
     /** 老库 B_Goods.ID（迁移溯源+重跑幂等）；手工新建的为 null。 */
     @Column(name = "legacy_id", unique = true)
     private Integer legacyId;

@@ -112,7 +112,8 @@ class SubcontractMaterialPlanServiceTest {
         when(currentUser.requireId()).thenReturn(ACTOR_ID);
         service = new SubcontractMaterialPlanService(
                 em, jdbc, docNumber, issueRepo, issueItemRepo, currentUser,
-                chainNotice, inventoryLock);
+                chainNotice, inventoryLock,
+                mock(com.uten.imp.application.port.SubcontractOrderPreparationPort.class));
     }
 
     @Test
@@ -404,6 +405,37 @@ class SubcontractMaterialPlanServiceTest {
         assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
     }
 
+    @Test
+    void approvalReversalAndQuantityChangesLockStockBeforePreparationState() {
+        orderItemRows = List.of(
+                new Object[]{MAKE_ITEM_ID,MAKE_GOODS_ID,null},
+                new Object[]{DIRECT_ITEM_ID,DIRECT_GOODS_ID,null});
+        List<com.uten.imp.features.stock.InventoryKey> expected = List.of(
+                new com.uten.imp.features.stock.InventoryKey(MAKE_GOODS_ID,null),
+                new com.uten.imp.features.stock.InventoryKey(DIRECT_GOODS_ID,null))
+                .stream().sorted().toList();
+        service.createPlanOnApproval(ORDER_ID);
+        var approval = org.mockito.Mockito.inOrder(em,inventoryLock);
+        approval.verify(em).createNativeQuery(ArgumentMatchers.argThat(sql -> sql.contains("inventory_item")));
+        approval.verify(inventoryLock).lockAll(expected);
+        approval.verify(em).createNativeQuery(ArgumentMatchers.argThat(sql -> sql.contains("FROM subcontract_orders WHERE id")));
+
+        org.mockito.Mockito.clearInvocations(em,inventoryLock,jdbc);
+        service.cancelForOrderReversal(ORDER_ID);
+        var reversal = org.mockito.Mockito.inOrder(em,inventoryLock,jdbc);
+        reversal.verify(em).createNativeQuery(ArgumentMatchers.argThat(sql -> sql.contains("inventory_item")));
+        reversal.verify(inventoryLock).lockAll(expected);
+        reversal.verify(jdbc).queryForList(ArgumentMatchers.argThat(sql -> sql.contains("FROM subcontract_material_plans")),
+                eq(UUID.class),eq(ORDER_ID));
+
+        org.mockito.Mockito.clearInvocations(em,inventoryLock,jdbc);
+        service.applyOrderQtyChange(ORDER_ID,Map.of(),Map.of(),Map.of());
+        var change = org.mockito.Mockito.inOrder(em,inventoryLock,jdbc);
+        change.verify(em).createNativeQuery(ArgumentMatchers.argThat(sql -> sql.contains("inventory_item")));
+        change.verify(inventoryLock).lockAll(expected);
+        change.verifyNoMoreInteractions();
+    }
+
     private void stubNativeQueriesBySql() {
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
@@ -420,6 +452,9 @@ class SubcontractMaterialPlanServiceTest {
     }
 
     private List<Object[]> nativeRows(String sql, Map<String, Object> parameters) {
+        if (sql.contains("FROM subcontract_order_items inventory_item")) {
+            return orderItemRows.stream().map(row -> new Object[]{row[1],row[2]}).toList();
+        }
         if (sql.contains("FROM subcontract_orders WHERE id")) {
             return orderRows;
         }

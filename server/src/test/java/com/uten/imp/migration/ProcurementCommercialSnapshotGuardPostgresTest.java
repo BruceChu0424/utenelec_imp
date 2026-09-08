@@ -1,6 +1,7 @@
 package com.uten.imp.migration;
 
 import com.uten.imp.common.finance.ProcurementOrderClosurePolicy;
+import com.uten.imp.support.ProcurementReceiptFixtureSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.flywaydb.core.Flyway;
@@ -430,16 +431,7 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
                         new BigDecimal("10"), BigDecimal.ZERO);
                 markWarehouseStocked(connection, reversedReceipt.inspectionId(),
                         new BigDecimal("10"));
-                exec(connection, "UPDATE " + receiptTable(type)
-                        + " SET status=-1 WHERE id='" + reversedReceipt.receiptId() + "'");
-                exec(connection, """
-                        UPDATE procurement_inspection_items
-                        SET passed_base_qty=0,failed_base_qty=0,status='REVERSED',
-                            warehouse_stocked_base_qty=0,
-                            warehouse_stocked_amount_local=0,
-                            warehouse_stocked_weight=NULL
-                        WHERE id='%s'
-                        """.formatted(reversedReceipt.inspectionId()));
+                ProcurementReceiptFixtureSupport.reverseStoredReceipt(connection,type,reversedReceipt.receiptId(),actorUser);
                 exec(connection, "UPDATE " + itemTable(type)
                         + " SET received_qty=0 WHERE id='" + reversed.itemId() + "'");
                 recalculateClosure(connection, type, reversed.itemId());
@@ -507,6 +499,8 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
                     connection,"PURCHASE",order.itemId(),BigDecimal.TEN,
                     new BigDecimal("8"),new BigDecimal("2"));
             UUID caseId=UUID.randomUUID();
+            UUID fundingId;
+            connection.setAutoCommit(false);
             try(PreparedStatement insert=connection.prepareStatement("""
                     INSERT INTO procurement_iqc_rejection_cases(
                         id,receipt_type,receipt_id,receipt_item_id,inspection_item_id,
@@ -539,8 +533,11 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
                 insert.setObject(i,rejected.receiptItemId());
                 assertEquals(1,insert.executeUpdate());
             }
-            ReceiptSeed replacement=receipt(
-                    connection,"PURCHASE",order.itemId(),new BigDecimal("2"),null,null);
+            fundingId=ProcurementReceiptFixtureSupport.appendFailureFunding(connection,caseId,actorUser);
+            connection.commit();connection.setAutoCommit(true);
+            connection.setAutoCommit(false);
+            ReceiptSeed replacement=draftPurchaseReceiptItem(connection,order.itemId(),new BigDecimal("2"));
+            exec(connection,"UPDATE purchase_receipt_items SET replacement_intent='RETURN_REPLACEMENT' WHERE id='"+replacement.receiptItemId()+"'");
             UUID allocationId=UUID.randomUUID();
             exec(connection,"""
                     INSERT INTO procurement_iqc_replacement_allocations(
@@ -551,6 +548,9 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
                     VALUES('%s','%s','PURCHASE','%s','%s',2,2,2,2,'ACTIVE',1,'%s')
                     """.formatted(allocationId,caseId,replacement.receiptId(),
                     replacement.receiptItemId(),actorUser));
+            exec(connection,"UPDATE purchase_receipts SET status=1 WHERE id='"+replacement.receiptId()+"'");
+            ProcurementReceiptFixtureSupport.appendNoChargeReplacement(connection,"PURCHASE",replacement.receiptId(),allocationId,fundingId,actorUser);
+            connection.commit();connection.setAutoCommit(true);
             ReceiptSeed excess=draftPurchaseReceiptItem(
                     connection,order.itemId(),BigDecimal.ONE);
             assert23514(()->exec(connection,"""
@@ -570,12 +570,16 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
                         reversed_at=now(),row_version=row_version+1
                     WHERE id='%s'
                     """.formatted(actorUser,caseId)));
+            connection.setAutoCommit(false);
+            ProcurementReceiptFixtureSupport.appendReceiptReversal(connection,"PURCHASE",replacement.receiptId());
             exec(connection,"""
                     UPDATE procurement_iqc_replacement_allocations
                     SET status='REVERSED',row_version=2,reversed_by='%s',
                         reversed_at=now(),reverse_reason='补货收货红冲'
                     WHERE id='%s'
                     """.formatted(actorUser,allocationId));
+            exec(connection,"UPDATE purchase_receipts SET status=-1 WHERE id='"+replacement.receiptId()+"'");
+            connection.commit();connection.setAutoCommit(true);
             assertEquals(0,scalar(connection,"""
                     SELECT COUNT(*) FROM procurement_iqc_replacement_allocations
                     WHERE id='%s' AND status='ACTIVE'
@@ -600,135 +604,142 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
             BigDecimal qty,
             BigDecimal passed,
             BigDecimal failed) throws SQLException {
-        UUID receiptId = UUID.randomUUID();
-        UUID receiptItemId = UUID.randomUUID();
-        String prefix = "PURCHASE".equals(type) ? "CJ" : "EJ";
-        String billNo = "%s20260830%06d".formatted(
-                prefix, DOCUMENT_SEQUENCE.incrementAndGet());
-        String extra = "SUBCONTRACT".equals(type) ? ",ap_posted" : "";
-        String extraValue = "SUBCONTRACT".equals(type) ? ",TRUE" : "";
-        try (PreparedStatement insert = connection.prepareStatement("""
-                INSERT INTO %s(
-                    id,bill_no,bill_date,supplier_id,warehouse_id,currency_id,
-                    exchange_rate,tax_rate,settlement_method_id,total_original,total_local,status%s)
-                VALUES(?,?,'2026-08-30',?,?,?,?,0,?,?,?,1%s)
-                """.formatted(receiptTable(type), extra, extraValue))) {
-            insert.setObject(1, receiptId);
-            insert.setString(2, billNo);
-            insert.setObject(3, supplier);
-            insert.setObject(4, warehouse);
-            insert.setObject(5, activeCurrency);
-            insert.setBigDecimal(6, BigDecimal.ONE);
-            insert.setObject(7, activeSettlement);
-            insert.setBigDecimal(8, qty);
-            insert.setBigDecimal(9, qty);
-            insert.executeUpdate();
-        }
-        try (PreparedStatement insert = connection.prepareStatement("""
-                INSERT INTO %s(
-                    id,bill_no,bill_date,receipt_id,line_no,goods_id,unit_rate,
-                    qty,price,amount_original,amount_local,order_item_id,
-                    goods_code_snapshot,goods_name_snapshot,goods_snapshot_source)
-                VALUES(?,?,'2026-08-30',?,1,?,1,?,1,?,?,?,
-                    'V438-G','V438货品','MASTER_AT_SAVE')
-                """.formatted(receiptItemTable(type)))) {
-            insert.setObject(1, receiptItemId);
-            insert.setString(2, billNo);
-            insert.setObject(3, receiptId);
-            insert.setObject(4, goods);
-            insert.setBigDecimal(5, qty);
-            insert.setBigDecimal(6, qty);
-            insert.setBigDecimal(7, qty);
-            insert.setObject(8, orderItemId);
-            insert.executeUpdate();
-        }
-        exec(connection, "UPDATE " + itemTable(type)
-                + " SET received_qty=COALESCE(received_qty,0)+" + qty.toPlainString()
-                + " WHERE id='" + orderItemId + "'");
-        UUID inspectionId = null;
-        if (passed != null && failed != null) {
-            boolean restoreAutoCommit=connection.getAutoCommit();
-            if(restoreAutoCommit)connection.setAutoCommit(false);
-            inspectionId = UUID.randomUUID();
-            String status = passed.add(failed).compareTo(qty) == 0 ? "RESOLVED" : "PARTIAL";
+        boolean ownTransaction=connection.getAutoCommit();
+        if(ownTransaction)connection.setAutoCommit(false);
+        try {
+            UUID receiptId = UUID.randomUUID();
+            UUID receiptItemId = UUID.randomUUID();
+            String prefix = "PURCHASE".equals(type) ? "CJ" : "EJ";
+            String billNo = "%s20260830%06d".formatted(
+                    prefix, DOCUMENT_SEQUENCE.incrementAndGet());
+            String extra = "SUBCONTRACT".equals(type) ? ",ap_posted" : "";
+            String extraValue = "SUBCONTRACT".equals(type) ? ",TRUE" : "";
             try (PreparedStatement insert = connection.prepareStatement("""
-                    INSERT INTO procurement_inspection_items(
-                        id,receipt_type,receipt_id,receipt_item_id,warehouse_id,goods_id,
-                        unit_rate,received_base_qty,received_amount_local,
-                        passed_base_qty,failed_base_qty,status)
-                    VALUES(?,?,?,?,?,?,1,?,?,?, ?,?)
-                    """)) {
-                insert.setObject(1, inspectionId);
-                insert.setString(2, type);
-                insert.setObject(3, receiptId);
-                insert.setObject(4, receiptItemId);
-                insert.setObject(5, warehouse);
-                insert.setObject(6, goods);
-                insert.setBigDecimal(7, qty);
+                    INSERT INTO %s(
+                        id,bill_no,bill_date,supplier_id,warehouse_id,currency_id,
+                        exchange_rate,tax_rate,settlement_method_id,total_original,total_local,status%s)
+                    VALUES(?,?,'2026-08-30',?,?,?,?,0,?,?,?,1%s)
+                    """.formatted(receiptTable(type), extra, extraValue))) {
+                insert.setObject(1, receiptId);
+                insert.setString(2, billNo);
+                insert.setObject(3, supplier);
+                insert.setObject(4, warehouse);
+                insert.setObject(5, activeCurrency);
+                insert.setBigDecimal(6, BigDecimal.ONE);
+                insert.setObject(7, activeSettlement);
                 insert.setBigDecimal(8, qty);
-                insert.setBigDecimal(9, passed);
-                insert.setBigDecimal(10, failed);
-                insert.setString(11, status);
+                insert.setBigDecimal(9, qty);
                 insert.executeUpdate();
             }
-            if (passed.signum() > 0) {
-                UUID passEvent = UUID.randomUUID();
-                exec(connection, """
-                    INSERT INTO procurement_inspection_events(
-                            id,inspection_item_id,action,base_qty,actor_employee_id,
-                            requires_warehouse_stock_in,released_amount_local)
-                        VALUES('%s','%s','PASS',%s,'%s',TRUE,%s)
-                        """.formatted(passEvent, inspectionId,
-                        passed.toPlainString(), actorEmployee,
-                        passed.toPlainString()));
+            try (PreparedStatement insert = connection.prepareStatement("""
+                    INSERT INTO %s(
+                        id,bill_no,bill_date,receipt_id,line_no,goods_id,unit_rate,
+                        qty,price,amount_original,amount_local,order_item_id,
+                        replacement_intent,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source)
+                    VALUES(?,?,'2026-08-30',?,1,?,1,?,1,?,?,?,
+                        'NORMAL','V438-G','V438货品','MASTER_AT_SAVE')
+                    """.formatted(receiptItemTable(type)))) {
+                insert.setObject(1, receiptItemId);
+                insert.setString(2, billNo);
+                insert.setObject(3, receiptId);
+                insert.setObject(4, goods);
+                insert.setBigDecimal(5, qty);
+                insert.setBigDecimal(6, qty);
+                insert.setBigDecimal(7, qty);
+                insert.setObject(8, orderItemId);
+                insert.executeUpdate();
             }
-            if (failed.signum() > 0) {
-                UUID failEvent = UUID.randomUUID();
-                exec(connection, """
+            ProcurementReceiptFixtureSupport.postOriginalReceiptPayable(connection,type,receiptId,actorUser);
+            ProcurementReceiptFixtureSupport.appendStandardReceipt(connection,type,receiptId,actorUser);
+            exec(connection, "UPDATE " + itemTable(type)
+                    + " SET received_qty=COALESCE(received_qty,0)+" + qty.toPlainString()
+                    + " WHERE id='" + orderItemId + "'");
+            UUID inspectionId = null;
+            if (passed != null && failed != null) {
+                boolean restoreAutoCommit=connection.getAutoCommit();
+                if(restoreAutoCommit)connection.setAutoCommit(false);
+                inspectionId = UUID.randomUUID();
+                String status = passed.add(failed).compareTo(qty) == 0 ? "RESOLVED" : "PARTIAL";
+                try (PreparedStatement insert = connection.prepareStatement("""
+                        INSERT INTO procurement_inspection_items(
+                            id,receipt_type,receipt_id,receipt_item_id,warehouse_id,goods_id,
+                            unit_rate,received_base_qty,received_amount_local,
+                            passed_base_qty,failed_base_qty,status)
+                        VALUES(?,?,?,?,?,?,1,?,?,?, ?,?)
+                        """)) {
+                    insert.setObject(1, inspectionId);
+                    insert.setString(2, type);
+                    insert.setObject(3, receiptId);
+                    insert.setObject(4, receiptItemId);
+                    insert.setObject(5, warehouse);
+                    insert.setObject(6, goods);
+                    insert.setBigDecimal(7, qty);
+                    insert.setBigDecimal(8, qty);
+                    insert.setBigDecimal(9, passed);
+                    insert.setBigDecimal(10, failed);
+                    insert.setString(11, status);
+                    insert.executeUpdate();
+                }
+                if (passed.signum() > 0) {
+                    UUID passEvent = UUID.randomUUID();
+                    exec(connection, """
                         INSERT INTO procurement_inspection_events(
-                            id,inspection_item_id,action,base_qty,reason,actor_employee_id)
-                        VALUES('%s','%s','FAIL',%s,'V440 PG fixture','%s')
-                        """.formatted(failEvent, inspectionId,
-                        failed.toPlainString(), actorEmployee));
-                exec(connection, """
-                        INSERT INTO business_outbox(
-                            id,event_type,aggregate_type,aggregate_id,payload,
-                            dedupe_key,created_by)
-                        VALUES(
-                            gen_random_uuid(),'PROCUREMENT_IQC_REJECTION_DETECTED',
-                            'PROCUREMENT_INSPECTION_ITEM','%s',
-                            jsonb_build_object(
-                                'receiptType','%s','receiptId','%s',
-                                'inspectionEventId','%s'),
-                            'V440-PG-%s','%s')
-                        """.formatted(inspectionId,type,receiptId,failEvent,
-                        failEvent,actorUser));
+                                id,inspection_item_id,action,base_qty,actor_employee_id,
+                                requires_warehouse_stock_in,released_amount_local)
+                            VALUES('%s','%s','PASS',%s,'%s',TRUE,%s)
+                            """.formatted(passEvent, inspectionId,
+                            passed.toPlainString(), actorEmployee,
+                            passed.toPlainString()));
+                }
+                if (failed.signum() > 0) {
+                    UUID failEvent = UUID.randomUUID();
+                    exec(connection, """
+                            INSERT INTO procurement_inspection_events(
+                                id,inspection_item_id,action,base_qty,reason,actor_employee_id)
+                            VALUES('%s','%s','FAIL',%s,'V440 PG fixture','%s')
+                            """.formatted(failEvent, inspectionId,
+                            failed.toPlainString(), actorEmployee));
+                    exec(connection, """
+                            INSERT INTO business_outbox(
+                                id,event_type,aggregate_type,aggregate_id,payload,
+                                dedupe_key,created_by)
+                            VALUES(
+                                gen_random_uuid(),'PROCUREMENT_IQC_REJECTION_DETECTED',
+                                'PROCUREMENT_INSPECTION_ITEM','%s',
+                                jsonb_build_object(
+                                    'receiptType','%s','receiptId','%s',
+                                    'inspectionEventId','%s'),
+                                'V440-PG-%s','%s')
+                            """.formatted(inspectionId,type,receiptId,failEvent,
+                            failEvent,actorUser));
+                }
+                if(restoreAutoCommit){
+                    connection.commit();
+                    connection.setAutoCommit(true);
+                }
             }
-            if(restoreAutoCommit){
-                connection.commit();
-                connection.setAutoCommit(true);
-            }
+            ProcurementReceiptFixtureSupport.appendExistingQualityConsideration(connection,type,receiptId,actorUser);
+            if(ownTransaction)connection.commit();
+            return new ReceiptSeed(receiptId, receiptItemId, inspectionId);
+        } catch(SQLException|RuntimeException failure) {
+            if(ownTransaction)connection.rollback();
+            throw failure;
+        } finally {
+            if(ownTransaction)connection.setAutoCommit(true);
         }
-        return new ReceiptSeed(receiptId, receiptItemId, inspectionId);
     }
 
     private static void markWarehouseStocked(
             Connection connection, UUID inspectionId, BigDecimal quantity)
             throws SQLException {
-        exec(connection, "SET session_replication_role=replica");
-        try (PreparedStatement update = connection.prepareStatement("""
-                UPDATE procurement_inspection_items
-                SET warehouse_stocked_base_qty=?,
-                    warehouse_stocked_amount_local=?
-                WHERE id=?
-                """)) {
-            update.setBigDecimal(1, quantity);
-            update.setBigDecimal(2, quantity);
-            update.setObject(3, inspectionId);
-            update.executeUpdate();
-        } finally {
-            exec(connection, "SET session_replication_role=origin");
+        try(var query=connection.prepareStatement("SELECT passed_base_qty FROM procurement_inspection_items WHERE id=?")) {
+            query.setObject(1,inspectionId);
+            try(var rows=query.executeQuery()) {
+                assertTrue(rows.next());
+                assertEquals(0,quantity.compareTo(rows.getBigDecimal(1)));
+            }
         }
+        ProcurementReceiptFixtureSupport.stockPricedPasses(connection,List.of(inspectionId));
     }
 
     private static ReceiptSeed draftPurchaseReceiptItem(

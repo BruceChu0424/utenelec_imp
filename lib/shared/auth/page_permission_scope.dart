@@ -205,7 +205,6 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _salesOtherShipmentScope,
   _salesReturnScope,
   _subcontractHubScope,
-  _subcontractPreparationScope,
   _subcontractReportScope,
   _subcontractInquiryScope,
   _subcontractApplicationScope,
@@ -342,9 +341,6 @@ PagePermissionScope? _salesScopeFor(List<String> segments) {
 
 PagePermissionScope? _subcontractScopeFor(List<String> segments) {
   if (segments.length == 1) return _subcontractHubScope;
-  if (segments[1] == 'preparations') {
-    return segments.length == 2 ? _subcontractPreparationScope : null;
-  }
   if (segments[1] == 'report') {
     return segments.length <= 3 ? _subcontractReportScope : null;
   }
@@ -393,7 +389,8 @@ PagePermissionScope? _financeScopeFor(String path, List<String> segments) {
       _isDescendant(path, '/finance/procurement-approvals')) {
     return _financeOrderApprovalScope;
   }
-  if (path == '/finance/sales-order-confirmations' ||
+  if (path == '/finance/sales-order-changes' ||
+      path == '/finance/sales-order-confirmations' ||
       _isDescendant(path, '/finance/sales-order-confirmations')) {
     return _salesFinanceScope;
   }
@@ -769,10 +766,6 @@ const _salesDocumentScopes = <String, PagePermissionScope>{
 const _subcontractHubScope = PagePermissionScope(
   surfaceKey: 'subcontract.hub',
   title: '委外管理',
-);
-const _subcontractPreparationScope = PagePermissionScope(
-  surfaceKey: 'subcontract.preparation',
-  title: '委外前置自制',
 );
 const _subcontractReportScope = PagePermissionScope(
   surfaceKey: 'subcontract.report',

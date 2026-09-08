@@ -80,11 +80,12 @@ public class VisitorHrApprovalService {
     public VisitorDetail handleAction(UUID id, VisitorApproveRequest req) {
         UUID approverId = guard.requireStaff();
         tx.bind();
-        VisitorApplication app = appService.load(id);
+        VisitorApplication app = appService.loadForUpdate(id);
         String action = req.action() == null ? "" : req.action();
         switch (action) {
             case "approve" -> {
                 assertStatus(app, "pending", "hostReviewing");
+                appService.requireActiveAccount(app);
                 app.setStatus("approved");
                 app.setApprovedBy(approverId);
                 app.setApprovedAt(OffsetDateTime.now());

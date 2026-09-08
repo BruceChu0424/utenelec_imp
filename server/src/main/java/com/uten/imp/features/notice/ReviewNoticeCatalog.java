@@ -18,6 +18,10 @@ public final class ReviewNoticeCatalog {
 
     /** sourceEvent → 注册项。 */
     private static final Map<String, Entry> ENTRIES = Map.ofEntries(
+            Map.entry("SALES_SHIPMENT_PENDING_FINANCE_AUDIT",new Entry("SALES_SHIPMENT","SALES_SHIPMENT_FINANCE_AUDIT")),
+            Map.entry("SALES_SHIPMENT_PENDING_PICK",new Entry("SALES_SHIPMENT",null)),
+            Map.entry("SALES_SHIPMENT_FINANCE_REJECTED",new Entry("SALES_SHIPMENT",null)),
+            Map.entry("DIRECT_CUSTOMER_SHIPMENT_FINANCE_REJECTED",new Entry("SALES_SHIPMENT",null)),
             // P0 三线（V459 批次接线；事件名与 ChainNoticeService 现有常量一致，
             // 保证 unread-count-by-source 等既有统计口径不变）：
             // 销售订单审核后 → 财务确认（V294/V300，SalesOrderFinanceConfirmer 资格池）
@@ -36,11 +40,53 @@ public final class ReviewNoticeCatalog {
             Map.entry(
                     "SALES_ORDER_FULLY_PRODUCED_READY_TO_SHIP",
                     new Entry("SALES_ORDER", null)),
+            // 新订单待物料分析（财务确认后广播计划部）。生产部创建物料分析
+            // 即按 (SALES_ORDER, orderId) 办结撤回（无排他认领，2026-09-05
+            // 补办结闭环：此前无聚合计绑定，通知永不办结）。
+            Map.entry(
+                    "SALES_ORDER_APPROVED",
+                    new Entry("SALES_ORDER", null)),
             // 生产计划下达、待料转齐套和仓库实发共用同一执行段任务。
             // 无排他认领：同一车间可协作办理；首次报工后按聚合办结。
             Map.entry(
                     "PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED",
-                    new Entry("PRODUCTION_EXECUTION_SEGMENT", null)));
+                    new Entry("PRODUCTION_EXECUTION_SEGMENT", null)),
+            // ===== 2026-09-05 全链弹窗补齐（用户口径：每个「该谁干活」的节点
+            // 都要有居中行动卡；办结动作后按聚合撤回）=====
+            // 品质放行 → 仓库确认入库（每个 PASS 切片一张卡；该切片全部入库即办结）
+            Map.entry(
+                    "PROCUREMENT_IQC_STOCK_IN_PENDING",
+                    new Entry("PROCUREMENT_INSPECTION_PASS", null)),
+            // 计划部领料单 → 仓库出库（DRAW 单据级；实际出库后办结）
+            Map.entry(
+                    "PRODUCTION_DRAW_PENDING",
+                    new Entry("STOCK_DOCUMENT", null)),
+            // 财务批准 → 仓库预计到货（订单级；到货全部登记完/CLOSED 即办结）
+            Map.entry(
+                    "PROCUREMENT_FINANCE_APPROVED",
+                    new Entry("PROCUREMENT_ORDER", null)),
+            // 委外前置自制待启动（计划行级；目标件真实出仓后办结）
+            Map.entry(
+                    "SUBCONTRACT_PREPARATION_REQUIRED",
+                    new Entry("SUBCONTRACT_MATERIAL_PLAN_ITEM", null)),
+            // ===== 2026-09-05 委外收敛 + IQC/改量通知补齐 =====
+            // 直接下单有子层目标件：草稿期自动发单给计划（分析级；完工入库后办结）
+            Map.entry(
+                    "SUBCONTRACT_ORDER_PREPARATION_DISPATCHED",
+                    new Entry("MATERIAL_ANALYSIS", null)),
+            // IQC 不合格建案 → 仓库/订单归属人登记实物退回（case 级；
+            // 贷项确认/无贷项结案/反向时撤卡）
+            Map.entry(
+                    "PROCUREMENT_IQC_REJECTION_OPENED",
+                    new Entry("IQC_REJECTION_CASE", null)),
+            // 实物退回已登记 → 财务确认贷项或无贷项结案（case 级；同上撤卡）
+            Map.entry(
+                    "PROCUREMENT_IQC_REJECTION_RETURNED",
+                    new Entry("IQC_REJECTION_CASE", null)),
+            // 财务批准后改量 → 重回财务复核队列（case 级；复核通过/驳回时撤卡）
+            Map.entry(
+                    "PROCUREMENT_FINANCE_CHANGE_SUBMITTED",
+                    new Entry("PROCUREMENT_APPROVAL_CASE", "PROCUREMENT_FINANCE_APPROVE")));
 
     private ReviewNoticeCatalog() {
     }

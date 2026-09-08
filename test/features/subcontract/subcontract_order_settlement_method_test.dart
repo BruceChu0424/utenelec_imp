@@ -163,9 +163,19 @@ void main() {
 
   testWidgets('375px 编辑加载已有结算方式且提交 settlementMethodId', (tester) async {
     _usePhoneViewport(tester);
-    final api = _api((_) => <Object?>[]);
+    final api = _api(
+      (request) => request.path.endsWith('/warehouses/dict')
+          ? <Map<String, dynamic>>[
+              {'id': 'main', 'name': '总仓'},
+              {'id': 'original', 'name': '内部成品仓', 'parentId': 'main'},
+              {'id': 'assembly', 'name': '组装仓', 'parentId': 'main'},
+            ]
+          : <Object?>[],
+    );
     final repository = _RecordingOrderRepository(
-      SubcontractDocDetail.fromJson(_orderDetailJson()),
+      SubcontractDocDetail.fromJson(
+        _orderDetailJson()..['warehouseId'] = 'original',
+      ),
       api,
     );
 
@@ -185,11 +195,21 @@ void main() {
     // 2026-09 行级商业条款：结算方式在明细行，单元格显示名称(代码)，单头无结算字段。
     expect(find.text('月结(NET30)'), findsOneWidget);
 
+    // The saved preparation warehouse is visible, and employees can choose a real child warehouse.
+    await tester.ensureVisible(
+      find.byKey(const Key('subcontract-preparation-warehouse')),
+    );
+    await tester.tap(find.text('内部成品仓'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('组装仓').last);
+    await tester.pumpAndSettle();
+
     await tester.tap(find.text('保存订货单草稿'));
     await tester.pump();
 
     // 单头条款 = 全行一致的条款；行级同值随行提交（批量拆单契约）。
     expect(repository.updatedBody?['settlementMethodId'], _settlementId);
+    expect(repository.updatedBody?['warehouseId'], 'assembly');
     final items = repository.updatedBody?['items'] as List;
     expect((items.first as Map)['settlementMethodId'], _settlementId);
   });

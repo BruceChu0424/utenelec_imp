@@ -6,6 +6,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -652,6 +653,7 @@ class _MaterialReallocationDialogBodyState
             errorBuilder: utenTextFieldErrorBuilder,
             key: const Key('cross-reallocation-qty'),
             controller: _qtyController,
+            ignorePointers: false,
             enabled: !_submitting,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             textInputAction: TextInputAction.next,
@@ -660,15 +662,17 @@ class _MaterialReallocationDialogBodyState
               _dirty = true;
               _submitError = null;
             }),
-            decoration: InputDecoration(
-              label: fieldLabel(
-                '让料数量',
-                theme,
-                info:
-                    '服务端可让 ${widget.qtyText(target.sourceLendableQty)} · '
-                    '接受计划缺 ${widget.qtyText(target.shortageQty)} · 最多 ${widget.qtyText(_maxQty)}',
+            decoration: UtenInputDecoration(
+              InputDecoration(
+                label: fieldLabel(
+                  '让料数量',
+                  theme,
+                  info:
+                      '服务端可让 ${widget.qtyText(target.sourceLendableQty)} · '
+                      '接受计划缺 ${widget.qtyText(target.shortageQty)} · 最多 ${widget.qtyText(_maxQty)}',
+                ),
+                suffixText: _sourceMaterial.unitName,
               ),
-              suffixText: _sourceMaterial.unitName,
             ),
           ),
           const SizedBox(height: UtenSpacing.s12),
@@ -676,6 +680,7 @@ class _MaterialReallocationDialogBodyState
             errorBuilder: utenTextFieldErrorBuilder,
             key: const Key('cross-reallocation-reason'),
             controller: _reasonController,
+            ignorePointers: false,
             enabled: !_submitting,
             minLines: 2,
             maxLines: 4,
@@ -685,13 +690,15 @@ class _MaterialReallocationDialogBodyState
               _dirty = true;
               _submitError = null;
             }),
-            decoration: InputDecoration(
-              label: fieldLabel(
-                '业务原因(必填)',
-                theme,
-                info: '例如：客户订单加急，本批现货先给该计划。',
+            decoration: UtenInputDecoration(
+              InputDecoration(
+                label: fieldLabel(
+                  '业务原因(必填)',
+                  theme,
+                  info: '例如：客户订单加急，本批现货先给该计划。',
+                ),
+                alignLabelWithHint: true,
               ),
-              alignLabelWithHint: true,
             ),
           ),
           if (parsedQty != null && parsedQty > 0) ...[

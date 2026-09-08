@@ -132,6 +132,8 @@ server/legacy_migration/users_names.txt
 # Ad-hoc maven target/classpath variants (never publish)
 /server/target-*.classpath
 /server/target-*/
+/server/target-*-report.txt
+/server/target-*-report.xml
 
 # 本地可复现性备份哈希（未入库，纯本地）
 /.repro_backup_hash.txt

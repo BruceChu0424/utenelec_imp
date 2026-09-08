@@ -76,7 +76,17 @@ public class SupplierPayableHoldGuard {
     boolean authorizedIqcCreditOffset(
             UUID caseId, UUID sourceCreditLedgerId, Collection<UUID> targetLedgerIds) {
         if (caseId == null || sourceCreditLedgerId == null
-                || targetLedgerIds == null || targetLedgerIds.size() != 1) return false;
+                || targetLedgerIds == null || targetLedgerIds.isEmpty()) return false;
+        long covered=((Number)em.createNativeQuery("""
+                SELECT COUNT(DISTINCT funding.source_ap_ledger_id)
+                FROM procurement_iqc_credit_slices credit
+                JOIN procurement_iqc_funding_slices funding ON funding.id=credit.funding_slice_id
+                WHERE credit.case_id=:caseId AND funding.source_ap_ledger_id IN (:targets)
+                  AND fn_procurement_iqc_slice_offset_authorized(:caseId,:source,funding.source_ap_ledger_id)
+                """).setParameter("caseId",caseId).setParameter("source",sourceCreditLedgerId)
+                .setParameter("targets",targetLedgerIds).getSingleResult()).longValue();
+        if(covered==new java.util.HashSet<>(targetLedgerIds).size())return true;
+        if(targetLedgerIds.size()!=1)return false;
         UUID target = targetLedgerIds.iterator().next();
         long count = ((Number) em.createNativeQuery("""
                         SELECT COUNT(*)
@@ -101,84 +111,32 @@ public class SupplierPayableHoldGuard {
     private List<Object[]> holdRows(
             Collection<UUID> ledgerIds, UUID allowedIqcCaseId) {
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery("""
-                        WITH inspection_link AS (
-                            SELECT 'PURCHASE_RECEIPT'::text source_type,
-                                   receipt_item.receipt_id source_id,
-                                   inspection.id inspection_item_id,
-                                   inspection.received_base_qty,
-                                   inspection.passed_base_qty,
-                                   inspection.failed_base_qty,
-                                   inspection.status
-                            FROM procurement_inspection_items inspection
-                            JOIN purchase_receipt_items receipt_item
-                              ON receipt_item.id=inspection.receipt_item_id
-                            WHERE inspection.receipt_type='PURCHASE'
-                              AND inspection.status<>'REVERSED'
-                            UNION ALL
-                            SELECT 'SUBCONTRACT_RECEIPT',receipt_item.receipt_id,
-                                   inspection.id,inspection.received_base_qty,
-                                   inspection.passed_base_qty,inspection.failed_base_qty,
-                                   inspection.status
-                            FROM procurement_inspection_items inspection
-                            JOIN subcontract_receipt_items receipt_item
-                              ON receipt_item.id=inspection.receipt_item_id
-                            WHERE inspection.receipt_type='SUBCONTRACT'
-                              AND inspection.status<>'REVERSED'
-                        )
-                        SELECT ledger.id,ledger.source_doc_no,
-                               COALESCE(SUM(link.received_base_qty-link.passed_base_qty
-                                   -link.failed_base_qty)
-                                   FILTER(WHERE link.status IN('PENDING','PARTIAL')),0),
-                               COALESCE(SUM(link.failed_base_qty),0)
-                        FROM ar_ap_ledger ledger
-                        JOIN inspection_link link
-                          ON link.source_type=ledger.source_doc_type
-                         AND link.source_id=ledger.source_doc_id
-                        LEFT JOIN procurement_iqc_rejection_cases rejection
-                          ON rejection.inspection_item_id=link.inspection_item_id
-                         AND COALESCE(rejection.is_deleted,FALSE)=FALSE
-                        WHERE ledger.id IN (:ledgerIds)
-                          AND NOT (
-                              CAST(:allowedCaseId AS uuid) IS NOT NULL
-                              AND EXISTS(
-                                  SELECT 1
-                                  FROM procurement_iqc_rejection_cases allowed_case
-                                  JOIN ar_ap_ledger allowed_credit
-                                    ON allowed_credit.source_doc_id=allowed_case.id
-                                   AND allowed_credit.source_doc_type=CASE
-                                       WHEN allowed_case.receipt_type='PURCHASE'
-                                       THEN 'PURCHASE_IQC_CREDIT'
-                                       ELSE 'SUBCONTRACT_IQC_CREDIT' END
-                                   AND allowed_credit.direction='AP'
-                                   AND allowed_credit.status=1
-                                   AND COALESCE(allowed_credit.is_deleted,FALSE)=FALSE
-                                  WHERE allowed_case.id=:allowedCaseId
-                                    AND allowed_case.status='RETURN_RECORDED'
-                                    AND allowed_case.source_ap_ledger_id=ledger.id
-                              )
-                          )
-                          AND (
-                              link.status IN('PENDING','PARTIAL')
-                              OR (link.failed_base_qty>0
-                                  AND NOT (
-                                      COALESCE(rejection.status,'') IN(
-                                          'CREDIT_CONFIRMED','CLOSED_NO_CREDIT')
-                                      OR (CAST(:allowedCaseId AS uuid) IS NOT NULL
-                                          AND rejection.id=:allowedCaseId
-                                          AND rejection.status='RETURN_RECORDED'
-                                          AND rejection.source_ap_ledger_id=ledger.id)
-                                  ))
-                          )
-                        GROUP BY ledger.id,ledger.source_doc_no
-                        ORDER BY ledger.id
-                        """)
-                .setParameter("ledgerIds", ledgerIds)
-                .setParameter("allowedCaseId", allowedIqcCaseId)
-                .getResultList();
+        List<Object[]> rows=em.createNativeQuery("""
+                SELECT ledger.id,ledger.source_doc_no,
+                       COALESCE(inspection.pending,0),
+                       COALESCE(funding.unresolved,inspection.failed,0)
+                FROM ar_ap_ledger ledger
+                LEFT JOIN LATERAL (
+                    SELECT SUM(received_base_qty-passed_base_qty-failed_base_qty)
+                               FILTER(WHERE status IN ('PENDING','PARTIAL')) pending,
+                           SUM(failed_base_qty) failed
+                    FROM procurement_inspection_items
+                    WHERE receipt_id=ledger.source_doc_id
+                      AND receipt_type||'_RECEIPT'=ledger.source_doc_type AND status<>'REVERSED'
+                ) inspection ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT SUM(fn_procurement_iqc_funding_unresolved(id)) unresolved
+                    FROM procurement_iqc_funding_slices
+                    WHERE source_ap_ledger_id=ledger.id AND parent_funding_slice_id IS NULL
+                      AND fn_procurement_consideration_active('FUNDING',id)
+                ) funding ON TRUE
+                WHERE ledger.id IN (:ledgerIds)
+                  AND fn_procurement_iqc_ap_hold_reason(ledger.id,CAST(:allowedCaseId AS uuid)) IS NOT NULL
+                ORDER BY ledger.id
+                """).setParameter("ledgerIds",ledgerIds)
+                .setParameter("allowedCaseId",allowedIqcCaseId).getResultList();
         return rows;
     }
-
     private static BigDecimal decimal(Object value) {
         return value == null ? BigDecimal.ZERO
                 : value instanceof BigDecimal decimal ? decimal : new BigDecimal(value.toString());

@@ -85,15 +85,14 @@ class SalesOrderRejectedRevisionContractTest {
         String itemRepository = read("order/SalesOrderItemRepository.java");
         String shipmentService = read("shipment/SalesShipmentService.java");
 
-        assertTrue(orderService.contains("reviseFinanceRejectedOrder(o, req)"));
+        assertTrue(orderService.contains("reviseApprovedOrder(o, req)"));
         assertTrue(orderService.contains("reservationService.releaseByOrderItems"));
         assertTrue(orderService.contains("stored.setDeleted(true)"));
         assertTrue(orderService.contains("order.setStatus(STATUS_DRAFT)"));
         assertTrue(orderService.contains("FROM ar_ap_source_refs"));
         assertTrue(orderService.contains("FROM production_material_analysis_items"));
         assertTrue(orderService.contains("FROM sales_shipment_items"));
-        assertTrue(orderService.contains(
-                "订单已被财务驳回，请使用“修改订单”完成受控修订并重新审核"));
+        assertTrue(orderService.contains("wasFinanceConfirmed || wasFinanceRejected"));
         assertTrue(orderService.contains(
                 "订单已被财务驳回，请先使用“修改订单”完成受控修订"));
         assertTrue(orderService.contains("o.setFinanceRejected(false)"));

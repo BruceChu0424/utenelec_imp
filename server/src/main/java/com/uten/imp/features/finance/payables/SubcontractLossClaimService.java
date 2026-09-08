@@ -64,6 +64,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
     private final CommercialPriceVisibility commercialPriceVisibility;
     private final AccountFlowLedgerService accountFlowLedger;
     private final BusinessEventPublisher events;
+    private final com.uten.imp.application.port.SubcontractMaterialValuePort materialValue;
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -82,9 +83,8 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
             BigDecimal allowedInput = nonNegative(input.allowedLossQty(), "合同允许损耗量");
             BigDecimal allowed = qty(allowedInput.min(actual));
             BigDecimal excess = qty(actual.subtract(allowed));
-            SourceCost source = sourceCost(input.materialIssueItemId());
-            requireValuedExcess(excess, source.unitBookValueLocal());
         }
+        materialValue.validateWaste(waste.wasteId());
     }
 
     @Override
@@ -117,21 +117,23 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
             BigDecimal allowedInput = nonNegative(input.allowedLossQty(), "合同允许损耗量");
             BigDecimal allowed = qty(allowedInput.min(actual));
             BigDecimal excess = qty(actual.subtract(allowed));
-            SourceCost source = sourceCost(input.materialIssueItemId());
-            BigDecimal unitValue = source.unitBookValueLocal();
-            requireValuedExcess(excess, unitValue);
-            BigDecimal lossValue = money(excess.multiply(unitValue));
+            var source=materialValue.wasteValue(input.wasteItemId());
+            BigDecimal lossValue=source.excessValueLocal();
+            // The unit value is a display projection. Actual loss remains the original value-node interval.
+            BigDecimal unitValue=source.normalValueLocal()==null||lossValue==null?null:
+                    source.normalValueLocal().add(lossValue).divide(actual,30,RoundingMode.HALF_UP);
             prepared.add(new PreparedLine(input, source.orderItemId(), actual, allowed, excess,
-                    unitValue, lossValue, unitValue.signum() > 0 ? "VALUED" : "MISSING_COST"));
+                    unitValue,lossValue,source.state()==com.uten.imp.application.port.InventoryValuationPort.State.FINAL?"VALUED":"MISSING_COST",
+                    source.normalValueNodeId(),source.excessValueNodeId()));
             actualTotal = actualTotal.add(actual);
             allowedTotal = allowedTotal.add(allowed);
             excessTotal = excessTotal.add(excess);
-            lossValueTotal = lossValueTotal.add(lossValue);
+            if(lossValue!=null&&lossValueTotal!=null)lossValueTotal=lossValueTotal.add(lossValue);else lossValueTotal=null;
         }
         actualTotal = qty(actualTotal);
         allowedTotal = qty(allowedTotal);
         excessTotal = qty(excessTotal);
-        lossValueTotal = money(lossValueTotal);
+        if(lossValueTotal!=null)lossValueTotal=money(lossValueTotal);
         boolean hasExcess=prepared.stream().anyMatch(line->line.excess().signum()>0);
         Set<UUID> unitIds=new HashSet<>();
         boolean allUnitsKnown=true;
@@ -144,7 +146,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         BigDecimal headerAllowed=sameUnit?allowedTotal:null;
         BigDecimal headerExcess=sameUnit?excessTotal:null;
         UUID headerUnit=sameUnit?unitIds.iterator().next():null;
-        BigDecimal suggested=hasExcess?money(nonNegativeOrZero(waste.suggestedClaimAmountLocal())):zero();
+        BigDecimal suggested=hasExcess?com.uten.imp.common.util.FinancialExactAmount.require(nonNegative(waste.suggestedClaimAmountLocal(),"建议索赔金额"),"建议索赔金额"):zero();
         String status=hasExcess?"OPEN":"RESOLVED";
         UUID caseId = UUID.randomUUID();
         em.createNativeQuery("""
@@ -185,12 +187,12 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                         goods_id, color_id, unit_id,
                         actual_loss_qty, allowed_loss_qty, excess_loss_qty,
                         unit_book_value_local, loss_book_value_local, valuation_status,
-                        goods_code_snapshot, goods_name_snapshot, created_by, updated_by)
+                        goods_code_snapshot, goods_name_snapshot, normal_value_node_id,excess_value_node_id,created_by, updated_by)
                     VALUES (
                         :id, :caseId, :wasteItemId, :issueItemId, :orderItemId,
                         :goodsId, :colorId, :unitId,
                         :actual, :allowed, :excess, :unitValue, :lossValue, :valuation,
-                        :goodsCode, :goodsName, :actor, :actor)
+                        :goodsCode, :goodsName,:normalNode,:excessNode, :actor, :actor)
                     """)
                     .setParameter("id", UUID.randomUUID())
                     .setParameter("caseId", caseId)
@@ -206,6 +208,8 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                     .setParameter("unitValue", line.unitValue())
                     .setParameter("lossValue", line.lossValue())
                     .setParameter("valuation", line.valuationStatus())
+                    .setParameter("normalNode",line.normalNode())
+                    .setParameter("excessNode",line.excessNode())
                     .setParameter("goodsCode", input.goodsCode())
                     .setParameter("goodsName", input.goodsName())
                     .setParameter("actor", actor)
@@ -310,11 +314,14 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         boolean priceMasked = summary.priceMasked();
         @SuppressWarnings("unchecked")
         List<Object[]> lineRows = em.createNativeQuery("""
-                SELECT id, waste_item_id, material_issue_item_id, order_item_id,
-                       goods_id, goods_code_snapshot, goods_name_snapshot, color_id, unit_id,
-                       actual_loss_qty, allowed_loss_qty, excess_loss_qty,
-                       unit_book_value_local, loss_book_value_local, valuation_status
-                FROM subcontract_loss_case_lines WHERE case_id=:id ORDER BY id
+                SELECT line.id, line.waste_item_id, line.material_issue_item_id, line.order_item_id,
+                       line.goods_id, line.goods_code_snapshot, line.goods_name_snapshot, line.color_id, line.unit_id,
+                       line.actual_loss_qty, line.allowed_loss_qty, line.excess_loss_qty,
+                       CASE WHEN actual.normal_value_local IS NOT NULL AND actual.excess_value_local IS NOT NULL
+                            THEN ROUND((actual.normal_value_local+actual.excess_value_local)/line.actual_loss_qty,30) END,
+                       actual.excess_value_local,CASE WHEN actual.complete THEN 'VALUED' ELSE 'MISSING_COST' END
+                FROM subcontract_loss_case_lines line JOIN v_subcontract_waste_actual_value actual ON actual.waste_item_id=line.waste_item_id
+                WHERE case_id=:id ORDER BY line.id
                 """).setParameter("id", id).getResultList();
         List<CaseLine> lines = lineRows.stream().map(row -> new CaseLine(
                 uuid(row[0]), uuid(row[1]), uuid(row[2]), uuid(row[3]), uuid(row[4]),
@@ -381,7 +388,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         for (ResolutionInput input : inputs) {
             String type = normalizedType(input.type());
             BigDecimal quantity = nonNegative(input.quantity(), "处理数量");
-            BigDecimal amount = nonNegative(input.amountLocal(), "处理金额");
+            BigDecimal amount = com.uten.imp.common.util.FinancialExactAmount.require(nonNegative(input.amountLocal(), "处理金额"),"处理金额");
             if (MONEY_TYPES.contains(type) && amount.signum() <= 0) {
                 throw validation(type + " 的金额必须大于 0");
             }
@@ -980,7 +987,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                       AND COALESCE(item.is_deleted,FALSE)=FALSE
                       AND item.order_item_id=claim_line.order_item_id
                       AND item.qty>=:quantity
-                      AND COALESCE(item.amount_local,0)=0
+                      AND item.amount_original=0 AND item.amount_local=0
                     """;
             } else {
                 sql="""
@@ -1019,23 +1026,6 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 .setParameter("itemId",documentItemId)
                 .setParameter("quantity",quantity)
                 .setParameter("actor",currentUser.requireId()).executeUpdate();
-    }
-
-    private SourceCost sourceCost(UUID materialIssueItemId) {
-        if (materialIssueItemId == null) return new SourceCost(null, zero());
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery("""
-                SELECT item.order_item_id,
-                       CASE WHEN COALESCE(item.qty,0)>0 AND COALESCE(item.amount_local,0)>0
-                            THEN item.amount_local/item.qty ELSE 0 END
-                FROM subcontract_material_issue_items item
-                JOIN subcontract_material_issues issue ON issue.id=item.issue_id
-                WHERE item.id=:id AND issue.status=1
-                  AND COALESCE(item.is_deleted,FALSE)=FALSE
-                  AND COALESCE(issue.is_deleted,FALSE)=FALSE
-                """).setParameter("id", materialIssueItemId).getResultList();
-        if (rows.size() != 1) return new SourceCost(null, zero());
-        return new SourceCost(uuid(rows.getFirst()[0]), money(decimal(rows.getFirst()[1])));
     }
 
     private UUID baseCurrencyId() {
@@ -1227,7 +1217,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 SELECT loss.id,loss.waste_id,loss.waste_bill_no,loss.supplier_id,
                        supplier.code,supplier.name,loss.status,
                        loss.actual_loss_qty,loss.allowed_loss_qty,loss.excess_loss_qty,
-                       loss.loss_book_value_local,loss.claim_amount_local,
+                       (SELECT value.loss_book_value_local FROM v_subcontract_loss_case_value value WHERE value.case_id=loss.id),loss.claim_amount_local,
                        loss.row_version,loss.created_at
                 """;
     }
@@ -1256,13 +1246,6 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         return type;
     }
 
-    static void requireValuedExcess(BigDecimal excess, BigDecimal unitBookValueLocal) {
-        if (excess != null && excess.signum() > 0
-                && (unitBookValueLocal == null || unitBookValueLocal.signum() <= 0)) {
-            throw conflict("超耗材料缺少有效发料账面成本，禁止以 0 金额确认异常损失或索赔");
-        }
-    }
-
     private static BigDecimal positiveQty(BigDecimal value, String label) {
         if (value == null || value.signum() <= 0) throw validation(label + "必须大于 0");
         return qty(value);
@@ -1278,13 +1261,9 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         return value == null || value.signum() < 0 ? zero() : value;
     }
 
-    private static BigDecimal qty(BigDecimal value) {
-        return value.setScale(QTY_SCALE, RoundingMode.HALF_UP);
-    }
+    private static BigDecimal qty(BigDecimal value) { return com.uten.imp.common.util.FinancialExactAmount.quantity(value,"委外损耗数量"); }
 
-    private static BigDecimal money(BigDecimal value) {
-        return value.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-    }
+    private static BigDecimal money(BigDecimal value) { return com.uten.imp.common.util.FinancialExactAmount.book(value,"委外损耗财务金额"); }
 
     private static BigDecimal zero() {
         return BigDecimal.ZERO.setScale(MONEY_SCALE);
@@ -1335,10 +1314,9 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         return new ApiException(ErrorCode.CONFLICT, message);
     }
 
-    private record SourceCost(UUID orderItemId, BigDecimal unitBookValueLocal) {}
     private record PreparedLine(LossLine input, UUID orderItemId, BigDecimal actual,
                                 BigDecimal allowed, BigDecimal excess, BigDecimal unitValue,
-                                BigDecimal lossValue, String valuationStatus) {}
+                                BigDecimal lossValue, String valuationStatus,UUID normalNode,UUID excessNode) {}
     private record CasePeriodIdentity(UUID supplierId,UUID currencyId) {}
     private record CaseRow(UUID id, UUID wasteId, String wasteBillNo, UUID supplierId,
                            String status, BigDecimal excessQty, UUID currencyId, long version) {}

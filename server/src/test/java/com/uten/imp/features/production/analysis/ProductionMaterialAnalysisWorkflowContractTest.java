@@ -27,17 +27,16 @@ class ProductionMaterialAnalysisWorkflowContractTest {
     }
 
     @Test
-    void generationHashAndFormalPreviewIncludeAllAuthoritativeInputs() throws Exception {
+    void issueHashAndFormalPreviewIncludeAllAuthoritativeInputs() throws Exception {
         String source = source("features/production/analysis/MaterialAnalysisCommandService.java");
 
-        assertThat(source).contains("request.departmentId()");
-        assertThat(source).contains("request.workshopName()");
-        assertThat(source).contains("request.workerId()");
-        assertThat(source).contains("itemBillDate(quantity, request)");
-        assertThat(source).contains("item.teamDepartmentId()");
-        assertThat(source).contains("Objects.toString(item.workshopName(), \"\")");
+        assertThat(source).contains("itemBillDate(quantity, defaults)");
+        assertThat(source).contains("quantity.teamDepartmentId()");
+        assertThat(source).contains("Objects.toString(line.workshopName(), \"\")");
         assertThat(source).contains("expectedQty.compareTo(proposedQty) != 0");
-        assertThat(source).contains("!\"READY\".equals(segment.suggestedStatus())");
+        // ADR-071：齐套结论只决定 READY/WAITING 两种合法状态，未知状态即冲突
+        // 回滚（旧的全量拦截 !"READY" 已退役，缺料批次进 WAITING 由车间侧提升）。
+        assertThat(source).contains("Set.of(\"READY\", \"WAITING\").contains(requestedStatus)");
         assertThat(source).contains("line.setUnitRate(product.unitRate())");
     }
 
@@ -137,14 +136,22 @@ class ProductionMaterialAnalysisWorkflowContractTest {
     }
 
     @Test
-    void planPreviewAndNotifyConsumeOnlyPersistedDirectLayerAllocation() throws Exception {
+    void issuePlansConsumesOnlyPersistedDirectLayerAllocation() throws Exception {
         String service = source("features/production/analysis/MaterialAnalysisService.java");
         String commands = source("features/production/analysis/MaterialAnalysisCommandService.java");
 
-        assertThat(service).contains("authoritativeReadyForPlanPreview(");
-        assertThat(service).contains("material.allocatedAvailableQty()");
-        assertThat(service).contains("depth == 1");
-        assertThat(commands).contains(".filter(MaterialView::actionable)");
+        // ADR-071：READY/WAITING 由权威齐套结论决定，但不再拦截下达。
+        assertThat(service).contains("authoritativeReadyQty(");
+        assertThat(service).contains("canGenerateReadyBatch(");
+        // 2026-09-06 锚点模型二简：issue-plans 单事务——候选路线以服务端已确认
+        // 路线为准（只建锚点行，不搬权益），计划侧不做齐套判断，缺料批次由
+        // 车间侧 WAITING→READY 自动提升。
+        assertThat(commands).contains("candidateRoutesByMaterialLine(preArrange)");
+        assertThat(commands).contains("只有自制路线的物料才能直接下达车间");
+        assertThat(commands).contains("无自制子层的委外件请走委外下达，不能直接建生产计划");
+        assertThat(commands).contains(
+                "material.actionable() || \"ROOT_SUPPLY\".equals(material.nodeRole())");
+        assertThat(commands).contains("rootSupply.fulfillExisting(analysisId");
         assertThat(commands).contains("map(MaterialView::demandSupplyGapQty)");
         assertThat(commands).contains("analysisService.refreshLocked(analysisId)");
     }
@@ -162,18 +169,21 @@ class ProductionMaterialAnalysisWorkflowContractTest {
                 .contains("BigDecimal maxSchedulableQty")
                 .contains("String scheduleBlockedReason");
         assertThat(service)
-                .contains("MATERIAL-ANALYSIS-PLAN-PREVIEW-V3")
-                .contains("canGenerate ? \"READY\" : \"WAITING\"")
-                .contains("product.maxSchedulableQty()");
+                // 2026-09-05 顶层与子层同构：V478 根节点存在但路线未确认（NULL）
+                // 时不可排产——顶层必须像子件一样显式确认为自制才能下达车间；
+                // 无根节点的旧分析（rootMaterialLineId 为 null）沿用旧合同。
+                .contains("boolean rootRoutePending = rootMaterialLineId != null && rootRoute == null")
+                .contains("根产品供料路线未确认，请先确认为自制再下达车间");
         assertThat(commands)
-                .contains("preview.items().stream().anyMatch(item -> !item.canSchedule())")
                 // V474 分批口径：混合「齐套 READY + 剩余 WAITING」按批次各归其位，
                 // 不再强制整单 WAITING（旧 ANALYSIS-WAITING 前缀随全量压扁口径退役）。
                 .contains("if (!Set.of(\"READY\", \"WAITING\").contains(requestedStatus))")
                 .contains("把混合结果重新压成一个全量 WAITING 会吞掉可立即生产的批次")
                 .contains("segment.setRequestedStatus(requestedStatus)")
                 .contains("segment.setDeferUntilManualRelease(false)")
-                .doesNotContain("if (!preview.allReady()");
+                // ADR-71：下达车间不再走联合预览，齐套结论不拦截（缺料=WAITING）。
+                .doesNotContain("previewFingerprint")
+                .doesNotContain("计划预览发现不可排产");
     }
 
     @Test
@@ -192,80 +202,25 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         assertThat(service).contains("SUBCONTRACT\".equals(effectiveRoute)");
     }
 
-    @Test
-    void makeNotificationMovesExactEntitlementBetweenTwoAuthoritativeRefreshes()
+        @Test
+    void notificationNeverDelegatesEntitlementsAndRefreshRestoresLegacyOnes()
             throws Exception {
+        // 2026-09-05 简化：子件只做计划锚点——notify 不再迁移 exact 权益，
+        // 分析刷新入口先把旧模式遗留的委托整体归还（单份数据口径）。
         String commands = source(
                 "features/production/analysis/MaterialAnalysisCommandService.java");
-        int notifyStart = commands.indexOf(
-                "public AnalysisView notifySupply(UUID analysisId");
-        int notifyEnd = commands.indexOf(
-                "private List<ActionGroup> selectedGroups", notifyStart);
-        String notify = commands.substring(notifyStart, notifyEnd);
-        assertThat(notify.indexOf("lockAnalysisInventoryDimensions(analysisId)"))
-                .isLessThan(notify.indexOf(
-                        "analysisService.lockHeader(analysisId)"));
-        int external = notify.indexOf(
-                "for (ActionDraft action : created)");
-        int firstRefresh = notify.indexOf(
-                "analysisService.refreshLocked(analysisId)", external);
-        int delegate = notify.indexOf(
-                "stockEntitlement.delegateMakeEntitlements", firstRefresh);
-        int secondRefresh = notify.indexOf(
-                "analysisService.refreshLocked(analysisId)", delegate);
-        assertThat(external).isGreaterThanOrEqualTo(0);
-        assertThat(firstRefresh).isGreaterThan(external);
-        assertThat(delegate).isGreaterThan(firstRefresh);
-        assertThat(secondRefresh).isGreaterThan(delegate);
         assertThat(commands)
-                .contains("stockEntitlement.restoreMakeDelegationsForAction(")
-                .contains("CASE WHEN route = 'MAKE' THEN 0 ELSE 1 END");
-    }
-
-    @Test
-    void subcontractMakeNotificationAlsoDelegatesExactEntitlements()
-            throws Exception {
-        // 2026-09-04 事故：有子层委外件下达后建 SUBCONTRACT_MAKE 任务行接管子树需求，
-        // 但权益迁移只在 MAKE 路线执行——ORIGIN_MAKE/IQC 预留被钉死在需求已归零的
-        // 旧父树节点（planExactPegs 按毛需求 secured/earmark 共享池），委外子树
-        // 库存明明齐套却永远「还缺 X 种物料」。修复=迁移查询与 notify 循环同时
-        // 覆盖 SUBCONTRACT；无子层委外申请无子任务行，查询自然无匹配。
-        String commands = source(
-                "features/production/analysis/MaterialAnalysisCommandService.java");
-        assertThat(commands).contains(
-                "!\"SUBCONTRACT\".equals(action.group().route())");
+                .doesNotContain("stockEntitlement.delegateMakeEntitlements")
+                .contains("analysisService.refreshLocked(analysisId)");
+        String service = source(
+                "features/production/analysis/MaterialAnalysisService.java");
+        assertThat(service).contains(
+                "stockEntitlement.restoreAllMakeDelegations(analysisId)");
         String entitlements = source(
                 "features/production/analysis/PreplanStockEntitlementService.java");
         assertThat(entitlements).contains(
-                "('SUBCONTRACT', 'SUBCONTRACT_MAKE', 'SUBCONTRACT_MAKE_TASK')");
-        assertThat(entitlements).contains(
-                "parent_material.confirmed_route = action.route");
-        // V467 事故复盘：Java 侧放开双路线后，V337 头触发器仍写死 MAKE 形状，
-        // 真库 INSERT 被 23514 拒绝（源码断言测不到 DB 触发器，行为锁定在
-        // SubcontractMakeDelegationRouteGuardPostgresTest）。此处锁迁移文件
-        // 必须与 Java 配对口径一致，防止再出现「代码改了、守卫没跟」。
-        String guard = migrationSource(
-                "V467__subcontract_make_delegation_guard_route.sql");
-        assertThat(guard).contains("WHEN 'SUBCONTRACT' THEN 'SUBCONTRACT_MAKE_TASK'");
-        assertThat(guard).contains("WHEN 'SUBCONTRACT' THEN 'SUBCONTRACT_MAKE'");
-        assertThat(guard).contains(
-                "parent_material.confirmed_route IS DISTINCT FROM action.route");
-        assertThat(guard).doesNotContain(
-                "confirmed_route IS DISTINCT FROM 'MAKE'");
+                "public void restoreAllMakeDelegations(UUID analysisId)");
     }
-
-    @Test
-    void legacyGroupedActionsRemainOpenCoverageAfterPerPathKeyUpgrade() throws Exception {
-        String commands = source("features/production/analysis/MaterialAnalysisCommandService.java");
-
-        assertThat(commands).contains("activeOpenActionQty(UUID analysisId, ActionGroup group)");
-        assertThat(commands).contains("JOIN preplan_supply_actions action ON action.id = allocation.action_id");
-        assertThat(commands).contains("allocation.analysis_material_id IN (:materialIds)");
-        assertThat(commands).contains("groupKeys.addAll(legacyKeys)");
-        assertThat(commands).contains("activeOpenActionQtyByGroup(");
-        assertThat(commands).contains("status IN ('OPEN','CREATED','IN_PROGRESS')");
-    }
-
     @Test
     void notifyAcceptsExplicitQuantitiesCappedByLiveResidual() throws Exception {
         String contracts = source("features/production/analysis/MaterialAnalysisContracts.java");
@@ -298,7 +253,7 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         assertThat(contracts).contains(
                 "MAKE 在显式 delegated_qty 落地前必须等于全部实时余量");
         assertThat(commands).contains("boolean createsChildOwnership");
-        assertThat(commands).contains("hasActiveBomChildren");
+        assertThat(commands).contains("activeBomParentIds");
         assertThat(commands).contains(
                 "createsChildOwnership && requested.compareTo(delta) != 0");
         assertThat(commands).contains("子件任务当前必须按全部剩余需求");
@@ -347,7 +302,7 @@ class ProductionMaterialAnalysisWorkflowContractTest {
     }
 
     @Test
-    void analysisAndPlanningPackageMutationsShareInventoryFirstLockOrder()
+    void analysisAndPlanningPackageMutationsShareCommercialInventoryAnalysisPrefix()
             throws Exception {
         String commands = source("features/production/analysis/MaterialAnalysisCommandService.java");
         String plans = source("features/production/plan/ProductionPlanService.java");
@@ -355,26 +310,28 @@ class ProductionMaterialAnalysisWorkflowContractTest {
                 "features/production/mrp/ProductionExecutionPackageCommandService.java");
         String lifecycle = source(
                 "features/production/mrp/ProductionPlanningPackageService.java");
+        String analysisFootprint=source("features/production/analysis/ProductionMutationFootprintService.java");
+        String planFootprint=source("features/production/plan/ProductionPlanMutationFootprintService.java");
 
         assertThat(commands).contains("lockAnalysisInventoryDimensions(analysisId);");
-        assertThat(commands).contains("FROM stock_reservations reservation");
-        assertThat(commands).contains("reservation.owner_type = 'PREPLAN_ANALYSIS'");
-        assertThat(commands).contains("reservation.status = 0");
-        int approveStart = plans.indexOf("public PlanDetail approve(UUID id)");
-        int prelock = plans.indexOf("lockSourceAnalysisInventoryDimensions(id);", approveStart);
-        int planRowLock = plans.indexOf("requirePlanForUpdate(id);", approveStart);
-        assertThat(prelock).isGreaterThan(approveStart).isLessThan(planRowLock);
+        assertThat(commands).contains("mutationLocks.acquire(() -> mutationFootprints.forAnalyses(List.of(analysisId)))");
+        assertThat(analysisFootprint).contains("FROM stock_reservations reservation");
+        assertThat(analysisFootprint.replaceAll("\\s+", "")).contains("reservation.owner_type='PREPLAN_ANALYSIS'", "reservation.status=0");
+        assertThat(plans).contains("mutationFootprint.lockPlan(id, requested);");
+        assertThat(planFootprint.indexOf("locks.acquire(() -> discoverPlans(ids,lines))"))
+                .isGreaterThan(0).isLessThan(planFootprint.indexOf("SELECT id FROM production_plans WHERE id IN (:ids) ORDER BY id FOR UPDATE"));
+        assertThat(planFootprint).contains("production.forAnalyses(analyses)");
 
         int confirmStart = confirm.indexOf("public PlanningPackageResult confirm(");
         int confirmInventory = confirm.indexOf(
-                "lockPlanningPackageInventoryDimensions(planId);", confirmStart);
+                "mutationFootprint.beginPlan(planId, List.of());", confirmStart);
         int confirmPlan = confirm.indexOf("lockPlan(planId);", confirmStart);
         assertThat(confirmInventory).isGreaterThan(confirmStart).isLessThan(confirmPlan);
 
         int lifecycleStart = lifecycle.indexOf(
                 "private PlanningPackageLifecycleResult lifecycle(");
         int lifecycleInventory = lifecycle.indexOf(
-                "lockPlanningPackageInventoryDimensions(planId);", lifecycleStart);
+                "mutationFootprint.beginPlan(planId, List.of());", lifecycleStart);
         int lifecyclePlan = lifecycle.indexOf("lockPlan(planId);", lifecycleStart);
         int reversible = lifecycle.indexOf(
                 "requirePlanningPackageLifecycleReversible(planId);", lifecycleStart);
@@ -382,7 +339,10 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         assertThat(lifecycleInventory)
                 .isGreaterThan(lifecycleStart).isLessThan(lifecyclePlan);
         assertThat(reversible).isGreaterThan(lifecyclePlan).isLessThan(documents);
-        assertThat(plans).contains("FROM stock_reservations reservation");
+        assertThat(planFootprint).contains("FROM stock_reservations reservation", "release_reason='TRANSFERRED_TO_PLAN'");
+        assertThat(confirm).contains("if (!sameKeyExists) sourceGuard.verifyUnchanged();");
+        assertThat(lifecycle.indexOf("sourceGuard.verifyUnchanged();", lifecycleStart))
+                .isGreaterThan(lifecycle.indexOf("if (handle.replayed())", lifecycleStart)).isLessThan(reversible);
     }
 
     @Test
@@ -439,7 +399,7 @@ class ProductionMaterialAnalysisWorkflowContractTest {
 
         // ADR-065：一次通知先整批聚合（全部 BUY 一张采购申请 / 全部无子层委外一张
         // 委外申请，表头日期取最早），再逐 action 挂接明细锚点。
-        assertThat(commands).contains("prepareExternalDocuments(analysisId, created)");
+        assertThat(commands).contains("prepareExternalDocuments(analysisId, created, subcontractBomParents)");
         assertThat(commands).contains(
                 "createExternalDocument(analysisId, action, prepared)");
         assertThat(commands).contains("earliest(purchaseNeedDate, needDate)");
@@ -479,9 +439,21 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         // confirmed_route 的记忆；只读、跨分析共享。
         String service = source("features/production/analysis/MaterialAnalysisService.java");
         assertThat(service).contains("lastRoutesPerGoods");
-        assertThat(service).contains("DISTINCT ON (m.goods_id, m.color_id, m.unit_id)");
-        assertThat(service).contains("m.confirmed_route IS NOT NULL");
-        assertThat(service).contains("m.active = TRUE");
+        int queryStart=service.indexOf("WITH history AS (",service.indexOf("lastRoutesPerGoods("));
+        int queryEnd=service.indexOf("\"\"\""+");",queryStart);
+        assertThat(queryStart).isGreaterThanOrEqualTo(0);
+        assertThat(queryEnd).isGreaterThan(queryStart);
+        String memoryQuery=service.substring(queryStart,queryEnd);
+        assertThat(memoryQuery)
+                .contains("DENSE_RANK() OVER")
+                .contains("PARTITION BY m.goods_id,m.color_id,m.unit_id")
+                .contains("COALESCE(m.route_confirmed_at,m.created_at) DESC")
+                .contains("m.confirmed_route IS NOT NULL")
+                .contains("a.is_deleted=FALSE")
+                .contains("a.status<>'CANCELLED'")
+                .contains("WHERE recency=1")
+                .contains("HAVING COUNT(DISTINCT confirmed_route)=1")
+                .doesNotContain("m.active");
         String controller = source("features/production/analysis/MaterialAnalysisController.java");
         assertThat(controller).contains("\"/last-routes\"");
     }

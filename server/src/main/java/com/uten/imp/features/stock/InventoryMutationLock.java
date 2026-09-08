@@ -3,11 +3,16 @@ package com.uten.imp.features.stock;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.core.Ordered;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Serializes inventory balances and global reservations on the same logical
@@ -25,6 +30,7 @@ public class InventoryMutationLock {
     static final long HASH_NAMESPACE = 0x5554454E494D504CL;
 
     private final EntityManager em;
+    private final Object heldKeysResource = new Object();
 
     /**
      * Acquires every requested key once, in a deterministic order.
@@ -38,6 +44,9 @@ public class InventoryMutationLock {
             return;
         }
         List<InventoryKey> keys = requested.stream().distinct().sorted().toList();
+        com.uten.imp.application.concurrency.FulfillmentLockState.beforeInventoryLocks(keys.stream()
+                .map(key -> new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(
+                        key.goodsId(), key.colorId())).toList());
         for (InventoryKey key : keys) {
             em.createNativeQuery("""
                             SELECT pg_advisory_xact_lock(
@@ -47,11 +56,73 @@ public class InventoryMutationLock {
                     .setParameter("inventoryKey", key.canonical())
                     .setParameter("namespace", HASH_NAMESPACE)
                     .getSingleResult();
+            recordAcquired(key);
         }
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void lock(InventoryKey key) {
         lockAll(List.of(key));
+    }
+
+    /**
+     * Runtime precondition for value posting: the caller has already acquired
+     * this exact mutex through the shared lock component in this transaction.
+     * Does not acquire a late lock or query all server locks on every movement.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void requireHeld(InventoryKey key) {
+        HeldKeys held = (HeldKeys) TransactionSynchronizationManager.getResource(heldKeysResource);
+        if (!TransactionSynchronizationManager.isActualTransactionActive()
+                || held == null || held.closed || !held.keys.contains(key.canonical())) {
+            throw new IllegalStateException("Inventory value posting requires its goods/color mutex in the current transaction");
+        }
+    }
+
+    private void recordAcquired(InventoryKey key) {
+        // Normal Spring callers are guarded by MANDATORY. Standalone lock-query
+        // tests do not create a fictitious ownership proof without a real scope.
+        if (!TransactionSynchronizationManager.isActualTransactionActive()
+                || !TransactionSynchronizationManager.isSynchronizationActive()) return;
+        HeldKeys held = (HeldKeys) TransactionSynchronizationManager.getResource(heldKeysResource);
+        if (held == null) {
+            held = new HeldKeys();
+            TransactionSynchronizationManager.bindResource(heldKeysResource, held);
+            TransactionSynchronizationManager.registerSynchronization(held);
+        }
+        if (held.closed) throw new IllegalStateException("A completed transaction cannot own an inventory mutex");
+        held.keys.add(key.canonical());
+    }
+
+    private final class HeldKeys implements TransactionSynchronization {
+        private final Set<String> keys = new HashSet<>();
+        private boolean closed;
+
+        @Override public int getOrder() { return Ordered.HIGHEST_PRECEDENCE; }
+
+        @Override public void suspend() {
+            if (TransactionSynchronizationManager.getResource(heldKeysResource) == this) {
+                TransactionSynchronizationManager.unbindResource(heldKeysResource);
+            }
+        }
+
+        @Override public void resume() {
+            if (!closed) TransactionSynchronizationManager.bindResource(heldKeysResource, this);
+        }
+
+        @Override public void afterCommit() {
+            // JDBC resources may still be bound while other afterCommit hooks
+            // run, but PostgreSQL has already released transaction locks.
+            closed = true;
+            keys.clear();
+        }
+
+        @Override public void afterCompletion(int status) {
+            closed = true;
+            keys.clear();
+            if (TransactionSynchronizationManager.getResource(heldKeysResource) == this) {
+                TransactionSynchronizationManager.unbindResource(heldKeysResource);
+            }
+        }
     }
 }

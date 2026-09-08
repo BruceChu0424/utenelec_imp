@@ -342,7 +342,12 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
             category: _category,
             onKeywordChanged: (value) => _applyFilter(keyword: value),
             onCategoryChanged: (value) => _applyFilter(category: value),
-            onRefresh: _loading ? null : _load,
+            onRefresh: _loading
+                ? null
+                : () {
+                    setState(() => _page = 1);
+                    _load();
+                  },
           ),
           const SizedBox(height: UtenSpacing.s12),
         ];

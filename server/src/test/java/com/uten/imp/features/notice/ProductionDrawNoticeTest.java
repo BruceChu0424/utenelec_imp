@@ -21,6 +21,7 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -122,6 +123,8 @@ class ProductionDrawNoticeTest {
                 drawId,
                 new ObjectMapper().createObjectNode());
 
+        // 2026-09-05 起为居中行动卡：aggregate 绑定 (STOCK_DOCUMENT, drawId)，
+        // 实际出库后办结撤回。
         verify(notices).publishForUser(
                 eq(allowedId),
                 eq("待处理生产领料：SL-001"),
@@ -129,7 +132,9 @@ class ProductionDrawNoticeTest {
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq("/warehouse/DRAW/" + drawId),
-                eq(ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING));
+                eq(ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING),
+                isNull(),
+                eq(drawId));
         verify(notices, never()).publishForUser(
                 eq(revokedId), anyString(), anyString(), anyString(),
                 anyString(), anyString(), anyString());

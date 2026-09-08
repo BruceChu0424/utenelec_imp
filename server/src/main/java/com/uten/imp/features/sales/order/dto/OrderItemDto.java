@@ -60,4 +60,24 @@ public class OrderItemDto {
     /** 订单行优先级（销售链路用）：1急单/2普通/3现货(默认)。 */
     @Setter
     private Short priority;
+
+    // Exact text is derived after permission masking; null stays null.
+    public String getUnitRateExact() { return com.uten.imp.common.util.DecimalText.of(unitRate); }
+    public String getQtyExact() { return com.uten.imp.common.util.DecimalText.of(qty); }
+    public String getPriceExact() { return com.uten.imp.common.util.DecimalText.of(price); }
+    public String getAmountOriginalExact() { return com.uten.imp.common.util.DecimalText.of(amountOriginal); }
+    public String getAmountLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountLocal); }
+    public String getShippedQtyExact() { return com.uten.imp.common.util.DecimalText.of(shippedQty); }
+    public String getReturnedQtyExact() { return com.uten.imp.common.util.DecimalText.of(returnedQty); }
+    public String getFlagQtyExact() { return com.uten.imp.common.util.DecimalText.of(flagQty); }
+    public String getDiscountExact() { return com.uten.imp.common.util.DecimalText.of(discount); }
+    public String getTaxAmountExact() { return com.uten.imp.common.util.DecimalText.of(taxAmount); }
+    public String getWeightExact() { return com.uten.imp.common.util.DecimalText.of(weight); }
+    public String getMachiningPriceExact() { return com.uten.imp.common.util.DecimalText.of(machiningPrice); }
+    public String getCircumferenceExact() { return com.uten.imp.common.util.DecimalText.of(circumference); }
+    public String getInboundQtyExact() { return com.uten.imp.common.util.DecimalText.of(inboundQty); }
+    public String getReservedQtyExact() { return com.uten.imp.common.util.DecimalText.of(reservedQty); }
+    public String getPlannedQtyExact() { return com.uten.imp.common.util.DecimalText.of(plannedQty); }
+    public String getProducedQtyExact() { return com.uten.imp.common.util.DecimalText.of(producedQty); }
+    public String getQuotePriceExact() { return com.uten.imp.common.util.DecimalText.of(quotePrice); }
 }

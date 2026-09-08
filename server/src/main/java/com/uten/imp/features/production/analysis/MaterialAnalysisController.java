@@ -200,7 +200,8 @@ public class MaterialAnalysisController {
 
     /** V458：有子层级委外件的前置自制任务进度（先自制、后通知委外的账本投影）。 */
     @GetMapping("/subcontract-make-tasks")
-    @PreAuthorize("hasAuthority('production_material_analysis:view')")
+    @PreAuthorize("hasAnyAuthority('production_material_analysis:view',"
+            + " 'subcontract_application:view')")
     public PageResponse<SubcontractMakeTaskService.TaskView> subcontractMakeTasks(
             @RequestParam(required = false) UUID analysisId,
             @RequestParam(required = false) String status,
@@ -213,6 +214,12 @@ public class MaterialAnalysisController {
     }
 
     /** V458：按已产未通知量分批通知委外（生成只读委外申请并通知委外部）。 */
+    @GetMapping("/subcontract-make-tasks/{taskId}")
+    @PreAuthorize("hasAnyAuthority('production_material_analysis:view', 'subcontract_application:view')")
+    public SubcontractMakeTaskService.TaskView subcontractMakeTask(@PathVariable UUID taskId) {
+        return subcontractMakeTasks.task(taskId);
+    }
+
     @PostMapping("/subcontract-make-tasks/{taskId}/notify")
     @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:notify')")
     public SubcontractMakeTaskService.NotifyResult notifySubcontractMakeBatch(
@@ -221,20 +228,18 @@ public class MaterialAnalysisController {
         return subcontractMakeTasks.notifyBatch(taskId, request);
     }
 
-    @PostMapping("/{id}/plan-preview")
+    /**
+     * 下达车间（ADR-071）：所有自制行一视同仁——候选行先建子件任务，随后按
+     * 行内数量/车间/负责人逐行生成生产计划；有审核权限同事务审核下达。缺料
+     * 批次生成 WAITING 段，由车间侧等料齐套自动提升，计划侧不再做齐套判断。
+     * 整个操作单事务原子完成：任一行失败全部回滚，不会残留已建子件行。
+     */
+    @PostMapping("/{id}/issue-plans")
     @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:generate')")
-    public PlanPreview planPreview(
+    public GenerateResult issueWorkshopPlans(
             @PathVariable UUID id,
-            @Valid @RequestBody PlanPreviewRequest request) {
-        return queryService.planPreview(id, request);
-    }
-
-    @PostMapping("/{id}/generate-plan")
-    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:generate')")
-    public GenerateResult generatePlan(
-            @PathVariable UUID id,
-            @Valid @RequestBody GeneratePlanRequest request) {
-        return commandService.generatePlan(id, request);
+            @Valid @RequestBody IssueWorkshopPlansRequest request) {
+        return commandService.issueWorkshopPlans(id, request);
     }
 
     @PostMapping("/{id}/cancel")
@@ -252,5 +257,13 @@ public class MaterialAnalysisController {
             @PathVariable UUID actionId,
             @Valid @RequestBody CancelRequest request) {
         return commandService.cancelAction(id, actionId, request);
+    }
+
+    @PostMapping("/{id}/root-outputs/{eventId}/revoke")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:notify')")
+    public AnalysisView revokeRootOutput(
+            @PathVariable UUID id, @PathVariable UUID eventId,
+            @Valid @RequestBody CancelRequest request) {
+        return commandService.revokeRootOutput(id,eventId,request);
     }
 }

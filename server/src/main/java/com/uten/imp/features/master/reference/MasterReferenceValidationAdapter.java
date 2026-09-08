@@ -33,6 +33,12 @@ public class MasterReferenceValidationAdapter implements MasterReferenceValidati
     private boolean goodsOwnerScopeEnabled;
 
     @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void lockGoodsQuantityBasis(java.util.Collection<UUID> goodsIds) {
+        com.uten.imp.common.concurrency.GoodsQuantityBasisLocks.lockUnused(em, goodsIds);
+    }
+
+    @Override
     public void requireVisibleGoods(UUID goodsId) {
         if (!canViewGoods(goodsId)) {
             throw notFound("货品不存在");
@@ -56,7 +62,9 @@ public class MasterReferenceValidationAdapter implements MasterReferenceValidati
     }
 
     @Override
+    @Transactional(propagation = Propagation.MANDATORY)
     public void requireVisibleActiveGoods(UUID goodsId) {
+        lockGoodsQuantityBasis(java.util.Collections.singleton(goodsId));
         requireGoods(goodsId);
     }
 
@@ -104,11 +112,13 @@ public class MasterReferenceValidationAdapter implements MasterReferenceValidati
     }
 
     @Override
+    @Transactional(propagation = Propagation.MANDATORY)
     public ResolvedLineUnit resolveVisibleActiveGoodsUnit(
             UUID goodsId,
             UUID unitId,
             BigDecimal unitRate,
             int lineNo) {
+        lockGoodsQuantityBasis(java.util.Collections.singleton(goodsId));
         GoodsReference goods = requireGoods(goodsId);
         if (goods.baseUnitId() == null || goods.baseUnitDeleted() || goods.baseUnitDisabled()) {
             throw conflict(prefix(lineNo) + "货品未维护有效基本单位");

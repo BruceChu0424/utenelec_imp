@@ -1,6 +1,7 @@
 // 预计到货工作台（可嵌入）：与财务「订货审批任务中心」同款表格工作台——列表只放
-// 单据级概要（单号/供应商/数量/预计到货日/步骤），双击行（或右键「查看到货详情」）
-// 弹详情看待收明细并就地执行登记/送检，不在列表里铺明细。
+// 单据级概要（单号/供应商/数量/预计到货日/步骤），双击行按当前步骤直达对应办理
+// 页（待登记→登记实际到货；已登记→继续送检；超量→到货异常；已送检→品质检查
+// 结果），不再经过中间详情页（2026-09-05 用户口径：不要两步操作）。
 //
 // 2026-09-01 起「入库任务中心」采购入库/委外入库分段内嵌本组件（fixedOrderType
 // 固定来源、embedded=true 不渲染自己的类型分段与搜索框——关键字由任务中心页级
@@ -17,6 +18,8 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -25,6 +28,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
+import '../../../shared/providers/session_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../providers/procurement_inbound_count_providers.dart';
@@ -82,7 +86,9 @@ class _WarehouseInboundExpectationsViewState
   int? _inspectionPendingCount;
 
   /// 批量送检多选（与到货异常批量入库同款选择指纹幂等键范式）。
-  Set<String> _selectedIds = const {};
+  /// 必须是可变 Set：_load 里会对它 removeWhere 清理失效选择，
+  /// const Set 在 Web 上无条件抛「Cannot modify constant Set」。
+  Set<String> _selectedIds = <String>{};
   bool _batchSending = false;
   String? _batchSelectionFingerprint;
   String? _batchIdempotencyKey;
@@ -100,16 +106,26 @@ class _WarehouseInboundExpectationsViewState
     _orderType = widget.fixedOrderType;
     _typeSelected = widget.fixedOrderType != null;
     _keyword = widget.keyword;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load(1);
+    });
   }
 
   @override
   void didUpdateWidget(WarehouseInboundExpectationsView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.keyword != widget.keyword ||
-        oldWidget.refreshTick != widget.refreshTick) {
+        oldWidget.refreshTick != widget.refreshTick ||
+        oldWidget.fixedOrderType != widget.fixedOrderType) {
       _keyword = widget.keyword;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+      if (oldWidget.fixedOrderType != widget.fixedOrderType) {
+        _orderType = widget.fixedOrderType;
+        _typeSelected = widget.fixedOrderType != null;
+        _selectedIds.clear();
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _load(1);
+      });
     }
   }
 
@@ -120,12 +136,18 @@ class _WarehouseInboundExpectationsViewState
       ProcurementInboundOrderType.subcontract => '只显示目标件已经真实委外出仓、可能回厂的委外订货单。',
       _ => '采购在财务批准后显示；委外必须先完成目标件真实出仓，才进入预计到货。',
     };
-    if (_orderType != null) return base;
+    const selection =
+        '双击行直达下一步（待登记→登记实际到货）；'
+        '多选「批量登记送检」：待登记行进批量登记页（实收+行级入库仓库），'
+        '已登记 · 待送检行直接送检。';
+    if (_orderType != null) return '$base$selection';
     final pending = _inspectionPendingCount;
     if (pending == null) {
-      return '$base已送检任务移交品质部；检查进度与结果请在「品质部检查结果」页查看。';
+      return '$base$selection'
+          '已送检任务移交品质部；检查进度与结果请在「品质部检查结果」页查看。';
     }
-    return '$base另有 $pending 张已送检等待品质结果；'
+    return '$base$selection'
+        '另有 $pending 张已送检等待品质结果；'
         '检查进度与结果请在「品质部检查结果」页查看。';
   }
 
@@ -134,7 +156,7 @@ class _WarehouseInboundExpectationsViewState
     setState(() {
       _orderType = type;
       _typeSelected = true;
-      _selectedIds = const {};
+      _selectedIds = <String>{};
     });
     _load(1);
   }
@@ -144,7 +166,7 @@ class _WarehouseInboundExpectationsViewState
     if (_keyword == normalized) return;
     setState(() {
       _keyword = normalized;
-      _selectedIds = const {};
+      _selectedIds = <String>{};
     });
     _load(1);
   }
@@ -153,7 +175,14 @@ class _WarehouseInboundExpectationsViewState
     setState(() => _selectedIds = next);
   }
 
-  /// 「已登记 · 待送检」且挂有草稿收货单的任务才可批量送检。
+  /// 「已登记 · 待送检」断点行（挂有草稿收货单）与「待登记」行都可多选：
+  /// 2026-09-05「登记并送检」一步化后断点行基本不再出现，只放开断点行会让
+  /// 多选形同虚设（用户口径：任务中心要能多选批量送检）。待登记行走
+  /// 批量登记页（实收数量+行级入库仓库必填），断点行直接批量送检。
+  bool _canBatchOperate(InboundExpectation expectation) =>
+      _canBatchSend(expectation) || expectation.canCreateReceipt;
+
+  /// 「已登记 · 待送检」且挂有草稿收货单的任务才可走既有批量送检通道。
   bool _canBatchSend(InboundExpectation expectation) =>
       expectation.arrivalStep == InboundArrivalStep.draftPendingInspection &&
       expectation.draftReceiptIds.isNotEmpty;
@@ -176,12 +205,13 @@ class _WarehouseInboundExpectationsViewState
     return _batchIdempotencyKey!;
   }
 
-  /// 多选「批量送检」：把所选任务挂着的全部草稿收货单在一个事务里逐张送检；
+  /// 多选「批量登记送检」编排：待登记行进批量登记页（实收+行级入库仓库），
+  /// 断点「已登记 · 待送检」行直接批量送检（既有 batch-complete 通道）。
   /// 单张超量隔离不回滚其他单（与单册「继续送检」口径一致）。
-  Future<void> _batchSendInspection(Set<String> selectedIds) async {
+  Future<void> _batchRegisterAndSend(Set<String> selectedIds) async {
     if (_batchSending || selectedIds.isEmpty) {
       if (selectedIds.isEmpty) {
-        context.appWarning('请先选择“已登记 · 待送检”的任务');
+        context.appWarning('请先选择预计到货任务');
       }
       return;
     }
@@ -190,87 +220,119 @@ class _WarehouseInboundExpectationsViewState
         .where((task) => selectedIds.contains(task.id))
         .toList(growable: false);
     if (selected.length != selectedIds.length ||
-        selected.any((task) => !_canBatchSend(task))) {
+        selected.any((task) => !_canBatchOperate(task))) {
       context.appWarning('所选任务状态已变化，请刷新后重新选择');
       return;
     }
-    final receiptIds = [for (final task in selected) ...task.draftReceiptIds];
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('批量送检 ${selected.length} 张'),
-        content: Text(
-          '将把 ${receiptIds.length} 张已登记的草稿收货单一键送品质部待检(IQC)：'
-          '检验合格后转仓库待入库任务，仓库确认实物与库位后库存才增加。'
-          '实到超过财务批准量的单会自动隔离并通知财务审核组，不会入库、不会生成应付，'
-          '也不影响其余单继续送检。单价按订货单自动带入，无需填写。',
+    final drafts = selected.where(_canBatchSend).toList(growable: false);
+    final ready = selected
+        .where((task) => !drafts.contains(task))
+        .toList(growable: false);
+    // 1) 断点草稿单：确认后一个事务逐张送检（同幂等键安全重放）。
+    if (drafts.isNotEmpty) {
+      final receiptIds = [for (final task in drafts) ...task.draftReceiptIds];
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('批量送检 ${drafts.length} 张'),
+          content: Text(
+            '将把 ${receiptIds.length} 张已登记的草稿收货单一键送品质部待检(IQC)：'
+            '检验合格后转仓库待入库任务，仓库确认实物与库位后库存才增加。'
+            '实到超过财务批准量的单会自动隔离并通知财务审核组，不会入库、不会生成应付，'
+            '也不影响其余单继续送检。单价按订货单自动带入，无需填写。',
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              icon: const Icon(Icons.fact_check_outlined),
+              label: const Text('确认批量送检'),
+            ),
+          ],
         ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            icon: const Icon(Icons.fact_check_outlined),
-            label: const Text('确认批量送检'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() => _batchSending = true);
-    try {
-      final result = await ref
-          .read(procurementInboundRepositoryProvider)
-          .batchCompleteArrivals(
-            receiptIds: receiptIds,
-            idempotencyKey: _batchKey(selectedIds),
-          );
-      if (!mounted) return;
-      setState(() {
-        _selectedIds = const {};
-        _batchSelectionFingerprint = null;
-        _batchIdempotencyKey = null;
-      });
-      invalidateWarehouseTaskCounts(ref);
-      final quarantined = result.items
-          .where(
-            (item) =>
-                item.outcome ==
-                WarehouseArrivalRegistrationOutcome.excessQuarantined,
-          )
-          .length;
-      final replayed = result.items
-          .where((item) => item.alreadyCompleted)
-          .length;
-      final message = StringBuffer(
-        quarantined > 0
-            ? '已批量送检 ${result.processedCount - quarantined} 张；'
-                  '$quarantined 张实到超量已隔离，待财务在「到货异常」定案'
-            : '已批量送检 ${result.processedCount} 张收货单',
       );
-      if (replayed > 0) message.write('（其中 $replayed 张此前已处理，安全重放）');
-      message.write('；检查进度与结果请在「品质部检查结果」页查看');
-      quarantined > 0
-          ? context.appWarning(message.toString())
-          : context.appSuccess(message.toString());
-      await _load(_result?.page ?? 1);
-    } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError('批量送检失败，请保持当前选择后重试');
-    } finally {
-      if (mounted) setState(() => _batchSending = false);
+      if (confirmed != true || !mounted) return;
+      setState(() => _batchSending = true);
+      try {
+        final result = await ref
+            .read(procurementInboundRepositoryProvider)
+            .batchCompleteArrivals(
+              receiptIds: receiptIds,
+              idempotencyKey: _batchKey(
+                selectedIds
+                    .where((id) => drafts.any((task) => task.id == id))
+                    .toSet(),
+              ),
+            );
+        if (!mounted) return;
+        invalidateWarehouseTaskCounts(ref);
+        final quarantined = result.items
+            .where(
+              (item) =>
+                  item.outcome ==
+                  WarehouseArrivalRegistrationOutcome.excessQuarantined,
+            )
+            .length;
+        final replayed = result.items
+            .where((item) => item.alreadyCompleted)
+            .length;
+        final message = StringBuffer(
+          quarantined > 0
+              ? '已批量送检 ${result.processedCount - quarantined} 张；'
+                    '$quarantined 张实到超量已隔离，待财务在「到货异常」定案'
+              : '已批量送检 ${result.processedCount} 张收货单',
+        );
+        if (replayed > 0) message.write('（其中 $replayed 张此前已处理，安全重放）');
+        message.write('；检查进度与结果请在「品质部检查结果」页查看');
+        quarantined > 0
+            ? context.appWarning(message.toString())
+            : context.appSuccess(message.toString());
+      } on ApiException catch (e) {
+        if (mounted) context.appError(e.message);
+        return;
+      } catch (_) {
+        if (mounted) context.appError('批量送检失败，请保持当前选择后重试');
+        return;
+      } finally {
+        if (mounted) setState(() => _batchSending = false);
+      }
     }
+    if (!mounted) return;
+    // 2) 待登记行：进批量登记页（实收数量默认=批准剩余，入库仓库行级必填）。
+    if (ready.isNotEmpty) {
+      final prefills = <ProcurementReceiptPrefill>[];
+      for (final task in ready) {
+        final prefill = task.toReceiptPrefill();
+        if (prefill == null) {
+          context.appWarning('部分所选任务已不可登记，请刷新后重新选择');
+          return;
+        }
+        prefills.add(prefill);
+      }
+      final batch = await context.push<WarehouseArrivalRegistrationBatch>(
+        RouteName.warehouseArrivalReceiptBatch,
+        extra: prefills,
+      );
+      if (!mounted) return;
+      if (batch != null) _announceRegistration(batch);
+    }
+    setState(() => _selectedIds = <String>{});
+    _batchSelectionFingerprint = null;
+    _batchIdempotencyKey = null;
+    await _load(_result?.page ?? 1);
   }
 
   List<Widget> _batchActions(BuildContext context, Set<String> selectedIds) {
     final count = selectedIds.length;
     return [
       Tooltip(
-        message: count == 0 ? '请选择“已登记 · 待送检”的任务' : '一个事务逐张送品质部待检；超量单自动隔离待财务',
+        message: count == 0
+            ? '多选预计到货任务：待登记行进批量登记页，已登记行直接送检'
+            : '待登记行进批量登记页（实收+行级入库仓库）；已登记行一个事务逐张送检；超量单自动隔离待财务',
         child: UtenButton(
           key: const Key('inbound-expectation-batch-send-inspection'),
           size: UtenButtonSize.large,
@@ -278,11 +340,11 @@ class _WarehouseInboundExpectationsViewState
           isLoading: _batchSending,
           onPressed: _batchSending || count == 0
               ? null
-              : () => _batchSendInspection(selectedIds),
+              : () => _batchRegisterAndSend(selectedIds),
           onDisabledTap: count == 0
-              ? () => context.appWarning('请先选择“已登记 · 待送检”的任务')
+              ? () => context.appWarning('请先选择预计到货任务')
               : null,
-          child: Text(count == 0 ? '批量送检' : '批量送检($count)'),
+          child: Text(count == 0 ? '批量登记送检' : '批量登记送检($count)'),
         ),
       ),
     ];
@@ -300,6 +362,11 @@ class _WarehouseInboundExpectationsViewState
 
   Future<void> _load(int page) async {
     final version = ++_requestVersion;
+    final session = ref.read(sessionProvider);
+    bool current() =>
+        mounted &&
+        version == _requestVersion &&
+        identical(session, ref.read(sessionProvider));
     setState(() {
       _loading = true;
       _error = null;
@@ -311,11 +378,12 @@ class _WarehouseInboundExpectationsViewState
         orderType: _orderType,
         keyword: _keyword.isEmpty ? null : _keyword,
       );
+      if (!current()) return;
       // 类型计数失败不阻断列表（分段按钮降级为 '—'）。
       repo
           .expectationTypeCounts()
           .then((counts) {
-            if (mounted) setState(() => _typeCounts = counts);
+            if (current()) setState(() => _typeCounts = counts);
           })
           .catchError((_) {});
       // 已送检待品质计数同理：失败仅不显示该句提示。
@@ -324,49 +392,60 @@ class _WarehouseInboundExpectationsViewState
             .read(procurementInspectionRepositoryProvider)
             .pendingCount()
             .then((count) {
-              if (mounted) {
+              if (current() && _canViewInspection) {
                 setState(() => _inspectionPendingCount = count);
               }
             })
             .catchError((_) {});
       }
-      if (!mounted || version != _requestVersion) return;
+      if (!current()) return;
       setState(() {
         _result = result;
         _loading = false;
         final currentIds = result.items
-            .where(_canBatchSend)
+            .where(_canBatchOperate)
             .map((task) => task.id)
             .toSet();
         _selectedIds.removeWhere((id) => !currentIds.contains(id));
       });
       ref.invalidate(warehouseInboundExpectationCountProvider);
     } on ApiException catch (error) {
-      if (!mounted || version != _requestVersion) return;
+      if (!current()) return;
       setState(() {
         _error = error.message;
         _loading = false;
       });
     } catch (error, stackTrace) {
-      // 兜底分支只可能是非网络/非服务端异常（解析层全防御、Dio 异常都会转成
-      // ApiException）。2026-09-04 排障教训：只给笼统文案无法定位真实病因，
-      // 这里必须把异常类型与文本带上（控制台含堆栈），下次出现可直接判读。
+      // Keep diagnostics out of the employee-facing error message.
       debugPrint('预计到货加载异常: $error\n$stackTrace');
-      if (!mounted || version != _requestVersion) return;
+      if (!current()) return;
       setState(() {
-        _error = '预计到货加载失败（$error）；请重试，若持续出现请重新登录';
+        _error =
+            (Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+                    AppLocalizationsZh())
+                .commonError;
         _loading = false;
       });
     }
   }
 
-  /// 双击行 / 右键「查看到货详情」：直达预计到货任务详情页（2026-09-04 起
-  /// 替代居中弹窗——概要/待收明细/就地办理整页呈现），返回后任务中心就地刷新。
-  Future<void> _openDetail(InboundExpectation expectation) async {
-    await context.push<void>(
-      RouteName.warehouseArrivalExpectationDetail(expectation.id),
-      extra: expectation,
-    );
+  /// 双击行：按当前到货步骤直达下一步操作（2026-09-05 用户口径：不要
+  /// 「到货详情」中间页，双击即到对应办理页）——待登记→登记实际到货页；
+  /// 已登记待送检→继续送检确认；超量→到货异常任务中心；已送检→品质部
+  /// 检查结果页；返回后任务中心就地刷新。
+  Future<void> _openTask(InboundExpectation expectation) async {
+    switch (expectation.arrivalStep) {
+      case InboundArrivalStep.readyToRegister:
+        await _createReceipt(expectation);
+      case InboundArrivalStep.draftPendingInspection:
+        await _completeRegistration(expectation);
+      case InboundArrivalStep.excessPendingFinance:
+        await context.push<void>(RouteName.warehouseArrivalExceptions);
+      case InboundArrivalStep.awaitingQuality:
+        await context.push<void>(RouteName.warehouseQualityResults);
+      case InboundArrivalStep.blocked:
+        context.appWarning('该任务数据或授权不完整，暂不能办理；请刷新后重试');
+    }
     if (!mounted) return;
     await _load(_result?.page ?? 1);
   }
@@ -381,13 +460,14 @@ class _WarehouseInboundExpectationsViewState
     // 登记页「登记并送检」一步完成（保存+审核同事务）：返回结果即终态——
     // 正常已转品质部待检，超量已隔离待财务。回本页就地刷新一次并提示下一步，
     // 不再跳采购/委外收货单详情页（仓库流程全程留在仓储模块，也消除闪跳）。
-    final registration = await context.push<WarehouseArrivalRegistration>(
+    // 2026-09-05 行级入库仓库起，一次提交可能按仓分组返回多张收货单结果。
+    final batch = await context.push<WarehouseArrivalRegistrationBatch>(
       route,
       extra: prefill,
     );
-    if (registration == null || !mounted) return;
+    if (batch == null || !mounted) return;
     await _load(_result?.page ?? 1);
-    if (mounted) _announceRegistration(registration);
+    if (mounted) _announceRegistration(batch);
   }
 
   /// 断点恢复：草稿收货单一键「继续送检」（服务端按订货单修复币族后走同一审核
@@ -412,7 +492,11 @@ class _WarehouseInboundExpectationsViewState
           .completeArrival(expectation.draftReceiptIds.first);
       if (!mounted) return;
       await _load(_result?.page ?? 1);
-      if (mounted) _announceRegistration(registration);
+      if (mounted) {
+        _announceRegistration(
+          WarehouseArrivalRegistrationBatch(registrations: [registration]),
+        );
+      }
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {
@@ -422,21 +506,27 @@ class _WarehouseInboundExpectationsViewState
 
   /// 到货登记/送检结果的下一步提示（正常 → 品质检验 → 仓库确认入库；超量 → 财务定案）。
   /// 成功即失效全部仓库任务计数：分段徽章/hub 卡/工作台角标立即联动。
-  void _announceRegistration(WarehouseArrivalRegistration registration) {
+  void _announceRegistration(WarehouseArrivalRegistrationBatch batch) {
     invalidateWarehouseTaskCounts(ref);
-    switch (registration.outcome) {
-      case WarehouseArrivalRegistrationOutcome.submittedForInspection:
-        context.appSuccess(
-          '到货已送检(${registration.receiptBillNo ?? ''})：'
-          '检查进度与结果请在「品质部检查结果」页查看；'
-          '合格后在同一页核对实物与库位确认入库',
-        );
-      case WarehouseArrivalRegistrationOutcome.excessQuarantined:
-        context.appWarning(
-          '实到超过财务批准量，已隔离未入库(${registration.receiptBillNo ?? ''})：'
-          '待财务在到货异常审批定案后，可在「到货异常任务中心」一键入库',
-        );
+    final quarantined = batch.quarantinedCount;
+    final total = batch.registrations.length;
+    if (quarantined > 0) {
+      context.appWarning(
+        '已登记送检 ${total - quarantined} 张收货单；'
+        '$quarantined 张实到超量已隔离：待财务在到货异常审批定案后，'
+        '可在「到货异常任务中心」一键入库',
+      );
+      return;
     }
+    final billNos = [
+      for (final item in batch.registrations)
+        if (item.receiptBillNo != null) item.receiptBillNo!,
+    ];
+    context.appSuccess(
+      '到货已送检${billNos.isEmpty ? '' : '(${billNos.join('、')})'}：'
+      '检查进度与结果请在「品质部检查结果」页查看；'
+      '合格后在同一页核对实物与库位确认入库',
+    );
   }
 
   @override
@@ -505,17 +595,12 @@ class _WarehouseInboundExpectationsViewState
             },
             selectable: _canBatchSendAny,
             idOf: (expectation) =>
-                _canBatchSend(expectation) ? expectation.id : null,
+                _canBatchOperate(expectation) ? expectation.id : null,
             selectedIds: _selectedIds,
             onSelectedIdsChanged: _setSelectedIds,
             batchActionsBuilder: _canBatchSendAny ? _batchActions : null,
-            onRowTap: _openDetail,
+            onRowTap: _openTask,
             rowMenuBuilder: (expectation) => [
-              UtenMenuItem(
-                label: '查看到货详情',
-                icon: Icons.open_in_new_rounded,
-                onTap: () => _openDetail(expectation),
-              ),
               if (expectation.arrivalStep == InboundArrivalStep.readyToRegister)
                 UtenMenuItem(
                   label: '登记实际到货',
@@ -528,6 +613,12 @@ class _WarehouseInboundExpectationsViewState
                   label: '继续送检',
                   icon: Icons.fact_check_outlined,
                   onTap: () => _completeRegistration(expectation),
+                ),
+              if (expectation.arrivalStep == InboundArrivalStep.awaitingQuality)
+                UtenMenuItem(
+                  label: '查看品质检查结果',
+                  icon: Icons.plagiarism_outlined,
+                  onTap: () => context.push(RouteName.warehouseQualityResults),
                 ),
               if (expectation.arrivalStep ==
                   InboundArrivalStep.excessPendingFinance)
@@ -596,7 +687,7 @@ class _WarehouseInboundExpectationsViewState
           onSearchInputChanged: (_) => _requestVersion++,
           onSearchChanged: _applyKeyword,
           trailing: Text(
-            '共 ${result.total} 张 · 单击选中，双击详情',
+            '共 ${result.total} 张 · 双击直达下一步办理',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),

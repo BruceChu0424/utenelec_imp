@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -364,15 +365,18 @@ class _ProductionFqcDecisionDialogState
               if (_decision != 'FAIL')
                 TextField(
                   controller: _passQty,
+                  ignorePointers: false,
                   enabled: !_saving,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  decoration: InputDecoration(
-                    label: fieldLabel(
-                      '本次合格数量',
-                      theme,
-                      info: '合格数量会生成仓库待点收任务，尚不直接增加库存。',
+                  decoration: UtenInputDecoration(
+                    InputDecoration(
+                      label: fieldLabel(
+                        '本次合格数量',
+                        theme,
+                        info: '合格数量会生成仓库待点收任务，尚不直接增加库存。',
+                      ),
                     ),
                   ),
                 ),
@@ -403,14 +407,17 @@ class _ProductionFqcDecisionDialogState
                 const SizedBox(height: UtenSpacing.s12),
                 TextField(
                   controller: _reason,
+                  ignorePointers: false,
                   enabled: !_saving,
                   minLines: 2,
                   maxLines: 4,
-                  decoration: InputDecoration(
-                    label: fieldLabel(
-                      '不合格原因',
-                      theme,
-                      info: '至少 2 个字，保留为不可变质量决定证据。',
+                  decoration: UtenInputDecoration(
+                    InputDecoration(
+                      label: fieldLabel(
+                        '不合格原因',
+                        theme,
+                        info: '至少 2 个字，保留为不可变质量决定证据。',
+                      ),
                     ),
                   ),
                 ),

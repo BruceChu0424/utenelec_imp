@@ -16,6 +16,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -23,12 +24,14 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 
 import static com.uten.imp.features.production.analysis.MaterialAnalysisContracts.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeout;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -36,6 +39,160 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class MaterialAnalysisServiceBehaviorTest {
+
+    @Test
+    void partiallyPlannedBatchKeepsOneQuantityScopeAcrossAllReadyStages() {
+        UUID itemId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        var input = bomNode(itemId,UUID.randomUUID(),unitId,"input","10",
+                "START","PER_UNIT","1","1",true);
+        for (String approved : List.of("0","1","5","10")) {
+            var source = allocationSource(itemId,UUID.randomUUID(),unitId,1,"10","0",approved);
+            var stages = MaterialAnalysisService.allocateNestedStages(List.of(source),
+                    Map.of(itemId,List.of(input)),Map.of(input.dimension(),bd("10")),Map.of());
+            BigDecimal remaining = bd("10").subtract(bd(approved));
+            assertThat(stages.start().readyByItem().get(itemId)).isEqualByComparingTo("10");
+            assertThat(stages.finish().readyByItem().get(itemId)).isEqualByComparingTo("10");
+            assertThat(stages.ship().readyByItem().get(itemId)).isEqualByComparingTo("10");
+            assertThat(source.unplannedReadyQty(stages.start().readyByItem().get(itemId)))
+                    .isEqualByComparingTo(remaining);
+            assertThat(source.unplannedReadyQty(stages.finish().readyByItem().get(itemId)))
+                    .isEqualByComparingTo(remaining);
+            assertThat(source.unplannedReadyQty(stages.ship().readyByItem().get(itemId)))
+                    .isEqualByComparingTo(remaining);
+        }
+    }
+
+    @Test
+    void planIssuanceKeepsBatchDemandSeparateFromRemainingPlanCapacity() {
+        var source = allocationSource(UUID.randomUUID(), UUID.randomUUID(),
+                UUID.randomUUID(), 1, "100", "40", "60");
+
+        assertThat(source.remainingAnalysisQty()).isEqualByComparingTo("0");
+        assertThat(source.materialRequirementQty()).isEqualByComparingTo("100");
+        assertThat(source.unplannedReadyQty(bd("100"))).isEqualByComparingTo("0");
+        var partial = allocationSource(UUID.randomUUID(), UUID.randomUUID(),
+                UUID.randomUUID(), 1, "100", "0", "40");
+        assertThat(partial.unplannedReadyQty(bd("70"))).isEqualByComparingTo("30");
+    }
+
+    @Test
+    void formalCoverageIsSharedOnceAcrossEligiblePathsAndNeverDebitsPublicStockAgain() {
+        UUID itemId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        UUID demandId = UUID.randomUUID();
+        var first = bomNode(itemId, goodsId, unitId, "first", "7",
+                "START", "PER_UNIT", "1", "1", true);
+        var second = bomNode(itemId, goodsId, unitId, "second", "7",
+                "START", "PER_UNIT", "1", "1", true);
+        var sibling = bomNode(UUID.randomUUID(), goodsId, unitId, "sibling", "7",
+                "START", "PER_UNIT", "1", "1", true);
+        var tuning = MaterialAnalysisService.planFormalCoverage(List.of(
+                new MaterialAnalysisService.FormalMaterialCoverage(demandId,itemId,"first",bd("10")),
+                new MaterialAnalysisService.FormalMaterialCoverage(demandId,itemId,"second",bd("10"))),
+                List.of(first,second,sibling));
+
+        assertThat(tuning.securedTotal(itemId + "|first")).isEqualByComparingTo("7");
+        assertThat(tuning.securedTotal(itemId + "|second")).isEqualByComparingTo("3");
+        assertThat(tuning.securedTotal(sibling.analysisItemId() + "|sibling"))
+                .isEqualByComparingTo("0");
+        assertThat(tuning.earmarkedByDimension()).isEmpty();
+    }
+
+    @Test
+    void fullyIssuedMaterialsRemainCoveredAfterTheirStockHasLeftTheWarehouse() {
+        UUID itemId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        var source = allocationSource(itemId,UUID.randomUUID(),unitId,1,"20","0","20");
+        var node = bomNode(itemId,UUID.randomUUID(),unitId,"component","20",
+                "START","PER_UNIT","1","1",true);
+        var tuning = MaterialAnalysisService.planFormalCoverage(List.of(
+                new MaterialAnalysisService.FormalMaterialCoverage(
+                        UUID.randomUUID(),itemId,"component",bd("20"))),List.of(node));
+        var allocation = MaterialAnalysisService.allocateStageReadiness(
+                List.of(source),Map.of(itemId,List.of(node)),Map.of(),Set.of("START"),tuning);
+
+        assertThat(allocation.nodeAllocations().get(itemId + "|component").allocatedQty())
+                .isEqualByComparingTo("20");
+        assertThat(allocation.nodeAllocations().get(itemId + "|component").shortageQty())
+                .isEqualByComparingTo("0");
+        assertThat(allocation.remainingPool().values())
+                .allSatisfy(qty -> assertThat(qty).isEqualByComparingTo("0"));
+        assertThat(source.unplannedReadyQty(allocation.readyByItem().get(itemId)))
+                .isEqualByComparingTo("0");
+    }
+
+    @Test
+    void separateFixedBatchesKeepTheirOwnMaterialConsumptionAfterPlanIssuance() {
+        UUID itemId=UUID.randomUUID();
+        UUID unitId=UUID.randomUUID();
+        var source=allocationSource(itemId,UUID.randomUUID(),unitId,1,"100","0","100");
+        var original=bomNode(itemId,UUID.randomUUID(),unitId,"component","10",
+                "START","FIXED_BATCH","10","100",false);
+        var batched=original.withOutputBatches(List.of(bd("50"),bd("50")));
+        batched=batched.withSnapshotRequiredQty(batched.requiredForOutput(bd("100")));
+        assertThat(original.requiredForOutput(bd("100"))).isEqualByComparingTo("10");
+        assertThat(batched.snapshotRequiredQty()).isEqualByComparingTo("20");
+        var tuning=MaterialAnalysisService.planFormalCoverage(List.of(
+                new MaterialAnalysisService.FormalMaterialCoverage(
+                        UUID.randomUUID(),itemId,"component",bd("10"))),List.of(batched));
+        var waiting=MaterialAnalysisService.allocateStageReadiness(List.of(source),
+                Map.of(itemId,List.of(batched)),Map.of(),Set.of("START"),tuning.fresh());
+        assertThat(waiting.nodeAllocations().get(itemId+"|component").shortageQty())
+                .isEqualByComparingTo("10");
+        var supplied=MaterialAnalysisService.allocateStageReadiness(List.of(source),
+                Map.of(itemId,List.of(batched)),Map.of(batched.dimension(),bd("10")),
+                Set.of("START"),tuning.fresh());
+        assertThat(supplied.nodeAllocations().get(itemId+"|component").allocatedQty())
+                .isEqualByComparingTo("20");
+        assertThat(supplied.nodeAllocations().get(itemId+"|component").shortageQty())
+                .isEqualByComparingTo("0");
+    }
+
+    @Test
+    void inputsAlreadyConvertedIntoAnchorOutputCannotCoverAnotherWaitingBatch() {
+        UUID itemId=UUID.randomUUID();
+        var node=bomNode(itemId,UUID.randomUUID(),UUID.randomUUID(),"component","15",
+                "START","PER_UNIT","1","1",true);
+        var tuning=MaterialAnalysisService.planFormalCoverage(List.of(
+                new MaterialAnalysisService.FormalMaterialCoverage(UUID.randomUUID(),itemId,
+                        "component",bd("10"),BigDecimal.ZERO),
+                new MaterialAnalysisService.FormalMaterialCoverage(UUID.randomUUID(),itemId,
+                        "component",bd("10"),bd("5"))),List.of(node));
+        assertThat(tuning.securedTotal(itemId+"|component")).isEqualByComparingTo("5");
+    }
+
+    @Test
+    void siblingWarehousesKeepTheirOwnSafetyFloorAndCannotLendExactPriority() {
+        UUID itemId=UUID.randomUUID();
+        UUID warehouseA=UUID.randomUUID();
+        UUID warehouseB=UUID.randomUUID();
+        var nodeA=bomNode(itemId,UUID.randomUUID(),UUID.randomUUID(),"a","10",
+                "START","PER_UNIT","1","1",true);
+        var nodeB=bomNode(itemId,nodeA.goodsId(),nodeA.unitId(),"b","10",
+                "START","PER_UNIT","1","1",true);
+        BigDecimal availableA=MaterialAnalysisService.availableIncludingOwnAfterSafety(
+                BigDecimal.ZERO,bd("5"),bd("5"));
+        BigDecimal availableB=MaterialAnalysisService.availableIncludingOwnAfterSafety(
+                bd("10"),BigDecimal.ZERO,bd("5"));
+        var pooled=new MaterialAnalysisService.StockValue(bd("5"),BigDecimal.ZERO,availableA,true)
+                .add(new MaterialAnalysisService.StockValue(bd("10"),BigDecimal.ZERO,availableB,true));
+        assertThat(pooled.availableAfterSafety(bd("5"))).isEqualByComparingTo("5");
+        var tuning=MaterialAnalysisService.planExactPegs(List.of(
+                new MaterialAnalysisService.ExactPegRecord(UUID.randomUUID(),UUID.randomUUID(),
+                        itemId,"a",nodeA.dimension(),bd("5"),warehouseA),
+                new MaterialAnalysisService.ExactPegRecord(UUID.randomUUID(),UUID.randomUUID(),
+                        itemId,"b",nodeB.dimension(),bd("2"),warehouseB),
+                new MaterialAnalysisService.ExactPegRecord(UUID.randomUUID(),UUID.randomUUID(),
+                        itemId,"b",nodeB.dimension(),bd("4"),warehouseB)),List.of(nodeA,nodeB),
+                Map.of(nodeA.dimension(),bd("5")),Map.of(
+                        new MaterialAnalysisService.WarehouseMaterialDimension(warehouseA,nodeA.dimension()),availableA,
+                        new MaterialAnalysisService.WarehouseMaterialDimension(warehouseB,nodeB.dimension()),availableB));
+        assertThat(tuning.securedTotal(itemId+"|a")).isEqualByComparingTo("0");
+        assertThat(tuning.securedTotal(itemId+"|b")).isEqualByComparingTo("5");
+        assertThat(tuning.earmarkedByDimension().get(nodeA.dimension())).isEqualByComparingTo("5");
+    }
 
     @Test
     void subcontractHandoffFutureCapacityPreventsDuplicateSupplyWithoutFakingStock() {
@@ -303,56 +460,47 @@ class MaterialAnalysisServiceBehaviorTest {
                 org.mockito.Answers.CALLS_REAL_METHODS);
         UUID analysisLineId = UUID.randomUUID();
         UUID workshopDepartmentId = UUID.randomUUID();
-        UUID teamDepartmentId = UUID.randomUUID();
-        UUID workerId = UUID.randomUUID();
         PlanQuantity item = new PlanQuantity(
                 analysisLineId, bd("25"), LocalDate.of(2026, 8, 12),
                 LocalDate.of(2026, 8, 11), workshopDepartmentId,
-                "二车间", workerId, teamDepartmentId);
-        GeneratePlanRequest request = new GeneratePlanRequest(
-                3L, "a".repeat(64), "b".repeat(64), "plan-sheet-0001",
-                UUID.randomUUID(), LocalDate.of(2026, 8, 9),
-                LocalDate.of(2026, 8, 20), UUID.randomUUID(),
-                "默认车间", UUID.randomUUID(), false,
-                List.of(item), List.of());
+                "二车间", UUID.randomUUID(), null, null);
+        Object defaults = invokePrivateCtor(
+                "MaterialAnalysisCommandService$PlanScheduleDefaults",
+                LocalDate.of(2026, 8, 9), LocalDate.of(2026, 8, 20));
 
         assertThat((LocalDate) invokePrivate(
                 commands, "itemBillDate",
-                new Class<?>[]{PlanQuantity.class, GeneratePlanRequest.class},
-                item, request)).isEqualTo(LocalDate.of(2026, 8, 12));
-        assertThat((UUID) invokePrivate(
-                commands, "itemDepartmentId",
-                new Class<?>[]{PlanQuantity.class, GeneratePlanRequest.class},
-                item, request)).isEqualTo(workshopDepartmentId);
-        assertThat((UUID) invokePrivate(
-                commands, "itemWorkerId",
-                new Class<?>[]{PlanQuantity.class, GeneratePlanRequest.class},
-                item, request)).isEqualTo(workerId);
+                new Class<?>[]{PlanQuantity.class, defaults.getClass()},
+                item, defaults)).isEqualTo(LocalDate.of(2026, 8, 12));
+        assertThat((LocalDate) invokePrivate(
+                commands, "itemDeliveryDate",
+                new Class<?>[]{PlanQuantity.class, defaults.getClass()},
+                item, defaults)).isEqualTo(LocalDate.of(2026, 8, 11));
 
         ApiException error = assertThrows(ApiException.class, () -> invokePrivate(
                 commands, "validatePlanSchedule",
-                new Class<?>[]{PlanQuantity.class, GeneratePlanRequest.class},
-                item, request));
+                new Class<?>[]{PlanQuantity.class, defaults.getClass()},
+                item, defaults));
 
         assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
     }
 
     @Test
-    void explicitProductNumberParticipatesInGenerateIdempotencyHash() {
+    void explicitProductNumberParticipatesInIssueIdempotencyHash() {
         UUID analysisId = UUID.randomUUID();
         UUID analysisLineId = UUID.randomUUID();
         UUID warehouseId = UUID.randomUUID();
 
-        String automatic = generateHash(analysisId,
-                generateRequest(analysisLineId, warehouseId, null));
-        String blank = generateHash(analysisId,
-                generateRequest(analysisLineId, warehouseId, "   "));
-        String explicit = generateHash(analysisId,
-                generateRequest(analysisLineId, warehouseId, "V6-0001"));
-        String padded = generateHash(analysisId,
-                generateRequest(analysisLineId, warehouseId, "  V6-0001  "));
-        String changed = generateHash(analysisId,
-                generateRequest(analysisLineId, warehouseId, "V6-0002"));
+        String automatic = issueHash(analysisId,
+                issueRequest(analysisLineId, warehouseId, null));
+        String blank = issueHash(analysisId,
+                issueRequest(analysisLineId, warehouseId, "   "));
+        String explicit = issueHash(analysisId,
+                issueRequest(analysisLineId, warehouseId, "V6-0001"));
+        String padded = issueHash(analysisId,
+                issueRequest(analysisLineId, warehouseId, "  V6-0001  "));
+        String changed = issueHash(analysisId,
+                issueRequest(analysisLineId, warehouseId, "V6-0002"));
 
         assertThat(blank).isEqualTo(automatic);
         assertThat(padded).isEqualTo(explicit);
@@ -786,7 +934,7 @@ class MaterialAnalysisServiceBehaviorTest {
 
         assertThat(removed.getCode()).isEqualTo(ErrorCode.CONFLICT);
         assertThat(changed.getCode()).isEqualTo(ErrorCode.CONFLICT);
-        assertThat(changed.getMessage()).contains("禁止刷新");
+        assertThat(changed.getMessage()).contains("不能直接删除", "原库存");
     }
 
     @Test
@@ -981,6 +1129,200 @@ class MaterialAnalysisServiceBehaviorTest {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         assertThat(allocatedAcrossPaths).isEqualByComparingTo("1.0000");
         assertThat(shortageAcrossPaths).isEqualByComparingTo("1.0000");
+    }
+
+    @Test
+    void combinedProjectionDoesNotAllocateDirectKitStockAgainToNestedChildren() {
+        UUID unitId = UUID.randomUUID();
+        UUID firstItemId = UUID.randomUUID();
+        UUID secondItemId = UUID.randomUUID();
+        UUID sharedGoodsId = UUID.randomUUID();
+        var parent = diagnosticNode(firstItemId, UUID.randomUUID(), unitId,
+                "parent", null, 1, "1", "1", "MAKE", true);
+        var child = diagnosticNode(firstItemId, sharedGoodsId, unitId,
+                "parent/child", "parent", 2, "1", "1", "BUY", false);
+        var direct = diagnosticNode(secondItemId, sharedGoodsId, unitId,
+                "direct", null, 1, "1", "1", "BUY", false);
+        var sources = List.of(
+                allocationSource(firstItemId, UUID.randomUUID(), unitId, 0, "1"),
+                allocationSource(secondItemId, UUID.randomUUID(), unitId, 1, "1"));
+        MaterialAnalysisService service = service(
+                mock(EntityManager.class), mock(ProductionDocumentAccessPolicy.class));
+
+        for (String parentStock : List.of("0", "0.5", "1")) {
+            Object projection = invokePrivate(service, "computeAllocationProjection",
+                    new Class<?>[]{List.class, List.class, Map.class, Map.class,
+                            Map.class, Set.class, Map.class, MaterialAnalysisService.BorrowTuning.class},
+                    sources, List.of(parent, child, direct),
+                    Map.of(child.dimension(), bd("1"), parent.dimension(), bd(parentStock)),
+                    Map.of(), Map.of(), Set.of(), Map.of(), MaterialAnalysisService.BorrowTuning.NONE);
+            Map<String, MaterialAnalysisService.NodeAllocation> allocations = invokePrivate(
+                    projection, "allocations", new Class<?>[]{});
+
+            assertThat(allocations.get(secondItemId + "|direct").allocatedQty())
+                    .isEqualByComparingTo("1");
+            assertThat(allocations.get(firstItemId + "|parent/child").allocatedQty())
+                    .isEqualByComparingTo("0");
+            assertThat(allocations.get(firstItemId + "|parent/child").shortageQty())
+                    .isEqualByComparingTo(BigDecimal.ONE.subtract(bd(parentStock)));
+        }
+    }
+
+    @Test
+    void stockedParentDoesNotExplodeChildrenWhenAnotherMaterialBlocksTheCompleteKit() {
+        UUID unitId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+        var parent = diagnosticNode(itemId, UUID.randomUUID(), unitId,
+                "parent", null, 1, "1", "1", "MAKE", true);
+        var child = diagnosticNode(itemId, UUID.randomUUID(), unitId,
+                "parent/child", "parent", 2, "1", "1", "BUY", false);
+        var missing = diagnosticNode(itemId, UUID.randomUUID(), unitId,
+                "missing", null, 1, "1", "1", "BUY", false);
+        MaterialAnalysisService service = service(
+                mock(EntityManager.class), mock(ProductionDocumentAccessPolicy.class));
+
+        Object projection = invokePrivate(service, "computeAllocationProjection",
+                new Class<?>[]{List.class, List.class, Map.class, Map.class,
+                        Map.class, Set.class, Map.class, MaterialAnalysisService.BorrowTuning.class},
+                List.of(allocationSource(itemId, UUID.randomUUID(), unitId, 0, "1")),
+                List.of(parent, child, missing), Map.of(parent.dimension(), bd("1")),
+                Map.of(), Map.of(), Set.of(), Map.of(), MaterialAnalysisService.BorrowTuning.NONE);
+        Map<String, MaterialAnalysisService.NodeAllocation> allocations = invokePrivate(
+                projection, "allocations", new Class<?>[]{});
+
+        assertThat(allocations.get(itemId + "|parent").allocatedQty())
+                .as("Incomplete kits retain the existing no-partial-commitment rule")
+                .isEqualByComparingTo("0");
+        assertThat(allocations.get(itemId + "|parent/child").shortageQty())
+                .as("Existing parent stock does not create unnecessary child supply")
+                .isEqualByComparingTo("0");
+    }
+
+    @Test
+    void combinedProjectionRetainsExactStockOnItsOwnNodeWithoutConsumingPublicStockTwice() {
+        UUID unitId = UUID.randomUUID();
+        UUID firstItemId = UUID.randomUUID();
+        UUID secondItemId = UUID.randomUUID();
+        UUID sharedGoodsId = UUID.randomUUID();
+        var parent = diagnosticNode(firstItemId, UUID.randomUUID(), unitId,
+                "parent", null, 1, "1", "1", "MAKE", true);
+        var child = diagnosticNode(firstItemId, sharedGoodsId, unitId,
+                "parent/child", "parent", 2, "1", "1", "BUY", false);
+        var direct = diagnosticNode(secondItemId, sharedGoodsId, unitId,
+                "direct", null, 1, "1", "1", "BUY", false);
+        var sources = List.of(
+                allocationSource(firstItemId, UUID.randomUUID(), unitId, 0, "1"),
+                allocationSource(secondItemId, UUID.randomUUID(), unitId, 1, "1"));
+        MaterialAnalysisService service = service(
+                mock(EntityManager.class), mock(ProductionDocumentAccessPolicy.class));
+
+        for (String exactKey : List.of(firstItemId + "|parent/child", secondItemId + "|direct")) {
+            var tuning = MaterialAnalysisService.BorrowTuning.securedOnly(
+                    Map.of(exactKey, bd("1")), Map.of(child.dimension(), bd("1")));
+            Object projection = invokePrivate(service, "computeAllocationProjection",
+                    new Class<?>[]{List.class, List.class, Map.class, Map.class,
+                            Map.class, Set.class, Map.class, MaterialAnalysisService.BorrowTuning.class},
+                    sources, List.of(parent, child, direct), Map.of(child.dimension(), bd("1")),
+                    Map.of(), Map.of(), Set.of(), Map.of(), tuning);
+            Map<String, MaterialAnalysisService.NodeAllocation> allocations = invokePrivate(
+                    projection, "allocations", new Class<?>[]{});
+
+            assertThat(allocations.get(secondItemId + "|direct").allocatedQty())
+                    .isEqualByComparingTo("1");
+            assertThat(allocations.get(firstItemId + "|parent/child").allocatedQty())
+                    .isEqualByComparingTo("1");
+        }
+    }
+
+    @Test
+    void largeAnalysisSharesStockOnceAndKeepsRepeatedBomPathsScopedToEachProduct() {
+        UUID unitId = UUID.randomUUID();
+        UUID parentGoodsId = UUID.randomUUID();
+        UUID sharedGoodsId = UUID.randomUUID();
+        int productCount = 5000;
+        int coveredProducts = 2000;
+        List<MaterialAnalysisService.SourceLine> sources = new ArrayList<>();
+        List<MaterialAnalysisService.BomNode> nodes = new ArrayList<>();
+        List<MaterialAnalysisService.BomNode> parents = new ArrayList<>();
+        for (int index = 0; index < productCount; index++) {
+            UUID itemId = new UUID(0, index + 1);
+            sources.add(allocationSource(itemId, parentGoodsId, unitId, index, "1"));
+            MaterialAnalysisService.BomNode parent = diagnosticNode(
+                    itemId, parentGoodsId, unitId, "parent", null,
+                    1, "1", "1", "MAKE", true);
+            parents.add(parent);
+            nodes.add(parent);
+            nodes.add(diagnosticNode(itemId, sharedGoodsId, unitId,
+                    "parent/child", "parent", 2, "1", "1", "BUY", false));
+        }
+        Collections.shuffle(nodes, new Random(20260905));
+        Collections.reverse(sources);
+        MaterialAnalysisService.MaterialDimension sharedDimension =
+                new MaterialAnalysisService.MaterialDimension(sharedGoodsId, null, unitId);
+
+        MaterialAnalysisService.NestedDiagnosticPlan diagnostic = assertTimeout(
+                Duration.ofSeconds(5),
+                () -> MaterialAnalysisService.allocateNestedDiagnostics(
+                        sources, nodes, Map.of(sharedDimension, bd("2000"))));
+
+        assertThat(diagnostic.nodes()).hasSize(productCount * 2);
+        assertThat(diagnostic.nodes().stream().map(node ->
+                node.analysisItemId() + "|" + node.nodeKey()).toList())
+                .containsExactlyElementsOf(nodes.stream().map(node ->
+                        node.analysisItemId() + "|" + node.nodeKey()).toList());
+        BigDecimal totalAllocated = BigDecimal.ZERO;
+        for (int index = 0; index < productCount; index++) {
+            MaterialAnalysisService.BomNode parent = parents.get(index);
+            var child = diagnostic.nodeAllocations().get(
+                    parent.analysisItemId() + "|parent/child");
+            boolean covered = index < coveredProducts;
+            assertThat(child.allocatedQty()).isEqualByComparingTo(covered ? "1" : "0");
+            assertThat(child.shortageQty()).isEqualByComparingTo(covered ? "0" : "1");
+            assertThat(diagnostic.hasUncoveredDirectChild(parent)).isEqualTo(!covered);
+            totalAllocated = totalAllocated.add(child.allocatedQty());
+        }
+        assertThat(totalAllocated).isEqualByComparingTo("2000");
+    }
+
+    @Test
+    void orphanChildCannotBorrowTheSameNodeKeyFromAnotherProduct() {
+        UUID unitId = UUID.randomUUID();
+        UUID firstItemId = UUID.randomUUID();
+        UUID orphanItemId = UUID.randomUUID();
+        List<MaterialAnalysisService.SourceLine> sources = List.of(
+                allocationSource(firstItemId, UUID.randomUUID(), unitId, 0, "1"),
+                allocationSource(orphanItemId, UUID.randomUUID(), unitId, 1, "1"));
+        List<MaterialAnalysisService.BomNode> nodes = List.of(
+                diagnosticNode(firstItemId, UUID.randomUUID(), unitId,
+                        "parent", null, 1, "1", "1", "MAKE", true),
+                diagnosticNode(orphanItemId, UUID.randomUUID(), unitId,
+                        "parent/child", "parent", 2, "1", "1", "BUY", false));
+
+        ApiException error = assertThrows(ApiException.class,
+                () -> MaterialAnalysisService.allocateNestedDiagnostics(
+                        sources, nodes, Map.of()));
+
+        assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
+    }
+
+    @Test
+    void referenceChildShortageDoesNotBlockItsParentInTheReadinessIndex() {
+        UUID itemId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        MaterialAnalysisService.BomNode parent = diagnosticNode(
+                itemId, UUID.randomUUID(), unitId, "parent", null,
+                1, "1", "1", "MAKE", true);
+        MaterialAnalysisService.BomNode child = diagnosticNode(
+                itemId, UUID.randomUUID(), unitId, "parent/reference", "parent",
+                2, "1", "1", "BUY", false, "REFERENCE", true);
+
+        var diagnostic = MaterialAnalysisService.allocateNestedDiagnostics(
+                List.of(allocationSource(itemId, UUID.randomUUID(), unitId, 0, "1")),
+                List.of(child, parent), Map.of());
+
+        assertThat(diagnostic.nodeAllocations().get(itemId + "|parent/reference")
+                .shortageQty()).isEqualByComparingTo("1");
+        assertThat(diagnostic.hasUncoveredDirectChild(parent)).isFalse();
     }
 
     @Test
@@ -1454,7 +1796,8 @@ class MaterialAnalysisServiceBehaviorTest {
                 .contains(
                         "balance.beneficiary_analysis_id = c.claim_analysis_id")
                 .contains("WHEN r.owner_id = c.claim_analysis_id")
-                .contains("r.warehouse_id = :warehouseId")
+                .contains("fn_warehouse_same_main(r.warehouse_id,:warehouseId)")
+                .contains("fn_warehouse_same_main(formal.warehouse_id,:warehouseId)")
                 .doesNotContain(
                         "AND r.owner_id = c.claim_analysis_id AND r.goods_id");
         verify(query).setParameter("warehouseId", warehouseId);
@@ -1484,7 +1827,8 @@ class MaterialAnalysisServiceBehaviorTest {
         UUID planId = UUID.randomUUID();
         Query query = query(List.<Object[]>of(new Object[]{
                 analysisItemId, planId, "PP-001", "IN_PROGRESS",
-                bd("10"), bd("4")
+                bd("10"), bd("4"), bd("6"), Boolean.TRUE,
+                "装配一车间", "张三"
         }));
         List<String> statements = new ArrayList<>();
         EntityManager em = mock(EntityManager.class);
@@ -1628,11 +1972,10 @@ class MaterialAnalysisServiceBehaviorTest {
             assertThat(statement).contains(
                     "material.hard_gate = TRUE",
                     "material.control_stage IN (:includedStages)",
-                    "fn_material_analysis_edge_required(",
-                    "link.id AS link_id",
-                    "draft.submitted_qty",
-                    "* material.parent_per_product_qty");
-            assertThat(statement).doesNotContain("SUM(link.submitted_qty)");
+                    "formal.owner_type='PRODUCTION_MATERIAL_DEMAND'",
+                    "formal.qty-formal.released_qty",
+                    "fn_analysis_plan_material_matches(");
+            assertThat(statement).doesNotContain("SUM(link.submitted_qty)", "draft.submitted_qty");
         });
         verify(query).setParameter("includedStages", productionStages);
         assertThat(MaterialAnalysisService.HARD_COMMITMENT_STAGES)
@@ -1642,10 +1985,20 @@ class MaterialAnalysisServiceBehaviorTest {
 
     private static MaterialAnalysisService service(
             EntityManager em, ProductionDocumentAccessPolicy access) {
-        return new MaterialAnalysisService(
+        MaterialAnalysisService service = new MaterialAnalysisService(
                 em, mock(SecurityContextCurrentUser.class), mock(TxSessionVars.class),
                 access, mock(com.uten.imp.security.OwnerVisibility.class),
-                mock(com.uten.imp.application.port.SubcontractPreparationPort.class));
+                mock(com.uten.imp.application.port.SubcontractPreparationPort.class),
+                mock(com.uten.imp.features.notice.ChainNoticeService.class),
+                mock(PreplanStockEntitlementService.class),
+                new MaterialAnalysisFlowStageService(em),
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
+                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+        var preparationAccess = mock(com.uten.imp.features.production.SubcontractDraftPreparationAccessPolicy.class);
+        when(preparationAccess.readPredicate(anyString(), anyString()))
+                .thenAnswer(invocation -> invocation.getArgument(1));
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "draftPreparationAccess", preparationAccess);
+        return service;
     }
 
     private static MaterialAnalysisService.SourceLine allocationSource(
@@ -1798,7 +2151,7 @@ class MaterialAnalysisServiceBehaviorTest {
                 List.of(), List.of(), List.of(),
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                null, List.of());
+                null, List.of(), null);
     }
 
     private static MaterialAnalysisService.MaterialRow materialRow(
@@ -1875,21 +2228,39 @@ class MaterialAnalysisServiceBehaviorTest {
         }
     }
 
-    private static GeneratePlanRequest generateRequest(
+    private static IssueWorkshopPlansRequest issueRequest(
             UUID analysisLineId, UUID warehouseId, String productNo) {
-        PlanQuantity item = new PlanQuantity(
-                analysisLineId, bd("5"), null, null, null, null, null, null,
-                productNo);
-        return new GeneratePlanRequest(
-                3L, "a".repeat(64), "b".repeat(64), "product-no-0001",
-                warehouseId, LocalDate.of(2026, 8, 14), null, null, null, null,
-                false, List.of(item), List.of());
+        return new IssueWorkshopPlansRequest(
+                3L, "a".repeat(64), "product-no-0001", warehouseId,
+                LocalDate.of(2026, 8, 14), null, false,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(
+                        null, analysisLineId, bd("5"), null, null, null, null,
+                        null, null, productNo)));
     }
 
-    private static String generateHash(UUID analysisId, GeneratePlanRequest request) {
+    /** 私有 record PlanScheduleDefaults 的构造反射（编译期拿不到类型）。 */
+    private static Object invokePrivateCtor(String binarySimpleName,
+            LocalDate billDate, LocalDate deliveryDate) {
+        for (Class<?> nested : MaterialAnalysisCommandService.class.getDeclaredClasses()) {
+            if (nested.getSimpleName().equals(
+                    binarySimpleName.substring(binarySimpleName.indexOf('$') + 1))) {
+                try {
+                    var ctor = nested.getDeclaredConstructor(
+                            LocalDate.class, LocalDate.class);
+                    ctor.setAccessible(true);
+                    return ctor.newInstance(billDate, deliveryDate);
+                } catch (ReflectiveOperationException error) {
+                    throw new AssertionError(error);
+                }
+            }
+        }
+        throw new AssertionError("nested record not found: " + binarySimpleName);
+    }
+
+    private static String issueHash(UUID analysisId, IssueWorkshopPlansRequest request) {
         try {
             Method method = MaterialAnalysisCommandService.class.getDeclaredMethod(
-                    "generateHash", UUID.class, GeneratePlanRequest.class);
+                    "issueHash", UUID.class, IssueWorkshopPlansRequest.class);
             method.setAccessible(true);
             return (String) method.invoke(null, analysisId, request);
         } catch (InvocationTargetException error) {

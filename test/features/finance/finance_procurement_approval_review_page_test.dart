@@ -4,9 +4,11 @@
 //  - 驳回：原因必填，空原因内联报错；
 //  - 非 PENDING / 无动作 case 不渲染底栏（服务端 allowedActions 为准）。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/finance/models/finance_procurement_workflow.dart';
 import 'package:uten_imp/features/finance/pages/finance_procurement_approval_review_page.dart';
 import 'package:uten_imp/features/finance/providers/finance_procurement_approval_count_provider.dart';
@@ -14,6 +16,8 @@ import 'package:uten_imp/features/finance/repositories/finance_procurement_workf
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/repositories/task_claim_repository.dart';
+import '../../helpers/finance_claim_fixture.dart';
 
 class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   _FakeWorkflowRepo(this.reviewResult);
@@ -80,10 +84,10 @@ class _FinanceReviewerSessionNotifier extends SessionNotifier {
   );
 }
 
-FinanceProcurementApprovalReview _pendingReview({
+Map<String, dynamic> _pendingReviewJson({
   String status = 'PENDING',
   Set<String> allowedActions = const {'APPROVE', 'REJECT'},
-}) => FinanceProcurementApprovalReview.fromJson({
+}) => {
   'caseId': 'case-1',
   'orderId': 'order-1',
   'orderType': 'PURCHASE',
@@ -147,12 +151,20 @@ FinanceProcurementApprovalReview _pendingReview({
       'occurredAt': '2026-09-02T02:00:00+08:00',
     },
   ],
-});
+};
+
+FinanceProcurementApprovalReview _pendingReview({
+  String status = 'PENDING',
+  Set<String> allowedActions = const {'APPROVE', 'REJECT'},
+}) => FinanceProcurementApprovalReview.fromJson(
+  _pendingReviewJson(status: status, allowedActions: allowedActions),
+);
 
 Future<GoRouter> _pumpReviewPage(
   WidgetTester tester,
   _FakeWorkflowRepo repository, {
   bool withApprovePerms = true,
+  FinanceClaimFixture? claims,
 }) async {
   tester.view.physicalSize = const Size(1400, 1000);
   tester.view.devicePixelRatio = 1;
@@ -188,12 +200,20 @@ Future<GoRouter> _pumpReviewPage(
           },
         }),
         sessionProvider.overrideWith(_FinanceReviewerSessionNotifier.new),
+        taskClaimRepositoryProvider.overrideWithValue(
+          claims ?? FinanceClaimFixture(),
+        ),
         financeProcurementApprovalCountProvider.overrideWith((ref) async => 1),
         financeProcurementWorkflowRepositoryProvider.overrideWithValue(
           repository,
         ),
       ],
-      child: MaterialApp.router(routerConfig: router),
+      child: MaterialApp.router(
+        routerConfig: router,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('zh'),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -201,6 +221,42 @@ Future<GoRouter> _pumpReviewPage(
 }
 
 void main() {
+  for (final type in ['PURCHASE', 'SUBCONTRACT']) {
+    testWidgets('$type认领失败只读，重试后可审核；续期丢失暂停决定', (tester) async {
+      final json = _pendingReviewJson()..['orderType'] = type;
+      final repository = _FakeWorkflowRepo(
+        FinanceProcurementApprovalReview.fromJson(json),
+      );
+      final claims = FinanceClaimFixture()..failClaim = true;
+      await _pumpReviewPage(tester, repository, claims: claims);
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const Key('finance-order-review-approve')),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(repository.approved, isEmpty);
+      claims.failClaim = false;
+      await tester.tap(find.text('重新认领并刷新'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('finance-order-review-approve')));
+      await tester.pumpAndSettle();
+      claims.loseLease = true;
+      await tester.pump(const Duration(seconds: 31));
+      await tester.pump();
+      final decision = find.descendant(
+        of: find.byKey(const Key('finance-order-review-approve-submit')),
+        matching: find.byType(FilledButton),
+      );
+      expect(tester.widget<FilledButton>(decision).onPressed, isNull);
+      expect(repository.approved, isEmpty);
+      expect(repository.rejected, isEmpty);
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+    });
+  }
   testWidgets('renders finance-scoped cards with bottom decision bar', (
     tester,
   ) async {
@@ -250,6 +306,7 @@ void main() {
     expect(repository.approved.single.items.single.toJson(), {
       'caseId': 'case-1',
       'expectedVersion': 3,
+      'expectedClaimId': 'lease-PROCUREMENT_FINANCE_APPROVE-case-1-1',
     });
     // 决策完成 → pop(true) 回任务中心。
     expect(find.text('任务中心列表'), findsOneWidget);
@@ -270,7 +327,12 @@ void main() {
       find.byKey(const Key('finance-order-review-reject-submit')),
     );
     await tester.pump();
-    expect(find.text('请填写驳回原因'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is Tooltip && (w.message ?? '').contains('请填写驳回原因'),
+      ),
+      findsOneWidget,
+    );
     expect(repository.rejected, isEmpty);
 
     await tester.enterText(
@@ -311,5 +373,53 @@ void main() {
 
     expect(find.byKey(const Key('finance-order-review-approve')), findsNothing);
     expect(find.byKey(const Key('finance-order-review-reject')), findsNothing);
+  });
+
+  // 批准后改量（2026-09-05）：有修改清单时渲染「修改清单」卡片（旧行删除线
+  /// + 新值加粗），为空时不渲染。
+  testWidgets('qty changes render a review card only when present', (
+    tester,
+  ) async {
+    final plain = _pendingReview();
+    final withChanges = FinanceProcurementApprovalReview.fromJson({
+      ..._pendingReviewJson(),
+      'qtyChanges': [
+        {
+          'orderItemId': 'order-item-1',
+          'lineNo': 1,
+          'goodsCode': 'G001',
+          'goodsName': '铜线',
+          'colorName': '裸色',
+          'unitName': '公斤',
+          'oldQty': '100',
+          'newQty': '120',
+          'changedByName': '采购张三',
+          'changedAt': '2026-09-05T01:00:00+08:00',
+        },
+      ],
+    });
+
+    final repository = _FakeWorkflowRepo(withChanges);
+    await _pumpReviewPage(tester, repository);
+
+    expect(
+      find.byKey(const Key('procurement-approval-qty-changes')),
+      findsOneWidget,
+    );
+    expect(find.text('修改清单 · 改量 1 处'), findsOneWidget);
+    expect(find.text('以前 100 公斤'), findsOneWidget);
+    expect(find.text('现在 120 公斤'), findsOneWidget);
+    expect(
+      find.byKey(const Key('procurement-qty-change-order-item-1')),
+      findsOneWidget,
+    );
+
+    // 无修改清单：卡片不渲染。
+    final plainRepository = _FakeWorkflowRepo(plain);
+    await _pumpReviewPage(tester, plainRepository);
+    expect(
+      find.byKey(const Key('procurement-approval-qty-changes')),
+      findsNothing,
+    );
   });
 }

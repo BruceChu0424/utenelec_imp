@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.fulfillment;
 
+import com.uten.imp.support.ProcurementReceiptFixtureSupport;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -445,8 +446,8 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
                     insert into purchase_receipt_items(
                         id, bill_no, bill_date, receipt_id,
                         order_item_id, goods_id, unit_id, unit_rate, qty,
-                        goods_snapshot_source
-                    ) values (?, ?, ?, ?, ?, ?, ?, 1, 10, 'MASTER_AT_SAVE')
+                        price, amount_original, amount_local, replacement_intent, goods_snapshot_source
+                    ) values (?, ?, ?, ?, ?, ?, ?, 1, 10, 0, 0, 0, 'NORMAL', 'MASTER_AT_SAVE')
                     """,
                     receiptItemId,
                     receiptNo,
@@ -579,6 +580,8 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
                     where id = ?
                     """,
                     segmentId);
+            // Explicit zero-price quantity fixture; never infer monetary zero from NULL.
+            ProcurementReceiptFixtureSupport.appendStandardReceipt(connection, "PURCHASE", receiptId);
             connection.commit();
         } catch (Exception error) {
             connection.rollback();
@@ -697,6 +700,8 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
                     connection,
                     "update purchase_receipts set status = -1 where id = ?",
                     fixture.receiptId());
+            // Explicit zero-price quantity fixture; never infer monetary zero from NULL.
+            ProcurementReceiptFixtureSupport.appendReceiptReversal(connection, "PURCHASE", fixture.receiptId());
             connection.commit();
         } catch (Exception error) {
             connection.rollback();

@@ -229,7 +229,8 @@ class ProcurementArrivalWorkflowContractTest {
                         mock(SecurityContextCurrentUser.class),
                         mock(TxSessionVars.class),
                         mock(FinanceReviewerEligibilityPort.class),
-                        mock(ReceiptPriceMasker.class));
+                        mock(ReceiptPriceMasker.class),
+                        com.uten.imp.support.FulfillmentMutationLockTestSupport.procurementLocks());
         UUID receiptId = UUID.randomUUID();
         UUID receiptItemId = UUID.randomUUID();
         Class<?> rowType = Arrays.stream(

@@ -96,6 +96,7 @@ abstract final class DocumentPermissionCatalog {
     'quotes': salesQuote,
     'orders': salesOrder,
     'shipments': salesShipment,
+    'customer-shipments': salesOtherShipment,
     'other-shipments': salesOtherShipment,
     'returns': salesReturn,
   };

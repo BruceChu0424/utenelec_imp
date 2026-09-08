@@ -3,6 +3,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 
+class ProductionMaterialCapabilities {
+  const ProductionMaterialCapabilities({
+    this.canSettle = false,
+    this.canReverse = false,
+    this.canClose = false,
+  });
+  final bool canSettle;
+  final bool canReverse;
+  final bool canClose;
+  factory ProductionMaterialCapabilities.fromJson(Map<String, dynamic> json) =>
+      ProductionMaterialCapabilities(
+        canSettle: json['canSettle'] == true,
+        canReverse: json['canReverse'] == true,
+        canClose: json['canClose'] == true,
+      );
+}
+
 class ProductionMaterialClearanceRow {
   const ProductionMaterialClearanceRow({
     required this.planId,
@@ -160,18 +177,34 @@ class ProductionMaterialRepository {
 
   final ApiClient api;
 
-  Future<List<ProductionMaterialClearanceRow>> clearance(String planId) async {
+  Future<ProductionMaterialCapabilities> capabilities(
+    String planId, {
+    String? executionSegmentId,
+  }) async => ProductionMaterialCapabilities.fromJson(
+    await api.get(
+      ApiEndpoints.productionMaterialCapabilities(planId),
+      query: {'executionSegmentId': ?executionSegmentId},
+    ),
+  );
+
+  Future<List<ProductionMaterialClearanceRow>> clearance(
+    String planId, {
+    String? executionSegmentId,
+  }) async {
     final list = await api.getList(
       ApiEndpoints.productionMaterialClearance(planId),
+      query: {'executionSegmentId': ?executionSegmentId},
     );
     return list.map(ProductionMaterialClearanceRow.fromJson).toList();
   }
 
   Future<List<ProductionMaterialSettlementSource>> settlementSources(
-    String planId,
-  ) async {
+    String planId, {
+    String? executionSegmentId,
+  }) async {
     final list = await api.getList(
       ApiEndpoints.productionMaterialSettlements(planId),
+      query: {'executionSegmentId': ?executionSegmentId},
     );
     return list.map(ProductionMaterialSettlementSource.fromJson).toList();
   }
@@ -181,12 +214,14 @@ class ProductionMaterialRepository {
     required String idempotencyKey,
     required List<ProductionMaterialSettlementLine> lines,
     String? reason,
+    String? executionSegmentId,
   }) async {
     final list = await api.postList(
       ApiEndpoints.productionMaterialSettlements(planId),
       body: {
         'idempotencyKey': idempotencyKey,
         'reason': ?reason,
+        'executionSegmentId': ?executionSegmentId,
         'lines': [for (final line in lines) line.toJson()],
       },
     );
@@ -198,12 +233,14 @@ class ProductionMaterialRepository {
     required String idempotencyKey,
     required List<ProductionMaterialSettlementLine> lines,
     String? reason,
+    String? executionSegmentId,
   }) async {
     final list = await api.postList(
       ApiEndpoints.productionMaterialSettlementReverse(planId),
       body: {
         'idempotencyKey': idempotencyKey,
         'reason': ?reason,
+        'executionSegmentId': ?executionSegmentId,
         'lines': [for (final line in lines) line.toJson()],
       },
     );

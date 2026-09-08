@@ -61,9 +61,11 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
                     fixture.planId(), fixture.userId());
 
             assertQuantities(connection, fixture.itemId(), "4.0000", "0.0000");
+            // V490 起下达只记计划占用，物料需求保留到实际履约——提交即
+            // PARTIALLY_PLANNED，不再直接 COMPLETED。
             assertText(connection, """
                     SELECT status FROM production_material_analyses WHERE id=?
-                    """, fixture.analysisId(), "COMPLETED");
+                    """, fixture.analysisId(), "PARTIALLY_PLANNED");
             assertText(connection, """
                     SELECT allocation_status
                     FROM production_material_analysis_plan_links WHERE id=?
@@ -76,9 +78,18 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
                     SELECT allocation_status
                     FROM production_material_analysis_plan_links WHERE id=?
                     """, linkId, "APPROVED");
+            // 审批后仍需实际入库（iqty）才完工；存储状态由应用层刷新回写，
+            // 这里直接断言状态函数对实际入库事实的判定。
             assertText(connection, """
                     SELECT status FROM production_material_analyses WHERE id=?
-                    """, fixture.analysisId(), "COMPLETED");
+                    """, fixture.analysisId(), "PARTIALLY_PLANNED");
+            update(connection, """
+                    UPDATE production_plan_items SET iqty=4
+                    WHERE plan_id=? AND is_deleted=FALSE
+                    """, fixture.planId());
+            assertText(connection,
+                    "SELECT fn_material_analysis_fulfillment_status(?)",
+                    fixture.analysisId(), "COMPLETED");
 
             update(connection, "UPDATE production_plans SET status=-1 WHERE id=?",
                     fixture.planId());
@@ -158,7 +169,8 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
                     connection, partial, partial.planId(), "3");
 
             assertAllReadiness(connection, partial.itemId(), "2");
-            assertAnalysisMaterialState(connection, partialMaterial, "7", "2", "5");
+            // V490 起下达只记计划占用：物料行保持原位单一份数据，不再被转移。
+            assertAnalysisMaterialState(connection, partialMaterial, "10", "5", "5");
 
             update(connection, """
                     UPDATE production_material_analysis_plan_links
@@ -183,7 +195,7 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
             insertSubmittedLink(connection, exhausted, exhausted.planId(), "8");
 
             assertAllReadinessZero(connection, exhausted.itemId());
-            assertAnalysisMaterialState(connection, exhaustedMaterial, "2", "0", "2");
+            assertAnalysisMaterialState(connection, exhaustedMaterial, "10", "5", "5");
         }
     }
 
@@ -307,21 +319,15 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
                     """, linkId, fixture.analysisId(), fixture.itemId(),
                     fixture.planId(), fixture.userId());
 
-            assertMaterialQuantities(connection, materialId, "6.0000", "6.0000");
-            assertEquals(0, scalarDecimal(connection, """
-                    SELECT material.allocated_available_qty
-                           + item.submitted_qty + item.approved_qty
-                    FROM production_material_analysis_materials material
-                    JOIN production_material_analysis_items item
-                      ON item.id=material.analysis_item_id
-                    WHERE material.id=?
-                    """, materialId).compareTo(new BigDecimal("10.0000")));
+            // V490 起下达只记计划占用：物料行不动，占用在 item.submitted_qty 上。
+            assertMaterialQuantities(connection, materialId, "10.0000", "10.0000");
+            assertQuantities(connection, fixture.itemId(), "4.0000", "0.0000");
 
             update(connection, "UPDATE production_plans SET status=-1 WHERE id=?",
                     fixture.planId());
 
             assertQuantities(connection, fixture.itemId(), "0.0000", "0.0000");
-            assertMaterialQuantities(connection, materialId, "10.0000", "0.0000");
+            assertMaterialQuantities(connection, materialId, "10.0000", "10.0000");
             assertText(connection, """
                     SELECT allocation_status
                     FROM production_material_analysis_plan_links WHERE id=?
@@ -359,43 +365,44 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
 
             UUID firstLink = insertSubmittedLink(
                     connection, fixture, fixture.planId(), "3");
-            assertAnalysisMaterialState(connection, packageId, "4", "2", "2");
-            assertAnalysisMaterialState(connection, nestedId, "6", "6", "0");
-            assertAnalysisMaterialState(connection, fixedBatchId, "10", "10", "0");
-            assertAnalysisMaterialState(connection, secondPathId, "0", "0", "0");
+            // V490 起下达不再消耗物料树：四行物料恒等于插入值（required,allocated,shortage）。
+            assertAnalysisMaterialState(connection, packageId, "4", "4", "0");
+            assertAnalysisMaterialState(connection, nestedId, "12", "12", "0");
+            assertAnalysisMaterialState(connection, fixedBatchId, "15", "15", "0");
+            assertAnalysisMaterialState(connection, secondPathId, "30", "30", "0");
             assertAllReadinessZero(connection, fixture.itemId());
 
             UUID secondPlan = createAnalysisPlan(connection, fixture, "3");
             insertSubmittedLink(connection, fixture, secondPlan, "3");
-            assertAnalysisMaterialState(connection, packageId, "2", "0", "2");
-            assertAnalysisMaterialState(connection, nestedId, "6", "6", "0");
-            assertAnalysisMaterialState(connection, fixedBatchId, "5", "5", "0");
-            assertAnalysisMaterialState(connection, secondPathId, "0", "0", "0");
+            assertAnalysisMaterialState(connection, packageId, "4", "4", "0");
+            assertAnalysisMaterialState(connection, nestedId, "12", "12", "0");
+            assertAnalysisMaterialState(connection, fixedBatchId, "15", "15", "0");
+            assertAnalysisMaterialState(connection, secondPathId, "30", "30", "0");
 
             UUID thirdPlan = createAnalysisPlan(connection, fixture, "1");
             insertSubmittedLink(connection, fixture, thirdPlan, "1");
-            assertAnalysisMaterialState(connection, packageId, "2", "0", "2");
-            assertAnalysisMaterialState(connection, nestedId, "6", "6", "0");
-            assertAnalysisMaterialState(connection, fixedBatchId, "5", "0", "5");
-            assertAnalysisMaterialState(connection, secondPathId, "10", "0", "10");
+            assertAnalysisMaterialState(connection, packageId, "4", "4", "0");
+            assertAnalysisMaterialState(connection, nestedId, "12", "12", "0");
+            assertAnalysisMaterialState(connection, fixedBatchId, "15", "15", "0");
+            assertAnalysisMaterialState(connection, secondPathId, "30", "30", "0");
 
             UUID fourthPlan = createAnalysisPlan(connection, fixture, "3");
             UUID fourthLink = insertSubmittedLink(
                     connection, fixture, fourthPlan, "3");
-            assertAnalysisMaterialState(connection, packageId, "0", "0", "0");
-            assertAnalysisMaterialState(connection, nestedId, "0", "0", "0");
-            assertAnalysisMaterialState(connection, fixedBatchId, "0", "0", "0");
-            assertAnalysisMaterialState(connection, secondPathId, "0", "0", "0");
+            assertAnalysisMaterialState(connection, packageId, "4", "4", "0");
+            assertAnalysisMaterialState(connection, nestedId, "12", "12", "0");
+            assertAnalysisMaterialState(connection, fixedBatchId, "15", "15", "0");
+            assertAnalysisMaterialState(connection, secondPathId, "30", "30", "0");
             assertQuantities(connection, fixture.itemId(), "10.0000", "0.0000");
 
             update(connection, """
                     UPDATE production_material_analysis_plan_links
                     SET allocation_status='RELEASED' WHERE id=?
                     """, fourthLink);
-            assertAnalysisMaterialState(connection, packageId, "2", "0", "2");
-            assertAnalysisMaterialState(connection, nestedId, "6", "0", "6");
-            assertAnalysisMaterialState(connection, fixedBatchId, "5", "0", "5");
-            assertAnalysisMaterialState(connection, secondPathId, "10", "0", "10");
+            assertAnalysisMaterialState(connection, packageId, "4", "4", "0");
+            assertAnalysisMaterialState(connection, nestedId, "12", "12", "0");
+            assertAnalysisMaterialState(connection, fixedBatchId, "15", "15", "0");
+            assertAnalysisMaterialState(connection, secondPathId, "30", "30", "0");
             assertQuantities(connection, fixture.itemId(), "7.0000", "0.0000");
             assertText(connection, """
                     SELECT allocation_status
@@ -417,7 +424,8 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
             setStageReadiness(connection, fixture.itemId(), "10", "10", "10");
 
             insertSubmittedLink(connection, fixture, fixture.planId(), "3");
-            assertAnalysisMaterialState(connection, materialId, "4", "2", "2");
+            // V490 起下达只记计划占用：物料行恒等于插入值，占用看链接与 commitment。
+            assertAnalysisMaterialState(connection, materialId, "4", "4", "0");
             assertEquals(0, submittedStandaloneCommitment(connection, fixture.analysisId())
                     .compareTo(new BigDecimal("2")));
             assertAllReadinessZero(connection, fixture.itemId());
@@ -428,7 +436,7 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
             UUID secondPlan = createAnalysisPlan(connection, fixture, "3");
             insertSubmittedLink(connection, fixture, secondPlan, "3");
 
-            assertAnalysisMaterialState(connection, materialId, "2", "0", "2");
+            assertAnalysisMaterialState(connection, materialId, "4", "4", "0");
             assertEquals(0, submittedStandaloneCommitment(connection, fixture.analysisId())
                     .compareTo(new BigDecimal("4")));
             assertAllReadinessZero(connection, fixture.itemId());
@@ -465,12 +473,13 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
 
             UUID secondPlan = createAnalysisPlan(connection, fixture, "3");
             insertSubmittedLink(connection, fixture, secondPlan, "3");
-            assertAnalysisMaterialState(connection, materialId, "2", "2", "0");
+            // V490 起下达不再消耗物料行：模拟应用层刷新后的 4/0 保持原值。
+            assertAnalysisMaterialState(connection, materialId, "4", "4", "0");
             setStageReadiness(connection, fixture.itemId(), "4", "4", "4");
 
             UUID thirdPlan = createAnalysisPlan(connection, fixture, "4");
             insertSubmittedLink(connection, fixture, thirdPlan, "4");
-            assertAnalysisMaterialState(connection, materialId, "0", "0", "0");
+            assertAnalysisMaterialState(connection, materialId, "4", "4", "0");
             assertEquals(0, submittedStandaloneCommitment(connection, fixture.analysisId())
                     .compareTo(new BigDecimal("6")));
             assertQuantities(connection, fixture.itemId(), "10", "0");
@@ -513,7 +522,9 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
             UUID linkId = insertSubmittedLink(
                     connection, fixture, fixture.planId(), "4");
 
-            assertAnalysisMaterialState(connection, materialId, "12", "12", "0");
+            // V490 起下达只记计划占用：快照行的 LEGACY_CUMULATIVE 口径与数量
+            // 都保持插入原值，不再被链接消耗改写。
+            assertAnalysisMaterialState(connection, materialId, "20", "20", "0");
             assertText(connection, """
                     SELECT calculation_mode
                     FROM production_material_analysis_materials WHERE id=?
@@ -523,7 +534,7 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
                     UPDATE production_material_analysis_plan_links
                     SET allocation_status='RELEASED' WHERE id=?
                     """, linkId);
-            assertAnalysisMaterialState(connection, materialId, "20", "0", "20");
+            assertAnalysisMaterialState(connection, materialId, "20", "20", "0");
         }
     }
 
@@ -575,7 +586,7 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
     }
 
     @Test
-    void brokenSnapshotTreeRollsBackClaimAndLinkDeleteReportsAppendOnly()
+    void orphanMaterialRowsNoLongerBlockPlanClaimsAndLinkDeleteReportsAppendOnly()
             throws Exception {
         try (Connection connection = connection()) {
             Fixture malformedRoot = fixture(connection, new BigDecimal("4.0000"));
@@ -592,11 +603,10 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
                     "orphan-child", "missing-parent", 2, "1", "10", "10",
                     "PER_UNIT", "1", "1", true);
 
-            PSQLException brokenTree = assertThrows(PSQLException.class,
-                    () -> insertSubmittedLink(
-                            connection, broken, broken.planId(), "3"));
-            assertEquals("23514", brokenTree.getSQLState());
-            assertQuantities(connection, broken.itemId(), "0", "0");
+            // V490 起下达只记计划占用，不再走物料树完整性校验——孤儿快照行
+            // 由应用层刷新兜底，链接照常登记。
+            insertSubmittedLink(connection, broken, broken.planId(), "3");
+            assertQuantities(connection, broken.itemId(), "3", "0");
 
             Fixture appendOnly = fixture(connection, new BigDecimal("4.0000"));
             UUID linkId = insertSubmittedLink(

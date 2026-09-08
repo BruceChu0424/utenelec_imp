@@ -11,6 +11,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../models/subcontract_order_progress.dart';
 import '../repositories/subcontract_repository.dart';
 import '../models/subcontract_doc.dart';
@@ -170,18 +171,22 @@ class _SubcontractOrderProgressSectionState
     );
   }
 
-  // 节点条：下单 → 财务审批 →（有子层时）前置自制 → 目标件出仓 →
+  // 下单后先完成所需内部生产，再交财务，随后实际目标件出仓。
   // 加工回厂 → 品质检验 → 仓库确认入仓 → 结案。品质与入库不得合并推断。
   Widget _nodeStrip(ThemeData theme, SubcontractOrderProgress p) {
     final reversed = p.status == -1;
     final financeDone = p.financeCaseStatus == 'APPROVED' || p.status == 1;
     final preparationLines = p.materialLines
-        .where((line) => line.flowMode == 'MAKE_THEN_OUTBOUND')
+        .where(
+          (line) =>
+              line.flowMode == 'MAKE_THEN_OUTBOUND' || line.isDraftPreparation,
+        )
         .toList(growable: false);
     final preparationDone =
         preparationLines.isNotEmpty &&
         preparationLines.every(
           (line) =>
+              line.preparationStatus == 'READY_FOR_FINANCE' ||
               line.preparationStatus == 'READY_OUTBOUND' ||
               line.preparationStatus == 'OUTBOUND_COMPLETE',
         );
@@ -216,13 +221,13 @@ class _SubcontractOrderProgressSectionState
 
     final nodes = <_Node>[
       const _Node('下单', true),
-      _Node('财务审批', financeDone),
       if (preparationLines.isNotEmpty)
         _Node(
-          '前置自制',
+          workflowFieldText(context).subcontractInternalProduction,
           preparationDone,
-          current: financeDone && !preparationDone,
+          current: !reversed && !preparationDone,
         ),
+      _Node('财务审批', financeDone),
       if (outboundRelevant)
         _Node('目标件出仓', outboundDone, current: outboundCurrent),
       _Node('加工回厂', receivedTotal > 0),
@@ -402,51 +407,63 @@ class _SubcontractOrderProgressSectionState
             runSpacing: UtenSpacing.s4,
             children: [
               _quantityFact(theme, '目标量', line.plannedQty, line.unitName),
-              if (!line.isLegacyBomComponent)
-                _quantityFact(theme, '前置已完成', line.preparedQty, line.unitName),
-              _quantityFact(
-                theme,
-                '当前可出',
-                line.readyOutboundQty,
-                line.unitName,
-              ),
-              _quantityFact(theme, '已出仓', line.issuedQty, line.unitName),
-              _quantityFact(theme, '订单未出', line.remainingQty, line.unitName),
+              if (line.isDraftPreparation) ...[
+                _quantityFact(
+                  theme,
+                  workflowFieldText(context).subcontractPreparedQuantity,
+                  line.preparedQty,
+                  line.unitName,
+                ),
+                _quantityFact(
+                  theme,
+                  workflowFieldText(context).subcontractPreparationShortage,
+                  line.remainingQty,
+                  line.unitName,
+                ),
+              ] else ...[
+                if (!line.isLegacyBomComponent)
+                  _quantityFact(
+                    theme,
+                    '前置已完成',
+                    line.preparedQty,
+                    line.unitName,
+                  ),
+                _quantityFact(
+                  theme,
+                  '当前可出',
+                  line.readyOutboundQty,
+                  line.unitName,
+                ),
+                _quantityFact(theme, '已出仓', line.issuedQty, line.unitName),
+                _quantityFact(theme, '订单未出', line.remainingQty, line.unitName),
+              ],
             ],
           ),
           if (blocker != null && blocker.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s4),
             Text(
-              '阻断：$blocker',
+              blocker,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.error,
+                color: line.isDraftPreparation
+                    ? theme.colorScheme.onSurfaceVariant
+                    : theme.colorScheme.error,
                 fontWeight: FontWeight.w600,
               ),
             ),
           ],
-          if (line.flowMode == 'MAKE_THEN_OUTBOUND' &&
-              (ref.read(isSuperAdminProvider) ||
-                  ref
-                      .read(currentPermissionsProvider)
-                      .contains(Perm.subcontractPreparationView))) ...[
-            const SizedBox(height: UtenSpacing.s4),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () => context.push(
-                  RoutePath.productionSubcontractPreparations(
-                    planItemId: line.planItemId,
-                  ),
-                ),
-                icon: const Icon(Icons.account_tree_outlined, size: 18),
-                label: Text(
-                  line.preparationStatus == 'ACTION_REQUIRED'
-                      ? '打开前置自制待办'
-                      : '查看前置自制进度',
+          if (line.preparationAnalysisId != null &&
+              line.allowedActions.contains('OPEN_ANALYSIS'))
+            TextButton.icon(
+              onPressed: () => context.push(
+                RoutePath.productionMaterialAnalysisSummary(
+                  line.preparationAnalysisId!,
                 ),
               ),
+              icon: const Icon(Icons.account_tree_outlined, size: 18),
+              label: Text(
+                workflowFieldText(context).subcontractOpenPreparation,
+              ),
             ),
-          ],
         ],
       ),
     );
@@ -462,8 +479,11 @@ class _SubcontractOrderProgressSectionState
     style: theme.textTheme.bodySmall,
   );
 
-  static String _flowModeLabel(String flowMode, [bool stockDirect = false]) =>
+  String _flowModeLabel(String flowMode, [bool stockDirect = false]) =>
       switch (flowMode) {
+        'DRAFT_PREPARATION' => workflowFieldText(
+          context,
+        ).subcontractDraftPreparationHint,
         // 直下单销售式供货：有子层但现货充足拆出的直发行，区别于真无子层件。
         'DIRECT_OUTBOUND' =>
           stockDirect ? '有子层级 · 仓库现货直发（缺口另行走前置自制）' : '无子层级 · 目标件库存放行后直接出仓',
@@ -474,7 +494,11 @@ class _SubcontractOrderProgressSectionState
         _ => '准备路线待确认',
       };
 
-  static String _preparationStatusLabel(String status) => switch (status) {
+  String _preparationStatusLabel(String status) => switch (status) {
+    'WAITING_PLAN' => workflowFieldText(context).subcontractWaitingPlan,
+    'READY_FOR_FINANCE' => workflowFieldText(
+      context,
+    ).subcontractReadyForFinance,
     'ACTION_REQUIRED' => '待计划员开始物料分析',
     'IN_PREPARATION' || 'WAITING_PREPARATION' => '前置自制中',
     'WAITING_FQC' => '等待品质检查',

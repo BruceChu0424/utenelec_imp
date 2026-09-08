@@ -18,6 +18,9 @@ import java.util.UUID;
 @Setter
 public class ProductionMaterialSettlementRequest {
 
+    /** Optional exact task context. Every submitted demand must belong to this segment. */
+    private UUID executionSegmentId;
+
     @NotBlank
     @Size(min = 8, max = 128)
     private String idempotencyKey;

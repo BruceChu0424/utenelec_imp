@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../models/procurement_iqc_rejection.dart';
 
 enum ProcurementIqcRejectionActionKind {
@@ -25,11 +27,13 @@ class ProcurementIqcRejectionActionDialog extends StatefulWidget {
     required this.caseItem,
     required this.kind,
     required this.onSubmit,
+    this.creditDocuments = const [],
   });
 
   final ProcurementIqcRejectionCase caseItem;
   final ProcurementIqcRejectionActionKind kind;
   final ProcurementIqcRejectionCommandSubmit onSubmit;
+  final List<ProcurementIqcCreditDocument> creditDocuments;
 
   @override
   State<ProcurementIqcRejectionActionDialog> createState() =>
@@ -45,6 +49,17 @@ class _ProcurementIqcRejectionActionDialogState
   late DateTime _date = _today();
   bool _busy = false;
   String? _error;
+  String? _creditDocumentId;
+  List<ProcurementIqcCreditDocument> get _activeCredits =>
+      widget.creditDocuments.where((d) => d.status == 'ACTIVE').toList();
+  @override
+  void initState() {
+    super.initState();
+    final reversible = _activeCredits.where((d) => d.canReverse).toList();
+    if (reversible.length == 1) {
+      _creditDocumentId = reversible.single.creditDocumentId;
+    }
+  }
 
   bool get _usesReference =>
       widget.kind == ProcurementIqcRejectionActionKind.recordReturn ||
@@ -123,6 +138,10 @@ class _ProcurementIqcRejectionActionDialogState
             expectedVersion: widget.caseItem.version,
             commandId: _commandId,
             reason: _note.text,
+            creditDocumentId:
+                widget.kind == ProcurementIqcRejectionActionKind.reverse
+                ? _creditDocumentId
+                : null,
           ),
       };
       final result = await widget.onSubmit(command);
@@ -257,6 +276,46 @@ class _ProcurementIqcRejectionActionDialogState
                             ),
                           ),
                         ],
+                        if (widget.kind ==
+                                ProcurementIqcRejectionActionKind.reverse &&
+                            _activeCredits.isNotEmpty) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          FormField<String>(
+                            initialValue: _creditDocumentId,
+                            validator: (value) =>
+                                value == null ? '请选择一个可反向的实际贷项凭证' : null,
+                            builder: (field) => UtenDropdownField(
+                              key: const Key('iqc-reverse-credit-document'),
+                              value: _creditDocumentId,
+                              label: '要反向的实际贷项凭证',
+                              required: true,
+                              enabled: !_busy,
+                              info: '将反向所选凭证的全部案件分项及对应抵销，保留原始历史。',
+                              errorMessage: field.errorText,
+                              items: [
+                                for (final doc in _activeCredits.where(
+                                  (d) => d.canReverse,
+                                ))
+                                  UtenDropdownItem(
+                                    value: doc.creditDocumentId,
+                                    label:
+                                        '${doc.creditReference ?? doc.creditDocumentId} · 原币 ${doc.amountOriginal ?? '—'}',
+                                  ),
+                              ],
+                              onChanged: (value) {
+                                field.didChange(value);
+                                setState(() => _creditDocumentId = value);
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: UtenSpacing.s8),
+                          for (final doc in _activeCredits.where(
+                            (d) => d.creditDocumentId == _creditDocumentId,
+                          ))
+                            Text(
+                              '本凭证共有 ${doc.caseAllocations.length} 个案件分项，全部一起反向。原币 ${doc.amountOriginal ?? '—'}，本币 ${doc.amountLocal ?? '—'}。',
+                            ),
+                        ],
                         if (_usesReference) ...[
                           const SizedBox(height: UtenSpacing.s12),
                           TextFormField(
@@ -266,12 +325,14 @@ class _ProcurementIqcRejectionActionDialogState
                             maxLength: 200,
                             validator: _requiredReference,
                             errorBuilder: utenTextFieldErrorBuilder,
-                            decoration: InputDecoration(
-                              label: fieldLabel(
-                                _referenceLabel,
-                                theme,
-                                required: true,
-                                info: '填写可向供应商或物流凭证回查的结构化编号',
+                            decoration: UtenInputDecoration(
+                              InputDecoration(
+                                label: fieldLabel(
+                                  _referenceLabel,
+                                  theme,
+                                  required: true,
+                                  info: '填写可向供应商或物流凭证回查的结构化编号',
+                                ),
                               ),
                             ),
                           ),
@@ -312,12 +373,14 @@ class _ProcurementIqcRejectionActionDialogState
                           maxLength: 2000,
                           validator: _requiredNote,
                           errorBuilder: utenTextFieldErrorBuilder,
-                          decoration: InputDecoration(
-                            label: fieldLabel(
-                              _noteLabel,
-                              theme,
-                              required: true,
-                              info: '说明将进入追加式审计事件，提交后不能覆盖原记录',
+                          decoration: UtenInputDecoration(
+                            InputDecoration(
+                              label: fieldLabel(
+                                _noteLabel,
+                                theme,
+                                required: true,
+                                info: '说明将进入追加式审计事件，提交后不能覆盖原记录',
+                              ),
                             ),
                           ),
                         ),

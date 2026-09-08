@@ -42,7 +42,8 @@ class MasterReferenceValidationAdapterTest {
 
         assertEquals(ErrorCode.NOT_FOUND, error.getCode());
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em).createNativeQuery(sql.capture());
+        verify(em, org.mockito.Mockito.times(2)).createNativeQuery(sql.capture());
+        assertTrue(sql.getAllValues().getFirst().contains("FOR NO KEY UPDATE"));
         assertTrue(sql.getValue().contains("current_unit.id = g.unit_id"));
         assertTrue(!sql.getValue().contains("legacy_unit"));
         assertTrue(!sql.getValue().contains("unit_legacy_id"));

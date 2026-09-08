@@ -17,6 +17,7 @@ import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -513,21 +514,23 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                                     errorBuilder: utenTextFieldErrorBuilder,
                                     readOnly: true,
                                     controller: _billNo,
-                                    decoration: InputDecoration(
-                                      labelText: '单据号',
-                                      hintText: _billNo.text.isEmpty
-                                          ? '保存后自动生成'
-                                          : null,
-                                      filled: _billNo.text.isEmpty,
-                                      suffixIcon: _billNo.text.isEmpty
-                                          ? const Icon(
-                                              Icons.autorenew_outlined,
-                                              size: 18,
-                                            )
-                                          : const Icon(
-                                              Icons.lock_outline,
-                                              size: 16,
-                                            ),
+                                    decoration: UtenInputDecoration(
+                                      InputDecoration(
+                                        labelText: '单据号',
+                                        hintText: _billNo.text.isEmpty
+                                            ? '保存后自动生成'
+                                            : null,
+                                        filled: _billNo.text.isEmpty,
+                                        suffixIcon: _billNo.text.isEmpty
+                                            ? const Icon(
+                                                Icons.autorenew_outlined,
+                                                size: 18,
+                                              )
+                                            : const Icon(
+                                                Icons.lock_outline,
+                                                size: 16,
+                                              ),
+                                      ),
                                     ),
                                   ),
                                   // 制单员/制单时间：服务端权威，只读展示（责任制）。

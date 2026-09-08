@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -495,17 +496,20 @@ class _DispositionDialogState extends State<_DispositionDialog> {
                     key: const ValueKey('return-quality-qty'),
                     controller: _qtyController,
                     autofocus: true,
+                    ignorePointers: false,
                     enabled: !_submitting,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
                     textInputAction: TextInputAction.next,
-                    decoration: InputDecoration(
-                      label: fieldLabel(
-                        widget.correction ? '撤回数量(基本单位)' : '处置数量(基本单位)',
-                        Theme.of(context),
-                        required: true,
-                        info: '必须大于 0，最多 ${_qty(maxQty)}，最多 4 位小数',
+                    decoration: UtenInputDecoration(
+                      InputDecoration(
+                        label: fieldLabel(
+                          widget.correction ? '撤回数量(基本单位)' : '处置数量(基本单位)',
+                          Theme.of(context),
+                          required: true,
+                          info: '必须大于 0，最多 ${_qty(maxQty)}，最多 4 位小数',
+                        ),
                       ),
                     ),
                     validator: _validateQty,
@@ -515,16 +519,19 @@ class _DispositionDialogState extends State<_DispositionDialog> {
                     errorBuilder: utenTextFieldErrorBuilder,
                     key: const ValueKey('return-quality-reason'),
                     controller: _reasonController,
+                    ignorePointers: false,
                     enabled: !_submitting,
                     maxLength: 500,
                     minLines: 2,
                     maxLines: 4,
-                    decoration: InputDecoration(
-                      label: fieldLabel(
-                        '处置原因或检验依据',
-                        Theme.of(context),
-                        required: true,
-                        info: '该内容会写入不可改写的质检处置事件，请填写可追溯依据。',
+                    decoration: UtenInputDecoration(
+                      InputDecoration(
+                        label: fieldLabel(
+                          '处置原因或检验依据',
+                          Theme.of(context),
+                          required: true,
+                          info: '该内容会写入不可改写的质检处置事件，请填写可追溯依据。',
+                        ),
                       ),
                     ),
                     validator: (value) => value == null || value.trim().isEmpty

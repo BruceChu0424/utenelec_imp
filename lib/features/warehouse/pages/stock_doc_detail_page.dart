@@ -7,6 +7,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
@@ -358,13 +359,15 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                                   const TextInputType.numberWithOptions(
                                     decimal: true,
                                   ),
-                              decoration: InputDecoration(
-                                label: fieldLabel(
-                                  '仓库实收',
-                                  Theme.of(context),
-                                  info: '不超过待点收上限；整单全部填 0 表示拒收退回生产',
+                              decoration: UtenInputDecoration(
+                                InputDecoration(
+                                  label: fieldLabel(
+                                    '仓库实收',
+                                    Theme.of(context),
+                                    info: '不超过待点收上限；整单全部填 0 表示拒收退回生产',
+                                  ),
+                                  border: const OutlineInputBorder(),
                                 ),
-                                border: const OutlineInputBorder(),
                               ),
                             ),
                           ),
@@ -375,13 +378,15 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                     controller: reasonController,
                     minLines: 2,
                     maxLines: 4,
-                    decoration: InputDecoration(
-                      label: fieldLabel(
-                        '少收差异原因',
-                        Theme.of(context),
-                        info: '任一行实收少于申报量时必填，例如：本次只交接 80 件，余量待下批。',
+                    decoration: UtenInputDecoration(
+                      InputDecoration(
+                        label: fieldLabel(
+                          '少收差异原因',
+                          Theme.of(context),
+                          info: '任一行实收少于申报量时必填，例如：本次只交接 80 件，余量待下批。',
+                        ),
+                        border: const OutlineInputBorder(),
                       ),
-                      border: const OutlineInputBorder(),
                     ),
                   ),
                   if (dialogError != null) ...[

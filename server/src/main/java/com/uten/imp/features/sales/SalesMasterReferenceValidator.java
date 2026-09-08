@@ -23,6 +23,7 @@ public class SalesMasterReferenceValidator {
         references.requireVisibleActiveClient(request.getClientId());
         List<QuoteItemLine> lines = request.getItems();
         if (lines == null) return;
+        references.lockGoodsQuantityBasis(lines.stream().map(line -> line.getGoodsId()).toList());
         int fallbackLineNo = 1;
         for (QuoteItemLine line : lines) {
             int lineNo = line.getLineNo() == null ? fallbackLineNo : line.getLineNo();
@@ -38,6 +39,7 @@ public class SalesMasterReferenceValidator {
         references.requireVisibleActiveClient(request.getClientId());
         List<OrderItemLine> lines = request.getItems();
         if (lines == null) return;
+        references.lockGoodsQuantityBasis(lines.stream().map(line -> line.getGoodsId()).toList());
         int fallbackLineNo = 1;
         for (OrderItemLine line : lines) {
             int lineNo = line.getLineNo() == null ? fallbackLineNo : line.getLineNo();

@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -41,7 +42,15 @@ void main() {
     await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, '登记异常'));
     await tester.pump();
-    expect(find.text('请填写原因或处理依据'), findsOneWidget);
+    // 2026-09-04 ⓘ字段说明全站化：必填原因校验文案进输入框 ⓘ Tooltip
+    //（UtenInputDecoration 不再占底部错误槽），断言用 Tooltip.message 谓词。
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip && widget.message?.contains('请填写原因或处理依据') == true,
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('unaudited shipment keeps warehouse actions locked', (
@@ -137,7 +146,7 @@ void main() {
     expect(find.textContaining('仓库作业已开始，不能补做或撤销财务审核'), findsOneWidget);
   });
 
-  testWidgets('finance-audited pending-pick draft hides the edit entry', (
+  testWidgets('finance-audited pending-pick draft allows controlled editing', (
     tester,
   ) async {
     await _pumpDetail(
@@ -151,11 +160,11 @@ void main() {
         'warehouseWorkStatus': 'PENDING_PICK',
         'items': <Map<String, dynamic>>[],
       },
-      permissions: const {Perm.financeShipmentAudit},
+      permissions: const {Perm.financeShipmentAudit, Perm.salesShipmentEdit},
     );
 
-    expect(find.byKey(const ValueKey('sales-doc-edit')), findsNothing);
-    expect(find.textContaining('如需修改出货内容，请先财务反审'), findsOneWidget);
+    expect(find.byKey(const ValueKey('sales-doc-edit')), findsOneWidget);
+    expect(find.textContaining('如需修改出货内容，请先财务反审'), findsNothing);
     expect(find.byKey(const ValueKey('finance-audit-reverse')), findsOneWidget);
   });
 
@@ -167,6 +176,7 @@ void main() {
       type: SalesDocType.shipment,
       detail: const {
         'id': 'shipment-finance-preview',
+        'financeReviewPending': true,
         'status': 0,
         'financeAudit': 0,
         'warehouseWorkStatus': 'PENDING_PICK',
@@ -175,9 +185,12 @@ void main() {
         ],
       },
       permissions: const {Perm.financeShipmentAudit},
+      claimSucceeds: true,
       surfaceSize: const Size(375, 812),
       financeAuditInfo: const {
         'shipmentId': 'shipment-finance-preview',
+        'reviewRevision': 2,
+        'contentHash': 'current-content',
         'financeAudit': 0,
         'clientName': '测试客户',
         'salesPaymentType': 'DEPOSIT',
@@ -210,7 +223,11 @@ void main() {
     expect(find.text('180.00'), findsOneWidget);
     expect(find.textContaining('真实已审核到账'), findsOneWidget);
     expect(find.textContaining('绝不代表已经到账'), findsOneWidget);
-    expect(api.postPaths, isEmpty);
+    expect(
+      api.postPaths.where((path) => path.endsWith('/finance-audit')),
+      isEmpty,
+    );
+    expect(api.postPaths.any((path) => path.endsWith('/claim')), isTrue);
 
     final confirm = find.byKey(const Key('finance-audit-info-confirm'));
     await tester.ensureVisible(confirm);
@@ -223,6 +240,94 @@ void main() {
   });
 
   testWidgets(
+    'shipment finance claim network failure blocks review and can retry',
+    (tester) async {
+      final api = await _pumpDetail(
+        tester,
+        type: SalesDocType.shipment,
+        detail: const {
+          'id': 'shipment-retry',
+          'status': 0,
+          'financeAudit': 0,
+          'financeReviewPending': true,
+          'warehouseWorkStatus': 'PENDING_PICK',
+          'items': <Map<String, dynamic>>[],
+        },
+        permissions: const {Perm.financeShipmentAudit},
+        financeAuditInfo: const {
+          'shipmentId': 'shipment-retry',
+          'reviewRevision': 1,
+          'contentHash': 'retry-content',
+          'salesPaymentType': 'CASH',
+        },
+      );
+      await tester.tap(find.byKey(const ValueKey('finance-audit')));
+      await tester.pumpAndSettle();
+      expect(
+        api.getPaths.where((path) => path.endsWith('/finance-audit-info')),
+        isEmpty,
+      );
+      expect(find.byKey(const Key('finance-audit-info-dialog')), findsNothing);
+      expect(
+        api.postPaths.where((path) => path.endsWith('/finance-audit')),
+        isEmpty,
+      );
+      api.claimSucceeds = true;
+      await tester.tap(find.byKey(const ValueKey('finance-audit')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('finance-audit-info-dialog')),
+        findsOneWidget,
+      );
+      final button = find.byKey(const Key('finance-audit-info-confirm'));
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(
+        api.postPaths.where((path) => path.endsWith('/finance-audit')),
+        hasLength(1),
+      );
+    },
+  );
+
+  testWidgets('shipment finance lost lease pauses decision before posting', (
+    tester,
+  ) async {
+    final api = await _pumpDetail(
+      tester,
+      type: SalesDocType.shipment,
+      claimSucceeds: true,
+      detail: const {
+        'id': 'shipment-lost',
+        'status': 0,
+        'financeAudit': 0,
+        'financeReviewPending': true,
+        'warehouseWorkStatus': 'PENDING_PICK',
+        'items': <Map<String, dynamic>>[],
+      },
+      permissions: const {Perm.financeShipmentAudit},
+      financeAuditInfo: const {
+        'shipmentId': 'shipment-lost',
+        'reviewRevision': 1,
+        'contentHash': 'lost-content',
+        'salesPaymentType': 'CASH',
+      },
+    );
+    await tester.tap(find.byKey(const ValueKey('finance-audit')));
+    await tester.pumpAndSettle();
+    api.failHeartbeat = true;
+    final button = find.byKey(const Key('finance-audit-info-confirm'));
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(api.postPaths.any((path) => path.endsWith('/heartbeat')), isTrue);
+    expect(
+      api.postPaths.where((path) => path.endsWith('/finance-audit')),
+      isEmpty,
+    );
+  });
+
+  testWidgets(
     'unclassified customer blocks finance release with recovery path',
     (tester) async {
       final api = await _pumpDetail(
@@ -230,6 +335,7 @@ void main() {
         type: SalesDocType.shipment,
         detail: const {
           'id': 'shipment-unclassified',
+          'financeReviewPending': true,
           'status': 0,
           'financeAudit': 0,
           'warehouseWorkStatus': 'PENDING_PICK',
@@ -238,9 +344,12 @@ void main() {
           ],
         },
         permissions: const {Perm.financeShipmentAudit, Perm.clientView},
+        claimSucceeds: true,
         surfaceSize: const Size(375, 812),
         financeAuditInfo: const {
           'shipmentId': 'shipment-unclassified',
+          'reviewRevision': 0,
+          'contentHash': 'unclassified-content',
           'financeAudit': 0,
           'clientName': '待分类客户',
           'salesPaymentType': '',
@@ -267,12 +376,18 @@ void main() {
       expect(
         tester
             .widget<FilledButton>(
-              find.byKey(const Key('finance-audit-info-confirm')),
+              find.descendant(
+                of: find.byKey(const Key('finance-audit-info-confirm')),
+                matching: find.byType(FilledButton),
+              ),
             )
             .onPressed,
         isNull,
       );
-      expect(api.postPaths, isEmpty);
+      expect(
+        api.postPaths.where((path) => path.endsWith('/finance-audit')),
+        isEmpty,
+      );
     },
   );
 
@@ -292,7 +407,7 @@ void main() {
     );
 
     expect(find.text('红冲'), findsNothing);
-    expect(find.textContaining('已出库/历史交接事实未知，须走销售退货或受控纠错'), findsOneWidget);
+    expect(find.textContaining('仅价款有误须财务调整，不能虚做退货'), findsOneWidget);
   });
 
   testWidgets(
@@ -441,12 +556,17 @@ Future<_DetailApi> _pumpDetail(
   required Map<String, dynamic> detail,
   Set<String> permissions = const {},
   Map<String, dynamic>? financeAuditInfo,
+  bool claimSucceeds = false,
   Size surfaceSize = const Size(1500, 1100),
 }) async {
   await tester.binding.setSurfaceSize(surfaceSize);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
-  final api = _DetailApi(detail, financeAuditInfo: financeAuditInfo);
+  final api = _DetailApi(
+    detail,
+    financeAuditInfo: financeAuditInfo,
+    claimSucceeds: claimSucceeds,
+  );
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -467,7 +587,10 @@ Future<_DetailApi> _pumpDetail(
 }
 
 class _DetailApi extends ApiClient {
-  _DetailApi(this.detail, {this.financeAuditInfo}) : super(Dio());
+  _DetailApi(this.detail, {this.financeAuditInfo, this.claimSucceeds = false})
+    : super(Dio());
+  bool claimSucceeds;
+  bool failHeartbeat = false;
 
   final Map<String, dynamic> detail;
   final Map<String, dynamic>? financeAuditInfo;
@@ -481,7 +604,13 @@ class _DetailApi extends ApiClient {
   }) async {
     getPaths.add(path);
     if (path.endsWith('/finance-audit-info')) {
-      return financeAuditInfo ?? const <String, dynamic>{};
+      return {
+        'commercialSnapshot': jsonEncode({
+          'header': <String, dynamic>{},
+          'items': detail['items'] ?? <dynamic>[],
+        }),
+        ...?financeAuditInfo,
+      };
     }
     return detail;
   }
@@ -494,11 +623,32 @@ class _DetailApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     postPaths.add(path);
+    if (path.startsWith('/task-claims/') &&
+        (path.endsWith('/claim') || path.endsWith('/heartbeat'))) {
+      if (!claimSucceeds || path.endsWith('/heartbeat') && failHeartbeat) {
+        throw StateError('test lease unavailable');
+      }
+      return {
+        'claimId': 'shipment-lease',
+        'targetType': 'SALES_SHIPMENT_FINANCE_AUDIT',
+        'targetKey': detail['id'],
+        'claimedBy': 'reviewer',
+        'claimedByName': '财务经办',
+        'claimedByMe': true,
+        'claimedAt': DateTime.now().toIso8601String(),
+        'leaseUntil': DateTime.now()
+            .add(const Duration(minutes: 30))
+            .toIso8601String(),
+      };
+    }
     if (!path.endsWith('/finance-audit')) {
       throw StateError('unsupported test POST: $path');
     }
     return <String, dynamic>{...?financeAuditInfo, 'financeAudit': 1};
   }
+
+  @override
+  Future<void> delete(String path) async {}
 
   @override
   Future<List<Map<String, dynamic>>> getList(

@@ -135,7 +135,7 @@ void main() {
       ),
     );
 
-    // 字段说明收进标签旁 ⓘ（悬停提示），不再常驻框下。
+    // Static and validation messages share one in-field disclosure.
     expect(find.byIcon(Icons.info_outline), findsOneWidget);
     expect(find.byTooltip('请输入账户原币金额'), findsOneWidget);
     expect(find.text('请输入账户原币金额'), findsNothing);
@@ -143,16 +143,9 @@ void main() {
     expect(formKey.currentState!.validate(), isFalse);
     await tester.pump();
 
-    expect(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is UtenFieldMessage &&
-            widget.kind == UtenFieldMessageKind.error &&
-            widget.message == longMessage,
-      ),
-      findsOneWidget,
-    );
-    expect(find.byIcon(Icons.help_outline_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.error_outline), findsOneWidget);
+    expect(find.byTooltip('$longMessage\n\n请输入账户原币金额'), findsOneWidget);
+    expect(find.text(longMessage), findsNothing);
   });
 }
 

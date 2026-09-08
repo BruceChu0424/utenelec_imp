@@ -139,17 +139,17 @@ class StockGoodsHistorySnapshotContractTest {
         Pattern insert = Pattern.compile(
                 "insert\\s+into\\s+stock_document_items\\s*\\((.*?)\\)\\s*values",
                 Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
-        int inserts = 0;
         for (String fixture : DIRECT_INSERT_FIXTURES) {
             String java = read(Path.of("src/test/java/com/uten/imp").resolve(fixture));
             Matcher matcher = insert.matcher(java);
+            int inserts = 0;
             while (matcher.find()) {
                 inserts++;
                 assertThat(matcher.group(1))
                         .containsIgnoringCase("goods_snapshot_source");
             }
+            assertThat(inserts).as("provenance writes in %s", fixture).isPositive();
         }
-        assertThat(inserts).isEqualTo(13);
     }
 
     private static String source(String relative) throws IOException {

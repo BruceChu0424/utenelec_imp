@@ -300,7 +300,11 @@ class ProcurementIqcRejectionServiceContractTest {
                 mock(ArApLedgerService.class),
                 mock(SupplierOpenItemOffsetService.class),
                 events,
-                mock(ProcurementArrivalControlPort.class));
+                mock(ProcurementArrivalControlPort.class),
+                org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
+                mock(com.uten.imp.common.finance.ProcurementReceiptConsiderationService.class),
+                mock(com.uten.imp.application.port.ProcurementCreditBookAllocationPort.class),
+                mock(com.uten.imp.application.port.ProcurementInventoryValuePort.class));
     }
 
     private static SecurityContextCurrentUser currentUser(

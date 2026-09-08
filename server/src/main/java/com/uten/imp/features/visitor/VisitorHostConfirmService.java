@@ -72,7 +72,7 @@ public class VisitorHostConfirmService {
         UUID employeeId = currentUser.get()
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED)).getEmployeeId();
         tx.bind();
-        VisitorApplication app = appService.load(id);
+        VisitorApplication app = appService.loadForUpdate(id);
         // M1：状态守卫——已批准/已签到/已拒绝/已取消的申请不可再确认
         if ("approved".equals(app.getStatus()) || "checkedIn".equals(app.getStatus())
                 || "rejected".equals(app.getStatus()) || "cancelled".equals(app.getStatus())) {
@@ -82,6 +82,7 @@ public class VisitorHostConfirmService {
             throw new ApiException(ErrorCode.FORBIDDEN);
         }
         if (req.confirmed()) {
+            appService.requireActiveAccount(app);
             app.setHostConfirmed(true);
             app.setStatus("pending");   // 回到待 HR 批准（携带 hostConfirmed=true）
             appService.addStep(id, "staff", userId, "hostConfirm", req.comment());

@@ -3,6 +3,8 @@
 // 勾选多行后一次写全套条款：供应商 + 结账(结算)方式 + 币种 + 汇率 + 税率；
 // 留空的项保持各行原值不变。供应商行内嵌供应商滑入面板（分类树+搜索+可内联新建）。
 import 'package:flutter/material.dart';
+import '../../components/inputs/uten_input_decoration.dart';
+import '../presentation/workflow_field_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/buttons/uten_button.dart';
@@ -151,6 +153,7 @@ class _CommercialTermsBatchSheetState
       ),
       UtenDropdownField(
         label: widget.settlementLabel,
+        info: workflowFieldText(context).workflowSettlementHint,
         value: _settlementMethodId,
         hintText: '不改',
         items: [
@@ -161,6 +164,7 @@ class _CommercialTermsBatchSheetState
       ),
       UtenDropdownField(
         label: '币种',
+        info: workflowFieldText(context).workflowCurrencyHint,
         value: _currencyId,
         hintText: '不改',
         items: [
@@ -172,12 +176,18 @@ class _CommercialTermsBatchSheetState
       TextField(
         controller: _rate,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(labelText: '汇率', hintText: '不改'),
+        decoration: UtenInputDecoration(
+          const InputDecoration(labelText: '汇率', hintText: '不改'),
+          info: workflowFieldText(context).workflowExchangeRateHint,
+        ),
       ),
       TextField(
         controller: _taxRate,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(labelText: '税率(%)', hintText: '不改'),
+        decoration: UtenInputDecoration(
+          const InputDecoration(labelText: '税率(%)', hintText: '不改'),
+          info: workflowFieldText(context).workflowTaxRateHint,
+        ),
       ),
     ];
     return Padding(

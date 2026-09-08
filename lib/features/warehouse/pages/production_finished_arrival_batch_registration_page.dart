@@ -16,7 +16,9 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -140,7 +142,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
         _suggestionError = null;
       });
       if (warehouseId?.isNotEmpty == true && _editableRows.isNotEmpty) {
-        _applyWarehouseToRows(_editableRows, warehouseId!);
+        _applyWarehouseToRows(_editableRows, warehouseId!, autofilled: true);
         await _reloadSuggestions();
       }
     } on ApiException catch (error) {
@@ -161,10 +163,11 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
   /// 把成品仓落到一组行（默认仓切换/批量统一设），并重置未手工改过行的库位。
   void _applyWarehouseToRows(
     List<_BatchArrivalRegistrationRow> rows,
-    String warehouseId,
-  ) {
+    String warehouseId, {
+    bool autofilled = false,
+  }) {
     for (final row in rows) {
-      row.setWarehouse(warehouseId);
+      row.setWarehouse(warehouseId, autofilled: autofilled);
     }
   }
 
@@ -880,10 +883,12 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
     errorBuilder: utenTextFieldErrorBuilder,
     readOnly: true,
     initialValue: value,
-    decoration: InputDecoration(
-      labelText: label,
-      filled: true,
-      suffixIcon: const Icon(Icons.lock_outline, size: 16),
+    decoration: UtenInputDecoration(
+      InputDecoration(
+        labelText: label,
+        filled: true,
+        suffixIcon: const Icon(Icons.lock_outline, size: 16),
+      ),
     ),
   );
 
@@ -972,19 +977,29 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       onTap: enabled ? () => _pickWarehouseFor([row]) : null,
       borderRadius: BorderRadius.circular(6),
       child: InputDecorator(
-        decoration: InputDecoration(
-          isDense: true,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 8,
+        decoration: applyAutofillHint(
+          UtenInputDecoration(
+            InputDecoration(
+              isDense: true,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 8,
+              ),
+              suffixIcon: Icon(
+                name == null ? Icons.search_rounded : Icons.unfold_more_rounded,
+                size: 16,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              suffixIconConstraints: const BoxConstraints(minWidth: 20),
+            ),
+            info: row.warehouseAutofilled ? '已带入上次登记成品仓，请核对本次实际存放仓库' : null,
           ),
-          suffixIcon: Icon(
-            name == null ? Icons.search_rounded : Icons.unfold_more_rounded,
-            size: 16,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          suffixIconConstraints: const BoxConstraints(minWidth: 20),
+          theme,
+          autofilled:
+              !row.registered && name != null && row.warehouseAutofilled,
         ),
         child: Text(
           name ?? '点击选择成品仓',
@@ -1004,71 +1019,62 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
     BuildContext context,
     _BatchArrivalRegistrationRow row,
   ) {
-    final field = TextField(
-      key: ValueKey(
-        'production-finished-arrival-batch-place-${row.item.reportItemId}',
-      ),
-      controller: row.place,
-      enabled:
-          _canRegister &&
-          !_saving &&
-          !_submitted &&
-          !row.registered &&
-          row.warehouseId.value?.isNotEmpty == true &&
-          !_suggestionsLoading,
-      inputFormatters: [LengthLimitingTextInputFormatter(100)],
-      decoration: InputDecoration(
-        isDense: true,
-        hintText: row.warehouseId.value?.isNotEmpty != true
+    return ValueListenableBuilder<_BatchPlaceSource>(
+      valueListenable: row.placeSource,
+      builder: (context, source, _) {
+        final warehouseSelected = row.warehouseId.value?.isNotEmpty == true;
+        final matching = warehouseSelected && _suggestionsLoading;
+        final sourceLabel = row.registered
+            ? '已登记快照'
+            : !warehouseSelected
             ? '请先选择成品仓'
-            : _suggestionsLoading
+            : matching
             ? '正在匹配默认库位'
-            : '必填',
-      ),
-      onChanged: (_) {
-        if (_validationError != null) setState(() => _validationError = null);
+            : source.label;
+        return Semantics(
+          textField: true,
+          label: '${row.item.goodsName} 库位号，$sourceLabel',
+          child: TextField(
+            key: ValueKey(
+              'production-finished-arrival-batch-place-${row.item.reportItemId}',
+            ),
+            controller: row.place,
+            enabled:
+                _canRegister &&
+                !_saving &&
+                !_submitted &&
+                !row.registered &&
+                warehouseSelected &&
+                !matching,
+            inputFormatters: [LengthLimitingTextInputFormatter(100)],
+            decoration: applyAutofillHint(
+              UtenInputDecoration(
+                InputDecoration(
+                  isDense: true,
+                  hintText: !warehouseSelected
+                      ? '请先选择成品仓'
+                      : matching
+                      ? '正在匹配默认库位'
+                      : '必填',
+                ),
+                info: sourceLabel,
+              ),
+              Theme.of(context),
+              autofilled:
+                  !row.registered &&
+                  warehouseSelected &&
+                  !matching &&
+                  source.isLearned &&
+                  row.place.text.trim().isNotEmpty,
+            ),
+            onChanged: (_) {
+              if (_validationError != null) {
+                setState(() => _validationError = null);
+              }
+            },
+          ),
+        );
       },
-    );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        field,
-        const SizedBox(height: UtenSpacing.s4),
-        ValueListenableBuilder<_BatchPlaceSource>(
-          valueListenable: row.placeSource,
-          builder: (context, source, _) {
-            final warehouseSelected = row.warehouseId.value?.isNotEmpty == true;
-            final matching = warehouseSelected && _suggestionsLoading;
-            final statusLabel = row.registered
-                ? '已登记快照'
-                : !warehouseSelected
-                ? '请先选择成品仓'
-                : matching
-                ? '正在匹配默认库位'
-                : source.label;
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  source.icon,
-                  size: 16,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: UtenSpacing.s4),
-                Expanded(
-                  child: Text(
-                    statusLabel,
-                    maxLines: 2,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      ],
     );
   }
 
@@ -1094,6 +1100,8 @@ class _BatchArrivalRegistrationRow extends EditableGridRow {
             ? _BatchPlaceSource.goodsMaster
             : _BatchPlaceSource.none,
       ) {
+    warehouseAutofilled = !registered && report.warehouseId?.isNotEmpty == true;
+    _lastPlaceText = place.text;
     place.addListener(_handlePlaceChanged);
   }
 
@@ -1102,10 +1110,15 @@ class _BatchArrivalRegistrationRow extends EditableGridRow {
   final bool registered;
   final TextEditingController place;
   final ValueNotifier<String?> warehouseId;
+  bool warehouseAutofilled = false;
   final ValueNotifier<_BatchPlaceSource> placeSource;
   bool _applyingSuggestion = false;
+  late String _lastPlaceText;
 
   void _handlePlaceChanged() {
+    final textChanged = place.text != _lastPlaceText;
+    _lastPlaceText = place.text;
+    if (!textChanged) return;
     if (_applyingSuggestion || placeSource.value == _BatchPlaceSource.manual) {
       return;
     }
@@ -1113,8 +1126,9 @@ class _BatchArrivalRegistrationRow extends EditableGridRow {
   }
 
   /// 行级改仓：清掉未手工改过行的库位（等新仓的建议）。
-  void setWarehouse(String? value) {
+  void setWarehouse(String? value, {bool autofilled = false}) {
     if (registered) return;
+    warehouseAutofilled = autofilled && value?.isNotEmpty == true;
     if (warehouseId.value == value) return;
     warehouseId.value = value;
     resetSuggestion(clear: value == null);
@@ -1177,6 +1191,11 @@ enum _BatchPlaceSource {
   none,
   manual;
 
+  bool get isLearned =>
+      this == warehousePreference ||
+      this == registrationHistory ||
+      this == goodsMaster;
+
   String get label => switch (this) {
     snapshot => '本次登记快照',
     warehousePreference => '该仓默认',
@@ -1184,15 +1203,6 @@ enum _BatchPlaceSource {
     goodsMaster => '货品主档通用建议',
     none => '暂无默认',
     manual => '手工输入',
-  };
-
-  IconData get icon => switch (this) {
-    snapshot => Icons.lock_outline_rounded,
-    warehousePreference => Icons.warehouse_outlined,
-    registrationHistory => Icons.history_rounded,
-    goodsMaster => Icons.inventory_2_outlined,
-    none => Icons.info_outline_rounded,
-    manual => Icons.edit_outlined,
   };
 }
 

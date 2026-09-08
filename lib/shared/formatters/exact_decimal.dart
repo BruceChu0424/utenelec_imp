@@ -2,6 +2,102 @@
 ///
 /// Decimal text remains authoritative until an explicit fixed-scale [BigInt]
 /// conversion, avoiding binary floating-point round trips for money values.
+const financeAmountScale = 24;
+const financeRateScale = 6;
+
+/// Finite products retain every input digit. This is a reference calculation;
+/// actual document and bank amounts remain their own recorded facts.
+String? financeExactMultiplyTexts(Iterable<String?> inputs) {
+  var coefficient = BigInt.one;
+  var scale = 0;
+  for (final input in inputs) {
+    if (input == null) return null;
+    final match = RegExp(
+      r'^([+-]?)(\d+)(?:\.(\d+))?$',
+    ).firstMatch(input.trim());
+    if (match == null) return null;
+    final fraction = match.group(3) ?? '';
+    coefficient *= BigInt.parse('${match.group(1)}${match.group(2)}$fraction');
+    scale += fraction.length;
+  }
+  return financeExactDecimalFromUnits(coefficient, scale: scale);
+}
+
+/// Add recorded original or derived amounts at their full common scale.
+/// Missing or invalid facts remain unavailable instead of silently becoming 0.
+String? financeExactSumTexts(Iterable<String?> inputs) {
+  final values = <String>[];
+  var scale = 0;
+  for (final input in inputs) {
+    final value = financeExactDecimal(input);
+    if (value == null) return null;
+    values.add(value);
+    final point = value.indexOf('.');
+    final fraction = point < 0 ? 0 : value.length - point - 1;
+    if (fraction > scale) scale = fraction;
+  }
+  var sum = BigInt.zero;
+  for (final value in values) {
+    sum += financeExactDecimalUnits(value, scale: scale)!;
+  }
+  return financeExactDecimalFromUnits(sum, scale: scale);
+}
+
+String? _canonicalDecimalText(String? value) {
+  final raw = financeExactDecimal(value);
+  if (raw == null || !raw.contains('.')) return raw;
+  var canonical = raw;
+  while (canonical.endsWith('0')) {
+    canonical = canonical.substring(0, canonical.length - 1);
+  }
+  return canonical.endsWith('.')
+      ? canonical.substring(0, canonical.length - 1)
+      : canonical;
+}
+
+/// Actual financial inputs have an explicit 24-place bound; derived book
+/// amounts keep their full text. Quantity helpers retain their four-place default.
+BigInt? financeAmountUnits(String? raw) => financeExactDecimalUnits(
+  _canonicalDecimalText(raw),
+  scale: financeAmountScale,
+);
+
+String financeAmountFromUnits(BigInt units) {
+  var result = financeExactDecimalFromUnits(units, scale: financeAmountScale);
+  final minimumLength = result.indexOf('.') + 5;
+  while (result.length > minimumLength && result.endsWith('0')) {
+    result = result.substring(0, result.length - 1);
+  }
+  return result;
+}
+
+String financeAmountMoneyDisplay(BigInt units) =>
+    financeExactMoneyDisplay(financeAmountFromUnits(units));
+
+/// A fixed financial representation is permitted only when it loses no value.
+/// The older productUnits rounding contract remains untouched for quantities.
+BigInt? financeExactProductUnitsLossless(
+  String? left,
+  String? right, {
+  int leftScale = financeAmountScale,
+  int rightScale = financeRateScale,
+  int outputScale = financeAmountScale,
+}) {
+  if (financeExactDecimalUnits(_canonicalDecimalText(left), scale: leftScale) ==
+          null ||
+      financeExactDecimalUnits(
+            _canonicalDecimalText(right),
+            scale: rightScale,
+          ) ==
+          null) {
+    return null;
+  }
+  return financeExactDecimalUnits(
+    _canonicalDecimalText(financeExactMultiplyTexts([left, right])),
+    scale: outputScale,
+  );
+}
+
 String? financeExactDecimal(Object? value) {
   if (value == null) return null;
   final text = value.toString().trim();

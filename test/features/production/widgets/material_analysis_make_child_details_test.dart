@@ -53,8 +53,8 @@ void main() {
 
         expect(find.text('关联自制子任务'), findsOneWidget);
         expect(find.text('自制组件 A(MAKE-A)'), findsOneWidget);
-        expect(find.text('已转自制需求 20'), findsOneWidget);
-        expect(find.text('执行计划量 18'), findsOneWidget);
+        expect(find.text('已下达自制 20'), findsOneWidget);
+        expect(find.text('计划量 18'), findsOneWidget);
         expect(find.text('已完工入库 18'), findsOneWidget);
         expect(find.byKey(const Key('view-plan')), findsOneWidget);
         expect(tester.takeException(), isNull);
@@ -67,7 +67,7 @@ void main() {
           matchesSemantics(
             label:
                 '关联自制子任务；自制组件 A(MAKE-A)；状态 已完工入库；'
-                '已转自制需求 20；执行计划量 18；已完工入库 18',
+                '已下达自制 20；计划量 18；已完工入库 18',
             isReadOnly: true,
           ),
         );
@@ -108,8 +108,8 @@ void main() {
       await tester.pump();
 
       expect(find.text('关联委外前置自制任务'), findsOneWidget);
-      expect(find.text('已转自制需求 12'), findsOneWidget);
-      expect(find.text('执行计划量 待回传'), findsOneWidget);
+      expect(find.text('已下达自制 12'), findsOneWidget);
+      expect(find.text('计划量 待回传'), findsOneWidget);
       expect(find.text('已完工入库 待回传'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },

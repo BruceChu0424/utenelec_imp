@@ -42,7 +42,7 @@ class MaterialAnalysisControllerTest {
         Set<UUID> goodsIds = Set.of(goodsId);
         List<GoodsWorkshopPreferenceView> expected = List.of(
                 new GoodsWorkshopPreferenceView(
-                        goodsId, workshopId, "注塑车间"));
+                        goodsId, workshopId, "注塑车间", null, null));
         when(preferences.findValidByGoodsIds(goodsIds)).thenReturn(expected);
 
         assertThat(controller.defaultWorkshops(goodsIds)).isEqualTo(expected);

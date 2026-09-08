@@ -141,7 +141,12 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新', // TODO(l10n): 补 arb
-            onPressed: _load,
+            // 整页刷新：字典+货架选项+标签列表（与 initState 同口径）。
+            onPressed: () async {
+              await ref.read(masterNameServiceProvider).ensureLoaded();
+              await _loadRacks();
+              await _load();
+            },
           ),
         ],
       ),

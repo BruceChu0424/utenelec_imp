@@ -68,32 +68,17 @@ class SubcontractHubPage extends ConsumerWidget {
           ),
         ),
     ];
+    // 2026-09-06 收口：计划委外申请卡并入「委外任务中心」（待处理段含待生产
+    // 合成行+进度弹窗）；回厂与品质跟踪卡退役（进度在任务中心/订货详情查看）。
+    // 委外页不放仓库/品质动作入口——登记回厂在仓储模块预计到货办理。
     final docEntries = <_Entry>[
       if (can(Perm.subcontractOrderView))
         _Entry(
           icon: Icons.shopping_bag_outlined,
           label: '委外订货',
-          description: '订货、财务审批与全链路进度',
+          description: '订货、财务审批与全链路进度（含回厂 IQC）',
           location: SubcontractRoute.list(
             SubcontractDocConfig.order.pathSegment,
-          ),
-        ),
-      if (can(Perm.subcontractApplicationView))
-        _Entry(
-          icon: Icons.description_outlined,
-          label: '计划委外申请',
-          description: '计划部通知委外的只读申请',
-          location: SubcontractRoute.list(
-            SubcontractDocConfig.application.pathSegment,
-          ),
-        ),
-      if (can(Perm.subcontractReceiptView))
-        _Entry(
-          icon: Icons.fact_check_outlined,
-          label: '回厂与品质',
-          description: '回厂登记、IQC 与待入库',
-          location: SubcontractRoute.list(
-            SubcontractDocConfig.receipt.pathSegment,
           ),
         ),
       if (can(Perm.subcontractReturnView))

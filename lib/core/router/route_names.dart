@@ -211,9 +211,6 @@ abstract final class RouteName {
   static const String warehouseInboundExpectations =
       '/warehouse/inbound/expectations';
 
-  /// 预计到货任务详情页（任务中心双击进入；extra 带当前 InboundExpectation）。
-  static String warehouseArrivalExpectationDetail(String expectationId) =>
-      '$warehouseInboundExpectations/${Uri.encodeComponent(expectationId)}';
   static const String warehouseDocumentHistory = '/warehouse/history';
   static const String warehousePurchaseReceiptHistory =
       '/warehouse/history/purchase-receipts';
@@ -245,8 +242,17 @@ abstract final class RouteName {
   static const String warehouseArrivalReceiptNew =
       '/warehouse/inbound/receipts/new';
 
+  /// 仓库批量登记实际到货页（入库任务中心多选「批量登记送检」落点；
+  /// extra 带 `List<ProcurementReceiptPrefill>`，每张=一张订货单）。
+  static const String warehouseArrivalReceiptBatch =
+      '/warehouse/inbound/receipts/batch';
+
   /// 采购/委外 IQC 待检处置任务中心（sidecar 前端入口）+ 单据处置页。
   static const String warehouseInspections = '/warehouse/inspections';
+
+  /// 待检处置多选后的「批量审批」汇总页（extra 携带 QualityBatchApprovalSelection）。
+  static const String warehouseInspectionBatchApproval =
+      '/warehouse/inspections/batch-approval';
 
   /// 单张收货单的待检明细处置页（任务中心卡片点入；静态段，须先于 /warehouse/:code）。
   static String warehouseInspectionDetail(
@@ -319,6 +325,9 @@ abstract final class RouteName {
   // seg = inquiries|applications|orders|receipts|material-issues|returns|material-returns|wastes。
   static const String subcontract = '/subcontract';
   static const String subcontractReport = '/subcontract/report';
+
+  /// 委外准备中心旧路径（2026-09-05 退役）：路由仅保留兼容重定向到
+  /// [subcontract]，不再有页面。
   static const String subcontractPreparations = '/subcontract/preparations';
 
   // 生产管理（生产部）：hub + 调度 + 计划单 + 日报 + 4 报表入口。
@@ -560,21 +569,6 @@ abstract final class RoutePath {
   /// 生产计划单 / 日报表：新建 / 详情 / 编辑。
   static String productionMaterialAnalysisSummary(String analysisId) =>
       '/production/material-analyses/$analysisId/summary';
-  static String productionSubcontractPreparations({
-    String? planItemId,
-    String? sourceAnalysisId,
-    String? sourceMaterialLineId,
-  }) => Uri(
-    path: RouteName.subcontractPreparations,
-    queryParameters: {
-      if (planItemId?.trim().isNotEmpty == true)
-        'planItemId': planItemId!.trim(),
-      if (sourceAnalysisId?.trim().isNotEmpty == true)
-        'sourceAnalysisId': sourceAnalysisId!.trim(),
-      if (sourceMaterialLineId?.trim().isNotEmpty == true)
-        'sourceMaterialLineId': sourceMaterialLineId!.trim(),
-    },
-  ).toString();
   static String productionPlanNew() => '/production/plans/new';
   static String productionPlanDetail(String id) => '/production/plans/$id';
   static String productionPlanEdit(String id) => '/production/plans/$id/edit';

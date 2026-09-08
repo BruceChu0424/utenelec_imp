@@ -288,7 +288,8 @@ class ProductionFqcInspectionServiceTest {
                 taskAccess,
                 mock(ProductionFqcRecoveryPort.class),
                 mock(ProductionFinishedInboundReleasePort.class),
-                mock(BusinessEventPublisher.class));
+                mock(BusinessEventPublisher.class),
+                org.mockito.Mockito.mock(com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
     }
 
     private static DecisionRequest request(

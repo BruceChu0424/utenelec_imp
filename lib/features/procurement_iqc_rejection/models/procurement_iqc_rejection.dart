@@ -1,3 +1,6 @@
+import 'procurement_iqc_credit.dart';
+export 'procurement_iqc_credit.dart';
+
 enum ProcurementIqcReceiptType {
   purchase('PURCHASE', '采购'),
   subcontract('SUBCONTRACT', '委外');
@@ -157,7 +160,8 @@ class ProcurementIqcRejectionCase {
   ].where((value) => value?.trim().isNotEmpty == true).join(' ');
 
   String amountLabel(String? amount) {
-    if (priceMasked || amount == null || amount.trim().isEmpty) return '***';
+    if (priceMasked) return '***';
+    if (amount == null || amount.trim().isEmpty) return '待核对';
     final currency = currencyCode?.trim();
     return currency?.isNotEmpty == true ? '$currency $amount' : amount;
   }
@@ -321,11 +325,17 @@ class ProcurementIqcRejectionDetail {
     required this.caseItem,
     this.events = const [],
     this.replacementAllocations = const [],
+    this.resolution,
+    this.creditDocuments = const [],
+    this.creditSources = const [],
   });
 
   final ProcurementIqcRejectionCase caseItem;
   final List<ProcurementIqcRejectionEvent> events;
   final List<ProcurementIqcReplacementAllocation> replacementAllocations;
+  final ProcurementIqcResolution? resolution;
+  final List<ProcurementIqcCreditDocument> creditDocuments;
+  final List<ProcurementIqcCreditSource> creditSources;
 
   factory ProcurementIqcRejectionDetail.fromJson(Map<String, dynamic> json) {
     final rawCase = json['caseItem'];
@@ -344,6 +354,21 @@ class ProcurementIqcRejectionDetail {
             ProcurementIqcReplacementAllocation.fromJson(
               raw.cast<String, dynamic>(),
             ),
+      ],
+      resolution: json['resolution'] is Map
+          ? ProcurementIqcResolution.fromJson(
+              (json['resolution'] as Map).cast<String, dynamic>(),
+            )
+          : null,
+      creditDocuments: [
+        for (final row in json['creditDocuments'] as List? ?? const [])
+          if (row is Map)
+            ProcurementIqcCreditDocument.fromJson(row.cast<String, dynamic>()),
+      ],
+      creditSources: [
+        for (final row in json['creditSources'] as List? ?? const [])
+          if (row is Map)
+            ProcurementIqcCreditSource.fromJson(row.cast<String, dynamic>()),
       ],
     );
   }
@@ -380,6 +405,11 @@ class ProcurementIqcConfirmCreditCommand {
     required this.creditReference,
     required this.creditDate,
     required this.reason,
+    this.baseQty,
+    this.actualAmountOriginal,
+    this.sourceApLedgerId,
+    this.allocations = const [],
+    this.expectedBookAllocationHash,
   });
 
   final int expectedVersion;
@@ -387,6 +417,25 @@ class ProcurementIqcConfirmCreditCommand {
   final String creditReference;
   final String creditDate;
   final String reason;
+  final String? baseQty,
+      actualAmountOriginal,
+      sourceApLedgerId,
+      expectedBookAllocationHash;
+  final List<ProcurementIqcCreditAllocationCommand> allocations;
+
+  ProcurementIqcConfirmCreditCommand withBookHash(String hash) =>
+      ProcurementIqcConfirmCreditCommand(
+        expectedVersion: expectedVersion,
+        commandId: commandId,
+        creditReference: creditReference,
+        creditDate: creditDate,
+        reason: reason,
+        baseQty: baseQty,
+        actualAmountOriginal: actualAmountOriginal,
+        sourceApLedgerId: sourceApLedgerId,
+        allocations: allocations,
+        expectedBookAllocationHash: hash,
+      );
 
   Map<String, dynamic> toJson() => {
     'expectedVersion': expectedVersion,
@@ -394,6 +443,13 @@ class ProcurementIqcConfirmCreditCommand {
     'creditReference': creditReference.trim(),
     'creditDate': creditDate,
     'reason': reason.trim(),
+    if (actualAmountOriginal != null) ...{
+      'baseQty': baseQty,
+      'actualAmountOriginal': actualAmountOriginal!.trim(),
+      'sourceApLedgerId': sourceApLedgerId,
+      'allocations': allocations.map((item) => item.toJson()).toList(),
+      'expectedBookAllocationHash': expectedBookAllocationHash,
+    },
   };
 }
 
@@ -402,16 +458,19 @@ class ProcurementIqcReasonCommand {
     required this.expectedVersion,
     required this.commandId,
     required this.reason,
+    this.creditDocumentId,
   });
 
   final int expectedVersion;
   final String commandId;
   final String reason;
+  final String? creditDocumentId;
 
   Map<String, dynamic> toJson() => {
     'expectedVersion': expectedVersion,
     'commandId': commandId,
     'reason': reason.trim(),
+    if (creditDocumentId != null) 'creditDocumentId': creditDocumentId,
   };
 }
 

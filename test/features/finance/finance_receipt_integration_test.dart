@@ -41,7 +41,7 @@ void main() {
     row.amount.text = '50';
     row.exchangeRate.text = '7.2';
 
-    expect(row.localAmountExactNotifier.value, '360.0000');
+    expect(row.localAmountExactNotifier.value, '360.0');
     expect(row.amountNotifier.value, 50);
   });
 
@@ -63,7 +63,7 @@ void main() {
       expect(_textFieldWithLabel('汇率'), findsNothing);
       expect(_dropdownWithLabel('其它费用项目'), findsOneWidget);
 
-      final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
+      var grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
         find.byWidgetPredicate(
           (widget) => widget is UtenEditableGrid<FinanceGridRow>,
         ),
@@ -76,13 +76,35 @@ void main() {
       expect(grid.controller.rows.single.amount.text, '50');
       expect(grid.controller.rows.single.writeOff.text, '0');
       expect(grid.controller.rows.single.remark.text, '行备注');
+      expect(grid.columns.map((column) => column.key), [
+        'appliedBillNo',
+        'balanceOriginal',
+        'amount',
+        'currency',
+        'balanceAfter',
+        'remark',
+      ]);
+      final originalController = grid.controller;
+      final reconciliationToggle = find.byKey(
+        const ValueKey('finance-receipt-reconciliation-toggle'),
+      );
+      await tester.ensureVisible(reconciliationToggle);
+      await tester.tap(reconciliationToggle);
+      await tester.pumpAndSettle();
+      grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
+        find.byWidgetPredicate(
+          (widget) => widget is UtenEditableGrid<FinanceGridRow>,
+        ),
+      );
+      expect(grid.controller, same(originalController));
+      expect(grid.controller.rows.single.amount.text, '50');
       final currencyColumn = grid.columns.singleWhere(
         (column) => column.key == 'currency',
       );
       final rateColumn = grid.columns.singleWhere(
         (column) => column.key == 'exchangeRate',
       );
-      expect(currencyColumn.label, '应收/核销原币');
+      expect(currencyColumn.label, '应收币种');
       expect(currencyColumn.required, isTrue);
       expect(rateColumn.label, '批次汇率');
       expect(rateColumn.required, isFalse);
@@ -90,7 +112,7 @@ void main() {
         _dropdownWithLabel('真实收款账户'),
       );
       expect(accountField.items.single.label, 'ZH000001 · 人民币账户 · 人民币');
-      expect(find.textContaining('扣费模式增加净额，另付模式增加毛额'), findsOneWidget);
+      expect(find.textContaining('另付费用单独记录'), findsOneWidget);
       expect(
         grid.columns.map((column) => column.label),
         containsAllInOrder(const [
@@ -110,15 +132,21 @@ void main() {
       expect(currencyCell, isA<Text>());
       expect((currencyCell as Text).data, '美元');
 
-      expect(find.text('本批结算毛额(人民币) ¥360.00'), findsOneWidget);
+      expect(find.text('本批客户已付(人民币) ¥360.00'), findsOneWidget);
       expect(find.text('费用 人民币 36.00'), findsOneWidget);
       expect(find.text('真实账户实际入账 人民币 324.00'), findsOneWidget);
+
+      await tester.tap(reconciliationToggle);
+      await tester.pumpAndSettle();
+      expect(find.text('查看对账明细'), findsOneWidget);
 
       grid.controller.rows.single.amount.text = '50.1234';
       final accountAmount = tester.widget<TextField>(
         find.byKey(const ValueKey('finance-receipt-account-amount')),
       );
       accountAmount.controller!.text = '324.8885';
+      await tester.pump();
+      expect(find.text('本批客户已付(人民币) ¥360.8885'), findsOneWidget);
 
       await tester.tap(find.text('保存'));
       await tester.pumpAndSettle();
@@ -128,7 +156,7 @@ void main() {
       expect(body!['clientId'], 'client-1');
       expect(body['accountId'], 'account-1');
       expect(body['receiptKind'], 'AR_SETTLEMENT');
-      expect(body['settlementAuthorityVersion'], 1);
+      expect(body['settlementAuthorityVersion'], 2);
       expect(body['expectedVersion'], 3);
       expect(body['settlementChannel'], 'TRADE_AGENT_CONVERSION');
       expect(body['settlementAgentSupplierId'], 'agent-1');
@@ -246,6 +274,97 @@ void main() {
     expect(body['accountAmount'], '324.0000');
   });
 
+  for (final actual in [
+    '49.999999999999999999999999',
+    '50.000000000000000000000001',
+  ]) {
+    testWidgets('same-currency actual bank amount $actual cannot become FX', (
+      tester,
+    ) async {
+      final detail = _receiptDetail()
+        ..['settlementAuthorityVersion'] = 2
+        ..['settlementChannel'] = 'DIRECT_ACCOUNT'
+        ..['exchangeRateSource'] = 'BANK_STATEMENT'
+        ..['accountCurrencyId'] = 'currency-usd'
+        ..['accountAmountExact'] = actual
+        ..['bankFeeAccountAmount'] = 0
+        ..['otherFeeAccountAmount'] = 0
+        ..['otherFeeStyleId'] = null
+        ..['feeSettlementMode'] = 'NONE';
+      final api = await _pumpEditor(
+        tester,
+        detail: detail,
+        accountBaseCurrency: false,
+      );
+      await tester.tap(find.text('保存'));
+      await tester.pump();
+      expect(api.lastPutBody, isNull);
+      final notifications = ProviderScope.containerOf(
+        tester.element(find.byType(FinanceDocEditPage)),
+      ).read(appNotificationProvider);
+      expect(notifications.single.message, contains('差额不能作为汇兑处理'));
+    });
+  }
+
+  testWidgets(
+    'V2 same-currency bank facts keep 24 digits and full 30-digit book preview',
+    (tester) async {
+      const amount = '0.000000000000000000000001';
+      const local = '0.000000000000000000000007000001';
+      final detail = _receiptDetail()
+        ..['settlementAuthorityVersion'] = 2
+        ..['settlementChannel'] = 'DIRECT_ACCOUNT'
+        ..['exchangeRateSource'] = 'BANK_STATEMENT'
+        ..['accountCurrencyId'] = 'currency-usd'
+        ..['exchangeRateExact'] = '7.000001'
+        ..['accountAmountExact'] = amount
+        ..['bankFeeAccountAmount'] = 0
+        ..['otherFeeAccountAmount'] = 0
+        ..['otherFeeStyleId'] = null
+        ..['feeSettlementMode'] = 'NONE';
+      ((detail['items'] as List).single
+              as Map<String, dynamic>)['amountOriginalExact'] =
+          amount;
+      final api = await _pumpEditor(
+        tester,
+        detail: detail,
+        accountBaseCurrency: false,
+      );
+      expect(find.text('本批客户已付折合(人民币) ¥$local'), findsOneWidget);
+      final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
+        find.byWidgetPredicate(
+          (widget) => widget is UtenEditableGrid<FinanceGridRow>,
+        ),
+      );
+      expect(grid.controller.rows.single.amount.text, amount);
+      expect(grid.controller.rows.single.localAmountExactNotifier.value, local);
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      expect(api.lastPutBody?['settlementAuthorityVersion'], 2);
+      expect(api.lastPutBody?['amountOriginal'], amount);
+      expect(api.lastPutBody?['accountAmount'], amount);
+      expect(api.lastPutBody?['exchangeRate'], '7.000001');
+      expect(api.lastPutBody?.containsKey('amountLocal'), isFalse);
+    },
+  );
+
+  testWidgets(
+    'V2 detail uses exact frozen bank facts and never labels itself legacy',
+    (tester) async {
+      const local = '360.000000000000000000000000000001';
+      final detail = _receiptDetail()
+        ..['status'] = 1
+        ..['settlementAuthorityVersion'] = 2
+        ..['settlementGrossLocalExact'] = local;
+      await _pumpDetail(tester, detail: detail);
+      expect(find.text('实际银行到账与本批结算分别记录'), findsOneWidget);
+      expect(find.text('本批客户已付(人民币)'), findsOneWidget);
+      expect(find.text(local), findsOneWidget);
+      expect(find.text('历史口径未分层'), findsNothing);
+      expect(find.text('本批汇率报价'), findsWidgets);
+    },
+  );
+
   testWidgets('separately-paid fees post from the selected real account', (
     tester,
   ) async {
@@ -258,6 +377,7 @@ void main() {
       detail: detail,
       includeFeeAccount: true,
     );
+    expect(find.text('本批客户已付(人民币) ¥360.00'), findsOneWidget);
 
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
@@ -359,7 +479,7 @@ void main() {
       final notifications = ProviderScope.containerOf(
         tester.element(find.byType(FinanceDocEditPage)),
       ).read(appNotificationProvider);
-      expect(notifications.single.message, '请填写大于 0、最多 6 位小数的当前批次实际汇率');
+      expect(notifications.single.message, '请填写大于 0、最多 6 位小数的本批汇率报价');
     },
   );
 
@@ -375,7 +495,7 @@ void main() {
     expect(find.byTooltip('资金引用').hitTestable(), findsOneWidget);
     expect(find.byTooltip('查看历史').hitTestable(), findsOneWidget);
     expect(find.text('保存').hitTestable(), findsOneWidget);
-    expect(find.text('本批结算毛额(人民币) ¥360.00'), findsOneWidget);
+    expect(find.text('本批客户已付(人民币) ¥360.00'), findsOneWidget);
     expect(find.text('真实账户实际入账 人民币 324.00'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
@@ -440,8 +560,8 @@ void main() {
 
       for (final column in const [
         '应收单号',
-        '应收/核销原币',
-        '本批 AR 核销(应收原币)',
+        '应收币种',
+        '本次分配收款(原币)',
         '当前批次实际到账汇率',
         '分配折算毛额(人民币)',
         '冲减应收账面金额(人民币)',
@@ -452,7 +572,7 @@ void main() {
       ]) {
         expect(
           find.text(column),
-          column == '应收/核销原币' ||
+          column == '应收币种' ||
                   column == '分配折算毛额(人民币)' ||
                   column == '冲减应收账面金额(人民币)'
               ? findsWidgets

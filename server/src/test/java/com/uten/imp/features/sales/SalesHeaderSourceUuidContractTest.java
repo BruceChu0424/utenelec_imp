@@ -48,9 +48,7 @@ class SalesHeaderSourceUuidContractTest {
                 .contains("UUID sourceOrderId) {}")
                 .contains("sourceReadable ? s.getSourceOrderId() : null");
         assertThat(other)
-                .contains("o.id, o.bill_no")
-                .contains("applySource(s, source);")
-                .contains("一张其它出货单只能关联同一张销售订单")
+                .contains("throw retiredWrite();")
                 .contains("sourceReadable ? s.getSourceOrderId() : null");
         assertThat(salesReturn)
                 .contains("o.status, o.id, o.bill_no")

@@ -131,7 +131,7 @@ public class ProductionSubcontractSupplyTransitionService
             BigDecimal remaining = decimal(item[2]).subtract(
                     decimal(em.createNativeQuery("""
                                     SELECT COALESCE(
-                                        SUM(transferred_qty), 0)
+                                        SUM(fn_procurement_transfer_net_qty('SUBCONTRACT', id)), 0)
                                     FROM
                                       production_material_subcontract_peg_transfers
                                     WHERE order_item_id = :orderItemId
@@ -295,7 +295,7 @@ public class ProductionSubcontractSupplyTransitionService
                                 SELECT transfer.id, transfer.demand_id,
                                        transfer.from_peg_id,
                                        transfer.to_peg_id,
-                                       transfer.transferred_qty,
+                                       fn_procurement_transfer_net_qty('SUBCONTRACT', transfer.id),
                                        target.consumed_qty,
                                        source.released_qty
                                 FROM

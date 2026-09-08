@@ -138,7 +138,12 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
                 mock(TxSessionVars.class),
                 mock(ProductionDocumentAccessPolicy.class),
                 mock(com.uten.imp.security.OwnerVisibility.class),
-                mock(com.uten.imp.application.port.SubcontractPreparationPort.class));
+                mock(com.uten.imp.application.port.SubcontractPreparationPort.class),
+                mock(com.uten.imp.features.notice.ChainNoticeService.class),
+                mock(com.uten.imp.features.production.analysis.PreplanStockEntitlementService.class),
+                new MaterialAnalysisFlowStageService(entityManager),
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
+                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
         MaterialAnalysisService.SourceLine source = sourceLine(
                 analysisItemId, finishedGoodsId, unitId);
 

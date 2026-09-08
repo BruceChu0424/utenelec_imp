@@ -93,25 +93,28 @@ class DocumentActionPermissionContractTest {
     void standardLifecycleUsesOneExactActionAtControllerAndService() {
         for (StandardDocument document : STANDARD_DOCUMENTS) {
             assertGate(document.controller(), "create",
-                    authority(document.prefix() + ":create"));
+                    documentAuthority(document, "create"));
             assertGate(document.service(), "create",
-                    authority(document.prefix() + ":create"));
+                    documentAuthority(document, "create"));
             assertGate(document.controller(), "update",
-                    authority(document.prefix() + ":edit"));
+                    documentAuthority(document, "edit"));
             assertGate(document.service(), "update",
-                    authority(document.prefix() + ":edit"));
+                    documentAuthority(document, "edit"));
             assertGate(document.controller(), "delete",
-                    authority(document.prefix() + ":delete"));
+                    documentAuthority(document, "delete"));
             assertGate(document.service(), "delete",
-                    authority(document.prefix() + ":delete"));
-            assertGate(document.controller(), "approve",
-                    authority(document.prefix() + ":approve"));
-            assertGate(document.service(), "approve",
-                    authority(document.prefix() + ":approve"));
+                    documentAuthority(document, "delete"));
+            // Shipments use sales confirmation before finance and warehouse work;
+            // the old direct approve entry is retired and always rejects.
+            String approvalMethod = "sales_shipment".equals(document.prefix()) ? "confirmSales" : "approve";
+            assertGate(document.controller(), approvalMethod,
+                    documentAuthority(document, "approve"));
+            assertGate(document.service(), approvalMethod,
+                    documentAuthority(document, "approve"));
             assertGate(document.controller(), "reverse",
-                    authority(document.prefix() + ":reverse"));
+                    documentAuthority(document, "reverse"));
             assertGate(document.service(), "reverse",
-                    authority(document.prefix() + ":reverse"));
+                    documentAuthority(document, "reverse"));
         }
     }
 
@@ -242,10 +245,10 @@ class DocumentActionPermissionContractTest {
 
     @Test
     void fulfillmentClaimsSplitEditAndApproveWithoutLegacyUmbrella() {
-        assertThat(TaskClaimPolicy.of("FULFILLMENT_TASK_EDIT").claimPermission())
-                .isEqualTo("stock_doc:edit");
-        assertThat(TaskClaimPolicy.of("FULFILLMENT_TASK_APPROVE").claimPermission())
-                .isEqualTo("stock_doc:approve");
+        assertThat(TaskClaimPolicy.of("FULFILLMENT_TASK_EDIT").claimPermissions())
+                .containsExactly("stock_doc:edit");
+        assertThat(TaskClaimPolicy.of("FULFILLMENT_TASK_APPROVE").claimPermissions())
+                .containsExactly("stock_doc:approve");
         assertThatThrownBy(() -> TaskClaimPolicy.of("FULFILLMENT_TASK"))
                 .isInstanceOf(ApiException.class);
     }
@@ -335,7 +338,7 @@ class DocumentActionPermissionContractTest {
                 writable("com.uten.imp.features.sales.shipment.SalesShipmentService",
                         "sales_shipment:reverse", "sales_shipment:create"),
                 writable("com.uten.imp.features.sales.other_shipment.SalesOtherShipmentService",
-                        "sales_other_shipment:approve", "sales_other_shipment:create"),
+                        "sales_other_shipment:reverse", "sales_other_shipment:create"),
                 writable("com.uten.imp.features.sales.ret.SalesReturnService",
                         "sales_return:disposition", "sales_return:create"));
 
@@ -347,12 +350,38 @@ class DocumentActionPermissionContractTest {
                     .thenAnswer(invocation -> grants.get().contains(invocation.getArgument(0)));
             Object service = mock(document.service(), Answers.CALLS_REAL_METHODS);
             ReflectionTestUtils.setField(service, "accessPolicy", access);
+            if (document.service().getSimpleName().equals("SalesShipmentService")) {
+                SecurityContextCurrentUser current = mock(SecurityContextCurrentUser.class);
+                AuthUser principal = mock(AuthUser.class);
+                when(current.get()).thenReturn(java.util.Optional.of(principal));
+                when(principal.getPermissions()).thenAnswer(invocation -> grants.get());
+                ReflectionTestUtils.setField(service, "customerShipmentPolicy",
+                        new com.uten.imp.features.sales.shipment.CustomerShipmentPolicy(current));
+            }
 
             assertThat((Boolean) ReflectionTestUtils.invokeMethod(
                     service, "hasObjectActionAuthority")).isTrue();
             grants.set(Set.of(document.createAction()));
             assertThat((Boolean) ReflectionTestUtils.invokeMethod(
                     service, "hasObjectActionAuthority")).isFalse();
+        }
+    }
+
+    @Test
+    void sharedShipmentStorageKeepsOrderAndDirectActionPermissionsSeparate() {
+        SecurityContextCurrentUser current = mock(SecurityContextCurrentUser.class);
+        AuthUser principal = mock(AuthUser.class);
+        AtomicReference<Set<String>> grants = new AtomicReference<>(Set.of());
+        when(current.get()).thenReturn(java.util.Optional.of(principal));
+        when(principal.getPermissions()).thenAnswer(invocation -> grants.get());
+        var policy = new com.uten.imp.features.sales.shipment.CustomerShipmentPolicy(current);
+        for (String action : List.of("create", "edit", "delete", "approve", "reverse")) {
+            grants.set(Set.of("sales_shipment:" + action));
+            assertThat(policy.can("ORDER", action)).isTrue();
+            assertThat(policy.can("DIRECT_CUSTOMER", action)).isFalse();
+            grants.set(Set.of("sales_other_shipment:" + action));
+            assertThat(policy.can("DIRECT_CUSTOMER", action)).isTrue();
+            assertThat(policy.can("ORDER", action)).isFalse();
         }
     }
 
@@ -425,6 +454,15 @@ class DocumentActionPermissionContractTest {
         } catch (ClassNotFoundException error) {
             throw new AssertionError(error);
         }
+    }
+
+    private static String documentAuthority(StandardDocument document, String action) {
+        if ("sales_shipment".equals(document.prefix())
+                && Set.of("create", "edit", "delete", "approve").contains(action)) {
+            // Shared storage exposes both kinds; CustomerShipmentPolicy still checks the actual row kind.
+            return "hasAnyAuthority('sales_shipment:" + action + "','sales_other_shipment:" + action + "')";
+        }
+        return authority(document.prefix() + ":" + action);
     }
 
     private static String authority(String permission) {

@@ -11,7 +11,8 @@ import java.util.UUID;
 /** 销售出货明细仓库。 */
 public interface SalesShipmentItemRepository extends JpaRepository<SalesShipmentItem, UUID> {
 
-    List<SalesShipmentItem> findByShipmentIdOrderByLineNoAsc(UUID shipmentId);
+    @Query("SELECT i FROM SalesShipmentItem i WHERE i.shipmentId = :shipmentId AND i.deleted = false ORDER BY i.lineNo, i.id")
+    List<SalesShipmentItem> findByShipmentIdOrderByLineNoAsc(@Param("shipmentId") UUID shipmentId);
 
     @Modifying
     @Query("DELETE FROM SalesShipmentItem i WHERE i.shipmentId = :sid")

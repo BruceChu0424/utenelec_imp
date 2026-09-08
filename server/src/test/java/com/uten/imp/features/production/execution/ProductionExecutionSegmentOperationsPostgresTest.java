@@ -76,20 +76,23 @@ class ProductionExecutionSegmentOperationsPostgresTest {
                             excessiveInbound));
             assertEquals("23514", over.getSQLState());
 
-            UUID stockEvent = UUID.randomUUID();
-            insert(connection, """
-                    insert into production_material_stock_events(
-                        id,stock_document_id,event_type,idempotency_key,request_hash
-                    ) values(?,?,'ISSUE',?,?)
-                    """, stockEvent, f.drawId(),
-                    "issue-" + UUID.randomUUID(), "c".repeat(64));
+            UUID stockEvent = com.uten.imp.support.ProductionMaterialMovementTestSupport.beginEvent(
+                    connection,f.drawId(),"ISSUE","issue-"+UUID.randomUUID());
+            UUID issuePostingId = UUID.randomUUID();
+            update(connection,"""
+                    UPDATE stock_balances balance SET qty=balance.qty-10
+                    FROM stock_document_items item JOIN stock_documents document ON document.id=item.doc_id
+                    WHERE item.id=? AND balance.warehouse_id=document.warehouse_id AND balance.goods_id=item.goods_id
+                      AND balance.color_id IS NOT DISTINCT FROM item.color_id
+                    """,f.drawItemId());
             insert(connection, """
                     insert into production_material_stock_postings(
                         id,event_id,stock_document_item_id,demand_id,
                         reservation_id,posting_type,qty_base
                     ) values(?,?,?,?,?,'ISSUE',10)
-                    """, UUID.randomUUID(), stockEvent, f.drawItemId(),
+                    """, issuePostingId, stockEvent, f.drawItemId(),
                     f.demandId(), f.reservationId());
+            com.uten.imp.support.ProductionMaterialMovementTestSupport.bindAndCommit(connection,stockEvent,f.drawItemId());
             assertStatus(connection, f.segmentId(), "IN_PROGRESS");
 
             UUID settlementEvent = UUID.randomUUID();
@@ -101,9 +104,23 @@ class ProductionExecutionSegmentOperationsPostgresTest {
                     "settle-" + UUID.randomUUID(), "d".repeat(64));
             insert(connection, """
                     insert into production_material_settlement_postings(
-                        id,event_id,demand_id,settlement_type,qty_base
-                    ) values(?,?,?,'CONSUMED',10)
-                    """, UUID.randomUUID(), settlementEvent, f.demandId());
+                        id,event_id,demand_id,settlement_type,qty_base,issue_posting_id
+                    ) values(?,?,?,'CONSUMED',10,?)
+                    """, UUID.randomUUID(), settlementEvent, f.demandId(),issuePostingId);
+            try(var statement=connection.prepareStatement("""
+                    SELECT count(*) FROM production_material_settlement_postings settlement
+                    JOIN production_material_stock_postings issue ON issue.id=settlement.issue_posting_id
+                    JOIN production_material_movement_links link ON link.event_id=issue.event_id
+                        AND link.document_item_id=issue.stock_document_item_id
+                    JOIN stock_movements movement ON movement.id=link.movement_id
+                    WHERE settlement.event_id=? AND issue.id=? AND issue.demand_id=settlement.demand_id
+                        AND issue.posting_type='ISSUE' AND issue.qty_base=10
+                        AND movement.source_item_id=issue.stock_document_item_id
+                        AND movement.direction=-1 AND movement.qty=10
+                    """)){
+                statement.setObject(1,settlementEvent);statement.setObject(2,issuePostingId);
+                try(var result=statement.executeQuery()){result.next();assertEquals(1,result.getInt(1));}
+            }
             assertStatus(connection, f.segmentId(), "COMPLETED");
 
             PSQLException reverse = assertThrows(

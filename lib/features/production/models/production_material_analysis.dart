@@ -327,6 +327,7 @@ class SubcontractMakeTask {
     this.availableQty = 0,
     this.plannedQty = 0,
     this.needDate,
+    this.workshopStatus,
     this.allowedActions = const {},
     this.updatedAt,
   });
@@ -354,8 +355,27 @@ class SubcontractMakeTask {
   final double availableQty;
   final double plannedQty;
   final String? needDate;
+
+  /// 车间进度（2026-09-05 委外=自制同构直下）：服务端按委托行名下
+  /// 执行段聚合——NOTIFYING_WORKSHOP（正在通知车间生产）/WAITING_MATERIALS
+  /// （车间正在等物料）/IN_PRODUCTION（车间生产中）/PRODUCED（已完工入库
+  /// ·待通知委外）/FULLY_NOTIFIED（已通知委外）/CANCELLED。
+  final String? workshopStatus;
   final Set<String> allowedActions;
   final String? updatedAt;
+
+  /// 车间进度展示文案（2026-09-05 用户口径）：未排计划=「正在等待安排
+  /// 生产」，已排（等料/生产中）=「正在生产中」；完成后看「已完工入库·
+  /// 待通知委外 → 已通知委外」。等料/生产中的更细状态由车间任务页承载。
+  String get workshopStatusLabel => workshopStatusLabelFor(workshopStatus);
+
+  static String workshopStatusLabelFor(String? status) => switch (status) {
+    'NOTIFYING_WORKSHOP' => '正在等待安排生产',
+    'PRODUCED' => '已完工入库·待通知委外',
+    'FULLY_NOTIFIED' => '已通知委外',
+    'CANCELLED' => '已取消',
+    _ => '正在生产中',
+  };
 
   bool allows(String action) => allowedActions.contains(action);
 
@@ -384,6 +404,7 @@ class SubcontractMakeTask {
         availableQty: _double(json['availableQty']) ?? 0,
         plannedQty: _double(json['plannedQty']) ?? 0,
         needDate: _string(json['needDate']),
+        workshopStatus: _string(json['workshopStatus']),
         status: (_string(json['status']) ?? 'UNKNOWN').toUpperCase(),
         allowedActions: _stringList(json['allowedActions']).toSet(),
         updatedAt: _string(json['updatedAt']),
@@ -413,160 +434,6 @@ class SubcontractMakeNotifyResult {
         notifiedQty: _double(json['notifiedQty']) ?? 0,
         availableQty: _double(json['availableQty']) ?? 0,
       );
-}
-
-class SubcontractPreparationTask {
-  const SubcontractPreparationTask({
-    required this.planItemId,
-    required this.orderId,
-    required this.orderItemId,
-    required this.status,
-    required this.version,
-    this.orderBillNo,
-    this.targetGoodsId,
-    this.targetGoodsCode,
-    this.targetGoodsName,
-    this.colorId,
-    this.colorName,
-    this.unitId,
-    this.unitName,
-    this.requiredQty = 0,
-    this.preparedQty = 0,
-    this.issuedQty = 0,
-    this.needDate,
-    this.blocker,
-    this.sourceAnalysisId,
-    this.sourceMaterialLineId,
-    this.handoffStatus,
-    this.takeoverQty = 0,
-    this.handedOffEntitlementQty = 0,
-    this.handoffBlocker,
-    this.analysisId,
-    this.analysisItemId,
-    this.preparationWarehouseId,
-    this.preparationWarehouseName,
-    this.warehouseSelectionRequired = false,
-    this.allowedActions = const {},
-    this.updatedAt,
-  });
-
-  final String planItemId;
-  final String orderId;
-  final String orderItemId;
-  final String status;
-  final int version;
-  final String? orderBillNo;
-  final String? targetGoodsId;
-  final String? targetGoodsCode;
-  final String? targetGoodsName;
-  final String? colorId;
-  final String? colorName;
-  final String? unitId;
-  final String? unitName;
-  final double requiredQty;
-  final double preparedQty;
-  final double issuedQty;
-  final String? needDate;
-  final String? blocker;
-
-  /// 原生产分析中被本前置自制任务接管的精确来源节点。
-  /// 直接委外新建的任务没有这两个字段，也不应伪造跨分析交接。
-  final String? sourceAnalysisId;
-  final String? sourceMaterialLineId;
-
-  /// V447 服务端权威的跨分析权益交接状态与数量。
-  final String? handoffStatus;
-  final double takeoverQty;
-  final double handedOffEntitlementQty;
-  final String? handoffBlocker;
-  final String? analysisId;
-  final String? analysisItemId;
-  final String? preparationWarehouseId;
-  final String? preparationWarehouseName;
-  final bool warehouseSelectionRequired;
-  final Set<String> allowedActions;
-  final String? updatedAt;
-
-  bool allows(String action) => allowedActions.contains(action);
-
-  factory SubcontractPreparationTask.fromJson(Map<String, dynamic> json) =>
-      SubcontractPreparationTask(
-        planItemId: _string(json['planItemId']) ?? '',
-        orderId: _string(json['orderId']) ?? '',
-        orderItemId: _string(json['orderItemId']) ?? '',
-        orderBillNo: _string(json['orderBillNo']),
-        targetGoodsId: _string(json['targetGoodsId']),
-        targetGoodsCode: _string(json['targetGoodsCode']),
-        targetGoodsName: _string(json['targetGoodsName']),
-        colorId: _string(json['colorId']),
-        colorName: _string(json['colorName']),
-        unitId: _string(json['unitId']),
-        unitName: _string(json['unitName']),
-        requiredQty: _double(json['requiredQty']) ?? 0,
-        preparedQty: _double(json['preparedQty']) ?? 0,
-        issuedQty: _double(json['issuedQty']) ?? 0,
-        needDate: _string(json['needDate']),
-        status: (_string(json['status']) ?? 'UNKNOWN').toUpperCase(),
-        blocker: _string(json['blocker']),
-        sourceAnalysisId: _string(json['sourceAnalysisId']),
-        sourceMaterialLineId: _string(json['sourceMaterialLineId']),
-        handoffStatus: _string(json['handoffStatus'])?.toUpperCase(),
-        takeoverQty: _double(json['takeoverQty']) ?? 0,
-        handedOffEntitlementQty: _double(json['handedOffEntitlementQty']) ?? 0,
-        handoffBlocker: _string(json['handoffBlocker']),
-        analysisId: _string(json['analysisId']),
-        analysisItemId: _string(json['analysisItemId']),
-        preparationWarehouseId: _string(json['preparationWarehouseId']),
-        preparationWarehouseName: _string(json['preparationWarehouseName']),
-        warehouseSelectionRequired: json['warehouseSelectionRequired'] == true,
-        allowedActions: _stringList(json['allowedActions']).toSet(),
-        version: _int(json['version']) ?? 0,
-        updatedAt: _string(json['updatedAt']),
-      );
-}
-
-class SubcontractPreparationStartResult {
-  const SubcontractPreparationStartResult({
-    required this.planItemId,
-    required this.status,
-    required this.version,
-    this.analysisId,
-    this.analysisItemId,
-    this.sourceAnalysisId,
-    this.sourceMaterialLineId,
-    this.handoffId,
-    this.handoffStatus,
-    this.takeoverQty = 0,
-    this.handedOffEntitlementQty = 0,
-  });
-
-  final String planItemId;
-  final String status;
-  final int version;
-  final String? analysisId;
-  final String? analysisItemId;
-  final String? sourceAnalysisId;
-  final String? sourceMaterialLineId;
-  final String? handoffId;
-  final String? handoffStatus;
-  final double takeoverQty;
-  final double handedOffEntitlementQty;
-
-  factory SubcontractPreparationStartResult.fromJson(
-    Map<String, dynamic> json,
-  ) => SubcontractPreparationStartResult(
-    planItemId: _string(json['planItemId']) ?? '',
-    status: (_string(json['status']) ?? 'UNKNOWN').toUpperCase(),
-    version: _int(json['version']) ?? 0,
-    analysisId: _string(json['analysisId']),
-    analysisItemId: _string(json['analysisItemId']),
-    sourceAnalysisId: _string(json['sourceAnalysisId']),
-    sourceMaterialLineId: _string(json['sourceMaterialLineId']),
-    handoffId: _string(json['handoffId']),
-    handoffStatus: _string(json['handoffStatus'])?.toUpperCase(),
-    takeoverQty: _double(json['takeoverQty']) ?? 0,
-    handedOffEntitlementQty: _double(json['handedOffEntitlementQty']) ?? 0,
-  );
 }
 
 class MaterialAnalysisSalesCandidate {
@@ -716,6 +583,7 @@ class ProductionMaterialAnalysisView {
     this.allowedActions = const {},
     this.fqcReplenishmentOnly = false,
     this.fqcRecoveryAuthorizationId,
+    this.planningBlockedReasons = const {},
   });
 
   final String analysisId;
@@ -732,6 +600,10 @@ class ProductionMaterialAnalysisView {
   final Set<String> allowedActions;
   final bool fqcReplenishmentOnly;
   final String? fqcRecoveryAuthorizationId;
+  final Map<String, String> planningBlockedReasons;
+
+  String? planningBlockedReason(String? analysisLineId) =>
+      analysisLineId == null ? null : planningBlockedReasons[analysisLineId];
 
   bool get routesConfirmed => materials
       .where((item) => item.shortageQty > 0)
@@ -767,6 +639,13 @@ class ProductionMaterialAnalysisView {
         allowedActions: _stringList(json['allowedActions']).toSet(),
         fqcReplenishmentOnly: json['fqcReplenishmentOnly'] == true,
         fqcRecoveryAuthorizationId: _string(json['fqcRecoveryAuthorizationId']),
+        planningBlockedReasons: {
+          if (json['planningBlockedReasons']
+              case final Map<Object?, Object?> reasons)
+            for (final entry in reasons.entries)
+              if (_string(entry.value) case final String reason)
+                entry.key.toString(): reason,
+        },
       );
 }
 
@@ -774,6 +653,7 @@ class ProductionMaterialAnalysisProduct {
   const ProductionMaterialAnalysisProduct({
     required this.analysisLineId,
     this.sourceType,
+    this.rootMaterialLineId,
     this.sourceRef,
     this.sourceReason,
     this.salesOrderItemId,
@@ -816,10 +696,17 @@ class ProductionMaterialAnalysisProduct {
     this.planExecutionPlannedQty,
     this.planExecutionInboundQty,
     this.planExecutionProgressRatio,
+    this.planExecutionReportedQty,
+    this.planExecutionZeroMaterial = false,
+    this.planExecutionWorkshopName,
+    this.planExecutionResponsibleName,
   });
 
   final String analysisLineId;
   final String? sourceType;
+
+  /// Exact root supply node. Older responses omit this read-only identity.
+  final String? rootMaterialLineId;
   final String? sourceRef;
   final String? sourceReason;
   final String? salesOrderItemId;
@@ -875,6 +762,17 @@ class ProductionMaterialAnalysisProduct {
   final double? planExecutionInboundQty;
   final double? planExecutionProgressRatio;
 
+  /// 已审核报工量（生产中阶段的进度条用报工/计划比，不用入库比）。
+  final double? planExecutionReportedQty;
+
+  /// 执行段全部零料直制（无需领料即可开工）——展示层据此区分
+  /// 「等待车间领料」与「无需领料 · 可开工」。
+  final bool planExecutionZeroMaterial;
+
+  /// 最新计划执行段的 生产车间 / 负责人（分桶已下达表显示）。
+  final String? planExecutionWorkshopName;
+  final String? planExecutionResponsibleName;
+
   /// 服务端明确区分“可以先排给车间”和“当前物料已经齐套”。旧服务端没有
   /// 新字段时保守回退原 ready-now 门禁，避免客户端越权放开待料排产。
   bool get canSchedule => serverCanSchedule ?? readyNowQty > 0;
@@ -885,6 +783,7 @@ class ProductionMaterialAnalysisProduct {
   ) => ProductionMaterialAnalysisProduct(
     analysisLineId: _string(json['analysisLineId'] ?? json['id']) ?? '',
     sourceType: _string(json['sourceType']),
+    rootMaterialLineId: _string(json['rootMaterialLineId']),
     sourceRef: _string(json['sourceRef']),
     sourceReason: _string(json['sourceReason']),
     salesOrderItemId: _string(json['salesOrderItemId']),
@@ -936,6 +835,10 @@ class ProductionMaterialAnalysisProduct {
     planExecutionProgressRatio: _normaliseNullableRatio(
       json['planExecutionProgressRatio'],
     ),
+    planExecutionReportedQty: _double(json['planExecutionReportedQty']),
+    planExecutionZeroMaterial: json['planExecutionZeroMaterial'] == true,
+    planExecutionWorkshopName: _string(json['planExecutionWorkshopName']),
+    planExecutionResponsibleName: _string(json['planExecutionResponsibleName']),
   );
 }
 
@@ -1039,6 +942,7 @@ class ProductionMaterialAnalysisMaterial {
     this.unitId,
     this.unitName,
     this.level = 0,
+    this.nodeRole = 'BOM_COMPONENT',
     this.path = const [],
     this.parentGoodsId,
     this.parentNodeKey,
@@ -1071,7 +975,6 @@ class ProductionMaterialAnalysisMaterial {
     this.sourceSuggestion,
     this.sourceConfirmed,
     this.routeConfirmed = false,
-    this.routeReason,
     this.lowerLevelPending = false,
     this.expectedReadyDate,
     this.status,
@@ -1090,12 +993,18 @@ class ProductionMaterialAnalysisMaterial {
     this.priorityFulfilledQty = 0,
     this.crossReallocationRefs = const [],
     this.warehouseStocks = const [],
+    this.flowStage,
     required this.actionable,
   });
 
   final String materialLineId;
   final String? analysisLineId;
   final String? nodeKey;
+
+  /// 服务端批量推导的行级流程阶段键（BUY_* / SC_* / MAKE_*，
+  /// 见 ProductionFlowStage 词表）；旧服务端无此字段时为 null，
+  /// 由客户端按行内事实回退。
+  final String? flowStage;
   final String? goodsId;
   final String? goodsCode;
   final String? goodsName;
@@ -1105,6 +1014,8 @@ class ProductionMaterialAnalysisMaterial {
   final String? unitId;
   final String? unitName;
   final int level;
+  final String nodeRole;
+  bool get isRootSupply => nodeRole == 'ROOT_SUPPLY';
   final List<String> path;
   final String? parentGoodsId;
   final String? parentNodeKey;
@@ -1170,7 +1081,6 @@ class ProductionMaterialAnalysisMaterial {
   final MaterialSupplyRoute? sourceSuggestion;
   final MaterialSupplyRoute? sourceConfirmed;
   final bool routeConfirmed;
-  final String? routeReason;
   final bool lowerLevelPending;
   final String? expectedReadyDate;
   final String? status;
@@ -1214,6 +1124,7 @@ class ProductionMaterialAnalysisMaterial {
     Map<String, dynamic> json,
   ) => ProductionMaterialAnalysisMaterial(
     materialLineId: _string(json['materialLineId'] ?? json['id']) ?? '',
+    nodeRole: _string(json['nodeRole']) ?? 'BOM_COMPONENT',
     analysisLineId: _string(json['analysisLineId']),
     nodeKey: _string(json['nodeKey']),
     goodsId: _string(json['goodsId']),
@@ -1271,7 +1182,6 @@ class ProductionMaterialAnalysisMaterial {
       json['sourceConfirmed'] ?? json['selectedRoute'],
     ),
     routeConfirmed: json['routeConfirmed'] == true,
-    routeReason: _string(json['routeReason']),
     lowerLevelPending: json['lowerLevelPending'] == true,
     expectedReadyDate: _string(json['expectedReadyDate']),
     status: _string(json['status'] ?? json['materialStatus']),
@@ -1285,6 +1195,7 @@ class ProductionMaterialAnalysisMaterial {
     notifiedTargets: _notificationTargets(
       json['downstreamReferences'] ?? json['notifiedTargets'],
     ),
+    flowStage: _string(json['flowStage']),
     borrowedInQty: _double(json['borrowedInQty']) ?? 0,
     borrowedOutQty: _double(json['borrowedOutQty']) ?? 0,
     borrowRefs: _mapList(json['borrowRefs'], MaterialBorrowRef.fromJson),
@@ -1638,6 +1549,7 @@ class MaterialAnalysisNotificationTarget {
     this.documentNo,
     this.status,
     this.allocatedQty,
+    this.notificationReversalPending = false,
   });
 
   final MaterialSupplyRoute? target;
@@ -1650,6 +1562,12 @@ class MaterialAnalysisNotificationTarget {
   /// 该下游任务分摊到本物料行的数量（downstreamReferences 投影携带）。
   /// 用于估算「已提交在途量」，服务端仍以实时缺口−在途复核为准。
   final double? allocatedQty;
+  final bool notificationReversalPending;
+
+  bool get isRootOutput =>
+      documentType == 'ROOT_STOCK_ALLOCATION' ||
+      documentType == 'ROOT_OUTPUT_FULFILLMENT';
+  bool get isReversedRootOutput => isRootOutput && status == 'REVERSED';
 
   factory MaterialAnalysisNotificationTarget.fromJson(
     Map<String, dynamic> json,
@@ -1661,6 +1579,7 @@ class MaterialAnalysisNotificationTarget {
     documentNo: _string(json['documentNo']),
     status: _string(json['status']),
     allocatedQty: _double(json['allocatedQty']),
+    notificationReversalPending: json['notificationReversalPending'] == true,
   );
 }
 
@@ -1903,49 +1822,33 @@ class MaterialSupplyQuantityInput {
   };
 }
 
-class MaterialAnalysisPlanItemInput {
-  const MaterialAnalysisPlanItemInput({
-    required this.analysisLineId,
+/// 下达车间的一行输入（ADR-071）：候选物料行（materialLineId，先建子件
+/// 任务）或已有产品行（analysisLineId）二选一，随行携带数量/车间/负责人。
+class MaterialAnalysisIssueLine {
+  const MaterialAnalysisIssueLine({
+    this.materialLineId,
+    this.analysisLineId,
     required this.qty,
-    this.billDate,
-    this.deliveryDate,
     this.departmentId,
     this.workshopName,
     this.workerId,
-    this.teamDepartmentId,
-    this.productNo,
   });
 
-  final String analysisLineId;
+  final String? materialLineId;
+  final String? analysisLineId;
   final double qty;
-  final String? billDate;
-  final String? deliveryDate;
   final String? departmentId;
   final String? workshopName;
   final String? workerId;
-  final String? teamDepartmentId;
-  final String? productNo;
 
   Map<String, dynamic> toJson() => {
-    'analysisLineId': analysisLineId,
+    if (materialLineId != null) 'materialLineId': materialLineId,
+    if (analysisLineId != null) 'analysisLineId': analysisLineId,
     'qty': qty,
-    if (billDate != null) 'billDate': billDate,
-    if (deliveryDate != null) 'deliveryDate': deliveryDate,
     if (departmentId != null) 'departmentId': departmentId,
     if (workshopName?.trim().isNotEmpty == true)
       'workshopName': workshopName!.trim(),
     if (workerId != null) 'workerId': workerId,
-    if (teamDepartmentId != null) 'teamDepartmentId': teamDepartmentId,
-    if (productNo?.trim().isNotEmpty == true) 'productNo': productNo!.trim(),
-  };
-
-  /// The preview endpoint validates quantities and binds an optional explicit
-  /// product number into its fingerprint. Per-plan scheduling fields remain a
-  /// final-generate concern.
-  Map<String, dynamic> toQuantityJson() => {
-    'analysisLineId': analysisLineId,
-    'qty': qty,
-    if (productNo?.trim().isNotEmpty == true) 'productNo': productNo!.trim(),
   };
 }
 
@@ -1963,128 +1866,6 @@ bool _sameSourcePart(String? left, String? right, {bool foldCase = false}) {
   return foldCase
       ? normalizedLeft.toLowerCase() == normalizedRight.toLowerCase()
       : normalizedLeft == normalizedRight;
-}
-
-class ProductionMaterialPlanPreview {
-  const ProductionMaterialPlanPreview({
-    required this.analysisId,
-    required this.version,
-    required this.previewFingerprint,
-    required this.analysisFingerprint,
-    this.warehouseId,
-    this.calculatedAt,
-    this.allReady = false,
-    this.items = const [],
-    this.plans = const [],
-    this.allowedActions = const {},
-  });
-
-  final String analysisId;
-  final int version;
-  final String previewFingerprint;
-  final String analysisFingerprint;
-  final String? warehouseId;
-  final String? calculatedAt;
-  final bool allReady;
-  final List<ProductionMaterialPlanPreviewItem> items;
-  final List<ProductionMaterialPlanPreviewPlan> plans;
-  final Set<String> allowedActions;
-
-  bool get canSchedule =>
-      items.isNotEmpty && items.every((item) => item.canSchedule);
-
-  /// 兼容旧调用名；生成计划的业务资格现在等同可排产，物料是否齐套另读
-  /// [allReady] / [ProductionMaterialPlanPreviewItem.canGenerate]。
-  bool get canGenerate => canSchedule;
-
-  factory ProductionMaterialPlanPreview.fromJson(
-    Map<String, dynamic> json,
-  ) => ProductionMaterialPlanPreview(
-    analysisId: _string(json['analysisId']) ?? '',
-    version: _int(json['version']) ?? 0,
-    previewFingerprint:
-        _string(json['previewFingerprint'] ?? json['fingerprint']) ?? '',
-    analysisFingerprint: _string(json['fingerprint']) ?? '',
-    warehouseId: _string(json['warehouseId']),
-    calculatedAt: _string(json['calculatedAt']),
-    allReady: json['allReady'] == true,
-    items: _mapList(json['items'], ProductionMaterialPlanPreviewItem.fromJson),
-    plans: _mapList(json['plans'], ProductionMaterialPlanPreviewPlan.fromJson),
-    allowedActions: _stringList(json['allowedActions']).toSet(),
-  );
-}
-
-class ProductionMaterialPlanPreviewItem {
-  const ProductionMaterialPlanPreviewItem({
-    required this.analysisLineId,
-    this.requestedQty = 0,
-    this.readyNowQty = 0,
-    this.selectedQty = 0,
-    this.canGenerate = false,
-    this.reason,
-    this.serverCanSchedule,
-    this.serverMaxSchedulableQty,
-    this.scheduleBlockedReason,
-  });
-
-  final String analysisLineId;
-  final double requestedQty;
-  final double readyNowQty;
-  final double selectedQty;
-
-  /// 历史字段：仅表示当前所选数量是否真实齐套，不再代表能否先排产。
-  final bool canGenerate;
-  final String? reason;
-  final bool? serverCanSchedule;
-  final double? serverMaxSchedulableQty;
-  final String? scheduleBlockedReason;
-
-  bool get materialReady => canGenerate;
-  String? get materialReadinessReason => reason;
-  bool get canSchedule => serverCanSchedule ?? canGenerate;
-  double get maxSchedulableQty => serverMaxSchedulableQty ?? readyNowQty;
-
-  factory ProductionMaterialPlanPreviewItem.fromJson(
-    Map<String, dynamic> json,
-  ) => ProductionMaterialPlanPreviewItem(
-    analysisLineId: _string(json['analysisLineId']) ?? '',
-    requestedQty: _double(json['requestedQty']) ?? 0,
-    readyNowQty: _double(json['readyNowQty']) ?? 0,
-    selectedQty: _double(json['selectedQty']) ?? 0,
-    canGenerate: json['canGenerate'] == true,
-    reason: _string(json['reason']),
-    serverCanSchedule: json.containsKey('canSchedule')
-        ? json['canSchedule'] == true
-        : null,
-    serverMaxSchedulableQty: _double(json['maxSchedulableQty']),
-    scheduleBlockedReason: _string(json['scheduleBlockedReason']),
-  );
-}
-
-class ProductionMaterialPlanPreviewPlan {
-  const ProductionMaterialPlanPreviewPlan({
-    this.clientPlanKey,
-    this.productGoodsId,
-    this.qty = 0,
-    this.readyNowQty = 0,
-    this.segmentStatus,
-  });
-
-  final String? clientPlanKey;
-  final String? productGoodsId;
-  final double qty;
-  final double readyNowQty;
-  final String? segmentStatus;
-
-  factory ProductionMaterialPlanPreviewPlan.fromJson(
-    Map<String, dynamic> json,
-  ) => ProductionMaterialPlanPreviewPlan(
-    clientPlanKey: _string(json['clientPlanKey']),
-    productGoodsId: _string(json['productGoodsId']),
-    qty: _double(json['qty']) ?? 0,
-    readyNowQty: _double(json['readyNowQty']) ?? 0,
-    segmentStatus: _string(json['segmentStatus']),
-  );
 }
 
 class ProductionMaterialGenerateResult {

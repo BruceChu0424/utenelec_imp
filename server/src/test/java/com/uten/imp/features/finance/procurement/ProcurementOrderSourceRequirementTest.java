@@ -75,9 +75,15 @@ class ProcurementOrderSourceRequirementTest {
                 mock(ProductionSupplySourceGuard.class),
                 mock(PurchaseLineUnitPolicy.class),
                 mock(ProcurementApprovalProjectionQuery.class),
+                mock(com.uten.imp.features.finance.procurement.ProcurementApprovalReconfirmationService.class),
+                // 2026-09-05 cancel() 撤回财务弹卡用；本测试不触达，传 mock 即可。
+                mock(com.uten.imp.features.notice.ChainNoticeService.class),
                 mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class),
                 mock(com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy.class),
-                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class));
+                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementReviewCancellationPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementOrderSourceRevisionPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
 
         ApiException error =
                 assertThrows(ApiException.class, () -> service.create(request));
@@ -123,7 +129,11 @@ class ProcurementOrderSourceRequirementTest {
                         mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class),
                         mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class),
                         mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class),
-                        mock(com.uten.imp.application.port.MasterReferenceValidationPort.class));
+                                mock(com.uten.imp.features.finance.procurement.ProcurementApprovalReconfirmationService.class),
+                        mock(com.uten.imp.application.port.MasterReferenceValidationPort.class),
+                        mock(com.uten.imp.application.port.ProcurementReviewCancellationPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementOrderSourceRevisionPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
 
         // 手工行不再被「必须关联委外申请明细」拦截；mock 环境下只会停在后续的
         // 货品主档快照缺失校验（证明流程已越过来源校验进入保存管线）。

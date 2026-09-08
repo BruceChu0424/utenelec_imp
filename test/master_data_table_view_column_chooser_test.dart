@@ -63,7 +63,7 @@ void main() {
     await tester.tap(find.text('表头设置 16/16'));
     await tester.pumpAndSettle();
 
-    final chooser = find.byKey(const ValueKey('master-column-chooser-scroll'));
+    final chooser = find.byKey(const ValueKey('uten-column-chooser-scroll'));
     expect(chooser, findsOneWidget);
     final chooserScroll = find.descendant(
       of: chooser,

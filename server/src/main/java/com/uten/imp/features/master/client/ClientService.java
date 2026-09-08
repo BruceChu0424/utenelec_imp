@@ -193,7 +193,7 @@ public class ClientService {
                                         : settlementNames.get(client.getDefaultSettlementMethodId()),
                                 accessScope))
                         .toList(),
-                page, size, p.getTotalElements(), p.getTotalPages());
+                p);
     }
 
     /** 全量字典（单据名称解析用；client:view 全员有）。无此端点时 /dict 会落到 /{id} 报 Invalid UUID。 */

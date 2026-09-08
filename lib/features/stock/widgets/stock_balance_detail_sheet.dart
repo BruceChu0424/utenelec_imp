@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -366,16 +367,19 @@ class _StockBalanceDetailSheetState extends State<_StockBalanceDetailSheet> {
             errorBuilder: utenTextFieldErrorBuilder,
             controller: _targetQty,
             autofocus: true,
+            ignorePointers: false,
             enabled: !_submitting,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              label: fieldLabel(
-                '调整后数量',
-                theme,
-                required: true,
-                info: '填写最终库存数量，不是增减量；最多 4 位小数',
+            decoration: UtenInputDecoration(
+              InputDecoration(
+                label: fieldLabel(
+                  '调整后数量',
+                  theme,
+                  required: true,
+                  info: '填写最终库存数量，不是增减量；最多 4 位小数',
+                ),
+                prefixIcon: const Icon(Icons.edit_note_rounded),
               ),
-              prefixIcon: const Icon(Icons.edit_note_rounded),
             ),
             validator: _validateTarget,
             onChanged: (_) => setState(() => _submitError = null),
@@ -412,14 +416,17 @@ class _StockBalanceDetailSheetState extends State<_StockBalanceDetailSheet> {
           TextFormField(
             errorBuilder: utenTextFieldErrorBuilder,
             controller: _reason,
+            ignorePointers: false,
             enabled: !_submitting,
             minLines: 3,
             maxLines: 5,
             maxLength: 500,
-            decoration: const InputDecoration(
-              labelText: '调整原因 *',
-              hintText: '例如：2026-07-31 周期抽盘，发现实物少 2 件',
-              alignLabelWithHint: true,
+            decoration: const UtenInputDecoration(
+              InputDecoration(
+                labelText: '调整原因 *',
+                hintText: '例如：2026-07-31 周期抽盘，发现实物少 2 件',
+                alignLabelWithHint: true,
+              ),
             ),
             validator: (value) {
               if (value == null || value.trim().isEmpty) {

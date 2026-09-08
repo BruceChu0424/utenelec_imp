@@ -43,6 +43,7 @@ public class ProductionExecutionSegmentService {
     private static final String ACTION_CANCEL = "CANCEL";
     private static final String ACTION_REVERSE = "REVERSE";
     private static final String ACTION_RELEASE_DEFER = "RELEASE_DEFER";
+    private static final String ACTION_RECHECK_MATERIAL = "RECHECK_MATERIAL";
 
     private final EntityManager em;
     private final ProductionGoodsWorkshopPreferenceService workshopPreferences;
@@ -125,10 +126,14 @@ public class ProductionExecutionSegmentService {
         boolean responsibleChanged = !Objects.equals(
                 segment.responsibleEmployeeId(),
                 request.responsibleEmployeeId());
-        if (request.workshopDepartmentId() != null && workshopChanged) {
+        // 2026-09-06 起改派同样学习负责人：车间或负责人任一变化都刷新记忆
+        //（未选负责人时服务端保留旧记忆，不清空）。
+        if (request.workshopDepartmentId() != null
+                && (workshopChanged || responsibleChanged)) {
             workshopPreferences.learnSelection(
                     segment.productGoodsId(),
                     request.workshopDepartmentId(),
+                    request.responsibleEmployeeId(),
                     currentUser.requireEmployeeId());
         }
         // 车间/负责人后补或变更必须重建车间任务卡：计划下达时车间为空的段，
@@ -209,6 +214,34 @@ public class ProductionExecutionSegmentService {
         return result;
     }
 
+    /** Explicit repair of a waiting task using current physical inventory facts. */
+    @Transactional
+    public ExecutionSegmentView recheckMaterial(
+            UUID planId, UUID segmentId, SegmentTransitionRequest request) {
+        tx.bind();
+        requireTransitionRequest(request);
+        requirePlanOperationAccess(planId, "production_execution:start");
+        UUID warehouseId = readiness.lockManualReleaseDimensions(planId, segmentId);
+        LockedSegment segment = lock(planId, segmentId);
+        requireSegmentOperationAccess(segment, "production_execution:start");
+        String requestHash = hashTransition(request, ACTION_RECHECK_MATERIAL);
+        ExecutionSegmentView replay = replay(segment, ACTION_RECHECK_MATERIAL,
+                request.idempotencyKey(), requestHash);
+        if (replay != null) return replay;
+        requireVersion(segment, request.expectedVersion());
+        requireActivePlan(segment);
+        if (!ProductionExecutionSegment.STATUS_WAITING.equals(segment.status())
+                || !segment.autoPromoteWhenReady()) {
+            throw conflict("仅自动待料中的执行段可以重新检查物料，人工暂缓须先解除暂缓");
+        }
+        if (warehouseId == null) throw conflict("执行段缺少有效的确认计划包或发料仓");
+        readiness.promoteAfterMaterialRecheck(segmentId, warehouseId);
+        ExecutionSegmentView result = one(planId, segmentId);
+        recordEvent(segmentId, ACTION_RECHECK_MATERIAL, request.idempotencyKey(),
+                requestHash, request.expectedVersion(), result.lockVersion());
+        return result;
+    }
+
     @Transactional
     public ExecutionSegmentView dispatch(
             UUID planId,
@@ -229,14 +262,21 @@ public class ProductionExecutionSegmentService {
             UUID planId,
             UUID segmentId,
             SegmentTransitionRequest request) {
-        return transition(
-                planId,
-                segmentId,
+        tx.bind();
+        requireTransitionRequest(request);
+        LockedSegment segment = lock(planId, segmentId);
+        // 2026-09-06 车间任务页改版：物料齐套（READY）工单可直接开工——与报工
+        // 自动开工（AUTO_START_ON_REPORT，READY/DISPATCHED → IN_PROGRESS）同口径；
+        // READY 段在 prepareTransition 里补派工前置校验（齐套 + 完整分配）。
+        return applyTransition(prepareTransition(
+                segment,
                 request,
                 ACTION_START,
-                ProductionExecutionSegment.STATUS_DISPATCHED,
+                java.util.Set.of(
+                        ProductionExecutionSegment.STATUS_READY,
+                        ProductionExecutionSegment.STATUS_DISPATCHED),
                 ProductionExecutionSegment.STATUS_IN_PROGRESS,
-                "production_execution:start");
+                "production_execution:start"));
     }
 
     /**
@@ -267,7 +307,10 @@ public class ProductionExecutionSegmentService {
                     target.segment(),
                     target.request(),
                     ACTION_START,
-                    ProductionExecutionSegment.STATUS_DISPATCHED,
+                    // 齐套即开工：READY 与已派工 DISPATCHED 均可直接开工。
+                    java.util.Set.of(
+                            ProductionExecutionSegment.STATUS_READY,
+                            ProductionExecutionSegment.STATUS_DISPATCHED),
                     ProductionExecutionSegment.STATUS_IN_PROGRESS,
                     "production_execution:start"));
         }
@@ -336,66 +379,114 @@ public class ProductionExecutionSegmentService {
             String fromStatus,
             String toStatus,
             String operationAuthority) {
+        return prepareTransition(
+                segment, request, action,
+                java.util.Set.of(fromStatus), toStatus, operationAuthority);
+    }
+
+    private PreparedTransition prepareTransition(
+            LockedSegment segment,
+            SegmentTransitionRequest request,
+            String action,
+            java.util.Set<String> allowedFrom,
+            String toStatus,
+            String operationAuthority) {
         requireSegmentOperationAccess(segment, operationAuthority);
         String requestHash = hashTransition(request, action);
         ExecutionSegmentView replay =
                 replay(segment, action, request.idempotencyKey(), requestHash);
         if (replay != null) {
             return new PreparedTransition(
-                    segment, request, action, fromStatus, toStatus,
+                    segment, request, action, segment.status(), toStatus,
                     requestHash, replay);
         }
         requireVersion(segment, request.expectedVersion());
         requireActivePlan(segment);
-        if (!fromStatus.equals(segment.status())) {
+        if (!allowedFrom.contains(segment.status())) {
             throw conflict("执行段状态已经变化，请刷新后重试");
         }
-        if (ACTION_DISPATCH.equals(action)) {
-            ExecutionSegmentView current = one(segment.planId(), segment.id());
-            if (!current.materialReady()) {
-                throw conflict("执行段尚未齐套，不能派工");
-            }
-            assignmentValidator.validate(new ProductionAssignmentValidator.Assignment(
-                    current.workshopDepartmentId(),
-                    current.teamDepartmentId(),
-                    current.responsibleEmployeeId(),
-                    current.planBeginDate(),
-                    current.planEndDate()));
-            if (current.workshopDepartmentId() == null
-                    || current.responsibleEmployeeId() == null
-                    || current.planBeginDate() == null
-                    || current.planEndDate() == null) {
-                throw validation("派工前必须完整分配车间、负责人和计划日期");
-            }
-        } else if (ACTION_START.equals(action)) {
+        if (ACTION_DISPATCH.equals(action)
+                || (ACTION_START.equals(action)
+                        && ProductionExecutionSegment.STATUS_READY.equals(
+                                segment.status()))) {
+            // 开工沿用计划已保存的车间和负责人；可选计划日期不成为重复填写门槛。
+            requireDispatchPreconditions(segment, ACTION_START.equals(action));
+        }
+        if (ACTION_START.equals(action)) {
             requireMaterialsIssuedForStart(segment);
         }
         return new PreparedTransition(
-                segment, request, action, fromStatus, toStatus,
+                segment, request, action, segment.status(), toStatus,
                 requestHash, null);
+    }
+
+    /** Uses the saved assignment; starting does not require optional schedule dates. */
+    private void requireDispatchPreconditions(LockedSegment segment, boolean starting) {
+        ExecutionSegmentView current = one(segment.planId(), segment.id());
+        if (!current.materialReady()) {
+            throw conflict(starting ? "执行段尚未齐套，不能开工" : "执行段尚未齐套，不能派工");
+        }
+        assignmentValidator.validate(new ProductionAssignmentValidator.Assignment(
+                current.workshopDepartmentId(),
+                current.teamDepartmentId(),
+                current.responsibleEmployeeId(),
+                current.planBeginDate(),
+                current.planEndDate()));
+        if (current.workshopDepartmentId() == null
+                || current.responsibleEmployeeId() == null) {
+            throw validation("工单尚未保存完整的生产车间和负责人，请核对计划分配");
+        }
+        if (!starting && (current.planBeginDate() == null
+                || current.planEndDate() == null)) {
+            throw validation("派工前必须填写计划开始和完成日期");
+        }
     }
 
     private ExecutionSegmentView applyTransition(PreparedTransition transition) {
         if (transition.replay() != null) return transition.replay();
         LockedSegment segment = transition.segment();
         SegmentTransitionRequest request = transition.request();
-        updateStatus(
-                segment.id(), request.expectedVersion(),
-                transition.fromStatus(), transition.toStatus());
-        long resultingVersion = request.expectedVersion() + 1;
-        recordEvent(
-                segment.id(),
-                transition.action(),
-                request.idempotencyKey(),
-                transition.requestHash(),
-                request.expectedVersion(),
-                resultingVersion);
-        if (ACTION_DISPATCH.equals(transition.action())
-                || ACTION_START.equals(transition.action())) {
-            chainNotice.notifyExecutionSegmentTransition(
-                    segment.id(), ACTION_START.equals(transition.action()));
+        boolean manualReadyStart = ACTION_START.equals(transition.action())
+                && ProductionExecutionSegment.STATUS_READY.equals(transition.fromStatus());
+        if (manualReadyStart) {
+            bindManualStartContext(segment.id(), request.expectedVersion());
         }
-        return one(segment.planId(), segment.id());
+        RuntimeException primaryFailure = null;
+        try {
+            updateStatus(segment.id(), request.expectedVersion(),
+                    transition.fromStatus(), transition.toStatus());
+            long resultingVersion = request.expectedVersion() + 1;
+            recordEvent(segment.id(), transition.action(), request.idempotencyKey(),
+                    transition.requestHash(), request.expectedVersion(), resultingVersion);
+            if (ACTION_DISPATCH.equals(transition.action())
+                    || ACTION_START.equals(transition.action())) {
+                chainNotice.notifyExecutionSegmentTransition(
+                        segment.id(), ACTION_START.equals(transition.action()));
+            }
+            return one(segment.planId(), segment.id());
+        } catch (RuntimeException failure) {
+            primaryFailure = failure;
+            throw failure;
+        } finally {
+            if (manualReadyStart) {
+                try {
+                    bindManualStartContext(null, null);
+                } catch (RuntimeException cleanupFailure) {
+                    if (primaryFailure == null) throw cleanupFailure;
+                    primaryFailure.addSuppressed(cleanupFailure);
+                }
+            }
+        }
+    }
+
+    private void bindManualStartContext(UUID segmentId, Long expectedVersion) {
+        em.createNativeQuery("""
+                SELECT set_config('app.production_execution_start_segment_id', :segmentId, true),
+                       set_config('app.production_execution_start_expected_version', :expectedVersion, true)
+                """)
+                .setParameter("segmentId", segmentId == null ? "" : segmentId.toString())
+                .setParameter("expectedVersion", expectedVersion == null ? "" : expectedVersion.toString())
+                .getSingleResult();
     }
 
     private ExecutionSegmentView terminal(
@@ -681,7 +772,9 @@ public class ProductionExecutionSegmentService {
                                COALESCE(recovery.rework_available_qty, 0),
                                COALESCE(recovery.replacement_available_qty, 0),
                                COALESCE(recovery.replacement_ready_qty, 0),
-                               s.lock_version
+                               s.lock_version,
+                               base.material_requirement_mode = 'ZERO_MATERIAL'
+                                   AS zero_material
                         FROM v_production_execution_segments s
                         JOIN production_execution_segments base
                           ON base.id = s.id
@@ -993,7 +1086,8 @@ public class ProductionExecutionSegmentService {
                 decimal(row[38]),
                 decimal(row[39]),
                 decimal(row[40]),
-                ((Number) row[41]).longValue());
+                ((Number) row[41]).longValue(),
+                Boolean.TRUE.equals(row[42]));
     }
 
     private static BigDecimal decimal(Object value) {

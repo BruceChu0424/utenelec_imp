@@ -7,6 +7,8 @@
 // 供既有单回填/保存透传），单位列紧跟数量之后。
 // purchaseGridColumns：货品/数量/单价/金额 四列。
 import 'package:flutter/material.dart';
+import '../../../shared/presentation/workflow_field_guidance.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -320,7 +322,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
     EditableGridColumn<PurchaseGridRow>(
       key: 'qty',
       label: '数量',
-      width: 96,
+      width: 128,
       numeric: true,
       required: true,
       cellBuilder: (context, row) => RequiredCellFrame(
@@ -330,7 +332,10 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
           controller: row.qty,
           textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+          decoration: UtenInputDecoration(
+            const InputDecoration(isDense: true, hintText: '0'),
+            info: workflowFieldText(context).workflowQuantityHint,
+          ),
         ),
       ),
     ),
@@ -352,7 +357,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
     EditableGridColumn<PurchaseGridRow>(
       key: 'price',
       label: '单价',
-      width: 96,
+      width: 128,
       numeric: true,
       required: true,
       cellBuilder: (context, row) => RequiredCellFrame(
@@ -364,7 +369,10 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
           controller: row.price,
           textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+          decoration: UtenInputDecoration(
+            const InputDecoration(isDense: true, hintText: '0'),
+            info: workflowFieldText(context).workflowPriceHint,
+          ),
         ),
       ),
     ),

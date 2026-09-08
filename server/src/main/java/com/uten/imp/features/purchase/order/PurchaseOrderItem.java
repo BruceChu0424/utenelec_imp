@@ -69,13 +69,13 @@ public class PurchaseOrderItem extends BaseEntity {
     @Column(name = "qty", nullable = false, precision = 18, scale = 4)
     private BigDecimal qty;
 
-    @Column(name = "price", precision = 18, scale = 4)
+    @Column(name = "price", columnDefinition = "numeric")
     private BigDecimal price;
 
-    @Column(name = "amount_original", precision = 18, scale = 4)
+    @Column(name = "amount_original", columnDefinition = "numeric")
     private BigDecimal amountOriginal;
 
-    @Column(name = "amount_local", precision = 18, scale = 4)
+    @Column(name = "amount_local", columnDefinition = "numeric")
     private BigDecimal amountLocal;
 
     /** 已收量（收货单审核回写）。 */

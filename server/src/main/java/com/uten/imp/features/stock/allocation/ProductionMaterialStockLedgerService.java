@@ -216,6 +216,25 @@ public class ProductionMaterialStockLedgerService {
     private final TxSessionVars tx;
     private final ProductionMaterialReadAccessPolicy readAccess;
 
+    /** Caller already holds the document and checks its action/object permission. No facts are written. */
+    @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
+    public boolean isIssueReplay(UUID documentId,UUID warehouseId,Collection<MaterialLine> rawLines,
+                                 String idempotencyKey,String reversalReason) {
+        List<MaterialLine> lines=normalize(rawLines,warehouseId,false);
+        String type=reversalReason==null ? "ISSUE" : "ISSUE_REVERSE";
+        String requestHash=reversalReason==null ? hash(lines) : hash(lines,reversalReason.strip());
+        List<?> existing=em.createNativeQuery("""
+                SELECT request_hash FROM production_material_stock_events
+                WHERE stock_document_id=:documentId AND event_type=:eventType AND idempotency_key=:key
+                """).setParameter("documentId",documentId).setParameter("eventType",type)
+                .setParameter("key",normalizeKey(idempotencyKey)).getResultList();
+        if (existing.isEmpty()) return false;
+        if (!Objects.equals(existing.getFirst(),requestHash)) {
+            throw new ApiException(ErrorCode.CONFLICT,"相同幂等键对应不同领退料请求");
+        }
+        return true;
+    }
+
     @Transactional(propagation = Propagation.MANDATORY)
     public PostingResult issue(
             UUID documentId,
@@ -227,7 +246,7 @@ public class ProductionMaterialStockLedgerService {
         List<MaterialLine> lines = normalize(rawLines, warehouseId, false);
         Event event = beginEvent(
                 documentId, "ISSUE", idempotencyKey, hash(lines), actorId);
-        if (event.replayed()) return new PostingResult(true);
+        if (event.replayed()) return new PostingResult(true,event.id());
 
         LockedPlanningPackage planningPackage = lockPackageForDraw(documentId);
         Set<UUID> touched = new LinkedHashSet<>();
@@ -250,7 +269,7 @@ public class ProductionMaterialStockLedgerService {
             }
         }
         refreshDemandStatuses(touched);
-        return new PostingResult(false);
+        return new PostingResult(false,event.id());
     }
 
 
@@ -389,7 +408,7 @@ public class ProductionMaterialStockLedgerService {
                 "WDRAW-APPROVE-0001",
                 hash(lines),
                 actorId);
-        if (event.replayed()) return new PostingResult(true);
+        if (event.replayed()) return new PostingResult(true,event.id());
 
         Set<UUID> touched = new LinkedHashSet<>();
         for (MaterialLine line : lines) {
@@ -397,7 +416,7 @@ public class ProductionMaterialStockLedgerService {
             unwindIssued(event.id(), line, "GOOD_RETURN", actorId, touched);
         }
         refreshDemandStatuses(touched);
-        return new PostingResult(false);
+        return new PostingResult(false,event.id());
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -414,7 +433,7 @@ public class ProductionMaterialStockLedgerService {
                 "WDRAW-REVERSE-0001",
                 hash(lines),
                 actorId);
-        if (event.replayed()) return new PostingResult(true);
+        if (event.replayed()) return new PostingResult(true,event.id());
 
         Set<UUID> touched = new LinkedHashSet<>();
         for (MaterialLine line : lines) {
@@ -422,7 +441,7 @@ public class ProductionMaterialStockLedgerService {
             restoreReturned(event.id(), line, actorId, touched);
         }
         refreshDemandStatuses(touched);
-        return new PostingResult(false);
+        return new PostingResult(false,event.id());
     }
 
     /**
@@ -445,12 +464,15 @@ public class ProductionMaterialStockLedgerService {
                          AND header.document_id = mapping.document_id
                         JOIN production_material_demands d
                           ON d.id = mapping.demand_id
+                        JOIN production_plans plan ON plan.id=d.plan_id
                         WHERE mapping.package_id = :packageId
                           AND mapping.document_type = 'DRAW'
                           AND mapping.document_id = :documentId
                           AND mapping.document_item_id = :documentItemId
                           AND d.package_id = :packageId
-                          AND d.warehouse_id = :warehouseId
+                          AND (d.warehouse_id = :warehouseId
+                               OR (plan.material_analysis_id IS NOT NULL
+                                   AND fn_warehouse_same_main(d.warehouse_id,:warehouseId)))
                           AND d.goods_id = :goodsId
                           AND d.color_id IS NOT DISTINCT FROM
                               CAST(:colorId AS uuid)
@@ -483,6 +505,7 @@ public class ProductionMaterialStockLedgerService {
                                              - r.released_qty
                                 FROM stock_reservations r
                                 WHERE r.demand_id = :demandId
+                                  AND r.warehouse_id = :warehouseId
                                   AND r.owner_type =
                                       'PRODUCTION_MATERIAL_DEMAND'
                                   AND r.status = :effective
@@ -493,6 +516,7 @@ public class ProductionMaterialStockLedgerService {
                                 FOR UPDATE OF r
                                 """)
                         .setParameter("demandId", demandIds.getFirst())
+                        .setParameter("warehouseId", line.warehouseId())
                         .setParameter(
                                 "effective", RESERVATION_EFFECTIVE));
         BigDecimal remaining = line.qtyBase();
@@ -749,59 +773,13 @@ public class ProductionMaterialStockLedgerService {
 
     private List<Object[]> availableIssuePostings(UUID sourceItemId) {
         return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                        SELECT p.id, p.demand_id, p.reservation_id,
-                               p.qty_base
-                               - COALESCE((
-                                   SELECT SUM(x.qty_base)
-                                   FROM production_material_stock_postings x
-                                   WHERE x.posting_type = 'ISSUE_REVERSE'
-                                     AND x.source_posting_id = p.id
-                               ), 0)
-                               - COALESCE((
-                                   SELECT SUM(x.qty_base)
-                                   FROM production_material_stock_postings x
-                                   WHERE x.posting_type = 'GOOD_RETURN'
-                                     AND x.source_posting_id = p.id
-                               ), 0)
-                               + COALESCE((
-                                   SELECT SUM(rr.qty_base)
-                                   FROM production_material_stock_postings gr
-                                   JOIN production_material_stock_postings rr
-                                     ON rr.source_posting_id = gr.id
-                                    AND rr.posting_type = 'GOOD_RETURN_REVERSE'
-                                   WHERE gr.posting_type = 'GOOD_RETURN'
-                                     AND gr.source_posting_id = p.id
-                               ), 0) AS open_qty
-                        FROM production_material_stock_postings p
-                        WHERE p.stock_document_item_id = :itemId
-                          AND p.posting_type = 'ISSUE'
-                          AND p.qty_base
-                              - COALESCE((
-                                  SELECT SUM(x.qty_base)
-                                  FROM production_material_stock_postings x
-                                  WHERE x.posting_type = 'ISSUE_REVERSE'
-                                    AND x.source_posting_id = p.id
-                              ), 0)
-                              - COALESCE((
-                                  SELECT SUM(x.qty_base)
-                                  FROM production_material_stock_postings x
-                                  WHERE x.posting_type = 'GOOD_RETURN'
-                                    AND x.source_posting_id = p.id
-                              ), 0)
-                              + COALESCE((
-                                  SELECT SUM(rr.qty_base)
-                                  FROM production_material_stock_postings gr
-                                  JOIN production_material_stock_postings rr
-                                    ON rr.source_posting_id = gr.id
-                                   AND rr.posting_type = 'GOOD_RETURN_REVERSE'
-                                  WHERE gr.posting_type = 'GOOD_RETURN'
-                                    AND gr.source_posting_id = p.id
-                              ), 0) > 0
-                        ORDER BY p.created_at DESC, p.id DESC
-                        FOR UPDATE OF p
-                        """).setParameter("itemId", sourceItemId));
+                SELECT p.id,p.demand_id,p.reservation_id,fn_material_issue_unsettled(p.id)
+                FROM production_material_stock_postings p
+                WHERE p.stock_document_item_id=:itemId AND p.posting_type='ISSUE'
+                  AND fn_material_issue_unsettled(p.id)>0
+                ORDER BY p.created_at,p.id FOR UPDATE OF p
+                """).setParameter("itemId",sourceItemId));
     }
-
     private void validateReturnSource(MaterialLine line) {
         if (line.upstreamItemId() == null) {
             throw new ApiException(
@@ -1184,7 +1162,25 @@ public class ProductionMaterialStockLedgerService {
             BigDecimal qtyBase) {
     }
 
-    public record PostingResult(boolean replayed) {
+    /** Bind captured UUIDs, never rediscover movement identity by a matching date or amount. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void bindMovements(UUID eventId,java.util.Map<UUID,UUID> movements) {
+        if(eventId==null || movements==null || movements.isEmpty()
+                || movements.entrySet().stream().anyMatch(entry -> entry.getKey()==null || entry.getValue()==null)) {
+            throw new ApiException(ErrorCode.CONFLICT,"领退料缺少本次实际库存流水，禁止只更新生产数量");
+        }
+        for(var entry:movements.entrySet().stream().sorted(java.util.Map.Entry.comparingByKey()).toList()) {
+            int linked=em.createNativeQuery("""
+                    INSERT INTO production_material_movement_links(event_id,document_item_id,movement_id,created_by)
+                    SELECT :eventId,:itemId,:movementId,created_by
+                    FROM production_material_stock_events WHERE id=:eventId
+                    """).setParameter("eventId",eventId).setParameter("itemId",entry.getKey())
+                    .setParameter("movementId",entry.getValue()).executeUpdate();
+            if(linked!=1) throw new ApiException(ErrorCode.CONFLICT,"本次领退料事件不存在，库存关联未保存");
+        }
+    }
+
+    public record PostingResult(boolean replayed,UUID eventId) {
     }
 
     private record Event(UUID id, boolean replayed) {

@@ -176,7 +176,7 @@ public class GoodsService {
         List<GoodsListItem> items = content.stream()
                 .map(g -> toList(g, colorNames, unitNames, mouldsByLegacy, stockByGoods))
                 .toList();
-        return new PageResponse<>(items, page, size, p.getTotalElements(), p.getTotalPages());
+        return new PageResponse<>(items, p);
     }
 
     /**
@@ -731,6 +731,7 @@ public class GoodsService {
         com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:edit");
         Goods g = requireGoods(id);
         requireWritable(g);
+        GoodsQuantityUnitPolicy.requireUnchangedIfUsed(g, req);
         // 乐观锁：编辑回传版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。
         OptimisticLocks.requireUpToDate(g.getVersion(), req.getVersion());
         if (req.getStatus() != null && !Objects.equals(g.getStatus(), req.getStatus())) {
@@ -954,7 +955,9 @@ public class GoodsService {
         g.setPieces(req.getPieces());
         g.setStatus(req.getStatus());
         applyColorReference(req, g);
-        if (req.hasUnitReference()) {
+        // Used units were checked before apply. Preserve their exact UUID and
+        // legacy snapshot even if that unit is now inactive or unresolved.
+        if (req.hasUnitReference() && !g.isQuantityUnitLocked()) {
             if (clearsReference(req.getUnitId(), req.getUnitLegacyId())) {
                 g.setUnit(null);
                 g.setUnitLegacyId(null);
@@ -1037,6 +1040,9 @@ public class GoodsService {
     }
 
     private GoodsDetail toDetail(Goods g, String colorName, String unitName) {
+        if (g.isQuantityUnitLocked() && g.getUnit() != null) {
+            unitName = g.getUnit().getName();
+        }
         UUID categoryId = g.getCategory() == null ? null : g.getCategory().getId();
         String categoryName = g.getCategory() == null ? null : g.getCategory().getName();
         GoodsStockSummary stock = stockSummaryForGoods(g.getId());
@@ -1077,7 +1083,8 @@ public class GoodsService {
                 false, false, stock.getTotalQty(), stock.getRows(), g.getVersion(),
                 g.getSeries(), g.getStockPlace(),
                 g.getThicknessUnit() == null ? null : g.getThicknessUnit().getId(),
-                g.getMWeightUnit() == null ? null : g.getMWeightUnit().getId());
+                g.getMWeightUnit() == null ? null : g.getMWeightUnit().getId(),
+                g.isQuantityUnitLocked());
         // 成本可见性（goods:cost:view）：未授权清空 18 个成本字段 + 置 costMasked（前端隐藏成本 Tab）
         if (!costMasker.canView()) {
             d.setSourceE(null); d.setMachiningE(null); d.setIncidentalE(null); d.setLacquerE(null);

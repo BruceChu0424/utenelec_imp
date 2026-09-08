@@ -9,6 +9,8 @@
 //  - 损耗 4 列（标准用量/结存数/损耗率/损耗原因）仅 itemHasWasteFields（损耗单）。
 // 颜色/单位/上游明细 id 为透传（引入或回填时预填，保存时随行写回，UI 不单独编辑）。
 import 'package:flutter/material.dart';
+import '../../../shared/presentation/workflow_field_guidance.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../shared/providers/master_name_provider.dart' show GoodsOption;
@@ -254,7 +256,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
     EditableGridColumn<SubcontractGridRow>(
       key: 'qty',
       label: '数量',
-      width: 96,
+      width: 128,
       numeric: true,
       required: true,
       cellBuilder: (context, row) => RequiredCellFrame(
@@ -264,7 +266,10 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           controller: row.qty,
           textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+          decoration: UtenInputDecoration(
+            const InputDecoration(isDense: true, hintText: '0'),
+            info: workflowFieldText(context).workflowQuantityHint,
+          ),
         ),
       ),
     ),
@@ -287,7 +292,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
       EditableGridColumn<SubcontractGridRow>(
         key: 'price',
         label: '单价',
-        width: 96,
+        width: 128,
         numeric: true,
         required: true,
         cellBuilder: (context, row) => RequiredCellFrame(
@@ -299,7 +304,10 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
             controller: row.price,
             textAlign: TextAlign.right,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(isDense: true, hintText: '0'),
+            decoration: UtenInputDecoration(
+              const InputDecoration(isDense: true, hintText: '0'),
+              info: workflowFieldText(context).workflowPriceHint,
+            ),
           ),
         ),
       ),

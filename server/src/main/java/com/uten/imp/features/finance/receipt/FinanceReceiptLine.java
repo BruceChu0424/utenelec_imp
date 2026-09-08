@@ -86,6 +86,20 @@ public class FinanceReceiptLine extends BaseEntity {
     @Column(name = "balance_after_original", precision = 18, scale = 4)
     private BigDecimal balanceAfterOriginal;
 
+    /** V2 whole-bank-fact allocation basis, sequential in line_no/id order. */
+    @Column(name = "bank_basis_before_original")
+    private BigDecimal bankBasisBeforeOriginal;
+    @Column(name = "bank_basis_before_local")
+    private BigDecimal bankBasisBeforeLocal;
+    @Column(name = "bank_basis_after_original")
+    private BigDecimal bankBasisAfterOriginal;
+    @Column(name = "bank_basis_after_local")
+    private BigDecimal bankBasisAfterLocal;
+    @Column(name = "book_balance_before_local")
+    private BigDecimal bookBalanceBeforeLocal;
+    @Column(name = "book_balance_after_local")
+    private BigDecimal bookBalanceAfterLocal;
+
     @Column(name = "exchange_diff", precision = 18, scale = 4)
     private BigDecimal exchangeDiff = BigDecimal.ZERO;  // RTotal 汇兑差
 

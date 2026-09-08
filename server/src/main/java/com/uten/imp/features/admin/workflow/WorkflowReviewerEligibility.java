@@ -29,6 +29,7 @@ public class WorkflowReviewerEligibility implements FinanceReviewerEligibilityPo
 
     public static final String APPROVE_PERMISSION = "finance_order_approval:approve";
     public static final String REJECT_PERMISSION = "finance_order_approval:reject";
+    public static final String VIEW_PERMISSION = "finance_order_approval:view";
     private static final Set<String> REVIEW_PERMISSIONS = Set.of(APPROVE_PERMISSION, REJECT_PERMISSION);
 
     private final JdbcTemplate jdbc;
@@ -71,15 +72,15 @@ public class WorkflowReviewerEligibility implements FinanceReviewerEligibilityPo
         return eligibleRows(null).stream()
                 .filter(row -> userRepo.findById(row.userId())
                         .map(permissionResolver::permsOf)
-                        .map(permissions -> permissions.contains(permission))
+                        .map(permissions -> permissions.contains(VIEW_PERMISSION) && permissions.contains(permission))
                         .orElse(false))
                 .toList();
     }
 
     private boolean hasAnyReviewAction(UserAccount account) {
         Set<String> permissions = permissionResolver.permsOf(account);
-        return permissions.contains(APPROVE_PERMISSION)
-                || permissions.contains(REJECT_PERMISSION);
+        return permissions.contains(VIEW_PERMISSION) && (permissions.contains(APPROVE_PERMISSION)
+                || permissions.contains(REJECT_PERMISSION));
     }
 
     private List<EligibleReviewer> eligibleRows(UUID userId) {
@@ -105,6 +106,11 @@ public class WorkflowReviewerEligibility implements FinanceReviewerEligibilityPo
                 JOIN departments d ON d.id = e.department_id
                 WHERE (
                         e.department_id IN (SELECT id FROM finance_departments)
+                        OR EXISTS (
+                            SELECT 1 FROM employee_secondary_departments secondary
+                            WHERE secondary.employee_id = e.id
+                              AND secondary.department_id IN (SELECT id FROM finance_departments)
+                        )
                         OR u.id IN (
                             SELECT po.user_id
                             FROM user_permission_overrides po

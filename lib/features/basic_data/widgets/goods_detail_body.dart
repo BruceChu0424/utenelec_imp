@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -352,11 +353,28 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
       ),
       MasterFieldDef(
         key: 'unitId',
-        label: '单位',
-        required: true,
-        type: MasterFieldType.select,
+        label: '基本单位',
+        required: !(_detail?.quantityUnitLocked ?? false),
+        type: _detail?.quantityUnitLocked == true
+            ? MasterFieldType.custom
+            : MasterFieldType.select,
         options: _unitIdOptions,
         onAddNew: canAddUnit ? _addUnitId : null,
+        info: '这是库存数量的计量基准。仅在货品尚无数量记录或组装引用时可修改；开始使用后会固定。',
+        customBuilder: (ctx) => InputDecorator(
+          key: const ValueKey('goods-quantity-unit-locked'),
+          decoration: UtenInputDecoration(
+            const InputDecoration(labelText: '基本单位'),
+            info: _detail?.unitId == null
+                ? '已有数量记录，但历史基本单位尚未核对。请保留原资料，由管理员按原始单据受控核对；不能在这里猜选单位。'
+                : '已有数量记录或组装引用，基本单位不能再改。请保留原单位；不同计量规格请新建货品。',
+          ),
+          child: Text(
+            _detail?.unitName?.isNotEmpty == true
+                ? _detail!.unitName!
+                : '历史单位待核对',
+          ),
+        ),
         group: '商务',
       ),
       const MasterFieldDef(
@@ -435,6 +453,12 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
     final rawBody = _formKey?.currentState?.buildBody();
     if (rawBody == null) return; // 校验失败
     final body = normalizeGoodsUuidFirstBody(rawBody);
+    // Preserve the exact old UUID/legacy snapshot, including unresolved history.
+    // The API and DB independently reject spoofed changes to a used unit.
+    if (_detail?.quantityUnitLocked == true) {
+      body.remove('unitId');
+      body.remove('unitLegacyId');
+    }
     setState(() => _savingBasic = true);
     try {
       final repo = ref.read(goodsRepositoryProvider);

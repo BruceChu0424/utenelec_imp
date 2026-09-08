@@ -15,6 +15,7 @@ import '../layout/uten_bottom_action_bar.dart';
 import 'required_field_decoration.dart';
 import 'uten_employee_picker.dart';
 import 'uten_field_message.dart';
+import 'uten_input_decoration.dart';
 import 'uten_search_bar.dart';
 
 class UtenEmployeeMultiPicker extends StatefulWidget {
@@ -187,29 +188,31 @@ class _UtenEmployeeMultiPickerState extends State<UtenEmployeeMultiPicker> {
               child: InputDecorator(
                 isEmpty: display == null,
                 decoration: applyRequiredEmpty(
-                  InputDecoration(
-                    label: widget.label == null
-                        ? null
-                        : requiredLabel(
-                            widget.label!,
-                            theme,
-                            required: widget.required,
-                            base: theme.inputDecorationTheme.labelStyle,
-                          ),
-                    hintText: widget.hint,
-                    enabled: widget.enabled,
-                    error: field.errorText == null
-                        ? null
-                        : UtenFieldMessage.error(field.errorText!),
-                    prefixIcon: const Icon(Icons.group_add_outlined),
-                    suffixIcon: Icon(
-                      Icons.unfold_more_rounded,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    border: const OutlineInputBorder(),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: UtenSpacing.s16,
-                      vertical: UtenSpacing.s16,
+                  UtenInputDecoration(
+                    InputDecoration(
+                      label: widget.label == null
+                          ? null
+                          : requiredLabel(
+                              widget.label!,
+                              theme,
+                              required: widget.required,
+                              base: theme.inputDecorationTheme.labelStyle,
+                            ),
+                      hintText: widget.hint,
+                      enabled: widget.enabled,
+                      error: field.errorText == null
+                          ? null
+                          : UtenFieldMessage.error(field.errorText!),
+                      prefixIcon: const Icon(Icons.group_add_outlined),
+                      suffixIcon: Icon(
+                        Icons.unfold_more_rounded,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      border: const OutlineInputBorder(),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: UtenSpacing.s16,
+                        vertical: UtenSpacing.s16,
+                      ),
                     ),
                   ),
                   theme,

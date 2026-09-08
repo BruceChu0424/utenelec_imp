@@ -124,6 +124,7 @@ class FinanceDocListItem {
     this.accountId,
     this.outAccountId,
     this.amountLocal,
+    this.amountLocalText,
     this.status,
     this.legacyId,
   });
@@ -137,6 +138,7 @@ class FinanceDocListItem {
   final String? accountId;
   final String? outAccountId; // bankTransfer 用
   final double? amountLocal;
+  final String? amountLocalText;
   final int? status;
   final int? legacyId;
 
@@ -152,6 +154,9 @@ class FinanceDocListItem {
         accountId: (json['accountId'] ?? json['outAccountId']) as String?,
         outAccountId: json['outAccountId'] as String?,
         amountLocal: (json['amountLocal'] as num?)?.toDouble(),
+        amountLocalText: financeDecimalText(
+          json['amountLocalExact'] ?? json['amountLocal'],
+        ),
         status: (json['status'] as num?)?.toInt(),
         legacyId: (json['legacyId'] as num?)?.toInt(),
       );
@@ -175,7 +180,9 @@ class FinanceDocItem {
     this.inAccountId,
     this.occurDate,
     this.qty,
+    this.qtyText,
     this.price,
+    this.priceText,
     this.amountOriginal,
     this.amountOriginalText,
     this.amountLocal,
@@ -217,7 +224,9 @@ class FinanceDocItem {
   final String? counterpartAccountId;
   final String? counterpartName;
   final double? qty;
+  final String? qtyText;
   final double? price;
+  final String? priceText;
   final double? amountOriginal;
   final String? amountOriginalText;
   final double? amountLocal;
@@ -255,28 +264,46 @@ class FinanceDocItem {
     inAccountId: json['inAccountId'] as String?,
     occurDate: json['occurDate'] as String?,
     qty: (json['qty'] as num?)?.toDouble(),
+    qtyText: financeDecimalText(json['qtyExact'] ?? json['qty']),
     price: (json['price'] as num?)?.toDouble(),
+    priceText: financeDecimalText(json['priceExact'] ?? json['price']),
     amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
-    amountOriginalText: financeDecimalText(json['amountOriginal']),
+    amountOriginalText: financeDecimalText(
+      json['amountOriginalExact'] ?? json['amountOriginal'],
+    ),
     amountLocal: (json['amountLocal'] as num?)?.toDouble(),
-    amountLocalText: financeDecimalText(json['amountLocal']),
+    amountLocalText: financeDecimalText(
+      json['amountLocalExact'] ?? json['amountLocal'],
+    ),
     currencyId: json['currencyId'] as String?,
     exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
-    exchangeRateText: financeDecimalText(json['exchangeRate']),
+    exchangeRateText: financeDecimalText(
+      json['exchangeRateExact'] ?? json['exchangeRate'],
+    ),
     writeOffAmount: (json['writeOffAmount'] as num?)?.toDouble(),
-    writeOffAmountText: financeDecimalText(json['writeOffAmount']),
+    writeOffAmountText: financeDecimalText(
+      json['writeOffAmountExact'] ?? json['writeOffAmount'],
+    ),
     writeOffLocal: (json['writeOffLocal'] as num?)?.toDouble(),
-    writeOffLocalText: financeDecimalText(json['writeOffLocal']),
+    writeOffLocalText: financeDecimalText(
+      json['writeOffLocalExact'] ?? json['writeOffLocal'],
+    ),
     appliedAmountLocal: (json['appliedAmountLocal'] as num?)?.toDouble(),
-    appliedAmountLocalText: financeDecimalText(json['appliedAmountLocal']),
+    appliedAmountLocalText: financeDecimalText(
+      json['appliedAmountLocalExact'] ?? json['appliedAmountLocal'],
+    ),
     balanceBeforeOriginal: (json['balanceBeforeOriginal'] as num?)?.toDouble(),
     balanceBeforeOriginalText: financeDecimalText(
-      json['balanceBeforeOriginal'],
+      json['balanceBeforeOriginalExact'] ?? json['balanceBeforeOriginal'],
     ),
     balanceAfterOriginal: (json['balanceAfterOriginal'] as num?)?.toDouble(),
-    balanceAfterOriginalText: financeDecimalText(json['balanceAfterOriginal']),
+    balanceAfterOriginalText: financeDecimalText(
+      json['balanceAfterOriginalExact'] ?? json['balanceAfterOriginal'],
+    ),
     exchangeDiff: (json['exchangeDiff'] as num?)?.toDouble(),
-    exchangeDiffText: financeDecimalText(json['exchangeDiff']),
+    exchangeDiffText: financeDecimalText(
+      json['exchangeDiffExact'] ?? json['exchangeDiff'],
+    ),
     summary: json['summary'] as String?,
     remark: json['remark'] as String?,
   );
@@ -450,15 +477,21 @@ class FinanceDocDetail {
     counterpartAccountId: json['counterpartAccountId'] as String?,
     currencyId: json['currencyId'] as String?,
     exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
-    exchangeRateText: financeDecimalText(json['exchangeRate']),
+    exchangeRateText: financeDecimalText(
+      json['exchangeRateExact'] ?? json['exchangeRate'],
+    ),
     amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
-    amountOriginalText: financeDecimalText(json['amountOriginal']),
+    amountOriginalText: financeDecimalText(
+      json['amountOriginalExact'] ?? json['amountOriginal'],
+    ),
     amountLocal: (json['amountLocal'] as num?)?.toDouble(),
-    amountLocalText: financeDecimalText(json['amountLocal']),
+    amountLocalText: financeDecimalText(
+      json['amountLocalExact'] ?? json['amountLocal'],
+    ),
     bankFee: (json['bankFee'] as num?)?.toDouble(),
-    bankFeeText: financeDecimalText(json['bankFee']),
+    bankFeeText: financeDecimalText(json['bankFeeExact'] ?? json['bankFee']),
     otherFee: (json['otherFee'] as num?)?.toDouble(),
-    otherFeeText: financeDecimalText(json['otherFee']),
+    otherFeeText: financeDecimalText(json['otherFeeExact'] ?? json['otherFee']),
     settlementAuthorityVersion: (json['settlementAuthorityVersion'] as num?)
         ?.toInt(),
     createIdempotencyKey: json['createIdempotencyKey'] as String?,
@@ -474,17 +507,25 @@ class FinanceDocDetail {
     agentStatementNo: json['agentStatementNo'] as String?,
     accountCurrencyId: json['accountCurrencyId'] as String?,
     accountExchangeRate: _financeDecimalDouble(json['accountExchangeRate']),
-    accountExchangeRateText: financeDecimalText(json['accountExchangeRate']),
+    accountExchangeRateText: financeDecimalText(
+      json['accountExchangeRateExact'] ?? json['accountExchangeRate'],
+    ),
     accountExchangeRateSource: json['accountExchangeRateSource'] as String?,
     accountAmount: _financeDecimalDouble(json['accountAmount']),
-    accountAmountText: financeDecimalText(json['accountAmount']),
+    accountAmountText: financeDecimalText(
+      json['accountAmountExact'] ?? json['accountAmount'],
+    ),
     accountAmountLocal: _financeDecimalDouble(json['accountAmountLocal']),
-    accountAmountLocalText: financeDecimalText(json['accountAmountLocal']),
+    accountAmountLocalText: financeDecimalText(
+      json['accountAmountLocalExact'] ?? json['accountAmountLocal'],
+    ),
     bankFeeAccountAmount: _financeDecimalDouble(json['bankFeeAccountAmount']),
-    bankFeeAccountAmountText: financeDecimalText(json['bankFeeAccountAmount']),
+    bankFeeAccountAmountText: financeDecimalText(
+      json['bankFeeAccountAmountExact'] ?? json['bankFeeAccountAmount'],
+    ),
     otherFeeAccountAmount: _financeDecimalDouble(json['otherFeeAccountAmount']),
     otherFeeAccountAmountText: financeDecimalText(
-      json['otherFeeAccountAmount'],
+      json['otherFeeAccountAmountExact'] ?? json['otherFeeAccountAmount'],
     ),
     feeSettlementMode: json['feeSettlementMode'] as String?,
     feeBearer: json['feeBearer'] as String?,
@@ -494,13 +535,16 @@ class FinanceDocDetail {
       json['feeAccountExchangeRate'],
     ),
     feeAccountExchangeRateText: financeDecimalText(
-      json['feeAccountExchangeRate'],
+      json['feeAccountExchangeRateExact'] ?? json['feeAccountExchangeRate'],
     ),
     settlementGrossLocal: _financeDecimalDouble(
       json['settlementGrossLocal'] ?? json['amountLocal'],
     ),
     settlementGrossLocalText: financeDecimalText(
-      json['settlementGrossLocal'] ?? json['amountLocal'],
+      json['settlementGrossLocalExact'] ??
+          json['settlementGrossLocal'] ??
+          json['amountLocalExact'] ??
+          json['amountLocal'],
     ),
     otherFeeStyleId: json['otherFeeStyleId'] as String?,
     receiptMethodId: json['receiptMethodId'] as String?,
@@ -563,7 +607,9 @@ class ArApLedgerItem {
     this.prepaymentAppliedOriginal,
     this.prepaymentAppliedLocal,
     this.amountSettled,
+    this.amountSettledText,
     this.amountBalance,
+    this.amountBalanceText,
     this.dueDate,
     this.settlementStyleLegacy,
     this.salesOrderIds = const [],
@@ -607,13 +653,15 @@ class ArApLedgerItem {
   final double? amountBalanceOriginal;
   final String? amountBalanceOriginalText;
 
-  /// 服务端字符串金额：往来抵销/预收应用保持 4 位精度，不参与客户端 double 汇总。
+  /// 服务端原始十进制文本；保留实际金额及派生账面金额的全部有效位，不经 double 汇总。
   final String? amountOffsetOriginal;
   final String? amountOffsetLocal;
   final String? prepaymentAppliedOriginal;
   final String? prepaymentAppliedLocal;
   final double? amountSettled;
+  final String? amountSettledText;
   final double? amountBalance;
+  final String? amountBalanceText;
   final String? dueDate;
   final int? settlementStyleLegacy;
   final List<String> salesOrderIds;
@@ -644,39 +692,65 @@ class ArApLedgerItem {
     currencyCode: json['currencyCode'] as String?,
     currencyName: json['currencyName'] as String?,
     exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
-    exchangeRateText: financeDecimalText(json['exchangeRate']),
+    exchangeRateText: financeDecimalText(
+      json['exchangeRateExact'] ?? json['exchangeRate'],
+    ),
     amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
-    amountOriginalText: financeDecimalText(json['amountOriginal']),
+    amountOriginalText: financeDecimalText(
+      json['amountOriginalExact'] ?? json['amountOriginal'],
+    ),
     amountOriginalLocal: (json['amountOriginalLocal'] as num?)?.toDouble(),
-    amountOriginalLocalText: financeDecimalText(json['amountOriginalLocal']),
+    amountOriginalLocalText: financeDecimalText(
+      json['amountOriginalLocalExact'] ?? json['amountOriginalLocal'],
+    ),
     amountReceivedOriginal: (json['amountReceivedOriginal'] as num?)
         ?.toDouble(),
     amountReceivedOriginalText: financeDecimalText(
-      json['amountReceivedOriginal'],
+      json['amountReceivedOriginalExact'] ?? json['amountReceivedOriginal'],
     ),
     amountReceivedLocal: (json['amountReceivedLocal'] as num?)?.toDouble(),
-    amountReceivedLocalText: financeDecimalText(json['amountReceivedLocal']),
+    amountReceivedLocalText: financeDecimalText(
+      json['amountReceivedLocalExact'] ?? json['amountReceivedLocal'],
+    ),
     amountWriteOffOriginal: (json['amountWriteOffOriginal'] as num?)
         ?.toDouble(),
     amountWriteOffOriginalText: financeDecimalText(
-      json['amountWriteOffOriginal'],
+      json['amountWriteOffOriginalExact'] ?? json['amountWriteOffOriginal'],
     ),
     amountWriteOffLocal: (json['amountWriteOffLocal'] as num?)?.toDouble(),
-    amountWriteOffLocalText: financeDecimalText(json['amountWriteOffLocal']),
+    amountWriteOffLocalText: financeDecimalText(
+      json['amountWriteOffLocalExact'] ?? json['amountWriteOffLocal'],
+    ),
     amountBalanceOriginal: (json['amountBalanceOriginal'] as num?)?.toDouble(),
     amountBalanceOriginalText: financeDecimalText(
-      json['amountBalanceOriginal'],
+      json['amountBalanceOriginalExact'] ?? json['amountBalanceOriginal'],
     ),
-    amountOffsetOriginal: financeDecimalText(json['amountOffsetOriginal']),
-    amountOffsetLocal: financeDecimalText(json['amountOffsetLocal']),
+    amountOffsetOriginal: financeDecimalText(
+      json['amountOffsetOriginalExact'] ?? json['amountOffsetOriginal'],
+    ),
+    amountOffsetLocal: financeDecimalText(
+      json['amountOffsetLocalExact'] ?? json['amountOffsetLocal'],
+    ),
     prepaymentAppliedOriginal: financeDecimalText(
-      json['prepaymentAppliedOriginal'] ?? json['amountOffsetOriginal'],
+      json['prepaymentAppliedOriginalExact'] ??
+          json['prepaymentAppliedOriginal'] ??
+          json['amountOffsetOriginalExact'] ??
+          json['amountOffsetOriginal'],
     ),
     prepaymentAppliedLocal: financeDecimalText(
-      json['prepaymentAppliedLocal'] ?? json['amountOffsetLocal'],
+      json['prepaymentAppliedLocalExact'] ??
+          json['prepaymentAppliedLocal'] ??
+          json['amountOffsetLocalExact'] ??
+          json['amountOffsetLocal'],
     ),
     amountSettled: (json['amountSettled'] as num?)?.toDouble(),
+    amountSettledText: financeDecimalText(
+      json['amountSettledExact'] ?? json['amountSettled'],
+    ),
     amountBalance: (json['amountBalance'] as num?)?.toDouble(),
+    amountBalanceText: financeDecimalText(
+      json['amountBalanceExact'] ?? json['amountBalance'],
+    ),
     dueDate: json['dueDate'] as String?,
     settlementStyleLegacy: (json['settlementStyleLegacy'] as num?)?.toInt(),
     salesOrderIds:

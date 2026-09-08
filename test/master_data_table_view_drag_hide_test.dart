@@ -133,6 +133,33 @@ void main() {
     expect(find.text('所有'), findsOneWidget);
   });
 
+  testWidgets('long-press header drag reorders columns (session order)', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_table());
+    await tester.pumpAndSettle();
+
+    // 长按列1 拎起 → 横拖过列2（160 宽）→ 松手落位到列2 之后。
+    final gesture = await tester.startGesture(tester.getCenter(find.text(_c1)));
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.moveBy(const Offset(180, 0));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    // 表头与表体行同步换序：列2 → 列1 → 列3。
+    expect(
+      tester.getTopLeft(find.text(_c2)).dx,
+      lessThan(tester.getTopLeft(find.text(_c1)).dx),
+    );
+    expect(
+      tester.getTopLeft(find.text('a2')).dx,
+      lessThan(tester.getTopLeft(find.text('a1')).dx),
+    );
+    // 排序不隐藏：三列都在。
+    expect(_chooserLabel(3, 3), findsOneWidget);
+  });
+
   testWidgets('last visible column cannot be hidden by drag', (tester) async {
     await tester.pumpWidget(_table());
     await tester.pumpAndSettle();

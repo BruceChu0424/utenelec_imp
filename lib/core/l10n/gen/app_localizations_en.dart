@@ -2392,7 +2392,38 @@ class AppLocalizationsEn extends AppLocalizations {
   String get financeHubTaskApproval => 'Order approval tasks';
 
   @override
-  String get financeHubTaskApprovalSub => 'Assigned to me';
+  String get financeSalesAllQueueLabel => 'sales order finance confirmations';
+
+  @override
+  String get financeSalesInitialQueueLabel =>
+      'initial sales order finance approvals';
+
+  @override
+  String get financeSalesChangesQueueLabel => 'sales order changes';
+
+  @override
+  String financeSalesQueueCountLoading(String queue) {
+    return 'Loading pending $queue';
+  }
+
+  @override
+  String financeSalesQueueCountFailed(String queue) {
+    return 'Could not load pending $queue. Open the task page to retry.';
+  }
+
+  @override
+  String financeSalesQueueCountEmpty(String queue) {
+    return 'No pending $queue';
+  }
+
+  @override
+  String financeSalesQueueCountPending(String queue, int count) {
+    return 'Pending $queue: $count';
+  }
+
+  @override
+  String get financeHubTaskApprovalSub =>
+      'Purchase and subcontract order approvals';
 
   @override
   String get financeHubTaskOverDelivery => 'Over-delivery approval';
@@ -2882,4 +2913,497 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get employeeAccountNotProvisionedContactSupport =>
       'This employee does not have an account. Contact account support.';
+
+  @override
+  String get materialMainWarehouse => 'Main warehouse';
+
+  @override
+  String get materialIssueWarehouseSettings => 'Issue warehouse settings';
+
+  @override
+  String get materialWarehouseScopeExplanation =>
+      'The main warehouse includes its subwarehouses. Kit readiness, reservations and issues use the selected physical warehouse. Stock elsewhere is a transfer reference until received here.';
+
+  @override
+  String get materialSearchHint => 'Search products or materials';
+
+  @override
+  String get materialByProduct => 'By product';
+
+  @override
+  String get materialByMaterial => 'By material';
+
+  @override
+  String get materialIdentityByMaterial => 'Material / source';
+
+  @override
+  String get materialIdentityByProduct => 'Product / BOM hierarchy';
+
+  @override
+  String get materialRoute => 'Supply method';
+
+  @override
+  String get materialRequired => 'Qty needed';
+
+  @override
+  String get materialAllocated => 'Prepared quantity';
+
+  @override
+  String get materialPreparedQuantityHint =>
+      'Qualified material allocated to this batch, including its formal reservations and material already issued. Qualified receipts are included once; pending inspection and future supply are excluded. This is batch coverage, not the current warehouse balance.';
+
+  @override
+  String get materialShortage => 'Still short';
+
+  @override
+  String get materialPhysicalShortageHint =>
+      'Batch demand still lacking qualified material. Issuing purchase, subcontract or workshop work does not reduce this shortage; qualified stock-in allocated to this batch does. Additional supply separately deducts incoming supply to prevent duplicate requests.';
+
+  @override
+  String get materialSupplyProgressHint =>
+      'Track ordering, finance approval, arrival, inspection and stock-in. Double-click for details. Physical shortage remains after issue and updates after qualified stock-in.';
+
+  @override
+  String get materialToSupply => 'Suggested order';
+
+  @override
+  String get materialFutureSupply => 'In transit';
+
+  @override
+  String get materialProgress => 'Progress / next step';
+
+  @override
+  String get materialMixedRoutes => 'Mixed routes';
+
+  @override
+  String materialAggregateSources(int products, int paths) {
+    return '$products products · $paths paths';
+  }
+
+  @override
+  String materialCreateRoutes(int count) {
+    return 'Confirm routes ($count)';
+  }
+
+  @override
+  String get materialRouteReasonTitle => 'Route reason (optional)';
+
+  @override
+  String get materialRouteChangedRetry =>
+      'Analysis updated. Review the selected routes and try again.';
+
+  @override
+  String get materialWarehouseFacts => 'Warehouse and supply details';
+
+  @override
+  String get materialExactStock => 'Qualified stock pegged here';
+
+  @override
+  String get materialPublicStock => 'Public stock';
+
+  @override
+  String get materialScopeStock => 'Scope availability (reference)';
+
+  @override
+  String get materialTransferStock => 'Transferable from other warehouses';
+
+  @override
+  String get materialClaimedSupply => 'Claimed for this task';
+
+  @override
+  String get materialTaskBuy => 'Issue purchasing';
+
+  @override
+  String get materialTaskSubcontract => 'Issue subcontracting';
+
+  @override
+  String get materialTaskWorkshop => 'Issue to workshop';
+
+  @override
+  String get materialTaskIssued => 'Issued';
+
+  @override
+  String get materialTaskBlocked => 'Needs attention';
+
+  @override
+  String get materialTaskEmpty => 'No tasks match this filter';
+
+  @override
+  String get materialTaskBuyHint =>
+      'Issue remaining purchasing demand and track orders, receipts and inspections.';
+
+  @override
+  String get materialTaskSubcontractHint =>
+      'Issue remaining subcontracting demand; components first create workshop preparation tasks.';
+
+  @override
+  String get materialTaskWorkshopHint =>
+      'Set quantity, workshop and owner before issuing. Material-short tasks wait until materials are ready and issued.';
+
+  @override
+  String get materialTaskSectionHint =>
+      'Manage preparation by route and review pending, issued and blocked tasks.';
+
+  @override
+  String get materialWarehouseLimit =>
+      'An analysis supports at most 100 physical warehouses. Adjust the warehouse scope before analyzing.';
+
+  @override
+  String materialRoutesNext(int count) {
+    return 'Next: review $count routes, select them and confirm. Each row keeps its selected route.';
+  }
+
+  @override
+  String get materialIssueNext =>
+      'Next: open purchasing, subcontracting or workshop tasks to issue remaining demand and track issued work.';
+
+  @override
+  String materialWorkshopNext(int count) {
+    return 'Next: $count products can be issued to workshops. Set quantity, workshop and owner; material-short batches wait for complete kits and material issues.';
+  }
+
+  @override
+  String materialPreparedChildCreated(int count) {
+    return 'Created $count preparation tasks; they have not been issued to a workshop yet.';
+  }
+
+  @override
+  String get materialPreparedChildNext =>
+      'Check quantity, workshop and owner in the selected rows, then generate the production plan. Approval is required before release.';
+
+  @override
+  String get materialPreparedChildNeedPlanner =>
+      'A planner with production-plan generation permission must set quantity, workshop and owner and submit the plan.';
+
+  @override
+  String get materialRouteMemoryLoading =>
+      'Loading previous routes. Confirm after they are ready.';
+
+  @override
+  String get materialRouteMemoryUnavailable =>
+      'Previous routes could not be loaded. Review the displayed routes before confirming.';
+
+  @override
+  String get materialRootSupply => 'Top-level supply task';
+
+  @override
+  String get materialRootRoutePending => 'Route pending';
+
+  @override
+  String get materialRootExternalRoute =>
+      'Issue this top-level product from its purchasing or subcontracting entry';
+
+  @override
+  String materialRootExistingStock(String quantity) {
+    return 'Allocated stock of $quantity will be handed over first. Enter only additional supply below.';
+  }
+
+  @override
+  String get materialRootSupplyCompleted => 'Supply demand fulfilled';
+
+  @override
+  String get materialRootOutputHistory => 'Top-level supply handovers';
+
+  @override
+  String get materialRootStockAllocation => 'Existing stock allocation';
+
+  @override
+  String get materialRootReceivedSupply => 'Qualified receipt handover';
+
+  @override
+  String get materialRootOutputReversed => 'Handover reversed';
+
+  @override
+  String get materialSupplyTasksAndReversals => 'Supply tasks and reversals';
+
+  @override
+  String get materialNotificationReversalReconcile => 'Reconcile reversal';
+
+  @override
+  String get materialRevokeRootStock => 'Reverse stock allocation';
+
+  @override
+  String get materialRootRevokeFailed =>
+      'Stock allocation could not be reversed. Refresh and review it.';
+
+  @override
+  String get materialRootSupplyProcessed =>
+      'Supply processed. Review the stock handovers and additional demand records.';
+
+  @override
+  String get orderChangeQtyButton => 'Change Qty';
+
+  @override
+  String get orderChangeQtyTitle => 'Order Qty Change';
+
+  @override
+  String get orderChangeQtyWarning =>
+      'Changes after approval take effect immediately and automatically re-enter finance review; finance will see the change list (before → after). Rejection does not restore quantities.';
+
+  @override
+  String orderChangeQtyCurrent(String qty) {
+    return 'Now $qty';
+  }
+
+  @override
+  String get orderChangeQtyNewQty => 'New qty';
+
+  @override
+  String get orderChangeQtyConfirm => 'Confirm Change';
+
+  @override
+  String get orderChangeQtyInvalid =>
+      'Some quantities are invalid (must be greater than 0). Please check.';
+
+  @override
+  String get orderChangeQtySuccess =>
+      'Quantities changed; the order has re-entered finance review';
+
+  @override
+  String get orderChangeQtyFailed =>
+      'Failed to change quantities. Please try again later.';
+
+  @override
+  String orderQtyChangeOld(String value) {
+    return 'Before $value';
+  }
+
+  @override
+  String orderQtyChangeNew(String value) {
+    return 'After $value';
+  }
+
+  @override
+  String get procurementApprovalStatusPending => 'Awaiting finance review';
+
+  @override
+  String procurementApprovalStatusChanged(int count) {
+    return 'Re-review after change · $count qty changes';
+  }
+
+  @override
+  String procurementApprovalQtyChangesTitle(int count) {
+    return 'Change list · $count qty changes';
+  }
+
+  @override
+  String get procurementApprovalQtyChangesHint =>
+      'Quantities were changed after finance approval and the order has automatically re-entered review; please verify each line (before → after) before reviewing.';
+
+  @override
+  String get productionMaterialRecheck => 'Recheck materials';
+
+  @override
+  String get productionMaterialRecheckReady =>
+      'Materials are ready. Draw orders were created for the actual warehouses. Start after all materials have been issued.';
+
+  @override
+  String get productionMaterialRecheckWaiting =>
+      'Materials are still short. Check completed stock receipts and reservations for other tasks.';
+
+  @override
+  String get fieldAutofilledReview =>
+      'Filled from a previous record or default. Please review before use.';
+
+  @override
+  String get workflowQuantityHint =>
+      'Enter this quantity in the row unit. Do not mix boxes, pieces or kilograms; a linked source must have enough available quantity.';
+
+  @override
+  String get workflowOrderQuantityHint =>
+      'Enter the ordered quantity in the row unit. Editing is locked during finance review; changes after approval require a new review.';
+
+  @override
+  String get workflowReturnQuantityHint =>
+      'Use the original shipment line unit for the actual returned quantity. Do not exceed the remaining returnable quantity. Approved returns await inspection before becoming saleable stock.';
+
+  @override
+  String get workflowPriceHint =>
+      'Enter the price per row unit in its currency. The line amount follows quantity; do not enter the line total as a unit price.';
+
+  @override
+  String get workflowReturnPriceHint =>
+      'Return credit is calculated at approval from the original shipment and prior returns. A reference price cannot increase the refundable amount.';
+
+  @override
+  String get workflowDiscountHint =>
+      'Use a decimal multiplier: 1 is full price and 0.9 means 10% off. Do not enter 9 or 90.';
+
+  @override
+  String get workflowExchangeRateHint =>
+      'Enter the base-currency value of one unit of the original currency, with up to 6 decimals. Check any prefilled rate for this transaction.';
+
+  @override
+  String get workflowTaxRateHint =>
+      'Enter a percentage: 13 means 13%. Do not enter 0.13.';
+
+  @override
+  String get workflowCurrencyHint =>
+      'The currency defines this line’s prices and amounts. Check the source document before changing it.';
+
+  @override
+  String get workflowSettlementHint =>
+      'Select the agreed supplier settlement terms. Different suppliers, currencies or terms may produce separate orders.';
+
+  @override
+  String get workflowPlanningQuantityHint =>
+      'This is the quantity to arrange now, not the received quantity. Incoming supply is not stock, and issuing a task does not make it ready to start.';
+
+  @override
+  String get workflowWorkshopQuantityHint =>
+      'Enter the quantity assigned to the workshop now. Dispatch can happen first; starting and material issue still require the necessary materials and state.';
+
+  @override
+  String get workflowReportQuantityHint =>
+      'Enter the output completed this time in the plan-line unit, not cumulative output. Approved reporting still requires warehouse registration, quality inspection and stock-in.';
+
+  @override
+  String get workflowArrivalQuantityHint =>
+      'Enter the actual quantity received now in the row unit, including shortages or excess. Quantity above approval enters exception handling rather than available stock.';
+
+  @override
+  String get workflowIqcPassHint =>
+      'Enter only the quantity passed this time. Passed plus failed quantity must not exceed the uninspected balance; warehouse confirmation is still needed for stock-in.';
+
+  @override
+  String get workflowIqcFailHint =>
+      'Enter only the quantity failed this time. It does not become available stock and still needs return, rework or another disposition.';
+
+  @override
+  String get workflowPrepaymentAmountHint =>
+      'Enter the advance payment actually received in the order currency. Receipt is recorded once; later applying it to receivables does not record another cash receipt.';
+
+  @override
+  String get workflowReceiptAllocationHint =>
+      'Allocate this receipt to the receivable in its original currency, up to its collectible balance. Do not allocate the same received money twice.';
+
+  @override
+  String get workflowBankFeeHint =>
+      'Enter the actual bank fee. A fee deducted from the receipt must not also be recorded as a separate payment.';
+
+  @override
+  String get workflowOtherFeeHint =>
+      'Enter only other fees for this receipt and select their expense category. Do not record a fee twice.';
+
+  @override
+  String get workflowReturnReasonHint =>
+      'Describe the return reason and original shipment. Approval creates a credit awaiting disposition and quarantines the goods; refund or replacement decisions are separate.';
+
+  @override
+  String get workflowPrepaymentOrderHint =>
+      'Select the sales order for this advance payment. Its customer and currency are inherited; change the order if the source is wrong.';
+
+  @override
+  String get workflowPrepaymentApplyHint =>
+      'Explain which advance payment covers which receivables and why. Applying it adjusts balances without recording another cash receipt.';
+
+  @override
+  String get workflowFinanceReviewHint =>
+      'Record your review. Compare before and after values for changed orders. Finance approval does not mean payment, shipment or production has occurred.';
+
+  @override
+  String get workflowFinanceRejectHint =>
+      'State what is wrong and what must change. Sales receives this reason and can resubmit after correction.';
+
+  @override
+  String get workflowOptionalDetails => 'Additional details (optional)';
+
+  @override
+  String get workflowReceiptEvidence => 'Rate and receipt evidence';
+
+  @override
+  String get workflowReceiptNoFees => 'No fees: no fee details are needed';
+
+  @override
+  String get workflowUnitUnknown => 'Inspection unit needs review';
+
+  @override
+  String workflowIqcUnitHint(String sourceUnit, String rate, String baseUnit) {
+    return 'One $sourceUnit on the source equals $rate $baseUnit. Inspect in $baseUnit, not the original package count.';
+  }
+
+  @override
+  String get moneySummaryCustomerPaid => 'Customer paid';
+
+  @override
+  String get moneySummaryGrossShipped => 'Gross shipped amount';
+
+  @override
+  String get moneySummaryReturned => 'Returned amount';
+
+  @override
+  String get moneySummaryUnusedReturns => 'Unapplied return balance';
+
+  @override
+  String get moneySummaryNetReceivable => 'Current amount to collect';
+
+  @override
+  String get moneySummaryPendingBalance => 'Customer balance to resolve';
+
+  @override
+  String get moneySummaryFutureShipment => 'Future shipment amount';
+
+  @override
+  String get moneySummaryExpectedNewCash => 'Estimated new payment needed';
+
+  @override
+  String get moneySummaryBalanceHint =>
+      'Finance must confirm how this balance is applied or refunded. It does not mean a refund has been paid.';
+
+  @override
+  String get moneySummaryCollectionHint =>
+      'Estimated from current receivables, future shipments and unused advances. No credit or refund is applied automatically.';
+
+  @override
+  String get moneySummarySourceHint =>
+      'Amounts come from approved documents. Customer payments may include deducted fees; bank cash received is shown in account transactions.';
+
+  @override
+  String get moneySummaryUnallocatedHint =>
+      'Some payments have not been matched to this order. Finance needs to reconcile them.';
+
+  @override
+  String get warehouseArrivalSourceLabel => 'Arrival source';
+
+  @override
+  String get warehouseArrivalSourceAutomatic => 'Automatic';
+
+  @override
+  String get warehouseArrivalSourceNormal => 'Normal arrival';
+
+  @override
+  String get warehouseArrivalSourceReplacement => 'Replace returns first';
+
+  @override
+  String get warehouseArrivalSourceHint =>
+      'The system identifies the source when only one is available. If both normal arrivals and returned goods are outstanding, select the source of this batch. Replace returns first fills the returned quantity first; any remainder is a normal arrival. Whether replacement is free or billed follows the original return resolution.';
+
+  @override
+  String get subcontractPreparationWarehouse => 'Internal production warehouse';
+
+  @override
+  String get subcontractPreparationWarehouseHint =>
+      'For a direct subcontract order with components and insufficient stock, select the warehouse for internal production receipts. Planning receives the shortage; finance submission becomes available after actual receipt. Optional when there are no components or stock is sufficient.';
+
+  @override
+  String get subcontractInternalProduction => 'Internal production';
+
+  @override
+  String get subcontractPreparedQuantity => 'Prepared';
+
+  @override
+  String get subcontractPreparationShortage => 'Still to produce';
+
+  @override
+  String get subcontractOpenPreparation => 'View production plan';
+
+  @override
+  String get subcontractDraftPreparationHint =>
+      'Planning arranges internal production first. Submit to finance after the goods are received into stock.';
+
+  @override
+  String get subcontractWaitingPlan => 'Waiting for planning';
+
+  @override
+  String get subcontractReadyForFinance => 'Ready for finance submission';
 }

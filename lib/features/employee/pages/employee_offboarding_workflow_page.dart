@@ -13,6 +13,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -492,13 +493,15 @@ class _EmployeeOffboardingWorkflowPageState
             },
             borderRadius: UtenRadius.mdAll,
             child: InputDecorator(
-              decoration: InputDecoration(
-                labelText: '离职日期 *',
-                border: const OutlineInputBorder(),
-                error: utenFieldError(
-                  _showDepartureErrors && _effectiveDate == null
-                      ? '请选择离职日期'
-                      : null,
+              decoration: UtenInputDecoration(
+                InputDecoration(
+                  labelText: '离职日期 *',
+                  border: const OutlineInputBorder(),
+                  error: utenFieldError(
+                    _showDepartureErrors && _effectiveDate == null
+                        ? '请选择离职日期'
+                        : null,
+                  ),
                 ),
               ),
               child: Text(

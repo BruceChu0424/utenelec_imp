@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/master_name_provider.dart'
+    show masterDataSessionKeyProvider;
 import '../models/payroll_batch.dart';
 import '../models/payroll_slip.dart';
 import '../repositories/payroll_repository.dart';
@@ -37,18 +39,26 @@ final payrollListProvider =
 
 class PayrollListNotifier
     extends AutoDisposeAsyncNotifier<PagedResult<PayrollSlip>> {
+  int _page = 1;
+  PayrollFilter? _lastFilter;
+
   @override
   Future<PagedResult<PayrollSlip>> build() async {
+    ref.listen(masterDataSessionKeyProvider, (previous, next) {
+      if (previous == next) return;
+      _page = 1;
+      state = const AsyncLoading();
+      ref.invalidateSelf();
+    });
     final filter = ref.watch(payrollFilterProvider);
+    if (_lastFilter != filter) _page = 1;
+    _lastFilter = filter;
     return ref
         .watch(payrollRepositoryProvider)
-        .listSlips(status: filter.apiStatus);
+        .listSlips(status: filter.apiStatus, page: _page);
   }
 
-  Future<void> refresh() async {
-    state = const AsyncLoading();
-    state = await AsyncValue.guard(() => _fetch(1));
-  }
+  Future<void> refresh() => _reloadPage(1);
 
   Future<void> previousPage() async {
     final current = state.valueOrNull;
@@ -64,22 +74,25 @@ class PayrollListNotifier
 
   Future<void> _goTo(int page) async {
     if (state.isLoading) return;
-    state = const AsyncLoading<PagedResult<PayrollSlip>>().copyWithPrevious(
-      state,
-    );
-    state = await AsyncValue.guard(() => _fetch(page));
+    await _reloadPage(page);
   }
 
-  Future<PagedResult<PayrollSlip>> _fetch(int page) {
-    final filter = ref.read(payrollFilterProvider);
-    return ref
-        .read(payrollRepositoryProvider)
-        .listSlips(status: filter.apiStatus, page: page);
+  Future<void> _reloadPage(int page) async {
+    _page = page;
+    state = const AsyncLoading();
+    // Keep every request inside build: Riverpod discards replaced build futures.
+    ref.invalidateSelf();
+    try {
+      await future;
+    } catch (_) {
+      // The current error is exposed in provider state, as before.
+    }
   }
 }
 
 final payrollDetailProvider = FutureProvider.autoDispose
     .family<PayrollSlip, String>((ref, id) {
+      ref.watch(masterDataSessionKeyProvider);
       return ref.watch(payrollRepositoryProvider).getSlip(id);
     });
 

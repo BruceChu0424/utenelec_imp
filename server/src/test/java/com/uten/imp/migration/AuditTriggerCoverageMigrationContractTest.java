@@ -55,6 +55,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * V315 manager delegations, V318 forward-corrects the identifier-safe sweep,
  * V321 repeats it after V319 central-override provenance hardening, and V325
  * covers V322-V324 contextual generations plus explicit leader assignments.
+ * V530 preserves the later noise exclusions, repairs only the known V503
+ * INSERT-only shape and covers the actual value/source/custody business tables.
  * This test deliberately
  * does not pretend to execute PostgreSQL trigger DDL. Instead it verifies the
  * part that can be proven without Docker: critical tables existed before the
@@ -66,9 +68,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AuditTriggerCoverageMigrationContractTest {
 
     private static final Path MIGRATION_ROOT = Path.of("src/main/resources/db/migration");
-    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 396;
+    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 530;
     private static final Path LATEST_FULL_AUDIT_SWEEP =
-            MIGRATION_ROOT.resolve("V396__refresh_audit_trigger_coverage.sql");
+            MIGRATION_ROOT.resolve("V530__refresh_audit_trigger_coverage.sql");
     private static final Path LATEST_AUDIT_HARDENING =
             MIGRATION_ROOT.resolve("V185__audit_soft_delete_and_redaction_hardening.sql");
     private static final Pattern MIGRATION_FILE =
@@ -146,7 +148,23 @@ class AuditTriggerCoverageMigrationContractTest {
             // Exact IQC PASS-to-analysis-material ownership introduced by V307.
             "preplan_analysis_stock_exact_pegs",
             "preplan_material_reallocations",
-            "preplan_stock_entitlement_events");
+            "preplan_stock_entitlement_events",
+            // Actual values, source revisions and custody are business evidence,
+            // including their durable allocation/processing state.
+            "stock_value_pools", "stock_value_events", "stock_value_nodes", "stock_value_edges",
+            "stock_value_jobs", "stock_value_tasks", "stock_value_node_revisions", "stock_value_postings",
+            "procurement_order_source_revisions", "procurement_order_source_revision_allocations",
+            "procurement_order_source_revision_peg_changes", "production_material_movement_links",
+            "stock_value_openings", "stock_value_legacy_balance_cases", "stock_value_legacy_balance_case_events",
+            "stock_value_acquisition_sources", "stock_value_position_transfers",
+            "stock_value_production_cost_objects", "stock_value_production_cost_inputs",
+            "stock_value_production_cost_outputs", "stock_value_production_cost_revisions",
+            "stock_value_production_cost_tasks", "stock_value_production_cost_shares", "stock_value_production_cost_dirty",
+            "procurement_receipt_consideration_parts", "procurement_iqc_quality_consideration_parts",
+            "procurement_iqc_funding_slices", "procurement_iqc_credit_documents", "procurement_iqc_credit_case_allocations",
+            "procurement_iqc_credit_slices", "procurement_iqc_stock_consideration_parts",
+            "procurement_iqc_funding_settlements", "procurement_iqc_consideration_reversals",
+            "procurement_iqc_consideration_review_approvals", "subcontract_receipt_material_consumptions");
 
     /** Tables intentionally excluded from row-image auditing, with reviewable reasons. */
     private static final Map<String, String> TECHNICAL_TABLE_ALLOWLIST = Map.ofEntries(
@@ -271,14 +289,25 @@ class AuditTriggerCoverageMigrationContractTest {
                      Map.entry("preplan_subcontract_requirement_handoff_events", 447),
                      Map.entry("preplan_subcontract_make_tasks", 458),
                      Map.entry("preplan_subcontract_make_task_batches", 458),
+                     Map.entry("preplan_subcontract_make_batch_reversals", 496),
                      Map.entry("employee_secondary_departments", 459),
                      Map.entry("purchase_order_item_sources", 463),
                      Map.entry("subcontract_order_item_sources", 463),
-                     Map.entry("preplan_public_supply_events", 474));
+                     Map.entry("preplan_public_supply_events", 474),
+                    // V486 采购订货改量事实账（同迁移自带 trg_audit_* 行级触发器）。
+                    Map.entry("procurement_order_qty_change_logs", 486),
+                    Map.entry("sales_order_revision_logs", 492),
+                    Map.entry("sales_shipment_submission_events", 511));
 
     /** Business tables repaired by a later narrow forward audit migration. */
     private static final Map<String, Integer> POST_SWEEP_FORWARD_AUDIT_TABLES =
-            Map.of("production_daily_report_workers", 429);
+            Map.ofEntries(
+                    Map.entry("production_daily_report_workers", 429),
+                    // V483 forward repair: V478 root-supply output ledger and
+                    // V482 sales-order quantity-change facts (creating
+                    // migrations stay immutable).
+                    Map.entry("preplan_root_output_events", 483),
+                    Map.entry("sales_order_qty_change_logs", 483));
 
     @Test
     void latestTrustedSweepValidatesTheFullTriggerContract() throws IOException {

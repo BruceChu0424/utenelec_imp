@@ -12,7 +12,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.List;
 import java.util.UUID;
 
@@ -27,6 +26,42 @@ public class FinanceReceiptSourceAllocationService {
 
     private final EntityManager em;
     private final SecurityContextCurrentUser currentUser;
+
+    /** Choose carrying value from each immutable order source, never from an aggregated display cache. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public BigDecimal plannedBookAmount(com.uten.imp.features.finance.arap.ArApLedger ledger,BigDecimal original) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> refs=em.createNativeQuery("""
+                SELECT ref.amount_original-COALESCE((SELECT sum(a.cash_original+a.write_off_original)
+                    FROM finance_receipt_source_allocations a WHERE a.source_ref_id=ref.id AND a.status='APPLIED'),0)
+                    -COALESCE((SELECT sum(o.amount_original) FROM customer_open_item_offsets o
+                        WHERE o.target_source_ref_id=ref.id AND o.status='APPLIED'),0),
+                    ref.amount_local-COALESCE((SELECT sum(a.applied_book_local)
+                    FROM finance_receipt_source_allocations a WHERE a.source_ref_id=ref.id AND a.status='APPLIED'),0)
+                    -COALESCE((SELECT sum(o.target_amount_local) FROM customer_open_item_offsets o
+                        WHERE o.target_source_ref_id=ref.id AND o.status='APPLIED'),0)
+                FROM ar_ap_source_refs ref WHERE ref.ledger_id=:ledger AND ref.source_type='SALES_ORDER'
+                ORDER BY ref.source_sequence,ref.id FOR UPDATE
+                """).setParameter("ledger",ledger.getId()).getResultList();
+        if(refs.isEmpty()) {
+            Number verified=(Number)em.createNativeQuery("SELECT count(*) FROM ar_ap_ledger WHERE id=:id AND fn_is_direct_customer_shipment_ar(id)")
+                    .setParameter("id",ledger.getId()).getSingleResult();
+            if(verified.longValue()!=1)throw conflict("应收缺少可验证的发货或销售单账面来源");
+            return com.uten.imp.common.finance.FinancialBookAllocation.part(original,ledger.getAmountBalanceOriginal(),ledger.getAmountBalance());
+        }
+        BigDecimal remaining=original,book=BigDecimal.ZERO;
+        for(Object[] ref:refs) {
+            BigDecimal beforeA=decimal(ref[0]),beforeB=decimal(ref[1]);
+            if(beforeA.signum()<0||beforeB.signum()<0)throw conflict("应收来源已超额使用");
+            BigDecimal amount=remaining.min(beforeA);
+            if(amount.signum()==0)continue;
+            book=book.add(com.uten.imp.common.finance.FinancialBookAllocation.part(amount,beforeA,beforeB));
+            remaining=remaining.subtract(amount);
+            if(remaining.signum()==0)break;
+        }
+        if(remaining.signum()!=0||book.compareTo(ledger.getAmountBalance())>0)throw conflict("应收销售单来源金额不足或未完成历史归属");
+        return money(book);
+    }
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void allocateApprovedReceipt(FinanceReceipt receipt, List<FinanceReceiptLine> lines) {
@@ -47,7 +82,19 @@ public class FinanceReceiptSourceAllocationService {
         if (!"AR_SETTLEMENT".equals(receipt.getReceiptKind())) {
             throw conflict("只有普通应收收款存在销售单来源分配");
         }
+        // The LIFO check and the reverse must see one serialized AR history.
+        // Otherwise another receipt could post between checking history and locking its ledger.
+        List<UUID> ledgerIds=lines.stream().map(FinanceReceiptLine::getAppliedLedgerId).distinct()
+                .sorted(java.util.Comparator.comparing(UUID::toString)).toList();
+        if (!ledgerIds.isEmpty()) em.createNativeQuery("SELECT id FROM ar_ap_ledger WHERE id IN (:ids) ORDER BY id FOR UPDATE")
+                .setParameter("ids",ledgerIds).getResultList();
+        int orderLinkedLines=0;
         for (FinanceReceiptLine line : lines) {
+            if (isVerifiedDirectShipment(receipt,line)) {
+                requireDirectReceiptLatest(receipt,line);
+                continue;
+            }
+            orderLinkedLines++;
             long active = number(em.createNativeQuery("""
                     SELECT COUNT(*) FROM finance_receipt_source_allocations
                     WHERE receipt_line_id=:lineId AND status='APPLIED'
@@ -82,7 +129,7 @@ public class FinanceReceiptSourceAllocationService {
                 WHERE receipt_id=:receiptId AND status='APPLIED'
                 """).setParameter("actor", currentUser.requireId())
                 .setParameter("receiptId", receipt.getId()).executeUpdate();
-        if (updated == 0) throw conflict("收款销售单来源分配缺失或已反转");
+        if (updated == 0 && orderLinkedLines>0) throw conflict("收款销售单来源分配缺失或已反转");
     }
 
     @SuppressWarnings("unchecked")
@@ -90,6 +137,7 @@ public class FinanceReceiptSourceAllocationService {
         if (line.getAppliedLedgerId() == null || line.getId() == null) {
             throw validation("收款明细必须关联稳定的应收台账 UUID");
         }
+        if (isVerifiedDirectShipment(receipt,line)) return;
         long existing = number(em.createNativeQuery("""
                 SELECT COUNT(*) FROM finance_receipt_source_allocations
                 WHERE receipt_line_id=:lineId
@@ -170,7 +218,9 @@ public class FinanceReceiptSourceAllocationService {
                     positive(line.getExchangeRate(), "到账汇率"));
             BigDecimal writeOffLocal = localPart(writeOffSlice, writeOffRemaining,
                     writeOffLocalRemaining, positive(line.getExchangeRate(), "到账汇率"));
-            BigDecimal bookLocal = appliedRemaining.compareTo(slice) == 0
+            BigDecimal bookLocal = receipt.getSettlementAuthorityVersion()>=2
+                    ? com.uten.imp.common.finance.FinancialBookAllocation.part(slice,refOriginalRemaining,refLocalRemaining)
+                    : appliedRemaining.compareTo(slice) == 0
                     ? bookLocalRemaining
                     : (refOriginalRemaining.compareTo(slice) == 0
                         ? refLocalRemaining : money(slice.multiply(recognitionRate)));
@@ -183,11 +233,12 @@ public class FinanceReceiptSourceAllocationService {
                         id,receipt_id,receipt_line_id,ledger_id,source_ref_id,sales_order_id,
                         line_sequence,source_sequence,cash_original,cash_local,
                         write_off_original,write_off_local,applied_book_local,exchange_difference,
-                        effective_date,status,created_by,updated_by)
+                        effective_date,status,created_by,updated_by,
+                        book_basis_before_original,book_basis_before_local,book_basis_after_original,book_basis_after_local)
                     VALUES(:id,:receiptId,:lineId,:ledgerId,:sourceRefId,:salesOrderId,
                            :lineSequence,:sourceSequence,:cashOriginal,:cashLocal,
                            :writeOffOriginal,:writeOffLocal,:bookLocal,:exchangeDifference,
-                           :effectiveDate,'APPLIED',:actor,:actor)
+                           :effectiveDate,'APPLIED',:actor,:actor,:bookBeforeA,:bookBeforeB,:bookAfterA,:bookAfterB)
                     """)
                     .setParameter("id", UUID.randomUUID())
                     .setParameter("receiptId", receipt.getId())
@@ -202,6 +253,10 @@ public class FinanceReceiptSourceAllocationService {
                     .setParameter("writeOffOriginal", writeOffSlice)
                     .setParameter("writeOffLocal", writeOffLocal)
                     .setParameter("bookLocal", bookLocal)
+                    .setParameter("bookBeforeA", refOriginalRemaining)
+                    .setParameter("bookBeforeB", refLocalRemaining)
+                    .setParameter("bookAfterA", money(refOriginalRemaining.subtract(slice)))
+                    .setParameter("bookAfterB", money(refLocalRemaining.subtract(bookLocal)))
                     .setParameter("exchangeDifference", money(cashLocal.add(writeOffLocal).subtract(bookLocal)))
                     .setParameter("effectiveDate", receipt.getBillDate())
                     .setParameter("actor", currentUser.requireId())
@@ -220,12 +275,48 @@ public class FinanceReceiptSourceAllocationService {
         }
     }
 
+    /** An immutable, current direct SHIP is authoritative without inventing an order UUID. */
+    private boolean isVerifiedDirectShipment(FinanceReceipt receipt,FinanceReceiptLine line) {
+        Number direct=(Number)em.createNativeQuery("""
+                SELECT COUNT(*) FROM ar_ap_ledger ledger WHERE ledger.id=:ledger
+                  AND fn_is_direct_customer_shipment_ar(ledger.id)
+                  AND ledger.client_id=:client AND ledger.currency_id=:currency
+                """).setParameter("ledger",line.getAppliedLedgerId()).setParameter("client",receipt.getClientId())
+                .setParameter("currency",receipt.getCurrencyId()).getSingleResult();
+        if (direct.longValue()!=1) return false;
+        long fabricated=number(em.createNativeQuery("SELECT COUNT(*) FROM finance_receipt_source_allocations WHERE receipt_line_id=:line")
+                .setParameter("line",line.getId()).getSingleResult()).longValue();
+        if (fabricated!=0) throw conflict("零星发货收款存在不应有的订货分配，请先财务核对");
+        return true;
+    }
+
+    private void requireDirectReceiptLatest(FinanceReceipt receipt,FinanceReceiptLine line) {
+        List<?> posting=em.createNativeQuery("""
+                SELECT settled_date FROM finance_reconciliations WHERE source_doc_type='RECEIPT'
+                  AND source_doc_id=:receipt AND entry_kind='POSTING' AND NOT is_deleted ORDER BY id
+                """).setParameter("receipt",receipt.getId()).getResultList();
+        if (posting.size()!=1) throw conflict("零星发货收款缺少唯一实际到账记录，不能直接反向");
+        long later=number(em.createNativeQuery("""
+                SELECT (SELECT COUNT(*) FROM finance_receipt_lines later_line
+                    JOIN finance_receipts later ON later.id=later_line.receipt_id
+                    JOIN finance_reconciliations posting ON posting.source_doc_type='RECEIPT' AND posting.source_doc_id=later.id
+                        AND posting.entry_kind='POSTING' AND NOT posting.is_deleted
+                    WHERE later_line.applied_ledger_id=:ledger AND later.id<>:receipt AND later.status=1 AND NOT later.is_deleted
+                      AND (later.bill_date,posting.settled_date,later.id)>(:date,CAST(:postedAt AS timestamptz),CAST(:receipt AS uuid)))
+                    +(SELECT COUNT(*) FROM customer_open_item_offsets applied WHERE applied.target_ledger_id=:ledger
+                      AND applied.status='APPLIED' AND (applied.effective_date,applied.created_at,applied.id)
+                        >(:date,CAST(:postedAt AS timestamptz),CAST(:receipt AS uuid)))
+                """).setParameter("ledger",line.getAppliedLedgerId()).setParameter("receipt",receipt.getId())
+                .setParameter("date",receipt.getBillDate()).setParameter("postedAt",posting.getFirst()).getSingleResult()).longValue();
+        if (later>0) throw conflict("这笔收款已有后续收款或抵扣，请先按后进先出撤回后续业务");
+    }
+
     private static BigDecimal localPart(
             BigDecimal originalPart, BigDecimal originalRemaining,
             BigDecimal localRemaining, BigDecimal rate) {
         if (originalPart.signum() == 0) return BigDecimal.ZERO.setScale(MONEY_SCALE);
         if (originalPart.compareTo(originalRemaining) == 0) return money(localRemaining);
-        BigDecimal value = money(originalPart.multiply(rate));
+        BigDecimal value = com.uten.imp.common.finance.FinancialBookAllocation.part(originalPart,originalRemaining,localRemaining);
         if (value.compareTo(localRemaining) > 0) throw conflict("到账本币分配超过剩余快照");
         return value;
     }
@@ -236,7 +327,7 @@ public class FinanceReceiptSourceAllocationService {
     }
 
     private static BigDecimal money(BigDecimal value) {
-        return decimal(value).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        return com.uten.imp.common.util.FinancialExactAmount.canonicalMoney(decimal(value),"收款来源账面金额");
     }
 
     private static BigDecimal decimal(Object value) {

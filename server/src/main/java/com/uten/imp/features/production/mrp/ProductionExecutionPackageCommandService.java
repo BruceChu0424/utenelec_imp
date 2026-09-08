@@ -70,6 +70,7 @@ public class ProductionExecutionPackageCommandService {
     private final ChainNoticeService chainNotice;
     private final com.uten.imp.application.port.PreplanAnalysisPegPort
             preplanAnalysisPeg;
+    private final com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService mutationFootprint;
 
     /**
      * 确认排产预览为正式执行计划包：冻结执行分段与销售分摊、写入物料需求，
@@ -84,6 +85,7 @@ public class ProductionExecutionPackageCommandService {
             GeneratePlanningPackageRequest request) {
         tx.bind();
         requestValidator.validateRequestShape(request);
+        var sourceGuard = mutationFootprint.beginPlan(planId, List.of());
         UUID prelockedAnalysisId =
                 preplanAnalysisPeg.lockPlanningPackageInventoryDimensions(planId);
         PlanHeader plan = lockPlan(planId);
@@ -97,6 +99,14 @@ public class ProductionExecutionPackageCommandService {
         // supply documents for the same shortage.
         boolean packageOwnsSupply = packageOwnsSupply(plan.materialAnalysisId());
         requireNoActiveLegacyPackage(planId);
+        // Plan lock serializes this immutable-key lookup. beginConfirmation still
+        // validates the exact hash, preview and warehouse before returning a replay.
+        boolean sameKeyExists = !em.createNativeQuery("""
+                SELECT id FROM production_planning_packages
+                WHERE plan_id=:planId AND idempotency_key=:key AND is_deleted=FALSE
+                """).setParameter("planId",planId)
+                .setParameter("key",request.getIdempotencyKey().strip()).getResultList().isEmpty();
+        if (!sameKeyExists) sourceGuard.verifyUnchanged();
         ProductionFulfillmentLedgerService.BeginConfirmation begin =
                 ledger.beginConfirmation(
                         planId,
@@ -139,10 +149,6 @@ public class ProductionExecutionPackageCommandService {
                         new ProductionMaterialAllocationFacade.MaterialDimension(
                                 dimension.goodsId(), dimension.colorId()))
                 .toList());
-        if (packageOwnsSupply) {
-            purchaseFacade.lockOpenSupply(dimensions);
-        }
-
         ProductionExecutionPlanningService.Snapshot locked =
                 planning.lockedSnapshot(
                         planId, request.getWarehouseId(), routes);
@@ -238,7 +244,8 @@ public class ProductionExecutionPackageCommandService {
                                         .toList());
 
         ReadyAllocation readyAllocation = allocateReady(
-                begin.planningPackage(), segmentDrafts, demandsBySegment);
+                begin.planningPackage(), segmentDrafts, demandsBySegment,
+                preparedTransfers, !packageOwnsSupply);
         Map<UUID, BigDecimal> allocatedByDemand =
                 readyAllocation.allocatedByDemand();
         assertAllocationMatchesProposal(
@@ -248,6 +255,7 @@ public class ProductionExecutionPackageCommandService {
                 readyAllocation.formalReservations());
 
         Map<UUID, MrpGenerateResult> draws = new LinkedHashMap<>();
+        List<MrpGenerateResult> drawResults = new ArrayList<>();
         for (SegmentDraft segment : segmentDrafts) {
             if (!ProductionExecutionSegment.STATUS_READY.equals(
                     segment.segment().getStatus())) {
@@ -261,13 +269,20 @@ public class ProductionExecutionPackageCommandService {
                 // zero-material execution segment and must not create an empty DRAW.
                 continue;
             }
-            MrpGenerateResult draw = createDraw(
-                    plan,
-                    begin.planningPackage(),
-                    segment.segment(),
-                    segmentDemands,
-                    allocatedByDemand);
-            draws.put(segment.segment().getId(), draw);
+            Map<UUID, Map<UUID, BigDecimal>> warehouseQuantities =
+                    drawQuantitiesByWarehouse(
+                            segmentDemands, readyAllocation.allocations());
+            for (var warehouse : warehouseQuantities.entrySet()) {
+                MrpGenerateResult draw = createDraw(
+                        plan, begin.planningPackage(), segment.segment(),
+                        segmentDemands.stream()
+                                .filter(demand -> warehouse.getValue()
+                                        .containsKey(demand.getId()))
+                                .toList(),
+                        warehouse.getKey(), warehouse.getValue());
+                draws.putIfAbsent(segment.segment().getId(), draw);
+                drawResults.add(draw);
+            }
         }
 
         Map<DemandMaterialKey, BigDecimal> purchaseShortage =
@@ -347,8 +362,6 @@ public class ProductionExecutionPackageCommandService {
 
         List<ExecutionSegmentResult> results = results(
                 segmentDrafts, demandsBySegment, allocatedByDemand, draws);
-        List<MrpGenerateResult> drawResults =
-                List.copyOf(draws.values());
         // 自制件派生只使用本次直接层 MAKE 缺口；下层 BOM 进入子计划后再逐级排产。
         // 与领料/采购同事务，走 EXECUTION_V1 subplan_links，幂等不重复。
         List<GenerateSubplansRequest.Created> subplanResults =
@@ -655,7 +668,9 @@ public class ProductionExecutionPackageCommandService {
     private ReadyAllocation allocateReady(
             ProductionPlanningPackage planningPackage,
             List<SegmentDraft> segments,
-            Map<UUID, List<ProductionMaterialDemand>> demandsBySegment) {
+            Map<UUID, List<ProductionMaterialDemand>> demandsBySegment,
+            List<PreplanAnalysisPegPort.PreparedPlanTransfer> preparedTransfers,
+            boolean sameMainWarehouse) {
         List<ProductionMaterialAllocationFacade.AllocationRequest> requests =
                 segments.stream()
                         .filter(segment ->
@@ -679,13 +694,21 @@ public class ProductionExecutionPackageCommandService {
                                         currentUser.requireId()))
                         .toList();
         List<ProductionMaterialAllocationFacade.AllocationResult> allocations =
-                stockAllocation.allocate(requests);
+                sameMainWarehouse
+                        ? stockAllocation.allocateWithinMainWarehouse(requests,
+                        preparedTransfers.stream()
+                                .map(transfer -> new ProductionMaterialAllocationFacade
+                                        .AllocationPreference(transfer.demandId(),
+                                        transfer.warehouseId(), transfer.qty()))
+                                .toList())
+                        : stockAllocation.allocate(requests);
         Map<UUID, BigDecimal> quantities = new HashMap<>();
         List<PreplanAnalysisPegPort.FormalReservationSlice> formalReservations =
                 new ArrayList<>();
         for (ProductionMaterialAllocationFacade.AllocationResult allocation
                 : allocations) {
-            quantities.put(allocation.demandId(), allocation.allocatedQty());
+            quantities.merge(allocation.demandId(), allocation.allocatedQty(),
+                    BigDecimal::add);
             if (allocation.allocationId() != null
                     && allocation.allocatedQty().signum() > 0) {
                 formalReservations.add(new PreplanAnalysisPegPort
@@ -695,7 +718,36 @@ public class ProductionExecutionPackageCommandService {
             }
         }
         return new ReadyAllocation(
-                Map.copyOf(quantities), List.copyOf(formalReservations));
+                Map.copyOf(quantities), List.copyOf(formalReservations),
+                List.copyOf(allocations));
+    }
+
+    /** Split a complete kit into physical warehouse draws without duplicating demand. */
+    static Map<UUID, Map<UUID, BigDecimal>> drawQuantitiesByWarehouse(
+            List<ProductionMaterialDemand> demands,
+            List<ProductionMaterialAllocationFacade.AllocationResult> allocations) {
+        Set<UUID> demandIds = demands.stream()
+                .map(ProductionMaterialDemand::getId).collect(Collectors.toSet());
+        Map<UUID, Map<UUID, BigDecimal>> byWarehouse = new LinkedHashMap<>();
+        Map<UUID, BigDecimal> totals = new HashMap<>();
+        for (var allocation : allocations) {
+            if (!demandIds.contains(allocation.demandId())
+                    || allocation.allocatedQty().signum() <= 0) continue;
+            if (allocation.warehouseId() == null || allocation.allocationId() == null) {
+                throw conflict("领料分配缺少实际子仓或库存预留记录");
+            }
+            byWarehouse.computeIfAbsent(allocation.warehouseId(),
+                            ignored -> new LinkedHashMap<>())
+                    .merge(allocation.demandId(), allocation.allocatedQty(), BigDecimal::add);
+            totals.merge(allocation.demandId(), allocation.allocatedQty(), BigDecimal::add);
+        }
+        for (var demand : demands) {
+            if (totals.getOrDefault(demand.getId(), BigDecimal.ZERO)
+                    .compareTo(demand.getRequiredQty()) != 0) {
+                throw conflict("READY 执行分段必须由完整库存支持");
+            }
+        }
+        return byWarehouse;
     }
     private void assertAllocationMatchesProposal(
             List<SegmentDraft> segments,
@@ -733,20 +785,21 @@ public class ProductionExecutionPackageCommandService {
             ProductionPlanningPackage planningPackage,
             ProductionExecutionSegment segment,
             List<ProductionMaterialDemand> demands,
+            UUID warehouseId,
             Map<UUID, BigDecimal> allocatedByDemand) {
         if (demands.isEmpty()
                 || demands.stream().anyMatch(demand ->
                         allocatedByDemand.getOrDefault(
                                         demand.getId(), BigDecimal.ZERO)
-                                .compareTo(demand.getRequiredQty()) != 0)) {
-            throw conflict("READY 执行分段必须由完整库存支持");
+                                .signum() <= 0)) {
+            throw conflict("领料单必须包含本子仓实际分配的物料");
         }
         StockDocument document = new StockDocument();
         document.setDocType("DRAW");
         document.setBillNo(
                 docNumberService.nextNumber(DocNumberPrefix.STOCK_DRAW));
         document.setBillDate(BusinessTime.today());
-        document.setWarehouseId(planningPackage.getWarehouseId());
+        document.setWarehouseId(warehouseId);
         document.setPlanNo(plan.billNo());
         document.setSourceDocNo(plan.billNo());
         document.setRemark(
@@ -787,8 +840,8 @@ public class ProductionExecutionPackageCommandService {
             item.setColorId(demand.getColorId());
             item.setUnitId(demand.getUnitId());
             item.setUnitRate(BigDecimal.ONE);
-            item.setQty(demand.getRequiredQty());
-            item.setBaseQty(demand.getRequiredQty());
+            item.setQty(allocatedByDemand.get(demand.getId()));
+            item.setBaseQty(allocatedByDemand.get(demand.getId()));
             item.setSourceDocNo(plan.billNo());
             item.setRemark("执行分段 " + segment.getSegmentCode() + " 需求");
             stockDocumentItemRepo.save(item);
@@ -1219,8 +1272,12 @@ public class ProductionExecutionPackageCommandService {
                 replaySubplans(planningPackage.getId());
         List<ExecutionSegmentResult> executionResults =
                 replayResults(drafts, demandsBySegment, allocated, draws);
+        // The segment keeps its first DRAW for compatibility; package replay
+        // must return every physical warehouse document created for the kit.
         List<MrpGenerateResult> drawResults =
-                List.copyOf(draws.values());
+                drawRows.stream().map(row -> new MrpGenerateResult(
+                        (UUID) row[1], (String) row[2],
+                        ((Number) row[3]).intValue(), List.of())).toList();
         return new PlanningPackageResult(
                 planningPackage.getId(),
                 planningPackage.getStatus(),
@@ -1609,7 +1666,8 @@ public class ProductionExecutionPackageCommandService {
 
     private record ReadyAllocation(
             Map<UUID, BigDecimal> allocatedByDemand,
-            List<PreplanAnalysisPegPort.FormalReservationSlice> formalReservations) {
+            List<PreplanAnalysisPegPort.FormalReservationSlice> formalReservations,
+            List<ProductionMaterialAllocationFacade.AllocationResult> allocations) {
     }
 
     /** 明细备注用分段编号（ZX…）而非分段 UUID，单据对业务人员可读。 */

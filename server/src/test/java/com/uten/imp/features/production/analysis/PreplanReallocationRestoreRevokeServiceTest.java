@@ -37,7 +37,7 @@ class PreplanReallocationRestoreRevokeServiceTest {
         UUID warehouseId = UUID.randomUUID();
         UUID eventGroupId = UUID.randomUUID();
 
-        Query header = rows(List.<Object[]>of(new Object[]{new BigDecimal("4")}));
+        Query header = rows(List.of(new BigDecimal("4")));
         Query roots = rows(List.<Object[]>of(new Object[]{
                 reservationId, outEventId, exactPegId, new BigDecimal("4")
         }));

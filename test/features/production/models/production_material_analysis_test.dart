@@ -2,6 +2,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 
 void main() {
+  test(
+    'historical notification responses do not offer reversal reconciliation',
+    () {
+      final historical = MaterialAnalysisNotificationTarget.fromJson({
+        'route': 'SUBCONTRACT',
+        'status': 'CANCELLED',
+      });
+      final pending = MaterialAnalysisNotificationTarget.fromJson({
+        'route': 'SUBCONTRACT',
+        'status': 'CANCELLED',
+        'notificationReversalPending': true,
+      });
+      expect(historical.notificationReversalPending, isFalse);
+      expect(pending.notificationReversalPending, isTrue);
+    },
+  );
+
   test('parses the frozen flat-tree and product BOM contract tolerantly', () {
     final view = ProductionMaterialAnalysisView.fromJson({
       'analysisId': 'analysis-1',

@@ -65,14 +65,21 @@ public final class ProcurementArrivalContracts {
                 BigDecimal unitRate,
                 @DecimalMin(value = "0", inclusive = true)
                 @Digits(integer = 14, fraction = 4) BigDecimal weight,
-                @Size(max = 64) String sourceDocNo) {
+                @Size(max = 64) String sourceDocNo,
+                @Pattern(regexp = "NORMAL|RETURN_REPLACEMENT") String replacementIntent) {
+
+            public ArrivalLine(UUID goodsId, BigDecimal qty, UUID orderItemId,
+                               UUID colorId, UUID unitId, BigDecimal unitRate,
+                               BigDecimal weight,String sourceDocNo) {
+                this(goodsId,qty,orderItemId,colorId,unitId,unitRate,weight,sourceDocNo,null);
+            }
 
             /** Compatibility for callers that do not provide an actual total weight. */
             public ArrivalLine(UUID goodsId, BigDecimal qty, UUID orderItemId,
                                UUID colorId, UUID unitId, BigDecimal unitRate,
                                String sourceDocNo) {
                 this(goodsId, qty, orderItemId, colorId, unitId, unitRate,
-                        null, sourceDocNo);
+                        null, sourceDocNo,null);
             }
         }
     }
@@ -266,7 +273,9 @@ public final class ProcurementArrivalContracts {
             BigDecimal remainingQty,
             BigDecimal registeredQty,
             LocalDate expectedDate,
-            List<ProcurementIqcStockInContracts.InboundAllocation> expectedAllocations) {
+            List<ProcurementIqcStockInContracts.InboundAllocation> expectedAllocations,
+            UUID lastReceiptWarehouseId,
+            String lastReceiptWarehouseName) {
 
         public InboundExpectationItem {
             expectedAllocations = expectedAllocations == null
@@ -286,7 +295,7 @@ public final class ProcurementArrivalContracts {
                     goodsSeries, goodsStockPlace, colorId, colorName, unitId,
                     unitName, unitId, unitName, unitRate, unitPrice,
                     orderedQty, acceptedQty,
-                    remainingQty, registeredQty, expectedDate, List.of());
+                    remainingQty, registeredQty, expectedDate, List.of(), null, null);
         }
     }
 

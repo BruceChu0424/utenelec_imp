@@ -33,6 +33,7 @@ public class ProductionFqcReplenishmentService {
     private final ProductionDocumentAccessPolicy productionAccess;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
+    private final ProductionQualityMutationFootprintService mutationFootprint;
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('production_fqc_replenishment:view')"
@@ -101,6 +102,7 @@ public class ProductionFqcReplenishmentService {
             + " and hasAuthority('production_material_analysis:create')")
     public ReplenishmentTaskView createMaterialAnalysis(UUID authorizationId) {
         tx.bind();
+        var sourceGuard = mutationFootprint.beginAuthorization(authorizationId, true);
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT task.id, recovery_auth.id,
@@ -145,6 +147,7 @@ public class ProductionFqcReplenishmentService {
             analysisId = (UUID) replay.getFirst()[0];
             analysisItemId = (UUID) replay.getFirst()[1];
         } else {
+            sourceGuard.verifyUnchanged();
             String sourceRef = "FQC-RECOVERY-" + authorizationId;
             AnalysisView analysis = materialAnalysis.preview(new PreviewRequest(
                     null, null, null, (UUID) row[4],

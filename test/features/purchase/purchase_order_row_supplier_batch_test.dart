@@ -2,16 +2,72 @@
 // 表头不显示供应商/币种/结账方式；勾选多行后点击任一选中行的供应商单元格 →
 // 右侧滑入供应商面板（分类树+列表+确定）→ 选一个供应商 → 所有选中行联动填上同一供应商；
 // 操作条批量按钮为「统一设置条款 (N)」（一次写供应商+结账方式+币种+汇率+税率）。
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_order_edit_page.dart';
+import 'package:uten_imp/features/purchase/widgets/purchase_grid_columns.dart';
+import 'package:uten_imp/features/basic_data/models/reference_method_option.dart';
+import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 void main() {
+  testWidgets(
+    'late supplier defaults do not overwrite a newer supplier choice',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final methods = Completer<List<ReferenceMethodOption>>();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(_OrderApi()),
+            sessionProvider.overrideWith(_EmptySessionNotifier.new),
+            settlementMethodOptionsProvider.overrideWith(
+              (ref) => methods.future,
+            ),
+          ],
+          child: const MaterialApp(home: PurchaseOrderEditPage()),
+        ),
+      );
+      Future<void> settleFrames() async {
+        for (var i = 0; i < 15; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+      }
+
+      await settleFrames();
+      await tester.tap(find.text('必选供应商').first);
+      await settleFrames();
+      await tester.tap(find.text('洪武五金'));
+      await tester.pump();
+      await tester.tap(find.text('确定'));
+      await settleFrames();
+      await tester.tap(find.text('洪武五金').first);
+      await settleFrames();
+      await tester.tap(find.text('宁海塑胶'));
+      await tester.pump();
+      await tester.tap(find.text('确定'));
+      await settleFrames();
+      methods.complete(const [
+        ReferenceMethodOption(id: 'terms-s1', code: 'CASH', name: 'Cash'),
+      ]);
+      await tester.pumpAndSettle();
+      final grid = tester.widget<UtenEditableGrid<PurchaseGridRow>>(
+        find.byType(UtenEditableGrid<PurchaseGridRow>),
+      );
+      expect(grid.controller.rows.single.supplierId, 's2');
+      expect(grid.controller.rows.single.settlementMethodId, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('勾选多行后在任一选中行选供应商，联动填到所有选中行', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1400, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -86,7 +142,13 @@ class _OrderApi extends ApiClient {
   }) async {
     if (path.contains('/master/suppliers/dict')) {
       return const [
-        {'id': 's1', 'code': 'GY001', 'name': '洪武五金', 'status': '使用'},
+        {
+          'id': 's1',
+          'code': 'GY001',
+          'name': '洪武五金',
+          'status': '使用',
+          'defaultSettlementMethodId': 'terms-s1',
+        },
         {'id': 's2', 'code': 'GY002', 'name': '宁海塑胶', 'status': '使用'},
       ];
     }

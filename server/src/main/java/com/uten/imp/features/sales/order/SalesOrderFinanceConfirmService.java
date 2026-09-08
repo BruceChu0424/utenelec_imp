@@ -53,16 +53,24 @@ public class SalesOrderFinanceConfirmService {
     // 按 import 扫描），全限定名内联引用。
     private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
     private final SalesOrderFinanceConfirmerEligibility confirmerEligibility;
+    private final com.uten.imp.application.port.TaskClaimMutationGuardPort taskClaim;
+    private final SalesOrderRevisionService revisions;
 
     /** 确认请求体（remark 可选；确认即放行计划部可见性，幂等由服务层状态前置保证）。 */
     public record FinanceConfirmRequest(
-            @Size(max = 500, message = "确认备注不能超过 500 个字符") String remark) {
+            @Size(max = 500, message = "确认备注不能超过 500 个字符") String remark,
+            Long expectedRevision,UUID expectedClaimId) {
+        public FinanceConfirmRequest(String remark) { this(remark, null); }
+        public FinanceConfirmRequest(String remark,Long expectedRevision) { this(remark,expectedRevision,null); }
     }
 
     /** 驳回请求体（reason 必填：驳回要告诉销售"改什么"，空原因驳回 fail-closed）。 */
     public record FinanceRejectRequest(
             @NotBlank(message = "驳回原因不能为空")
-            @Size(max = 500, message = "驳回原因不能超过 500 个字符") String reason) {
+            @Size(max = 500, message = "驳回原因不能超过 500 个字符") String reason,
+            Long expectedRevision,UUID expectedClaimId) {
+        public FinanceRejectRequest(String reason) { this(reason, null); }
+        public FinanceRejectRequest(String reason,Long expectedRevision) { this(reason,expectedRevision,null); }
     }
 
     /** 原子批量确认：一次最多 100 个订单；重复 UUID 由服务层去重。 */
@@ -70,7 +78,15 @@ public class SalesOrderFinanceConfirmService {
             @NotEmpty(message = "请选择至少一笔销售订货单")
             @Size(max = MAX_BATCH_CONFIRM_ORDERS, message = "一次最多确认 100 笔销售订货单")
             List<@NotNull(message = "销售订货单 ID 不能为空") UUID> orderIds,
-            @Size(max = 500, message = "确认备注不能超过 500 个字符") String remark) {
+            @Size(max = 500, message = "确认备注不能超过 500 个字符") String remark,
+            Map<UUID, Long> expectedRevisions,
+            @Size(max=MAX_BATCH_CONFIRM_ORDERS) Map<UUID,UUID> expectedClaimIds) {
+        public FinanceBatchConfirmRequest(List<UUID> orderIds, String remark) {
+            this(orderIds, remark, Map.of());
+        }
+        public FinanceBatchConfirmRequest(List<UUID> orderIds,String remark,Map<UUID,Long> expectedRevisions) {
+            this(orderIds,remark,expectedRevisions,Map.of());
+        }
     }
 
     /** 批量确认结果；orderIds 为去重、排序后的完整受理集合。 */
@@ -90,10 +106,19 @@ public class SalesOrderFinanceConfirmService {
     @PreAuthorize("hasAuthority('sales_order_finance:view')")
     public PageResponse<SalesOrderFinancePendingDto> pending(
             int page, int size, Boolean rejected, String keyword) {
+        return pending(page, size, rejected, keyword, null);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order_finance:view')")
+    public PageResponse<SalesOrderFinancePendingDto> pending(
+            int page, int size, Boolean rejected, String keyword, Boolean changesOnly) {
         int p = Math.max(1, page);
         int sz = Math.min(Math.max(1, size), 100);
         String rejectedFilter = rejected == null ? ""
                 : rejected ? " AND o.finance_rejected = TRUE" : " AND o.finance_rejected = FALSE";
+        String changesFilter = changesOnly == null ? ""
+                : " AND " + (changesOnly ? "" : "NOT ") + "(" + pendingChangesExpression() + ")";
         String normalizedKeyword = keyword == null
                 ? "" : keyword.trim().toLowerCase(Locale.ROOT);
         String keywordFilter = normalizedKeyword.isEmpty() ? "" : """
@@ -109,9 +134,9 @@ public class SalesOrderFinanceConfirmService {
                 LEFT JOIN clients c ON c.id = o.client_id
                 LEFT JOIN employees e ON e.id = o.seller_id
                 WHERE o.status = 1 AND o.is_deleted = FALSE
-                  AND o.is_closed = FALSE AND o.is_stopped = FALSE
+                  AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE
                   AND o.finance_confirmed = FALSE
-                """ + rejectedFilter + keywordFilter);
+                """ + rejectedFilter + changesFilter + keywordFilter);
         if (!normalizedKeyword.isEmpty()) {
             countQuery.setParameter("keyword", normalizedKeyword);
         }
@@ -127,7 +152,15 @@ public class SalesOrderFinanceConfirmService {
                        o.total_original, COALESCE(cur.code, ''), COALESCE(cur.name, ''),
                        COALESCE(o.shipment_policy, ''),
                        COALESCE(ar.bal, 0),
-                       o.finance_rejected, o.finance_rejected_reason, o.finance_rejected_at
+                       o.finance_rejected, o.finance_rejected_reason, o.finance_rejected_at,
+                       (SELECT COUNT(*) FROM sales_order_qty_change_logs ch
+                         WHERE ch.order_id = o.id
+                           AND ch.changed_at > COALESCE(o.finance_confirmed_at,
+                                                       to_timestamp(0)))
+                       + (SELECT COUNT(*) FROM sales_order_revision_logs revision
+                          WHERE revision.order_id = o.id
+                            AND revision.changed_at > COALESCE(o.finance_confirmed_at, to_timestamp(0))),
+                       o.finance_review_revision
                 FROM sales_orders o
                 LEFT JOIN clients c ON c.id = o.client_id
                 LEFT JOIN employees e ON e.id = o.seller_id
@@ -137,9 +170,9 @@ public class SalesOrderFinanceConfirmService {
                            WHERE direction = 'AR' AND is_deleted = FALSE AND status = 1
                            GROUP BY client_id) ar ON ar.client_id = o.client_id
                 WHERE o.status = 1 AND o.is_deleted = FALSE
-                  AND o.is_closed = FALSE AND o.is_stopped = FALSE
+                  AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE
                   AND o.finance_confirmed = FALSE
-                """ + rejectedFilter + keywordFilter + """
+                """ + rejectedFilter + changesFilter + keywordFilter + """
 
                 ORDER BY o.finance_rejected ASC,
                          o.deliver_date NULLS LAST, o.bill_date, o.bill_no
@@ -166,21 +199,42 @@ public class SalesOrderFinanceConfirmService {
                         r[11] == null ? BigDecimal.ZERO : (BigDecimal) r[11],
                         Boolean.TRUE.equals(r[12]),
                         (String) r[13],
-                        com.uten.imp.common.util.NativeValueConverters.toOffsetDateTime(r[14])))
+                        com.uten.imp.common.util.NativeValueConverters.toOffsetDateTime(r[14]),
+                        ((Number) r[15]).longValue(),
+                        ((Number) r[16]).longValue()))
                 .toList();
         return new PageResponse<>(out, p, sz, total, totalPages);
+    }
+
+    static String pendingChangesExpression() {
+        return """
+                EXISTS(SELECT 1 FROM sales_order_revision_logs revision
+                    WHERE revision.order_id = o.id
+                      AND revision.changed_at > COALESCE(o.finance_confirmed_at, to_timestamp(0)))
+                OR EXISTS(SELECT 1 FROM sales_order_qty_change_logs change_log
+                    WHERE change_log.order_id = o.id
+                      AND change_log.changed_at > COALESCE(o.finance_confirmed_at, to_timestamp(0)))
+                """;
     }
 
     /** 待确认计数（财务工作台徽标）：只数未驳回的可办件，已驳回等销售修正不占徽标。 */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_order_finance:view')")
     public Map<String, Long> pendingCount() {
+        return pendingCount(null);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order_finance:view')")
+    public Map<String, Long> pendingCount(Boolean changesOnly) {
+        String changesFilter = changesOnly == null ? ""
+                : " AND " + (changesOnly ? "" : "NOT ") + "(" + pendingChangesExpression() + ")";
         Number n = (Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM sales_orders o
                 WHERE o.status = 1 AND o.is_deleted = FALSE
-                  AND o.is_closed = FALSE AND o.is_stopped = FALSE
+                  AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE
                   AND o.finance_confirmed = FALSE AND o.finance_rejected = FALSE
-                """).getSingleResult();
+                """ + changesFilter).getSingleResult();
         return Map.of("count", n.longValue());
     }
 
@@ -253,6 +307,38 @@ public class SalesOrderFinanceConfirmService {
                     r[11] == null ? null : (BigDecimal) r[11],
                     (String) r[12]));
         }
+        @SuppressWarnings("unchecked")
+        List<Object[]> changeRows = em.createNativeQuery("""
+                SELECT ch.order_item_id,
+                       COALESCE(i.goods_code_snapshot, g.code, ''),
+                       COALESCE(i.goods_name_snapshot, g.name, ''),
+                       COALESCE(col.name, ''), COALESCE(u.name, ''),
+                       ch.old_qty, ch.new_qty,
+                       COALESCE(emp.full_name, ''), ch.changed_at
+                FROM sales_order_qty_change_logs ch
+                JOIN sales_order_items i ON i.id = ch.order_item_id
+                LEFT JOIN goods g ON g.id = i.goods_id
+                LEFT JOIN colors col ON col.id = i.color_id
+                LEFT JOIN units u ON u.id = i.unit_id
+                LEFT JOIN employees emp ON emp.id = ch.changed_by_employee_id
+                WHERE ch.order_id = :id
+                  AND ch.changed_at > COALESCE(
+                        (SELECT o2.finance_confirmed_at
+                         FROM sales_orders o2 WHERE o2.id = :id),
+                        to_timestamp(0))
+                ORDER BY ch.changed_at DESC, ch.id
+                """)
+                .setParameter("id", orderId)
+                .getResultList();
+        List<SalesOrderFinanceReviewDto.QtyChange> qtyChanges = new ArrayList<>(changeRows.size());
+        for (Object[] r : changeRows) {
+            qtyChanges.add(new SalesOrderFinanceReviewDto.QtyChange(
+                    (UUID) r[0],
+                    (String) r[1], (String) r[2], (String) r[3], (String) r[4],
+                    (BigDecimal) r[5], (BigDecimal) r[6],
+                    (String) r[7],
+                    com.uten.imp.common.util.NativeValueConverters.toOffsetDateTime(r[8])));
+        }
         BigDecimal outstanding = h[7] == null ? BigDecimal.ZERO : (BigDecimal) h[7];
         BigDecimal credit = (BigDecimal) h[8];
         BigDecimal creditFloor = (BigDecimal) h[9];
@@ -289,7 +375,10 @@ public class SalesOrderFinanceConfirmService {
                 order.getFinanceRejectedReason(),
                 (String) h[11],
                 order.getFinanceRejectedAt(),
-                lines);
+                lines,
+                qtyChanges,
+                revisions.pendingChanges(orderId),
+                order.getFinanceReviewRevision());
     }
 
     /**
@@ -304,10 +393,12 @@ public class SalesOrderFinanceConfirmService {
         tx.bind();
         requireEligibleConfirmer();
         SalesOrder order = requireDecisionOrderForUpdate(orderId);
+        requireReviewRevision(order, request == null ? null : request.expectedRevision());
         requireConfirmable(order);
         if (order.isFinanceConfirmed()) {
             return; // 幂等：已确认静默成功
         }
+        taskClaim.requireActiveClaimByMe("SALES_ORDER_FINANCE_CONFIRM",orderId.toString(),request==null ? null : request.expectedClaimId());
         UUID actor = currentUser.requireEmployeeId();
         String remark = normalizeConfirmRemark(request == null ? null : request.remark());
         applyConfirmation(order, actor, OffsetDateTime.now(), remark);
@@ -315,6 +406,7 @@ public class SalesOrderFinanceConfirmService {
         chainNotice.notifyOrderFinanceConfirmed(orderId);
         // V459 办结撤回：确认完成，全部接收人的待审弹卡与收件台计数清零。
         chainNotice.resolveReviewNotices("SALES_ORDER", orderId, "FINANCE_CONFIRMED");
+        taskClaim.release("SALES_ORDER_FINANCE_CONFIRM", orderId.toString());
     }
 
     /**
@@ -334,8 +426,14 @@ public class SalesOrderFinanceConfirmService {
             lockedOrders.add(requireDecisionOrderForUpdate(orderId));
         }
         for (SalesOrder order : lockedOrders) {
+            requireReviewRevision(order, request.expectedRevisions() == null
+                    ? null : request.expectedRevisions().get(order.getId()));
             requireConfirmable(order);
         }
+        taskClaim.requireActiveClaimsByMe("SALES_ORDER_FINANCE_CONFIRM",lockedOrders.stream()
+                .filter(order -> !order.isFinanceConfirmed())
+                .map(order -> new com.uten.imp.application.port.TaskClaimMutationGuardPort.ClaimExpectation(order.getId().toString(),
+                        request.expectedClaimIds()==null ? null : request.expectedClaimIds().get(order.getId()))).toList());
 
         UUID actor = currentUser.requireEmployeeId();
         OffsetDateTime confirmedAt = OffsetDateTime.now();
@@ -351,6 +449,7 @@ public class SalesOrderFinanceConfirmService {
             chainNotice.notifyOrderFinanceConfirmed(order.getId());
             chainNotice.resolveReviewNotices(
                     "SALES_ORDER", order.getId(), "FINANCE_CONFIRMED");
+            taskClaim.release("SALES_ORDER_FINANCE_CONFIRM", order.getId().toString());
             newlyConfirmed++;
         }
         return new FinanceBatchConfirmResult(
@@ -371,10 +470,11 @@ public class SalesOrderFinanceConfirmService {
         tx.bind();
         requireEligibleConfirmer();
         SalesOrder order = requireDecisionOrderForUpdate(orderId);
+        requireReviewRevision(order, request == null ? null : request.expectedRevision());
         if (order.getStatus() == null || order.getStatus() != 1) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核的销售订货单可做财务驳回");
         }
-        if (order.isClosed() || order.isStopped()) {
+        if ((order.isClosed() && order.getFinanceReviewRevision() == 0) || order.isStopped()) {
             throw new ApiException(ErrorCode.BUSINESS, "已结案或已中止的订单无需财务驳回");
         }
         if (order.isFinanceConfirmed()) {
@@ -382,8 +482,8 @@ public class SalesOrderFinanceConfirmService {
         }
         String reason = request == null || request.reason() == null
                 ? "" : request.reason().trim();
-        if (reason.isEmpty()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "驳回原因不能为空");
+        if (reason.isEmpty() || reason.length() > 500) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "驳回原因不能为空且不能超过 500 个字符");
         }
         if (order.isFinanceRejected()) {
             if (reason.equals(order.getFinanceRejectedReason())) {
@@ -393,7 +493,10 @@ public class SalesOrderFinanceConfirmService {
                     ErrorCode.CONFLICT,
                     "该订单已被驳回，不能用陈旧页面覆盖驳回原因，请刷新后重试");
         }
-        requireNoShipmentWorkForRejection(orderId);
+        taskClaim.requireActiveClaimByMe("SALES_ORDER_FINANCE_CONFIRM",orderId.toString(),request.expectedClaimId());
+        if (order.getFinanceConfirmedAt() == null) {
+            requireNoShipmentWorkForRejection(orderId);
+        }
         order.setFinanceRejected(true);
         order.setFinanceRejectedReason(reason);
         order.setFinanceRejectedBy(currentUser.requireEmployeeId());
@@ -402,25 +505,36 @@ public class SalesOrderFinanceConfirmService {
         chainNotice.notifyOrderFinanceRejected(orderId, reason);
         // V459 办结撤回：驳回同样是办结（销售收到的下一条通知是驳回修正指引）。
         chainNotice.resolveReviewNotices("SALES_ORDER", orderId, "FINANCE_REJECTED");
+        taskClaim.release("SALES_ORDER_FINANCE_CONFIRM", orderId.toString());
     }
 
     private SalesOrder requireDecisionOrderForUpdate(UUID orderId) {
-        return orderRepo.findActiveByIdForUpdate(orderId)
+        SalesOrder order = orderRepo.findActiveByIdForUpdate(orderId)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.NOT_FOUND, "销售订货单不存在"));
+        return order;
     }
 
     private void requireConfirmable(SalesOrder order) {
         if (order.getStatus() == null || order.getStatus() != 1) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核的销售订货单可做财务确认");
         }
-        if (order.isClosed() || order.isStopped()) {
+        if ((order.isClosed() && order.getFinanceReviewRevision() == 0) || order.isStopped()) {
             throw new ApiException(ErrorCode.BUSINESS, "已结案或已中止的订单无需财务确认");
         }
         if (order.isFinanceRejected()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
                     "订单已被财务驳回，须由销售修订并重新审核后再确认");
+        }
+    }
+
+    private static void requireReviewRevision(SalesOrder order, Long expectedRevision) {
+        // Revision zero accepts historical clients. Once commercial content changes,
+        // every decision must identify the exact version actually shown to finance.
+        if ((expectedRevision == null && order.getFinanceReviewRevision() != 0)
+                || (expectedRevision != null && expectedRevision != order.getFinanceReviewRevision())) {
+            throw new ApiException(ErrorCode.CONFLICT, "销售订单内容已修改，请刷新并核对修改清单后重新审核");
         }
     }
 
@@ -451,7 +565,9 @@ public class SalesOrderFinanceConfirmService {
         }
         List<UUID> orderIds = request.orderIds().stream()
                 .distinct()
-                .sorted()
+                // Match PostgreSQL UUID order and TaskClaimService's commercial-header order;
+                // UUID.compareTo uses signed longs and puts ffffffff before 00000000.
+                .sorted(java.util.Comparator.comparing(UUID::toString))
                 .toList();
         return new NormalizedBatchConfirm(
                 orderIds, normalizeConfirmRemark(request.remark()));

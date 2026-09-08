@@ -15,6 +15,7 @@ import 'package:flutter/services.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -392,24 +393,27 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       controller: _controllers[f.key],
       // 派生字段只读（自动算，不可改）；手填字段受 canEdit 控制。
       readOnly: f.derived,
+      ignorePointers: false,
       enabled: f.derived ? true : widget.canEdit,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       inputFormatters: f.derived ? null : [_costNumberFormatter],
       validator: (value) => _validateCostField(f, value),
       errorBuilder: utenTextFieldErrorBuilder,
-      decoration: InputDecoration(
-        label: fieldLabel(
-          f.percent ? '${f.label}(%)' : f.label,
-          theme,
-          info: f.derived
-              ? null
-              : (f.percent ? '0% 到 100%，最多 4 位小数' : '非负金额，最多 4 位小数'),
+      decoration: UtenInputDecoration(
+        InputDecoration(
+          label: fieldLabel(
+            f.percent ? '${f.label}(%)' : f.label,
+            theme,
+            info: f.derived
+                ? null
+                : (f.percent ? '0% 到 100%，最多 4 位小数' : '非负金额，最多 4 位小数'),
+          ),
+          border: const OutlineInputBorder(),
+          isDense: true,
+          // 派生字段浅底色，提示"自动计算"。
+          filled: f.derived,
+          fillColor: f.derived ? theme.colorScheme.surfaceContainerHigh : null,
         ),
-        border: const OutlineInputBorder(),
-        isDense: true,
-        // 派生字段浅底色，提示"自动计算"。
-        filled: f.derived,
-        fillColor: f.derived ? theme.colorScheme.surfaceContainerHigh : null,
       ),
     );
   }

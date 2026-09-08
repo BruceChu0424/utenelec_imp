@@ -8,6 +8,8 @@
 //      物料分析→物料准备-采购/委外订货→生产计划→生产→发货→结案，
 //      每环带责任人与发生时间，最新进展在最上面高亮）。
 // 三个数据源并行加载（detail / plan-progress / progress-timeline），互不阻塞。
+// 2026-09-05 起财务驳回框提供双出口：修改订单（修订重报）+ 取消订单（终止处置，
+// 无发货/无排产在产完工关联时开放；取消后订单转已中止、不再挂在驳回段）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -17,13 +19,17 @@ import '../../../components/feedback/uten_progress_timeline.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/action_feedback.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/progress_timeline_event.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
+import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../repositories/sales_repository.dart';
 import '../widgets/sales_plan_progress_panel.dart';
@@ -44,6 +50,7 @@ class _SalesOrderProgressDetailPageState
   List<ProgressTimelineEvent>? _timeline;
   String? _detailError;
   String? _timelineError;
+  bool _cancelBusy = false;
 
   @override
   void initState() {
@@ -80,6 +87,69 @@ class _SalesOrderProgressDetailPageState
       _timelineError = null;
     });
     await _load();
+  }
+
+  bool _hasPerm(String code) =>
+      ref.read(isSuperAdminProvider) ||
+      ref.read(currentPermissionsProvider).contains(code);
+
+  /// 财务驳回单的整单取消（终止处置）：驳回单不能只靠「修改后重报」出队——
+  /// 客户撤单/重谈时销售可直接取消，订单转已中止、不再挂在「财务驳回」段。
+  /// 与订货单详情页「取消订单」同一后端路径与门槛（无发货/无排产在产完工关联）。
+  bool get _canCancelRejected {
+    final d = _detail;
+    return d != null &&
+        d.financeRejected &&
+        !d.stopped &&
+        !d.closed &&
+        d.writable &&
+        _hasPerm(Perm.salesOrderCancel) &&
+        !salesOrderHasProductionAssociation(d.items) &&
+        !salesOrderHasShippedQuantity(d.items);
+  }
+
+  Future<void> _cancelRejectedOrder() async {
+    if (_cancelBusy) return;
+    final d = _detail;
+    if (d == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('取消订单'),
+        content: Text(
+          '订单 ${d.billNo ?? ''} 已被财务驳回。取消将释放全部库存预留并终止该订单'
+          '（驳回单随之出队，不再显示在「财务驳回」段），确认取消？',
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('再想想'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认取消订单'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _cancelBusy = true);
+    try {
+      await ref
+          .read(salesRepositoryProvider(SalesDocType.order))
+          .cancel(widget.orderId);
+      if (!mounted) return;
+      context.appSuccess('订单已取消');
+      bumpListRefresh(ref, SalesDocConfig.by(SalesDocType.order).refreshKey);
+      await _reload();
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError('取消失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _cancelBusy = false);
+    }
   }
 
   @override
@@ -154,6 +224,25 @@ class _SalesOrderProgressDetailPageState
               ],
             ),
             const SizedBox(height: UtenSpacing.s8),
+            if (!d.financeRejected &&
+                !d.closed &&
+                !d.stopped &&
+                d.writable &&
+                _hasPerm(Perm.salesOrderEdit)) ...[
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('修改订单'),
+                  onPressed: () async {
+                    await context.push(
+                      RoutePath.salesDocEdit('orders', widget.orderId),
+                    );
+                    if (mounted) await _reload();
+                  },
+                ),
+              ),
+            ],
             Wrap(
               spacing: UtenSpacing.s16,
               runSpacing: UtenSpacing.s4,
@@ -212,14 +301,38 @@ class _SalesOrderProgressDetailPageState
                                 .read(currentPermissionsProvider)
                                 .contains(Perm.salesOrderEdit))) ...[
                       const SizedBox(height: UtenSpacing.s8),
+                      // 驳回处置双出口：修订重报（修改订单）或终止（取消订单）。
+                      // 只给修改入口的话，客户撤单的驳回单会永远挂在驳回段。
                       Align(
                         alignment: Alignment.centerRight,
-                        child: FilledButton.icon(
-                          onPressed: () => context.push(
-                            RoutePath.salesDocEdit('orders', widget.orderId),
-                          ),
-                          icon: const Icon(Icons.edit_outlined),
-                          label: const Text('修改订单'),
+                        child: Wrap(
+                          spacing: UtenSpacing.s8,
+                          runSpacing: UtenSpacing.s4,
+                          alignment: WrapAlignment.end,
+                          children: [
+                            FilledButton.icon(
+                              onPressed: () => context.push(
+                                RoutePath.salesDocEdit(
+                                  'orders',
+                                  widget.orderId,
+                                ),
+                              ),
+                              icon: const Icon(Icons.edit_outlined),
+                              label: const Text('修改订单'),
+                            ),
+                            if (_canCancelRejected)
+                              FilledButton.icon(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: theme.colorScheme.error,
+                                  foregroundColor: theme.colorScheme.onError,
+                                ),
+                                onPressed: _cancelBusy
+                                    ? null
+                                    : _cancelRejectedOrder,
+                                icon: const Icon(Icons.cancel_outlined),
+                                label: Text(_cancelBusy ? '取消中…' : '取消订单'),
+                              ),
+                          ],
                         ),
                       ),
                     ],

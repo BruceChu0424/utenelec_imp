@@ -83,7 +83,7 @@ import '../../features/warehouse/config/warehouse_document_history_config.dart';
 import '../../features/warehouse/pages/finance_arrival_exception_pages.dart';
 import '../../features/warehouse/pages/procurement_return_task_pages.dart';
 import '../../features/warehouse/pages/warehouse_arrival_exceptions_page.dart';
-import '../../features/warehouse/pages/warehouse_arrival_expectation_detail_page.dart';
+import '../../features/warehouse/pages/warehouse_arrival_batch_receipt_page.dart';
 import '../../features/warehouse/pages/warehouse_arrival_receipt_page.dart';
 import '../../features/warehouse/pages/warehouse_inbound_expectations_page.dart';
 import '../../features/warehouse/pages/warehouse_quality_results_page.dart';
@@ -96,6 +96,7 @@ import '../../features/warehouse/pages/production_finished_arrival_registration_
 import '../../features/warehouse/pages/production_finished_inbound_tasks_page.dart';
 import '../../features/quality/pages/quality_task_center_page.dart';
 import '../../features/quality/pages/quality_pending_disposal_page.dart';
+import '../../features/quality/pages/quality_batch_approval_page.dart';
 import '../../features/quality/pages/quality_inspection_records_page.dart';
 import '../../features/quality/pages/production_fqc_inspections_page.dart';
 import '../../features/quality/models/quality_inspection_record.dart';
@@ -115,7 +116,6 @@ import '../../features/warehouse/pages/warehouse_inbound_task_center_page.dart';
 import '../../features/warehouse/pages/warehouse_draw_task_center_page.dart';
 import '../../features/notice/pages/notice_list_page.dart';
 import '../../features/notice/pages/notice_publish_page.dart';
-import '../../features/reviews/pages/review_inbox_page.dart';
 import '../../features/notice/models/notice.dart';
 import '../../features/payroll/pages/payroll_generate_page.dart';
 import '../../features/payroll/pages/payroll_review_page.dart';
@@ -150,7 +150,6 @@ import '../../features/subcontract/models/subcontract_doc.dart';
 import '../../features/subcontract/pages/subcontract_decomposition_page.dart';
 import '../../features/subcontract/pages/subcontract_hub_page.dart';
 import '../../features/subcontract/pages/subcontract_page_factory.dart';
-import '../../features/subcontract/pages/subcontract_preparation_page.dart';
 import '../../features/subcontract/config/subcontract_report_config.dart';
 import '../../features/subcontract/pages/subcontract_report_table_page.dart';
 import '../../features/security/pages/security_scan_page.dart';
@@ -187,10 +186,17 @@ String? _rejectUnknownWarehouseHistoryType(
     ? RouteName.notFound
     : null;
 
-String? _rejectUnknownSalesDoc(BuildContext _, GoRouterState state) =>
-    SalesDocType.tryByPath(state.pathParameters['seg']!) == null
-    ? RouteName.notFound
-    : null;
+String? _rejectUnknownSalesDoc(BuildContext _, GoRouterState state) {
+  final type = SalesDocType.tryByPath(state.pathParameters['seg']!);
+  if (type == null) return RouteName.notFound;
+  if (type == SalesDocType.otherShipment && state.uri.path.endsWith('/new')) {
+    return '/sales/customer-shipments/new';
+  }
+  if (type == SalesDocType.otherShipment && state.uri.path.endsWith('/edit')) {
+    return '/sales/other-shipments/${state.pathParameters['id']}';
+  }
+  return null;
+}
 
 String? _rejectUnknownSubcontractDoc(BuildContext _, GoRouterState state) =>
     SubcontractDocType.tryByPath(state.pathParameters['seg']!) == null
@@ -470,7 +476,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.reviewsInbox,
             name: 'reviews-inbox',
-            builder: (_, _) => const ReviewInboxPage(),
+            redirect: (_, _) => RouteName.dashboard,
           ),
           GoRoute(
             path: RouteName.noticePublish,
@@ -848,6 +854,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'warehouse-inspections',
             builder: (_, _) => const QualityPendingDisposalPage(),
           ),
+          // 多选「批量审批」汇总页（须先于 :receiptType/:receiptId 声明）。
+          GoRoute(
+            path: RouteName.warehouseInspectionBatchApproval,
+            name: 'warehouse-inspection-batch-approval',
+            builder: (_, s) => QualityBatchApprovalPage(
+              selection: s.extra is QualityBatchApprovalSelection
+                  ? s.extra! as QualityBatchApprovalSelection
+                  : const QualityBatchApprovalSelection(),
+            ),
+          ),
           // 单张收货单的待检明细处置页（extra 携带任务卡快照；深链直达时页面自行反查）。
           GoRoute(
             path: '${RouteName.warehouseInspections}/:receiptType/:receiptId',
@@ -915,18 +931,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const WarehouseInboundExpectationsPage(),
           ),
           GoRoute(
-            // 预计到货任务详情页（2026-09-04 双击行直达，替代居中详情弹窗）；
-            // extra 带当前 InboundExpectation，深链冷启动按 id 在列表里找回。
-            path: '${RouteName.warehouseInboundExpectations}/:expectationId',
-            name: 'warehouse-arrival-expectation-detail',
-            builder: (_, state) => WarehouseArrivalExpectationDetailPage(
-              expectationId: state.pathParameters['expectationId'] ?? '',
-              initial: state.extra is InboundExpectation
-                  ? state.extra as InboundExpectation
-                  : null,
-            ),
-          ),
-          GoRoute(
             path: RouteName.warehouseArrivalExceptions,
             name: 'warehouse-arrival-exceptions',
             builder: (_, _) => const WarehouseArrivalExceptionsPage(),
@@ -964,6 +968,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, s) => WarehouseArrivalReceiptPage(
               prefill: s.extra is ProcurementReceiptPrefill
                   ? s.extra! as ProcurementReceiptPrefill
+                  : null,
+            ),
+          ),
+          // 批量登记实际到货页（入库任务中心多选「批量登记送检」落点；
+          // extra 带 List<ProcurementReceiptPrefill>，每张=一张订货单）。
+          GoRoute(
+            path: RouteName.warehouseArrivalReceiptBatch,
+            name: 'warehouse-arrival-receipt-batch',
+            builder: (_, s) => WarehouseArrivalBatchReceiptPage(
+              prefills: s.extra is List<ProcurementReceiptPrefill>
+                  ? s.extra! as List<ProcurementReceiptPrefill>
                   : null,
             ),
           ),
@@ -1206,15 +1221,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'subcontract-report',
             builder: (_, _) => const SubcontractHubPage(),
           ),
+          // 委外准备中心已退役（2026-09-05 后端 API 下线）：旧深链一律重定向到
+          // 委外管理 hub，避免收藏/通知里的 /subcontract/preparations 404。
           GoRoute(
             path: RouteName.subcontractPreparations,
             name: 'subcontract-preparations',
-            builder: (_, state) => SubcontractPreparationPage(
-              planItemId: state.uri.queryParameters['planItemId'],
-              sourceAnalysisId: state.uri.queryParameters['sourceAnalysisId'],
-              sourceMaterialLineId:
-                  state.uri.queryParameters['sourceMaterialLineId'],
-            ),
+            redirect: (_, _) => RouteName.subcontract,
+          ),
+          // 2026-09-06 收口：计划委外申请列表并入「委外任务中心」（含待生产
+          // 合成行与进度弹窗）；只读申请详情深链保留（/:id 路由在下）。
+          GoRoute(
+            path: '/subcontract/applications',
+            name: 'subcontract-applications-list',
+            redirect: (_, _) => RouteName.operationsSubcontractWorkbench,
+          ),
+          // 2026-09-06 委外回厂跟踪页退役：回厂/IQC 进度在任务中心双击弹窗与
+          // 订货单详情全链路查看；既有回厂单详情/草稿编辑深链保留。
+          GoRoute(
+            path: '/subcontract/receipts',
+            name: 'subcontract-receipts-list',
+            redirect: (_, _) => '/subcontract/orders',
           ),
           // 委外报表（3 卡：明细/汇总/出入状况，静态段 report 优先于 :seg 参数路由）
           GoRoute(
@@ -1300,10 +1326,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const FinanceSalesOrderConfirmationPage(),
           ),
           GoRoute(
+            path: '/finance/sales-order-changes',
+            name: 'finance-sales-order-changes',
+            builder: (_, _) =>
+                const FinanceSalesOrderConfirmationPage(changesOnly: true),
+          ),
+          GoRoute(
             path: '/finance/sales-order-confirmations/:id',
             name: 'finance-sales-order-review',
-            builder: (_, state) =>
-                FinanceSalesOrderReviewPage(id: state.pathParameters['id']!),
+            builder: (_, state) => FinanceSalesOrderReviewPage(
+              id: state.pathParameters['id']!,
+              returnTo: state.uri.queryParameters['returnTo'],
+            ),
           ),
           GoRoute(
             path: RouteName.financeSalesShipmentAudit,

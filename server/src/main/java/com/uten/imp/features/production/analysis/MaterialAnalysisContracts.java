@@ -1,6 +1,7 @@
 package com.uten.imp.features.production.analysis;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
@@ -17,6 +18,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /** Stable HTTP contract for the persistent pre-plan material-analysis aggregate. */
@@ -152,16 +154,45 @@ public final class MaterialAnalysisContracts {
             List<@NotBlank @Size(max = 64) String> actionGroupKeys) {
     }
 
-    public record PlanPreviewRequest(
+    /**
+     * 下达车间（ADR-071，2026-09-05 重构）：所有自制行（顶层产品 / 自制候选 /
+     * 委外先自制候选 / 已有子件）一视同仁，单次调用原子完成「候选先建子件任务
+     * → 按行内数量/车间/负责人生成生产计划 → 有审核权限同事务审核下达」。
+     * 物料齐不齐不再由计划侧判断：计划照常创建，缺料批次进入 WAITING，由车间
+     * 侧执行段在齐套后自动提升 READY。
+     */
+    public record IssueWorkshopPlansRequest(
             @NotNull @JsonAlias("expectedVersion") Long version,
             @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String fingerprint,
+            @NotBlank @Size(min = 8, max = 128) String idempotencyKey,
             @NotNull UUID warehouseId,
+            @NotNull LocalDate billDate,
+            LocalDate deliveryDate,
+            boolean approveNow,
             @NotEmpty @Size(max = RequestLimits.DOCUMENT_LINES)
-            List<@Valid PlanQuantity> items,
-            @Size(max = RequestLimits.DOCUMENT_LINES)
-            List<@Valid RouteDecision> routes) {
+            List<@Valid IssuePlanLine> lines) {
+
+        /** 每行二选一：候选物料行 materialLineId（先建子件任务）或已有产品行 analysisLineId。 */
+        public record IssuePlanLine(
+                UUID materialLineId,
+                UUID analysisLineId,
+                @NotNull @DecimalMin(value = "0.0001")
+                @Digits(integer = 14, fraction = 4) BigDecimal qty,
+                LocalDate billDate,
+                LocalDate deliveryDate,
+                UUID departmentId,
+                @Size(max = 250) String workshopName,
+                UUID workerId,
+                UUID teamDepartmentId,
+                @Size(max = 200) String productNo) {
+
+            public IssuePlanLine(UUID analysisLineId, BigDecimal qty) {
+                this(null, analysisLineId, qty, null, null, null, null, null, null, null);
+            }
+        }
     }
 
+    /** 生成计划时的逐行排产输入（分析行 + 数量 + 车间/负责人）。 */
     public record PlanQuantity(
             @NotNull UUID analysisLineId,
             @NotNull @DecimalMin(value = "0.0001")
@@ -174,38 +205,10 @@ public final class MaterialAnalysisContracts {
             UUID teamDepartmentId,
             @Size(max = 200) String productNo) {
 
-        /** Backwards-compatible constructor for preview callers without per-sheet scheduling. */
+        /** Backwards-compatible constructor for callers without per-sheet scheduling. */
         public PlanQuantity(UUID analysisLineId, BigDecimal qty) {
             this(analysisLineId, qty, null, null, null, null, null, null, null);
         }
-
-        /** Backwards-compatible constructor for callers using the original schedule sheet. */
-        public PlanQuantity(
-                UUID analysisLineId, BigDecimal qty,
-                LocalDate billDate, LocalDate deliveryDate,
-                UUID departmentId, String workshopName,
-                UUID workerId, UUID teamDepartmentId) {
-            this(analysisLineId, qty, billDate, deliveryDate, departmentId,
-                    workshopName, workerId, teamDepartmentId, null);
-        }
-    }
-
-    public record GeneratePlanRequest(
-            @NotNull @JsonAlias("expectedVersion") Long version,
-            @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String fingerprint,
-            @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String previewFingerprint,
-            @NotBlank @Size(min = 8, max = 128) String idempotencyKey,
-            @NotNull UUID warehouseId,
-            @NotNull LocalDate billDate,
-            LocalDate deliveryDate,
-            UUID departmentId,
-            @Size(max = 250) String workshopName,
-            UUID workerId,
-            boolean approveNow,
-            @NotEmpty @Size(max = RequestLimits.DOCUMENT_LINES)
-            List<@Valid PlanQuantity> items,
-            @Size(max = RequestLimits.DOCUMENT_LINES)
-            List<@Valid RouteDecision> routes) {
     }
 
     public record CancelRequest(
@@ -329,7 +332,24 @@ public final class MaterialAnalysisContracts {
             List<SupplyActionView> supplyActions,
             List<String> allowedActions,
             boolean fqcReplenishmentOnly,
-            UUID fqcRecoveryAuthorizationId) {
+            UUID fqcRecoveryAuthorizationId,
+            Map<UUID, String> planningBlockedReasons) {
+        public AnalysisView {
+            planningBlockedReasons = Map.copyOf(planningBlockedReasons);
+        }
+
+        public AnalysisView(UUID analysisId, String status, long version,
+                String fingerprint, String analysisFingerprint, UUID warehouseId,
+                List<UUID> warehouseIds, OffsetDateTime analyzedAt,
+                List<ProductView> products, List<MaterialView> flatMaterials,
+                List<WarehouseView> warehouses, List<SupplyActionView> supplyActions,
+                List<String> allowedActions, boolean fqcReplenishmentOnly,
+                UUID fqcRecoveryAuthorizationId) {
+            this(analysisId, status, version, fingerprint, analysisFingerprint,
+                    warehouseId, warehouseIds, analyzedAt, products, flatMaterials,
+                    warehouses, supplyActions, allowedActions, fqcReplenishmentOnly,
+                    fqcRecoveryAuthorizationId, Map.of());
+        }
     }
 
     public record ProductView(
@@ -374,7 +394,57 @@ public final class MaterialAnalysisContracts {
             String latestPlanNo,
             BigDecimal planExecutionPlannedQty,
             BigDecimal planExecutionInboundQty,
+            BigDecimal planExecutionProgressRatio,
+            BigDecimal planExecutionReportedQty,
+            boolean planExecutionZeroMaterial,
+            String planExecutionWorkshopName,
+            String planExecutionResponsibleName,
+            UUID rootMaterialLineId) {
+        public ProductView(
+            UUID analysisLineId,
+            String sourceType,
+            String sourceRef,
+            String sourceReason,
+            UUID salesOrderItemId,
+            UUID salesOrderId,
+            String salesOrderNo,
+            LocalDate orderDate,
+            LocalDate deliveryDate,
+            String clientName,
+            UUID goodsId,
+            String goodsCode,
+            String goodsName,
+            String spec,
+            UUID colorId,
+            String colorName,
+            UUID unitId,
+            String unitName,
+            BigDecimal unitRate,
+            BigDecimal requestedQty,
+            BigDecimal submittedQty,
+            BigDecimal approvedQty,
+            BigDecimal remainingQty,
+            int allocationPriority,
+            boolean canSchedule,
+            BigDecimal maxSchedulableQty,
+            String scheduleBlockedReason,
+            BigDecimal readyNowQty,
+            BigDecimal readyByDateQty,
+            BigDecimal readyStartQty,
+            BigDecimal readyFinishQty,
+            BigDecimal readyShipQty,
+            BigDecimal readinessRatio,
+            boolean hasProductionMaterialChildren,
+            UUID parentAnalysisLineId,
+            String parentGoodsName,
+            String planExecutionStatus,
+            UUID latestPlanId,
+            String latestPlanNo,
+            BigDecimal planExecutionPlannedQty,
+            BigDecimal planExecutionInboundQty,
             BigDecimal planExecutionProgressRatio) {
+            this(analysisLineId, sourceType, sourceRef, sourceReason, salesOrderItemId, salesOrderId, salesOrderNo, orderDate, deliveryDate, clientName, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, unitRate, requestedQty, submittedQty, approvedQty, remainingQty, allocationPriority, canSchedule, maxSchedulableQty, scheduleBlockedReason, readyNowQty, readyByDateQty, readyStartQty, readyFinishQty, readyShipQty, readinessRatio, hasProductionMaterialChildren, parentAnalysisLineId, parentGoodsName, planExecutionStatus, latestPlanId, latestPlanNo, planExecutionPlannedQty, planExecutionInboundQty, planExecutionProgressRatio, BigDecimal.ZERO, false, null, null, null);
+        }
     }
 
     public record AnalysisListItem(
@@ -467,7 +537,12 @@ public final class MaterialAnalysisContracts {
             BigDecimal selectedWarehousesAvailableQty,
             BigDecimal selectedOtherWarehouseTransferableQty,
             LocalDate publicSurplusExpectedDate,
-            List<SharedFutureSupplyRef> sharedFutureSupplyRefs) {
+            List<SharedFutureSupplyRef> sharedFutureSupplyRefs,
+            String flowStage) {
+        @JsonProperty("nodeRole")
+        public String nodeRole() {
+            return level == 0 ? "ROOT_SUPPLY" : "BOM_COMPONENT";
+        }
     }
 
     public record SharedFutureSupplyRef(
@@ -513,7 +588,12 @@ public final class MaterialAnalysisContracts {
             String documentType,
             UUID documentId,
             String documentNo,
-            BigDecimal allocatedQty) {
+            BigDecimal allocatedQty,
+            boolean notificationReversalPending) {
+        public DownstreamReference(UUID actionId, String route, String status,
+                String documentType, UUID documentId, String documentNo, BigDecimal allocatedQty) {
+            this(actionId,route,status,documentType,documentId,documentNo,allocatedQty,false);
+        }
     }
 
     /** 物料供给全链路进度（只读投影）：逐步状态 + 单号 + 时间。 */
@@ -578,50 +658,6 @@ public final class MaterialAnalysisContracts {
             UUID publicSurplusExternalItemId,
             String operationType,
             UUID claimSourceActionId) {
-    }
-
-    public record PlanPreview(
-            UUID analysisId,
-            long version,
-            String fingerprint,
-            String analysisFingerprint,
-            String previewFingerprint,
-            UUID warehouseId,
-            OffsetDateTime calculatedAt,
-            boolean allReady,
-            List<PlanPreviewItem> items,
-            List<PlanDraftPreview> plans,
-            List<String> allowedActions) {
-    }
-
-    public record PlanPreviewItem(
-            UUID analysisLineId,
-            BigDecimal requestedQty,
-            BigDecimal readyNowQty,
-            BigDecimal selectedQty,
-            boolean canGenerate,
-            String reason,
-            boolean canSchedule,
-            BigDecimal maxSchedulableQty,
-            String scheduleBlockedReason) {
-    }
-
-    public record PlanDraftPreview(
-            String clientPlanKey,
-            UUID productGoodsId,
-            BigDecimal qty,
-            BigDecimal readyNowQty,
-            String segmentStatus,
-            List<PlanMaterialPreview> materials) {
-    }
-
-    public record PlanMaterialPreview(
-            UUID materialLineId,
-            BigDecimal requiredQty,
-            BigDecimal availableQty,
-            BigDecimal allocatedQty,
-            BigDecimal shortageQty,
-            String route) {
     }
 
     public record GenerateResult(

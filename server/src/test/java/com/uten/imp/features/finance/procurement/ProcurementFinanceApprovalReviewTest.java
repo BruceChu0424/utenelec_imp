@@ -128,6 +128,13 @@ class ProcurementFinanceApprovalReviewTest {
         row[23] = new BigDecimal("12500.50");
         when(jdbc.query(anyString(), any(RowMapper.class), eq(caseId)))
                 .thenReturn(java.util.Collections.singletonList(row));
+        // V486 修改清单查询独立返回空（普通 case 无改量事实账行）。
+        when(jdbc.query(
+                org.mockito.ArgumentMatchers.argThat(
+                        (String sql) -> sql != null
+                                && sql.contains("procurement_order_qty_change_logs")),
+                any(RowMapper.class), eq(caseId)))
+                .thenReturn(java.util.List.of());
         return jdbc;
     }
 
@@ -156,6 +163,8 @@ class ProcurementFinanceApprovalReviewTest {
                 mock(ProcurementApprovalProjectionQuery.class),
                 currentUser,
                 mock(TxSessionVars.class),
-                mock(com.uten.imp.features.notice.ChainNoticeService.class));
+                mock(com.uten.imp.features.notice.ChainNoticeService.class),
+                        org.mockito.Mockito.mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
+                        org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
     }
 }

@@ -15,6 +15,7 @@ final class SubcontractWasteLossGlProjection {
                 SELECT COUNT(*)
                 FROM subcontract_loss_cases loss
                 JOIN subcontract_wastes waste ON waste.id=loss.waste_id
+                LEFT JOIN v_subcontract_loss_case_value actual ON actual.case_id=loss.id
                 WHERE waste.status=1 AND COALESCE(waste.is_deleted,FALSE)=FALSE
                   AND to_char(waste.bill_date,'YYYY-MM')=:p
                   AND EXISTS(
@@ -22,19 +23,10 @@ final class SubcontractWasteLossGlProjection {
                       WHERE line.case_id=loss.id AND line.excess_loss_qty>0)
                   AND (
                       loss.waste_bill_no IS NULL
-                      OR loss.loss_book_value_local<=0
-                      OR EXISTS(
-                          SELECT 1 FROM subcontract_loss_case_lines line
-                          WHERE line.case_id=loss.id AND line.excess_loss_qty>0
-                            AND (line.valuation_status<>'VALUED'
-                                 OR line.unit_book_value_local<=0
-                                 OR line.loss_book_value_local<=0))
-                      OR loss.loss_book_value_local IS DISTINCT FROM (
-                          SELECT COALESCE(SUM(line.loss_book_value_local),0)
-                          FROM subcontract_loss_case_lines line
-                          WHERE line.case_id=loss.id AND line.excess_loss_qty>0)
-                      OR system_posting_style_id('SUBCONTRACT_ABNORMAL_LOSS') IS NULL
-                      OR system_posting_style_id('INVENTORY_ASSET') IS NULL)
+                      OR actual.complete IS DISTINCT FROM TRUE
+                      OR actual.loss_book_value_local IS NULL
+                      OR (actual.loss_book_value_local>0 AND (system_posting_style_id('SUBCONTRACT_ABNORMAL_LOSS') IS NULL
+                          OR system_posting_style_id('INVENTORY_ASSET') IS NULL)))
                 """).setParameter("p", period).getSingleResult()).longValue();
         if (invalid != 0) {
             throw new ApiException(ErrorCode.CONFLICT,
@@ -67,8 +59,9 @@ final class SubcontractWasteLossGlProjection {
                        'AUTO','SUBCONTRACT_ABNORMAL_LOSS',loss.waste_id,'委外超耗材料异常损失'
                 FROM subcontract_loss_cases loss
                 JOIN subcontract_wastes waste ON waste.id=loss.waste_id
+                JOIN v_subcontract_loss_case_value actual ON actual.case_id=loss.id
                 WHERE waste.status=1 AND COALESCE(waste.is_deleted,FALSE)=FALSE
-                  AND loss.loss_book_value_local>0
+                  AND actual.loss_book_value_local>0
                   AND to_char(waste.bill_date,'YYYY-MM')=:p
                 """).setParameter("p", period).executeUpdate();
 
@@ -76,11 +69,12 @@ final class SubcontractWasteLossGlProjection {
                 INSERT INTO gl_entries
                     (voucher_id,line_no,style_id,direction,amount,entry_date,period,
                      source_doc_type,source_doc_id,source_bill_no,summary)
-                SELECT voucher.id,1,loss_style.id,1,loss.loss_book_value_local,waste.bill_date,
+                SELECT voucher.id,1,loss_style.id,1,actual.loss_book_value_local,waste.bill_date,
                        voucher.period,'SUBCONTRACT_ABNORMAL_LOSS',loss.waste_id,
                        loss.waste_bill_no,'确认委外超耗异常损失'
                 FROM subcontract_loss_cases loss
                 JOIN subcontract_wastes waste ON waste.id=loss.waste_id
+                JOIN v_subcontract_loss_case_value actual ON actual.case_id=loss.id
                 JOIN gl_vouchers voucher ON voucher.source='AUTO'
                  AND voucher.source_type='SUBCONTRACT_ABNORMAL_LOSS'
                  AND voucher.source_doc_id=loss.waste_id
@@ -88,14 +82,15 @@ final class SubcontractWasteLossGlProjection {
                 CROSS JOIN LATERAL(
                     SELECT system_posting_style_id('SUBCONTRACT_ABNORMAL_LOSS') AS id) loss_style
                 WHERE waste.status=1 AND COALESCE(waste.is_deleted,FALSE)=FALSE
-                  AND loss.loss_book_value_local>0
+                  AND actual.loss_book_value_local>0
                   AND to_char(waste.bill_date,'YYYY-MM')=:p
                 UNION ALL
-                SELECT voucher.id,2,inventory_style.id,-1,loss.loss_book_value_local,waste.bill_date,
+                SELECT voucher.id,2,inventory_style.id,-1,actual.loss_book_value_local,waste.bill_date,
                        voucher.period,'SUBCONTRACT_ABNORMAL_LOSS',loss.waste_id,
                        loss.waste_bill_no,'转出委外超耗材料库存资产'
                 FROM subcontract_loss_cases loss
                 JOIN subcontract_wastes waste ON waste.id=loss.waste_id
+                JOIN v_subcontract_loss_case_value actual ON actual.case_id=loss.id
                 JOIN gl_vouchers voucher ON voucher.source='AUTO'
                  AND voucher.source_type='SUBCONTRACT_ABNORMAL_LOSS'
                  AND voucher.source_doc_id=loss.waste_id
@@ -103,7 +98,7 @@ final class SubcontractWasteLossGlProjection {
                 CROSS JOIN LATERAL(
                     SELECT system_posting_style_id('INVENTORY_ASSET') AS id) inventory_style
                 WHERE waste.status=1 AND COALESCE(waste.is_deleted,FALSE)=FALSE
-                  AND loss.loss_book_value_local>0
+                  AND actual.loss_book_value_local>0
                   AND to_char(waste.bill_date,'YYYY-MM')=:p
                 """).setParameter("p", period).executeUpdate();
     }

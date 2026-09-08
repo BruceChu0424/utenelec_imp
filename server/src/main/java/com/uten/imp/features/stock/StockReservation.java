@@ -38,7 +38,7 @@ public class StockReservation extends BaseEntity {
     public static final short SOURCE_PRODUCTION_IN = 1;     // 生产入库预留
 
     /** → sales_order_items.id（跨模块逻辑 FK）。 */
-    @Column(name = "order_item_id", nullable = false)
+    @Column(name = "order_item_id")
     private UUID orderItemId;
 
     @Column(name = "goods_id", nullable = false)

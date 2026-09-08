@@ -2,16 +2,21 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/features/quality/pages/quality_batch_approval_page.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/quality/pages/quality_pending_disposal_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/procurement_inspection_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 // 合并版待检处置页（IQC 收货单 + FQC 自制产成品统一队列）的widget 测试：
 // - 四分段（全部待检单/采购收货/委外回厂/自制产成品）与红色圆数字徽章；
 // - 权限分别门控：无 IQC view 不拉收货单、无 FQC view 不请求 FQC 接口；
-// - FQC 行详情 → 登记决定、勾选批量全部合格。
+// - FQC 行详情 → 登记决定；勾选后「批量审批」进汇总页一次提交报告（2026-09-05）。
 
 const _inspectionId = '10000000-0000-0000-0000-000000000001';
 const _reportNo = 'RB202608280001';
@@ -24,6 +29,8 @@ Future<void> _pumpPage(
 }) async {
   await tester.binding.setSurfaceSize(const Size(1280, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -31,8 +38,27 @@ Future<void> _pumpPage(
         procurementInspectionRepositoryProvider.overrideWithValue(iqc),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
+        sharedPreferencesProvider.overrideWithValue(preferences),
       ],
-      child: const MaterialApp(home: QualityPendingDisposalPage()),
+      // 带路由壳：2026-09-05 起「批量审批」会 push 汇总页。
+      child: MaterialApp.router(
+        routerConfig: GoRouter(
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (_, _) => const QualityPendingDisposalPage(),
+            ),
+            GoRoute(
+              path: RouteName.warehouseInspectionBatchApproval,
+              builder: (_, state) => QualityBatchApprovalPage(
+                selection: state.extra is QualityBatchApprovalSelection
+                    ? state.extra! as QualityBatchApprovalSelection
+                    : const QualityBatchApprovalSelection(),
+              ),
+            ),
+          ],
+        ),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -136,9 +162,7 @@ void main() {
     expect(find.text('CJ20260822000001'), findsOneWidget);
   });
 
-  testWidgets('selected FQC tasks expose atomic pass-all action', (
-    tester,
-  ) async {
+  testWidgets('勾选 FQC 任务 → 批量审批汇总页一次提交（原子 pass-all）', (tester) async {
     final api = _FqcApi();
     await _pumpPage(
       tester,
@@ -148,17 +172,31 @@ void main() {
     );
 
     await tester.tap(find.text(_reportNo));
-    await tester.pump();
-    final action = find.byKey(const Key('production-fqc-batch-pass-all'));
+    await tester.pumpAndSettle();
+    final action = find.byKey(const Key('quality-batch-approval'));
     expect(action, findsOneWidget);
     await tester.tap(action);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('确认全部合格'));
+
+    // 汇总页：FQC 区默认勾选（全部合格），底部提交报告。
+    expect(
+      find.byKey(const Key('batch-approval-submit-report')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('勾选即全部合格'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('batch-approval-submit-report')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
+    await tester.pump();
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
 
     expect(api.batchBody?['inspectionIds'], [_inspectionId]);
-    expect(api.batchBody?['idempotencyKey'], startsWith('fqc-pass-all-'));
-    expect(find.text(_reportNo), findsNothing);
+    expect(
+      api.batchBody?['idempotencyKey'] as String?,
+      startsWith('fqc-batch-approval-'),
+    );
   });
 
   testWidgets('FQC-only account skips IQC fetch and segments', (tester) async {
@@ -179,10 +217,7 @@ void main() {
     expect(_segmentBadge('1'), findsOneWidget);
     expect(find.text(_reportNo), findsOneWidget);
     // 无审批权限 → 不可选、无批量动作。
-    expect(
-      find.byKey(const Key('production-fqc-batch-pass-all')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('quality-batch-approval')), findsNothing);
   });
 
   testWidgets('IQC-only account never requests FQC endpoints', (tester) async {
@@ -285,6 +320,14 @@ class _FakeIqcRepository implements ProcurementInspectionRepository {
     required String receiptType,
     required String receiptId,
     required List<ProcurementInspectionBatchPassItem> items,
+    String? reason,
+  }) async {}
+
+  @override
+  Future<void> decideBatch({
+    required String receiptType,
+    required String receiptId,
+    required List<ProcurementInspectionDecideItem> items,
     String? reason,
   }) async {}
 }

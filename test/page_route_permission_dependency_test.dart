@@ -308,14 +308,37 @@ void main() {
       },
     );
 
+    test('legacy plan creation requires both analysis create and view', () {
+      final location = RoutePath.productionPlanNew();
+      for (final permissions in [
+        <String>[],
+        [Perm.productionMaterialAnalysisCreate],
+        [Perm.productionMaterialAnalysisView],
+      ]) {
+        expect(
+          employeePermissionRedirect(_userWith(permissions), location),
+          RouteName.accessDenied,
+        );
+      }
+      expect(
+        employeePermissionRedirect(
+          _userWith([
+            Perm.productionMaterialAnalysisCreate,
+            Perm.productionMaterialAnalysisView,
+          ]),
+          location,
+        ),
+        isNull,
+      );
+    });
+
     test('material analysis requires view besides action permissions', () {
       final summaryPath = RoutePath.productionMaterialAnalysisSummary(
         'analysis-1',
       );
-      expect(
-        requiredAnyPermFor(RouteName.productionMaterialAnalysis),
-        contains(Perm.productionMaterialAnalysisCrossReallocate),
-      );
+      expect(requiredAnyPermFor(RouteName.productionMaterialAnalysis), const [
+        Perm.productionMaterialAnalysisView,
+      ]);
       expect(requiredAllPermsFor(RouteName.productionMaterialAnalysis), const [
         Perm.productionMaterialAnalysisView,
       ]);
@@ -335,7 +358,14 @@ void main() {
       for (final action in [
         Perm.productionMaterialAnalysisCreate,
         Perm.productionMaterialAnalysisRefresh,
+        Perm.productionMaterialAnalysisRoute,
+        Perm.productionMaterialAnalysisNotify,
+        Perm.productionMaterialAnalysisGenerate,
+        Perm.productionMaterialAnalysisCancel,
+        Perm.productionMaterialAnalysisReallocate,
         Perm.productionMaterialAnalysisCrossReallocate,
+        Perm.productionMaterialAnalysisOverSupply,
+        Perm.productionMaterialAnalysisClaimSharedFuture,
       ]) {
         expect(
           employeePermissionRedirect(
@@ -389,30 +419,27 @@ void main() {
       },
     );
 
-    test('subcontract preparation route is exact and fail-closed', () {
+    test('subcontract preparation deep link is retired and routed to hub', () {
+      // 2026-09-05 委外准备中心退役：旧深链由 GoRouter 重定向到 /subcontract；
+      // 守卫沿用 hub 同款权限（任一委外 view），持权用户落到 hub 而非 404。
       const location = '/subcontract/preparations';
-      // V458 委外准备中心双视角：分析来源账本归生产域，订货来源归委外域。
       expect(requiredAnyPermFor(location), const [
-        Perm.subcontractPreparationView,
-        Perm.productionMaterialAnalysisView,
+        Perm.subcontractInquiryView,
+        Perm.subcontractApplicationView,
+        Perm.subcontractOrderView,
+        Perm.subcontractReceiptView,
+        Perm.subcontractMaterialIssueView,
+        Perm.subcontractReturnView,
+        Perm.subcontractMaterialReturnView,
+        Perm.subcontractWasteView,
       ]);
       expect(
-        employeePermissionRedirect(
-          _userWith([Perm.subcontractPreparationStart]),
-          location,
-        ),
+        employeePermissionRedirect(_userWith(const []), location),
         RouteName.accessDenied,
       );
       expect(
         employeePermissionRedirect(
-          _userWith([Perm.subcontractPreparationView]),
-          location,
-        ),
-        isNull,
-      );
-      expect(
-        employeePermissionRedirect(
-          _userWith([Perm.productionMaterialAnalysisView]),
+          _userWith([Perm.subcontractOrderView]),
           location,
         ),
         isNull,

@@ -16,6 +16,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
@@ -25,6 +26,8 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/widgets/finance_review_claim_notice.dart';
+import '../../../shared/providers/sales_shipment_finance_count_provider.dart';
 import '../../../shared/widgets/source_doc_link.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/repositories/task_claim_repository.dart';
@@ -39,6 +42,7 @@ import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
 import '../widgets/sales_return_quality_card.dart';
 import '../widgets/sales_status_badge.dart';
+import '../widgets/shipment_finance_change_summary.dart';
 
 class SalesDocDetailPage extends ConsumerStatefulWidget {
   const SalesDocDetailPage({
@@ -54,7 +58,9 @@ class SalesDocDetailPage extends ConsumerStatefulWidget {
 }
 
 class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
-  SalesDocConfig get _cfg => SalesDocConfig.by(widget.docType);
+  SalesDocConfig get _cfg => _detail?.shipmentWorkflow.isDirect == true
+      ? SalesDocConfig.customerShipment
+      : SalesDocConfig.by(widget.docType);
   SalesDocDetail? _detail;
   bool _loading = false;
   bool _busy = false;
@@ -62,6 +68,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   List<SalesReturnQualityItem>? _returnQualitySnapshot;
   // 销售订单审核并发认领（SALES_ORDER_APPROVE；page-state 持有，跨 _busy 底栏切换不丢）。
   TaskClaimSession? _approveClaim;
+  TaskClaimSession? _shipmentFinanceClaim;
 
   @override
   void initState() {
@@ -72,6 +79,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   @override
   void dispose() {
     _approveClaim?.releaseAll();
+    _shipmentFinanceClaim?.releaseAll();
     super.dispose();
   }
 
@@ -81,15 +89,24 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   bool _hasPermission(String? code) =>
       code != null && ref.read(currentPermissionsProvider).contains(code);
 
-  bool get _canEdit => _objectWritable && _hasPermission(_cfg.editPerm);
-  bool get _canDelete => _objectWritable && _hasPermission(_cfg.deletePerm);
-  bool get _canApprove => _objectWritable && _hasPermission(_cfg.approvePerm);
+  bool get _canEdit =>
+      widget.docType != SalesDocType.otherShipment &&
+      _objectWritable &&
+      _hasPermission(_cfg.editPerm);
+  bool get _canDelete =>
+      widget.docType != SalesDocType.otherShipment &&
+      _objectWritable &&
+      _hasPermission(_cfg.deletePerm);
+  bool get _canApprove =>
+      widget.docType != SalesDocType.otherShipment &&
+      _objectWritable &&
+      _hasPermission(_cfg.approvePerm);
   bool get _canReverse => _objectWritable && _hasPermission(_cfg.reversePerm);
   bool get _approveClaimBlocked => _approveClaim?.blocked ?? false;
 
   /// 仓库驳回权限（仅出货单）：PMC/销售可在草稿（待备货）态驳回。
   bool get _canReject =>
-      widget.docType == SalesDocType.shipment &&
+      widget.docType.isShipment &&
       (_detail?.canReject ?? false) &&
       _hasPermission(Perm.salesShipmentReject);
 
@@ -122,7 +139,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       salesOrderHasShippedQuantity(_detail?.items ?? const []);
 
   bool get _canChangeAnyOrderQty =>
-      !(_detail?.financeRejected ?? false) &&
+      // 2026-09-05 用户口径（反转）：财务确认后允许改量——改完自动回到
+      // 「待财务确认」，财务按修改清单（以前→现在）复核；驳回单仍走受控修订。
       _canChangeQty &&
       (_canChangePlanned ||
           (_detail?.items.any((item) => !_touchesPlanned(item)) ?? false));
@@ -145,7 +163,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 
   bool get _canManageWarehouseWork {
     final d = _detail;
-    return widget.docType == SalesDocType.shipment &&
+    return widget.docType.isShipment &&
         d != null &&
         d.financeAudit == 1 &&
         d.canManageWarehouseWork &&
@@ -155,7 +173,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   }
 
   bool get _shipmentEditLockedByFinanceAudit =>
-      widget.docType == SalesDocType.shipment &&
+      widget.docType.isShipment &&
       salesShipmentLocksDraftEdit(
         documentStatus: _detail?.status,
         financeAudit: _detail?.financeAudit,
@@ -200,7 +218,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 
   bool get _canReverseDocument {
     if (!_canReverse) return false;
-    if (widget.docType == SalesDocType.shipment &&
+    if (widget.docType.isShipment &&
         !salesShipmentAllowsDirectReverse(
           warehouseWorkStatus: _detail?.warehouseWorkStatus,
           handedOverAt: _detail?.handedOverAt,
@@ -326,7 +344,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     // V294 闸门：审核后自动转发财务审核，财务确认通过前计划部不可见、不排产。
     _cfg.type == SalesDocType.order
         ? '审核通过后订单将生效并形成库存预留，随后自动转发财务审核；财务确认通过后计划部才可见并排产。确认审核？'
-        : _cfg.type == SalesDocType.shipment && _detail?.financeAudit != 1
+        : _cfg.type.isShipment && _detail?.financeAudit != 1
         ? '该出货单尚未完成财务审核；所有客户都必须先由财务放行，再由仓库确认出库。确认继续审核？'
         : '审核后将驱动下游(库存/应收)，确认审核？',
     (repo) => repo.approve(widget.id),
@@ -387,10 +405,12 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                       autofocus: true,
                       maxLength: 500,
                       maxLines: 4,
-                      decoration: InputDecoration(
-                        labelText: '处理依据 / 原因',
-                        hintText: '必填，系统将写入操作审计',
-                        error: utenFieldError(error),
+                      decoration: UtenInputDecoration(
+                        InputDecoration(
+                          labelText: '处理依据 / 原因',
+                          hintText: '必填，系统将写入操作审计',
+                          error: utenFieldError(error),
+                        ),
                       ),
                     ),
                   ],
@@ -518,6 +538,18 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           child: ListView(
             shrinkWrap: true,
             children: [
+              if (_detail!.financeConfirmed)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                  child: Text(
+                    '本订单已经财务确认：修改数量后将自动重新进入「待财务确认」，'
+                    '财务会看到修改清单（以前→现在）并需再次确认后才继续排产。',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.error,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
               if (_orderHasPlanned && !_canChangePlanned)
                 Padding(
                   padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
@@ -614,16 +646,22 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     }
   }
 
-  Future<bool> _showFinanceAuditPreview(ShipmentFinanceAuditInfo info) async {
+  Future<({bool approved, String? reason})?> _showFinanceAuditPreview(
+    ShipmentFinanceAuditInfo info,
+    TaskClaimSession claim,
+  ) async {
+    final rejectionReason = TextEditingController();
     final theme = Theme.of(context);
     final overFloor = double.tryParse(info.overFloor ?? '');
     final overFloorDanger = overFloor != null && overFloor > 0;
     final paymentType = info.salesPaymentType?.trim();
-    final paymentTypeClassified = const {
-      ClientSalesPaymentType.monthly,
-      ClientSalesPaymentType.cash,
-      ClientSalesPaymentType.deposit,
-    }.contains(paymentType);
+    final paymentTypeClassified =
+        info.billingMode == 'FREE' ||
+        const {
+          ClientSalesPaymentType.monthly,
+          ClientSalesPaymentType.cash,
+          ClientSalesPaymentType.deposit,
+        }.contains(paymentType);
     final permissions = ref.read(currentPermissionsProvider);
     final canEditClientMaster =
         ref.read(isSuperAdminProvider) ||
@@ -655,7 +693,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           ),
         );
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showDialog<({bool approved, String? reason})>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         key: const Key('finance-audit-info-dialog'),
@@ -667,6 +705,15 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                ListenableBuilder(
+                  listenable: claim,
+                  builder: (_, _) => claim.isReady
+                      ? const SizedBox.shrink()
+                      : FinanceReviewClaimNotice(
+                          claim: claim,
+                          onRetry: () => Navigator.pop(dialogContext),
+                        ),
+                ),
                 const UtenReviewerResponsibilityNotice(
                   actionLabel: '财务审核发货',
                   description: '所有客户都必须先经财务确认。确认仅放行仓库作业；正式应收在仓库交接出库后生成。',
@@ -678,6 +725,19 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                   runSpacing: UtenSpacing.s12,
                   children: [
                     metric('客户', info.clientName ?? '—'),
+                    if (info.billingMode != null)
+                      metric(
+                        '本次发货',
+                        info.billingMode == 'FREE' ? '不收费（货款 0）' : '收费',
+                      ),
+                    if (info.directPurpose != null)
+                      metric('发货用途', switch (info.directPurpose) {
+                        'SAMPLE' => '样品',
+                        'GIFT' => '赠送',
+                        _ => '其它客户发货',
+                      }),
+                    if (info.freeReason != null)
+                      metric('不收费原因', info.freeReason),
                     metric(
                       '销售货款类型',
                       salesPaymentTypeLabel(info.salesPaymentType),
@@ -695,8 +755,27 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                   ],
                 ),
                 const SizedBox(height: UtenSpacing.s12),
+                ShipmentFinanceChangeSummary(
+                  previous: info.previousCommercialSnapshot,
+                  current: info.commercialSnapshot,
+                  describe: (key, value) {
+                    final names = ref.read(salesMasterNameServiceProvider);
+                    final id = value?.toString();
+                    return switch (key) {
+                      'clientId' => names.client(id),
+                      'warehouseId' => names.warehouse(id),
+                      'currencyId' => names.currency(id),
+                      'goodsId' => names.goods(id),
+                      'colorId' => names.color(id),
+                      'unitId' => names.unit(id),
+                      'sellerId' || 'senderId' => '已更换人员（请核对本单人员信息）',
+                      'settlementMethodId' => '已更换结账方式（请核对本单条款）',
+                      _ => value?.toString() ?? '未填写',
+                    };
+                  },
+                ),
                 Text(
-                  '请人工核对客户分类与本次放行依据；可用预收只统计同客户同币种的真实已审核到账，“定金”只是客户标签，绝不代表已经到账。',
+                  '请人工核对客户分类与本次放行依据；可用预收只统计同客户同币种的真实已审核到账，“定金”只是客户标签，绝不代表已经到账。预收仍按原绑定订单使用，不能自动抵扣到其它订单或零星发货。',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -739,61 +818,151 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
+          SizedBox(
+            width: double.infinity,
+            child: TextField(
+              key: const Key('shipment-finance-reject-reason'),
+              controller: rejectionReason,
+              decoration: const UtenInputDecoration(
+                InputDecoration(labelText: '退回原因（退回时填写）'),
+                info: '说明需要销售修改的内容。确认放行时可以不填。',
+              ),
+            ),
+          ),
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('取消'),
           ),
           if (!paymentTypeClassified && canEditClientMaster)
             TextButton(
               key: const Key('finance-audit-open-client-master'),
               onPressed: () {
-                Navigator.pop(dialogContext, false);
+                Navigator.pop(dialogContext);
                 context.push(RouteName.financeCustomers);
               },
               child: const Text('去客户资料'),
             ),
-          FilledButton(
+          ValueListenableBuilder(
+            valueListenable: rejectionReason,
+            builder: (_, value, _) => FinanceReviewClaimButton(
+              claim: claim,
+              onPressed: value.text.trim().isEmpty
+                  ? null
+                  : () => Navigator.pop(dialogContext, (
+                      approved: false,
+                      reason: value.text.trim(),
+                    )),
+              child: const Text('退回销售'),
+            ),
+          ),
+          FinanceReviewClaimButton(
+            claim: claim,
             key: const Key('finance-audit-info-confirm'),
             onPressed: paymentTypeClassified
-                ? () => Navigator.pop(dialogContext, true)
+                ? () => Navigator.pop(dialogContext, (
+                    approved: true,
+                    reason: null,
+                  ))
                 : null,
             child: const Text('确认放行'),
           ),
         ],
       ),
     );
-    return confirmed == true;
+    rejectionReason.dispose();
+    return confirmed;
   }
 
-  /// 财务审核发货（出货单）：先拉权威财务快照供人工核对，再提交审核。
-  Future<void> _financeAudit() async {
-    if (_busy) {
-      context.appInfo('正在处理，请稍候…');
-      return;
-    }
-    ShipmentFinanceAuditInfo? preview;
-    setState(() => _busy = true);
-    try {
-      preview = await ref
-          .read(salesRepositoryProvider(widget.docType))
-          .financeAuditInfo(widget.id);
-    } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError('财务审核信息加载失败，请稍后重试');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-    if (!mounted || preview == null) return;
-    final ok = await _showFinanceAuditPreview(preview);
-    if (!ok) return;
+  Future<void> _confirmShipmentSales() async {
+    final workflow = _detail?.shipmentWorkflow;
+    if (_busy || workflow == null || !workflow.canConfirmSales) return;
     setState(() => _busy = true);
     try {
       await ref
           .read(salesRepositoryProvider(widget.docType))
-          .financeAudit(widget.id);
+          .confirmShipmentSales(widget.id, workflow.revision);
       if (!mounted) return;
-      context.appSuccess('已财务审核发货，仓库可开始作业');
+      context.appSuccess('销售已确认，已提交财务审核');
+      ref.invalidate(salesShipmentFinanceCountProvider);
+      bumpListRefresh(ref, _cfg.refreshKey);
+      await _load();
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError('提交失败，请刷新后重试');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// 财务审核发货（出货单）：先拉权威财务快照供人工核对，再提交审核。
+  Future<void> _financeAudit() async {
+    if (_busy || _shipmentFinanceClaim != null) {
+      context.appInfo('正在处理，请稍候…');
+      return;
+    }
+    final claim = financeReviewClaim(ProviderScope.containerOf(context));
+    _shipmentFinanceClaim = claim;
+    setState(() => _busy = true);
+    try {
+      await claim.claimAll('SALES_SHIPMENT_FINANCE_AUDIT', [widget.id]);
+      if (!mounted || !claim.isCurrent) return;
+      if (!claim.isReady) {
+        context.appError(claim.failureMessage ?? '尚未取得审核占用，请重试');
+        return;
+      }
+      final refreshed = await ref
+          .read(salesRepositoryProvider(widget.docType))
+          .detail(widget.id);
+      if (!mounted || !claim.isCurrent) return;
+      setState(() => _detail = refreshed);
+      final preview = await ref
+          .read(salesRepositoryProvider(widget.docType))
+          .financeAuditInfo(widget.id);
+      if (!mounted || !claim.isCurrent) return;
+      if (preview.reviewRevision == null ||
+          preview.contentHash == null ||
+          !readableShipmentReviewSnapshot(preview.commercialSnapshot) ||
+          (preview.previousCommercialSnapshot != null &&
+              !readableShipmentReviewSnapshot(
+                preview.previousCommercialSnapshot,
+              ))) {
+        context.appError('审核内容不完整，请刷新后重试');
+        return;
+      }
+      setState(() => _busy = false);
+      final decision = await _showFinanceAuditPreview(preview, claim);
+      if (!mounted || decision == null || !claim.isCurrent) return;
+      if (!await claim.validateForDecision() || !mounted) {
+        if (mounted) context.appError(claim.failureMessage ?? '审核占用已失效，请重新审核');
+        return;
+      }
+      final claimId = claim.claimIdFor(
+        'SALES_SHIPMENT_FINANCE_AUDIT',
+        widget.id,
+      );
+      if (claimId == null) return;
+      setState(() => _busy = true);
+      final repo = ref.read(salesRepositoryProvider(widget.docType));
+      if (decision.approved) {
+        await repo.financeAudit(
+          widget.id,
+          expectedRevision: preview.reviewRevision!,
+          expectedContentHash: preview.contentHash!,
+          expectedClaimId: claimId,
+        );
+      } else {
+        await repo.rejectShipmentFinance(
+          widget.id,
+          expectedRevision: preview.reviewRevision!,
+          expectedContentHash: preview.contentHash!,
+          expectedClaimId: claimId,
+          reason: decision.reason!,
+        );
+      }
+      if (!mounted || !claim.isCurrent) return;
+      context.appSuccess(decision.approved ? '财务已确认，仓库可以开始拣货' : '已退回销售修改');
+      ref.invalidate(salesShipmentFinanceCountProvider);
       bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
     } on ApiException catch (e) {
@@ -801,6 +970,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     } catch (_) {
       if (mounted) context.appError('财务审核失败，请稍后重试');
     } finally {
+      await claim.releaseAll();
+      if (identical(_shipmentFinanceClaim, claim)) _shipmentFinanceClaim = null;
       if (mounted) setState(() => _busy = false);
     }
   }
@@ -1091,6 +1262,12 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               popOrBackTo(context, defaultPath: SalesRoutePath.hub),
         ),
         actions: [
+          // 整页刷新（2026-09-05 用户口径：右上角刷新=刷新整个页面）。
+          IconButton(
+            tooltip: '刷新',
+            onPressed: _loading ? null : _load,
+            icon: const Icon(Icons.refresh_rounded, size: 20),
+          ),
           UtenButton(
             type: UtenButtonType.tonal,
             icon: Icons.history_rounded,
@@ -1236,8 +1413,29 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           '订单金额($orderCurrency)',
           d.priceMasked ? '***' : d.totalOriginal?.toStringAsFixed(2),
         )
+      else if (d.shipmentWorkflow.isDirect)
+        _KV(
+          '本次货款',
+          d.shipmentWorkflow.isFree
+              ? '不收费（货款 0）'
+              : d.priceMasked
+              ? '***'
+              : '${d.exactDecimals['totalOriginal'] ?? d.totalOriginal ?? '—'}（所选币种）',
+        )
       else
         _KV('合计(本币)', d.priceMasked ? '***' : d.totalLocal?.toStringAsFixed(2)),
+      if (d.shipmentWorkflow.isDirect)
+        _KV('销售确认', d.shipmentWorkflow.salesConfirmed ? '已确认' : '待销售确认'),
+      if (d.shipmentWorkflow.isDirect)
+        _KV('发货用途', switch (d.shipmentWorkflow.purpose) {
+          'SAMPLE' => '样品',
+          'GIFT' => '赠送',
+          _ => '其它客户发货',
+        }),
+      if (d.shipmentWorkflow.freeReason != null)
+        _KV('不收费原因', d.shipmentWorkflow.freeReason),
+      if (d.shipmentWorkflow.financeRejected)
+        _KV('财务退回', d.shipmentWorkflow.financeRejectionReason),
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
       if (_cfg.type == SalesDocType.returnDoc &&
           (d.returnReason?.isNotEmpty ?? false))
@@ -1259,16 +1457,16 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       if (_returnQualityReversalBlockReason != null)
         _KV('退货红冲限制', _returnQualityReversalBlockReason),
       // 所有客户均须先财务放行，仓库动作才开放。
-      if (_cfg.type == SalesDocType.shipment)
+      if (_cfg.type.isShipment)
         _KV(
           '财务审核',
           d.financeAudit == 1
               ? '已审发货${d.financeAuditedAt != null ? '(${d.financeAuditedAt!.substring(0, 10)})' : ''}'
               : salesShipmentFinanceAuditLabel(d.financeAudit),
         ),
-      if (_cfg.type == SalesDocType.shipment)
+      if (_cfg.type.isShipment)
         _KV('仓库作业', salesWarehouseWorkStatusLabel(d.warehouseWorkStatus)),
-      if (_cfg.type == SalesDocType.shipment)
+      if (_cfg.type.isShipment)
         _KV(
           '仓库下一步',
           d.warehouseWorkStatus == SalesWarehouseWorkStatus.legacyPending
@@ -1277,32 +1475,31 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               ? salesWarehouseWorkStatusHint(d.warehouseWorkStatus)
               : '等待财务审核放行；放行前仓库不能开始拣货。',
         ),
-      if (_cfg.type == SalesDocType.shipment &&
-          d.warehouseWorkUpdatedAt != null)
+      if (_cfg.type.isShipment && d.warehouseWorkUpdatedAt != null)
         _KV('作业更新时间', utenFmtIsoTime(d.warehouseWorkUpdatedAt)),
-      if (_cfg.type == SalesDocType.shipment && d.pickingStartedAt != null)
+      if (_cfg.type.isShipment && d.pickingStartedAt != null)
         _KV('开始拣货', utenFmtIsoTime(d.pickingStartedAt)),
-      if (_cfg.type == SalesDocType.shipment && d.pickedAt != null)
+      if (_cfg.type.isShipment && d.pickedAt != null)
         _KV('拣货完成', utenFmtIsoTime(d.pickedAt)),
-      if (_cfg.type == SalesDocType.shipment && d.handedOverAt != null)
+      if (_cfg.type.isShipment && d.handedOverAt != null)
         _KV('交接出库', utenFmtIsoTime(d.handedOverAt)),
-      if (_cfg.type == SalesDocType.shipment &&
+      if (_cfg.type.isShipment &&
           !salesShipmentAllowsDirectReverse(
             warehouseWorkStatus: d.warehouseWorkStatus,
             handedOverAt: d.handedOverAt,
           ))
-        const _KV('红冲限制', '已出库/历史交接事实未知，须走销售退货或受控纠错，不能直接红冲库存。'),
-      if (_cfg.type == SalesDocType.shipment &&
+        const _KV('红冲限制', '已出库事实不能直接改写。真实退回走退货检验；仅价款有误须财务调整，不能虚做退货。'),
+      if (_cfg.type.isShipment &&
           salesShipmentLocksDraftEdit(
             documentStatus: d.status,
             financeAudit: d.financeAudit,
             warehouseWorkStatus: d.warehouseWorkStatus,
           ))
-        const _KV('编辑限制', '该草稿已完成财务审核；如需修改出货内容，请先财务反审。'),
-      if (_cfg.type == SalesDocType.shipment &&
+        const _KV('编辑限制', '仓库作业已开始；须先完成退拣并恢复待拣货，再由销售修改并重新确认。'),
+      if (_cfg.type.isShipment &&
           (d.warehouseExceptionReason?.isNotEmpty ?? false))
         _KV('仓库异常', d.warehouseExceptionReason),
-      if (_cfg.type == SalesDocType.shipment &&
+      if (_cfg.type.isShipment &&
           d.financeAudit != 1 &&
           const {
             SalesWarehouseWorkStatus.picking,
@@ -1338,7 +1535,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         child: UtenFormGrid(
           children: [
             for (final r in rows) _kvRow(theme, r),
-            if ((_cfg.type == SalesDocType.shipment ||
+            if ((_cfg.type.isShipment ||
                     _cfg.type == SalesDocType.otherShipment) &&
                 (d.sourceOrderId != null ||
                     (d.sourceDocNo?.isNotEmpty ?? false)))
@@ -1367,7 +1564,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                         ),
                       ),
               ),
-            if ((_cfg.type == SalesDocType.shipment ||
+            if ((_cfg.type.isShipment ||
                     _cfg.type == SalesDocType.otherShipment) &&
                 (d.logisticsNo?.isNotEmpty ?? false))
               SourceDocLink(label: '物流单号', billNo: d.logisticsNo),
@@ -1489,8 +1686,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     final items = _detail!.items;
     final isOrder = _cfg.type == SalesDocType.order;
     // 出货单后端同样下发 priceMasked（无 sales_order:price:view 时商业字段置 null）。
-    final masked =
-        _detail!.priceMasked && (isOrder || _cfg.type == SalesDocType.shipment);
+    final masked = _detail!.priceMasked && (isOrder || _cfg.type.isShipment);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1652,8 +1848,19 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 
     void add(Widget child) => children.add(child);
     if (s == kSalesStatusDraft && !rejected) {
+      if (_detail!.shipmentWorkflow.canConfirmSales &&
+          _hasPermission(_cfg.approvePerm)) {
+        add(
+          UtenButton(
+            key: const ValueKey('shipment-confirm-sales'),
+            icon: Icons.send_outlined,
+            onPressed: _busy ? null : _confirmShipmentSales,
+            child: const Text('销售确认并提交财务'),
+          ),
+        );
+      }
       // 出货单财务审核入口：独立 finance_shipment_audit 权限，与仓库作业权限分开。
-      if (_cfg.type == SalesDocType.shipment &&
+      if (_cfg.type.isShipment &&
           salesShipmentAllowsFinanceAudit(_detail!.warehouseWorkStatus) &&
           (ref.read(isSuperAdminProvider) ||
               ref
@@ -1672,7 +1879,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               ),
             )
             ..add(const SizedBox(width: UtenSpacing.s8));
-        } else {
+        } else if (_detail!.shipmentWorkflow.financeReviewPending) {
           children
             ..add(
               UtenButton(
@@ -1680,7 +1887,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                 icon: Icons.fact_check_outlined,
                 isLoading: _busy,
                 onPressed: _busy ? null : _financeAudit,
-                child: const Text('财务审核'),
+                child: const Text('认领并审核'),
               ),
             )
             ..add(const SizedBox(width: UtenSpacing.s8));
@@ -1710,7 +1917,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         );
       }
       // 所有销售出货都必须走财务放行 + 仓库交接；历史直接审核入口同样失败关闭。
-      if (_canApprove && _cfg.type != SalesDocType.shipment) {
+      if (_canApprove && !_cfg.type.isShipment) {
         add(
           UtenButton(
             icon: Icons.check_circle_outline,
@@ -1806,7 +2013,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           ..add(const SizedBox(width: UtenSpacing.s8));
       }
       if (_cfg.type == SalesDocType.order && !_detail!.stopped) {
-        if (_detail!.financeRejected && _canEdit) {
+        if (!_detail!.closed && _canEdit) {
           children
             ..add(
               UtenButton(

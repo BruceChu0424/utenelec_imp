@@ -74,7 +74,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('操作已直接显示在卡片上'), findsOneWidget);
+    expect(find.textContaining('等待物料'), findsWidgets);
     await tester.tap(find.text('SEG-001'));
     await tester.pumpAndSettle();
 
@@ -83,8 +83,13 @@ void main() {
     expect(find.text('当前账号可查看详情，但没有生产操作权限。'), findsOneWidget);
     expect(find.text('调整分配'), findsNothing);
     expect(find.text('派工'), findsNothing);
-    expect(find.textContaining('可开工'), findsNothing);
-    expect(find.text('备料完毕·可报工'), findsWidgets);
+    // 无开工权限：不渲染「开工」按钮（状态徽章文案「物料齐套 · 可开工」
+    // 是只读词表，允许出现）。
+    expect(
+      find.byKey(const ValueKey('production-execution-start-segment-1')),
+      findsNothing,
+    );
+    expect(find.text('料已发 · 可开工'), findsWidgets);
   });
 
   testWidgets('detail shows only actions allowed by status and permission', (
@@ -432,7 +437,7 @@ void main() {
   });
 
   testWidgets(
-    'fully issued confirmed segments expose direct report without start controls',
+    'fully issued confirmed segments expose start while report stays hidden',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1200, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -442,6 +447,7 @@ void main() {
           permissions: const {
             Perm.productionDailyReportView,
             Perm.productionDailyReportCreate,
+            Perm.productionExecutionStart,
           },
         ),
       );
@@ -453,6 +459,10 @@ void main() {
       );
       expect(
         find.byKey(const ValueKey('production-execution-report-segment-1')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('production-execution-start-segment-1')),
         findsOneWidget,
       );
       expect(find.text('派工'), findsNothing);
@@ -500,7 +510,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('物料齐套·备料中'), findsOneWidget);
+      expect(find.text('等待车间领料'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('production-execution-report-segment-1')),
         findsNothing,
@@ -514,7 +524,7 @@ void main() {
   );
 
   testWidgets(
-    'fully issued segment enables direct report and explains first report',
+    'fully issued segment must start before report becomes available',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1200, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -535,9 +545,12 @@ void main() {
       expect(find.text('已全部发料 · 2/2 项'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('production-execution-report-segment-1')),
-        findsWidgets,
+        findsNothing,
       );
-      expect(find.textContaining('首次报工会在同一事务中登记实际开工'), findsOneWidget);
+      // 物料发齐后仍先显式开工，报工入口只对生产中的段开放。
+      expect(find.textContaining('首次报工'), findsNothing);
+      expect(find.textContaining('开工后才能报工'), findsOneWidget);
+      expect(find.textContaining('开工'), findsWidgets);
     },
   );
 
@@ -583,6 +596,7 @@ void main() {
                 canAssign: false,
                 canReleaseDefer: false,
                 canReport: true,
+                canStart: false,
               ),
             ),
           ),
@@ -653,6 +667,7 @@ Widget _app({
             canReport:
                 permissions.contains(Perm.productionDailyReportView) &&
                 permissions.contains(Perm.productionDailyReportCreate),
+            canStart: permissions.contains(Perm.productionExecutionStart),
             initialSegmentId: initialSegmentId,
           ),
         ),

@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
@@ -402,7 +403,7 @@ class _AuditRetentionNotice extends StatelessWidget {
   }
 }
 
-/// 单个设置项：label + 数值输入(带单位) + 说明 + 上次修改时间。
+/// 单个设置项：label + 数值输入(带单位及框内说明) + 上次修改时间。
 class _SettingRow extends StatelessWidget {
   const _SettingRow({
     required this.entry,
@@ -438,35 +439,28 @@ class _SettingRow extends StatelessWidget {
                 child: TextField(
                   controller: controller,
                   keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    suffixText: entry.unit,
-                    hintText: '0',
-                    border: const OutlineInputBorder(),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 9,
+                  decoration: UtenInputDecoration(
+                    InputDecoration(
+                      isDense: true,
+                      suffixText: entry.unit,
+                      hintText: '0',
+                      border: const OutlineInputBorder(),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 9,
+                      ),
+                      filled: dirty,
+                      fillColor: theme.colorScheme.primaryContainer.withValues(
+                        alpha: 0.35,
+                      ),
                     ),
-                    filled: dirty,
-                    fillColor: theme.colorScheme.primaryContainer.withValues(
-                      alpha: 0.35,
-                    ),
+                    info: entry.description,
                   ),
                   onChanged: (_) => onChanged(),
                 ),
               ),
             ],
           ),
-          if (entry.description != null && entry.description!.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                entry.description!,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
           if (updated != null)
             Padding(
               padding: const EdgeInsets.only(top: 1),
@@ -533,11 +527,13 @@ class _ConfirmPasswordDialogState extends State<_ConfirmPasswordDialog> {
             controller: _ctrl,
             obscureText: true,
             autofocus: true,
-            decoration: InputDecoration(
-              labelText: '账号密码',
-              border: const OutlineInputBorder(),
-              isDense: true,
-              error: utenFieldError(_error),
+            decoration: UtenInputDecoration(
+              InputDecoration(
+                labelText: '账号密码',
+                border: const OutlineInputBorder(),
+                isDense: true,
+                error: utenFieldError(_error),
+              ),
             ),
             onSubmitted: (_) => _submit(),
           ),

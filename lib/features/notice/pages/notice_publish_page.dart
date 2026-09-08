@@ -8,6 +8,7 @@ import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_employee_multi_picker.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -468,15 +469,17 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
                   errorBuilder: utenTextFieldErrorBuilder,
                   controller: _actionRouteController,
                   maxLength: 500,
-                  decoration: InputDecoration(
-                    label: fieldLabel(
-                      '办理页面(可选)',
-                      theme,
-                      info: '仅支持应用内以 / 开头的路径',
+                  decoration: UtenInputDecoration(
+                    InputDecoration(
+                      label: fieldLabel(
+                        '办理页面(可选)',
+                        theme,
+                        info: '仅支持应用内以 / 开头的路径',
+                      ),
+                      hintText: '例如 /production/schedule',
+                      prefixIcon: const Icon(Icons.link_rounded),
+                      border: const OutlineInputBorder(),
                     ),
-                    hintText: '例如 /production/schedule',
-                    prefixIcon: const Icon(Icons.link_rounded),
-                    border: const OutlineInputBorder(),
                   ),
                   validator: (value) {
                     final route = value?.trim() ?? '';
@@ -535,19 +538,21 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
                     controller: _titleController,
                     maxLength: 200,
                     textInputAction: TextInputAction.next,
-                    decoration: applyRequiredEmpty(
-                      InputDecoration(
-                        label: requiredLabel(
-                          l10n.noticePublishTitleLabel,
-                          theme,
-                          required: true,
-                          base: theme.inputDecorationTheme.labelStyle,
+                    decoration: UtenInputDecoration(
+                      applyRequiredEmpty(
+                        InputDecoration(
+                          label: requiredLabel(
+                            l10n.noticePublishTitleLabel,
+                            theme,
+                            required: true,
+                            base: theme.inputDecorationTheme.labelStyle,
+                          ),
+                          hintText: l10n.noticePublishTitleHint,
+                          border: const OutlineInputBorder(),
                         ),
-                        hintText: l10n.noticePublishTitleHint,
-                        border: const OutlineInputBorder(),
+                        theme,
+                        requiredEmpty: empty,
                       ),
-                      theme,
-                      requiredEmpty: empty,
                     ),
                     validator: (value) => value?.trim().isEmpty ?? true
                         ? l10n.noticePublishValidateTitle
@@ -566,20 +571,22 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
                     minLines: 10,
                     maxLines: 16,
                     maxLength: 20000,
-                    decoration: applyRequiredEmpty(
-                      InputDecoration(
-                        label: requiredLabel(
-                          l10n.noticePublishContentLabel,
-                          theme,
-                          required: true,
-                          base: theme.inputDecorationTheme.labelStyle,
+                    decoration: UtenInputDecoration(
+                      applyRequiredEmpty(
+                        InputDecoration(
+                          label: requiredLabel(
+                            l10n.noticePublishContentLabel,
+                            theme,
+                            required: true,
+                            base: theme.inputDecorationTheme.labelStyle,
+                          ),
+                          hintText: l10n.noticePublishContentHint,
+                          alignLabelWithHint: true,
+                          border: const OutlineInputBorder(),
                         ),
-                        hintText: l10n.noticePublishContentHint,
-                        alignLabelWithHint: true,
-                        border: const OutlineInputBorder(),
+                        theme,
+                        requiredEmpty: empty,
                       ),
-                      theme,
-                      requiredEmpty: empty,
                     ),
                     validator: (value) => value?.trim().isEmpty ?? true
                         ? l10n.noticePublishValidateContent

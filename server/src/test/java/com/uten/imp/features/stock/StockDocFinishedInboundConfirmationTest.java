@@ -66,6 +66,7 @@ class StockDocFinishedInboundConfirmationTest {
     @BeforeEach
     void setUp() {
         em = mock(EntityManager.class);
+        com.uten.imp.support.FulfillmentMutationLockTestSupport.emptyExecutionGraph(em);
         documents = mock(StockDocumentRepository.class);
         balanceAdjustments = mock(StockBalanceAdjustmentCommandRepository.class);
         items = mock(StockDocumentItemRepository.class);
@@ -121,7 +122,9 @@ class StockDocFinishedInboundConfirmationTest {
                 access,
                 taskAccess,
                 mock(PreplanAnalysisPegPort.class),
-                qualityInspection);
+                qualityInspection,
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
+                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
     }
 
     @Test

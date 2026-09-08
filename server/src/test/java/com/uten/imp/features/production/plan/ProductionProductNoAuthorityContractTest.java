@@ -45,19 +45,15 @@ class ProductionProductNoAuthorityContractTest {
     void materialAnalysisCarriesExplicitProductNumbersAndNeverMintsUuidValues() throws Exception {
         String commands = source(
                 "features/production/analysis/MaterialAnalysisCommandService.java");
-        String service = source(
-                "features/production/analysis/MaterialAnalysisService.java");
         String contracts = source(
                 "features/production/analysis/MaterialAnalysisContracts.java");
 
+        // ADR-71：计划预览指纹族退役，productNo 只进 issueHash 与计划行。
         assertThat(commands)
                 .contains("line.setProductNo(quantity.productNo());")
-                .contains("MaterialAnalysisService.blankToNull(item.productNo())")
+                .contains("MaterialAnalysisService.blankToNull(line.productNo())")
                 .contains("|PRODUCT_NO|")
                 .doesNotContain("line.setProductNo(\"MA-\"");
-        assertThat(service)
-                .contains("blankToNull(selected.productNo())")
-                .contains("itemFingerprint.add(\"PRODUCT_NO\")");
         assertThat(contracts)
                 .contains("@Size(max = 200) String productNo");
     }

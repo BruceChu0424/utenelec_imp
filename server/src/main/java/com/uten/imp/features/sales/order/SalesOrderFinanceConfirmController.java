@@ -49,18 +49,19 @@ public class SalesOrderFinanceConfirmController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String rejected,
-            @RequestParam(required = false) String keyword) {
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Boolean changesOnly) {
         // 缺省=仅未驳回（可办待办，与徽标同口径）；rejected=all 全部；true=仅已驳回。
         Boolean filter = rejected == null || rejected.isBlank()
                 ? Boolean.FALSE
                 : "all".equalsIgnoreCase(rejected) ? null : Boolean.valueOf(rejected);
-        return service.pending(page, size, filter, keyword);
+        return service.pending(page, size, filter, keyword, changesOnly);
     }
 
     @GetMapping("/finance-confirmation/count")
     @PreAuthorize("hasAuthority('sales_order_finance:view')")
-    public Map<String, Long> pendingCount() {
-        return service.pendingCount();
+    public Map<String, Long> pendingCount(@RequestParam(required = false) Boolean changesOnly) {
+        return service.pendingCount(changesOnly);
     }
 
     @GetMapping("/{id}/finance-confirmation/review")

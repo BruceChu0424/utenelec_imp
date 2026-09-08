@@ -36,6 +36,12 @@ public class FinancePaymentSaveRequest {
     private BigDecimal amountOriginal;
     /** 服务端按原币金额与付款汇率重算；仅保留用于兼容旧客户端。 */
     private BigDecimal amountLocal;
+    /** Actual bank native debit includes the explicitly recorded bank fee. */
+    private UUID accountCurrencyId;
+    private BigDecimal accountAmount;
+    private BigDecimal bankFeeAccountAmount;
+    @Size(max = 128) private String bankReference;
+    private java.time.OffsetDateTime bankBookedAt;
     private UUID paymentMethodId;
     private Integer paymentMethodLegacyId;
     private String invoiceNo;

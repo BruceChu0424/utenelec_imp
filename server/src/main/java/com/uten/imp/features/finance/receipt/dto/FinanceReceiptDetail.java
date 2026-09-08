@@ -71,4 +71,18 @@ public class FinanceReceiptDetail {
     private UUID feePaymentAccountId;
     private UUID feeAccountCurrencyId;
     private BigDecimal feeAccountExchangeRate;
+
+    // Additive exact text never passes through a binary floating-point value.
+    public String getExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(exchangeRate); }
+    public String getAmountOriginalExact() { return com.uten.imp.common.util.DecimalText.of(amountOriginal); }
+    public String getAmountLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountLocal); }
+    public String getBankFeeExact() { return com.uten.imp.common.util.DecimalText.of(bankFee); }
+    public String getOtherFeeExact() { return com.uten.imp.common.util.DecimalText.of(otherFee); }
+    public String getAccountExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(accountExchangeRate); }
+    public String getAccountAmountExact() { return com.uten.imp.common.util.DecimalText.of(accountAmount); }
+    public String getAccountAmountLocalExact() { return com.uten.imp.common.util.DecimalText.of(accountAmountLocal); }
+    public String getSettlementGrossLocalExact() { return com.uten.imp.common.util.DecimalText.of(settlementGrossLocal); }
+    public String getBankFeeAccountAmountExact() { return com.uten.imp.common.util.DecimalText.of(bankFeeAccountAmount); }
+    public String getOtherFeeAccountAmountExact() { return com.uten.imp.common.util.DecimalText.of(otherFeeAccountAmount); }
+    public String getFeeAccountExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(feeAccountExchangeRate); }
 }

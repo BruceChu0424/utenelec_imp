@@ -38,6 +38,9 @@ class ProductionExecutionWorkbenchGroup {
     this.quantitySummary,
     this.earliestBeginDate,
     this.latestEndDate,
+    this.ownerEmployeeName,
+    this.analyzedAt,
+    this.rootProgressRatio,
   });
 
   final String rootType;
@@ -78,8 +81,20 @@ class ProductionExecutionWorkbenchGroup {
   final bool mine;
   final String? earliestBeginDate;
   final String? latestEndDate;
+  final String? ownerEmployeeName;
+  final String? analyzedAt;
+  final double? rootProgressRatio;
 
   String get id => '$rootType:$rootId';
+
+  /// 顶层产品完工进度百分比（0-100，无段时为 null，不伪装 0%）。
+  int? get rootProgressPercent {
+    final ratio = rootProgressRatio;
+    if (ratio == null || !ratio.isFinite) return null;
+    final clamped = ratio.clamp(0.0, 1.0).toDouble();
+    if (clamped >= 1) return 100;
+    return (clamped * 100).round().clamp(0, 99);
+  }
 
   String get statusLabel => switch (status) {
     'ANALYZING' => '分析处理中',
@@ -136,6 +151,9 @@ class ProductionExecutionWorkbenchGroup {
     mine: json['mine'] == true,
     earliestBeginDate: json['earliestBeginDate'] as String?,
     latestEndDate: json['latestEndDate'] as String?,
+    ownerEmployeeName: json['ownerEmployeeName'] as String?,
+    analyzedAt: json['analyzedAt'] as String?,
+    rootProgressRatio: (json['rootProgressRatio'] as num?)?.toDouble(),
   );
 }
 
@@ -164,6 +182,8 @@ class ProductionExecutionWorkbenchSegment {
     required this.canReport,
     required this.canBatchReport,
     required this.lockVersion,
+    required this.zeroMaterial,
+    this.canRecheckMaterial = false,
     this.salesOrderNos,
     this.workshopDepartmentId,
     this.workshopName,
@@ -211,6 +231,14 @@ class ProductionExecutionWorkbenchSegment {
   final String? planBeginDate;
   final String? planEndDate;
   final int lockVersion;
+  final bool zeroMaterial;
+  final bool canRecheckMaterial;
+
+  /// 报工进度比（报工量 / 计划量，0-1；计划量为 0 时为 null）。
+  double? get reportProgressRatio {
+    if (plannedQty <= 0) return null;
+    return reportedQty.clamp(0, plannedQty) / plannedQty;
+  }
 
   String get materialStatusLabel => switch (materialStatus) {
     'KIT_READY' =>
@@ -262,31 +290,59 @@ class ProductionExecutionWorkbenchSegment {
     issued: json['issued'] == true,
     canDispatch: json['canDispatch'] == true,
     canStart: json['canStart'] == true,
-    canReport: json['canReport'] == true,
-    canBatchReport: json['canBatchReport'] == true,
+    canReport:
+        json['segmentStatus'] == 'IN_PROGRESS' && json['canReport'] == true,
+    canBatchReport:
+        json['segmentStatus'] == 'IN_PROGRESS' &&
+        json['canBatchReport'] == true,
     blockedReason: json['blockedReason'] as String?,
     planBeginDate: json['planBeginDate'] as String?,
     planEndDate: json['planEndDate'] as String?,
     lockVersion: (json['lockVersion'] as num?)?.toInt() ?? 0,
+    zeroMaterial: json['zeroMaterial'] == true,
+    canRecheckMaterial: json['canRecheckMaterial'] == true,
   );
 }
 
+// 2026-09-05「进行中」滑窗详情下线后客户端不再消费 workOrders()/group()；
+// 2026-09-06 计划详情页重新消费 related-documents 渲染「本批次关联单据」
+// （采购/委外申请与订货单、本批次计划树），单据可点进对应模块看进度。
+
+/// 与某分析批次结构化关联的单据（服务端已按各模块数据范围过滤）。
 class ProductionExecutionWorkbenchRelatedDocument {
   const ProductionExecutionWorkbenchRelatedDocument({
     required this.route,
     required this.documentType,
     required this.documentId,
+    required this.documentNo,
     required this.canOpen,
-    this.documentNo,
     this.status,
   });
 
   final String route;
   final String documentType;
   final String documentId;
-  final String? documentNo;
+  final String documentNo;
   final String? status;
   final bool canOpen;
+
+  String get statusLabel =>
+      switch (status) {
+        '0' => '待审核',
+        '1' => '已审核',
+        '-1' => '已红冲',
+        _ => null,
+      } ??
+      '—';
+
+  String get typeLabel => switch (documentType) {
+    'PURCHASE_REQUEST' => '采购申请',
+    'PURCHASE_ORDER' => '采购订单',
+    'SUBCONTRACT_APPLICATION' => '委外申请',
+    'SUBCONTRACT_ORDER' => '委外订单',
+    'PRODUCTION_PLAN' => '生产计划',
+    _ => documentType,
+  };
 
   factory ProductionExecutionWorkbenchRelatedDocument.fromJson(
     Map<String, dynamic> json,
@@ -294,7 +350,7 @@ class ProductionExecutionWorkbenchRelatedDocument {
     route: json['route'] as String? ?? '',
     documentType: json['documentType'] as String? ?? '',
     documentId: json['documentId'] as String? ?? '',
-    documentNo: json['documentNo'] as String?,
+    documentNo: json['documentNo'] as String? ?? '—',
     status: json['status'] as String?,
     canOpen: json['canOpen'] == true,
   );

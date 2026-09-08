@@ -25,6 +25,11 @@ import java.util.UUID;
 @Table(name = "sales_shipment_items")
 public class SalesShipmentItem extends BaseEntity {
 
+    @Column(name="is_deleted",nullable=false)
+    private boolean deleted;
+    @Column(name="deleted_at")
+    private java.time.OffsetDateTime deletedAt;
+
     private Integer legacyId;
 
     @Column(name = "bill_no")

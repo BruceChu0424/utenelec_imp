@@ -16,14 +16,13 @@ import 'subcontract_order_edit_page.dart';
 /// 委外路由的显式业务页分派。
 ///
 /// app_router 不再把所有 `/subcontract/:seg` 直接构造成同一个采购式通用页。列表按
-/// 申请、订货、回厂品质、历史发料、成品退回、余料退回、损耗责任分开；编辑入口同时
+/// 订货、历史发料、成品退回、余料退回、损耗责任分开；编辑入口同时
 /// 对没有合法来源的执行单新建失败关闭。
+/// 2026-09-06：计划委外申请列表并入「委外任务中心」、委外回厂跟踪页退役
+/// （列表路由在 app_router 重定向，二者不会再走到 list 分派；详情/编辑深链保留）。
 abstract final class SubcontractPageFactory {
   static Widget list(SubcontractDocType type) => switch (type) {
-    SubcontractDocType.application =>
-      const SubcontractApplicationRegisterPage(),
     SubcontractDocType.order => const SubcontractOrderWorkspacePage(),
-    SubcontractDocType.receipt => const SubcontractReceiptQualityTrackingPage(),
     SubcontractDocType.materialIssue =>
       const SubcontractLegacyMaterialIssueHistoryPage(),
     SubcontractDocType.returnDoc =>
@@ -32,6 +31,13 @@ abstract final class SubcontractPageFactory {
       const SubcontractMaterialReturnHistoryPage(),
     SubcontractDocType.waste => const SubcontractWasteResponsibilityPage(),
     SubcontractDocType.inquiry => const SubcontractInquiryArchivePage(),
+    // 申请列表=任务中心；回厂列表=订货页（路由层已重定向，防御兜底）。
+    SubcontractDocType.application => throw UnsupportedError(
+      '计划委外申请列表已并入委外任务中心',
+    ),
+    SubcontractDocType.receipt => throw UnsupportedError(
+      '委外回厂跟踪页已下线，进度在订货单详情查看',
+    ),
   };
 
   static Widget detail(SubcontractDocType type, String id) => switch (type) {
@@ -61,8 +67,8 @@ abstract final class SubcontractPageFactory {
       if (type == SubcontractDocType.application) {
         return const SubcontractExecutionCreateBlockedPage(
           title: '计划委外申请不能在委外端新建',
-          description: '申请由物料分析下达。请回到委外申请分解页选择已下达且仍有余量的申请明细。',
-          actionLabel: '进入申请分解',
+          description: '申请由物料分析下达。请回到委外任务中心选择已下达且仍有余量的申请明细。',
+          actionLabel: '进入委外任务中心',
           actionRoute: RouteName.operationsSubcontractWorkbench,
         );
       }
@@ -113,8 +119,8 @@ abstract final class SubcontractPageFactory {
       SubcontractDocType.application =>
         const SubcontractExecutionCreateBlockedPage(
           title: '计划委外申请为只读事实',
-          description: '申请由物料分析下达，不能通过编辑深链修改。请进入申请分解处理尚未下单的数量。',
-          actionLabel: '进入申请分解',
+          description: '申请由物料分析下达，不能通过编辑深链修改。请进入委外任务中心处理尚未下单的数量。',
+          actionLabel: '进入委外任务中心',
           actionRoute: RouteName.operationsSubcontractWorkbench,
         ),
       SubcontractDocType.inquiry => const SubcontractExecutionCreateBlockedPage(

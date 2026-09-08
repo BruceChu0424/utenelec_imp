@@ -96,7 +96,12 @@ void main() {
     );
 
     final preview = await repository.financeAuditInfo('shipment-1');
-    final result = await repository.financeAudit('shipment-1');
+    final result = await repository.financeAudit(
+      'shipment-1',
+      expectedRevision: 3,
+      expectedContentHash: 'review-hash',
+      expectedClaimId: 'claim-id',
+    );
 
     expect(captured.map((request) => request.method), ['GET', 'POST']);
     expect(
@@ -104,6 +109,11 @@ void main() {
       '/sales/shipments/shipment-1/finance-audit-info',
     );
     expect(captured.last.path, '/sales/shipments/shipment-1/finance-audit');
+    expect(captured.last.data, {
+      'expectedRevision': 3,
+      'expectedContentHash': 'review-hash',
+      'expectedClaimId': 'claim-id',
+    });
     expect(preview.overFloor, '80.00');
     expect(result.financeAudit, 1);
   });

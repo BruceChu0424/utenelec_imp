@@ -1,6 +1,7 @@
 package com.uten.imp.features.production.execution;
 
 import com.uten.imp.application.port.ProductionCompletionReversePort;
+import com.uten.imp.application.port.SubcontractOrderPreparationPort;
 import com.uten.imp.application.port.SubcontractPreparationInventoryPort;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
@@ -46,6 +47,7 @@ public class ProductionCompletionReverseService
     private final MaterialAnalysisSupplyWakeupService materialAnalysisWakeup;
     private final SubcontractPreparationInventoryPort subcontractPreparation;
     private final SubcontractMakeTaskService subcontractMakeTasks;
+    private final SubcontractOrderPreparationPort subcontractOrderPreparation;
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -74,6 +76,10 @@ public class ProductionCompletionReverseService
         // 专属预留并触发满批自动通知，再让分析刷新读 v_stock_available。
         subcontractMakeTasks.afterFinishedInboundApproved(
                 stockDocumentId, warehouseId);
+        // 2026-09-05 委外收敛：直接下单草稿期的前置生产分析有产出时，
+        // 通知委外制单人目标件开始回笼（全部备齐即可提交财务审核）。
+        subcontractOrderPreparation.afterFinishedInboundApproved(
+                stockDocumentId);
         // The dedicated outbound reservation must exist before any analysis
         // refresh reads v_stock_available, otherwise the new target item can
         // be snapshotted as public stock by another analysis.

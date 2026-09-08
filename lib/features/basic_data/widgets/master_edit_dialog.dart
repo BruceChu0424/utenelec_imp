@@ -17,6 +17,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -75,6 +76,7 @@ class MasterFieldDef {
     this.type = MasterFieldType.text,
     this.required = false,
     this.hint,
+    this.info,
     this.group,
     this.options,
     this.selectInteger = false,
@@ -95,6 +97,9 @@ class MasterFieldDef {
   final bool required;
 
   final String? hint;
+
+  /// Optional guidance disclosed inside the field, never as a bottom caption.
+  final String? info;
 
   /// 字段所属分组：表单按此分段、双列展示。null 归入「其他」。
   final String? group;
@@ -372,7 +377,7 @@ class MasterEditFormState extends State<MasterEditForm> {
       );
     }
     // text / integer / money：听控制器，必填且为空时描红边 + 红 *，填好即恢复；
-    // 另支持外部字段错误（如后端编号查重 409）→ 描红边 + 字段下红字提示，用户开始编辑即清除。
+    // 外部字段错误(如后端编号查重 409)通过红边和框内图标提示，用户开始编辑即清除。
     final theme = Theme.of(context);
     final controller = _controllers[f.key]!;
     return ListenableBuilder(
@@ -381,34 +386,27 @@ class MasterEditFormState extends State<MasterEditForm> {
         final requiredEmpty = f.required && controller.text.trim().isEmpty;
         final fieldError = _fieldErrors[f.key];
         final showRed = requiredEmpty || fieldError != null;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: controller,
-              keyboardType: f.type == MasterFieldType.text
-                  ? TextInputType.text
-                  : const TextInputType.numberWithOptions(decimal: true),
-              decoration: applyRequiredEmpty(
-                InputDecoration(
-                  label: requiredLabel(
-                    f.label,
-                    theme,
-                    required: f.required,
-                    base: theme.inputDecorationTheme.labelStyle,
-                  ),
-                  hintText: f.hint,
+        return TextField(
+          controller: controller,
+          keyboardType: f.type == MasterFieldType.text
+              ? TextInputType.text
+              : const TextInputType.numberWithOptions(decimal: true),
+          decoration: UtenInputDecoration(
+            applyRequiredEmpty(
+              InputDecoration(
+                label: requiredLabel(
+                  f.label,
+                  theme,
+                  required: f.required,
+                  base: theme.inputDecorationTheme.labelStyle,
                 ),
-                theme,
-                requiredEmpty: showRed,
+                hintText: f.hint,
+                error: utenFieldError(fieldError),
               ),
+              theme,
+              requiredEmpty: showRed,
             ),
-            if (fieldError != null) ...[
-              const SizedBox(height: UtenSpacing.s4),
-              UtenFieldMessage.error(fieldError),
-            ],
-          ],
+          ),
         );
       },
     );
@@ -439,6 +437,7 @@ class MasterEditFormState extends State<MasterEditForm> {
       value: _selectValues[f.key],
       allowClear: !f.required,
       hintText: f.hint,
+      info: f.info,
       addNewLabel: f.onAddNew == null ? null : '添加${f.label}',
       items: [
         for (final o in options)

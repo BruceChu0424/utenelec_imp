@@ -1,6 +1,9 @@
 package com.uten.imp.features.production.analysis;
 
 import com.uten.imp.application.port.SubcontractPreparationPort;
+import com.uten.imp.application.port.ProductionMutationFootprintPort;
+import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan;
+import com.uten.imp.application.concurrency.FulfillmentMutationLocks;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -32,6 +35,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
@@ -42,10 +46,9 @@ import static com.uten.imp.features.production.analysis.MaterialAnalysisContract
 /**
  * Persistent, non-authoritative pre-plan material analysis.
  *
- * <p>The full recursive tree is both a visible node-task analysis and a
- * dependency read model. Formal plan readiness still uses the direct BOM of
- * each analysis item. When a MAKE node becomes a child item, ownership of its
- * descendants moves to that child so the two views never create demand twice.</p>
+ * <p>The original recursive tree retains each batch's material requirements.
+ * Child items anchor plans without owning another copy of that tree. Qualified
+ * stock and formal material reservations cover their original nodes only.</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -72,6 +75,21 @@ public class MaterialAnalysisService {
     private final ProductionDocumentAccessPolicy access;
     private final OwnerVisibility ownerVisibility;
     private final SubcontractPreparationPort subcontractPreparation;
+    private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
+    private final PreplanStockEntitlementService stockEntitlement;
+    private final MaterialAnalysisFlowStageService flowStages;
+    private final FulfillmentMutationLocks mutationLocks;
+    private final ProductionMutationFootprintPort mutationFootprints;
+    @org.springframework.beans.factory.annotation.Autowired
+    private MaterialAnalysisRootSupplyService rootSupply;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.features.production.SubcontractDraftPreparationAccessPolicy draftPreparationAccess;
+
+    OwnerVisibility.OwnerScope scopeForAnalysis(AnalysisHeader header){
+        var normal=access.scope();
+        if(normal==null||normal.seeAll()||normal.writableOwners().contains(header.makerId()))return normal;
+        return draftPreparationAccess.canAccess(header.id())?new OwnerVisibility.OwnerScope(true,Set.of()):normal;
+    }
 
     /**
      * 物料分析的创建与刷新入口：按来源重算分配树。幂等键命中既有分析时直接重放；新建走 per(员工+幂等键) advisory 锁，
@@ -104,6 +122,18 @@ public class MaterialAnalysisService {
         }
         String requestHash = previewRequestHash(
                 request, normalized, participatingWarehouses);
+        var previewGuard = mutationLocks.acquire(() -> previewMutationFootprint(
+                request,normalized,participatingWarehouses));
+        UUID completedPreview = request.analysisId()==null
+                ? analysisByInitialIdempotencyKey(request.idempotencyKey()) : request.analysisId();
+        if (completedPreview!=null && isCommandReplay(completedPreview,"PREVIEW",request.idempotencyKey(),requestHash)) {
+            AnalysisHeader replayHeader = readHeader(completedPreview,false);
+            access.requireWritable(replayHeader.makerId(),"只能打开本人负责的物料分析",scopeForAnalysis(replayHeader));
+            return detailInternal(completedPreview,false);
+        }
+        previewGuard.verifyUnchanged();
+        for(var item:normalized)if(SOURCE_SUBCONTRACT_PREPARATION.equals(sourceType(item))&&item.sourceRef().startsWith("SC-ORDER:"))
+            requireDirectSubcontractSource(request,item);
         lockSourceIdentities(normalized);
         lockSalesSources(normalized.stream()
                 .filter(item -> SOURCE_SALES.equals(sourceType(item)))
@@ -119,7 +149,7 @@ public class MaterialAnalysisService {
             if (initialReplay != null) {
                 AnalysisHeader replayHeader = lockHeader(initialReplay);
                 access.requireWritable(replayHeader.makerId(),
-                        "只能打开本人负责的物料分析", access.scope());
+                        "只能打开本人负责的物料分析", scopeForAnalysis(replayHeader));
                 if (!isCommandReplay(initialReplay, "PREVIEW",
                         request.idempotencyKey(), requestHash)) {
                     throw conflict("首次预览幂等锚缺少结果，不能安全重放");
@@ -130,7 +160,7 @@ public class MaterialAnalysisService {
         if (analysisId != null) {
             AnalysisHeader requestedHeader = lockHeader(analysisId);
             access.requireWritable(requestedHeader.makerId(), "只能刷新本人负责的物料分析",
-                    access.scope());
+                    scopeForAnalysis(requestedHeader));
             if (isCommandReplay(analysisId, "PREVIEW", request.idempotencyKey(), requestHash)) {
                 return detailInternal(analysisId, false);
             }
@@ -144,7 +174,7 @@ public class MaterialAnalysisService {
             if (analysisId != null) {
                 AnalysisHeader reusable = lockHeader(analysisId);
                 access.requireWritable(reusable.makerId(),
-                        "只能打开本人负责的进行中物料分析", access.scope());
+                        "只能打开本人负责的进行中物料分析", scopeForAnalysis(reusable));
                 requireReusablePayloadMatches(
                         analysisId, reusable, request.warehouseId(),
                         participatingWarehouses, normalized);
@@ -158,6 +188,7 @@ public class MaterialAnalysisService {
         }
         if (analysisId == null) {
             analysisId = UUID.randomUUID();
+            mutationLocks.expectCreatedAnalysis(analysisId);
             em.createNativeQuery("""
                     INSERT INTO production_material_analyses (
                         id, warehouse_id, participating_warehouse_ids,
@@ -182,10 +213,16 @@ public class MaterialAnalysisService {
                     .setParameter("actorId", currentUser.requireId())
                     .executeUpdate();
             insertSourceItems(analysisId, normalized);
+            UUID mainWarehouseId = (UUID) em.createNativeQuery("SELECT fn_warehouse_main_id(:warehouseId)",UUID.class)
+                    .setParameter("warehouseId",request.warehouseId()).getSingleResult();
+            mutationLocks.registerCreatedAnalysis(analysisId,mainWarehouseId);
+            // V477 办结闭环：分析创建即视为生产部已接手——按订单撤回
+            // 「新订单待物料分析」待办（幂等；刷新/重放分支不会走到这里）。
+            resolvePendingMaterialAnalysisNotices(normalized);
         } else {
             AnalysisHeader header = lockHeader(analysisId);
             access.requireWritable(header.makerId(), "只能刷新本人负责的物料分析",
-                    access.scope());
+                    scopeForAnalysis(header));
             syncRequestedQuantities(analysisId, normalized);
             em.createNativeQuery("""
                     UPDATE production_material_analyses
@@ -203,9 +240,39 @@ public class MaterialAnalysisService {
                     .setParameter("id", analysisId)
                     .executeUpdate();
         }
+        validateSourceCapacity(loadSourceLines(analysisId, false));
         refreshLocked(analysisId);
         recordSimpleCommand(analysisId, "PREVIEW", request.idempotencyKey(), requestHash);
         return detailInternal(analysisId, false);
+    }
+
+    /**
+     * 新建分析后按销售订单办结「新订单待物料分析」通知（V477）。
+     *
+     * <p>通知发布时绑定 (SALES_ORDER, orderId) 聚合（见 ChainNoticeService
+     * #notifyOrderApproved 与 ReviewNoticeCatalog 的 SALES_ORDER_APPROVED
+     * 注册）；此处把来源销售订单逐个 resolve——弹卡停止展示、通知中心灰显
+     * 「已办结」。幂等（UPDATE 只命中 resolved_at IS NULL），刷新/重放不触发。
+     */
+    private void resolvePendingMaterialAnalysisNotices(List<PreviewItem> normalized) {
+        List<UUID> salesOrderItemIds = normalized.stream()
+                .filter(item -> SOURCE_SALES.equals(sourceType(item)))
+                .map(PreviewItem::salesOrderItemId)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        if (salesOrderItemIds.isEmpty()) return;
+        @SuppressWarnings("unchecked")
+        List<UUID> orderIds = em.createNativeQuery(
+                """
+                SELECT DISTINCT i.order_id FROM sales_order_items i
+                WHERE i.id IN (:ids)
+                """)
+                .setParameter("ids", salesOrderItemIds)
+                .getResultList();
+        for (UUID orderId : orderIds) {
+            chainNotice.resolveReviewNotices("SALES_ORDER", orderId,
+                    "MATERIAL_ANALYSIS_STARTED");
+        }
     }
 
     @Transactional(readOnly = true)
@@ -226,18 +293,22 @@ public class MaterialAnalysisService {
             return java.util.Map.of();
         }
         var query = em.createNativeQuery("""
-                SELECT DISTINCT ON (m.goods_id, m.color_id, m.unit_id)
-                       m.goods_id, m.color_id, m.unit_id, m.confirmed_route, m.route_reason
-                FROM production_material_analysis_materials m
-                JOIN production_material_analyses a ON a.id = m.analysis_id
-                WHERE m.goods_id IN (:goodsIds)
-                  AND m.confirmed_route IS NOT NULL
-                  AND m.active = TRUE
-                  AND a.is_deleted = FALSE
-                  AND a.status <> 'CANCELLED'
-                ORDER BY m.goods_id, m.color_id, m.unit_id,
-                         m.route_confirmed_at DESC NULLS LAST,
-                         m.created_at DESC, m.id DESC
+                WITH history AS (
+                    SELECT m.goods_id,m.color_id,m.unit_id,m.confirmed_route,m.route_reason,
+                      DENSE_RANK() OVER (
+                        PARTITION BY m.goods_id,m.color_id,m.unit_id
+                        ORDER BY COALESCE(m.route_confirmed_at,m.created_at) DESC) AS recency
+                    FROM production_material_analysis_materials m
+                    JOIN production_material_analyses a ON a.id=m.analysis_id
+                    WHERE m.goods_id IN (:goodsIds) AND m.confirmed_route IS NOT NULL
+                      AND a.is_deleted=FALSE AND a.status<>'CANCELLED'
+                )
+                SELECT goods_id,color_id,unit_id,MIN(confirmed_route),
+                  CASE WHEN COUNT(DISTINCT route_reason)=1 THEN MIN(route_reason) ELSE NULL END
+                FROM history WHERE recency=1
+                GROUP BY goods_id,color_id,unit_id
+                HAVING COUNT(DISTINCT confirmed_route)=1
+                ORDER BY goods_id,color_id,unit_id
                 """);
         query.setParameter("goodsIds", goodsIds);
         java.util.Map<String, java.util.List<LastRoutePerGoods>> result = new java.util.LinkedHashMap<>();
@@ -304,7 +375,7 @@ public class MaterialAnalysisService {
                              lower(COALESCE(goods.name,'')) LIKE :keywordLike OR
                              lower(COALESCE(sales_order.bill_no,'')) LIKE :keywordLike)
                   )
-                """.formatted(ownerScope.predicate());
+                """.formatted(draftPreparationAccess.readPredicate("analysis.id",ownerScope.predicate()));
         Query countQuery = em.createNativeQuery("SELECT COUNT(*) " + filters)
                 .setParameter("status", normalizedStatus)
                 .setParameter("sourceType", normalizedSource)
@@ -372,14 +443,14 @@ public class MaterialAnalysisService {
 
     /**
      * 保存物料供给路线（按操作组）：幂等重放 + 乐观版本校验。操作组已有不同路线的下游任务时禁止改路线（须先撤回）；
-     * 路线偏离货品来源建议时必须填写原因。
+     * 原因可选；确认人和确认时间始终保留，已有下游的路线仍须先撤回。
      */
     @Transactional
     public AnalysisView saveRoutes(UUID analysisId, RouteRequest request) {
         tx.bind();
         AnalysisHeader header = lockHeader(analysisId);
         access.requireWritable(header.makerId(), "只能维护本人负责的物料分析",
-                access.scope());
+                scopeForAnalysis(header));
         String requestHash = routeRequestHash(analysisId, request);
         if (isCommandReplay(analysisId, "ROUTE", request.idempotencyKey(), requestHash)) {
             return detailInternal(analysisId, false);
@@ -389,12 +460,15 @@ public class MaterialAnalysisService {
         List<MaterialRow> currentMaterials = loadMaterialRows(analysisId);
         List<RouteDecision> decisions = request.decisions() == null
                 ? List.of() : request.decisions();
+        List<SourceLine> routeSources = loadSourceLines(analysisId, false);
         for (RouteDecision decision : decisions) {
             List<MaterialRow> group = resolveMaterialGroup(currentMaterials, decision);
+            requirePlanningSources(routeSources, group.stream()
+                    .map(MaterialRow::analysisItemId).collect(Collectors.toSet()));
             String groupKey = group.getFirst().actionGroupKey();
             if (!seen.add(groupKey)) throw validation("物料路线操作组重复");
             String route = normalizeRoute(decision.route());
-            String reason = blankToNull(decision.reason());
+            String reason = normalizeRouteReason(decision.reason());
             List<UUID> groupMaterialIds = group.stream().map(MaterialRow::id).toList();
             Number downstream = (Number) em.createNativeQuery("""
                     SELECT COUNT(*)
@@ -419,12 +493,6 @@ public class MaterialAnalysisService {
                     .getSingleResult();
             if (downstream.longValue() > 0) {
                 throw conflict("物料操作组已有不同路线的下游任务，请先撤回后再改路线");
-            }
-            for (MaterialRow material : group) {
-                if (("REVIEW".equals(material.suggestion())
-                        || !route.equals(material.suggestion())) && reason == null) {
-                    throw validation("路线偏离货品来源建议时必须填写原因");
-                }
             }
             for (MaterialRow material : group) {
                 em.createNativeQuery("""
@@ -460,7 +528,7 @@ public class MaterialAnalysisService {
         tx.bind();
         AnalysisHeader header = lockHeader(analysisId);
         access.requireWritable(header.makerId(),
-                "只能调整本人负责的物料分析分配顺序", access.scope());
+                "只能调整本人负责的物料分析分配顺序", scopeForAnalysis(header));
         String requestHash = allocationPriorityRequestHash(analysisId, request);
         if (isCommandReplay(
                 analysisId, "REALLOCATE", request.idempotencyKey(), requestHash)) {
@@ -526,7 +594,7 @@ public class MaterialAnalysisService {
         tx.bind();
         AnalysisHeader header = lockHeader(analysisId);
         access.requireWritable(header.makerId(),
-                "只能调整本人负责的物料分析分配", access.scope());
+                "只能调整本人负责的物料分析分配", scopeForAnalysis(header));
         String requestHash = borrowRequestHash(analysisId, request);
         if (isCommandReplay(
                 analysisId, "BORROW", request.idempotencyKey(), requestHash)) {
@@ -547,6 +615,7 @@ public class MaterialAnalysisService {
                 .findFirst()
                 .orElseThrow(() -> validation("借入物料路径不存在或已失效，请刷新后重试"));
         validateBorrowEndpoints(analysisId, from, to);
+        requirePlanningSources(analysisId, Set.of(to.analysisItemId()));
         BigDecimal qty = request.qty().setScale(4, RoundingMode.DOWN);
         if (qty.signum() <= 0) {
             throw validation("调拨数量必须大于 0");
@@ -599,7 +668,7 @@ public class MaterialAnalysisService {
         tx.bind();
         AnalysisHeader header = lockHeader(analysisId);
         access.requireWritable(header.makerId(),
-                "只能调整本人负责的物料分析分配", access.scope());
+                "只能调整本人负责的物料分析分配", scopeForAnalysis(header));
         String requestHash = PlanningPackageFingerprint.sha256(List.of(
                 "BORROW_REVOKE", analysisId.toString(), borrowId.toString(),
                 request.reason().strip()));
@@ -671,7 +740,7 @@ public class MaterialAnalysisService {
         if (activeActions.longValue() > 0) {
             throw conflict("已下达采购/委外/自制任务的节点不能调拨，请先撤回对应任务");
         }
-        Set<String> delegated = loadDelegatedMakeNodes(analysisId);
+        Set<String> delegated = Set.<String>of();
         if (delegated.contains(from.analysisItemId() + "|" + from.path())
                 || delegated.contains(to.analysisItemId() + "|" + to.path())) {
             throw conflict("已委派给自制子任务的节点不能调拨");
@@ -779,7 +848,7 @@ public class MaterialAnalysisService {
                        lot.beneficiary_analysis_material_id,
                        material.analysis_item_id, material.node_key,
                        reservation.goods_id, reservation.color_id, material.unit_id,
-                       lot.remaining_qty
+                       lot.remaining_qty,reservation.warehouse_id
                 FROM v_preplan_stock_entitlement_lot_balance lot
                 JOIN stock_reservations reservation
                   ON reservation.id = lot.stock_reservation_id
@@ -791,7 +860,7 @@ public class MaterialAnalysisService {
                 WHERE lot.beneficiary_analysis_id = :analysisId
                   AND lot.remaining_qty > 0
                   AND (CAST(:warehouseId AS uuid) IS NULL
-                       OR reservation.warehouse_id = CAST(:warehouseId AS uuid))
+                       OR fn_warehouse_same_main(reservation.warehouse_id,CAST(:warehouseId AS uuid)))
                 ORDER BY lot.created_at, lot.entitlement_event_id
                 """)
                 .setParameter("analysisId", analysisId)
@@ -804,7 +873,7 @@ public class MaterialAnalysisService {
             result.add(new ExactPegRecord(
                     uuid(row[0]), uuid(row[1]), uuid(row[2]), string(row[3]),
                     new MaterialDimension(uuid(row[4]), uuid(row[5]), uuid(row[6])),
-                    effectiveQty));
+                    effectiveQty,uuid(row[8])));
         }
         return List.copyOf(result);
     }
@@ -820,6 +889,20 @@ public class MaterialAnalysisService {
         for (BomNode node : nodes) {
             current.put(nodeAllocationKey(node), node.dimension());
         }
+        // Root supply has its own physical node and is intentionally absent
+        // from the BOM expansion. A deferred sales handoff must retain it.
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT item.id,root.node_key,item.goods_id,item.color_id,goods.unit_id
+                FROM production_material_analysis_items item
+                JOIN production_material_analysis_materials root ON root.id=item.root_material_id
+                    AND root.analysis_id=item.analysis_id AND root.analysis_item_id=item.id
+                    AND root.node_role='ROOT_SUPPLY'
+                JOIN goods ON goods.id=item.goods_id
+                WHERE item.analysis_id=:id AND NOT item.is_deleted
+                """).setParameter("id", analysisId))) {
+            current.put(uuid(row[0]) + "|" + string(row[1]),
+                    new MaterialDimension(uuid(row[2]), uuid(row[3]), uuid(row[4])));
+        }
         requireExactPegRefreshCompatible(loadExactPegs(analysisId, null), current);
     }
 
@@ -830,8 +913,8 @@ public class MaterialAnalysisService {
             MaterialDimension current = currentNodes.get(
                     peg.analysisItemId() + "|" + peg.nodeKey());
             if (!Objects.equals(current, peg.dimension())) {
-                throw conflict("已有合格入库精确绑定的 BOM 节点已删除或变更物料维度；"
-                        + "当前没有受控归还/重归属链，禁止刷新，请先处理原归属库存");
+                throw conflict("这批已入库的货还归属于原来的产品，不能直接删除或换成别的物料；"
+                        + "请先核对并处理原库存的用途");
             }
         }
     }
@@ -887,39 +970,6 @@ public class MaterialAnalysisService {
                             fromLabel, reason));
         }
         return result;
-    }
-
-    @Transactional
-    public PlanPreview planPreview(UUID analysisId, PlanPreviewRequest request) {
-        tx.bind();
-        AnalysisHeader header = lockHeader(analysisId);
-        access.requireWritable(header.makerId(), "只能对本人负责的物料分析排产",
-                access.scope());
-        requireCurrent(header, request.version(), request.fingerprint());
-        if (!Objects.equals(header.warehouseId(), request.warehouseId())) {
-            if (isSubcontractPreparationAnalysis(analysisId)) {
-                throw conflict("委外前置自制目标仓已由订货任务冻结，禁止在排产预览中改仓");
-            }
-            em.createNativeQuery("""
-                    UPDATE production_material_analyses
-                    SET warehouse_id = :warehouseId,
-                        participating_warehouse_ids = CASE
-                            WHEN :warehouseId = ANY(participating_warehouse_ids)
-                              THEN participating_warehouse_ids
-                            ELSE array_append(participating_warehouse_ids, :warehouseId)
-                        END,
-                        updated_at = now(), updated_by = :actorId
-                    WHERE id = :id
-                    """)
-                    .setParameter("warehouseId", request.warehouseId())
-                    .setParameter("actorId", currentUser.requireId())
-                    .setParameter("id", analysisId)
-                    .executeUpdate();
-        }
-        requireWarehouse(request.warehouseId());
-        refreshLocked(analysisId);
-        AnalysisView view = detailInternal(analysisId, false);
-        return buildPlanPreview(view, request.items(), request.routes(), true);
     }
 
     private boolean isSubcontractPreparationAnalysis(UUID analysisId) {
@@ -1081,37 +1131,27 @@ public class MaterialAnalysisService {
                 (int) ((total + size - 1) / size));
     }
 
-    /** Called by the command service while it already owns the analysis row lock. */
-    PlanPreview buildPlanPreviewLocked(
-            UUID analysisId,
-            UUID warehouseId,
-            List<PlanQuantity> items,
-            List<RouteDecision> routes) {
-        requireCurrentBomSnapshot(analysisId, items == null ? Set.of() : items.stream()
-                .filter(Objects::nonNull).map(PlanQuantity::analysisLineId)
-                .filter(Objects::nonNull).collect(Collectors.toSet()));
-        AnalysisView view = detailInternal(analysisId, false);
-        if (!Objects.equals(view.warehouseId(), warehouseId)) {
-            throw conflict("联合预览仓库已变化，请重新预览");
-        }
-        return buildPlanPreview(view, items, routes, false);
-    }
-
     /** Fail closed when the direct production structure changed after the analysis snapshot. */
     public void requireCurrentBomSnapshot(UUID analysisId, Set<UUID> analysisItemIds) {
         if (analysisItemIds == null || analysisItemIds.isEmpty()) {
             throw validation("必须指定要校验的物料分析产品");
         }
-        Map<UUID, SourceLine> sources = loadSourceLines(analysisId, false).stream()
+        List<SourceLine> allSources = loadSourceLines(analysisId, false);
+        Map<UUID, SourceLine> sources = allSources.stream()
                 .filter(source -> analysisItemIds.contains(source.analysisItemId()))
                 .collect(Collectors.toMap(SourceLine::analysisItemId, source -> source));
         if (!sources.keySet().equals(analysisItemIds)) {
             throw conflict("待生成计划的产品已不属于当前物料分析");
         }
-        // 销售订单停用/关闭/删除、财务确认或剩余容量可能在分析头版本不变时
-        // 发生变化；生成前必须复用刷新路径的来源校验，不能只比 BOM 指纹。
-        validateSourceCapacity(List.copyOf(sources.values()));
+        // 新安排按所选产品及其来源父行校验；已有任务的实物进度另行刷新。
+        requirePlanningSources(allSources, analysisItemIds);
         for (SourceLine source : sources.values()) {
+            // 子件锚点行无 BOM 快照可比（料行保持在原树）——锚点本身只需
+            // 仍属于本分析（上面的集合校验已覆盖）。
+            if ("MAKE_COMPONENT".equals(source.sourceType())
+                    || "SUBCONTRACT_MAKE".equals(source.sourceType())) {
+                continue;
+            }
             Set<String> current = loadBomTree(source).stream()
                     .filter(node -> node.depth() == 1)
                     .map(MaterialAnalysisService::bomSignaturePart)
@@ -1174,13 +1214,26 @@ public class MaterialAnalysisService {
     }
 
     AnalysisHeader lockHeader(UUID analysisId) {
+        var guard = mutationLocks.acquire(() -> mutationFootprints.forAnalyses(List.of(analysisId)));
+        AnalysisHeader header=readHeader(analysisId,true);
+        guard.verifyUnchanged();
+        return header;
+    }
+
+    /** Already-held A permits an immutable command replay before rejecting a stale write fingerprint. */
+    AnalysisHeader headerAfterPrelock(UUID analysisId) {
+        mutationLocks.requireCovered(new FulfillmentMutationLockPlan(Set.of(),Set.of(),Set.of(),
+                Set.of(analysisId),"analysis-header-read"));
+        return readHeader(analysisId,true);
+    }
+
+    private AnalysisHeader readHeader(UUID analysisId,boolean forUpdate) {
         Object[] row = oneRow(em.createNativeQuery("""
                 SELECT id, warehouse_id, status, version, fingerprint,
                        analyzed_at, maker_id, is_deleted
                 FROM production_material_analyses
                 WHERE id = :id
-                FOR UPDATE
-                """).setParameter("id", analysisId), "物料分析不存在");
+                """ + (forUpdate ? " FOR UPDATE" : "")).setParameter("id", analysisId), "物料分析不存在");
         if (Boolean.TRUE.equals(row[7])) {
             throw notFound("物料分析不存在");
         }
@@ -1189,8 +1242,24 @@ public class MaterialAnalysisService {
                 uuid(row[6]));
     }
 
+    private boolean isOpenForFulfillment(AnalysisHeader header) {
+        if (List.of(STATUS_ACTIVE, STATUS_PARTIAL).contains(header.status())) return true;
+        if (!"COMPLETED".equals(header.status())) return false;
+        // Historical COMPLETED meant all quantities were planned. Only a live,
+        // unfulfilled linked plan permits reopening through an authorized command.
+        return Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS (
+                    SELECT 1 FROM production_plans plan
+                    JOIN production_plan_items item ON item.plan_id=plan.id
+                    WHERE plan.material_analysis_id=:analysisId
+                      AND plan.is_deleted=FALSE AND plan.is_canceled=FALSE
+                      AND plan.status IN (0,1) AND item.is_deleted=FALSE
+                      AND item.qty>COALESCE(item.iqty,0))
+                """).setParameter("analysisId", header.id()).getSingleResult());
+    }
+
     void requireCurrent(AnalysisHeader header, Long version, String fingerprint) {
-        if (!List.of(STATUS_ACTIVE, STATUS_PARTIAL).contains(header.status())) {
+        if (!isOpenForFulfillment(header)) {
             throw conflict("物料分析已结束，不能继续修改");
         }
         if (version == null || version != header.version()
@@ -1198,30 +1267,65 @@ public class MaterialAnalysisService {
                 || !fingerprint.equalsIgnoreCase(header.fingerprint())) {
             throw conflict("物料分析已被刷新或修改，请重新加载");
         }
+        if ("COMPLETED".equals(header.status())) reopenHistoricallyPlannedAnalysis(header.id());
+    }
+
+    private void reopenHistoricallyPlannedAnalysis(UUID analysisId) {
+        em.createNativeQuery("""
+                UPDATE production_material_analyses analysis
+                SET status='PARTIALLY_PLANNED',updated_at=now()
+                WHERE analysis.id=:analysisId AND analysis.status='COMPLETED'
+                  AND EXISTS (
+                    SELECT 1 FROM production_plans plan
+                    JOIN production_plan_items item ON item.plan_id=plan.id
+                    WHERE plan.material_analysis_id=analysis.id
+                      AND plan.is_deleted=FALSE AND plan.is_canceled=FALSE
+                      AND plan.status IN (0,1) AND item.is_deleted=FALSE
+                      AND item.qty>COALESCE(item.iqty,0))
+                """).setParameter("analysisId",analysisId).executeUpdate();
     }
 
     void refreshLocked(UUID analysisId) {
         AnalysisHeader header = lockHeader(analysisId);
-        if (!List.of(STATUS_ACTIVE, STATUS_PARTIAL).contains(header.status())) {
+        if (!isOpenForFulfillment(header)) {
             throw conflict("物料分析已结束，不能刷新");
         }
+        if ("COMPLETED".equals(header.status())) reopenHistoricallyPlannedAnalysis(analysisId);
         if (header.warehouseId() == null) {
             throw conflict("物料分析未选择目标仓库");
         }
-        em.createNativeQuery("""
-                SELECT pg_advisory_xact_lock(hashtextextended(:lockKey,0))
-                """).setParameter("lockKey",
-                        "MATERIAL-ANALYSIS-WAREHOUSE:" + header.warehouseId())
-                .getSingleResult();
+        // All main-warehouse coordinators precede every analysis header in the
+        // common prefix. Never take W after A while refreshing multiple analyses.
+        // 2026-09-05 简化：旧模式遗留的 MAKE 权益委托先整体归还（新模式不再
+        // 委托；归还后 exact 权益回到原始物料节点，投影保持单份数据）。
+        stockEntitlement.restoreAllMakeDelegations(analysisId);
         reconcileSupplyActionStatuses(analysisId);
+        if (rootSupply != null) rootSupply.ensureRootNodes(analysisId);
         List<SourceLine> sources = loadSourceLines(analysisId, true);
-        validateSourceCapacity(sources);
+        // Existing fulfillment belongs to the admitted analysis snapshot. A later
+        // sales amendment must not roll back a real receipt merely because new
+        // planning now needs another finance review. Commands check admission
+        // for their selected source lines before creating any new commitment.
         List<BomNode> nodes = new ArrayList<>();
         for (SourceLine source : sources) {
+            // 子件锚点行（MAKE_COMPONENT / SUBCONTRACT_MAKE）不展开自己的
+            // BOM：物料需求保持在原树单一份数据，计划员照常在采购/委外桶对
+            // 原行下达；计划自身的物料需求由执行段按计划 BOM 生成并等料。
+            if ("MAKE_COMPONENT".equals(source.sourceType())
+                    || "SUBCONTRACT_MAKE".equals(source.sourceType())) {
+                continue;
+            }
             nodes.addAll(loadBomTree(source));
         }
         Map<UUID, SourceLine> sourcesById = sources.stream()
                 .collect(Collectors.toMap(SourceLine::analysisItemId, source -> source));
+        Map<String,List<BigDecimal>> plannedBatches = plannedMaterialBatches(analysisId);
+        nodes = nodes.stream().map(node -> {
+            BomNode batched = node.withOutputBatches(plannedBatches.getOrDefault(
+                    node.analysisItemId()+"|"+Objects.toString(node.parentNodeKey(),""),List.of()));
+            return node.depth()==1 ? batched.withSnapshotRequiredQty(batched.requiredForOutput(
+                    sourcesById.get(node.analysisItemId()).materialRequirementQty())) : batched;
+        }).toList();
         validateExactPegRefreshCompatibility(analysisId, nodes);
         em.createNativeQuery("""
                 UPDATE production_material_analysis_materials
@@ -1240,8 +1344,7 @@ public class MaterialAnalysisService {
                     sourcesById.get(node.analysisItemId())).orElseThrow();
             InboundValue inbound = availability.inboundOnOrBefore(
                     key, source.deliveryDate());
-            BigDecimal available = stock.available().subtract(node.safetyStock())
-                    .max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN);
+            BigDecimal available = stock.availableAfterSafety(node.safetyStock());
             BigDecimal required = node.snapshotRequiredQty();
             BigDecimal shortage = required.subtract(available)
                     .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING);
@@ -1461,6 +1564,7 @@ public class MaterialAnalysisService {
         validateActiveBorrowEndpointsAfterRefresh(analysisId);
         persistAllocationSnapshot(
                 analysisId, header.warehouseId(), sources, nodes, availability);
+        if (rootSupply != null) rootSupply.refreshRootNodes(analysisId,activeFutureCoverageByMaterial(analysisId));
         bumpFingerprint(analysisId);
     }
 
@@ -2188,14 +2292,18 @@ public class MaterialAnalysisService {
         Map<MaterialDimension, BigDecimal> externalHardCommitments = softCommittedStock(
                 analysisId, warehouseId, dimensions, HARD_COMMITMENT_STAGES);
         Map<String, String> effectiveRoutes = loadEffectiveRoutes(analysisId);
-        Set<String> delegatedMakeNodes = loadDelegatedMakeNodes(analysisId);
+        // 2026-09-05 简化：子件不再接管子树需求（delegated 清零口径废除）。
+        Set<String> delegatedMakeNodes = Set.of();
         Map<String, BigDecimal> subcontractTakeoverByNode =
                 loadSubcontractTakeoverByNode(analysisId);
         // V307 精确到货归属：先在扣除安全库存后的真实可分配池内，为原供应
         // 分摊行锁定 secured coverage；同分析兄弟产品只能看到扣除后的共享池。
         // 没有 exact 子账的历史 V298 预留仍留在共享池，维持兼容语义。
         List<ExactPegRecord> exactPegs = loadExactPegs(analysisId, warehouseId);
-        BorrowTuning exactTuning = planExactPegs(exactPegs, nodes, stockAfterSafety);
+        BorrowTuning exactTuning = planExactPegs(exactPegs, nodes, stockAfterSafety,
+                availability.usableByWarehouse())
+                .combinedWith(planFormalCoverage(
+                        formalMaterialCoverage(analysisId, warehouseId), nodes));
         // 现货层借用（调货）：存在 ACTIVE 借用记录时，先按当前库存跑一次
         // 无借用的基线投影，据此计算每笔的精确生效量 m（min(申请, 借出方
         // 基线分配, 借入方基线缺口)），再用 cap+secured 重跑主投影：
@@ -2235,7 +2343,7 @@ public class MaterialAnalysisService {
         TimePhasedPool readyByPool = new TimePhasedPool(
                 finishAllocation.remainingPool(), availability.inbound());
         for (SourceLine source : orderedSources(sources)) {
-            BigDecimal demand = source.remainingAnalysisQty();
+            BigDecimal demand = source.materialRequirementQty();
             List<BomNode> direct = directBySource.getOrDefault(
                     source.analysisItemId(), List.of());
             List<BomNode> productionGates = direct.stream()
@@ -2262,10 +2370,10 @@ public class MaterialAnalysisService {
                         updated_at=now(), updated_by=:actorId
                     WHERE id=:itemId AND analysis_id=:analysisId AND is_deleted=FALSE
                     """)
-                    .setParameter("readyStart", readyStart)
-                    .setParameter("readyFinish", readyFinish)
-                    .setParameter("readyShip", readyShip)
-                    .setParameter("readyByDate", readyByDate)
+                    .setParameter("readyStart", source.unplannedReadyQty(readyStart))
+                    .setParameter("readyFinish", source.unplannedReadyQty(readyFinish))
+                    .setParameter("readyShip", source.unplannedReadyQty(readyShip))
+                    .setParameter("readyByDate", source.unplannedReadyQty(readyByDate))
                     .setParameter("actorId", currentUser.requireId())
                     .setParameter("itemId", source.analysisItemId())
                     .setParameter("analysisId", analysisId)
@@ -2337,9 +2445,10 @@ public class MaterialAnalysisService {
     }
 
     /**
-     * Cross-analysis soft commitments: current remaining snapshots from other analyses plus
-     * every still-SUBMITTED formal draft (including this analysis). Approved plans are excluded
-     * because their formal reservations are already reflected by {@code v_stock_available}.
+     * Cross-analysis soft commitments come from other analyses' batch snapshots.
+     * Draft-plan quantities are already included in those snapshots. Formal
+     * reservations and issued quantities are netted out because neither belongs
+     * to the public pool exposed by {@code v_stock_available}.
      * V298：其它分析已收货绑定的量（owner_type='PREPLAN_ANALYSIS' 生效预留）已被
      * {@code v_stock_available} 物理扣除，其快照承诺须按绑定量净额扣除，避免重复扣减。
      */
@@ -2368,58 +2477,13 @@ public class MaterialAnalysisService {
                       ON source.id = material.analysis_item_id
                      AND source.analysis_id = material.analysis_id
                      AND source.is_deleted = FALSE
-                    WHERE analysis.warehouse_id = :warehouseId
+                    WHERE fn_warehouse_same_main(analysis.warehouse_id,:warehouseId)
                       AND analysis.id <> :analysisId
                       AND analysis.is_deleted = FALSE
                       AND analysis.status IN ('ACTIVE','PARTIALLY_PLANNED')
-                      AND source.requested_qty-source.submitted_qty-source.approved_qty > 0
                       AND material.active = TRUE AND material.depth = 1
                       AND material.hard_gate = TRUE
                       AND material.control_stage IN (:includedStages)
-                      AND material.goods_id IN (:goodsIds)
-                    GROUP BY analysis.id, material.goods_id, material.color_id, material.unit_id
-                    UNION ALL
-                    SELECT analysis.id, material.goods_id, material.color_id, material.unit_id,
-                           SUM(CASE WHEN material.calculation_mode
-                                   = 'LEGACY_CUMULATIVE_PER_UNIT'
-                               THEN fn_material_analysis_edge_required(
-                                   draft.submitted_qty,
-                                   material.per_product_qty,
-                                   'PER_UNIT', 1, TRUE)
-                               ELSE fn_material_analysis_edge_required(
-                                   draft.submitted_qty
-                                       * material.parent_per_product_qty,
-                                   material.bom_qty,
-                                   material.consumption_basis,
-                                   material.basis_output_qty,
-                                   material.allow_partial_package)
-                           END)::numeric
-                    FROM (
-                        SELECT link.id AS link_id, link.analysis_id,
-                               link.analysis_item_id, link.submitted_qty
-                        FROM production_material_analysis_plan_links link
-                        JOIN production_plans plan
-                          ON plan.id = link.plan_id
-                         AND plan.status = 0
-                         AND plan.is_deleted = FALSE
-                         AND plan.is_canceled = FALSE
-                        WHERE link.allocation_status = 'SUBMITTED'
-                    ) draft
-                    JOIN production_material_analyses analysis
-                      ON analysis.id = draft.analysis_id
-                     AND analysis.is_deleted = FALSE
-                     AND analysis.status <> 'CANCELLED'
-                    JOIN production_material_analysis_materials material
-                     ON material.analysis_id = draft.analysis_id
-                     AND material.analysis_item_id = draft.analysis_item_id
-                     AND material.active = TRUE AND material.depth = 1
-                     AND material.hard_gate = TRUE
-                     AND material.control_stage IN (:includedStages)
-                    JOIN production_material_analysis_items source
-                      ON source.id = draft.analysis_item_id
-                     AND source.analysis_id = draft.analysis_id
-                     AND source.is_deleted = FALSE
-                    WHERE analysis.warehouse_id = :warehouseId
                       AND material.goods_id IN (:goodsIds)
                     GROUP BY analysis.id, material.goods_id, material.color_id, material.unit_id
                 ),
@@ -2432,7 +2496,35 @@ public class MaterialAnalysisService {
                 netted AS (
                     SELECT c.goods_id, c.color_id, c.unit_id,
                            GREATEST(c.qty - COALESCE((
-                               SELECT SUM(CASE
+                               SELECT SUM(GREATEST(formal.qty-formal.released_qty,0))
+                               FROM stock_reservations formal
+                               JOIN production_material_demands demand
+                                 ON formal.owner_type='PRODUCTION_MATERIAL_DEMAND'
+                                 AND formal.owner_id=demand.id AND demand.is_deleted=FALSE
+                                 AND demand.status NOT IN ('RELEASED','REVERSED')
+                               JOIN production_plans plan ON plan.id=demand.plan_id
+                                 AND plan.material_analysis_id=c.claim_analysis_id
+                                 AND plan.status=1 AND plan.is_deleted=FALSE
+                                 AND plan.is_canceled=FALSE
+                               WHERE formal.is_deleted=FALSE
+                                 AND fn_warehouse_same_main(formal.warehouse_id,:warehouseId)
+                                 AND demand.goods_id=c.goods_id
+                                 AND demand.color_id IS NOT DISTINCT FROM c.color_id
+                                 AND demand.unit_id=c.unit_id
+                                 AND EXISTS (
+                                   SELECT 1 FROM production_material_analysis_materials original
+                                   WHERE original.analysis_id=c.claim_analysis_id
+                                     AND original.depth=1 AND original.active=TRUE
+                                     AND original.goods_id=demand.goods_id
+                                     AND original.color_id IS NOT DISTINCT FROM demand.color_id
+                                     AND fn_analysis_plan_material_matches(
+                                       plan.material_analysis_item_id,original.id))
+                           ),0) - COALESCE((
+                               SELECT SUM(LEAST(leaf.qty,GREATEST(
+                                   COALESCE(available.available_qty,0)+leaf.qty
+                                     -GREATEST(COALESCE(goods.min_qty,0)::numeric,0)::numeric,0)))
+                               FROM (
+                               SELECT r.warehouse_id,SUM(CASE
                                    WHEN EXISTS (
                                        SELECT 1
                                        FROM preplan_stock_entitlement_events tracked
@@ -2441,6 +2533,12 @@ public class MaterialAnalysisService {
                                        SELECT SUM(balance.effective_qty)
                                        FROM v_preplan_stock_entitlement_beneficiary_balance
                                             balance
+                                       JOIN production_material_analysis_materials eligible
+                                         ON eligible.id=balance.beneficiary_analysis_material_id
+                                        AND eligible.analysis_id=balance.beneficiary_analysis_id
+                                        AND eligible.active=TRUE AND eligible.depth=1
+                                        AND eligible.hard_gate=TRUE
+                                        AND eligible.control_stage IN (:includedStages)
                                        WHERE balance.stock_reservation_id = r.id
                                          AND balance.beneficiary_analysis_id =
                                              c.claim_analysis_id
@@ -2448,14 +2546,21 @@ public class MaterialAnalysisService {
                                    WHEN r.owner_id = c.claim_analysis_id
                                    THEN r.qty - r.consumed_qty - r.released_qty
                                    ELSE 0
-                               END)
+                               END) AS qty
                                FROM stock_reservations r
                                WHERE r.is_deleted = FALSE
                                  AND r.status = 0
                                  AND r.owner_type = 'PREPLAN_ANALYSIS'
-                                 AND r.warehouse_id = :warehouseId
+                                 AND fn_warehouse_same_main(r.warehouse_id,:warehouseId)
                                  AND r.goods_id = c.goods_id
                                  AND r.color_id IS NOT DISTINCT FROM c.color_id
+                               GROUP BY r.warehouse_id
+                               ) leaf
+                               JOIN goods ON goods.id=c.goods_id
+                               LEFT JOIN v_stock_available available
+                                 ON available.warehouse_id=leaf.warehouse_id
+                                AND available.goods_id=c.goods_id
+                                AND available.color_id IS NOT DISTINCT FROM c.color_id
                            ), 0), 0)::numeric AS qty
                     FROM commitments c
                 )
@@ -2684,9 +2789,7 @@ public class MaterialAnalysisService {
         Map<MaterialDimension, BigDecimal> result = new LinkedHashMap<>();
         safetyByDimension.forEach((dimension, safety) -> result.put(
                 dimension,
-                stock.getOrDefault(dimension, StockValue.ZERO).available()
-                        .subtract(safety).max(BigDecimal.ZERO)
-                        .setScale(4, RoundingMode.DOWN)));
+                stock.getOrDefault(dimension, StockValue.ZERO).availableAfterSafety(safety)));
         return Map.copyOf(result);
     }
 
@@ -2752,6 +2855,14 @@ public class MaterialAnalysisService {
             List<ExactPegRecord> exactPegs,
             List<BomNode> nodes,
             Map<MaterialDimension, BigDecimal> stockAfterSafety) {
+        return planExactPegs(exactPegs,nodes,stockAfterSafety,Map.of());
+    }
+
+    static BorrowTuning planExactPegs(
+            List<ExactPegRecord> exactPegs,
+            List<BomNode> nodes,
+            Map<MaterialDimension, BigDecimal> stockAfterSafety,
+            Map<WarehouseMaterialDimension,BigDecimal> usableByWarehouse) {
         if (exactPegs == null || exactPegs.isEmpty()) return BorrowTuning.NONE;
         Map<String, BigDecimal> requiredByNode = nodes.stream().collect(
                 Collectors.toMap(
@@ -2764,6 +2875,7 @@ public class MaterialAnalysisService {
                 dimension, qty.max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN)));
         Map<String, BigDecimal> secured = new LinkedHashMap<>();
         Map<MaterialDimension, BigDecimal> earmarked = new LinkedHashMap<>();
+        Map<WarehouseMaterialDimension,BigDecimal> leafCapacity = new HashMap<>(usableByWarehouse);
         for (ExactPegRecord peg : exactPegs) {
             String nodeKey = peg.analysisItemId() + "|" + peg.nodeKey();
             BigDecimal targetHeadroom = requiredByNode
@@ -2772,6 +2884,10 @@ public class MaterialAnalysisService {
                     .max(BigDecimal.ZERO);
             BigDecimal dimensionCapacity = capacity.getOrDefault(
                     peg.dimension(), BigDecimal.ZERO);
+            WarehouseMaterialDimension leaf = peg.warehouseId()==null ? null
+                    : new WarehouseMaterialDimension(peg.warehouseId(),peg.dimension());
+            if (leaf!=null) dimensionCapacity=dimensionCapacity.min(
+                    leafCapacity.getOrDefault(leaf,BigDecimal.ZERO));
             BigDecimal take = peg.effectiveQty()
                     .min(targetHeadroom)
                     .min(dimensionCapacity)
@@ -2780,9 +2896,137 @@ public class MaterialAnalysisService {
             if (take.signum() <= 0) continue;
             secured.merge(nodeKey, take, BigDecimal::add);
             earmarked.merge(peg.dimension(), take, BigDecimal::add);
-            capacity.put(peg.dimension(), dimensionCapacity.subtract(take));
+            capacity.put(peg.dimension(), capacity.get(peg.dimension()).subtract(take));
+            if (leaf!=null) leafCapacity.merge(leaf,take.negate(),BigDecimal::add);
         }
         return BorrowTuning.securedOnly(secured, earmarked);
+    }
+
+    private List<FormalMaterialCoverage> formalMaterialCoverage(
+            UUID analysisId, UUID warehouseId) {
+        // A completed MAKE output covers its parent directly. An assembled
+        // subcontract target is still waiting for external processing, so its
+        // consumed inputs must keep covering the original tree until return.
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT demand.id, material.analysis_item_id, material.node_key,
+                       SUM(GREATEST(reservation.qty-reservation.released_qty,0))::numeric,
+                       CASE WHEN source.source_type = 'MAKE_COMPONENT'
+                         THEN GREATEST(COALESCE(segment.planned_qty,plan_item.qty)
+                           - CASE WHEN segment.id IS NULL THEN COALESCE(plan_item.iqty,0)
+                               ELSE COALESCE(finished.qty,0) END,0)
+                           * COALESCE(segment.product_unit_rate,plan_item.unit_rate,1) ELSE NULL END
+                FROM production_material_demands demand
+                JOIN production_plans plan ON plan.id=demand.plan_id
+                  AND plan.material_analysis_id=:analysisId
+                  AND plan.status=1 AND plan.is_deleted=FALSE AND plan.is_canceled=FALSE
+                JOIN production_material_analysis_items source
+                  ON source.id=plan.material_analysis_item_id AND source.is_deleted=FALSE
+                JOIN production_plan_items plan_item ON plan_item.plan_id=plan.id
+                  AND plan_item.is_deleted=FALSE
+                  AND (demand.source_plan_item_id IS NULL OR plan_item.id=demand.source_plan_item_id)
+                LEFT JOIN production_execution_segments segment ON segment.id=demand.execution_segment_id
+                LEFT JOIN LATERAL (
+                  SELECT SUM(item.qty) AS qty FROM stock_document_items item
+                  JOIN stock_documents document ON document.id=item.doc_id
+                    AND document.doc_type='FINISHED_IN' AND document.status=1
+                    AND document.is_deleted=FALSE
+                  WHERE item.execution_segment_id=segment.id AND item.is_deleted=FALSE
+                ) finished ON TRUE
+                JOIN stock_reservations reservation
+                  ON reservation.owner_type='PRODUCTION_MATERIAL_DEMAND'
+                  AND reservation.owner_id=demand.id AND reservation.is_deleted=FALSE
+                  AND fn_warehouse_same_main(reservation.warehouse_id,:warehouseId)
+                JOIN production_material_analysis_materials material
+                  ON material.analysis_id=:analysisId AND material.active=TRUE
+                  AND fn_analysis_plan_material_matches(plan.material_analysis_item_id,material.id)
+                  AND material.goods_id=demand.goods_id
+                  AND material.color_id IS NOT DISTINCT FROM demand.color_id
+                  AND material.unit_id=demand.unit_id
+                WHERE demand.is_deleted=FALSE AND demand.status NOT IN ('RELEASED','REVERSED')
+                GROUP BY demand.id,material.analysis_item_id,material.node_key,material.path,
+                         source.source_type,segment.id,segment.planned_qty,segment.product_unit_rate,
+                         plan_item.qty,plan_item.iqty,plan_item.unit_rate,finished.qty
+                ORDER BY demand.id,material.path,material.node_key
+                """).setParameter("analysisId", analysisId)
+                .setParameter("warehouseId", warehouseId));
+        return rows.stream().map(row -> new FormalMaterialCoverage(
+                uuid(row[0]), uuid(row[1]), string(row[2]), decimal(row[3]),
+                row[4]==null ? null : decimal(row[4]))).toList();
+    }
+
+    private Map<String,List<BigDecimal>> plannedMaterialBatches(UUID analysisId) {
+        Map<String,List<BigDecimal>> result = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT COALESCE(parent.analysis_item_id,source.id),
+                       CASE WHEN parent.node_role='ROOT_SUPPLY' THEN NULL ELSE parent.node_key END,
+                       CASE WHEN source.source_type = 'MAKE_COMPONENT'
+                         THEN GREATEST(COALESCE(segment.planned_qty,item.qty)
+                           -COALESCE(finished.qty,item.iqty,0),0)
+                         ELSE COALESCE(segment.planned_qty,item.qty) END * COALESCE(item.unit_rate,1)
+                FROM production_plans plan
+                JOIN production_plan_items item ON item.plan_id=plan.id AND item.is_deleted=FALSE
+                JOIN production_material_analysis_items source
+                  ON source.id=plan.material_analysis_item_id AND source.is_deleted=FALSE
+                LEFT JOIN production_material_analysis_materials parent
+                  ON parent.id=source.parent_analysis_material_id
+                LEFT JOIN production_execution_segments segment
+                  ON segment.source_plan_item_id=item.id AND segment.is_deleted=FALSE
+                  AND segment.status NOT IN ('CANCELLED','REVERSED')
+                LEFT JOIN LATERAL (
+                  SELECT COALESCE(SUM(output.qty),0) AS qty
+                  FROM stock_document_items output
+                  JOIN stock_documents document ON document.id=output.doc_id
+                    AND document.doc_type='FINISHED_IN' AND document.status=1
+                    AND document.is_deleted=FALSE
+                  WHERE segment.id IS NOT NULL AND output.execution_segment_id=segment.id
+                    AND output.is_deleted=FALSE
+                ) finished ON segment.id IS NOT NULL
+                WHERE plan.material_analysis_id=:analysisId
+                  AND plan.status IN (0,1) AND plan.is_deleted=FALSE AND plan.is_canceled=FALSE
+                ORDER BY plan.created_at,plan.id,segment.segment_no
+                """).setParameter("analysisId",analysisId))) {
+            BigDecimal qty = decimal(row[2]);
+            if (qty.signum()>0) result.computeIfAbsent(
+                    uuid(row[0])+"|"+Objects.toString(row[1],""),ignored -> new ArrayList<>()).add(qty);
+        }
+        return Map.copyOf(result);
+    }
+
+    /** A formal reservation or issued material covers only its original batch. */
+    static BorrowTuning planFormalCoverage(
+            List<FormalMaterialCoverage> coverage, List<BomNode> nodes) {
+        Map<String, BomNode> byKey = nodes.stream().collect(Collectors.toMap(
+                MaterialAnalysisService::nodeAllocationKey, node -> node));
+        Map<UUID, BigDecimal> usedByDemand = new HashMap<>();
+        Map<String, BigDecimal> secured = new LinkedHashMap<>();
+        for (FormalMaterialCoverage row : coverage) {
+            String key = row.analysisItemId() + "|" + row.nodeKey();
+            BomNode node = byKey.get(key);
+            if (node==null) continue;
+            BigDecimal headroom = node.snapshotRequiredQty()
+                    .subtract(secured.getOrDefault(key, BigDecimal.ZERO)).max(BigDecimal.ZERO);
+            if (row.remainingParentOutputQty()!=null) {
+                headroom = headroom.min(node.requiredForSingleParentOutput(row.remainingParentOutputQty()));
+            }
+            BigDecimal available = row.coveredQty()
+                    .subtract(usedByDemand.getOrDefault(row.demandId(), BigDecimal.ZERO))
+                    .max(BigDecimal.ZERO);
+            BigDecimal take = available.min(headroom);
+            if (take.signum() <= 0) continue;
+            secured.merge(key, take, BigDecimal::add);
+            usedByDemand.merge(row.demandId(), take, BigDecimal::add);
+        }
+        // Formal reservations are already absent from public stock, and issued
+        // quantities are no longer in stock at all. Never debit the pool again.
+        return BorrowTuning.securedOnly(secured, Map.of());
+    }
+
+    record FormalMaterialCoverage(
+            UUID demandId, UUID analysisItemId, String nodeKey, BigDecimal coveredQty,
+            BigDecimal remainingParentOutputQty) {
+        FormalMaterialCoverage(UUID demandId, UUID analysisItemId, String nodeKey, BigDecimal coveredQty) {
+            this(demandId,analysisItemId,nodeKey,coveredQty,null);
+        }
     }
 
     /**
@@ -2977,7 +3221,11 @@ public class MaterialAnalysisService {
     record ExactPegRecord(
             UUID id, UUID beneficiaryMaterialId,
             UUID analysisItemId, String nodeKey,
-            MaterialDimension dimension, BigDecimal effectiveQty) {
+            MaterialDimension dimension, BigDecimal effectiveQty,UUID warehouseId) {
+        ExactPegRecord(UUID id,UUID beneficiaryMaterialId,UUID analysisItemId,String nodeKey,
+                       MaterialDimension dimension,BigDecimal effectiveQty) {
+            this(id,beneficiaryMaterialId,analysisItemId,nodeKey,dimension,effectiveQty,null);
+        }
     }
 
     record CrossProjection(
@@ -3019,12 +3267,6 @@ public class MaterialAnalysisService {
                 .filter(node -> node.depth() == 1)
                 .collect(Collectors.groupingBy(BomNode::analysisItemId,
                         LinkedHashMap::new, Collectors.toList()));
-        NestedDiagnosticPlan nestedDiagnostic = allocateNestedDiagnostics(
-                sources, nodes,
-                subtractCommitments(stockAfterSafety, externalHardCommitments),
-                effectiveRoutes, delegatedMakeNodes,
-                subcontractTakeoverByNode, tuning);
-        List<BomNode> adjustedNodes = nestedDiagnostic.nodes();
         StagePlan stagePlan = allocateNestedStages(
                 sources, directBySource, stockAfterSafety,
                 externalHardCommitments, tuning);
@@ -3035,10 +3277,25 @@ public class MaterialAnalysisService {
         Map<String, NodeAllocation> allocations = allocateDirectMaterials(
                 sources, directBySource, stagePlan.start().remainingPool(),
                 hardAllocations, tuning);
-        adjustedNodes.stream().filter(node -> node.depth() > 1).forEach(node ->
-                allocations.put(nodeAllocationKey(node),
-                        nestedDiagnostic.nodeAllocations().getOrDefault(
-                                nodeAllocationKey(node), NodeAllocation.ZERO)));
+        // Formal kit allocations are authoritative. Reserve their public share
+        // before diagnosing descendants, otherwise separate pools can display
+        // the same stock on a direct material and another product's child.
+        Map<String, NodeAllocation> fixedDirectAllocations = new LinkedHashMap<>();
+        nodes.stream().filter(node -> node.depth() == 1
+                        && node.hardGate() && !STAGE_REFERENCE.equals(node.controlStage()))
+                .forEach(node -> fixedDirectAllocations.put(nodeAllocationKey(node),
+                        allocations.getOrDefault(nodeAllocationKey(node), NodeAllocation.ZERO)));
+        NestedDiagnosticPlan nestedDiagnostic = allocateNestedDiagnostics(
+                sources, nodes,
+                subtractCommitments(stockAfterSafety, externalHardCommitments),
+                effectiveRoutes, delegatedMakeNodes,
+                subcontractTakeoverByNode, tuning, fixedDirectAllocations);
+        List<BomNode> adjustedNodes = nestedDiagnostic.nodes();
+        nestedDiagnostic.nodeAllocations().forEach((key, allocation) -> {
+            if (!fixedDirectAllocations.containsKey(key)) {
+                allocations.put(key, allocation);
+            }
+        });
         return new AllocationProjection(
                 nestedDiagnostic, stagePlan, Map.copyOf(hardAllocations),
                 allocations, adjustedNodes);
@@ -3107,9 +3364,32 @@ public class MaterialAnalysisService {
             Set<String> delegatedMakeNodes,
             Map<String, BigDecimal> subcontractTakeoverByNode,
             BorrowTuning tuning) {
+        return allocateNestedDiagnostics(sources, nodes, rawStock, effectiveRoutes,
+                delegatedMakeNodes, subcontractTakeoverByNode, tuning, Map.of());
+    }
+
+    private static NestedDiagnosticPlan allocateNestedDiagnostics(
+            List<SourceLine> sources,
+            List<BomNode> nodes,
+            Map<MaterialDimension, BigDecimal> rawStock,
+            Map<String, String> effectiveRoutes,
+            Set<String> delegatedMakeNodes,
+            Map<String, BigDecimal> subcontractTakeoverByNode,
+            BorrowTuning tuning,
+            Map<String, NodeAllocation> fixedDirectAllocations) {
         Map<MaterialDimension, BigDecimal> pool = new LinkedHashMap<>();
         rawStock.forEach((dimension, qty) -> pool.put(
                 dimension, qty.max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN)));
+        for (BomNode node : nodes) {
+            String key = nodeAllocationKey(node);
+            NodeAllocation fixed = fixedDirectAllocations.get(key);
+            if (fixed == null) continue;
+            BigDecimal securedUse = tuning.securedUsedMain(key).min(fixed.allocatedQty());
+            BigDecimal publicUse = fixed.allocatedQty().subtract(securedUse);
+            pool.computeIfPresent(node.dimension(), (dimension, qty) ->
+                    qty.subtract(publicUse).max(BigDecimal.ZERO));
+            tuning.consumeSecuredDiagnostic(key, securedUse);
+        }
         Map<UUID, Integer> sourceRank = new HashMap<>();
         List<SourceLine> orderedSources = orderedSources(sources);
         for (int index = 0; index < orderedSources.size(); index++) {
@@ -3121,18 +3401,23 @@ public class MaterialAnalysisService {
                         node.analysisItemId(), Integer.MAX_VALUE))
                 .thenComparingInt(BomNode::depth)
                 .thenComparing(BomNode::nodeKey);
-        List<BomNode> pending = new ArrayList<>(nodes);
+        Map<String, List<BomNode>> childrenByParent = new HashMap<>();
+        PriorityQueue<BomNode> ready = new PriorityQueue<>(allocationOrder);
+        for (BomNode node : nodes) {
+            if (node.depth() == 1) {
+                ready.add(node);
+            } else {
+                childrenByParent.computeIfAbsent(
+                        node.analysisItemId() + "|" + node.parentNodeKey(),
+                        ignored -> new ArrayList<>()).add(node);
+            }
+        }
         Map<String, BomNode> adjustedByKey = new LinkedHashMap<>();
         Map<String, NodeAllocation> allocations = new LinkedHashMap<>();
-        while (!pending.isEmpty()) {
-            BomNode node = pending.stream()
-                    .filter(candidate -> candidate.depth() == 1
-                            || allocations.containsKey(candidate.analysisItemId()
-                                    + "|" + candidate.parentNodeKey()))
-                    .min(allocationOrder)
-                    .orElseThrow(() -> conflict(
-                            "BOM 层级路径不完整，无法按父件短缺展开子件需求"));
-            pending.remove(node);
+        // Keep the existing priority order while visiting each edge once. A
+        // child enters the queue only after its own analysis item's parent.
+        while (!ready.isEmpty()) {
+            BomNode node = ready.remove();
             BigDecimal required = node.snapshotRequiredQty();
             if (node.depth() > 1) {
                 String parentKey = node.analysisItemId() + "|" + node.parentNodeKey();
@@ -3158,23 +3443,33 @@ public class MaterialAnalysisService {
             }
             BomNode adjusted = node.withSnapshotRequiredQty(required);
             String key = nodeAllocationKey(adjusted);
+            NodeAllocation fixed = fixedDirectAllocations.getOrDefault(key, NodeAllocation.ZERO);
+            BigDecimal protectedAllocation = fixed.allocatedQty();
+            BigDecimal residual = required.subtract(protectedAllocation).max(BigDecimal.ZERO);
             BigDecimal available = pool.getOrDefault(
                     adjusted.dimension(), BigDecimal.ZERO.setScale(4));
             // 借用调节：借入节点先用池外锁定量（secured），再用池中余量；
             // 借出节点受 cap 封顶，精确让出被借走的数量。
-            BigDecimal securedUse = tuning.securedHeadroomDiagnostic(key)
-                    .min(required);
-            BigDecimal allocated = required.min(securedUse.add(available));
+            BigDecimal securedUse = tuning.securedHeadroomDiagnostic(key).min(residual);
+            BigDecimal allocated = protectedAllocation.add(
+                    residual.min(securedUse.add(available)));
             BigDecimal cap = tuning.capOrNull(key);
             if (cap != null) {
                 allocated = allocated.min(cap);
             }
+            BigDecimal additionalAllocation = allocated.subtract(protectedAllocation)
+                    .max(BigDecimal.ZERO);
             pool.put(adjusted.dimension(), available.subtract(
-                    allocated.subtract(securedUse)).max(BigDecimal.ZERO));
-            tuning.consumeSecuredDiagnostic(key, allocated.min(securedUse));
+                    additionalAllocation.subtract(additionalAllocation.min(securedUse)))
+                    .max(BigDecimal.ZERO));
+            tuning.consumeSecuredDiagnostic(key, additionalAllocation.min(securedUse));
             adjustedByKey.put(key, adjusted);
             allocations.put(key, new NodeAllocation(
                     allocated, required.subtract(allocated).max(BigDecimal.ZERO)));
+            ready.addAll(childrenByParent.getOrDefault(key, List.of()));
+        }
+        if (adjustedByKey.size() != nodes.size()) {
+            throw conflict("BOM 层级路径不完整，无法按父件短缺展开子件需求");
         }
         List<BomNode> adjustedNodes = nodes.stream()
                 .map(node -> adjustedByKey.get(nodeAllocationKey(node)))
@@ -3243,7 +3538,7 @@ public class MaterialAnalysisService {
                 STAGE_SHIP, Map.of(), finish.readyByItem(), tuning);
         Map<UUID, BigDecimal> demandByItem = sources.stream().collect(
                 Collectors.toMap(SourceLine::analysisItemId,
-                        SourceLine::remainingAnalysisQty));
+                        SourceLine::materialRequirementQty));
         StageExtension start = allocateStageExtension(
                 sources, directBySource, ship.remainingPool(),
                 STAGE_START, finish.readyByItem(), demandByItem, tuning);
@@ -3278,8 +3573,13 @@ public class MaterialAnalysisService {
                     .filter(node -> includedStages.contains(node.controlStage()))
                     .sorted(Comparator.comparing(BomNode::nodeKey))
                     .toList();
-            BigDecimal ready = maxReadyExact(
-                    source.remainingAnalysisQty(), gates, pool, tuning);
+            // 子件锚点行（MAKE_COMPONENT / SUBCONTRACT_MAKE）无直接料行——齐套
+            // 与否由其生产计划的执行段判定，分析侧不预设「无门槛即全可产」。
+            boolean anchorChild = "MAKE_COMPONENT".equals(source.sourceType())
+                    || "SUBCONTRACT_MAKE".equals(source.sourceType());
+            BigDecimal ready = anchorChild
+                    ? BigDecimal.ZERO.setScale(4)
+                    : maxReadyExact(source.materialRequirementQty(), gates, pool, tuning);
             readiness.put(source.analysisItemId(), ready);
             for (BomNode node : gates) {
                 String nodeKey = nodeAllocationKey(node);
@@ -3413,7 +3713,7 @@ public class MaterialAnalysisService {
             BigDecimal base = baseByItem.getOrDefault(
                     source.analysisItemId(), BigDecimal.ZERO.setScale(4));
             BigDecimal upper = upperByItem.getOrDefault(
-                    source.analysisItemId(), source.remainingAnalysisQty());
+                    source.analysisItemId(), source.materialRequirementQty());
             BigDecimal ready = maxReadyIncrementExact(
                     base, upper, gates, pool, tuning);
             readiness.put(source.analysisItemId(), ready);
@@ -3631,7 +3931,7 @@ public class MaterialAnalysisService {
     AnalysisView detailInternal(UUID analysisId, boolean enforceAccess) {
         AnalysisHeader header = readHeader(analysisId);
         if (enforceAccess) {
-            access.requireReadable(header.makerId(), "物料分析不存在");
+            access.requireReadable(header.makerId(), "物料分析不存在",scopeForAnalysis(header));
         }
         List<SourceLine> sources = loadSourceLines(analysisId, false);
         List<MaterialRow> materialRows = loadMaterialRows(analysisId);
@@ -3644,8 +3944,10 @@ public class MaterialAnalysisService {
         Map<MaterialNodeIdentity, MaterialRow> materialRowsByNode =
                 materialRows.stream().collect(Collectors.toMap(
                         MaterialRow::nodeIdentity, row -> row));
+        // 2026-09-05 简化：不再投影「需求已转交自制子任务」——子件只做计划
+        // 锚点，物料行保持原位（进度由子件行的计划/执行段展示）。
         Map<MaterialNodeIdentity, DelegatedRequirementOwner> delegatedOwners =
-                loadDelegatedRequirementOwners(analysisId);
+                Map.of();
         Set<MaterialNodeIdentity> subcontractPreparationOwners =
                 loadSubcontractTakeoverByNode(analysisId).keySet().stream()
                         .map(key -> {
@@ -3659,15 +3961,47 @@ public class MaterialAnalysisService {
                 analysisId, header.warehouseId());
         Set<UUID> participatingWarehouseSet = Set.copyOf(
                 participatingWarehouseIds);
+        Set<UUID> operationalWarehouseIds = Set.copyOf(NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                        SELECT warehouse.id FROM warehouses warehouse
+                        WHERE warehouse.is_deleted=FALSE AND warehouse.is_accountable=TRUE
+                          AND fn_warehouse_same_main(warehouse.id,:warehouseId)
+                        """).setParameter("warehouseId",header.warehouseId()), UUID.class));
         List<WarehouseView> warehouses = warehouses(
                 header.warehouseId(), participatingWarehouseSet);
         Map<MaterialDimension, List<WarehouseBreakdown>> breakdown =
                 warehouseBreakdown(analysisId, materialRows, sharedFuture);
         Map<UUID, List<DownstreamReference>> references = downstreamReferences(analysisId);
+        if (rootSupply != null) rootSupply.addOutputReferences(analysisId,references);
         Map<UUID, ProductPlanState> productPlanStates = productPlanStates(analysisId);
+        // 行级流程阶段（表格进度/待办列唯一口径）：锚点子件的执行状态 + 行路线/缺口
+        // + 采购/委外单据链，全部在服务端一次批量推导。
+        Map<UUID, UUID> anchorChildByParentLine = anchorChildByParentLine(analysisId);
+        Map<UUID, String> childStatusByLine = new LinkedHashMap<>();
+        Map<UUID, Boolean> childZeroByLine = new LinkedHashMap<>();
+        anchorChildByParentLine.forEach((parentLine, childItem) -> {
+            ProductPlanState childState = productPlanStates.getOrDefault(
+                    childItem, ProductPlanState.NONE);
+            childStatusByLine.put(parentLine, childState.status());
+            childZeroByLine.put(parentLine, childState.zeroMaterial());
+        });
+        Map<UUID, String> routeByLine = new LinkedHashMap<>();
+        Map<UUID, BigDecimal> shortageByLine = new LinkedHashMap<>();
+        Map<UUID, BigDecimal> requiredByLine = new LinkedHashMap<>();
+        for (MaterialRow row : materialRows) {
+            routeByLine.put(row.id(), row.confirmedRoute() != null
+                    ? row.confirmedRoute() : row.suggestion());
+            shortageByLine.put(row.id(), row.shortageQty());
+            requiredByLine.put(row.id(), row.requiredQty());
+        }
+        Map<UUID, String> lineFlowStages = flowStages.lineFlowStages(
+                analysisId, routeByLine, shortageByLine, requiredByLine,
+                childStatusByLine, childZeroByLine);
         Set<UUID> productIdsWithMaterialChildren = materialRows.stream()
+                .filter(row -> row.depth() > 0)
                 .map(MaterialRow::analysisItemId)
                 .collect(Collectors.toSet());
+        if (rootSupply != null) productIdsWithMaterialChildren.addAll(rootSupply.rootProductsWithBom(analysisId));
         Map<UUID, List<BorrowRef>> borrowRefs = activeBorrowRefsByMaterial(analysisId);
         Map<UUID, CrossProjection> crossProjections =
                 crossReallocationProjections(analysisId);
@@ -3708,7 +4042,7 @@ public class MaterialAnalysisService {
                                     breakdown.getOrDefault(
                                             row.dimension(), List.of()),
                                     participatingWarehouseSet,
-                                    header.warehouseId());
+                                    operationalWarehouseIds);
                     return row.toView(
                             breakdown.getOrDefault(row.dimension(), List.of()),
                             references.getOrDefault(row.id(), List.of()),
@@ -3722,9 +4056,11 @@ public class MaterialAnalysisService {
                             claimedFuture.getOrDefault(row.id(), BigDecimal.ZERO),
                             activeFuture.getOrDefault(row.id(), BigDecimal.ZERO),
                             selectedWarehouses.totalAvailableQty(),
-                            selectedWarehouses.otherTransferableQty());
+                            selectedWarehouses.otherTransferableQty(),
+                            lineFlowStages.get(row.id()));
                 })
                 .toList();
+        Map<UUID, String> planningBlocks = planningBlockedReasons(sources);
         List<ProductView> products = sources.stream().map(source -> {
             BigDecimal remaining = source.remainingAnalysisQty();
             BigDecimal ratio = remaining.signum() == 0
@@ -3735,7 +4071,8 @@ public class MaterialAnalysisService {
                     ratio,
                     productIdsWithMaterialChildren.contains(source.analysisItemId()),
                     productPlanStates.getOrDefault(
-                            source.analysisItemId(), ProductPlanState.NONE));
+                            source.analysisItemId(), ProductPlanState.NONE),
+                    planningBlocks.get(source.analysisItemId()));
         }).toList();
         UUID fqcRecoveryAuthorizationId = fqcRecoveryAuthorizationId(analysisId);
         boolean fqcReplenishmentOnly = fqcRecoveryAuthorizationId != null;
@@ -3746,119 +4083,10 @@ public class MaterialAnalysisService {
                 header.analyzedAt(), products, materials,
                 warehouses, supplyActions(analysisId),
                 allowedActions(analysisId, header, fqcReplenishmentOnly),
-                fqcReplenishmentOnly, fqcRecoveryAuthorizationId);
+                fqcReplenishmentOnly, fqcRecoveryAuthorizationId, planningBlocks);
     }
 
-    private PlanPreview buildPlanPreview(
-            AnalysisView view,
-            List<PlanQuantity> requested,
-            List<RouteDecision> rawRoutes,
-            boolean persistFingerprint) {
-        if (requested == null || requested.isEmpty()) {
-            throw validation("至少选择一个待生成计划的产品");
-        }
-        Map<UUID, ProductView> productById = view.products().stream()
-                .collect(Collectors.toMap(ProductView::analysisLineId, value -> value));
-        Map<UUID, String> routeEdits = new HashMap<>();
-        if (rawRoutes != null && !rawRoutes.isEmpty()) {
-            throw validation("路线决定必须先通过 PUT /routes 持久确认，联合预览不接受临时路线");
-        }
-        Set<UUID> seen = new HashSet<>();
-        List<PlanPreviewItem> items = new ArrayList<>();
-        List<PlanDraftPreview> plans = new ArrayList<>();
-        List<String> fingerprintParts = new ArrayList<>(List.of(
-                "MATERIAL-ANALYSIS-PLAN-PREVIEW-V3", view.analysisId().toString(),
-                Long.toString(view.version()), view.fingerprint(),
-                Objects.toString(view.warehouseId(), "ALL")));
-        boolean allReady = true;
-        for (PlanQuantity selected : requested) {
-            if (selected == null || selected.analysisLineId() == null
-                    || selected.qty() == null || selected.qty().signum() <= 0
-                    || !seen.add(selected.analysisLineId())) {
-                throw validation("待生成计划的产品为空、重复或数量无效");
-            }
-            ProductView product = productById.get(selected.analysisLineId());
-            if (product == null) throw validation("待生成计划的产品不属于当前分析");
-            if (!product.canSchedule()) {
-                throw conflict(product.scheduleBlockedReason() == null
-                        ? "当前产品不可排产" : product.scheduleBlockedReason());
-            }
-            if (selected.qty().compareTo(product.maxSchedulableQty()) > 0) {
-                throw conflict("生成数量超过当前可排产上限");
-            }
-            List<MaterialView> direct = view.flatMaterials().stream()
-                    .filter(material -> material.analysisLineId().equals(selected.analysisLineId()))
-                    .filter(material -> material.level() == 1)
-                    .filter(MaterialAnalysisService::productionGate)
-                    .toList();
-            BigDecimal ready = authoritativeReadyForPlanPreview(
-                    selected.qty(), product.readyNowQty());
-            boolean canGenerate = canGenerateReadyBatch(
-                    selected.qty(), ready);
-            String reason = canGenerate ? null : "生产阶段硬门槛物料未完整齐套";
-            allReady &= canGenerate;
-            List<PlanMaterialPreview> planMaterials = new ArrayList<>();
-            Map<MaterialDimension, BigDecimal> previewRemaining = new LinkedHashMap<>();
-            direct.forEach(material -> previewRemaining.merge(
-                    new MaterialDimension(
-                            material.goodsId(), material.colorId(), material.unitId()),
-                    material.allocatedAvailableQty(), BigDecimal::add));
-            for (MaterialView material : direct) {
-                BigDecimal requiredQty = requiredForOutput(material, selected.qty());
-                MaterialDimension key = new MaterialDimension(
-                        material.goodsId(), material.colorId(), material.unitId());
-                BigDecimal available = previewRemaining.getOrDefault(key, BigDecimal.ZERO);
-                BigDecimal allocated = requiredQty.min(available);
-                previewRemaining.put(key, available.subtract(allocated).max(BigDecimal.ZERO));
-                planMaterials.add(new PlanMaterialPreview(
-                        material.materialLineId(), requiredQty, available, allocated,
-                        requiredQty.subtract(allocated).max(BigDecimal.ZERO),
-                        routeEdits.getOrDefault(material.materialLineId(),
-                                material.sourceConfirmed() == null
-                                        ? material.sourceSuggestion() : material.sourceConfirmed())));
-            }
-            items.add(new PlanPreviewItem(product.analysisLineId(), product.remainingQty(),
-                    ready, selected.qty(), canGenerate, reason,
-                    product.canSchedule(), product.maxSchedulableQty(),
-                    product.scheduleBlockedReason()));
-            plans.add(new PlanDraftPreview(product.analysisLineId().toString(),
-                    product.goodsId(), selected.qty(), ready,
-                    canGenerate ? "READY" : "WAITING", List.copyOf(planMaterials)));
-            List<String> itemFingerprint = new ArrayList<>(List.of(
-                    "ITEM", product.analysisLineId().toString(), decimalText(selected.qty()),
-                    decimalText(ready), Boolean.toString(canGenerate),
-                    Boolean.toString(product.canSchedule()),
-                    decimalText(product.maxSchedulableQty())));
-            String productNo = blankToNull(selected.productNo());
-            if (productNo != null) {
-                itemFingerprint.add("PRODUCT_NO");
-                itemFingerprint.add(productNo.length() + ":" + productNo);
-            }
-            fingerprintParts.add(String.join("|", itemFingerprint));
-            planMaterials.forEach(material -> fingerprintParts.add(String.join("|", "MATERIAL",
-                    material.materialLineId().toString(), decimalText(material.requiredQty()),
-                    decimalText(material.availableQty()), material.route())));
-        }
-        String previewFingerprint = PlanningPackageFingerprint.sha256(fingerprintParts);
-        if (persistFingerprint) {
-            em.createNativeQuery("""
-                    UPDATE production_material_analyses
-                    SET preview_fingerprint = :fingerprint,
-                        updated_at = now(), updated_by = :actorId
-                    WHERE id = :id
-                    """)
-                    .setParameter("fingerprint", previewFingerprint)
-                    .setParameter("actorId", currentUser.requireId())
-                    .setParameter("id", view.analysisId())
-                    .executeUpdate();
-        }
-        return new PlanPreview(view.analysisId(), view.version(), view.fingerprint(),
-                view.fingerprint(),
-                previewFingerprint, view.warehouseId(), OffsetDateTime.now(ZoneOffset.UTC),
-                allReady, List.copyOf(items), List.copyOf(plans), view.allowedActions());
-    }
-
-    static BigDecimal authoritativeReadyForPlanPreview(
+    static BigDecimal authoritativeReadyQty(
             BigDecimal selectedQty, BigDecimal persistedReadyNow) {
         return persistedReadyNow.min(selectedQty)
                 .setScale(4, RoundingMode.DOWN);
@@ -3954,6 +4182,26 @@ public class MaterialAnalysisService {
         return PlanningPackageFingerprint.sha256(parts);
     }
 
+    private FulfillmentMutationLockPlan previewMutationFootprint(
+            PreviewRequest request,List<PreviewItem> normalized,List<UUID> warehouses) {
+        UUID existing = request.analysisId();
+        if (existing==null) existing=analysisByInitialIdempotencyKey(request.idempotencyKey());
+        if (existing==null) existing=findReusableAnalysis(normalized);
+        List<UUID> sales = normalized.stream().filter(item -> SOURCE_SALES.equals(sourceType(item)))
+                .map(PreviewItem::salesOrderItemId).toList();
+        List<UUID> subcontract = new ArrayList<>();
+        for (PreviewItem item : normalized) if (SOURCE_SUBCONTRACT_PREPARATION.equals(sourceType(item))) {
+            try { subcontract.add(UUID.fromString(item.sourceRef().substring(item.sourceRef().indexOf(':')+1))); }
+            catch (IllegalArgumentException error) { throw validation("委外前置自制来源编号无效，请刷新后重试"); }
+        }
+        List<ProductionMutationFootprintPort.WarehouseDimension> roots = normalized.stream()
+                .filter(item -> item.goodsId()!=null)
+                .map(item -> new ProductionMutationFootprintPort.WarehouseDimension(
+                        request.warehouseId(),item.goodsId(),item.colorId())).toList();
+        return mutationFootprints.forPreview(sales,subcontract,roots,warehouses,
+                existing==null ? List.of() : List.of(existing));
+    }
+
     private List<PreviewItem> normalizePreviewItems(
             List<PreviewItem> raw, boolean allowSubcontractPreparation,
             UUID requestedAnalysisId) {
@@ -4002,7 +4250,7 @@ public class MaterialAnalysisService {
             if (SOURCE_SUBCONTRACT_PREPARATION.equals(source)
                     && (blankToNull(item.sourceRef()) == null
                     || !item.sourceRef().matches(
-                            "SC-PREP:[0-9a-fA-F-]{36}"))) {
+                            "SC-(?:PREP|ORDER):[0-9a-fA-F-]{36}"))) {
                 throw validation("委外前置自制来源必须绑定真实订货行 UUID");
             }
             String key = SOURCE_SALES.equals(source)
@@ -4025,6 +4273,7 @@ public class MaterialAnalysisService {
                     "委外前置自制分析只能刷新既有单一任务来源");
         }
         PreviewItem item = normalized.getFirst();
+        if(item.sourceRef().startsWith("SC-ORDER:"))return;
         subcontractPreparation.requireRefresh(
                 request.analysisId(), request.warehouseId(), item.sourceRef(),
                 item.goodsId(), item.colorId(), item.unitId(), item.requestedQty());
@@ -4041,6 +4290,7 @@ public class MaterialAnalysisService {
                       ON analysis.id = source.analysis_id
                      AND analysis.is_deleted = FALSE
                     WHERE source.is_deleted = FALSE
+                      AND NOT(source.source_type='SUBCONTRACT_PREPARATION' AND source.source_ref LIKE 'SC-ORDER:%' AND analysis.status='CANCELLED')
                       AND ((:sales = TRUE
                             AND source.source_type = 'SALES_ORDER_ITEM'
                             AND source.sales_order_item_id = :salesOrderItemId
@@ -4086,6 +4336,26 @@ public class MaterialAnalysisService {
             throw conflict("来源已有进行中的物料分析，不能用不同来源集合覆盖");
         }
         return analysisId;
+    }
+
+    private void requireDirectSubcontractSource(PreviewRequest request,PreviewItem item){
+        UUID orderItem=UUID.fromString(item.sourceRef().substring("SC-ORDER:".length()));
+        Number matches=(Number)em.createNativeQuery("""
+                SELECT count(*) FROM subcontract_order_items item JOIN subcontract_orders orders ON orders.id=item.order_id
+                JOIN goods ON goods.id=item.goods_id
+                WHERE item.id=:item AND item.application_item_id IS NULL AND item.is_deleted=FALSE
+                  AND orders.is_deleted=FALSE AND orders.status=0 AND orders.warehouse_id=:warehouse
+                  AND item.goods_id=:goods AND item.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
+                  AND goods.unit_id=:unit AND :qty>0 AND :qty<=round(item.qty*COALESCE(item.unit_rate,1),4)
+                  AND NOT EXISTS(SELECT 1 FROM subcontract_order_item_sources source WHERE source.order_item_id=item.id)
+                  AND (CAST(:analysis AS uuid) IS NULL OR EXISTS(SELECT 1 FROM production_material_analysis_items source
+                      WHERE source.analysis_id=:analysis AND source.source_ref=:ref AND source.source_type='SUBCONTRACT_PREPARATION'
+                        AND source.goods_id=:goods AND source.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
+                        AND source.unit_id=:unit AND source.requested_qty=:qty AND source.is_deleted=FALSE))
+                """).setParameter("item",orderItem).setParameter("warehouse",request.warehouseId()).setParameter("goods",item.goodsId())
+                .setParameter("color",item.colorId()).setParameter("unit",item.unitId()).setParameter("qty",item.requestedQty())
+                .setParameter("analysis",request.analysisId()).setParameter("ref",item.sourceRef()).getSingleResult();
+        if(matches.longValue()!=1)throw conflict("直接委外准备必须对应原草稿行、基本单位、仓库和真实缺口；不能改挂申请或旧准备任务");
     }
 
     private void requireReusablePayloadMatches(
@@ -4320,7 +4590,8 @@ public class MaterialAnalysisService {
                        ai.ready_now_qty, ai.ready_by_date_qty,
                        ai.ready_start_qty, ai.ready_finish_qty, ai.ready_ship_qty,
                        parent_item.id, parent_goods.name,
-                       COALESCE(so.finance_confirmed, FALSE)
+                       COALESCE(so.finance_confirmed, FALSE),
+                       ai.root_material_id, ai.root_fulfilled_qty, root_material.confirmed_route
                 FROM production_material_analysis_items ai
                 JOIN goods g ON g.id = ai.goods_id
                 JOIN units u ON u.id = ai.unit_id
@@ -4342,6 +4613,7 @@ public class MaterialAnalysisService {
                 LEFT JOIN production_material_analysis_items parent_item
                   ON parent_item.id = parent_material.analysis_item_id
                 LEFT JOIN goods parent_goods ON parent_goods.id = parent_item.goods_id
+                LEFT JOIN production_material_analysis_materials root_material ON root_material.id=ai.root_material_id
                 WHERE ai.analysis_id = :id AND ai.is_deleted = FALSE
                 ORDER BY ai.line_priority, ai.delivery_date NULLS LAST, ai.id
                 """).setParameter("id", analysisId));
@@ -4349,33 +4621,69 @@ public class MaterialAnalysisService {
     }
 
     private void validateSourceCapacity(List<SourceLine> sources) {
-        for (SourceLine source : sources) {
-            if (!SOURCE_SALES.equals(source.sourceType())) continue;
-            if (source.orderStatus() == null || source.orderStatus() != 1
-                    || source.orderStopped() || source.orderClosed()
-                    || source.orderDeleted() || source.orderItemDeleted()) {
-                throw conflict("销售订单未审核、已中止、已关闭或已删除");
-            }
-            if (!source.orderFinanceConfirmed()) {
-                // V294 纵深防御：创建入口已按 finance_confirmed 准入且确认单调不可逆，
-                // 刷新路径复核同一闸门，防止未来出现反确认能力后老分析继续供给计划。
-                throw conflict("销售订单未通过财务确认，暂不能纳入物料分析");
-            }
-            BigDecimal outstanding = source.salesQty().subtract(source.shippedQty())
-                    .add(source.returnedQty()).subtract(source.flagQty());
-            BigDecimal unfinishedApproved = source.plannedQty()
-                    .subtract(source.producedQty()).max(BigDecimal.ZERO);
-            BigDecimal available = outstanding.subtract(source.reservedQty())
-                    .subtract(unfinishedApproved).subtract(source.activeDraftQty())
-                    .add(source.submittedQty()).add(source.approvedQty());
-            if (available.signum() < 0) throw conflict("销售订单行剩余可排数量为负，请先核对累计量");
-            if (source.remainingAnalysisQty().compareTo(available) > 0) {
-                throw conflict("物料分析剩余需求超过销售订单剩余可排数量");
-            }
+        requirePlanningSources(sources, sources.stream()
+                .map(SourceLine::analysisItemId).collect(Collectors.toSet()));
+    }
+
+    void requirePlanningSources(UUID analysisId, Set<UUID> selectedItemIds) {
+        requirePlanningSources(loadSourceLines(analysisId, false), selectedItemIds);
+    }
+
+    private static void requirePlanningSources(
+            List<SourceLine> sources, Set<UUID> selectedItemIds) {
+        Set<UUID> known = sources.stream().map(SourceLine::analysisItemId)
+                .collect(Collectors.toSet());
+        if (selectedItemIds.isEmpty() || !known.containsAll(selectedItemIds)) {
+            throw conflict("待安排产品已变化，请刷新后重试");
+        }
+        Map<UUID, String> reasons = planningBlockedReasons(sources);
+        for (UUID id : selectedItemIds.stream().sorted().toList()) {
+            String reason = reasons.get(id);
+            if (reason != null) throw conflict(reason);
         }
     }
 
+    /** Resolve each source once, including nested make anchors, without recursive calls. */
+    static Map<UUID, String> planningBlockedReasons(List<SourceLine> sources) {
+        Map<UUID, SourceLine> byId = sources.stream().collect(Collectors.toMap(
+                SourceLine::analysisItemId, source -> source));
+        Map<UUID, String> blocked = new LinkedHashMap<>();
+        Set<UUID> resolved = new HashSet<>();
+        for (SourceLine start : sources) {
+            if (resolved.contains(start.analysisItemId())) continue;
+            Set<UUID> path = new LinkedHashSet<>();
+            SourceLine current = start;
+            String reason;
+            while (true) {
+                UUID id = current.analysisItemId();
+                if (resolved.contains(id)) {
+                    reason = blocked.get(id);
+                    break;
+                }
+                if (!path.add(id)) {
+                    reason = "产品来源关联异常，请先核对父子关系";
+                    break;
+                }
+                reason = current.planningBlockedReason();
+                if (reason != null || current.parentAnalysisLineId() == null) break;
+                current = byId.get(current.parentAnalysisLineId());
+                if (current == null) {
+                    reason = "产品来源已变化，请先核对对应的上层产品";
+                    break;
+                }
+            }
+            for (UUID id : path) {
+                resolved.add(id);
+                if (reason != null) blocked.put(id, reason);
+            }
+        }
+        return Map.copyOf(blocked);
+    }
+
     private List<BomNode> loadBomTree(SourceLine source) {
+        // An outsourced root still needs its original BOM for in-house preparation.
+        // Its SUBCONTRACT_MAKE item is only a plan anchor and never duplicates that tree.
+        if ("BUY".equals(source.rootRoute())) return List.of();
         validateBomGraph(source.goodsId(), source.unitRate());
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 WITH RECURSIVE exp AS (
@@ -4467,7 +4775,7 @@ public class MaterialAnalysisService {
             String parentNodeKey = string(row[7]);
             BigDecimal parentOutputQty;
             if (depth == 1) {
-                parentOutputQty = source.remainingAnalysisQty().multiply(source.unitRate());
+                parentOutputQty = source.materialRequirementQty().multiply(source.unitRate());
             } else {
                 BomNode parent = byNodeKey.get(parentNodeKey);
                 if (parent == null) {
@@ -4608,7 +4916,7 @@ public class MaterialAnalysisService {
                 ) own ON TRUE
                 WHERE v.goods_id IN (:goodsIds)
                   AND w.is_deleted = FALSE AND w.is_accountable = TRUE
-                  AND (CAST(:warehouseId AS uuid) IS NULL OR v.warehouse_id = CAST(:warehouseId AS uuid))
+                  AND (CAST(:warehouseId AS uuid) IS NULL OR fn_warehouse_same_main(v.warehouse_id,CAST(:warehouseId AS uuid)))
                 ORDER BY v.warehouse_id, v.goods_id, v.color_id NULLS FIRST
                 """)
                 .setParameter("goodsIds", goodsIds)
@@ -4617,6 +4925,9 @@ public class MaterialAnalysisService {
                 .setParameter("warehouseId", warehouseId));
         Map<MaterialDimension, StockValue> stock = new LinkedHashMap<>();
         Map<MaterialDimension, BigDecimal> publicAvailable = new LinkedHashMap<>();
+        Map<MaterialDimension,BigDecimal> safetyByDimension = new HashMap<>();
+        nodes.forEach(node -> safetyByDimension.merge(node.dimension(),node.safetyStock(),BigDecimal::max));
+        Map<WarehouseMaterialDimension,BigDecimal> usableByWarehouse = new LinkedHashMap<>();
         Map<StockIdentity, MaterialDimension> dimensionsByStock = nodes.stream()
                 .collect(Collectors.toMap(
                         node -> new StockIdentity(node.goodsId(), node.colorId()),
@@ -4631,8 +4942,11 @@ public class MaterialAnalysisService {
             BigDecimal ownReserved = decimal(row[8]);
             BigDecimal publicQty = decimal(row[7]).max(BigDecimal.ZERO);
             BigDecimal reserved = decimal(row[6]).subtract(ownReserved).max(BigDecimal.ZERO);
+            BigDecimal usable=availableIncludingOwnAfterSafety(publicQty,ownReserved,
+                    safetyByDimension.getOrDefault(dimension,BigDecimal.ZERO));
+            usableByWarehouse.put(new WarehouseMaterialDimension(uuid(row[0]),dimension),usable);
             stock.merge(dimension, new StockValue(decimal(row[5]), reserved,
-                    publicQty.add(ownReserved)),
+                    usable,true),
                     StockValue::add);
             publicAvailable.merge(dimension, publicQty, BigDecimal::add);
         }
@@ -4727,7 +5041,7 @@ public class MaterialAnalysisService {
                       AND i.is_deleted = FALSE
                       AND COALESCE(i.deliver_date,o.deliver_date) IS NOT NULL
                       AND (CAST(:warehouseId AS uuid) IS NULL
-                           OR cap.warehouse_id = CAST(:warehouseId AS uuid))
+                           OR fn_warehouse_same_main(cap.warehouse_id,CAST(:warehouseId AS uuid)))
                     UNION ALL
                     SELECT cap.external_document_type, cap.external_item_id,
                            cap.goods_id, cap.color_id, cap.unit_id,
@@ -4756,7 +5070,7 @@ public class MaterialAnalysisService {
                       AND i.is_deleted = FALSE
                       AND COALESCE(i.deliver_date,o.deliver_date) IS NOT NULL
                       AND (CAST(:warehouseId AS uuid) IS NULL
-                           OR cap.warehouse_id = CAST(:warehouseId AS uuid))
+                           OR fn_warehouse_same_main(cap.warehouse_id,CAST(:warehouseId AS uuid)))
                     UNION ALL
                     SELECT cap.external_document_type, cap.external_item_id,
                            cap.goods_id, cap.color_id, cap.unit_id,
@@ -4843,7 +5157,7 @@ public class MaterialAnalysisService {
                       AND COALESCE(order_item.deliver_date,
                                    order_header.deliver_date) IS NOT NULL
                       AND (:warehouseId IS NULL
-                           OR source_action.warehouse_id = :warehouseId)
+                           OR fn_warehouse_same_main(source_action.warehouse_id,:warehouseId))
                     UNION ALL
                     SELECT claim.id, mapped.goods_id,
                            mapped.color_id, mapped.unit_id,
@@ -4890,7 +5204,7 @@ public class MaterialAnalysisService {
                       AND COALESCE(order_item.deliver_date,
                                    order_header.deliver_date) IS NOT NULL
                       AND (:warehouseId IS NULL
-                           OR source_action.warehouse_id = :warehouseId)
+                           OR fn_warehouse_same_main(source_action.warehouse_id,:warehouseId))
                     UNION ALL
                     SELECT claim.id, mapped.goods_id,
                            mapped.color_id, mapped.unit_id,
@@ -4976,7 +5290,7 @@ public class MaterialAnalysisService {
         List<InboundLot> demandUsableInbound =
                 netFutureSupplyAfterSafety(inbound, safetyGaps);
         return new AvailabilitySnapshot(
-                Map.copyOf(stock), List.copyOf(demandUsableInbound));
+                Map.copyOf(stock), List.copyOf(demandUsableInbound),Map.copyOf(usableByWarehouse));
     }
 
     /** Earliest future supply restores public safety stock before demand ETA. */
@@ -5040,9 +5354,25 @@ public class MaterialAnalysisService {
                 .map(MaterialRow::from).toList();
     }
 
+    /** 物料行 → 其计划锚点子件行（MAKE_COMPONENT / SUBCONTRACT_MAKE）。 */
+    private Map<UUID, UUID> anchorChildByParentLine(UUID analysisId) {
+        Map<UUID, UUID> result = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT item.parent_analysis_material_id, item.id
+                FROM production_material_analysis_items item
+                WHERE item.analysis_id = :analysisId
+                  AND item.is_deleted = FALSE
+                  AND item.source_type IN ('MAKE_COMPONENT', 'SUBCONTRACT_MAKE')
+                  AND item.parent_analysis_material_id IS NOT NULL
+                ORDER BY item.parent_analysis_material_id, item.created_at, item.id
+                """).setParameter("analysisId", analysisId))) {
+            result.putIfAbsent((UUID) row[0], (UUID) row[1]);
+        }
+        return result;
+    }
+
     /** Real plan/execution projection shown beside MAKE node tasks. */
-    private Map<UUID, ProductPlanState> productPlanStates(UUID analysisId) {
-        Map<UUID, ProductPlanState> result = new LinkedHashMap<>();
+    private Map<UUID, ProductPlanState> productPlanStates(UUID analysisId) {        Map<UUID, ProductPlanState> result = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 WITH active_links AS (
                     SELECT link.analysis_item_id, link.plan_id,
@@ -5090,7 +5420,13 @@ public class MaterialAnalysisService {
                            COALESCE(BOOL_OR(segment.status = 'READY'), FALSE)
                              AS has_ready,
                            COALESCE(BOOL_OR(segment.status = 'WAITING'), FALSE)
-                             AS has_waiting
+                             AS has_waiting,
+                           COALESCE(BOOL_OR(
+                               segment.material_requirement_mode = 'ZERO_MATERIAL'),
+                               FALSE)
+                             AS has_zero_segment,
+                           MIN(NULLIF(workshop.name, '')) AS workshop_name,
+                           MIN(NULLIF(responsible.full_name, '')) AS responsible_name
                     FROM plan_ids ids
                     LEFT JOIN production_plan_items plan_item
                       ON plan_item.plan_id = ids.plan_id
@@ -5099,6 +5435,30 @@ public class MaterialAnalysisService {
                       ON segment.source_plan_item_id = plan_item.id
                      AND segment.is_deleted = FALSE
                      AND segment.status NOT IN ('CANCELLED','REVERSED')
+                    LEFT JOIN departments workshop
+                      ON workshop.id = segment.workshop_department_id
+                    LEFT JOIN employees responsible
+                      ON responsible.id = segment.responsible_employee_id
+                    GROUP BY ids.plan_id
+                ),
+                report_rollup AS (
+                    SELECT ids.plan_id,
+                           COALESCE(SUM(report_item.qty), 0) AS reported_qty
+                    FROM plan_ids ids
+                    LEFT JOIN production_plan_items plan_item
+                      ON plan_item.plan_id = ids.plan_id
+                     AND plan_item.is_deleted = FALSE
+                    LEFT JOIN production_execution_segments segment
+                      ON segment.source_plan_item_id = plan_item.id
+                     AND segment.is_deleted = FALSE
+                     AND segment.status NOT IN ('CANCELLED','REVERSED')
+                    LEFT JOIN production_daily_report_items report_item
+                      ON report_item.execution_segment_id = segment.id
+                     AND report_item.is_deleted = FALSE
+                    LEFT JOIN production_daily_reports report
+                      ON report.id = report_item.report_id
+                     AND report.is_deleted = FALSE
+                     AND report.status = 1
                     GROUP BY ids.plan_id
                 )
                 SELECT link.analysis_item_id,
@@ -5125,7 +5485,17 @@ public class MaterialAnalysisService {
                          AS execution_planned_qty,
                        COALESCE(SUM(item_rollup.inbound_qty)
                            FILTER (WHERE link.approved AND plan.status = 1),0)
-                         AS execution_inbound_qty
+                         AS execution_inbound_qty,
+                       COALESCE(SUM(report_rollup.reported_qty)
+                           FILTER (WHERE link.approved AND plan.status = 1),0)
+                         AS execution_reported_qty,
+                       COALESCE(BOOL_OR(segment_rollup.has_zero_segment), FALSE)
+                         AS execution_zero_material,
+                       COALESCE(MIN(NULLIF(segment_rollup.workshop_name, '')), '')
+                         AS execution_workshop_name,
+                       COALESCE(
+                           MIN(NULLIF(segment_rollup.responsible_name, '')), '')
+                         AS execution_responsible_name
                 FROM active_links link
                 JOIN production_plans plan
                   ON plan.id = link.plan_id
@@ -5133,6 +5503,8 @@ public class MaterialAnalysisService {
                   ON item_rollup.plan_id = link.plan_id
                 JOIN segment_rollup
                   ON segment_rollup.plan_id = link.plan_id
+                JOIN report_rollup
+                  ON report_rollup.plan_id = link.plan_id
                 GROUP BY link.analysis_item_id
                 ORDER BY link.analysis_item_id
                 """).setParameter("analysisId", analysisId))) {
@@ -5141,7 +5513,9 @@ public class MaterialAnalysisService {
             result.put(uuid(row[0]), new ProductPlanState(
                     string(row[3]), uuid(row[1]), string(row[2]),
                     plannedQty, inboundQty,
-                    planExecutionProgressRatio(plannedQty, inboundQty)));
+                    planExecutionProgressRatio(plannedQty, inboundQty),
+                    decimal(row[6]), Boolean.TRUE.equals(row[7]),
+                    string(row[8]), string(row[9])));
         }
         return Map.copyOf(result);
     }
@@ -5190,7 +5564,7 @@ public class MaterialAnalysisService {
                 LEFT JOIN subcontract_applications subcontract_application
                   ON source_state.route = 'SUBCONTRACT'
                  AND subcontract_application.id = source_state.external_document_id
-                WHERE source_state.warehouse_id = :warehouseId
+                WHERE fn_warehouse_same_main(source_state.warehouse_id,:warehouseId)
                   AND source_state.goods_id IN (:goodsIds)
                   AND source_state.approved_open_qty > 0
                 ORDER BY source_state.warehouse_id, source_state.goods_id,
@@ -5266,13 +5640,24 @@ public class MaterialAnalysisService {
                 ), coverage AS (
                     SELECT allocation.analysis_material_id,
                            GREATEST(allocation.allocated_qty
-                             - fn_preplan_allocation_effective_exact_qty(
-                                 allocation.id),0)::numeric AS qty
+                             - fn_preplan_allocation_effective_exact_qty(allocation.id)
+                             - COALESCE((SELECT SUM(CASE WHEN output.event_kind='FULFILL'
+                                      THEN output.qty_base ELSE -output.qty_base END)
+                                 FROM preplan_root_output_events output
+                                 JOIN preplan_analysis_stock_exact_pegs exact
+                                   ON exact.stock_reservation_id=output.source_reservation_id
+                                 WHERE exact.supply_action_allocation_id=allocation.id),0),0)::numeric AS qty
                     FROM preplan_supply_action_allocations allocation
                     JOIN preplan_supply_actions action
                       ON action.id = allocation.action_id
                     WHERE action.analysis_id = :analysisId
                       AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
+                      AND action.external_document_type IS DISTINCT FROM 'SUBCONTRACT_MAKE_TASK'
+                    UNION ALL
+                    SELECT task.analysis_material_id,
+                           GREATEST(task.required_qty-task.notified_qty,0)::numeric
+                    FROM preplan_subcontract_make_tasks task
+                    WHERE task.analysis_id=:analysisId AND task.status='ACTIVE'
                     UNION ALL
                     SELECT allocation.analysis_material_id,
                            LEAST(allocation.allocated_qty,
@@ -5415,7 +5800,7 @@ public class MaterialAnalysisService {
                  AND material.analysis_id = balance.beneficiary_analysis_id
                  AND material.active = TRUE
                 WHERE balance.beneficiary_analysis_id = :analysisId
-                  AND reservation.warehouse_id = :warehouseId
+                  AND fn_warehouse_same_main(reservation.warehouse_id,:warehouseId)
                 GROUP BY balance.beneficiary_analysis_material_id
                 ORDER BY balance.beneficiary_analysis_material_id
                 """)
@@ -5630,6 +6015,14 @@ public class MaterialAnalysisService {
             List<WarehouseBreakdown> breakdown,
             Set<UUID> selectedWarehouseIds,
             UUID primaryWarehouseId) {
+        return selectedWarehouseSummary(breakdown, selectedWarehouseIds,
+                primaryWarehouseId == null ? Set.of() : Set.of(primaryWarehouseId));
+    }
+
+    static WarehouseSelectionSummary selectedWarehouseSummary(
+            List<WarehouseBreakdown> breakdown,
+            Set<UUID> selectedWarehouseIds,
+            Set<UUID> operationalWarehouseIds) {
         BigDecimal total = BigDecimal.ZERO;
         BigDecimal other = BigDecimal.ZERO;
         for (WarehouseBreakdown warehouse : breakdown) {
@@ -5637,7 +6030,7 @@ public class MaterialAnalysisService {
             BigDecimal available = warehouse.availableQty() == null
                     ? BigDecimal.ZERO : warehouse.availableQty().max(BigDecimal.ZERO);
             total = total.add(available);
-            if (!Objects.equals(primaryWarehouseId, warehouse.warehouseId())) {
+            if (!operationalWarehouseIds.contains(warehouse.warehouseId())) {
                 other = other.add(available);
             }
         }
@@ -5665,13 +6058,14 @@ public class MaterialAnalysisService {
         if (fqcReplenishmentOnly) {
             return List.of("VIEW", "FQC_REPLENISHMENT_CONFIRM");
         }
-        if (!List.of(STATUS_ACTIVE, STATUS_PARTIAL).contains(header.status())) {
-            return List.of("VIEW");
-        }
-        if (!access.canWrite(header.makerId(), access.scope())) {
-            return List.of("VIEW");
-        }
+        if (!access.canWrite(header.makerId(), scopeForAnalysis(header))) return List.of("VIEW");
         List<String> result = new ArrayList<>(List.of("VIEW"));
+        if (!"CANCELLED".equals(header.status()) && rootSupply != null
+                && access.hasAuthority("production_material_analysis:notify")
+                && rootSupply.hasReversibleExistingOutput(analysisId)) {
+            result.add("ROOT_OUTPUT_REVOKE");
+        }
+        if (!List.of(STATUS_ACTIVE, STATUS_PARTIAL).contains(header.status())) return List.copyOf(result);
         if (access.hasAuthority("production_material_analysis:refresh")) {
             result.add("REFRESH");
         }
@@ -5681,10 +6075,17 @@ public class MaterialAnalysisService {
         if (access.hasAuthority("production_material_analysis:notify")) {
             result.add("NOTIFY_SUPPLY");
             Number retractable = (Number) em.createNativeQuery("""
-                    SELECT COUNT(*) FROM preplan_supply_actions
+                    SELECT COUNT(*) FROM preplan_supply_actions action
                     WHERE analysis_id = :analysisId
                       AND operation_type = 'SUPPLY'
-                      AND status IN ('OPEN','CREATED','IN_PROGRESS')
+                      AND (status IN ('OPEN','CREATED','IN_PROGRESS')
+                        OR (status='DONE' AND external_document_type IN
+                          ('SUBCONTRACT_MAKE_TASK','SUBCONTRACT_APPLICATION'))
+                        OR (status='CANCELLED' AND external_document_type='SUBCONTRACT_APPLICATION'
+                          AND EXISTS (SELECT 1 FROM preplan_subcontract_make_task_batches batch
+                            WHERE batch.application_id=action.external_document_id
+                              AND NOT EXISTS (SELECT 1 FROM preplan_subcontract_make_batch_reversals reversal
+                                              WHERE reversal.batch_id=batch.id))))
                     """).setParameter("analysisId", analysisId).getSingleResult();
             if (retractable.longValue() > 0) result.add("CANCEL_ACTION");
         }
@@ -5860,7 +6261,12 @@ public class MaterialAnalysisService {
                 SELECT allocation.analysis_material_id, action.id, action.route,
                        action.status, action.external_document_type,
                        action.external_document_id, action.external_document_no,
-                       allocation.allocated_qty
+                       allocation.allocated_qty,
+                       action.status='CANCELLED' AND action.external_document_type='SUBCONTRACT_APPLICATION'
+                         AND EXISTS (SELECT 1 FROM preplan_subcontract_make_task_batches batch
+                           WHERE batch.allocation_id=allocation.id
+                             AND NOT EXISTS (SELECT 1 FROM preplan_subcontract_make_batch_reversals reversal
+                                             WHERE reversal.batch_id=batch.id))
                 FROM preplan_supply_action_allocations allocation
                 JOIN preplan_supply_actions action ON action.id = allocation.action_id
                 WHERE action.analysis_id = :id
@@ -5869,7 +6275,8 @@ public class MaterialAnalysisService {
         for (Object[] row : rows) {
             result.computeIfAbsent(uuid(row[0]), ignored -> new ArrayList<>()).add(
                     new DownstreamReference(uuid(row[1]), string(row[2]), string(row[3]),
-                            string(row[4]), uuid(row[5]), string(row[6]), decimal(row[7])));
+                            string(row[4]), uuid(row[5]), string(row[6]), decimal(row[7]),
+                            row.length>8 && Boolean.TRUE.equals(row[8])));
         }
         return result;
     }
@@ -5951,6 +6358,7 @@ public class MaterialAnalysisService {
     }
 
     private SourceMaster manualSourceMaster(UUID goodsId, UUID colorId, UUID unitId) {
+        com.uten.imp.common.concurrency.GoodsQuantityBasisLocks.lockUnused(em, java.util.Collections.singleton(goodsId));
         Object[] row = oneRow(em.createNativeQuery("""
                 SELECT g.id, :colorId, u.id,
                        g.unit_id AS base_unit_id
@@ -5967,7 +6375,16 @@ public class MaterialAnalysisService {
 
     private AnalysisHeader readHeader(UUID analysisId) {
         Object[] row = oneRow(em.createNativeQuery("""
-                SELECT id, warehouse_id, status, version, fingerprint,
+                SELECT id, warehouse_id,
+                       CASE WHEN status='COMPLETED' AND EXISTS (
+                         SELECT 1 FROM production_plans plan
+                         JOIN production_plan_items item ON item.plan_id=plan.id
+                         WHERE plan.material_analysis_id=production_material_analyses.id
+                           AND plan.is_deleted=FALSE AND plan.is_canceled=FALSE
+                           AND plan.status IN (0,1) AND item.is_deleted=FALSE
+                           AND item.qty>COALESCE(item.iqty,0))
+                         THEN 'PARTIALLY_PLANNED' ELSE status END,
+                       version, fingerprint,
                        analyzed_at, maker_id, is_deleted
                 FROM production_material_analyses WHERE id = :id
                 """).setParameter("id", analysisId), "物料分析不存在");
@@ -6074,6 +6491,14 @@ public class MaterialAnalysisService {
             case "委外" -> "SUBCONTRACT";
             default -> "REVIEW";
         };
+    }
+
+    static String normalizeRouteReason(String raw) {
+        String reason = blankToNull(raw);
+        if (reason != null && reason.length() > 1000) {
+            throw validation("路线原因最多 1000 个字符");
+        }
+        return reason;
     }
 
     static String normalizeRoute(String raw) {
@@ -6307,16 +6732,26 @@ public class MaterialAnalysisService {
 
     record NestedDiagnosticPlan(
             List<BomNode> nodes,
-            Map<String, NodeAllocation> nodeAllocations) {
-        boolean hasUncoveredDirectChild(BomNode parent) {
-            return nodes.stream()
-                    .filter(node -> node.analysisItemId().equals(parent.analysisItemId()))
-                    .filter(node -> Objects.equals(node.parentNodeKey(), parent.nodeKey()))
+            Map<String, NodeAllocation> nodeAllocations,
+            Set<MaterialNodeIdentity> parentsWithUncoveredChildren) {
+        NestedDiagnosticPlan(
+                List<BomNode> nodes,
+                Map<String, NodeAllocation> nodeAllocations) {
+            this(nodes, nodeAllocations, nodes.stream()
+                    .filter(node -> node.parentNodeKey() != null)
                     .filter(node -> node.hardGate()
                             && !STAGE_REFERENCE.equals(node.controlStage()))
-                    .map(node -> nodeAllocations.getOrDefault(
-                            nodeAllocationKey(node), NodeAllocation.ZERO))
-                    .anyMatch(allocation -> allocation.shortageQty().signum() > 0);
+                    .filter(node -> nodeAllocations.getOrDefault(
+                            nodeAllocationKey(node), NodeAllocation.ZERO)
+                            .shortageQty().signum() > 0)
+                    .map(node -> new MaterialNodeIdentity(
+                            node.analysisItemId(), node.parentNodeKey()))
+                    .collect(Collectors.toUnmodifiableSet()));
+        }
+
+        boolean hasUncoveredDirectChild(BomNode parent) {
+            return parentsWithUncoveredChildren.contains(
+                    new MaterialNodeIdentity(parent.analysisItemId(), parent.nodeKey()));
         }
     }
 
@@ -6454,7 +6889,29 @@ public class MaterialAnalysisService {
             BigDecimal readyNowQty, BigDecimal readyByDateQty,
             BigDecimal readyStartQty, BigDecimal readyFinishQty,
             BigDecimal readyShipQty, UUID parentAnalysisLineId,
+            String parentGoodsName, boolean orderFinanceConfirmed,
+            UUID rootMaterialLineId, BigDecimal rootFulfilledQty, String rootRoute) {
+        SourceLine(
+            UUID analysisItemId, String sourceType, UUID salesOrderItemId,
+            UUID salesOrderId, String salesOrderNo, LocalDate orderDate,
+            LocalDate deliveryDate, String clientName,
+            UUID goodsId, String goodsCode, String goodsName, String spec,
+            UUID colorId, String colorName, UUID unitId, String unitName,
+            BigDecimal unitRate, BigDecimal requestedQty, BigDecimal submittedQty,
+            BigDecimal approvedQty,
+            BigDecimal salesQty, BigDecimal shippedQty, BigDecimal returnedQty,
+            BigDecimal flagQty, BigDecimal reservedQty, BigDecimal plannedQty,
+            BigDecimal producedQty, BigDecimal activeDraftQty,
+            Short orderStatus, boolean orderStopped, boolean orderClosed,
+            boolean orderDeleted, boolean orderItemDeleted,
+            String sourceRef, String sourceReason, int allocationPriority,
+            BigDecimal readyNowQty, BigDecimal readyByDateQty,
+            BigDecimal readyStartQty, BigDecimal readyFinishQty,
+            BigDecimal readyShipQty, UUID parentAnalysisLineId,
             String parentGoodsName, boolean orderFinanceConfirmed) {
+            this(analysisItemId, sourceType, salesOrderItemId, salesOrderId, salesOrderNo, orderDate, deliveryDate, clientName, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, unitRate, requestedQty, submittedQty, approvedQty, salesQty, shippedQty, returnedQty, flagQty, reservedQty, plannedQty, producedQty, activeDraftQty, orderStatus, orderStopped, orderClosed, orderDeleted, orderItemDeleted, sourceRef, sourceReason, allocationPriority, readyNowQty, readyByDateQty, readyStartQty, readyFinishQty, readyShipQty, parentAnalysisLineId, parentGoodsName, orderFinanceConfirmed, null, BigDecimal.ZERO, null);
+        }
+
 
         static SourceLine from(Object[] row) {
             return new SourceLine(uuid(row[0]), string(row[1]), uuid(row[2]), uuid(row[3]),
@@ -6471,20 +6928,72 @@ public class MaterialAnalysisService {
                     decimal(row[36]), decimal(row[37]), decimal(row[38]),
                     decimal(row[39]), decimal(row[40]),
                     uuid(row[41]), string(row[42]),
-                    Boolean.TRUE.equals(row[43]));
+                    Boolean.TRUE.equals(row[43]),
+                    row.length > 44 ? uuid(row[44]) : null,
+                    row.length > 45 ? decimal(row[45]) : BigDecimal.ZERO,
+                    row.length > 46 ? string(row[46]) : null);
         }
 
         BigDecimal remainingAnalysisQty() {
-            return requestedQty.subtract(submittedQty).subtract(approvedQty)
+            return requestedQty.subtract(submittedQty).subtract(approvedQty).subtract(rootFulfilledQty)
                     .max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN);
+        }
+
+        String planningBlockedReason() {
+            if (!SOURCE_SALES.equals(sourceType)) return null;
+            if (orderStatus == null || orderStatus != 1 || orderStopped
+                    || orderClosed || orderDeleted || orderItemDeleted) {
+                return "销售订单未审核、已中止、已关闭或已删除，不能新增安排";
+            }
+            if (!orderFinanceConfirmed) {
+                return "销售订单等待财务确认，已有任务进度照常更新，暂不能新增安排";
+            }
+            BigDecimal outstanding = salesQty.subtract(shippedQty)
+                    .add(returnedQty).subtract(flagQty);
+            BigDecimal unfinishedApproved = plannedQty.subtract(producedQty)
+                    .max(BigDecimal.ZERO);
+            BigDecimal available = outstanding.subtract(reservedQty)
+                    .subtract(unfinishedApproved).subtract(activeDraftQty)
+                    .add(submittedQty).add(approvedQty);
+            if (available.signum() < 0) {
+                return "销售订单剩余可排数量为负，请先核对累计数量";
+            }
+            if (remainingAnalysisQty().compareTo(available) > 0) {
+                return "销售订单数量已减少，请先调整物料分析中的待安排数量";
+            }
+            return null;
+        }
+
+        /** Plan issuance does not fulfill the batch's material requirement. */
+        BigDecimal materialRequirementQty() {
+            return requestedQty.subtract(rootFulfilledQty)
+                    .max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN);
+        }
+
+        BigDecimal unplannedReadyQty(BigDecimal batchReadyQty) {
+            return batchReadyQty.subtract(submittedQty).subtract(approvedQty)
+                    .max(BigDecimal.ZERO).min(remainingAnalysisQty())
+                    .setScale(4, RoundingMode.DOWN);
         }
 
         ProductView toView(
                 BigDecimal ratio,
                 boolean hasProductionMaterialChildren,
                 ProductPlanState planState) {
+            return toView(ratio, hasProductionMaterialChildren, planState,
+                    planningBlockedReason());
+        }
+
+        ProductView toView(BigDecimal ratio, boolean hasProductionMaterialChildren,
+                ProductPlanState planState, String planningBlockedReason) {
             BigDecimal remaining = remainingAnalysisQty();
-            boolean canSchedule = remaining.signum() > 0;
+            boolean externalRoot = rootRoute != null && !"MAKE".equals(rootRoute);
+            // 与子件同口径（2026-09-05）：V478 根节点存在但路线未确认（NULL）时
+            // 不可排产——顶层必须像子件一样显式确认为自制后才能下达车间；
+            // 无根节点的旧分析（rootMaterialLineId 为 null）沿用旧合同。
+            boolean rootRoutePending = rootMaterialLineId != null && rootRoute == null;
+            boolean canSchedule = planningBlockedReason == null
+                    && remaining.signum() > 0 && !externalRoot && !rootRoutePending;
             return new ProductView(analysisItemId, sourceType, sourceRef, sourceReason,
                     salesOrderItemId,
                     salesOrderId, salesOrderNo, orderDate, deliveryDate, clientName,
@@ -6492,14 +7001,22 @@ public class MaterialAnalysisService {
                     unitName, unitRate, requestedQty, submittedQty, approvedQty,
                     remaining, allocationPriority,
                     canSchedule, remaining,
-                    canSchedule ? null : "当前分析需求已全部转入生产计划",
-                    readyNowQty, readyByDateQty,
-                    readyStartQty, readyFinishQty, readyShipQty, ratio,
+                    planningBlockedReason != null ? planningBlockedReason
+                            : canSchedule ? null : rootRoutePending
+                            ? "根产品供料路线未确认，请先确认为自制再下达车间"
+                            : externalRoot
+                            ? "根产品按采购或委外供给，不能重复生成自制计划"
+                            : "当前分析需求已全部转入生产计划",
+                    externalRoot ? BigDecimal.ZERO : readyNowQty, externalRoot ? BigDecimal.ZERO : readyByDateQty,
+                    externalRoot ? BigDecimal.ZERO : readyStartQty, externalRoot ? BigDecimal.ZERO : readyFinishQty,
+                    externalRoot ? BigDecimal.ZERO : readyShipQty, ratio,
                     hasProductionMaterialChildren,
                     parentAnalysisLineId, parentGoodsName,
                     planState.status(), planState.planId(), planState.planNo(),
                     planState.plannedQty(), planState.inboundQty(),
-                    planState.progressRatio());
+                    planState.progressRatio(), planState.reportedQty(),
+                    planState.zeroMaterial(), planState.workshopName(),
+                    planState.responsibleName(), rootMaterialLineId);
         }
     }
 
@@ -6509,9 +7026,14 @@ public class MaterialAnalysisService {
             String planNo,
             BigDecimal plannedQty,
             BigDecimal inboundQty,
-            BigDecimal progressRatio) {
+            BigDecimal progressRatio,
+            BigDecimal reportedQty,
+            boolean zeroMaterial,
+            String workshopName,
+            String responsibleName) {
         static final ProductPlanState NONE = new ProductPlanState(
-                null, null, null, BigDecimal.ZERO, BigDecimal.ZERO, null);
+                null, null, null, BigDecimal.ZERO, BigDecimal.ZERO, null,
+                BigDecimal.ZERO, false, null, null);
      }
 
     record BomNode(
@@ -6524,7 +7046,22 @@ public class MaterialAnalysisService {
             String unitName, BigDecimal safetyStock, String suggestion,
             boolean hasChildren, String controlStage, String consumptionBasis,
             BigDecimal basisOutputQty, boolean allowPartialPackage,
-            boolean hardGate) {
+            boolean hardGate, List<BigDecimal> outputBatches) {
+        BomNode(UUID analysisItemId, UUID bomItemId, UUID parentGoodsId,
+                UUID goodsId, UUID colorId, UUID unitId, int depth,
+                String nodeKey, String parentNodeKey,
+                BigDecimal parentPerProductQty, BigDecimal bomQty,
+                BigDecimal perProductQty, BigDecimal snapshotRequiredQty,
+                String goodsCode, String goodsName, String spec, String colorName,
+                String unitName, BigDecimal safetyStock, String suggestion,
+                boolean hasChildren, String controlStage, String consumptionBasis,
+                BigDecimal basisOutputQty, boolean allowPartialPackage, boolean hardGate) {
+            this(analysisItemId,bomItemId,parentGoodsId,goodsId,colorId,unitId,depth,
+                    nodeKey,parentNodeKey,parentPerProductQty,bomQty,perProductQty,snapshotRequiredQty,
+                    goodsCode,goodsName,spec,colorName,unitName,safetyStock,suggestion,
+                    hasChildren,controlStage,consumptionBasis,basisOutputQty,allowPartialPackage,
+                    hardGate,List.of());
+        }
         MaterialDimension dimension() {
             return new MaterialDimension(goodsId, colorId, unitId);
         }
@@ -6532,6 +7069,17 @@ public class MaterialAnalysisService {
             return requiredForParentOutput(productQty.multiply(parentPerProductQty));
         }
         BigDecimal requiredForParentOutput(BigDecimal parentOutputQty) {
+            BigDecimal remaining=parentOutputQty.max(BigDecimal.ZERO);
+            BigDecimal required=BigDecimal.ZERO;
+            for (BigDecimal batch : outputBatches) {
+                BigDecimal take=remaining.min(batch);
+                if (take.signum()<=0) break;
+                required=required.add(requiredForSingleParentOutput(take));
+                remaining=remaining.subtract(take);
+            }
+            return required.add(requiredForSingleParentOutput(remaining));
+        }
+        BigDecimal requiredForSingleParentOutput(BigDecimal parentOutputQty) {
             try {
                 return MaterialConsumptionMath.required(
                         parentOutputQty, bomQty,
@@ -6547,19 +7095,34 @@ public class MaterialAnalysisService {
                     parentPerProductQty, bomQty, perProductQty, requiredQty,
                     goodsCode, goodsName, spec, colorName, unitName, safetyStock,
                     suggestion, hasChildren, controlStage, consumptionBasis,
-                    basisOutputQty, allowPartialPackage, hardGate);
+                    basisOutputQty, allowPartialPackage, hardGate,outputBatches);
+        }
+        BomNode withOutputBatches(List<BigDecimal> batches) {
+            return new BomNode(analysisItemId,bomItemId,parentGoodsId,goodsId,colorId,unitId,depth,
+                    nodeKey,parentNodeKey,parentPerProductQty,bomQty,perProductQty,snapshotRequiredQty,
+                    goodsCode,goodsName,spec,colorName,unitName,safetyStock,suggestion,
+                    hasChildren,controlStage,consumptionBasis,basisOutputQty,allowPartialPackage,
+                    hardGate,List.copyOf(batches));
         }
         String path() {
             return nodeKey;
         }
     }
 
-    record StockValue(BigDecimal onHand, BigDecimal reserved, BigDecimal available) {
+    record StockValue(BigDecimal onHand, BigDecimal reserved, BigDecimal available,
+                      boolean safetyAlreadyApplied) {
+        StockValue(BigDecimal onHand,BigDecimal reserved,BigDecimal available) {
+            this(onHand,reserved,available,false);
+        }
         static final StockValue ZERO = new StockValue(
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
         StockValue add(StockValue other) {
             return new StockValue(onHand.add(other.onHand), reserved.add(other.reserved),
-                    available.add(other.available));
+                    available.add(other.available),safetyAlreadyApplied && other.safetyAlreadyApplied);
+        }
+        BigDecimal availableAfterSafety(BigDecimal safety) {
+            return available.subtract(safetyAlreadyApplied ? BigDecimal.ZERO : safety)
+                    .max(BigDecimal.ZERO).setScale(4,RoundingMode.DOWN);
         }
     }
 
@@ -6571,7 +7134,11 @@ public class MaterialAnalysisService {
     }
 
     record AvailabilitySnapshot(Map<MaterialDimension, StockValue> stock,
-                                List<InboundLot> inbound) {
+                                List<InboundLot> inbound,
+                                Map<WarehouseMaterialDimension,BigDecimal> usableByWarehouse) {
+        AvailabilitySnapshot(Map<MaterialDimension,StockValue> stock,List<InboundLot> inbound) {
+            this(stock,inbound,Map.of());
+        }
         InboundValue inboundOnOrBefore(MaterialDimension key, LocalDate cutoff) {
             if (cutoff == null) return InboundValue.ZERO;
             BigDecimal qty = BigDecimal.ZERO;
@@ -6706,7 +7273,8 @@ public class MaterialAnalysisService {
                             BigDecimal sharedFutureClaimedQty,
                             BigDecimal activeFutureCoverageQty,
                             BigDecimal selectedWarehousesAvailableQty,
-                            BigDecimal selectedOtherWarehouseTransferableQty) {
+                            BigDecimal selectedOtherWarehouseTransferableQty,
+                            String flowStage) {
             List<String> notified = references.stream().map(DownstreamReference::route)
                     .distinct().sorted().toList();
             BigDecimal demandGap = unboundDemandSupplyGap(
@@ -6740,7 +7308,8 @@ public class MaterialAnalysisService {
                             .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING),
                     selectedWarehousesAvailableQty,
                     selectedOtherWarehouseTransferableQty,
-                    sharedFuture.expectedDate(), sharedFuture.refs());
+                    sharedFuture.expectedDate(), sharedFuture.refs(),
+                    flowStage);
         }
 
         String actionGroupKey() {
@@ -6754,7 +7323,7 @@ public class MaterialAnalysisService {
         }
 
         boolean actionable() {
-            return shortageQty.signum() > 0;
+            return requiredQty.signum() > 0 && (depth == 0 || shortageQty.signum() > 0);
         }
 
         String materialKey() {

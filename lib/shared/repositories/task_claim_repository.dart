@@ -2,8 +2,9 @@
 // 纯 UX/防碰撞层：失败不抛出影响业务动作（后端守卫 requireNoActiveClaimByOther 是安全网）。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/network/api_client.dart';
-import '../../../core/network/api_endpoints.dart';
+import '../../core/network/api_client.dart';
+import '../../core/network/api_exception.dart';
+import '../../core/network/api_endpoints.dart';
 import '../models/task_claim_view.dart';
 
 class TaskClaimRepository {
@@ -42,6 +43,15 @@ class TaskClaimRepository {
         ApiEndpoints.taskClaimClaim(targetType, targetKey),
       );
       return TaskClaimView.fromJson(json);
+    } on ApiException catch (error) {
+      if (error.code == 'CONFLICT') {
+        try {
+          return await activeClaim(targetType, targetKey);
+        } on Object {
+          return null;
+        }
+      }
+      return null;
     } on Object {
       return null;
     }
@@ -53,6 +63,42 @@ class TaskClaimRepository {
       await _api.post(ApiEndpoints.taskClaimHeartbeat(targetType, targetKey));
     } on Object {
       // 心跳失败忽略：租约过期后他人可接管，不影响正确性（后端守卫兜底）。
+    }
+  }
+
+  /// 财审须取得可核对的回包；异常不得伪装为认领或续租成功。
+  Future<TaskClaimView?> claimRequired(
+    String targetType,
+    String targetKey,
+  ) async => TaskClaimView.fromJson(
+    await _api.post(ApiEndpoints.taskClaimClaim(targetType, targetKey)),
+  );
+
+  Future<TaskClaimView?> heartbeatRequired(
+    String targetType,
+    String targetKey, {
+    required String expectedClaimId,
+  }) async => TaskClaimView.fromJson(
+    await _api.post(
+      ApiEndpoints.taskClaimHeartbeat(targetType, targetKey),
+      query: {'expectedClaimId': expectedClaimId},
+    ),
+  );
+
+  Future<void> releaseRequired(
+    String targetType,
+    String targetKey, {
+    required String expectedClaimId,
+  }) async {
+    try {
+      await _api.delete(
+        Uri(
+          path: ApiEndpoints.taskClaim(targetType, targetKey),
+          queryParameters: {'expectedClaimId': expectedClaimId},
+        ).toString(),
+      );
+    } on Object {
+      /* Lease expiry remains the cleanup fallback. */
     }
   }
 

@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
@@ -584,28 +585,30 @@ class _ClientPickerFieldState extends State<ClientPickerField> {
       controller: _ctl,
       readOnly: true,
       decoration: applyRequiredEmpty(
-        InputDecoration(
-          label: requiredLabel(
-            widget.label,
-            theme,
-            required: widget.required,
-            base: theme.inputDecorationTheme.labelStyle,
+        UtenInputDecoration(
+          InputDecoration(
+            label: requiredLabel(
+              widget.label,
+              theme,
+              required: widget.required,
+              base: theme.inputDecorationTheme.labelStyle,
+            ),
+            hintText: '点击选择客户',
+            error: widget.errorMessage == null
+                ? null
+                : UtenFieldMessage.error(widget.errorMessage!),
+            prefixIcon: const Icon(Icons.storefront_outlined),
+            suffixIcon: _id != null
+                ? IconButton(
+                    tooltip: '清除选择',
+                    icon: const Icon(Icons.clear_rounded),
+                    onPressed: () => _set(null),
+                  )
+                : Icon(
+                    Icons.unfold_more_rounded,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
           ),
-          hintText: '点击选择客户',
-          error: widget.errorMessage == null
-              ? null
-              : UtenFieldMessage.error(widget.errorMessage!),
-          prefixIcon: const Icon(Icons.storefront_outlined),
-          suffixIcon: _id != null
-              ? IconButton(
-                  tooltip: '清除选择',
-                  icon: const Icon(Icons.clear_rounded),
-                  onPressed: () => _set(null),
-                )
-              : Icon(
-                  Icons.unfold_more_rounded,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
         ),
         theme,
         requiredEmpty: requiredEmpty,

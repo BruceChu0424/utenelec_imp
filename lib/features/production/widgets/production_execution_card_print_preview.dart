@@ -1180,11 +1180,12 @@ pw.Widget _pdfCell(
 
 String _statusLabel(String status, {bool autoPromoteWhenReady = true}) =>
     switch (status) {
-      'READY' => '工单已确认 / 仓库备料中',
-      'WAITING' => autoPromoteWhenReady ? '物料不齐套 / 备料中' : '人工暂缓',
-      'DISPATCHED' => '历史工单 / 仓库备料中',
+      // 与全站流程词表同口径（等待物料 → 等待车间领料 → 生产中 → 已完工）。
+      'READY' => '等待车间领料',
+      'WAITING' => autoPromoteWhenReady ? '等待物料' : '人工暂缓',
+      'DISPATCHED' => '等待车间领料（历史工单）',
       'IN_PROGRESS' => '生产中',
-      'COMPLETED' => '已完成 · 仅供存档',
+      'COMPLETED' => '已完工 · 仅供存档',
       'CANCELLED' => '已取消',
       'REVERSED' => '已反向',
       _ => status,
@@ -1193,15 +1194,15 @@ String _statusLabel(String status, {bool autoPromoteWhenReady = true}) =>
 String? _workCardOperationalNotice(ProductionWorkCard card) {
   final zeroMaterial = card.materialRequirementMode == 'ZERO_MATERIAL';
   return switch (card.status) {
-    'READY' when zeroMaterial => '工单已确认：本段无生产领料需求，可直接报工；首次报工会登记实际开工。',
-    'READY' => '工单已确认：库存已预留并生成领料需求；仓库实际发料完成后可直接报工。',
+    'READY' when zeroMaterial => '无需领料 · 可开工：本段无生产领料需求，可直接报工；首次报工会登记实际开工。',
+    'READY' => '等待车间领料：库存已预留并生成领料需求；仓库实际发料完成后可直接报工。',
     'WAITING' =>
       card.autoPromoteWhenReady
-          ? '物料不齐套 · 备料中：物料齐套并完成仓库实发后才可报工。'
+          ? '等待物料：物料齐套并完成仓库实发后才可报工。'
           : '人工暂缓：必须先解除暂缓，再完成齐套和仓库实发后报工。',
     'DISPATCHED' when zeroMaterial => '历史兼容工单：本段无领料需求，可直接报工；首次报工会统一执行状态。',
     'DISPATCHED' => '历史兼容工单：仓库实际发料完成后可直接报工。',
-    'COMPLETED' => '已完成 · 仅供存档：本打印件不得再次作为生产、领料或排产指令。',
+    'COMPLETED' => '已完工 · 仅供存档：本打印件不得再次作为生产、领料或排产指令。',
     _ => null,
   };
 }

@@ -96,7 +96,7 @@ public class SubcontractInquiryService {
                         priceMasked ? Map.of("billDate", "billDate") : ALLOWED_SORT));
         Page<SubcontractInquiry> p = inquiryRepo.findAll(spec, pageable);
         return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
-                page, size, p.getTotalElements(), p.getTotalPages());
+                p);
     }
 
     @Transactional(readOnly = true)

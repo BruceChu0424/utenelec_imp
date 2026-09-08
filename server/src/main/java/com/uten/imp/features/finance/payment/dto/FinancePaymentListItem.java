@@ -19,4 +19,7 @@ public class FinancePaymentListItem {
     private BigDecimal amountLocal;
     private Short status;
     private Integer legacyId;
+
+    // Additive exact text never passes through a binary floating-point value.
+    public String getAmountLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountLocal); }
 }

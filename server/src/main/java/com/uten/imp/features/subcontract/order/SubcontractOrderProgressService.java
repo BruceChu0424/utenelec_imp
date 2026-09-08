@@ -39,6 +39,7 @@ public class SubcontractOrderProgressService {
     private final EntityManager em;
     private final SubcontractOrderRepository orderRepo;
     private final SubcontractDocumentAccessPolicy access;
+    private final com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService materialPlans;
 
     @Autowired
     private CommercialPriceVisibility commercialPriceVisibility;
@@ -173,6 +174,31 @@ public class SubcontractOrderProgressService {
                         preparationActions((String) row[12], (UUID) row[16],
                                 canOpenPreparationAnalysis)))
                 .toList();
+
+        if(planId==null && order.getStatus()!=null && order.getStatus()==0){
+            var shortage=materialPlans.draftChildrenShortageByOrderItem(orderId);
+            materialLines=queryRows("""
+                    SELECT item.id,goods.code,goods.name,color.name,unit.name,item.unit_rate,round(item.qty*COALESCE(item.unit_rate,1),4),
+                           preparation.analysis_id,preparation.id,
+                           EXISTS(SELECT 1 FROM goods_bom_items bom WHERE bom.goods_id=item.goods_id AND bom.is_deleted=FALSE),
+                           EXISTS(SELECT 1 FROM production_plans plan WHERE plan.material_analysis_id=preparation.analysis_id
+                             AND plan.material_analysis_item_id=preparation.id AND plan.is_deleted=FALSE AND plan.is_canceled=FALSE)
+                    FROM subcontract_order_items item JOIN goods ON goods.id=item.goods_id
+                    LEFT JOIN colors color ON color.id=item.color_id LEFT JOIN units unit ON unit.id=goods.unit_id
+                    LEFT JOIN LATERAL(SELECT source.id,source.analysis_id FROM production_material_analysis_items source
+                        JOIN production_material_analyses analysis ON analysis.id=source.analysis_id
+                        WHERE source.subcontract_order_item_id=item.id AND source.is_deleted=FALSE AND analysis.is_deleted=FALSE
+                          AND analysis.status<>'CANCELLED' ORDER BY source.created_at DESC,source.id LIMIT 1) preparation ON TRUE
+                    WHERE item.order_id=:id AND item.is_deleted=FALSE AND item.application_item_id IS NULL ORDER BY item.line_no,item.id
+                    """,orderIdParam(orderId)).stream().map(row->{
+                        BigDecimal required=bd(row[6]),missing=shortage.getOrDefault((UUID)row[0],BigDecimal.ZERO);
+                        String status=missing.signum()==0?"READY_FOR_FINANCE":Boolean.TRUE.equals(row[10])?"IN_PREPARATION":"WAITING_PLAN";
+                        return new MaterialPlanLine((UUID)row[0],(String)row[1],(String)row[2],(String)row[1],(String)row[2],(String)row[3],(String)row[4],
+                                bd(row[5]),required,BigDecimal.ZERO,BigDecimal.ZERO,"DRAFT_PREPARATION",status,required.subtract(missing),BigDecimal.ZERO,missing,
+                                (UUID)row[7],(UUID)row[8],Boolean.TRUE.equals(row[9]),missing.signum()==0?null:"目标件缺口 "+missing.stripTrailingZeros().toPlainString()+"，待计划完成生产并由仓库实收入库后提交财务",
+                                preparationActions(status,(UUID)row[7],canOpenPreparationAnalysis));
+                    }).toList();
+        }
 
         // 出仓单（本订货单全部发料单）
         List<IssueDoc> issues = queryRows("""

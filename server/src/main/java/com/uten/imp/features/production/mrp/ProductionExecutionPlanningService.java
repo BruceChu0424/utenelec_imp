@@ -225,10 +225,10 @@ public class ProductionExecutionPlanningService {
                                        i.plan_begin_date,
                                        i.plan_end_date,
                                        CASE
-                                           WHEN preferred_workshop_parent.id IS NOT NULL
-                                           THEN workshop_preference.workshop_department_id
                                            WHEN plan_workshop_parent.id IS NOT NULL
                                            THEN p.department_id
+                                           WHEN preferred_workshop_parent.id IS NOT NULL
+                                           THEN workshop_preference.workshop_department_id
                                            ELSE NULL
                                        END,
                                        p.worker_id,
@@ -295,14 +295,6 @@ public class ProductionExecutionPlanningService {
                                 JOIN goods_bom_items b
                                   ON b.goods_id = i.goods_id
                                  AND b.is_deleted = FALSE
-                                LEFT JOIN production_material_analysis_materials
-                                      analysis_material
-                                  ON analysis_material.analysis_id = p.material_analysis_id
-                                 AND analysis_material.analysis_item_id =
-                                     p.material_analysis_item_id
-                                 AND analysis_material.bom_item_id = b.id
-                                 AND analysis_material.depth = 1
-                                 AND analysis_material.active = TRUE
                                 JOIN goods component
                                   ON component.id = b.component_goods_id
                                  AND component.is_deleted = FALSE
@@ -313,6 +305,28 @@ public class ProductionExecutionPlanningService {
                                  LEFT JOIN units component_unit
                                    ON component_unit.id = component.unit_id
                                   AND component_unit.is_deleted = FALSE
+                                LEFT JOIN LATERAL (
+                                    SELECT CASE
+                                        WHEN COUNT(DISTINCT candidate.confirmed_route) > 1
+                                        THEN 'CONFLICT'
+                                        ELSE MIN(candidate.confirmed_route)
+                                    END AS confirmed_route
+                                    FROM production_material_analysis_materials candidate
+                                    WHERE candidate.analysis_id = p.material_analysis_id
+                                      AND fn_analysis_plan_material_matches(
+                                          p.material_analysis_item_id, candidate.id)
+                                      AND candidate.bom_item_id = b.id
+                                      AND candidate.goods_id = component.id
+                                      AND candidate.color_id IS NOT DISTINCT FROM resolved_color.id
+                                      AND candidate.unit_id = component_unit.id
+                                      AND candidate.active = TRUE
+                                      AND (candidate.depth = 1 OR EXISTS (
+                                          SELECT 1 FROM production_material_analysis_items anchor
+                                          WHERE anchor.id = p.material_analysis_item_id
+                                            AND anchor.parent_analysis_material_id IS NOT NULL
+                                            AND anchor.source_type IN (
+                                                'MAKE_COMPONENT', 'SUBCONTRACT_MAKE')))
+                                ) analysis_material ON TRUE
                                 WHERE i.plan_id = :planId
                                   AND i.is_deleted = FALSE
                                   AND COALESCE(i.qty, 0) > 0
@@ -395,6 +409,9 @@ public class ProductionExecutionPlanningService {
             }
             if (bomQty.signum() <= 0) {
                 throw conflict("BOM、颜色或基本单位数据不完整，禁止生成执行分段");
+            }
+            if ("CONFLICT".equals(analysisRoute)) {
+                throw conflict("同一直接领料物料存在冲突的已确认路线，请核对原物料分析");
             }
             String authoritativeRoute = analysisRoute == null
                     ? supportedSupplyRoute(componentSourceType) : analysisRoute;
@@ -575,13 +592,21 @@ public class ProductionExecutionPlanningService {
         List<Object[]> values = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT a.goods_id, a.color_id,
-                                       GREATEST(
+                                       SUM(GREATEST(
                                            a.available_qty + COALESCE(own.own_qty, 0)
                                            - GREATEST(COALESCE(g.min_qty, 0), 0),
                                            0
-                                       )
+                                       ))
                                 FROM v_stock_available a
                                 JOIN goods g ON g.id = a.goods_id
+                                JOIN warehouses warehouse ON warehouse.id = a.warehouse_id
+                                  AND warehouse.is_deleted = FALSE
+                                  AND warehouse.is_accountable = TRUE
+                                  AND warehouse.is_defective = FALSE
+                                  AND COALESCE(warehouse.status, '') <> '禁用'
+                                  AND NOT EXISTS (SELECT 1 FROM warehouses child
+                                      WHERE child.parent_id = warehouse.id
+                                        AND child.is_deleted = FALSE)
                                 LEFT JOIN LATERAL (
                                     SELECT SUM(CASE
                                         WHEN EXISTS (
@@ -601,8 +626,8 @@ public class ProductionExecutionPlanningService {
                                             WHERE balance.stock_reservation_id = r.id
                                               AND balance.beneficiary_analysis_id =
                                                   :analysisId
-                                              AND beneficiary.analysis_item_id =
-                                                  :analysisItemId
+                                              AND fn_analysis_plan_material_matches(
+                                                  :analysisItemId, beneficiary.id)
                                               AND beneficiary.active = TRUE
                                         ), 0)
                                         WHEN r.owner_id = :analysisId
@@ -617,8 +642,10 @@ public class ProductionExecutionPlanningService {
                                       AND r.goods_id = a.goods_id
                                       AND r.color_id IS NOT DISTINCT FROM a.color_id
                                 ) own ON TRUE
-                                WHERE a.warehouse_id = :warehouseId
+                                WHERE (a.warehouse_id = :warehouseId OR (CAST(:analysisId AS uuid) IS NOT NULL
+                                  AND fn_warehouse_same_main(a.warehouse_id, :warehouseId)))
                                   AND a.goods_id IN (:goodsIds)
+                                GROUP BY a.goods_id, a.color_id
                                 ORDER BY a.goods_id, a.color_id NULLS FIRST
                                 """)
                         .setParameter("analysisId", analysisId)

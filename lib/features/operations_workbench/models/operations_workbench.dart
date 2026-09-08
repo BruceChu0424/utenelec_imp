@@ -286,6 +286,8 @@ class OperationsWorkbenchTask {
     this.goodsCount = 0,
     this.openLineCount = 0,
     this.actionItemIds = const [],
+    this.preparationTaskId,
+    this.preparationStatus,
   });
 
   final String taskId;
@@ -318,6 +320,8 @@ class OperationsWorkbenchTask {
   final int goodsCount;
   final int openLineCount;
   final List<String> actionItemIds;
+  final String? preparationTaskId;
+  final String? preparationStatus;
 
   String get id => taskId;
   String get taskNo => taskId;
@@ -394,6 +398,16 @@ class OperationsWorkbenchTask {
               ?.map((id) => id.toString())
               .toList(growable: false) ??
           const [],
+      preparationTaskId:
+          json['actionDocType'] == 'SUBCONTRACT_MAKE_TASK' &&
+              json['actionDocCanView'] == true
+          ? _optionalString(json, 'taskId')
+          : null,
+      preparationStatus:
+          json['actionDocType'] == 'SUBCONTRACT_MAKE_TASK' &&
+              json['actionDocCanView'] == true
+          ? _optionalString(json, 'actionDocStatus')
+          : null,
     );
   }
 }

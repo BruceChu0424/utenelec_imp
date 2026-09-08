@@ -23,6 +23,8 @@ import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -41,6 +43,9 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
+    @org.springframework.beans.factory.annotation.Autowired
+    private MaterialAnalysisRootSupplyService rootSupply;
+
 
     public static final String OWNER_TYPE = "PREPLAN_ANALYSIS";
     public static final String PURPOSE = "PREPLAN_MATERIAL";
@@ -217,11 +222,11 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         JOIN preplan_supply_actions action
                           ON action.id = allocation.action_id
                          AND action.status <> 'CANCELLED'
-                         AND action.warehouse_id = :warehouseId
+                         AND fn_warehouse_same_main(action.warehouse_id, :warehouseId)
                         JOIN production_material_analyses analysis
                           ON analysis.id = allocation.analysis_id
                          AND analysis.is_deleted = FALSE
-                         AND analysis.warehouse_id = :warehouseId
+                         AND fn_warehouse_same_main(analysis.warehouse_id, :warehouseId)
                          AND analysis.status IN (
                              'ACTIVE', 'PARTIALLY_PLANNED', 'COMPLETED')
                         JOIN production_material_analysis_materials material
@@ -548,13 +553,13 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                               JOIN preplan_supply_actions action
                                 ON action.id = allocation.action_id
                                AND action.status <> 'CANCELLED'
-                               AND action.warehouse_id = :warehouseId
+                               AND fn_warehouse_same_main(action.warehouse_id, :warehouseId)
                               JOIN production_material_analysis_materials material
                                 ON material.id = allocation.analysis_material_id
                                AND material.analysis_id = allocation.analysis_id
                                AND material.active = TRUE
                               WHERE allocation.external_item_id = :externalItemId
-                                AND analysis.warehouse_id = :warehouseId
+                                AND fn_warehouse_same_main(analysis.warehouse_id, :warehouseId)
                                 AND material.goods_id = :goodsId
                                 AND material.color_id IS NOT DISTINCT FROM
                                     CAST(:colorId AS uuid)
@@ -626,6 +631,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     @Transactional(propagation = Propagation.MANDATORY)
     public void releaseForReceipt(String receiptType, UUID receiptId) {
         tx.bind();
+        if (rootSupply != null) rootSupply.reverseReceipt(receiptType, receiptId);
         requireNoTransferredReservation(
                 receiptType + "_RECEIPT", receiptId,
                 "该收货的分析归属库存已转入正式生产需求；当前尚缺少收货到正式需求"
@@ -816,6 +822,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
 
         List<PreparedPlanTransfer> prepared = new ArrayList<>();
         Map<UUID, BigDecimal> preparedByEntitlementLot = new HashMap<>();
+        Map<TransferDimension, BigDecimal> transferableByDimension = new HashMap<>();
         for (DemandSlice demand : orderedDemands) {
             inventoryLock.lock(new InventoryKey(
                     demand.goodsId(), demand.colorId()));
@@ -825,7 +832,8 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                             SELECT id
                             FROM production_material_analysis_materials
                             WHERE analysis_id = :analysisId
-                              AND analysis_item_id = :analysisItemId
+                              AND fn_analysis_plan_material_matches(
+                                  :analysisItemId, id)
                               AND goods_id = :goodsId
                               AND color_id IS NOT DISTINCT FROM
                                   CAST(:colorId AS uuid)
@@ -840,7 +848,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             for (UUID materialId : materialIds) {
                 if (remaining.signum() <= 0) break;
                 List<PreplanStockEntitlementService.AvailableLot> lots =
-                        entitlement.listAvailableBeneficiaryLots(
+                        entitlement.listAvailableBeneficiaryLotsWithinMainWarehouse(
                                 analysisId, materialId, warehouseId,
                                 demand.goodsId(), demand.colorId(), true);
                 for (PreplanStockEntitlementService.AvailableLot lot : lots) {
@@ -849,15 +857,21 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                             .getOrDefault(lot.entitlementEventId(), BigDecimal.ZERO);
                     BigDecimal available = lot.remainingQty()
                             .subtract(alreadyPrepared).max(BigDecimal.ZERO);
-                    BigDecimal take = available.min(remaining);
+                    TransferDimension dimension = new TransferDimension(
+                            lot.warehouseId(), demand.goodsId(), demand.colorId());
+                    BigDecimal budget = transferableByDimension.computeIfAbsent(
+                            dimension, ignored -> formalTransferBudget(
+                                    analysisId, analysisItemId, dimension));
+                    BigDecimal take = available.min(remaining).min(budget);
                     if (take.signum() <= 0) continue;
                     entitlement.consumePhysicalForFormalize(
                             lot.stockReservationId(), take);
+                    transferableByDimension.put(dimension, budget.subtract(take));
                     prepared.add(new PreparedPlanTransfer(
                             lot.entitlementEventId(), lot.stockReservationId(),
                             lot.beneficiaryAnalysisId(),
                             lot.beneficiaryAnalysisMaterialId(),
-                            demand.demandId(), take));
+                            demand.demandId(), take, lot.warehouseId()));
                     preparedByEntitlementLot.merge(
                             lot.entitlementEventId(), take, BigDecimal::add);
                     remaining = remaining.subtract(take);
@@ -873,13 +887,15 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                                 SELECT reservation.id,
                                        reservation.qty
                                            - reservation.consumed_qty
-                                           - reservation.released_qty
+                                           - reservation.released_qty,
+                                       reservation.warehouse_id
                                 FROM stock_reservations reservation
                                 WHERE reservation.is_deleted = FALSE
                                   AND reservation.status = :effective
                                   AND reservation.owner_type = :ownerType
                                   AND reservation.owner_id = :analysisId
-                                  AND reservation.warehouse_id = :warehouseId
+                                  AND fn_warehouse_same_main(
+                                      reservation.warehouse_id, :warehouseId)
                                   AND reservation.goods_id = :goodsId
                                   AND reservation.color_id IS NOT DISTINCT FROM
                                       CAST(:colorId AS uuid)
@@ -904,15 +920,74 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                                 .setParameter("colorId", demand.colorId()));
                 for (Object[] row : legacyRows) {
                     if (remaining.signum() <= 0) break;
+                    TransferDimension dimension = new TransferDimension(
+                            (UUID) row[2], demand.goodsId(), demand.colorId());
+                    BigDecimal budget = transferableByDimension.computeIfAbsent(
+                            dimension, ignored -> formalTransferBudget(
+                                    analysisId, analysisItemId, dimension));
                     BigDecimal take = decimal(row[1]).max(BigDecimal.ZERO)
-                            .min(remaining);
+                            .min(remaining).min(budget);
                     if (take.signum() <= 0) continue;
                     entitlement.consumePhysicalForFormalize((UUID) row[0], take);
+                    transferableByDimension.put(dimension, budget.subtract(take));
                     remaining = remaining.subtract(take);
                 }
             }
         }
         return List.copyOf(prepared);
+    }
+
+    /** A fixed leaf/dimension budget prevents separate owned lots eating the safety floor. */
+    private BigDecimal formalTransferBudget(
+            UUID analysisId, UUID analysisItemId, TransferDimension dimension) {
+        List<?> values = em.createNativeQuery("""
+                SELECT GREATEST(COALESCE(stock.qty, 0)
+                    - COALESCE((SELECT SUM(r.qty-r.consumed_qty-r.released_qty)
+                        FROM stock_reservations r
+                        WHERE r.goods_id = :goodsId
+                          AND r.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
+                          AND (r.warehouse_id IS NULL OR r.warehouse_id = :warehouseId)
+                          AND r.status = 0 AND r.is_deleted = FALSE), 0)
+                    + COALESCE((SELECT SUM(CASE
+                        WHEN EXISTS (SELECT 1 FROM preplan_stock_entitlement_events tracked
+                            WHERE tracked.stock_reservation_id = owned.id)
+                        THEN COALESCE((SELECT SUM(entitlement.effective_qty)
+                            FROM v_preplan_stock_entitlement_beneficiary_balance entitlement
+                            WHERE entitlement.stock_reservation_id = owned.id
+                              AND entitlement.beneficiary_analysis_id = :analysisId
+                              AND fn_analysis_plan_material_matches(:analysisItemId,
+                                  entitlement.beneficiary_analysis_material_id)), 0)
+                        WHEN owned.owner_id = :analysisId
+                        THEN owned.qty-owned.consumed_qty-owned.released_qty
+                        ELSE 0 END)
+                        FROM stock_reservations owned
+                        WHERE owned.goods_id = :goodsId
+                          AND owned.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
+                          AND owned.warehouse_id = :warehouseId
+                          AND owned.owner_type = 'PREPLAN_ANALYSIS'
+                          AND owned.status = 0 AND owned.is_deleted = FALSE), 0)
+                    - GREATEST(COALESCE(goods.min_qty, 0), 0)::numeric, 0)
+                FROM goods
+                JOIN warehouses warehouse ON warehouse.id = :warehouseId
+                  AND warehouse.is_deleted = FALSE AND warehouse.is_accountable = TRUE
+                  AND warehouse.is_defective = FALSE AND COALESCE(warehouse.status, '') <> '禁用'
+                  AND NOT EXISTS (SELECT 1 FROM warehouses child
+                      WHERE child.parent_id = warehouse.id AND child.is_deleted = FALSE)
+                LEFT JOIN stock_balances stock ON stock.goods_id = goods.id
+                  AND stock.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
+                  AND stock.warehouse_id = :warehouseId
+                WHERE goods.id = :goodsId AND goods.is_deleted = FALSE
+                """)
+                .setParameter("analysisId", analysisId)
+                .setParameter("analysisItemId", analysisItemId)
+                .setParameter("goodsId", dimension.goodsId())
+                .setParameter("colorId", dimension.colorId())
+                .setParameter("warehouseId", dimension.warehouseId())
+                .getResultList();
+        return values.isEmpty() ? BigDecimal.ZERO : decimal(values.getFirst());
+    }
+
+    private record TransferDimension(UUID warehouseId, UUID goodsId, UUID colorId) {
     }
 
     @Override
@@ -923,43 +998,55 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             List<FormalReservationSlice> formalReservations) {
         tx.bind();
         if (prepared == null || prepared.isEmpty()) return;
-        Map<UUID, FormalReservationSlice> formalByDemand = new LinkedHashMap<>();
-        if (formalReservations != null) {
-            for (FormalReservationSlice formal : formalReservations) {
-                if (formal != null && formal.stockReservationId() != null) {
-                    FormalReservationSlice previous = formalByDemand.put(
-                            formal.demandId(), formal);
-                    if (previous != null) {
-                        throw new IllegalStateException(
-                                "One demand has multiple formal stock reservations");
-                    }
-                }
+        List<FormalReservationSlice> formal = formalReservations == null
+                ? List.of() : formalReservations.stream()
+                .filter(value -> value != null && value.stockReservationId() != null)
+                .toList();
+        Set<UUID> reservationIds = new LinkedHashSet<>();
+        prepared.forEach(value -> reservationIds.add(value.sourceStockReservationId()));
+        formal.forEach(value -> reservationIds.add(value.stockReservationId()));
+        Map<UUID, UUID> warehouseByReservation = new HashMap<>();
+        NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id, warehouse_id FROM stock_reservations
+                WHERE id IN (:ids) AND is_deleted = FALSE
+                """).setParameter("ids", reservationIds))
+                .forEach(row -> warehouseByReservation.put((UUID) row[0], (UUID) row[1]));
+        Map<UUID, BigDecimal> availableByReservation = new LinkedHashMap<>();
+        formal.forEach(value -> {
+            if (availableByReservation.put(value.stockReservationId(), value.qty()) != null) {
+                throw new IllegalStateException("Duplicate formal stock reservation");
             }
-        }
-        Map<UUID, BigDecimal> preparedByDemand = new LinkedHashMap<>();
-        prepared.forEach(slice -> preparedByDemand.merge(
-                slice.demandId(), slice.qty(), BigDecimal::add));
-        for (Map.Entry<UUID, BigDecimal> entry : preparedByDemand.entrySet()) {
-            FormalReservationSlice formal = formalByDemand.get(entry.getKey());
-            if (formal == null || formal.qty().compareTo(entry.getValue()) < 0) {
-                throw new ApiException(ErrorCode.CONFLICT,
-                        "Formal allocation does not cover prepared analysis stock");
-            }
-        }
-        UUID eventGroupId = packageId;
+        });
         for (PreparedPlanTransfer slice : prepared) {
-            FormalReservationSlice formal = formalByDemand.get(slice.demandId());
-            entitlement.appendFormalize(
-                    eventGroupId,
-                    slice.sourceEntitlementEventId(),
-                    slice.sourceStockReservationId(),
-                    slice.beneficiaryAnalysisId(),
-                    slice.beneficiaryAnalysisMaterialId(),
-                    slice.qty(), packageId, slice.demandId(),
-                    formal.stockReservationId(),
-                    "PREPLAN-FORMALIZE:" + packageId + ":"
-                            + slice.demandId() + ":"
-                            + slice.sourceEntitlementEventId());
+            UUID sourceWarehouse = warehouseByReservation.get(slice.sourceStockReservationId());
+            if (sourceWarehouse == null || (slice.warehouseId() != null
+                    && !sourceWarehouse.equals(slice.warehouseId()))) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "分析备料权益的实际仓库已变化，请刷新后重试");
+            }
+            BigDecimal remaining = slice.qty();
+            for (FormalReservationSlice target : formal) {
+                if (remaining.signum() <= 0) break;
+                if (!slice.demandId().equals(target.demandId())
+                        || !sourceWarehouse.equals(warehouseByReservation.get(
+                                target.stockReservationId()))) continue;
+                BigDecimal available = availableByReservation.get(target.stockReservationId());
+                BigDecimal take = remaining.min(available);
+                if (take.signum() <= 0) continue;
+                entitlement.appendFormalize(packageId,
+                        slice.sourceEntitlementEventId(), slice.sourceStockReservationId(),
+                        slice.beneficiaryAnalysisId(), slice.beneficiaryAnalysisMaterialId(),
+                        take, packageId, slice.demandId(), target.stockReservationId(),
+                        "PREPLAN-FORMALIZE:" + packageId + ":" + slice.demandId() + ":"
+                                + slice.sourceEntitlementEventId() + ":"
+                                + target.stockReservationId());
+                availableByReservation.put(target.stockReservationId(), available.subtract(take));
+                remaining = remaining.subtract(take);
+            }
+            if (remaining.signum() > 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "正式领料预留未覆盖分析备料权益的实际子仓数量");
+            }
         }
     }
 

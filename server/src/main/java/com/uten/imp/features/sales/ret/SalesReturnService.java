@@ -101,6 +101,9 @@ public class SalesReturnService {
     private final DocNumberService docNumberService;
     private final SalesDocumentAccessPolicy accessPolicy;
     private final SalesReturnQualityService qualityService;
+    private final SalesReturnAmountAuthority returnAmountAuthority;
+    private final com.uten.imp.features.sales.SalesMutationFootprintService mutationFootprint;
+    private final com.uten.imp.application.port.SalesReturnInventoryValuePort inventoryValue;
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_return:view')")
@@ -136,7 +139,7 @@ public class SalesReturnService {
         boolean canEdit = hasObjectActionAuthority();
         return new PageResponse<>(p.map(r -> toList(r,
                         canEdit && accessPolicy.canWrite(r.getOwnerEmployeeId(), readScope))).getContent(),
-                page, size, p.getTotalElements(), p.getTotalPages());
+                p);
     }
 
     @Transactional(readOnly = true)
@@ -165,6 +168,7 @@ public class SalesReturnService {
     @PreAuthorize("hasAuthority('sales_return:create')")
     public ReturnDetail create(ReturnSaveRequest req) {
         tx.bind();
+        mutationFootprint.lockReturn(null, requestedFootprint(req));
         LinkedSource source = validateLinkedSources(req);
         SalesReturn r = new SalesReturn();
         applyHeader(req, r);
@@ -182,7 +186,7 @@ public class SalesReturnService {
     @PreAuthorize("hasAuthority('sales_return:edit')")
     public ReturnDetail update(UUID id, ReturnSaveRequest req) {
         tx.bind();
-        SalesReturn r = requireWritableReturnForUpdate(id);
+        SalesReturn r = requireWritableReturnForUpdate(id, requestedFootprint(req));
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -236,6 +240,7 @@ public class SalesReturnService {
         lockStoredSourceGraph(items);
         assertStoredSources(r, items, true);
         validateReturnWritebackCapacity(items, +1);
+        boolean freeCustomerSource=returnAmountAuthority.apply(r, items);
         OffsetDateTime now = OffsetDateTime.now();
         captureGoodsSnapshots(items, true, now);
         // receipt is physically acknowledged into a separate quality
@@ -248,7 +253,7 @@ public class SalesReturnService {
 
         // 立红字应收（AR, SALES_RETURN, BStyle=18）。金额为本币总额的负数（红字，直接冲减客户应收余额）。
         // 主表 totalLocal 为正数（与明细同号），ar_ap_ledger 端取负。
-        if (!r.isArPosted()) {
+        if (!r.isArPosted() && !freeCustomerSource) {
             BigDecimal negAmount = r.getTotalLocal() == null ? BigDecimal.ZERO : r.getTotalLocal().negate();
             BigDecimal negOriginal = r.getTotalOriginal() == null
                     ? negAmount
@@ -270,7 +275,8 @@ public class SalesReturnService {
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         r.setLastDate(now);
-        returnRepo.save(r);
+        returnRepo.saveAndFlush(r);
+        inventoryValue.receivedForInspection(r.getId(),currentUser.requireId());
         return detail(id);
     }
 
@@ -324,7 +330,8 @@ public class SalesReturnService {
         }
 
         r.setStatus(STATUS_REVERSED);
-        returnRepo.save(r);
+        returnRepo.saveAndFlush(r);
+        if(qualityManaged) inventoryValue.untouchedReceiptReversed(r.getId(),currentUser.requireId());
         return detail(id);
     }
 
@@ -345,7 +352,8 @@ public class SalesReturnService {
     @PreAuthorize("hasAuthority('sales_return:disposition')")
     public ReturnDetail setDisposition(UUID id, CustomerDispositionRequest req) {
         tx.bind();
-        SalesReturn r = requireWritableReturnForUpdate(id);
+        var sourceGuard = mutationFootprint.beginReturn(id);
+        SalesReturn r = requireWritableReturnAfterPrefix(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核退货单可确认客户处置");
         }
@@ -371,6 +379,7 @@ public class SalesReturnService {
                     "该退货单已确认客户处置(" + r.getCustomerDisposition()
                             + ")，如需更改请先走受控补偿流程");
         }
+        sourceGuard.verifyUnchanged();
 
         List<SalesReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
         if (items.isEmpty()) {
@@ -1336,13 +1345,31 @@ public class SalesReturnService {
     }
 
     private SalesReturn requireWritableReturnForUpdate(UUID id) {
+        return requireWritableReturnForUpdate(id, List.of());
+    }
+
+    private SalesReturn requireWritableReturnForUpdate(UUID id,
+            List<com.uten.imp.features.sales.SalesMutationFootprintService.RequestedLine> requested) {
+        mutationFootprint.lockReturn(id, requested);
+        return requireWritableReturnAfterPrefix(id);
+    }
+
+    private SalesReturn requireWritableReturnAfterPrefix(UUID id) {
         SalesReturn salesReturn = em.find(
                 SalesReturn.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (salesReturn != null) em.refresh(salesReturn, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         if (salesReturn == null || salesReturn.isDeleted()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "销售退货单不存在");
         }
         accessPolicy.requireWritable(salesReturn.getOwnerEmployeeId(), "只能操作本人负责的销售退货单");
         return salesReturn;
+    }
+
+    private static List<com.uten.imp.features.sales.SalesMutationFootprintService.RequestedLine> requestedFootprint(
+            ReturnSaveRequest request) {
+        return request.getItems() == null ? List.of() : request.getItems().stream()
+                .map(line -> new com.uten.imp.features.sales.SalesMutationFootprintService.RequestedLine(
+                        line.getGoodsId(), line.getColorId(), line.getOrderItemId(), line.getOutItemId())).toList();
     }
 
     private record LinkedSource(

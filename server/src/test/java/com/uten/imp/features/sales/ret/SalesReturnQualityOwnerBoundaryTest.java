@@ -34,7 +34,8 @@ class SalesReturnQualityOwnerBoundaryTest {
             mock(SalesDocumentAccessPolicy.class);
     private final SalesReturnQualityService service =
             new SalesReturnQualityService(
-                    em, stockService, currentUser, tx, returnRepo, accessPolicy);
+                    em, stockService, currentUser, tx, returnRepo, accessPolicy,
+                org.mockito.Mockito.mock(com.uten.imp.features.sales.SalesMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS), org.mockito.Mockito.mock(com.uten.imp.application.port.SalesReturnInventoryValuePort.class));
 
     @Test
     void handlerReadUsesTheSameCrossOwnerAuthorityAsDisposition() {

@@ -171,9 +171,13 @@ class GoodsDetail {
     this.series,
     this.stockPlace,
     this.version,
+    this.quantityUnitLocked = false,
   });
 
   final String id;
+
+  /// Once quantity/BOM history exists, the database fixes the basic unit.
+  final bool quantityUnitLocked;
   final String? code;
   final String? name;
   final String? spec;
@@ -322,6 +326,7 @@ class GoodsDetail {
     series: json['series'] as String?,
     stockPlace: json['stockPlace'] as String?,
     version: (json['version'] as num?)?.toInt(),
+    quantityUnitLocked: json['quantityUnitLocked'] == true,
   );
 }
 

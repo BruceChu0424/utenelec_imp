@@ -43,7 +43,8 @@ jobs:
     runs-on: ubuntu-latest
     # 2026-09-02：测试量增长后在免费 runner 上超 30 分钟被掐（非失败），放宽到 45
     # 2026-09-03：V462-V466 批次后本地全量 46 分钟（含编译打包），再放宽到 60 留裕量
-    timeout-minutes: 60
+    # The DB-enabled V531 suite takes about 71 minutes locally, including cold migrations.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:

@@ -13,6 +13,7 @@ import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -53,6 +54,100 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
   bool _loading = false;
   bool _busy = false;
 
+  // V477 分解前数量修正：申请明细行内编辑（键=明细 id）。仅计划下达的
+  // 已审核申请、且明细尚无订货/待审占用时可编辑；保存走专用修正端点。
+  final Map<String, TextEditingController> _qtyControllers = {};
+
+  bool get _canAdjustRequestQty =>
+      widget.docType == PurchaseDocType.request &&
+      _detail?.status == 1 &&
+      _hasPermission(Perm.purchaseRequestView) &&
+      _hasPermission(Perm.purchaseOrderDecompose);
+
+  bool _itemQtyEditable(PurchaseDocItem item) =>
+      _canAdjustRequestQty && (item.orderedQty ?? 0) <= 0 && item.id != null;
+
+  TextEditingController _qtyControllerOf(PurchaseDocItem item) {
+    final id = item.id!;
+    var controller = _qtyControllers[id];
+    if (controller == null) {
+      controller = TextEditingController(
+        text: item.qty?.toStringAsFixed(2) ?? '',
+      );
+      controller.addListener(() {
+        if (mounted) setState(() {});
+      });
+      _qtyControllers[id] = controller;
+    }
+    return controller;
+  }
+
+  /// 有改动的明细（文本与原值不同的可编辑行）。
+  List<(PurchaseDocItem, double)> get _changedQtyItems {
+    if (!_canAdjustRequestQty) return const [];
+    return [
+      for (final item in _detail!.items)
+        if (_itemQtyEditable(item) &&
+            _qtyControllerOf(item).text.trim() !=
+                (item.qty?.toStringAsFixed(2) ?? ''))
+          (
+            item,
+            double.tryParse(_qtyControllerOf(item).text.trim()) ?? double.nan,
+          ),
+    ];
+  }
+
+  Future<void> _saveQtyAdjustments() async {
+    final changes = _changedQtyItems;
+    if (changes.isEmpty) return;
+    final invalid = changes
+        .where((change) => change.$2.isNaN || change.$2 <= 0)
+        .toList();
+    if (invalid.isNotEmpty) {
+      context.appError('数量必须大于 0');
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      var updated = _detail!;
+      for (final (item, qty) in changes) {
+        updated = await ref
+            .read(purchaseRepositoryProvider(widget.docType))
+            .adjustRequestItemQty(
+              requestId: widget.id,
+              itemId: item.id!,
+              qty: qty,
+            );
+      }
+      if (!mounted) return;
+      for (final controller in _qtyControllers.values) {
+        controller.dispose();
+      }
+      _qtyControllers.clear();
+      setState(() => _detail = updated);
+      context.appSuccess('数量已修正');
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      context.appError(error.message);
+      await _load();
+    } catch (_) {
+      if (!mounted) return;
+      context.appError('数量修正失败，请重试');
+      await _load();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final controller in _qtyControllers.values) {
+      controller.dispose();
+    }
+    _qtyControllers.clear();
+    super.dispose();
+  }
+
   bool get _canViewCommercialAmounts {
     return _cfg.canViewCommercial(ref.read(currentPermissionsProvider)) &&
         !(_detail?.priceMasked ?? false);
@@ -85,6 +180,14 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       widget.docType == PurchaseDocType.order &&
       _hasPermission(Perm.financeOrderApprovalView) &&
       !_hasPermission(_cfg.listPerm);
+
+  /// 批准后改量（对齐销售 V482）：财务批准后的订货单可逐行改数量；改后
+  /// 服务端自动重回财务复核，财务在审批详情看到修改清单（以前→现在）。
+  bool get _canChangeQty =>
+      widget.docType == PurchaseDocType.order &&
+      _detail?.status == kPurchaseStatusApproved &&
+      _detail?.financeApproval?.isPending != true &&
+      _hasPermission(Perm.purchaseOrderChangeQty);
 
   String get _defaultBackPath =>
       _financeReviewOnly ? _financeApprovalTasksPath : RouteName.purchase;
@@ -168,6 +271,152 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
 
   Future<void> _reverse() async =>
       _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
+
+  /// 批准后改量：弹窗逐行改数量（照销售订货详情 _changeQty 结构）。改后自动
+  /// 重回财务复核；驳回不会自动还原数量。
+  Future<void> _changeQty() async {
+    if (_busy) {
+      context.appInfo('正在处理，请稍候…');
+      return;
+    }
+    final detail = _detail;
+    if (detail == null) return;
+    final l10n = AppLocalizations.of(context);
+    final names = ref.read(masterNameServiceProvider);
+    final ctrls = <String, TextEditingController>{};
+    for (final it in detail.items) {
+      if (it.id != null) {
+        ctrls[it.id!] = TextEditingController(
+          text: it.qty?.toStringAsFixed(2) ?? '',
+        );
+      }
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        key: const Key('purchase-order-change-qty-dialog'),
+        title: Text(l10n.orderChangeQtyTitle),
+        content: SizedBox(
+          width: 420,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                child: Text(
+                  l10n.orderChangeQtyWarning,
+                  style: Theme.of(ctx).textTheme.labelMedium?.copyWith(
+                    color: Theme.of(ctx).colorScheme.error,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              for (final it in detail.items)
+                if (it.id != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${names.goods(it.goodsId)}'
+                            '(${names.color(it.colorId)} · ${names.unit(it.unitId)}) '
+                            '${l10n.orderChangeQtyCurrent(it.qty?.toStringAsFixed(2) ?? '—')}',
+                            style: Theme.of(ctx).textTheme.labelMedium
+                                ?.copyWith(fontWeight: FontWeight.w400),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        SizedBox(
+                          width: 100,
+                          child: TextField(
+                            key: Key('purchase-order-change-qty-${it.id}'),
+                            controller: ctrls[it.id!],
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: InputDecoration(
+                              isDense: true,
+                              labelText: l10n.orderChangeQtyNewQty,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+            ],
+          ),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.commonCancel),
+          ),
+          FilledButton(
+            key: const Key('purchase-order-change-qty-submit'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.orderChangeQtyConfirm),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) {
+      _disposeChangeQtyControllers(ctrls.values);
+      return;
+    }
+    final changes = <Map<String, dynamic>>[];
+    for (final it in detail.items) {
+      if (it.id == null) continue;
+      final v = double.tryParse(ctrls[it.id!]!.text.trim());
+      // 行内校验：新数量必须解析成功且 > 0。
+      if (v == null || v <= 0) {
+        _disposeChangeQtyControllers(ctrls.values);
+        if (mounted) context.appError(l10n.orderChangeQtyInvalid);
+        return;
+      }
+      if (v != it.qty) {
+        changes.add({'orderItemId': it.id, 'newQty': v});
+      }
+    }
+    _disposeChangeQtyControllers(ctrls.values);
+    if (changes.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      await ref
+          .read(purchaseRepositoryProvider(widget.docType))
+          .changeQty(widget.id, changes);
+      if (!mounted) return;
+      context.appSuccess(l10n.orderChangeQtySuccess);
+      bumpListRefresh(ref, _cfg.refreshKey);
+      await _load();
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError(l10n.orderChangeQtyFailed);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// 弹窗关闭动画期间 TextField 仍持有 controller：延迟 dispose，避免构建期
+  /// 使用已释放对象（与审核备注弹窗同款处理）。
+  void _disposeChangeQtyControllers(
+    Iterable<TextEditingController> controllers,
+  ) {
+    Future<void>.delayed(const Duration(milliseconds: 300), () {
+      for (final controller in controllers) {
+        controller.dispose();
+      }
+    });
+  }
+
+  Future<void> _cancelOrder() async => _doAction(
+    '取消后该草稿订货单转为「已取消」并保留轨迹'
+        '（若已提交财务审核，财务侧任务同步撤回），不可再编辑或提交。确认取消？',
+    (repo) => repo.cancelOrder(widget.id),
+    '订货单已取消',
+  );
 
   Future<void> _doAction(
     String confirm,
@@ -299,7 +548,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         ],
       ),
       body: SafeArea(
-        child: UtenContentContainer.narrow(
+        // 2026-09-05 用户口径：明细表是本页主体，用全宽容器（与单据列表页
+        // 同款），不再 narrow 居中导致宽屏两侧大片空白。
+        child: UtenContentContainer.wide(
           child: _loading
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
               : _error != null
@@ -467,14 +718,39 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
   Widget _itemsCard(ThemeData theme, MasterNameService names) {
     final items = _detail!.items;
     final canViewCommercialAmounts = _canViewCommercialAmounts;
+    final changedCount = _changedQtyItems.length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '明细 (${items.length})',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '明细 (${items.length})',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            // V477：分解前的数量修正（有改动才出现）。
+            if (changedCount > 0) ...[
+              Text(
+                '$changedCount 行待保存',
+                key: const Key('purchase-request-qty-dirty-count'),
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              UtenButton(
+                key: const Key('purchase-request-qty-save'),
+                type: UtenButtonType.danger,
+                onPressed: _busy ? null : _saveQtyAdjustments,
+                child: const Text('保存修改'),
+              ),
+            ],
+          ],
         ),
         const SizedBox(height: UtenSpacing.s8),
         MasterDataTableView<PurchaseDocItem>(
@@ -507,9 +783,32 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
             MasterColumnDef(
               key: 'qty',
               label: '数量',
-              width: 90,
+              width: _canAdjustRequestQty ? 130 : 90,
               type: 'number',
               value: (it) => it.qty?.toStringAsFixed(2),
+              cellBuilderHandlesSemantics: true,
+              // V477：申请明细在分解前可直接改量（已订货/待审占用的行只读）。
+              cellBuilder: (context, it) => _itemQtyEditable(it)
+                  ? SizedBox(
+                      width: 110,
+                      child: TextField(
+                        key: ValueKey('purchase-request-qty-${it.id}'),
+                        controller: _qtyControllerOf(it),
+                        enabled: !_busy,
+                        textAlign: TextAlign.right,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          hintText: '数量',
+                        ),
+                      ),
+                    )
+                  : Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(it.qty?.toStringAsFixed(2) ?? '—'),
+                    ),
             ),
             // 实际重量列已下线（2026-09-04：单位已表达重量，编辑页不再录入）。
             if (widget.docType != PurchaseDocType.request &&
@@ -604,7 +903,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
             Expanded(
               child: Text(
                 widget.docType == PurchaseDocType.request
-                    ? '$reason\n此申请由计划部下达，采购只能查看；可在本页或任务中心生成订货单。'
+                    ? '$reason\n此申请由计划部下达；分解前可在明细表直接修正数量（已生成订货单的行除外），再在本页或任务中心生成订货单。'
                     : '$reason\n仍可查看；后续调整请从生产计划专用流程发起。',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onTertiaryContainer,
@@ -760,6 +1059,20 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           ),
         );
       }
+      // 取消订单（2026-09-05）：草稿单即可取消——含在审单（同步撤回财务审核
+      // 任务与弹卡）；财务驳回后的草稿同样可取消。
+      if (s == kPurchaseStatusDraft &&
+          _ordinaryWritable &&
+          _hasPermission(Perm.purchaseOrderCancel)) {
+        addAction(
+          UtenButton(
+            type: UtenButtonType.danger,
+            icon: Icons.block_outlined,
+            onPressed: _cancelOrder,
+            child: const Text('取消订单'),
+          ),
+        );
+      }
       if (s == kPurchaseStatusDraft &&
           !pending &&
           _ordinaryWritable &&
@@ -770,6 +1083,19 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
             icon: Icons.send_outlined,
             onPressed: _submitFinance,
             child: Text(approval?.isRejected == true ? '重新提交财务' : '提交财务审核'),
+          ),
+        );
+      }
+      // 批准后改量（2026-09-05）：财务批准后的订货单逐行改数量，
+      // 改后自动重回财务复核；无 PENDING 审批任务时可操作。
+      if (s == kPurchaseStatusApproved && _canChangeQty) {
+        addAction(
+          UtenButton(
+            key: const Key('purchase-order-change-qty'),
+            type: UtenButtonType.secondary,
+            icon: Icons.edit_note_outlined,
+            onPressed: _changeQty,
+            child: Text(AppLocalizations.of(context).orderChangeQtyButton),
           ),
         );
       }

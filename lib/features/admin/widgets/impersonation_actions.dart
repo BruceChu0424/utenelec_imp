@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
@@ -105,10 +106,12 @@ Future<String?> showImpersonationPasswordDialog(BuildContext context) async {
                   controller: controller,
                   obscureText: true,
                   autofocus: true,
-                  decoration: InputDecoration(
-                    labelText: l10n.impersonationPasswordLabel,
-                    error: utenFieldError(errorText),
-                    border: const OutlineInputBorder(),
+                  decoration: UtenInputDecoration(
+                    InputDecoration(
+                      labelText: l10n.impersonationPasswordLabel,
+                      error: utenFieldError(errorText),
+                      border: const OutlineInputBorder(),
+                    ),
                   ),
                   onChanged: (_) {
                     if (errorText != null) setState(() => errorText = null);

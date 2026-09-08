@@ -220,7 +220,7 @@ void main() {
           financeAudit: 1,
           warehouseWorkStatus: SalesWarehouseWorkStatus.pendingPick,
         ),
-        isTrue,
+        isFalse,
       );
       expect(
         salesShipmentLocksDraftEdit(
@@ -236,7 +236,7 @@ void main() {
           financeAudit: 1,
           warehouseWorkStatus: SalesWarehouseWorkStatus.picking,
         ),
-        isFalse,
+        isTrue,
       );
       expect(
         salesShipmentLocksDraftEdit(

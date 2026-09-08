@@ -5,6 +5,48 @@ import 'package:uten_imp/features/finance/repositories/sales_order_finance_confi
 
 void main() {
   test(
+    'single and batch finance decisions retain reviewed version and lease UUID together',
+    () async {
+      final requests = <RequestOptions>[];
+      final repository = DioSalesOrderFinanceConfirmationRepository(
+        _api((request) {
+          requests.add(request);
+          return <String, Object?>{};
+        }),
+      );
+      await repository.confirm(
+        'order-a',
+        expectedRevision: 7,
+        expectedClaimId: 'claim-a',
+      );
+      await repository.reject(
+        'order-a',
+        reason: ' 修改待核对 ',
+        expectedRevision: 7,
+        expectedClaimId: 'claim-a',
+      );
+      await repository.confirmBatch(
+        ['order-b', 'order-a'],
+        expectedRevisions: {'order-a': 7, 'order-b': 9},
+        expectedClaimIds: {'order-a': 'claim-a', 'order-b': 'claim-b'},
+      );
+      expect(requests[0].data, {
+        'expectedRevision': 7,
+        'expectedClaimId': 'claim-a',
+      });
+      expect(requests[1].data, {
+        'reason': '修改待核对',
+        'expectedRevision': 7,
+        'expectedClaimId': 'claim-a',
+      });
+      expect(requests[2].data, {
+        'orderIds': ['order-a', 'order-b'],
+        'expectedRevisions': {'order-a': 7, 'order-b': 9},
+        'expectedClaimIds': {'order-a': 'claim-a', 'order-b': 'claim-b'},
+      });
+    },
+  );
+  test(
     'pending sends trimmed server-side keyword with rejected filter',
     () async {
       late RequestOptions captured;

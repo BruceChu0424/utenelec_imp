@@ -40,4 +40,14 @@ public class ReturnItemDto {
     private BigDecimal discount;
     private String sourceDocNo;
     private String remark;
+
+    // Exact text is derived after permission masking; null stays null.
+    public String getUnitRateExact() { return com.uten.imp.common.util.DecimalText.of(unitRate); }
+    public String getQtyExact() { return com.uten.imp.common.util.DecimalText.of(qty); }
+    public String getPriceExact() { return com.uten.imp.common.util.DecimalText.of(price); }
+    public String getAmountOriginalExact() { return com.uten.imp.common.util.DecimalText.of(amountOriginal); }
+    public String getAmountLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountLocal); }
+    public String getCostAmountExact() { return com.uten.imp.common.util.DecimalText.of(costAmount); }
+    public String getWeightExact() { return com.uten.imp.common.util.DecimalText.of(weight); }
+    public String getDiscountExact() { return com.uten.imp.common.util.DecimalText.of(discount); }
 }

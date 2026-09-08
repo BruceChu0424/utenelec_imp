@@ -49,6 +49,7 @@ class SalesHubPage extends ConsumerWidget {
       _Entry.fromCfg(SalesDocConfig.quote, l10n),
       _Entry.fromCfg(SalesDocConfig.order, l10n),
       _Entry.fromCfg(SalesDocConfig.shipment, l10n),
+      _Entry.fromCfg(SalesDocConfig.customerShipment, l10n),
       _Entry.fromCfg(SalesDocConfig.otherShipment, l10n),
       _Entry.fromCfg(SalesDocConfig.returnDoc, l10n),
     ].where((e) => perms.contains(e.listPerm)).toList();
@@ -227,6 +228,7 @@ String _salesDocTitle(SalesDocType t, AppLocalizations l10n) => switch (t) {
   SalesDocType.quote => l10n.salesHubDocQuote,
   SalesDocType.order => l10n.salesHubDocOrder,
   SalesDocType.shipment => l10n.salesHubDocShipment,
+  SalesDocType.customerShipment => '客户零星发货',
   SalesDocType.otherShipment => l10n.salesHubDocOtherShipment,
   SalesDocType.returnDoc => l10n.salesHubDocReturn,
 };
@@ -235,6 +237,7 @@ String _salesDocSubtitle(SalesDocType t, AppLocalizations l10n) => switch (t) {
   SalesDocType.quote => l10n.salesHubDocQuoteSub,
   SalesDocType.order => l10n.salesHubDocOrderSub,
   SalesDocType.shipment => l10n.salesHubDocShipmentSub,
+  SalesDocType.customerShipment => '样品、赠送及没有订货单的客户发货，统一财审后出库',
   SalesDocType.otherShipment => l10n.salesHubDocOtherShipmentSub,
   SalesDocType.returnDoc => l10n.salesHubDocReturnSub,
 };

@@ -11,6 +11,25 @@ import java.util.UUID;
 
 public interface NoticeRepository extends JpaRepository<Notice, UUID> {
 
+    @Query(value="""
+            SELECT id AS "shipmentId",
+              (status=0 AND NOT is_deleted AND NOT rejected AND NOT finance_rejected AND finance_audit=0
+                AND warehouse_work_status='PENDING_PICK' AND (finance_gate_version<2 OR
+                    (sales_confirmed_at IS NOT NULL AND sales_confirmed_revision=review_revision))) AS "financePending",
+              (status=0 AND NOT is_deleted AND NOT rejected AND finance_audit=1
+                AND warehouse_work_status='PENDING_PICK') AS "pickPending",
+              (status=0 AND NOT is_deleted AND NOT rejected AND finance_rejected AND warehouse_work_status='PENDING_PICK') AS "correctionPending"
+            FROM sales_shipments WHERE id IN (:ids)
+            """,nativeQuery=true)
+    List<ShipmentReviewStateRow> findShipmentReviewStates(@Param("ids") java.util.Set<UUID> ids);
+
+    interface ShipmentReviewStateRow {
+        UUID getShipmentId();
+        boolean getFinancePending();
+        boolean getPickPending();
+        boolean getCorrectionPending();
+    }
+
     @Query("""
             SELECT n
             FROM Notice n
@@ -115,6 +134,7 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
               ON s.id.noticeId = n.id AND s.id.userId = :userId
             WHERE n.audienceUserId = :userId
               AND n.sourceEvent IN :events
+              AND n.aggregateId IS NOT NULL AND n.aggregateKind IS NOT NULL
               AND n.resolvedAt IS NULL
               AND (s IS NULL OR (
                     s.deletedAt IS NULL

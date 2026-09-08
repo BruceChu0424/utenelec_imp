@@ -52,7 +52,7 @@ void main() {
       expect(find.text('资金来源'), findsOneWidget);
       expect(find.text('已审核财务收款单；不是销售订单历史订金'), findsOneWidget);
       expect(find.textContaining('明细 ('), findsNothing);
-      expect(find.text('订单资金状态(财务只读)'), findsOneWidget);
+      expect(find.text('订单资金状态'), findsOneWidget);
     },
   );
 

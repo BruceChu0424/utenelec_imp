@@ -4,6 +4,8 @@
 // is_closed（CheckFulfill4 派生：所有明细 qty-iqty≤0）/ is_stopped / is_canceled 经徽章副标体现。
 // 关联销售订单：明细 salesOrderNo（文本占位，销售模块上线后挂真 FK）。
 // 名称解析：货品/颜色/单位经 MasterNameService（跨 feature 复用 purchase 的 provider）。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +14,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
@@ -26,8 +29,10 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_execution_planning.dart';
+import '../models/production_execution_workbench.dart';
 import '../models/production_material_analysis.dart';
 import '../models/production_plan.dart';
+import '../repositories/production_execution_workbench_repository.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/production_execution_card_print_preview.dart';
 import '../widgets/production_execution_segments_card.dart';
@@ -62,6 +67,11 @@ class _ProductionPlanDetailPageState
   String? _subplanError;
   String? _focusedExecutionSegmentId;
   int _executionSegmentsRevision = 0;
+
+  /// 本批次（来源物料分析）关联单据：采购/委外申请与订货单、本批次计划树。
+  List<ProductionExecutionWorkbenchRelatedDocument>? _relatedDocuments;
+  bool _relatedDocumentsLoading = false;
+  int _relatedDocumentsGeneration = 0;
 
   @override
   void initState() {
@@ -161,6 +171,7 @@ class _ProductionPlanDetailPageState
       _hasPermission(Perm.productionExecutionAssign);
   bool get _canReleaseExecutionDefer =>
       _hasPermission(Perm.productionExecutionReleaseDefer);
+  bool get _canStartExecution => _hasPermission(Perm.productionExecutionStart);
   bool get _canReport {
     final permissions = ref.read(currentPermissionsProvider);
     return permissions.contains(Perm.productionDailyReportView) &&
@@ -210,6 +221,7 @@ class _ProductionPlanDetailPageState
         _detail = d;
         _loading = false;
       });
+      unawaited(_loadRelatedDocuments(d.materialAnalysisId));
       await _loadSubplans(planId: planId);
     } on ApiException catch (e) {
       if (!mounted || widget.id != planId) return;
@@ -223,6 +235,28 @@ class _ProductionPlanDetailPageState
         _error = '加载详情失败';
         _loading = false;
       });
+    }
+  }
+
+  /// 本批次关联单据（懒加载，失败静默——卡片显示引导重试）。
+  Future<void> _loadRelatedDocuments(String? analysisId) async {
+    if (analysisId == null || analysisId.isEmpty) return;
+    final generation = ++_relatedDocumentsGeneration;
+    setState(() => _relatedDocumentsLoading = true);
+    try {
+      final docs = await ref
+          .read(productionExecutionWorkbenchRepositoryProvider)
+          .relatedDocuments(rootType: 'ANALYSIS', rootId: analysisId);
+      if (!mounted || generation != _relatedDocumentsGeneration) return;
+      setState(() => _relatedDocuments = docs);
+    } catch (_) {
+      if (mounted && generation == _relatedDocumentsGeneration) {
+        setState(() => _relatedDocuments = null);
+      }
+    } finally {
+      if (mounted && generation == _relatedDocumentsGeneration) {
+        setState(() => _relatedDocumentsLoading = false);
+      }
     }
   }
 
@@ -463,10 +497,12 @@ class _ProductionPlanDetailPageState
                   controller: reasonController,
                   maxLength: 500,
                   autofocus: true,
-                  decoration: InputDecoration(
-                    labelText: '$verb原因',
-                    hintText: '请填写具体业务原因',
-                    error: utenFieldError(validationError),
+                  decoration: UtenInputDecoration(
+                    InputDecoration(
+                      labelText: '$verb原因',
+                      hintText: '请填写具体业务原因',
+                      error: utenFieldError(validationError),
+                    ),
                   ),
                 ),
               ],
@@ -1070,12 +1106,17 @@ class _ProductionPlanDetailPageState
                       canAssign: _canAssignExecution,
                       canReleaseDefer: _canReleaseExecutionDefer,
                       canReport: _canReport,
+                      canStart: _canStartExecution,
                       initialSegmentId: _focusedExecutionSegmentId,
                       onChanged: _loadSubplans,
                     ),
                     if (_detail!.status == kProductionStatusApproved) ...[
                       const SizedBox(height: UtenSpacing.s12),
                       _executionDocumentsCard(theme),
+                    ],
+                    if (_relatedDocumentsCardVisible) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      _relatedDocumentsCard(theme),
                     ],
                     if (_subplanError != null)
                       const SizedBox(height: UtenSpacing.s12),
@@ -1088,6 +1129,162 @@ class _ProductionPlanDetailPageState
         ),
       ),
       bottomNavigationBar: _detail == null ? null : _actions(theme),
+    );
+  }
+
+  bool get _relatedDocumentsCardVisible {
+    final analysisId = _detail?.materialAnalysisId;
+    if (analysisId == null || analysisId.isEmpty) return false;
+    return _relatedDocumentsLoading || (_relatedDocuments?.isNotEmpty ?? false);
+  }
+
+  /// 本批次关联单据：采购/委外申请与订货单（可点进对应单据看进度——
+  /// 订货/审批/收货/IQC/入库的深链进度在各自详情页与物料分析进度弹窗）。
+  Widget _relatedDocumentsCard(ThemeData theme) {
+    final docs = (_relatedDocuments ?? const [])
+        .where((doc) => doc.documentType != 'PRODUCTION_PLAN')
+        .toList(growable: false);
+    final purchaseDocs = docs
+        .where((doc) => doc.documentType.startsWith('PURCHASE'))
+        .toList(growable: false);
+    final subcontractDocs = docs
+        .where((doc) => doc.documentType.startsWith('SUBCONTRACT'))
+        .toList(growable: false);
+    return Card(
+      key: const Key('production-plan-related-documents'),
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.link_rounded,
+                  size: 20,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                Text(
+                  '本批次关联单据',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (_relatedDocumentsLoading)
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+              ],
+            ),
+            const SizedBox(height: UtenSpacing.s4),
+            Text(
+              '本计划来源物料分析生成的采购/委外单据；点击单号进入对应单据查看审批、'
+              '收货、IQC 与入库进度。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            if (purchaseDocs.isNotEmpty)
+              _relatedDocGroup(theme, label: '采购单据', docs: purchaseDocs),
+            if (subcontractDocs.isNotEmpty)
+              _relatedDocGroup(theme, label: '委外单据', docs: subcontractDocs),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _relatedDocGroup(
+    ThemeData theme, {
+    required String label,
+    required List<ProductionExecutionWorkbenchRelatedDocument> docs,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(top: UtenSpacing.s8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s4),
+          Wrap(
+            spacing: UtenSpacing.s8,
+            runSpacing: UtenSpacing.s4,
+            children: [for (final doc in docs) _relatedDocChip(theme, doc)],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _relatedDocChip(
+    ThemeData theme,
+    ProductionExecutionWorkbenchRelatedDocument doc,
+  ) {
+    final child = Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s8,
+        vertical: UtenSpacing.s4,
+      ),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(UtenRadius.sm),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(doc.typeLabel),
+          const SizedBox(width: UtenSpacing.s4),
+          Text(
+            doc.documentNo,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: doc.canOpen ? theme.colorScheme.primary : null,
+            ),
+          ),
+          const SizedBox(width: UtenSpacing.s4),
+          Text(
+            doc.statusLabel,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: doc.status == '-1'
+                  ? theme.colorScheme.error
+                  : theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!doc.canOpen) {
+      return Tooltip(message: '当前账号无对应单据查看权限，仅显示单号', child: child);
+    }
+    final path = switch (doc.documentType) {
+      'PURCHASE_REQUEST' => RoutePath.purchaseDocDetail(
+        'requests',
+        doc.documentId,
+      ),
+      'PURCHASE_ORDER' => RoutePath.purchaseDocDetail('orders', doc.documentId),
+      'SUBCONTRACT_APPLICATION' => RoutePath.subcontractDocDetail(
+        'applications',
+        doc.documentId,
+      ),
+      'SUBCONTRACT_ORDER' => RoutePath.subcontractDocDetail(
+        'orders',
+        doc.documentId,
+      ),
+      _ => null,
+    };
+    if (path == null) return child;
+    return InkWell(
+      borderRadius: BorderRadius.circular(UtenRadius.sm),
+      onTap: () => _openLinkedPage(path),
+      child: child,
     );
   }
 

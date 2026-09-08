@@ -9,6 +9,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -295,9 +296,11 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
                   controller: controller,
                   autofocus: true,
                   maxLines: 3,
-                  decoration: InputDecoration(
-                    labelText: '驳回原因',
-                    error: utenFieldError(validationError),
+                  decoration: UtenInputDecoration(
+                    InputDecoration(
+                      labelText: '驳回原因',
+                      error: utenFieldError(validationError),
+                    ),
                   ),
                 ),
               ],

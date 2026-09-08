@@ -180,9 +180,11 @@ class _StockItemDetailPageState extends ConsumerState<StockItemDetailPage> {
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新',
-            onPressed: () => _load(
-              (_segment == 0 ? _balances?.page : _movements?.page) ?? 1,
-            ),
+            // 整页刷新：品名详情 + 当前段回第 1 页（与 initState 同口径）。
+            onPressed: () {
+              _loadBalanceNames();
+              _load(1);
+            },
           ),
         ],
       ),

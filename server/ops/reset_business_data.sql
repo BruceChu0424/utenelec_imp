@@ -573,6 +573,83 @@ FROM (VALUES
 ) AS optional(table_name, disposition)
 WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
 
+-- V478 root output ledger is absent from older supported catalogs.
+INSERT INTO reset_business_table_policy(table_name, disposition)
+SELECT optional.table_name, optional.disposition
+FROM (VALUES
+('preplan_root_output_events', 'CLEAR')
+) AS optional(table_name, disposition)
+WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
+
+-- V482 销售订单改量事实账（业务数据，清空重放）。
+INSERT INTO reset_business_table_policy(table_name, disposition)
+SELECT optional.table_name, optional.disposition
+FROM (VALUES
+('sales_order_qty_change_logs', 'CLEAR'),
+('procurement_order_qty_change_logs', 'CLEAR'),
+('sales_order_revision_logs', 'CLEAR'),
+('preplan_subcontract_make_batch_reversals', 'CLEAR')
+) AS optional(table_name, disposition)
+WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
+
+-- V500 actual stock-value facts and V503 source quantity-revision facts.
+-- Each family is checked for complete presence against its migration head below.
+INSERT INTO reset_business_table_policy(table_name, disposition)
+SELECT optional.table_name, optional.disposition
+FROM (VALUES
+('stock_value_pools', 'CLEAR'),
+('stock_value_events', 'CLEAR'),
+('stock_value_nodes', 'CLEAR'),
+('stock_value_edges', 'CLEAR'),
+('stock_value_jobs', 'CLEAR'),
+('stock_value_tasks', 'CLEAR'),
+('stock_value_node_revisions', 'CLEAR'),
+('stock_value_postings', 'CLEAR'),
+('procurement_order_source_revisions', 'CLEAR'),
+('procurement_order_source_revision_allocations', 'CLEAR'),
+('procurement_order_source_revision_peg_changes', 'CLEAR')
+) AS optional(table_name, disposition)
+WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
+
+-- V506 opening evidence and separately retained legacy-balance cases.
+INSERT INTO reset_business_table_policy(table_name, disposition)
+SELECT optional.table_name, optional.disposition
+FROM (VALUES
+('stock_value_openings', 'CLEAR'),
+('stock_value_legacy_balance_cases', 'CLEAR'),
+('stock_value_legacy_balance_case_events', 'CLEAR')
+) AS optional(table_name, disposition)
+WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
+
+-- Current operational receipt, source and custody facts.
+INSERT INTO reset_business_table_policy(table_name, disposition)
+SELECT optional.table_name, optional.disposition
+FROM (VALUES
+('sales_shipment_submission_events', 'CLEAR'),
+('production_material_movement_links', 'CLEAR'),
+('stock_value_acquisition_sources', 'CLEAR'),
+('stock_value_position_transfers', 'CLEAR'),
+('stock_value_production_cost_dirty', 'CLEAR'),
+('stock_value_production_cost_inputs', 'CLEAR'),
+('stock_value_production_cost_objects', 'CLEAR'),
+('stock_value_production_cost_outputs', 'CLEAR'),
+('stock_value_production_cost_revisions', 'CLEAR'),
+('stock_value_production_cost_shares', 'CLEAR'),
+('stock_value_production_cost_tasks', 'CLEAR'),
+('procurement_iqc_consideration_reversals', 'CLEAR'),
+('procurement_iqc_consideration_review_approvals', 'CLEAR'),
+('procurement_iqc_credit_case_allocations', 'CLEAR'),
+('procurement_iqc_credit_documents', 'CLEAR'),
+('procurement_iqc_credit_slices', 'CLEAR'),
+('procurement_iqc_funding_settlements', 'CLEAR'),
+('procurement_iqc_funding_slices', 'CLEAR'),
+('procurement_iqc_quality_consideration_parts', 'CLEAR'),
+('procurement_iqc_stock_consideration_parts', 'CLEAR'),
+('procurement_receipt_consideration_parts', 'CLEAR'),
+('subcontract_receipt_material_consumptions', 'CLEAR')
+) AS optional(table_name, disposition)
+WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
+
 DO $$
 DECLARE
     duplicate_tables TEXT;
@@ -588,6 +665,11 @@ DECLARE
     v448_read_index_count BIGINT;
     v451_place_source_count BIGINT;
     v454_celebration_table_count BIGINT;
+    v500_value_table_count BIGINT;
+    v503_source_revision_table_count BIGINT;
+    v506_opening_table_count BIGINT;
+    current_operational_table_count BIGINT;
+    incomplete_operational_tables TEXT;
     applied_migration_count BIGINT;
     applied_max_version INTEGER;
     unsafe_fk_edges TEXT;
@@ -762,10 +844,65 @@ BEGIN
         (473, 435),
         (474, 436),
         (475, 437),
-        (476, 438)
+        (476, 438),
+        (477, 439),
+        (478, 440),
+        (479, 441),
+        (480, 442),
+        (481, 443),
+        (482, 444),
+        (483, 445),
+        (484, 446),
+        (485, 447),
+        (486, 448),
+        (487, 449),
+        -- V488 只给偏好表补列、V489/V490 只替换函数、V491 只改报工门控函数，
+        -- 均不新增业务表。
+        (488, 450),
+        (489, 451),
+        (490, 452),
+        (491, 453),
+        (492, 454),
+        (493, 455),
+        (494, 456),
+        (495, 457),
+        (496, 458),
+        (497, 459),
+        (498, 460),
+        (499, 461),
+        (500, 462),
+        (501, 463),
+        (502, 464),
+        (503, 465),
+        (504, 466),
+        (505, 467),
+        (506, 468),
+        (507, 469),
+        (508, 470),
+        (511, 471),
+        (513, 472),
+        (514, 473),
+        (515, 474),
+        (516, 475),
+        (517, 476),
+        (518, 477),
+        (519, 478),
+        (520, 479),
+        (521, 480),
+        (522, 481),
+        (523, 482),
+        (524, 483),
+        (525, 484),
+        (526, 485),
+        (527, 486),
+        (528, 487),
+        (529, 488),
+        (530, 489),
+        (531, 490),
+        (532, 491)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 或 V476/438 目录，当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V532完整目录，当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 
@@ -854,6 +991,59 @@ BEGIN
             v451_place_source_count;
     END IF;
 
+    SELECT count(*) INTO v500_value_table_count FROM reset_business_table_policy
+    WHERE table_name IN ('stock_value_pools','stock_value_events','stock_value_nodes','stock_value_edges',
+        'stock_value_jobs','stock_value_tasks','stock_value_node_revisions','stock_value_postings');
+    SELECT count(*) INTO v503_source_revision_table_count FROM reset_business_table_policy
+    WHERE table_name IN ('procurement_order_source_revisions','procurement_order_source_revision_allocations',
+        'procurement_order_source_revision_peg_changes');
+    SELECT count(*) INTO v506_opening_table_count FROM reset_business_table_policy
+    WHERE table_name IN ('stock_value_openings','stock_value_legacy_balance_cases','stock_value_legacy_balance_case_events');
+    IF v500_value_table_count <> (CASE WHEN applied_max_version>=500 THEN 8 ELSE 0 END)
+       OR v503_source_revision_table_count <> (CASE WHEN applied_max_version>=503 THEN 3 ELSE 0 END) THEN
+        RAISE EXCEPTION '存货价值表 %/8 或来源改量表 %/3 与目录 V% 不符，拒绝部分迁移目录',
+            v500_value_table_count,v503_source_revision_table_count,applied_max_version;
+    END IF;
+    IF v506_opening_table_count <> (CASE WHEN applied_max_version>=506 THEN 3 ELSE 0 END) THEN
+        RAISE EXCEPTION '开账及历史余额表 %/3 与目录 V% 不符，拒绝部分迁移目录',v506_opening_table_count,applied_max_version;
+    END IF;
+
+    -- Missing, partial and prematurely present families all fail closed.
+    SELECT string_agg(required.table_name, ', ' ORDER BY required.table_name)
+    INTO incomplete_operational_tables
+    FROM (VALUES
+            ('sales_shipment_submission_events', 511),
+            ('production_material_movement_links', 514),
+            ('stock_value_acquisition_sources', 517),
+            ('stock_value_position_transfers', 517),
+            ('stock_value_production_cost_dirty', 517),
+            ('stock_value_production_cost_inputs', 517),
+            ('stock_value_production_cost_objects', 517),
+            ('stock_value_production_cost_outputs', 517),
+            ('stock_value_production_cost_revisions', 517),
+            ('stock_value_production_cost_shares', 517),
+            ('stock_value_production_cost_tasks', 517),
+            ('procurement_iqc_consideration_reversals', 518),
+            ('procurement_iqc_consideration_review_approvals', 518),
+            ('procurement_iqc_credit_case_allocations', 518),
+            ('procurement_iqc_credit_documents', 518),
+            ('procurement_iqc_credit_slices', 518),
+            ('procurement_iqc_funding_settlements', 518),
+            ('procurement_iqc_funding_slices', 518),
+            ('procurement_iqc_quality_consideration_parts', 518),
+            ('procurement_iqc_stock_consideration_parts', 518),
+            ('procurement_receipt_consideration_parts', 518),
+            ('subcontract_receipt_material_consumptions', 522)
+    ) AS required(table_name, introduced_version)
+    WHERE (to_regclass(format('public.%I', required.table_name)) IS NOT NULL)
+        IS DISTINCT FROM (applied_max_version >= required.introduced_version);
+    IF incomplete_operational_tables IS NOT NULL THEN
+        RAISE EXCEPTION '当前业务来源表与迁移目录不符，拒绝清空: %', incomplete_operational_tables;
+    END IF;
+    SELECT count(*) INTO current_operational_table_count
+    FROM reset_business_table_policy
+    WHERE table_name IN ('sales_shipment_submission_events','production_material_movement_links','stock_value_acquisition_sources','stock_value_position_transfers','stock_value_production_cost_dirty','stock_value_production_cost_inputs','stock_value_production_cost_objects','stock_value_production_cost_outputs','stock_value_production_cost_revisions','stock_value_production_cost_shares','stock_value_production_cost_tasks','procurement_iqc_consideration_reversals','procurement_iqc_consideration_review_approvals','procurement_iqc_credit_case_allocations','procurement_iqc_credit_documents','procurement_iqc_credit_slices','procurement_iqc_funding_settlements','procurement_iqc_funding_slices','procurement_iqc_quality_consideration_parts','procurement_iqc_stock_consideration_parts','procurement_receipt_consideration_parts','subcontract_receipt_material_consumptions');
+
     -- V459 新增兼职部门表（PRESERVE 95→96，组织与权限治理数据）。
     IF (applied_max_version <= 458 AND preserve_count <> 95)
        OR (applied_max_version >= 459 AND preserve_count <> 96)
@@ -879,6 +1069,29 @@ BEGIN
            OR (v446_business_table_count = 2
                 AND v447_business_table_count = 5
                 AND clear_count - v454_celebration_table_count = 224)
+           OR (applied_max_version>=478 AND v446_business_table_count=2
+                AND v447_business_table_count=5
+                AND clear_count-v454_celebration_table_count=225)
+           -- V482 adds one CLEAR sales qty-change fact ledger (V474..V482 all in).
+           OR (applied_max_version>=482 AND v446_business_table_count=2
+                AND v447_business_table_count=5
+                AND clear_count-v454_celebration_table_count=226)
+           -- V486 adds one CLEAR procurement qty-change fact ledger (ADR-072).
+           OR (applied_max_version>=486 AND v446_business_table_count=2
+                AND v447_business_table_count=5
+                AND clear_count-v454_celebration_table_count=227)
+           -- V492 adds the append-only commercial revision ledger.
+           OR (applied_max_version>=492 AND v446_business_table_count=2
+                AND v447_business_table_count=5
+                AND clear_count-v454_celebration_table_count=228)
+           -- V496 adds append-only subcontract notification batch reversals.
+           OR (applied_max_version>=496 AND v446_business_table_count=2
+                AND v447_business_table_count=5
+                AND clear_count-v454_celebration_table_count=229)
+           -- V500 eight value tables; V503 three source revision tables.
+           OR (applied_max_version>=500 AND v446_business_table_count=2
+                AND v447_business_table_count=5
+                AND clear_count-v454_celebration_table_count-v500_value_table_count-v503_source_revision_table_count-v506_opening_table_count-current_operational_table_count=229)
        ) THEN
         RAISE EXCEPTION
             'V443/V446/V447 白名单数量异常：CLEAR %，PRESERVE %，V442表 %/8，V440表 %/6，V443表 %/1，V446表 %/2，V447表 %/5，V454表 %/1',

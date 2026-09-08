@@ -73,4 +73,11 @@ public class OrderDetail {
     private java.time.OffsetDateTime financeRejectedAt;
     /** 财务驳回人姓名（服务端按 finance_rejected_by 解析）。 */
     private String financeRejectedByName;
+
+    // Exact text is derived after permission masking; null stays null.
+    public String getExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(exchangeRate); }
+    public String getTaxRateExact() { return com.uten.imp.common.util.DecimalText.of(taxRate); }
+    public String getLegacyDepositSnapshotExact() { return com.uten.imp.common.util.DecimalText.of(legacyDepositSnapshot); }
+    public String getTotalOriginalExact() { return com.uten.imp.common.util.DecimalText.of(totalOriginal); }
+    public String getTotalLocalExact() { return com.uten.imp.common.util.DecimalText.of(totalLocal); }
 }

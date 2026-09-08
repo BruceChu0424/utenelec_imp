@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/utils/display_datetime.dart';
 import '../../shared/providers/session_provider.dart';
 import '../inputs/uten_field_message.dart';
+import '../inputs/uten_input_decoration.dart';
 
 /// 制单信息两个只读格子：制单员 + 制单时间。
 /// [makerName] / [createdAt] 传服务端返回值；新建态传 null。
@@ -20,23 +21,32 @@ List<Widget> utenMakerAuditCells(
   WidgetRef ref, {
   String? makerName,
   String? createdAt,
+  bool compact = false,
 }) {
   final me = ref.watch(sessionProvider).user;
   final maker = (makerName != null && makerName.isNotEmpty)
       ? makerName
       : (me?.name ?? '');
   final timeText = utenFmtIsoTime(createdAt);
+  if (compact) {
+    return [
+      Text('制单员：${maker.isEmpty ? '当前登录人' : maker}'),
+      Text('制单时间：${timeText.isEmpty ? '保存时自动记录' : timeText}'),
+    ];
+  }
   return [
     TextFormField(
       errorBuilder: utenTextFieldErrorBuilder,
       key: ValueKey('maker_$maker'),
       readOnly: true,
       initialValue: maker,
-      decoration: InputDecoration(
-        labelText: '制单员(系统自动生成)', // TODO(l10n): 补 arb
-        hintText: maker.isEmpty ? '当前登录人' : null,
-        filled: true,
-        suffixIcon: const Icon(Icons.lock_outline, size: 16),
+      decoration: UtenInputDecoration(
+        InputDecoration(
+          labelText: '制单员(系统自动生成)', // TODO(l10n): 补 arb
+          hintText: maker.isEmpty ? '当前登录人' : null,
+          filled: true,
+          suffixIcon: const Icon(Icons.lock_outline, size: 16),
+        ),
       ),
     ),
     TextFormField(
@@ -44,13 +54,15 @@ List<Widget> utenMakerAuditCells(
       key: ValueKey('mtime_$timeText'),
       readOnly: true,
       initialValue: timeText,
-      decoration: InputDecoration(
-        labelText: '制单时间(系统自动生成)', // TODO(l10n): 补 arb
-        hintText: timeText.isEmpty ? '保存时自动记录' : null,
-        filled: timeText.isEmpty,
-        suffixIcon: timeText.isEmpty
-            ? const Icon(Icons.autorenew_outlined, size: 18)
-            : const Icon(Icons.lock_outline, size: 16),
+      decoration: UtenInputDecoration(
+        InputDecoration(
+          labelText: '制单时间(系统自动生成)', // TODO(l10n): 补 arb
+          hintText: timeText.isEmpty ? '保存时自动记录' : null,
+          filled: timeText.isEmpty,
+          suffixIcon: timeText.isEmpty
+              ? const Icon(Icons.autorenew_outlined, size: 18)
+              : const Icon(Icons.lock_outline, size: 16),
+        ),
       ),
     ),
   ];

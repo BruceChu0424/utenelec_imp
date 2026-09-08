@@ -18,4 +18,8 @@ public class FinanceBankTransferLineDto {
     private BigDecimal amountOriginal;
     private BigDecimal amountLocal;
     private String summary;
+
+    // Additive exact text never passes through a binary floating-point value.
+    public String getAmountOriginalExact() { return com.uten.imp.common.util.DecimalText.of(amountOriginal); }
+    public String getAmountLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountLocal); }
 }

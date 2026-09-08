@@ -19,6 +19,11 @@ import java.util.UUID;
 public class ShipmentSaveRequest {
 
     private String billNo;
+    private String shipmentKind;
+    private String billingMode;
+    @Size(max=32) private String directPurpose;
+    @Size(max=500) private String freeReason;
+    private Long expectedRevision;
 
     @NotNull
     private LocalDate billDate;

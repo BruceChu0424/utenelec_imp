@@ -109,7 +109,7 @@ class WarehouseArrivalRegistrationContractTest {
                 .toList();
         assertThat(lineComponents).containsExactlyInAnyOrder(
                 "goodsId", "qty", "orderItemId", "colorId", "unitId",
-                "unitRate", "weight", "sourceDocNo");
+                        "unitRate", "weight", "sourceDocNo", "replacementIntent");
     }
 
     @Test

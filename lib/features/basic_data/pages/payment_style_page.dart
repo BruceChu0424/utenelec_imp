@@ -13,7 +13,9 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
@@ -1193,31 +1195,29 @@ class _InfoField extends StatelessWidget {
           color: theme.colorScheme.surfaceContainerLow,
           borderRadius: UtenRadius.mdAll,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Text(
-              label,
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s4),
+                  SelectableText(
+                    value,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: UtenSpacing.s4),
-            SelectableText(
-              value,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            if (helper != null) ...[
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                helper!,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
+            if (helper?.isNotEmpty ?? false) UtenFieldHintIcon(info: helper),
           ],
         ),
       ),
@@ -1603,7 +1603,9 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
                   errorBuilder: utenTextFieldErrorBuilder,
                   enabled: false,
                   initialValue: widget.editing!.code,
-                  decoration: const InputDecoration(labelText: '系统编号'),
+                  decoration: const UtenInputDecoration(
+                    InputDecoration(labelText: '系统编号'),
+                  ),
                 )
               else
                 const _InlineNotice(
@@ -1632,12 +1634,14 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
                 keyboardType: const TextInputType.numberWithOptions(
                   signed: true,
                 ),
-                decoration: InputDecoration(
-                  label: fieldLabel(
-                    '同级排序',
-                    theme,
-                    required: true,
-                    info: '数字越小越靠前，仅在同一父级内比较',
+                decoration: UtenInputDecoration(
+                  InputDecoration(
+                    label: fieldLabel(
+                      '同级排序',
+                      theme,
+                      required: true,
+                      info: '数字越小越靠前，仅在同一父级内比较',
+                    ),
                   ),
                 ),
               ),

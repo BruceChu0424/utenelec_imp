@@ -24,8 +24,10 @@ import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
@@ -47,6 +49,7 @@ import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
+import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../config/finance_doc_config.dart';
 import '../models/finance_decimal.dart';
 import '../models/finance_doc.dart';
@@ -102,7 +105,10 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
   String? _financePaymentMethodId;
   String? _operatorId;
   String _settlementChannel = _settlementChannelDirect;
-  String _exchangeRateSource = _rateSourceBank;
+  String get _exchangeRateSource =>
+      _settlementChannel == _settlementChannelAgent
+      ? _rateSourceAgent
+      : _rateSourceBank;
   String _feeSettlementMode = _feeModeNone;
   final String _createIdempotencyKey = const Uuid().v4();
   int? _expectedVersion;
@@ -116,6 +122,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
   final _scrollCtl = ScrollController();
   bool _saving = false;
   bool _loading = true;
+  bool _showReceiptReconciliation = false;
   String? _initializationError;
   String? _paymentCurrencyError;
   String? _paymentRateError;
@@ -209,11 +216,6 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
         _expectedVersion = d.version;
         _settlementChannel = d.settlementChannel ?? _settlementChannelDirect;
         _settlementAgentSupplierId = d.settlementAgentSupplierId;
-        _exchangeRateSource =
-            d.exchangeRateSource ??
-            (_settlementChannel == _settlementChannelAgent
-                ? _rateSourceAgent
-                : _rateSourceBank);
         _exchangeRateEffectiveAt =
             ChinaDateTime.tryParse(d.exchangeRateEffectiveAt) ??
             _exchangeRateEffectiveAt;
@@ -277,18 +279,27 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
             ..inAccountId = it.inAccountId
             ..occurDate = it.occurDate;
           row.department.text = it.departmentId ?? '';
-          row.qty.text = it.qty?.toString() ?? '';
-          row.price.text = it.price?.toString() ?? '';
+          row.qty.text = it.qtyText ?? it.qty?.toString() ?? '';
+          row.price.text = it.priceText ?? it.price?.toString() ?? '';
           row.amount.text = _cfg.isSettle
-              ? it.amountOriginalText ?? it.amountLocal?.toString() ?? ''
-              : it.amountLocal?.toString() ?? '';
+              ? it.amountOriginalText ??
+                    it.amountLocalText ??
+                    it.amountLocal?.toString() ??
+                    ''
+              : it.amountLocalText ?? it.amountLocal?.toString() ?? '';
+          row.originalAmountSnapshot = it.amountOriginalText;
+          row.localAmountSnapshot = it.amountLocalText;
+          row.amountInputSnapshot = row.amount.text;
+          row.summarySnapshot = it.summary;
           row.exchangeRate.text = _cfg.type == FinanceDocType.receipt
               ? _rate.text
               : (it.exchangeRateText ?? '');
-          row.writeOff.text = d.settlementAuthorityVersion == 1
+          row.writeOff.text = (d.settlementAuthorityVersion ?? 0) >= 1
               ? '0'
               : (it.writeOffAmountText ?? '0');
-          row.remark.text = it.remark ?? '';
+          row.remark.text = _cfg.isTransfer
+              ? it.summary ?? it.remark ?? ''
+              : it.remark ?? '';
           rows.add(row);
         }
         _grid.replaceAll(rows);
@@ -429,11 +440,9 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
     setState(() {
       if (accountCurrencyId == settlementCurrencyId) {
         _settlementChannel = _settlementChannelDirect;
-        _exchangeRateSource = _rateSourceBank;
         _settlementAgentSupplierId = null;
       } else if (names.accountIsBaseCurrency(_accountId) == true) {
         _settlementChannel = _settlementChannelAgent;
-        _exchangeRateSource = _rateSourceAgent;
       }
     });
   }
@@ -614,12 +623,12 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
           context.appError('销售收款明细必须引用应收单');
           return;
         }
-        final amountUnits = financeExactDecimalUnits(r.amount.text.trim());
+        final amountUnits = financeAmountUnits(r.amount.text.trim());
         if (amountUnits == null || amountUnits <= BigInt.zero) {
           context.appError('请填写大于 0 的本批 AR 核销原币金额');
           return;
         }
-        final amountOriginal = financeExactDecimalFromUnits(amountUnits);
+        final amountOriginal = financeAmountFromUnits(amountUnits);
         final currencyId = r.currencyId;
         if (currencyId == null || currencyId.isEmpty) {
           context.appError('引用的应收币别缺失，请重新引用应收');
@@ -632,7 +641,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
         final exchangeRate = _rate.text.trim();
         final rateUnits = financeExactDecimalUnits(exchangeRate, scale: 6);
         if (rateUnits == null || rateUnits <= BigInt.zero) {
-          context.appError('请填写大于 0、最多 6 位小数的当前批次实际汇率');
+          context.appError('请填写大于 0、最多 6 位小数的本批汇率报价');
           return;
         }
         final lineRemark = r.remark.text.trim();
@@ -663,12 +672,12 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
           context.appError('应付核销明细币种必须与付款头币种一致');
           return;
         }
-        final amountUnits = financeExactDecimalUnits(r.amount.text.trim());
+        final amountUnits = financeAmountUnits(r.amount.text.trim());
         if (amountUnits == null || amountUnits <= BigInt.zero) {
-          context.appError('请填写大于 0、最多 4 位小数的本次付款原币金额');
+          context.appError('请填写大于 0、最多 24 位有效小数的本次付款原币金额');
           return;
         }
-        final amountOriginal = financeExactDecimalFromUnits(amountUnits);
+        final amountOriginal = financeAmountFromUnits(amountUnits);
         final lineRemark = r.remark.text.trim();
         itemsBody.add({
           'appliedLedgerId': ledgerId,
@@ -679,11 +688,29 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
         continue;
       }
 
-      // amountNotifier 是所有模式的「金额」真相源：
-      // allocate = qty*price；settle/transfer = amount.text 同步。无效输入 → 0 → 跳过。
-      final amt = r.amountNotifier.value;
-      if (amt <= 0) continue;
-      final item = <String, dynamic>{'amountLocal': amt, 'amountOriginal': amt};
+      final amountText = r.amount.text.trim();
+      if (amountText.isEmpty &&
+          r.styleId == null &&
+          r.inAccountId == null &&
+          r.qty.text.trim().isEmpty &&
+          r.price.text.trim().isEmpty &&
+          r.remark.text.trim().isEmpty) {
+        continue;
+      }
+      final amountUnits = financeAmountUnits(amountText);
+      if (amountUnits == null || amountUnits <= BigInt.zero) {
+        context.appError('请为每条明细填写大于 0、最多 24 位有效小数的实际金额');
+        return;
+      }
+      final unchangedAmount = amountText == r.amountInputSnapshot;
+      final item = <String, dynamic>{
+        'amountLocal': unchangedAmount
+            ? r.localAmountSnapshot ?? amountText
+            : amountText,
+        'amountOriginal': unchangedAmount
+            ? r.originalAmountSnapshot ?? amountText
+            : amountText,
+      };
       if (_cfg.isSettle) {
         if (r.appliedLedgerId != null) {
           item['appliedLedgerId'] = r.appliedLedgerId;
@@ -704,13 +731,18 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
         }
         final dept = r.department.text.trim();
         if (dept.isNotEmpty) item['departmentId'] = dept;
-        final qty = double.tryParse(r.qty.text);
-        final price = double.tryParse(r.price.text);
-        if (qty != null) item['qty'] = qty;
-        if (price != null) item['price'] = price;
+        if (r.qty.text.trim().isNotEmpty) item['qty'] = r.qty.text.trim();
+        if (r.price.text.trim().isNotEmpty) item['price'] = r.price.text.trim();
+        if (r.summarySnapshot != null) item['summary'] = r.summarySnapshot;
+        item['remark'] = r.remark.text.trim().isEmpty
+            ? null
+            : r.remark.text.trim();
       } else if (_cfg.isTransfer) {
         if (r.inAccountId != null) item['inAccountId'] = r.inAccountId;
         if (r.occurDate != null) item['occurDate'] = r.occurDate;
+        item['summary'] = r.remark.text.trim().isEmpty
+            ? null
+            : r.remark.text.trim();
       }
       itemsBody.add(item);
     }
@@ -730,6 +762,12 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
       context.appError('供应商预付资产、应用和退款链尚未开放；请先引用已入账应付');
       return;
     }
+    final paymentAuthorityBody = _cfg.type == FinanceDocType.payment
+        ? _buildPaymentAuthorityBody(itemsBody)
+        : null;
+    if (_cfg.type == FinanceDocType.payment && paymentAuthorityBody == null) {
+      return;
+    }
     // 采购付款必须引用已入账 AP；供应商预付链交付前失败关闭。
     if (!_cfg.isSettle && itemsBody.isEmpty) {
       context.appError('请至少添加一条明细');
@@ -747,6 +785,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
       if (_cfg.type == FinanceDocType.receipt) 'receiptKind': _receiptKind,
       if (_isCustomerPrepayment) 'salesOrderId': _receiptSalesOrderId,
       if (_cfg.type == FinanceDocType.receipt) ...receiptAuthorityBody!,
+      if (_cfg.type == FinanceDocType.payment) ...paymentAuthorityBody!,
       if (_cfg.type == FinanceDocType.payment && widget.id == null)
         'createIdempotencyKey': _createIdempotencyKey,
       if (_cfg.type == FinanceDocType.payment &&
@@ -760,7 +799,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
       if (_cfg.hasCurrency && _cfg.type != FinanceDocType.receipt)
         'exchangeRate': _cfg.type == FinanceDocType.payment
             ? paymentRate
-            : double.tryParse(_rate.text) ?? 1,
+            : (_rate.text.trim().isEmpty ? '1' : _rate.text.trim()),
       if (_cfg.hasOtherFee && _otherFeeStyleId != null)
         'otherFeeStyleId': _otherFeeStyleId,
       if (_cfg.hasInvoiceNo && _invoiceNo.text.trim().isNotEmpty)
@@ -823,25 +862,23 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
     }
     final rateUnits = financeExactDecimalUnits(_rate.text.trim(), scale: 6);
     if (rateUnits == null || rateUnits <= BigInt.zero) {
-      context.appError('请填写大于 0、最多 6 位小数的当前批次实际汇率');
+      context.appError('请填写大于 0、最多 6 位小数的本批汇率报价');
       return null;
     }
     final normalizedRate = financeExactDecimalFromUnits(rateUnits, scale: 6);
 
     BigInt settlementUnits;
     if (_isCustomerPrepayment) {
-      final units = financeExactDecimalUnits(_amountOriginal.text.trim());
+      final units = financeAmountUnits(_amountOriginal.text.trim());
       if (units == null || units <= BigInt.zero) {
-        context.appError('请填写大于 0、最多 4 位小数的本批预收原币金额');
+        context.appError('请填写大于 0、最多 24 位有效小数的本批预收原币金额');
         return null;
       }
       settlementUnits = units;
     } else {
       settlementUnits = BigInt.zero;
       for (final item in items) {
-        final units = financeExactDecimalUnits(
-          item['amountOriginal']?.toString(),
-        );
+        final units = financeAmountUnits(item['amountOriginal']?.toString());
         if (units == null || units <= BigInt.zero) {
           context.appError('AR 分配金额精度无效，请重新输入');
           return null;
@@ -853,7 +890,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
         return null;
       }
     }
-    final settlementAmount = financeExactDecimalFromUnits(settlementUnits);
+    final settlementAmount = financeAmountFromUnits(settlementUnits);
     final accountIsBase = names.accountIsBaseCurrency(accountId) == true;
     final sameCurrency = accountCurrencyId == settlementCurrencyId;
     if (!accountIsBase && !sameCurrency) {
@@ -887,31 +924,22 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
       return null;
     }
 
-    final grossAccountUnits = sameCurrency
-        ? settlementUnits
-        : financeExactProductUnits(settlementAmount, normalizedRate);
-    if (grossAccountUnits == null || grossAccountUnits <= BigInt.zero) {
-      context.appError('按当前批次汇率计算的账户币种毛额无效');
-      return null;
-    }
-    final accountAmountUnits = financeExactDecimalUnits(
-      _accountAmount.text.trim(),
-    );
+    final accountAmountUnits = financeAmountUnits(_accountAmount.text.trim());
     if (accountAmountUnits == null || accountAmountUnits <= BigInt.zero) {
-      context.appError('请填写真实收款账户大于 0、最多 4 位小数的实际入账金额');
+      context.appError('请填写真实收款账户大于 0、最多 24 位有效小数的实际入账金额');
       return null;
     }
-    final bankFeeUnits = financeExactDecimalUnits(
+    final bankFeeUnits = financeAmountUnits(
       _bankFee.text.trim().isEmpty ? '0' : _bankFee.text.trim(),
     );
-    final otherFeeUnits = financeExactDecimalUnits(
+    final otherFeeUnits = financeAmountUnits(
       _otherFee.text.trim().isEmpty ? '0' : _otherFee.text.trim(),
     );
     if (bankFeeUnits == null ||
         otherFeeUnits == null ||
         bankFeeUnits < BigInt.zero ||
         otherFeeUnits < BigInt.zero) {
-      context.appError('手续费必须为非负数，最多 4 位小数');
+      context.appError('手续费必须为非负数，最多 24 位有效小数');
       return null;
     }
     final feeUnits = bankFeeUnits + otherFeeUnits;
@@ -920,22 +948,28 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
       return null;
     }
 
-    BigInt expectedAccountAmount;
+    // Same-currency settlement has no exchange difference. For conversion into
+    // the base-currency account, the actual bank amount is authoritative; the
+    // quote is supporting evidence and must never replace it.
+    BigInt? expectedAccountAmount;
     switch (_feeSettlementMode) {
       case _feeModeNone:
         if (feeUnits != BigInt.zero) {
           context.appError('存在手续费时，费用结算方式不能选择“无费用”');
           return null;
         }
-        expectedAccountAmount = grossAccountUnits;
+        expectedAccountAmount = sameCurrency ? settlementUnits : null;
         break;
       case _feeModeDeducted:
         if (feeUnits == BigInt.zero) {
           context.appError('从到账扣除费用时，请填写实际扣除的手续费');
           return null;
         }
-        expectedAccountAmount = grossAccountUnits - feeUnits;
-        if (expectedAccountAmount <= BigInt.zero) {
+        expectedAccountAmount = sameCurrency
+            ? settlementUnits - feeUnits
+            : null;
+        if (expectedAccountAmount != null &&
+            expectedAccountAmount <= BigInt.zero) {
           context.appError('扣除费用后的真实账户净入必须大于 0');
           return null;
         }
@@ -963,24 +997,25 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
           context.appError('费用付款账户已停用');
           return null;
         }
-        expectedAccountAmount = grossAccountUnits;
+        expectedAccountAmount = sameCurrency ? settlementUnits : null;
         break;
       default:
         context.appError('请选择费用结算方式');
         return null;
     }
-    if (accountAmountUnits != expectedAccountAmount) {
+    if (expectedAccountAmount != null &&
+        accountAmountUnits != expectedAccountAmount) {
       final currency = names.accountCurrency(accountId) ?? '账户币种';
       context.appError(
         '真实账户入账应为 $currency '
-        '${financeExactUnitsMoneyDisplay(expectedAccountAmount)}，'
-        '请按毛额和费用重新核对',
+        '${financeAmountMoneyDisplay(expectedAccountAmount)}，'
+        '请核对同币种结算金额与扣除费用；差额不能作为汇兑处理',
       );
       return null;
     }
 
     return <String, dynamic>{
-      'settlementAuthorityVersion': 1,
+      'settlementAuthorityVersion': 2,
       if (widget.id == null) 'createIdempotencyKey': _createIdempotencyKey,
       if (widget.id != null && _expectedVersion != null)
         'expectedVersion': _expectedVersion,
@@ -1003,14 +1038,82 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
       'exchangeRate': normalizedRate,
       'amountOriginal': settlementAmount,
       'accountCurrencyId': accountCurrencyId,
-      'accountAmount': financeExactDecimalFromUnits(accountAmountUnits),
-      'bankFeeAccountAmount': financeExactDecimalFromUnits(bankFeeUnits),
-      'otherFeeAccountAmount': financeExactDecimalFromUnits(otherFeeUnits),
+      'accountAmount': financeAmountFromUnits(accountAmountUnits),
+      'bankFeeAccountAmount': financeAmountFromUnits(bankFeeUnits),
+      'otherFeeAccountAmount': financeAmountFromUnits(otherFeeUnits),
       'feeSettlementMode': _feeSettlementMode,
       'feeBearer': _feeSettlementMode == _feeModeNone ? 'NONE' : 'COMPANY',
       'feePaymentAccountId': _feeSettlementMode == _feeModeSeparate
           ? _feePaymentAccountId
           : null,
+    };
+  }
+
+  Map<String, dynamic>? _buildPaymentAuthorityBody(
+    List<Map<String, dynamic>> items,
+  ) {
+    final names = ref.read(financeNameServiceProvider);
+    final currency = names.accountCurrencyId(_accountId);
+    if (names.accountLoadError != null ||
+        currency == null ||
+        currency.isEmpty) {
+      context.appError('付款账户币种未核验，请刷新账户资料后保存');
+      return null;
+    }
+    if (names.accountStatus(_accountId) != '使用') {
+      context.appError('付款账户已停用或状态未核验');
+      return null;
+    }
+    final same = currency == _currencyId;
+    final base = names.accountIsBaseCurrency(_accountId) == true;
+    if (!base && !same) {
+      context.appError('付款账户必须为本位币账户或与货款原币相同的真实账户');
+      return null;
+    }
+    final debit = financeAmountUnits(_accountAmount.text.trim());
+    final fee = financeAmountUnits(
+      _bankFee.text.trim().isEmpty ? '0' : _bankFee.text.trim(),
+    );
+    if (debit == null ||
+        debit <= BigInt.zero ||
+        fee == null ||
+        fee < BigInt.zero ||
+        fee >= debit) {
+      context.appError('银行实际扣款须大于0，手续费须非负且小于扣款；最多24位有效小数');
+      return null;
+    }
+    var original = BigInt.zero;
+    for (final item in items) {
+      final amount = financeAmountUnits(item['amountOriginal']?.toString());
+      if (amount == null || amount <= BigInt.zero) {
+        context.appError('付款原币明细无效，请核对实际货款');
+        return null;
+      }
+      original += amount;
+    }
+    if (same && debit != original + fee) {
+      context.appError('同币种银行实际扣款必须等于货款原币加银行手续费，差额不能作为汇兑处理');
+      return null;
+    }
+    if (same &&
+        base &&
+        financeExactDecimalUnits(_rate.text.trim(), scale: 6) !=
+            BigInt.from(1000000)) {
+      context.appError('本位币同币付款汇率必须为1');
+      return null;
+    }
+    if (_bankReference.text.trim().isEmpty) {
+      context.appError('请填写真实银行扣款流水号');
+      return null;
+    }
+    return {
+      'accountCurrencyId': currency,
+      'accountAmount': financeAmountFromUnits(debit),
+      'bankFeeAccountAmount': financeAmountFromUnits(fee),
+      'bankReference': _bankReference.text.trim(),
+      'bankBookedAt': ChinaDateTime.wallTimeToUtc(
+        _bankBookedAt,
+      ).toIso8601String(),
     };
   }
 
@@ -1075,7 +1178,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
           theme,
           title: '银行到账与汇率',
           icon: Icons.account_balance_outlined,
-          description: '先记录真实到账账户与净入金额，再用同一批次汇率核销原币应收。',
+          description: '按银行回单填写实际到账和费用，按本批实际结算金额分配应收；结汇报价仅供核对。',
         ),
         UtenFormGrid(
           children: [
@@ -1090,9 +1193,6 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                 if (value == null) return;
                 setState(() {
                   _settlementChannel = value;
-                  _exchangeRateSource = value == _settlementChannelAgent
-                      ? _rateSourceAgent
-                      : _rateSourceBank;
                   if (value != _settlementChannelAgent) {
                     _settlementAgentSupplierId = null;
                     _agentStatementNo.clear();
@@ -1123,19 +1223,10 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
             ),
             _requiredPositiveNumberField(
               key: const ValueKey('finance-receipt-exchange-rate'),
-              label: '当前批次实际汇率',
+              label: '本批汇率报价',
               controller: _rate,
-              info: '最多 6 位小数；同一收款批次的全部 AR 分配共用该汇率',
+              info: '按本批银行回单或代理结算单填写。结汇报价供核对，实际到账按银行金额记录；外币原币账户按此明确汇率折算本币。',
               onChanged: (_) {},
-            ),
-            _dropdown(
-              '汇率来源',
-              _exchangeRateSource,
-              const {_rateSourceBank: '银行回单', _rateSourceAgent: '外贸代理结算单'},
-              (value) {
-                if (value != null) setState(() => _exchangeRateSource = value);
-              },
-              required: true,
             ),
             _instantField(
               label: '汇率生效时间',
@@ -1158,8 +1249,10 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
             TextField(
               key: const ValueKey('finance-receipt-bank-reference'),
               controller: _bankReference,
-              decoration: InputDecoration(
-                label: fieldLabel('银行入账流水号', theme, info: '用于银行对账和审计追溯'),
+              decoration: UtenInputDecoration(
+                InputDecoration(
+                  label: fieldLabel('银行入账流水号', theme, info: '用于银行对账和审计追溯'),
+                ),
               ),
             ),
             if (_settlementChannel == _settlementChannelAgent)
@@ -1170,12 +1263,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
               ),
           ],
         ),
-        _sectionHeading(
-          theme,
-          title: '费用',
-          icon: Icons.receipt_long_outlined,
-          description: '费用与 AR 核销分开记录；有费用时承担方固定为本公司。客户或外贸公司承担须走应收/索赔，不能混记费用。',
-        ),
+        _sectionHeading(theme, title: '费用', icon: Icons.receipt_long_outlined),
         UtenFormGrid(
           children: [
             _dropdown(
@@ -1199,6 +1287,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                 });
               },
               required: true,
+              info: '只记录本公司承担的费用。选择有费用后再填写；不要重复计入应收款。',
             ),
             if (_feeSettlementMode == _feeModeSeparate)
               _dropdown(
@@ -1208,30 +1297,91 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                 (value) => setState(() => _feePaymentAccountId = value),
                 required: true,
               ),
+            if (_feeSettlementMode != _feeModeNone)
+              TextField(
+                key: const ValueKey('finance-receipt-bank-fee-account-amount'),
+                controller: _bankFee,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: UtenInputDecoration(
+                  InputDecoration(labelText: '银行手续费($feeCurrency)'),
+                  info: workflowFieldText(context).workflowBankFeeHint,
+                ),
+              ),
+            if (_feeSettlementMode != _feeModeNone)
+              TextField(
+                key: const ValueKey('finance-receipt-other-fee-account-amount'),
+                controller: _otherFee,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: UtenInputDecoration(
+                  InputDecoration(labelText: '其它费用($feeCurrency)'),
+                  info: workflowFieldText(context).workflowOtherFeeHint,
+                ),
+              ),
+            if (_feeSettlementMode != _feeModeNone)
+              _dropdown(
+                '其它费用项目',
+                _otherFeeStyleId,
+                {
+                  for (final style in names.stylesFor('EXPENSE'))
+                    style.id: style.name ?? style.id,
+                },
+                (value) => setState(() => _otherFeeStyleId = value),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _paymentAuthoritySection(ThemeData theme, FinanceNameService names) {
+    final currency = names.accountCurrency(_accountId) ?? '账户币种';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _sectionHeading(
+          theme,
+          title: '银行实际扣款',
+          icon: Icons.account_balance_outlined,
+          description: '按银行流水填写含手续费的总扣款，手续费单独记录；本位币账户结汇以实际扣款为准。',
+        ),
+        UtenFormGrid(
+          children: [
+            _requiredPositiveNumberField(
+              key: const ValueKey('finance-payment-account-amount'),
+              label: '银行实际总扣款($currency)',
+              controller: _accountAmount,
+              info: '填写这次银行真实扣款总额，包含下方银行手续费。与货款原币同币种时，两者须逐位对账。',
+              onChanged: (_) {},
+            ),
             TextField(
-              key: const ValueKey('finance-receipt-bank-fee-account-amount'),
+              key: const ValueKey('finance-payment-bank-fee'),
               controller: _bankFee,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              decoration: InputDecoration(labelText: '银行手续费($feeCurrency)'),
+              decoration: UtenInputDecoration(
+                InputDecoration(labelText: '其中银行手续费($currency)'),
+                info: '填写银行实际收取的费用；没有则留空或填0，不能把手续费记为汇兑差额。',
+              ),
             ),
             TextField(
-              key: const ValueKey('finance-receipt-other-fee-account-amount'),
-              controller: _otherFee,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
+              key: const ValueKey('finance-payment-bank-reference'),
+              controller: _bankReference,
+              decoration: UtenInputDecoration(
+                InputDecoration(
+                  label: fieldLabel('银行扣款流水号', theme, required: true),
+                ),
+                info: '用于银行对账和付款追溯。',
               ),
-              decoration: InputDecoration(labelText: '其它费用($feeCurrency)'),
             ),
-            _dropdown(
-              '其它费用项目',
-              _otherFeeStyleId,
-              {
-                for (final style in names.stylesFor('EXPENSE'))
-                  style.id: style.name ?? style.id,
-              },
-              (value) => setState(() => _otherFeeStyleId = value),
+            _instantField(
+              label: '银行扣款时间',
+              value: _bankBookedAt,
+              onChanged: (value) => setState(() => _bankBookedAt = value),
             ),
           ],
         ),
@@ -1421,38 +1571,28 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                                 theme,
                                 title: '业务依据',
                                 icon: Icons.assignment_outlined,
-                                description: '销售只确定订单原币；到账账户、汇率和费用由财务在本批收款中记录。',
+                                description: isReceipt
+                                    ? '先选收款业务和对应单据，再登记银行实际到账。'
+                                    : null,
                               ),
-                              UtenFormGrid(
+                              Wrap(
+                                spacing: UtenSpacing.s16,
+                                runSpacing: UtenSpacing.s8,
                                 children: [
-                                  // 单据号：系统自动生成，只读显示。
-                                  TextFormField(
-                                    errorBuilder: utenTextFieldErrorBuilder,
-                                    readOnly: true,
-                                    controller: _billNo,
-                                    decoration: InputDecoration(
-                                      labelText: '单据号',
-                                      hintText: _billNo.text.isEmpty
-                                          ? '保存后自动生成'
-                                          : null,
-                                      filled: _billNo.text.isEmpty,
-                                      suffixIcon: _billNo.text.isEmpty
-                                          ? const Icon(
-                                              Icons.autorenew_outlined,
-                                              size: 18,
-                                            )
-                                          : const Icon(
-                                              Icons.lock_outline,
-                                              size: 16,
-                                            ),
-                                    ),
+                                  Text(
+                                    '单据号：${_billNo.text.isEmpty ? '保存后自动生成' : _billNo.text}',
                                   ),
-                                  // 制单员/制单时间：服务端权威，只读展示（责任制）。
                                   ...utenMakerAuditCells(
                                     ref,
                                     makerName: _makerName,
                                     createdAt: _createdAt,
+                                    compact: true,
                                   ),
+                                ],
+                              ),
+                              const SizedBox(height: UtenSpacing.s12),
+                              UtenFormGrid(
+                                children: [
                                   UtenDateField(
                                     label: '单据日期',
                                     required: true,
@@ -1498,7 +1638,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                                       onPick: _pickReceiptClient,
                                       onChanged: _onReceiptClientChanged,
                                     )
-                                  else if (_cfg.hasParty)
+                                  else if (_cfg.hasParty &&
+                                      !_isCustomerPrepayment)
                                     _dropdown(
                                       _cfg.partyLabel,
                                       _partyId,
@@ -1585,7 +1726,19 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                                             key: const ValueKey(
                                               'finance-payment-exchange-rate',
                                             ),
-                                            label: '付款汇率',
+                                            label:
+                                                names.accountIsBaseCurrency(
+                                                          _accountId,
+                                                        ) ==
+                                                        false &&
+                                                    names.accountCurrencyId(
+                                                          _accountId,
+                                                        ) ==
+                                                        _currencyId
+                                                ? '外币账户记账汇率'
+                                                : '付款汇率报价',
+                                            info:
+                                                '本位币账户结汇以实际银行扣款为准，报价供核对；原币外币账户按此明确汇率折算账面本币。',
                                             controller: _rate,
                                             errorMessage: _paymentRateError,
                                             onChanged: (_) {
@@ -1626,13 +1779,6 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                                               child: Text('由服务端按应付核销明细汇总'),
                                             ),
                                     ),
-                                  if (_cfg.hasInvoiceNo)
-                                    TextField(
-                                      controller: _invoiceNo,
-                                      decoration: const InputDecoration(
-                                        labelText: '发票号',
-                                      ),
-                                    ),
                                   _employeePicker(
                                     label: '经办人',
                                     currentId: _operatorId,
@@ -1642,21 +1788,12 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                                   ),
                                 ],
                               ),
-                              if (isReceipt)
-                                _receiptAuthoritySections(theme, names),
-                              if (isReceipt &&
-                                  (_accountId != null ||
-                                      names.accountLoadError != null)) ...[
-                                const SizedBox(height: UtenSpacing.s12),
-                                _receiptAccountCurrencyNotice(theme, names),
-                              ],
                               if (_isCustomerPrepayment) ...[
                                 _sectionHeading(
                                   theme,
                                   title: '订单预收',
                                   icon: Icons.savings_outlined,
-                                  description:
-                                      '绑定订单只确定客户与原币；本批实际到账仍按上方账户和费用事实登记。',
+                                  description: '先选销售订单，客户和币种会自动带出。',
                                 ),
                                 CustomerPrepaymentReceiptFields(
                                   salesOrderId: _receiptSalesOrderId,
@@ -1682,19 +1819,51 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                                       ),
                                       label: '本批预收原币金额',
                                       controller: _amountOriginal,
-                                      info: '最多 4 位小数；该金额是客户本批实际支付的订单原币',
+                                      info: workflowFieldText(
+                                        context,
+                                      ).workflowPrepaymentAmountHint,
                                       onChanged: (_) {},
                                     ),
                                   ],
                                 ),
                               ],
+                              if (isReceipt)
+                                _receiptAuthoritySections(theme, names),
+                              if (_cfg.type == FinanceDocType.payment)
+                                _paymentAuthoritySection(theme, names),
+                              if (isReceipt &&
+                                  (_accountId != null ||
+                                      names.accountLoadError != null)) ...[
+                                const SizedBox(height: UtenSpacing.s12),
+                                _receiptAccountCurrencyNotice(theme, names),
+                              ],
                               const SizedBox(height: UtenSpacing.s12),
-                              TextField(
-                                controller: _remark,
-                                decoration: const InputDecoration(
-                                  labelText: '备注',
+                              UtenCollapsibleSection(
+                                key: const ValueKey('finance-optional-details'),
+                                title: workflowFieldText(
+                                  context,
+                                ).workflowOptionalDetails,
+                                initiallyExpanded:
+                                    _invoiceNo.text.isNotEmpty ||
+                                    _remark.text.isNotEmpty,
+                                child: UtenFormGrid(
+                                  children: [
+                                    if (_cfg.hasInvoiceNo)
+                                      TextField(
+                                        controller: _invoiceNo,
+                                        decoration: const InputDecoration(
+                                          labelText: '发票号',
+                                        ),
+                                      ),
+                                    TextField(
+                                      controller: _remark,
+                                      decoration: const InputDecoration(
+                                        labelText: '备注(选填)',
+                                      ),
+                                      maxLines: 2,
+                                    ),
+                                  ],
                                 ),
-                                maxLines: 2,
                               ),
                             ],
                           ),
@@ -1708,11 +1877,11 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                               child: _sectionHeading(
                                 theme,
                                 title: isReceipt
-                                    ? 'AR 分配 (${_grid.length})'
+                                    ? '本次收款分配 (${_grid.length})'
                                     : '明细 (${_grid.length})',
                                 icon: Icons.account_tree_outlined,
                                 description: isReceipt
-                                    ? '每行只记录本批核销原币金额；费用不再写入 AR write-off。'
+                                    ? '把本次收款对应到应收单，手续费另填。'
                                     : null,
                               ),
                             ),
@@ -1722,6 +1891,28 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                                     ? '引用应付'
                                     : '从应收应付引入',
                                 onPressed: _importFromArAp,
+                              ),
+                            if (isReceipt)
+                              UtenButton(
+                                key: const ValueKey(
+                                  'finance-receipt-reconciliation-toggle',
+                                ),
+                                type: UtenButtonType.secondary,
+                                size: UtenButtonSize.small,
+                                icon: _showReceiptReconciliation
+                                    ? Icons.unfold_less_outlined
+                                    : Icons.receipt_long_outlined,
+                                onPressed: _saving
+                                    ? null
+                                    : () => setState(() {
+                                        _showReceiptReconciliation =
+                                            !_showReceiptReconciliation;
+                                      }),
+                                child: Text(
+                                  _showReceiptReconciliation
+                                      ? '收起对账明细'
+                                      : '查看对账明细',
+                                ),
                               ),
                           ],
                         ),
@@ -1734,6 +1925,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                             accountBaseCurrency: names.accountIsBaseCurrency(
                               _accountId,
                             ),
+                            showReceiptReconciliation:
+                                _showReceiptReconciliation,
                           ),
                           createBlankRow: () =>
                               FinanceGridRow(mode: _cfg.itemMode),
@@ -1846,21 +2039,27 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
       _grid.totalListenable,
       _amountOriginal,
       _rate,
+      _accountAmount,
+      _bankFee,
+      for (final row in _grid.rows) row.amount,
     ]),
     builder: (context, _) {
-      final directAmount = double.tryParse(_amountOriginal.text.trim());
       final original = _grid.isEmpty
-          ? (directAmount != null && directAmount.isFinite ? directAmount : 0)
-          : _grid.totalListenable.value;
-      final rate = double.tryParse(_rate.text.trim());
-      final local = rate != null && rate.isFinite && rate > 0
-          ? original * rate
-          : 0.0;
-      return Text(
-        '原币合计 ${original.toStringAsFixed(2)} · 预计本币 ¥${local.toStringAsFixed(2)}',
-        textAlign: TextAlign.center,
-        style: theme.textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.w700,
+          ? _amountOriginal.text.trim()
+          : financeExactSumTexts(
+              _grid.rows.map((row) => row.amount.text.trim()),
+            );
+      final local = financeExactMultiplyTexts([original, _rate.text.trim()]);
+      final actual = _accountAmount.text.trim();
+      return Tooltip(
+        message:
+            '货款原币 ${original ?? '—'}；银行实际总扣款 ${actual.isEmpty ? '未填写' : actual}；其中手续费 ${_bankFee.text.trim().isEmpty ? '0' : _bankFee.text.trim()}',
+        child: Text(
+          '货款原币 ${financeExactMoneyDisplay(original)} · ${actual.isEmpty ? '参考本币 ¥${financeExactMoneyDisplay(local)}' : '银行实扣 ${financeExactMoneyDisplay(actual)}'}',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
       );
     },
@@ -1919,31 +2118,36 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
           for (final row in _grid.rows) row.amount,
         ]),
         builder: (context, _) {
-          var settlementOriginal = BigInt.zero;
           var allocationValid = true;
           for (final row in _grid.rows) {
-            final units = financeExactDecimalUnits(row.amount.text.trim());
+            final units = financeAmountUnits(row.amount.text.trim());
             if (units == null) {
               allocationValid = false;
-            } else {
-              settlementOriginal += units;
             }
           }
-          final grossLocal = allocationValid
-              ? financeExactProductUnits(
-                  financeExactDecimalFromUnits(settlementOriginal),
-                  _rate.text.trim(),
-                )
-              : null;
-          final accountAmount = financeExactDecimalUnits(
-            _accountAmount.text.trim(),
-          );
-          final bankFee = financeExactDecimalUnits(
+          final accountAmount = financeAmountUnits(_accountAmount.text.trim());
+          final bankFee = financeAmountUnits(
             _bankFee.text.trim().isEmpty ? '0' : _bankFee.text.trim(),
           );
-          final otherFee = financeExactDecimalUnits(
+          final otherFee = financeAmountUnits(
             _otherFee.text.trim().isEmpty ? '0' : _otherFee.text.trim(),
           );
+          final deductedFees = _feeSettlementMode == _feeModeDeducted;
+          final grossAccount =
+              allocationValid &&
+                  accountAmount != null &&
+                  (!deductedFees || (bankFee != null && otherFee != null))
+              ? accountAmount +
+                    (deductedFees ? bankFee! + otherFee! : BigInt.zero)
+              : null;
+          final grossLocal = grossAccount == null
+              ? null
+              : names.accountIsBaseCurrency(_accountId) == true
+              ? financeAmountFromUnits(grossAccount)
+              : financeExactMultiplyTexts([
+                  financeAmountFromUnits(grossAccount),
+                  _rate.text.trim(),
+                ]);
           final accountCurrency = names.accountCurrency(_accountId) ?? '账户币种';
           final feeAccountId = _feeSettlementMode == _feeModeSeparate
               ? _feePaymentAccountId
@@ -1952,9 +2156,10 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
           final metrics = [
             _exactSummaryMetric(
               theme,
-              '本批结算毛额(人民币)',
-              grossLocal ?? BigInt.zero,
-              grossLocal != null,
+              names.accountIsBaseCurrency(_accountId) == true
+                  ? '本批客户已付(人民币)'
+                  : '本批客户已付折合(人民币)',
+              grossLocal,
             ),
             _exactCurrencySummaryMetric(
               theme,
@@ -2007,11 +2212,11 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
         : thirdCurrency
         ? '暂不支持第三币种到账：该账户币种为 $currency，必须改选人民币账户或与应收原币相同的账户。'
         : isCny
-        ? '该收款账户按人民币记账。结汇毛额与实际银行入账分开记录；扣费模式增加净额，另付模式增加毛额。'
+        ? '该收款账户按人民币记账。客户已付金额为实际到账加上从到账扣除的费用；另付费用单独记录。结汇报价仅供核对，不会覆盖银行金额。'
         : '该收款账户按 $currency 原币记账。直接到账必须与应收原币同币种；'
               '人民币仅作为本位币折算，不会虚构进入人民币账户。';
     const batchRule =
-        '同一张收款单代表一个到账批次，全部明细必须使用同一应收原币和同一实际到账汇率；'
+        '同一张收款单代表一个到账批次，全部明细必须使用同一应收原币和同一批次汇率记录；'
         '不同到账日期或汇率请分别新建收款单。';
     return Semantics(
       container: true,
@@ -2042,18 +2247,17 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
   Widget _exactSummaryMetric(
     ThemeData theme,
     String label,
-    BigInt value,
-    bool valid, {
+    String? value, {
     bool emphasized = false,
   }) {
     final base = emphasized
         ? theme.textTheme.titleSmall
         : theme.textTheme.bodySmall;
     return Text(
-      '$label ${valid ? '¥${financeExactUnitsMoneyDisplay(value)}' : '待校验'}',
+      '$label ${value != null ? '¥${financeExactMoneyDisplay(value)}' : '待校验'}',
       style: base?.copyWith(
         fontWeight: emphasized ? FontWeight.w700 : FontWeight.w600,
-        color: valid ? null : theme.colorScheme.error,
+        color: value != null ? null : theme.colorScheme.error,
       ),
     );
   }
@@ -2071,7 +2275,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
         : theme.textTheme.bodySmall;
     return Text(
       '$label $currency '
-      '${valid ? financeExactUnitsMoneyDisplay(value) : '待校验'}',
+      '${valid ? financeAmountMoneyDisplay(value) : '待校验'}',
       style: base?.copyWith(
         fontWeight: emphasized ? FontWeight.w700 : FontWeight.w600,
         color: valid ? null : theme.colorScheme.error,
@@ -2129,13 +2333,16 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
     bool required = false,
     bool enabled = true,
     String? errorMessage,
+    String? info,
   }) {
     return UtenDropdownField(
       label: label,
       value: value,
       required: required,
+      allowClear: !required,
       enabled: enabled,
       errorMessage: errorMessage,
+      info: info,
       items: [
         for (final e in entries.entries)
           UtenDropdownItem(value: e.key, label: e.value),
@@ -2163,15 +2370,17 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         onChanged: onChanged,
         decoration: applyRequiredEmpty(
-          InputDecoration(
-            label: fieldLabel(
-              label,
-              theme,
-              required: true,
-              info: info,
-              base: theme.inputDecorationTheme.labelStyle,
+          UtenInputDecoration(
+            InputDecoration(
+              label: fieldLabel(
+                label,
+                theme,
+                required: true,
+                info: info,
+                base: theme.inputDecorationTheme.labelStyle,
+              ),
+              error: utenFieldError(errorMessage),
             ),
-            error: utenFieldError(errorMessage),
           ),
           theme,
           requiredEmpty: errorMessage == null && value.text.trim().isEmpty,

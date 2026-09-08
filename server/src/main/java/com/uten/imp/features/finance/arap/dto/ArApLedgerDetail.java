@@ -53,4 +53,18 @@ public class ArApLedgerDetail {
     private List<String> salesOrderNos;
     private List<UUID> salesOrderIds;
     private UUID authoritativeSalesOrderId;
+
+    // Additive exact text never passes through a binary floating-point value.
+    public String getExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(exchangeRate); }
+    public String getAmountOriginalExact() { return com.uten.imp.common.util.DecimalText.of(amountOriginal); }
+    public String getAmountOriginalLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountOriginalLocal); }
+    public String getAmountSettledExact() { return com.uten.imp.common.util.DecimalText.of(amountSettled); }
+    public String getAmountBalanceExact() { return com.uten.imp.common.util.DecimalText.of(amountBalance); }
+    public String getAmountReceivedOriginalExact() { return com.uten.imp.common.util.DecimalText.of(amountReceivedOriginal); }
+    public String getAmountReceivedLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountReceivedLocal); }
+    public String getAmountWriteOffOriginalExact() { return com.uten.imp.common.util.DecimalText.of(amountWriteOffOriginal); }
+    public String getAmountWriteOffLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountWriteOffLocal); }
+    public String getAmountOffsetOriginalExact() { return com.uten.imp.common.util.DecimalText.of(amountOffsetOriginal); }
+    public String getAmountOffsetLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountOffsetLocal); }
+    public String getAmountBalanceOriginalExact() { return com.uten.imp.common.util.DecimalText.of(amountBalanceOriginal); }
 }

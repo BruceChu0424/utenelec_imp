@@ -69,7 +69,7 @@ class VisitorRequestValidationTest {
         account = new VisitorAccount();
         account.setPhoneEnc("verified-phone-ciphertext");
         when(currentUser.id()).thenReturn(Optional.of(visitorId));
-        when(accountRepo.findById(visitorId)).thenReturn(Optional.of(account));
+        when(accountRepo.findAndLockById(visitorId)).thenReturn(Optional.of(account));
     }
 
     @Test

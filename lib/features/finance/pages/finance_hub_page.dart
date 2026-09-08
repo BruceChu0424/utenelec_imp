@@ -27,6 +27,7 @@ import '../../procurement_iqc_rejection/widgets/procurement_iqc_rejection_badge.
 import '../finance_workflow_routes.dart';
 import '../providers/finance_procurement_approval_count_provider.dart';
 import '../providers/sales_order_finance_confirmation_count_provider.dart';
+import '../../../shared/providers/sales_shipment_finance_count_provider.dart';
 import '../widgets/finance_procurement_approval_badge.dart';
 import '../widgets/sales_order_finance_confirmation_badge.dart';
 
@@ -92,14 +93,29 @@ class FinanceHubPage extends ConsumerWidget {
                       label: '销售订单财务确认',
                       description: '销售订货单审核后在此确认，确认后计划部才可见并排产',
                       location: FinanceWorkflowRoutes.salesOrderConfirmations,
-                      badge: SalesOrderFinanceConfirmationBadge(size: 16),
+                      badge: SalesOrderFinanceConfirmationBadge(
+                        size: 16,
+                        changesOnly: false,
+                      ),
+                    ),
+                  if (canViewSalesConfirmations)
+                    const _Entry(
+                      icon: Icons.compare_arrows_outlined,
+                      label: '销售订单修改',
+                      description: '核对原内容与修改后内容，重新确认后放行后续任务',
+                      location: FinanceWorkflowRoutes.salesOrderChanges,
+                      badge: SalesOrderFinanceConfirmationBadge(
+                        size: 16,
+                        changesOnly: true,
+                      ),
                     ),
                   if (canAuditSalesShipments)
                     const _Entry(
                       icon: Icons.local_shipping_outlined,
                       label: '出货财务审核',
-                      description: '所有客户出货先核对货款类型、未收与铺底，再放行仓库作业',
+                      description: '核对收款条件和未收金额，再交给仓库备货发货',
                       location: RouteName.financeSalesShipmentAudit,
+                      badge: SalesShipmentFinanceBadge(),
                     ),
                   if (canViewProcurementApprovals)
                     _Entry(
@@ -228,7 +244,7 @@ class FinanceHubPage extends ConsumerWidget {
                   const _Entry(
                     icon: Icons.savings_outlined,
                     label: '客户预收流水',
-                    description: '预收到账、转销应收、红冲、反转及汇兑差额',
+                    description: '查看预收款到账、抵扣、撤回及汇率差额',
                     location: RouteName.financeReportCustomerPrepayment,
                   ),
                   _Entry(

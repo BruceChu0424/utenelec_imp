@@ -5,12 +5,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/pages/production_board_page.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
+// 2026-09-05 起「进行中」= 计划统筹视角：双击批次直达物料分析页（不再弹滑窗、
+// 不再看板直报）；子计划逐层下钻的导航合同保留在「历史记录」段的计划卡上。
 void main() {
   testWidgets('production board child-plan row opens the child plan', (
     tester,
@@ -26,7 +29,7 @@ void main() {
       routes: [
         GoRoute(
           path: '/',
-          builder: (context, state) => const ProductionBoardPage(initialTab: 1),
+          builder: (context, state) => const ProductionBoardPage(),
         ),
         GoRoute(
           path: '/production/plans/:id',
@@ -49,12 +52,11 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          productionPlanRepositoryProvider.overrideWithValue(_repository()),
+          productionPlanRepositoryProvider.overrideWithValue(
+            _repository(onProgressRead: () => progressReads++),
+          ),
           productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
-            _workbenchRepository(
-              onRead: () => progressReads++,
-              reportable: true,
-            ),
+            _workbenchRepository(),
           ),
           currentPermissionsProvider.overrideWithValue(const <String>{}),
           sharedPreferencesProvider.overrideWithValue(preferences),
@@ -64,21 +66,17 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('联合分析 SO-A / SO-B'), findsOneWidget);
-    expect(find.text('SEG-PARENT / SEG-CHILD'), findsOneWidget);
-    await _doubleTapRow(tester, find.text('联合分析 SO-A / SO-B'));
+    // 历史记录段：先过时间门（全部）才加载已结案/历史计划卡。
+    await tester.tap(find.text('历史记录'));
     await tester.pumpAndSettle();
-    expect(find.text('工单与进度'), findsOneWidget);
-    expect(find.text('SEG-CHILD'), findsOneWidget);
-    final parentRow = find
-        .ancestor(of: find.text('父产品'), matching: find.byType(Row))
-        .first;
-    expect(
-      find.descendant(of: parentRow, matching: find.byType(Checkbox)),
-      findsNothing,
-    );
-    expect(find.textContaining('批量报工('), findsNothing);
-    await _doubleTapRow(tester, find.text('SEG-CHILD'));
+    await tester.tap(find.text('全部'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('SJ-PARENT'), findsOneWidget);
+    await tester.tap(find.text('子计划 1 张(点开展示进度)'));
+    await tester.pumpAndSettle();
+    expect(find.text('SJ-CHILD'), findsOneWidget);
+    await tester.tap(find.text('SJ-CHILD'));
     await tester.pumpAndSettle();
 
     expect(find.text('已打开计划 child-plan-1'), findsOneWidget);
@@ -102,7 +100,7 @@ void main() {
       routes: [
         GoRoute(
           path: '/',
-          builder: (context, state) => const ProductionBoardPage(initialTab: 1),
+          builder: (context, state) => const ProductionBoardPage(),
         ),
         GoRoute(
           path: '/production/plans/:id',
@@ -137,25 +135,36 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
-    final root = find.text('联合分析 SO-A / SO-B');
-    await tester.ensureVisible(root);
-    expect(root.hitTestable(), findsOneWidget);
-    await _doubleTapRow(tester, root);
+    await tester.tap(find.text('历史记录'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('全部'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
-    expect(find.text('SEG-CHILD'), findsOneWidget);
-    expect(find.text('物料不齐套 · 备料中'), findsWidgets);
-    // Compact tables keep the status columns fixed at the left edge while the
-    // work-order number may be horizontally off-screen. Double-click the exact
-    // WAITING status cell to exercise the same row-open contract.
-    await _doubleTapRow(tester, find.text('待料'));
+    final root = find.text('SJ-PARENT');
+    await tester.ensureVisible(root);
+    expect(root.hitTestable(), findsOneWidget);
+    // 1.3 倍字号下展开文案右缘可能溢出视口（按文本中心 tap 会落空），
+    // 展开热区是整行 InkWell——点视口左侧的展开箭头图标即命中同一行。
+    final expandToggle = find.byIcon(Icons.expand_more_rounded);
+    await tester.ensureVisible(expandToggle);
+    await tester.pumpAndSettle();
+    await tester.tap(expandToggle, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    expect(find.text('SJ-CHILD'), findsOneWidget);
+    expect(find.text('物料待齐套(0/1 段)'), findsWidgets);
+    final child = find.text('SJ-CHILD');
+    await tester.ensureVisible(child);
+    await tester.pumpAndSettle();
+    await tester.tap(child, warnIfMissed: false);
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.text('已打开计划 child-plan-1'), findsOneWidget);
   });
 
-  testWidgets('ongoing analysis detail supports direct batch reporting', (
+  testWidgets('ongoing double-click opens material analysis, no report entry', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -170,12 +179,13 @@ void main() {
           builder: (_, _) => const ProductionBoardPage(initialTab: 1),
         ),
         GoRoute(
-          path: '/production/daily-reports/new',
-          builder: (_, state) => Scaffold(
-            body: Text(
-              '批量报工 ${state.uri.queryParameters['executionSegmentId'] ?? state.uri.queryParameters['executionSegmentIds']}',
-            ),
-          ),
+          path: '/production/material-analysis',
+          builder: (_, state) {
+            final seed = state.extra is ProductionMaterialAnalysisSeed
+                ? state.extra! as ProductionMaterialAnalysisSeed
+                : const ProductionMaterialAnalysisSeed();
+            return Scaffold(body: Text('analysis=${seed.analysisId}'));
+          },
         ),
       ],
     );
@@ -186,8 +196,9 @@ void main() {
         overrides: [
           productionPlanRepositoryProvider.overrideWithValue(_repository()),
           productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
-            _workbenchRepository(reportable: true),
+            _workbenchRepository(),
           ),
+          // 车间报工三码俱全也不在看板出现报工入口（报工统一在车间任务页）。
           currentPermissionsProvider.overrideWithValue(const {
             Perm.productionExecutionView,
             Perm.productionDailyReportView,
@@ -199,21 +210,16 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+
+    // 看板不再提供报工入口与多选（数量摘要列仍会如实显示「报工 2」计数）。
+    expect(find.text('报工'), findsNothing);
+    expect(find.textContaining('批量报工'), findsNothing);
+    expect(find.byType(Checkbox), findsNothing);
+    expect(find.text('只看我的车间/负责工单'), findsNothing);
     await _doubleTapRow(tester, find.text('联合分析 SO-A / SO-B'));
     await tester.pumpAndSettle();
 
-    final parentRow = find
-        .ancestor(of: find.text('父产品'), matching: find.byType(Row))
-        .first;
-    final checkbox = find
-        .descendant(of: parentRow, matching: find.byType(Checkbox))
-        .first;
-    await tester.tap(checkbox);
-    await tester.pump();
-    await tester.tap(find.text('批量报工(1)'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('批量报工 segment-parent'), findsOneWidget);
+    expect(find.text('analysis=analysis-root-1'), findsOneWidget);
   });
 }
 
@@ -299,7 +305,6 @@ ProductionPlanRepository _repository({VoidCallback? onProgressRead}) {
 
 ProductionExecutionWorkbenchRepository _workbenchRepository({
   VoidCallback? onRead,
-  bool reportable = false,
 }) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
@@ -314,32 +319,6 @@ ProductionExecutionWorkbenchRepository _workbenchRepository({
             'total': 1,
             'totalPages': 1,
           },
-          '/production/execution-workbench/ANALYSIS/analysis-root-1/work-orders' =>
-            {
-              'items': [
-                _workOrderJson(
-                  segmentId: 'segment-parent',
-                  planId: 'parent-plan-1',
-                  planNo: 'SJ-PARENT',
-                  segmentCode: 'SEG-PARENT',
-                  productName: '父产品',
-                  materialReady: true,
-                  canReport: reportable,
-                ),
-                _workOrderJson(
-                  segmentId: 'segment-child',
-                  planId: 'child-plan-1',
-                  planNo: 'SJ-CHILD',
-                  segmentCode: 'SEG-CHILD',
-                  productName: '自制子件',
-                  materialReady: false,
-                ),
-              ],
-              'page': 1,
-              'size': 30,
-              'total': 2,
-              'totalPages': 1,
-            },
           _ => <String, dynamic>{},
         };
         handler.resolve(
@@ -376,41 +355,4 @@ Map<String, dynamic> _workbenchRootJson() => {
   'segmentCount': 2,
   'waitingCount': 1,
   'readyCount': 1,
-};
-
-Map<String, dynamic> _workOrderJson({
-  required String segmentId,
-  required String planId,
-  required String planNo,
-  required String segmentCode,
-  required String productName,
-  required bool materialReady,
-  bool canReport = false,
-}) => {
-  'segmentId': segmentId,
-  'planId': planId,
-  'planNo': planNo,
-  'segmentCode': segmentCode,
-  'salesOrderNos': 'SO-A',
-  'workshopDepartmentId': 'workshop-1',
-  'workshopName': '装配一车间',
-  'responsibleEmployeeName': '车间负责人',
-  'productCode': materialReady ? 'P-001' : 'C-001',
-  'productName': productName,
-  'productColorName': '本色',
-  'productUnitName': '件',
-  'plannedQty': materialReady ? 10 : 5,
-  'reportedQty': materialReady ? 2 : 0,
-  'remainingReportQty': materialReady ? 8 : 5,
-  'inboundQty': materialReady ? 1 : 0,
-  'segmentStatus': materialReady ? 'READY' : 'WAITING',
-  'materialStatus': materialReady ? 'KIT_READY' : 'KIT_SHORT',
-  'preparationStatus': 'PREPARING',
-  'materialReady': materialReady,
-  'warehouseReady': materialReady,
-  'issued': false,
-  'canReport': canReport,
-  'canBatchReport': canReport,
-  'blockedReason': materialReady ? '仓库尚未完成全部备料出库' : '物料尚未齐套',
-  'lockVersion': 1,
 };

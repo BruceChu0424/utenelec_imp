@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/warehouse/pages/production_finished_arrival_batch_registration_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -27,6 +28,39 @@ class _TestBatchPermissions extends Notifier<Set<String>> {
 }
 
 void main() {
+  testWidgets(
+    'batch place suggestions remain yellow on focus and become manual only after text changes',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await _openBatchPage(tester, api: _BatchArrivalApi());
+      final field = _placeField(_itemA);
+      UtenInputDecoration decoration() =>
+          tester.widget<TextField>(field).decoration! as UtenInputDecoration;
+      expect(decoration().info, '该仓默认');
+      expect(decoration().autofilled, isTrue);
+      expect(find.text('该仓默认'), findsNothing);
+      await tester.showKeyboard(field);
+      expect(
+        tester
+            .widget<EditableText>(
+              find.descendant(of: field, matching: find.byType(EditableText)),
+            )
+            .focusNode
+            .hasFocus,
+        isTrue,
+      );
+      tester.widget<TextField>(field).controller!.selection =
+          const TextSelection.collapsed(offset: 0);
+      await tester.pump();
+      expect(decoration().autofilled, isTrue);
+      await tester.enterText(field, 'MANUAL-B');
+      await tester.pump();
+      expect(decoration().autofilled, isFalse);
+      expect(decoration().info, '手工输入');
+    },
+  );
+
   testWidgets('正式批量登记页响应 stock_doc:approve 动态授予与撤销', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));

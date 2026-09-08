@@ -20,7 +20,7 @@ class _FakeNoticeRepository implements NoticeRepository {
   final List<String> snoozedIds = [];
   final List<String> readIds = [];
   final Map<String, Notice> noticesById = {};
-  List<PendingReviewStatus> statusResult = const [];
+  List<PendingReviewStatus>? statusResult;
 
   @override
   Future<void> snooze(String id, {int minutes = 15}) async {
@@ -30,7 +30,12 @@ class _FakeNoticeRepository implements NoticeRepository {
   @override
   Future<List<PendingReviewStatus>> pendingReviewStatus(
     List<String> ids,
-  ) async => statusResult;
+  ) async =>
+      statusResult ??
+      [
+        for (final id in ids)
+          PendingReviewStatus(noticeId: id, resolved: false),
+      ];
 
   @override
   Future<List<Notice>> pendingReviews() async => const [];
@@ -54,6 +59,44 @@ void main() {
       RouteName.productionWorkshopTasks,
     );
   });
+
+  test(
+    'expanded review events land in real task pages after inbox retirement',
+    () {
+      expect(
+        workbenchRouteFor('PROCUREMENT_FINANCE_CHANGE_SUBMITTED'),
+        '/finance/procurement-approvals',
+      );
+      expect(
+        workbenchRouteFor('SALES_ORDER_APPROVED'),
+        RouteName.productionMaterialAnalysis,
+      );
+      expect(
+        workbenchRouteFor('SUBCONTRACT_ORDER_PREPARATION_DISPATCHED'),
+        RouteName.productionMaterialAnalysis,
+      );
+      expect(
+        workbenchRouteFor('PRODUCTION_DRAW_PENDING'),
+        RouteName.warehouseDrawTasks,
+      );
+      expect(
+        workbenchRouteFor('PROCUREMENT_IQC_STOCK_IN_PENDING'),
+        RouteName.warehouseQualityResults,
+      );
+      expect(
+        workbenchRouteFor('PROCUREMENT_FINANCE_APPROVED'),
+        RouteName.warehouseInboundTasks,
+      );
+      expect(
+        workbenchRouteFor(
+          'SALES_ORDER_PENDING_FINANCE_CONFIRM',
+          actionRoute: '/finance/sales-order-changes',
+        ),
+        '/finance/sales-order-changes',
+      );
+      expect(workbenchRouteFor('UNKNOWN_EVENT'), RouteName.dashboard);
+    },
+  );
 
   Notice noticeOf(
     String id, {
@@ -194,7 +237,7 @@ void main() {
     expect(repo.readIds, contains('n1'));
   });
 
-  testWidgets('primary button goes to inbox when items span domains', (
+  testWidgets('primary button goes to dashboard when items span domains', (
     tester,
   ) async {
     final repo = _FakeNoticeRepository();
@@ -211,8 +254,8 @@ void main() {
       ],
       routes: [
         GoRoute(
-          path: RouteName.reviewsInbox,
-          builder: (_, _) => const Text('待审收件台'),
+          path: RouteName.dashboard,
+          builder: (_, _) => const Text('工作台任务'),
         ),
       ],
     );
@@ -220,7 +263,7 @@ void main() {
     await tester.tap(find.text('去工作台处理'));
     await tester.pumpAndSettle();
 
-    expect(find.text('待审收件台'), findsOneWidget);
+    expect(find.text('工作台任务'), findsOneWidget);
     expect(repo.readIds, containsAll(['n1', 'n2']));
   });
 

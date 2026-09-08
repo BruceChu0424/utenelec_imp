@@ -146,7 +146,7 @@ public class ReportablePlanLineQueryService {
                 LEFT JOIN production_execution_segments segment
                   ON segment.source_plan_item_id = i.id
                  AND segment.is_deleted = FALSE
-                 AND segment.status IN ('READY', 'DISPATCHED', 'IN_PROGRESS')
+                 AND segment.status = 'IN_PROGRESS'
                  AND segment.workshop_department_id IS NOT NULL
                  AND segment.responsible_employee_id IS NOT NULL
                  AND (

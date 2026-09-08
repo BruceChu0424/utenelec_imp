@@ -37,6 +37,8 @@ public class MaterialAnalysisSupplyWakeupService {
     private final EntityManager em;
     private final MaterialAnalysisService materialAnalysisService;
     private final BusinessEventPublisher events;
+    private final com.uten.imp.application.concurrency.FulfillmentMutationLocks mutationLocks;
+    private final com.uten.imp.application.port.ProductionMutationFootprintPort mutationFootprints;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterPurchaseReceiptApproved(UUID receiptId) {
@@ -128,6 +130,10 @@ public class MaterialAnalysisSupplyWakeupService {
             boolean publishIncrease,
             UUID sourceEventId,
             String eventKeySuffix) {
+        if (!targets.isEmpty()) {
+            mutationLocks.requireCovered(mutationFootprints.forAnalyses(
+                    targets.stream().map(AnalysisTarget::analysisId).toList()));
+        }
         for (AnalysisTarget target : targets) {
             Map<UUID, BigDecimal> before = readyFinishByOpenItem(target.analysisId());
             materialAnalysisService.refreshLocked(target.analysisId());
@@ -177,8 +183,7 @@ public class MaterialAnalysisSupplyWakeupService {
 
     private List<AnalysisTarget> inspectionStockInTargets(
             String sourceType, UUID receiptId, Collection<UUID> inspectionItemIds) {
-        return analysisTargets(em.createNativeQuery("""
-                WITH passed_dimension AS (
+        return analysisTargets(candidateQuery("""
                     SELECT inspection.warehouse_id,
                            inspection.goods_id, inspection.color_id
                     FROM procurement_inspection_items inspection
@@ -200,24 +205,6 @@ public class MaterialAnalysisSupplyWakeupService {
                                 AND receipt.status = 1
                                 AND receipt.is_deleted = FALSE))
                       )
-                )
-                SELECT analysis.id, analysis.maker_id
-                FROM production_material_analyses analysis
-                WHERE analysis.is_deleted = FALSE
-                  AND analysis.status IN ('ACTIVE','PARTIALLY_PLANNED')
-                  AND analysis.warehouse_id IS NOT NULL
-                  AND EXISTS (
-                      SELECT 1
-                      FROM production_material_analysis_materials material
-                      JOIN passed_dimension dimension
-                        ON dimension.warehouse_id = analysis.warehouse_id
-                       AND dimension.goods_id = material.goods_id
-                       AND dimension.color_id
-                           IS NOT DISTINCT FROM material.color_id
-                      WHERE material.analysis_id = analysis.id
-                        AND material.active = TRUE)
-                ORDER BY analysis.id
-                FOR UPDATE OF analysis
                 """)
                 .setParameter("sourceType", sourceType)
                 .setParameter("sourceDocumentId", receiptId)
@@ -226,8 +213,7 @@ public class MaterialAnalysisSupplyWakeupService {
 
     private List<AnalysisTarget> purchaseTargets(
             UUID receiptId, boolean includeLegacyFallback) {
-        return analysisTargets(em.createNativeQuery("""
-                WITH dimensions AS (
+        return analysisTargets(candidateQuery("""
                     SELECT DISTINCT inspection.warehouse_id,
                            inspection.goods_id, inspection.color_id
                     FROM procurement_inspection_items inspection
@@ -260,24 +246,6 @@ public class MaterialAnalysisSupplyWakeupService {
                           SELECT 1 FROM procurement_inspection_items inspection
                           WHERE inspection.receipt_type = 'PURCHASE'
                             AND inspection.receipt_id = receipt.id)
-                )
-                SELECT analysis.id, analysis.maker_id
-                FROM production_material_analyses analysis
-                WHERE analysis.is_deleted = FALSE
-                  AND analysis.status IN ('ACTIVE','PARTIALLY_PLANNED')
-                  AND analysis.warehouse_id IS NOT NULL
-                  AND EXISTS (
-                      SELECT 1
-                      FROM production_material_analysis_materials material
-                      JOIN dimensions dimension
-                        ON dimension.warehouse_id = analysis.warehouse_id
-                       AND dimension.goods_id = material.goods_id
-                       AND dimension.color_id
-                           IS NOT DISTINCT FROM material.color_id
-                      WHERE material.analysis_id = analysis.id
-                        AND material.active = TRUE)
-                ORDER BY analysis.id
-                FOR UPDATE OF analysis
                 """)
                 .setParameter("sourceDocumentId", receiptId)
                 .setParameter("includeLegacyFallback", includeLegacyFallback));
@@ -285,8 +253,7 @@ public class MaterialAnalysisSupplyWakeupService {
 
     private List<AnalysisTarget> subcontractTargets(
             UUID receiptId, boolean includeLegacyFallback) {
-        return analysisTargets(em.createNativeQuery("""
-                WITH dimensions AS (
+        return analysisTargets(candidateQuery("""
                     SELECT DISTINCT inspection.warehouse_id,
                            inspection.goods_id, inspection.color_id
                     FROM procurement_inspection_items inspection
@@ -319,24 +286,6 @@ public class MaterialAnalysisSupplyWakeupService {
                           SELECT 1 FROM procurement_inspection_items inspection
                           WHERE inspection.receipt_type = 'SUBCONTRACT'
                             AND inspection.receipt_id = receipt.id)
-                )
-                SELECT analysis.id, analysis.maker_id
-                FROM production_material_analyses analysis
-                WHERE analysis.is_deleted = FALSE
-                  AND analysis.status IN ('ACTIVE','PARTIALLY_PLANNED')
-                  AND analysis.warehouse_id IS NOT NULL
-                  AND EXISTS (
-                      SELECT 1
-                      FROM production_material_analysis_materials material
-                      JOIN dimensions dimension
-                        ON dimension.warehouse_id = analysis.warehouse_id
-                       AND dimension.goods_id = material.goods_id
-                       AND dimension.color_id
-                           IS NOT DISTINCT FROM material.color_id
-                      WHERE material.analysis_id = analysis.id
-                        AND material.active = TRUE)
-                ORDER BY analysis.id
-                FOR UPDATE OF analysis
                 """)
                 .setParameter("sourceDocumentId", receiptId)
                 .setParameter("includeLegacyFallback", includeLegacyFallback));
@@ -344,8 +293,7 @@ public class MaterialAnalysisSupplyWakeupService {
 
     private List<AnalysisTarget> finishedInboundTargets(
             UUID stockDocumentId, int requiredStatus) {
-        return analysisTargets(em.createNativeQuery("""
-                WITH dimensions AS (
+        return analysisTargets(candidateQuery("""
                     SELECT DISTINCT document.warehouse_id,
                            item.goods_id, item.color_id
                     FROM stock_documents document
@@ -358,26 +306,34 @@ public class MaterialAnalysisSupplyWakeupService {
                       AND document.is_deleted = FALSE
                       AND document.warehouse_id IS NOT NULL
                       AND item.goods_id IS NOT NULL
-                )
-                SELECT analysis.id, analysis.maker_id
-                FROM production_material_analyses analysis
-                WHERE analysis.is_deleted = FALSE
-                  AND analysis.status IN ('ACTIVE','PARTIALLY_PLANNED')
-                  AND analysis.warehouse_id IS NOT NULL
-                  AND EXISTS (
-                      SELECT 1
-                      FROM production_material_analysis_materials material
-                      JOIN dimensions dimension
-                        ON dimension.warehouse_id = analysis.warehouse_id
-                       AND dimension.goods_id = material.goods_id
-                       AND dimension.color_id
-                           IS NOT DISTINCT FROM material.color_id
-                      WHERE material.analysis_id = analysis.id
-                        AND material.active = TRUE)
-                ORDER BY analysis.id
-                FOR UPDATE OF analysis
                 """).setParameter("sourceDocumentId", stockDocumentId)
                 .setParameter("requiredStatus", requiredStatus));
+    }
+
+    /** Materialize this event's dimensions before evaluating warehouse ancestry or fulfillment. */
+    private Query candidateQuery(String dimensionSql) {
+        return em.createNativeQuery("WITH dimensions AS MATERIALIZED (\n" + dimensionSql + """
+                ), candidates AS MATERIALIZED (
+                    SELECT DISTINCT analysis.id, analysis.maker_id, analysis.status,
+                           analysis.warehouse_id, dimension.warehouse_id AS source_warehouse_id
+                    FROM dimensions dimension
+                    JOIN production_material_analysis_materials material
+                      ON dimension.goods_id = material.goods_id
+                     AND dimension.color_id IS NOT DISTINCT FROM material.color_id
+                     AND material.active = TRUE
+                    JOIN production_material_analyses analysis
+                      ON analysis.id = material.analysis_id
+                    WHERE analysis.is_deleted = FALSE
+                      AND analysis.warehouse_id IS NOT NULL
+                )
+                SELECT DISTINCT analysis.id, analysis.maker_id
+                FROM candidates analysis
+                WHERE (analysis.status IN ('ACTIVE','PARTIALLY_PLANNED')
+                    OR analysis.status='COMPLETED'
+                      AND fn_material_analysis_fulfillment_status(analysis.id)<>'COMPLETED')
+                  AND fn_warehouse_same_main(analysis.source_warehouse_id,analysis.warehouse_id)
+                ORDER BY analysis.id
+                """);
     }
 
     private List<AnalysisTarget> analysisTargets(Query query) {

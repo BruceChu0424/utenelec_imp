@@ -38,7 +38,8 @@ class ProductionPurchaseRequestFacadeTest {
                         itemRepo,
                         numberService,
                         entityManager,
-                        mock(com.uten.imp.application.port.OrganizationReferencePort.class));
+                        mock(com.uten.imp.application.port.OrganizationReferencePort.class),
+                        mock(com.uten.imp.application.concurrency.FulfillmentMutationLocks.class));
 
         UUID warehouseId = UUID.randomUUID();
         facade.createProductionDraft(

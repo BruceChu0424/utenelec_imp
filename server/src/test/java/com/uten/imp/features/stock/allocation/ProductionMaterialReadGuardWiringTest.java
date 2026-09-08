@@ -115,14 +115,15 @@ class ProductionMaterialReadGuardWiringTest {
     @Test
     void clearanceAndSettlementSourcesBothGuardThePlanBeforeDataQueries() {
         EntityManager em = mock(EntityManager.class);
-        ProductionMaterialReadAccessPolicy access =
-                mock(ProductionMaterialReadAccessPolicy.class);
+        ProductionMaterialTaskAccessPolicy access =
+                mock(ProductionMaterialTaskAccessPolicy.class);
         UUID planId = UUID.randomUUID();
         doThrow(new ApiException(ErrorCode.NOT_FOUND, "生产计划不存在"))
-                .when(access).requirePlanReadable(planId);
+                .when(access).readable(planId,null);
         ProductionMaterialSettlementService service =
                 new ProductionMaterialSettlementService(
-                        em, mock(TxSessionVars.class), access);
+                        em, mock(TxSessionVars.class), access,
+                        mock(com.uten.imp.features.stock.valuation.ProductionInventoryValueService.class));
 
         assertThatThrownBy(() -> service.clearance(planId))
                 .isInstanceOf(ApiException.class);

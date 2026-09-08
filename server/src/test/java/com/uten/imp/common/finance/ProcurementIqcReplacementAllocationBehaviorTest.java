@@ -20,10 +20,12 @@ import static org.mockito.Mockito.when;
 class ProcurementIqcReplacementAllocationBehaviorTest {
 
     @Test
-    void purchaseReplacementSpansCasesAndTheLastCaseAbsorbsTheMoneyTail() {
+    void purchaseReplacementSpansCasesAndRetainsTheExactSourceQuantityFractions() {
         UUID firstCase = UUID.randomUUID();
         UUID secondCase = UUID.randomUUID();
         UUID actor = UUID.randomUUID();
+        UUID receiptId = UUID.randomUUID();
+        UUID receiptItemId = UUID.randomUUID();
         List<NativeCall> calls = new ArrayList<>();
         EntityManager em = allocationEntityManager(
                 calls,
@@ -39,19 +41,16 @@ class ProcurementIqcReplacementAllocationBehaviorTest {
 
         service.allocateForReceiptItem(
                 "purchase",
-                UUID.randomUUID(),
-                UUID.randomUUID(),
+                receiptId,
+                receiptItemId,
                 UUID.randomUUID(),
                 new BigDecimal("3"),
                 BigDecimal.ONE,
                 new BigDecimal("10.0000"),
                 new BigDecimal("10.0000"),
                 new BigDecimal("10"),
-                new BigDecimal("100.0000"),
-                new BigDecimal("100.0000"),
                 new BigDecimal("10"),
-                new BigDecimal("100.0000"),
-                new BigDecimal("100.0000"));
+                "RETURN_REPLACEMENT");
 
         List<NativeCall> allocations = calls(calls,
                 "insert into procurement_iqc_replacement_allocations");
@@ -60,12 +59,23 @@ class ProcurementIqcReplacementAllocationBehaviorTest {
                 .containsExactly(firstCase, secondCase);
         assertThat(sum(allocations, "qty")).isEqualByComparingTo("3");
         assertThat(sum(allocations, "baseQty")).isEqualByComparingTo("3.0000");
-        assertThat(sum(allocations, "original")).isEqualByComparingTo("10.0000");
-        assertThat(sum(allocations, "local")).isEqualByComparingTo("10.0000");
-        assertThat(allocations.get(0).parameters().get("original"))
-                .isEqualTo(new BigDecimal("3.3333"));
-        assertThat(allocations.get(1).parameters().get("original"))
-                .isEqualTo(new BigDecimal("6.6667"));
+        assertThat((BigDecimal) allocations.get(0).parameters().get("qty"))
+                .isEqualByComparingTo("1");
+        assertThat((BigDecimal) allocations.get(1).parameters().get("qty"))
+                .isEqualByComparingTo("2");
+        // 10/3 and 20/3 have no finite decimal projection. Both slices retain
+        // the same receipt source, whose exact quantity fractions sum to 3/3.
+        assertThat(allocations).allSatisfy(call -> assertThat(call.parameters())
+                .containsEntry("receiptId", receiptId)
+                .containsEntry("receiptItemId", receiptItemId)
+                .containsEntry("original", null)
+                .containsEntry("local", null));
+        assertThat(ProcurementConsiderationBasis.finitePortion(
+                new BigDecimal("10.0000"), sum(allocations, "qty"), new BigDecimal("3")))
+                .isEqualByComparingTo("10.0000");
+        assertThat(ProcurementConsiderationBasis.finiteBookPortion(
+                new BigDecimal("10.0000"), sum(allocations, "qty"), new BigDecimal("3")))
+                .isEqualByComparingTo("10.0000");
         assertThat(calls(calls,
                 "insert into procurement_iqc_rejection_events")).hasSize(2);
     }
@@ -94,11 +104,8 @@ class ProcurementIqcReplacementAllocationBehaviorTest {
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
                 new BigDecimal("10"),
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
                 new BigDecimal("10"),
-                BigDecimal.ZERO,
-                BigDecimal.ZERO);
+                "RETURN_REPLACEMENT");
 
         NativeCall allocation = onlyCall(calls,
                 "insert into procurement_iqc_replacement_allocations");
@@ -106,10 +113,10 @@ class ProcurementIqcReplacementAllocationBehaviorTest {
                 .isEqualTo(new BigDecimal("2"));
         assertThat(allocation.parameters().get("baseQty"))
                 .isEqualTo(new BigDecimal("4.0000"));
-        assertThat(allocation.parameters().get("original"))
-                .isEqualTo(new BigDecimal("0.0000"));
-        assertThat(allocation.parameters().get("local"))
-                .isEqualTo(new BigDecimal("0.0000"));
+        assertThat((BigDecimal) allocation.parameters().get("original"))
+                .isEqualByComparingTo("0.0000");
+        assertThat((BigDecimal) allocation.parameters().get("local"))
+                .isEqualByComparingTo("0.0000");
     }
 
     @Test

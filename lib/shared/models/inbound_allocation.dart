@@ -160,6 +160,8 @@ List<WarehouseInboundAllocation> warehouseInboundAllocationForWarehouse(
   double requestedDisplayQty, {
   required String? actualWarehouseId,
   String? actualWarehouseName,
+  bool Function(String? targetWarehouseId, String actualWarehouseId)?
+  sameMainWarehouse,
   double unitRate = 1,
 }) {
   if (!requestedDisplayQty.isFinite || requestedDisplayQty <= 0) {
@@ -185,9 +187,11 @@ List<WarehouseInboundAllocation> warehouseInboundAllocationForWarehouse(
   final targeted = source
       .where((item) => !item.isPublic)
       .toList(growable: false);
-  final matching = targeted
-      .where((item) => item.targetWarehouseId == selectedId)
-      .toList(growable: false);
+  bool matches(WarehouseInboundAllocation item) =>
+      item.targetWarehouseId == selectedId ||
+      (item.kind != WarehouseInboundAllocationKind.formalDemand &&
+          sameMainWarehouse?.call(item.targetWarehouseId, selectedId) == true);
+  final matching = targeted.where(matches).toList(growable: false);
   for (final allocation in matching) {
     if (remaining <= 0) break;
     final take = allocation.qty < remaining ? allocation.qty : remaining;
@@ -204,7 +208,7 @@ List<WarehouseInboundAllocation> warehouseInboundAllocationForWarehouse(
   }
 
   final mismatched = targeted
-      .where((item) => item.targetWarehouseId != selectedId)
+      .where((item) => !matches(item))
       .toList(growable: false);
   for (final allocation in mismatched) {
     if (remaining <= 0) break;

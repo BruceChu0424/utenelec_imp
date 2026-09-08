@@ -43,7 +43,15 @@ void main() {
     await tester.tap(find.text('查询本机回执'));
     await tester.pumpAndSettle();
 
-    expect(find.text('需联网完成授权核查'), findsOneWidget);
+    // 2026-09-04 ⓘ字段说明全站化：错误文案进输入框 ⓘ Tooltip
+    //（UtenInputDecoration 底部错误槽退役），断言用 Tooltip.message 谓词。
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip && widget.message?.contains('需联网完成授权核查') == true,
+      ),
+      findsOneWidget,
+    );
     expect(store.findCalls, 0);
     expect(api.posts, hasLength(1));
   });

@@ -33,4 +33,9 @@ public class FinanceBankTransferDetail {
     private String makerName;
     /** 制单时间（审计 created_at，创建后不可变）。 */
     private java.time.Instant createdAt;
+
+    // Additive exact text never passes through a binary floating-point value.
+    public String getExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(exchangeRate); }
+    public String getAmountOriginalExact() { return com.uten.imp.common.util.DecimalText.of(amountOriginal); }
+    public String getAmountLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountLocal); }
 }

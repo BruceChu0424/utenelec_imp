@@ -43,6 +43,7 @@ class DocumentDirectLockTest {
     @Test
     void stockDeleteLoadsHeaderDirectlyWithPessimisticWrite() {
         EntityManager em = mock(EntityManager.class);
+        com.uten.imp.support.FulfillmentMutationLockTestSupport.emptyExecutionGraph(em);
         StockDocumentRepository documents = mock(StockDocumentRepository.class);
         TxSessionVars tx = mock(TxSessionVars.class);
         StockDocService service = new StockDocService(
@@ -65,7 +66,9 @@ class DocumentDirectLockTest {
                 warehouseTaskAccess(),
                 // V298 分析备料绑定端口（成品入库路径 no-op mock，不建预留）
                 mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class),
-                mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class));
+                mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class),
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
+                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
         UUID id = UUID.randomUUID();
         StockDocument document = new StockDocument();
         document.setId(id);
@@ -104,6 +107,7 @@ class DocumentDirectLockTest {
     @Test
     void manualFinishedInboundReverseReopensCompletionBeforePersistingReverse() {
         EntityManager em = mock(EntityManager.class);
+        com.uten.imp.support.FulfillmentMutationLockTestSupport.emptyExecutionGraph(em);
         StockDocumentRepository documents =
                 mock(StockDocumentRepository.class);
         StockDocumentItemRepository items =
@@ -160,7 +164,9 @@ class DocumentDirectLockTest {
                 warehouseTaskAccess(),
                 // V298 分析备料绑定端口（成品入库路径 no-op mock，不建预留）
                 mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class),
-                mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class));
+                mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class),
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
+                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
 
         service.reverse(id);
 
@@ -175,6 +181,7 @@ class DocumentDirectLockTest {
     @Test
     void finishedInboundDownstreamGuardLeavesDocumentApproved() {
         EntityManager em = mock(EntityManager.class);
+        com.uten.imp.support.FulfillmentMutationLockTestSupport.emptyExecutionGraph(em);
         StockDocumentRepository documents =
                 mock(StockDocumentRepository.class);
         StockDocumentItemRepository items =
@@ -237,7 +244,9 @@ class DocumentDirectLockTest {
                 warehouseTaskAccess(),
                 // V298 分析备料绑定端口（成品入库路径 no-op mock，不建预留）
                 mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class),
-                mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class));
+                mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class),
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
+                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
 
         assertThrows(ApiException.class, () -> service.reverse(id));
 
@@ -249,6 +258,7 @@ class DocumentDirectLockTest {
     @Test
     void finishedInboundTransferredPreplanGuardRunsBeforeAnyReverseMutation() {
         EntityManager em = mock(EntityManager.class);
+        com.uten.imp.support.FulfillmentMutationLockTestSupport.emptyExecutionGraph(em);
         StockDocumentRepository documents = mock(StockDocumentRepository.class);
         StockDocumentItemRepository items = mock(StockDocumentItemRepository.class);
         StockService stock = mock(StockService.class);
@@ -293,7 +303,9 @@ class DocumentDirectLockTest {
                 mock(com.uten.imp.features.stock.StockDocAccessPolicy.class),
                 warehouseTaskAccess(),
                 preplan,
-                mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class));
+                mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class),
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
+                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
 
         ApiException error = assertThrows(ApiException.class, () -> service.reverse(id));
 
@@ -309,6 +321,7 @@ class DocumentDirectLockTest {
     @Test
     void dailyReportDeleteLoadsHeaderDirectlyWithPessimisticWrite() {
         EntityManager em = mock(EntityManager.class);
+        com.uten.imp.support.FulfillmentMutationLockTestSupport.emptyExecutionGraph(em);
         ProductionDailyReportRepository reports =
                 mock(ProductionDailyReportRepository.class);
         TxSessionVars tx = mock(TxSessionVars.class);
@@ -329,7 +342,9 @@ class DocumentDirectLockTest {
                 mock(com.uten.imp.features.production.ProductionDocumentAccessPolicy.class),
                 mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class),
                 mock(com.uten.imp.application.port.ProductionFqcRecoveryPort.class),
-                mock(com.uten.imp.features.production.dailyreport.ProductionLegacyFinishedInboundService.class));
+                mock(com.uten.imp.features.production.dailyreport.ProductionLegacyFinishedInboundService.class),
+                org.mockito.Mockito.mock(com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
+                mock(com.uten.imp.application.port.ProductionCostTargetPort.class));
         UUID id = UUID.randomUUID();
         ProductionDailyReport report = new ProductionDailyReport();
         report.setId(id);

@@ -36,6 +36,9 @@ class SalesMasterReferenceValidatorTest {
 
         validator.validate(request);
 
+        var ordering = org.mockito.Mockito.inOrder(references);
+        ordering.verify(references).lockGoodsQuantityBasis(List.of(goodsId));
+        ordering.verify(references).resolveVisibleActiveGoodsUnit(goodsId, null, null, 1);
         verify(references).requireVisibleActiveClient(clientId);
         assertEquals(baseUnitId, line.getUnitId());
         assertEquals(0, BigDecimal.ONE.compareTo(line.getUnitRate()));

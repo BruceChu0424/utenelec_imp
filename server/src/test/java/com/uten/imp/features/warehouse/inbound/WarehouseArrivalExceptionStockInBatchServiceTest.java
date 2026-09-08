@@ -246,7 +246,8 @@ class WarehouseArrivalExceptionStockInBatchServiceTest {
                         subcontractReceipts,
                         currentUser,
                         tx,
-                        mapper);
+                        mapper,
+                        com.uten.imp.support.FulfillmentMutationLockTestSupport.procurementLocks());
         return new Fixture(
                 service,
                 batches,
@@ -258,6 +259,11 @@ class WarehouseArrivalExceptionStockInBatchServiceTest {
 
     private static void answerApproval(
             Fixture fixture, String orderType, UUID receiptId) {
+        when(fixture.arrivalControl().stockTargets(any())).thenAnswer(invocation -> {
+            java.util.Collection<UUID> ids=invocation.getArgument(0);
+            return ids.stream().collect(java.util.stream.Collectors.toMap(id -> id,
+                    id -> new ProcurementArrivalControlService.StockTarget(orderType,receiptId)));
+        });
         when(fixture.arrivalControl().stockInWithDecisionSession(any(), any()))
                 .thenAnswer(invocation -> {
                     @SuppressWarnings("unchecked")
@@ -270,6 +276,9 @@ class WarehouseArrivalExceptionStockInBatchServiceTest {
     }
 
     private static void answerApprovalByException(Fixture fixture) {
+        when(fixture.arrivalControl().stockTargets(any())).thenReturn(java.util.Map.of(
+                EXCEPTION_A,new ProcurementArrivalControlService.StockTarget("PURCHASE",PURCHASE_RECEIPT),
+                EXCEPTION_B,new ProcurementArrivalControlService.StockTarget("SUBCONTRACT",SUBCONTRACT_RECEIPT)));
         when(fixture.arrivalControl().stockInWithDecisionSession(any(), any()))
                 .thenAnswer(invocation -> {
                     UUID exceptionId = invocation.getArgument(0);

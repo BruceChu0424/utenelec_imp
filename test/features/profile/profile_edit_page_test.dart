@@ -87,9 +87,19 @@ void main() {
     await tester.tap(find.text(_confirmLabel).last);
     await tester.pump();
 
+    // 2026-09-04 ⓘ字段说明全站化后，校验错误经 UtenOverflowMessage 以
+    // Semantics(label) + 可见文本承载；断言用 Tooltip/Semantics 谓词与
+    // 可见文本双保险。
     expect(
-      find.text('\u624b\u673a\u53f7\u683c\u5f0f\u4e0d\u6b63\u786e'),
-      findsOneWidget,
+      find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is Semantics &&
+                widget.properties.label?.contains('手机号格式不正确') == true,
+          )
+          .evaluate()
+          .isNotEmpty,
+      isTrue,
     );
     expect(profileChanges.verifyPasswordCalls, 0);
     expect(profileChanges.submitCalls, 0);

@@ -1,9 +1,17 @@
-// 委外业务列表页族（8 页共用 _SubcontractBusinessListPage，按 _ListPresentation 参数化）。
+// 委外业务列表页族（共用 _SubcontractBusinessListPage，按 _ListPresentation 参数化）。
+//
+// 2026-09-06 收口：
+//  - 计划委外申请页退役并入「委外任务中心」（/subcontract/applications 列表路由
+//    重定向；只读申请详情页保留深链）；委外回厂跟踪页退役（进度在任务中心
+//    双击弹窗与订货单详情全链路查看；/subcontract/receipts 列表重定向到订货页）。
+//  - 页头动作按钮统一进 UtenFilterToolbar trailing（与分类分段/搜索同一行）；
+//    订货页只保留「创建新委外单」一个入口（从任务中心选申请下单）。
+//  - 委外页面不放仓库/品质动作入口：仓库登记回厂、委外出仓分别在仓储模块
+//    的预计到货与委外出仓工作台办理。
 //
 // 2026-09-03 起统一「分类分段」范式（原 ChoiceChip 状态行退役）：
-// UtenFilterToolbar 阶段分段（草稿/已审/红冲，无「全部」段；申请页为
-// 尚未下达/计划已下达/红冲）+ 末尾「历史记录」段——默认不选不发请求；
-// 徽章只挂待处理段（申请页=计划已下达待分解，其余=草稿；历史兼容页不挂）；
+// UtenFilterToolbar 阶段分段（草稿/已审/红冲，无「全部」段）+ 末尾「历史记录」
+// 段——默认不选不发请求；徽章只挂待处理段（其余=草稿；历史兼容页不挂）；
 // 订货页结案状态转小类行（执行中/已结案，无「全部结案状态」，选中阶段后出现）；
 // 历史记录段时间门控（UtenHistoryTimeFilter，未选时间不发请求）。
 import 'package:flutter/material.dart';
@@ -19,7 +27,6 @@ import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
-import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
@@ -32,34 +39,6 @@ import '../models/subcontract_doc.dart';
 import '../providers/subcontract_providers.dart';
 import '../repositories/subcontract_repository.dart';
 
-/// 计划下达的委外申请登记簿：只读，不暴露商业订货字段或新建动作。
-class SubcontractApplicationRegisterPage extends StatelessWidget {
-  const SubcontractApplicationRegisterPage({super.key});
-
-  @override
-  Widget build(BuildContext context) => const _SubcontractBusinessListPage(
-    presentation: _ListPresentation(
-      type: SubcontractDocType.application,
-      title: '计划委外申请',
-      subtitle: '物料分析下达 · 委外端只读 · 未分解数量去任务中心处理',
-      icon: Icons.assignment_outlined,
-      primaryAction: _PageAction(
-        label: '进入申请分解',
-        icon: Icons.call_split_rounded,
-        route: RouteName.operationsSubcontractWorkbench,
-        requiredPermissions: [
-          Perm.subcontractApplicationView,
-          Perm.subcontractOrderView,
-          Perm.subcontractOrderCreate,
-          Perm.subcontractOrderDecompose,
-        ],
-      ),
-      emptyMessage: '暂无计划下达的委外申请',
-      columns: _applicationColumns,
-    ),
-  );
-}
-
 /// 委外订货与全链路工作页：两种来源汇合后，从财务审批跟到 IQC 与结案。
 class SubcontractOrderWorkspacePage extends StatelessWidget {
   const SubcontractOrderWorkspacePage({super.key});
@@ -69,26 +48,15 @@ class SubcontractOrderWorkspacePage extends StatelessWidget {
     presentation: _ListPresentation(
       type: SubcontractDocType.order,
       title: '委外订货与全链路',
-      subtitle: '直接委外 / 物料分析委外 · 财务批准 · 目标件出仓 · 回厂 IQC · 结算',
+      subtitle: '直接委外 / 任务中心下单 · 财务批准 · 目标件出仓 · 回厂 IQC · 结算',
       icon: Icons.precision_manufacturing_outlined,
       primaryAction: _PageAction(
-        label: '直接委外下单',
+        label: '创建新委外单',
         icon: Icons.add_rounded,
         route: '/subcontract/orders/new',
         requiredPermissions: [
           Perm.subcontractOrderView,
           Perm.subcontractOrderCreate,
-        ],
-      ),
-      secondaryAction: _PageAction(
-        label: '从申请分解下单',
-        icon: Icons.call_split_rounded,
-        route: RouteName.operationsSubcontractWorkbench,
-        requiredPermissions: [
-          Perm.subcontractApplicationView,
-          Perm.subcontractOrderView,
-          Perm.subcontractOrderCreate,
-          Perm.subcontractOrderDecompose,
         ],
       ),
       showClosedFilter: true,
@@ -98,30 +66,7 @@ class SubcontractOrderWorkspacePage extends StatelessWidget {
   );
 }
 
-/// 委外回厂与品质跟踪：回厂审核立加工费 AP；品质放行后仍须仓库确认入库。
-class SubcontractReceiptQualityTrackingPage extends StatelessWidget {
-  const SubcontractReceiptQualityTrackingPage({super.key});
-
-  @override
-  Widget build(BuildContext context) => const _SubcontractBusinessListPage(
-    presentation: _ListPresentation(
-      type: SubcontractDocType.receipt,
-      title: '委外回厂与品质跟踪',
-      subtitle: '仓库登记回厂 · 先出后进校验 · IQC 隔离 · 仓库确认入仓',
-      icon: Icons.fact_check_outlined,
-      primaryAction: _PageAction(
-        label: '去仓库预计到货',
-        icon: Icons.warehouse_outlined,
-        route: RouteName.warehouseInboundExpectations,
-        requiredPermissions: [Perm.warehouseInboundView],
-      ),
-      emptyMessage: '暂无委外回厂记录',
-      columns: _receiptColumns,
-    ),
-  );
-}
-
-/// V304 及更早材料/BOM 子件发料历史，仅供审计和反向兼容。
+/// V304 及更早材料/BOM 子件发料历史，仅供审计和反向兼容（只读，不放仓库动作）。
 class SubcontractLegacyMaterialIssueHistoryPage extends StatelessWidget {
   const SubcontractLegacyMaterialIssueHistoryPage({super.key});
 
@@ -130,14 +75,8 @@ class SubcontractLegacyMaterialIssueHistoryPage extends StatelessWidget {
     presentation: _ListPresentation(
       type: SubcontractDocType.materialIssue,
       title: '历史委外发料记录',
-      subtitle: '历史 BOM 子件发料兼容 · 新单请去仓库“委外出仓”',
+      subtitle: '历史 BOM 子件发料兼容 · 新单在仓库「委外出仓」工作台办理',
       icon: Icons.history_rounded,
-      primaryAction: _PageAction(
-        label: '去仓库委外出仓',
-        icon: Icons.outbound_outlined,
-        route: RouteName.warehouseSubcontractOutbound,
-        requiredPermissions: [Perm.subcontractOutboundView],
-      ),
       emptyMessage: '暂无历史委外发料记录',
       columns: _legacyIssueColumns,
     ),
@@ -254,7 +193,6 @@ class _ListPresentation {
     required this.emptyMessage,
     required this.columns,
     this.primaryAction,
-    this.secondaryAction,
     this.showClosedFilter = false,
   });
 
@@ -265,7 +203,6 @@ class _ListPresentation {
   final String emptyMessage;
   final _ColumnsBuilder columns;
   final _PageAction? primaryAction;
-  final _PageAction? secondaryAction;
   final bool showClosedFilter;
 }
 
@@ -329,12 +266,9 @@ class _SubcontractBusinessListPageState
   _ListPresentation get _p => widget.presentation;
   SubcontractDocConfig get _cfg => SubcontractDocConfig.by(_p.type);
 
-  bool get _isApplication => _p.type == SubcontractDocType.application;
-
-  /// 待处理段：申请页=计划已下达（待分解）；其余=草稿（待提交/待审）。
-  /// 历史兼容页（历史发料/询价）无待办语义，不挂徽章。
+  /// 待处理段：其余=草稿（待提交/待审）。历史兼容页（历史发料/询价）无待办
+  /// 语义，不挂徽章。
   int? get _actionableStatus => switch (_p.type) {
-    SubcontractDocType.application => 1,
     SubcontractDocType.materialIssue || SubcontractDocType.inquiry => null,
     _ => 0,
   };
@@ -351,6 +285,7 @@ class _SubcontractBusinessListPageState
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(mn.masterNameServiceProvider).ensureLoaded();
+      if (_shouldLoad) _reload();
       _loadBadge();
     });
   }
@@ -410,11 +345,11 @@ class _SubcontractBusinessListPageState
     final status = _actionableStatus;
     if (status == null) return;
     try {
-      final r = await ref
+      final docs = await ref
           .read(subcontractRepositoryProvider(_p.type))
           .list(size: 1, filter: SubcontractDocFilter(status: status));
       if (!mounted) return;
-      setState(() => _actionableCount = r.total);
+      setState(() => _actionableCount = docs.total);
     } catch (_) {
       // 计数失败静默：徽章不显示，不影响列表。
     }
@@ -444,8 +379,10 @@ class _SubcontractBusinessListPageState
     });
     final names = ref.watch(mn.masterNameServiceProvider);
     final seg = _seg;
-    final draftLabel = _isApplication ? '尚未下达' : '草稿';
-    final approvedLabel = _isApplication ? '计划已下达' : '已审';
+    // 2026-09-06 页头动作进工具条 trailing：与分类分段/搜索同一行
+    // （紧凑断点自动换行到搜索下方），不再单独占一行。
+    final action = _p.primaryAction;
+    final actionReady = action != null && _canUse(action);
     return Scaffold(
       appBar: UtenAppBar(
         title: _p.title,
@@ -478,33 +415,18 @@ class _SubcontractBusinessListPageState
             builder: (context, _) => Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if ((_p.primaryAction != null && _canUse(_p.primaryAction!)) ||
-                    (_p.secondaryAction != null &&
-                        _canUse(_p.secondaryAction!))) ...[
-                  _HeaderActions(
-                    primary: _p.primaryAction,
-                    secondary: _p.secondaryAction,
-                    showPrimary:
-                        _p.primaryAction != null && _canUse(_p.primaryAction!),
-                    showSecondary:
-                        _p.secondaryAction != null &&
-                        _canUse(_p.secondaryAction!),
-                  ),
-                  const SizedBox(height: UtenSpacing.s12),
-                ],
-                // 主分类行：阶段分段（无「全部」）+ 末尾「历史记录」；默认不选。
+                // 主分类行：阶段分段（无「全部」）+ 末尾「历史记录」+ 动作按钮同行。
                 UtenFilterToolbar<_BizSeg>(
                   segmentsKey: Key('subcontract-biz-segments-${_p.type.name}'),
                   segments: [
                     UtenFilterSegment(
                       value: const _BizSeg.stage(0),
-                      label: draftLabel,
+                      label: '草稿',
                       count: _actionableStatus == 0 ? _actionableCount : null,
                     ),
-                    UtenFilterSegment(
-                      value: const _BizSeg.stage(1),
-                      label: approvedLabel,
-                      count: _actionableStatus == 1 ? _actionableCount : null,
+                    const UtenFilterSegment(
+                      value: _BizSeg.stage(1),
+                      label: '已审',
                     ),
                     const UtenFilterSegment(
                       value: _BizSeg.stage(-1),
@@ -523,6 +445,16 @@ class _SubcontractBusinessListPageState
                     _controller.keyword = value;
                     _reload(1);
                   },
+                  trailing: actionReady
+                      ? UtenButton(
+                          key: Key(
+                            'subcontract-biz-primary-action-${_p.type.name}',
+                          ),
+                          icon: action.icon,
+                          onPressed: () => goFrom(context, action.route),
+                          child: Text(action.label),
+                        )
+                      : null,
                 ),
                 // 订货页结案状态小类行：选中阶段后出现（无「全部结案状态」，默认不选）。
                 if (_p.showClosedFilter && seg != null && !seg.history) ...[
@@ -563,17 +495,21 @@ class _SubcontractBusinessListPageState
                                     ) ??
                                     false),
                           ),
-                          items: _controller.result?.items ?? const [],
+                          items:
+                              _controller.result?.items ??
+                              const <SubcontractDocListItem>[],
                           facets: const {},
                           nullCounts: const {},
                           filters: const {},
                           onFilterChanged: (_, _) {},
-                          onRowTap: (row) => context.push(
-                            SubcontractRoute.detail(
-                              _p.type.pathSegment,
-                              row.id,
-                            ),
-                          ),
+                          onRowTap: (row) {
+                            context.push(
+                              SubcontractRoute.detail(
+                                _p.type.pathSegment,
+                                row.id,
+                              ),
+                            );
+                          },
                           isLoading:
                               _controller.loading && _controller.result == null,
                           loadingMore:
@@ -595,45 +531,6 @@ class _SubcontractBusinessListPageState
       ),
     );
   }
-}
-
-class _HeaderActions extends StatelessWidget {
-  const _HeaderActions({
-    required this.primary,
-    required this.secondary,
-    required this.showPrimary,
-    required this.showSecondary,
-  });
-
-  final _PageAction? primary;
-  final _PageAction? secondary;
-  final bool showPrimary;
-  final bool showSecondary;
-
-  bool get hasActions =>
-      (primary != null && showPrimary) || (secondary != null && showSecondary);
-
-  @override
-  Widget build(BuildContext context) => Wrap(
-    spacing: UtenSpacing.s8,
-    runSpacing: UtenSpacing.s8,
-    alignment: WrapAlignment.end,
-    children: [
-      if (secondary != null && showSecondary)
-        UtenButton(
-          type: UtenButtonType.secondary,
-          icon: secondary!.icon,
-          onPressed: () => goFrom(context, secondary!.route),
-          child: Text(secondary!.label),
-        ),
-      if (primary != null && showPrimary)
-        UtenButton(
-          icon: primary!.icon,
-          onPressed: () => goFrom(context, primary!.route),
-          child: Text(primary!.label),
-        ),
-    ],
-  );
 }
 
 class _BusinessPagedController extends ChangeNotifier {
@@ -704,7 +601,8 @@ List<MasterColumnDef<SubcontractDocListItem>> _baseColumns({
       key: 'warehouse',
       label: '执行仓库',
       width: 170,
-      value: (row) => names.warehouse(row.warehouseId),
+      value: (row) =>
+          row.warehouseNameOverride ?? names.warehouse(row.warehouseId),
     ),
   if (commercial)
     MasterColumnDef(
@@ -727,7 +625,7 @@ List<MasterColumnDef<SubcontractDocListItem>> _baseColumns({
     key: 'status',
     label: statusLabel,
     width: 170,
-    value: (row) => subcontractStatusLabel(row.status),
+    value: (row) => row.statusOverride ?? subcontractStatusLabel(row.status),
   ),
   if (closed)
     MasterColumnDef(
@@ -737,16 +635,6 @@ List<MasterColumnDef<SubcontractDocListItem>> _baseColumns({
       value: (row) => row.closed ? '已结案' : '执行中',
     ),
 ];
-
-List<MasterColumnDef<SubcontractDocListItem>> _applicationColumns(
-  mn.MasterNameService names,
-  bool _,
-) => _baseColumns(
-  names: names,
-  supplier: false,
-  warehouse: true,
-  statusLabel: '计划状态',
-);
 
 List<MasterColumnDef<SubcontractDocListItem>> _orderColumns(
   mn.MasterNameService names,
@@ -774,24 +662,6 @@ List<MasterColumnDef<SubcontractDocListItem>> _orderColumns(
   );
   return columns;
 }
-
-List<MasterColumnDef<SubcontractDocListItem>> _receiptColumns(
-  mn.MasterNameService names,
-  bool commercial,
-) => [
-  ..._baseColumns(
-    names: names,
-    warehouse: true,
-    commercial: commercial,
-    statusLabel: '回厂单状态',
-  ),
-  MasterColumnDef(
-    key: 'ap',
-    label: '加工费应付',
-    width: 130,
-    value: (row) => row.apPosted ? '已立账' : '未审核 / 未立账',
-  ),
-];
 
 List<MasterColumnDef<SubcontractDocListItem>> _legacyIssueColumns(
   mn.MasterNameService names,

@@ -107,7 +107,7 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         ArApLedger l = new ArApLedger();
         l.setDirection(req.direction());
         l.setBusinessType(businessType(req.direction(), req.sourceDocType()));
-        l.setOpenItemKind(openItemKind(req.direction(), req.sourceDocType(), originalLocal));
+        l.setOpenItemKind(openItemKind(req.direction(), req.sourceDocType(), original, originalLocal));
         l.setSourceDocType(req.sourceDocType());
         l.setSourceDocId(req.sourceDocId());
         l.setSourceDocNo(req.sourceDocNo());
@@ -146,9 +146,7 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         }
         // 结清以最终余额为准：预收直收余额为负 → 未结清（V129：is_settled ⇒ balance=0），
         // 覆盖"amount=0 立刻结清"的默认判定。
-        boolean settled = receivedOriginal == null && receivedLocal == null
-                ? originalLocal.signum() == 0
-                : originalLocal.subtract(nz(receivedLocal)).signum() == 0;
+        boolean settled = ArApSettlementPolicy.isSettled(l.getAmountBalanceOriginal(),l.getAmountBalance());
         l.setSettled(settled);
         if (settled) {
             l.setSettledDate(l.getBillDate());
@@ -249,7 +247,7 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
     }
 
     private static String openItemKind(
-            String direction, String sourceDocType, BigDecimal originalLocal) {
+            String direction, String sourceDocType, BigDecimal original, BigDecimal originalLocal) {
         if ("AR".equals(direction)) {
             return "DIRECT_RECEIPT".equals(sourceDocType)
                     ? "CUSTOMER_PREPAYMENT" : "RECEIVABLE";
@@ -259,7 +257,7 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
                 || "SUBCONTRACT_LOSS_OFFSET".equals(sourceDocType)) {
             return "CLAIM_CREDIT";
         }
-        return originalLocal.signum() < 0 ? "CREDIT" : "PAYABLE";
+        return original.signum() < 0 || originalLocal.signum() < 0 ? "CREDIT" : "PAYABLE";
     }
 
     private static BigDecimal nz(BigDecimal x) {

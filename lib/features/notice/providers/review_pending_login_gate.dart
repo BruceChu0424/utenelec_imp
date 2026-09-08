@@ -2,7 +2,7 @@
 //
 // 产品口径：「每次登录检查是否有新的待审，有就弹居中弹窗」。
 // - 登录会话（authenticated + notice:read）从无到有时触发一次（登出再登入会重新触发）；
-// - 延迟 3s 等首屏稳定后拉 GET /notices/pending-reviews（未办结+未稍后）；
+// - 首屏短暂稳定后拉 GET /notices/pending-reviews（未办结+未稍后），不固定等 3s；
 // - 弹窗单例（review_pending_dialog 内部守卫）：在线到达链已弹时不重复；
 // - 「稍后再看」是唯一静默途径（snooze 15 分钟）；右上 X 仅本次关闭，
 //   下次登录仍会提醒（未办结就还该提醒）。
@@ -41,37 +41,90 @@ class ReviewPendingLoginGate extends ConsumerStatefulWidget {
 class _ReviewPendingLoginGateState
     extends ConsumerState<ReviewPendingLoginGate> {
   String? _checkedForIdentity;
-  bool _checking = false;
+  Timer? _timer;
+  int _generation = 0;
+  int _retryAttempt = 0;
 
   @override
-  Widget build(BuildContext context) {
-    if (!widget.enabled) {
-      // 登出：解除已检查标记，下次登录重新检查。
-      if (_checkedForIdentity != null) {
-        _checkedForIdentity = null;
-      }
-      return const SizedBox.shrink();
-    }
-    if (_checkedForIdentity != widget.identityKey && !_checking) {
-      _checkedForIdentity = widget.identityKey;
-      _checking = true;
-      // 延迟到首屏稳定后（登录瞬间全屏弹窗会盖住工作台首屏）。
-      Timer(const Duration(seconds: 3), _check);
-    }
-    return const SizedBox.shrink();
+  void initState() {
+    super.initState();
+    _schedule();
   }
 
-  Future<void> _check() async {
+  @override
+  void didUpdateWidget(covariant ReviewPendingLoginGate oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.identityKey != widget.identityKey ||
+        oldWidget.enabled != widget.enabled) {
+      _generation++;
+      _timer?.cancel();
+      _checkedForIdentity = null;
+      _retryAttempt = 0;
+      closeReviewPendingDialog();
+      _schedule();
+    }
+  }
+
+  @override
+  void dispose() {
+    _generation++;
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
+
+  void _schedule() {
+    if (widget.enabled && _checkedForIdentity != widget.identityKey) {
+      _checkedForIdentity = widget.identityKey;
+      final generation = _generation;
+      _timer = Timer(
+        const Duration(milliseconds: 300),
+        () => _check(generation),
+      );
+    }
+  }
+
+  Future<void> _check(int generation) async {
+    if (!mounted || generation != _generation || !widget.enabled) return;
+    final initialContext = widget.dialogContext();
+    if (initialContext == null || !initialContext.mounted) {
+      _retry(generation);
+      return;
+    }
     try {
       final pending = await ref.read(noticeRepositoryProvider).pendingReviews();
-      if (!mounted || pending.isEmpty) return;
+      if (!mounted ||
+          generation != _generation ||
+          !widget.enabled ||
+          pending.isEmpty) {
+        return;
+      }
       final dialogContext = widget.dialogContext();
-      if (dialogContext == null || !dialogContext.mounted) return;
+      if (dialogContext == null || !dialogContext.mounted) {
+        _retry(generation);
+        return;
+      }
       await showReviewPendingDialog(dialogContext, pending: pending);
     } catch (_) {
-      // 检查失败可容忍：不阻塞登录流程，在线到达链与收件台仍覆盖。
-    } finally {
-      _checking = false;
+      // A temporary failure is not a successful login check. Retry with a
+      // bounded delay, while identity/disposal guards cancel obsolete work.
+      _retry(generation);
     }
+  }
+
+  void _retry(int generation) {
+    if (!mounted || generation != _generation || !widget.enabled) return;
+    _retryAttempt++;
+    final milliseconds = (500 * (1 << _retryAttempt.clamp(0, 4))).clamp(
+      500,
+      8000,
+    );
+    _timer?.cancel();
+    _timer = Timer(
+      Duration(milliseconds: milliseconds),
+      () => _check(generation),
+    );
   }
 }

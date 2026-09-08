@@ -33,7 +33,16 @@ public interface PreplanAnalysisPegPort {
             UUID beneficiaryAnalysisId,
             UUID beneficiaryAnalysisMaterialId,
             UUID demandId,
-            BigDecimal qty) {
+            BigDecimal qty,
+            UUID warehouseId) {
+        public PreparedPlanTransfer(
+                UUID sourceEntitlementEventId, UUID sourceStockReservationId,
+                UUID beneficiaryAnalysisId, UUID beneficiaryAnalysisMaterialId,
+                UUID demandId, BigDecimal qty) {
+            this(sourceEntitlementEventId, sourceStockReservationId,
+                    beneficiaryAnalysisId, beneficiaryAnalysisMaterialId,
+                    demandId, qty, null);
+        }
     }
 
     /** Formal demand reservation actually persisted by the stock allocator. */

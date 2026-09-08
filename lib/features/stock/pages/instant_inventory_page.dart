@@ -506,7 +506,12 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新', // TODO(l10n): 补 arb
-            onPressed: () => _load(_pageNum),
+            // 整页刷新：字典+仓库树+列表回第 1 页（与 initState 同口径）。
+            onPressed: () async {
+              await ref.read(masterNameServiceProvider).ensureLoaded();
+              await _loadTree();
+              _load(1);
+            },
           ),
         ],
       ),

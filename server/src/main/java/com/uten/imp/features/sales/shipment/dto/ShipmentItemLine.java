@@ -11,6 +11,8 @@ import java.util.UUID;
 @Getter
 @Setter
 public class ShipmentItemLine {
+    /** Stable current-shipment row identity for reviewed edits; null only for a new line. */
+    private UUID id;
 
     private Integer lineNo;
 

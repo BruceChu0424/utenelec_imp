@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Set;
 import java.util.UUID;
 
@@ -33,8 +34,8 @@ public class ProcurementIqcReplacementAllocationService {
         Object[] row=(Object[])em.createNativeQuery("""
                 SELECT COALESCE(SUM(failed_qty),0),
                        COALESCE(SUM(failed_base_qty),0),
-                       COALESCE(SUM(failed_amount_original),0),
-                       COALESCE(SUM(failed_amount_local),0)
+                       CASE WHEN COUNT(*)=COUNT(failed_amount_original) THEN COALESCE(SUM(failed_amount_original),0) END,
+                       CASE WHEN COUNT(*)=COUNT(failed_amount_local) THEN COALESCE(SUM(failed_amount_local),0) END
                 FROM procurement_iqc_rejection_cases
                 WHERE receipt_type=:type AND order_item_id=:orderItemId
                   AND is_deleted=FALSE AND return_recorded_at IS NOT NULL
@@ -48,26 +49,12 @@ public class ProcurementIqcReplacementAllocationService {
     }
 
     @Transactional(propagation=Propagation.MANDATORY)
-    public void allocateForReceiptItem(
+    public String allocateForReceiptItem(
             String rawType,UUID receiptId,UUID receiptItemId,UUID orderItemId,
             BigDecimal receiptQty,BigDecimal receiptUnitRate,
             BigDecimal receiptOriginal,BigDecimal receiptLocal,
-            BigDecimal authorizedQty,BigDecimal authorizedOriginal,
-            BigDecimal authorizedLocal,BigDecimal rawPriorQty,
-            BigDecimal rawPriorOriginal,BigDecimal rawPriorLocal){
+            BigDecimal authorizedQty,BigDecimal rawPriorQty,String requestedIntent){
         String type=type(rawType);
-        BigDecimal neededQty=incrementalExcess(
-                rawPriorQty,receiptQty,authorizedQty);
-        BigDecimal neededOriginal=incrementalExcess(
-                rawPriorOriginal,receiptOriginal,authorizedOriginal);
-        BigDecimal neededLocal=incrementalExcess(
-                rawPriorLocal,receiptLocal,authorizedLocal);
-        if(neededQty.signum()==0){
-            if(neededOriginal.signum()!=0||neededLocal.signum()!=0){
-                throw conflict("补货收货数量与金额释放额度不一致");
-            }
-            return;
-        }
         if(receiptUnitRate==null||receiptUnitRate.signum()<=0){
             throw conflict("补货收货单位换算率无效");
         }
@@ -82,12 +69,9 @@ public class ProcurementIqcReplacementAllocationService {
                 ORDER BY return_date,id FOR UPDATE
                 """).setParameter("type",type)
                 .setParameter("orderItemId",orderItemId).getResultList();
-        BigDecimal qtyLeft=neededQty;
-        BigDecimal originalLeft=money(neededOriginal);
-        BigDecimal localLeft=money(neededLocal);
-        UUID actor=currentUser.requireId();
+        List<ReturnedShare> availableShares=new ArrayList<>();
+        BigDecimal replacementAvailable=BigDecimal.ZERO;
         for(UUID caseId:caseIds){
-            if(qtyLeft.signum()<=0)break;
             Object[] available=(Object[])em.createNativeQuery("""
                     SELECT rejection.failed_qty,
                            rejection.failed_base_qty,
@@ -109,27 +93,51 @@ public class ProcurementIqcReplacementAllocationService {
                     """).setParameter("caseId",caseId).getSingleResult();
             BigDecimal caseQty=decimal(available[0]).subtract(decimal(available[4]));
             BigDecimal caseBase=decimal(available[1]).subtract(decimal(available[5]));
-            BigDecimal caseOriginal=money(
-                    decimal(available[2]).subtract(decimal(available[6])));
-            BigDecimal caseLocal=money(
-                    decimal(available[3]).subtract(decimal(available[7])));
+            BigDecimal caseOriginal=available[2]==null?null:money(decimal(available[2]).subtract(decimal(available[6])));
+            BigDecimal caseLocal=available[3]==null?null:money(decimal(available[3]).subtract(decimal(available[7])));
             if(caseQty.signum()<=0)continue;
+            availableShares.add(new ReturnedShare(caseId,caseQty,caseBase,caseOriginal,caseLocal));
+            replacementAvailable=replacementAvailable.add(caseQty);
+        }
+        String orderTable="PURCHASE".equals(type)?"purchase_order_items":"subcontract_order_items";
+        BigDecimal ordinaryReturned=decimal(em.createNativeQuery(
+                "SELECT COALESCE(returned_qty,0) FROM "+orderTable+" WHERE id=:id")
+                .setParameter("id",orderItemId).getSingleResult());
+        BigDecimal priorAllocated=decimal(em.createNativeQuery("""
+                SELECT COALESCE(SUM(allocation.allocated_qty),0)
+                FROM procurement_iqc_replacement_allocations allocation
+                JOIN procurement_iqc_rejection_cases rejection ON rejection.id=allocation.case_id
+                WHERE rejection.receipt_type=:type AND rejection.order_item_id=:id
+                  AND allocation.status='ACTIVE' AND allocation.replacement_receipt_id<>:receipt
+                """).setParameter("type",type).setParameter("id",orderItemId)
+                .setParameter("receipt",receiptId).getSingleResult());
+        BigDecimal normalRemaining=authorizedQty.subtract(rawPriorQty).add(priorAllocated)
+                .add(ordinaryReturned).max(BigDecimal.ZERO);
+        String intent=resolveIntent(requestedIntent,replacementAvailable,normalRemaining);
+        BigDecimal neededQty="RETURN_REPLACEMENT".equals(intent)
+                ?receiptQty.min(replacementAvailable):BigDecimal.ZERO;
+        if(receiptQty.subtract(neededQty).compareTo(normalRemaining)>0){
+            throw conflict("本次正常到货超过原订单尚未到货的数量，请确认补回来源或先完成超到审批");
+        }
+        if(neededQty.signum()==0)return intent;
+        BigDecimal qtyLeft=neededQty;
+        BigDecimal allocatedOriginal=BigDecimal.ZERO;
+        BigDecimal allocatedLocal=BigDecimal.ZERO;
+        UUID actor=currentUser.requireId();
+        for(ReturnedShare share:availableShares){
+            if(qtyLeft.signum()<=0)break;
+            UUID caseId=share.caseId();
+            BigDecimal caseQty=share.qty();
+            BigDecimal caseBase=share.baseQty();
+            BigDecimal caseOriginal=share.original();
+            BigDecimal caseLocal=share.local();
             BigDecimal takeQty=qtyLeft.min(caseQty);
-            boolean last=takeQty.compareTo(qtyLeft)==0;
-            BigDecimal takeBase=last
-                    ? money(neededQty.multiply(receiptUnitRate)
-                        .subtract(neededQty.subtract(qtyLeft).multiply(receiptUnitRate)))
-                    : quantity(caseBase.multiply(takeQty)
+            boolean finishesShare=takeQty.compareTo(caseQty)==0;
+            BigDecimal takeBase=finishesShare?quantity(caseBase):quantity(caseBase.multiply(takeQty)
                         .divide(caseQty,12,RoundingMode.HALF_UP));
-            BigDecimal takeOriginal=last?originalLeft:money(
-                    caseOriginal.multiply(takeQty)
-                            .divide(caseQty,12,RoundingMode.HALF_UP));
-            BigDecimal takeLocal=last?localLeft:money(
-                    caseLocal.multiply(takeQty)
-                            .divide(caseQty,12,RoundingMode.HALF_UP));
-            if(takeBase.signum()<=0||takeBase.compareTo(caseBase)>0
-                    ||takeOriginal.compareTo(caseOriginal)>0
-                    ||takeLocal.compareTo(caseLocal)>0){
+            BigDecimal takeOriginal=ProcurementConsiderationBasis.finitePortion(receiptOriginal,takeQty,receiptQty);
+            BigDecimal takeLocal=ProcurementConsiderationBasis.finiteBookPortion(receiptLocal,takeQty,receiptQty);
+            if(takeBase.signum()<=0||takeBase.compareTo(caseBase)>0){
                 throw conflict("补货分配超过IQC失败退回切片的剩余数量或金额");
             }
             UUID allocationId=UUID.randomUUID();
@@ -163,12 +171,11 @@ public class ProcurementIqcReplacementAllocationService {
                     .setParameter("reference",receiptItemId.toString())
                     .executeUpdate();
             qtyLeft=qtyLeft.subtract(takeQty);
-            originalLeft=money(originalLeft.subtract(takeOriginal));
-            localLeft=money(localLeft.subtract(takeLocal));
         }
-        if(qtyLeft.signum()!=0||originalLeft.signum()!=0||localLeft.signum()!=0){
+        if(qtyLeft.signum()!=0){
             throw conflict("已退IQC失败切片不足，无法覆盖本次补货收货数量或金额");
         }
+        return intent;
     }
 
     @Transactional(propagation=Propagation.MANDATORY)
@@ -224,19 +231,25 @@ public class ProcurementIqcReplacementAllocationService {
                 .setParameter("receiptItemId",receiptItemId).getSingleResult());
     }
 
-    static BigDecimal incrementalExcess(
-            BigDecimal prior,BigDecimal current,BigDecimal authorized){
-        if(prior==null||current==null||authorized==null
-                ||prior.signum()<0||current.signum()<0||authorized.signum()<0){
-            throw conflict("补货收货额度输入无效");
+    static String resolveIntent(String requested,BigDecimal replacementAvailable,BigDecimal normalRemaining){
+        if(requested!=null&&!Set.of("NORMAL","RETURN_REPLACEMENT").contains(requested)){
+            throw conflict("请选择退回补回或本次正常到货");
         }
-        return prior.add(current).subtract(authorized).max(BigDecimal.ZERO)
-                .subtract(prior.subtract(authorized).max(BigDecimal.ZERO));
+        if(requested==null){
+            if(replacementAvailable.signum()>0&&normalRemaining.signum()>0){
+                throw conflict("该订单同时存在正常待到货和已退未补数量，请明确选择退回补回或本次正常到货");
+            }
+            requested=replacementAvailable.signum()>0?"RETURN_REPLACEMENT":"NORMAL";
+        }
+        if("RETURN_REPLACEMENT".equals(requested)&&replacementAvailable.signum()<=0){
+            throw conflict("该订单目前没有已实际退回且未补回的份额，请刷新后确认到货来源");
+        }
+        return requested;
     }
 
     private static String type(String value){
         String normalized=value==null?null:value.trim().toUpperCase();
-        if(!TYPES.contains(normalized))throw conflict("补货收货类型无效");
+        if(normalized==null||!TYPES.contains(normalized))throw conflict("补货收货类型无效");
         return normalized;
     }
 
@@ -252,7 +265,7 @@ public class ProcurementIqcReplacementAllocationService {
     }
 
     private static BigDecimal money(Object value){
-        return decimal(value).setScale(4,RoundingMode.HALF_UP);
+        return value==null?null:com.uten.imp.common.util.FinancialExactAmount.canonicalMoney(decimal(value),"补回名义金额");
     }
 
     private static BigDecimal quantity(BigDecimal value){
@@ -266,4 +279,7 @@ public class ProcurementIqcReplacementAllocationService {
     public record ReleasedCapacity(
             BigDecimal qty,BigDecimal baseQty,
             BigDecimal amountOriginal,BigDecimal amountLocal){}
+
+    private record ReturnedShare(UUID caseId,BigDecimal qty,BigDecimal baseQty,
+                                 BigDecimal original,BigDecimal local){}
 }

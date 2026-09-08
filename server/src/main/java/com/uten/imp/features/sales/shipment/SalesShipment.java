@@ -39,6 +39,29 @@ public class SalesShipment extends SoftDeletableEntity {
     @Column(name = "legacy_id", unique = true)
     private Integer legacyId;
 
+    @Column(name="shipment_kind",nullable=false)
+    private String shipmentKind=CustomerShipmentPolicy.ORDER;
+    @Column(name="billing_mode",nullable=false)
+    private String billingMode=CustomerShipmentPolicy.CHARGED;
+    @Column(name="direct_purpose")
+    private String directPurpose;
+    @Column(name="free_reason")
+    private String freeReason;
+    @Column(name="review_revision",nullable=false)
+    private long reviewRevision;
+    @Column(name="sales_confirmed_revision")
+    private Long salesConfirmedRevision;
+    @Column(name="sales_confirmed_at")
+    private OffsetDateTime salesConfirmedAt;
+    @Column(name="sales_confirmed_by")
+    private UUID salesConfirmedBy;
+    @Column(name="finance_release_event_id")
+    private UUID financeReleaseEventId;
+    @Column(name="finance_rejected",nullable=false)
+    private boolean financeRejected;
+    @Column(name="finance_rejection_reason")
+    private String financeRejectionReason;
+
     @Column(name = "bill_no", nullable = false)
     private String billNo;
 

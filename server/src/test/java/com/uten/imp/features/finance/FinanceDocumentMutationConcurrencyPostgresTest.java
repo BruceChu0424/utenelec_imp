@@ -461,6 +461,8 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
         receiptReq.setCurrencyId(currencyId);
         receiptReq.setExchangeRate(BigDecimal.ONE);
         receiptReq.setAmountOriginal(new BigDecimal("10"));
+        // V2 records the actual same-currency bank credit, independently of the quote.
+        receiptReq.setAccountAmount(new BigDecimal("10"));
         receiptReq.setBankFeeAccountAmount(BigDecimal.ZERO);
         receiptReq.setOtherFeeAccountAmount(BigDecimal.ZERO);
         receiptReq.setFeeSettlementMode("NONE");

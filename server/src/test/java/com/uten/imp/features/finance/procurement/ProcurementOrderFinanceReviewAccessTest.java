@@ -232,9 +232,15 @@ class ProcurementOrderFinanceReviewAccessTest {
                 mock(ProductionSupplySourceGuard.class),
                 mock(PurchaseLineUnitPolicy.class),
                 projection,
+                mock(com.uten.imp.features.finance.procurement.ProcurementApprovalReconfirmationService.class),
+                // 2026-09-05 cancel() 撤回财务弹卡用；本测试不触达，传 mock 即可。
+                mock(com.uten.imp.features.notice.ChainNoticeService.class),
                 mock(ProcurementArrivalControlPort.class),
                 access,
-                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class));
+                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementReviewCancellationPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementOrderSourceRevisionPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
         return new PurchaseFixture(
                 orderId, ownerId, service, orders, items, projection, access);
     }
@@ -279,7 +285,11 @@ class ProcurementOrderFinanceReviewAccessTest {
                 mock(ProcurementArrivalControlPort.class),
                 access,
                 mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class),
-                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class));
+                mock(com.uten.imp.features.finance.procurement.ProcurementApprovalReconfirmationService.class),
+                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementReviewCancellationPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementOrderSourceRevisionPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
         return new SubcontractFixture(
                 orderId, ownerId, service, orders, items, projection, access);
     }

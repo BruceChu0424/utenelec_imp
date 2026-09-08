@@ -31,6 +31,7 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -863,13 +864,15 @@ class _SubcontractDocEditPageState
                   errorBuilder: utenTextFieldErrorBuilder,
                   readOnly: true,
                   controller: _billNo,
-                  decoration: InputDecoration(
-                    labelText: '单据号',
-                    hintText: _billNo.text.isEmpty ? '保存后自动生成' : null,
-                    filled: _billNo.text.isEmpty,
-                    suffixIcon: _billNo.text.isEmpty
-                        ? const Icon(Icons.autorenew_outlined, size: 18)
-                        : const Icon(Icons.lock_outline, size: 16),
+                  decoration: UtenInputDecoration(
+                    InputDecoration(
+                      labelText: '单据号',
+                      hintText: _billNo.text.isEmpty ? '保存后自动生成' : null,
+                      filled: _billNo.text.isEmpty,
+                      suffixIcon: _billNo.text.isEmpty
+                          ? const Icon(Icons.autorenew_outlined, size: 18)
+                          : const Icon(Icons.lock_outline, size: 16),
+                    ),
                   ),
                 ),
                 // 制单员/制单时间：服务端权威，只读展示（责任制）。
@@ -952,18 +955,20 @@ class _SubcontractDocEditPageState
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    decoration: InputDecoration(
-                      label: fieldLabel(
-                        '税率(%)',
-                        theme,
-                        required: widget.docType == SubcontractDocType.order,
-                        info: widget.docType == SubcontractDocType.order
-                            ? '必填，允许 0；财务批准后冻结，范围 0–100'
-                            : '范围 0–100',
+                    decoration: UtenInputDecoration(
+                      InputDecoration(
+                        label: fieldLabel(
+                          '税率(%)',
+                          theme,
+                          required: widget.docType == SubcontractDocType.order,
+                          info: widget.docType == SubcontractDocType.order
+                              ? '必填，允许 0；财务批准后冻结，范围 0–100'
+                              : '范围 0–100',
+                        ),
+                        error: _taxRateError == null
+                            ? null
+                            : UtenFieldMessage.error(_taxRateError!),
                       ),
-                      error: _taxRateError == null
-                          ? null
-                          : UtenFieldMessage.error(_taxRateError!),
                     ),
                   ),
                 if (_commercialTermsInheritedFromSource)
@@ -1024,11 +1029,13 @@ class _SubcontractDocEditPageState
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    decoration: InputDecoration(
-                      label: fieldLabel(
-                        '建议索赔金额(本币)',
-                        theme,
-                        info: '仅供后续财务责任决定参考；不会自动扣款、抵销或生成负应付',
+                    decoration: UtenInputDecoration(
+                      InputDecoration(
+                        label: fieldLabel(
+                          '建议索赔金额(本币)',
+                          theme,
+                          info: '仅供后续财务责任决定参考；不会自动扣款、抵销或生成负应付',
+                        ),
                       ),
                     ),
                   ),

@@ -596,11 +596,13 @@ abstract class _MaterialAnalysisCandidatesState
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
-                        decoration: InputDecoration(
-                          label: fieldLabel(
-                            _selectedCandidateLabels[entry.key] ?? '所选产品',
-                            Theme.of(sheetContext),
-                            info: '本次分析数量',
+                        decoration: UtenInputDecoration(
+                          InputDecoration(
+                            label: fieldLabel(
+                              _selectedCandidateLabels[entry.key] ?? '所选产品',
+                              Theme.of(sheetContext),
+                              info: '本次分析数量',
+                            ),
                           ),
                         ),
                       ),
@@ -722,14 +724,16 @@ abstract class _MaterialAnalysisCandidatesState
                     key: const Key('manual-source-ref'),
                     controller: _manualSourceRef,
                     maxLength: 200,
-                    decoration: InputDecoration(
-                      label: fieldLabel(
-                        '需求编号',
-                        theme,
-                        required: true,
-                        info: '同一需求请始终使用同一个编号',
+                    decoration: UtenInputDecoration(
+                      InputDecoration(
+                        label: fieldLabel(
+                          '需求编号',
+                          theme,
+                          required: true,
+                          info: '同一需求请始终使用同一个编号',
+                        ),
+                        hintText: '例：RW-20260808-001',
                       ),
-                      hintText: '例：RW-20260808-001',
                     ),
                   ),
                 ),
@@ -850,184 +854,150 @@ abstract class _MaterialAnalysisCandidatesState
     ],
   );
 
+  @override
+  bool _normalizeNewWarehouseScope() {
+    final root = _warehouseRootOf(_warehouseId);
+    if (root == null) return false;
+    final leaves = _warehouseScopeLeaves(root.id);
+    if (leaves.length > 100) {
+      _warehouseIds.clear();
+      return false;
+    }
+    _warehouseIds
+      ..clear()
+      ..addAll(leaves.map((entry) => entry.id));
+    return true;
+  }
+
+  List<WarehouseDictEntry> _warehouseScopeLeaves(String rootId) {
+    final hierarchy = ref.read(masterNameServiceProvider).warehouseHierarchy;
+    final children = <String, List<WarehouseDictEntry>>{};
+    final byId = {for (final entry in hierarchy) entry.id: entry};
+    for (final entry in hierarchy) {
+      if (entry.parentId != null) {
+        children.putIfAbsent(entry.parentId!, () => []).add(entry);
+      }
+    }
+    final leaves = <WarehouseDictEntry>[];
+    final pending = <String>[rootId];
+    final seen = <String>{};
+    while (pending.isNotEmpty) {
+      final id = pending.removeLast();
+      if (!seen.add(id)) continue;
+      final entry = byId[id];
+      if (entry == null) continue;
+      final descendants = children[id] ?? const <WarehouseDictEntry>[];
+      if (descendants.isEmpty) {
+        if (entry.isAccountable && entry.status != '禁用') leaves.add(entry);
+      } else {
+        pending.addAll(descendants.reversed.map((entry) => entry.id));
+      }
+    }
+    leaves.sort((left, right) {
+      final byCode = (left.code ?? '').compareTo(right.code ?? '');
+      return byCode != 0 ? byCode : left.id.compareTo(right.id);
+    });
+    return leaves;
+  }
+
+  WarehouseDictEntry? _warehouseRootOf(String? warehouseId) {
+    final byId = {
+      for (final entry
+          in ref.read(masterNameServiceProvider).warehouseHierarchy)
+        entry.id: entry,
+    };
+    var current = byId[warehouseId];
+    final seen = <String>{};
+    while (current != null && seen.add(current.id)) {
+      final parent = byId[current.parentId];
+      if (parent == null) return current;
+      current = parent;
+    }
+    return null;
+  }
+
   Widget _warehouseField() {
-    final entries = ref.watch(masterNameServiceProvider).warehouseEntries;
-    final primary = _warehouseId;
-    final primaryName = primary == null ? null : entries[primary];
-    return InkWell(
+    final hierarchy = ref.watch(masterNameServiceProvider).warehouseHierarchy;
+    final ids = hierarchy.map((entry) => entry.id).toSet();
+    final roots = hierarchy
+        .where(
+          (entry) => entry.parentId == null || !ids.contains(entry.parentId),
+        )
+        .toList();
+    final root = _warehouseRootOf(_warehouseId);
+    return Row(
       key: const Key('material-analysis-warehouse'),
-      onTap: _busy || entries.isEmpty ? null : _pickWarehouses,
-      borderRadius: UtenRadius.smAll,
-      child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: '仓库范围',
-          suffixIcon: const Icon(Icons.unfold_more_rounded),
-          enabled: !_busy && entries.isNotEmpty,
+      children: [
+        Expanded(
+          child: UtenDropdownField(
+            key: ValueKey('material-analysis-main-warehouse-${root?.id}'),
+            value: root?.id,
+            label: _l10n.materialMainWarehouse,
+            allowClear: false,
+            info:
+                '${_l10n.materialWarehouseScopeExplanation}\n${_l10n.materialIssueWarehouseSettings}: ${ref.read(masterNameServiceProvider).warehouseEntries[_warehouseId] ?? '—'}',
+            enabled: !_busy && _canManage && roots.isNotEmpty,
+            items: [
+              for (final entry in roots)
+                UtenDropdownItem(value: entry.id, label: entry.name),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              final leaves = _warehouseScopeLeaves(value);
+              if (leaves.isEmpty) return;
+              final selected = leaves.map((entry) => entry.id).toSet();
+              final primary = selected.contains(_warehouseId)
+                  ? _warehouseId!
+                  : leaves.first.id;
+              _applyWarehouseSelection(primary, selected);
+            },
+          ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              primaryName == null ? '点击选择主领料仓' : '主仓：$primaryName',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              '已勾选 ${_warehouseIds.length} 个仓；其它仓只作可调拨参考',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
+        IconButton(
+          key: const Key('material-analysis-issue-warehouse-settings'),
+          tooltip: _l10n.materialIssueWarehouseSettings,
+          onPressed: _busy || root == null || !_canManage
+              ? null
+              : _pickWarehouses,
+          icon: const Icon(Icons.tune_rounded),
         ),
-      ),
+      ],
     );
   }
 
+  /// The main selector is a scope. Physical reservations keep their leaf UUID.
   Future<void> _pickWarehouses() async {
-    final names = ref.read(masterNameServiceProvider);
-    final entries = names.warehouseEntries;
-    if (entries.isEmpty || _busy) return;
-    // V476：主领料仓/参与仓必须是具体叶子仓（齐套、预留、DRAW 落到具体仓）；
-    // 主仓库（父仓）只进列表当分组说明行，不可勾选。兜底主仓也取第一个叶子仓
-    //（warehouseEntries 按编号排序，第一项恰是主仓 001，直接取会被后端拒绝）。
-    final hierarchy = names.warehouseHierarchy;
-    final parentIds = hierarchy
-        .map((e) => e.parentId)
-        .whereType<String>()
-        .toSet();
-    final leafs = hierarchy.where((e) => !parentIds.contains(e.id)).toList();
-    if (leafs.isEmpty) return;
+    final root = _warehouseRootOf(_warehouseId);
+    if (root == null || _busy || !_canManage) return;
+    final leaves = _warehouseScopeLeaves(root.id);
+    if (leaves.isEmpty) return;
     var primary = _warehouseId;
-    final selected = Set<String>.of(_warehouseIds);
-    if (primary == null ||
-        !entries.containsKey(primary) ||
-        parentIds.contains(primary)) {
-      primary = leafs.first.id;
-    }
-    selected.add(primary);
-    final result = await showDialog<({String primary, Set<String> selected})>(
+    final result = await showDialog<String>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('选择参与仓与主领料仓'),
+          title: Text(_l10n.materialIssueWarehouseSettings),
           content: SizedBox(
-            width: 560,
+            width: 480,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  '主领料仓是齐套、正式预留和 DRAW 的唯一仓库真值。'
-                  '其它勾选仓只显示可调拨量，不会直接提高可生产数量。'
-                  '点击仓库行勾选参与范围，使用右侧单选按钮设置主仓。',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    height: 1.45,
-                  ),
-                ),
+                Text(_l10n.materialWarehouseScopeExplanation),
                 const SizedBox(height: UtenSpacing.s12),
                 Flexible(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 440),
-                    child: RadioGroup<String>(
-                      groupValue: primary,
-                      onChanged: (value) {
-                        if (value == null) return;
-                        setDialogState(() {
-                          primary = value;
-                          selected.add(value);
-                        });
-                      },
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: hierarchy.length,
-                        itemBuilder: (_, index) {
-                          final entry = hierarchy[index];
-                          // 主仓库（父仓）：分组说明行——仅汇总查询用，不参与分析。
-                          if (parentIds.contains(entry.id)) {
-                            return ListTile(
-                              dense: true,
-                              visualDensity: VisualDensity.compact,
-                              title: Text(
-                                entry.name,
-                                style: Theme.of(context).textTheme.titleSmall
-                                    ?.copyWith(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.onSurfaceVariant,
-                                    ),
-                              ),
-                              subtitle: Text(
-                                '主仓库 · 汇总查询用，分析请勾选其子仓库',
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.onSurfaceVariant,
-                                    ),
-                              ),
-                              enabled: false,
-                            );
-                          }
-                          final checked = selected.contains(entry.id);
-                          final isPrimary = primary == entry.id;
-                          return Semantics(
-                            selected: checked,
-                            label:
-                                '${entry.name}，${isPrimary
-                                    ? '主领料仓'
-                                    : checked
-                                    ? '已参与'
-                                    : '未参与'}',
-                            child: ListTile(
-                              minVerticalPadding: UtenSpacing.s8,
-                              contentPadding: const EdgeInsets.only(
-                                left: 24,
-                                right: 16,
-                              ),
-                              leading: Checkbox(
-                                key: ValueKey(
-                                  'material-analysis-warehouse-check-${entry.id}',
-                                ),
-                                value: checked,
-                                onChanged: isPrimary
-                                    ? null
-                                    : (value) => setDialogState(() {
-                                        if (value == true) {
-                                          selected.add(entry.id);
-                                        } else if (selected.length > 1) {
-                                          selected.remove(entry.id);
-                                        }
-                                      }),
-                              ),
-                              title: Text(entry.name),
-                              subtitle: Text(
-                                isPrimary
-                                    ? '主领料仓 · 参与仓不可取消'
-                                    : checked
-                                    ? '参与库存参考；需先调拨到主仓才能齐套'
-                                    : '不参与本次分析参考',
-                              ),
-                              trailing: Radio<String>(
-                                key: ValueKey(
-                                  'material-analysis-warehouse-primary-${entry.id}',
-                                ),
-                                value: entry.id,
-                              ),
-                              onTap: isPrimary
-                                  ? null
-                                  : () => setDialogState(() {
-                                      if (checked) {
-                                        selected.remove(entry.id);
-                                      } else {
-                                        selected.add(entry.id);
-                                      }
-                                    }),
-                            ),
-                          );
-                        },
+                  child: RadioGroup<String>(
+                    groupValue: primary,
+                    onChanged: (value) => setDialogState(() => primary = value),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: leaves.length,
+                      itemBuilder: (_, index) => RadioListTile<String>(
+                        key: ValueKey(
+                          'material-analysis-warehouse-primary-${leaves[index].id}',
+                        ),
+                        value: leaves[index].id,
+                        title: Text(leaves[index].name),
                       ),
                     ),
                   ),
@@ -1038,24 +1008,21 @@ abstract class _MaterialAnalysisCandidatesState
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('取消'),
+              child: Text(_l10n.commonCancel),
             ),
             FilledButton(
               key: const Key('material-analysis-warehouse-confirm'),
-              onPressed: selected.isNotEmpty && selected.contains(primary)
-                  ? () => Navigator.pop(dialogContext, (
-                      primary: primary!,
-                      selected: Set<String>.of(selected),
-                    ))
-                  : null,
-              child: const Text('确认仓库范围'),
+              onPressed: primary == null
+                  ? null
+                  : () => Navigator.pop(dialogContext, primary),
+              child: Text(_l10n.commonConfirm),
             ),
           ],
         ),
       ),
     );
     if (result == null || !mounted) return;
-    _applyWarehouseSelection(result.primary, result.selected);
+    _applyWarehouseSelection(result, leaves.map((entry) => entry.id).toSet());
   }
 
   List<MasterColumnDef<MaterialAnalysisSalesCandidateLine>>
@@ -1257,11 +1224,13 @@ abstract class _MaterialAnalysisCandidatesState
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    decoration: InputDecoration(
-                      label: fieldLabel(
-                        _selectedCandidateLabels[entry.key] ?? '所选产品',
-                        theme,
-                        info: '本次分析数量',
+                    decoration: UtenInputDecoration(
+                      InputDecoration(
+                        label: fieldLabel(
+                          _selectedCandidateLabels[entry.key] ?? '所选产品',
+                          theme,
+                          info: '本次分析数量',
+                        ),
                       ),
                     ),
                   ),

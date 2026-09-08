@@ -65,6 +65,10 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
     private final SupplierOpenItemOffsetService offsetService;
     private final BusinessEventPublisher events;
     private final ProcurementArrivalControlPort arrivalControl;
+    private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
+    private final com.uten.imp.common.finance.ProcurementReceiptConsiderationService consideration;
+    private final com.uten.imp.application.port.ProcurementCreditBookAllocationPort creditBook;
+    private final com.uten.imp.application.port.ProcurementInventoryValuePort procurementValue;
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -81,7 +85,9 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         tx.bindActor(actorUserId);
         String receiptType = type(rawReceiptType);
         if (alreadyHandled(inspectionEventId)) return;
+        var mutationGuard=mutationLocks.inspection(receiptType,receiptId,List.of(inspectionItemId));
         Source source = lockSource(receiptType, receiptId, inspectionItemId);
+        mutationGuard.verifyUnchanged();
         if (!"PARTIAL".equals(source.inspectionStatus())
                 && !"RESOLVED".equals(source.inspectionStatus())) {
             throw conflict("IQC失败事件状态与冻结行不一致");
@@ -102,7 +108,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 source.receiptOriginal(),source.receiptLocal());
         BigDecimal failedOriginal=failedAmounts.original();
         BigDecimal failedLocal=failedAmounts.local();
-        Projection projection = projection(source, failedOriginal, failedLocal);
+        Projection projection = projection(source, failedOriginal, failedLocal,receiptType,receiptId);
 
         @SuppressWarnings("unchecked")
         List<Object[]> existing = em.createNativeQuery("""
@@ -210,6 +216,12 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                     .executeUpdate();
             if (updated != 1) throw conflict("IQC失败任务版本已变化");
         }
+        if(projection.exceptionCode()==null&&consideration.hasReceipt(receiptType,receiptId)){
+            var funded=consideration.freezeFailure(caseId,inspectionItemId,actorUserId);
+            if(!sameAmount(funded.original(),failedOriginal)||!sameAmount(funded.local(),failedLocal)){
+                throw conflict("品质失败金额与其冻结资金份额不一致");
+            }
+        }
         appendEvent(
                 caseId,
                 projection.exceptionCode() == null ? "FAIL_PROJECTED" : "FINANCE_EXCEPTION",
@@ -228,6 +240,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void beforeReceiptReverse(String rawReceiptType, UUID receiptId) {
+        mutationLocks.requireReceiptCovered(type(rawReceiptType),receiptId);
         tx.bind();
         String receiptType = type(rawReceiptType);
         long pendingProjection=((Number)em.createNativeQuery("""
@@ -369,16 +382,105 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
 
     @Transactional(readOnly = true)
     public CaseDetail detail(UUID id) {
+        CaseItem summary=item(requireSummary(id));
+        var resolved=consideration.resolution(id);
+        boolean amountVisible=!summary.priceMasked();
+        String baseUnit=(String)em.createNativeQuery("""
+                SELECT unit.name FROM procurement_iqc_rejection_cases rejection
+                JOIN goods ON goods.id=rejection.goods_id LEFT JOIN units unit ON unit.id=goods.unit_id
+                WHERE rejection.id=:id
+                """).setParameter("id",id).getSingleResult();
+        var resolution=new ProcurementIqcRejectionContracts.ResolutionItem(baseUnit,
+                quantity((Object)resolved.creditableBaseQty()),quantity((Object)resolved.replacementPendingBaseQty()),
+                quantity((Object)resolved.replacementStockedBaseQty()),quantity((Object)resolved.creditedBaseQty()),
+                quantity((Object)resolved.unresolvedBaseQty()),amountVisible?money((Object)resolved.unresolvedOriginal()):null,
+                amountVisible?money((Object)resolved.unresolvedLocal()):null,resolved.state(),resolved.legacyUnclassified());
         return new CaseDetail(
-                item(requireSummary(id)),
+                summary,
                 events(id),
-                replacementAllocations(id));
+                replacementAllocations(id),resolution,creditDocuments(id,amountVisible),
+                amountVisible?creditSources(id):List.of());
+    }
+
+    private List<ProcurementIqcRejectionContracts.CreditResolutionItem> creditDocuments(UUID caseId,boolean amountVisible){
+        @SuppressWarnings("unchecked")
+        List<Object[]> documents=em.createNativeQuery("""
+                SELECT document.id,document.base_qty,document.amount_original,document.amount_local,
+                       document.credit_reference,document.effective_date,
+                       BOOL_OR(fn_procurement_consideration_active('CREDIT',slice.id)) active,
+                       NOT EXISTS(SELECT 1 FROM procurement_receipt_consideration_parts part
+                           JOIN procurement_iqc_credit_slices consumed ON consumed.id=part.credit_slice_id
+                           WHERE consumed.credit_document_id=document.id
+                             AND fn_procurement_consideration_active('CONSIDERATION',part.id)) reversible
+                FROM procurement_iqc_credit_documents document
+                JOIN procurement_iqc_credit_slices slice ON slice.credit_document_id=document.id
+                WHERE EXISTS(SELECT 1 FROM procurement_iqc_credit_slices own
+                    WHERE own.credit_document_id=document.id AND own.case_id=:id)
+                GROUP BY document.id ORDER BY document.approved_at,document.id
+                """).setParameter("id",caseId).getResultList();
+        return documents.stream().map(row->new ProcurementIqcRejectionContracts.CreditResolutionItem(
+                uuid(row[0]),quantity(row[1]),amountVisible?money(row[2]):null,amountVisible?money(row[3]):null,
+                text(row[4]),text(row[5]),Boolean.TRUE.equals(row[6])?"ACTIVE":"REVERSED",
+                amountVisible&&has("procurement_iqc_rejection:reverse")&&Boolean.TRUE.equals(row[6])&&Boolean.TRUE.equals(row[7]),
+                amountVisible?creditCaseBooks(uuid(row[0]),caseId):List.of()))
+                .toList();
+    }
+
+    private List<ProcurementIqcRejectionContracts.CreditCaseBookItem> creditCaseBooks(UUID documentId,UUID caseId){
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows=em.createNativeQuery("""
+                SELECT case_id,base_qty,amount_original,amount_local,book_before_original,book_before_local,
+                       book_after_original,book_after_local FROM procurement_iqc_credit_case_allocations
+                WHERE credit_document_id=:id AND (:allCases OR case_id=:caseId) ORDER BY case_id
+                """).setParameter("id",documentId).setParameter("allCases",canViewAllCases()).setParameter("caseId",caseId).getResultList();
+        return rows.stream().map(row->new ProcurementIqcRejectionContracts.CreditCaseBookItem(uuid(row[0]),quantity(row[1]),
+                money(row[2]),money(row[3]),money(row[4]),money(row[5]),money(row[6]),money(row[7]))).toList();
+    }
+
+    private List<ProcurementIqcRejectionContracts.CreditSourceItem> creditSources(UUID caseId){
+        @SuppressWarnings("unchecked")
+        List<Object[]> sources=em.createNativeQuery("""
+                SELECT ap.id,ap.bill_no,ap.amount_original,ap.amount_original_local,
+                       COALESCE((SELECT SUM(document.amount_original) FROM procurement_iqc_credit_documents document
+                           WHERE document.source_ap_ledger_id=ap.id AND EXISTS(
+                               SELECT 1 FROM procurement_iqc_credit_slices slice WHERE slice.credit_document_id=document.id
+                                 AND fn_procurement_consideration_active('CREDIT',slice.id))),0)
+                FROM ar_ap_ledger ap WHERE ap.id IN (
+                    SELECT funding.source_ap_ledger_id FROM procurement_iqc_funding_slices funding
+                    WHERE funding.case_id=:id AND fn_procurement_consideration_active('FUNDING',funding.id))
+                  AND ap.direction='AP' AND ap.status=1 AND ap.is_deleted=FALSE ORDER BY ap.id
+                """).setParameter("id",caseId).getResultList();
+        List<ProcurementIqcRejectionContracts.CreditSourceItem> result=new ArrayList<>();
+        for(Object[] source:sources){
+            @SuppressWarnings("unchecked")
+            List<Object[]> choices=em.createNativeQuery("""
+                    SELECT DISTINCT rejection.id,rejection.row_version,rejection.receipt_bill_no,goods.name,unit.name
+                    FROM procurement_iqc_funding_slices funding
+                    JOIN procurement_iqc_rejection_cases rejection ON rejection.id=funding.case_id
+                    JOIN goods ON goods.id=rejection.goods_id
+                    LEFT JOIN units unit ON unit.id=goods.unit_id
+                    WHERE funding.source_ap_ledger_id=:ap AND fn_procurement_consideration_active('FUNDING',funding.id)
+                      AND rejection.return_recorded_at IS NOT NULL AND rejection.status='RETURN_RECORDED'
+                      AND rejection.is_deleted=FALSE AND (:allCases OR rejection.owner_user_id=:actor)
+                    ORDER BY rejection.id
+                    """).setParameter("ap",source[0]).setParameter("allCases",canViewAllCases())
+                    .setParameter("actor",currentUser.requireId()).getResultList();
+            List<ProcurementIqcRejectionContracts.CreditCaseChoice> cases=choices.stream().map(row->
+                    new ProcurementIqcRejectionContracts.CreditCaseChoice(uuid(row[0]),number(row[1]),text(row[2]),text(row[3]),
+                            quantity((Object)consideration.creditableBaseQty(uuid(row[0]),uuid(source[0]))),text(row[4])))
+                    .filter(choice->new BigDecimal(choice.creditableBaseQty()).signum()>0).toList();
+            result.add(new ProcurementIqcRejectionContracts.CreditSourceItem(uuid(source[0]),text(source[1]),
+                    money(source[2]),money(source[3]),money(source[4]),
+                    money((Object)decimal(source[2]).subtract(decimal(source[4]))),cases));
+        }
+        return List.copyOf(result);
     }
 
     @Transactional
     public CaseDetail recordReturn(UUID id, RecordReturnRequest request) {
         tx.bind();
         requireAction("procurement_iqc_rejection:record_return");
+        var mutationGuard=mutationLocks.iqcCase(id);
         @SuppressWarnings("unchecked")
         List<UUID> inspectionIds=em.createNativeQuery("""
                 SELECT inspection_item_id
@@ -395,6 +497,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 """).setParameter("id",inspectionItemId).getResultList();
         if(inspectionStatuses.size()!=1)throw conflict("IQC权威质检行不存在");
         LockedCase row = lock(id);
+        mutationGuard.verifyUnchanged();
         if(request==null)throw validation("实物退回请求不能为空");
         String requestHash=commandHash("RECORD_RETURN",request);
         if(commandReplay(request.commandId(),id,"RECORD_RETURN",requestHash)){
@@ -458,16 +561,87 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 requestHash,recordedStatus,row.version()+1);
         publish(EVENT_RETURNED, id, row.receiptType(), recordedStatus,
                 row.version() + 1, "RETURN");
+        procurementValue.returnedToSupplier(id,currentUser.requireId());
         return detail(id);
+    }
+
+    @Transactional
+    public ProcurementIqcRejectionContracts.CreditBookPreview previewCredit(UUID id,ConfirmCreditRequest request){
+        tx.bind();
+        requireAction("procurement_iqc_rejection:confirm_credit");
+        requireAction("procurement_iqc_rejection:amount:view");
+        if(request==null||request.sourceApLedgerId()==null||request.actualAmountOriginal()==null
+                ||request.allocations()==null||request.allocations().isEmpty()||request.allocations().size()>100)
+            throw validation("请先填写实际供应商贷项金额、来源应付和案件分项");
+        var caseIds=new java.util.TreeSet<UUID>();
+        for(var allocation:request.allocations()){
+            if(allocation==null||allocation.caseId()==null||!caseIds.add(allocation.caseId()))
+                throw validation("案件分项必须具有唯一的案件UUID");
+        }
+        if(!caseIds.contains(id))throw validation("实际贷项分项必须包含当前案件");
+        var guard=mutationLocks.iqcCases(caseIds);
+        Map<UUID,LockedCase> locked=new LinkedHashMap<>();
+        for(UUID caseId:caseIds)locked.put(caseId,lock(caseId));
+        guard.verifyUnchanged();
+        LockedCase anchor=locked.get(id);
+        requireVersion(anchor,request.expectedVersion());
+        BigDecimal total=BigDecimal.ZERO;
+        List<com.uten.imp.common.finance.ProcurementReceiptConsiderationService.CaseCreditInput> inputs=new ArrayList<>();
+        for(var allocation:request.allocations()){
+            LockedCase target=locked.get(allocation.caseId());
+            requireVersion(target,allocation.expectedVersion());
+            if(!"RETURN_RECORDED".equals(target.status())||!java.util.Objects.equals(anchor.receiptType(),target.receiptType())
+                    ||!java.util.Objects.equals(anchor.supplierId(),target.supplierId())
+                    ||!java.util.Objects.equals(anchor.currencyId(),target.currencyId())
+                    ||anchor.exchangeRate().compareTo(target.exchangeRate())!=0
+                    ||!java.util.Objects.equals(anchor.settlementMethodId(),target.settlementMethodId()))
+                throw conflict("同一供应商贷项只能分配到商业身份一致的已实退案件");
+            BigDecimal amount=com.uten.imp.common.util.FinancialExactAmount.require(allocation.amountOriginal(),"案件实际分项金额");
+            if(amount.signum()<=0||allocation.baseQty()==null||allocation.baseQty().signum()<=0
+                    ||allocation.baseQty().stripTrailingZeros().scale()>4
+                    ||allocation.baseQty().compareTo(consideration.creditableBaseQty(target.id(),request.sourceApLedgerId()))>0)
+                throw conflict("实际贷项分项金额或退货基本量无效，或其已被补回和其他贷项占用");
+            total=total.add(amount);
+            inputs.add(new com.uten.imp.common.finance.ProcurementReceiptConsiderationService.CaseCreditInput(
+                    allocation.caseId(),allocation.expectedVersion(),allocation.baseQty(),allocation.amountOriginal()));
+        }
+        BigDecimal actual=com.uten.imp.common.util.FinancialExactAmount.require(request.actualAmountOriginal(),"实际供应商贷项总额");
+        if(actual.signum()<=0||actual.compareTo(total)!=0)throw validation("明确案件分项须精确合计到实际供应商贷项总额");
+        var plan=creditBook.plan(request.sourceApLedgerId(),actual);
+        return new ProcurementIqcRejectionContracts.CreditBookPreview(
+                com.uten.imp.common.finance.ProcurementReceiptConsiderationService.creditApprovalHash(plan,inputs),
+                money((Object)plan.amountOriginal()),money((Object)plan.amountLocal()),
+                money((Object)plan.offsetOriginal()),money((Object)plan.offsetLocal()),
+                money((Object)plan.creditRemainingOriginal()),money((Object)plan.creditRemainingLocal()),
+                money((Object)plan.sourceBeforeOriginal()),money((Object)plan.sourceBeforeLocal()),
+                money((Object)plan.sourceAfterOriginal()),money((Object)plan.sourceAfterLocal()),
+                com.uten.imp.common.finance.ProcurementReceiptConsiderationService.caseBookAllocations(plan.amountOriginal(),plan.amountLocal(),inputs)
+                        .stream().map(allocation->new ProcurementIqcRejectionContracts.CreditCaseBookItem(
+                                allocation.input().caseId(),quantity((Object)allocation.input().baseQty()),money((Object)allocation.input().amountOriginal()),
+                                money((Object)allocation.amountLocal()),money((Object)allocation.beforeOriginal()),money((Object)allocation.beforeLocal()),
+                                money((Object)allocation.afterOriginal()),money((Object)allocation.afterLocal()))).toList());
     }
 
     @Transactional
     public CaseDetail confirmCredit(UUID id, ConfirmCreditRequest request) {
         tx.bind();
-        LockedCase row = lock(id);
         requireAction("procurement_iqc_rejection:confirm_credit");
         requireAction("procurement_iqc_rejection:amount:view");
         if(request==null)throw validation("供应商贷项确认请求不能为空");
+        java.util.Set<UUID> caseIds=new java.util.TreeSet<>();
+        caseIds.add(id);
+        if(request.allocations()!=null){
+            if(request.allocations().size()>100)throw validation("一次实际供应商贷项最多分配100个案件");
+            for(var input:request.allocations()){
+                if(input==null||input.caseId()==null)throw validation("案件分项缺少案件UUID");
+                caseIds.add(input.caseId());
+            }
+        }
+        var mutationGuard=mutationLocks.iqcCases(caseIds);
+        Map<UUID,LockedCase> lockedCases=new LinkedHashMap<>();
+        for(UUID caseId:caseIds)lockedCases.put(caseId,lock(caseId));
+        LockedCase row=lockedCases.get(id);
+        mutationGuard.verifyUnchanged();
         String requestHash=commandHash("CONFIRM_CREDIT",request);
         if(commandReplay(request.commandId(),id,"CONFIRM_CREDIT",requestHash)){
             return detail(id);
@@ -476,99 +650,113 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         if (!"RETURN_RECORDED".equals(row.status())) {
             throw conflict("必须先确认不合格实物已退回供应商，财务才能确认贷项");
         }
-        String reason = bounded(request.reason(), 2000, "供应商贷项确认说明");
-        String creditReference = bounded(
-                request.creditReference(), 200, "供应商贷项/红字凭证编号");
-        if (row.failedOriginal().signum() <= 0 || row.failedLocal().signum() <= 0) {
-            throw conflict("零金额任务只能确认无需贷项，禁止生成零金额负应付");
+        if(consideration.hasFunding(id)){
+            return confirmFundedCredit(row,lockedCases,request,requestHash);
         }
-        LocalDate returnDate=localDate(em.createNativeQuery("""
-                SELECT return_date FROM procurement_iqc_rejection_cases
-                WHERE id=:id
-                """).setParameter("id",id).getSingleResult());
-        validateCreditDate(returnDate,request.creditDate(),BusinessTime.today());
-        @SuppressWarnings("unchecked")
-        List<Object[]> payableRows = em.createNativeQuery("""
-                        SELECT amount_balance_original,amount_balance,
-                               supplier_id,currency_id,exchange_rate,settlement_type_id
-                        FROM ar_ap_ledger
-                        WHERE id=:id AND direction='AP' AND status=1
-                          AND COALESCE(is_deleted,FALSE)=FALSE
-                        FOR UPDATE
-                        """).setParameter("id", row.sourceApLedgerId()).getResultList();
-        if(payableRows.size()!=1)throw conflict("来源正应付已缺失或红冲，禁止确认贷项");
-        Object[] sourceAp=payableRows.getFirst();
-        if(!java.util.Objects.equals(uuid(sourceAp[2]),row.supplierId())
-                ||!java.util.Objects.equals(uuid(sourceAp[3]),row.currencyId())
-                ||decimal(sourceAp[4]).compareTo(row.exchangeRate())!=0
-                ||!java.util.Objects.equals(uuid(sourceAp[5]),row.settlementMethodId())){
-            throw conflict("来源正应付身份与IQC冻结快照不一致");
-        }
-        BigDecimal positiveBalance=decimal(sourceAp[0]).max(BigDecimal.ZERO);
+        throw conflict("该历史任务尚未核对原资金和实际单据份额，请先完成来源核对，不能用旧派生金额代替新的供应商实际贷项");
+    }
 
-        UUID creditSourceId = id;
-        String sourceType = creditSourceType(row.receiptType());
-        LocalDate today = request.creditDate();
-        String creditNo = "IQCC-" + creditSourceId;
-        arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
-                "AP", sourceType, creditSourceId, creditNo, today,
-                null, row.supplierId(), row.currencyId(), row.exchangeRate(),
-                row.failedLocal().negate(), null, reason, row.failedOriginal().negate(),
-                today, null, List.of(), row.settlementMethodId()));
-        UUID creditLedgerId = postedLedgerId(creditSourceId, sourceType);
-        BigDecimal offsetAmount=money(positiveBalance.min(row.failedOriginal()));
-        UUID offsetId=null;
-        if(offsetAmount.signum()>0){
-            UUID offsetBatchId=UUID.randomUUID();
-            offsetService.applyIqcCreditBatch(
-                    id,offsetBatchId,creditLedgerId,row.supplierId(),row.currencyId(),
-                    today,List.of(new SupplierOpenItemOffsetService.Target(
-                            row.sourceApLedgerId(),offsetAmount)),reason);
-            @SuppressWarnings("unchecked")
-            List<UUID> offsetIds=em.createNativeQuery("""
-                    SELECT id FROM supplier_open_item_offsets
-                    WHERE offset_batch_id=:batchId AND status='APPLIED'
-                    ORDER BY id FOR UPDATE
-                    """).setParameter("batchId",offsetBatchId).getResultList();
-            if(offsetIds.size()!=1){
-                throw conflict("IQC专用贷项必须且只能形成一条来源应付抵销");
-            }
-            offsetId=offsetIds.getFirst();
+    private CaseDetail confirmFundedCredit(LockedCase row,Map<UUID,LockedCase> lockedCases,
+            ConfirmCreditRequest request,String requestHash){
+        UUID id=row.id();
+        String reason=bounded(request.reason(),2000,"供应商退货减款说明");
+        String reference=bounded(request.creditReference(),200,"供应商贷项/红字凭证编号");
+        LocalDate returned=localDate(em.createNativeQuery(
+                "SELECT return_date FROM procurement_iqc_rejection_cases WHERE id=:id")
+                .setParameter("id",id).getSingleResult());
+        validateCreditDate(returned,request.creditDate(),BusinessTime.today());
+        if(request.allocations()==null||request.allocations().isEmpty())
+            throw validation("请填写实际供应商贷项总额及明确的案件数量和金额分项");
+        List<com.uten.imp.common.finance.ProcurementReceiptConsiderationService.CaseCreditInput> inputs=new ArrayList<>();
+        for(var input:request.allocations()){
+            LockedCase target=lockedCases.get(input.caseId());
+            requireVersion(target,input.expectedVersion());
+            if(!"RETURN_RECORDED".equals(target.status())
+                    ||!java.util.Objects.equals(target.receiptType(),row.receiptType())
+                    ||!java.util.Objects.equals(target.supplierId(),row.supplierId())
+                    ||!java.util.Objects.equals(target.currencyId(),row.currencyId())
+                    ||target.exchangeRate().compareTo(row.exchangeRate())!=0
+                    ||!java.util.Objects.equals(target.settlementMethodId(),row.settlementMethodId()))
+                throw conflict("同一供应商贷项只能分配到同一来源应付和商业身份的已实退案件");
+            LocalDate targetReturned=localDate(em.createNativeQuery(
+                    "SELECT return_date FROM procurement_iqc_rejection_cases WHERE id=:id")
+                    .setParameter("id",target.id()).getSingleResult());
+            validateCreditDate(targetReturned,request.creditDate(),BusinessTime.today());
+            inputs.add(new com.uten.imp.common.finance.ProcurementReceiptConsiderationService.CaseCreditInput(
+                    input.caseId(),input.expectedVersion(),input.baseQty(),input.amountOriginal()));
         }
-        int updated = em.createNativeQuery("""
-                UPDATE procurement_iqc_rejection_cases
-                SET status='CREDIT_CONFIRMED',
-                    credit_source_id=:creditSourceId,credit_ledger_id=:creditLedgerId,
-                    offset_id=:offsetId,credit_reference=:creditReference,
-                    credit_date=:creditDate,credit_reason=:reason,
-                    credit_confirmed_by=:actor,credit_confirmed_at=now(),
+        if(request.baseQty()!=null&&request.baseQty().compareTo(inputs.stream()
+                .map(com.uten.imp.common.finance.ProcurementReceiptConsiderationService.CaseCreditInput::baseQty)
+                .reduce(BigDecimal.ZERO,BigDecimal::add))!=0)
+            throw validation("实际贷项总基本量与明确案件分项不一致");
+        var quote=consideration.prepareCredit(id,row.version(),request.commandId(),request.sourceApLedgerId(),
+                request.actualAmountOriginal(),inputs,reference,request.creditDate(),reason,request.expectedBookAllocationHash());
+        Map<UUID,BigDecimal> byAp=new LinkedHashMap<>();
+        for(var document:quote.documents())byAp.merge(document.sourceApId(),document.amounts().original(),BigDecimal::add);
+        @SuppressWarnings("unchecked")
+        List<Object[]> sources=em.createNativeQuery("""
+                SELECT id,amount_balance_original,supplier_id,currency_id,exchange_rate,settlement_type_id
+                FROM ar_ap_ledger WHERE id IN (:ids) AND direction='AP' AND status=1 AND is_deleted=FALSE
+                ORDER BY id FOR UPDATE
+                """).setParameter("ids",byAp.keySet()).getResultList();
+        if(sources.size()!=byAp.size())throw conflict("原失败份额的正应付缺失或已反向，禁止退货减款");
+        Map<UUID,BigDecimal> balances=new LinkedHashMap<>();
+        for(Object[] source:sources){
+            if(!java.util.Objects.equals(uuid(source[2]),row.supplierId())
+                    ||!java.util.Objects.equals(uuid(source[3]),row.currencyId())
+                    ||decimal(source[4]).compareTo(row.exchangeRate())!=0
+                    ||!java.util.Objects.equals(uuid(source[5]),row.settlementMethodId())){
+                throw conflict("退货减款的原应付身份与冻结资金份额不一致");
+            }
+            balances.put(uuid(source[0]),decimal(source[1]).max(BigDecimal.ZERO));
+        }
+        String sourceType=creditSourceType(row.receiptType());
+        UUID ledgerId=row.creditLedgerId();
+        UUID sourceId=row.creditSourceId();
+        UUID offsetId=row.offsetId();
+        for(var document:quote.documents()){
+            arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
+                    "AP",sourceType,document.documentId(),"IQCC-"+document.documentId(),request.creditDate(),
+                    null,row.supplierId(),row.currencyId(),row.exchangeRate(),document.amounts().local().negate(),
+                    null,reason,document.amounts().original().negate(),request.creditDate(),null,List.of(),row.settlementMethodId()));
+            sourceId=document.documentId();
+            ledgerId=postedLedgerId(sourceId,sourceType);
+            offsetId=creditBook.applyOffset(id,sourceId,ledgerId,document.bookPlan(),request.creditDate(),reason);
+        }
+        consideration.settleCredit(quote);
+        String anchorStatus=null;
+        for(LockedCase target:lockedCases.values()){
+        var resolution=consideration.resolution(target.id());
+        String status=resolution.unresolvedBaseQty().signum()==0
+                &&resolution.replacementStockedBaseQty().signum()==0&&ledgerId!=null?"CREDIT_CONFIRMED":"RETURN_RECORDED";
+        int changed=em.createNativeQuery("""
+                UPDATE procurement_iqc_rejection_cases SET status=:status,credit_source_id=:source,
+                    credit_ledger_id=:ledger,offset_id=:offset,credit_reference=:reference,credit_date=:date,
+                    credit_reason=:reason,credit_confirmed_by=:actor,credit_confirmed_at=now(),
                     row_version=row_version+1,updated_by=:actor
                 WHERE id=:id AND status='RETURN_RECORDED' AND row_version=:version
-                """).setParameter("creditSourceId", creditSourceId)
-                .setParameter("creditLedgerId", creditLedgerId)
-                .setParameter("offsetId", offsetId)
-                .setParameter("creditReference", creditReference)
-                .setParameter("creditDate",today)
-                .setParameter("reason", reason)
-                .setParameter("actor", currentUser.requireId())
-                .setParameter("id", id)
-                .setParameter("version", row.version()).executeUpdate();
-        if (updated != 1) throw concurrentChange();
-        appendCommandEvent(
-                id, "CREDIT_CONFIRMED", request.commandId(),
-                creditReference, request.creditDate(), reason);
-        appendCommand(
-                request.commandId(),id,"CONFIRM_CREDIT",row.version(),
-                requestHash,"CREDIT_CONFIRMED",row.version()+1);
-        publish(EVENT_CREDIT_CONFIRMED, id, row.receiptType(), "CREDIT_CONFIRMED",
-                row.version() + 1, creditSourceId.toString());
+                """).setParameter("status",status).setParameter("source",sourceId)
+                .setParameter("ledger",ledgerId).setParameter("offset",offsetId).setParameter("reference",reference)
+                .setParameter("date",request.creditDate()).setParameter("reason",reason)
+                .setParameter("actor",currentUser.requireId()).setParameter("id",target.id())
+                .setParameter("version",target.version()).executeUpdate();
+        if(changed!=1)throw concurrentChange();
+        appendCommandEvent(target.id(),"CREDIT_CONFIRMED",request.commandId(),reference,request.creditDate(),reason);
+        publish(EVENT_CREDIT_CONFIRMED,target.id(),target.receiptType(),status,target.version()+1,request.commandId().toString());
+        if(target.id().equals(id))anchorStatus=status;
+        }
+        appendCommand(request.commandId(),id,"CONFIRM_CREDIT",row.version(),requestHash,anchorStatus,row.version()+1);
+        for(var document:quote.documents())procurementValue.creditConfirmed(document.documentId(),currentUser.requireId());
         return detail(id);
     }
 
     @Transactional
     public CaseDetail reverseCredit(UUID id, ReverseRequest request) {
         tx.bind();
+        if(request==null)throw validation("IQC贷项反向请求不能为空");
+        var mutationGuard=mutationLocks.iqcCases(consideration.creditDocumentCases(id,request.creditDocumentId()));
         LockedCase row = lock(id);
+        mutationGuard.verifyUnchanged();
         requireAction("procurement_iqc_rejection:reverse");
         requireAction("procurement_iqc_rejection:amount:view");
         if(request==null)throw validation("IQC贷项反向请求不能为空");
@@ -577,6 +765,9 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
             return detail(id);
         }
         requireVersion(row, request.expectedVersion());
+        if(consideration.hasFunding(id)){
+            return reverseFundedCredit(row,request,requestHash);
+        }
         if (!"CREDIT_CONFIRMED".equals(row.status())
                 || row.creditSourceId() == null || row.creditLedgerId()==null) {
             throw conflict("该任务没有可反向的供应商贷项");
@@ -614,10 +805,70 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         return detail(id);
     }
 
+    private CaseDetail reverseFundedCredit(LockedCase row,ReverseRequest request,String requestHash){
+        UUID id=row.id();
+        List<UUID> documents=consideration.activeCreditDocuments(id);
+        UUID document=request.creditDocumentId();
+        if(document==null){
+            if(documents.size()!=1)throw conflict("请选择本次要反向的退货减款凭证");
+            document=documents.getFirst();
+        }
+        if(!documents.contains(document))throw conflict("所选退货减款凭证不属于当前任务或已经反向");
+        List<LockedCase> documentCases=consideration.creditDocumentCases(id,document).stream().map(this::lock).toList();
+        consideration.requireCreditReversible(id,document);
+        String reason=bounded(request.reason(),2000,"退货减款反向原因");
+        UUID ledgerId=postedLedgerId(document,creditSourceType(row.receiptType()));
+        em.createNativeQuery("SELECT set_config('app.iqc_offset_case_id',:id,TRUE)")
+                .setParameter("id",id.toString()).getSingleResult();
+        @SuppressWarnings("unchecked")
+        List<UUID> batches=em.createNativeQuery("""
+                SELECT DISTINCT offset_batch_id FROM supplier_open_item_offsets
+                WHERE source_ledger_id=:id AND status='APPLIED' ORDER BY offset_batch_id
+                """).setParameter("id",ledgerId).getResultList();
+        for(UUID batch:batches)offsetService.reverseBatch(batch,reason);
+        arApService.reverseArAp(document,creditSourceType(row.receiptType()));
+        consideration.reverseCredit(id,document,request.commandId(),reason);
+        for(LockedCase target:documentCases){
+        @SuppressWarnings("unchecked")
+        List<Object[]> remaining=em.createNativeQuery("""
+                SELECT credit.credit_document_id,ledger.id,credit.credit_reference,credit.credit_date,
+                       credit.reason,credit.created_by,credit.created_at
+                FROM procurement_iqc_credit_slices credit
+                JOIN ar_ap_ledger ledger ON ledger.source_doc_id=credit.credit_document_id
+                  AND ledger.source_doc_type=:type AND ledger.status=1 AND ledger.is_deleted=FALSE
+                WHERE credit.case_id=:id AND fn_procurement_consideration_active('CREDIT',credit.id)
+                ORDER BY credit.created_at DESC,credit.id DESC LIMIT 1
+                """).setParameter("type",creditSourceType(row.receiptType())).setParameter("id",target.id()).getResultList();
+        Object[] last=remaining.isEmpty()?null:remaining.getFirst();
+        int changed=em.createNativeQuery("""
+                UPDATE procurement_iqc_rejection_cases SET status='RETURN_RECORDED',
+                    credit_source_id=:source,credit_ledger_id=:ledger,offset_id=NULL,
+                    credit_reference=:reference,credit_date=:date,credit_reason=:reason,
+                    credit_confirmed_by=:creditActor,credit_confirmed_at=:at,
+                    row_version=row_version+1,updated_by=:actor
+                WHERE id=:id AND row_version=:version AND status IN ('RETURN_RECORDED','CREDIT_CONFIRMED')
+                """).setParameter("source",last==null?null:uuid(last[0]))
+                .setParameter("ledger",last==null?null:uuid(last[1]))
+                .setParameter("reference",last==null?null:text(last[2]))
+                .setParameter("date",last==null?null:last[3]).setParameter("reason",last==null?null:text(last[4]))
+                .setParameter("creditActor",last==null?null:uuid(last[5])).setParameter("at",last==null?null:last[6])
+                .setParameter("actor",currentUser.requireId()).setParameter("id",target.id())
+                .setParameter("version",target.version()).executeUpdate();
+        if(changed!=1)throw concurrentChange();
+        appendCommandEvent(target.id(),"CREDIT_REVERSED",request.commandId(),document.toString(),BusinessTime.today(),reason);
+        publish(EVENT_REVERSED,target.id(),target.receiptType(),"RETURN_RECORDED",target.version()+1,document.toString());
+        }
+        appendCommand(request.commandId(),id,"REVERSE",row.version(),requestHash,"RETURN_RECORDED",row.version()+1);
+        procurementValue.creditReversed(document,currentUser.requireId());
+        return detail(id);
+    }
+
     @Transactional
     public CaseDetail reverseReturn(UUID id, ReverseRequest request) {
         tx.bind();
+        var mutationGuard=mutationLocks.iqcCase(id);
         LockedCase row = lock(id);
+        mutationGuard.verifyUnchanged();
         requireAction("procurement_iqc_rejection:reverse");
         if(request==null)throw validation("IQC实物退回反向请求不能为空");
         String requestHash=commandHash("REVERSE",request);
@@ -652,13 +903,16 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 "PENDING_RETURN",row.version()+1);
         publish(EVENT_REVERSED, id, row.receiptType(), "PENDING_RETURN",
                 row.version() + 1, "RETURN");
+        procurementValue.returnReversed(id,currentUser.requireId());
         return detail(id);
     }
 
     @Transactional
     public CaseDetail closeNoCredit(UUID id, CloseNoCreditRequest request) {
         tx.bind();
+        var mutationGuard=mutationLocks.iqcCase(id);
         LockedCase row = lock(id);
+        mutationGuard.verifyUnchanged();
         requireAction("procurement_iqc_rejection:close_no_credit");
         if(request==null)throw validation("零金额无需贷项请求不能为空");
         String requestHash=commandHash("CLOSE_NO_CREDIT",request);
@@ -669,7 +923,8 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         if (!"RETURN_RECORDED".equals(row.status())) {
             throw conflict("仅已登记实物退回且未确认贷项的任务可无贷项结案");
         }
-        if (row.failedOriginal().signum() != 0 || row.failedLocal().signum() != 0) {
+        if (row.failedOriginal()==null||row.failedLocal()==null
+                ||row.failedOriginal().signum() != 0 || row.failedLocal().signum() != 0) {
             throw conflict("失败金额非零，必须确认供应商贷项，不能按无贷项结案");
         }
         String reason = bounded(request.reason(), 2000, "无贷项结案原因");
@@ -703,7 +958,10 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
     @Transactional
     public CaseDetail reverse(UUID id, ReverseRequest request) {
         tx.bind();
+        if(request==null)throw validation("IQC闭环反向请求不能为空");
+        var mutationGuard=mutationLocks.iqcCases(consideration.creditDocumentCases(id,request.creditDocumentId()));
         LockedCase row = lock(id);
+        mutationGuard.verifyUnchanged();
         requireAction("procurement_iqc_rejection:reverse");
         if(request==null)throw validation("IQC闭环反向请求不能为空");
         String requestHash=commandHash("REVERSE",request);
@@ -711,6 +969,10 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
             return detail(id);
         }
         requireVersion(row, request.expectedVersion());
+        if(consideration.hasFunding(id)
+                &&(request.creditDocumentId()!=null||!consideration.activeCreditDocuments(id).isEmpty())){
+            return reverseCredit(id,request);
+        }
         if ("CREDIT_CONFIRMED".equals(row.status())) {
             return reverseCredit(id, request);
         }
@@ -744,6 +1006,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                     requestHash,"FINANCE_EXCEPTION",row.version()+1);
             publish(EVENT_REVERSED,id,row.receiptType(),"FINANCE_EXCEPTION",
                     row.version()+1,request.commandId().toString());
+            procurementValue.returnReversed(id,currentUser.requireId());
             return detail(id);
         }
         if (!"CLOSED_NO_CREDIT".equals(row.status())) {
@@ -786,6 +1049,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         requireAction("procurement_iqc_rejection:confirm_credit");
         requireAction("procurement_iqc_rejection:amount:view");
         if(request==null)throw validation("财务投影重试请求不能为空");
+        var mutationGuard=mutationLocks.iqcCase(id);
         @SuppressWarnings("unchecked")
         List<Object[]> identities=em.createNativeQuery("""
                 SELECT receipt_type,receipt_id,inspection_item_id
@@ -798,6 +1062,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         Source source=lockSource(
                 text(identity[0]),uuid(identity[1]),uuid(identity[2]));
         LockedCase row = lock(id);
+        mutationGuard.verifyUnchanged();
         String requestHash=commandHash("RETRY_FINANCE_PROJECTION",request);
         if(commandReplay(request.commandId(),id,
                 "RETRY_FINANCE_PROJECTION",requestHash)){
@@ -809,7 +1074,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         }
         String retryReason = bounded(request.reason(), 2000, "财务投影重试原因");
         Projection projection=projection(
-                source,row.failedOriginal(),row.failedLocal());
+                source,row.failedOriginal(),row.failedLocal(),text(identity[0]),uuid(identity[1]));
         boolean physicalReturned=((Number)em.createNativeQuery("""
                 SELECT COUNT(*) FROM procurement_iqc_rejection_cases
                 WHERE id=:id AND return_recorded_at IS NOT NULL
@@ -837,6 +1102,9 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 .setParameter("version", row.version())
                 .executeUpdate();
         if (restored != 1) throw concurrentChange();
+        if(projection.exceptionCode()==null&&consideration.hasReceipt(text(identity[0]),uuid(identity[1]))){
+            consideration.freezeFailure(id,uuid(identity[2]),currentUser.requireId());
+        }
         appendCommandEvent(
                 id, "FINANCE_PROJECTION_RETRIED", request.commandId(),
                 projection.exceptionCode(), BusinessTime.today(), retryReason);
@@ -919,11 +1187,36 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
     }
 
     private Projection projection(
-            Source source,BigDecimal failedOriginal,BigDecimal failedLocal){
-        if((failedOriginal.signum()==0)!=(failedLocal.signum()==0)){
+            Source source,BigDecimal failedOriginal,BigDecimal failedLocal,String receiptType,UUID receiptId){
+        boolean classified=consideration.hasReceipt(receiptType,receiptId);
+        if(!classified&&(failedOriginal.signum()==0)!=(failedLocal.signum()==0)){
             return Projection.exception(
                     "FAILED_AMOUNT_SHAPE",
                     "IQC失败原币/本币金额零值形态不一致，需修复权威收货金额");
+        }
+        if(classified){
+            var charge=consideration.payable(receiptType,receiptId);
+            boolean chargeable=charge.original().signum()!=0||charge.local().signum()!=0;
+            if(source.sourceAps().size()!=(chargeable?1:0)){
+                return Projection.exception("SOURCE_AP_MISMATCH","实际计款份额与收货应付不一致");
+            }
+            if(chargeable){
+                SourceAp ap=source.sourceAps().getFirst();
+                if(!java.util.Objects.equals(ap.supplierId(),source.supplierId())
+                        ||!java.util.Objects.equals(ap.currencyId(),source.currencyId())
+                        ||ap.exchangeRate().compareTo(source.exchangeRate())!=0
+                        ||!java.util.Objects.equals(ap.settlementMethodId(),source.settlementMethodId())
+                        ||ap.amountOriginal().compareTo(charge.original())!=0
+                        ||ap.amountLocal().compareTo(charge.local())!=0){
+                    return Projection.exception("SOURCE_AP_MISMATCH","应付身份或双币金额与冻结计款份额不一致");
+                }
+            }
+            List<UUID> fundingAps=consideration.receipt(receiptType,receiptId).stream()
+                    .filter(part->part.receiptItemId().equals(source.receiptItemId()))
+                    .map(part->part.billingMode()==com.uten.imp.application.port.ProcurementReceiptConsiderationPort.BillingMode.NO_CHARGE
+                            ?part.carriedFundingApId():part.payableApId())
+                    .filter(java.util.Objects::nonNull).distinct().toList();
+            return new Projection("PENDING_RETURN",fundingAps.size()==1?fundingAps.getFirst():null,null,null);
         }
         boolean zeroReceipt=source.receiptTotalOriginal().signum()==0
                 && source.receiptTotalLocal().signum()==0;
@@ -956,6 +1249,8 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
     private FailedAmounts failedAmounts(
             UUID inspectionItemId,BigDecimal receivedBase,BigDecimal expectedFailedBase,
             BigDecimal receivedOriginal,BigDecimal receivedLocal){
+        var frozen=consideration.failedAmounts(inspectionItemId);
+        if(frozen!=null)return new FailedAmounts(frozen.original(),frozen.local());
         @SuppressWarnings("unchecked")
         List<Object[]> rows=em.createNativeQuery("""
                 SELECT action,base_qty
@@ -1059,8 +1354,21 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
 
     private String commandHash(String commandType,Object request){
         try{
+            // Preserve existing command fingerprints when a newly optional field
+            // is absent; an old client replay must still identify the same action.
+            String requestText=String.valueOf(request);
+            if(request instanceof ConfirmCreditRequest credit&&credit.baseQty()==null
+                    &&credit.actualAmountOriginal()==null&&credit.sourceApLedgerId()==null
+                    &&(credit.allocations()==null||credit.allocations().isEmpty())&&credit.expectedBookAllocationHash()==null){
+                requestText="ConfirmCreditRequest[expectedVersion="+credit.expectedVersion()
+                        +", commandId="+credit.commandId()+", creditReference="+credit.creditReference()
+                        +", creditDate="+credit.creditDate()+", reason="+credit.reason()+"]";
+            }else if(request instanceof ReverseRequest reverse&&reverse.creditDocumentId()==null){
+                requestText="ReverseRequest[expectedVersion="+reverse.expectedVersion()
+                        +", commandId="+reverse.commandId()+", reason="+reverse.reason()+"]";
+            }
             byte[] digest=MessageDigest.getInstance("SHA-256").digest(
-                    (commandType+"|"+String.valueOf(request))
+                    (commandType+"|"+requestText)
                             .getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(digest);
         }catch(Exception error){
@@ -1197,7 +1505,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         Object[] row = rows.getFirst();
         return new LockedCase(uuid(row[0]), text(row[1]), uuid(row[2]), text(row[3]),
                 ((Number) row[4]).longValue(), uuid(row[5]), uuid(row[6]), decimal(row[7]),
-                uuid(row[8]), decimal(row[9]), decimal(row[10]), uuid(row[11]),
+                uuid(row[8]), row[9]==null?null:decimal(row[9]), row[10]==null?null:decimal(row[10]), uuid(row[11]),
                 uuid(row[12]),uuid(row[13]),uuid(row[14]),uuid(row[15]));
     }
 
@@ -1240,16 +1548,15 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         if ("RETURN_RECORDED".equals(status)
                 && has("procurement_iqc_rejection:confirm_credit")
                 && has("procurement_iqc_rejection:amount:view")
-                && decimal(row[14]).signum()>0
-                && decimal(row[15]).signum()>0
+                && (row[14]==null||decimal(row[14]).signum()>0)
                 && canViewAllCases()) {
             actions.add("CONFIRM_CREDIT");
         }
         if ("RETURN_RECORDED".equals(status)
                 && has("procurement_iqc_rejection:close_no_credit")
                 && canViewAllCases()
-                && decimal(row[14]).signum() == 0
-                && decimal(row[15]).signum() == 0) {
+                && row[14]!=null&&row[15]!=null
+                && decimal(row[14]).signum() == 0&&decimal(row[15]).signum() == 0) {
             actions.add("CLOSE_NO_CREDIT");
         }
         if (Set.of("RETURN_RECORDED", "CREDIT_CONFIRMED", "CLOSED_NO_CREDIT")
@@ -1444,7 +1751,11 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
     }
 
     private static BigDecimal moneyValue(Object value) {
-        return decimal(value).setScale(4, RoundingMode.HALF_UP);
+        return com.uten.imp.common.util.FinancialExactAmount.canonicalMoney(decimal(value),"IQC金额");
+    }
+
+    private static boolean sameAmount(BigDecimal left,BigDecimal right){
+        return left==null?right==null:right!=null&&left.compareTo(right)==0;
     }
 
     private static String money(Object value) {
@@ -1457,7 +1768,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
     }
 
     private static BigDecimal money(BigDecimal value) {
-        return value.setScale(4, RoundingMode.HALF_UP);
+        return com.uten.imp.common.util.FinancialExactAmount.canonicalMoney(value,"IQC金额");
     }
 
     private static BigDecimal quantity(BigDecimal value) {

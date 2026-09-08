@@ -66,6 +66,63 @@ public class UnitService {
     private final EntityManager em;
     private final MasterCodeService masterCodeService;
 
+    /** 计量维度合法值（unit_measurement_profiles 的 CHECK 约束同口径）。 */
+    private static final Set<String> MEASUREMENT_DIMENSIONS =
+            Set.of("COUNT", "MASS", "LENGTH", "AREA", "VOLUME", "OTHER");
+
+    /** 批量读取单位计量维度（未设置的不出现在结果里）。 */
+    private Map<UUID, String> dimensionByUnitId(List<UUID> unitIds) {
+        if (unitIds.isEmpty()) return Map.of();
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        select unit_id, measurement_dimension
+                        from unit_measurement_profiles
+                        where unit_id in (:ids)
+                        """)
+                        .setParameter("ids", unitIds));
+        Map<UUID, String> result = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            result.put((UUID) row[0], String.valueOf(row[1]));
+        }
+        return result;
+    }
+
+    /**
+     * 保存计量维度：合法值 upsert（provenance=MANUAL_GOVERNANCE，version+1）；
+     * 空串=清除该单位的维度设置；null=保持不变（老客户端不传该字段时零影响）。
+     */
+    private void applyMeasurementDimension(Unit u, UnitSaveRequest req) {
+        String dimension = req.getMeasurementDimension() == null
+                ? null : req.getMeasurementDimension().trim();
+        if (dimension == null) return;
+        if (dimension.isEmpty()) {
+            em.createNativeQuery("""
+                    delete from unit_measurement_profiles where unit_id = :id
+                    """)
+                    .setParameter("id", u.getId())
+                    .executeUpdate();
+            return;
+        }
+        if (!MEASUREMENT_DIMENSIONS.contains(dimension)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "计量维度必须是 COUNT/MASS/LENGTH/AREA/VOLUME/OTHER：" + dimension);
+        }
+        em.createNativeQuery("""
+                insert into unit_measurement_profiles(
+                    unit_id, measurement_dimension, provenance, version,
+                    created_at, updated_at)
+                values (:id, :dimension, 'MANUAL_GOVERNANCE', 0, now(), now())
+                on conflict (unit_id) do update
+                    set measurement_dimension = excluded.measurement_dimension,
+                        provenance = 'MANUAL_GOVERNANCE',
+                        version = unit_measurement_profiles.version + 1,
+                        updated_at = now()
+                """)
+                .setParameter("id", u.getId())
+                .setParameter("dimension", dimension)
+                .executeUpdate();
+    }
+
     // ===== 列表（Specification 动态筛选） =====
 
     @Transactional(readOnly = true)
@@ -92,8 +149,14 @@ public class UnitService {
         };
         Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "code"));
         Page<Unit> p = repo.findAll(spec, pageable);
+        List<Unit> content = p.getContent();
+        Map<UUID, String> dimensions = dimensionByUnitId(
+                content.stream().map(Unit::getId).toList());
         return new PageResponse<>(
-                p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+                content.stream()
+                        .map(u -> toList(u, dimensions.get(u.getId())))
+                        .toList(),
+                p);
     }
 
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Unit> root,
@@ -134,13 +197,18 @@ public class UnitService {
     @Transactional(readOnly = true)
     public List<UnitListItem> dict() {
         Specification<Unit> spec = (root, q, cb) -> cb.isFalse(root.get("deleted"));
-        return repo.findAll(spec, Sort.by(Sort.Direction.ASC, "name")).stream()
-                .map(this::toList).toList();
+        List<Unit> units = repo.findAll(spec, Sort.by(Sort.Direction.ASC, "name"));
+        Map<UUID, String> dimensions = dimensionByUnitId(
+                units.stream().map(Unit::getId).toList());
+        return units.stream()
+                .map(u -> toList(u, dimensions.get(u.getId())))
+                .toList();
     }
 
     @Transactional(readOnly = true)
     public UnitDetail detail(UUID id) {
-        return toDetail(requireUnit(id));
+        Unit u = requireUnit(id);
+        return toDetail(u, dimensionByUnitId(List.of(id)).get(id));
     }
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('unit:create', 'goods:import')")
@@ -163,7 +231,8 @@ public class UnitService {
         if (u.getStatus() == null) u.setStatus("使用");
         // legacy_id 只保存旧库 B_Unit.ID。在线新建保持 null，关系只使用 UUID。
         repo.save(u);
-        return toDetail(u);
+        applyMeasurementDimension(u, req);
+        return toDetail(u, null);
     }
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('unit:edit', 'unit:status')")
@@ -178,7 +247,10 @@ public class UnitService {
         apply(req, u);
         u.setCode(resolveCode(req, u));
         repo.save(u);
-        return toDetail(u);
+        applyMeasurementDimension(u, req);
+        return toDetail(
+                u,
+                dimensionByUnitId(List.of(u.getId())).get(u.getId()));
     }
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('unit:status')")
@@ -190,7 +262,7 @@ public class UnitService {
         em.refresh(u, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         u.setStatus(req.status());
         repo.save(u);
-        return toDetail(u);
+        return toDetail(u, dimensionByUnitId(List.of(id)).get(id));
     }
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('unit:delete')")
@@ -226,12 +298,14 @@ public class UnitService {
         return code;
     }
 
-    private UnitDetail toDetail(Unit u) {
-        return new UnitDetail(u.getId(), u.getCode(), u.getName(), u.getStatus(), u.getLegacyId());
+    private UnitDetail toDetail(Unit u, String measurementDimension) {
+        return new UnitDetail(u.getId(), u.getCode(), u.getName(), u.getStatus(),
+                u.getLegacyId(), measurementDimension);
     }
 
-    private UnitListItem toList(Unit u) {
-        return new UnitListItem(u.getId(), u.getCode(), u.getName(), u.getStatus(), u.getLegacyId());
+    private UnitListItem toList(Unit u, String measurementDimension) {
+        return new UnitListItem(u.getId(), u.getCode(), u.getName(), u.getStatus(),
+                u.getLegacyId(), measurementDimension);
     }
 
     private Unit requireUnit(UUID id) {

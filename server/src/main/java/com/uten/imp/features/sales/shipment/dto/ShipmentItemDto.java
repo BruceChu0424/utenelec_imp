@@ -41,4 +41,22 @@ public class ShipmentItemDto {
     private BigDecimal discount;
     private String sourceDocNo;
     private String remark;
+
+    // Exact text is derived after permission masking; null stays null.
+    public String getUnitRateExact() { return com.uten.imp.common.util.DecimalText.of(unitRate); }
+    public String getQtyExact() { return com.uten.imp.common.util.DecimalText.of(qty); }
+    public String getPriceExact() { return com.uten.imp.common.util.DecimalText.of(price); }
+    public String getAmountOriginalExact() { return com.uten.imp.common.util.DecimalText.of(amountOriginal); }
+    public String getAmountLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountLocal); }
+    public String getCostAmountExact() { return com.uten.imp.common.util.DecimalText.of(costAmount); }
+    public String getReturnedQtyExact() { return com.uten.imp.common.util.DecimalText.of(returnedQty); }
+    public String getReturnedAmountExact() { return com.uten.imp.common.util.DecimalText.of(returnedAmount); }
+    public String getWeightExact() { return com.uten.imp.common.util.DecimalText.of(weight); }
+    public String getParcelQtyExact() { return com.uten.imp.common.util.DecimalText.of(parcelQty); }
+    public String getCartonCountExact() { return com.uten.imp.common.util.DecimalText.of(cartonCount); }
+    public String getMaterialPriceExact() { return com.uten.imp.common.util.DecimalText.of(materialPrice); }
+    public String getDieCastPriceExact() { return com.uten.imp.common.util.DecimalText.of(dieCastPrice); }
+    public String getMachiningPriceExact() { return com.uten.imp.common.util.DecimalText.of(machiningPrice); }
+    public String getCircumferenceExact() { return com.uten.imp.common.util.DecimalText.of(circumference); }
+    public String getDiscountExact() { return com.uten.imp.common.util.DecimalText.of(discount); }
 }

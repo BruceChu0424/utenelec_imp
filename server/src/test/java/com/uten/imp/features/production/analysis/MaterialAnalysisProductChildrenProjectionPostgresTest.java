@@ -20,6 +20,9 @@ import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.util.Properties;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -130,7 +133,12 @@ class MaterialAnalysisProductChildrenProjectionPostgresTest {
                 mock(TxSessionVars.class),
                 mock(ProductionDocumentAccessPolicy.class),
                 mock(com.uten.imp.security.OwnerVisibility.class),
-                mock(com.uten.imp.application.port.SubcontractPreparationPort.class));
+                mock(com.uten.imp.application.port.SubcontractPreparationPort.class),
+                mock(com.uten.imp.features.notice.ChainNoticeService.class),
+                mock(com.uten.imp.features.production.analysis.PreplanStockEntitlementService.class),
+                new MaterialAnalysisFlowStageService(entityManager),
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
+                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
 
         MaterialAnalysisContracts.AnalysisView leafView =
                 service.detailInternal(leaf.analysisId(), false);
@@ -146,15 +154,101 @@ class MaterialAnalysisProductChildrenProjectionPostgresTest {
     }
 
     @Test
+    void safetyBlockedOwnedStockDoesNotEraseAnotherWarehousePublicCommitment() throws Exception {
+        UUID employeeId=jdbc.queryForObject("SELECT id FROM employees ORDER BY id LIMIT 1",UUID.class);
+        UUID unitId=UUID.randomUUID();
+        UUID goodsId=UUID.randomUUID();
+        UUID mainId=UUID.randomUUID();
+        UUID warehouseA=UUID.randomUUID();
+        UUID warehouseB=UUID.randomUUID();
+        jdbc.update("INSERT INTO units(id,code,name) VALUES(?,?,?)",unitId,"SAFE-U-"+unitId,"piece");
+        insertGoods(goodsId,unitId,"SAFE-G-");
+        jdbc.update("UPDATE goods SET min_qty=5 WHERE id=?",goodsId);
+        jdbc.update("INSERT INTO warehouses(id,code,name,status) VALUES(?,?,?,'使用')",
+                mainId,"SAFE-MAIN-"+mainId,"main");
+        jdbc.update("INSERT INTO warehouses(id,code,name,status,parent_id) VALUES(?,?,?,'使用',?)",
+                warehouseA,"SAFE-A-"+warehouseA,"a",mainId);
+        jdbc.update("INSERT INTO warehouses(id,code,name,status,parent_id) VALUES(?,?,?,'使用',?)",
+                warehouseB,"SAFE-B-"+warehouseB,"b",mainId);
+        jdbc.update("INSERT INTO stock_balances(warehouse_id,goods_id,qty) VALUES(?,?,5),(?,?,10)",
+                warehouseA,goodsId,warehouseB,goodsId);
+        AnalysisFixture analysis=insertAnalysis(employeeId,warehouseA,goodsId,unitId,"safety");
+        insertMaterial(analysis,goodsId,unitId,1,"direct",null,"direct");
+        jdbc.update("""
+                UPDATE production_material_analysis_materials
+                SET allocated_available_qty=5,shortage_qty=5 WHERE analysis_id=?
+                """,analysis.analysisId());
+        jdbc.update("""
+                INSERT INTO stock_reservations(goods_id,warehouse_id,qty,owner_type,owner_id,
+                  purpose,supply_type,supply_id,idempotency_key)
+                VALUES(?,?,5,'PREPLAN_ANALYSIS',?,'PREPLAN_MATERIAL','PURCHASE_REQUEST_ITEM',?,?)
+                """,goodsId,warehouseA,analysis.analysisId(),UUID.randomUUID(),"safe-own-"+analysis.analysisId());
+        MaterialAnalysisService service=new MaterialAnalysisService(entityManager,
+                mock(SecurityContextCurrentUser.class),mock(TxSessionVars.class),
+                mock(ProductionDocumentAccessPolicy.class),mock(com.uten.imp.security.OwnerVisibility.class),
+                mock(com.uten.imp.application.port.SubcontractPreparationPort.class),
+                mock(com.uten.imp.features.notice.ChainNoticeService.class),
+                mock(PreplanStockEntitlementService.class),new MaterialAnalysisFlowStageService(entityManager),
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
+                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+        var method=MaterialAnalysisService.class.getDeclaredMethod("softCommittedStock",
+                UUID.class,UUID.class,Set.class,Set.class);
+        method.setAccessible(true);
+        var dimension=new MaterialAnalysisService.MaterialDimension(goodsId,null,unitId);
+        @SuppressWarnings("unchecked")
+        Map<MaterialAnalysisService.MaterialDimension,BigDecimal> commitments=
+                (Map<MaterialAnalysisService.MaterialDimension,BigDecimal>) method.invoke(service,
+                        UUID.randomUUID(),warehouseB,Set.of(dimension),Set.of("START"));
+        assertThat(commitments.get(dimension)).isEqualByComparingTo("5");
+    }
+
+    @Test
+    void batchLifecycleRequiresActualInboundAndPlanClaimsNeverClearMaterialDemand() {
+        UUID employeeId = jdbc.queryForObject(
+                "SELECT id FROM employees ORDER BY id LIMIT 1", UUID.class);
+        UUID userId = userForEmployee(employeeId);
+        UUID unitId = UUID.randomUUID();
+        UUID warehouseId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        UUID materialId = UUID.randomUUID();
+        jdbc.update("INSERT INTO units(id,code,name) VALUES(?,?,?)",
+                unitId,"BATCH-U-"+unitId,"piece");
+        insertGoods(productId,unitId,"BATCH-P-");
+        insertGoods(materialId,unitId,"BATCH-M-");
+        jdbc.update("INSERT INTO warehouses(id,code,name,status) VALUES(?,?,?,'使用')",
+                warehouseId,"BATCH-W-"+warehouseId,"batch warehouse");
+        AnalysisFixture analysis=insertAnalysis(employeeId,warehouseId,productId,unitId,"batch");
+        insertMaterial(analysis,materialId,unitId,1,"direct",null,"direct");
+        PlanFixture plan=insertLinkedPlan(new MakeChildFixture(analysis.analysisId(),
+                        analysis.analysisItemId(),analysis.analysisItemId()),
+                employeeId,userId,productId,unitId,"10");
+
+        assertThat(jdbc.queryForObject("SELECT status FROM production_material_analyses WHERE id=?",
+                String.class,analysis.analysisId())).isEqualTo("PARTIALLY_PLANNED");
+        assertThat(jdbc.queryForObject("""
+                SELECT required_qty FROM production_material_analysis_materials
+                WHERE analysis_item_id=? AND node_key='direct'
+                """,BigDecimal.class,analysis.analysisItemId())).isEqualByComparingTo("10");
+        jdbc.update("UPDATE production_plans SET status=1 WHERE id=?",plan.planId());
+        jdbc.update("UPDATE production_plan_items SET iqty=4 WHERE id=?",plan.planItemId());
+        assertThat(jdbc.queryForObject("SELECT fn_material_analysis_fulfillment_status(?)",
+                String.class,analysis.analysisId())).isEqualTo("PARTIALLY_PLANNED");
+        jdbc.update("UPDATE production_plan_items SET iqty=10 WHERE id=?",plan.planItemId());
+        assertThat(jdbc.queryForObject("SELECT fn_material_analysis_fulfillment_status(?)",
+                String.class,analysis.analysisId())).isEqualTo("COMPLETED");
+        jdbc.update("UPDATE production_plan_items SET iqty=4 WHERE id=?",plan.planItemId());
+        assertThat(jdbc.queryForObject("SELECT fn_material_analysis_fulfillment_status(?)",
+                String.class,analysis.analysisId())).isEqualTo("PARTIALLY_PLANNED");
+        jdbc.update("UPDATE production_plans SET is_canceled=TRUE WHERE id=?",plan.planId());
+        assertThat(jdbc.queryForObject("SELECT fn_material_analysis_fulfillment_status(?)",
+                String.class,analysis.analysisId())).isNotEqualTo("COMPLETED");
+    }
+
+    @Test
     void makeChildCompletesOnlyAfterEveryActivePlanItemIsFullyInbound() {
         UUID employeeId = jdbc.queryForObject(
                 "SELECT id FROM employees ORDER BY id LIMIT 1", UUID.class);
-        UUID userId = UUID.randomUUID();
-        jdbc.update("""
-                INSERT INTO users(
-                    id, employee_id, login_account, password_hash, status)
-                VALUES (?, ?, ?, 'test-only-hash', 'active')
-                """, userId, employeeId, "plan-state-" + userId);
+        UUID userId = userForEmployee(employeeId);
         UUID unitId = UUID.randomUUID();
         UUID warehouseId = UUID.randomUUID();
         UUID parentGoodsId = UUID.randomUUID();
@@ -201,7 +295,12 @@ class MaterialAnalysisProductChildrenProjectionPostgresTest {
                 mock(TxSessionVars.class),
                 mock(ProductionDocumentAccessPolicy.class),
                 mock(com.uten.imp.security.OwnerVisibility.class),
-                mock(com.uten.imp.application.port.SubcontractPreparationPort.class));
+                mock(com.uten.imp.application.port.SubcontractPreparationPort.class),
+                mock(com.uten.imp.features.notice.ChainNoticeService.class),
+                mock(com.uten.imp.features.production.analysis.PreplanStockEntitlementService.class),
+                new MaterialAnalysisFlowStageService(entityManager),
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
+                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
 
         MaterialAnalysisContracts.ProductView partial = service
                 .detailInternal(analysis.analysisId(), false)
@@ -413,6 +512,22 @@ class MaterialAnalysisProductChildrenProjectionPostgresTest {
     private static String canonicalSegmentCode(UUID segmentId) {
         return "ZX%08d".formatted(
                 Math.floorMod(segmentId.hashCode(), 99_999_999) + 1);
+    }
+
+    /** 类内共享累积库：同一员工可能已被先前测试建过 user，复用避免撞唯一键。 */
+    private UUID userForEmployee(UUID employeeId) {
+        List<UUID> existing = jdbc.queryForList(
+                "SELECT id FROM users WHERE employee_id = ? ORDER BY id LIMIT 1",
+                UUID.class, employeeId);
+        if (!existing.isEmpty()) {
+            return existing.get(0);
+        }
+        UUID userId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO users(id,employee_id,login_account,password_hash,status)
+                VALUES (?,?,?,'test-only-hash','active')
+                """, userId, employeeId, "projection-user-" + userId);
+        return userId;
     }
 
     private static void insertMaterial(

@@ -13,15 +13,16 @@ import '../../../core/utils/idempotency_key.dart';
 import '../../department/models/department_node.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../models/production_execution_planning.dart';
+import '../models/production_flow_stage.dart';
 import '../providers/production_department_provider.dart';
 import '../repositories/production_repository.dart';
+import 'production_flow_stage_cell.dart';
 
 /// Confirmed execution segments and their operational state.
 ///
-/// New work no longer exposes separate dispatch/start commands. A segment is
-/// assigned when the plan is scheduled, stays in preparation until the exact
-/// DRAW is fully issued, and the first report atomically records production
-/// start on the server. Legacy DISPATCHED rows remain readable.
+/// 2026-09-06 车间任务页改版起，「开工」成为显式动作：物料齐套（READY）或
+/// 已派工(DISPATCHED)的执行段在实际发料完成后可开工；只有进入生产中的段可报工。
+/// Legacy DISPATCHED rows remain readable.
 class ProductionExecutionSegmentsCard extends ConsumerStatefulWidget {
   const ProductionExecutionSegmentsCard({
     super.key,
@@ -29,6 +30,7 @@ class ProductionExecutionSegmentsCard extends ConsumerStatefulWidget {
     required this.canAssign,
     required this.canReleaseDefer,
     required this.canReport,
+    required this.canStart,
     this.initialSegmentId,
     this.onChanged,
   });
@@ -37,6 +39,7 @@ class ProductionExecutionSegmentsCard extends ConsumerStatefulWidget {
   final bool canAssign;
   final bool canReleaseDefer;
   final bool canReport;
+  final bool canStart;
   final String? initialSegmentId;
   final Future<void> Function()? onChanged;
 
@@ -180,10 +183,53 @@ class _ProductionExecutionSegmentsCardState
       case _SegmentAction.releaseDefer:
         await _releaseDefer(segment);
         break;
+      case _SegmentAction.start:
+        await _start(segment);
+        break;
       case _SegmentAction.report:
         await _openReport(segment);
         break;
     }
+  }
+
+  /// 单段开工（2026-09-06 车间任务页改版）：READY/DISPATCHED → IN_PROGRESS。
+  Future<void> _start(ProductionExecutionSegmentView segment) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认开工'),
+        content: Text(
+          '工单 ${segment.segmentCode} 将进入「生产中 · 可报工」状态；'
+          '开工后即可分批报工。确认开工？',
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认开工'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _runCommand(
+      () => ref
+          .read(productionPlanRepositoryProvider)
+          .startExecutionSegment(
+            widget.planId,
+            segment.id,
+            expectedVersion: segment.lockVersion,
+            idempotencyKey: businessIdempotencyKey(
+              'production-segment-start',
+              '${segment.id}|${segment.lockVersion}|${segment.status}',
+            ),
+          ),
+      '已开工，进入「生产中 · 可报工」',
+    );
   }
 
   Future<void> _openReport(ProductionExecutionSegmentView segment) async {
@@ -616,28 +662,32 @@ class _ProductionExecutionSegmentsCardState
       );
     }
 
-    final preparing = segments
+    final waitingMaterial = segments
+        .where(
+          (item) =>
+              item.status == 'WAITING' ||
+              ((item.status == 'READY' || item.status == 'DISPATCHED') &&
+                  !item.materialReady),
+        )
+        .length;
+    final waitingDraw = segments
         .where(
           (item) =>
               (item.status == 'READY' || item.status == 'DISPATCHED') &&
+              item.materialReady &&
+              !item.zeroMaterial &&
               !item.materialIssued,
         )
         .length;
-    final prepared = segments
+    final readyToStart = segments
         .where(
           (item) =>
               (item.status == 'READY' || item.status == 'DISPATCHED') &&
-              item.materialIssued,
+              (item.zeroMaterial || item.materialIssued),
         )
-        .length;
-    final waiting = segments
-        .where((item) => item.status == 'WAITING' && item.autoPromoteWhenReady)
         .length;
     final deferred = segments
         .where((item) => item.status == 'WAITING' && !item.autoPromoteWhenReady)
-        .length;
-    final legacyConfirmed = segments
-        .where((item) => item.status == 'DISPATCHED')
         .length;
     final running = segments
         .where((item) => item.status == 'IN_PROGRESS')
@@ -666,19 +716,11 @@ class _ProductionExecutionSegmentsCardState
                         ),
                       ),
                       Text(
-                        '备料中 $preparing · 备料完毕 $prepared · '
-                        '待料 $waiting · 人工暂缓 $deferred · '
-                        '${legacyConfirmed > 0 ? '历史已确认 $legacyConfirmed · ' : ''}'
-                        '生产中 $running · 已完成 $completed',
+                        '等待物料 $waitingMaterial · 等待领料 $waitingDraw · '
+                        '可开工 $readyToStart · 人工暂缓 $deferred · '
+                        '生产中 $running · 已完工 $completed',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      Text(
-                        '操作已直接显示在卡片上；点击卡片或“详情”查看完整状态。',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
@@ -690,6 +732,12 @@ class _ProductionExecutionSegmentsCardState
                   icon: const Icon(Icons.refresh_rounded),
                 ),
               ],
+            ),
+            // 快递式流程步骤条：等待物料 → 等待领料 → 生产中 → 已完工，
+            // 当前位置取「最落后的活动段」（词表口径，全站一致）。
+            ProductionFlowSteps(
+              route: ProductionFlowRoute.make,
+              activeIndex: _planFlowStepIndex(segments),
             ),
             const SizedBox(height: UtenSpacing.s8),
             LayoutBuilder(
@@ -962,6 +1010,12 @@ class _ProductionExecutionSegmentsCardState
     );
   }
 
+  /// 开工门控（前端视图层）：物料齐套（READY）或已派工（DISPATCHED）；
+  /// 领料是否全部完成由服务端开工门禁复核并给出明确报错。
+  bool _canStartSegment(ProductionExecutionSegmentView segment) =>
+      (segment.status == 'READY' || segment.status == 'DISPATCHED') &&
+      (segment.zeroMaterial || segment.materialIssued);
+
   List<Widget> _segmentCardActions(ProductionExecutionSegmentView segment) {
     final commandBusy = _busy;
     return [
@@ -990,6 +1044,16 @@ class _ProductionExecutionSegmentsCardState
               : () =>
                     _handleSegmentAction(segment, _SegmentAction.releaseDefer),
           child: const Text('解除人工暂缓'),
+        ),
+      if (widget.canStart && _canStartSegment(segment))
+        UtenButton(
+          key: ValueKey('production-execution-start-${segment.id}'),
+          size: UtenButtonSize.small,
+          icon: Icons.play_circle_fill_rounded,
+          onPressed: commandBusy
+              ? null
+              : () => _handleSegmentAction(segment, _SegmentAction.start),
+          child: const Text('开工'),
         ),
       if (widget.canReport && _canReportSegment(segment))
         UtenButton(
@@ -1040,7 +1104,7 @@ class _ProductionExecutionSegmentsCardState
   }
 }
 
-enum _SegmentAction { assign, releaseDefer, report }
+enum _SegmentAction { assign, releaseDefer, start, report }
 
 class _ExecutionSegmentDetail extends StatelessWidget {
   const _ExecutionSegmentDetail({
@@ -1223,7 +1287,7 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                         canReport)
                       _notice(
                         theme,
-                        '备料完毕，可以直接报工；首次报工会在同一事务中登记实际开工。',
+                        '备料完毕：请先点击「开工」进入生产，开工后才能报工。',
                         theme.colorScheme.primary,
                       )
                     else if (segment.status == 'IN_PROGRESS' &&
@@ -1350,18 +1414,46 @@ class _ExecutionSegmentDetail extends StatelessWidget {
   }
 }
 
+/// 计划整体所处流程步（词表 MAKE 链 0-5）：取「最落后的活动段」——
+/// 任一段还在等物料，整批就停在等待物料；全部完工才到已完工。
+int _planFlowStepIndex(List<ProductionExecutionSegmentView> segments) {
+  final active = segments
+      .where((item) => item.status != 'CANCELLED' && item.status != 'REVERSED')
+      .toList(growable: false);
+  if (active.isEmpty) return 0;
+  if (active.every((item) => item.status == 'COMPLETED')) return 5;
+  var minIndex = 5;
+  for (final item in active) {
+    final index = switch (item.status) {
+      'WAITING' => 2,
+      'READY' || 'DISPATCHED' => 3,
+      'IN_PROGRESS' => 4,
+      _ => 5,
+    };
+    if (index < minIndex) minIndex = index;
+  }
+  return minIndex;
+}
+
 String _segmentStatusText(ProductionExecutionSegmentView segment) =>
     segment.status == 'WAITING' && !segment.autoPromoteWhenReady
     ? '人工暂缓'
+    // 2026-09-06 统一流程词表：等待物料 → 等待车间领料 →（料已发/无需领料）
+    // 可开工 → 生产中 → 已完工。零料直制不是「备料完毕」，是无需领料。
+    : segment.status == 'WAITING'
+    ? '等待物料'
     : (segment.status == 'READY' || segment.status == 'DISPATCHED') &&
           !segment.materialReady
-    ? '物料不齐套·备料中'
+    ? '等待物料'
+    : (segment.status == 'READY' || segment.status == 'DISPATCHED') &&
+          segment.zeroMaterial
+    ? '无需领料 · 可开工'
     : (segment.status == 'READY' || segment.status == 'DISPATCHED') &&
           !segment.materialIssued
-    ? '物料齐套·备料中'
+    ? '等待车间领料'
     : (segment.status == 'READY' || segment.status == 'DISPATCHED') &&
           segment.materialIssued
-    ? '备料完毕·可报工'
+    ? '料已发 · 可开工'
     : segment.status == 'IN_PROGRESS' && segment.ordinaryRemainingQty > 0
     ? '生产中·可继续报工'
     : segment.status == 'IN_PROGRESS' && segment.fqcReworkAvailableQty > 0
@@ -1386,9 +1478,7 @@ String _segmentStatusText(ProductionExecutionSegmentView segment) =>
     : _statusText(segment.status);
 
 bool _canReportSegment(ProductionExecutionSegmentView segment) =>
-    (segment.status == 'IN_PROGRESS' ||
-        ((segment.status == 'READY' || segment.status == 'DISPATCHED') &&
-            segment.materialIssued)) &&
+    segment.status == 'IN_PROGRESS' &&
     (segment.ordinaryRemainingQty > 0.000001 ||
         segment.fqcReworkAvailableQty > 0.000001 ||
         segment.fqcReplacementReadyQty > 0.000001);

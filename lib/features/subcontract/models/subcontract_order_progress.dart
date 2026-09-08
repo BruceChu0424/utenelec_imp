@@ -49,6 +49,7 @@ class SubcontractMaterialPlanLine {
   final Set<String> allowedActions;
 
   bool get isLegacyBomComponent => flowMode == 'LEGACY_BOM_COMPONENT';
+  bool get isDraftPreparation => flowMode == 'DRAFT_PREPARATION';
 
   /// 直下单销售式供货：有子层但仓库现货充足时，批准拆出的现货直发行
   /// flowMode=DIRECT_OUTBOUND 且本快照为 true（缺口另行走前置自制行）。

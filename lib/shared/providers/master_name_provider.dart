@@ -2,6 +2,8 @@
 //
 // 单据 DTO 只带 UUID。MasterDictionaryService 统一缓存仓库、币种、颜色、单位和货品；
 // 各业务服务只补充自己的往来单位（供应商/客户）及领域专属名称，避免复制整套缓存逻辑。
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
@@ -56,6 +58,7 @@ class WarehouseDictEntry {
     this.code,
     this.parentId,
     this.status,
+    this.isAccountable = true,
   });
 
   final String id;
@@ -63,6 +66,7 @@ class WarehouseDictEntry {
   final String? code;
   final String? parentId;
   final String? status;
+  final bool isAccountable;
 
   factory WarehouseDictEntry.fromJson(Map<String, dynamic> json) =>
       WarehouseDictEntry(
@@ -71,12 +75,13 @@ class WarehouseDictEntry {
         code: json['code'] as String?,
         parentId: json['parentId'] as String?,
         status: json['status'] as String?,
+        isAccountable: json['isAccountable'] as bool? ?? true,
       );
 }
 
 /// 各单据域共用的小主档与货品名称缓存。
 ///
-/// [_commonLoad] 同时承担并发去重：同一页面树中多个组件并发请求时只发一组 HTTP 请求。
+/// [ensureDictionaryLoaded] 合并同一字典的并发请求，并仅缓存成功结果。
 /// 加载失败时保留占位符，不阻塞业务列表；显式编辑/保存仍由各 Repository 返回真实错误。
 class MasterDictionaryService {
   MasterDictionaryService(this.api);
@@ -91,32 +96,62 @@ class MasterDictionaryService {
   final Map<String, String> _goods = {};
   final Map<String, GoodsDictEntry> _goodsInfo = {};
   final Map<String, String> _employees = {};
-  Future<void>? _commonLoad;
+  final Map<String, Future<void>> _dictionaryLoads = {};
 
-  Future<void> ensureCommonLoaded() =>
-      _commonLoad ??= _loadCommonDictionaries();
-
-  Future<void> _loadCommonDictionaries() async {
-    try {
-      final results = await Future.wait([
-        api.getList(ApiEndpoints.warehousesDict),
-        api.getList(ApiEndpoints.currenciesDict),
-        api.getList(ApiEndpoints.colorsDict),
-        api.getList(ApiEndpoints.unitsDict),
-      ]);
-      _warehouses = _nameMap(results[0]);
-      _warehouseList = [
-        for (final entry in results[0].whereType<Map<String, dynamic>>())
-          WarehouseDictEntry.fromJson(entry),
-      ];
-      _currencies = _nameMap(results[1]);
-
-      _colors = _nameMap(results[2]);
-      _units = _nameMap(results[3]);
-    } catch (_) {
-      // 名称解析是辅助信息，失败时显示占位符，避免一张字典表拖垮整张单据列表。
-    }
+  /// Cache successful dictionaries independently and merge concurrent requests.
+  /// Failure remains a display fallback, but the next explicit load can retry it.
+  Future<void> ensureDictionaryLoaded<T>(
+    String key,
+    Future<T> Function() fetch,
+    void Function(T) apply, {
+    bool reload = false,
+  }) {
+    final existing = _dictionaryLoads[key];
+    if (!reload && existing != null) return existing;
+    final completion = Completer<void>();
+    final pending = completion.future;
+    _dictionaryLoads[key] = pending;
+    unawaited(() async {
+      try {
+        final result = await fetch();
+        if (identical(_dictionaryLoads[key], pending)) apply(result);
+      } catch (_) {
+        if (identical(_dictionaryLoads[key], pending)) {
+          _dictionaryLoads.remove(key);
+        }
+      } finally {
+        completion.complete();
+      }
+    }());
+    return pending;
   }
+
+  Future<void> ensureCommonLoaded() => Future.wait([
+    ensureDictionaryLoaded(
+      ApiEndpoints.warehousesDict,
+      () => api.getList(ApiEndpoints.warehousesDict),
+      (entries) {
+        final hierarchy = entries.map(WarehouseDictEntry.fromJson).toList();
+        _warehouses = _nameMap(entries);
+        _warehouseList = hierarchy;
+      },
+    ),
+    ensureDictionaryLoaded(
+      ApiEndpoints.currenciesDict,
+      () => api.getList(ApiEndpoints.currenciesDict),
+      (entries) => _currencies = _nameMap(entries),
+    ),
+    ensureDictionaryLoaded(
+      ApiEndpoints.colorsDict,
+      () => api.getList(ApiEndpoints.colorsDict),
+      (entries) => _colors = _nameMap(entries),
+    ),
+    ensureDictionaryLoaded(
+      ApiEndpoints.unitsDict,
+      () => api.getList(ApiEndpoints.unitsDict),
+      (entries) => _units = _nameMap(entries),
+    ),
+  ]);
 
   /// 货品名按 id 批量解析，只查询尚未缓存的 id。
   Future<void> loadGoodsNames(Iterable<String> ids) async {
@@ -159,13 +194,12 @@ class MasterDictionaryService {
   }
 
   /// 单独重载币种字典（单据页内联新增币种后调用，让本实例的下拉选项立即含新值）。
-  Future<void> reloadCurrencies() async {
-    try {
-      _currencies = _nameMap(await api.getList(ApiEndpoints.currenciesDict));
-    } catch (_) {
-      // 保持旧缓存：名称解析可降级，新增值仍以 id 直接回填表单。
-    }
-  }
+  Future<void> reloadCurrencies() => ensureDictionaryLoaded(
+    ApiEndpoints.currenciesDict,
+    () => api.getList(ApiEndpoints.currenciesDict),
+    (entries) => _currencies = _nameMap(entries),
+    reload: true,
+  );
 
   String warehouse(String? id) => resolveName(_warehouses, id);
   String currency(String? id) => resolveName(_currencies, id);
@@ -290,17 +324,13 @@ class MasterNameService extends MasterDictionaryService {
   /// 供应商默认结算方式（id → settlement_methods.id；V452。订货开单预填用，可空）。
   Map<String, String> _supplierDefaultSettlement = {};
   Map<String, String> _departments = {};
-  Future<void>? _load;
+  Future<void> ensureLoaded() =>
+      Future.wait([ensureCommonLoaded(), _loadSuppliers(), _loadDepartments()]);
 
-  Future<void> ensureLoaded() => _load ??= Future.wait([
-    ensureCommonLoaded(),
-    _loadSuppliers(),
-    _loadDepartments(),
-  ]);
-
-  Future<void> _loadSuppliers() async {
-    try {
-      final entries = await api.getList(ApiEndpoints.suppliersDict);
+  Future<void> _loadSuppliers({bool reload = false}) => ensureDictionaryLoaded(
+    ApiEndpoints.suppliersDict,
+    () => api.getList(ApiEndpoints.suppliersDict),
+    (entries) {
       _suppliers = {
         for (final entry in entries)
           entry['id'] as String: (entry['name'] ?? '') as String,
@@ -316,23 +346,18 @@ class MasterNameService extends MasterDictionaryService {
               (entry['defaultSettlementMethodId'] as String).isNotEmpty)
             entry['id'] as String: entry['defaultSettlementMethodId'] as String,
       };
-    } catch (_) {
-      // 列表名称解析可降级。
-    }
-  }
+    },
+    reload: reload,
+  );
 
   /// 单据页内联新增供应商后重载字典（让本实例的下拉选项立即含新值）。
-  Future<void> reloadSuppliers() => _loadSuppliers();
+  Future<void> reloadSuppliers() => _loadSuppliers(reload: true);
 
-  Future<void> _loadDepartments() async {
-    try {
-      _departments = _flattenDeptTree(
-        await api.getList(ApiEndpoints.departmentsTree),
-      );
-    } catch (_) {
-      // 列表名称解析可降级。
-    }
-  }
+  Future<void> _loadDepartments() => ensureDictionaryLoaded(
+    ApiEndpoints.departmentsTree,
+    () => api.getList(ApiEndpoints.departmentsTree),
+    (entries) => _departments = _flattenDeptTree(entries),
+  );
 
   String supplier(String? id) =>
       MasterDictionaryService.resolveName(_suppliers, id);

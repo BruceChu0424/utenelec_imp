@@ -55,7 +55,7 @@ class GlPostingServicePaymentAccountingTest {
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             sqlStatements.add(sql);
-            return queryReturning(sql.contains("amount_authority_version<>1") ? 2L : 0L);
+            return queryReturning(sql.contains("amount_authority_version NOT IN(1,2)") ? 2L : 0L);
         });
 
         assertThatThrownBy(() -> new GlPostingService(em, mock(TxSessionVars.class))
@@ -69,7 +69,7 @@ class GlPostingServicePaymentAccountingTest {
         assertThat(sqlStatements).hasSize(9);
         assertThat(sqlStatements.getLast())
                 .contains("FROM finance_payments payment")
-                .contains("payment.amount_authority_version<>1");
+                .contains("payment.amount_authority_version NOT IN(1,2)");
         assertThat(sqlStatements).noneMatch(sql -> sql.contains("DELETE FROM gl_vouchers"));
     }
 

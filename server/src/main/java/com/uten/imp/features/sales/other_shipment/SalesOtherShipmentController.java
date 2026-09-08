@@ -24,7 +24,7 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 /**
- * 其它出货单 API（销售管理）。审核仅动库存，不挂订单、不立应收（design 20 §4.1）。
+ * 历史其它出货查询与受控反向。旧写端点明确拒绝；新客户零星发货走统一 shipments 工作流。
  */
 @RestController
 @RequestMapping("/api/sales/other-shipments")

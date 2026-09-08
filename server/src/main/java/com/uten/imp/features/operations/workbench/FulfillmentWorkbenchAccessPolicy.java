@@ -65,6 +65,10 @@ public class FulfillmentWorkbenchAccessPolicy {
 
     public DocumentAccess documentAccess(String department, String rawDocumentType) {
         if (department == null || rawDocumentType == null) return DocumentAccess.denied();
+        if ("SUBCONTRACT".equalsIgnoreCase(department)
+                && "SUBCONTRACT_MAKE_TASK".equalsIgnoreCase(rawDocumentType)) {
+            return new DocumentAccess(canViewSubcontractPreparationTasks(), false);
+        }
         PermissionPair permissions = switch (department.strip().toUpperCase()) {
             case "WAREHOUSE" -> WAREHOUSE.get(rawDocumentType.strip().toUpperCase());
             case "PURCHASE" -> PURCHASE.get(rawDocumentType.strip().toUpperCase());
@@ -88,6 +92,10 @@ public class FulfillmentWorkbenchAccessPolicy {
         return hasAuthority("subcontract_application:view")
                 && hasAuthority("subcontract_order:create")
                 && hasAuthority("subcontract_order:decompose");
+    }
+
+    public boolean canViewSubcontractPreparationTasks() {
+        return hasAuthority("subcontract_application:view");
     }
 
     private boolean hasAuthority(String authority) {

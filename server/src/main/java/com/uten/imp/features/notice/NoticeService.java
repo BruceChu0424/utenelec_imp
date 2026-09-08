@@ -159,6 +159,7 @@ public class NoticeService {
     private final com.uten.imp.audit.AuditService audit;
     private final com.uten.imp.features.common.taskclaim.TaskClaimRepository taskClaimRepo;
     private final com.uten.imp.application.port.EmployeeNameLookupPort employeeNameLookup;
+    private final ReviewNoticeAudience reviewAudience;
 
     // =========================== 互动模式派生 ===========================
 
@@ -184,9 +185,10 @@ public class NoticeService {
                 userId,
                 notices.stream().map(Notice::getId).toList());
         Map<UUID, List<NoticeCelebrationSubject>> subjects = subjectsMap(notices);
+        Set<String> reviewEvents = reviewEventsFor(notices);
         return notices.stream()
                 .map(notice -> toDto(notice, states.get(notice.getId()), userId,
-                        subjects.getOrDefault(notice.getId(), List.of())))
+                        true, subjects.getOrDefault(notice.getId(), List.of()), reviewEvents))
                 .toList();
     }
 
@@ -224,10 +226,13 @@ public class NoticeService {
                 userId,
                 page.stream().map(Notice::getId).toList());
         Map<UUID, List<NoticeCelebrationSubject>> subjects = subjectsMap(page);
+        Set<String> reviewEvents = reviewEventsFor(page);
         List<NoticeDto> items = page.stream()
+                .filter(notice -> !isActionableReview(notice)
+                        || reviewEvents.contains(notice.getSourceEvent()))
                 .map(notice -> toDto(
                         notice, states.get(notice.getId()), userId, false,
-                        subjects.getOrDefault(notice.getId(), List.of())))
+                        subjects.getOrDefault(notice.getId(), List.of()), reviewEvents))
                 .toList();
         if (page.isEmpty()) {
             return new ArrivalPage(
@@ -257,9 +262,10 @@ public class NoticeService {
                 userId,
                 notices.stream().map(Notice::getId).toList());
         Map<UUID, List<NoticeCelebrationSubject>> subjects = subjectsMap(notices);
+        Set<String> reviewEvents = reviewEventsFor(notices);
         return notices.stream()
                 .map(notice -> toDto(notice, states.get(notice.getId()), userId,
-                        subjects.getOrDefault(notice.getId(), List.of())))
+                        true, subjects.getOrDefault(notice.getId(), List.of()), reviewEvents))
                 .toList();
     }
 
@@ -1138,27 +1144,44 @@ public class NoticeService {
                 .filter(java.util.Objects::nonNull)
                 .limit(MAX_PENDING_STATUS_ITEMS)
                 .toList();
+        List<Notice> notices = noticeRepo.findAllById(safeIds);
+        Set<String> reviewEvents = reviewEventsFor(notices);
+        Map<UUID, NoticeUserState> states = stateMap(userId, safeIds);
+        Set<String> claimTypes=new HashSet<>();Set<String> claimKeys=new HashSet<>();
+        for (Notice notice:notices) {
+            var entry=ReviewNoticeCatalog.of(notice.getSourceEvent());
+            if (notice.getResolvedAt()==null && notice.getAggregateId()!=null && entry.isPresent()
+                    && entry.get().claimTargetType()!=null && reviewEvents.contains(notice.getSourceEvent())
+                    && visibleTo(notice,userId,states.get(notice.getId()))) {
+                claimTypes.add(entry.get().claimTargetType());claimKeys.add(notice.getAggregateId().toString());
+            }
+        }
+        Map<String,com.uten.imp.features.common.taskclaim.TaskClaim> claims=new HashMap<>();
+        Set<UUID> claimEmployees=new HashSet<>();
+        if (!claimTypes.isEmpty() && !claimKeys.isEmpty()) {
+            for (var claim:taskClaimRepo.findUnreleasedForTargets(claimTypes,claimKeys)) if (claim.isActive()) {
+                claims.put(claim.getTargetType()+":"+claim.getTargetKey(),claim);claimEmployees.add(claim.getClaimedBy());
+            }
+        }
+        Map<UUID,String> claimantNames=claimEmployees.isEmpty()?Map.of():employeeNameLookup.findNames(claimEmployees);
+        var shipmentStates=shipmentReviewStates(notices);
         List<PendingReviewStatusDto> result = new ArrayList<>();
-        for (Notice n : noticeRepo.findAllById(safeIds)) {
-            NoticeUserState st = stateRepo
-                    .findById(new NoticeUserStateId(n.getId(), userId))
-                    .orElse(null);
+        for (Notice n : notices) {
+            NoticeUserState st = states.get(n.getId());
             if (!visibleTo(n, userId, st) || (st != null && st.getDeletedAt() != null)) {
                 continue;
             }
+            if (!isActionableReview(n) || !reviewEvents.contains(n.getSourceEvent())
+                    || (st != null && st.getSnoozedUntil() != null
+                        && st.getSnoozedUntil().isAfter(Instant.now()))) continue;
             String claimedByName = null;
             java.time.OffsetDateTime claimedAt = null;
             var entry = ReviewNoticeCatalog.of(n.getSourceEvent());
             if (entry.isPresent() && entry.get().claimTargetType() != null
                     && n.getAggregateId() != null && n.getResolvedAt() == null) {
-                var claim = taskClaimRepo
-                        .findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(
-                                entry.get().claimTargetType(),
-                                n.getAggregateId().toString())
-                        .orElse(null);
+                var claim = claims.get(entry.get().claimTargetType()+":"+n.getAggregateId());
                 if (claim != null) {
-                    claimedByName = employeeNameLookup.findName(claim.getClaimedBy())
-                            .orElse(null);
+                    claimedByName = claimantNames.get(claim.getClaimedBy());
                     claimedAt = claim.getClaimedAt();
                 }
             }
@@ -1166,7 +1189,7 @@ public class NoticeService {
                     n.getId().toString(),
                     n.getAggregateKind(),
                     n.getAggregateId() == null ? null : n.getAggregateId().toString(),
-                    n.getResolvedAt() != null,
+                    n.getResolvedAt() != null || !shipmentReviewPending(n,shipmentStates),
                     n.getResolvedAt(),
                     claimedByName,
                     claimedAt == null ? null : claimedAt.toInstant()));
@@ -1185,16 +1208,40 @@ public class NoticeService {
     @Transactional(readOnly = true)
     public List<NoticeDto> pendingReviews() {
         UUID userId = requireStaffId();
+        Set<String> reviewEvents = reviewAudience.eligibleEvents(requireStaff());
+        if (reviewEvents.isEmpty()) return List.of();
         List<Notice> notices = noticeRepo.findVisiblePendingReviews(
                 userId,
-                List.copyOf(ReviewNoticeCatalog.events()),
+                List.copyOf(reviewEvents),
                 PageRequest.of(0, 20));
         Map<UUID, NoticeUserState> states = stateMap(
                 userId,
                 notices.stream().map(Notice::getId).toList());
+        var shipmentStates=shipmentReviewStates(notices);
         return notices.stream()
-                .map(n -> toDto(n, states.get(n.getId()), userId, false, null))
+                .filter(NoticeService::isActionableReview)
+                .filter(notice->shipmentReviewPending(notice,shipmentStates))
+                .map(n -> toDto(n, states.get(n.getId()), userId, false, null, reviewEvents))
                 .toList();
+    }
+
+    private Map<UUID,NoticeRepository.ShipmentReviewStateRow> shipmentReviewStates(List<Notice> notices) {
+        Set<UUID> ids=notices.stream().filter(n->"SALES_SHIPMENT".equals(n.getAggregateKind()))
+                .map(Notice::getAggregateId).filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        if (ids.isEmpty()) return Map.of();
+        return noticeRepo.findShipmentReviewStates(ids).stream().collect(Collectors.toMap(
+                NoticeRepository.ShipmentReviewStateRow::getShipmentId,java.util.function.Function.identity()));
+    }
+    private static boolean shipmentReviewPending(Notice notice,Map<UUID,NoticeRepository.ShipmentReviewStateRow> states) {
+        if (!"SALES_SHIPMENT".equals(notice.getAggregateKind())) return true;
+        var state=states.get(notice.getAggregateId());
+        if (state==null) return false;
+        return switch (notice.getSourceEvent()) {
+            case "SALES_SHIPMENT_PENDING_FINANCE_AUDIT" -> state.getFinancePending();
+            case "SALES_SHIPMENT_PENDING_PICK" -> state.getPickPending();
+            case "SALES_SHIPMENT_FINANCE_REJECTED", "DIRECT_CUSTOMER_SHIPMENT_FINANCE_REJECTED" -> state.getCorrectionPending();
+            default -> false;
+        };
     }
 
     /** 弹卡真态出参：resolved=true 即收卡；claimedByName 非空显示「XX 正在审核」。 */
@@ -1362,17 +1409,23 @@ public class NoticeService {
      * subjects 由调用方批量装配（列表路径）或此处单查（详情/发布回执路径）。
      */
     private NoticeDto toDto(Notice n, NoticeUserState st, UUID userId) {
-        return toDto(n, st, userId, true, null);
+        return toDto(n, st, userId, true, null, reviewEventsFor(List.of(n)));
     }
 
-    private NoticeDto toDto(
-            Notice n, NoticeUserState st, UUID userId, List<NoticeCelebrationSubject> subjects) {
-        return toDto(n, st, userId, true, subjects);
+    private Set<String> reviewEventsFor(List<Notice> notices) {
+        return notices.stream().anyMatch(NoticeService::isActionableReview)
+                ? reviewAudience.eligibleEvents(requireStaff()) : Set.of();
+    }
+
+    private static boolean isActionableReview(Notice notice) {
+        return notice.getAggregateId() != null && notice.getAggregateKind() != null
+                && ReviewNoticeCatalog.isReviewEvent(notice.getSourceEvent());
     }
 
     private NoticeDto toDto(
             Notice n, NoticeUserState st, UUID userId,
-            boolean includeInteractions, List<NoticeCelebrationSubject> subjects) {
+            boolean includeInteractions, List<NoticeCelebrationSubject> subjects,
+            Set<String> reviewEvents) {
         String mode = effectiveInteractionMode(n);
         long ackCount = 0L;
         long blessingCount = 0L;
@@ -1437,7 +1490,7 @@ public class NoticeService {
                 n.getSourceEvent(),
                 subjectDtos(n, mode, subjects),
                 // ---- V459：审核待办弹卡 ----
-                ReviewNoticeCatalog.isReviewEvent(n.getSourceEvent()),
+                isActionableReview(n) && reviewEvents.contains(n.getSourceEvent()),
                 n.getAggregateKind(),
                 n.getAggregateId() == null ? null : n.getAggregateId().toString(),
                 n.getResolvedAt(),

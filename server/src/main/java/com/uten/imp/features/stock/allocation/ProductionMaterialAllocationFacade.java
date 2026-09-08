@@ -17,6 +17,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -88,6 +90,99 @@ public class ProductionMaterialAllocationFacade {
             results.add(allocateOne(request));
         }
         return results;
+    }
+
+    /** Keeps every physical reservation in its actual leaf warehouse. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<AllocationResult> allocateWithinMainWarehouse(
+            List<AllocationRequest> requests,
+            List<AllocationPreference> preferences) {
+        tx.bind();
+        if (requests == null || requests.isEmpty()) return List.of();
+        validateRequests(requests);
+        lockDimensions(requests);
+        lockDemandRows(requests);
+        List<AllocationResult> results = new ArrayList<>();
+        for (AllocationRequest request : requests.stream()
+                .sorted(Comparator.comparing(AllocationRequest::demandId)).toList()) {
+            List<UUID> warehouses = NativeQueryResults.typedRows(
+                    em.createNativeQuery("""
+                            SELECT warehouse.id
+                            FROM warehouses warehouse
+                            WHERE warehouse.is_deleted = FALSE
+                              AND warehouse.is_accountable = TRUE
+                              AND warehouse.is_defective = FALSE
+                              AND COALESCE(warehouse.status, '') <> '禁用'
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM warehouses child
+                                  WHERE child.parent_id = warehouse.id
+                                    AND child.is_deleted = FALSE)
+                              AND fn_warehouse_same_main(warehouse.id, :warehouseId)
+                            ORDER BY warehouse.id
+                            """)
+                            .setParameter("warehouseId", request.warehouseId()),
+                    UUID.class);
+            BigDecimal remaining = request.requiredQty();
+            Map<UUID, BigDecimal> owned = new LinkedHashMap<>();
+            if (preferences != null) {
+                preferences.stream()
+                        .filter(value -> request.demandId().equals(value.demandId())
+                                && value.warehouseId() != null
+                                && value.qty() != null && value.qty().signum() > 0)
+                        .sorted(Comparator.comparing(AllocationPreference::warehouseId))
+                        .forEach(value -> owned.merge(
+                                value.warehouseId(), value.qty(), BigDecimal::add));
+            }
+            BigDecimal outstandingOwned = owned.values().stream()
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (outstandingOwned.compareTo(remaining) > 0) {
+                throw new ApiException(ErrorCode.CONFLICT, "分析备料权益超出本段需求");
+            }
+            for (Map.Entry<UUID, BigDecimal> entry : owned.entrySet()) {
+                if (!warehouses.contains(entry.getKey())
+                        || entry.getValue().compareTo(remaining) > 0) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "分析备料权益超出本段需求或所在主仓范围");
+                }
+                outstandingOwned = outstandingOwned.subtract(entry.getValue());
+                // One demand/stock-balance pair has one reservation. Include
+                // this leaf's public stock without using another leaf's owned slice.
+                AllocationResult result = allocateOne(withWarehouse(
+                        request, entry.getKey(), remaining.subtract(outstandingOwned), "OWN"));
+                if (result.allocatedQty().compareTo(entry.getValue()) < 0) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "分析备料权益所在子仓可用库存不足，请刷新后重试");
+                }
+                results.add(withWarehouse(result, entry.getKey()));
+                remaining = remaining.subtract(result.allocatedQty());
+            }
+            for (UUID warehouseId : warehouses) {
+                if (remaining.signum() <= 0) break;
+                if (owned.containsKey(warehouseId)) continue;
+                AllocationResult result = allocateOne(withWarehouse(
+                        request, warehouseId, remaining, "STOCK"));
+                if (result.allocatedQty().signum() > 0) {
+                    results.add(withWarehouse(result, warehouseId));
+                    remaining = remaining.subtract(result.allocatedQty());
+                }
+            }
+        }
+        return List.copyOf(results);
+    }
+
+    private static AllocationRequest withWarehouse(
+            AllocationRequest request, UUID warehouseId, BigDecimal qty,
+            String source) {
+        return new AllocationRequest(request.packageId(), request.demandId(),
+                request.goodsId(), request.colorId(), warehouseId, qty,
+                request.idempotencyKey() + ":" + source + ":" + warehouseId,
+                request.actorId());
+    }
+
+    private static AllocationResult withWarehouse(
+            AllocationResult result, UUID warehouseId) {
+        return new AllocationResult(result.demandId(), result.allocationId(),
+                result.supplyId(), result.allocatedQty(), result.replayed(), warehouseId);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -197,7 +292,7 @@ public class ProductionMaterialAllocationFacade {
                     (UUID) row[0],
                     (UUID) row[2],
                     decimal(row[3]),
-                    true);
+                    true, request.warehouseId());
         }
 
         List<Object[]> balances = NativeQueryResults.objectArrayRows(
@@ -219,13 +314,13 @@ public class ProductionMaterialAllocationFacade {
                         .setParameter("warehouseId", request.warehouseId()));
         if (balances.isEmpty()) {
             return new AllocationResult(
-                    request.demandId(), null, null, BigDecimal.ZERO, false);
+                    request.demandId(), null, null, BigDecimal.ZERO, false, request.warehouseId());
         }
         Object[] balance = balances.getFirst();
         UUID supplyId = (UUID) balance[0];
         if (supplyId == null) {
             return new AllocationResult(
-                    request.demandId(), null, null, BigDecimal.ZERO, false);
+                    request.demandId(), null, null, BigDecimal.ZERO, false, request.warehouseId());
         }
 
         BigDecimal onHand = decimal(balance[1]);
@@ -248,7 +343,7 @@ public class ProductionMaterialAllocationFacade {
         BigDecimal take = request.requiredQty().min(available);
         if (take.signum() <= 0) {
             return new AllocationResult(
-                    request.demandId(), null, supplyId, BigDecimal.ZERO, false);
+                    request.demandId(), null, supplyId, BigDecimal.ZERO, false, request.warehouseId());
         }
 
         UUID allocationId = UUID.randomUUID();
@@ -289,7 +384,7 @@ public class ProductionMaterialAllocationFacade {
             throw new ApiException(ErrorCode.CONFLICT, "物料分配写入失败");
         }
         return new AllocationResult(
-                request.demandId(), allocationId, supplyId, take, false);
+                request.demandId(), allocationId, supplyId, take, false, request.warehouseId());
     }
 
     private void lockDemandRows(List<AllocationRequest> requests) {
@@ -400,7 +495,15 @@ public class ProductionMaterialAllocationFacade {
             UUID allocationId,
             UUID supplyId,
             BigDecimal allocatedQty,
-            boolean replayed) {
+            boolean replayed,
+            UUID warehouseId) {
+        public AllocationResult(UUID demandId, UUID allocationId, UUID supplyId,
+                                BigDecimal allocatedQty, boolean replayed) {
+            this(demandId, allocationId, supplyId, allocatedQty, replayed, null);
+        }
+    }
+
+    public record AllocationPreference(UUID demandId, UUID warehouseId, BigDecimal qty) {
     }
 
     public record ReleaseResult(

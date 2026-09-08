@@ -70,13 +70,31 @@ final class _MaterialAnalysisIndexes {
   childrenByParentNodeKey;
 }
 
+/// Display-only ownership links. Business material objects keep their exact
+/// analysis/item/action IDs when child preparation takes over a BOM branch.
+final class _BomPresentation {
+  const _BomPresentation({
+    required this.nodesByProduct,
+    required this.parentIdsByMaterial,
+    required this.rootIdsByMaterial,
+    required this.depthByMaterial,
+  });
+
+  final Map<String?, List<ProductionMaterialAnalysisMaterial>> nodesByProduct;
+  final Map<String, String?> parentIdsByMaterial;
+  final Map<String, String?> rootIdsByMaterial;
+  final Map<String, int> depthByMaterial;
+}
+
 final class _BomFilterProjection {
   const _BomFilterProjection({
     required this.nodesByProduct,
     required this.directMatchCount,
     required this.visibleNodeCount,
+    required this.presentation,
   });
 
+  final _BomPresentation presentation;
   final Map<String?, List<ProductionMaterialAnalysisMaterial>> nodesByProduct;
   final int directMatchCount;
   final int visibleNodeCount;
@@ -94,22 +112,6 @@ class _OffTargetWarehousePeg {
   final String warehouseLabel;
   final double qty;
   final String? unitName;
-}
-
-class _ProductExecutionStage {
-  const _ProductExecutionStage({
-    required this.status,
-    required this.label,
-    this.detail,
-    required this.icon,
-    this.progress,
-  });
-
-  final String status;
-  final String label;
-  final String? detail;
-  final IconData icon;
-  final double? progress;
 }
 
 enum _ReadinessState { ready, waitingMake, waitingSupply, waiting }
@@ -154,10 +156,15 @@ class _MaterialGroup {
 /// 仅用于汇总展示与选择入口；任务身份仍是 [paths] 里的逐路径节点，
 /// 合计数字只是各路径服务端事实的加总，客户端不重新分配库存。
 class _MaterialAggregate {
-  const _MaterialAggregate({required this.key, required this.paths});
+  const _MaterialAggregate({
+    required this.key,
+    required this.paths,
+    this.rootProductIds,
+  });
 
   final String key;
   final List<ProductionMaterialAnalysisMaterial> paths;
+  final Set<String?>? rootProductIds;
 
   ProductionMaterialAnalysisMaterial get representative => paths.first;
   String? get goodsName => representative.goodsName;
@@ -182,6 +189,7 @@ class _MaterialAggregate {
   );
 
   int get productCount =>
+      rootProductIds?.length ??
       paths.map((item) => item.analysisLineId).toSet().length;
 
   double get coverageRatio => totalRequired <= 0

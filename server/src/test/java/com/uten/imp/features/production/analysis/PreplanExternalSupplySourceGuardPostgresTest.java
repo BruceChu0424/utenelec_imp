@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.support.ProcurementReceiptFixtureSupport;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -142,58 +143,60 @@ class PreplanExternalSupplySourceGuardPostgresTest {
             UUID demandReceiptItemId = UUID.randomUUID();
             UUID safetyReceiptItemId = UUID.randomUUID();
             String receiptNo = businessIdentifier("CJ", BILL_DATE);
-            execute(connection, """
-                    INSERT INTO purchase_receipts(
-                        id,bill_no,bill_date,warehouse_id,status,is_deleted)
-                    VALUES(?,?,?,?,1,FALSE)
-                    """, receiptId, receiptNo, BILL_DATE, fixture.warehouseId());
-            insertPurchaseReceiptItem(connection, fixture, receiptId,
-                    demandReceiptItemId, demandOrderItemId, receiptNo, 1, "20");
-            insertPurchaseReceiptItem(connection, fixture, receiptId,
-                    safetyReceiptItemId, safetyOrderItemId, receiptNo, 2, "100");
-            execute(connection,
-                    "UPDATE purchase_order_items SET received_qty=qty WHERE id IN (?,?)",
-                    demandOrderItemId, safetyOrderItemId);
+            inTransaction(connection, () -> {
+                execute(connection, """
+                        INSERT INTO purchase_receipts(
+                            id,bill_no,bill_date,warehouse_id,status,is_deleted)
+                        VALUES(?,?,?,?,1,FALSE)
+                        """, receiptId, receiptNo, BILL_DATE, fixture.warehouseId());
+                insertPurchaseReceiptItem(connection, fixture, receiptId,
+                        demandReceiptItemId, demandOrderItemId, receiptNo, 1, "20");
+                insertPurchaseReceiptItem(connection, fixture, receiptId,
+                        safetyReceiptItemId, safetyOrderItemId, receiptNo, 2, "100");
+                execute(connection,
+                        "UPDATE purchase_order_items SET received_qty=qty WHERE id IN (?,?)",
+                        demandOrderItemId, safetyOrderItemId);
+
+                ProcurementReceiptFixtureSupport.appendStandardReceipt(connection, "PURCHASE", receiptId, fixture.userId());
+            });
 
             UUID demandInspectionId = UUID.randomUUID();
             UUID safetyInspectionId = UUID.randomUUID();
-            insertInspection(connection, fixture, receiptId, demandReceiptItemId,
-                    demandInspectionId, "20", "20", "0", "RESOLVED");
-            insertInspection(connection, fixture, receiptId, safetyReceiptItemId,
-                    safetyInspectionId, "100", "60", "0", "PARTIAL");
+            inTransaction(connection, () -> {
+                insertInspection(connection, fixture, receiptId, demandReceiptItemId,
+                        demandInspectionId, "20", "20", "0", "RESOLVED");
+                insertInspection(connection, fixture, receiptId, safetyReceiptItemId,
+                        safetyInspectionId, "100", "60", "0", "PARTIAL");
+
+            });
 
             assertSplitProgress(connection, actionId,
                     "20", "0", "20", "100", "0", "100", "0", "0");
 
-            // PASS is quality evidence only. Simulate the warehouse-confirmed
-            // projection for this read-model test; the dedicated V446 service
-            // integration test proves the immutable batch/movement writer.
-            execute(connection, "SET session_replication_role=replica");
-            execute(connection, """
-                    UPDATE procurement_inspection_items
-                    SET warehouse_stocked_base_qty=passed_base_qty
-                    WHERE id IN (?,?)
-                    """, demandInspectionId, safetyInspectionId);
-            execute(connection, "SET session_replication_role=origin");
+            ProcurementReceiptFixtureSupport.stockZeroPricePasses(connection, java.util.List.of(demandInspectionId, safetyInspectionId));
             assertSplitProgress(connection, actionId,
                     "20", "20", "0", "100", "60", "40", "0", "0");
 
-            execute(connection, "SET session_replication_role=replica");
-            execute(connection, """
-                    UPDATE procurement_inspection_items
-                    SET passed_base_qty=60, failed_base_qty=40,
-                        status='RESOLVED', updated_at=now()
-                    WHERE id=?
-                    """, safetyInspectionId);
-            execute(connection, "SET session_replication_role=origin");
+            ProcurementReceiptFixtureSupport.recordZeroPriceFailure(
+                    connection, safetyInspectionId, new BigDecimal("40"), fixture.userId());
             assertSplitProgress(connection, actionId,
                     "20", "20", "0", "100", "60", "0", "0", "40");
 
             UUID replacementUnitId = UUID.randomUUID();
             execute(connection, "INSERT INTO units(id,code,name) VALUES(?,?,?)",
                     replacementUnitId, "V422-U-" + replacementUnitId, "replacement");
-            execute(connection, "UPDATE goods SET unit_id=? WHERE id=?",
-                    replacementUnitId, fixture.goodsId());
+            inTransaction(connection, () -> {
+                var beforeUnitChange = connection.setSavepoint();
+                try {
+                    assertConstraint(connection, "goods_quantity_unit_immutable",
+                            "UPDATE goods SET unit_id=? WHERE id=?", replacementUnitId, fixture.goodsId());
+                } finally {
+                    connection.rollback(beforeUnitChange);
+                    connection.releaseSavepoint(beforeUnitChange);
+                }
+            });
+            assertEquals(fixture.unitId(), scalarUuid(connection,
+                    "SELECT unit_id FROM goods WHERE id='" + fixture.goodsId() + "'"));
             execute(connection,
                     "UPDATE preplan_supply_actions SET status='IN_PROGRESS' WHERE id=?",
                     actionId);
@@ -616,8 +619,8 @@ class PreplanExternalSupplySourceGuardPostgresTest {
                     id,bill_no,bill_date,receipt_id,line_no,order_item_id,
                     goods_id,unit_id,goods_code_snapshot,goods_name_snapshot,
                     goods_snapshot_source,goods_snapshot_locked_at,
-                    unit_rate,qty,amount_local,is_deleted)
-                VALUES(?,?,?,?,?,?, ?,?,?,?,'MASTER_AT_APPROVAL',now(),1,?,0,FALSE)
+                    unit_rate,qty,price,amount_original,amount_local,replacement_intent,is_deleted)
+                VALUES(?,?,?,?,?,?, ?,?,?,?,'MASTER_AT_APPROVAL',now(),1,?,0,0,0,'NORMAL',FALSE)
                 """, itemId, billNo, BILL_DATE, receiptId, lineNo, orderItemId,
                 fixture.goodsId(), fixture.unitId(),
                 "V420-G-" + fixture.goodsId(), "V420 split goods",
@@ -636,8 +639,9 @@ class PreplanExternalSupplySourceGuardPostgresTest {
                 VALUES(?,'PURCHASE',?,?,?,?,?,1,?,0,?,?,?)
                 """, inspectionId, receiptId, receiptItemId,
                 fixture.warehouseId(), fixture.goodsId(), fixture.unitId(),
-                new BigDecimal(received), new BigDecimal(passed),
-                new BigDecimal(failed), status);
+                new BigDecimal(received), BigDecimal.ZERO,
+                BigDecimal.ZERO, "PENDING");
+        ProcurementReceiptFixtureSupport.recordZeroPriceQualityDecision(connection, inspectionId, "PASS", new BigDecimal(passed), fixture.userId());
     }
 
     private static void assertSplitProgress(

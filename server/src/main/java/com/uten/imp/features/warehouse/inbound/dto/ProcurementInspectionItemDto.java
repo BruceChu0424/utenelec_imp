@@ -21,5 +21,8 @@ public record ProcurementInspectionItemDto(
         String colorName,
         UUID warehouseId,
         String sourceOrderNo,
-        BigDecimal receivedWeight) {
+        BigDecimal receivedWeight,
+        UUID baseUnitId,
+        String baseUnitName,
+        String sourceUnitName) {
 }

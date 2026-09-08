@@ -2,6 +2,170 @@ part of 'production_material_analysis_page.dart';
 
 abstract class _MaterialAnalysisBomTreeState
     extends _MaterialAnalysisProductTasksState {
+  ProductionMaterialAnalysisView? _bomPresentationAnalysis;
+  _BomPresentation? _bomPresentationCache;
+
+  _BomPresentation _bomPresentation(ProductionMaterialAnalysisView analysis) {
+    if (identical(_bomPresentationAnalysis, analysis) &&
+        _bomPresentationCache != null) {
+      return _bomPresentationCache!;
+    }
+    final indexes = _analysisIndexes(analysis);
+    final byId = {
+      for (final material in analysis.materials)
+        material.materialLineId: material,
+    };
+    final byNode = {
+      for (final material in analysis.materials)
+        if (material.nodeKey?.isNotEmpty == true)
+          (material.analysisLineId, material.nodeKey!): material,
+    };
+    final rootSupplyByProduct = <String?, String>{
+      for (final material in analysis.materials)
+        if (material.isRootSupply)
+          material.analysisLineId: material.materialLineId,
+    };
+    final physicalParents = <String, String?>{
+      for (final material in analysis.materials)
+        material.materialLineId: material.isRootSupply
+            ? null
+            : material.parentNodeKey == null
+            ? rootSupplyByProduct[material.analysisLineId]
+            : byNode[(material.analysisLineId, material.parentNodeKey!)]
+                  ?.materialLineId,
+    };
+    final sourceByChild = <String, String>{};
+    final ambiguousChildren = <String>{};
+    void link(String childId, String sourceId) {
+      final child = indexes.productsById[childId];
+      final source = byId[sourceId];
+      if (!_isEmbeddedMakeChildProduct(child) || source == null) return;
+      if (child!.parentAnalysisLineId != null &&
+          child.parentAnalysisLineId != source.analysisLineId) {
+        return;
+      }
+      final previous = sourceByChild[childId];
+      if (previous != null && previous != sourceId) {
+        ambiguousChildren.add(childId);
+      } else {
+        sourceByChild[childId] = sourceId;
+      }
+    }
+
+    // Use exact active task documents, never a goods/name match. Two equal
+    // SKUs on different BOM paths must retain separate child ownership.
+    for (final material in analysis.materials) {
+      for (final target in material.notifiedTargets) {
+        if (target.status == 'CANCELLED' || target.documentId == null) continue;
+        if (target.documentType == 'PREPLAN_MAKE_TASK' ||
+            target.documentType == 'SUBCONTRACT_MAKE_TASK') {
+          link(target.documentId!, material.materialLineId);
+        }
+      }
+    }
+    // Older responses expose the child ID on delegated zero descendants.
+    // Their first non-delegated ancestor is the exact ownership boundary.
+    final explicitChildren = sourceByChild.keys.toSet();
+    for (final material in analysis.materials) {
+      final childId = material.delegatedToAnalysisLineId;
+      if (childId == null || explicitChildren.contains(childId)) continue;
+      var parentId = physicalParents[material.materialLineId];
+      final visited = <String>{};
+      while (parentId != null && visited.add(parentId)) {
+        final parent = byId[parentId];
+        if (parent == null) break;
+        if (parent.delegatedToAnalysisLineId != childId) {
+          link(childId, parentId);
+          break;
+        }
+        parentId = physicalParents[parentId];
+      }
+    }
+    for (final childId in ambiguousChildren) {
+      sourceByChild.remove(childId);
+    }
+    final ownershipSourceIds = sourceByChild.values.toSet();
+    final shadowIds = <String>{
+      for (final material in analysis.materials)
+        if (!ownershipSourceIds.contains(material.materialLineId) &&
+            material.requiredQty <= 0 &&
+            material.delegatedToAnalysisLineId != null &&
+            sourceByChild.containsKey(material.delegatedToAnalysisLineId) &&
+            indexes
+                    .materialsByProduct[material.delegatedToAnalysisLineId]
+                    ?.isNotEmpty ==
+                true)
+          material.materialLineId,
+    };
+    final parentIds = <String, String?>{};
+    for (final material in analysis.materials) {
+      if (shadowIds.contains(material.materialLineId)) continue;
+      var parentId = physicalParents[material.materialLineId];
+      final visited = <String>{};
+      while (parentId != null &&
+          shadowIds.contains(parentId) &&
+          visited.add(parentId)) {
+        parentId = physicalParents[parentId];
+      }
+      parentIds[material.materialLineId] =
+          parentId ?? sourceByChild[material.analysisLineId];
+    }
+    final rootIds = <String, String?>{};
+    final depths = <String, int>{};
+    final visiting = <String>{};
+    void resolve(String id) {
+      if (depths.containsKey(id)) return;
+      if (!visiting.add(id)) {
+        parentIds[id] = null;
+        rootIds[id] = byId[id]?.analysisLineId;
+        depths[id] = byId[id]?.isRootSupply == true ? 0 : 1;
+        return;
+      }
+      final parentId = parentIds[id];
+      if (parentId == null ||
+          parentId == id ||
+          !parentIds.containsKey(parentId)) {
+        rootIds[id] = byId[id]?.analysisLineId;
+        depths[id] = byId[id]?.isRootSupply == true ? 0 : 1;
+      } else {
+        resolve(parentId);
+        rootIds[id] = rootIds[parentId];
+        depths[id] = (depths[parentId] ?? 0) + 1;
+      }
+      visiting.remove(id);
+    }
+
+    final nodesByProduct =
+        <String?, List<ProductionMaterialAnalysisMaterial>>{};
+    for (final material in analysis.materials) {
+      if (shadowIds.contains(material.materialLineId)) continue;
+      resolve(material.materialLineId);
+      nodesByProduct
+          .putIfAbsent(rootIds[material.materialLineId], () => [])
+          .add(material);
+    }
+    final presentation = _BomPresentation(
+      nodesByProduct: nodesByProduct,
+      parentIdsByMaterial: parentIds,
+      rootIdsByMaterial: rootIds,
+      depthByMaterial: depths,
+    );
+    _bomPresentationAnalysis = analysis;
+    _bomPresentationCache = presentation;
+    return presentation;
+  }
+
+  @override
+  bool _hasResolvedMaterialSource(ProductionMaterialAnalysisMaterial material) {
+    final analysis = _analysis;
+    if (analysis == null) return false;
+    final rootId = _bomPresentation(
+      analysis,
+    ).rootIdsByMaterial[material.materialLineId];
+    final product = _analysisIndexes(analysis).productsById[rootId];
+    return product != null && !_isEmbeddedMakeChildProduct(product);
+  }
+
   /// 去重后筛出非目标仓，避免同 SKU 在多个 BOM 兄弟节点上重复报数。
   List<_OffTargetWarehousePeg> _offTargetWarehousePegs(
     ProductionMaterialAnalysisView analysis,
@@ -188,105 +352,62 @@ abstract class _MaterialAnalysisBomTreeState
     );
   }
 
-  /// 统一树顶部的工具条：查找 + 视图切换。批量选择已并入顶部入口条
-  /// （2026-09-04 改版）：按路线（采购/委外/自制）的整批下达入口在各分桶
-  /// 详情页里，不再在树头铺三枚全选勾。
-  Widget _unifiedBomTreeHeader(
+  /// View controls live in the shared table toolbar, including fullscreen.
+  /// 查找框常驻顶部卡片（更新时间右侧）；全屏时顶部卡片不可见，才在工具条
+  /// 里补挂一个（与顶部卡片共享同一控制器 [_bomSearch]，两处不会同时出现）。
+  List<Widget> _bomToolbarActions(
     ThemeData theme,
     ProductionMaterialAnalysisView analysis,
-  ) {
-    final projection = _bomFilterProjection(analysis);
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s12,
-        vertical: UtenSpacing.s8,
+  ) => [
+    if (_bomTableFullscreen)
+      SizedBox(
+        width: context.breakpoint.isCompact ? 200 : 240,
+        child: UtenSearchBar(
+          key: const Key('material-bom-search'),
+          controller: _bomSearch,
+          hint: _l10n.materialSearchHint,
+          onChanged: _bomSearchChanged,
+        ),
       ),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: UtenRadius.mdAll,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
+    for (final mode in _BomViewMode.values)
+      _bomViewChip(
+        theme,
+        key: ValueKey('material-bom-view-${mode.name}'),
+        selected: _bomViewMode == mode,
+        onSelected: () => setState(() {
+          _bomViewMode = mode;
+          _bomTablePageNo = 1;
+        }),
+        label: '${mode.label} ${_bomModeCount(analysis, mode)}',
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Wrap(
-            spacing: UtenSpacing.s8,
-            runSpacing: UtenSpacing.s8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              SizedBox(
-                width: 300,
-                child: UtenSearchBar(
-                  key: const Key('material-bom-search'),
-                  controller: _bomSearch,
-                  hint: '查找产品或物料',
-                  onChanged: _bomSearchChanged,
-                ),
-              ),
-              for (final mode in _BomViewMode.values)
-                _bomViewChip(
-                  theme,
-                  key: ValueKey('material-bom-view-${mode.name}'),
-                  selected: _bomViewMode == mode,
-                  onSelected: () => setState(() {
-                    _bomViewMode = mode;
-                    _bomTablePageNo = 1;
-                  }),
-                  label: '${mode.label} ${_bomModeCount(analysis, mode)}',
-                ),
-              // 排布切换：按产品看 BOM 树（默认）/ 按物料汇总缺料。
-              // 多产品联合分析时物料行非常多，按物料汇总把同一物料跨产品
-              // 聚成一行，是给采购/委外下单用的决策视图；任务身份不合并。
-              _bomViewChip(
-                theme,
-                key: const ValueKey('material-bom-layout-product'),
-                selected: !_bomAggregateByMaterial,
-                onSelected: _bomAggregateByMaterial
-                    ? () => setState(() {
-                        _bomAggregateByMaterial = false;
-                        _bomTablePageNo = 1;
-                      })
-                    : null,
-                label: '按产品看',
-              ),
-              _bomViewChip(
-                theme,
-                key: const ValueKey('material-bom-layout-material'),
-                selected: _bomAggregateByMaterial,
-                onSelected: _bomAggregateByMaterial
-                    ? null
-                    : () => setState(() {
-                        _bomAggregateByMaterial = true;
-                        _bomTablePageNo = 1;
-                      }),
-                label: '按物料汇总',
-              ),
-              Text(
-                '筛选命中 ${projection.directMatchCount} 条；保留上级后共 '
-                '${projection.visibleNodeCount} 条 / 全部 '
-                '${_bomModeCount(analysis, _BomViewMode.all)} 条',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+    _bomViewChip(
+      theme,
+      key: const ValueKey('material-bom-layout-product'),
+      selected: !_bomAggregateByMaterial,
+      onSelected: () => setState(() {
+        _bomAggregateByMaterial = false;
+        _bomTablePageNo = 1;
+      }),
+      label: _l10n.materialByProduct,
+    ),
+    _bomViewChip(
+      theme,
+      key: const ValueKey('material-bom-layout-material'),
+      selected: _bomAggregateByMaterial,
+      onSelected: () => setState(() {
+        _bomAggregateByMaterial = true;
+        _bomTablePageNo = 1;
+      }),
+      label: _l10n.materialByMaterial,
+    ),
+  ];
 
   int _bomModeCount(
     ProductionMaterialAnalysisView analysis,
     _BomViewMode mode,
   ) {
-    final indexes = _analysisIndexes(analysis);
     var count = 0;
-    for (final entry in indexes.materialsByProduct.entries) {
-      final product = entry.key == null
-          ? null
-          : indexes.productsById[entry.key];
-      if (_isEmbeddedMakeChildProduct(product)) continue;
+    for (final entry in _bomPresentation(analysis).nodesByProduct.entries) {
       count += entry.value.where((material) {
         return switch (mode) {
           _BomViewMode.shortage => material.shortageQty > 0,
@@ -300,9 +421,9 @@ abstract class _MaterialAnalysisBomTreeState
   }
 
   /// MAKE_COMPONENT / SUBCONTRACT_MAKE remain real server-side ownership and
-  /// traceability facts, but they are not second top-level BOMs requested by
-  /// the planner. Their plan/progress stays inline on the original node
-  /// （与自制完全同构，不再在下方重复开一个“分析层级”）。
+  /// traceability facts. Their real material requirements and plan/progress
+  /// stay below the exact source node, rather than becoming extra external
+  /// product roots or being hidden after ownership transfers.
   bool _isEmbeddedMakeChildProduct(
     ProductionMaterialAnalysisProduct? product,
   ) =>
@@ -350,20 +471,18 @@ abstract class _MaterialAnalysisBomTreeState
   /// 哪条装配路径；祖先只是定位上下文，不会被误算为缺料或加入批量选择。
   List<ProductionMaterialAnalysisMaterial> _visibleBomNodes(
     List<ProductionMaterialAnalysisMaterial> nodes,
-    ProductionMaterialAnalysisProduct? product,
-  ) {
+    ProductionMaterialAnalysisProduct? product, {
+    required Map<String, String?> parentIds,
+    required bool Function(ProductionMaterialAnalysisMaterial) textMatches,
+  }) {
     if (_bomViewMode == _BomViewMode.all && _bomKeyword.isEmpty) return nodes;
-    final byNodeKey = <String, ProductionMaterialAnalysisMaterial>{
-      for (final node in nodes)
-        if (node.nodeKey?.isNotEmpty == true) node.nodeKey!: node,
-    };
+    final byId = {for (final node in nodes) node.materialLineId: node};
     final visibleIds = <String>{};
     for (final node in nodes) {
-      if (!_bomModeMatches(node) || !_bomTextMatches(node, product)) continue;
+      if (!_bomModeMatches(node) || !textMatches(node)) continue;
       ProductionMaterialAnalysisMaterial? current = node;
       while (current != null && visibleIds.add(current.materialLineId)) {
-        final parentKey = current.parentNodeKey;
-        current = parentKey == null ? null : byNodeKey[parentKey];
+        current = byId[parentIds[current.materialLineId]];
       }
     }
     return nodes
@@ -382,9 +501,7 @@ abstract class _MaterialAnalysisBomTreeState
   /// 同一物料的稳定聚合键：货品 UUID + 颜色 + 单位；缺 UUID 时退回
   /// 编码/名称组合，避免把不同颜色或不同单位误并成一行。
   String _aggregateKeyOf(ProductionMaterialAnalysisMaterial material) {
-    final goods =
-        material.goodsId ??
-        'CODE|${material.goodsCode ?? material.goodsName ?? material.materialLineId}';
+    final goods = material.goodsId ?? 'LINE|${material.materialLineId}';
     return '$goods|${material.colorId ?? material.colorName ?? ''}'
         '|${material.unitId ?? material.unitName ?? ''}';
   }
@@ -394,16 +511,31 @@ abstract class _MaterialAnalysisBomTreeState
     _MaterialAnalysisIndexes indexes,
   ) {
     final byKey = <String, List<ProductionMaterialAnalysisMaterial>>{};
-    for (final material in analysis.materials) {
-      if (!_bomModeMatches(material)) continue;
-      final product = indexes.productsById[material.analysisLineId];
-      if (_isEmbeddedMakeChildProduct(product)) continue;
-      if (!_bomTextMatches(material, product)) continue;
-      byKey.putIfAbsent(_aggregateKeyOf(material), () => []).add(material);
+    final presentation = _bomPresentation(analysis);
+    for (final nodes in presentation.nodesByProduct.values) {
+      for (final material in nodes) {
+        if (!_bomModeMatches(material)) continue;
+        final product = indexes.productsById[material.analysisLineId];
+        final root =
+            indexes.productsById[presentation.rootIdsByMaterial[material
+                .materialLineId]];
+        if (!_bomTextMatches(material, product) &&
+            !_bomTextMatches(material, root)) {
+          continue;
+        }
+        byKey.putIfAbsent(_aggregateKeyOf(material), () => []).add(material);
+      }
     }
     final aggregates = [
       for (final entry in byKey.entries)
-        _MaterialAggregate(key: entry.key, paths: entry.value),
+        _MaterialAggregate(
+          key: entry.key,
+          paths: entry.value,
+          rootProductIds: {
+            for (final material in entry.value)
+              presentation.rootIdsByMaterial[material.materialLineId],
+          },
+        ),
     ];
     // 缺口最大的排最前，让计划员先处理最卡脖子的料。
     aggregates.sort((a, b) {
@@ -417,20 +549,18 @@ abstract class _MaterialAnalysisBomTreeState
   }
 
   List<ProductionMaterialAnalysisMaterial> _orderedBomNodes(
-    List<ProductionMaterialAnalysisMaterial> nodes,
-  ) {
-    final byNodeKey = <String, ProductionMaterialAnalysisMaterial>{
-      for (final node in nodes)
-        if (node.nodeKey?.isNotEmpty == true) node.nodeKey!: node,
-    };
+    List<ProductionMaterialAnalysisMaterial> nodes, {
+    required Map<String, String?> parentIds,
+  }) {
+    final byId = {for (final node in nodes) node.materialLineId: node};
     final children = <String, List<ProductionMaterialAnalysisMaterial>>{};
     final roots = <ProductionMaterialAnalysisMaterial>[];
     for (final node in nodes) {
-      final parentKey = node.parentNodeKey;
+      final parentKey = parentIds[node.materialLineId];
       if (parentKey == null ||
           parentKey.isEmpty ||
-          parentKey == node.nodeKey ||
-          !byNodeKey.containsKey(parentKey)) {
+          parentKey == node.materialLineId ||
+          !byId.containsKey(parentKey)) {
         roots.add(node);
       } else {
         children.putIfAbsent(parentKey, () => []).add(node);
@@ -456,8 +586,7 @@ abstract class _MaterialAnalysisBomTreeState
     final visited = <String>{};
     void hide(ProductionMaterialAnalysisMaterial node) {
       if (!visited.add(node.materialLineId)) return;
-      final key = node.nodeKey;
-      if (key == null) return;
+      final key = node.materialLineId;
       for (final child
           in children[key] ?? const <ProductionMaterialAnalysisMaterial>[]) {
         hide(child);
@@ -467,8 +596,7 @@ abstract class _MaterialAnalysisBomTreeState
     void visit(ProductionMaterialAnalysisMaterial node) {
       if (!visited.add(node.materialLineId)) return;
       result.add(node);
-      final key = node.nodeKey;
-      if (key == null) return;
+      final key = node.materialLineId;
       if (_collapsedBomBranches.contains(key)) {
         for (final child
             in children[key] ?? const <ProductionMaterialAnalysisMaterial>[]) {
@@ -516,15 +644,24 @@ abstract class _MaterialAnalysisBomTreeState
         <String?, List<ProductionMaterialAnalysisMaterial>>{};
     var directMatches = 0;
     var visibleNodes = 0;
-    for (final entry in indexes.materialsByProduct.entries) {
-      final product = entry.key == null
-          ? null
-          : indexes.productsById[entry.key];
-      if (_isEmbeddedMakeChildProduct(product)) continue;
+    final presentation = _bomPresentation(analysis);
+    for (final entry in presentation.nodesByProduct.entries) {
+      final product = indexes.productsById[entry.key];
+      bool textMatches(ProductionMaterialAnalysisMaterial material) =>
+          _bomTextMatches(material, product) ||
+          _bomTextMatches(
+            material,
+            indexes.productsById[material.analysisLineId],
+          );
       directMatches += entry.value.where((material) {
-        return _bomModeMatches(material) && _bomTextMatches(material, product);
+        return _bomModeMatches(material) && textMatches(material);
       }).length;
-      final visible = _visibleBomNodes(entry.value, product);
+      final visible = _visibleBomNodes(
+        entry.value,
+        product,
+        parentIds: presentation.parentIdsByMaterial,
+        textMatches: textMatches,
+      );
       if (visible.isNotEmpty) nodesByProduct[entry.key] = visible;
       visibleNodes += visible.length;
     }
@@ -532,6 +669,7 @@ abstract class _MaterialAnalysisBomTreeState
       nodesByProduct: nodesByProduct,
       directMatchCount: directMatches,
       visibleNodeCount: visibleNodes,
+      presentation: presentation,
     );
     _bomProjectionAnalysis = analysis;
     _bomProjectionMode = _bomViewMode;

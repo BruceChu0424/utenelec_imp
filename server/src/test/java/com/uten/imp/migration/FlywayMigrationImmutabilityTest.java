@@ -89,6 +89,13 @@ class FlywayMigrationImmutabilityTest {
                 74666331);
     }
 
+    @Test
+    void v478RetainsTheChecksumAlreadyRecordedByLocalDatabases() {
+        assertAppliedChecksum(
+                "V478__analysis_root_supply_fulfillment.sql",
+                1310089889);
+    }
+
     private void assertAppliedChecksum(String filename, int expectedChecksum) {
         LoadableResource migration = new ClassPathResource(
                 new Location("classpath:db/migration"),

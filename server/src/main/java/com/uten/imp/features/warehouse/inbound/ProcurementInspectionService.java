@@ -9,6 +9,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.finance.ProcurementOrderClosurePolicy;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.features.warehouse.inbound.dto.BatchInspectionDecideRequest;
 import com.uten.imp.features.warehouse.inbound.dto.BatchInspectionPassRequest;
 import com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -79,12 +80,16 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     private final BusinessEventPublisher outbox;
     private final ProcurementIqcRejectionPort rejectionPort;
     private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
+    private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
+    private final com.uten.imp.common.finance.ProcurementReceiptConsiderationService consideration;
+    private final com.uten.imp.application.port.ProcurementInventoryValuePort procurementValue;
 
     /** 收货审核同事务调用：建冻结行 + RECEIVED 事件；不写 stock_balances。 */
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void receive(String receiptType, UUID receiptId, UUID warehouseId,
                         List<ProcurementInspectionPort.ReceivedLine> lines, OffsetDateTime receivedAt) {
+        mutationLocks.requireReceiptCovered(receiptType,receiptId);
         UUID actor = currentUser.requireEmployeeId();
         for (ReceivedLine l : lines) {
             BigDecimal rate = positiveRate(l.unitRate());
@@ -167,6 +172,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         commands.sort(Comparator.comparing(command -> command.inspectionItemId().toString()));
 
         // 与单行处置相同：库存维度锁必须先于业务行锁。
+        var mutationGuard=mutationLocks.inspection(receiptType,receiptId,uniqueIds);
         lockReceiptMutationDimensions(receiptType, receiptId);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
@@ -183,6 +189,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 .setParameter("rid", receiptId)
                 .getResultList();
 
+        mutationGuard.verifyUnchanged();
         int replayCount = 0;
         for (NormalizedBatchPassItem command : commands) {
             UUID eventId = dispositionEventId(command.inspectionItemId(), command.idempotencyKey());
@@ -239,6 +246,129 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     }
 
     /**
+     * 批量检验报告（2026-09-05「提交报告」）：同一收货单多条明细一次提交，
+     * 每行给合格/不合格数量（合计>0、不超剩余）。合格部分放行仓库入库，
+     * 不合格部分记质量事实；整批同事务，任一行冲突整批回滚。
+     * 无客户端断点重放：响应丢失后重试会因状态/剩余量已变化被 409 拒绝，
+     * 前端刷新后按最新待检量重填即可（与 passBatch 的乐观校验同口径）。
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('procurement_inspection:view')"
+            + " and hasAuthority('procurement_inspection:handle')")
+    public void decideBatch(
+            String receiptType,
+            UUID receiptId,
+            BatchInspectionDecideRequest request) {
+        tx.bind();
+        if (request == null || request.items() == null || request.items().isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "检验报告明细不能为空");
+        }
+        if (request.items().size() > 100) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次最多提交 100 条明细");
+        }
+        boolean hasFail = false;
+        HashSet<UUID> uniqueIds = new HashSet<>();
+        List<NormalizedDecideItem> commands = new ArrayList<>();
+        for (BatchInspectionDecideRequest.Item item : request.items()) {
+            if (item == null || item.inspectionItemId() == null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "检验报告明细 ID 不能为空");
+            }
+            if (!uniqueIds.add(item.inspectionItemId())) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "检验报告明细不能重复");
+            }
+            BigDecimal remaining = normalizeQty(item.expectedRemainingBaseQty());
+            BigDecimal pass = requireNonNegativeQty(item.passBaseQty(), "合格数量");
+            BigDecimal fail = requireNonNegativeQty(item.failBaseQty(), "不合格数量");
+            BigDecimal total = pass.add(fail);
+            if (total.signum() <= 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "检验报告每行合格与不合格数量不能同时为 0");
+            }
+            if (total.compareTo(remaining) > 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "合格 + 不合格数量不能超过剩余待检数量 "
+                                + remaining.stripTrailingZeros().toPlainString());
+            }
+            hasFail = hasFail || fail.signum() > 0;
+            commands.add(new NormalizedDecideItem(
+                    item.inspectionItemId(), remaining, pass, fail,
+                    normalizeIdempotencyKey(item.idempotencyKey())));
+        }
+        // FAIL 处置必填原因（与单行 dispose 同口径）：含不合格的整批统一结论原因。
+        String passReason = normalizeDispositionReason("PASS", request.reason());
+        String failReason = normalizeDispositionReason(
+                hasFail ? "FAIL" : "PASS", request.reason());
+        commands.sort(Comparator.comparing(command -> command.inspectionItemId().toString()));
+
+        // 与单行处置相同：库存维度锁必须先于业务行锁。
+        var mutationGuard=mutationLocks.inspection(receiptType,receiptId,uniqueIds);
+        lockReceiptMutationDimensions(receiptType, receiptId);
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                        SELECT id, received_base_qty, passed_base_qty, failed_base_qty, status
+                        FROM procurement_inspection_items
+                        WHERE receipt_type = :rt AND receipt_id = :rid
+                        ORDER BY id
+                        FOR UPDATE
+                        """)
+                .setParameter("rt", receiptType)
+                .setParameter("rid", receiptId)
+                .getResultList();
+        mutationGuard.verifyUnchanged();
+        for (NormalizedDecideItem command : commands) {
+            Object[] row = rows.stream()
+                    .filter(candidate -> command.inspectionItemId().equals(candidate[0]))
+                    .findFirst()
+                    .orElse(null);
+            if (row == null) {
+                throw new ApiException(ErrorCode.NOT_FOUND, "检验报告明细不存在或不属于当前收货单");
+            }
+            String currentStatus = (String) row[4];
+            if (!PENDING.equals(currentStatus) && !PARTIAL.equals(currentStatus)) {
+                throw new ApiException(ErrorCode.CONFLICT, "检验报告明细状态已变化，请刷新后重试");
+            }
+            BigDecimal liveRemaining = dec(row[1]).subtract(dec(row[2])).subtract(dec(row[3]));
+            if (liveRemaining.compareTo(command.expectedRemainingBaseQty()) != 0) {
+                throw new ApiException(ErrorCode.CONFLICT, "检验报告明细待检数量已变化，请刷新后重试");
+            }
+        }
+        for (NormalizedDecideItem command : commands) {
+            if (command.passBaseQty().signum() > 0) {
+                dispose(receiptType, receiptId, command.inspectionItemId(),
+                        new InspectionDispositionRequest(
+                                "PASS", command.passBaseQty(), passReason,
+                                command.idempotencyKey() + "-P"));
+            }
+            if (command.failBaseQty().signum() > 0) {
+                dispose(receiptType, receiptId, command.inspectionItemId(),
+                        new InspectionDispositionRequest(
+                                "FAIL", command.failBaseQty(), failReason,
+                                command.idempotencyKey() + "-F"));
+            }
+        }
+    }
+
+    private record NormalizedDecideItem(
+            UUID inspectionItemId,
+            BigDecimal expectedRemainingBaseQty,
+            BigDecimal passBaseQty,
+            BigDecimal failBaseQty,
+            String idempotencyKey) {
+    }
+
+    /** 非负数量校验（0 合法：检验报告某行可以只有合格或只有不合格）。 */
+    private static BigDecimal requireNonNegativeQty(BigDecimal qty, String label) {
+        if (qty == null || qty.signum() < 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, label + "不能为空或为负");
+        }
+        try {
+            return qty.setScale(4, RoundingMode.UNNECESSARY);
+        } catch (ArithmeticException ex) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, label + "最多保留 4 位小数");
+        }
+    }
+
+    /**
      * 受控质检结论：{@code PASS} 只放行到仓库待入库队列；{@code FAIL} 只记质量事实。
      * 两者都不改变可用库存。事件账幂等（同键同命令静默重放，同键异命令 409）。
      */
@@ -261,6 +391,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         // advisory lock before any inspection row lock. Locking the complete
         // receipt below also serializes concurrent last-line dispositions, so
         // exactly one transaction observes whole-receipt completion.
+        var mutationGuard=mutationLocks.inspection(receiptType,receiptId,List.of(inspectionItemId));
         lockReceiptMutationDimensions(receiptType, receiptId);
 
         @SuppressWarnings("unchecked")
@@ -277,6 +408,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 .setParameter("rt", receiptType)
                 .setParameter("rid", receiptId)
                 .getResultList();
+        mutationGuard.verifyUnchanged();
         Object[] row = rows.stream()
                 .filter(candidate -> inspectionItemId.equals(candidate[0]))
                 .findFirst()
@@ -453,6 +585,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public boolean reverseResolvedStock(String receiptType, UUID receiptId, OffsetDateTime now) {
+        mutationLocks.requireReceiptCovered(receiptType,receiptId);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT id, warehouse_id, goods_id, color_id, unit_id, unit_rate,
@@ -470,17 +603,31 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 .getResultList();
         if (rows.isEmpty()) return false;
         UUID actor = currentUser.requireEmployeeId();
+        @SuppressWarnings("unchecked")
+        List<Object[]> stockedItems=em.createNativeQuery("""
+                SELECT stocked.id,stocked.inspection_item_id,stocked.warehouse_id,stocked.goods_id,stocked.color_id,
+                    inspection.unit_id,inspection.unit_rate,stocked.base_qty,stocked.weight,stocked.weight_unit_id
+                FROM procurement_iqc_stock_in_batch_items stocked
+                JOIN procurement_inspection_items inspection ON inspection.id=stocked.inspection_item_id
+                LEFT JOIN stock_value_events value_event ON value_event.movement_id=stocked.stock_movement_id AND value_event.operation='POSITION_STORE'
+                LEFT JOIN stock_value_nodes value_head ON value_head.id=value_event.result_head_id
+                WHERE inspection.receipt_type=:type AND inspection.receipt_id=:receipt
+                ORDER BY value_head.node_sequence DESC NULLS LAST,stocked.created_at DESC,stocked.id DESC
+                """).setParameter("type",receiptType).setParameter("receipt",receiptId).getResultList();
+        for(Object[] row:rows){
+            BigDecimal exactStocked=stockedItems.stream().filter(item->row[0].equals(item[1]))
+                    .map(item->dec(item[7])).reduce(BigDecimal.ZERO,BigDecimal::add);
+            if(exactStocked.compareTo(dec(row[6]))!=0)throw new ApiException(ErrorCode.CONFLICT,"已入库数量缺少完整的原批次流水，不能猜测撤回来源");
+        }
+        for(Object[] item:stockedItems){
+            stockService.recordMovement(new StockService.MovementRequest(now,movementType(receiptType),sourceDocType(receiptType),
+                    receiptId,(UUID)item[0],(UUID)item[3],(UUID)item[4],(UUID)item[2],StockService.DIR_OUT,dec(item[7]),
+                    (UUID)item[5],dec(item[6]),null,"红冲收货，按原合格入库批次撤回",nullableDec(item[8]),(UUID)item[9],
+                    new com.uten.imp.application.port.InventoryMovementCostReference.ProcurementStockIn((UUID)item[0])));
+        }
         for (Object[] row : rows) {
             UUID inspectionItemId = (UUID) row[0];
             BigDecimal stocked = dec(row[6]);
-            if (stocked.signum() > 0) {
-                stockService.recordMovement(new StockService.MovementRequest(
-                        now, movementType(receiptType), sourceDocType(receiptType),
-                        receiptId, inspectionItemId, (UUID) row[2], (UUID) row[3], (UUID) row[1],
-                        StockService.DIR_OUT, stocked, (UUID) row[4], dec(row[5]), dec(row[7]),
-                        "红冲收货，反向仓库已确认 IQC 入库", nullableDec(row[8]),
-                        (UUID) row[10]));
-            }
             int updated = em.createNativeQuery("""
                     UPDATE procurement_inspection_items
                     SET passed_base_qty = 0,
@@ -502,6 +649,12 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                         "IQC 明细状态已变化，请刷新后重试");
             }
             appendEvent(UUID.randomUUID(), inspectionItemId, "RECEIPT_REVERSED", stocked, null, actor, now);
+            @SuppressWarnings("unchecked")
+            List<UUID> qualityEvents=em.createNativeQuery("""
+                    SELECT id FROM procurement_inspection_events
+                    WHERE inspection_item_id=:id AND action IN ('PASS','FAIL') ORDER BY occurred_at DESC,id DESC
+                    """).setParameter("id",inspectionItemId).getResultList();
+            for(UUID eventId:qualityEvents)procurementValue.qualityReversed(eventId,currentUser.requireId());
         }
         return true;
     }
@@ -514,9 +667,12 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                         SELECT i.id, i.receipt_item_id, i.goods_id, i.color_id, i.unit_id, i.unit_rate,
                                i.received_base_qty, i.passed_base_qty, i.failed_base_qty, i.status,
                                g.code, g.name, col.name, i.warehouse_id,
-                               COALESCE(po.bill_no, so.bill_no), i.received_weight
+                               COALESCE(po.bill_no, so.bill_no), i.received_weight,
+                               g.unit_id, base_unit.name, source_unit.name
                         FROM procurement_inspection_items i
                         LEFT JOIN goods g ON g.id = i.goods_id
+                        LEFT JOIN units base_unit ON base_unit.id = g.unit_id
+                        LEFT JOIN units source_unit ON source_unit.id = i.unit_id
                         LEFT JOIN colors col ON col.id = i.color_id
                         LEFT JOIN purchase_receipt_items pri
                                ON i.receipt_type = 'PURCHASE' AND pri.id = i.receipt_item_id
@@ -777,6 +933,10 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 .setParameter("releasedWeight", releasedWeight)
                 .setParameter("releasedWeightUnitId", releasedWeightUnitId)
                 .executeUpdate();
+        if("PASS".equals(action)||"FAIL".equals(action)){
+            consideration.freezeQuality(inspectionItemId);
+            procurementValue.qualityRecorded(eventId,currentUser.requireId());
+        }
     }
 
     /** 收货单级结案标记挂在任一明细事件上（取第一条），按 receipt 查重。 */

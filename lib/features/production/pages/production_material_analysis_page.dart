@@ -1,32 +1,39 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/presentation/workflow_field_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/data_display/uten_selection_summary_pill.dart';
+import '../../../features/basic_data/models/master_facet.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
-import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/uten_tree_table_cell.dart';
 import '../../basic_data/models/goods_node.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -36,15 +43,18 @@ import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../models/production_material_analysis.dart';
+import '../models/production_flow_stage.dart';
 import '../models/production_work_card.dart';
 import '../providers/material_analysis_warehouse_prefs_provider.dart';
+import '../providers/production_execution_refresh.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/material_reallocation_dialog.dart';
 import '../widgets/production_execution_card_print_preview.dart';
+import '../widgets/production_flow_stage_cell.dart';
 import '../widgets/material_borrow_dialog.dart';
 import '../widgets/material_required_reason_dialog.dart';
 import '../widgets/material_supply_progress_dialog.dart';
-import '../widgets/material_supply_quantity_dialog.dart';
+import '../widgets/material_supply_submit_confirm.dart';
 
 part 'material_analysis_bom_tree.dart';
 part 'material_analysis_borrow.dart';
@@ -53,7 +63,6 @@ part 'material_analysis_candidates.dart';
 part 'material_analysis_plan_actions.dart';
 part 'material_analysis_product_tasks.dart';
 part 'material_analysis_material_table.dart';
-part 'material_analysis_subcontract_make.dart';
 part 'material_analysis_supply_actions.dart';
 part 'material_analysis_view_models.dart';
 
@@ -91,7 +100,6 @@ abstract class _MaterialAnalysisPageBase
   };
 
   ProductionMaterialAnalysisView? _analysis;
-  ProductionMaterialPlanPreview? _planPreview;
   MaterialAnalysisSalesCandidatePage? _candidatePage;
   String? _warehouseId;
   final Set<String> _warehouseIds = {};
@@ -106,7 +114,6 @@ abstract class _MaterialAnalysisPageBase
   bool _cancellingAction = false;
   bool _claimingSharedFuture = false;
   bool _borrowing = false;
-  bool _previewingPlan = false;
   bool _generating = false;
   bool _planSubmissionApproveNow = false;
   MaterialSupplyRoute? _notifyingRoute;
@@ -147,9 +154,11 @@ abstract class _MaterialAnalysisPageBase
       return;
     }
     if (controller.text.trim().isNotEmpty && existingSeed == null) return;
-    final suggested = product.suggestedFirstBatchQty;
-    // Do not write the placeholder string "0": a later stock refresh must be
-    // able to seed the newly positive complete-kit quantity.
+    // 2026-09-05 ADR-71：默认数量=剩余需求（齐不齐料由车间侧判断，计划侧
+    // 不再按齐套量预拆批）。
+    final suggested = product.remainingQty;
+    // Do not write the placeholder string "0": a later refresh must be able to
+    // seed the newly positive remaining quantity.
     if (!suggested.isFinite || suggested <= 0) return;
     final text = _qty(suggested);
     controller.value = TextEditingValue(
@@ -160,13 +169,14 @@ abstract class _MaterialAnalysisPageBase
   }
 
   /// Bucket rows are rebuilt when their full-screen table opens. Preserve any
-  /// quantity already typed on the host; otherwise use the shared suggestion.
+  /// quantity already typed on the host; otherwise default to the remaining
+  /// demand (ADR-71：齐套拆批由执行段完成，计划默认全量剩余需求).
   String _planBatchDraftText(ProductionMaterialAnalysisProduct product) {
     _refreshSystemSeededPlanBatchQty(product);
     final existing = _batchQtyControllers[product.analysisLineId]?.text.trim();
     return existing?.isNotEmpty == true
         ? existing!
-        : _qty(product.suggestedFirstBatchQty);
+        : _qty(product.remainingQty);
   }
 
   void _rememberPlanBatchQty(String analysisLineId, String value) {
@@ -190,7 +200,7 @@ abstract class _MaterialAnalysisPageBase
       _systemSeededBatchQtyTexts.remove(id);
       return;
     }
-    final suggested = product.suggestedFirstBatchQty;
+    final suggested = product.remainingQty;
     if (!suggested.isFinite || suggested <= 0) {
       controller.clear();
       _systemSeededBatchQtyTexts.remove(id);
@@ -208,8 +218,22 @@ abstract class _MaterialAnalysisPageBase
 
   final Set<String> _selectedPlanLineIds = {};
   final Map<String, MaterialSupplyRoute> _routeDraft = {};
-  final Map<String, String> _routeReasons = {};
+  final Map<
+    ({String goodsId, String? colorId, String? unitId}),
+    MaterialSupplyRoute
+  >
+  _rememberedRouteDimensions = {};
+  final Set<String> _routeMemoryResolvedGoods = {};
+  String? _routeMemoryScope;
+  String? _routeMemoryPendingKey;
+  int _routeMemoryGeneration = 0;
+  bool _loadingRouteMemory = false;
+  Set<String>? _routeMemoryScopePermissions;
+  String? _routeMemoryScopeIdentity;
+  String? _routeMemoryComputedScope;
+
   final Set<String> _dirtyRouteGroups = {};
+  final Set<String> _selectedMaterialGroupKeys = {};
   final Set<String> _collapsedBomProducts = {};
   final Set<String> _collapsedBomBranches = {};
   _BomViewMode _bomViewMode = _BomViewMode.all;
@@ -224,6 +248,10 @@ abstract class _MaterialAnalysisPageBase
   List<String> _priorityBaseline = [];
   bool _editingPriorities = false;
   int _bomTablePageNo = 1;
+
+  /// BOM 表是否处于全屏（表格全屏路由打开时顶部卡片不可见，搜索框
+  /// 借 [MasterDataTableView.onFullscreenChanged] 回到表格工具条）。
+  bool _bomTableFullscreen = false;
   String? _bulkOperationLabel;
   int _bulkOperationCompleted = 0;
   int _bulkOperationTotal = 0;
@@ -245,6 +273,7 @@ abstract class _MaterialAnalysisPageBase
   DateTime? _deliveryDate;
 
   Set<String> get _permissions => ref.read(currentPermissionsProvider);
+  AppLocalizations get _l10n => AppLocalizations.of(context);
   bool _serverAllows(String action) {
     final analysis = _analysis;
     // 新分析尚无对象级动作清单，创建入口仍由本地权限与服务端端点校验；
@@ -286,10 +315,6 @@ abstract class _MaterialAnalysisPageBase
       _permissions.contains(Perm.productionMaterialAnalysisGenerate) &&
       _serverAllows('GENERATE_PLAN');
   bool get _canViewPlans => _permissions.contains(Perm.productionPlanView);
-  bool get _canViewSubcontractPreparations =>
-      _permissions.contains(Perm.subcontractPreparationView);
-  bool get _canStartSubcontractPreparations =>
-      _permissions.contains(Perm.subcontractPreparationStart);
   bool get _canReallocate =>
       _permissions.contains(Perm.productionMaterialAnalysisReallocate) &&
       _serverAllows('REALLOCATE');
@@ -305,35 +330,125 @@ abstract class _MaterialAnalysisPageBase
       _cancellingAction ||
       _claimingSharedFuture ||
       _borrowing ||
-      _previewingPlan ||
       _generating ||
       _notifyingRoute != null;
 
-  bool get _planSubmissionInProgress => _previewingPlan || _generating;
+  bool get _planSubmissionInProgress => _generating;
 
   bool get _canAdjustPriorities =>
       _canReallocate &&
       (_analysis?.allowedActions.contains('REALLOCATE') ?? false);
 
-  /// Actionable node tasks whose route is still only a suggestion (not
-  /// confirmed) but whose suggestion is a concrete BUY/SUBCONTRACT/MAKE route.
-  /// These can be bulk-accepted; REVIEW (null suggestion) groups need a manual
-  /// decision and are counted separately.
-  int get _unconfirmedSuggestedRouteCount {
+  /// Selection is stored by authoritative task identity across table pages.
+  bool _canEditMaterialRoute(_MaterialGroup group) =>
+      group.actionable &&
+      _planningBlockForGroup(group) == null &&
+      group.paths.every(_hasResolvedMaterialSource) &&
+      !group.paths.any(
+        (path) => path.notifiedTargets.any(
+          (target) =>
+              target.status != 'CANCELLED' && !target.isReversedRootOutput,
+        ),
+      );
+
+  String? _planningBlockForGroup(_MaterialGroup group) {
+    for (final path in group.paths) {
+      final reason = _analysis?.planningBlockedReason(path.analysisLineId);
+      if (reason != null) return reason;
+    }
+    return null;
+  }
+
+  bool _hasExistingRootPlan(ProductionMaterialAnalysisProduct product) =>
+      product.latestPlanId != null ||
+      product.submittedQty > 0 ||
+      product.approvedQty > 0;
+
+  MaterialSupplyRoute _draftRoute(_MaterialGroup group) {
+    final material = group.representative;
+    final explicit = _routeDraft[group.key] ?? material.confirmedRoute;
+    if (explicit != null) return explicit;
+    final product = _analysis == null
+        ? null
+        : _analysisIndexes(_analysis!).productsById[material.analysisLineId];
+    // A historical production plan proves MAKE even before its new root node
+    // has a route-confirmation record. Do not overwrite that fact with memory.
+    if (material.isRootSupply &&
+        product != null &&
+        _hasExistingRootPlan(product)) {
+      return MaterialSupplyRoute.make;
+    }
+    return _rememberedRouteForGoods(
+          material.goodsId,
+          material.colorId,
+          material.unitId,
+        ) ??
+        material.sourceSuggestion ??
+        MaterialSupplyRoute.subcontract;
+  }
+
+  String _routeMemoryScopeKey() {
+    final session = ref.read(sessionProvider);
+    final permissions = _permissions;
+    final identity =
+        '${session.status}|${session.user?.id}|${session.actor?.id}|'
+        '${session.impersonationReadOnly}|${identityHashCode(session.user)}|'
+        '${identityHashCode(session.actor)}';
+    if (identity == _routeMemoryScopeIdentity &&
+        identical(permissions, _routeMemoryScopePermissions)) {
+      return _routeMemoryComputedScope!;
+    }
+    final ordered = permissions.toList()..sort();
+    _routeMemoryScopeIdentity = identity;
+    _routeMemoryScopePermissions = permissions;
+    return _routeMemoryComputedScope = '$identity|${ordered.join(',')}';
+  }
+
+  MaterialSupplyRoute? _rememberedRouteForGoods(
+    String? goodsId,
+    String? colorId,
+    String? unitId,
+  ) {
+    if (goodsId == null || _routeMemoryScope != _routeMemoryScopeKey()) {
+      return null;
+    }
+    return _rememberedRouteDimensions[(
+      goodsId: goodsId.trim(),
+      colorId: colorId?.trim().isNotEmpty == true ? colorId!.trim() : null,
+      unitId: unitId?.trim().isNotEmpty == true ? unitId!.trim() : null,
+    )];
+  }
+
+  void _clearRememberedRoutes() {
+    _routeMemoryGeneration++;
+    _routeMemoryScope = null;
+    _routeMemoryPendingKey = null;
+    _loadingRouteMemory = false;
+    _rememberedRouteDimensions.clear();
+    _routeMemoryResolvedGoods.clear();
+  }
+
+  int get _selectedRouteCount {
     final analysis = _analysis;
     if (analysis == null) return 0;
     return _materialGroups(analysis)
         .where(
           (group) =>
-              group.actionable &&
-              group.representative.confirmedRoute == null &&
-              group.representative.sourceSuggestion != null,
+              _selectedMaterialGroupKeys.contains(group.key) &&
+              _canEditMaterialRoute(group) &&
+              (group.representative.confirmedRoute == null ||
+                  _dirtyRouteGroups.contains(group.key)),
         )
         .length;
   }
 
   // ===== 继承链协作契约：实现在后段 part，基类生命周期按虚调用分发 =====
   Future<void> _previewAnalysis();
+  bool _normalizeNewWarehouseScope();
+  ProductionMaterialAnalysisMaterial? _rootSupplyMaterialOf(
+    ProductionMaterialAnalysisProduct product,
+  );
+  bool _hasResolvedMaterialSource(ProductionMaterialAnalysisMaterial material);
   String _analysisDynamicProjectionKey(ProductionMaterialAnalysisView view);
   Widget _nodeBorrowSection(
     ThemeData theme,
@@ -525,7 +640,12 @@ abstract class _MaterialAnalysisPageBase
           .whereType<String>()
           .toSet();
       final leafIds = names.warehouseHierarchy
-          .where((e) => !parentIds.contains(e.id))
+          .where(
+            (e) =>
+                !parentIds.contains(e.id) &&
+                e.isAccountable &&
+                e.status != '禁用',
+          )
           .map((e) => e.id)
           .toList();
       _warehouseIds.removeWhere(
@@ -547,6 +667,13 @@ abstract class _MaterialAnalysisPageBase
         });
         return;
       }
+      if (!_normalizeNewWarehouseScope()) {
+        setState(() {
+          _booting = false;
+          _error = _l10n.materialWarehouseLimit;
+        });
+        return;
+      }
       setState(() => _booting = false);
       if (_sources.isNotEmpty) {
         await _previewAnalysis();
@@ -564,6 +691,13 @@ abstract class _MaterialAnalysisPageBase
 
   void _applyAnalysis(ProductionMaterialAnalysisView view) {
     final previousAnalysisId = _analysis?.analysisId;
+    _routeMemoryGeneration++;
+    _routeMemoryPendingKey = null;
+    _loadingRouteMemory = false;
+    if (previousAnalysisId != view.analysisId ||
+        _routeMemoryScope != _routeMemoryScopeKey()) {
+      _clearRememberedRoutes();
+    }
     if (previousAnalysisId != null && previousAnalysisId != view.analysisId) {
       for (final controller in _batchQtyControllers.values) {
         controller.dispose();
@@ -584,7 +718,6 @@ abstract class _MaterialAnalysisPageBase
       ..addAll(view.warehouseIds);
     if (_warehouseId != null) _warehouseIds.add(_warehouseId!);
     _persistWarehousePreference();
-    _planPreview = null;
     final originalIndex = {
       for (var index = 0; index < view.products.length; index++)
         view.products[index].analysisLineId: index,
@@ -609,17 +742,21 @@ abstract class _MaterialAnalysisPageBase
     _priorityBaseline = List<String>.from(_priorityDraft);
     _editingPriorities = false;
     _routeDraft.clear();
-    _routeReasons.clear();
     _dirtyRouteGroups.clear();
     _selectedPlanLineIds.clear();
     final groups = _materialGroups(view);
+    final selectableKeys = groups
+        .where(_canEditMaterialRoute)
+        .map((g) => g.key)
+        .toSet();
+    _selectedMaterialGroupKeys.removeWhere(
+      (key) => !selectableKeys.contains(key),
+    );
     for (final group in groups) {
       if (!group.actionable) continue;
       final route = group.representative.confirmedRoute;
       if (route != null) {
         _routeDraft[group.key] = route;
-        final reason = group.representative.routeReason?.trim();
-        if (reason?.isNotEmpty == true) _routeReasons[group.key] = reason!;
       }
     }
     final validProductIds = view.products
@@ -629,8 +766,7 @@ abstract class _MaterialAnalysisPageBase
       (analysisLineId) => !validProductIds.contains(analysisLineId),
     );
     final validNodeKeys = view.materials
-        .map((material) => material.nodeKey)
-        .whereType<String>()
+        .map((material) => material.materialLineId)
         .toSet();
     _collapsedBomBranches.removeWhere(
       (nodeKey) => !validNodeKeys.contains(nodeKey),
@@ -655,22 +791,24 @@ abstract class _MaterialAnalysisPageBase
   }
 
   /// 服务端刷新会重建节点视图；只把相对最新快照仍合法的未保存路线覆盖回去。
-  /// 服务端已确认的路线永远优先；建议变化后缺少覆盖原因的旧草稿也不恢复。
+  /// 外部已修改的确认路线优先；仍合法的本地草稿保留到显式创建时核对。
   ({int preserved, int dropped, int settled})
   _applyAnalysisPreservingRouteDrafts(
     ProductionMaterialAnalysisView view, {
-    Map<String, ({MaterialSupplyRoute route, String? reason})>
-        additionalDrafts =
-        const {},
+    Map<String, MaterialSupplyRoute> additionalDrafts = const {},
   }) {
-    final pendingDrafts =
-        <String, ({MaterialSupplyRoute route, String? reason})>{};
+    final pendingDrafts = <String, MaterialSupplyRoute>{};
     for (final groupKey in _dirtyRouteGroups) {
       final route = _routeDraft[groupKey];
       if (route == null) continue;
-      pendingDrafts[groupKey] = (route: route, reason: _routeReasons[groupKey]);
+      pendingDrafts[groupKey] = route;
     }
     pendingDrafts.addAll(additionalDrafts);
+    final previousRoutes = {
+      if (_analysis != null)
+        for (final group in _materialGroups(_analysis!))
+          group.key: group.representative.confirmedRoute,
+    };
     _applyAnalysis(view);
     final currentGroups = {
       for (final group in _materialGroups(view)) group.key: group,
@@ -684,28 +822,19 @@ abstract class _MaterialAnalysisPageBase
         dropped++;
         continue;
       }
-      if (group.representative.confirmedRoute != null) {
+      if (group.representative.confirmedRoute == entry.value) {
         settled++;
         continue;
       }
-      final stillEditable =
-          group.actionable &&
-          group.representative.shortageQty > 0 &&
-          _notifiedTargetOf(group.representative) == null;
-      final reason = entry.value.reason?.trim();
-      final reasonRequired =
-          group.representative.sourceSuggestion != entry.value.route;
-      if (!stillEditable ||
-          (reasonRequired && (reason == null || reason.isEmpty))) {
+      if (group.representative.confirmedRoute != previousRoutes[entry.key]) {
         dropped++;
         continue;
       }
-      _routeDraft[entry.key] = entry.value.route;
-      if (reason?.isNotEmpty == true) {
-        _routeReasons[entry.key] = reason!;
-      } else {
-        _routeReasons.remove(entry.key);
+      if (!_canEditMaterialRoute(group)) {
+        dropped++;
+        continue;
       }
+      _routeDraft[entry.key] = entry.value;
       _dirtyRouteGroups.add(entry.key);
       preserved++;
     }
@@ -736,9 +865,7 @@ abstract class _MaterialAnalysisPageBase
   Future<bool> _recoverLatestAnalysisAfterConflict(
     Object error, {
     required String operation,
-    Map<String, ({MaterialSupplyRoute route, String? reason})>
-        pendingRouteDrafts =
-        const {},
+    Map<String, MaterialSupplyRoute> pendingRouteDrafts = const {},
   }) async {
     if (!_isAnalysisConflict(error) || !mounted) return false;
     final analysisId = _analysis?.analysisId ?? widget.seed.analysisId;
@@ -805,22 +932,48 @@ abstract class _MaterialAnalysisPageBase
               ),
   ];
 
-  void _applyWarehouseSelection(String primary, Set<String> selected) {
-    if (_busy || !selected.contains(primary) || selected.isEmpty) return;
+  Future<void> _applyWarehouseSelection(
+    String primary,
+    Set<String> selected,
+  ) async {
+    if (_busy ||
+        !_canManage ||
+        !selected.contains(primary) ||
+        selected.isEmpty) {
+      return;
+    }
+    if (selected.length > 100) {
+      context.appWarning(_l10n.materialWarehouseLimit);
+      return;
+    }
     final unchanged =
         primary == _warehouseId &&
         selected.length == _warehouseIds.length &&
         selected.containsAll(_warehouseIds);
     if (unchanged) return;
+    final previous = _analysis;
     setState(() {
       _warehouseId = primary;
       _warehouseIds
         ..clear()
         ..addAll(selected);
-      _planPreview = null;
+    });
+    if (previous == null) {
+      _persistWarehousePreference();
+      return;
+    }
+    await _previewAnalysis();
+    if (!mounted) return;
+    // A rejected refresh must not relabel unchanged stock facts with a new scope.
+    final current = _analysis ?? previous;
+    setState(() {
+      _warehouseId = current.warehouseId;
+      _warehouseIds
+        ..clear()
+        ..addAll(current.warehouseIds);
+      if (_warehouseId != null) _warehouseIds.add(_warehouseId!);
     });
     _persistWarehousePreference();
-    if (_analysis != null && _canManage) _previewAnalysis();
   }
 
   void _persistWarehousePreference() {
@@ -846,7 +999,6 @@ abstract class _MaterialAnalysisPageBase
     setState(() {
       _priorityBaseline = List<String>.from(_priorityDraft);
       _editingPriorities = true;
-      _planPreview = null;
     });
   }
 
@@ -867,7 +1019,6 @@ abstract class _MaterialAnalysisPageBase
     setState(() {
       final id = _priorityDraft.removeAt(index);
       _priorityDraft.insert(target, id);
-      _planPreview = null;
       _invalidateBucketRowsCache();
     });
   }
@@ -1044,6 +1195,19 @@ abstract class _MaterialAnalysisPageBase
             '${date.day.toString().padLeft(2, '0')}';
 
   bool _canSelectProduct(ProductionMaterialAnalysisProduct product) {
+    final root = _rootSupplyMaterialOf(product);
+    if (root != null) {
+      // 顶层与子层同口径：路线必须显式确认为自制（历史计划只影响草稿预填，
+      // 见 _draftRoute 的根分支，不再绕过确认门）。
+      final group = _analysisIndexes(
+        _analysis!,
+      ).groupsByLine[root.materialLineId];
+      if (root.confirmedRoute != MaterialSupplyRoute.make ||
+          group == null ||
+          _dirtyRouteGroups.contains(group.key)) {
+        return false;
+      }
+    }
     return !_productFullyTransferred(product) && product.canSchedule;
   }
 
@@ -1051,7 +1215,11 @@ abstract class _MaterialAnalysisPageBase
       product.remainingQty <= 0.000001 &&
       _productExecutionStage(product) != null;
 
-  _ProductExecutionStage? _productExecutionStage(
+  /// 顶层产品 / 计划锚点行的执行阶段（全站唯一词表口径）。
+  ///
+  /// 服务端 planExecutionStatus 缺失时按提交/审核数量回退推导；
+  /// 文案、顺序与语义全部来自 [ProductionFlowStage]，本页不再自造状态。
+  ProductionFlowStage? _productExecutionStage(
     ProductionMaterialAnalysisProduct product,
   ) {
     var status = product.planExecutionStatus?.trim().toUpperCase();
@@ -1065,96 +1233,22 @@ abstract class _MaterialAnalysisPageBase
       }
     }
     if (status == null || status.isEmpty) return null;
-    final progressRatio = product.planExecutionProgressRatio;
-    final normalizedProgress = progressRatio == null || !progressRatio.isFinite
-        ? null
-        : progressRatio.clamp(0.0, 1.0).toDouble();
-    final progressPercent = normalizedProgress == null
-        ? null
-        : normalizedProgress >= 1
-        ? 100
-        : (normalizedProgress * 100).round().clamp(0, 99);
-    return switch (status) {
-      'SUBMITTED' => const _ProductExecutionStage(
-        status: 'SUBMITTED',
-        label: '计划审批中',
-        detail: '待审批；通过后进入执行',
-        icon: Icons.hourglass_top_rounded,
-      ),
-      'APPROVED' => const _ProductExecutionStage(
-        status: 'APPROVED',
-        label: '计划已审核 · 备料中',
-        detail: '车间任务已确认，等待物料备齐后报工',
-        icon: Icons.verified_outlined,
-      ),
-      'WAITING' => const _ProductExecutionStage(
-        status: 'WAITING',
-        label: '物料不齐套 · 备料中',
-        detail: '合格物料补齐后转为备料完毕',
-        icon: Icons.inventory_2_outlined,
-      ),
-      'READY' => const _ProductExecutionStage(
-        status: 'READY',
-        label: '物料齐套 · 备料中',
-        detail: '仓库按领料单完成出库后即可报工',
-        icon: Icons.assignment_turned_in_outlined,
-      ),
-      'DISPATCHED' => const _ProductExecutionStage(
-        status: 'DISPATCHED',
-        label: '备料完毕 · 可报工',
-        detail: '兼容历史执行状态；新流程不再要求员工另行派工或确认开工',
-        icon: Icons.groups_outlined,
-      ),
-      'IN_PROGRESS' => _ProductExecutionStage(
-        status: 'IN_PROGRESS',
-        label: progressPercent == null
-            ? '生产执行中 · 执行进度待回传'
-            : progressPercent == 0 &&
-                  (product.planExecutionInboundQty ?? 0) <= 0
-            ? '生产执行中 0% · 尚未完工入库'
-            : '生产执行中 $progressPercent%',
-        detail: progressPercent == 0 ? '执行进度按仓库实收入库计算，不是物料保障率' : null,
-        icon: Icons.precision_manufacturing_outlined,
-        progress: normalizedProgress,
-      ),
-      'COMPLETED' => const _ProductExecutionStage(
-        status: 'COMPLETED',
-        label: '已完工入库',
-        icon: Icons.task_alt_rounded,
-      ),
-      _ => _ProductExecutionStage(
-        status: status,
-        label: status == 'TRANSFERRED' ? '本批已全部转生产' : '生产计划执行中',
-        detail: '进入计划查看执行进度',
-        icon: Icons.account_tree_outlined,
-      ),
-    };
-  }
-
-  /// 统一小胶囊徽章：浅底 + 半透明描边 + 彩色加粗小字；上下内边距收紧
-  /// （2px），标题行可连续排布多枚而不撑高卡片。
-  Widget _miniBadge(
-    ThemeData theme, {
-    required String label,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s8,
-        vertical: 2,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: UtenRadius.smAll,
-        border: Border.all(color: color.withValues(alpha: 0.5)),
-      ),
-      child: Text(
-        label,
-        style: theme.textTheme.labelMedium?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
+    if (status == 'TRANSFERRED') {
+      return const ProductionFlowStage(
+        route: ProductionFlowRoute.make,
+        key: 'TRANSFERRED',
+        label: '本批已全部转生产',
+        tone: ProductionFlowTone.pending,
+        stepIndex: 5,
+        stepCount: 6,
+      );
+    }
+    return ProductionFlowStage.forProduct(
+      planExecutionStatus: status,
+      zeroMaterial: product.planExecutionZeroMaterial,
+      reportedQty: product.planExecutionReportedQty,
+      plannedQty: product.planExecutionPlannedQty,
+      fallbackRatio: product.planExecutionProgressRatio,
     );
   }
 
@@ -1244,7 +1338,7 @@ abstract class _MaterialAnalysisPageBase
     ProductionMaterialAnalysisMaterial material,
   ) {
     for (final target in material.notifiedTargets) {
-      if (target.target == null) continue;
+      if (target.target == null || target.isRootOutput) continue;
       if (target.status == 'CANCELLED') continue;
       return target;
     }
@@ -1263,7 +1357,39 @@ abstract class _MaterialAnalysisPageBase
   }) {
     final analysis = _analysis;
     if (analysis == null) return null;
+    final indexes = _analysisIndexes(analysis);
     String? childId = material.delegatedToAnalysisLineId;
+    if (childId == null) {
+      for (final target in material.notifiedTargets) {
+        if (target.target != route || target.isRootOutput) continue;
+        if (target.documentType == documentType && target.documentId != null) {
+          childId = target.documentId;
+          break;
+        }
+      }
+    }
+    // 新增兜底：某些场景下下发链路的 documentType 或 delegatedTo 可能未回填，
+    // 但 child 产品会明确带 parentAnalysisLineId，按父子关系可稳态映射。
+    // 前提是行号无歧义：同 analysisLineId 的物料行或同父线的子产品多于一个时
+    // （同货品多路径共享行号），禁止借用——否则会把别人路径的子任务算到本行头上。
+    if (childId == null && material.analysisLineId != null) {
+      final parentLineId = material.analysisLineId!;
+      final lineShared = analysis.materials.any(
+        (row) => row != material && row.analysisLineId == parentLineId,
+      );
+      if (!lineShared) {
+        final matched = indexes.productsById.values
+            .where(
+              (product) =>
+                  product.sourceType == sourceType &&
+                  product.parentAnalysisLineId == parentLineId,
+            )
+            .toList();
+        if (matched.length == 1) {
+          return matched.first;
+        }
+      }
+    }
     for (final target in material.notifiedTargets) {
       if (target.target == route && target.documentType == documentType) {
         childId ??= target.documentId;
@@ -1299,30 +1425,46 @@ abstract class _MaterialAnalysisPageBase
 
   /// 已建子件任务节点（MAKE 或有子层 SUBCONTRACT）→ 真实子件产品。
   /// 两类任务完全同构，BOM 原节点内联进度/计划入口统一走这里解析。
+  /// 任意一种子任务存在时均视为“已下达”，避免因 route 的首个通知项
+  /// 落到其他类型上导致重复出现「等待下达车间」。
   ProductionMaterialAnalysisProduct? _taskChildProductOf(
     ProductionMaterialAnalysisMaterial material,
   ) {
-    final notified = _notifiedTargetOf(material);
-    return notified?.target == MaterialSupplyRoute.subcontract
-        ? _subcontractMakeChildProductOf(material)
-        : _makeChildProductOf(material);
+    return _makeChildProductOf(material) ??
+        _subcontractMakeChildProductOf(material);
   }
 }
 
 /// 继承链的最终实现类：保持测试与 createState 引用的原私有名。
 class _ProductionMaterialAnalysisPageState
-    extends _MaterialAnalysisSubcontractMakeState {
+    extends _MaterialAnalysisMaterialTableState {
   /// 任何路径装上新分析快照后只做路线学习预填。
   /// 子件任务必须由计划员在表格/分桶中显式创建，不因刷新、
   /// 轮询或采用路线而隐式下达。
   @override
   void _applyAnalysis(ProductionMaterialAnalysisView view) {
     super._applyAnalysis(view);
-    unawaited(_prefillRememberedRoutes(view));
+    unawaited(
+      Future<void>.microtask(() async {
+        if (mounted && identical(_analysis, view)) {
+          await _prefillRememberedRoutes(view);
+        }
+      }),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    void reloadMemory() {
+      if (_routeMemoryScope == _routeMemoryScopeKey()) return;
+      _clearRememberedRoutes();
+      final analysis = _analysis;
+      if (analysis != null) unawaited(_prefillRememberedRoutes(analysis));
+    }
+
+    ref.listen(sessionProvider, (_, _) => reloadMemory());
+    ref.listen(currentPermissionsProvider, (_, _) => reloadMemory());
+
     // 返回即刷新（须与 ref.listen 同位置=build 内注册）：采购/委外到货、IQC 合格放行
     // 等下游事实由服务端在各自事务里重算分析快照；本页从子页面返回时静默重拉详情，
     // 计划员看到的备料进度始终是最新权威值（不写业务事实，纯 GET 安全读）。
@@ -1334,7 +1476,13 @@ class _ProductionMaterialAnalysisPageState
     final compact = context.breakpoint.isCompact;
     final page = Scaffold(
       appBar: UtenAppBar(
-        title: '物料分析准备',
+        title: _l10n.productionHubMaterialAnalysis,
+        titleWidget: Text(
+          _l10n.productionHubMaterialAnalysis,
+          style: theme.appBarTheme.titleTextStyle?.copyWith(
+            fontFamily: theme.textTheme.titleLarge?.fontFamily,
+          ),
+        ),
         leading: _planSubmissionInProgress
             ? const SizedBox(width: 48)
             : UtenBackButton(
@@ -1470,18 +1618,12 @@ class _ProductionMaterialAnalysisPageState
   }
 
   Widget _planSubmissionOverlay(ThemeData theme) {
-    final generating = _generating;
-    final title = generating
-        ? _planSubmissionApproveNow
-              ? '正在生成并审核下达'
-              : '正在生成生产计划'
-        : '正在校验最新库存与齐套状态';
-    final description = generating
-        ? _planSubmissionApproveNow
-              ? '系统正在同一事务内创建计划、审核下达、锁定物料并按需生成提货单。'
-              : '系统正在创建计划草稿并提交审批。'
-        : '系统正在重新核对可生产数量，避免库存变化造成重复占用。';
-    final stepLabel = generating ? '第 2 / 2 步' : '第 1 / 2 步';
+    // ADR-71：下达车间是一次原子调用（建子件任务+出计划+可选审核同一事务），
+    // 不再有「校验→生成」两阶段，遮罩只描述这一个不可中断的步骤。
+    final title = _planSubmissionApproveNow ? '正在生成并审核下达' : '正在生成生产计划';
+    final description = _planSubmissionApproveNow
+        ? '系统正在同一事务内创建子件任务、生成计划、审核下达并按需生成提货单。'
+        : '系统正在创建计划草稿并提交审批。';
 
     return BlockSemantics(
       child: Stack(
@@ -1499,7 +1641,7 @@ class _ProductionMaterialAnalysisPageState
                 key: const Key('material-analysis-plan-submission-progress'),
                 container: true,
                 liveRegion: true,
-                label: '$title。$description。$stepLabel。',
+                label: '$title。$description。请勿重复提交或关闭页面。',
                 child: ExcludeSemantics(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 440),
@@ -1565,7 +1707,7 @@ class _ProductionMaterialAnalysisPageState
                                 const SizedBox(width: UtenSpacing.s8),
                                 Expanded(
                                   child: Text(
-                                    '$stepLabel · 请勿重复提交或关闭页面',
+                                    '请勿重复提交或关闭页面',
                                     style: theme.textTheme.bodySmall?.copyWith(
                                       color: theme.colorScheme.onSurfaceVariant,
                                       fontWeight: FontWeight.w600,
@@ -1629,12 +1771,6 @@ class _ProductionMaterialAnalysisPageState
           padding: const EdgeInsets.only(top: UtenSpacing.s8),
           child: _inlineError(theme, _error!, _previewAnalysis),
         ),
-      if (_planPreview != null)
-        Padding(
-          padding: const EdgeInsets.only(top: UtenSpacing.s12),
-          child: _planPreviewCard(theme, _planPreview!),
-        ),
-      SizedBox(height: bottomClearance),
     ];
     // 无物料任务时不进联动滚动：单一滚动区铺完各区块即可（表格缺席时
     // NestedScrollView 的 body 没有可内滚的主体，联动失去意义）。
@@ -1652,10 +1788,6 @@ class _ProductionMaterialAnalysisPageState
           ...headerSections,
           if (hasTable) ...[
             Padding(
-              padding: const EdgeInsets.only(top: UtenSpacing.s12),
-              child: _unifiedBomTreeHeader(theme, analysis),
-            ),
-            Padding(
               padding: const EdgeInsets.only(
                 top: UtenSpacing.s4,
                 bottom: UtenSpacing.s12,
@@ -1666,6 +1798,7 @@ class _ProductionMaterialAnalysisPageState
               ),
             ),
           ],
+          SizedBox(height: bottomClearance),
         ],
       );
     }
@@ -1678,19 +1811,9 @@ class _ProductionMaterialAnalysisPageState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: headerSections,
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s12),
-            child: _unifiedBomTreeHeader(theme, analysis),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(top: UtenSpacing.s4),
-              child: _materialAnalysisTable(theme, analysis),
-            ),
-          ),
-        ],
+      body: Padding(
+        padding: const EdgeInsets.only(top: UtenSpacing.s8),
+        child: _materialAnalysisTable(theme, analysis),
       ),
     );
   }
@@ -1722,6 +1845,17 @@ class _ProductionMaterialAnalysisPageState
                 theme,
                 Icons.schedule_outlined,
                 '更新 ${_dateTimeOnly(analysis.analyzedAt)}',
+              ),
+            ),
+            // 查找框常驻顶部卡片（更新时间右侧）；全屏时顶部卡片不可见，
+            // 由 _bomToolbarActions 在全屏工具条里再挂一个（共享同一控制器）。
+            SizedBox(
+              width: context.breakpoint.isCompact ? 200 : 240,
+              child: UtenSearchBar(
+                key: const Key('material-bom-search'),
+                controller: _bomSearch,
+                hint: _l10n.materialSearchHint,
+                onChanged: _bomSearchChanged,
               ),
             ),
           ],
@@ -1810,20 +1944,20 @@ class _ProductionMaterialAnalysisPageState
         .where((material) => material.confirmedRoute == null)
         .length;
     if (unconfirmed > 0) {
-      return '下一步：有 $unconfirmed 条缺料路线待确认。点“待确认路线”，逐条采用采购、委外或自制建议。';
+      return _l10n.materialRoutesNext(unconfirmed);
     }
     final executable = MaterialSupplyRoute.values.fold<int>(
       0,
       (sum, route) => sum + _executableSupplyGroups(route).length,
     );
     if (executable > 0) {
-      return '下一步：点击顶部「可采购 / 可委外 / 待自制」入口，进入清单批量提交采购、委外或创建自制任务。';
+      return _l10n.materialIssueNext;
     }
     final ready = analysis.products
         .where((product) => _canSelectProduct(product))
         .length;
     if (ready > 0) {
-      return '下一步：已有 $ready 个产品可生产。点击顶部「可安排生产」入口，勾选产品生成计划单。';
+      return _l10n.materialWorkshopNext(ready);
     }
     final waiting = shortages
         .where((material) => _notifiedTargetOf(material) != null)

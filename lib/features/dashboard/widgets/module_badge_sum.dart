@@ -5,6 +5,7 @@ import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../shared/auth/pending_review_provider.dart';
 import '../../finance/providers/finance_procurement_approval_count_provider.dart';
 import '../../finance/providers/sales_order_finance_confirmation_count_provider.dart';
+import '../../../shared/providers/sales_shipment_finance_count_provider.dart';
 import '../../hr_task/providers/hr_task_count_provider.dart';
 import '../../production/providers/production_pending_provider.dart';
 import '../../production/providers/production_workshop_task_count_provider.dart';
@@ -130,7 +131,7 @@ int _resolveCount(
     case WorkbenchBadgeKind.production:
       return watch(productionPendingCountProvider).count;
     case WorkbenchBadgeKind.productionWorkshop:
-      return watch(productionWorkshopTaskCountProvider);
+      return watch(productionWorkshopTaskCountProvider).count;
     case WorkbenchBadgeKind.rdTask:
       return watch(rdTaskCountProvider);
     case WorkbenchBadgeKind.purchase:
@@ -152,6 +153,7 @@ int _resolveCount(
       return _sum(watch, [
         financeProcurementApprovalCountProvider,
         salesOrderFinanceConfirmationCountProvider,
+        salesShipmentFinanceCountProvider,
         financeArrivalExceptionCountProvider,
       ]);
     case WorkbenchBadgeKind.subcontract:

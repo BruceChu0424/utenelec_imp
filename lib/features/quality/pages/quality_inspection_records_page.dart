@@ -194,7 +194,9 @@ class _QualityInspectionRecordsPageState
               type: UtenButtonType.tonal,
               icon: Icons.refresh_rounded,
               isLoading: _loading && _data != null,
-              onPressed: _loading || _domain == null ? null : _load,
+              onPressed: _loading || _domain == null
+                  ? null
+                  : () => _load(page: 1),
               child: const Text('刷新'),
             ),
           ),

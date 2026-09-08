@@ -60,6 +60,9 @@ class ProcurementInspectionItem {
     this.colorName,
     this.unitId,
     this.unitRate,
+    this.baseUnitId,
+    this.baseUnitName,
+    this.sourceUnitName,
     this.receivedBaseQty,
     this.passedBaseQty,
     this.failedBaseQty,
@@ -76,6 +79,11 @@ class ProcurementInspectionItem {
   final String? colorName;
   final String? unitId;
   final double? unitRate;
+
+  /// The server resolves the inventory quantity unit from goods.unit_id.
+  final String? baseUnitId;
+  final String? baseUnitName;
+  final String? sourceUnitName;
   final double? receivedBaseQty;
   final double? passedBaseQty;
   final double? failedBaseQty;
@@ -93,6 +101,9 @@ class ProcurementInspectionItem {
         colorName: json['colorName'] as String?,
         unitId: json['unitId'] as String?,
         unitRate: (json['unitRate'] as num?)?.toDouble(),
+        baseUnitId: json['baseUnitId'] as String?,
+        baseUnitName: json['baseUnitName'] as String?,
+        sourceUnitName: json['sourceUnitName'] as String?,
         receivedBaseQty: (json['receivedBaseQty'] as num?)?.toDouble(),
         passedBaseQty: (json['passedBaseQty'] as num?)?.toDouble(),
         failedBaseQty: (json['failedBaseQty'] as num?)?.toDouble(),
@@ -151,6 +162,40 @@ abstract interface class ProcurementInspectionRepository {
     required List<ProcurementInspectionBatchPassItem> items,
     String? reason,
   });
+
+  /// 批量检验报告（2026-09-05「提交报告」）：每行合格+不合格数量一次提交；
+  /// 含不合格数量时 reason 必填。整批同事务，任一冲突整批回滚（409 刷新重填）。
+  Future<void> decideBatch({
+    required String receiptType,
+    required String receiptId,
+    required List<ProcurementInspectionDecideItem> items,
+    String? reason,
+  });
+}
+
+/// 检验报告单行：合格/不合格数量（合计>0 且不超过 expectedRemaining）。
+class ProcurementInspectionDecideItem {
+  const ProcurementInspectionDecideItem({
+    required this.inspectionItemId,
+    required this.expectedRemainingBaseQty,
+    required this.passBaseQty,
+    required this.failBaseQty,
+    required this.idempotencyKey,
+  });
+
+  final String inspectionItemId;
+  final double expectedRemainingBaseQty;
+  final double passBaseQty;
+  final double failBaseQty;
+  final String idempotencyKey;
+
+  Map<String, dynamic> toJson() => {
+    'inspectionItemId': inspectionItemId,
+    'expectedRemainingBaseQty': expectedRemainingBaseQty,
+    'passBaseQty': passBaseQty,
+    'failBaseQty': failBaseQty,
+    'idempotencyKey': idempotencyKey,
+  };
 }
 
 class DioProcurementInspectionRepository
@@ -222,6 +267,22 @@ class DioProcurementInspectionRepository
   }) async {
     await api.post(
       ApiEndpoints.procurementInspectionPassBatch(receiptType, receiptId),
+      body: {
+        'items': items.map((item) => item.toJson()).toList(growable: false),
+        if (reason?.trim().isNotEmpty == true) 'reason': reason!.trim(),
+      },
+    );
+  }
+
+  @override
+  Future<void> decideBatch({
+    required String receiptType,
+    required String receiptId,
+    required List<ProcurementInspectionDecideItem> items,
+    String? reason,
+  }) async {
+    await api.post(
+      ApiEndpoints.procurementInspectionDecideBatch(receiptType, receiptId),
       body: {
         'items': items.map((item) => item.toJson()).toList(growable: false),
         if (reason?.trim().isNotEmpty == true) 'reason': reason!.trim(),

@@ -241,6 +241,78 @@ void main() {
     expect(find.text('删除选中 (1)'), findsNothing);
   });
 
+  testWidgets('只选模式点行身切换选中（与主数据表单击选中统一）', (tester) async {
+    // 2026-09-05 物料分析车间计划表反馈：不能只点最前面的复选框——行身
+    // （非输入区）点击同样切换选中；编辑模式不启用（点格输入优先）。
+    final r1 = _Row('行1');
+    final blocked = _Row('已登记');
+    final pending = _Row('待登记');
+    final c = UtenEditableGridController<_Row>(initial: [r1, blocked, pending]);
+    await tester.pumpWidget(
+      _wrap(
+        _grid(
+          c,
+          showAddRow: false,
+          selectable: true,
+          canSelectRow: (row) => row.name != '已登记',
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('行1'));
+    await tester.pump();
+    expect(c.isSelected(r1), isTrue);
+    await tester.tap(find.text('行1'));
+    await tester.pump();
+    expect(c.isSelected(r1), isFalse);
+
+    // 行级门控（canSelectRow=false）行身点选无效。
+    await tester.tap(find.text('已登记'));
+    await tester.pump();
+    expect(c.isSelected(blocked), isFalse);
+    await tester.tap(find.text('待登记'));
+    await tester.pump();
+    expect(c.isSelected(pending), isTrue);
+
+    // 编辑模式（showAddRow=true）不启用行身点选。
+    final e = UtenEditableGridController<_Row>(initial: [_Row('编辑行')]);
+    await tester.pumpWidget(_wrap(_grid(e)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('编辑行'));
+    await tester.pump();
+    expect(e.selectedCount, 0);
+  });
+
+  testWidgets('编辑模式操作条不再常驻全选/复制/批量删除（与货品资料统一）', (tester) async {
+    // 2026-09-05：编辑模式（showAddRow）操作条只保留「表头设置」与宿主批量动作；
+    // 全选走表头复选框、复制/粘贴/删除走行级右键/长按菜单。勾选后操作条也不得
+    // 冒出「取消全选/复制选中/批量删除」常驻按钮。
+    final c = UtenEditableGridController<_Row>(
+      initial: [_Row('行1'), _Row('行2')],
+    );
+    await tester.pumpWidget(_wrap(_grid(c)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('全选'), findsNothing);
+    expect(find.text('取消全选'), findsNothing);
+    expect(find.textContaining('复制选中 ('), findsNothing);
+    expect(find.textContaining('批量删除 ('), findsNothing);
+    expect(find.text('粘贴'), findsNothing);
+
+    // 选中两行后依旧不显；全选入口 = 表头复选框（勾选列仍在）。
+    c.selectAll();
+    await tester.pump();
+    expect(find.text('取消全选'), findsNothing);
+    expect(find.textContaining('复制选中 ('), findsNothing);
+    expect(find.byType(Checkbox), findsWidgets);
+
+    // 功能仍可达：长按行出菜单，复制/删除走菜单。
+    await tester.longPress(find.text('行1'));
+    await tester.pump();
+    expect(find.text('复制选中 (2)'), findsOneWidget);
+    expect(find.text('删除选中 (2)'), findsOneWidget);
+  });
+
   testWidgets('任务模式显式移出：复选批量与右键单行共用确认，完成后清空选择', (tester) async {
     final r1 = _Row('待登记1');
     final r2 = _Row('待登记2');

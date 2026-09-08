@@ -63,7 +63,7 @@ public class FinanceReconciliationService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<FinanceReconciliation> p = repo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+        return new PageResponse<>(p.map(this::toList).getContent(), p);
     }
 
     private FinanceReconciliationListItem toList(FinanceReconciliation r) {

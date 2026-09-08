@@ -5,9 +5,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
-import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.features.production.fulfillment.ProductionExecutionSegment;
-import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +34,6 @@ public class DailyReportExecutionSegmentGuard {
     private final EntityManager em;
     private final ProductionDocumentAccessPolicy access;
     private final SecurityContextCurrentUser currentUser;
-    private final ChainNoticeService chainNotice;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void validateDraft(
@@ -99,7 +96,7 @@ public class DailyReportExecutionSegmentGuard {
                         item.getUnitRate(),
                         item.getQty()))
                 .toList();
-        lockAndValidateIdentity(null, lines, true, false);
+        lockAndValidateIdentity(null, lines, true);
         for (ReportLine line : lines) {
             validateSalesAllocation(line);
         }
@@ -110,7 +107,7 @@ public class DailyReportExecutionSegmentGuard {
             UUID reportDepartmentId,
             List<ReportLine> lines,
             String countedStatus,
-            boolean allowAutomaticStart) {
+            boolean requireDraftWorkshop) {
         Map<UUID, BigDecimal> requested = new LinkedHashMap<>();
         Map<UUID, BigDecimal> salesRequested = new LinkedHashMap<>();
         Map<UUID, BigDecimal> salesCapacities = new LinkedHashMap<>();
@@ -130,8 +127,8 @@ public class DailyReportExecutionSegmentGuard {
         }
         Map<UUID, SegmentSnapshot> segments =
                 lockAndValidateIdentity(
-                        reportId, lines, false, allowAutomaticStart);
-        if (allowAutomaticStart) {
+                        reportId, lines, false);
+        if (requireDraftWorkshop) {
             requireOneWorkshop(reportDepartmentId, segments.values());
         }
         for (ReportLine recoveryLine : recoveryLines) {
@@ -179,8 +176,7 @@ public class DailyReportExecutionSegmentGuard {
     private Map<UUID, SegmentSnapshot> lockAndValidateIdentity(
             UUID reportId,
             List<ReportLine> lines,
-            boolean allowTerminalPackage,
-            boolean allowAutomaticStart) {
+            boolean allowTerminalPackage) {
         validateLegacyPlanItemAccess(lines);
         TreeSet<UUID> ids = lines.stream()
                 .map(ReportLine::executionSegmentId)
@@ -247,19 +243,11 @@ public class DailyReportExecutionSegmentGuard {
                     && !"CONFIRMED".equals(snapshot.packageStatus())) {
                 throw conflict("执行段所属计划包已经终止");
             }
-            if (List.of(
-                            ProductionExecutionSegment.STATUS_READY,
-                            ProductionExecutionSegment.STATUS_DISPATCHED)
-                    .contains(snapshot.status())) {
-                if (!allowAutomaticStart) {
-                    throw conflict("执行段尚未进入可报工状态");
-                }
-                requireMaterialsIssued(snapshot);
-                snapshot = automaticStart(reportId, snapshot);
-            } else if (!ProductionExecutionSegment.STATUS_IN_PROGRESS
+            if (!ProductionExecutionSegment.STATUS_IN_PROGRESS
                     .equals(snapshot.status())) {
-                throw conflict("执行段状态不允许报工");
+                throw conflict("请先在我的车间任务中开工，开工后才能报工");
             }
+            if (!allowTerminalPackage) requireMaterialsIssued(snapshot);
             result.put(id, snapshot);
         }
         for (ReportLine line : lines) {
@@ -379,110 +367,6 @@ public class DailyReportExecutionSegmentGuard {
             throw conflict("仓库尚未完成全部生产领料，不能报工(待发料 "
                     + pending + " 项)");
         }
-    }
-
-    /**
-     * First draft creation is the business start signal. The status event and
-     * the report header/items share the caller transaction, so any later
-     * report validation or persistence failure rolls this transition back.
-     */
-    private SegmentSnapshot automaticStart(
-            UUID reportId, SegmentSnapshot segment) {
-        if (reportId == null) {
-            throw validation("自动开工缺少生产日报 UUID");
-        }
-        UUID actorId = currentUser.requireId();
-        String idempotencyKey = "AUTO-REPORT-" + reportId;
-        String requestHash = PlanningPackageFingerprint.sha256(List.of(
-                "AUTO-START-ON-REPORT-V1",
-                reportId.toString(),
-                segment.id().toString(),
-                segment.status(),
-                Long.toString(segment.lockVersion())));
-        em.createNativeQuery("""
-                        SELECT set_config(
-                            'app.production_report_auto_start_segment_id',
-                            :segmentId, true)
-                        """)
-                .setParameter("segmentId", segment.id().toString())
-                .getSingleResult();
-        em.createNativeQuery("""
-                        SELECT set_config(
-                            'app.production_report_auto_start_expected_version',
-                            :version, true)
-                        """)
-                .setParameter("version", Long.toString(segment.lockVersion()))
-                .getSingleResult();
-        int updated = em.createNativeQuery("""
-                            UPDATE production_execution_segments
-                            SET status = 'IN_PROGRESS',
-                                lock_version = lock_version + 1,
-                                updated_at = now(),
-                                updated_by = :actorId
-                            WHERE id = :segmentId
-                              AND lock_version = :expectedVersion
-                              AND status IN ('READY', 'DISPATCHED')
-                            """)
-                    .setParameter("actorId", actorId)
-                    .setParameter("segmentId", segment.id())
-                    .setParameter("expectedVersion", segment.lockVersion())
-                .executeUpdate();
-        if (updated != 1) {
-            throw conflict("执行工单状态已变化，请刷新后重新报工");
-        }
-        em.createNativeQuery("""
-                            INSERT INTO production_execution_segment_events(
-                                id, execution_segment_id, action,
-                                idempotency_key, request_hash,
-                                expected_version, resulting_version,
-                                created_at, created_by)
-                            VALUES (
-                                gen_random_uuid(), :segmentId,
-                                'AUTO_START_ON_REPORT', :idempotencyKey,
-                                :requestHash, :expectedVersion,
-                                :resultingVersion, now(), :actorId)
-                            """)
-                    .setParameter("segmentId", segment.id())
-                    .setParameter("idempotencyKey", idempotencyKey)
-                    .setParameter("requestHash", requestHash)
-                    .setParameter("expectedVersion", segment.lockVersion())
-                    .setParameter(
-                            "resultingVersion", segment.lockVersion() + 1)
-                .setParameter("actorId", actorId)
-                .executeUpdate();
-        // Clear after success. On any SQL failure PostgreSQL aborts the whole
-        // transaction and the LOCAL settings disappear with the rollback.
-        em.createNativeQuery("""
-                        SELECT set_config(
-                            'app.production_report_auto_start_segment_id',
-                            '', true)
-                        """)
-                .getSingleResult();
-        em.createNativeQuery("""
-                        SELECT set_config(
-                            'app.production_report_auto_start_expected_version',
-                            '', true)
-                        """)
-                .getSingleResult();
-        chainNotice.resolveProductionWorkshopTasks(
-                List.of(segment.id()), "REPORT_STARTED");
-        chainNotice.notifyExecutionSegmentTransition(segment.id(), true);
-        return new SegmentSnapshot(
-                segment.id(),
-                segment.sourcePlanItemId(),
-                segment.productGoodsId(),
-                segment.productColorId(),
-                segment.productUnitId(),
-                segment.productUnitRate(),
-                segment.plannedQty(),
-                ProductionExecutionSegment.STATUS_IN_PROGRESS,
-                segment.segmentCode(),
-                segment.packageStatus(),
-                segment.planMakerId(),
-                segment.workshopDepartmentId(),
-                segment.responsibleEmployeeId(),
-                segment.materialRequirementMode(),
-                segment.lockVersion() + 1);
     }
 
     private void validateLegacyPlanItemAccess(List<ReportLine> lines) {

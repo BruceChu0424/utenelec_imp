@@ -213,7 +213,10 @@ class _FinanceReconciliationPageState
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新',
-            onPressed: () => _load(_pageNum),
+            onPressed: () {
+              ref.read(financeNameServiceProvider).ensureLoaded();
+              _load(1);
+            },
           ),
         ],
       ),

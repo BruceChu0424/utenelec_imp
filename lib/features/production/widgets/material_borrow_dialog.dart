@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/production_material_analysis.dart';
 
@@ -203,16 +205,17 @@ class _MaterialBorrowDialogState extends State<MaterialBorrowDialog> {
                   decimal: true,
                 ),
                 onChanged: (_) => setState(() => _qtyError = null),
-                decoration: InputDecoration(
-                  label: fieldLabel(
-                    '调拨数量(件)',
-                    theme,
-                    info: target == null
-                        ? '先选择调给哪个产品'
-                        : '最多 ${widget.qtyText(_maxQty)} 件',
+                decoration: UtenInputDecoration(
+                  InputDecoration(
+                    label: fieldLabel(
+                      '调拨数量(件)',
+                      theme,
+                      info: target == null
+                          ? '先选择调给哪个产品'
+                          : '最多 ${widget.qtyText(_maxQty)} 件',
+                    ),
+                    error: utenFieldError(_qtyError),
                   ),
-                  // uten-field-message-exception: raw-message - AlertDialog intrinsic sizing does not support LayoutBuilder.
-                  errorText: _qtyError,
                 ),
               ),
               const SizedBox(height: UtenSpacing.s8),
@@ -221,11 +224,13 @@ class _MaterialBorrowDialogState extends State<MaterialBorrowDialog> {
                 controller: _reasonController,
                 minLines: 2,
                 maxLines: 4,
-                decoration: InputDecoration(
-                  label: fieldLabel(
-                    '调拨原因(必填)',
-                    theme,
-                    info: '会写入审计记录，例如"客户 X 加急，先保这单"。',
+                decoration: UtenInputDecoration(
+                  InputDecoration(
+                    label: fieldLabel(
+                      '调拨原因(必填)',
+                      theme,
+                      info: '会写入审计记录，例如"客户 X 加急，先保这单"。',
+                    ),
                   ),
                 ),
               ),

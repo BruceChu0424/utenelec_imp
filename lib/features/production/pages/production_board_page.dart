@@ -1,7 +1,14 @@
 // 生产调度与进度（大类分段：待排产｜进行中｜历史记录）。
 //
 //  待排产：已审订单行缺口列表（交货升序 ≤3天标红）→ 勾选/全选 → 合并排产（原调度页能力）。
-//  进行中：已审未结案计划卡片（父计划圆形总进度，点开展子计划小圆环），车间筛选 + 排序 + 显示设置。
+//  2026-09-05 起简化：交货日期范围筛选与「建议联合分析」下线（排序/状态筛选仍在表头），
+//  刷新按钮统一放表格右上角（toolbarActions；窄屏卡片列表顶部右上角兜底）。
+//  大类行计数（2026-09-06 起改标准徽章口径）：「待排产」挂 UtenFilterSegment.count
+//  通知徽章（调度员需下一步操作的分段才挂，计数与列表同源的分页 total）；
+//  「进行中」保持纯数字计数——计划部统筹视角的监控数（按最外层分析/根计划聚合），
+//  不是待办，按徽章口径不挂徽章。2026-09-05 起本页不再提供报工入口
+//  （车间报工统一在 /production/workshop-tasks），双击批次直达物料分析页
+//  （ANALYSIS 根）或生产计划详情（PLAN 根），不再弹滑窗。
 //  历史记录：已结案计划（原「已完成」Tab，2026-09-03 起并入历史）——时间门控
 //  （时间段/全部，未选时间不发请求），选定后按开单日期范围加载。
 //
@@ -9,7 +16,7 @@
 // 大类行 = 待排产/进行中/历史记录 + 页级搜索；默认不选显示引导占位不发请求
 //（路由深链 initialTab 预选例外：/production/schedule 预选待排产、
 // /production/progress 预选进行中）。各分段保留自己的细化筛选
-//（待排产：交货日期范围；进行中：车间/排序/显示设置）。
+//（待排产：表头排序/状态值筛选；进行中：车间/排序）。
 //
 // 进度 = 完工入库量 ÷ 排产量（成品入库审核后即时反映）。
 // 路由：/production/schedule → 预选待排产；/production/progress → 预选进行中（旧两页合并，Hub 两卡片进不同分段）。
@@ -19,9 +26,12 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -38,7 +48,9 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/progress_ratio.dart';
 import '../models/production_material_analysis.dart';
+import '../providers/production_board_pending_count_provider.dart';
 import '../providers/production_board_sort_provider.dart';
+import '../providers/production_execution_group_count_provider.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/progress_ring.dart';
 import '../widgets/production_fqc_replenishment_banner.dart';
@@ -79,6 +91,15 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
   Widget build(BuildContext context) {
     final segment = _segment;
     final historyReady = _historyTime.range != null || _historyTime.all;
+    // 大类行计数：待排产=标准通知徽章（调度员待办）；进行中=纯数字（监控口径，
+    // 不挂徽章）。无权限或请求失败时不显示；provider 内部做了权限门控，
+    // 未授权不会发请求。
+    final pendingCount = ref
+        .watch(productionBoardPendingCountProvider)
+        .valueOrNull;
+    final ongoingCount = ref
+        .watch(productionExecutionGroupCountProvider)
+        .valueOrNull;
     return Scaffold(
       appBar: UtenAppBar(
         title: '生产调度与进度',
@@ -104,10 +125,24 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
                     // 大类行：待排产/进行中/历史记录 + 页级搜索；默认不选。
                     UtenFilterToolbar<String>(
                       segmentsKey: const Key('production-board-segments'),
-                      segments: const [
-                        UtenFilterSegment(value: 'pending', label: '待排产'),
-                        UtenFilterSegment(value: 'progress', label: '进行中'),
-                        UtenFilterSegment(value: 'history', label: '历史记录'),
+                      segments: [
+                        // 待排产挂徽章（用户需下一步操作的分段）；进行中是监控数，
+                        // 不挂徽章只跟纯数字（见组件头部徽章口径）。
+                        UtenFilterSegment(
+                          value: 'pending',
+                          label: '待排产',
+                          count: pendingCount,
+                        ),
+                        UtenFilterSegment(
+                          value: 'progress',
+                          label: ongoingCount == null
+                              ? '进行中'
+                              : '进行中 $ongoingCount',
+                        ),
+                        const UtenFilterSegment(
+                          value: 'history',
+                          label: '历史记录',
+                        ),
                       ],
                       selected: segment == null ? const {} : {segment},
                       onSelectionChanged: (value) => setState(() {
@@ -206,8 +241,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   final Map<String, double> _selected = {};
   final Map<String, SchedulePendingRow> _selectedRows = {};
 
-  DateTime? _deliverFrom; // 交货日期范围筛选（从）
-  DateTime? _deliverTo; // 交货日期范围筛选（至）
   bool _hasLoaded = false;
 
   /// 表头值筛选（当前仅 status：紧急/正常）。
@@ -234,6 +267,9 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   void didUpdateWidget(covariant _PendingPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.keyword != widget.keyword && _hasLoaded) {
+      // 关键字改变行的可见集合，与筛选同理：先清空旧选择再重载。
+      _selected.clear();
+      _selectedRows.clear();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _reload();
       });
@@ -291,31 +327,25 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     });
     final repo = ref.read(productionPlanRepositoryProvider);
     final kw = widget.keyword;
-    final dateFrom = _deliverFrom == null ? null : _fmtDate(_deliverFrom!);
-    final dateTo = _deliverTo == null ? null : _fmtDate(_deliverTo!);
     try {
-      // 并行：列表（带排序/状态筛选）+ facets（仅随 keyword/日期变；服务端忽略 status/sort）
+      // 并行：列表（带排序/状态筛选）+ facets（仅随 keyword 变；服务端忽略 status/sort）
       final results = await Future.wait<dynamic>([
         repo.schedulePending(
           page: _pageNo,
           size: _pageSize,
           keyword: kw,
-          dateFrom: dateFrom,
-          dateTo: dateTo,
           sort: _sortKey,
           order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           status: _filters['status'],
         ),
-        repo.schedulePendingFacets(
-          keyword: kw,
-          dateFrom: dateFrom,
-          dateTo: dateTo,
-        ),
+        repo.schedulePendingFacets(keyword: kw),
       ]);
       if (!mounted) return;
       final page = results[0] as PagedResult<SchedulePendingRow>;
       // 服务端已把越界页码回退到最后一页；与本地页码对齐
       if (page.page != _pageNo) _pageNo = page.page;
+      // 大类行「待排产 N」计数与列表同源，列表加载完成后刷新保持新鲜。
+      ref.invalidate(productionBoardPendingCountProvider);
       setState(() {
         _page = page;
         _facets = results[1] as SchedulePendingFacets;
@@ -323,6 +353,12 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
           if (_selected.containsKey(row.orderItemId)) {
             _selectedRows[row.orderItemId] = row;
           }
+        }
+        // 加载结果为空（含筛选后无匹配）时清空选择——没有内容就不保留
+        // 「已选 N 项」的悬空计数（2026-09-06 用户口径）。
+        if (page.items.isEmpty) {
+          _selected.clear();
+          _selectedRows.clear();
         }
         _loading = false;
       });
@@ -336,6 +372,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   }
 
   /// 表头值筛选变化（拷贝 map → set/remove key → 回第 1 页重载）。
+  /// 筛选改变行的可见集合，跨页保留的旧选择不再成立，先清空再重载。
   void _onFilterChanged(String key, String? value) {
     setState(() {
       final next = Map<String, String?>.from(_filters);
@@ -345,6 +382,8 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         next[key] = value;
       }
       _filters = next;
+      _selected.clear();
+      _selectedRows.clear();
     });
     _reload();
   }
@@ -356,62 +395,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       _sortAsc = ascending;
     });
     _reload();
-  }
-
-  /// 交货日期范围筛选（从/至；互相纠偏）。
-  Future<void> _pickDeliverDate(bool begin) async {
-    final now = ChinaDateTime.today();
-    final d = await showDatePicker(
-      context: context,
-      initialDate: begin ? (_deliverFrom ?? now) : (_deliverTo ?? now),
-      firstDate: DateTime(2000),
-      lastDate: now.add(const Duration(days: 365)),
-    );
-    if (d == null) return;
-    if (begin) {
-      _deliverFrom = d;
-      if (_deliverTo != null && _deliverTo!.isBefore(d)) _deliverTo = null;
-    } else {
-      _deliverTo = d;
-      if (_deliverFrom != null && _deliverFrom!.isAfter(d)) _deliverFrom = null;
-    }
-    _reload();
-  }
-
-  /// 建议计划：选中本页全部行后进入联合物料分析。
-  Future<void> _suggestAllAndSubmit() async {
-    if (!_canCreateAnalysis) return;
-    final rows = _rows;
-    if (rows.isEmpty || _submitting) return;
-    final eligible = rows
-        .where((row) => row.materialAnalysisId == null)
-        .toList(growable: false);
-    if (eligible.isEmpty) {
-      context.appInfo('当前页产品都已有物料分析，请单独勾选一项继续分析');
-      return;
-    }
-    setState(() {
-      for (final r in eligible) {
-        if (_selected.length >= _maxAnalysisItems &&
-            !_selected.containsKey(r.orderItemId)) {
-          break;
-        }
-        final quantity = r.needQty ?? 0;
-        if (quantity > 0) {
-          _selected[r.orderItemId] = quantity;
-          _selectedRows[r.orderItemId] = r;
-        }
-      }
-    });
-    final skipped = rows.length - eligible.length;
-    if (skipped > 0) {
-      context.appInfo('已跳过 $skipped 项进行中的物料分析；它们需单独继续');
-    }
-    if (_selected.length >= _maxAnalysisItems &&
-        eligible.any((row) => !_selected.containsKey(row.orderItemId))) {
-      context.appWarning('单次联合分析最多 500 个产品，已保留前 500 项；其余请另开一个批次');
-    }
-    await _openMaterialAnalysis();
   }
 
   Future<void> _openMaterialAnalysis({bool allowEmpty = false}) async {
@@ -527,6 +510,14 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   bool _canOpenRowAnalysis(SchedulePendingRow row) =>
       _canUseAnalysis && !_submitting;
 
+  /// 一键清空当前选择（悬浮组胶囊的 ✕ 与「没有内容即清空」口径共用）。
+  void _clearSelection() {
+    setState(() {
+      _selected.clear();
+      _selectedRows.clear();
+    });
+  }
+
   void _toggle(SchedulePendingRow r, bool on) {
     if (on && !_canSelectForAnalysis(r)) return;
     if (on &&
@@ -603,66 +594,10 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     final compact = context.breakpoint.isCompact;
     return Scaffold(
       // 容器（UtenContentContainer.wide）由页面级统一提供，面板不再自套（避免双 gutter）。
+      // 2026-09-05 起：交货日期范围筛选与「建议联合分析」按钮下线——排序/状态
+      // 筛选在表头，刷新统一放右上角（表格 toolbarActions；窄屏列表顶部右上角）。
       body: Column(
         children: [
-          // 工具行：交货日期范围 + 建议计划 + 刷新（搜索在大类行，页级统一下发）。
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-            child: Wrap(
-              spacing: UtenSpacing.s8,
-              runSpacing: UtenSpacing.s8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: () => _pickDeliverDate(true),
-                  icon: const Icon(Icons.date_range_rounded, size: 16),
-                  label: Text(
-                    _deliverFrom == null ? '交货从' : _fmtDate(_deliverFrom!),
-                  ),
-                  style: _deliverFrom != null
-                      ? OutlinedButton.styleFrom(
-                          foregroundColor: theme.colorScheme.primary,
-                        )
-                      : null,
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => _pickDeliverDate(false),
-                  icon: const Icon(Icons.event_rounded, size: 16),
-                  label: Text(
-                    _deliverTo == null ? '交货至' : _fmtDate(_deliverTo!),
-                  ),
-                  style: _deliverTo != null
-                      ? OutlinedButton.styleFrom(
-                          foregroundColor: theme.colorScheme.primary,
-                        )
-                      : null,
-                ),
-                if (_deliverFrom != null || _deliverTo != null)
-                  IconButton(
-                    icon: const Icon(Icons.clear_rounded, size: 18),
-                    tooltip: '清除时间筛选',
-                    onPressed: () {
-                      _deliverFrom = null;
-                      _deliverTo = null;
-                      _reload();
-                    },
-                  ),
-                if (_canCreateAnalysis)
-                  TextButton.icon(
-                    icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-                    label: Text('建议联合分析(本页 ${_rows.length} 行)'),
-                    onPressed: _rows.isEmpty || _submitting
-                        ? null
-                        : _suggestAllAndSubmit,
-                  ),
-                IconButton(
-                  icon: const Icon(Icons.refresh_rounded),
-                  tooltip: '刷新',
-                  onPressed: _load,
-                ),
-              ],
-            ),
-          ),
           const ProductionFqcReplenishmentBanner(),
           Expanded(
             child: Padding(
@@ -680,6 +615,23 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     );
   }
 
+  /// 右上角刷新按钮（桌面表格进 toolbarActions，窄屏卡片列表顶部右上角）。
+  /// 整页刷新（2026-09-05 用户口径）：列表回第 1 页 + 页面级「进行中批次」
+  /// 角标一并重拉（autoDispose provider 不随 _load 失效）。
+  void _refreshAll() {
+    ref.invalidate(productionExecutionGroupCountProvider);
+    _reload();
+  }
+
+  Widget _refreshButton() {
+    return IconButton(
+      key: const Key('production-pending-refresh'),
+      icon: const Icon(Icons.refresh_rounded),
+      tooltip: '刷新',
+      onPressed: _loading ? null : _refreshAll,
+    );
+  }
+
   /// 分页条已改用 MasterDataTableView 内置分页（见 _list）。
 
   Widget _list(ThemeData theme) {
@@ -689,7 +641,21 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       children: [
         Expanded(
           child: context.breakpoint.isCompact
-              ? _pendingMobileList(theme, rows)
+              ? Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(
+                        right: UtenSpacing.s4,
+                        bottom: UtenSpacing.s4,
+                      ),
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: _refreshButton(),
+                      ),
+                    ),
+                    Expanded(child: _pendingMobileList(theme, rows)),
+                  ],
+                )
               : MasterDataTableView<SchedulePendingRow>(
                   columns: _pendingColumns,
                   items: rows,
@@ -730,13 +696,13 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                   isLoading: _loading,
                   error: (_error != null && rows.isEmpty) ? _error : null,
                   onRetry: _load,
-                  emptyMessage:
-                      widget.keyword.isEmpty &&
-                          _deliverFrom == null &&
-                          _deliverTo == null &&
-                          _filters.isEmpty
+                  emptyMessage: widget.keyword.isEmpty && _filters.isEmpty
                       ? '暂无待排产的订单行'
                       : '没有匹配的待排产行',
+                  toolbarActions: [_refreshButton()],
+                  // 选择摘要胶囊不驻工具条——右下角悬浮组内已放标准胶囊
+                  //（紧邻「新建物料分析」按钮左侧），避免同页两处计数。
+                  showSelectionSummary: false,
                   currentPage: _page?.page ?? _pageNo,
                   totalPages: _page?.totalPages ?? 1,
                   onPageChange: (p) {
@@ -775,7 +741,15 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       );
     }
     if (rows.isEmpty) {
-      return const Center(child: Text('暂无待排产的订单行'));
+      // 窄屏空态与桌面表格同款 UtenEmpty（口径一致：无筛选=暂无数据，有筛选=无匹配）。
+      return Center(
+        child: UtenEmpty(
+          icon: Icons.table_rows_outlined,
+          message: widget.keyword.isEmpty && _filters.isEmpty
+              ? '暂无待排产的订单行'
+              : '没有匹配的待排产行',
+        ),
+      );
     }
     return ListView.separated(
       key: const Key('production-pending-mobile-list'),
@@ -1037,13 +1011,15 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     key: ValueKey('pending-qty-${row.orderItemId}'),
     initialValue: _selected[row.orderItemId]?.toString(),
     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-    decoration: InputDecoration(
-      label: fieldLabel(
-        '本次联合分析数量',
-        Theme.of(context),
-        info:
-            '单位 ${row.unitName ?? '未维护'}；待排上限 ${_qtyText(row.needQty)}；'
-            '最终可生产量由服务端预览确认',
+    decoration: UtenInputDecoration(
+      InputDecoration(
+        label: fieldLabel(
+          '本次联合分析数量',
+          Theme.of(context),
+          info:
+              '单位 ${row.unitName ?? '未维护'}；待排上限 ${_qtyText(row.needQty)}；'
+              '最终可生产量由服务端预览确认',
+        ),
       ),
     ),
     onChanged: (value) {
@@ -1080,8 +1056,9 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   // 旧的待排产卡片行（_pendingRow/_num，含勾选框+手填排产量）已由 MasterDataTableView 取代（见 _list）。
 
   /// 右下角操作组：所选行可能属于不同货品单位，只显示行数，不做无单位总和。
+  /// 「已选 N 项」用全站标准选择摘要胶囊（UtenSelectionSummaryPill），与
+  /// 表头工具条内建胶囊同款——本表传 showSelectionSummary:false，选择数只在此处出现。
   Widget _floatingAnalysisAction() {
-    final theme = Theme.of(context);
     final canRun = _canShowAnalysisFooter && !_submitting;
     final label = _selected.isEmpty ? '新建物料分析' : '联合分析所选 ${_selected.length} 项';
     final disabledReason = _selected.isEmpty
@@ -1093,25 +1070,10 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (_selected.isNotEmpty) ...[
-              // 52 与 UtenButtonSize.large 的最小高度一致，保证同高对齐。
-              Container(
+              UtenSelectionSummaryPill(
                 key: const Key('production-pending-selected-total'),
-                height: 52,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s12,
-                ),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: theme.colorScheme.outlineVariant),
-                ),
-                child: Text(
-                  '已选 ${_selected.length} 行',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                count: _selected.length,
+                onClear: _clearSelection,
               ),
               const SizedBox(width: UtenSpacing.s8),
             ],
@@ -1531,11 +1493,17 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     );
   }
 
+  /// 整页刷新：列表回第 1 页 + 「进行中批次」角标一并重拉。
+  void _refreshAll() {
+    ref.invalidate(productionExecutionGroupCountProvider);
+    _reload();
+  }
+
   Widget _refreshBtn() {
     return IconButton(
       icon: const Icon(Icons.refresh_rounded),
       tooltip: '刷新',
-      onPressed: _load,
+      onPressed: _loading ? null : _refreshAll,
     );
   }
 

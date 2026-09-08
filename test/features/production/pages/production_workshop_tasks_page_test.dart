@@ -1,60 +1,148 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/features/production/models/production_execution_planning.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/production/pages/production_workshop_tasks_page.dart';
 import 'package:uten_imp/features/production/models/production_execution_workbench.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
+import 'package:uten_imp/features/production/repositories/production_repository.dart';
+import 'package:uten_imp/features/production/repositories/production_material_repository.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
+  materialUsageEntryTests();
   testWidgets(
-    'workshop tasks show preparation states and batch report directly',
+    'preparing segment: ready rows batch start, waiting rows explain the block',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1600, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final router = _router();
       addTearDown(router.dispose);
+      final planRepository = _FakePlanRepository();
 
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             currentPermissionsProvider.overrideWithValue(const {
               Perm.productionExecutionView,
-              Perm.productionDailyReportView,
-              Perm.productionDailyReportCreate,
+              Perm.productionExecutionStart,
             }),
             productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
-              _repository(),
+              _repository(withWaitingRow: true),
             ),
+            productionPlanRepositoryProvider.overrideWithValue(planRepository),
           ],
-          child: MaterialApp.router(routerConfig: router),
+          child: MaterialApp.router(
+            routerConfig: router,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('zh'),
+          ),
         ),
       );
       await tester.pumpAndSettle();
-
-      expect(find.text('物料齐套 · 备料完毕'), findsWidgets);
-      expect(find.textContaining('生产中 · 物料齐套'), findsOneWidget);
-      expect(find.text('开始生产'), findsNothing);
-      expect(find.text('派工'), findsNothing);
-      expect(find.text('确认开工'), findsNothing);
-
-      await _selectRow(tester, '产品 A');
-      await _selectRow(tester, '产品 B');
-      await tester.tap(find.text('批量报工(2)'));
+      // 分类默认不选：先给引导占位，点分类才加载列表。
+      expect(find.text('在上方选择分类后查看任务'), findsOneWidget);
+      // 2026-09-06 改版：「可报工」分类退役——等待物料（等料+齐套可开工）、
+      // 生产中（正在生产·可报工）、历史任务三段。
+      expect(find.text('可报工'), findsNothing);
+      await tester.tap(find.text('等待物料'));
       await tester.pumpAndSettle();
 
-      expect(find.text('批量来源 segment-a,segment-b'), findsOneWidget);
+      // 齐套行状态徽章 + 未齐行锁位（带原因提示；mock 不过滤状态，
+      // 生产中行出现在等待物料分类时同样锁位不可开工）。
+      expect(find.text('物料齐套 · 可开工'), findsOneWidget);
+      expect(find.byIcon(Icons.lock_outline_rounded), findsWidgets);
+      // 等待物料分类不显示进度列（只有生产中显示）。
+      expect(find.text('进度'), findsNothing);
+
+      // 未齐行右键菜单 = 「为什么不能开工」，点了给出明确原因。
+      await _rightClick(tester, find.text('产品 C'));
+      await tester.tap(find.text('为什么不能开工'));
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ProductionWorkshopTasksPage)),
+      );
+      expect(
+        container.read(appNotificationProvider).single.message,
+        contains('物料尚未齐套'),
+      );
+
+      await _rightClick(tester, find.text('产品 C'));
+      await tester.tap(find.text('重新检查物料'));
+      await tester.pumpAndSettle();
+      expect(planRepository.recheckedSegmentIds, ['segment-c']);
+      expect(
+        container.read(appNotificationProvider).last.message,
+        contains('按实际子仓生成领料单'),
+      );
+
+      // 齐套行勾选 → 右下角「批量开工」，按计划分组提交。
+      await _selectRow(tester, '产品 A');
+      await tester.tap(find.text('批量开工(1)'));
+      await tester.pumpAndSettle();
+      expect(planRepository.startedPlanIds, ['plan-segment-a']);
+      expect(
+        container.read(appNotificationProvider).last.message,
+        contains('已开工 1 个工单'),
+      );
     },
   );
 
-  testWidgets('row context menu reports one task and clears the selection', (
+  testWidgets(
+    'a ready kit still requires actual warehouse issue before start',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final router = _router();
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.productionExecutionView,
+              Perm.productionExecutionStart,
+            }),
+            productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+              _repository(readyIssued: false),
+            ),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('zh'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('等待物料'));
+      await tester.pumpAndSettle();
+      expect(find.text('物料齐套 · 待仓库发料'), findsOneWidget);
+      await _rightClick(tester, find.text('产品 A'));
+      await tester.tap(find.text('为什么不能开工'));
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ProductionWorkshopTasksPage)),
+      );
+      expect(
+        container.read(appNotificationProvider).last.message,
+        contains('尚未完成全部备料出库'),
+      );
+    },
+  );
+
+  testWidgets('in-progress segment keeps batch report and progress column', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
@@ -74,20 +162,79 @@ void main() {
             _repository(),
           ),
         ],
-        child: MaterialApp.router(routerConfig: router),
+        child: MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+        ),
       ),
     );
     await tester.pumpAndSettle();
-
-    await _rightClick(tester, find.text('产品 A'));
-    expect(find.text('报工'), findsWidgets);
-    await tester.tap(find.text('报工').last);
+    await tester.tap(find.text('生产中'));
     await tester.pumpAndSettle();
 
-    expect(find.text('单项来源 segment-a'), findsOneWidget);
+    // 生产中显示进度列与「生产中 · 可报工」口径。
+    expect(find.text('进度'), findsOneWidget);
+    expect(find.text('生产中 · 可报工 20%'), findsNWidgets(2));
+    expect(find.text('批量开工(0)'), findsNothing);
+
+    await _selectRow(tester, '产品 A');
+    await _selectRow(tester, '产品 B');
+    await tester.tap(find.text('批量报工(2)'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('批量来源 segment-a,segment-b'), findsOneWidget);
   });
 
-  testWidgets('compact batch selection keeps only one workshop', (
+  testWidgets(
+    'row menu only opens the plan; single report goes through selection + floating button',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final router = _router();
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.productionExecutionView,
+              Perm.productionDailyReportView,
+              Perm.productionDailyReportCreate,
+            }),
+            productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+              _repository(),
+            ),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('zh'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // 分类默认不选：点分类后才渲染表格。
+      await tester.tap(find.text('生产中'));
+      await tester.pumpAndSettle();
+
+      // 2026-09-06 用户口径：报工按钮统一=多选后右下角悬浮执行；
+      // 行内按钮/行菜单报工下线，行菜单只保留查看生产计划。
+      await _rightClick(tester, find.text('产品 A'));
+      expect(find.text('查看生产计划'), findsOneWidget);
+      expect(find.text('报工'), findsNothing);
+
+      await _selectRow(tester, '产品 A');
+      await tester.tap(find.text('批量报工(1)'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('单项来源 segment-a'), findsOneWidget);
+    },
+  );
+
+  testWidgets('cross-workshop selection is free and blocked only on submit', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(375, 900));
@@ -120,6 +267,9 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+    // 分类默认不选：点分类后才渲染表格。
+    await tester.tap(find.text('生产中'));
+    await tester.pumpAndSettle();
 
     final header = find.byWidgetPredicate(
       (widget) => widget is Checkbox && widget.tristate,
@@ -127,8 +277,21 @@ void main() {
     await tester.tap(header);
     await tester.pumpAndSettle();
 
-    expect(find.text('批量报工(1)'), findsOneWidget);
-    expect(find.byTooltip('已选择其它生产车间；一次批量报工只能包含同一车间'), findsOneWidget);
+    // 2026-09-06 用户口径：自由多选，不再对其它车间行上锁；
+    // 跨车间选择只在提交时给明确提示（服务端口径：一次报工=同一车间）。
+    expect(find.text('批量报工(2)'), findsOneWidget);
+    expect(find.byTooltip('已选择其它生产车间；一次批量报工只能包含同一车间'), findsNothing);
+    await tester.tap(find.text('批量报工(2)'));
+    await tester.pumpAndSettle();
+    // 测试树不含通知宿主，直接断言全局通知队列里的业务提示。
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ProductionWorkshopTasksPage)),
+    );
+    expect(
+      container.read(appNotificationProvider).single.message,
+      contains('一次报工只能包含同一生产车间'),
+    );
+    expect(find.textContaining('来源 segment'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -151,14 +314,23 @@ void main() {
             repository,
           ),
         ],
-        child: MaterialApp.router(routerConfig: router),
+        child: MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+        ),
       ),
     );
     await tester.pump();
     await tester.pump();
-    expect(repository.calls, 1);
+    // 分类默认不选：初始不请求列表，点分类才发第一次请求。
+    expect(repository.calls, 0);
 
-    await tester.tap(find.text('备料中'));
+    await tester.tap(find.text('等待物料'));
+    await tester.pump();
+    expect(repository.calls, 1);
+    await tester.tap(find.text('生产中'));
     await tester.pump();
     expect(repository.calls, 2);
 
@@ -173,6 +345,151 @@ void main() {
     expect(find.text('新筛选结果'), findsOneWidget);
     expect(find.text('迟到旧结果'), findsNothing);
   });
+}
+
+void materialUsageEntryTests() {
+  for (final (canSettle, serverAllows) in [
+    (true, true),
+    (false, true),
+    (true, false),
+  ]) {
+    testWidgets(
+      'ordinary workshop user opens exact material task, settle=$canSettle server=$serverAllows',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1700, 1100));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final router = _router();
+        addTearDown(router.dispose);
+        final reads = <RequestOptions>[];
+        final writes = <RequestOptions>[];
+        var posted = false;
+        final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+        dio.interceptors.add(
+          InterceptorsWrapper(
+            onRequest: (request, handler) {
+              final Object data;
+              if (request.method == 'POST') {
+                writes.add(request);
+                posted = true;
+                data = <Object>[];
+              } else {
+                reads.add(request);
+                data = request.path.endsWith('/capabilities')
+                    ? {
+                        'canSettle': serverAllows,
+                        'canReverse': false,
+                        'canClose': false,
+                      }
+                    : request.path.endsWith('/clearance')
+                    ? [
+                        {
+                          'planId': 'plan-segment-a',
+                          'demandId': 'demand-a',
+                          'goodsId': 'goods-material',
+                          'goodsName': '本工单原料',
+                          'executionSegmentId': 'segment-a',
+                          'requiredQty': 10,
+                          'issuedQty': 10,
+                          'unclearedQty': posted ? 0 : 10,
+                          'consumedQty': posted ? 10 : 0,
+                          'canClose': posted,
+                        },
+                      ]
+                    : <Object>[];
+              }
+              handler.resolve(
+                Response<dynamic>(
+                  requestOptions: request,
+                  statusCode: 200,
+                  data: data,
+                ),
+              );
+            },
+          ),
+        );
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              isSuperAdminProvider.overrideWithValue(false),
+              currentPermissionsProvider.overrideWithValue({
+                Perm.productionExecutionView,
+                if (canSettle) Perm.productionMaterialSettle,
+                if (canSettle) Perm.productionMaterialClose,
+              }),
+              productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+                _repository(),
+              ),
+              productionMaterialRepositoryProvider.overrideWithValue(
+                ProductionMaterialRepository(ApiClient(dio)),
+              ),
+            ],
+            child: MaterialApp.router(
+              routerConfig: router,
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              locale: const Locale('zh'),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('生产中'));
+        await tester.pumpAndSettle();
+        await _rightClick(tester, find.text('产品 A'));
+        await tester.tap(find.text('物料使用情况'));
+        await tester.pumpAndSettle();
+        expect(find.text('本工单原料'), findsOneWidget);
+        expect(reads.length, 3);
+        expect(
+          reads.every(
+            (request) =>
+                request.queryParameters['executionSegmentId'] == 'segment-a',
+          ),
+          isTrue,
+        );
+        expect(find.text('检查并完成任务'), findsNothing, reason: '单段任务权限不能关闭整个计划');
+        expect(find.text('余料退库'), findsNothing, reason: '任务入口不能跳入未过滤的全计划退料选择器');
+        if (canSettle && serverAllows) {
+          await tester.tap(find.text('未结清全部填入实耗'));
+          await tester.pumpAndSettle();
+          final field = tester.widget<TextField>(
+            find.byKey(const ValueKey('material-consume-demand-a')),
+          );
+          expect(field.controller!.text, '10');
+          expect(field.decoration!.filled, isTrue);
+          expect(
+            find.byWidgetPredicate(
+              (widget) => widget is UtenFieldHintIcon && widget.autofilled,
+            ),
+            findsOneWidget,
+          );
+          expect(writes, isEmpty, reason: '建议量必须人工提交后才入账');
+          await tester.ensureVisible(find.text('提交本次材料结清'));
+          await tester.tap(find.text('提交本次材料结清'));
+          await tester.pumpAndSettle();
+          expect(writes.length, 1);
+          final payload = writes.single.data as Map<String, dynamic>;
+          expect(payload['executionSegmentId'], 'segment-a');
+          expect(
+            (payload['lines'] as List).single,
+            containsPair('demandId', 'demand-a'),
+          );
+        } else {
+          expect(find.text('未结清全部填入实耗'), findsNothing);
+          expect(find.text('提交本次材料结清'), findsNothing);
+          expect(
+            tester
+                .widget<TextField>(
+                  find.byKey(const ValueKey('material-consume-demand-a')),
+                )
+                .enabled,
+            isFalse,
+          );
+          expect(writes, isEmpty);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }
 
 GoRouter _router() => GoRouter(
@@ -199,6 +516,8 @@ GoRouter _router() => GoRouter(
 
 ProductionExecutionWorkbenchRepository _repository({
   bool mixedWorkshops = false,
+  bool withWaitingRow = false,
+  bool readyIssued = true,
 }) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
@@ -207,7 +526,14 @@ ProductionExecutionWorkbenchRepository _repository({
         final data = switch (request.path) {
           '/production/workshop-tasks' => {
             'items': [
-              _task('segment-a', '产品 A', 'READY'),
+              _task(
+                'segment-a',
+                '产品 A',
+                request.queryParameters['status'] == 'IN_PROGRESS'
+                    ? 'IN_PROGRESS'
+                    : 'READY',
+                issued: readyIssued,
+              ),
               _task(
                 'segment-b',
                 '产品 B',
@@ -215,10 +541,19 @@ ProductionExecutionWorkbenchRepository _repository({
                 workshopId: mixedWorkshops ? 'workshop-2' : 'workshop-1',
                 workshopName: mixedWorkshops ? '装配二车间' : '装配一车间',
               ),
+              if (withWaitingRow)
+                _task(
+                  'segment-c',
+                  '产品 C',
+                  'WAITING',
+                  kitShort: true,
+                  canReport: false,
+                  canBatchReport: false,
+                ),
             ],
             'page': 1,
             'size': 50,
-            'total': 2,
+            'total': withWaitingRow ? 3 : 2,
             'totalPages': 1,
           },
           '/production/workshop-tasks/count' => {'count': 2},
@@ -243,6 +578,10 @@ Map<String, dynamic> _task(
   String status, {
   String workshopId = 'workshop-1',
   String workshopName = '装配一车间',
+  bool kitShort = false,
+  bool issued = true,
+  bool canReport = true,
+  bool canBatchReport = true,
 }) => {
   'segmentId': id,
   'planId': 'plan-$id',
@@ -260,15 +599,55 @@ Map<String, dynamic> _task(
   'reportedQty': status == 'IN_PROGRESS' ? 2 : 0,
   'remainingReportQty': status == 'IN_PROGRESS' ? 8 : 10,
   'segmentStatus': status,
-  'materialStatus': 'KIT_READY',
+  'materialStatus': kitShort ? 'KIT_SHORT' : 'KIT_READY',
   'preparationStatus': 'PREPARED',
-  'materialReady': true,
-  'warehouseReady': true,
-  'issued': true,
-  'canReport': true,
-  'canBatchReport': true,
+  'materialReady': !kitShort,
+  'warehouseReady': !kitShort,
+  'issued': issued,
+  'canReport': canReport,
+  'canBatchReport': canBatchReport,
   'lockVersion': 1,
+  'canRecheckMaterial': status == 'WAITING',
 };
+
+/// 只记录批量开工调用的计划仓库桩（等待物料分类的「批量开工」链路）。
+class _FakePlanRepository extends ProductionPlanRepository {
+  _FakePlanRepository()
+    : super(ApiClient(Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'))));
+
+  final List<String> startedPlanIds = [];
+  final List<String> recheckedSegmentIds = [];
+
+  @override
+  Future<ProductionExecutionSegmentView> recheckExecutionSegmentMaterials(
+    String planId,
+    String segmentId, {
+    required int expectedVersion,
+  }) async {
+    recheckedSegmentIds.add(segmentId);
+    return ProductionExecutionSegmentView.fromJson({
+      'id': segmentId,
+      'packageId': 'package',
+      'planId': planId,
+      'sourcePlanItemId': 'plan-item',
+      'segmentCode': 'SEG-1',
+      'productGoodsId': 'goods',
+      'plannedQty': 10,
+      'reportedQty': 0,
+      'remainingQty': 10,
+      'lockVersion': expectedVersion + 1,
+      'status': 'READY',
+    });
+  }
+
+  @override
+  Future<void> batchStartExecutionSegments(
+    String planId, {
+    required List<({String segmentId, int expectedVersion})> items,
+  }) async {
+    startedPlanIds.add(planId);
+  }
+}
 
 Future<void> _selectRow(WidgetTester tester, String product) async {
   final row = find
@@ -322,11 +701,13 @@ class _DelayedWorkshopRepository
     int size = 50,
     String keyword = '',
     String? status,
+    String? workshopDepartmentId,
   }) {
     calls++;
     return calls == 1 ? first.future : second.future;
   }
 
   @override
-  Future<int> workshopTaskCount() async => 0;
+  Future<WorkshopTaskCountBreakdown> workshopTaskCount() async =>
+      const WorkshopTaskCountBreakdown();
 }

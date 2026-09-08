@@ -119,7 +119,9 @@ class ProcurementFinanceSubmitterOwnerGuardTest {
                         projection,
                         currentUser,
                         mock(TxSessionVars.class),
-                mock(com.uten.imp.features.notice.ChainNoticeService.class));
+                mock(com.uten.imp.features.notice.ChainNoticeService.class),
+                        org.mockito.Mockito.mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
+                        org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
         clearInvocations(port, jdbc, projection, eligibility, currentUser);
         return new Fixture(service, port, jdbc, eligibility, projection);
     }

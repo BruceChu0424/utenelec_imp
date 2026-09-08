@@ -22,6 +22,7 @@ import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
@@ -748,6 +749,7 @@ class _WarehouseSubcontractOutboundEditPageState
             width: 140,
             child: TextField(
               controller: e.qty,
+              ignorePointers: false,
               enabled: canEdit,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
@@ -755,11 +757,13 @@ class _WarehouseSubcontractOutboundEditPageState
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,4}')),
               ],
-              decoration: InputDecoration(
-                label: fieldLabel(
-                  '本次出仓',
-                  theme,
-                  info: '本次最多 ${_fmtQty(line.maxEditableQty)}',
+              decoration: UtenInputDecoration(
+                InputDecoration(
+                  label: fieldLabel(
+                    '本次出仓',
+                    theme,
+                    info: '本次最多 ${_fmtQty(line.maxEditableQty)}',
+                  ),
                 ),
               ),
               onChanged: (_) => setState(() {}),

@@ -893,6 +893,7 @@ class ProductionExecutionSegmentView {
     this.fqcReworkAvailableQty = 0,
     this.fqcReplacementAvailableQty = 0,
     this.fqcReplacementReadyQty = 0,
+    this.zeroMaterial = false,
     this.segmentNo,
     this.productCode,
     this.productName,
@@ -938,6 +939,9 @@ class ProductionExecutionSegmentView {
   final int materialDemandCount;
   final int fullyIssuedDemandCount;
   final bool materialIssued;
+
+  /// 零料直制段（无下层领料物料）：可开工是因为不需要领料，不是备料完毕。
+  final bool zeroMaterial;
   final double fqcPendingQty;
   final double fqcPassedQty;
   final double fqcFailedQty;
@@ -984,6 +988,7 @@ class ProductionExecutionSegmentView {
       fullyIssuedDemandCount:
           (json['fullyIssuedDemandCount'] as num?)?.toInt() ?? 0,
       materialIssued: json['materialIssued'] == true,
+      zeroMaterial: json['zeroMaterial'] == true,
       fqcPendingQty: _optionalDouble(json['fqcPendingQty']) ?? 0,
       fqcPassedQty: _optionalDouble(json['fqcPassedQty']) ?? 0,
       fqcFailedQty: _optionalDouble(json['fqcFailedQty']) ?? 0,

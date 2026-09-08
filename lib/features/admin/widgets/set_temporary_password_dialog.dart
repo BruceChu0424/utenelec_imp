@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 
@@ -141,22 +142,24 @@ class _SetTemporaryPasswordDialogState
                   obscureText: _obscure,
                   autofocus: true,
                   maxLength: 64,
-                  decoration: InputDecoration(
-                    labelText: '临时密码',
-                    hintText: '8–64 位，含字母和数字',
-                    isDense: true,
-                    counterText: '',
-                    border: const OutlineInputBorder(),
-                    error: utenFieldError(_customError),
-                    suffixIcon: IconButton(
-                      tooltip: _obscure ? '显示密码' : '隐藏密码',
-                      icon: Icon(
-                        _obscure
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined,
-                        size: 20,
+                  decoration: UtenInputDecoration(
+                    InputDecoration(
+                      labelText: '临时密码',
+                      hintText: '8–64 位，含字母和数字',
+                      isDense: true,
+                      counterText: '',
+                      border: const OutlineInputBorder(),
+                      error: utenFieldError(_customError),
+                      suffixIcon: IconButton(
+                        tooltip: _obscure ? '显示密码' : '隐藏密码',
+                        icon: Icon(
+                          _obscure
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                          size: 20,
+                        ),
+                        onPressed: () => setState(() => _obscure = !_obscure),
                       ),
-                      onPressed: () => setState(() => _obscure = !_obscure),
                     ),
                   ),
                   onChanged: (_) => setState(() {}),

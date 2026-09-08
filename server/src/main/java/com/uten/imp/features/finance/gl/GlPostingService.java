@@ -80,7 +80,9 @@ public class GlPostingService {
         SubcontractWasteLossGlProjection.assertProjectionOwnership(em, period);
         assertBalanceAdjustmentSnapshotStyles(period);
         assertSourceDocumentIdentities(period);
-        em.createNativeQuery("DELETE FROM gl_vouchers WHERE source='AUTO' AND period=:p AND source_type IN (:sourceTypes)")
+        em.createNativeQuery("DELETE FROM gl_vouchers WHERE source='AUTO' AND period=:p AND source_type IN (:sourceTypes) "
+                +"AND NOT (source_type='PAYMENT' AND EXISTS(SELECT 1 FROM finance_payments payment "
+                +"WHERE payment.id=gl_vouchers.source_doc_id AND payment.amount_authority_version=2))")
                 .setParameter("p", period)
                 .setParameter("sourceTypes", REGENERATED_SOURCE_TYPES)
                 .executeUpdate();
@@ -112,6 +114,20 @@ public class GlPostingService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void removePaymentDoc(UUID paymentId, String billNo, LocalDate billDate) {
         removeAutoProjection("PAYMENT", "PAYMENT", paymentId, billNo, billDate);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public UUID postActualBankPayment(UUID paymentId) {
+        tx.bind();
+        return (UUID)em.createNativeQuery("SELECT fn_post_payment_v2_gl(:id)").setParameter("id",paymentId).getSingleResult();
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public UUID reverseActualBankPayment(UUID paymentId,java.time.OffsetDateTime reversedAt) {
+        tx.bind();PaymentStyleHierarchyLock.lock(em);
+        lockAutoProjectionPeriod(reversedAt.atZoneSameInstant(BusinessTime.ZONE).toLocalDate());
+        return (UUID)em.createNativeQuery("SELECT fn_reverse_payment_v2_gl(:id,:reversedAt)")
+                .setParameter("id",paymentId).setParameter("reversedAt",reversedAt).getSingleResult();
     }
 
     /**
@@ -320,12 +336,12 @@ public class GlPostingService {
                               WHERE entry.voucher_id=voucher.id
                                 AND COALESCE(entry.is_deleted,false)=false
                           ),0)>0
-                          AND ROUND(COALESCE((
+                          AND COALESCE((
                               SELECT SUM(entry.direction * entry.amount)
                               FROM gl_entries entry
                               WHERE entry.voucher_id=voucher.id
                                 AND COALESCE(entry.is_deleted,false)=false
-                          ),0),4)=0
+                          ),0)=0
                         """)
                 .setParameter("voucherId", voucherId)
                 .setParameter("period", period)
@@ -394,11 +410,11 @@ public class GlPostingService {
                       WHERE settlement_authority_version=0 AND status=1
                         AND COALESCE(is_deleted,false)=false
                     UNION SELECT bill_date FROM finance_receipts
-                      WHERE settlement_authority_version=1 AND status IN(1,-1)
+                      WHERE settlement_authority_version>=1 AND status IN(1,-1)
                         AND COALESCE(is_deleted,false)=false
                     UNION SELECT (reversed_at AT TIME ZONE 'Asia/Shanghai')::date
                       FROM finance_receipts
-                      WHERE settlement_authority_version=1 AND status=-1
+                      WHERE settlement_authority_version>=1 AND status=-1
                         AND reversed_at IS NOT NULL
                         AND COALESCE(is_deleted,false)=false
                     UNION SELECT bill_date FROM finance_payments WHERE COALESCE(is_deleted,false)=false
@@ -1027,7 +1043,7 @@ public class GlPostingService {
                 INSERT INTO gl_entries (voucher_id, line_no, style_id, direction, amount, entry_date, period,
                                         source_doc_type, source_doc_id, source_bill_no, summary)
                 SELECT v.id, 1, acct.style_id, 1,
-                       CASE WHEN t.settlement_authority_version=1
+                       CASE WHEN t.settlement_authority_version>=1
                             THEN t.account_amount_local ELSE t.amount_local END,
                        t.bill_date, v.period,
                        'RECEIPT', t.id, t.bill_no, COALESCE(t.remark,'销售收款')
@@ -1122,7 +1138,7 @@ public class GlPostingService {
                     AND COALESCE(style.is_deleted,false)=false
                   LIMIT 1
                 ) fee_account ON TRUE
-                WHERE t.status=1 AND t.settlement_authority_version=1
+                WHERE t.status=1 AND t.settlement_authority_version>=1
                   AND t.fee_settlement_mode='PAID_SEPARATELY'
                   AND COALESCE(t.is_deleted,false)=false
                   AND to_char(t.bill_date,'YYYY-MM')=:p
@@ -1242,7 +1258,7 @@ public class GlPostingService {
                         WHERE payment.status=1
                           AND COALESCE(payment.is_deleted,false)=false
                           AND to_char(payment.bill_date,'YYYY-MM')=:p
-                          AND payment.amount_authority_version<>1
+                          AND payment.amount_authority_version NOT IN(1,2)
                         """)
                 .setParameter("p", period)
                 .getSingleResult()).longValue();
@@ -1278,13 +1294,13 @@ public class GlPostingService {
                                   AND system_posting_style_id('AR_CONTROL') IS NULL)
                               OR (receipt.receipt_kind='CUSTOMER_PREPAYMENT'
                                   AND system_posting_style_id('CUSTOMER_ADVANCE') IS NULL)
-                              OR (receipt.settlement_authority_version=1
+                              OR (receipt.settlement_authority_version>=1
                                   AND (receipt.account_amount_local IS NULL
                                        OR receipt.account_amount_local<=0
                                        OR receipt.account_currency_id IS NULL
                                        OR receipt.account_exchange_rate IS NULL
                                        OR receipt.account_exchange_rate<=0))
-                              OR (receipt.settlement_authority_version=1
+                              OR (receipt.settlement_authority_version>=1
                                   AND receipt.fee_settlement_mode='PAID_SEPARATELY'
                                   AND NOT EXISTS (
                                       SELECT 1 FROM payment_styles fee_account_style
@@ -1333,7 +1349,7 @@ public class GlPostingService {
                               AND voucher.source_type IN (:sourceTypes)
                             GROUP BY voucher.id
                             HAVING COUNT(entry.id)<2
-                               OR ROUND(COALESCE(SUM(entry.direction*entry.amount),0),4)<>0
+                               OR COALESCE(SUM(entry.direction*entry.amount),0)<>0
                         ) invalid_voucher
                         """)
                 .setParameter("p", period)
@@ -1828,7 +1844,7 @@ public class GlPostingService {
                     voucher_id,line_no,style_id,direction,amount,entry_date,period,
                     source_doc_type,source_doc_id,source_bill_no,summary)
                 SELECT :voucher,1,receipt.gl_account_style_id,1,
-                       CASE WHEN receipt.settlement_authority_version=1
+                       CASE WHEN receipt.settlement_authority_version>=1
                             THEN receipt.account_amount_local ELSE receipt.amount_local END,
                        receipt.bill_date,:period,'RECEIPT',receipt.id,receipt.bill_no,
                        COALESCE(receipt.remark,'销售收款')
@@ -1880,7 +1896,7 @@ public class GlPostingService {
                        '收款费用另行支付'
                 FROM finance_receipts receipt
                 WHERE receipt.id=:receiptId
-                  AND receipt.settlement_authority_version=1
+                  AND receipt.settlement_authority_version>=1
                   AND receipt.fee_settlement_mode='PAID_SEPARATELY'
                   AND COALESCE(receipt.bank_fee,0)+COALESCE(receipt.other_fee,0)>0
                 """)
@@ -1917,6 +1933,7 @@ public class GlPostingService {
     @Transactional(propagation = Propagation.MANDATORY)
     public UUID reverseReceiptDoc(UUID receiptId, java.time.OffsetDateTime reversedAt) {
         tx.bind();
+        PaymentStyleHierarchyLock.lock(em);
         if(receiptId==null || reversedAt==null){
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "收款总账红冲缺少来源 UUID 或红冲时间");
@@ -2087,7 +2104,7 @@ public class GlPostingService {
                           GROUP BY line.receipt_id
                           HAVING SUM(line.exchange_diff)<>0)
                         AND receipt.gl_fx_style_id IS NULL)
-                    OR (receipt.settlement_authority_version=1
+                    OR (receipt.settlement_authority_version>=1
                         AND receipt.fee_settlement_mode='PAID_SEPARATELY'
                         AND receipt.gl_fee_payment_style_id IS NULL)
                   )

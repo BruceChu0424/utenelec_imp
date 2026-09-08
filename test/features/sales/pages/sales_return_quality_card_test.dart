@@ -171,8 +171,24 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('return-quality-submit')));
     await tester.pump();
-    expect(find.text('请输入大于 0、最多 4 位小数的数量'), findsOneWidget);
-    expect(find.text('请填写处置原因或检验依据'), findsOneWidget);
+    // 2026-09-04 ⓘ字段说明全站化：校验文案进 ⓘ Tooltip（底部错误槽退役），
+    // 断言用 Tooltip.message 谓词。
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            widget.message?.contains('请输入大于 0、最多 4 位小数的数量') == true,
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            widget.message?.contains('请填写处置原因或检验依据') == true,
+      ),
+      findsOneWidget,
+    );
 
     await tester.enterText(
       find.byKey(const ValueKey('return-quality-qty')),

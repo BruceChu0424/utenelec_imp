@@ -56,10 +56,13 @@ public class VisitorGateService {
             try {
                 String json = new String(Base64.getUrlDecoder().decode(parts[0]), StandardCharsets.UTF_8);
                 QrPayload p = objectMapper.readValue(json, QrPayload.class);
-                if (OffsetDateTime.now().toEpochSecond() > p.exp()) {
+                if (OffsetDateTime.now().toEpochSecond() >= p.exp()) {
                     return red("expired", null);
                 }
                 app = appRepo.findById(p.aid()).orElse(null);
+                if (app != null && !qrToken.equals(app.getQrToken())) {
+                    return red("invalid", null);
+                }
             } catch (Exception e) {
                 return red("invalid", null);
             }
@@ -70,23 +73,17 @@ public class VisitorGateService {
         if (app == null) {
             return red("invalid", null);
         }
-        return switch (app.getStatus()) {
-            case "approved" -> green(app);
-            case "checkedIn" -> red("used", app);
-            case "rejected" -> red("rejected", app);
-            default -> red("invalid", app);
-        };
+        String rejection = admissionRejection(app);
+        return rejection == null ? green(app) : red(rejection, app);
     }
 
     @Transactional
     public VisitorVerifyResponse checkIn(UUID appId) {
         tx.bind();
-        // M2：悲观锁防并发重复签到
-        VisitorApplication app = appRepo.findAndLockById(appId)
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
-        if (!"approved".equals(app.getStatus())) {
-            return red("checkedIn".equals(app.getStatus()) ? "used" : "invalid", app);
-        }
+        guard.requireStaff();
+        VisitorApplication app = appService.loadForUpdate(appId);
+        String rejection = admissionRejection(app);
+        if (rejection != null) return red(rejection, app);
         app.setStatus("checkedIn");
         app.setCheckInAt(OffsetDateTime.now());
         appRepo.save(app);
@@ -100,10 +97,50 @@ public class VisitorGateService {
     public void blacklist(UUID visitorId) {
         tx.bind();
         guard.requireStaff();
-        VisitorAccount acc = accountRepo.findById(visitorId)
+        VisitorAccount acc = accountRepo.findAndLockById(visitorId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
         acc.setStatus("blocked");
         accountRepo.save(acc);
+    }
+
+    /** QR, short code and final admission share current database authority. */
+    private String admissionRejection(VisitorApplication app) {
+        if (app.isDeleted()) return "invalid";
+        if ("checkedIn".equals(app.getStatus())) return "used";
+        if ("rejected".equals(app.getStatus())) return "rejected";
+        if (!"approved".equals(app.getStatus())) return "invalid";
+        VisitorAccount account = appService.accountOf(app);
+        if (account == null || !"active".equals(account.getStatus())) return "blocked";
+        Long expiresAt = credentialExpiry(app);
+        return expiresAt == null || OffsetDateTime.now().toEpochSecond() >= expiresAt
+                ? "expired" : null;
+    }
+
+    /** Existing signed QR expiry is retained for legacy approvals lacking approved_at. */
+    private Long credentialExpiry(VisitorApplication app) {
+        Long expiry = app.getApprovedAt() == null ? null
+                : app.getApprovedAt().plusDays(7).toEpochSecond();
+        String token = app.getQrToken();
+        if (token != null) {
+            try {
+                String[] parts = token.split("\\.", 2);
+                if (parts.length == 2 && parts[1].matches("^[0-9a-f]{64}$")
+                        && MessageDigest.isEqual(tx.hmac(parts[0]).getBytes(StandardCharsets.UTF_8),
+                            parts[1].getBytes(StandardCharsets.UTF_8))) {
+                    QrPayload payload = objectMapper.readValue(
+                            Base64.getUrlDecoder().decode(parts[0]), QrPayload.class);
+                    if (app.getId().equals(payload.aid())) {
+                        expiry = expiry == null ? payload.exp() : Math.min(expiry, payload.exp());
+                    }
+                }
+            } catch (Exception ignored) {
+                // Invalid legacy tokens never extend the persisted approval deadline.
+            }
+        }
+        if (expiry != null && app.getPlannedLeaveAt() != null) {
+            expiry = Math.min(expiry, app.getPlannedLeaveAt().toEpochSecond());
+        }
+        return expiry;
     }
 
     // ===== 签发与装配 =====

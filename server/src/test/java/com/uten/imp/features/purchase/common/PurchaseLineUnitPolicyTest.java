@@ -55,7 +55,9 @@ class PurchaseLineUnitPolicyTest {
         assertEquals(baseUnitId, resolved.unitId());
         assertEquals(0, BigDecimal.ONE.compareTo(resolved.unitRate()));
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em).createNativeQuery(sql.capture());
+        verify(em, org.mockito.Mockito.times(2)).createNativeQuery(sql.capture());
+        assertTrue(sql.getAllValues().getFirst().contains("FOR NO KEY UPDATE"));
+        assertTrue(sql.getAllValues().getFirst().contains("NOT quantity_unit_locked"));
         assertTrue(sql.getValue().contains("u.id = g.unit_id"));
         assertTrue(!sql.getValue().contains("u.legacy_id = g.unit_legacy_id"));
     }

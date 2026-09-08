@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.execution;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -42,5 +43,10 @@ public record ProductionExecutionWorkbenchGroup(
         int finishedInboundPendingCount,
         boolean mine,
         LocalDate earliestBeginDate,
-        LocalDate latestEndDate) {
+        LocalDate latestEndDate,
+        String ownerEmployeeName,
+        String analyzedAt,
+        BigDecimal rootPlannedQty,
+        BigDecimal rootInboundQty,
+        Double rootProgressRatio) {
 }

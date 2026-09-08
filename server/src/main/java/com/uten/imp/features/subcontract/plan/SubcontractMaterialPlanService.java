@@ -8,6 +8,7 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.application.port.SubcontractOrderPreparationPort;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
 import com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssue;
@@ -69,6 +70,23 @@ public class SubcontractMaterialPlanService
     private final SecurityContextCurrentUser currentUser;
     private final SubcontractChainNoticePort chainNotice;
     private final InventoryMutationLock inventoryLock;
+    private final SubcontractOrderPreparationPort orderPreparation;
+
+    /** 先算后插的计算结果（createPlanOnApproval 与草稿期共用同一口径）。 */
+    record ApprovalComputation(
+            String orderBillNo, UUID supplierId, LocalDate deliverDate,
+            List<PendingLine> lines) {
+    }
+
+    record PendingLine(UUID id, UUID orderItemId, UUID goodsId, UUID colorId,
+                       UUID unitId, BigDecimal orderUnitRate,
+                       BigDecimal plannedBaseQty, String flowMode,
+                       String preparationStatus, BigDecimal preparedBaseQty,
+                       UUID suggestedWarehouseId,
+                       boolean bomHasChildren, String bomFingerprint,
+                       UUID preparationAnalysisId, UUID preparationAnalysisItemId,
+                       UUID prepareTaskId) {
+    }
 
     // ==================== 链路钩子（订货 Service 同事务调用） ====================
 
@@ -81,12 +99,144 @@ public class SubcontractMaterialPlanService
     @Transactional(propagation = Propagation.MANDATORY)
     @SuppressWarnings("unchecked")
     public void createPlanOnApproval(UUID orderId) {
+        lockOrderInventoryDimensions(orderId);
+        ApprovalComputation computation = computeApprovalLines(orderId);
+        if (computation == null || computation.lines().isEmpty()) {
+            return;
+        }
+        List<PendingLine> pendingLines = computation.lines();
+        String orderBillNo = computation.orderBillNo();
+        UUID supplierId = computation.supplierId();
+        LocalDate deliverDate = computation.deliverDate();
+
+        UUID planId = UUID.randomUUID();
+        UUID actorUser = currentUser.requireId();
+        jdbc.update("""
+                INSERT INTO subcontract_material_plans(
+                    id, order_id, order_bill_no, supplier_id, status, created_by, updated_by)
+                VALUES (?, ?, ?, ?, 'OPEN', ?, ?)
+                """, planId, orderId, orderBillNo, supplierId, actorUser, actorUser);
+        int lineNo = 1;
+        for (PendingLine line : pendingLines) {
+            jdbc.update("""
+                    INSERT INTO subcontract_material_plan_items(
+                        id, plan_id, order_item_id, line_no,
+                        parent_goods_id, parent_color_id,
+                        goods_id, color_id, unit_id, unit_rate,
+                        bom_unit_qty, planned_qty, issued_qty,
+                        flow_mode, preparation_status, prepared_qty,
+                        preparation_warehouse_id, preparation_version,
+                        bom_has_children_snapshot, preparation_bom_fingerprint,
+                        preparation_analysis_id, preparation_analysis_item_id,
+                        created_by, updated_by)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0,
+                            ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+                    """,
+                    line.id(), planId, line.orderItemId(), lineNo++,
+                    line.goodsId(), line.colorId(),
+                    line.goodsId(), line.colorId(), line.unitId(),
+                    line.orderUnitRate(), line.plannedBaseQty(),
+                    line.flowMode(), line.preparationStatus(),
+                    line.preparedBaseQty(), line.suggestedWarehouseId(),
+                    line.bomHasChildren(), line.bomFingerprint(),
+                    line.preparationAnalysisId(), line.preparationAnalysisItemId(),
+                    actorUser, actorUser);
+        }
+        // V458：PREPARED_OUTBOUND 行把任务持有的前置自制预留转换为本行专属
+        // SUBCONTRACT_OUTBOUND 预留（释放旧的、等量新建，保持事实可回放），
+        // 之后再生成出仓草稿。
+        for (PendingLine line : pendingLines) {
+            if ("PREPARED_OUTBOUND".equals(line.flowMode())) {
+                convertPrepareTaskReservations(
+                        line.id(), line.prepareTaskId(),
+                        line.plannedBaseQty(), actorUser);
+            }
+        }
+        createDraftForPlan(planId, orderBillNo, supplierId, deliverDate, actorUser);
+        for (PendingLine line : pendingLines) {
+            if ("MAKE_THEN_OUTBOUND".equals(line.flowMode())) {
+                // 2026-09-05 委外收敛：准备中心/手工 start 已退役，MAKE 行
+                // （历史在批单与批准时点库存突降的兜底路径）由系统自动启动
+                // 前置生产分析并通知计划部；现货直发行走 OUTBOUND_READY。
+                chainNotice.notifySubcontractPrepareShortage(line.id());
+                orderPreparation.autoStartPlanLinePreparation(line.id());
+            } else {
+                chainNotice.notifySubcontractOutboundReady(line.id());
+            }
+        }
+    }
+
+    /** Orders are locked by the caller; lock stock before any preparation/task reservation. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void lockOrderInventoryDimensions(UUID orderId) {
+        List<Object[]> dimensions = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT DISTINCT inventory_item.goods_id, inventory_item.color_id
+                FROM subcontract_order_items inventory_item
+                WHERE inventory_item.order_id=:orderId AND inventory_item.is_deleted=FALSE
+                ORDER BY inventory_item.goods_id, inventory_item.color_id NULLS FIRST
+                """).setParameter("orderId",orderId));
+        inventoryLock.lockAll(dimensions.stream()
+                .map(row -> new InventoryKey((UUID)row[0],(UUID)row[1]))
+                .distinct().sorted().toList());
+    }
+
+    /**
+     * 提交财务闸门（2026-09-05 委外收敛）：有子层目标件必须「先发单给计划、
+     * 生产完入库」后才允许提交——按批准同款口径重算，仍出现 MAKE_THEN 缺口行
+     * 即拒绝。财务批准通过即全部行 READY，仓库可立即目标件出仓。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void requireNoMakeThenShortage(UUID orderId) {
+        ApprovalComputation computation = computeApprovalLines(orderId);
+        if (computation == null) {
+            return;
+        }
+        List<PendingLine> shortage = computation.lines().stream()
+                .filter(line -> "MAKE_THEN_OUTBOUND".equals(line.flowMode()))
+                .toList();
+        if (shortage.isEmpty()) {
+            return;
+        }
+        BigDecimal missing = shortage.stream()
+                .map(PendingLine::plannedBaseQty)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(4, RoundingMode.HALF_UP);
+        throw new ApiException(ErrorCode.CONFLICT,
+                "有子层委外件尚未完成前置生产（合计缺口 "
+                        + missing.stripTrailingZeros().toPlainString()
+                        + "，基本单位）：请等计划部车间生产入库后再提交财务审核；"
+                        + "进度可在订货单详情查看");
+    }
+
+    /**
+     * 草稿期缺口（基本单位，按订货明细行）：有子层且无 V458 前置完成谱系的行，
+     * 按全局可用量池拆出仍需内部生产的量——用于保存时自动「发单给计划」。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Map<UUID, BigDecimal> draftChildrenShortageByOrderItem(UUID orderId) {
+        ApprovalComputation computation = computeApprovalLines(orderId);
+        if (computation == null) {
+            return Map.of();
+        }
+        Map<UUID, BigDecimal> shortage = new LinkedHashMap<>();
+        for (PendingLine line : computation.lines()) {
+            if ("MAKE_THEN_OUTBOUND".equals(line.flowMode())) {
+                shortage.merge(line.orderItemId(), line.plannedBaseQty(),
+                        BigDecimal::add);
+            }
+        }
+        return shortage;
+    }
+
+    /** 与 {@link #createPlanOnApproval} 完全同一口径的先算后插（不入库）。 */
+    @SuppressWarnings("unchecked")
+    private ApprovalComputation computeApprovalLines(UUID orderId) {
         List<Object[]> orderRows = em.createNativeQuery("""
                 SELECT id, bill_no, supplier_id, deliver_date
                 FROM subcontract_orders WHERE id = :id
                 """).setParameter("id", orderId).getResultList();
         if (orderRows.isEmpty()) {
-            return;
+            return null;
         }
         Object[] order = orderRows.getFirst();
         String orderBillNo = Objects.toString(order[1]);
@@ -108,22 +258,12 @@ public class SubcontractMaterialPlanService
                 ORDER BY item.line_no ASC NULLS LAST, item.id
                 """).setParameter("orderId", orderId).getResultList();
         if (items.isEmpty()) {
-            return;
+            return null;
         }
         List<UUID> parentGoodsIds = items.stream()
                 .map(row -> (UUID) row[1]).filter(Objects::nonNull).distinct().toList();
         Map<UUID, Object[]> goodsMaster = loadGoodsMaster(parentGoodsIds);
 
-        // 先算后插：全部计划行量 ≤ 0 时不建计划（视为无需发料）。
-        record PendingLine(UUID id, UUID orderItemId, UUID goodsId, UUID colorId,
-                           UUID unitId, BigDecimal orderUnitRate,
-                           BigDecimal plannedBaseQty, String flowMode,
-                           String preparationStatus, BigDecimal preparedBaseQty,
-                           UUID suggestedWarehouseId,
-                           boolean bomHasChildren, String bomFingerprint,
-                           UUID preparationAnalysisId, UUID preparationAnalysisItemId,
-                           UUID prepareTaskId) {
-        }
         List<PendingLine> pendingLines = new ArrayList<>();
         // 直下单销售式供货：同单同货多行共享一个递减的可用量池，防止重复占用
         // （与销售 reserveOnApprove 同款口径）。
@@ -148,10 +288,6 @@ public class SubcontractMaterialPlanService
             boolean makeFirst = bom.hasChildren() && prepared == null;
             boolean preparedOutbound = prepared != null;
             if (makeFirst) {
-                // 直下单销售式供货：先按全局可用量（账面−安全库存−生效预留）拆出
-                // 现货直发行（DIRECT 行走既有「无仓草稿→仓库选仓原子占用→实发」链，
-                // 建议仓来自订单/申请，仓库可换仓），仅缺口部分保留前置自制行；
-                // 建分析的量取计划行量，拆行后即缺口量。仓库现货充足时不再生产。
                 String poolKey = goodsId + "|" + Objects.toString(colorId, "");
                 BigDecimal avail = stockPool.computeIfAbsent(poolKey,
                         k -> globalAvailableBase(goodsId, colorId));
@@ -191,63 +327,8 @@ public class SubcontractMaterialPlanService
                     preparedOutbound ? prepared.analysisItemId() : null,
                     preparedOutbound ? prepared.taskId() : null));
         }
-        if (pendingLines.isEmpty()) {
-            return;
-        }
-
-        UUID planId = UUID.randomUUID();
-        UUID actorUser = currentUser.requireId();
-        jdbc.update("""
-                INSERT INTO subcontract_material_plans(
-                    id, order_id, order_bill_no, supplier_id, status, created_by, updated_by)
-                VALUES (?, ?, ?, ?, 'OPEN', ?, ?)
-                """, planId, orderId, orderBillNo, supplierId, actorUser, actorUser);
-        int lineNo = 1;
-        for (PendingLine line : pendingLines) {
-            jdbc.update("""
-                    INSERT INTO subcontract_material_plan_items(
-                        id, plan_id, order_item_id, line_no,
-                        parent_goods_id, parent_color_id,
-                        goods_id, color_id, unit_id, unit_rate,
-                        bom_unit_qty, planned_qty, issued_qty,
-                        flow_mode, preparation_status, prepared_qty,
-                        preparation_warehouse_id, preparation_version,
-                        bom_has_children_snapshot, preparation_bom_fingerprint,
-                        preparation_analysis_id, preparation_analysis_item_id,
-                        created_by, updated_by)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0,
-                            ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
-                    """,
-                    line.id(), planId, line.orderItemId(), lineNo++,
-                    line.goodsId(), line.colorId(),
-                    line.goodsId(), line.colorId(), line.unitId(),
-                    line.orderUnitRate(), line.plannedBaseQty(),
-                    line.flowMode(), line.preparationStatus(),
-                    line.preparedBaseQty(), line.suggestedWarehouseId(),
-                    line.bomHasChildren(), line.bomFingerprint(),
-                    line.preparationAnalysisId(), line.preparationAnalysisItemId(),
-                    actorUser, actorUser);
-        }
-        // V458：PREPARED_OUTBOUND 行把任务持有的前置自制预留转换为本行专属
-        // SUBCONTRACT_OUTBOUND 预留（释放旧的、等量新建，保持事实可回放），
-        // 之后再生成出仓草稿。
-        for (PendingLine line : pendingLines) {
-            if ("PREPARED_OUTBOUND".equals(line.flowMode())) {
-                convertPrepareTaskReservations(
-                        line.id(), line.prepareTaskId(),
-                        line.plannedBaseQty(), actorUser);
-            }
-        }
-        createDraftForPlan(planId, orderBillNo, supplierId, deliverDate, actorUser);
-        for (PendingLine line : pendingLines) {
-            if ("MAKE_THEN_OUTBOUND".equals(line.flowMode())) {
-                // 直下单销售式供货：MAKE 行量=缺口，通知计划部补产；
-                // 现货直发行走下方 OUTBOUND_READY 通知仓库发货。
-                chainNotice.notifySubcontractPrepareShortage(line.id());
-            } else {
-                chainNotice.notifySubcontractOutboundReady(line.id());
-            }
-        }
+        return new ApprovalComputation(
+                orderBillNo, supplierId, deliverDate, List.copyOf(pendingLines));
     }
 
     /**
@@ -281,18 +362,11 @@ public class SubcontractMaterialPlanService
     /** V458 订货红冲：PREPARED 行未消费的计划专属预留对称转回任务持有。 */
     private void restorePrepareTaskReservations(UUID planId, UUID actorUser) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT DISTINCT plan_item.id, batch.task_id
+                SELECT plan_item.id, task.id
                 FROM subcontract_material_plan_items plan_item
-                JOIN subcontract_order_items order_item
-                  ON order_item.id = plan_item.order_item_id
-                 AND order_item.is_deleted = FALSE
-                JOIN subcontract_order_item_sources src
-                  ON src.order_item_id = order_item.id
-                JOIN subcontract_application_items application_item
-                  ON application_item.id = src.application_item_id
-                 AND application_item.is_deleted = FALSE
-                JOIN preplan_subcontract_make_task_batches batch
-                  ON batch.application_item_id = application_item.id
+                JOIN preplan_subcontract_make_tasks task
+                  ON task.analysis_id=plan_item.preparation_analysis_id
+                 AND task.preparation_item_id=plan_item.preparation_analysis_item_id
                 WHERE plan_item.plan_id = :planId
                   AND plan_item.flow_mode = 'PREPARED_OUTBOUND'
                   AND plan_item.is_deleted = FALSE
@@ -360,11 +434,12 @@ public class SubcontractMaterialPlanService
     /** V458 订货行 → 前置自制账本批次 → 任务的谱系（无批次返回 null）。 */
     private PreparedLineage preparedLineage(UUID orderItemId) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT task.id, task.warehouse_id,
+                SELECT DISTINCT task.id, task.warehouse_id,
                        task.analysis_id, task.preparation_item_id
                 FROM subcontract_order_items order_item
                 JOIN subcontract_order_item_sources src
                   ON src.order_item_id = order_item.id
+                 AND src.alloc_qty>0
                 JOIN subcontract_application_items application_item
                   ON application_item.id = src.application_item_id
                  AND application_item.is_deleted = FALSE
@@ -420,7 +495,8 @@ public class SubcontractMaterialPlanService
             if (slice.signum() <= 0) continue;
             em.createNativeQuery("""
                     UPDATE stock_reservations
-                    SET released_qty = released_qty + :slice, status = 1,
+                    SET released_qty = released_qty + :slice,
+                        status = CASE WHEN released_qty + :slice >= qty THEN 1 ELSE 0 END,
                         release_reason = 'SUBCONTRACT_PREPARED_ORDER_CONVERTED',
                         lock_version = lock_version + 1,
                         updated_at = now(), updated_by = :actorId
@@ -617,8 +693,334 @@ public class SubcontractMaterialPlanService
         }
     }
 
+    /** Actual supplier-held obligations, expressed in the order's business unit.
+     * Different components are parallel requirements; their target equivalents must never be summed.
+     * Drafts and unconsumed reservations are future allocations and do not enter this bound.
+     */
+    @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
+    public BigDecimal minimumOrderQtyFromIssued(UUID orderItemId, BigDecimal orderUnitRate) {
+        List<Object[]> rows=jdbc.query("""
+                SELECT ii.goods_id,ii.color_id,
+                       CASE WHEN pi.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                            THEN 'TARGET' ELSE 'COMPONENT' END AS kind,
+                       SUM(CASE WHEN pi.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                            THEN GREATEST(ii.at_supplier_qty+COALESCE(ii.compensated_qty,0)-ii.consumed_qty-ii.returned_qty-ii.wasted_qty,0)*ii.unit_rate / ?
+                            ELSE GREATEST(ii.at_supplier_qty+COALESCE(ii.compensated_qty,0)-ii.consumed_qty-ii.returned_qty-ii.wasted_qty,0) / NULLIF(ii.frozen_unit_qty,0) END),
+                       BOOL_OR((pi.flow_mode IS NULL OR pi.flow_mode='LEGACY_BOM_COMPONENT')
+                           AND GREATEST(ii.at_supplier_qty-ii.returned_qty,0)>0
+                           AND COALESCE(ii.frozen_unit_qty,0)<=0)
+                FROM subcontract_material_issue_items ii
+                JOIN subcontract_material_issues issue ON issue.id=ii.issue_id
+                LEFT JOIN subcontract_material_plan_items pi ON pi.id=ii.plan_item_id
+                WHERE ii.order_item_id=? AND issue.status=1 AND issue.is_deleted=FALSE AND ii.is_deleted=FALSE
+                GROUP BY ii.goods_id,ii.color_id,kind
+                """,(rs,n)->new Object[]{rs.getObject(1),rs.getObject(2),rs.getString(3),rs.getBigDecimal(4),rs.getBoolean(5)},
+                orderUnitRate,orderItemId);
+        BigDecimal minimum=BigDecimal.ZERO;
+        for(Object[] row:rows) {
+            if(Boolean.TRUE.equals(row[4])) throw new ApiException(ErrorCode.CONFLICT,
+                    "历史委外实发缺少冻结单耗，不能推算减量下限，请先核实原出仓来源");
+            minimum=minimum.max(decimal(row[3]));
+        }
+        return minimum.add(com.uten.imp.common.finance.ProcurementOrderQuantityBounds.receipts(em,"SUBCONTRACT",orderItemId)
+                .minimumOrderedQty(orderUnitRate)).setScale(4,RoundingMode.CEILING);
+    }
+
+    /** Replenish the physical loss allowance without changing the commercial delivery target. */
+    @Transactional(propagation=Propagation.MANDATORY)
+    public void synchronizeWasteAllowance(UUID wasteId){
+        List<UUID> plans=jdbc.queryForList("""
+                SELECT DISTINCT plan.id FROM subcontract_waste_items waste
+                JOIN subcontract_material_issue_items issue ON issue.id=waste.material_issue_item_id
+                JOIN subcontract_material_plan_items item ON item.id=issue.plan_item_id
+                JOIN subcontract_material_plans plan ON plan.id=item.plan_id
+                WHERE waste.waste_id=? AND item.flow_mode='DIRECT_OUTBOUND' AND NOT item.is_deleted AND plan.status='OPEN'
+                ORDER BY plan.id
+                """,UUID.class,wasteId);
+        for(UUID plan:plans)synchronizeDirectLossAllowance(plan);
+    }
+
+    private void synchronizeDirectLossAllowance(UUID planId){
+        for(var row:jdbc.queryForList("""
+                SELECT plan.id,plan.planned_qty,plan.issued_qty,plan.loss_replacement_qty_base,
+                    GREATEST(COALESCE((SELECT SUM((issue.wasted_qty-COALESCE(issue.compensated_qty,0))*COALESCE(issue.unit_rate,1))
+                        FROM subcontract_material_issue_items issue JOIN subcontract_material_issues header ON header.id=issue.issue_id
+                        WHERE issue.plan_item_id=plan.id AND NOT issue.is_deleted AND header.status=1 AND NOT header.is_deleted),0),0) allowance
+                FROM subcontract_material_plan_items plan
+                WHERE plan.plan_id=? AND plan.flow_mode='DIRECT_OUTBOUND' AND NOT plan.is_deleted
+                ORDER BY plan.id FOR UPDATE OF plan
+                """,planId)){
+            BigDecimal allowance=(BigDecimal)row.get("allowance");
+            BigDecimal planned=((BigDecimal)row.get("planned_qty")).subtract((BigDecimal)row.get("loss_replacement_qty_base")).add(allowance)
+                    .max((BigDecimal)row.get("issued_qty"));
+            jdbc.update("""
+                    UPDATE subcontract_material_plan_items SET planned_qty=?,prepared_qty=?,loss_replacement_qty_base=?,
+                        preparation_status=CASE WHEN issued_qty=? THEN 'OUTBOUND_COMPLETE' ELSE 'READY_OUTBOUND' END,
+                        preparation_version=preparation_version+1,updated_at=now() WHERE id=?
+                    """,planned,planned,allowance,planned,row.get("id"));
+        }
+    }
+
+    /**
+     * V486 批准后改量的计划行对账（与订货 changeQty 同事务）：
+     * 减量收回尚未履行的出仓安排，草稿和未消费预留同步撤回；毛实发与实退历史保留。
+     * 增量无子层建 DIRECT READY 行并通知出仓，
+     * 有子层建 MAKE_THEN 行并自动发单给计划。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void applyOrderQtyChange(
+            UUID orderId, Map<UUID, BigDecimal> baseDeltaByOrderItemId,
+            Map<UUID, BigDecimal> unitRateByOrderItemId,
+            Map<UUID, UUID> goodsColorByOrderItemId) {
+        lockOrderInventoryDimensions(orderId);
+        UUID actorUser = currentUser.requireId();
+        for (Map.Entry<UUID, BigDecimal> change
+                : baseDeltaByOrderItemId.entrySet()) {
+            UUID orderItemId = change.getKey();
+            BigDecimal baseDelta = change.getValue();
+            if (baseDelta.signum() == 0) {
+                continue;
+            }
+            if (baseDelta.signum() < 0) {
+                shrinkOrderItemLines(orderId, orderItemId,unitRateByOrderItemId.get(orderItemId));
+                continue;
+            }
+            extendOrderItemLines(
+                    orderId, orderItemId, baseDelta,
+                    unitRateByOrderItemId.get(orderItemId),
+                    goodsColorByOrderItemId.get(orderItemId), actorUser);
+        }
+    }
+
+    /** planned is a gross authorization: new target + proven returns + physical loss allowance,
+     * never below gross issues. Loss replenishment does not increase the commercial delivery target.
+     * Completed PREP output belongs to its original task; reducing this order returns only unused rights.
+     * An already started MAKE_THEN analysis keeps its frozen production requirement until explicitly reversed.
+     */
+    private void shrinkOrderItemLines(
+            UUID orderId, UUID orderItemId, BigDecimal orderUnitRate) {
+        List<Object[]> lines = jdbc.query("""
+                SELECT item.id, item.planned_qty, item.issued_qty, item.prepared_qty,
+                       item.flow_mode,item.plan_id,item.goods_id,item.color_id,item.bom_unit_qty,
+                       COALESCE((SELECT SUM(ii.returned_qty)
+                                 FROM subcontract_material_issue_items ii
+                                 JOIN subcontract_material_issues i
+                                   ON i.id = ii.issue_id
+                                 WHERE ii.plan_item_id = item.id
+                                   AND i.status = 1 AND ii.is_deleted=FALSE
+                                   AND i.is_deleted = FALSE), 0) AS returned_qty,
+                       item.preparation_analysis_id,item.loss_replacement_qty_base
+                FROM subcontract_material_plan_items item
+                JOIN subcontract_material_plans plan ON plan.id = item.plan_id
+                WHERE item.order_item_id = ?
+                  AND plan.order_id = ?
+                  AND plan.status = 'OPEN'
+                  AND plan.is_deleted = FALSE
+                  AND item.is_deleted = FALSE
+                ORDER BY plan.id,item.line_no,item.id
+                FOR UPDATE OF plan,item
+                """, (rs, rowNum) -> new Object[]{
+                rs.getObject(1, UUID.class),
+                rs.getBigDecimal(2), rs.getBigDecimal(3), rs.getBigDecimal(4),
+                rs.getString(5),rs.getObject(6,UUID.class),rs.getObject(7,UUID.class),rs.getObject(8,UUID.class),
+                rs.getBigDecimal(9),rs.getBigDecimal(10),rs.getObject(11,UUID.class),rs.getBigDecimal(12)},
+                orderItemId, orderId);
+        BigDecimal targetOrderQty=jdbc.queryForObject("SELECT qty FROM subcontract_order_items WHERE id=?",BigDecimal.class,orderItemId);
+        Map<String,List<Object[]>> groups=new LinkedHashMap<>();
+        for(Object[] line:lines) groups.computeIfAbsent("LEGACY_BOM_COMPONENT".equals(line[4])
+                ? "COMPONENT:"+line[6]+":"+line[7] : "TARGET",ignored->new ArrayList<>()).add(line);
+        Map<UUID,BigDecimal> reductions=new LinkedHashMap<>();
+        for(var group:groups.values()) {
+            BigDecimal factor="LEGACY_BOM_COMPONENT".equals(group.getFirst()[4])
+                    ? decimal(group.getFirst()[8]) : orderUnitRate;
+            if(factor.signum()<=0 || group.stream().anyMatch(line -> "LEGACY_BOM_COMPONENT".equals(line[4])
+                    && decimal(line[8]).compareTo(decimal(group.getFirst()[8]))!=0))
+                throw new ApiException(ErrorCode.CONFLICT,"历史同子料的冻结单耗不一致，不能自动改量");
+            BigDecimal target=targetOrderQty.multiply(factor).setScale(4,RoundingMode.HALF_UP)
+                    .add(group.stream().map(line->decimal(line[9]).add(decimal(line[11])))
+                            .reduce(BigDecimal.ZERO,BigDecimal::add));
+            BigDecimal remaining=group.stream().map(line->decimal(line[1])).reduce(BigDecimal.ZERO,BigDecimal::add)
+                    .subtract(target).max(BigDecimal.ZERO);
+            for(Object[] line:group) {
+                // Linked MAKE_THEN requirements cannot be silently rewritten beneath an existing analysis.
+                BigDecimal locked="MAKE_THEN_OUTBOUND".equals(line[4]) && line[10]!=null
+                        ? decimal(line[1]) : decimal(line[2]);
+                BigDecimal take=decimal(line[1]).subtract(locked).max(BigDecimal.ZERO).min(remaining);
+                if(take.signum()>0) reductions.put((UUID)line[0],take);
+                remaining=remaining.subtract(take);
+            }
+            if(remaining.signum()>0) throw new ApiException(ErrorCode.CONFLICT,
+                    "新数量仍低于已实发或进行中的前置生产量；请先完成精确退料或反向前置生产后再改量");
+        }
+        if(reductions.isEmpty()) return; // e.g. issued 10, returned 2, order 10 -> 8: gross plan stays 10.
+        List<UUID> affectedDrafts=jdbc.queryForList("""
+                SELECT issue.id FROM subcontract_material_issues issue
+                WHERE issue.status=0 AND issue.is_deleted=FALSE AND EXISTS(
+                    SELECT 1 FROM subcontract_material_issue_items ii
+                    JOIN subcontract_material_plan_items pi ON pi.id=ii.plan_item_id
+                    WHERE ii.issue_id=issue.id AND pi.order_item_id=?)
+                ORDER BY issue.id FOR UPDATE
+                """,UUID.class,orderItemId);
+        for(UUID draftId:affectedDrafts) {
+            releaseDraftReservations(draftId);
+            jdbc.update("UPDATE subcontract_material_issues SET is_deleted=TRUE,deleted_at=now(),updated_at=now() WHERE id=?",draftId);
+        }
+        for(Object[] line:lines) {
+            BigDecimal take=reductions.get((UUID)line[0]);
+            if(take==null) continue;
+            BigDecimal newPlanned=decimal(line[1]).subtract(take);
+            if("PREPARED_OUTBOUND".equals(line[4])) restorePreparedSlice((UUID)line[0],take,currentUser.requireId());
+            if(newPlanned.signum()==0) {
+                // Preserve the positive historical authorization, while retiring its unused live capacity.
+                jdbc.update("""
+                        UPDATE subcontract_material_plan_items
+                        SET is_deleted=TRUE,deleted_at=now(),preparation_status='CANCELLED',
+                            preparation_version=preparation_version+1,updated_at=now()
+                        WHERE id = ?
+                        """,line[0]);
+            } else {
+                jdbc.update("""
+                        UPDATE subcontract_material_plan_items SET planned_qty=?,
+                            prepared_qty=CASE WHEN flow_mode IN ('DIRECT_OUTBOUND','PREPARED_OUTBOUND','LEGACY_BOM_COMPONENT')
+                                THEN ? ELSE LEAST(prepared_qty,?) END,
+                            preparation_status=CASE WHEN flow_mode IN ('DIRECT_OUTBOUND','PREPARED_OUTBOUND')
+                                AND issued_qty=? THEN 'OUTBOUND_COMPLETE' ELSE preparation_status END,
+                            preparation_version=preparation_version+1,updated_at=now()
+                        WHERE id=?
+                        """,newPlanned,newPlanned,newPlanned,newPlanned,line[0]);
+            }
+        }
+        for(UUID planId:lines.stream().map(line->(UUID)line[5]).distinct().toList()) {
+            var head=jdbc.queryForMap("SELECT plan.order_bill_no,plan.supplier_id,orders.deliver_date FROM subcontract_material_plans plan JOIN subcontract_orders orders ON orders.id=plan.order_id WHERE plan.id=?",planId);
+            createDraftForPlan(planId,(String)head.get("order_bill_no"),(UUID)head.get("supplier_id"),toLocalDate(head.get("deliver_date")),currentUser.requireId());
+        }
+    }
+
+    private void restorePreparedSlice(UUID planItemId,BigDecimal amount,UUID actorId) {
+        UUID taskId=jdbc.queryForObject("""
+                SELECT task.id FROM preplan_subcontract_make_tasks task
+                JOIN subcontract_material_plan_items pi ON pi.preparation_analysis_id=task.analysis_id
+                    AND pi.preparation_analysis_item_id=task.preparation_item_id
+                WHERE pi.id=?
+                """,UUID.class,planItemId);
+        List<Object[]> reservations=jdbc.query("""
+                SELECT id,qty-consumed_qty-released_qty,goods_id,color_id,warehouse_id,supply_id,source_doc_id,released_qty
+                FROM stock_reservations WHERE owner_type='SUBCONTRACT_OUTBOUND' AND owner_id=?
+                  AND supply_type='PRODUCTION_FINISHED_IN' AND status=0 AND is_deleted=FALSE
+                  AND qty-consumed_qty-released_qty>0 ORDER BY created_at,id FOR UPDATE
+                """,(rs,n)->new Object[]{rs.getObject(1,UUID.class),rs.getBigDecimal(2),rs.getObject(3,UUID.class),
+                    rs.getObject(4,UUID.class),rs.getObject(5,UUID.class),rs.getObject(6,UUID.class),rs.getObject(7,UUID.class),rs.getBigDecimal(8)},planItemId);
+        BigDecimal remaining=amount;
+        for(Object[] reservation:reservations) {
+            BigDecimal take=decimal(reservation[1]).min(remaining);
+            if(take.signum()<=0) continue;
+            jdbc.update("""
+                    UPDATE stock_reservations SET released_qty=released_qty+?,
+                        status=CASE WHEN consumed_qty+released_qty+?=qty THEN 1 ELSE 0 END,
+                        release_reason='SUBCONTRACT_ORDER_QTY_REDUCED',lock_version=lock_version+1,
+                        updated_at=now(),updated_by=? WHERE id=?
+                    """,take,take,actorId,reservation[0]);
+            jdbc.update("""
+                    INSERT INTO stock_reservations(id,goods_id,color_id,warehouse_id,qty,consumed_qty,released_qty,status,source,
+                        source_doc_type,source_doc_id,owner_type,owner_id,purpose,supply_type,supply_id,idempotency_key,created_by,updated_by)
+                    VALUES (?,?,?,?,?,0,0,0,1,'PRODUCTION_INBOUND',?,'SUBCONTRACT_PREPARE_TASK',?,'SUBCONTRACT_PREPARE_TASK',
+                        'PRODUCTION_FINISHED_IN',?,?,?,?)
+                    """,UUID.randomUUID(),reservation[2],reservation[3],reservation[4],take,reservation[6],taskId,reservation[5],
+                    "SC-PREP-QTY-BACK:"+reservation[0]+":"+decimal(reservation[7]).add(take).toPlainString(),actorId,actorId);
+            remaining=remaining.subtract(take);
+        }
+        if(remaining.signum()!=0) throw new ApiException(ErrorCode.CONFLICT,"前置自制未消费预留不足，不能回收订单权益");
+    }
+
+    /** 增量：无子层 DIRECT READY（补通知出仓），有子层 MAKE_THEN 自动发单计划。 */
+    private void extendOrderItemLines(
+            UUID orderId, UUID orderItemId, BigDecimal increase,
+            BigDecimal orderUnitRate, UUID goodsId, UUID actorUser) {
+        Map<String, Object> item = jdbc.queryForMap("""
+                SELECT item.color_id, goods.unit_id, item.unit_rate,
+                       COALESCE(application.warehouse_id, orders.warehouse_id)
+                           AS suggested_warehouse
+                FROM subcontract_order_items item
+                JOIN subcontract_orders orders ON orders.id = item.order_id
+                JOIN goods ON goods.id = item.goods_id
+                LEFT JOIN subcontract_application_items application_item
+                  ON application_item.id = item.application_item_id
+                LEFT JOIN subcontract_applications application
+                  ON application.id = application_item.application_id
+                WHERE item.id = ?
+                """, orderItemId);
+        Object[] orderHead = jdbc.query("""
+                SELECT plan.id, plan.order_bill_no, plan.supplier_id,
+                       COALESCE(orders.deliver_date, CURRENT_DATE)
+                FROM subcontract_material_plans plan
+                JOIN subcontract_orders orders ON orders.id = plan.order_id
+                WHERE plan.order_id = ? AND plan.status = 'OPEN'
+                  AND plan.is_deleted = FALSE
+                ORDER BY plan.created_at
+                LIMIT 1
+                """, (rs, rowNum) -> new Object[]{
+                rs.getObject(1, UUID.class), rs.getString(2),
+                rs.getObject(3, UUID.class),
+                rs.getObject(4, LocalDate.class)}, orderId).stream()
+                .findFirst().orElse(null);
+        if (orderHead == null) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "订货单没有 OPEN 状态的出仓计划，无法扩量；请红冲后重新下单");
+        }
+        UUID planId = (UUID) orderHead[0];
+        Integer maxLineNo = jdbc.queryForObject(
+                "SELECT MAX(line_no) FROM subcontract_material_plan_items WHERE plan_id = ?",
+                Integer.class, planId);
+        int lineNo = (maxLineNo == null ? 0 : maxLineNo) + 1;
+        Boolean hasChildren = jdbc.queryForObject("""
+                SELECT (EXISTS (
+                    SELECT 1 FROM goods_bom_items child
+                    JOIN goods child_goods ON child_goods.id = child.goods_id
+                    WHERE child.parent_goods_id = ?
+                      AND COALESCE(child.is_deleted, FALSE) = FALSE
+                      AND COALESCE(child_goods.is_deleted, FALSE) = FALSE
+                      AND COALESCE(child_goods.active, TRUE) = TRUE))
+                """, Boolean.class, goodsId);
+        boolean children = Boolean.TRUE.equals(hasChildren);
+        UUID lineId = UUID.randomUUID();
+        UUID unitId = (UUID) item.get("unit_id");
+        UUID colorId = (UUID) item.get("color_id");
+        UUID suggestedWarehouse = (UUID) item.get("suggested_warehouse");
+        jdbc.update("""
+                INSERT INTO subcontract_material_plan_items(
+                    id, plan_id, order_item_id, line_no,
+                    parent_goods_id, parent_color_id,
+                    goods_id, color_id, unit_id, unit_rate,
+                    bom_unit_qty, planned_qty, issued_qty,
+                    flow_mode, preparation_status, prepared_qty,
+                    preparation_warehouse_id, preparation_version,
+                    bom_has_children_snapshot,
+                    created_by, updated_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0,
+                        ?, ?, ?, ?, 0, ?, ?, ?)
+                """,
+                lineId, planId, orderItemId, lineNo,
+                goodsId, colorId, goodsId, colorId, unitId,
+                orderUnitRate == null ? BigDecimal.ONE : orderUnitRate,
+                increase,
+                children ? "MAKE_THEN_OUTBOUND" : "DIRECT_OUTBOUND",
+                children ? "ACTION_REQUIRED" : "READY_OUTBOUND",
+                children ? BigDecimal.ZERO : increase,
+                suggestedWarehouse,
+                children, actorUser, actorUser);
+        if (children) {
+            chainNotice.notifySubcontractPrepareShortage(lineId);
+            orderPreparation.autoStartPlanLinePreparation(lineId);
+        } else {
+            chainNotice.notifySubcontractOutboundReady(lineId);
+            createDraftForPlan(planId, (String) orderHead[1],
+                    (UUID) orderHead[2], (LocalDate) orderHead[3], actorUser);
+        }
+    }
+
     @Transactional(propagation = Propagation.MANDATORY)
     public void cancelForOrderReversal(UUID orderId) {
+        lockOrderInventoryDimensions(orderId);
         UUID actorUser = currentUser.requireId();
         List<UUID> planIds = jdbc.queryForList("""
                 SELECT id FROM subcontract_material_plans
@@ -1390,6 +1792,7 @@ public class SubcontractMaterialPlanService
     @PreAuthorize("hasAuthority('subcontract_outbound:execute')")
     public UUID regenerateDraft(UUID planId) {
         lockPlan(planId, "OPEN");
+        synchronizeDirectLossAllowance(planId);
         if (remainingLines(planId).stream().noneMatch(row -> decimal(row[8]).signum() > 0)) {
             throw new ApiException(ErrorCode.CONFLICT, "计划已无待出仓余量");
         }
@@ -1656,6 +2059,8 @@ public class SubcontractMaterialPlanService
             it.setParentColorId((UUID) row[3]);
             issueItemRepo.save(it);
         }
+        issueRepo.flush();issueItemRepo.flush();
+        reserveDraft(draft.getId(),draft.getWarehouseId());
         return draft.getId();
     }
 

@@ -259,7 +259,7 @@ class _LossDecisionEditorState extends ConsumerState<_LossDecisionEditor> {
 
         String? amount;
         if (SubcontractLossResolutionType.moneyTypes.contains(type)) {
-          final amountUnits = financeDecimalUnits(draft.amount.text);
+          final amountUnits = financeDecimalUnits(draft.amount.text, scale: 24);
           if (amountUnits == null || amountUnits <= BigInt.zero) {
             context.appError(
               '${subcontractLossResolutionTypeLabel(type)}金额必须大于 0',
@@ -279,9 +279,10 @@ class _LossDecisionEditorState extends ConsumerState<_LossDecisionEditor> {
             BigInt.zero,
             (sum, target) =>
                 sum +
-                (financeDecimalUnits(target.amountOriginal) ?? BigInt.zero),
+                (financeDecimalUnits(target.amountOriginal, scale: 24) ??
+                    BigInt.zero),
           );
-          if (targetTotal != financeDecimalUnits(amount)) {
+          if (targetTotal != financeDecimalUnits(amount, scale: 24)) {
             context.appError('抵销目标原币合计必须等于处理金额');
             return;
           }
@@ -604,7 +605,7 @@ class _OffsetTargetPickerState extends ConsumerState<_OffsetTargetPicker> {
     final result = <SubcontractLossOffsetTarget>[];
     for (final id in _selected) {
       final amount = _amounts[id]?.text.trim() ?? '';
-      final units = financeDecimalUnits(amount);
+      final units = financeDecimalUnits(amount, scale: 24);
       if (units == null || units <= BigInt.zero) {
         context.appError('每笔抵销原币金额必须大于 0');
         return;

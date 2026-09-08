@@ -40,7 +40,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -83,6 +82,7 @@ public class FinanceReceiptService {
     private static final int MONEY_SCALE = 4;
     private static final int RATE_SCALE = 6;
     private static final short SETTLEMENT_AUTHORITY_V1 = 1;
+    private static final short SETTLEMENT_AUTHORITY_V2 = 2;
     private static final String FEE_NONE = "NONE";
     private static final String FEE_DEDUCTED = "DEDUCTED_FROM_PROCEEDS";
     private static final String FEE_SEPARATE = "PAID_SEPARATELY";
@@ -137,7 +137,7 @@ public class FinanceReceiptService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<FinanceReceipt> p = receiptRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+        return new PageResponse<>(p.map(this::toList).getContent(), p);
     }
 
     @Transactional(readOnly = true)
@@ -147,7 +147,7 @@ public class FinanceReceiptService {
         requirePrepaymentView(r);
         List<FinanceReceiptLineDto> items = lineRepo.findByReceiptIdOrderByLineNoAsc(id).stream()
                 .map(this::toLineDto).toList();
-        return toDetail(r, items);
+        return toDetail(r, lineRepo.findByReceiptIdOrderByLineNoAsc(r.getId()).stream().map(this::toLineDto).toList());
     }
 
     @Transactional
@@ -185,7 +185,7 @@ public class FinanceReceiptService {
                 req.getAccountAmount(), false);
         validateReceiptShape(r, items, false);
         receiptRepo.flush();
-        return toDetail(r, items);
+        return toDetail(r, lineRepo.findByReceiptIdOrderByLineNoAsc(r.getId()).stream().map(this::toLineDto).toList());
     }
 
     @Transactional
@@ -219,7 +219,7 @@ public class FinanceReceiptService {
                 req.getAccountAmount(), false);
         validateReceiptShape(r, items, false);
         receiptRepo.flush();
-        return toDetail(r, items);
+        return toDetail(r, lineRepo.findByReceiptIdOrderByLineNoAsc(r.getId()).stream().map(this::toLineDto).toList());
     }
 
     @Transactional
@@ -287,6 +287,7 @@ public class FinanceReceiptService {
     @PreAuthorize("hasAuthority('finance_receipt:reverse')")
     public FinanceReceiptDetail reverse(UUID id) {
         tx.bind();
+        PaymentStyleHierarchyLock.lock(em);
         FinanceReceipt r = lockActive(id);
         access.requireScopedOperationWritable(r.getMakerId(), "只能操作本人负责或已交接的销售收款单",
                 "finance_receipt:reverse");
@@ -302,7 +303,7 @@ public class FinanceReceiptService {
         r.setReversedAt(reversedAt); // V390：一次写入，数据库触发器锁定
         receiptRepo.saveAndFlush(r);
         reverseSettlement(r);
-        if (r.getSettlementAuthorityVersion()==SETTLEMENT_AUTHORITY_V1) {
+        if (r.getSettlementAuthorityVersion()>=SETTLEMENT_AUTHORITY_V1) {
             assertV1ProjectionIntegrity(r.getId());
         }
         return detail(id);
@@ -316,7 +317,7 @@ public class FinanceReceiptService {
         Map<UUID, ArApLedger> lockedLedgers = lines.isEmpty()
                 ? Map.of()
                 : lockAppliedLedgers(lines);
-        if (!lines.isEmpty()) {
+        if (!lines.isEmpty() && r.getSettlementAuthorityVersion()<SETTLEMENT_AUTHORITY_V2) {
             applyLineTotals(r, lines.stream().map(this::toLineDto).toList());
         }
         BigDecimal amountLocal = nz(r.getAmountLocal());
@@ -340,7 +341,8 @@ public class FinanceReceiptService {
         }
         BigDecimal directRate = positiveRate(r.getExchangeRate());
         BigDecimal directOriginal = positiveMoney(r.getAmountOriginal(), "直接收款原币金额");
-        amountLocal = money(directOriginal.multiply(directRate));
+        amountLocal = r.getSettlementAuthorityVersion()>=SETTLEMENT_AUTHORITY_V2
+                ? money(r.getAmountLocal()) : money(directOriginal.multiply(directRate));
         r.setExchangeRate(directRate);
         r.setAmountOriginal(directOriginal);
         r.setAmountLocal(amountLocal);
@@ -365,7 +367,7 @@ public class FinanceReceiptService {
         led.setAmountWriteOffOriginal(BigDecimal.ZERO.setScale(MONEY_SCALE));
         led.setAmountWriteOffLocal(BigDecimal.ZERO.setScale(MONEY_SCALE));
         led.setAmountSettled(amountLocal);
-        refreshSettlement(led, r.getBillDate());
+        refreshBalancesAndSettlement(led, r.getBillDate());
         ledgerRepo.save(led);
         // 账户累加 + 写流水
         applyAccountPosting(r, 1);
@@ -426,14 +428,18 @@ public class FinanceReceiptService {
             }
 
             BigDecimal afterOriginal = money(beforeOriginal.subtract(appliedOriginal));
-            BigDecimal cashLocal = money(cashOriginal.multiply(receiptRate));
+            BigDecimal cashLocal = receipt.getSettlementAuthorityVersion()>=SETTLEMENT_AUTHORITY_V2
+                    ? money(line.getAmountLocal()) : money(cashOriginal.multiply(receiptRate));
             BigDecimal writeOffLocal = money(writeOffOriginal.multiply(receiptRate));
             BigDecimal originalLocal = nz(ledger.getAmountOriginalLocal());
             BigDecimal oldSettledLocal = nz(ledger.getAmountSettled());
-            BigDecimal newSettledLocal = oldSettledLocal
-                    .add(money(appliedOriginal.multiply(recognitionRate)));
+            BigDecimal beforeBookLocal=nz(ledger.getAmountBalance());
+            BigDecimal newSettledLocal = oldSettledLocal.add(
+                    receipt.getSettlementAuthorityVersion()>=SETTLEMENT_AUTHORITY_V2
+                    ? sourceAllocation.plannedBookAmount(ledger,appliedOriginal)
+                    : money(appliedOriginal.multiply(recognitionRate)));
             if (afterOriginal.signum() == 0) {
-                newSettledLocal = originalLocal;
+                newSettledLocal = originalLocal.subtract(nz(ledger.getAmountOffsetLocal()));
             }
             BigDecimal appliedLocal = money(newSettledLocal.subtract(oldSettledLocal));
             BigDecimal exchangeDiff = money(cashLocal.add(writeOffLocal).subtract(appliedLocal));
@@ -444,16 +450,18 @@ public class FinanceReceiptService {
             line.setExchangeDiff(exchangeDiff);
             line.setBalanceBeforeOriginal(beforeOriginal);
             line.setBalanceAfterOriginal(afterOriginal);
+            if(receipt.getSettlementAuthorityVersion()>=SETTLEMENT_AUTHORITY_V2) {
+                line.setBookBalanceBeforeLocal(beforeBookLocal);
+                line.setBookBalanceAfterLocal(money(beforeBookLocal.subtract(appliedLocal)));
+            }
             lineRepo.save(line);
 
             ledger.setAmountReceivedOriginal(money(nz(ledger.getAmountReceivedOriginal()).add(cashOriginal)));
             ledger.setAmountReceivedLocal(money(nz(ledger.getAmountReceivedLocal()).add(cashLocal)));
             ledger.setAmountWriteOffOriginal(money(nz(ledger.getAmountWriteOffOriginal()).add(writeOffOriginal)));
             ledger.setAmountWriteOffLocal(money(nz(ledger.getAmountWriteOffLocal()).add(writeOffLocal)));
-            ledger.setAmountBalanceOriginal(afterOriginal);
             ledger.setAmountSettled(money(newSettledLocal));
-            ledger.setAmountBalance(money(originalLocal.subtract(newSettledLocal)));
-            refreshSettlement(ledger, receipt.getBillDate());
+            refreshBalancesAndSettlement(ledger, receipt.getBillDate());
             ledgerRepo.save(ledger);
 
             cashOriginalTotal = cashOriginalTotal.add(cashOriginal);
@@ -461,15 +469,14 @@ public class FinanceReceiptService {
             writeOffLocalTotal = writeOffLocalTotal.add(writeOffLocal);
         }
 
-        BigDecimal headerFees = money(nonNegativeMoney(receipt.getBankFee(), "手续费")
-                .add(nonNegativeMoney(receipt.getOtherFee(), "其它费用")));
+        BigDecimal headerFees = money(nz(receipt.getBankFee()).add(nz(receipt.getOtherFee())));
         if (nz(receipt.getOtherFee()).signum() > 0 && receipt.getOtherFeeStyleId() == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "填写其它费用时必须选择费用项目");
         }
         if (nz(receipt.getOtherFee()).signum() > 0) {
             assertExpenseStyleActive(receipt.getOtherFeeStyleId());
         }
-        if (receipt.getSettlementAuthorityVersion() == SETTLEMENT_AUTHORITY_V1
+        if (receipt.getSettlementAuthorityVersion() >= SETTLEMENT_AUTHORITY_V1
                 && money(writeOffLocalTotal).signum() != 0) {
             throw new ApiException(ErrorCode.BUSINESS,
                     "新收款的AR商业冲销必须为0，手续费由独立费用快照承担");
@@ -544,11 +551,8 @@ public class FinanceReceiptService {
             ledger.setAmountReceivedLocal(newReceivedLocal);
             ledger.setAmountWriteOffOriginal(newWriteOffOriginal);
             ledger.setAmountWriteOffLocal(newWriteOffLocal);
-            ledger.setAmountBalanceOriginal(money(nz(ledger.getAmountOriginal())
-                    .subtract(newReceivedOriginal).subtract(newWriteOffOriginal)));
             ledger.setAmountSettled(newSettledLocal);
-            ledger.setAmountBalance(money(nz(ledger.getAmountOriginalLocal()).subtract(newSettledLocal)));
-            refreshSettlement(ledger, receipt.getBillDate());
+            refreshBalancesAndSettlement(ledger, receipt.getBillDate());
             ledgerRepo.save(ledger);
         }
     }
@@ -558,9 +562,19 @@ public class FinanceReceiptService {
      * {@code is_settled=true}。DIRECT_RECEIPT 的负余额表示仍可使用的客户预收款，
      * 必须保持未结清，不能混同为普通应收已核销。
      */
-    private void refreshSettlement(ArApLedger led, LocalDate settlementDate) {
-        BigDecimal bal = nz(led.getAmountBalance());
-        boolean settled = bal.signum() == 0;
+    private void refreshBalancesAndSettlement(ArApLedger led, LocalDate settlementDate) {
+        BigDecimal original = money(nz(led.getAmountOriginal())
+                .subtract(nz(led.getAmountReceivedOriginal()))
+                .subtract(nz(led.getAmountWriteOffOriginal()))
+                .subtract(nz(led.getAmountOffsetOriginal())));
+        BigDecimal bal = money(nz(led.getAmountOriginalLocal())
+                .subtract(nz(led.getAmountSettled())).subtract(nz(led.getAmountOffsetLocal())));
+        if (!SRC_DIRECT_RECEIPT.equals(led.getSourceDocType()) && (original.signum()<0 || bal.signum()<0)) {
+            throw new ApiException(ErrorCode.CONFLICT, "应收余额不足以覆盖收款、冲销与已转销预收，请核对来源");
+        }
+        led.setAmountBalanceOriginal(original);
+        led.setAmountBalance(bal);
+        boolean settled = com.uten.imp.features.finance.arap.ArApSettlementPolicy.isSettled(original,bal);
         led.setSettled(settled);
         led.setSettledDate(settled ? settlementDate : null);
     }
@@ -631,7 +645,7 @@ public class FinanceReceiptService {
      * 账户余额与 finance_reconciliations 始终保持同一账户币种口径。
      */
     private void applyAccountPosting(FinanceReceipt receipt, int sign) {
-        if (receipt.getSettlementAuthorityVersion() != SETTLEMENT_AUTHORITY_V1) {
+        if (receipt.getSettlementAuthorityVersion() < SETTLEMENT_AUTHORITY_V1) {
             BigDecimal accountAmount = adjustAccount(
                     receipt.getAccountId(),
                     receipt.getCurrencyId(),
@@ -874,7 +888,7 @@ public class FinanceReceiptService {
     }
 
     private void assertCompletePosting(FinanceReceipt receipt) {
-        if(receipt.getSettlementAuthorityVersion()==SETTLEMENT_AUTHORITY_V1){
+        if(receipt.getSettlementAuthorityVersion()>=SETTLEMENT_AUTHORITY_V1){
             long integrity=((Number)em.createNativeQuery("""
                     SELECT COUNT(*) FROM v_receipt_flow_integrity
                     WHERE receipt_id=:id AND is_consistent
@@ -895,7 +909,7 @@ public class FinanceReceiptService {
         }
         long actual = postingCount(receipt.getId(), RECON_SOURCE);
         long feeActual = postingCount(receipt.getId(), RECON_FEE_SOURCE);
-        long expectedFee = receipt.getSettlementAuthorityVersion() == SETTLEMENT_AUTHORITY_V1
+        long expectedFee = receipt.getSettlementAuthorityVersion() >= SETTLEMENT_AUTHORITY_V1
                 && FEE_SEPARATE.equals(receipt.getFeeSettlementMode()) ? 1L : 0L;
         if (actual != 1L || feeActual != expectedFee) {
             throw new ApiException(ErrorCode.CONFLICT,
@@ -1039,20 +1053,18 @@ public class FinanceReceiptService {
         r.setAccountId(req.getAccountId());
         r.setCounterpartAccountId(req.getCounterpartAccountId());
         // AR validation queries may auto-flush this draft. Keep the first write
-        // legacy-compatible; finalizeSettlementAuthority upgrades it to V1 only
+        // legacy-compatible; finalizeSettlementAuthority upgrades it to V2 only
         // after every account/fee snapshot has been derived in this transaction.
         r.setSettlementAuthorityVersion((short) 0);
         r.setCurrencyId(req.getCurrencyId());
         // null 必须清掉实体默认值/旧草稿值；直收与预收也只能使用财务显式填写的到账汇率。
-        r.setExchangeRate(req.getExchangeRate());
-        r.setAmountOriginal(req.getAmountOriginal());
-        // 金额服务端权威重算（4 位 HALF_UP）：本币额 = 原币额 × 汇率，忽略客户端 amountLocal，
-        // 防止篡改本币额进而影响 AR 核销与账户增减（与 M1 银行转账服务端权威同型）。
+        r.setExchangeRate(req.getExchangeRate()==null?null:positiveRate(req.getExchangeRate()));
+        r.setAmountOriginal(com.uten.imp.common.util.FinancialExactAmount.optional(req.getAmountOriginal(),"收款原币"));
+        // Initial quote projection only; V2 replaces it with the actual bank basis below.
         java.math.BigDecimal rate = r.getExchangeRate();
         r.setAmountLocal(req.getAmountOriginal() == null || rate == null
                 ? null
-                : req.getAmountOriginal().multiply(rate)
-                        .setScale(4, java.math.RoundingMode.HALF_UP));
+                : money(req.getAmountOriginal().multiply(rate)));
         r.setBankFee(BigDecimal.ZERO.setScale(MONEY_SCALE));
         r.setOtherFee(BigDecimal.ZERO.setScale(MONEY_SCALE));
         r.setBankFeeAccountAmount(money(req.getBankFeeAccountAmount() != null
@@ -1088,13 +1100,13 @@ public class FinanceReceiptService {
     }
 
     /**
-     * Derive every V1 account/fee amount from locked account currency facts.
-     * Client-derived values are only optimistic expectations and never the authority.
+     * Freeze actual bank amounts and complete fee products against the account currency.
+     * The reference quote remains evidence; it does not replace an actual base-currency bank receipt.
      */
     private void finalizeSettlementAuthority(
             FinanceReceipt receipt,
             UUID expectedAccountCurrencyId,
-            BigDecimal expectedAccountAmount,
+            BigDecimal actualAccountAmount,
             boolean lockAccounts) {
         if (receipt.getAccountId() == null || receipt.getCurrencyId() == null
                 || receipt.getAmountOriginal() == null
@@ -1181,15 +1193,12 @@ public class FinanceReceiptService {
 
         BigDecimal settlementRate = positiveRate(receipt.getExchangeRate());
         BigDecimal receivingRate;
-        BigDecimal receivingGross;
         String receivingRateSource;
         if (receiving.baseCurrency()) {
             receivingRate = BigDecimal.ONE.setScale(RATE_SCALE);
-            receivingGross = money(receipt.getAmountLocal());
             receivingRateSource = "BASE_CURRENCY_IDENTITY";
         } else if (receiving.currencyId().equals(receipt.getCurrencyId())) {
             receivingRate = settlementRate;
-            receivingGross = money(receipt.getAmountOriginal());
             receivingRateSource = "SETTLEMENT_RATE";
         } else {
             throw new ApiException(ErrorCode.BUSINESS,
@@ -1240,28 +1249,24 @@ public class FinanceReceiptService {
         BigDecimal otherFeeLocal = money(otherFeeAccount.multiply(feeRate));
         BigDecimal feeLocalTotal = money(bankFeeLocal.add(otherFeeLocal));
 
-        BigDecimal receivingAmount = FEE_DEDUCTED.equals(feeMode)
-                ? money(receivingGross.subtract(feeAccountTotal))
-                : receivingGross;
+        // Actual bank amount is a source fact. A quote is evidence and cannot replace it.
+        BigDecimal receivingAmount=positiveMoney(actualAccountAmount,"银行实际到账金额");
         if (receivingAmount.signum() <= 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "手续费不能等于或超过本批到账毛额");
         }
-        BigDecimal receivingLocal = FEE_DEDUCTED.equals(feeMode)
-                ? money(receipt.getAmountLocal().subtract(feeLocalTotal))
-                : money(receipt.getAmountLocal());
-        BigDecimal calculatedReceivingLocal =
-                money(receivingAmount.multiply(receivingRate));
-        if (calculatedReceivingLocal.subtract(receivingLocal).abs()
-                .compareTo(new BigDecimal("0.0001")) > 0) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "账户原币入账、账户折算汇率与本位币净额不一致");
+        BigDecimal receivingLocal=money(receivingAmount.multiply(receivingRate));
+        if(receiving.currencyId().equals(receipt.getCurrencyId())) {
+            BigDecimal nativeGross=FEE_DEDUCTED.equals(feeMode)
+                    ?money(receivingAmount.add(feeAccountTotal)):receivingAmount;
+            if(nativeGross.compareTo(receipt.getAmountOriginal())!=0)
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "同币种银行实收加到账扣费必须等于本次收款原币；多收部分请登记客户预收款");
+            if(receiving.baseCurrency() && settlementRate.compareTo(BigDecimal.ONE)!=0)
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,"本位币同币收款汇率必须为1");
         }
-        if (expectedAccountAmount != null
-                && money(expectedAccountAmount).compareTo(receivingAmount) != 0) {
-            throw new ApiException(ErrorCode.CONFLICT,
-                    "页面预计到账与服务端权威计算不一致，请刷新并核对费用与汇率");
-        }
+        receipt.setAmountLocal(money(receivingLocal.add(FEE_DEDUCTED.equals(feeMode)?feeLocalTotal:BigDecimal.ZERO)));
+        allocateActualBankBasis(receipt);
         if (otherFeeAccount.signum() > 0 && receipt.getOtherFeeStyleId() == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "填写外贸代理费或其它费用时必须选择费用项目");
@@ -1305,11 +1310,30 @@ public class FinanceReceiptService {
         receipt.setGlFxStyleId(fxStyle);
         receipt.setGlFeePaymentStyleId(FEE_SEPARATE.equals(feeMode)
                 ?feeAccount.styleId():null);
-        // Set V1 last: any validation query before this point may auto-flush
+        // Set V2 last: any validation query before this point may auto-flush
         // the managed draft, which must remain a complete V0 shape until all
         // server-derived authority snapshots are ready.
-        receipt.setSettlementAuthorityVersion(SETTLEMENT_AUTHORITY_V1);
+        receipt.setSettlementAuthorityVersion(SETTLEMENT_AUTHORITY_V2);
         receiptRepo.save(receipt);
+    }
+
+    private void allocateActualBankBasis(FinanceReceipt receipt) {
+        List<FinanceReceiptLine> lines=lineRepo.findByReceiptIdOrderByLineNoAsc(receipt.getId());
+        if(lines.isEmpty())return;
+        BigDecimal beforeOriginal=receipt.getAmountOriginal();
+        BigDecimal beforeLocal=receipt.getAmountLocal();
+        for(FinanceReceiptLine line:lines) {
+            BigDecimal cash=positiveMoney(line.getAmountOriginal(),"明细实际收款原币");
+            BigDecimal local=com.uten.imp.common.finance.FinancialBookAllocation.part(cash,beforeOriginal,beforeLocal);
+            line.setBankBasisBeforeOriginal(beforeOriginal);line.setBankBasisBeforeLocal(beforeLocal);
+            beforeOriginal=money(beforeOriginal.subtract(cash));beforeLocal=money(beforeLocal.subtract(local));
+            line.setBankBasisAfterOriginal(beforeOriginal);line.setBankBasisAfterLocal(beforeLocal);
+            line.setAmountLocal(local);
+            line.setExchangeDiff(money(local.subtract(nz(line.getAppliedAmountLocal()))));
+            lineRepo.save(line);
+        }
+        if(beforeOriginal.signum()!=0||beforeLocal.signum()!=0)
+            throw new ApiException(ErrorCode.CONFLICT,"收款明细必须完整分配同一笔银行事实，剩余金额不能丢失");
     }
 
     private UUID requiredPostingStyle(String roleKey){
@@ -1449,7 +1473,9 @@ public class FinanceReceiptService {
             BigDecimal writeOffLocal = money(writeOffOriginal.multiply(rate));
             BigDecimal recognitionRate = ledger == null
                     ? rate : positiveRate(ledger.getExchangeRate());
-            BigDecimal appliedLocal = money(cashOriginal.add(writeOffOriginal).multiply(recognitionRate));
+            BigDecimal appliedLocal = ledger==null
+                    ? money(cashOriginal.add(writeOffOriginal).multiply(recognitionRate))
+                    : sourceAllocation.plannedBookAmount(ledger,cashOriginal.add(writeOffOriginal));
             BigDecimal exchangeDiff = money(cashLocal.add(writeOffLocal).subtract(appliedLocal));
             FinanceReceiptLine ln = new FinanceReceiptLine();
             ln.setReceiptId(r.getId());
@@ -1667,18 +1693,18 @@ public class FinanceReceiptService {
         if (value == null || value.signum() <= 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "收款汇率必须大于 0");
         }
-        return value.setScale(RATE_SCALE, RoundingMode.HALF_UP);
+        return com.uten.imp.common.util.FinancialExactAmount.rate(value,"收款汇率");
     }
 
     private static BigDecimal positiveMoney(BigDecimal value, String label) {
         if (value == null || value.signum() <= 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, label + "必须大于 0");
         }
-        return money(value);
+        return money(com.uten.imp.common.util.FinancialExactAmount.require(value,label));
     }
 
     private static BigDecimal nonNegativeMoney(BigDecimal value, String label) {
-        BigDecimal normalized = money(nz(value));
+        BigDecimal normalized = com.uten.imp.common.util.FinancialExactAmount.require(nz(value),label);
         if (normalized.signum() < 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, label + "不能为负数");
         }
@@ -1686,7 +1712,7 @@ public class FinanceReceiptService {
     }
 
     private static BigDecimal money(BigDecimal value) {
-        return nz(value).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        return com.uten.imp.common.util.FinancialExactAmount.canonicalMoney(nz(value),"收款账面金额");
     }
 
     private static BigDecimal nz(BigDecimal x) {

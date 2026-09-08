@@ -143,7 +143,7 @@ class SalesShipmentFinanceRateSqlContractTest {
                 "lockmodetype.pessimistic_write",
                 "仅草稿单据可审核");
         assertThat(approvalPath).contains(
-                "if (!s.isarposted())",
+                "if (!s.isarposted() && !customershipmentpolicy.free(s))",
                 "arapservice.postarap",
                 "s.setarposted(true)");
         assertThat(arAp).contains("findbysourceforupdate(req.sourcedocid(), req.sourcedoctype())");
@@ -159,9 +159,13 @@ class SalesShipmentFinanceRateSqlContractTest {
                 .replaceAll("\\s+", " ").toLowerCase();
 
         assertThat(source).contains("requirelegacyshipmentmutable(s)");
-        assertThat(source).doesNotContain(
-                "|| salesshipment.work_legacy_pending.equals( shipment.getwarehouseworkstatus())",
-                "approvable through the compatibility path");
+        for (String name : java.util.List.of("isrejectablestate", "iseditablestate")) {
+            int start=source.indexOf("private boolean "+name+"(");
+            String capability=source.substring(start,source.indexOf("}",start));
+            assertThat(capability).contains("!\"legacy\".equals(shipment.getshipmentkind())","&& salesshipment.work_pending_pick.equals(")
+                    .doesNotContain("|| salesshipment.work_legacy_pending");
+        }
+        assertThat(source).doesNotContain("approvable through the compatibility path");
     }
 
     @Test

@@ -162,6 +162,23 @@ public class PreplanStockEntitlementService {
             UUID goodsId,
             UUID colorId,
             boolean forUpdate) {
+        return listAvailableBeneficiaryLots(
+                analysisId, analysisMaterialId, warehouseId, goodsId,
+                colorId, forUpdate, false);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<AvailableLot> listAvailableBeneficiaryLotsWithinMainWarehouse(
+            UUID analysisId, UUID analysisMaterialId, UUID warehouseId,
+            UUID goodsId, UUID colorId, boolean forUpdate) {
+        return listAvailableBeneficiaryLots(
+                analysisId, analysisMaterialId, warehouseId, goodsId,
+                colorId, forUpdate, true);
+    }
+
+    private List<AvailableLot> listAvailableBeneficiaryLots(
+            UUID analysisId, UUID analysisMaterialId, UUID warehouseId,
+            UUID goodsId, UUID colorId, boolean forUpdate, boolean sameMain) {
         tx.bind();
         String lock = forUpdate ? " FOR UPDATE OF positive, reservation" : "";
         Query query = em.createNativeQuery("""
@@ -193,7 +210,7 @@ public class PreplanStockEntitlementService {
                         'REALLOCATE_IN', 'PRIORITY_IN', 'RESTORE')
                   AND positive.beneficiary_analysis_id = :analysisId
                   AND positive.beneficiary_analysis_material_id = :materialId
-                  AND reservation.warehouse_id = :warehouseId
+                  AND %s
                   AND reservation.goods_id = :goodsId
                   AND reservation.color_id IS NOT DISTINCT FROM
                       CAST(:colorId AS uuid)
@@ -207,7 +224,9 @@ public class PreplanStockEntitlementService {
                             'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                   ), 0) > 0
                 ORDER BY positive.created_at, positive.id
-                """ + lock)
+                """.formatted(sameMain
+                        ? "fn_warehouse_same_main(reservation.warehouse_id, :warehouseId)"
+                        : "reservation.warehouse_id = :warehouseId") + lock)
                 .setParameter("analysisId", analysisId)
                 .setParameter("materialId", analysisMaterialId)
                 .setParameter("warehouseId", warehouseId)
@@ -444,6 +463,25 @@ public class PreplanStockEntitlementService {
             }
         }
         return transferred;
+    }
+
+    /**
+     * 2026-09-05 简化：分析刷新前批量归还旧模式遗留的 MAKE 权益委托
+     * （新模式不再委托；归还后 exact 权益回到原始物料节点，投影单份数据）。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    @SuppressWarnings("unchecked")
+    public void restoreAllMakeDelegations(UUID analysisId) {
+        tx.bind();
+        List<UUID> actionIds = (List<UUID>) em.createNativeQuery("""
+                SELECT DISTINCT delegation.supply_action_id
+                FROM preplan_make_entitlement_delegations delegation
+                WHERE delegation.analysis_id = :analysisId
+                """).setParameter("analysisId", analysisId).getResultList();
+        for (UUID actionId : actionIds) {
+            restoreMakeDelegationsForAction(
+                    analysisId, actionId, "refresh-restore-" + analysisId);
+        }
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -891,7 +929,7 @@ public class PreplanStockEntitlementService {
             UUID eventGroupId,
             String idempotencyPrefix) {
         tx.bind();
-        List<Object[]> headers = NativeQueryResults.objectArrayRows(
+        List<BigDecimal> headers = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
                         SELECT qty
                         FROM preplan_material_reallocations
@@ -907,11 +945,11 @@ public class PreplanStockEntitlementService {
                         .setParameter("fromAnalysisId", fromAnalysisId)
                         .setParameter("fromMaterialId", fromMaterialId)
                         .setParameter("toAnalysisId", toAnalysisId)
-                        .setParameter("toMaterialId", toMaterialId));
+                        .setParameter("toMaterialId", toMaterialId), BigDecimal.class);
         if (headers.size() != 1) {
             throw conflict("Only an open unfulfilled reallocation can be reversed");
         }
-        BigDecimal headerQty = decimal(headers.getFirst()[0]);
+        BigDecimal headerQty = headers.getFirst();
 
         // Immutable REALLOCATE_IN rows retain the original OUT counters even
         // after formalize/restore cycles move current entitlement to RESTORE lots.

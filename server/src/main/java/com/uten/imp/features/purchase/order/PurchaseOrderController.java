@@ -5,6 +5,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.RequestUuidSets;
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts;
 import com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService;
 import com.uten.imp.features.purchase.order.dto.OrderDetail;
 import com.uten.imp.features.purchase.order.dto.OrderListItem;
@@ -129,11 +130,30 @@ public class PurchaseOrderController {
         service.delete(id);
     }
 
+    /** 取消草稿订货单（含在审：同步撤回财务审批任务与弹卡）。 */
+    @PostMapping("/{id}/cancel")
+    @PreAuthorize("hasAuthority('purchase_order:cancel')")
+    public OrderDetail cancel(@PathVariable UUID id) {
+        return service.cancel(id);
+    }
+
     @PostMapping("/{id}/submit-finance")
     @PreAuthorize("hasAuthority('purchase_order:submit_finance')")
     public OrderDetail submitFinance(@PathVariable UUID id) {
         financeApproval.submit("PURCHASE", id);
         return service.detail(id);
+    }
+
+    /**
+     * V486 财务批准后受控改量：立即生效并自动开财务复核 case（对齐销售 V482）。
+     */
+    @PostMapping("/{id}/change-qty")
+    @PreAuthorize("hasAuthority('purchase_order:change_qty')")
+    public OrderDetail changeQty(
+            @PathVariable UUID id,
+            @Valid @RequestBody
+            ProcurementApprovalContracts.OrderQtyChangeRequest request) {
+        return service.changeQty(id, request);
     }
 
     @PostMapping("/{id}/approve")

@@ -227,8 +227,13 @@ public class MaterialAnalysisSupplyProgressService {
             steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                     "QUALITY", purchase ? "品质验收" : "委外回厂 IQC",
                     WAITING, null, null, null, null));
-            steps.add(stockedStep(
-                    materialLineId, supplyActionId, requiredQty, shortageQty));
+            steps.add(purchase
+                    ? purchaseStockedStep(materialLineId, supplyActionId,
+                            requiredQty, shortageQty,
+                            BigDecimal.ZERO, BigDecimal.ZERO)
+                    : subcontractStockedStep(materialLineId, supplyActionId,
+                            requiredQty, shortageQty,
+                            BigDecimal.ZERO, BigDecimal.ZERO));
             return steps;
         }
 
@@ -422,7 +427,9 @@ public class MaterialAnalysisSupplyProgressService {
 
         // 前置自制成品入库仍是 SUBCONTRACT_OUTBOUND 专属占用，不是原需求最终供给。
         steps.add(purchase
-                ? stockedStep(materialLineId, supplyActionId, requiredQty, shortageQty)
+                ? purchaseStockedStep(materialLineId, supplyActionId,
+                        requiredQty, shortageQty,
+                        qualifiedReturnedQty, warehouseStockedQty)
                 : subcontractStockedStep(materialLineId, supplyActionId,
                         requiredQty, shortageQty,
                         qualifiedReturnedQty, warehouseStockedQty));
@@ -696,28 +703,15 @@ public class MaterialAnalysisSupplyProgressService {
 
     // ============================ 共用 ============================
 
-    /** 末步「入库齐套」：以分析节点实时缺口为权威（缺口归零 = 已齐套）。 */
+    /**
+     * 末步「入库齐套」（自制链）：需求转出且权益移交自制子件时以移交为准；
+     * 需求仍在行内时以缺口为权威（缺口归零 = 现货/权益覆盖齐套）。
+     */
     private MaterialAnalysisContracts.SupplyProgressStep stockedStep(
             UUID materialLineId, UUID supplyActionId,
             BigDecimal requiredQty, BigDecimal shortageQty) {
         if (requiredQty.compareTo(BigDecimal.ZERO) <= 0) {
-            BigDecimal delegated = decimal(em.createNativeQuery("""
-                    SELECT COALESCE(SUM(state.qty), 0)
-                    FROM v_preplan_make_entitlement_delegation_state state
-                    JOIN preplan_stock_entitlement_events source_event
-                      ON source_event.id = state.source_entitlement_event_id
-                    JOIN preplan_analysis_stock_exact_pegs exact_peg
-                      ON exact_peg.id = source_event.source_exact_peg_id
-                    JOIN preplan_supply_action_allocations allocation
-                      ON allocation.id =
-                         exact_peg.supply_action_allocation_id
-                    WHERE state.source_analysis_material_id = :materialLineId
-                      AND state.state = 'ACTIVE'
-                      AND allocation.action_id = :supplyActionId
-                    """)
-                    .setParameter("materialLineId", materialLineId)
-                    .setParameter("supplyActionId", supplyActionId)
-                    .getSingleResult());
+            BigDecimal delegated = delegatedEntitlementQty(materialLineId, supplyActionId);
             String detail = delegated.signum() > 0
                     ? "该供给行动的合格权益已移交自制子件 "
                             + delegated.stripTrailingZeros().toPlainString()
@@ -731,6 +725,60 @@ public class MaterialAnalysisSupplyProgressService {
         BigDecimal covered = requiredQty.subtract(shortageQty).max(BigDecimal.ZERO);
         String detail = "已备 " + covered.stripTrailingZeros().toPlainString()
                 + " / " + requiredQty.stripTrailingZeros().toPlainString();
+        return new MaterialAnalysisContracts.SupplyProgressStep(
+                "STOCKED", "入库齐套", stocked ? DONE : WAITING,
+                detail,
+                null, null, null);
+    }
+
+    /**
+     * 末步「入库齐套」（采购链，2026-09-06 修复「未下单却显示已入库」）：
+     *
+     * <p>整批下达会把行内 required/shortage 一并归零——那是需求转出，不是齐套。
+     * 转出行（required&lt;=0）改为沿单据链的实际合格量与仓库入库量判定：
+     * 未到货合格 = 未开始、合格未入库 = 进行中、合格且入库 = 完成；
+     * 权益已移交自制子件的行动仍以移交为准（原路径无需重复备料）。
+     * 需求仍在行内（required&gt;0）时保留缺口权威：缺口归零 = 现货/权益覆盖齐套。</p>
+     */
+    private MaterialAnalysisContracts.SupplyProgressStep purchaseStockedStep(
+            UUID materialLineId, UUID supplyActionId,
+            BigDecimal requiredQty, BigDecimal shortageQty,
+            BigDecimal qualifiedQty, BigDecimal warehouseStockedQty) {
+        if (requiredQty.signum() <= 0) {
+            BigDecimal delegated = delegatedEntitlementQty(materialLineId, supplyActionId);
+            if (delegated.signum() > 0) {
+                return new MaterialAnalysisContracts.SupplyProgressStep(
+                        "STOCKED", "入库齐套", DONE,
+                        "该供给行动的合格权益已移交自制子件 "
+                                + delegated.stripTrailingZeros().toPlainString()
+                                + " · 原路径本批无需重复备料",
+                        null, null, null);
+            }
+            if (qualifiedQty.signum() <= 0) {
+                return new MaterialAnalysisContracts.SupplyProgressStep(
+                        "STOCKED", "入库齐套", WAITING,
+                        "本批需求已转出采购，等待到货合格入库", null, null, null);
+            }
+            if (warehouseStockedQty.signum() <= 0) {
+                return new MaterialAnalysisContracts.SupplyProgressStep(
+                        "STOCKED", "入库齐套", CURRENT,
+                        "品质已合格，等待仓库确认实际库位并入库；确认前不计入可用库存",
+                        null, null, null);
+            }
+            return new MaterialAnalysisContracts.SupplyProgressStep(
+                    "STOCKED", "入库齐套", DONE,
+                    "已合格入库 " + warehouseStockedQty
+                            .stripTrailingZeros().toPlainString(),
+                    null, null, null);
+        }
+        boolean stocked = shortageQty.compareTo(BigDecimal.ZERO) <= 0;
+        BigDecimal covered = requiredQty.subtract(shortageQty).max(BigDecimal.ZERO);
+        String detail = "已备 " + covered.stripTrailingZeros().toPlainString()
+                + " / " + requiredQty.stripTrailingZeros().toPlainString();
+        if (warehouseStockedQty.signum() > 0) {
+            detail += " · 采购已合格入库 "
+                    + warehouseStockedQty.stripTrailingZeros().toPlainString();
+        }
         String split = buySplitDetail(supplyActionId);
         if (split != null) detail += " · " + split;
         return new MaterialAnalysisContracts.SupplyProgressStep(
@@ -744,14 +792,43 @@ public class MaterialAnalysisSupplyProgressService {
             BigDecimal requiredQty, BigDecimal shortageQty,
             BigDecimal qualifiedReturnedQty,
             BigDecimal warehouseStockedQty) {
-        if (requiredQty.signum() > 0 && qualifiedReturnedQty.signum() <= 0) {
+        if (requiredQty.signum() <= 0) {
+            // 整批转出（2026-09-06 修复）：沿链路实际合格回厂与入库判定，
+            // 不再用 shortage 提前判完；权益移交自制子件仍以移交为准。
+            BigDecimal delegated = delegatedEntitlementQty(materialLineId, supplyActionId);
+            if (delegated.signum() > 0) {
+                return new MaterialAnalysisContracts.SupplyProgressStep(
+                        "STOCKED", "委外合格供给入库", DONE,
+                        "该供给行动的合格权益已移交自制子件 "
+                                + delegated.stripTrailingZeros().toPlainString()
+                                + " · 原路径本批无需重复备料",
+                        null, null, null);
+            }
+            if (qualifiedReturnedQty.signum() <= 0) {
+                return new MaterialAnalysisContracts.SupplyProgressStep(
+                        "STOCKED", "委外合格供给入库", WAITING,
+                        "本批需求已转出委外，等待回厂合格入库", null, null, null);
+            }
+            if (warehouseStockedQty.signum() <= 0) {
+                return new MaterialAnalysisContracts.SupplyProgressStep(
+                        "STOCKED", "委外合格供给入库", CURRENT,
+                        "品质已合格，等待仓库确认实际库位并入库；确认前不计入可用库存",
+                        null, null, null);
+            }
+            return new MaterialAnalysisContracts.SupplyProgressStep(
+                    "STOCKED", "委外合格供给入库", DONE,
+                    "已合格入库 " + warehouseStockedQty
+                            .stripTrailingZeros().toPlainString(),
+                    null, null, null);
+        }
+        if (qualifiedReturnedQty.signum() <= 0) {
             return new MaterialAnalysisContracts.SupplyProgressStep(
                     "STOCKED", "委外合格供给入库", WAITING,
                     "等待委外回厂 IQC 合格；前置自制入库仅形成目标件专属出仓占用，"
                             + "不能提前满足原生产需求",
                     null, null, null);
         }
-        if (requiredQty.signum() > 0 && warehouseStockedQty.signum() <= 0) {
+        if (warehouseStockedQty.signum() <= 0) {
             return new MaterialAnalysisContracts.SupplyProgressStep(
                     "STOCKED", "委外合格供给入库", CURRENT,
                     "品质已合格，等待仓库确认实际库位并入库；确认前不计入可用库存",
@@ -763,6 +840,28 @@ public class MaterialAnalysisSupplyProgressService {
                 base.key(), "委外合格供给入库", base.state(), base.detail(),
                 base.docNo(), base.at(), base.operatorName(),
                 base.documentType(), base.documentId());
+    }
+
+    /** 该供给行动已移交自制子件的合格权益量（ACTIVE 委托态视图）。 */
+    private BigDecimal delegatedEntitlementQty(
+            UUID materialLineId, UUID supplyActionId) {
+        return decimal(em.createNativeQuery("""
+                SELECT COALESCE(SUM(state.qty), 0)
+                FROM v_preplan_make_entitlement_delegation_state state
+                JOIN preplan_stock_entitlement_events source_event
+                  ON source_event.id = state.source_entitlement_event_id
+                JOIN preplan_analysis_stock_exact_pegs exact_peg
+                  ON exact_peg.id = source_event.source_exact_peg_id
+                JOIN preplan_supply_action_allocations allocation
+                  ON allocation.id =
+                     exact_peg.supply_action_allocation_id
+                WHERE state.source_analysis_material_id = :materialLineId
+                  AND state.state = 'ACTIVE'
+                  AND allocation.action_id = :supplyActionId
+                """)
+                .setParameter("materialLineId", materialLineId)
+                .setParameter("supplyActionId", supplyActionId)
+                .getSingleResult());
     }
 
     private String buySplitDetail(UUID supplyActionId) {

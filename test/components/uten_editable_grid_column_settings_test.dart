@@ -8,6 +8,7 @@ Widget _app({
   List<String> labels = const ['列A', '列B', '列C'],
   Set<String> requiredKeys = const {},
   Map<String, String> headerInfo = const {},
+  void Function(List<String> order, Set<String> hidden)? onChanged,
 }) {
   final controller = UtenEditableGridController<_Row>(initial: [_Row()]);
   return MaterialApp(
@@ -30,6 +31,7 @@ Widget _app({
             showAddRow: false,
             showRowDelete: false,
             showColumnSettings: true,
+            onColumnSettingsChanged: onChanged,
           ),
         ],
       ),
@@ -37,8 +39,13 @@ Widget _app({
   );
 }
 
-Finder _option(String key) =>
-    find.byKey(ValueKey('editable-grid-column-option-$key'));
+Finder _option(String key) => find.byKey(ValueKey('uten-column-option-$key'));
+
+/// 点弹层外空白关闭（锚定浮层与货品资料同款：无关闭钮，点外部即关）。
+Future<void> _closeChooser(WidgetTester tester) async {
+  await tester.tapAt(const Offset(10, 10));
+  await tester.pumpAndSettle();
+}
 
 void main() {
   testWidgets('column chooser hides and reorders editable-grid columns', (
@@ -59,9 +66,9 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(
-      find.descendant(of: _option('列B'), matching: find.byType(Checkbox)),
+      find.descendant(of: _option('列B'), matching: find.byType(InkWell)),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.text('表头设置 2/3'), findsOneWidget);
 
     final dragHandle = find.descendant(
@@ -71,8 +78,7 @@ void main() {
     // 列B 虽隐藏仍保留在设置清单中；跨过两项把列C 移到列A 前。
     await tester.drag(dragHandle, const Offset(0, -240));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('关闭'));
-    await tester.pumpAndSettle();
+    await _closeChooser(tester);
 
     expect(find.text('列B'), findsNothing);
     expect(
@@ -106,6 +112,84 @@ void main() {
     expect(find.text('列C'), findsOneWidget);
   });
 
+  testWidgets(
+    'vertical drag shows the topmost ghost (unified with master table)',
+    (tester) async {
+      tester.view.physicalSize = const Size(1000, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      await tester.pumpWidget(_app());
+      await tester.pumpAndSettle();
+
+      final center = tester.getCenter(find.text('列A'));
+      final gesture = await tester.startGesture(center);
+      // 页面 ListView 与表头竖向手势竞争竞技场：分多步拖动（真机即连续 move），
+      // 竞技场解决后 update 连续派发，累计 dy 过阈值 → armed。
+      await gesture.moveBy(const Offset(0, 40));
+      await tester.pump();
+      await gesture.moveBy(const Offset(0, 40));
+      await tester.pump();
+      await gesture.moveBy(const Offset(0, 40));
+      await tester.pump();
+      await gesture.moveBy(const Offset(0, 40));
+      await tester.pump();
+
+      // 原格（变淡留原位）+ root Overlay 跟手浮层各渲染一份文案 → 共 2。
+      // 与货品资料同一份 UtenColumnDragHideHost 实现——浮层是独立 overlay 单元。
+      expect(find.text('列A'), findsNWidgets(2));
+      // 浮层明显位于原格下方（跟手位移，clamp 到 120）。
+      final t0 = tester.getTopLeft(find.text('列A').at(0)).dy;
+      final t1 = tester.getTopLeft(find.text('列A').at(1)).dy;
+      expect((t1 - t0).abs(), greaterThan(80));
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(find.text('表头设置 2/3'), findsOneWidget);
+      expect(find.text('列A'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'long-press header drag reorders columns directly (unified with master)',
+    (tester) async {
+      tester.view.physicalSize = const Size(1000, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final changes = <(List<String>, Set<String>)>[];
+      await tester.pumpWidget(_app(onChanged: (o, h) => changes.add((o, h))));
+      await tester.pumpAndSettle();
+
+      // 长按列A 拎起（~500ms）→ 横拖过列B（120 宽）→ 松手落位到列B 之后。
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('列A')),
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+      await gesture.moveBy(const Offset(140, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      // 表头与表体同步换序：列B → 列A → 列C。
+      expect(
+        tester.getTopLeft(find.text('列B')).dx,
+        lessThan(tester.getTopLeft(find.text('列A')).dx),
+      );
+      expect(
+        tester.getTopLeft(find.text('列b')).dx,
+        lessThan(tester.getTopLeft(find.text('列a')).dx),
+      );
+      // 持久化回调收到新序（与表头设置弹窗拖拽同一出口）。
+      expect(changes, isNotEmpty);
+      expect(changes.last.$1.first, '列B');
+    },
+  );
+
   testWidgets('required column stays visible (chooser locked + drag no-op)', (
     tester,
   ) async {
@@ -124,17 +208,16 @@ void main() {
     expect(find.text('表头设置 3/3'), findsOneWidget);
     expect(find.textContaining('列A'), findsOneWidget);
 
-    // 底部列表勾选禁用并标注「必填列，不可隐藏」。
+    // 弹层勾选禁用并标注「必填列，不可隐藏」。
     await tester.tap(find.text('表头设置 3/3'));
     await tester.pumpAndSettle();
     expect(find.text('必填列，不可隐藏'), findsOneWidget);
     await tester.tap(
-      find.descendant(of: _option('列A'), matching: find.byType(Checkbox)),
+      find.descendant(of: _option('列A'), matching: find.byType(InkWell)),
     );
-    await tester.pump();
-    expect(find.text('表头设置 3/3'), findsOneWidget);
-    await tester.tap(find.byTooltip('关闭'));
     await tester.pumpAndSettle();
+    expect(find.text('表头设置 3/3'), findsOneWidget);
+    await _closeChooser(tester);
     expect(find.textContaining('列A'), findsOneWidget);
   });
 
@@ -163,7 +246,7 @@ void main() {
 
     await tester.tap(find.text('表头设置 12/12'));
     await tester.pumpAndSettle();
-    final chooser = find.byKey(const ValueKey('editable-grid-column-chooser'));
+    final chooser = find.byKey(const ValueKey('uten-column-chooser-scroll'));
     final scrollable = find.descendant(
       of: chooser,
       matching: find.byType(Scrollable),

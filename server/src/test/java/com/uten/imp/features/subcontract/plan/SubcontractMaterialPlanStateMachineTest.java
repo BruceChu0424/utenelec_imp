@@ -84,7 +84,8 @@ class SubcontractMaterialPlanStateMachineTest {
         when(currentUser.requireId()).thenReturn(ACTOR_ID);
         service = new SubcontractMaterialPlanService(
                 em, jdbc, numbers, issueRepo, issueItemRepo, currentUser,
-                chainNotice, inventoryLock);
+                chainNotice, inventoryLock,
+                mock(com.uten.imp.application.port.SubcontractOrderPreparationPort.class));
     }
 
     @Test

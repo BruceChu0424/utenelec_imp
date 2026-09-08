@@ -9,6 +9,9 @@ analyzer:
     - "build/**"
     # 本地草稿/工作树副本目录（git 已忽略），不参与工程分析
     - "_scratch/**"
+    - ".codex-tmp/**"
+    - "server/target/**"
+    - "server/target-*/**"
   language:
     strict-casts: true
     strict-inference: true

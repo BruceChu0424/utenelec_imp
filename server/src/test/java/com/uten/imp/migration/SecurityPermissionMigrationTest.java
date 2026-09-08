@@ -359,7 +359,7 @@ class SecurityPermissionMigrationTest {
                       and not c.relispartition
                       and c.relname not in (
                           'audit_log', 'audit_log_archive', 'flyway_schema_history',
-                          'spatial_ref_sys', 'authorization_state', 'doc_number_sequences',
+                          'spatial_ref_sys', 'authorization_state', 'doc_number_sequences', 'master_code_sequences',
                           'category_master_code_sequences', 'business_document_sequences',
                           'production_product_no_sequences',
                           'report_materialized_view_refresh_state', 'password_history',
@@ -374,13 +374,23 @@ class SecurityPermissionMigrationTest {
                           'production_material_analysis_commands'
                       )
                       and c.relname not like 'legacy_migration_%'
-                      and not exists (
+                      and ((select count(*) from pg_trigger t where t.tgrelid=c.oid
+                              and not t.tgisinternal and t.tgname like 'trg_audit%')<>1
+                        or not exists (
                           select 1
                           from pg_trigger t
+                          join pg_proc p on p.oid=t.tgfoid
+                          join pg_namespace pn on pn.oid=p.pronamespace
                           where t.tgrelid = c.oid
                             and not t.tgisinternal
                             and t.tgname like 'trg_audit%'
-                      )
+                            and t.tgenabled in ('O','A') and t.tgtype=29
+                            and t.tgnargs=0 and t.tgqual is null and t.tgattr=''::int2vector
+                            and not t.tgdeferrable and not t.tginitdeferred and t.tgconstraint=0
+                            and t.tgoldtable is null and t.tgnewtable is null
+                            and pn.nspname='public' and p.proname in ('fn_audit','fn_audit_redacted')
+                            and t.tgfoid in('public.fn_audit()'::regprocedure,'public.fn_audit_redacted()'::regprocedure)
+                      ))
                     """),
                     "Every public business table must have an audit trigger");
             statement.execute("""

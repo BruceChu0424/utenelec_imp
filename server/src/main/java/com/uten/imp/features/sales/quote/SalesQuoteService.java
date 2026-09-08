@@ -99,7 +99,7 @@ public class SalesQuoteService {
         boolean canEdit = hasObjectActionAuthority();
         return new PageResponse<>(p.map(q -> toList(q,
                         canEdit && accessPolicy.canWrite(q.getMakerId(), readScope))).getContent(),
-                page, size, p.getTotalElements(), p.getTotalPages());
+                p);
     }
 
     @Transactional(readOnly = true)

@@ -12,15 +12,14 @@ class SalesMasterNameService extends MasterDictionaryService {
 
   Map<String, String> _clients = {};
   Map<String, String> _selectableClients = {};
-  Future<void>? _load;
-
   Future<void> ensureLoaded() =>
-      _load ??= Future.wait([ensureCommonLoaded(), _loadClients()]);
+      Future.wait([ensureCommonLoaded(), _loadClients()]);
 
-  Future<void> _loadClients() async {
-    try {
+  Future<void> _loadClients() => ensureDictionaryLoaded(
+    ApiEndpoints.clientsDict,
+    () => api.getList(ApiEndpoints.clientsDict),
+    (items) {
       // 专用字典只返回 id/code/name，避免分页截断和批量下发联系方式、银行账号等敏感字段。
-      final items = await api.getList(ApiEndpoints.clientsDict);
       final clients = <String, String>{};
       final selectableClients = <String, String>{};
       for (final entry in items) {
@@ -36,10 +35,8 @@ class SalesMasterNameService extends MasterDictionaryService {
       }
       _clients = clients;
       _selectableClients = selectableClients;
-    } catch (_) {
-      // 名称解析失败时保留占位符，不阻塞单据列表。
-    }
-  }
+    },
+  );
 
   String client(String? id) =>
       MasterDictionaryService.resolveName(_clients, id);

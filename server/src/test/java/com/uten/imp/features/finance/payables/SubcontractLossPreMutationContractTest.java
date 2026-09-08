@@ -28,8 +28,8 @@ class SubcontractLossPreMutationContractTest {
         String preflight = between(claim,
                 "public void validateApprovedWaste", "public void openForApprovedWaste");
         assertThat(preflight)
-                .contains("sourceCost(input.materialIssueItemId())")
-                .contains("requireValuedExcess(excess, source.unitBookValueLocal())")
+                .contains("materialValue.validateWaste(waste.wasteId())")
+                .doesNotContain("unitBookValueLocal", "sourceCost(")
                 .doesNotContain("INSERT INTO", "UPDATE ", "DELETE FROM");
     }
 

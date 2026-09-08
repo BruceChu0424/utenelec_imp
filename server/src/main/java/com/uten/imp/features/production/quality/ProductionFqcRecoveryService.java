@@ -25,6 +25,7 @@ public class ProductionFqcRecoveryService implements ProductionFqcRecoveryPort {
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
     private final ProductionFqcReplenishmentMaterialService materialRecovery;
+    private final ProductionQualityMutationFootprintService mutationFootprint;
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -38,6 +39,7 @@ public class ProductionFqcRecoveryService implements ProductionFqcRecoveryPort {
                 || failQty == null || failQty.signum() <= 0) {
             throw validation("FQC 失败贡献回退缺少有效来源或数量");
         }
+        mutationFootprint.requireInspection(inspectionId);
         List<Object[]> replay = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                         SELECT adjustment.adjusted_qty,

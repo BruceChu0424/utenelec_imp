@@ -30,6 +30,7 @@ import '../inputs/uten_field_message.dart';
 import '../../shared/models/paged_result.dart';
 import '../forms/link_quantity_validator.dart';
 import '../inputs/uten_dropdown_field.dart';
+import '../inputs/uten_input_decoration.dart';
 import '../inputs/uten_search_bar.dart';
 import 'uten_adaptive_panel.dart';
 import 'uten_editable_grid.dart';
@@ -787,10 +788,12 @@ class _UtenDocLinkPickerSheetState<D, I, N>
           controller: row.qty,
           textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: '0',
-            error: utenFieldError(error),
+          decoration: UtenInputDecoration(
+            InputDecoration(
+              isDense: true,
+              hintText: '0',
+              error: utenFieldError(error),
+            ),
           ),
           onChanged: (value) {
             if (row.qtyError.value != null) {

@@ -10,18 +10,9 @@ import 'package:uten_imp/features/production/pages/production_material_analysis_
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 
 void main() {
-  test(
-    'subcontract preparation notification route carries stable plan item id',
-    () {
-      expect(
-        RoutePath.productionSubcontractPreparations(planItemId: 'plan-item-1'),
-        '/subcontract/preparations?planItemId=plan-item-1',
-      );
-    },
-  );
-
-  // V458：委外前置自制工作区已并入委外准备中心（/subcontract/preparations），
-  // 本页只保留物料分析记录；旧 section=subcontract-preparations 深链由路由改写。
+  // V458：委外前置自制工作区曾并入委外准备中心（/subcontract/preparations）；
+  // 准备中心已退役（2026-09-05），旧深链由路由重定向到委外管理 hub，
+  // 本页只保留物料分析记录。
 
   testWidgets(
     'desktop history exposes server facts and resumes by analysis id',

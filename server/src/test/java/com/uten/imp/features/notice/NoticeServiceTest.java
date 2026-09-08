@@ -60,10 +60,12 @@ class NoticeServiceTest {
     private NoticeAudienceService audienceService;
     private SystemSettingsService systemSettings;
     private NoticeService service;
+    private ReviewNoticeAudience reviewAudience;
     private UUID userId;
     private AuthUser authUser;
     // V459：认领人姓名解析（pending-review-status 用）
     private com.uten.imp.application.port.EmployeeNameLookupPort nameLookup;
+    private com.uten.imp.features.common.taskclaim.TaskClaimRepository claims;
 
     @BeforeEach
     void setUp() {
@@ -76,7 +78,10 @@ class NoticeServiceTest {
         currentUser = mock(SecurityContextCurrentUser.class);
         audienceService = mock(NoticeAudienceService.class);
         systemSettings = mock(SystemSettingsService.class);
+        reviewAudience = mock(ReviewNoticeAudience.class);
+        when(reviewAudience.eligibleEvents(any())).thenReturn(ReviewNoticeCatalog.events());
         nameLookup = mock(com.uten.imp.application.port.EmployeeNameLookupPort.class);
+        claims=mock(com.uten.imp.features.common.taskclaim.TaskClaimRepository.class);
         when(nameLookup.findName(any())).thenReturn(Optional.of("张三"));
         authUser = mock(AuthUser.class);
         userId = UUID.randomUUID();
@@ -103,8 +108,34 @@ class NoticeServiceTest {
                 mock(TxSessionVars.class),
                 systemSettings,
                 mock(com.uten.imp.audit.AuditService.class),
-                mock(com.uten.imp.features.common.taskclaim.TaskClaimRepository.class),
-                nameLookup);
+                claims,
+                nameLookup, reviewAudience);
+    }
+
+    @Test
+    void shipmentStatusAndClaimNamesAreBatchedAndExpiredLeasesDoNotBlock() {
+        UUID open=UUID.randomUUID(),closed=UUID.randomUUID(),employee=UUID.randomUUID();
+        Notice first=new Notice(),second=new Notice();
+        for(var notice:List.of(first,second)) {
+            notice.setAudienceUserId(userId);notice.setAggregateKind("SALES_SHIPMENT");notice.setSourceEvent("SALES_SHIPMENT_PENDING_FINANCE_AUDIT");
+        }
+        first.setAggregateId(open);second.setAggregateId(closed);
+        when(noticeRepository.findAllById(List.of(first.getId(),second.getId()))).thenReturn(List.of(first,second));
+        var openState=mock(NoticeRepository.ShipmentReviewStateRow.class);when(openState.getShipmentId()).thenReturn(open);when(openState.getFinancePending()).thenReturn(true);
+        var closedState=mock(NoticeRepository.ShipmentReviewStateRow.class);when(closedState.getShipmentId()).thenReturn(closed);
+        when(noticeRepository.findShipmentReviewStates(Set.of(open,closed))).thenReturn(List.of(openState,closedState));
+        var active=new com.uten.imp.features.common.taskclaim.TaskClaim();active.setTargetType("SALES_SHIPMENT_FINANCE_AUDIT");active.setTargetKey(open.toString());
+        active.setClaimedBy(employee);active.setLeaseUntil(java.time.OffsetDateTime.now().plusMinutes(10));
+        var expired=new com.uten.imp.features.common.taskclaim.TaskClaim();expired.setTargetType("SALES_SHIPMENT_FINANCE_AUDIT");expired.setTargetKey(closed.toString());
+        expired.setClaimedBy(UUID.randomUUID());expired.setLeaseUntil(java.time.OffsetDateTime.now().minusMinutes(1));
+        when(claims.findUnreleasedForTargets(Set.of("SALES_SHIPMENT_FINANCE_AUDIT"),Set.of(open.toString(),closed.toString()))).thenReturn(List.of(active,expired));
+        when(nameLookup.findNames(Set.of(employee))).thenReturn(java.util.Map.of(employee,"当前财务经办"));
+        var result=service.pendingReviewStatus(List.of(first.getId(),second.getId()));
+        assertFalse(result.getFirst().resolved());assertEquals("当前财务经办",result.getFirst().claimedByName());
+        assertTrue(result.getLast().resolved());assertNull(result.getLast().claimedByName());
+        verify(noticeRepository,times(1)).findShipmentReviewStates(Set.of(open,closed));
+        verify(claims,times(1)).findUnreleasedForTargets(any(),any());verify(nameLookup,times(1)).findNames(Set.of(employee));
+        verify(claims,never()).findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(any(),any());verify(nameLookup,never()).findName(any());
     }
 
     @Test
@@ -429,6 +460,8 @@ class NoticeServiceTest {
         review.setPublishedAt(Instant.now());
         review.setAudienceUserId(userId);
         review.setSourceEvent("SALES_ORDER_PENDING_FINANCE_CONFIRM");
+        review.setAggregateKind("SALES_ORDER");
+        review.setAggregateId(UUID.randomUUID());
         when(noticeRepository.findVisiblePendingReviews(
                 eq(userId), argThat(events -> events.contains(
                         "SALES_ORDER_PENDING_FINANCE_CONFIRM")), any()))
@@ -443,6 +476,61 @@ class NoticeServiceTest {
         org.junit.jupiter.api.Assertions.assertTrue(items.getFirst().interactive());
         org.junit.jupiter.api.Assertions.assertEquals(
                 "SALES_ORDER_PENDING_FINANCE_CONFIRM", items.getFirst().sourceEvent());
+    }
+
+    @Test
+    void revokedReviewQualificationStopsLoginPopupWithoutQueryingPendingContent() {
+        when(reviewAudience.eligibleEvents(authUser)).thenReturn(Set.of());
+        assertTrue(service.pendingReviews().isEmpty());
+        verify(noticeRepository, never()).findVisiblePendingReviews(any(), any(), any());
+    }
+
+    @Test
+    void oldUnboundEventRemainsHistoryWithoutAnUnresolvablePopup() {
+        Notice notice = new Notice();
+        notice.setId(UUID.randomUUID());
+        notice.setTitle("historical reminder");
+        notice.setContent("content");
+        notice.setType("task");
+        notice.setSourceEvent("SALES_ORDER_PENDING_FINANCE_CONFIRM");
+        notice.setAudienceUserId(userId);
+        when(noticeRepository.findById(notice.getId())).thenReturn(Optional.of(notice));
+        assertFalse(service.getById(notice.getId()).interactive());
+        verify(reviewAudience, never()).eligibleEvents(any());
+    }
+
+    @Test
+    void removedDepartmentQualificationHidesOldArrivalAndAdvancesItsCursor() {
+        Notice notice = new Notice();
+        notice.setId(UUID.randomUUID());
+        notice.setTitle("old department task");
+        notice.setType("task");
+        notice.setPublishedAt(Instant.now());
+        notice.setSourceEvent("SALES_ORDER_PENDING_FINANCE_CONFIRM");
+        notice.setAggregateKind("SALES_ORDER");
+        notice.setAggregateId(UUID.randomUUID());
+        when(reviewAudience.eligibleEvents(authUser)).thenReturn(Set.of());
+        when(noticeRepository.findVisibleArrivalsAfter(eq(userId), any(), any(), any()))
+                .thenReturn(List.of(notice));
+        var page = service.arrivals(null, null, 20);
+        assertTrue(page.items().isEmpty());
+        assertEquals(notice.getId(), page.cursorId());
+        assertEquals(notice.getPublishedAt(), page.cursorPublishedAt());
+        verify(reviewAudience, times(1)).eligibleEvents(authUser);
+    }
+
+    @Test
+    void statusHeartbeatDoesNotReturnClaimDetailsAfterQualificationIsRemoved() {
+        Notice notice = new Notice();
+        notice.setId(UUID.randomUUID());
+        notice.setAudienceUserId(userId);
+        notice.setSourceEvent("SALES_ORDER_PENDING_FINANCE_CONFIRM");
+        notice.setAggregateKind("SALES_ORDER");
+        notice.setAggregateId(UUID.randomUUID());
+        when(noticeRepository.findAllById(List.of(notice.getId()))).thenReturn(List.of(notice));
+        when(reviewAudience.eligibleEvents(authUser)).thenReturn(Set.of());
+        assertTrue(service.pendingReviewStatus(List.of(notice.getId())).isEmpty());
+        verify(stateRepository, never()).findById(any());
     }
 
     @Test

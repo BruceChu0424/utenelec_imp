@@ -39,6 +39,7 @@ public class ProductionSubcontractRequestFacade
     private final SubcontractApplicationItemRepository itemRepo;
     private final DocNumberService docNumberService;
     private final EntityManager em;
+    private final com.uten.imp.application.concurrency.FulfillmentMutationLocks mutationLocks;
 
     /**
      * Closes one generated application without erasing approved history.
@@ -88,6 +89,9 @@ public class ProductionSubcontractRequestFacade
         application.setTotalOriginal(BigDecimal.ZERO);
         application.setTotalLocal(BigDecimal.ZERO);
         application.setStatus(STATUS_APPROVED);
+        var createdSource=new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.CommercialSource(
+                com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.CommercialType.SUBCONTRACT_APPLICATION,application.getId());
+        mutationLocks.expectCreatedSource(createdSource);
         applicationRepo.save(application);
 
         OffsetDateTime snapshotLockedAt = OffsetDateTime.now();
@@ -132,6 +136,7 @@ public class ProductionSubcontractRequestFacade
         }
         itemRepo.flush();
         applicationRepo.flush();
+        mutationLocks.registerCreatedSource(createdSource);
         return new DraftResult(
                 application.getId(),
                 application.getBillNo(),

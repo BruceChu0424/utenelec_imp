@@ -19,4 +19,10 @@ public class UnitSaveRequest {
     private String name;      // 单位名称（必填）
     private String code;      // 单位编号
     private String status;    // 使用/禁用
+    /**
+     * 计量维度（可选）：COUNT/MASS/LENGTH/AREA/VOLUME/OTHER。
+     * null = 不修改（老客户端兼容）；空串 = 清除（回退未设置）；合法值 = 写入
+     * unit_measurement_profiles（provenance=MANUAL_GOVERNANCE）。
+     */
+    private String measurementDimension;
 }

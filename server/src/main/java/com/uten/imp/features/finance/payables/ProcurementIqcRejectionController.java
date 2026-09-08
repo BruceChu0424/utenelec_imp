@@ -87,6 +87,15 @@ public class ProcurementIqcRejectionController {
         return service.confirmCredit(id, request);
     }
 
+    @PostMapping("/{id}/preview-credit")
+    @PreAuthorize("hasAuthority('procurement_iqc_rejection:view')"
+            + " and hasAuthority('procurement_iqc_rejection:confirm_credit')"
+            + " and hasAuthority('procurement_iqc_rejection:amount:view')")
+    public ProcurementIqcRejectionContracts.CreditBookPreview previewCredit(
+            @PathVariable UUID id,@Valid @RequestBody ConfirmCreditRequest request){
+        return service.previewCredit(id,request);
+    }
+
     @PostMapping("/{id}/close-no-credit")
     @PreAuthorize("hasAuthority('procurement_iqc_rejection:view')"
             + " and hasAuthority('procurement_iqc_rejection:close_no_credit')")

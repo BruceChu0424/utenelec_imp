@@ -96,7 +96,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<FinanceExpense> p = expenseRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+        return new PageResponse<>(p.map(this::toList).getContent(), p);
     }
 
     @Transactional(readOnly = true)
@@ -416,9 +416,9 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         e.setAccountId(req.getAccountId());
         e.setCounterpartAccountId(req.getCounterpartAccountId());
         e.setCurrencyId(req.getCurrencyId());
-        if (req.getExchangeRate() != null) e.setExchangeRate(req.getExchangeRate());
-        if (req.getAmountOriginal() != null) e.setAmountOriginal(req.getAmountOriginal());
-        if (req.getAmountLocal() != null) e.setAmountLocal(req.getAmountLocal());
+        if (req.getExchangeRate() != null) e.setExchangeRate(com.uten.imp.common.util.FinancialExactAmount.rate(req.getExchangeRate(),"汇率"));
+        if (req.getAmountOriginal() != null) e.setAmountOriginal(com.uten.imp.common.util.FinancialExactAmount.require(req.getAmountOriginal(),"实际原币金额"));
+        if (req.getAmountLocal() != null) e.setAmountLocal(com.uten.imp.common.util.FinancialExactAmount.book(req.getAmountLocal(),"本币金额"));
         applyPaymentMethod(req, e);
         e.setOperatorId(req.getOperatorId());
         e.setRemark(req.getRemark());
@@ -455,10 +455,10 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
             it.setDepartmentId(l.getDepartmentId());
             it.setCounterpartAccountId(l.getCounterpartAccountId());
             it.setCounterpartName(l.getCounterpartName());
-            it.setQty(l.getQty());
-            it.setPrice(l.getPrice());
-            it.setAmountOriginal(l.getAmountOriginal());
-            it.setAmountLocal(l.getAmountLocal());
+            it.setQty(l.getQty()==null?null:com.uten.imp.common.util.FinancialExactAmount.quantity(l.getQty(),"数量"));
+            it.setPrice(l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"单价"));
+            it.setAmountOriginal(com.uten.imp.common.util.FinancialExactAmount.optional(l.getAmountOriginal(),"实际原币金额"));
+            it.setAmountLocal(l.getAmountLocal()==null?null:com.uten.imp.common.util.FinancialExactAmount.book(l.getAmountLocal(),"本币金额"));
             it.setSummary(l.getSummary());
             it.setRemark(l.getRemark());
             itemRepo.save(it);

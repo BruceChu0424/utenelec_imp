@@ -52,7 +52,10 @@ public class ProductionExecutionWorkbenchController {
     }
 
     @GetMapping("/{rootType}/{rootId}/related-documents")
-    @PreAuthorize("hasAuthority('production_execution:overview')")
+    // 计划详情页也消费本端点渲染「本批次关联单据」（采购/委外单可点进对应
+    // 单据看进度）；行内容仍按各自模块数据范围过滤（canOpen=false 时只读）。
+    @PreAuthorize("hasAnyAuthority('production_execution:overview',"
+            + " 'production_plan:view')")
     public PageResponse<ProductionExecutionWorkbenchRelatedDocument> relatedDocuments(
             @PathVariable String rootType,
             @PathVariable UUID rootId,

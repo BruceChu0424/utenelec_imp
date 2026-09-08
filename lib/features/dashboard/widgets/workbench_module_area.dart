@@ -218,12 +218,6 @@ const _allGroups = <_ModuleGroup>[
     title: '常用功能',
     color: UtenColors.teal600,
     items: [
-      // V459 待审收件台置顶：跨业务域的个人待审聚合入口（审核弹卡的稳定落点）。
-      _ModuleItem(
-        icon: Icons.fact_check_outlined,
-        label: '待审收件台',
-        location: RouteName.reviewsInbox,
-      ),
       // 已落地（真实后端）排前面
       _ModuleItem(
         icon: Icons.person_search_outlined,

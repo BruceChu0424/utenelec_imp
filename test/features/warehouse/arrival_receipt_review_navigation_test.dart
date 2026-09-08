@@ -1,9 +1,10 @@
 // 到货登记「登记并送检」一步完成的导航链路 widget 测试。
 //
-// 覆盖 2026-08-27 的流程简化：预计到货任务中心点「登记实际到货」→ 登记页
-// 「登记并送检」（确认框）→ POST /warehouse/inbound/arrivals（服务端按订货单回填
-// 币族并同事务审核）→ pop(结果) 回任务中心就地刷新并提示下一步——全程不再跳
-// 采购/委外收货单详情页。用委外（SUBCONTRACT）类型：无需采购员，表单最小可提交。
+// 覆盖 2026-08-27 的流程简化 + 2026-09-05 双击直达：预计到货任务中心双击行
+// （待登记）→ 登记页「登记并送检」（确认框）→ POST /warehouse/inbound/arrivals
+// （服务端按订货单回填币族并同事务审核）→ pop(结果) 回任务中心就地刷新并提示
+// 下一步——全程不再经过到货详情中间页，也不跳采购/委外收货单详情页。
+// 用委外（SUBCONTRACT）类型：无需采购员，表单最小可提交。
 import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -18,7 +19,6 @@ import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/department/repositories/department_repository.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
-import 'package:uten_imp/features/warehouse/pages/warehouse_arrival_expectation_detail_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_arrival_receipt_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_inbound_expectations_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/procurement_inbound_repository.dart';
@@ -42,7 +42,7 @@ class _TestArrivalPermissions extends Notifier<Set<String>> {
 }
 
 /// 双击指定行（两次点按间隔 50ms，落在 350ms 手动双击判定窗内）——
-/// 任务中心表格行双击 = 打开到货详情弹窗。
+/// 任务中心表格行双击 = 按到货步骤直达对应办理页。
 Future<void> _doubleTapRow(WidgetTester tester, Finder finder) async {
   await tester.tap(finder);
   await tester.pump(const Duration(milliseconds: 50));
@@ -209,7 +209,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('预计去向(基本量)'), findsOneWidget);
-    expect(find.text('成品仓 / 原料仓'), findsOneWidget);
+    // 行级入库仓库默认跟随建议仓（成品仓）；跨仓预定提示按行计算。
+    expect(find.text('当前有 1 行包含跨仓预定'), findsOneWidget);
     expect(find.text('跨仓部分 24 个 不绑定计划 · 其余按预定分配'), findsOneWidget);
     const qtyKey = Key('warehouse-arrival-qty-unit-rate-order-item');
     await tester.enterText(find.byKey(qtyKey), '1');
@@ -416,7 +417,7 @@ void main() {
       find.byKey(const Key('warehouse-arrival-allocation-warehouse-notice')),
       findsOneWidget,
     );
-    expect(find.textContaining('本任务包含 2 个预定主仓'), findsOneWidget);
+    expect(find.text('当前有 1 行包含跨仓预定'), findsOneWidget);
     final row = find.text('明细 B(G-002)');
     final gesture = await tester.startGesture(
       tester.getCenter(row),
@@ -572,16 +573,6 @@ void main() {
           path: '/',
           builder: (_, _) => const WarehouseInboundExpectationsPage(),
         ),
-        // 2026-09-04 起双击行直达预计到货任务详情页（替代居中弹窗）。
-        GoRoute(
-          path: '/warehouse/inbound/expectations/:expectationId',
-          builder: (_, state) => WarehouseArrivalExpectationDetailPage(
-            expectationId: state.pathParameters['expectationId'] ?? '',
-            initial: state.extra is InboundExpectation
-                ? state.extra! as InboundExpectation
-                : null,
-          ),
-        ),
         GoRoute(
           path: '/warehouse/inbound/receipts/new',
           builder: (_, state) => WarehouseArrivalReceiptPage(
@@ -638,7 +629,7 @@ void main() {
       find.byKey(const Key('inbound-expectation-task-table')),
     );
     expect(taskTable.selectable, isFalse);
-    expect(find.textContaining('单击选中，双击详情'), findsOneWidget);
+    expect(find.textContaining('双击直达下一步办理'), findsOneWidget);
     expect(find.text('已选 0 项'), findsNothing);
 
     // 没有安全批量登记命令：单击仅单选、不打开详情；双击仍沿用原业务链。
@@ -648,10 +639,8 @@ void main() {
     expect(find.byType(AlertDialog), findsNothing);
     await tester.pump(const Duration(milliseconds: 400));
 
-    // 任务中心：双击行打开到货详情，点「登记实际到货」进登记页。
+    // 任务中心：双击行（待登记）直达登记页，不再经过到货详情中间页。
     await _doubleTapRow(tester, find.text('SC-PO-001'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('登记实际到货'));
     await tester.pumpAndSettle();
     expect(find.text('登记实际到货 · 委外'), findsOneWidget);
     expect(
@@ -659,29 +648,48 @@ void main() {
       findsOneWidget,
     );
 
-    final suggestedStatus = find.byKey(
-      const Key('warehouse-arrival-suggested-warehouse-status'),
+    // 2026-09-06 表头默认仓删除：入库仓库行级必填（建议仓「成品仓」逐行预填）。
+    expect(find.text('入库仓库（默认）'), findsNothing);
+    final lineWarehouseCell = find.descendant(
+      of: find.byKey(const Key('warehouse-arrival-lines-grid')),
+      matching: find.byKey(const Key('warehouse-arrival-wh-order-item-1')),
     );
-    expect(suggestedStatus, findsOneWidget);
-    expect(
-      tester.widget<Semantics>(suggestedStatus).properties.liveRegion,
-      isTrue,
+    expect(lineWarehouseCell, findsOneWidget);
+    expect(find.text('成品仓'), findsWidgets);
+
+    // 多行统一改仓：点「统一设置入库仓库」→ 主/子仓级联滑窗 → 选「原料仓」
+    // （叶子仓直接选定），全部明细行整体换仓。
+    await tester.tap(
+      find.byKey(const Key('warehouse-arrival-apply-warehouse-all')),
     );
-    expect(find.textContaining('已按物料分析目标仓预填'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.text('先选主仓，再选子仓'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const Key('warehouse-picker-entry-warehouse-2')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('原料仓'), findsWidgets);
+    expect(find.text('成品仓'), findsNothing);
 
-    await tester.tap(find.byKey(const Key('warehouse-arrival-warehouse')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('原料仓').last);
-    await tester.pumpAndSettle();
-    expect(find.textContaining('不会计入原物料分析目标仓'), findsOneWidget);
-    expect(find.textContaining('计划部仍会显示缺料'), findsOneWidget);
+    final firstPrefill = tester
+        .widget<WarehouseArrivalReceiptPage>(
+          find.byType(WarehouseArrivalReceiptPage),
+        )
+        .prefill!;
 
-    await tester.tap(find.byKey(const Key('warehouse-arrival-warehouse')));
+    // The selected source is kept with the same submission when a response is lost.
+    await tester.ensureVisible(
+      find.byKey(const Key('warehouse-arrival-source-order-item-1')),
+    );
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('warehouse-arrival-source-order-item-1')),
+        matching: find.text('自动识别'),
+      ),
+    );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('成品仓').last);
+    await tester.tap(find.text('先补退货').last);
     await tester.pumpAndSettle();
-    expect(find.textContaining('不会计入原物料分析目标仓'), findsNothing);
-    expect(find.textContaining('已按物料分析目标仓预填'), findsOneWidget);
 
     // 登记页：数量已按批准剩余预填（5），仓库已按建议仓预填，直接登记并送检。
     await tester.tap(find.text('登记并送检'));
@@ -729,11 +737,52 @@ void main() {
     expect(items, hasLength(1));
     final item = items!.first as Map;
     expect(item['qty'], 5);
+    expect(item['replacementIntent'], 'RETURN_REPLACEMENT');
     expect(item.containsKey('price'), isFalse);
+    // 2026-09-05 起登记页不再录实称重量（重量走单位维度）。
+    expect(item.containsKey('weight'), isFalse);
 
     // 断言 2：回任务中心（不再直达审核页）；原结果由第二次同-key 响应收敛。
     expect(find.byType(_ReviewStub), findsNothing);
     expect(find.text('预计到货任务中心'), findsOneWidget);
+    await tester.pumpAndSettle(const Duration(seconds: 5));
+
+    // A new delivery with identical fields must not replay the previous receipt.
+    final firstBody = Map<String, dynamic>.from(api.lastPostBody!)
+      ..remove('idempotencyKey');
+    router.push<void>('/warehouse/inbound/receipts/new', extra: firstPrefill);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('warehouse-arrival-apply-warehouse-all')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('warehouse-picker-entry-warehouse-2')),
+    );
+    await tester.pumpAndSettle();
+    final sourceField = find.byKey(
+      const Key('warehouse-arrival-source-order-item-1'),
+    );
+    await tester.ensureVisible(sourceField);
+    await tester.tap(
+      find.descendant(of: sourceField, matching: find.text('自动识别')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('先补退货').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('登记并送检'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认登记送检'));
+    await tester.pump();
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(api.arrivalPostBodies, hasLength(3));
+    expect(api.lastPostBody!['idempotencyKey'], isNot(firstKey));
+    expect(
+      Map<String, dynamic>.from(api.lastPostBody!)..remove('idempotencyKey'),
+      firstBody,
+    );
     await tester.pumpAndSettle(const Duration(seconds: 5));
   });
 
@@ -749,16 +798,6 @@ void main() {
         GoRoute(
           path: '/',
           builder: (_, _) => const WarehouseInboundExpectationsPage(),
-        ),
-        // 2026-09-04 起双击行直达预计到货任务详情页（替代居中弹窗）。
-        GoRoute(
-          path: '/warehouse/inbound/expectations/:expectationId',
-          builder: (_, state) => WarehouseArrivalExpectationDetailPage(
-            expectationId: state.pathParameters['expectationId'] ?? '',
-            initial: state.extra is InboundExpectation
-                ? state.extra! as InboundExpectation
-                : null,
-          ),
         ),
         // 旧流程会跳审核页（收货单详情）；新流程不应到达这里，桩用于反向断言。
         GoRoute(
@@ -800,11 +839,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 断点恢复：任务停在「已登记 · 待送检」，双击行开详情点「继续送检」→ 责任确认框 → 完成。
+    // 断点恢复：任务停在「已登记 · 待送检」，双击行直接弹「继续送检」责任确认框 → 完成。
     expect(find.text('已登记 · 待送检'), findsOneWidget);
     await _doubleTapRow(tester, find.text('SC-PO-001'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('继续送检'));
     await tester.pumpAndSettle();
     expect(find.text('确认送检'), findsOneWidget);
     await tester.tap(find.text('确认送检'));
@@ -833,7 +870,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     final api = _FakeApi(inspectionPendingReceipts: 2);
-    // 双击行直达详情页（2026-09-04 起）：夹具需要 GoRouter 与详情路由。
+    // 双击行直达「品质部检查结果」页（2026-09-05 起）：夹具需要 GoRouter 与目标路由。
     final router = GoRouter(
       routes: [
         GoRoute(
@@ -841,13 +878,8 @@ void main() {
           builder: (_, _) => const WarehouseInboundExpectationsPage(),
         ),
         GoRoute(
-          path: '/warehouse/inbound/expectations/:expectationId',
-          builder: (_, state) => WarehouseArrivalExpectationDetailPage(
-            expectationId: state.pathParameters['expectationId'] ?? '',
-            initial: state.extra is InboundExpectation
-                ? state.extra! as InboundExpectation
-                : null,
-          ),
+          path: '/warehouse/quality-results',
+          builder: (_, _) => const _QualityResultsStub(),
         ),
       ],
     );
@@ -911,15 +943,10 @@ void main() {
       findsOneWidget,
     );
 
-    // 只读步骤：双击进详情，按钮禁用，不给仓库多余操作。
+    // 只读步骤：双击直达「品质部检查结果」页跟进，不给仓库多余操作。
     await _doubleTapRow(tester, find.text('SC-PO-001'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('已送检(2)'), findsOneWidget);
-    expect(find.textContaining('检查进度与结果请在「品质部检查结果」页查看'), findsWidgets);
-    final button = tester.widget<UtenButton>(
-      find.byKey(const Key('create-receipt-expectation-1')),
-    );
-    expect(button.onPressed, isNull);
+    expect(find.text('品质部检查结果(桩)'), findsOneWidget);
   });
 }
 
@@ -937,6 +964,14 @@ class _ExceptionsStub extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const Scaffold(body: Text('到货异常任务中心'));
+}
+
+class _QualityResultsStub extends StatelessWidget {
+  const _QualityResultsStub();
+
+  @override
+  Widget build(BuildContext context) =>
+      const Scaffold(body: Text('品质部检查结果(桩)'));
 }
 
 /// 固定当前登录人为 emp-me（收货人默认值来源）；无权限点（角标/计数不拉网）。

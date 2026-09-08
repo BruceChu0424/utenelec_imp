@@ -19,14 +19,18 @@ class SupplierPayablePostingContractTest {
 
         assertThat(purchaseReceipt)
                 .contains("SupplierPaymentTermService paymentTerms")
-                .contains("r.getTotalLocal(), (short) 1, null, r.getTotalOriginal(), dueDate")
+                .contains("var payable=consideration.freezeReceipt(\"PURCHASE\",id)")
+                .contains("if(payable.original().signum()!=0||payable.local().signum()!=0)")
+                .contains("payable.local(), (short) 1, null, payable.original(), dueDate")
                 .contains("r.getSettlementStyleLegacy(), List.of(), r.getSettlementMethodId()");
         assertThat(purchaseReturn)
                 .contains("SupplierPaymentTermService paymentTerms")
                 .contains("returnLocal, (short) 17, null, returnOriginal, dueDate")
                 .contains("r.getSettlementStyleLegacy(), List.of(), r.getSettlementMethodId()");
         assertThat(subcontractReceipt)
-                .contains("postAp(r, r.getTotalOriginal(), totalLocalOf(items), +1)")
+                .contains("var payable=consideration.freezeReceipt(\"SUBCONTRACT\",id)")
+                .contains("boolean chargeable=payable.original().signum()!=0||payable.local().signum()!=0")
+                .contains("if(chargeable)postAp(r,payable.original(),payable.local(),+1)")
                 .contains("signedOriginal", "dueDate", "settlementStyleLegacy");
         assertThat(subcontractReturn)
                 .contains("postAp(r, r.getTotalOriginal(), totalLocalOf(items), -1)")

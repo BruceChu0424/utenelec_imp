@@ -85,7 +85,7 @@ class ProductionMakeReceiptLifecycleContractTest {
                 "production/fulfillment/ProductionExecutionReadinessService.java");
         String stock = source("stock/StockDocService.java");
 
-        assertThat(readiness)
+        assertThat(readiness.replaceAll("\\s+", " "))
                 .contains("segment.auto_promote_when_ready = TRUE")
                 .contains("AND auto_promote_when_ready = TRUE")
                 .contains("packageId + \":REKIT:\" + demand.id()")
@@ -126,13 +126,13 @@ class ProductionMakeReceiptLifecycleContractTest {
                 .contains(
                         "v_preplan_stock_entitlement_beneficiary_balance")
                 .contains("entitlement.beneficiary_analysis_id = :analysisId")
-                .contains("material.analysis_item_id = :analysisItemId")
+                .contains("fn_analysis_plan_material_matches( :analysisItemId, material.id)")
                 .contains(
                         "WHEN preplan_reservation.owner_id = :analysisId")
                 .contains("preplan_reservation.qty")
                 .contains("preplan_reservation.owner_type = 'PREPLAN_ANALYSIS'")
                 .contains(
-                        "preplan_reservation.warehouse_id = :warehouseId")
+                        "preplan_reservation.warehouse_id = scope.id")
                 .contains("COALESCE(balance.qty, 0)"
                         + " - COALESCE(reserved.qty, 0)"
                         + " + COALESCE(own.qty, 0)");

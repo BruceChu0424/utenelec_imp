@@ -35,6 +35,7 @@ class SubcontractOrderMaterialAuthorityTest {
     private SubcontractOrderRepository orderRepo;
     private SubcontractOrderItemRepository itemRepo;
     private ProductionSubcontractSupplyTransitionPort productionSupply;
+    private com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService materialPlans;
     private EntityManager em;
     private Query query;
     private SubcontractOrderService service;
@@ -45,6 +46,7 @@ class SubcontractOrderMaterialAuthorityTest {
         itemRepo = mock(SubcontractOrderItemRepository.class);
         productionSupply =
                 mock(ProductionSubcontractSupplyTransitionPort.class);
+        materialPlans = mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class);
         em = mock(EntityManager.class);
         query = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(query);
@@ -64,8 +66,12 @@ class SubcontractOrderMaterialAuthorityTest {
                 mock(ProcurementApprovalProjectionQuery.class),
                 mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class),
                 mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class),
-                mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class),
-                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class));
+                materialPlans,
+                mock(com.uten.imp.features.finance.procurement.ProcurementApprovalReconfirmationService.class),
+                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementReviewCancellationPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementOrderSourceRevisionPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
     }
 
     @Test
@@ -83,6 +89,50 @@ class SubcontractOrderMaterialAuthorityTest {
         assertEquals((short) -1, document.getStatus());
         verify(productionSupply).onSubcontractOrderReversed(id);
         verify(orderRepo).save(document);
+        var order = org.mockito.Mockito.inOrder(em,materialPlans,productionSupply);
+        order.verify(em).find(SubcontractOrder.class,id,LockModeType.PESSIMISTIC_WRITE);
+        order.verify(materialPlans).lockOrderInventoryDimensions(id);
+        order.verify(productionSupply).onSubcontractOrderReversed(id);
+    }
+
+    @Test
+    void financeApprovalCannotTouchProductionHooksBeforeTheSharedStockLock() {
+        UUID id = UUID.randomUUID();
+        SubcontractOrder document = document(id);
+        document.setStatus((short)0);
+        stubDocument(id,document,item(id));
+        var blocked = new IllegalStateException("inventory lock unavailable");
+        org.mockito.Mockito.doThrow(blocked).when(materialPlans).lockOrderInventoryDimensions(id);
+
+        assertEquals(blocked,assertThrows(IllegalStateException.class,
+                () -> service.applyFinanceApproval(id,UUID.randomUUID())));
+
+        var order = org.mockito.Mockito.inOrder(em,materialPlans);
+        order.verify(em).find(SubcontractOrder.class,id,LockModeType.PESSIMISTIC_WRITE);
+        order.verify(materialPlans).lockOrderInventoryDimensions(id);
+        verify(productionSupply,never()).onSubcontractOrderApproved(any());
+        verify(orderRepo,never()).save(any());
+    }
+
+    @Test
+    void quantityChangeCannotMutateTheOrderBeforeTheSharedStockLock() {
+        UUID id = UUID.randomUUID();
+        SubcontractOrder document = document(id);
+        SubcontractOrderItem item = item(id);
+        stubDocument(id,document,item);
+        var blocked = new IllegalStateException("inventory lock unavailable");
+        org.mockito.Mockito.doThrow(blocked).when(materialPlans).lockOrderInventoryDimensions(id);
+        var request = new com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeRequest(
+                List.of(new com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeItem(
+                        item.getId(),BigDecimal.TEN)));
+
+        assertEquals(blocked,assertThrows(IllegalStateException.class,() -> service.changeQty(id,request)));
+
+        var order = org.mockito.Mockito.inOrder(em,materialPlans);
+        order.verify(em).find(SubcontractOrder.class,id,LockModeType.PESSIMISTIC_WRITE);
+        order.verify(materialPlans).lockOrderInventoryDimensions(id);
+        verify(itemRepo,never()).save(any());
+        verify(orderRepo,never()).save(any());
     }
 
     @Test

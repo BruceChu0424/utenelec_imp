@@ -239,7 +239,7 @@ class ManagerPermissionDelegationPostgresTest {
             statement.execute(Files.readString(
                     Path.of(
                             "src/main/resources/db/migration",
-                            "V325__refresh_audit_trigger_coverage.sql"),
+                            "V530__refresh_audit_trigger_coverage.sql"),
                     StandardCharsets.UTF_8));
             assertEquals(1, scalarLong(statement, """
                     select count(*)

@@ -104,7 +104,7 @@ List<String>? requiredAnyPermFor(String location) {
   // V459 我的待审收件台：本码只控页面可达；section 内容按各域
   // 「部门（主/兼职）× 职责权限码」资格在后端过滤。
   if (location == RouteName.reviewsInbox) {
-    return const [Perm.reviewInboxView];
+    return null; // Retired page: redirects to the permission-filtered dashboard.
   }
   if (location == '/payroll/generate') return const [Perm.payrollGenerate];
   if (location == '/payroll/slip' || location.startsWith('/payroll/slip/')) {
@@ -116,7 +116,8 @@ List<String>? requiredAnyPermFor(String location) {
     // 批准/驳回动作由服务端 approve/reject 独立分权 + 实时审核资格。
     return const [Perm.financeOrderApprovalView];
   }
-  if (location == '/finance/sales-order-confirmations' ||
+  if (location == '/finance/sales-order-changes' ||
+      location == '/finance/sales-order-confirmations' ||
       location.startsWith('/finance/sales-order-confirmations/')) {
     return const [Perm.salesOrderFinanceView];
   }
@@ -300,7 +301,9 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.stockDocView];
   }
   // 到货异常确认入库是独立高影响动作，不再借用收货单编辑权限。
-  if (location == RouteName.warehouseArrivalReceiptNew) {
+  // 2026-09-06 批量登记页（入库任务中心多选落点）与单张登记页同权。
+  if (location == RouteName.warehouseArrivalReceiptNew ||
+      location == RouteName.warehouseArrivalReceiptBatch) {
     return const [Perm.warehouseInboundStockIn];
   }
   if (location == RouteName.warehouseReport ||
@@ -498,14 +501,22 @@ List<String>? requiredAnyPermFor(String location) {
       location.startsWith('${RouteName.subcontractReport}/')) {
     return const [Perm.subcontractReportView];
   }
-  if (routePath == RouteName.subcontractPreparations) {
-    // V458 委外准备中心双视角：分析来源账本归生产域，订货来源归委外域。
-    return const [
-      Perm.subcontractPreparationView,
-      Perm.productionMaterialAnalysisView,
-    ];
-  }
+  // /subcontract/preparations 旧深链已由路由重定向到 /subcontract（2026-09-05
+  // 准备中心退役）。守卫沿用 hub 同款权限：无委外查看权限的用户与直达 hub
+  // 一样进 access-denied，不会 404；持权用户由重定向落到 hub。
   if (location.startsWith('/subcontract/')) {
+    if (routePath == RouteName.subcontractPreparations) {
+      return const [
+        Perm.subcontractInquiryView,
+        Perm.subcontractApplicationView,
+        Perm.subcontractOrderView,
+        Perm.subcontractReceiptView,
+        Perm.subcontractMaterialIssueView,
+        Perm.subcontractReturnView,
+        Perm.subcontractMaterialReturnView,
+        Perm.subcontractWasteView,
+      ];
+    }
     // V436 新出仓流不允许从历史发料页空白新建。
     if (routePath == '/subcontract/material-issues/new') {
       return const [Perm.subcontractMaterialIssueView];
@@ -549,17 +560,7 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.productionExecutionView];
   }
   if (location == RouteName.productionMaterialAnalysis) {
-    return const [
-      Perm.productionMaterialAnalysisView,
-      Perm.productionMaterialAnalysisCreate,
-      Perm.productionMaterialAnalysisRefresh,
-      Perm.productionMaterialAnalysisCancel,
-      Perm.productionMaterialAnalysisRoute,
-      Perm.productionMaterialAnalysisNotify,
-      Perm.productionMaterialAnalysisGenerate,
-      Perm.productionMaterialAnalysisReallocate,
-      Perm.productionMaterialAnalysisCrossReallocate,
-    ];
+    return const [Perm.productionMaterialAnalysisView];
   }
   if (location == RouteName.productionMaterialAnalysisHistory) {
     return const [Perm.productionMaterialAnalysisView];
@@ -713,6 +714,7 @@ List<String> requiredAllPermsFor(String location) {
 
   // 物料分析所有首屏查询都要求 view；manage/route 等只是附加动作。
   if (location == RouteName.productionMaterialAnalysis ||
+      location == RoutePath.productionPlanNew() ||
       location.startsWith('/production/material-analyses/') &&
           location.endsWith('/summary')) {
     return const [Perm.productionMaterialAnalysisView];

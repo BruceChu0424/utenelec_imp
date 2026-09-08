@@ -47,8 +47,9 @@ class SalesRepository {
   final ApiClient api;
   final SalesDocType type;
 
-  String get _base => '/sales/${type.pathSegment}';
-  String _doc(String id) => '/sales/${type.pathSegment}/$id';
+  String get _base =>
+      '/sales/${type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}';
+  String _doc(String id) => '$_base/$id';
 
   Future<PagedResult<SalesDocListItem>> list({
     int page = 1,
@@ -60,6 +61,8 @@ class SalesRepository {
     final query = <String, dynamic>{
       'page': page,
       'size': size,
+      if (type == SalesDocType.customerShipment)
+        'shipmentKind': 'DIRECT_CUSTOMER',
       if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
         'keyword': filter.keyword!.trim(),
       if (filter.clientId != null) 'clientId': filter.clientId,
@@ -152,12 +155,26 @@ class SalesRepository {
   }
 
   Future<SalesDocDetail> create(Map<String, dynamic> body) async {
-    final json = await api.post(_base, body: body);
+    final json = await api.post(
+      _base,
+      body: {
+        ...body,
+        if (type == SalesDocType.customerShipment)
+          'shipmentKind': 'DIRECT_CUSTOMER',
+      },
+    );
     return SalesDocDetail.fromJson(json);
   }
 
   Future<SalesDocDetail> update(String id, Map<String, dynamic> body) async {
     final json = await api.put(_doc(id), body: body);
+    return SalesDocDetail.fromJson(json);
+  }
+
+  Future<SalesDocDetail> confirmShipmentSales(String id, int revision) async {
+    final json = await api.post(
+      '${_doc(id)}/confirm-sales?expectedRevision=$revision',
+    );
     return SalesDocDetail.fromJson(json);
   }
 
@@ -182,8 +199,39 @@ class SalesRepository {
   }
 
   /// 财务审核发货（仅出货单）；调用方必须先展示 [financeAuditInfo]。
-  Future<ShipmentFinanceAuditInfo> financeAudit(String id) async {
-    final json = await api.post('${_doc(id)}/finance-audit'); // ENDPOINT
+  Future<ShipmentFinanceAuditInfo> financeAudit(
+    String id, {
+    required int expectedRevision,
+    required String expectedContentHash,
+    required String expectedClaimId,
+  }) async {
+    final json = await api.post(
+      '${_doc(id)}/finance-audit',
+      body: {
+        'expectedRevision': expectedRevision,
+        'expectedContentHash': expectedContentHash,
+        'expectedClaimId': expectedClaimId,
+      },
+    ); // ENDPOINT
+    return ShipmentFinanceAuditInfo.fromJson(json);
+  }
+
+  Future<ShipmentFinanceAuditInfo> rejectShipmentFinance(
+    String id, {
+    required int expectedRevision,
+    required String expectedContentHash,
+    required String expectedClaimId,
+    required String reason,
+  }) async {
+    final json = await api.post(
+      '${_doc(id)}/finance-audit-reject',
+      body: {
+        'expectedRevision': expectedRevision,
+        'expectedContentHash': expectedContentHash,
+        'expectedClaimId': expectedClaimId,
+        'reason': reason,
+      },
+    );
     return ShipmentFinanceAuditInfo.fromJson(json);
   }
 

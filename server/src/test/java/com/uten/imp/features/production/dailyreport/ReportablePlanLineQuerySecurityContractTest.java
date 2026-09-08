@@ -17,7 +17,7 @@ class ReportablePlanLineQuerySecurityContractTest {
                         + "ReportablePlanLineQueryService.java"));
 
         assertThat(source)
-                .contains("segment.status IN ('READY', 'DISPATCHED', 'IN_PROGRESS')")
+                .contains("segment.status = 'IN_PROGRESS'")
                 .contains("segment.workshop_department_id IS NOT NULL")
                 .contains("segment.responsible_employee_id IS NOT NULL")
                 .contains("demand.status NOT IN (")

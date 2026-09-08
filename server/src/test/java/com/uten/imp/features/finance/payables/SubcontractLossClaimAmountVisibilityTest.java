@@ -13,7 +13,7 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
@@ -39,9 +39,35 @@ class SubcontractLossClaimAmountVisibilityTest {
                 ReflectionTestUtils.invokeMethod(service, "summary", (Object) row);
 
         assertTrue(summary.priceMasked());
-        assertEquals("5.0000", summary.actualLossQty());
-        assertEquals("4.0000", summary.excessLossQty());
+        assertThat(new BigDecimal(summary.actualLossQty())).isEqualByComparingTo("5");
+        assertThat(new BigDecimal(summary.allowedLossQty())).isEqualByComparingTo("1");
+        assertThat(new BigDecimal(summary.excessLossQty())).isEqualByComparingTo("4");
         assertNull(summary.lossBookValueLocal());
         assertNull(summary.claimAmountLocal());
+    }
+
+    @Test
+    void financeSummaryKeepsExactBookAndClaimAmountsAndUnknownBookValue() {
+        when(commercialPriceVisibility.canViewFinance()).thenReturn(true);
+        Object[] row = new Object[]{
+                UUID.randomUUID(), UUID.randomUUID(), "SW-2", UUID.randomUUID(),
+                "S-1", "供应商", "AWAITING_FULFILLMENT",
+                new BigDecimal("5"), BigDecimal.ONE, new BigDecimal("4"),
+                new BigDecimal("40.000000000000000000000000000001"),
+                new BigDecimal("30.000000000000000000000001"), 2L, OffsetDateTime.now()
+        };
+        SubcontractLossClaimContracts.CaseSummary summary =
+                ReflectionTestUtils.invokeMethod(service, "summary", (Object) row);
+        assertThat(summary.priceMasked()).isFalse();
+        assertThat(new BigDecimal(summary.lossBookValueLocal()))
+                .isEqualByComparingTo("40.000000000000000000000000000001");
+        assertThat(new BigDecimal(summary.claimAmountLocal()))
+                .isEqualByComparingTo("30.000000000000000000000001");
+
+        row[10] = null;
+        summary = ReflectionTestUtils.invokeMethod(service, "summary", (Object) row);
+        assertNull(summary.lossBookValueLocal());
+        assertThat(new BigDecimal(summary.claimAmountLocal()))
+                .isEqualByComparingTo("30.000000000000000000000001");
     }
 }

@@ -36,6 +36,39 @@ import static org.mockito.Mockito.when;
 class SalesOrderFinanceConfirmServiceTest {
 
     @Test
+    void modifiedOrderRejectsMissingOrStaleReviewVersionBeforeDecision() {
+        SalesOrder order = approvedOrder();
+        order.setFinanceReviewRevision(2);
+        Fixture fixture = fixture(order);
+        assertThrows(ApiException.class, () -> fixture.service().confirm(order.getId(), null));
+        assertThrows(ApiException.class, () -> fixture.service().confirm(order.getId(),
+                new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null, 1L)));
+        assertThrows(ApiException.class, () -> fixture.service().reject(order.getId(),
+                new SalesOrderFinanceConfirmService.FinanceRejectRequest("金额需修改", 1L)));
+        assertFalse(order.isFinanceConfirmed());
+        assertFalse(order.isFinanceRejected());
+        verifyNoInteractions(fixture.notice());
+        fixture.service().confirm(order.getId(),
+                new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null, 2L));
+        assertTrue(order.isFinanceConfirmed());
+    }
+
+    @Test
+    void staleVersionInBatchPreventsEveryDecision() {
+        SalesOrder first = approvedOrder();
+        SalesOrder second = approvedOrder();
+        second.setFinanceReviewRevision(1);
+        Fixture fixture = fixture(Map.of(first.getId(), first, second.getId(), second));
+        assertThrows(ApiException.class, () -> fixture.service().confirmBatch(
+                new SalesOrderFinanceConfirmService.FinanceBatchConfirmRequest(
+                        List.of(first.getId(), second.getId()), null,
+                        Map.of(first.getId(), 0L, second.getId(), 0L))));
+        assertFalse(first.isFinanceConfirmed());
+        assertFalse(second.isFinanceConfirmed());
+        verifyNoInteractions(fixture.notice());
+    }
+
+    @Test
     void rejectedOrderMustBeRevisedBeforeFinanceCanConfirm() {
         SalesOrder order = approvedOrder();
         Fixture fixture = fixture(order);
@@ -91,7 +124,7 @@ class SalesOrderFinanceConfirmServiceTest {
     @Test
     void batchConfirmDeduplicatesSortsAndUsesOneDecisionSnapshot() {
         UUID firstId = UUID.fromString("00000000-0000-0000-0000-000000000001");
-        UUID secondId = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        UUID secondId = UUID.fromString("ffffffff-0000-0000-0000-000000000002");
         SalesOrder first = approvedOrder(firstId);
         SalesOrder second = approvedOrder(secondId);
         Fixture fixture = fixture(Map.of(firstId, first, secondId, second));
@@ -207,7 +240,9 @@ class SalesOrderFinanceConfirmServiceTest {
                         mock(SecurityContextCurrentUser.class),
                         mock(TxSessionVars.class),
                         mock(ChainNoticeService.class),
-                        mock(SalesOrderFinanceConfirmerEligibility.class));
+                        mock(SalesOrderFinanceConfirmerEligibility.class),
+                        mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
+                        mock(SalesOrderRevisionService.class));
 
         assertEquals(0, service.pending(1, 20, false, "  AcMe  ").getTotal());
 
@@ -269,7 +304,9 @@ class SalesOrderFinanceConfirmServiceTest {
                         currentUser,
                         mock(TxSessionVars.class),
                         notice,
-                        eligibility);
+                        eligibility,
+                        mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
+                        mock(SalesOrderRevisionService.class));
         return new Fixture(service, repository, notice, employeeId);
     }
 

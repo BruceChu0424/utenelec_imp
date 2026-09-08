@@ -21,6 +21,8 @@ class SalesOrderProgressRow {
     this.financeRejectedReason,
     this.financeRejectedAt,
     this.financeRejectedByName,
+    this.stopped = false,
+    this.closed = false,
   });
 
   final String orderId;
@@ -37,7 +39,9 @@ class SalesOrderProgressRow {
   /// 生产进度 = 已产/订货（外层总进度环口径，clamp≤1）。
   final double productionPct;
 
-  /// PENDING 待排产 / PRODUCING 生产中 / SHIPPABLE 可分批发货 / SHIPPED 已发货。
+  /// PENDING 待排产 / PRODUCING 生产中 / SHIPPABLE 可分批发货 / SHIPPED 已发货；
+  /// 终态：CANCELED 已中止（整单取消）/ CLOSED 已结案——不占活跃阶段段，
+  /// 只在「历史记录」（全部订单）中可见。
   final String stage;
 
   /// 财务确认（V300）：false = 等待财务审核，确认前不展示排产进度。
@@ -48,6 +52,12 @@ class SalesOrderProgressRow {
   final String? financeRejectedReason;
   final String? financeRejectedAt;
   final String? financeRejectedByName;
+
+  /// 已中止（整单取消，服务端 stopped）；历史记录里以「已中止」阶段呈现。
+  final bool stopped;
+
+  /// 已结案（正常履约完结）；历史记录里以「已结案」阶段呈现。
+  final bool closed;
 
   /// 是否有可发货量（reserved_qty>0）。
   bool get shippable => reservedQty > 0.0001;
@@ -75,6 +85,8 @@ class SalesOrderProgressRow {
         financeRejectedReason: json['financeRejectedReason'] as String?,
         financeRejectedAt: json['financeRejectedAt'] as String?,
         financeRejectedByName: json['financeRejectedByName'] as String?,
+        stopped: (json['stopped'] as bool?) ?? false,
+        closed: (json['closed'] as bool?) ?? false,
       );
 }
 
@@ -85,13 +97,15 @@ String salesProgressStageLabel(String stage) => switch (stage) {
   'PRODUCING' => '生产中',
   'SHIPPABLE' => '可分批发货',
   'SHIPPED' => '已发货',
+  'CANCELED' => '已中止',
+  'CLOSED' => '已结案',
   _ => '—',
 };
 
-/// 进度阶段色（绿=可发/已发，橙=生产中，灰=未上链）。
+/// 进度阶段色（绿=可发/已发/已结案，橙=生产中，红=驳回/中止，灰=未上链）。
 Color salesProgressStageColor(String stage, ThemeData theme) => switch (stage) {
-  'REJECTED' => theme.colorScheme.error,
-  'SHIPPABLE' || 'SHIPPED' => Colors.green,
+  'REJECTED' || 'CANCELED' => theme.colorScheme.error,
+  'SHIPPABLE' || 'SHIPPED' || 'CLOSED' => Colors.green,
   'PRODUCING' => Colors.orange,
   'PENDING' => theme.colorScheme.error,
   _ => theme.colorScheme.onSurfaceVariant,

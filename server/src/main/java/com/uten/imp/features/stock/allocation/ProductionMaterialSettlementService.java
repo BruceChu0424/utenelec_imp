@@ -6,7 +6,6 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.stock.allocation.dto.ProductionMaterialClearanceRow;
 import com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest;
 import com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementSourceRow;
-import com.uten.imp.security.ProductionMaterialReadAccessPolicy;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -39,13 +38,25 @@ public class ProductionMaterialSettlementService {
 
     private final EntityManager em;
     private final TxSessionVars tx;
-    private final ProductionMaterialReadAccessPolicy readAccess;
+    private final ProductionMaterialTaskAccessPolicy taskAccess;
+    private final com.uten.imp.features.stock.valuation.ProductionInventoryValueService inventoryValue;
+
+    @Transactional(readOnly=true)
+    public ProductionMaterialTaskAccessPolicy.Capabilities capabilities(UUID planId, UUID segmentId) {
+        requirePlanExists(planId,false);
+        return taskAccess.capabilities(planId,segmentId);
+    }
 
     @Transactional(readOnly = true)
     public List<ProductionMaterialClearanceRow> clearance(UUID planId) {
-        readAccess.requirePlanReadable(planId);
+        return clearance(planId,null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProductionMaterialClearanceRow> clearance(UUID planId, UUID segmentId) {
+        var scope = taskAccess.readable(planId,segmentId);
         requirePlanExists(planId, false);
-        return readClearance(planId);
+        return readClearance(planId,scope);
     }
 
     /**
@@ -55,9 +66,14 @@ public class ProductionMaterialSettlementService {
     @Transactional(readOnly = true)
     public List<ProductionMaterialSettlementSourceRow> settlementSources(
             UUID planId) {
-        readAccess.requirePlanReadable(planId);
+        return settlementSources(planId,null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProductionMaterialSettlementSourceRow> settlementSources(UUID planId, UUID segmentId) {
+        var scope = taskAccess.readable(planId,segmentId);
         requirePlanExists(planId, false);
-        return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+        var query = em.createNativeQuery("""
                         SELECT posting.id, event.id, posting.demand_id,
                                demand.execution_segment_id,
                                segment.segment_code,
@@ -90,8 +106,10 @@ public class ProductionMaterialSettlementService {
                           AND posting.source_posting_id IS NULL
                           AND posting.qty_base
                               > COALESCE(reversal.reversed_qty, 0)
-                        ORDER BY event.created_at DESC, posting.id
-                        """).setParameter("planId", planId))
+                        """ + (scope.all() ? "" : " AND demand.execution_segment_id IN (:segments)")
+                        + " ORDER BY event.created_at DESC, posting.id").setParameter("planId",planId);
+        if (!scope.all()) query.setParameter("segments",scope.segmentIds());
+        return NativeQueryResults.objectArrayRows(query)
                 .stream()
                 .map(row -> new ProductionMaterialSettlementSourceRow(
                         (UUID) row[0], (UUID) row[1], (UUID) row[2],
@@ -124,6 +142,7 @@ public class ProductionMaterialSettlementService {
     public List<ProductionMaterialClearanceRow> close(UUID planId) {
         tx.bind();
         requirePlanExists(planId, true);
+        taskAccess.requireClose(planId);
         Number packages = (Number) em.createNativeQuery("""
                         SELECT COUNT(*)
                         FROM production_planning_packages
@@ -176,6 +195,10 @@ public class ProductionMaterialSettlementService {
         tx.bind();
         requirePlanExists(planId, true);
         List<Line> lines = normalize(request, reverse);
+        List<UUID> demandIds = lines.stream().map(Line::demandId).distinct().toList();
+        taskAccess.requireDemandWrite(planId,demandIds,request.getExecutionSegmentId(),
+                reverse ? "production_material:reverse" : "production_material:settle");
+        var responseScope = taskAccess.readable(planId,request.getExecutionSegmentId());
         String eventType = reverse ? "REVERSE" : "POST";
         String reason = normalizeReason(request.getReason());
         String requestHash = hash(lines, reason);
@@ -197,10 +220,9 @@ public class ProductionMaterialSettlementService {
                         ErrorCode.CONFLICT,
                         "相同幂等键对应不同的物料清账请求");
             }
-            return readClearance(planId);
+            return readClearance(planId,responseScope);
         }
 
-        List<UUID> demandIds = lines.stream().map(Line::demandId).distinct().toList();
         List<UUID> locked = NativeQueryResults.typedRows(em.createNativeQuery("""
                         SELECT id
                         FROM production_material_demands
@@ -237,24 +259,47 @@ public class ProductionMaterialSettlementService {
                 .setParameter("reason", reason)
                 .setParameter("actorId", actorId)
                 .executeUpdate();
+        if(reverse)reopenCompletedSegments(eventId,demandIds,requestHash,actorId);
         for (Line line : lines) {
+            List<Object[]> sources;
+            if(reverse){
+                sources=NativeQueryResults.objectArrayRows(em.createNativeQuery(
+                        "SELECT issue_posting_id,qty_base FROM production_material_settlement_postings WHERE id=:id")
+                        .setParameter("id",line.sourcePostingId()));
+            }else{
+                sources=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT id,fn_material_issue_unsettled(id) FROM production_material_stock_postings
+                        WHERE demand_id=:id AND posting_type='ISSUE' AND fn_material_issue_unsettled(id)>0
+                        ORDER BY created_at,id FOR UPDATE
+                        """).setParameter("id",line.demandId()));
+            }
+            BigDecimal remaining=line.qty();
+            for(Object[] source:sources){
+            if(remaining.signum()==0)break;
+            if(source[0]==null)throw new ApiException(ErrorCode.CONFLICT,"历史实耗尚无原领料来源，请先核对");
+            BigDecimal part=remaining.min(decimal(source[1]));
             em.createNativeQuery("""
                             INSERT INTO production_material_settlement_postings(
                                 id, event_id, demand_id, settlement_type,
-                                qty_base, source_posting_id, created_at, created_by
+                                qty_base, source_posting_id, issue_posting_id, created_at, created_by
                             ) VALUES (
                                 gen_random_uuid(), :eventId, :demandId, :type,
-                                :qty, :sourceId, now(), :actorId
+                                :qty, :sourceId, :issueId, now(), :actorId
                             )
                             """)
                     .setParameter("eventId", eventId)
                     .setParameter("demandId", line.demandId())
                     .setParameter("type", line.type())
-                    .setParameter("qty", line.qty())
+                    .setParameter("qty", part)
                     .setParameter("sourceId", line.sourcePostingId())
+                    .setParameter("issueId",source[0])
                     .setParameter("actorId", actorId)
                     .executeUpdate();
+            remaining=remaining.subtract(part);
+            }
+            if(remaining.signum()!=0)throw new ApiException(ErrorCode.CONFLICT,"本次清账超过准确原领料未耗用数量");
         }
+        inventoryValue.settled(eventId,actorId);
         // Any material correction re-opens the plan. Explicit close performs
         // the product-inbound and equation checks again.
         em.createNativeQuery("""
@@ -264,7 +309,34 @@ public class ProductionMaterialSettlementService {
                         """)
                 .setParameter("planId", planId)
                 .executeUpdate();
-        return readClearance(planId);
+        return readClearance(planId,responseScope);
+    }
+
+    private void reopenCompletedSegments(UUID eventId,List<UUID> demandIds,String requestHash,UUID actor){
+        List<Object[]> segments=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT segment.id,segment.lock_version FROM production_execution_segments segment
+                WHERE segment.status='COMPLETED' AND NOT segment.is_deleted AND EXISTS(
+                    SELECT 1 FROM production_material_demands demand WHERE demand.id IN(:ids) AND demand.execution_segment_id=segment.id)
+                ORDER BY segment.id FOR UPDATE OF segment
+                """).setParameter("ids",demandIds));
+        if(segments.isEmpty())return;
+        em.createNativeQuery("SELECT set_config('app.production_completion_reopen_settlement_id',:id,true)")
+                .setParameter("id",eventId.toString()).getSingleResult();
+        for(Object[] segment:segments){
+            long version=((Number)segment[1]).longValue();
+            em.createNativeQuery("""
+                    INSERT INTO production_execution_segment_events(id,execution_segment_id,action,idempotency_key,
+                        request_hash,expected_version,resulting_version,created_by)
+                    VALUES(gen_random_uuid(),:segment,'REOPEN_COMPLETION',:key,:hash,:version,:next,:actor)
+                    """).setParameter("segment",segment[0]).setParameter("key","MATERIAL_SETTLEMENT_REVERSE:"+eventId)
+                    .setParameter("hash",requestHash).setParameter("version",version).setParameter("next",version+1)
+                    .setParameter("actor",actor).executeUpdate();
+            int changed=em.createNativeQuery("""
+                    UPDATE production_execution_segments SET status='IN_PROGRESS',completion_reopened=true
+                    WHERE id=:id AND lock_version=:version AND status='COMPLETED'
+                    """).setParameter("id",segment[0]).setParameter("version",version).executeUpdate();
+            if(changed!=1)throw new ApiException(ErrorCode.CONFLICT,"执行段已变化，实耗纠正已全部撤回");
+        }
     }
 
     private void requirePlanExists(UUID planId, boolean writeLock) {
@@ -287,7 +359,11 @@ public class ProductionMaterialSettlementService {
     }
 
     private List<ProductionMaterialClearanceRow> readClearance(UUID planId) {
-        return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+        return readClearance(planId,new ProductionMaterialTaskAccessPolicy.ReadScope(true,List.of()));
+    }
+
+    private List<ProductionMaterialClearanceRow> readClearance(UUID planId, ProductionMaterialTaskAccessPolicy.ReadScope scope) {
+        var query = em.createNativeQuery("""
                         SELECT c.plan_id, c.demand_id,
                                demand.execution_segment_id,
                                segment.segment_code, c.goods_id,
@@ -305,8 +381,10 @@ public class ProductionMaterialSettlementService {
                         JOIN goods g ON g.id = c.goods_id
                         LEFT JOIN colors color ON color.id = c.color_id
                         WHERE c.plan_id = :planId
-                        ORDER BY g.code, c.color_id NULLS FIRST, c.demand_id
-                        """).setParameter("planId", planId))
+                        """ + (scope.all() ? "" : " AND demand.execution_segment_id IN (:segments)")
+                        + " ORDER BY g.code, c.color_id NULLS FIRST, c.demand_id").setParameter("planId",planId);
+        if (!scope.all()) query.setParameter("segments",scope.segmentIds());
+        return NativeQueryResults.objectArrayRows(query)
                 .stream()
                 .map(row -> new ProductionMaterialClearanceRow(
                         (UUID) row[0], (UUID) row[1], (UUID) row[2],

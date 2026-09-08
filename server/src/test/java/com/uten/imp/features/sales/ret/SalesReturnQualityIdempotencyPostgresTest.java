@@ -49,7 +49,10 @@ import java.util.function.Consumer;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -64,7 +67,8 @@ import static org.mockito.Mockito.when;
  * <p>The production StockService runs unchanged. Transaction-bound test adapters
  * persist its repository writes into the real stock movement and balance tables,
  * so the test covers quality state, event evidence, stock posting, and rollback
- * without loading unrelated application security or schedulers.
+ * without loading unrelated application security or schedulers. Valuation is an
+ * explicit nonzero fixture contract; this class does not verify the cost engine.
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class SalesReturnQualityIdempotencyPostgresTest {
@@ -81,6 +85,7 @@ class SalesReturnQualityIdempotencyPostgresTest {
                     .withPassword("uten");
     private static final UUID ACTOR_ID =
             UUID.fromString("10000000-0000-0000-0000-000000000001");
+    private static final BigDecimal FIXTURE_UNIT_BOOK_COST = BigDecimal.ONE;
 
     private static JdbcTemplate jdbc;
     private static EntityManagerFactory entityManagerFactory;
@@ -109,26 +114,6 @@ class SalesReturnQualityIdempotencyPostgresTest {
                 POSTGRES.getUsername(),
                 POSTGRES.getPassword());
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("""
-                CREATE OR REPLACE FUNCTION test_reject_quality_disposition_event()
-                RETURNS trigger
-                LANGUAGE plpgsql
-                AS $$
-                BEGIN
-                    IF NEW.reason = 'force-late-failure' THEN
-                        RAISE EXCEPTION 'forced late disposition failure';
-                    END IF;
-                    RETURN NEW;
-                END;
-                $$
-                """);
-        jdbc.execute("""
-                CREATE TRIGGER trg_test_reject_quality_disposition_event
-                BEFORE INSERT ON sales_return_quality_events
-                FOR EACH ROW
-                EXECUTE FUNCTION test_reject_quality_disposition_event()
-                """);
-
         LocalContainerEntityManagerFactoryBean factory =
                 new LocalContainerEntityManagerFactoryBean();
         factory.setDataSource(dataSource);
@@ -256,7 +241,7 @@ class SalesReturnQualityIdempotencyPostgresTest {
                 any(), any(), any(), any(), any(), any(), any());
 
         // DIR_OUT（良品释放撤回）会读本仓余额：让 mock 仓库读真实 stock_balances。
-        when(balanceRepository.findByWarehouseIdAndGoodsIdAndColorId(
+        when(balanceRepository.readPhysicalSnapshot(
                 any(), any(), any()))
                 .thenAnswer(invocation -> {
                     @SuppressWarnings("unchecked")
@@ -272,18 +257,29 @@ class SalesReturnQualityIdempotencyPostgresTest {
                             .setParameter("cid", invocation.getArgument(2, UUID.class))
                             .getResultList();
                     if (rows.isEmpty()) {
-                        return Optional.empty();
+                        return java.util.List.of();
                     }
-                    StockBalance balance = new StockBalance();
-                    balance.setQty(rows.getFirst());
-                    return Optional.of(balance);
+                    return java.util.List.of(new StockBalanceRepository.PhysicalSnapshot(){
+                        public BigDecimal getQty(){return rows.getFirst();}
+                        public BigDecimal getWeight(){return null;}
+                    });
                 });
 
         StockService realStockService = new StockService(
                 movementRepository,
                 balanceRepository,
                 tx,
-                new InventoryMutationLock(entityManager));
+                new InventoryMutationLock(entityManager),
+                org.mockito.Mockito.mock(com.uten.imp.features.stock.valuation.StockValuationCoordinator.class, invocation -> {
+                    if (!invocation.getMethod().getName().equals("value")) return org.mockito.Answers.RETURNS_DEFAULTS.answer(invocation);
+                    StockService.MovementRequest request=invocation.getArgument(1);
+                    assertNull(request.amountLocal(),"The quality command must not pass the refund amount as inventory cost");
+                    var source=assertInstanceOf(com.uten.imp.application.port.InventoryMovementCostReference.SalesReturnQuality.class,request.costReference());
+                    assertEquals(source.qualityEventId(),request.sourceItemId());
+                    return new com.uten.imp.application.port.InventoryValuationPort.MovementValue(
+                            UUID.randomUUID(),invocation.getArgument(0),UUID.randomUUID(),UUID.randomUUID(),
+                            request.qty().multiply(FIXTURE_UNIT_BOOK_COST),com.uten.imp.application.port.InventoryValuationPort.State.PENDING,false);
+                }));
         stockService = spy(realStockService);
         doAnswer(invocation -> {
             StockService.MovementRequest request =
@@ -300,7 +296,12 @@ class SalesReturnQualityIdempotencyPostgresTest {
                 currentUser,
                 tx,
                 returnRepository,
-                accessPolicy);
+                accessPolicy,
+                new com.uten.imp.features.sales.SalesMutationFootprintService(entityManager,
+                        new com.uten.imp.application.concurrency.FulfillmentMutationLocks(entityManager,
+                            new com.uten.imp.features.stock.FulfillmentInventoryMutationAdapter(
+                                new InventoryMutationLock(entityManager)))),
+                mock(com.uten.imp.application.port.SalesReturnInventoryValuePort.class));
     }
 
     @Test
@@ -420,8 +421,17 @@ class SalesReturnQualityIdempotencyPostgresTest {
     }
 
     @Test
-    void lateEventFailureRollsBackStockEffectAndQualityProjection() {
+    void failureAfterStockWritesRollsBackStockEffectAndQualityProjection() {
         Fixture fixture = seedFixture();
+        AtomicBoolean reachedPersistedStock=new AtomicBoolean();
+        movementHook=ignored->{
+            assertEquals(1L,dispositionEventCount(fixture.qualityItemId()));
+            assertEquals(1L,stockEffectCount(fixture.returnId()));
+            assertEquals(0,new BigDecimal("3").compareTo(balanceQuantity(fixture)));
+            assertEquals(0,new BigDecimal("3").compareTo(balanceAmount(fixture)));
+            reachedPersistedStock.set(true);
+            throw new IllegalStateException("forced failure after the physical stock writes");
+        };
 
         assertThrows(
                 RuntimeException.class,
@@ -431,6 +441,7 @@ class SalesReturnQualityIdempotencyPostgresTest {
                         "force-late-failure",
                         "quality-pg-rollback-001")));
 
+        assertTrue(reachedPersistedStock.get(),"Rollback must be tested after actual movement and balance writes");
         assertEquals(0L, dispositionEventCount(fixture.qualityItemId()));
         assertEquals(0L, stockEffectCount(fixture.returnId()));
         assertEquals(0, BigDecimal.ZERO.compareTo(balanceQuantity(fixture)));
@@ -521,6 +532,29 @@ class SalesReturnQualityIdempotencyPostgresTest {
                         fixture.returnItemId(),
                         request));
         return result == null ? List.of() : result;
+    }
+
+    @Test
+    void globalOrderPromiseProtectsCorrectionAndExactFreeBoundaryIsReplaySafe() {
+        Fixture fixture = seedFixture();
+        dispose(fixture, request("GOOD_RELEASE", "10", "inspection-pass", "quality-global-release-001"));
+        jdbc.update("""
+                INSERT INTO stock_reservations(id, order_item_id, goods_id, warehouse_id,
+                    qty, consumed_qty, released_qty, status, source)
+                VALUES (gen_random_uuid(), gen_random_uuid(), ?, NULL, 8, 0, 0, 0, 0)
+                """, fixture.goodsId());
+        ApiException error = assertThrows(ApiException.class, () -> correct(fixture,
+                correction("GOOD_RELEASE", "3", "revoke release", "quality-global-over-001")));
+        assertEquals(ErrorCode.CONFLICT, error.getCode());
+        assertEquals(0, new BigDecimal("10").compareTo(balanceQuantity(fixture)));
+        assertEquals(0L, correctionEventCount(fixture.qualityItemId()));
+        var boundary = correction("GOOD_RELEASE", "2", "revoke release", "quality-global-free-001");
+        correct(fixture, boundary);
+        correct(fixture, boundary);
+        assertEquals(0, new BigDecimal("8").compareTo(balanceQuantity(fixture)));
+        assertEquals(0, new BigDecimal("8").compareTo(releasedQuantity(fixture.qualityItemId())));
+        assertEquals(1L, correctionEventCount(fixture.qualityItemId()));
+        assertEquals(2L, stockEffectCount(fixture.returnId()));
     }
 
     private static ReturnQualityCorrectionRequest correction(

@@ -54,9 +54,16 @@ class ResetBusinessDataScriptContractTest {
         // V459 兼职部门表属组织与权限治理数据（PRESERVE，317→318、95→96）；
         // V463 订货行来源分配表加 2 张（CLEAR，318→320、222→224）；
         // V474 运行时公共在途事件账加 1 张（CLEAR，320→321、224→225）。
-        assertThat(policy).hasSize(321);
+        // V478 根供料产出事件账再加 1 张（CLEAR，321→322、225→226）；V479 不新增表。
+        // V482 销售确认后改量事实账加 1 张（CLEAR，322→323、226→227；
+        // 应用内孪生扩展见 V484）。
+        // V486 采购订货改量事实账再加 1 张（323→324、227→228）。
+        // V492 adds one commercial revision ledger, preserving order history.
+        // V496 adds one notification reversal ledger.
+        // V500 adds eight value tables; V503 adds three source revision tables.
+        assertThat(policy).hasSize(362);
         assertThat(policy.values().stream().filter("CLEAR"::equals).count())
-                .isEqualTo(225);
+                .isEqualTo(266);
         assertThat(policy.values().stream().filter("PRESERVE"::equals).count())
                 .isEqualTo(96);
 
@@ -74,6 +81,7 @@ class ResetBusinessDataScriptContractTest {
 
         assertThat(policy).containsAllEntriesOf(Map.of(
                 "preplan_public_supply_events", "CLEAR",
+                "preplan_root_output_events", "CLEAR",
                 "preplan_analysis_stock_exact_pegs", "CLEAR",
                 "preplan_material_reallocations", "CLEAR",
                 "preplan_stock_entitlement_events", "CLEAR",
@@ -209,7 +217,51 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(474, 436)")
                 .contains("(475, 437)")
                 .contains("(476, 438)")
-                .contains("V474/436、V475/437 或 V476/438 目录")
+                .contains("(477, 439)")
+                .contains("(478, 440)")
+                .contains("(479, 441)")
+                .contains("(480, 442)")
+                .contains("(481, 443)")
+                .contains("(482, 444)")
+                // V483 审计窄修 + V484 运行时清空扩展：均不新增表（444→446）。
+                .contains("(483, 445)")
+                .contains("(484, 446)")
+                // V485 进行中工作台单趟聚合：不新增表（446→447）。
+                .contains("(485, 447)")
+                // V486 采购订货改量事实账（+1 表 CLEAR，447→448）。
+                .contains("(486, 448)")
+                // V487 顶层进度/零料标志、V488 偏好补列、V489/V490 换函数、
+                // V491 报工门控：均不新增表（448→453）。
+                .contains("(487, 449)")
+                .contains("(488, 450)")
+                .contains("(489, 451)")
+                .contains("(490, 452)")
+                .contains("(491, 453)")
+                .contains("V483/445、V484/446、V485/447、V486/448、V487/449、V488/450")
+                .contains("(492, 454)")
+                .contains("(493, 455)")
+                .contains("(494, 456)")
+                .contains("(495, 457)")
+                .contains("(496, 458)")
+                .contains("(497, 459)")
+                .contains("(498, 460)")
+                .contains("(499, 461)")
+                .contains("(500, 462)")
+                .contains("(501, 463)")
+                .contains("(502, 464)")
+                .contains("(503, 465)")
+                .contains("(504, 466)")
+                .contains("(505, 467)")
+                .contains("(506, 468)")
+                .contains("(507, 469)")
+                .contains("(508, 470)")
+                .contains("(527, 486)")
+                .contains("(528, 487)")
+                .contains("(529, 488)")
+                .contains("(530, 489)")
+                .contains("(531, 490)")
+                .contains("(532, 491)")
+                .contains("V507/469、V508/470及V511至V532完整目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")

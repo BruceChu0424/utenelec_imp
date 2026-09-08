@@ -28,6 +28,17 @@
 - **表头/表体横滚同步**：拖底部滚动条表头跟随，列始终对齐。
 - **列宽自动适配**（默认）：每列默认宽度 = 该列最宽数据（表头 + 单元格 TextPainter 测量，取样前 100 行 + 内边距/图标富余），进表即撑满、不被截断；超长文本（如备注）封顶 480px + 省略号，可再拖宽。
 - **列宽手动拖拽**：拖任一列右边界 8px 命中区改宽/改窄（桌面悬停显 resize 光标）；已手动拖过的列在数据刷新时保留用户宽度，其余列按新数据重新适配。
+- **表头设置 + 拖出隐藏 + 长按排序（共用 UtenTableColumnKit，2026-09-05 起）**：「表头设置 x/y」深绿
+  实心按钮点开**按钮处锚定的浮层勾选列表**（全选行/勾选显隐/拖拽排序把手，点弹层外关闭）；按住表头纵向
+  拖出隐藏 = root Overlay 最顶层**跟手浮层**（原格变淡、过阈值红底红×、拖回取消、末列不隐）；**长按
+  ~500ms 拎起横拖 = 直接排序列**（跟手浮层 + 插入位指示线 + 松手落位，会话内列序）。实现与编辑明细表
+  `UtenEditableGrid` 同一份（`UtenColumnChooserButton` / `UtenColumnHeaderDragHost`），见
+  [UtenTableColumnKit.md](UtenTableColumnKit.md)。
+- **工具条控件统一高度 48（2026-09-05 起）**：表头上方工具条内的全部组件级控件——「表头设置」「全屏」
+  「已选 N 项」摘要条——统一为 `UtenTableToolbar.controlHeight = 48`，与调用方挂进
+  `toolbarActions` 的筛选 chip（如物料分析「全部 BOM」minHeight:48）等高对齐；`UtenButton`
+  新增可选 `height:` 覆盖最小高度参与对齐（全站默认 44/52 不变，弹窗/页面主按钮不受影响）。
+  调用方往工具条放按钮时也应传 `height: UtenTableToolbar.controlHeight` 保持同条等高。
 - **单击选中、双击打开（全 App 列表页统一交互契约，2026-08-12）**：单击行 = 只选中
   （该行高亮淡主色/rowColor 加深，滚动时常驻，翻页/重查换对象后自然失效），**绝不打开**；
   双击行 = 触发 `onRowTap`（报表→跳源头单据；主档→详情：货品为整页路由 `/basicinfo/goods/:id`，
@@ -53,10 +64,12 @@
 - **受控多选 + 表头三态全选 + 右下悬浮批量动作**：列表页可设 `selectable:true`，组件在首列显示
   复选框。表头 `false/true/null` 分别表示当前页全未选/全选/部分选；点击表头全选/取消当前页。
   选中集合由调用方的 `selectedIds` 持有（跨页保留）；组件只增加/移除当前页 ID，不擅自清空。
-  多选模式下**单击行 = 切换勾选（与点勾选框等价），双击行 = 打开详情**。表头上方只保留
-  常驻选择摘要「已选 N 项 + 清除选择」；`batchActionsBuilder` 返回的真正业务动作（批量审核/
-  禁用/删除等）统一悬浮在表格右下角，与采购任务工作台同一视觉。未选中时动作仍可发现但灰显，
-  由 `AbsorbPointer` 拦截；表体同时预留底部滚动空间，末行不会被遮挡。
+  多选模式下**单击行 = 切换勾选（与点勾选框等价），双击行 = 打开详情**。有 `batchActionsBuilder`
+  时，「已选 N 项 + 清除选择」摘要与业务动作（批量审核/禁用/删除等）**同框悬浮在表格右下角**
+  （2026-09-05 全站统一口径：选择数与按钮零距离；无悬浮动作的表格摘要仍驻表头上方）。
+  未选中时动作组降为半透明但**不加 AbsorbPointer**——悬浮组里的「全选全部/全选筛选结果」类
+  动作必须在 0 选中时可点（业务按钮自身 onPressed=null 已不可提交）；表体同时预留底部滚动
+  空间，末行不会被遮挡。
   多选表体整体 `SelectionContainer.disabled`——勾选场景不需要文本复制，也挡住页面级
   SelectionArea（UtenContentContainer 默认包裹）渗入（2026-09-03，准则 §3.4）。
 - **成功空态保留业务工具条**：主数据与前导分组都为空时仍渲染调用方的 `toolbarActions`
@@ -69,13 +82,24 @@
   重交互大表应传 `enableTextSelection:false`，显式隔离整个表格；这不改变行多选语义。
 - **分页**：上一页/下一页 + 跳页输入框；翻页后表体竖向回顶。
 - **空/错/加载态**：内置 `UtenEmpty` / loading / 重试。
-- **`toolbarActions`、批量悬浮动作与全屏**：`toolbarActions` 的按钮排在工具条
-  「全屏」切换右侧，**全屏路由里同位置同样渲染**（全屏由 `showGeneralDialog` 整屏路由 +
+- **`toolbarActions`、`toolbarLeadingActions`、批量悬浮动作与全屏**：`toolbarActions` 的按钮排在工具条
+  **右侧贴边**（全站口径：刷新等页面动作放表格右上角，多个动作间 s8 间距、宽度不足自动换行——
+  2026-09-06 起），**全屏路由里同位置同样渲染**（全屏由 `showGeneralDialog` 整屏路由 +
   `_fsTick` 驱动重建，按钮闭包仍指向调用方 State 的方法，选中/数据变化经
-  `didUpdateWidget → _fsTick` 实时刷新按钮可用态）。右下批量动作属于表格内部 Stack，全屏
+  `didUpdateWidget → _fsTick` 实时刷新按钮可用态）。`toolbarLeadingActions`（2026-09-06 新增）
+  的按钮渲染在「表头设置 / 全屏」同一左簇内、紧挨全屏按钮之后（吃 Wrap 的 s8 间距）——
+  适合视图切换类 chip（如物料分析「全部 BOM / 只看缺料 / 待确认路线 / 按产品看 / 按物料汇总」），
+  避免塞右侧贴边动作区后与全屏按钮相距过远且多按钮零间距粘连；窄屏（<720）与左簇并成一条
+  Wrap 流式换行。右下批量动作属于表格内部 Stack，全屏
   路由同样渲染。调用方需要「全屏里也能操作」的非批量按钮（如 BOM 页签的编辑/删除/添加组件/
   审计模式）应挂 `toolbarActions`，勿放在表格外层工具条
-  （外层工具条在全屏时被整屏路由遮盖）。
+  （外层工具条在全屏时被整屏路由遮盖）。`onFullscreenChanged`（2026-09-05）在进入/退出
+  全屏各回调一次——宿主页可借此把搜索框等控件「常态放页面头部卡片、全屏时放回表格工具条」
+  （两处共享同一控制器，物料分析页即此用法）。
+- **`showSelectionSummary`（2026-09-06 新增，默认 true）**：控制「已选 N 项 + 清除」摘要
+  是否驻留表头上方工具条。页面把批量动作放自己的 Scaffold 悬浮组、并在组内自摆
+  `UtenSelectionSummaryPill` 时传 false，避免同一选择数在工具条与悬浮组重复出现
+  （生产调度台待排产段即此用法）。
 
 ---
 
@@ -114,7 +138,9 @@ MasterDataTableView<T>(
 )
 ```
 
-`MasterColumnDef<T>`：`key`(与后端 query/排序参数对齐)、`label`(列头)、`width`(**仅作初始参考**；默认按内容自动适配，见 §二，已不直接用于布局)、`value`(文本真值，继续用于列宽测算/排序/稳定行键/无障碍标签回退)、`cellBuilder`(可选自定义单元格；外层仍管列宽、内边距、网格线和选中底色，builder 只管内部内容)、`type`(`text`/`date`/`number`/`money`/`bool`，对齐后端 `ReportColumn.type`)、`sortable`(日期/金额/数量列置 true)、`cellColor`(单元格语义底色，列级；**深色底自动切白字**——`ThemeData.estimateBrightnessForColor` 判定，缺口列传 `colorScheme.error` 即得红底白字，浅色底如 `errorContainer` 半透明保持默认前景色，2026-09-04 起)。
+`MasterColumnDef<T>`：`key`(与后端 query/排序参数对齐)、`label`(列头)、`width`(**仅作初始参考**；默认按内容自动适配，见 §二，已不直接用于布局)、`value`(文本真值，继续用于列宽测算/排序/稳定行键/无障碍标签回退)、`cellBuilder`(可选自定义单元格；外层仍管列宽、内边距、网格线和选中底色，builder 只管内部内容)、`type`(`text`/`date`/`number`/`money`/`bool`，对齐后端 `ReportColumn.type`)、`sortable`(日期/金额/数量列置 true)、`cellColor`(单元格语义底色，列级；**底色与文字双向保证对比度**——`ThemeData.estimateBrightnessForColor` 判定，深色底自动切白字、**浅色底强制深字**（2026-09-05 修订：暗色主题下 `colorScheme.error/primary/tertiary` 是浅色，作底色时原先保留默认前景=白字不可读），缺口列传 `colorScheme.error` 即得红底白字，浅色底如 `errorContainer` 半透明保持默认前景色)。
+
+自绘单元格的`cellBuilder`现在接收位于实际行样式之下的context，可通过`MasterDataTableCellScope.maybeOf(context)`读取`selected`与`foregroundColor`，同时继承正确的`DefaultTextStyle`和`IconTheme`。只读列表的单行高亮与可勾选列表的业务多选统一从此域取选中态；不要用页面`selectedIds`推测只读行是否高亮。自绘数量、输入值、单位与提示文字在选中时使用该域前景色，未选中仍保留业务语义颜色。
 
 ---
 
@@ -227,3 +253,13 @@ return MasterDataTableView<Map<String, dynamic>>(
 此前：2026-08-14 · 新增 `primary` 联动折叠模式（配合 [`UtenCollapsingHeaderScrollView`](UtenCollapsingHeaderScrollView.md)：大屏列表页顶部卡上滑收起、表格内滚；联动模式下 `shrinkWrap` 为 false，默认 / `embedded` 路径仍 true）。货品 / 模具 / 客户 / 供应商 四个分类详情页接入。
 
 **2026-08-13**：批量操作条改为**常驻**（selectable 且配置 `batchActionsBuilder` 时固定显示，不再"选中才出现"），未选中任何行时整条灰色禁用（`AbsorbPointer` 拦截 + Opacity 变淡 + 边框/文字降级中性灰）；生产计划列表页自绘批量条废弃，统一接入 `batchActionsBuilder`，与货品资料等主档页一致。生产物料分析当前仅完成本地/隔离克隆验证，目标库与真实岗位 UAT 仍为 NO-GO。
+
+
+## 业务选择与显示行分离(2026-09-05)
+
+- `selectionSummaryCount` 可指定真正选中的业务任务数；默认仍为 `selectedIds.length`。一行聚合多个任务或筛选隐藏已选任务时，摘要与悬浮动作保持一致。
+- `onClearSelection` 可清除调用方全局选择，包括当前搜索、分页不可见的任务；普通表格仍默认回交空集合。
+- `preserveSelectionOnContextMenu=true` 保留显式复选，右键查看详情不再临时替换或清空任务集合；默认值保持原有表格行为。
+- 搜索无匹配但存在全局选择时，空态工具条仍显示真实计数与清除入口。业务写入仍由调用方按精确任务身份、权限和当前快照校验。
+
+- 联动模式横向滚动条同时监听竖向滚动与内容尺寸变化，每帧合并测量；表头收起、详情返回或行高改变后不能把旧滚动条位置留在数据行中部。

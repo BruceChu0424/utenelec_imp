@@ -274,7 +274,12 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新当前结果',
-            onPressed: _material == null || _loading ? null : _load,
+            onPressed: _material == null || _loading
+                ? null
+                : () async {
+                    setState(() => _page = 1);
+                    await _load();
+                  },
           ),
         ],
       ),

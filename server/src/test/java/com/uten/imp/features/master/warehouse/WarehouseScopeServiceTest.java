@@ -110,4 +110,26 @@ class WarehouseScopeServiceTest {
         assertThat(service.scopeOf(UUID.fromString(MAIN)))
                 .containsExactlyInAnyOrder(UUID.fromString(MAIN), UUID.fromString(FINISHED));
     }
+
+    @Test
+    void operationalScopeIncludesSiblingLeavesButNeverAnotherMainWarehouse() {
+        givenHierarchy();
+        assertThat(service.operationalLeafIds(UUID.fromString(FINISHED_SUB)))
+                .containsExactlyInAnyOrder(UUID.fromString(FINISHED_SUB),
+                        UUID.fromString(DEFECTIVE), UUID.fromString(TRACK));
+        assertThat(service.sameMainWarehouse(UUID.fromString(FINISHED_SUB),
+                UUID.fromString(TRACK))).isTrue();
+        assertThat(service.sameMainWarehouse(UUID.fromString(TRACK), UUID.randomUUID()))
+                .isFalse();
+    }
+
+    @Test
+    void cyclicOrMissingAncestryDoesNotJoinDifferentWarehouses() {
+        when(repo.findAll()).thenReturn(List.of(wh(MAIN, FINISHED), wh(FINISHED, MAIN)));
+        assertThat(service.sameMainWarehouse(UUID.fromString(MAIN), UUID.fromString(FINISHED)))
+                .isFalse();
+        assertThat(service.operationalLeafIds(UUID.fromString(MAIN)))
+                .containsExactly(UUID.fromString(MAIN));
+        assertThat(service.sameMainWarehouse(null, UUID.fromString(MAIN))).isFalse();
+    }
 }

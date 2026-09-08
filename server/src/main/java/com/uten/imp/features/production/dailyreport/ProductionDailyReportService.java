@@ -108,6 +108,8 @@ public class ProductionDailyReportService {
     private final ProductionFqcRecoveryPort fqcRecovery;
     private final ProductionLegacyFinishedInboundService
             legacyFinishedInbound;
+    private final com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService mutationFootprint;
+    private final com.uten.imp.application.port.ProductionCostTargetPort costTargets;
 
     @Transactional(readOnly = true)
     public PageResponse<DailyReportListItem> list(DailyReportQueryFilter f, int page, int size, String sort, String order) {
@@ -134,7 +136,7 @@ public class ProductionDailyReportService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<ProductionDailyReport> p = reportRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+        return new PageResponse<>(p.map(this::toList).getContent(), p);
     }
 
     @Transactional(readOnly = true)
@@ -226,6 +228,7 @@ public class ProductionDailyReportService {
     @PreAuthorize("hasAuthority('production_daily_report:approve')")
     public DailyReportDetail approve(UUID id) {
         tx.bind();
+        var sourceGuard = mutationFootprint.beginReport(id);
         ProductionDailyReport r = requireReportForUpdate(id);
         access.requireWritable(
                 r.getMakerId(), "无权审核此生产日报",
@@ -262,6 +265,7 @@ public class ProductionDailyReportService {
         lockPlanItems(resolvedPlanItems.values());
         Map<UUID, List<PlanOrderItemLink>> lockedLinks =
                 lockPlanLinkGraph(resolvedPlanItems.values(), true);
+        sourceGuard.verifyUnchanged();
         for (ProductionDailyReportItem it : items) {
             UUID planItemId = resolvedPlanItems.get(it.getId());
             if (planItemId == null) continue; // 手工行（无计划关联）不进链
@@ -299,6 +303,7 @@ public class ProductionDailyReportService {
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId());
         reportRepo.saveAndFlush(r);
+        costTargets.targetChangedByReport(r.getId(),currentUser.requireId());
         for (ProductionDailyReportItem item : items) {
             if (item.getFqcRecoveryAuthorizationId() != null) {
                 fqcRecovery.allocateApprovedRecoveryReportItem(
@@ -342,6 +347,7 @@ public class ProductionDailyReportService {
     @PreAuthorize("hasAuthority('production_daily_report:reverse')")
     public DailyReportDetail reverse(UUID id) {
         tx.bind();
+        var sourceGuard = mutationFootprint.beginReport(id);
         ProductionDailyReport r = requireReportForUpdate(id);
         qualityInspection.prelockForReportReversal(r.getId());
         access.requireWritable(
@@ -358,6 +364,7 @@ public class ProductionDailyReportService {
         Map<UUID, List<PlanOrderItemLink>> lockedLinks = lockPlanLinkGraph(
                 items.stream().map(ProductionDailyReportItem::getPlanItemId)
                         .filter(Objects::nonNull).toList(), false);
+        sourceGuard.verifyUnchanged();
 
         // 1) 回退 fqty / links.produced / 行状态
         List<UUID> affectedPlans = new ArrayList<>();
@@ -405,7 +412,7 @@ public class ProductionDailyReportService {
             }
             // 恢复封顶（若该行是完结行）
             if (Boolean.TRUE.equals(it.isFinal())) {
-                restoreCap(planItemId, planLinks);
+                restoreCap(r.getId(),planItemId, planLinks);
             }
         }
 
@@ -454,6 +461,7 @@ public class ProductionDailyReportService {
         }
         r.setStatus(STATUS_REVERSED);
         reportRepo.saveAndFlush(r);
+        costTargets.targetChangedByReport(r.getId(),currentUser.requireId());
         fqcRecovery.reverseReportEffects(r.getId());
         qualityInspection.cancelForReversedReport(r.getId());
         return detail(id);
@@ -804,7 +812,7 @@ public class ProductionDailyReportService {
                               List<PlanOrderItemLink> lockedLinks) {
         Object[] pi = planItemRow(planItemId, true);
         BigDecimal plannedQty = bd(pi[2]);
-        BigDecimal produced = bd(pi[3]);
+        BigDecimal produced = bd(pi[3]).max(primaryReportedQuantity(r.getId(),planItemId,null));
         BigDecimal shortfall = plannedQty.subtract(produced);
         if (shortfall.signum() <= 0) return; // 足量完结，无需补产
 
@@ -828,16 +836,18 @@ public class ProductionDailyReportService {
                 : countLinkAllocationSegments(links);
         boolean segmentAttributed = !allocationSegCount.isEmpty();
         if (segmentAttributed) {
+            em.createNativeQuery("SELECT set_config('app.cap_segment_report_id',:id,true)").setParameter("id",r.getId().toString()).getSingleResult();
             em.createNativeQuery(
                     "SELECT set_config('app.cap_segment_allocations', 'on', true)")
                     .getSingleResult();
         }
         List<UUID> cappedAllocationLinkIds = new ArrayList<>();
         for (PlanOrderItemLink l : links) {
-            BigDecimal linkShort = l.getAllocatedQty().subtract(l.getProducedQty());
+            BigDecimal producedBasis=l.getProducedQty().max(primaryReportedQuantity(r.getId(),planItemId,l.getId()));
+            BigDecimal linkShort = l.getAllocatedQty().subtract(producedBasis);
             if (linkShort.signum() <= 0) continue;
             l.setCappedQty(linkShort);
-            l.setAllocatedQty(l.getProducedQty());
+            l.setAllocatedQty(producedBasis);
             linkRepo.save(l);
             int plannedUpdated = em.createNativeQuery("""
                     UPDATE sales_order_items
@@ -940,7 +950,7 @@ public class ProductionDailyReportService {
      * 对分段归属计划行对称镜像恢复 execution_segment_sales_allocations，
      * 并重算 production_execution_segments.planned_qty，保持总量等式。
      */
-    private void restoreCap(UUID planItemId, List<PlanOrderItemLink> lockedLinks) {
+    private void restoreCap(UUID reportId,UUID planItemId, List<PlanOrderItemLink> lockedLinks) {
         Object capObj = em.createNativeQuery(
                 "SELECT capped_qty FROM production_plan_items WHERE id = :id")
                 .setParameter("id", planItemId).getSingleResult();
@@ -959,6 +969,7 @@ public class ProductionDailyReportService {
                 : countLinkAllocationSegments(lockedLinks);
         boolean segmentAttributed = !allocationSegCount.isEmpty();
         if (segmentAttributed) {
+            em.createNativeQuery("SELECT set_config('app.cap_segment_report_id',:id,true)").setParameter("id",reportId.toString()).getSingleResult();
             em.createNativeQuery(
                     "SELECT set_config('app.cap_segment_allocations', 'on', true)")
                     .getSingleResult();
@@ -1021,6 +1032,20 @@ public class ProductionDailyReportService {
                     "SELECT set_config('app.cap_segment_allocations', 'off', true)")
                     .getSingleResult();
         }
+    }
+
+    /** Failed physical output is produced output; a final report may only cancel work not produced. */
+    private BigDecimal primaryReportedQuantity(UUID currentReport,UUID planItem,UUID link){
+        var query=em.createNativeQuery("""
+                SELECT coalesce(sum(item.qty),0) FROM production_daily_report_items item
+                JOIN production_daily_reports report ON report.id=item.report_id
+                LEFT JOIN execution_segment_sales_allocations allocation ON allocation.id=item.execution_segment_sales_allocation_id
+                WHERE item.plan_item_id=:planItem AND NOT item.is_deleted AND NOT report.is_deleted
+                    AND item.fqc_recovery_authorization_id IS NULL AND (report.status=1 OR report.id=:currentReport)
+                """+(link==null?"":" AND allocation.plan_order_item_link_id=:link"))
+                .setParameter("planItem",planItem).setParameter("currentReport",currentReport);
+        if(link!=null)query.setParameter("link",link);
+        return (BigDecimal)query.getSingleResult();
     }
 
     /** 本报工生成的成品入库单（id/status/bill_no）。 */
@@ -1596,6 +1621,7 @@ public class ProductionDailyReportService {
     private ProductionDailyReport requireReportForUpdate(UUID id) {
         ProductionDailyReport report = em.find(
                 ProductionDailyReport.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (report != null) em.refresh(report, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         if (report == null || report.isDeleted()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "生产日报单不存在");
         }

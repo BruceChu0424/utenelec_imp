@@ -57,6 +57,16 @@ class BusinessDataResetServicePostgresTest {
         SimpleDriverDataSource dataSource = new SimpleDriverDataSource(
                 new Driver(), POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
 
+        // Compare the actually migrated function with the operator's script, including loop-added rows.
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("SELECT pg_get_functiondef('business_data_reset()'::regprocedure)")) {
+            assertThat(rows.next()).isTrue();
+            String ops = java.nio.file.Files.readString(java.nio.file.Path.of("ops", "reset_business_data.sql"));
+            assertThat(BusinessDataResetSqlContractTest.policy(rows.getString(1)))
+                    .isEqualTo(BusinessDataResetSqlContractTest.policy(ops));
+        }
+
         insertSeedDepartment(dataSource);
         insertSeedEmployee(dataSource);
         insertSeedUser(dataSource);
@@ -81,6 +91,7 @@ class BusinessDataResetServicePostgresTest {
         markSeedBusinessOutboxProcessed(dataSource);
         insertSeedBusinessOutboxRow(dataSource, (short) 1);
         insertSeedAccount(dataSource);
+        insertSeedLegacyValuePool(dataSource);
 
         long auditBefore = countAuditLog(dataSource);
         long usersBefore = countUsers(dataSource);
@@ -89,16 +100,24 @@ class BusinessDataResetServicePostgresTest {
 
         // V463/V464：+purchase/subcontract_order_item_sources 两张 CLEAR 表（222→224）；
         // V474 运行时补丁再 +preplan_public_supply_events（224→225）。
-        assertThat(result.clearedTableCount()).isEqualTo(225);
+        // V478 再 +preplan_root_output_events(225→226)；V479 只修函数，不新增表。
+        // V484 运行时补丁再 +sales_order_qty_change_logs（226→227）；
+        // V486 再 +procurement_order_qty_change_logs（227→228）。
+        // V492 adds sales_order_revision_logs to the runtime reset policy.
+        // V496 adds the append-only notification reversal ledger.
+        // V504 adds all eight V500 value tables and three V503 source revision tables.
+        assertThat(result.clearedTableCount()).isEqualTo(266);
         assertThat(result.preservedTableCount()).isEqualTo(96);
-        // cleared_rows 只统计 CLEAR 表：2 条 business_outbox（refresh_tokens 属 PRESERVE，
+        // cleared_rows 只统计 CLEAR 表：2 条 outbox、1 条库存余额、1 条待核历史价值池。
+        // refresh_tokens 属 PRESERVE，
         // 在终局校验后单独清空，不计入）
-        assertThat(result.clearedRows()).isEqualTo(2);
+        assertThat(result.clearedRows()).isEqualTo(4);
         assertThat(result.authorizationEpochAfter()).isEqualTo(epochBefore + 1);
 
         // 业务事实清空 + identity 序列重启（TRUNCATE RESTART IDENTITY 的直接证据：
         // 清空后 nextval 从 1 重新开始）
         assertThat(countBusinessOutbox(dataSource)).isZero();
+        assertLegacyValueAndQuantityClearedButMasterPreserved(dataSource);
         assertThat(nextPostingSeqValue(dataSource)).isEqualTo(1);
 
         // 保留主档：行数不变、五个金额字段全部归零
@@ -119,6 +138,27 @@ class BusinessDataResetServicePostgresTest {
         var second = service.reset(UUID.randomUUID(), "superadmin");
         assertThat(second.clearedRows()).isEqualTo(1);
         assertThat(second.authorizationEpochAfter()).isEqualTo(epochBefore + 2);
+
+        // Exercise the operator's actual psql script against this disposable
+        // migrated database, with the required database and cluster identity.
+        String systemIdentifier;
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("SELECT system_identifier::text FROM pg_control_system()")) {
+            assertThat(rows.next()).isTrue();
+            systemIdentifier = rows.getString(1);
+        }
+        insertSeedBusinessOutboxRow(dataSource, (short) 1);
+        POSTGRES.copyFileToContainer(org.testcontainers.utility.MountableFile.forHostPath(
+                java.nio.file.Path.of("ops", "reset_business_data.sql")), "/tmp/reset-under-test.sql");
+        var scriptResult = POSTGRES.execInContainer("psql", "-X", "-U", POSTGRES.getUsername(),
+                "-d", POSTGRES.getDatabaseName(), "-v", "ON_ERROR_STOP=1",
+                "-v", "confirm=CLEAR_BUSINESS", "-v", "expected_database=" + POSTGRES.getDatabaseName(),
+                "-v", "expected_system_identifier=" + systemIdentifier, "-f", "/tmp/reset-under-test.sql");
+        assertThat(scriptResult.getExitCode()).withFailMessage(scriptResult.getStderr()).isZero();
+        assertThat(countBusinessOutbox(dataSource)).isZero();
+        assertThat(countUsers(dataSource)).isEqualTo(usersBefore);
+        assertThat(countAccounts(dataSource)).isEqualTo(1);
     }
 
     private void insertSeedDepartment(SimpleDriverDataSource dataSource) throws SQLException {
@@ -189,6 +229,27 @@ class BusinessDataResetServicePostgresTest {
                      "SELECT epoch FROM authorization_state WHERE singleton_id = 1")) {
             rows.next();
             return rows.getLong(1);
+        }
+    }
+
+    private void insertSeedLegacyValuePool(SimpleDriverDataSource dataSource) throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO units(id,code,name) VALUES ('00500504-0000-0000-0000-000000000001','RESET-UNIT','reset piece')");
+            statement.execute("INSERT INTO goods(id,code,name,unit_id,code_sequence) VALUES ('00500504-0000-0000-0000-000000000002','RESET-GOODS','reset material','00500504-0000-0000-0000-000000000001',(SELECT COALESCE(max(code_sequence),0)+1 FROM goods))");
+            statement.execute("INSERT INTO warehouses(id,code,name) VALUES ('00500504-0000-0000-0000-000000000003','RESET-WAREHOUSE','reset warehouse')");
+            statement.execute("INSERT INTO stock_balances(id,warehouse_id,goods_id,qty,amount_local) VALUES ('00500504-0000-0000-0000-000000000004','00500504-0000-0000-0000-000000000003','00500504-0000-0000-0000-000000000002',7,999)");
+            statement.execute("INSERT INTO stock_value_pools(id,warehouse_id,goods_id,state,legacy_balance_id,legacy_qty,legacy_amount_local) VALUES ('00500504-0000-0000-0000-000000000005','00500504-0000-0000-0000-000000000003','00500504-0000-0000-0000-000000000002','LEGACY_UNVERIFIED','00500504-0000-0000-0000-000000000004',7,999)");
+        }
+    }
+
+    private void assertLegacyValueAndQuantityClearedButMasterPreserved(SimpleDriverDataSource dataSource) throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("SELECT (SELECT count(*) FROM stock_balances),(SELECT count(*) FROM stock_value_pools),(SELECT count(*) FROM goods WHERE id='00500504-0000-0000-0000-000000000002'),(SELECT count(*) FROM warehouses WHERE id='00500504-0000-0000-0000-000000000003')")) {
+            rows.next();
+            assertThat(rows.getInt(1)).isZero();
+            assertThat(rows.getInt(2)).isZero();
+            assertThat(rows.getInt(3)).isEqualTo(1);
+            assertThat(rows.getInt(4)).isEqualTo(1);
         }
     }
 

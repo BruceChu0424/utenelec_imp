@@ -72,6 +72,19 @@ public class FinancePayment extends SoftDeletableEntity {
     @Column(name = "amount_authority_version", nullable = false)
     private short amountAuthorityVersion = 0;
 
+    @Column(name = "account_currency_id") private UUID accountCurrencyId;
+    @Column(name = "account_exchange_rate") private BigDecimal accountExchangeRate;
+    @Column(name = "account_amount") private BigDecimal accountAmount;
+    @Column(name = "account_amount_local") private BigDecimal accountAmountLocal;
+    @Column(name = "bank_fee_account_amount") private BigDecimal bankFeeAccountAmount;
+    @Column(name = "bank_fee_local") private BigDecimal bankFeeLocal;
+    @Column(name = "bank_reference") private String bankReference;
+    @Column(name = "bank_booked_at") private OffsetDateTime bankBookedAt;
+    @Column(name = "gl_account_style_id") private UUID glAccountStyleId;
+    @Column(name = "gl_ap_style_id") private UUID glApStyleId;
+    @Column(name = "gl_fx_style_id") private UUID glFxStyleId;
+    @Column(name = "gl_bank_fee_style_id") private UUID glBankFeeStyleId;
+
     @Column(name = "payment_method_id")
     private UUID paymentMethodId;         // PaidStyle（暂不 FK）
 

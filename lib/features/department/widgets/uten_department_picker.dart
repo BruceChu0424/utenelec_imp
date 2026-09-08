@@ -16,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_toast.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../models/department_node.dart';
@@ -444,29 +445,31 @@ InputDecoration utenPickerFieldDecoration(
 }) {
   final theme = Theme.of(context);
   final radius = BorderRadius.circular(10);
-  return InputDecoration(
-    labelText: labelText,
-    hintText: hintText,
-    enabled: enabled,
-    error: utenFieldError(errorMessage),
-    isDense: true,
-    suffixIcon: suffixIcon,
-    suffixIconConstraints: suffixIcon == null
-        ? null
-        : const BoxConstraints(minWidth: 48, minHeight: 48),
-    border: OutlineInputBorder(
-      borderRadius: radius,
-      borderSide: BorderSide(color: theme.colorScheme.outline),
+  return UtenInputDecoration(
+    InputDecoration(
+      labelText: labelText,
+      hintText: hintText,
+      enabled: enabled,
+      error: utenFieldError(errorMessage),
+      isDense: true,
+      suffixIcon: suffixIcon,
+      suffixIconConstraints: suffixIcon == null
+          ? null
+          : const BoxConstraints(minWidth: 48, minHeight: 48),
+      border: OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: BorderSide(color: theme.colorScheme.outline),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: BorderSide(color: theme.colorScheme.outline),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: radius,
-      borderSide: BorderSide(color: theme.colorScheme.outline),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: radius,
-      borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
-    ),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
   );
 }
 

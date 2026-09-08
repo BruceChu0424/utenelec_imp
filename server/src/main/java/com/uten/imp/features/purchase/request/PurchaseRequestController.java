@@ -61,4 +61,21 @@ public class PurchaseRequestController {
             @Valid @RequestBody DecompositionPreviewRequest req) {
         return service.decompositionPreview(req.itemIds());
     }
+
+    /**
+     * V477：分解前的明细数量修正（计划来源申请唯一 sanctioned 写入口；
+     * 已订货/待财务审核占用的明细拒绝修改，见 Service 注释）。
+     */
+    @PutMapping("/{id}/items/{itemId}/qty")
+    @PreAuthorize("hasAuthority('purchase_request:view') and hasAuthority('purchase_order:decompose')")
+    public RequestDetail adjustItemQty(
+            @PathVariable UUID id,
+            @PathVariable UUID itemId,
+            @Valid @RequestBody ItemQtyAdjustRequest req) {
+        return service.adjustItemQty(id, itemId, req.qty());
+    }
+
+    /** 数量修正请求体。 */
+    public record ItemQtyAdjustRequest(java.math.BigDecimal qty) {
+    }
 }

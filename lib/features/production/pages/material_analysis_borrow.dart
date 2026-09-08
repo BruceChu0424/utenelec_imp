@@ -147,7 +147,9 @@ abstract class _MaterialAnalysisBorrowState
   /// 客户端预检（服务端仍逐项硬校验）：直接组件层、有已分配现货、
   /// 无在途任务、非发货参考，且有重新分配权限。
   bool _canBorrowOut(ProductionMaterialAnalysisMaterial material) {
-    if (!_canReallocate || _busy) return false;
+    if (!_canReallocate || _busy || !_hasResolvedMaterialSource(material)) {
+      return false;
+    }
     if (material.level != 1) return false;
     if (material.requiredQty <= 0 || material.allocatedAvailableQty <= 0) {
       return false;
@@ -160,7 +162,11 @@ abstract class _MaterialAnalysisBorrowState
   /// 跨计划让料复用同一物料维度预检，但不受分析内借用的“已下达”门禁限制：
   /// 服务端会以两份分析的当前快照和精确 entitlement 再次校验。
   bool _canCrossReallocateOut(ProductionMaterialAnalysisMaterial material) {
-    if (!_canCrossReallocate || _busy) return false;
+    if (!_canCrossReallocate ||
+        _busy ||
+        !_hasResolvedMaterialSource(material)) {
+      return false;
+    }
     if (material.level != 1) return false;
     if (material.requiredQty <= 0 || material.allocatedAvailableQty <= 0) {
       return false;
@@ -182,6 +188,7 @@ abstract class _MaterialAnalysisBorrowState
               candidate.materialLineId != from.materialLineId &&
               candidate.analysisLineId != from.analysisLineId &&
               candidate.level == 1 &&
+              _hasResolvedMaterialSource(candidate) &&
               candidate.goodsId == from.goodsId &&
               candidate.colorId == from.colorId &&
               candidate.unitId == from.unitId &&

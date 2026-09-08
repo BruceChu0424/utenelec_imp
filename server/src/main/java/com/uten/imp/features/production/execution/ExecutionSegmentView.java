@@ -47,5 +47,6 @@ public record ExecutionSegmentView(
         BigDecimal fqcReworkAvailableQty,
         BigDecimal fqcReplacementAvailableQty,
         BigDecimal fqcReplacementReadyQty,
-        long lockVersion) {
+        long lockVersion,
+        boolean zeroMaterial) {
 }

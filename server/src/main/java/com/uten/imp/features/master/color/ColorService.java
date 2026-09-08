@@ -93,7 +93,7 @@ public class ColorService {
         Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "code"));
         Page<Color> p = repo.findAll(spec, pageable);
         return new PageResponse<>(
-                p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+                p.map(this::toList).getContent(), p);
     }
 
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Color> root,

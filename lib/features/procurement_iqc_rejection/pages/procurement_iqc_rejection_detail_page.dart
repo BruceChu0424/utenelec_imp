@@ -16,6 +16,8 @@ import '../../../shared/auth/permissions.dart';
 import '../models/procurement_iqc_rejection.dart';
 import '../repositories/procurement_iqc_rejection_repository.dart';
 import '../widgets/procurement_iqc_rejection_action_dialog.dart';
+import '../widgets/procurement_iqc_actual_credit_dialog.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../widgets/procurement_iqc_rejection_status_badge.dart';
 
 class ProcurementIqcRejectionDetailPage extends ConsumerStatefulWidget {
@@ -88,15 +90,36 @@ class _ProcurementIqcRejectionDetailPageState
 
   Future<void> _openAction(ProcurementIqcRejectionActionKind kind) async {
     final detail = _detail;
-    if (detail == null) return;
+    if (detail == null || _loading) return;
+    final allowed = _actionSpecs(
+      detail.caseItem,
+    ).where((spec) => spec.kind == kind).firstOrNull;
+    if (allowed == null || !allowed.enabled) {
+      context.appInfo(allowed?.blockedReason ?? '当前账号或任务状态不允许此操作，请刷新');
+      return;
+    }
     final result = await showDialog<ProcurementIqcRejectionDetail>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => ProcurementIqcRejectionActionDialog(
-        caseItem: detail.caseItem,
-        kind: kind,
-        onSubmit: (command) => _submit(kind, command),
-      ),
+      builder: (_) => kind == ProcurementIqcRejectionActionKind.confirmCredit
+          ? ProcurementIqcActualCreditDialog(
+              detail: detail,
+              onPreview: (command) =>
+                  _repository.previewCredit(widget.id, command),
+              onConfirm: (command) =>
+                  _repository.confirmCredit(widget.id, command),
+              onRefresh: () async {
+                final next = await _repository.detail(widget.id);
+                if (mounted) setState(() => _detail = next);
+                return next;
+              },
+            )
+          : ProcurementIqcRejectionActionDialog(
+              caseItem: detail.caseItem,
+              kind: kind,
+              creditDocuments: detail.creditDocuments,
+              onSubmit: (command) => _submit(kind, command),
+            ),
     );
     if (!mounted || result == null) return;
     setState(() {
@@ -199,6 +222,14 @@ class _ProcurementIqcRejectionDetailPageState
               _buildQuantityAndAmount(detail.caseItem),
               const SizedBox(height: UtenSpacing.s12),
               _buildReturnAndCredit(detail.caseItem),
+              if (detail.resolution != null) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                _buildResolution(detail),
+              ],
+              if (detail.creditDocuments.isNotEmpty) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                _buildCreditDocuments(detail),
+              ],
               if (detail.replacementAllocations.isNotEmpty) ...[
                 const SizedBox(height: UtenSpacing.s12),
                 _buildAllocations(detail),
@@ -271,6 +302,8 @@ class _ProcurementIqcRejectionDetailPageState
             Text(
               error?.isNotEmpty == true
                   ? '${item.financeExceptionCode ?? 'FINANCE_EXCEPTION'} · $error'
+                  : _detail?.resolution?.state == 'SETTLED'
+                  ? '退回份额已通过合格补回入库或实际贷项完成结清。'
                   : item.holdReason ?? _detailNextStep(item.status),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: error?.isNotEmpty == true
@@ -299,16 +332,19 @@ class _ProcurementIqcRejectionDetailPageState
   );
 
   Widget _buildQuantityAndAmount(ProcurementIqcRejectionCase item) => _section(
-    title: '不合格数量与金额（本币）',
+    title: '不合格数量与来源金额',
     icon: Icons.rule_folder_outlined,
     description: item.priceMasked
         ? '金额已由服务端按权限脱敏；view_all 不自动授予金额。'
-        : '金额来自服务器冻结快照，只读，不接受客户端修改。',
+        : '来源金额保留品质记录中的名义份额。供应商实际贷项按原始凭证另行填写和确认。',
     children: [
       _Fact('不合格基础量', item.failedBaseQty ?? '—'),
       _Fact('不合格单据量', '${item.failedQty ?? '—'} ${item.unitName ?? ''}'.trim()),
       _Fact('原币金额', item.amountLabel(item.failedAmountOriginal)),
-      _Fact('本币金额', item.amountLabel(item.failedAmountLocal)),
+      _Fact(
+        '本币金额',
+        item.priceMasked ? '***' : item.failedAmountLocal ?? '无有限金额投影，保留来源份额',
+      ),
     ],
   );
 
@@ -391,6 +427,16 @@ class _ProcurementIqcRejectionDetailPageState
   List<_ActionSpec> _actionSpecs(ProcurementIqcRejectionCase item) {
     final specs = <_ActionSpec>[];
     final blocked = item.financeExceptionMessage ?? item.holdReason;
+    final activeCredits =
+        _detail?.creditDocuments.where((d) => d.status == 'ACTIVE').toList() ??
+        <ProcurementIqcCreditDocument>[];
+    final resolution = _detail?.resolution;
+    final hasCreditSource =
+        (_detail?.creditSources.isNotEmpty ?? false) &&
+        resolution?.legacyUnclassified != true &&
+        (financeExactDecimalUnits(resolution?.creditableBaseQty) ??
+                BigInt.zero) >
+            BigInt.zero;
     void add({
       required bool localPermission,
       required bool relevant,
@@ -433,10 +479,16 @@ class _ProcurementIqcRejectionDetailPageState
       serverAction: ProcurementIqcRejectionAction.confirmCredit,
       kind: ProcurementIqcRejectionActionKind.confirmCredit,
       label: '确认供应商贷项',
-      description: '按服务器冻结金额确认供应商贷项',
+      description: '填写实际凭证金额与案件分项，核对账面分配后确认',
       icon: Icons.receipt_long_outlined,
-      extraEnabled: !item.priceMasked,
-      extraReason: item.priceMasked ? '金额仍被服务端脱敏，不能确认贷项' : null,
+      extraEnabled: !item.priceMasked && hasCreditSource,
+      extraReason: item.priceMasked
+          ? '金额仍被服务端脱敏，不能确认贷项'
+          : resolution?.legacyUnclassified == true
+          ? '历史案件需先核对原应付与资金来源，不能按旧派生金额新建贷项'
+          : !hasCreditSource
+          ? '没有未被补回或贷项占用的明确退回份额'
+          : null,
     );
     add(
       localPermission: _has(Perm.procurementIqcRejectionCloseNoCredit),
@@ -461,7 +513,9 @@ class _ProcurementIqcRejectionDetailPageState
     add(
       localPermission:
           _has(Perm.procurementIqcRejectionReverse) &&
-          (item.status != ProcurementIqcRejectionStatus.creditConfirmed ||
+          (activeCredits.isEmpty &&
+                  item.status !=
+                      ProcurementIqcRejectionStatus.creditConfirmed ||
               _has(Perm.procurementIqcRejectionAmountView)),
       relevant:
           item.status == ProcurementIqcRejectionStatus.returnRecorded ||
@@ -470,9 +524,17 @@ class _ProcurementIqcRejectionDetailPageState
           item.status == ProcurementIqcRejectionStatus.financeException,
       serverAction: ProcurementIqcRejectionAction.reverse,
       kind: ProcurementIqcRejectionActionKind.reverse,
-      label: '反向当前处理',
-      description: '按当前服务端状态执行唯一合法反向，不由客户端猜路径',
+      label: activeCredits.isNotEmpty ? '反向实际贷项凭证' : '反向当前处理',
+      description: activeCredits.isNotEmpty
+          ? '选择实际凭证，连同其全部案件分项一并反向'
+          : '按当前服务端状态执行合法反向',
       icon: Icons.undo_rounded,
+      extraEnabled:
+          activeCredits.isEmpty || activeCredits.any((d) => d.canReverse),
+      extraReason:
+          activeCredits.isNotEmpty && !activeCredits.any((d) => d.canReverse)
+          ? '贷项份额已用于重新计款补回，请先反向对应后续收货'
+          : null,
     );
     return specs;
   }
@@ -530,6 +592,57 @@ class _ProcurementIqcRejectionDetailPageState
       ],
     );
   }
+
+  Widget _buildResolution(ProcurementIqcRejectionDetail detail) {
+    final r = detail.resolution!;
+    final unit = r.baseUnitName ?? '基本单位';
+    return _section(
+      title: '退回份额处理进度',
+      icon: Icons.fact_check_outlined,
+      description: r.legacyUnclassified
+          ? '历史资金份额待核对，保留原始单据和已发生记录。'
+          : '免费补回在合格实收入库后结清；未入库补回与已确认贷项分别记录。',
+      children: [
+        _Fact('可确认贷项基本量', '${r.creditableBaseQty ?? '—'} $unit'),
+        _Fact('补回待合格入库', '${r.replacementPendingBaseQty ?? '—'} $unit'),
+        _Fact('补回已合格入库', '${r.replacementStockedBaseQty ?? '—'} $unit'),
+        _Fact('已确认贷项基本量', '${r.creditedBaseQty ?? '—'} $unit'),
+        _Fact('仍未结清基本量', '${r.unresolvedBaseQty ?? '—'} $unit'),
+        _Fact(
+          '处理状态',
+          r.legacyUnclassified
+              ? '待核对'
+              : r.state == 'SETTLED'
+              ? '已结清'
+              : r.state == 'PARTIAL'
+              ? '部分完成'
+              : '处理中',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCreditDocuments(
+    ProcurementIqcRejectionDetail detail,
+  ) => _section(
+    title: '实际供应商贷项凭证',
+    icon: Icons.receipt_long_outlined,
+    description: '保留每次实际凭证、明确案件分项及账面分配。反向将覆盖所选凭证的全部案件。',
+    children: [
+      for (final doc in detail.creditDocuments) ...[
+        _Fact(
+          '${doc.creditReference ?? '贷项凭证'} · ${doc.status == 'ACTIVE' ? '有效' : '已反向'}',
+          '${doc.creditDate ?? '—'}\n原币 ${detail.caseItem.amountLabel(doc.amountOriginal)}\n本币 ${detail.caseItem.priceMasked ? '***' : doc.amountLocal ?? '待核对'}',
+        ),
+        if (!detail.caseItem.priceMasked)
+          for (final part in doc.caseAllocations)
+            _Fact(
+              part.caseId == detail.caseItem.id ? '当前案件分项' : '同凭证关联案件分项',
+              '基本量 ${part.baseQty ?? '—'} · 原币 ${part.amountOriginal ?? '—'}\n本币 ${part.amountLocal ?? '—'}\n凭证待分原币 ${part.afterOriginal ?? '—'} / 本币 ${part.afterLocal ?? '—'}',
+            ),
+      ],
+    ],
+  );
 
   Widget _section({
     required String title,

@@ -49,8 +49,9 @@ public class TaskClaimController {
     @DeleteMapping("/{targetType}/{targetKey}")
     @PreAuthorize("isAuthenticated()")
     public void release(
-            @PathVariable String targetType, @PathVariable String targetKey) {
-        claimService.release(targetType, targetKey);
+            @PathVariable String targetType, @PathVariable String targetKey,
+            @org.springframework.web.bind.annotation.RequestParam(required=false) java.util.UUID expectedClaimId) {
+        claimService.release(targetType,targetKey,expectedClaimId);
     }
 
     /** 接管（持目标 manage 权限者）：原认领强制释放并转由我认领。 */
@@ -73,7 +74,8 @@ public class TaskClaimController {
     @PostMapping("/{targetType}/{targetKey}/heartbeat")
     @PreAuthorize("isAuthenticated()")
     public TaskClaimService.TaskClaimView heartbeat(
-            @PathVariable String targetType, @PathVariable String targetKey) {
-        return claimService.heartbeat(targetType, targetKey);
+            @PathVariable String targetType, @PathVariable String targetKey,
+            @org.springframework.web.bind.annotation.RequestParam(required=false) java.util.UUID expectedClaimId) {
+        return claimService.heartbeat(targetType,targetKey,expectedClaimId);
     }
 }

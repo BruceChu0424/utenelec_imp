@@ -161,6 +161,11 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   bool _loading = true;
   String? _error;
 
+  /// 右栏整体重挂代际（2026-09-05 刷新按钮=整页刷新）：shellReloadAll 递增，
+  /// detailPaneBuilder 结果包 KeyedSubtree——右栏内容/facets 全部随代际重拉，
+  /// 四个分类页无需各自维护 epoch。
+  int _shellDetailEpoch = 0;
+
   // 顶部统一搜索（分类名 + 内容名）→ 定位分类：visibleFilterIds 驱动树只显示命中分类 + 祖先链。
   Set<String>? _visibleFilterIds;
   String _globalQuery = '';
@@ -174,6 +179,14 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   String? _treeSearchKeyword;
 
   // ---- 树加载 -------------------------------------------------------------
+
+  /// 整页刷新（2026-09-05 用户口径：右上角刷新=刷新整个页面）：分类树 +
+  /// 选中分类的右栏（内容列表/facets/结算方式等）整体重拉重挂。
+  Future<void> shellReloadAll() async {
+    if (!mounted) return;
+    setState(() => _shellDetailEpoch++);
+    await shellReload();
+  }
 
   /// 拉分类树（页面 onDataChanged / 刷新按钮 / CRUD 成功后都会走这里）。
   Future<void> shellReload() async {
@@ -482,8 +495,12 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     final selected = _selectedId == null ? null : _findById(tree, _selectedId!);
     final canCreate = shellCanCreate;
 
-    Widget detailPaneOf(ProductCategoryNode selectedNode) =>
-        detailPaneBuilder(selectedNode);
+    Widget detailPaneOf(ProductCategoryNode selectedNode) => KeyedSubtree(
+      // 壳层代际重挂（shellReloadAll 递增）：右栏随刷新按钮整体重拉，
+      // 各分类页私有的 detail epoch 机制保留不动（保存后局部重挂仍有效）。
+      key: ValueKey('shell-detail-${selectedNode.id}-$_shellDetailEpoch'),
+      child: detailPaneBuilder(selectedNode),
+    );
 
     Widget mainLayout() {
       if (bp == UtenBreakpoint.compact) {
@@ -557,7 +574,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新', // TODO(l10n): 补 arb
-            onPressed: shellReload,
+            onPressed: shellReloadAll,
           ),
           if (bp == UtenBreakpoint.compact && tree.isNotEmpty)
             Builder(

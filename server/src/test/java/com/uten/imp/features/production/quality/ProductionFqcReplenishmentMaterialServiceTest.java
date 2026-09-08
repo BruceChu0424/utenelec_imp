@@ -134,7 +134,7 @@ class ProductionFqcReplenishmentMaterialServiceTest {
                     && sql.contains("idempotency_key")) {
                 int call = replayCalls.getAndIncrement();
                 return query(call == 1 || call == 3
-                                ? Collections.singletonList(new Object[]{firstHash}) : List.of(),
+                                ? List.of(firstHash) : List.of(),
                         null, 1);
             }
             if (sql.contains("MAX(generation)")) {
@@ -186,7 +186,8 @@ class ProductionFqcReplenishmentMaterialServiceTest {
 
         var service = new ProductionFqcReplenishmentMaterialService(
                 em, planning, allocation, ledger, documents, items, numbers,
-                currentUser, tx, access, notice);
+                currentUser, tx, access, notice,
+                org.mockito.Mockito.mock(com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
 
         var first = service.confirm(authorizationId,
                 new ProductionFqcReplenishmentMaterialService.ConfirmRequest(

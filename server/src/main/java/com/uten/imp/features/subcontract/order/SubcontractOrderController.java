@@ -155,6 +155,18 @@ public class SubcontractOrderController {
         return service.detail(id);
     }
 
+    /**
+     * V486 财务批准后受控改量：立即生效并自动开财务复核 case（对齐销售 V482）。
+     */
+    @PostMapping("/{id}/change-qty")
+    @PreAuthorize("hasAuthority('subcontract_order:change_qty')")
+    public OrderDetail changeQty(
+            @PathVariable UUID id,
+            @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody
+            com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeRequest request) {
+        return service.changeQty(id, request);
+    }
+
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('finance_order_approval:approve')")
     @Deprecated(since = "2026-08-30", forRemoval = true)

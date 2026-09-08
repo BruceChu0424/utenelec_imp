@@ -20,6 +20,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.contains;
@@ -226,22 +227,55 @@ class ProcurementIqcRejectionNoticeTest {
             UUID userId,
             UUID caseId,
             String event) {
-        verify(notice).publishForUser(
-                eq(userId),
-                anyString(),
-                argThat(content -> content != null
-                        && !content.contains("金额")
-                        && !content.contains("单价")
-                        && !content.contains("汇率")
-                        && !content.contains("1200.00")),
-                anyString(),
-                anyString(),
-                eq("/procurement/iqc-rejections/" + caseId),
-                eq(event));
+        // 行动卡事件（OPENED/RETURNED）走 9 参聚合重载（绑定拒收 case）；
+        // 其余（财务异常/终态）走 7 参普通定向通知。
+        boolean actionable =
+                ChainNoticeService.EVENT_PROCUREMENT_IQC_REJECTION_OPENED.equals(event)
+                || ChainNoticeService.EVENT_PROCUREMENT_IQC_REJECTION_RETURNED.equals(
+                    event);
+        if (actionable) {
+            verify(notice).publishForUser(
+                    eq(userId),
+                    anyString(),
+                    iqcContentMatcher(),
+                    anyString(),
+                    anyString(),
+                    eq("/procurement/iqc-rejections/" + caseId),
+                    eq(event),
+                    any(),
+                    any());
+        } else {
+            verify(notice).publishForUser(
+                    eq(userId),
+                    anyString(),
+                    iqcContentMatcher(),
+                    anyString(),
+                    anyString(),
+                    eq("/procurement/iqc-rejections/" + caseId),
+                    eq(event));
+        }
+    }
+
+    private static String iqcContentMatcher() {
+        return org.mockito.ArgumentMatchers.argThat(content -> content != null
+                && !content.contains("金额")
+                && !content.contains("单价")
+                && !content.contains("汇率")
+                && !content.contains("1200.00"));
     }
 
     private static void verifyNotRecipient(
             NoticeService notice, UUID userId) {
+        verify(notice, never()).publishForUser(
+                eq(userId),
+                anyString(),
+                anyString(),
+                anyString(),
+                anyString(),
+                anyString(),
+                anyString(),
+                any(),
+                any());
         verify(notice, never()).publishForUser(
                 eq(userId),
                 anyString(),

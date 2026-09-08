@@ -70,6 +70,7 @@ public class ProductionFqcReplenishmentMaterialService {
     private final TxSessionVars tx;
     private final ProductionDocumentAccessPolicy productionAccess;
     private final ChainNoticeService chainNotice;
+    private final ProductionQualityMutationFootprintService mutationFootprint;
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('production_fqc_replenishment:view')")
@@ -137,24 +138,25 @@ public class ProductionFqcReplenishmentMaterialService {
         String requestHash = CanonicalFingerprint.sha256(List.of(
                 "FQC-REPLENISHMENT-MATERIAL-CONFIRM-V1",
                 Objects.toString(authorizationId, "")));
-
+        var sourceGuard = mutationFootprint.beginAuthorization(authorizationId, false);
         LockedAuthorization locked = lockAuthorization(authorizationId);
         productionAccess.requireScopedOperationWritable(
                 locked.reportMakerId(), "无权确认此 FQC 补产物料任务", CONFIRM);
         requirePlannerAnalysis(locked);
 
-        List<Object[]> replay = NativeQueryResults.objectArrayRows(
+        List<String> replay = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
                         SELECT attempt.request_hash
                         FROM production_fqc_replenishment_attempts attempt
                         WHERE attempt.idempotency_key = :key
-                        """).setParameter("key", key));
+                        """).setParameter("key", key), String.class);
         if (!replay.isEmpty()) {
-            if (!Objects.equals(replay.getFirst()[0], requestHash)) {
+            if (!Objects.equals(replay.getFirst(), requestHash)) {
                 throw conflict("相同幂等键已用于另一补产物料确认请求");
             }
             return detailInternal(authorizationId);
         }
+        sourceGuard.verifyUnchanged();
 
         UUID cycleId = activeCycle(authorizationId);
         if (cycleId == null) {
@@ -173,6 +175,7 @@ public class ProductionFqcReplenishmentMaterialService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void beforeAuthorizationCancellation(UUID authorizationId) {
         if (authorizationId == null) return;
+        mutationFootprint.requireAuthorization(authorizationId);
         List<UUID> cycleIds = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
                         SELECT cycle.id
@@ -696,22 +699,26 @@ public class ProductionFqcReplenishmentMaterialService {
     private void reverseUnissuedDraw(UUID cycleId, UUID actorId) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
-                        SELECT document.id, document.status,
-                               COALESCE(SUM(item.issued_qty), 0)
+                        SELECT document.id, document.status
                         FROM production_fqc_replenishment_draw_links link
                         JOIN stock_documents document
                           ON document.id = link.stock_document_id
-                        LEFT JOIN stock_document_items item
-                          ON item.doc_id = document.id AND item.is_deleted = FALSE
                         WHERE link.cycle_id = :cycleId
                           AND document.is_deleted = FALSE
-                        GROUP BY document.id, document.status
+                        ORDER BY document.id
                         FOR UPDATE OF document
                         """).setParameter("cycleId", cycleId));
         if (rows.isEmpty()) return;
+        if (rows.size()!=1) throw conflict("补产周期关联多张领料单，请先核对来源");
         UUID drawId = (UUID) rows.getFirst()[0];
-        if (decimal(rows.getFirst()[2]).signum() > 0) {
-            throw conflict("补产领料单已有实发数量，请先完成取消出库或退料");
+        List<?> issued = em.createNativeQuery("""
+                SELECT issued_qty FROM stock_document_items
+                WHERE doc_id=:drawId AND is_deleted=FALSE ORDER BY id FOR UPDATE
+                """).setParameter("drawId",drawId).getResultList();
+        for (Object quantity : issued) {
+            int sign=decimal(quantity).signum();
+            if (sign<0) throw conflict("补产领料实发累计异常，请先核对仓库记录");
+            if (sign>0) throw conflict("补产领料单已有实发数量，请先完成取消出库或退料");
         }
         em.createNativeQuery("""
                         UPDATE stock_documents

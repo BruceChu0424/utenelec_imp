@@ -12,7 +12,6 @@ import java.util.UUID;
  */
 public interface SubcontractPreparationPort {
 
-    Page tasks(TaskQuery query, boolean canStart, boolean canOpen);
 
     /**
      * Read-only start preflight.  The production coordinator uses the returned
@@ -43,57 +42,6 @@ public interface SubcontractPreparationPort {
             UUID unitId,
             BigDecimal requestedQty);
 
-    record TaskQuery(
-            int page,
-            int size,
-            String status,
-            String keyword,
-            UUID planItemId,
-            UUID sourceAnalysisId,
-            UUID sourceMaterialLineId) {
-    }
-
-    record Page(
-            List<Task> content,
-            int page,
-            int size,
-            long totalElements,
-            int totalPages) {
-    }
-
-    record Task(
-            UUID planItemId,
-            UUID orderId,
-            UUID orderItemId,
-            String orderBillNo,
-            UUID targetGoodsId,
-            String targetGoodsCode,
-            String targetGoodsName,
-            UUID colorId,
-            String colorName,
-            UUID unitId,
-            String unitName,
-            BigDecimal requiredQty,
-            BigDecimal preparedQty,
-            BigDecimal issuedQty,
-            LocalDate needDate,
-            String status,
-            String blocker,
-            UUID preparationWarehouseId,
-            String preparationWarehouseName,
-            boolean warehouseSelectionRequired,
-            UUID sourceAnalysisId,
-            UUID sourceMaterialLineId,
-            String handoffStatus,
-            BigDecimal takeoverQty,
-            BigDecimal handedOffEntitlementQty,
-            String handoffBlocker,
-            UUID analysisId,
-            UUID analysisItemId,
-            List<String> allowedActions,
-            long version,
-             OffsetDateTime updatedAt) {
-    }
 
     record InventoryDimension(UUID goodsId, UUID colorId) {
     }

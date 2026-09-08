@@ -6,6 +6,70 @@ import 'package:uten_imp/features/procurement_iqc_rejection/repositories/procure
 
 void main() {
   test(
+    'actual credit preview and confirmation keep all decimal strings and one command UUID',
+    () async {
+      final requests = <RequestOptions>[];
+      final repository = ProcurementIqcRejectionRepository(_api(requests));
+      const command = ProcurementIqcConfirmCreditCommand(
+        expectedVersion: 7,
+        commandId: 'actual-command',
+        creditReference: 'CR-ACTUAL',
+        creditDate: '2026-09-07',
+        reason: '实际凭证',
+        actualAmountOriginal: '0.000000000000000000000003',
+        sourceApLedgerId: 'source-ap',
+        allocations: [
+          ProcurementIqcCreditAllocationCommand(
+            caseId: 'case-1',
+            expectedVersion: 7,
+            baseQty: '1.25',
+            amountOriginal: '0.000000000000000000000001',
+          ),
+          ProcurementIqcCreditAllocationCommand(
+            caseId: 'case-2',
+            expectedVersion: 12,
+            baseQty: '2',
+            amountOriginal: '0.000000000000000000000002',
+          ),
+        ],
+      );
+      final preview = await repository.previewCredit('case-1', command);
+      await repository.confirmCredit(
+        'case-1',
+        command.withBookHash(preview.bookAllocationHash),
+      );
+      await repository.reverse(
+        'case-2',
+        const ProcurementIqcReasonCommand(
+          expectedVersion: 13,
+          commandId: 'reverse-command',
+          reason: '整凭证撤回',
+          creditDocumentId: 'actual-command',
+        ),
+      );
+      expect(
+        requests.first.path,
+        '/procurement/iqc-rejections/case-1/preview-credit',
+      );
+      expect(
+        requests[1].path,
+        '/procurement/iqc-rejections/case-1/confirm-credit',
+      );
+      final body = requests[1].data as Map;
+      expect(body, hasLength(10));
+      expect(body['baseQty'], isNull);
+      expect(body['actualAmountOriginal'], '0.000000000000000000000003');
+      expect(
+        ((body['allocations'] as List).last as Map)['amountOriginal'],
+        '0.000000000000000000000002',
+      );
+      expect(body['commandId'], (requests.first.data as Map)['commandId']);
+      expect(body['expectedBookAllocationHash'], preview.bookAllocationHash);
+      expect(preview.amountLocal, '0.000000000000000000000007000001');
+      expect((requests[2].data as Map)['creditDocumentId'], 'actual-command');
+    },
+  );
+  test(
     'repository uses frozen V440 endpoints filters and command bodies',
     () async {
       final requests = <RequestOptions>[];
@@ -118,7 +182,14 @@ ApiClient _api(List<RequestOptions> requests) {
       onRequest: (request, handler) {
         requests.add(request);
         final dynamic data;
-        if (request.path.endsWith('/counts')) {
+        if (request.path.endsWith('/preview-credit')) {
+          data = {
+            'bookAllocationHash': List.filled(64, 'a').join(),
+            'amountOriginal': '0.000000000000000000000003',
+            'amountLocal': '0.000000000000000000000007000001',
+            'caseAllocations': <dynamic>[],
+          };
+        } else if (request.path.endsWith('/counts')) {
           data = {
             'total': 4,
             'pendingReturn': 1,

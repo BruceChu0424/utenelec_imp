@@ -19,6 +19,7 @@ import '../../core/theme/uten_tokens.dart';
 import '../../core/utils/china_datetime.dart';
 import 'required_field_decoration.dart';
 import 'uten_field_message.dart';
+import 'uten_input_decoration.dart';
 
 /// outlined 日期选择字段。点按弹 showDatePicker；值/占位"未选择"显示在框内。
 class UtenDateField extends StatefulWidget {
@@ -43,10 +44,10 @@ class UtenDateField extends StatefulWidget {
   final DateTime? lastDate;
   final bool enabled;
 
-  /// 字段说明：收进标签旁 ⓘ 悬停提示，不常驻输入框下方（全站约定）。
+  /// Field guidance disclosed by the info icon inside the input.
   final String? info;
 
-  /// 校验错误文案（非空时红框 + 下方红字，同 TextField errorText）。
+  /// Validation error shown by a red border and an in-field error icon.
   final String? errorMessage;
 
   @override
@@ -74,15 +75,14 @@ class _UtenDateFieldState extends State<UtenDateField> {
         widget.required &&
         !hasValue &&
         widget.errorMessage == null;
-    return IgnorePointer(
-      // IgnorePointer 让整框可点（含框内空白），同时禁用时不响应。
-      ignoring: !widget.enabled,
-      child: InkWell(
-        onTap: widget.enabled ? _pick : null,
-        borderRadius: BorderRadius.circular(UtenSpacing.s8),
-        child: InputDecorator(
-          decoration: applyRequiredEmpty(
+    return InkWell(
+      onTap: widget.enabled ? _pick : null,
+      borderRadius: BorderRadius.circular(UtenSpacing.s8),
+      child: InputDecorator(
+        decoration: applyRequiredEmpty(
+          UtenInputDecoration(
             InputDecoration(
+              enabled: widget.enabled,
               label: fieldLabel(
                 widget.label,
                 theme,
@@ -95,15 +95,15 @@ class _UtenDateFieldState extends State<UtenDateField> {
                   : UtenFieldMessage.error(widget.errorMessage!),
               suffixIcon: const Icon(Icons.event_outlined, size: 18),
             ),
-            theme,
-            requiredEmpty: requiredEmpty,
           ),
-          child: Text(
-            hasValue ? ChinaDateTime.formatDate(widget.value!) : '未选择',
-            style: hasValue
-                ? TextStyle(color: theme.colorScheme.onSurface)
-                : TextStyle(color: theme.colorScheme.onSurfaceVariant),
-          ),
+          theme,
+          requiredEmpty: requiredEmpty,
+        ),
+        child: Text(
+          hasValue ? ChinaDateTime.formatDate(widget.value!) : '未选择',
+          style: hasValue
+              ? TextStyle(color: theme.colorScheme.onSurface)
+              : TextStyle(color: theme.colorScheme.onSurfaceVariant),
         ),
       ),
     );

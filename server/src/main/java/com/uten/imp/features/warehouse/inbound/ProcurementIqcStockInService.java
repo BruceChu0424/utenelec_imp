@@ -9,6 +9,7 @@ import com.uten.imp.common.finance.ProcurementOrderClosurePolicy;
 import com.uten.imp.common.util.CanonicalFingerprint;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.BatchConfirmEntry;
@@ -68,6 +69,9 @@ public class ProcurementIqcStockInService {
     private final ProductionSupplyTransitionPort purchaseSupply;
     private final ProductionSubcontractSupplyTransitionPort subcontractSupply;
     private final PreplanAnalysisPegPort preplanAnalysisPeg;
+    private final ChainNoticeService chainNotice;
+    private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
+    private final com.uten.imp.common.finance.ProcurementReceiptConsiderationService consideration;
     private PreplanInboundAllocationReadPort inboundAllocationRead =
             PreplanInboundAllocationReadPort.NOOP;
 
@@ -159,6 +163,11 @@ public class ProcurementIqcStockInService {
             commands.add(new NormalizedBatch(
                     type, entry.receiptId(), normalize(type, entry.receiptId(), single)));
         }
+        var mutationGuard=mutationLocks.stockIn(commands.stream().map(batch -> lockRef(batch.type(),batch.receiptId(),batch.command())).toList());
+        for(String key:commands.stream().map(batch->batch.command().idempotencyKey()).sorted().toList())
+            lockCommand(currentUser.requireId(),key);
+        for(NormalizedBatch batch:commands)passSlices(batch.type(),batch.receiptId(),true);
+        mutationGuard.verifyUnchanged();
         List<BatchConfirmEntryResult> results = new ArrayList<>();
         int confirmedItemCount = 0;
         for (NormalizedBatch batch : commands) {
@@ -175,6 +184,7 @@ public class ProcurementIqcStockInService {
 
     private ConfirmResult confirmOne(
             String type, UUID receiptId, NormalizedCommand command) {
+        var mutationGuard=mutationLocks.stockIn(List.of(lockRef(type,receiptId,command)));
         UUID actorUserId = currentUser.requireId();
         UUID actorEmployeeId = currentUser.requireEmployeeId();
 
@@ -184,6 +194,7 @@ public class ProcurementIqcStockInService {
             if (!existing.requestHash().equals(command.requestHash())) {
                 throw conflict("该入库幂等键已用于不同的数量、库位或任务，请更换后重试");
             }
+            mutationGuard.verifyUnchanged();
             return new ConfirmResult(
                     existing.id(), true, existing.confirmedCount(), existing.confirmedAt(),
                     inboundAllocations(inboundAllocationRead.actualForBatch(existing.id())));
@@ -195,6 +206,7 @@ public class ProcurementIqcStockInService {
         for (PassSlice slice : passSlices(type, receiptId, true)) {
             locked.put(slice.passEventId(), slice);
         }
+        mutationGuard.verifyUnchanged();
         for (NormalizedItem item : command.items()) {
             PassSlice slice = locked.get(item.passEventId());
             if (slice == null || slice.remainingBaseQty().signum() <= 0) {
@@ -207,6 +219,7 @@ public class ProcurementIqcStockInService {
                 throw conflict("本次入库数量不得超过品质放行待入库余量");
             }
         }
+        command=splitSubcontractMaterialBatches(type,command);
         stockService.lockInventory(command.items().stream()
                 .map(item -> locked.get(item.passEventId()))
                 .map(slice -> new InventoryKey(slice.goodsId(), slice.colorId()))
@@ -234,34 +247,38 @@ public class ProcurementIqcStockInService {
                 .setParameter("count", command.items().size())
                 .setParameter("at", now)
                 .executeUpdate();
-
         int position = 0;
         Set<UUID> inspectionItemIds = new LinkedHashSet<>();
         for (NormalizedItem item : command.items()) {
             position++;
             PassSlice slice = locked.get(item.passEventId());
             Allocation eventAllocation = allocation(slice);
+            BigDecimal previouslyStocked=slice.stockedForReleaseBaseQty()
+                    .add(slice.remainingBaseQty().subtract(item.expectedRemainingBaseQty()));
             BigDecimal amount = ProcurementInspectionService.proratedIncrement(
                     eventAllocation.amount(), slice.releasedBaseQty(),
-                    slice.stockedForReleaseBaseQty(), item.baseQty());
+                    previouslyStocked, item.baseQty());
             BigDecimal weight = eventAllocation.weight() == null ? null
                     : ProcurementInspectionService.proratedIncrement(
                             eventAllocation.weight(), slice.releasedBaseQty(),
-                            slice.stockedForReleaseBaseQty(), item.baseQty());
+                            previouslyStocked, item.baseQty());
 
             UUID stockInItemId = UUID.randomUUID();
-            UUID movementId = stockService.recordMovement(new StockService.MovementRequest(
+            UUID movementId = UUID.randomUUID();
+            // The deferred physical FK and source guard validate this reserved UUID
+            // at commit. Cost resolution can now read the real PASS/funding parts.
+            insertStockInItem(
+                    stockInItemId, batchId, position, slice, movementId,
+                    item, amount, weight, now);
+            stockService.recordMovementWithId(movementId,new StockService.MovementRequest(
                     now, movementType(type), sourceDocType(type),
                     receiptId, stockInItemId,
                     slice.goodsId(), slice.colorId(), slice.warehouseId(),
                     StockService.DIR_IN, item.baseQty(),
                     slice.unitId(), slice.unitRate(), amount,
                     "仓库确认 IQC 合格品入库；库位：" + item.place(),
-                    weight, slice.weightUnitId()));
-
-            insertStockInItem(
-                    stockInItemId, batchId, position, slice, movementId,
-                    item, amount, weight, now);
+                    weight, slice.weightUnitId(),
+                    new com.uten.imp.application.port.InventoryMovementCostReference.ProcurementStockIn(stockInItemId)));
             incrementStockedProjection(slice, item.baseQty(), amount, weight, now);
 
             preplanAnalysisPeg.attributeInspectionStockIn(
@@ -275,10 +292,49 @@ public class ProcurementIqcStockInService {
         // 一致——分析刷新是当前库态的全量重算，事件按批聚合）。
         advanceProductionAfterStockIn(type, receiptId, batchId, inspectionItemIds);
         recalculateOrderClosure(type, receiptId);
+        // 已全部入库的品质放行切片：撤回「待仓库入库」居中行动卡（仍有余量
+        // 的切片保留）。幂等，重放路径在方法开头提前返回不会重复执行。
+        chainNotice.resolveIqcStockInPendingForWarehouse(type, receiptId);
         rememberConfirmedPlaces(locked, command, batchId, now, actorUserId, actorEmployeeId);
         return new ConfirmResult(
                 batchId, false, command.items().size(), now,
                 inboundAllocations(inboundAllocationRead.actualForBatch(batchId)));
+    }
+
+    /** One warehouse confirmation may contain several original company-material batches. */
+    private NormalizedCommand splitSubcontractMaterialBatches(String type,NormalizedCommand command){
+        if(!"SUBCONTRACT".equals(type))return command;
+        List<NormalizedItem> result=new ArrayList<>();
+        for(var item:command.items()){
+            @SuppressWarnings("unchecked")
+            List<Object[]> parts=em.createNativeQuery("""
+                    SELECT CASE WHEN part.billing_mode='STANDARD' THEN part.receipt_item_id ELSE funding.root_receipt_item_id END,
+                        quality.base_qty-COALESCE(used.qty,0)
+                    FROM procurement_iqc_quality_consideration_parts quality
+                    JOIN procurement_receipt_consideration_parts part ON part.id=quality.consideration_part_id
+                    LEFT JOIN procurement_iqc_funding_slices funding ON funding.id=part.funding_slice_id
+                    LEFT JOIN LATERAL(SELECT SUM(base_qty) qty FROM procurement_iqc_stock_consideration_parts stock
+                        WHERE stock.quality_part_id=quality.id AND fn_procurement_consideration_active('STOCK',stock.id)) used ON TRUE
+                    WHERE quality.inspection_event_id=:event AND fn_procurement_consideration_active('QUALITY',quality.id)
+                    ORDER BY quality.id
+                    """).setParameter("event",item.passEventId()).getResultList();
+            BigDecimal left=item.baseQty(),remaining=item.expectedRemainingBaseQty(),groupQty=BigDecimal.ZERO;
+            UUID previous=null;
+            for(Object[] part:parts){
+                if(left.signum()==0)break;
+                BigDecimal take=left.min((BigDecimal)part[1]);if(take.signum()<=0)continue;
+                UUID root=(UUID)part[0];if(root==null)throw conflict("委外入库缺少原回厂材料批次，请核对补回来源");
+                if(previous!=null&&!previous.equals(root)){
+                    result.add(new NormalizedItem(item.passEventId(),groupQty,remaining,item.place()));
+                    remaining=remaining.subtract(groupQty);groupQty=BigDecimal.ZERO;
+                }
+                previous=root;groupQty=groupQty.add(take);left=left.subtract(take);
+            }
+            if(left.signum()!=0)throw conflict("合格入库的原回厂材料份额不足，请刷新后重试");
+            if(groupQty.signum()>0)result.add(new NormalizedItem(item.passEventId(),groupQty,remaining,item.place()));
+        }
+        if(result.size()>100)throw conflict("本次委外入库涉及超过100个原材料批次，请减少本次选择的任务后分批确认");
+        return new NormalizedCommand(command.idempotencyKey(),command.requestHash(),List.copyOf(result));
     }
 
     /**
@@ -431,6 +487,7 @@ public class ProcurementIqcStockInService {
                 .setParameter("place", item.place())
                 .setParameter("at", now)
                 .executeUpdate();
+        consideration.settleStockIn(stockInItemId);
     }
 
     private void incrementStockedProjection(
@@ -897,6 +954,12 @@ public class ProcurementIqcStockInService {
             return timestamp.toInstant().atOffset(ZoneOffset.UTC);
         }
         return OffsetDateTime.parse(value.toString());
+    }
+
+    private static com.uten.imp.common.concurrency.ProcurementMutationLocks.StockInRef lockRef(
+            String type,UUID receiptId,NormalizedCommand command) {
+        return new com.uten.imp.common.concurrency.ProcurementMutationLocks.StockInRef(type,receiptId,
+                command.items().stream().map(NormalizedItem::passEventId).toList());
     }
 
     private record NormalizedItem(

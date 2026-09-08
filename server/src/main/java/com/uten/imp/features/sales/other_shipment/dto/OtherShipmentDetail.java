@@ -48,4 +48,10 @@ public class OtherShipmentDetail {
     private java.time.Instant createdAt;
     /** Current caller may mutate this document (functional permission + owner scope). */
     private boolean writable;
+
+    // Exact text is derived after permission masking; null stays null.
+    public String getExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(exchangeRate); }
+    public String getTaxRateExact() { return com.uten.imp.common.util.DecimalText.of(taxRate); }
+    public String getTotalOriginalExact() { return com.uten.imp.common.util.DecimalText.of(totalOriginal); }
+    public String getTotalLocalExact() { return com.uten.imp.common.util.DecimalText.of(totalLocal); }
 }

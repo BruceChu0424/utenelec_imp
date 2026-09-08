@@ -58,4 +58,10 @@ public class ReturnDetail {
     private String dispositionReason;
     /** RESHIP/EXCHANGE 是否已重开替换履约预留。 */
     private boolean fulfilmentReopened;
+
+    // Exact text is derived after permission masking; null stays null.
+    public String getExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(exchangeRate); }
+    public String getTaxRateExact() { return com.uten.imp.common.util.DecimalText.of(taxRate); }
+    public String getTotalOriginalExact() { return com.uten.imp.common.util.DecimalText.of(totalOriginal); }
+    public String getTotalLocalExact() { return com.uten.imp.common.util.DecimalText.of(totalLocal); }
 }

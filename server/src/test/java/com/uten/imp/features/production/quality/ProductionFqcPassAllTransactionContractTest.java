@@ -53,10 +53,18 @@ class ProductionFqcPassAllTransactionContractTest {
                 .doesNotContain("REQUIRES_NEW");
         assertThat(batchBody.indexOf("requireActiveDecisionRow"))
                 .isLessThan(batchBody.indexOf("DecisionResult decision = decideLocked"));
+        assertThat(batchBody.indexOf("mutationFootprint.beginInspections("))
+                .isGreaterThan(0).isLessThan(batchBody.indexOf("findPassAllBatch("));
+        assertThat(batchBody.indexOf("findPassAllBatch("))
+                .isLessThan(batchBody.indexOf("lockPassAllDecisionDimensions("));
+        assertThat(batchBody.indexOf("lockPassAllDecisionDimensions("))
+                .isLessThan(batchBody.indexOf("sourceGuard.verifyUnchanged();"));
+        assertThat(batchBody.indexOf("sourceGuard.verifyUnchanged();"))
+                .isLessThan(batchBody.indexOf("claimPassAllBatch("));
     }
 
     @Test
-    void batchPrelocksAllInspectionsThenSharedDimensionsInStableOrder()
+    void afterCommonPrefixBatchLocksAllInspectionsThenSharedExecutionRowsInStableOrder()
             throws Exception {
         String source = Files.readString(Path.of(
                 "src/main/java/com/uten/imp/features/production/quality/"

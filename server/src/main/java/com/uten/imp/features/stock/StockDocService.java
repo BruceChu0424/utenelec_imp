@@ -1,6 +1,8 @@
 package com.uten.imp.features.stock;
 
 import com.uten.imp.application.port.ProductionCompletionReversePort;
+import com.uten.imp.application.port.ProductionMutationFootprintPort;
+import com.uten.imp.application.concurrency.FulfillmentMutationLocks;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
@@ -124,6 +126,8 @@ public class StockDocService {
     private final com.uten.imp.application.port.PreplanAnalysisPegPort preplanAnalysisPeg;
     private final com.uten.imp.application.port.ProductionQualityInspectionPort
             productionQualityInspection;
+    private final FulfillmentMutationLocks mutationLocks;
+    private final ProductionMutationFootprintPort mutationFootprints;
 
     // ===== 列表 =====
 
@@ -322,7 +326,7 @@ public class StockDocService {
             String itemHash = finishedInboundConfirmationHash(
                     documentId, accepted, null);
             StockDocDetail detail = confirmFinishedInboundAfterPrelock(
-                    documentId, itemRequest, accepted, null, itemHash);
+                    documentId, itemRequest, accepted, null, itemHash, null);
             if (detail.getStatus() == null
                     || detail.getStatus() != STATUS_APPROVED
                     || detail.getBillNo() == null
@@ -366,10 +370,9 @@ public class StockDocService {
         String requestHash = finishedInboundConfirmationHash(
                 id, accepted, varianceReason);
 
-        prelockProductionDocument(id);
-
+        var guard = lockProductionDocuments(List.of(id));
         return confirmFinishedInboundAfterPrelock(
-                id, request, accepted, varianceReason, requestHash);
+                id, request, accepted, varianceReason, requestHash, guard);
     }
 
     private StockDocDetail confirmFinishedInboundAfterPrelock(
@@ -377,7 +380,8 @@ public class StockDocService {
             FinishedInboundConfirmRequest request,
             Map<UUID, BigDecimal> accepted,
             String varianceReason,
-            String requestHash) {
+            String requestHash,
+            FulfillmentMutationLocks.Guard mutationGuard) {
         taskClaim.requireNoActiveClaimByOther(
                 "FULFILLMENT_TASK_APPROVE", id.toString());
         StockDocument document = requireDocForUpdate(id);
@@ -408,6 +412,7 @@ public class StockDocService {
             }
             return detail(id);
         }
+        if (mutationGuard!=null) mutationGuard.verifyUnchanged();
         if (document.getStatus() == null
                 || document.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅待点收草稿可确认实收数量");
@@ -572,6 +577,7 @@ public class StockDocService {
             boolean warehouseQuantityConfirmed,
             boolean allowProductionDrawApproveAndIssue) {
         tx.bind();
+        prelockProductionDocument(id);
         taskClaim.requireNoActiveClaimByOther("FULFILLMENT_TASK_APPROVE", id.toString());
         StockDocument d = requireDocForUpdate(id);
         if ("DRAW".equals(d.getDocType())
@@ -616,11 +622,12 @@ public class StockDocService {
         if ("CHECK".equals(d.getDocType())) {
             validateCheckSnapshot(d, items);
         }
-        if (!"DRAW".equals(d.getDocType())) {
-            applyStockEffect(d, items, +1);
-        }
+        Map<UUID,UUID> materialMovements=Map.of();
+        if (!"DRAW".equals(d.getDocType())) materialMovements=applyStockEffect(d, items, +1);
         if ("WDRAW".equals(d.getDocType())) {
-            applyGoodReturnLedger(d, items, false);
+            var posting=applyGoodReturnLedger(d, items, false);
+            productionMaterialLedger.bindMovements(posting.eventId(),materialMovements);
+            stockService.bindProductionMovements(posting.eventId(),materialMovements);
         }
         if ("FINISHED_IN".equals(d.getDocType())) {
             applyFinishedInChain(d, items, +1); // 业务链：完工入库补预留 + 回写 iqty/produced_qty
@@ -709,10 +716,12 @@ public class StockDocService {
                 }
                 applyFinishedInChain(d, items, -1);
             }
-            if ("WDRAW".equals(d.getDocType())) {
-                applyGoodReturnLedger(d, items, true);
+            var returnPosting="WDRAW".equals(d.getDocType())?applyGoodReturnLedger(d, items, true):null;
+            var materialMovements=applyStockEffect(d, items, -1);
+            if(returnPosting!=null) {
+                productionMaterialLedger.bindMovements(returnPosting.eventId(),materialMovements);
+                stockService.bindProductionMovements(returnPosting.eventId(),materialMovements);
             }
-            applyStockEffect(d, items, -1);
         }
         d.setStatus(STATUS_REVERSED);
         docRepo.save(d);
@@ -739,7 +748,7 @@ public class StockDocService {
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:approve') and hasAuthority('stock_doc:issue')")
     public StockDocDetail approveAndIssue(UUID id, StockDocIssueRequest req) {
-        prelockProductionDocument(id);
+        var mutationGuard = lockProductionDocuments(List.of(id));
         StockDocument document = requireDocForUpdate(id);
         if (!"DRAW".equals(document.getDocType())
                 || document.getStatus() == null) {
@@ -750,12 +759,13 @@ public class StockDocService {
         // approved DRAW must reach it instead of failing on the former draft
         // precondition.
         if (document.getStatus() == STATUS_APPROVED) {
-            return issue(id, req);
+            return issueAfterPrelock(id, req, mutationGuard);
         }
         if (document.getStatus() != STATUS_DRAFT) {
             throw new ApiException(
                     ErrorCode.CONFLICT, "只有草稿生产领料单可以直接出库");
         }
+        mutationGuard.verifyUnchanged();
         approveInternal(id, false, true);
         return issue(id, req);
     }
@@ -765,7 +775,12 @@ public class StockDocService {
     @PreAuthorize("hasAuthority('stock_doc:issue')")
     public StockDocDetail issue(UUID id, StockDocIssueRequest req) {
         tx.bind();
-        prelockProductionDocument(id);
+        return issueAfterPrelock(id,req,lockProductionDocuments(List.of(id)));
+    }
+
+    private StockDocDetail issueAfterPrelock(UUID id,StockDocIssueRequest req,
+                                            FulfillmentMutationLocks.Guard mutationGuard) {
+        tx.bind();
         StockDocument d = requireDrawForIssue(id);
         requireOperationWritable(
                 d, "stock_doc:issue", "无权发出此生产领料单");
@@ -777,21 +792,30 @@ public class StockDocService {
             requireExactProductionDrawSegmentMappings(id);
         }
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
+        req=canonicalIssueRequest(req,items);
+        var materialLines=issueMaterialLines(d,items,req);
+        if (productionMaterialLedger.isIssueReplay(d.getId(),d.getWarehouseId(),materialLines,req.getIdempotencyKey(),null)) {
+            return detail(id);
+        }
+        mutationGuard.verifyUnchanged();
         lockInventory(items);
         ProductionMaterialStockLedgerService.PostingResult posted =
                 productionMaterialLedger.issue(
                         d.getId(), d.getWarehouseId(),
-                        issueMaterialLines(d, items, req),
+                        materialLines,
                         req.getIdempotencyKey(), currentUser.requireId());
         if (posted.replayed()) return detail(id);
         validateIssueRequest(items, req, false);
         OffsetDateTime ts = OffsetDateTime.now();
+        Map<UUID,UUID> materialMovements=new LinkedHashMap<>();
         for (StockDocIssueRequest.Line line : req.getLines()) {
             StockDocumentItem item = findItem(items, line.getItemId());
-            applyIssueMovement(d, item, line.getQty(), ts, +1);
+            materialMovements.put(item.getId(),applyIssueMovement(d, item, line.getQty(), ts, +1));
             item.setIssuedQty(item.getIssuedQty().add(line.getQty()));
             itemRepo.save(item);
         }
+        productionMaterialLedger.bindMovements(posted.eventId(),materialMovements);
+        stockService.bindProductionMovements(posted.eventId(),materialMovements);
         recomputeIssueStatus(d, itemRepo.findByDocIdOrderByLineNoAsc(id));
         // Notify by exact execution segment after every issue slice. A DRAW may
         // contain several segments; one fully-issued segment must not wait for
@@ -828,7 +852,21 @@ public class StockDocService {
                                        demand.plan_id, segment.plan_id,
                                        package.plan_id,
                                        demand.source_plan_item_id,
-                                       segment.source_plan_item_id
+                                       segment.source_plan_item_id,
+                                       (document.warehouse_id = demand.warehouse_id
+                                        OR (source_plan.material_analysis_id IS NOT NULL
+                                            AND fn_warehouse_same_main(
+                                                document.warehouse_id,demand.warehouse_id))),
+                                       EXISTS (
+                                           SELECT 1 FROM stock_reservations reservation
+                                           WHERE reservation.demand_id=demand.id
+                                             AND reservation.warehouse_id=document.warehouse_id
+                                             AND reservation.goods_id=item.goods_id
+                                             AND reservation.color_id IS NOT DISTINCT FROM item.color_id
+                                             AND reservation.owner_type='PRODUCTION_MATERIAL_DEMAND'
+                                             AND reservation.supply_type='STOCK_BALANCE'
+                                             AND reservation.qty-reservation.released_qty > 0
+                                             AND reservation.is_deleted=FALSE)
                                 FROM stock_documents document
                                 JOIN stock_document_items item
                                   ON item.doc_id = document.id
@@ -847,6 +885,8 @@ public class StockDocService {
                                   ON package.id = mapping.package_id
                                 LEFT JOIN production_execution_segments segment
                                   ON segment.id = demand.execution_segment_id
+                                LEFT JOIN production_plans source_plan
+                                  ON source_plan.id = demand.plan_id
                                 WHERE document.id = :documentId
                                   AND document.doc_type = 'DRAW'
                                   AND document.is_deleted = FALSE
@@ -876,7 +916,8 @@ public class StockDocService {
                     && "CONFIRMED".equals(row[9])
                     && row[10] != null
                     && ((Number) row[10]).intValue() == 1
-                    && Objects.equals(row[11], row[12])
+                    && Boolean.TRUE.equals(row[28])
+                    && Boolean.TRUE.equals(row[29])
                     && Objects.equals(row[13], row[14])
                     && Objects.equals(row[15], row[16])
                     && Objects.equals(row[17], row[18])
@@ -907,28 +948,36 @@ public class StockDocService {
         if (cancellationReason == null || cancellationReason.isBlank()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "取消出库必须填写原因");
         }
-        prelockProductionDocument(id);
+        var mutationGuard = lockProductionDocuments(List.of(id));
         StockDocument d = requireDrawForIssue(id);
         boolean wasFullyIssued = d.getIssueStatus() == ISSUE_FULL;
         requireOperationWritable(
                 d, "stock_doc:reverse_issue", "无权取消此生产领料单出库");
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
+        req=canonicalIssueRequest(req,items);
         requireReverseIssueDimensions(d, items, req);
+        var materialLines=issueMaterialLines(d,items,req);
+        if (productionMaterialLedger.isIssueReplay(d.getId(),d.getWarehouseId(),materialLines,
+                req.getIdempotencyKey(),cancellationReason.strip())) return detail(id);
+        mutationGuard.verifyUnchanged();
         lockInventory(items);
         ProductionMaterialStockLedgerService.PreparedReverse prepared =
                 productionMaterialLedger.prepareReverseIssue(
                         d.getId(), d.getWarehouseId(),
-                        issueMaterialLines(d, items, req),
+                        materialLines,
                         req.getIdempotencyKey(), cancellationReason.strip(),
                         currentUser.requireId());
         if (prepared.replayed()) return detail(id);
         validateIssueRequest(items, req, true);
         OffsetDateTime ts = OffsetDateTime.now();
+        Map<UUID,UUID> materialMovements=new LinkedHashMap<>();
         for (StockDocIssueRequest.Line line : req.getLines()) {
             StockDocumentItem item = findItem(items, line.getItemId());
-            applyIssueMovement(d, item, line.getQty(), ts, -1);
+            materialMovements.put(item.getId(),applyIssueMovement(d, item, line.getQty(), ts, -1));
         }
         productionMaterialLedger.completeReverseIssue(prepared);
+        productionMaterialLedger.bindMovements(prepared.eventId(),materialMovements);
+        stockService.bindProductionMovements(prepared.eventId(),materialMovements);
         for (StockDocIssueRequest.Line line : req.getLines()) {
             StockDocumentItem item = findItem(items, line.getItemId());
             item.setIssuedQty(item.getIssuedQty().subtract(line.getQty()));
@@ -940,6 +989,32 @@ public class StockDocService {
                     d.getId(), req.getIdempotencyKey());
         }
         return detail(id);
+    }
+
+    /** One event/item is one physical movement, regardless of repeated transport rows. */
+    private StockDocIssueRequest canonicalIssueRequest(StockDocIssueRequest request,List<StockDocumentItem> items) {
+        if (request==null || request.getLines()==null || request.getLines().isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"领料操作明细不能为空");
+        }
+        Map<UUID,BigDecimal> totals=new HashMap<>();
+        for (StockDocIssueRequest.Line line : request.getLines()) {
+            if (line==null || line.getItemId()==null || line.getQty()==null || line.getQty().signum()<=0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,"请选择领料明细，并填写大于0的数量");
+            }
+            findItem(items,line.getItemId());
+            totals.merge(line.getItemId(),line.getQty(),BigDecimal::add);
+        }
+        var normalized=new StockDocIssueRequest();
+        normalized.setIdempotencyKey(request.getIdempotencyKey()); normalized.setReason(request.getReason());
+        normalized.setLines(items.stream().filter(item -> totals.containsKey(item.getId()))
+                .sorted(java.util.Comparator.comparing(StockDocumentItem::getLineNo,
+                        java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
+                        .thenComparing(item -> item.getId().toString()))
+                .map(item -> {
+                    var line=new StockDocIssueRequest.Line();line.setItemId(item.getId());line.setQty(totals.get(item.getId()));
+                    return line;
+                }).toList());
+        return normalized;
     }
 
     private void validateIssueRequest(
@@ -1010,7 +1085,7 @@ public class StockDocService {
         }
     }
 
-    private void applyGoodReturnLedger(
+    private ProductionMaterialStockLedgerService.PostingResult applyGoodReturnLedger(
             StockDocument document, List<StockDocumentItem> items,
             boolean reverse) {
         List<ProductionMaterialStockLedgerService.MaterialLine> lines =
@@ -1022,15 +1097,18 @@ public class StockDocService {
                                 item.getQty().multiply(
                                         unitRateOrOne(item.getUnitRate()))))
                         .toList();
+        ProductionMaterialStockLedgerService.PostingResult posting;
         if (reverse) {
-            productionMaterialLedger.reverseGoodReturn(
+            posting=productionMaterialLedger.reverseGoodReturn(
                     document.getId(), document.getWarehouseId(), lines,
                     currentUser.requireId());
         } else {
-            productionMaterialLedger.goodReturn(
+            posting=productionMaterialLedger.goodReturn(
                     document.getId(), document.getWarehouseId(), lines,
                     currentUser.requireId());
         }
+        if(posting.replayed()) throw new ApiException(ErrorCode.CONFLICT,"退料已经有处理记录，请刷新核对原单，不能重复改变库存");
+        return posting;
     }
 
     /** DRAW 出库前置校验：类型 + 已审 + 行锁。 */
@@ -1693,7 +1771,8 @@ public class StockDocService {
 
     /**
      * Canonical production-stock lock prelude:
-     * inventory dimensions -&gt; plan/package/segment -&gt; stock document/items.
+     * commercial sources -&gt; inventory -&gt; main warehouses/analyses
+     * -&gt; plan/package/segment -&gt; stock document/items.
      *
      * <p>This query phase is intentionally read-only until all advisory and
      * production graph locks are held. Production-linked items are database
@@ -1701,58 +1780,20 @@ public class StockDocService {
      * identities without accepting a stale mutation.</p>
      */
     private void prelockProductionDocuments(List<UUID> documentIds) {
-        List<UUID> orderedIds = documentIds == null
-                ? List.of()
-                : documentIds.stream()
-                .filter(Objects::nonNull)
-                .distinct()
-                .sorted()
-                .toList();
-        if (orderedIds.isEmpty()) return;
-        // A transaction-scoped lane prevents two overlapping batches from
-        // interleaving their per-document canonical preludes in opposite
-        // inventory/production-graph orders. Single-document writers still
-        // use the same canonical prelude and can only wait on one document.
-        em.createNativeQuery("""
-                        SELECT pg_advisory_xact_lock(
-                            hashtextextended(
-                                'PRODUCTION_FINISHED_IN_CONFIRM_BATCH_LOCK_ORDER',
-                                CAST(434 AS bigint)))
-                        """)
-                .getSingleResult();
-        List<Object[]> documentRows = NativeQueryResults.objectArrayRows(
-                em.createNativeQuery("""
-                                SELECT id, warehouse_id, doc_type
-                                FROM stock_documents
-                                WHERE id IN (:documentIds)
-                                  AND is_deleted = FALSE
-                                ORDER BY id
-                                """)
-                        .setParameter("documentIds", orderedIds));
-        List<Object[]> dimensions = NativeQueryResults.objectArrayRows(
-                em.createNativeQuery("""
-                                SELECT DISTINCT goods_id, color_id
-                                FROM stock_document_items
-                                WHERE doc_id IN (:documentIds)
-                                  AND is_deleted = FALSE
-                                  AND goods_id IS NOT NULL
-                                ORDER BY goods_id, color_id NULLS FIRST
-                                """)
-                        .setParameter("documentIds", orderedIds));
-        stockService.lockInventory(dimensions.stream()
-                .map(row -> new InventoryKey(
-                        (UUID) row[0], (UUID) row[1]))
-                .toList());
-        for (Object[] document : documentRows) {
-            if ("FINISHED_IN".equals(document[2])) {
-                productionCompletionReverse
-                        .lockFinishedInboundProductionDimensions(
-                                (UUID) document[0], (UUID) document[1]);
-            }
-        }
+        lockProductionDocuments(documentIds).verifyUnchanged();
+    }
+
+    /** The caller may return an exact immutable replay before checking the write fingerprint. */
+    private FulfillmentMutationLocks.Guard lockProductionDocuments(List<UUID> documentIds) {
+        List<UUID> orderedIds = documentIds == null ? List.of() : documentIds.stream()
+                .filter(Objects::nonNull).distinct()
+                .sorted(java.util.Comparator.comparing(UUID::toString)).toList();
+        if (orderedIds.isEmpty()) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请选择仓库单据");
+        var guard = mutationLocks.acquire(() -> mutationFootprints.forStockDocuments(orderedIds));
         lockProductionDocumentGraphs(orderedIds);
         lockFinishedInboundBatchAllocationGraph(orderedIds);
         lockFinishedInboundBatchDocuments(orderedIds);
+        return guard;
     }
 
     private void lockProductionDocumentGraphs(List<UUID> documentIds) {
@@ -1811,7 +1852,7 @@ public class StockDocService {
                         .setParameter("documentIds", documentIds), UUID.class)
                 .stream().distinct().toList();
         if (planItemIds.isEmpty()) return;
-        List<Object[]> linkRows = NativeQueryResults.objectArrayRows(
+        NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT link.id, link.order_item_id
                                 FROM plan_order_item_links link
@@ -1821,33 +1862,9 @@ public class StockDocService {
                                 FOR UPDATE
                                 """)
                         .setParameter("planItemIds", planItemIds));
-        List<UUID> orderItemIds = linkRows.stream()
-                .map(row -> (UUID) row[1])
-                .filter(Objects::nonNull)
-                .distinct()
-                .sorted()
-                .toList();
-        if (orderItemIds.isEmpty()) return;
-        NativeQueryResults.typedRows(
-                em.createNativeQuery("""
-                                SELECT sales_order.id
-                                FROM sales_order_items sales_item
-                                JOIN sales_orders sales_order
-                                  ON sales_order.id = sales_item.order_id
-                                WHERE sales_item.id IN (:orderItemIds)
-                                ORDER BY sales_order.id, sales_item.id
-                                FOR UPDATE OF sales_order
-                                """, UUID.class)
-                        .setParameter("orderItemIds", orderItemIds), UUID.class);
-        NativeQueryResults.typedRows(
-                em.createNativeQuery("""
-                                SELECT sales_item.id
-                                FROM sales_order_items sales_item
-                                WHERE sales_item.id IN (:orderItemIds)
-                                ORDER BY sales_item.id
-                                FOR UPDATE
-                                """, UUID.class)
-                        .setParameter("orderItemIds", orderItemIds), UUID.class);
+        // Sales heads and their items were acquired by the common prefix.
+        // Do not discover and lock a new upstream sale while holding plan rows;
+        // the guard re-reads these links and rejects a changed source set instead.
     }
 
     private void lockFinishedInboundBatchDocuments(List<UUID> documentIds) {
@@ -1876,79 +1893,7 @@ public class StockDocService {
     }
 
     private void prelockProductionDocument(UUID documentId) {
-        if (!isProductionLinked(documentId)) return;
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(
-                em.createNativeQuery("""
-                                SELECT document.warehouse_id,
-                                       document.doc_type,
-                                       item.goods_id,
-                                       item.color_id
-                                FROM stock_documents document
-                                LEFT JOIN stock_document_items item
-                                  ON item.doc_id = document.id
-                                 AND item.is_deleted = FALSE
-                                WHERE document.id = :documentId
-                                  AND document.is_deleted = FALSE
-                                ORDER BY item.goods_id,
-                                         item.color_id NULLS FIRST,
-                                         item.id
-                                """)
-                        .setParameter("documentId", documentId));
-        if (rows.isEmpty()) return;
-        UUID warehouseId = (UUID) rows.getFirst()[0];
-        String documentType = (String) rows.getFirst()[1];
-        List<InventoryKey> dimensions = rows.stream()
-                .filter(row -> row[2] != null)
-                .map(row -> new InventoryKey(
-                        (UUID) row[2], (UUID) row[3]))
-                .distinct()
-                .toList();
-        if ("FINISHED_IN".equals(documentType)) {
-            productionCompletionReverse.lockFinishedInboundProductionDimensions(
-                    documentId, warehouseId);
-        } else {
-            stockService.lockInventory(dimensions);
-        }
-        lockProductionDocumentGraph(documentId);
-    }
-
-    private void lockProductionDocumentGraph(UUID documentId) {
-        List<UUID> planIds = NativeQueryResults.typedRows(
-                em.createNativeQuery("""
-                                SELECT plan.id
-                                FROM plan_draw_links link
-                                JOIN production_plans plan
-                                  ON plan.id = link.plan_id
-                                 AND plan.is_deleted = FALSE
-                                WHERE link.draw_id = :documentId
-                                  AND link.is_deleted = FALSE
-                                ORDER BY plan.id, link.id
-                                FOR UPDATE OF link, plan
-                                """, UUID.class)
-                        .setParameter("documentId", documentId), UUID.class)
-                .stream().distinct().toList();
-        if (planIds.isEmpty()) return;
-        List<UUID> packageIds = NativeQueryResults.typedRows(
-                em.createNativeQuery("""
-                                SELECT package.id
-                                FROM production_planning_packages package
-                                WHERE package.plan_id IN (:planIds)
-                                  AND package.is_deleted = FALSE
-                                ORDER BY package.plan_id, package.id
-                                FOR UPDATE
-                                """, UUID.class)
-                        .setParameter("planIds", planIds), UUID.class);
-        if (packageIds.isEmpty()) return;
-        NativeQueryResults.typedRows(
-                em.createNativeQuery("""
-                                SELECT segment.id
-                                FROM production_execution_segments segment
-                                WHERE segment.package_id IN (:packageIds)
-                                  AND segment.is_deleted = FALSE
-                                ORDER BY segment.package_id, segment.id
-                                FOR UPDATE
-                                """, UUID.class)
-                        .setParameter("packageIds", packageIds), UUID.class);
+        prelockProductionDocuments(List.of(documentId));
     }
 
     private void lockInventory(List<StockDocumentItem> items) {
@@ -1966,7 +1911,7 @@ public class StockDocService {
      * <p>正反向都要求完整、正数的库存维度。历史异常不得只减
      * issued_qty；必须走能够证明原物理流水的专用对账修复。</p>
      */
-    private void applyIssueMovement(StockDocument d, StockDocumentItem it, BigDecimal issueQty,
+    private UUID applyIssueMovement(StockDocument d, StockDocumentItem it, BigDecimal issueQty,
                                     OffsetDateTime ts, int sign) {
         BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
         if (issueQty == null || issueQty.signum() <= 0) {
@@ -1993,7 +1938,7 @@ public class StockDocService {
                 : issueQty.divide(it.getQty(), 6, java.math.RoundingMode.HALF_UP);
         BigDecimal amount = it.getAmountLocal() == null ? null : it.getAmountLocal().multiply(ratio);
         BigDecimal weight = it.getWeight() == null ? null : it.getWeight().multiply(ratio);
-        stockService.recordMovement(new StockService.MovementRequest(
+        return stockService.recordMovement(new StockService.MovementRequest(
                 ts, T_DRAW, SRC_STOCK_DOC, d.getId(), it.getId(),
                 it.getGoodsId(), it.getColorId(), d.getWarehouseId(), (short) (DIR_OUT * sign), baseQty,
                 it.getUnitId(), it.getUnitRate(), amount, it.getRemark(), weight));
@@ -2588,7 +2533,8 @@ public class StockDocService {
      *
      * @param sign +1=审核（正方向）/ -1=红冲（反方向）
      */
-    private void applyStockEffect(StockDocument d, List<StockDocumentItem> items, int sign) {
+    private Map<UUID,UUID> applyStockEffect(StockDocument d, List<StockDocumentItem> items, int sign) {
+        Map<UUID,UUID> materialMovements=new LinkedHashMap<>();
         OffsetDateTime ts = d.getBillDate() == null ? OffsetDateTime.now()
                 : d.getBillDate().atStartOfDay(BusinessTime.ZONE).toOffsetDateTime();
         for (StockDocumentItem it : items) {
@@ -2600,7 +2546,7 @@ public class StockDocService {
                 case "OTHER_IN" -> move(d, it, T_OTHER_IN, DIR_IN, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
                 case "OTHER_OUT", "WASTE" -> move(d, it, T_OTHER_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
                 case "DRAW" -> move(d, it, T_DRAW, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
-                case "WDRAW" -> move(d, it, T_WDRAW, DIR_IN, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
+                case "WDRAW" -> materialMovements.put(it.getId(),move(d, it, T_WDRAW, DIR_IN, baseQty, actualWeight, d.getWarehouseId(), ts, sign));
                 case "FINISHED_IN" -> move(d, it, T_FINISHED_IN, DIR_IN, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
                 case "FINISHED_OUT" -> move(d, it, T_FINISHED_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
                 case "TRANSFER" -> {
@@ -2621,6 +2567,7 @@ public class StockDocService {
                 default -> { /* 未识别类型不动库存 */ }
             }
         }
+        return materialMovements;
     }
 
     /** base_qty = qty × unit_rate（库存基本量）。 */
@@ -2636,11 +2583,11 @@ public class StockDocService {
     }
 
     /** 写一笔流水：审核用 naturalDir，红冲反向（naturalDir × sign）。weight 传正数，由 recordMovement 乘 direction。 */
-    private void move(StockDocument d, StockDocumentItem it, short type, short naturalDir,
+    private UUID move(StockDocument d, StockDocumentItem it, short type, short naturalDir,
                       BigDecimal qty, BigDecimal weight, UUID warehouseId, OffsetDateTime ts, int sign) {
-        if (warehouseId == null || qty == null || qty.signum() == 0) return;
+        if (warehouseId == null || qty == null || qty.signum() == 0) return null;
         short dir = (short) (naturalDir * sign);
-        stockService.recordMovement(new StockService.MovementRequest(
+        return stockService.recordMovement(new StockService.MovementRequest(
                 ts, type, SRC_STOCK_DOC, d.getId(), it.getId(),
                 it.getGoodsId(), it.getColorId(), warehouseId, dir, qty,
                 it.getUnitId(), it.getUnitRate(), it.getAmountLocal(), it.getRemark(), weight));
@@ -2709,9 +2656,10 @@ public class StockDocService {
             it.setUnitRate(l.getUnitRate());
             it.setQty(l.getQty());
             it.setBaseQty(baseQtyOf(l));
-            it.setPrice(l.getPrice());
-            it.setAmountOriginal(l.getAmountOriginal());
-            it.setAmountLocal(l.getAmountLocal() != null ? l.getAmountLocal() : l.getAmountOriginal());
+            it.setPrice(l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"仓库来源单价"));
+            it.setAmountOriginal(com.uten.imp.common.util.FinancialExactAmount.optional(l.getAmountOriginal(),"仓库来源原币金额"));
+            it.setAmountLocal(l.getAmountLocal()==null?it.getAmountOriginal():
+                    com.uten.imp.common.util.FinancialExactAmount.book(l.getAmountLocal(),"仓库来源本币金额"));
             it.setWeight(l.getWeight());
             it.setGiftQty(l.getGiftQty() != null ? l.getGiftQty() : BigDecimal.ZERO);
             it.setSurplusQty(l.getSurplusQty());
@@ -2890,6 +2838,7 @@ public class StockDocService {
         if (line.getGoodsId() == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "第 " + lineNo + " 行缺少货品");
         }
+        com.uten.imp.common.concurrency.GoodsQuantityBasisLocks.lockUnused(em, List.of(line.getGoodsId()));
         List<Object[]> goodsRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT g.is_deleted, u.id, COALESCE(u.is_deleted, true)
                 FROM goods g

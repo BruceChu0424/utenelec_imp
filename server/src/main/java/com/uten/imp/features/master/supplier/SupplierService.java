@@ -161,7 +161,7 @@ public class SupplierService {
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "code"), ALLOWED_SORT));
         Page<Supplier> p = repo.findAll(spec, pageable);
         return new PageResponse<>(
-                p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+                p.map(this::toList).getContent(), p);
     }
 
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Supplier> root,

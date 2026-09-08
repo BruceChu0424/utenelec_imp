@@ -5,6 +5,8 @@
 // DailyGridRow：货品(选择)/完工申报量/实际重量；颜色/单位选货品后自动回填（只读）；
 // 精确来源子任务 + 完结标记 + 备注。
 import 'package:flutter/material.dart';
+import '../../../shared/presentation/workflow_field_guidance.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -189,7 +191,10 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
           controller: row.qty,
           textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+          decoration: UtenInputDecoration(
+            const InputDecoration(isDense: true, hintText: '0'),
+            info: workflowFieldText(context).workflowReportQuantityHint,
+          ),
         ),
       ),
     ),

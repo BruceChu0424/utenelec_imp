@@ -24,3 +24,22 @@ final salesOrderFinanceConfirmationCountProvider =
           .watch(salesOrderFinanceConfirmationRepositoryProvider)
           .pendingCount();
     });
+
+/// Queue badges follow the same refresh generation as the total badge. They
+/// mount only inside the finance hub and do not add to the global task total.
+final salesOrderFinanceQueueCountProvider = FutureProvider.autoDispose
+    .family<int, bool>((ref, changesOnly) async {
+      final permissions = ref.watch(currentPermissionsProvider);
+      final allowed =
+          permissions.contains(Perm.salesOrderFinanceView) ||
+          ref.watch(isSuperAdminProvider);
+      if (!allowed) return 0;
+      final repository = ref.watch(
+        salesOrderFinanceConfirmationRepositoryProvider,
+      );
+      var disposed = false;
+      ref.onDispose(() => disposed = true);
+      await ref.watch(salesOrderFinanceConfirmationCountProvider.future);
+      if (disposed) return 0;
+      return repository.pendingCount(changesOnly: changesOnly);
+    });

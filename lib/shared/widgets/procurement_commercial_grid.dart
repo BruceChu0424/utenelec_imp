@@ -8,6 +8,8 @@
 // 商业字段下移明细行后，单头不再录商业条款；保存时逐行提交，
 // 后端 createBatch 按「供应商+商业条款」组合拆单归集到各张单的头字段。
 import 'package:flutter/material.dart';
+import '../../components/inputs/uten_input_decoration.dart';
+import '../presentation/workflow_field_guidance.dart';
 
 import '../../components/inputs/required_field_decoration.dart';
 import '../../components/layout/uten_editable_grid.dart';
@@ -149,6 +151,7 @@ class ProcurementTermDropdownCell extends StatelessWidget {
     this.requiredEmpty = false,
     this.autofilled = false,
     this.hint = '点击选择',
+    this.info,
   });
 
   final String? value;
@@ -159,6 +162,7 @@ class ProcurementTermDropdownCell extends StatelessWidget {
   /// 学习预填值（黄框提醒核对；与 requiredEmpty 红优先级：红在前）。
   final bool autofilled;
   final String hint;
+  final String? info;
 
   @override
   Widget build(BuildContext context) {
@@ -187,21 +191,24 @@ class ProcurementTermDropdownCell extends StatelessWidget {
       child: InputDecorator(
         decoration: applyAutofillHint(
           applyRequiredEmpty(
-            InputDecoration(
-              isDense: true,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
+            UtenInputDecoration(
+              InputDecoration(
+                isDense: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                suffixIcon: Icon(
+                  hasValue ? Icons.unfold_more_rounded : Icons.search_rounded,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                suffixIconConstraints: const BoxConstraints(minWidth: 20),
               ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 8,
-              ),
-              suffixIcon: Icon(
-                hasValue ? Icons.unfold_more_rounded : Icons.search_rounded,
-                size: 16,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              suffixIconConstraints: const BoxConstraints(minWidth: 20),
+              info: info,
             ),
             theme,
             requiredEmpty: requiredEmpty,
@@ -254,6 +261,7 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
           builder: (_, v, _) => ProcurementTermDropdownCell(
             value: v,
             entries: currencyEntries,
+            info: workflowFieldText(context).workflowCurrencyHint,
             requiredEmpty: v == null,
             autofilled: marks.contains('currency'),
             onChanged: (next) {
@@ -267,7 +275,7 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
     EditableGridColumn<R>(
       key: 'exchangeRate',
       label: '汇率',
-      width: 84,
+      width: 120,
       numeric: true,
       cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
         valueListenable: row.termsAutofilledNotifier,
@@ -280,7 +288,10 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
             textAlign: TextAlign.right,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: applyAutofillHint(
-              const InputDecoration(isDense: true, hintText: '1'),
+              UtenInputDecoration(
+                const InputDecoration(isDense: true, hintText: '1'),
+                info: workflowFieldText(context).workflowExchangeRateHint,
+              ),
               Theme.of(context),
               autofilled: marks.contains('rate'),
             ),
@@ -291,7 +302,7 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
     EditableGridColumn<R>(
       key: 'taxRate',
       label: '税率(%)',
-      width: 84,
+      width: 120,
       numeric: true,
       cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
         valueListenable: row.termsAutofilledNotifier,
@@ -300,7 +311,10 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
           textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: applyAutofillHint(
-            const InputDecoration(isDense: true, hintText: '0'),
+            UtenInputDecoration(
+              const InputDecoration(isDense: true, hintText: '0'),
+              info: workflowFieldText(context).workflowTaxRateHint,
+            ),
             Theme.of(context),
             autofilled: marks.contains('tax'),
           ),
@@ -323,6 +337,7 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
           builder: (_, v, _) => ProcurementTermDropdownCell(
             value: v,
             entries: settlementEntries,
+            info: workflowFieldText(context).workflowSettlementHint,
             requiredEmpty: v == null,
             autofilled: marks.contains('settlement'),
             onChanged: (next) {

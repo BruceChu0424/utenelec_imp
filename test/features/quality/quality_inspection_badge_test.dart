@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/features/dashboard/widgets/module_badge_sum.dart';
 import 'package:uten_imp/features/quality/pages/quality_task_center_page.dart';
 import 'package:uten_imp/features/quality/pages/quality_pending_disposal_page.dart';
@@ -362,97 +365,154 @@ void main() {
     expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsNothing);
   });
 
-  testWidgets(
-    'PASS confirmation shows reviewer responsibility and accepts an empty note',
-    (tester) async {
-      final repository = _dispositionRepository();
-      await _pumpInspectionDetailPage(tester, repository);
+  testWidgets('原单按箱而IQC按个：提示换算，24合格24不合格只提交一次原验收量', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = _FakeInspectionRepository(
+      inspectionItems: [
+        ProcurementInspectionItem.fromJson(const {
+          'id': 'inspection-item-1',
+          'goodsCode': 'G0001',
+          'goodsName': '盒装零件',
+          'unitId': 'unit-box',
+          'sourceUnitName': '箱',
+          'unitRate': 24,
+          'baseUnitId': 'unit-piece',
+          'baseUnitName': '个',
+          'receivedBaseQty': 48,
+          'remainingBaseQty': 48,
+          'status': 'PENDING',
+        }),
+      ],
+    );
+    await _pumpInspectionDetailPage(tester, repository);
+    expect(find.textContaining('待检量 48 个'), findsOneWidget);
+    expect(find.textContaining('48 箱'), findsNothing);
+    final pass = find.byKey(const Key('iqc-report-pass-inspection-item-1'));
+    await tester.tap(
+      find.descendant(of: pass, matching: find.byType(UtenFieldHintIcon)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('原单1箱 = 24个'), findsWidgets);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    await _selectRow(tester, '盒装零件(G0001)');
+    await tester.enterText(pass, '24');
+    await tester.enterText(
+      find.byKey(const Key('iqc-report-fail-inspection-item-1')),
+      '24',
+    );
+    await _submitReport(tester);
+    expect(find.textContaining('合格 24 个、不合格 24 个'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextField, '结论原因(必填)'), '外观不良');
+    await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
+    await tester.pumpAndSettle();
+    final line = repository.decideBatchCalls.single.items.single;
+    expect(line.expectedRemainingBaseQty, 48);
+    expect(line.passBaseQty, 24);
+    expect(line.failBaseQty, 24);
+  });
 
-      await _openFirstInspectionItem(tester);
-      expect(
-        find.byKey(const Key('reviewer-responsibility-notice')),
-        findsOneWidget,
-      );
-      expect(find.text('审核员：品质审核员(QA-001)'), findsOneWidget);
-      expect(find.text('系统将记录审核员、结论、数量与时间，请依据本行实物检验结果确认。'), findsOneWidget);
-      expect(find.text('放行说明(选填)'), findsOneWidget);
+  testWidgets('提交报告默认全合格：责任提示 + 空结论原因可提交', (tester) async {
+    final repository = _dispositionRepository();
+    await _pumpInspectionDetailPage(tester, repository);
 
-      await tester.tap(find.text('确认合格'));
-      await tester.pumpAndSettle();
+    await _selectRow(tester, '测试物料(G0001)');
+    // 行内默认：合格=剩余 5、不合格=0。
+    expect(
+      find.byKey(const Key('iqc-report-pass-inspection-item-1')),
+      findsOneWidget,
+    );
+    expect(find.widgetWithText(UtenButton, '提交报告'), findsOneWidget);
+    await _submitReport(tester);
 
-      expect(repository.disposeCalls, hasLength(1));
-      expect(repository.disposeCalls.single.action, 'PASS');
-      expect(repository.disposeCalls.single.reason, isNull);
-      expect(repository.disposeCalls.single.baseQty, isNull);
-    },
-  );
+    expect(
+      find.byKey(const Key('reviewer-responsibility-notice')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('inspection-report-confirm-total')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('合格 5 个、不合格 0 个'), findsOneWidget);
+    expect(find.text('结论原因(选填)'), findsOneWidget);
 
-  testWidgets(
-    'FAIL confirmation shows reviewer responsibility and rejects an empty reason',
-    (tester) async {
-      final repository = _dispositionRepository();
-      await _pumpInspectionDetailPage(tester, repository);
+    await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
+    await tester.pumpAndSettle();
 
-      await _openFirstInspectionItem(tester);
-      await tester.tap(find.byKey(const Key('iqc-action-fail')));
-      await tester.pumpAndSettle();
+    expect(repository.decideBatchCalls, hasLength(1));
+    final call = repository.decideBatchCalls.single;
+    expect(call.items, hasLength(1));
+    expect(call.items.single.inspectionItemId, 'inspection-item-1');
+    expect(call.items.single.passBaseQty, 5);
+    expect(call.items.single.failBaseQty, 0);
+    expect(call.reason, isNull);
+    expect(repository.disposeCalls, isEmpty);
+  });
 
-      expect(find.text('审核员：品质审核员(QA-001)'), findsOneWidget);
-      expect(find.text('不合格原因(必填)'), findsOneWidget);
+  testWidgets('填不合格数量时结论原因必填，填好后才提交', (tester) async {
+    final repository = _dispositionRepository();
+    await _pumpInspectionDetailPage(tester, repository);
 
-      await tester.tap(find.text('确认不合格'));
-      await tester.pump();
+    await _selectRow(tester, '测试物料(G0001)');
+    await tester.enterText(
+      find.byKey(const Key('iqc-report-pass-inspection-item-1')),
+      '0',
+    );
+    await tester.enterText(
+      find.byKey(const Key('iqc-report-fail-inspection-item-1')),
+      '5',
+    );
+    await tester.pump();
+    await _submitReport(tester);
 
-      expect(find.text('不合格原因必填'), findsOneWidget);
-      expect(find.text('检验本行'), findsOneWidget);
-      expect(repository.disposeCalls, isEmpty);
-    },
-  );
+    expect(find.text('结论原因(必填)'), findsOneWidget);
+    expect(find.textContaining('合格 0 个、不合格 5 个'), findsOneWidget);
 
-  testWidgets(
-    'same receipt stays open after one decision and shows the next item',
-    (tester) async {
-      final repository = _twoItemDispositionRepository();
-      await _pumpInspectionDetailPage(tester, repository);
+    await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
+    await tester.pump();
 
-      final first = find.text('测试物料A(G0001)');
-      await tester.tap(first);
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.tap(first);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('确认合格'));
-      await tester.pumpAndSettle();
+    // 错误经 ⓘ 字段说明披露（全站约定）：弹窗不关、未提交即可判定校验生效，
+    // ⓘ 内容展示由组件测试（disabled_field_hint_test）覆盖。
+    expect(find.text('确认提交检验报告'), findsOneWidget);
+    expect(repository.decideBatchCalls, isEmpty);
 
-      expect(repository.disposeCalls, hasLength(1));
-      expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsOneWidget);
-      expect(find.text('测试物料B(G0002)'), findsOneWidget);
-      expect(find.text('CJ20260822000001'), findsOneWidget);
-    },
-  );
+    await tester.enterText(
+      find.widgetWithText(TextField, '结论原因(必填)'),
+      '外观不良退供应商',
+    );
+    await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
+    await tester.pumpAndSettle();
 
-  testWidgets('selected lines use one atomic batch pass request', (
-    tester,
-  ) async {
+    expect(repository.decideBatchCalls, hasLength(1));
+    final call = repository.decideBatchCalls.single;
+    expect(call.items.single.passBaseQty, 0);
+    expect(call.items.single.failBaseQty, 5);
+    expect(call.reason, '外观不良退供应商');
+  });
+
+  testWidgets('多行一次提交报告：单事务 decide-batch 带全部所选行', (tester) async {
     final repository = _twoItemDispositionRepository();
     await _pumpInspectionDetailPage(tester, repository);
 
     await tester.tap(find.text('测试物料A(G0001)'));
     await tester.pump();
     await tester.tap(find.text('测试物料B(G0002)'));
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('iqc-batch-pass')));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('iqc-report-selected-count')), findsOneWidget);
+    expect(find.text('已选 2 项'), findsWidgets);
+    await _submitReport(tester);
 
-    expect(find.text('批量合格放行 2 条'), findsOneWidget);
     expect(
       find.byKey(const Key('reviewer-responsibility-notice')),
       findsOneWidget,
     );
-    await tester.tap(find.text('确认整批合格'));
+    expect(find.textContaining('共 2 行明细'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
     await tester.pumpAndSettle();
 
-    expect(repository.batchPassCalls, hasLength(1));
-    final call = repository.batchPassCalls.single;
+    expect(repository.decideBatchCalls, hasLength(1));
+    final call = repository.decideBatchCalls.single;
     expect(call.items.map((item) => item.inspectionItemId).toSet(), {
       'inspection-item-1',
       'inspection-item-2',
@@ -465,14 +525,32 @@ void main() {
     expect(repository.disposeCalls, isEmpty);
   });
 
+  testWidgets('部分行提交后本单保留，剩余行继续可办', (tester) async {
+    final repository = _twoItemDispositionRepository();
+    await _pumpInspectionDetailPage(tester, repository);
+
+    await _selectRow(tester, '测试物料A(G0001)');
+    await _submitReport(tester);
+    await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
+    await tester.pumpAndSettle();
+
+    expect(repository.decideBatchCalls, hasLength(1));
+    expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsOneWidget);
+    expect(find.text('测试物料B(G0002)'), findsOneWidget);
+    expect(find.text('CJ20260822000001'), findsOneWidget);
+  });
+
   testWidgets(
     'fully disposed receipt shows completion state on the detail page',
     (tester) async {
       final repository = _dispositionRepository();
       await _pumpInspectionDetailPage(tester, repository);
 
-      await _openFirstInspectionItem(tester);
-      await tester.tap(find.text('确认合格'));
+      await _selectRow(tester, '测试物料(G0001)');
+      await _submitReport(tester);
+      await tester.tap(
+        find.byKey(const Key('inspection-report-confirm-submit')),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('本单待检已全部处理完成'), findsOneWidget);
@@ -489,12 +567,13 @@ void main() {
         'lib/features/quality/pages/quality_pending_disposal_page.dart',
       ).readAsStringSync();
 
-      // 2026-09-01 合并后：仓库队列角标统一为合并页可办计数（待入库+需退回）。
+      // 2026-09-05 提交报告（decide-batch）后仍要刷新仓库队列角标
+      //（合并页可办计数：待入库+需退回）；旧单行/批量合格双入口已收敛为单按钮。
       expect(
         RegExp(
           r'ref\.invalidate\(warehouseQualityResultPendingCountProvider\)',
         ).allMatches(source),
-        hasLength(2),
+        hasLength(1),
       );
       expect(source, contains('已转仓库待入库，尚未增加可用库存'));
       expect(source, isNot(contains('已自动入库')));
@@ -512,7 +591,7 @@ void main() {
       await _pumpInspectionDetailPage(tester, _twoItemDispositionRepository());
 
       expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsOneWidget);
-      expect(find.byKey(const Key('iqc-batch-pass')), findsOneWidget);
+      expect(find.byKey(const Key('iqc-submit-report')), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -630,17 +709,18 @@ Future<void> _pumpInspectionDetailPage(
   await tester.pumpAndSettle();
 }
 
-Future<void> _openFirstInspectionItem(WidgetTester tester) async {
+/// 单击行勾选（2026-09-05 起行内编辑合格/不合格数量，底部统一「提交报告」）。
+Future<void> _selectRow(WidgetTester tester, String rowText) async {
   expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsOneWidget);
-  final row = find.text('测试物料(G0001)');
+  final row = find.text(rowText);
   expect(row, findsOneWidget);
   await tester.tap(row);
-  await tester.pump(const Duration(milliseconds: 50));
-  await tester.tap(row);
   await tester.pumpAndSettle();
-  expect(find.text('检验本行'), findsOneWidget);
-  expect(find.byKey(const Key('iqc-action-pass')), findsOneWidget);
-  expect(find.byKey(const Key('iqc-action-fail')), findsOneWidget);
+}
+
+Future<void> _submitReport(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('iqc-submit-report')));
+  await tester.pumpAndSettle();
 }
 
 _FakeInspectionRepository _dispositionRepository() => _FakeInspectionRepository(
@@ -655,6 +735,10 @@ _FakeInspectionRepository _dispositionRepository() => _FakeInspectionRepository(
   ],
   inspectionItems: const [
     ProcurementInspectionItem(
+      baseUnitId: 'unit-piece',
+      baseUnitName: '个',
+      sourceUnitName: '个',
+      unitRate: 1,
       id: 'inspection-item-1',
       receiptItemId: 'receipt-item-1',
       goodsId: 'goods-1',
@@ -682,6 +766,10 @@ _FakeInspectionRepository _twoItemDispositionRepository() =>
       ],
       inspectionItems: const [
         ProcurementInspectionItem(
+          baseUnitId: 'unit-piece',
+          baseUnitName: '个',
+          sourceUnitName: '个',
+          unitRate: 1,
           id: 'inspection-item-1',
           receiptItemId: 'receipt-item-1',
           goodsId: 'goods-1',
@@ -694,6 +782,10 @@ _FakeInspectionRepository _twoItemDispositionRepository() =>
           status: 'PENDING',
         ),
         ProcurementInspectionItem(
+          baseUnitId: 'unit-piece',
+          baseUnitName: '个',
+          sourceUnitName: '个',
+          unitRate: 1,
           id: 'inspection-item-2',
           receiptItemId: 'receipt-item-2',
           goodsId: 'goods-2',
@@ -731,6 +823,10 @@ _FakeInspectionRepository _twoTypeDispositionRepository() =>
       ],
       inspectionItems: const [
         ProcurementInspectionItem(
+          baseUnitId: 'unit-piece',
+          baseUnitName: '个',
+          sourceUnitName: '个',
+          unitRate: 1,
           id: 'inspection-item-1',
           goodsCode: 'G0001',
           goodsName: '采购物料',
@@ -739,6 +835,10 @@ _FakeInspectionRepository _twoTypeDispositionRepository() =>
           status: 'PENDING',
         ),
         ProcurementInspectionItem(
+          baseUnitId: 'unit-piece',
+          baseUnitName: '个',
+          sourceUnitName: '个',
+          unitRate: 1,
           id: 'inspection-item-2',
           goodsCode: 'G0002',
           goodsName: '委外物料',
@@ -772,6 +872,7 @@ class _FakeInspectionRepository implements ProcurementInspectionRepository {
   final List<ProcurementInspectionItem> inspectionItems;
   final List<_DispositionCall> disposeCalls = [];
   final List<_BatchPassCall> batchPassCalls = [];
+  final List<_DecideBatchCall> decideBatchCalls = [];
 
   @override
   Future<int> pendingCount() async {
@@ -817,6 +918,21 @@ class _FakeInspectionRepository implements ProcurementInspectionRepository {
     inspectionItems.removeWhere((item) => ids.contains(item.id));
     if (inspectionItems.isEmpty) receipts.clear();
   }
+
+  @override
+  Future<void> decideBatch({
+    required String receiptType,
+    required String receiptId,
+    required List<ProcurementInspectionDecideItem> items,
+    String? reason,
+  }) async {
+    decideBatchCalls.add(
+      _DecideBatchCall(items: List.of(items), reason: reason),
+    );
+    final ids = items.map((item) => item.inspectionItemId).toSet();
+    inspectionItems.removeWhere((item) => ids.contains(item.id));
+    if (inspectionItems.isEmpty) receipts.clear();
+  }
 }
 
 class _QualityReviewerSessionNotifier extends SessionNotifier {
@@ -849,5 +965,12 @@ class _BatchPassCall {
   const _BatchPassCall({required this.items, required this.reason});
 
   final List<ProcurementInspectionBatchPassItem> items;
+  final String? reason;
+}
+
+class _DecideBatchCall {
+  const _DecideBatchCall({required this.items, required this.reason});
+
+  final List<ProcurementInspectionDecideItem> items;
   final String? reason;
 }

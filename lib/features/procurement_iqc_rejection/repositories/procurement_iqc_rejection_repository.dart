@@ -24,6 +24,10 @@ abstract interface class ProcurementIqcRejectionGateway {
     String id,
     ProcurementIqcConfirmCreditCommand command,
   );
+  Future<ProcurementIqcCreditPreview> previewCredit(
+    String id,
+    ProcurementIqcConfirmCreditCommand command,
+  );
 
   Future<ProcurementIqcRejectionDetail> closeNoCredit(
     String id,
@@ -88,6 +92,18 @@ class ProcurementIqcRejectionRepository
     String id,
     ProcurementIqcConfirmCreditCommand command,
   ) => _command(id, 'confirm-credit', command.toJson());
+
+  @override
+  Future<ProcurementIqcCreditPreview> previewCredit(
+    String id,
+    ProcurementIqcConfirmCreditCommand command,
+  ) async {
+    final json = await api.post(
+      '$_base/$id/preview-credit',
+      body: command.toJson(),
+    );
+    return ProcurementIqcCreditPreview.fromJson(json);
+  }
 
   @override
   Future<ProcurementIqcRejectionDetail> closeNoCredit(

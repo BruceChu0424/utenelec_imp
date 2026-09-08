@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../shared/presentation/workflow_field_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -15,10 +17,14 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/concurrency/task_claim_session.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
+import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/sales_order_finance_confirmation.dart';
@@ -30,7 +36,12 @@ import '../repositories/sales_order_finance_confirmation_repository.dart';
 /// 桌面端使用系统自研表格：单击选择、双击进入审核详情、复选多选和批量确认；
 /// 紧凑端使用可勾选的密集列表，并保留显式详情按钮，不把双击作为唯一入口。
 class FinanceSalesOrderConfirmationPage extends ConsumerStatefulWidget {
-  const FinanceSalesOrderConfirmationPage({super.key});
+  const FinanceSalesOrderConfirmationPage({
+    super.key,
+    this.changesOnly = false,
+  });
+
+  final bool changesOnly;
 
   @override
   ConsumerState<FinanceSalesOrderConfirmationPage> createState() =>
@@ -51,6 +62,14 @@ class _FinanceSalesOrderConfirmationPageState
   final Map<String, SalesOrderFinancePendingItem> _selectedItems =
       <String, SalesOrderFinancePendingItem>{};
   SalesOrderFinancePendingItem? _activeItem;
+  TaskClaimSession? _batchClaim;
+
+  @override
+  void dispose() {
+    ++_requestVersion;
+    _batchClaim?.releaseAll().ignore();
+    super.dispose();
+  }
 
   /// 分段视图：false=待确认（默认）；true=已驳回。
   bool _showRejected = false;
@@ -89,6 +108,7 @@ class _FinanceSalesOrderConfirmationPageState
             page: page,
             rejected: _showRejected,
             keyword: _keyword.isEmpty ? null : _keyword,
+            changesOnly: widget.changesOnly,
           );
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
@@ -165,6 +185,7 @@ class _FinanceSalesOrderConfirmationPageState
   }
 
   void _setSelectedIds(Set<String> next) {
+    if (_batchClaim != null) return;
     if (next.length > _maxBatchSize) {
       context.appWarning('单次最多选择 $_maxBatchSize 笔订单');
       return;
@@ -204,7 +225,14 @@ class _FinanceSalesOrderConfirmationPageState
 
   /// 打开财务审核详情页；确认/驳回后返回 true → 刷新当前视图。
   Future<void> _open(SalesOrderFinancePendingItem item) async {
-    final changed = await context.push<bool>(item.detailRoute);
+    final route = Uri.parse(item.detailRoute).replace(
+      queryParameters: {
+        'returnTo': widget.changesOnly
+            ? '/finance/sales-order-changes'
+            : '/finance/sales-order-confirmations',
+      },
+    );
+    final changed = await context.push<bool>(route.toString());
     if (changed == true && mounted) {
       setState(() {
         _selectedIds.remove(item.orderId);
@@ -221,6 +249,7 @@ class _FinanceSalesOrderConfirmationPageState
   }
 
   Future<void> _confirmSelected() async {
+    if (_batchBusy || _batchClaim != null) return;
     if (_showRejected) {
       context.appWarning('已驳回订单须由销售修订并重新审核后才能确认');
       return;
@@ -235,127 +264,201 @@ class _FinanceSalesOrderConfirmationPageState
       return;
     }
 
-    final controller = TextEditingController();
-    final approved = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('批量确认 ${tasks.length} 笔销售订单'),
-        content: SizedBox(
-          width: 560,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const UtenReviewerResponsibilityNotice(
-                  actionLabel: '销售订单批量财务确认',
-                  description: '本次选择将作为一个原子审核事务提交；任一订单校验失败时全部不放行。',
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                const Text(
-                  '确认只放行计划部可见与排产，不代表已收款，也不会在此建立正式应收。'
-                  '请确认下列订单已逐笔核对金额、客户应收和发运策略：',
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 220),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: Theme.of(
-                          dialogContext,
-                        ).colorScheme.outlineVariant,
-                      ),
-                      borderRadius: UtenRadius.mdAll,
-                    ),
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: tasks.length,
-                      separatorBuilder: (_, _) => Divider(
-                        height: 1,
-                        color: Theme.of(
-                          dialogContext,
-                        ).colorScheme.outlineVariant,
-                      ),
-                      itemBuilder: (context, index) {
-                        final item = tasks[index];
-                        return ListTile(
-                          dense: true,
-                          title: Text(
-                            item.billNo,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                          subtitle: Text(item.clientName ?? '未标注客户'),
-                          trailing: Text(
-                            _orderAmount(item),
-                            textAlign: TextAlign.end,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                TextField(
-                  key: const Key('sales-order-finance-batch-remark'),
-                  controller: controller,
-                  maxLength: 500,
-                  maxLines: 2,
-                  decoration: const InputDecoration(
-                    labelText: '统一确认备注（选填）',
-                    hintText: '该备注将写入本次选中的每一笔订单',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          FilledButton.icon(
-            key: const Key('sales-order-finance-batch-submit'),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            icon: const Icon(Icons.fact_check_outlined),
-            label: Text('确认通过 ${tasks.length} 笔'),
-          ),
-        ],
-      ),
+    final claim = financeReviewClaim(
+      ProviderScope.containerOf(context, listen: false),
     );
-    final remark = controller.text;
-    Future<void>.delayed(const Duration(milliseconds: 300), controller.dispose);
-    if (approved != true || !mounted) return;
-
+    _batchClaim = claim;
     setState(() => _batchBusy = true);
     try {
-      await ref
-          .read(salesOrderFinanceConfirmationRepositoryProvider)
-          .confirmBatch(tasks.map((item) => item.orderId), remark: remark);
-      if (!mounted) return;
-      context.appSuccess('已批量确认 ${tasks.length} 笔，计划部可接手排产');
-      final page = _result?.page ?? 1;
-      setState(_clearSelectionState);
-      ref.invalidate(salesOrderFinanceConfirmationCountProvider);
-      await _load(page);
+      await claim.claimAll(
+        'SALES_ORDER_FINANCE_CONFIRM',
+        tasks.map((task) => task.orderId),
+      );
+      if (!mounted || !claim.isReady) {
+        if (mounted) {
+          context.appWarning(claim.failureMessage ?? '整批未取得审核占用，请重试');
+        }
+        return;
+      }
+      for (final task in tasks) {
+        final snapshot = await ref
+            .read(salesOrderFinanceConfirmationRepositoryProvider)
+            .review(task.orderId);
+        if (!mounted || !claim.isReady) return;
+        if (snapshot.financeReviewRevision != task.financeReviewRevision ||
+            snapshot.financeConfirmed ||
+            snapshot.financeRejected) {
+          context.appWarning('订单内容或状态已变化，请刷新并重新核对后再批量审核');
+          return;
+        }
+      }
+
+      setState(() => _batchBusy = false);
+      final controller = TextEditingController();
+      final approved = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('批量确认 ${tasks.length} 笔销售订单'),
+          content: SizedBox(
+            width: 560,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const UtenReviewerResponsibilityNotice(
+                    actionLabel: '销售订单批量财务确认',
+                    description: '本次选择将作为一个原子审核事务提交；任一订单校验失败时全部不放行。',
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  const Text(
+                    '确认只放行计划部可见与排产，不代表已收款，也不会在此建立正式应收。'
+                    '请确认下列订单已逐笔核对金额、客户应收和发运策略：',
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 220),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: Theme.of(
+                            dialogContext,
+                          ).colorScheme.outlineVariant,
+                        ),
+                        borderRadius: UtenRadius.mdAll,
+                      ),
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: tasks.length,
+                        separatorBuilder: (_, _) => Divider(
+                          height: 1,
+                          color: Theme.of(
+                            dialogContext,
+                          ).colorScheme.outlineVariant,
+                        ),
+                        itemBuilder: (context, index) {
+                          final item = tasks[index];
+                          return ListTile(
+                            dense: true,
+                            title: Text(
+                              item.billNo,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            subtitle: Text(item.clientName ?? '未标注客户'),
+                            trailing: Text(
+                              _orderAmount(item),
+                              textAlign: TextAlign.end,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  TextField(
+                    key: const Key('sales-order-finance-batch-remark'),
+                    controller: controller,
+                    maxLength: 500,
+                    maxLines: 2,
+                    decoration: UtenInputDecoration(
+                      const InputDecoration(
+                        labelText: '统一确认备注(选填)',
+                        border: OutlineInputBorder(),
+                      ),
+                      info:
+                          '${workflowFieldText(context).workflowFinanceReviewHint} 该备注写入本次选中的每笔订单。',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FinanceReviewClaimButton(
+              key: const Key('sales-order-finance-batch-submit'),
+              claim: claim,
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text('确认通过 ${tasks.length} 笔'),
+            ),
+          ],
+        ),
+      );
+      final remark = controller.text;
+      Future<void>.delayed(
+        const Duration(milliseconds: 300),
+        controller.dispose,
+      );
+      if (approved != true || !mounted) return;
+
+      setState(() => _batchBusy = true);
+      try {
+        if (!await claim.validateForDecision() || !mounted) {
+          if (mounted) {
+            context.appWarning(claim.failureMessage ?? '审核占用已失效，请重新核对');
+          }
+          return;
+        }
+        await ref
+            .read(salesOrderFinanceConfirmationRepositoryProvider)
+            .confirmBatch(
+              tasks.map((item) => item.orderId),
+              remark: remark,
+              expectedRevisions: {
+                for (final task in tasks)
+                  task.orderId: task.financeReviewRevision,
+              },
+              expectedClaimIds: {
+                for (final task in tasks)
+                  task.orderId: claim.claimIdFor(
+                    'SALES_ORDER_FINANCE_CONFIRM',
+                    task.orderId,
+                  )!,
+              },
+            );
+        if (!mounted) return;
+        context.appSuccess('已批量确认 ${tasks.length} 笔，计划部可接手排产');
+        final page = _result?.page ?? 1;
+        setState(_clearSelectionState);
+        ref.invalidate(salesOrderFinanceConfirmationCountProvider);
+        await _load(page);
+      } on ApiException catch (error) {
+        if (mounted) {
+          context.appError('批量确认未提交，所有订单保持原状态：${error.message}');
+        }
+      } catch (_) {
+        if (mounted) {
+          context.appError('批量确认失败，所有订单保持原状态，请稍后重试');
+        }
+      }
     } on ApiException catch (error) {
-      if (mounted) {
-        context.appError('批量确认未提交，所有订单保持原状态：${error.message}');
-      }
+      if (mounted) context.appError('整批尚未提交：${error.message}');
     } catch (_) {
-      if (mounted) {
-        context.appError('批量确认失败，所有订单保持原状态，请稍后重试');
-      }
+      if (mounted) context.appError('未能核对整批审核占用和内容，请重新选择后重试');
     } finally {
+      await claim.releaseAll();
+      if (identical(_batchClaim, claim)) _batchClaim = null;
       if (mounted) setState(() => _batchBusy = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final returnPath = widget.changesOnly
+        ? '/finance/sales-order-changes'
+        : '/finance/sales-order-confirmations';
+    ref.listen(listRefreshTickProvider('finance:sales-order:$returnPath'), (
+      _,
+      _,
+    ) {
+      if (mounted) _refreshCurrent();
+    });
     final permissions = ref.watch(currentPermissionsProvider);
     final allowed =
         ref.watch(isSuperAdminProvider) ||
@@ -365,7 +468,7 @@ class _FinanceSalesOrderConfirmationPageState
         permissions.contains(Perm.salesOrderFinanceConfirm);
     return Scaffold(
       appBar: UtenAppBar(
-        title: '销售订单财务确认',
+        title: widget.changesOnly ? '销售订单修改' : '销售订单财务确认',
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: '/finance'),
         ),
@@ -702,7 +805,15 @@ class _FinanceSalesOrderConfirmationPageState
       width: 260,
       value: (item) => item.financeRejected
           ? '已驳回：${item.financeRejectedReason ?? '未注明原因'}'
+          : item.changeCount > 0
+          ? '修改后待确认 · ${item.changeCount} 次变更'
           : '待财务确认',
+      cellColor: (context, item) =>
+          item.changeCount > 0 && !item.financeRejected
+          ? (Theme.of(context).brightness == Brightness.dark
+                ? UtenColors.warning.withValues(alpha: 0.18)
+                : UtenColors.warningBg)
+          : null,
     ),
   ];
 
@@ -954,6 +1065,17 @@ class _CompactTaskRow extends StatelessWidget {
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
+                      if (item.changeCount > 0 && !item.financeRejected) ...[
+                        const SizedBox(height: UtenSpacing.s4),
+                        Text(
+                          '订单修改 ${item.changeCount} 次：请在详情页「修改清单」'
+                          '复核每行 以前→现在 数量',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: UtenColors.warningText,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                       if (item.financeRejected) ...[
                         const SizedBox(height: UtenSpacing.s4),
                         Text(

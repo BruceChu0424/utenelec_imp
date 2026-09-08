@@ -30,5 +30,8 @@ public record SalesOrderFinancePendingDto(
         BigDecimal clientOutstanding,
         boolean financeRejected,
         String financeRejectedReason,
-        OffsetDateTime financeRejectedAt) {
+        OffsetDateTime financeRejectedAt,
+        /** 上次财务确认之后的改量处数（>0 = 「改后待确认」，审核页有修改清单）。 */
+        long changeCount,
+        long financeReviewRevision) {
 }

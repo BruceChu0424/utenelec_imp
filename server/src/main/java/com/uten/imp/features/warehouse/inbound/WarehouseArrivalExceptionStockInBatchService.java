@@ -64,6 +64,7 @@ public class WarehouseArrivalExceptionStockInBatchService {
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
     private final ObjectMapper objectMapper;
+    private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
 
     @Transactional
     @PreAuthorize("hasAuthority('warehouse_inbound:stock_in')")
@@ -87,14 +88,10 @@ public class WarehouseArrivalExceptionStockInBatchService {
             return replay(existing.resultJson());
         }
 
-        UUID batchId = UUID.randomUUID();
-        batches.insertPending(
-                batchId,
-                actorUserId,
-                actorEmployeeId,
-                normalized.idempotencyKey(),
-                normalized.requestHash(),
-                normalized.items().size());
+        var sources=arrivalControl.stockTargets(normalized.items().stream().map(NormalizedItem::exceptionId).toList());
+        var mutationGuard=mutationLocks.receipts(sources.values().stream().distinct()
+                .map(source -> new com.uten.imp.common.concurrency.ProcurementMutationFootprint.ReceiptRef(
+                        source.orderType(),source.receiptId())).toList());
 
         Map<UUID, Long> expectedVersions = new HashMap<>();
         for (NormalizedItem item : normalized.items()) {
@@ -108,6 +105,15 @@ public class WarehouseArrivalExceptionStockInBatchService {
         }
         locked.sort(LOCKED_ORDER);
         validateLocked(locked, expectedVersions);
+        for (var item : locked) {
+            var expected=sources.get(item.exceptionId());
+            if (expected==null || !Objects.equals(expected.orderType(),item.orderType())
+                    || !Objects.equals(expected.receiptId(),item.receiptId())) throw conflict("到货来源已变化，请刷新后重新选择");
+        }
+        mutationGuard.verifyUnchanged();
+        UUID batchId = UUID.randomUUID();
+        batches.insertPending(batchId,actorUserId,actorEmployeeId,normalized.idempotencyKey(),
+                normalized.requestHash(),normalized.items().size());
 
         LinkedHashMap<ReceiptKey,
                 List<WarehouseArrivalExceptionStockInBatchRepository.LockedException>> grouped =

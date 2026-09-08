@@ -4,6 +4,7 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
 import com.uten.imp.common.util.EmployeeNameResolver;
+import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.request.dto.RequestItemLine;
 import com.uten.imp.features.purchase.request.dto.RequestSaveRequest;
@@ -23,6 +24,8 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -102,6 +105,82 @@ class PurchaseRequestServiceUnitPolicyTest {
         assertEquals((short) 1, request.getStatus());
         verify(fixture.itemRepo).saveAll(List.of(item));
         verify(fixture.requestRepo).save(request);
+    }
+
+    // ---- V477 分解前数量修正：守卫契约 ----
+
+    @Test
+    void adjustItemQtyRejectsOrderedOrPendingOccupiedLines() {
+        Fixture fixture = new Fixture();
+        UUID requestId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+        PurchaseRequest request = new PurchaseRequest();
+        request.setId(requestId);
+        request.setStatus((short) 1);
+        PurchaseRequestItem item = new PurchaseRequestItem();
+        item.setId(itemId);
+        item.setRequestId(requestId);
+        item.setQty(new BigDecimal("10"));
+        item.setOrderedQty(new BigDecimal("4"));
+        when(fixture.requestRepo.findById(requestId))
+                .thenReturn(java.util.Optional.of(request));
+        when(fixture.itemRepo.findById(itemId))
+                .thenReturn(java.util.Optional.of(item));
+
+        ApiException ordered = assertThrows(
+                ApiException.class,
+                () -> fixture.service.adjustItemQty(
+                        requestId, itemId, new BigDecimal("6")));
+        assertTrue(ordered.getMessage().contains("已生成订货单"));
+
+        item.setOrderedQty(null);
+        Query pendingQuery = mock(Query.class);
+        when(pendingQuery.setParameter(anyString(), any())).thenReturn(pendingQuery);
+        when(pendingQuery.getSingleResult()).thenReturn(new BigDecimal("2"));
+        when(fixture.em.createNativeQuery(
+                org.mockito.ArgumentMatchers.contains(
+                        "procurement_order_approval_cases")))
+                .thenReturn(pendingQuery);
+        ApiException pending = assertThrows(
+                ApiException.class,
+                () -> fixture.service.adjustItemQty(
+                        requestId, itemId, new BigDecimal("6")));
+        assertTrue(pending.getMessage().contains("待财务审核"));
+    }
+
+    @Test
+    void adjustItemQtyUpdatesCleanLineAndReturnsRefreshedDetail() {
+        Fixture fixture = new Fixture();
+        UUID requestId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+        PurchaseRequest request = new PurchaseRequest();
+        request.setId(requestId);
+        request.setStatus((short) 1);
+        PurchaseRequestItem item = new PurchaseRequestItem();
+        item.setId(itemId);
+        item.setRequestId(requestId);
+        item.setQty(new BigDecimal("10"));
+        when(fixture.requestRepo.findById(requestId))
+                .thenReturn(java.util.Optional.of(request));
+        when(fixture.itemRepo.findById(itemId))
+                .thenReturn(java.util.Optional.of(item));
+        Query pendingQuery = mock(Query.class);
+        when(pendingQuery.setParameter(anyString(), any())).thenReturn(pendingQuery);
+        when(pendingQuery.getSingleResult()).thenReturn(new BigDecimal("0"));
+        when(fixture.em.createNativeQuery(
+                org.mockito.ArgumentMatchers.contains(
+                        "procurement_order_approval_cases")))
+                .thenReturn(pendingQuery);
+        when(fixture.itemRepo.findByRequestIdOrderByLineNoAsc(requestId))
+                .thenReturn(List.of(item));
+
+        var detail = fixture.service.adjustItemQty(
+                requestId, itemId, new BigDecimal("12.5"));
+
+        assertNotNull(detail);
+        assertEquals(0, new BigDecimal("12.5").compareTo(item.getQty()));
+        assertEquals(0, new BigDecimal("12.5").compareTo(
+                detail.getItems().getFirst().getQty()));
     }
 
     private static void stubMasterSnapshot(EntityManager em, UUID goodsId) {

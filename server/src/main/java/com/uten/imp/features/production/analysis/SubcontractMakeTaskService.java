@@ -62,13 +62,24 @@ public class SubcontractMakeTaskService {
             BigDecimal plannedQty,
             LocalDate needDate,
             String status,
+            String workshopStatus,
             List<String> allowedActions,
             java.time.Instant updatedAt,
             UUID preparationItemId) {
     }
 
     public record TaskPageRequest(
-            int page, int size, String status, String keyword, UUID analysisId) {
+            int page, int size, String status, String keyword, UUID analysisId, UUID taskId) {
+        public TaskPageRequest(int page, int size, String status, String keyword, UUID analysisId) {
+            this(page, size, status, keyword, analysisId, null);
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public TaskView task(UUID taskId) {
+        List<TaskView> items = tasks(new TaskPageRequest(1, 1, null, null, null, taskId)).getItems();
+        if (items.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "委外前置生产任务不存在或不可访问");
+        return items.getFirst();
     }
 
     @Transactional(readOnly = true)
@@ -78,6 +89,16 @@ public class SubcontractMakeTaskService {
         StringBuilder where = new StringBuilder("""
                 WHERE task.status IN ('ACTIVE','CANCELLED')
                 """);
+        // The subcontract queue is a shared dispatch pool, like its application
+        // list. Planning-only readers remain inside the production owner scope.
+        var actorScope = access.scope();
+        var readScope = access.nativeReadScope("analysis.maker_id", "visibleAnalysisOwners", actorScope);
+        if (!access.hasAuthority("subcontract_application:view")) {
+            where.append(" AND (").append(readScope.predicate()).append(")");
+        }
+        boolean canNotify = access.hasAuthority("production_material_analysis:view")
+                && access.hasAuthority("production_material_analysis:notify");
+        if (request.taskId() != null) where.append(" AND task.id = :taskId");
         if (request.analysisId() != null) {
             where.append(" AND task.analysis_id = :analysisId");
         }
@@ -90,7 +111,7 @@ public class SubcontractMakeTaskService {
                       OR item.source_ref ILIKE :keyword)
                 """);
         }
-        String baseSql = """
+        String baseFrom = """
                 FROM preplan_subcontract_make_tasks task
                 JOIN goods ON goods.id = task.goods_id
                 LEFT JOIN colors ON colors.id = task.color_id
@@ -100,9 +121,29 @@ public class SubcontractMakeTaskService {
                   ON item.id = task.preparation_item_id
                 LEFT JOIN production_material_analyses analysis
                   ON analysis.id = task.analysis_id
-                """ + where;
+                """;
         var countQuery = em.createNativeQuery(
-                "SELECT COUNT(*) " + baseSql);
+                "SELECT COUNT(*) " + baseFrom + where);
+        // 2026-09-05 委外同构直下：委外部从下达一刻起就要能看到车间进度。
+        // 车间进度取委托行（preparation_item）名下计划段的状态聚合
+        // （production_execution_segments.plan_id → production_plans.material_analysis_item_id）；
+        // 仅列表查询挂 LATERAL（每页 20 行），计数查询不挂，避免大表全量展开。
+        String listFrom = baseFrom + """
+                LEFT JOIN LATERAL (
+                    SELECT COUNT(*) AS total,
+                           COUNT(*) FILTER (WHERE seg.status = 'WAITING') AS waiting,
+                           COUNT(*) FILTER (WHERE seg.status IN
+                               ('READY','DISPATCHED','IN_PROGRESS','COMPLETED')) AS working
+                    FROM production_execution_segments seg
+                    JOIN production_plans p
+                      ON p.id = seg.plan_id
+                     AND p.material_analysis_item_id = task.preparation_item_id
+                     AND p.is_deleted = FALSE
+                     AND p.is_canceled = FALSE
+                    WHERE seg.is_deleted = FALSE
+                      AND seg.status NOT IN ('CANCELLED','REVERSED')
+                ) workshop ON TRUE
+                """;
         var listQuery = em.createNativeQuery("""
                 SELECT task.id, task.analysis_id, analysis.status,
                        item.source_ref,
@@ -123,11 +164,23 @@ public class SubcontractMakeTaskService {
                        ), 0),
                        item.delivery_date,
                        task.status, task.updated_at,
-                       task.preparation_item_id
-                """ + baseSql + " ORDER BY task.updated_at DESC NULLS LAST, task.id");
+                       task.preparation_item_id,
+                       COALESCE(workshop.total, 0),
+                       COALESCE(workshop.waiting, 0),
+                       COALESCE(workshop.working, 0), analysis.maker_id
+                """ + listFrom + where
+                + " ORDER BY task.updated_at DESC NULLS LAST, task.id");
+        if (!access.hasAuthority("subcontract_application:view")) {
+            readScope.bind(countQuery);
+            readScope.bind(listQuery);
+        }
         if (request.analysisId() != null) {
             countQuery.setParameter("analysisId", request.analysisId());
             listQuery.setParameter("analysisId", request.analysisId());
+        }
+        if (request.taskId() != null) {
+            countQuery.setParameter("taskId", request.taskId());
+            listQuery.setParameter("taskId", request.taskId());
         }
         if (request.status() != null && !request.status().isBlank()) {
             countQuery.setParameter("statusFilter", request.status());
@@ -157,11 +210,34 @@ public class SubcontractMakeTaskService {
                         : com.uten.imp.common.util.NativeValueConverters
                                 .toLocalDate(row[17]),
                 Objects.toString(row[18], ""),
-                allowedActions(decimal(row[15]), Objects.toString(row[18], "")),
+                workshopStatus(decimal(row[12]), decimal(row[13]), decimal(row[14]),
+                        ((Number) row[21]).longValue(), ((Number) row[22]).longValue(),
+                        ((Number) row[23]).longValue(), Objects.toString(row[18], "")),
+                canNotify && access.canWrite((UUID) row[24], actorScope)
+                        ? allowedActions(decimal(row[15]), Objects.toString(row[18], ""))
+                        : List.of(),
                 row[19] == null ? null : toInstant(row[19]),
                 (UUID) row[20])).toList();
         return new PageResponse<>(content, page, size, total,
                 (int) Math.ceil((double) total / size));
+    }
+
+    /**
+     * 车间进度口径（委外部视角，2026-09-05 委外=自制同构直下）：
+     * 已全额通知委外 → 已完工入库待通知 → 车间生产中（含派工/开工/完工收尾段）
+     * → 车间正在等物料（全部执行段处于待料 WAITING）→ 正在通知车间生产
+     * （刚下达，尚未形成执行段）。CANCELLED 透传。
+     */
+    private static String workshopStatus(BigDecimal required, BigDecimal produced,
+            BigDecimal notified, long total, long waiting, long working, String status) {
+        if ("CANCELLED".equals(status)) return "CANCELLED";
+        if (notified.signum() > 0 && notified.compareTo(required) >= 0) {
+            return "FULLY_NOTIFIED";
+        }
+        if (produced.signum() > 0) return "PRODUCED";
+        if (working > 0) return "IN_PRODUCTION";
+        if (total > 0 && waiting >= total) return "WAITING_MATERIALS";
+        return "NOTIFYING_WORKSHOP";
     }
 
     private static List<String> allowedActions(BigDecimal available, String status) {
@@ -194,28 +270,43 @@ public class SubcontractMakeTaskService {
                     "幂等键长度必须为 8-128 字符");
         }
         String idempotencyKey = request.idempotencyKey().strip();
+        if (request.qty() == null || request.qty().signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "分批通知数量必须大于零");
+        }
+        BigDecimal qty = request.qty().setScale(4, java.math.RoundingMode.CEILING);
+        // Match analysis commands' header -> task lock order. Recheck receipts only
+        // after the task lock so concurrent identical commands replay one batch.
+        MaterialAnalysisService.AnalysisHeader header = lockTaskAnalysis(taskId);
+        access.requireWritable(header.makerId(),
+                "只能通知本人负责的物料分析委外任务", access.scope());
+        LockedTask task = lockTask(taskId);
         List<Object[]> replay = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                         SELECT batch.application_id, batch.application_item_id,
-                               batch.notify_qty, application.bill_no
+                               batch.notify_qty, application.bill_no, reversal.id
                         FROM preplan_subcontract_make_task_batches batch
                         JOIN subcontract_applications application
                           ON application.id = batch.application_id
+                        LEFT JOIN preplan_subcontract_make_batch_reversals reversal
+                          ON reversal.batch_id = batch.id
                         WHERE batch.task_id = :taskId
                           AND batch.idempotency_key = :idempotencyKey
                         """).setParameter("taskId", taskId)
                         .setParameter("idempotencyKey", idempotencyKey));
         if (!replay.isEmpty()) {
             Object[] row = replay.getFirst();
+            if (row[4] != null) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "该批通知已撤回，重新通知请使用新的操作请求");
+            }
+            if (qty.compareTo(decimal(row[2])) != 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "同一幂等键不能用于不同的分批通知数量");
+            }
             return replayResult(taskId, (UUID) row[0],
                     Objects.toString(row[3]), decimal(row[2]));
         }
-        LockedTask task = lockTask(taskId);
-        if (request.qty() == null || request.qty().signum() <= 0) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "分批通知数量必须大于零");
-        }
-        BigDecimal qty = request.qty().setScale(4, java.math.RoundingMode.CEILING);
         BigDecimal available = task.availableQty();
         if (qty.compareTo(available) > 0) {
             throw new ApiException(ErrorCode.CONFLICT,
@@ -227,6 +318,16 @@ public class SubcontractMakeTaskService {
                 currentUser.requireId());
         return replayResult(taskId, batch.applicationId(),
                 batch.billNo(), qty);
+    }
+
+    private MaterialAnalysisService.AnalysisHeader lockTaskAnalysis(UUID taskId) {
+        List<UUID> analysisIds = NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT analysis_id FROM preplan_subcontract_make_tasks WHERE id = :id
+                """).setParameter("id", taskId), UUID.class);
+        if (analysisIds.isEmpty()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "委外前置自制任务不存在");
+        }
+        return analyses.lockHeader(analysisIds.getFirst());
     }
 
     private NotifyResult replayResult(
@@ -242,35 +343,79 @@ public class SubcontractMakeTaskService {
             UUID batchId, UUID applicationId, String billNo) {
     }
 
-    /** 建申请 + 分配行 + 批次行 + 账本回写；调用方已锁任务并校验可通知量。 */
+    /** Called by the authorized analysis cancellation after its generated application is reversed. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void reverseNotificationBatchesForApplication(UUID applicationId, String reason) {
+        em.flush();
+        List<Object[]> batches = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT batch.id, batch.task_id, batch.notify_qty
+                FROM preplan_subcontract_make_task_batches batch
+                JOIN preplan_subcontract_make_tasks task ON task.id=batch.task_id
+                WHERE batch.application_id=:applicationId
+                  AND NOT EXISTS (SELECT 1 FROM preplan_subcontract_make_batch_reversals reversal
+                                  WHERE reversal.batch_id=batch.id)
+                ORDER BY task.id,batch.id
+                FOR UPDATE OF task,batch
+                """).setParameter("applicationId",applicationId));
+        if (batches.isEmpty()) return;
+        boolean activeOrders = Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS (
+                    SELECT 1 FROM subcontract_order_item_sources source
+                    JOIN subcontract_application_items application_item ON application_item.id=source.application_item_id
+                    JOIN subcontract_order_items item ON item.id=source.order_item_id
+                    JOIN subcontract_orders orders ON orders.id=item.order_id
+                    WHERE application_item.application_id=:applicationId
+                      AND orders.is_deleted=FALSE AND orders.status<>-1)
+                """).setParameter("applicationId",applicationId).getSingleResult());
+        if (activeOrders) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "该通知仍有关联委外订单，请先删除草稿或完整反向订货、出仓与回厂单据");
+        }
+        UUID actorId = currentUser.requireId();
+        for (Object[] batch : batches) {
+            int inserted = em.createNativeQuery("""
+                    INSERT INTO preplan_subcontract_make_batch_reversals
+                        (batch_id,task_id,qty,reason,created_by)
+                    VALUES(:batchId,:taskId,:qty,:reason,:actorId)
+                    ON CONFLICT(batch_id) DO NOTHING
+                    """).setParameter("batchId",batch[0]).setParameter("taskId",batch[1])
+                    .setParameter("qty",batch[2]).setParameter("reason",reason.strip())
+                    .setParameter("actorId",actorId).executeUpdate();
+            if (inserted==0) continue;
+            int updated = em.createNativeQuery("""
+                    UPDATE preplan_subcontract_make_tasks
+                    SET notified_qty=notified_qty-:qty,version=version+1,updated_at=now(),updated_by=:actorId
+                    WHERE id=:id AND status='ACTIVE' AND notified_qty>=:qty
+                    """).setParameter("qty",batch[2]).setParameter("id",batch[1])
+                    .setParameter("actorId",actorId).executeUpdate();
+            if (updated!=1) throw new ApiException(ErrorCode.CONFLICT,"委外通知冲销数量已变化，请刷新后重试");
+        }
+    }
+
+    /** 建申请、分配、批次及账本；调用方已锁分析和任务，人工入口已校验对象权限。 */
     private CreatedBatch createApplicationBatch(
             LockedTask task, BigDecimal qty, String idempotencyKey,
             UUID employeeId, UUID actorUserId) {
-        MaterialAnalysisService.AnalysisHeader header =
-                analyses.lockHeader(task.analysisId());
-        access.requireWritable(header.makerId(),
-                "只能通知本人负责的物料分析委外任务", access.scope());
-        ProductionSubcontractRequestPort.DraftResult result =
-                subcontractRequests.createProductionDraft(
-                        task.sourceLabel(), task.analysisId(), task.needDate(),
-                        task.warehouseId(),
-                        List.of(new ProductionSubcontractRequestPort.DraftLine(
-                                task.taskId(), task.goodsId(), task.colorId(),
-                                task.unitId(), qty, task.needDate(),
-                                "委外件前置自制已入库，分批通知委外")),
-                        employeeId, employeeId);
-        ProductionSubcontractRequestPort.DraftLineResult line =
-                result.lines().getFirst();
         // 每批通知建立独立的 SUBCONTRACT action 锚定申请：任务 action 的
         // (action_id, analysis_material_id) 唯一 allocation 已在任务外部化时占用，
         // 复用同一 action 会撞唯一键；新 action 以 CREATED+external 直接 INSERT
         // （不经 UPDATE 外部化握手，V250/V460 守卫语义不变）。
         List<Object[]> sourceAction = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
-                        SELECT action_group_key, generation, request_hash
-                        FROM preplan_supply_actions
-                        WHERE id = :id
-                        """).setParameter("id", task.supplyActionId()));
+                        SELECT source.action_group_key, latest.generation,
+                               source.request_hash, latest.id
+                        FROM preplan_supply_actions source
+                        JOIN LATERAL (
+                            SELECT id, generation FROM preplan_supply_actions candidate
+                            WHERE candidate.analysis_id = source.analysis_id
+                              AND candidate.action_group_key = source.action_group_key
+                              AND candidate.route = 'SUBCONTRACT'
+                            ORDER BY candidate.generation DESC
+                            LIMIT 1
+                        ) latest ON TRUE
+                        WHERE source.id = :id AND source.analysis_id = :analysisId
+                        """).setParameter("id", task.supplyActionId())
+                        .setParameter("analysisId", task.analysisId()));
         if (sourceAction.isEmpty()) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "委外前置自制任务的备料动作不存在，请刷新后重试");
@@ -283,7 +428,17 @@ public class SubcontractMakeTaskService {
                 "PREPLAN-SUPPLY-ACTION-V1", task.analysisId().toString(),
                 actionGroupKey, "SUBCONTRACT", Integer.toString(generation)));
         String actionIdempotency = "NOTIFY-" + PlanningPackageFingerprint.sha256(
-                List.of(idempotencyKey));
+                List.of(task.taskId().toString(), idempotencyKey));
+        ProductionSubcontractRequestPort.DraftResult result =
+                subcontractRequests.createProductionDraft(
+                        task.sourceLabel(), task.analysisId(), task.needDate(),
+                        task.warehouseId(),
+                        List.of(new ProductionSubcontractRequestPort.DraftLine(
+                                task.taskId(), task.goodsId(), task.colorId(),
+                                task.unitId(), qty, task.needDate(),
+                                "委外件前置自制已入库，分批通知委外")),
+                        employeeId, employeeId);
+        ProductionSubcontractRequestPort.DraftLineResult line = result.lines().getFirst();
         em.createNativeQuery("""
                 INSERT INTO preplan_supply_actions (
                     id, analysis_id, warehouse_id, goods_id, color_id, unit_id,
@@ -312,7 +467,7 @@ public class SubcontractMakeTaskService {
                 .setParameter("actionGroupKey", actionGroupKey)
                 .setParameter("businessKey", businessKey)
                 .setParameter("generation", generation)
-                .setParameter("predecessorId", task.supplyActionId())
+                .setParameter("predecessorId", source[3])
                 .setParameter("requestHash", Objects.toString(source[2], ""))
                 .setParameter("documentId", result.applicationId())
                 .setParameter("documentNo", result.billNo())
@@ -432,6 +587,24 @@ public class SubcontractMakeTaskService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterFinishedInboundApproved(
             UUID stockDocumentId, UUID warehouseId) {
+        // The warehouse action owns this internal callback. It is not a manual
+        // planning command and must not require the warehouse user to own the analysis.
+        List<UUID> analysisIds = NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT DISTINCT task.analysis_id
+                FROM stock_document_items stock_item
+                JOIN production_plan_items production_item
+                  ON production_item.id = stock_item.upstream_item_id
+                JOIN production_plans production_plan ON production_plan.id = production_item.plan_id
+                JOIN preplan_subcontract_make_tasks task
+                  ON task.preparation_item_id = production_plan.material_analysis_item_id
+                 AND task.analysis_id = production_plan.material_analysis_id
+                WHERE stock_item.doc_id = :documentId AND task.status = 'ACTIVE'
+                ORDER BY task.analysis_id
+                """).setParameter("documentId", stockDocumentId), UUID.class);
+        Map<UUID, UUID> analysisOwners = new java.util.LinkedHashMap<>();
+        for (UUID analysisId : analysisIds) {
+            analysisOwners.put(analysisId, analyses.lockHeader(analysisId).makerId());
+        }
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                 SELECT task.id, stock_item.id,
@@ -537,11 +710,12 @@ public class SubcontractMakeTaskService {
         }
         // 满批自动通知：produced ≥ required 且仍有已产未通知量。
         for (Map.Entry<UUID, BigDecimal> entry : producedAfterByTask.entrySet()) {
-            autoNotifyIfComplete(entry.getKey(), actorId);
+            autoNotifyIfComplete(entry.getKey(), actorId, analysisOwners);
         }
     }
 
-    private void autoNotifyIfComplete(UUID taskId, UUID actorUserId) {
+    private void autoNotifyIfComplete(
+            UUID taskId, UUID actorUserId, Map<UUID, UUID> analysisOwners) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT task.id, task.analysis_id, task.analysis_material_id,
                        task.supply_action_id, task.preparation_item_id,
@@ -575,8 +749,12 @@ public class SubcontractMakeTaskService {
                         : toInstant(row[13]).atZone(
                                 com.uten.imp.common.time.BusinessTime.ZONE)
                                 .toLocalDate()));
-        String idempotencyKey = "SC-MAKE-AUTO:" + taskId + ':'
-                + decimal(row[11]).stripTrailingZeros().toPlainString();
+        Number batchCount = (Number) em.createNativeQuery("""
+                SELECT COUNT(*) FROM preplan_subcontract_make_task_batches WHERE task_id=:taskId
+                """).setParameter("taskId",taskId).getSingleResult();
+        // Historical batch count is monotonic even after reversal; newly produced
+        // replacements must not collide with a reversed batch's old notified total.
+        String idempotencyKey = "SC-MAKE-AUTO-V2:" + taskId + ':' + batchCount.longValue();
         Number exists = (Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM preplan_subcontract_make_task_batches
                 WHERE task_id = :taskId AND idempotency_key = :idempotencyKey
@@ -584,13 +762,14 @@ public class SubcontractMakeTaskService {
                 .setParameter("idempotencyKey", idempotencyKey)
                 .getSingleResult();
         if (exists.longValue() > 0) return;
-        try {
-            createApplicationBatch(task, available, idempotencyKey,
-                    currentUser.requireEmployeeId(), actorUserId);
-        } catch (ApiException ex) {
-            // 分析被他人锁定/取消等瞬时冲突不阻断入库主事务；由计划部手动分批补通知。
+        UUID ownerEmployeeId = analysisOwners.get(task.analysisId());
+        if (ownerEmployeeId == null) {
+            // Legacy ownerless analyses remain explicit manual remediation tasks;
+            // do not silently attribute their request to a warehouse employee.
             return;
         }
+        createApplicationBatch(task, available, idempotencyKey,
+                ownerEmployeeId, actorUserId);
     }
 
     /**
@@ -623,6 +802,7 @@ public class SubcontractMakeTaskService {
                                 + "与订货后再红冲成品入库");
             }
             if (decimal(row[4]).compareTo(qty) < 0) {
+                BigDecimal remaining = qty.subtract(decimal(row[4]));
                 em.createNativeQuery("""
                         UPDATE stock_reservations
                         SET released_qty = qty, status = 1,
@@ -640,7 +820,7 @@ public class SubcontractMakeTaskService {
                         WHERE id = :id
                           AND produced_qty >= :qty
                           AND notified_qty <= produced_qty - :qty
-                        """).setParameter("qty", qty)
+                        """).setParameter("qty", remaining)
                         .setParameter("actorId", actorId)
                         .setParameter("id", taskId).executeUpdate();
                 if (updated != 1) {

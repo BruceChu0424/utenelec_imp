@@ -12,17 +12,20 @@
 //  - ItemDto：超集含全字段（orderItemId 出货/退货；outItemId 退货专属；shipped/returned 订货回写；
 //    costAmount 出/退；parcel/carton 出货类；solution/responsible 退货专属）。
 import 'package:flutter/material.dart';
+import '../../../shared/models/decimal_text.dart';
 
 /// 销售单据类型。pathSegment 对齐后端 /api/sales/{quotes|orders|shipments|other-shipments|returns}。
 enum SalesDocType {
   quote('quotes'),
   order('orders'),
   shipment('shipments'),
+  customerShipment('customer-shipments'),
   otherShipment('other-shipments'),
   returnDoc('returns');
 
   const SalesDocType(this.pathSegment);
   final String pathSegment;
+  bool get isShipment => this == shipment || this == customerShipment;
 
   static SalesDocType? tryByPath(String seg) {
     for (final type in SalesDocType.values) {
@@ -224,8 +227,8 @@ bool salesShipmentLocksDraftEdit({
   required String? warehouseWorkStatus,
 }) =>
     documentStatus == kSalesStatusDraft &&
-    financeAudit == 1 &&
-    warehouseWorkStatus == SalesWarehouseWorkStatus.pendingPick;
+    warehouseWorkStatus != null &&
+    warehouseWorkStatus != SalesWarehouseWorkStatus.pendingPick;
 
 class ShipmentFinanceAuditInfo {
   const ShipmentFinanceAuditInfo({
@@ -241,7 +244,22 @@ class ShipmentFinanceAuditInfo {
     this.overFloor,
     this.availablePrepaymentOriginal,
     this.availablePrepaymentLocal,
+    this.reviewRevision,
+    this.contentHash,
+    this.billingMode,
+    this.directPurpose,
+    this.freeReason,
+    this.commercialSnapshot,
+    this.previousCommercialSnapshot,
   });
+
+  final int? reviewRevision;
+  final String? contentHash;
+  final String? billingMode;
+  final String? directPurpose;
+  final String? freeReason;
+  final String? commercialSnapshot;
+  final String? previousCommercialSnapshot;
 
   final String? shipmentId;
   final int? financeAudit;
@@ -261,19 +279,35 @@ class ShipmentFinanceAuditInfo {
   factory ShipmentFinanceAuditInfo.fromJson(Map<String, dynamic> json) =>
       ShipmentFinanceAuditInfo(
         shipmentId: _text(json['shipmentId']),
+        reviewRevision: (json['reviewRevision'] as num?)?.toInt(),
+        contentHash: _text(json['contentHash']),
+        billingMode: _text(json['billingMode']),
+        directPurpose: _text(json['directPurpose']),
+        freeReason: _text(json['freeReason']),
+        commercialSnapshot: _text(json['commercialSnapshot']),
+        previousCommercialSnapshot: _text(json['previousCommercialSnapshot']),
         financeAudit: (json['financeAudit'] as num?)?.toInt(),
         clientName: _text(json['clientName']),
         salesPaymentType: _text(json['salesPaymentType']),
         settlementMethodId: _text(json['settlementMethodId']),
         settlementMethodCode: _text(json['settlementMethodCode']),
         settlementMethodName: _text(json['settlementMethodName']),
-        outstanding: _text(json['outstanding']),
-        creditFloor: _text(json['creditFloor']) ?? '0',
-        overFloor: _text(json['overFloor']),
+        outstanding: _text(json['outstandingExact'] ?? json['outstanding']),
+        creditFloor:
+            _text(json['creditFloorExact'] ?? json['creditFloor']) ?? '0',
+        overFloor: _text(json['overFloorExact'] ?? json['overFloor']),
         availablePrepaymentOriginal:
-            _text(json['availablePrepaymentOriginal']) ?? '0',
+            _text(
+              json['availablePrepaymentOriginalExact'] ??
+                  json['availablePrepaymentOriginal'],
+            ) ??
+            '0',
         availablePrepaymentLocal:
-            _text(json['availablePrepaymentLocal']) ?? '0',
+            _text(
+              json['availablePrepaymentLocalExact'] ??
+                  json['availablePrepaymentLocal'],
+            ) ??
+            '0',
       );
 
   static String? _text(Object? value) {
@@ -412,8 +446,50 @@ class ShippableLine {
   );
 }
 
+class CustomerShipmentWorkflow {
+  const CustomerShipmentWorkflow({
+    this.kind,
+    this.billingMode,
+    this.purpose,
+    this.freeReason,
+    this.revision = 0,
+    this.salesConfirmed = false,
+    this.canConfirmSales = false,
+    this.financeRejected = false,
+    this.financeRejectionReason,
+    this.financeReviewPending = false,
+  });
+  final String? kind;
+  final String? billingMode;
+  final String? purpose;
+  final String? freeReason;
+  final int revision;
+  final bool salesConfirmed;
+  final bool canConfirmSales;
+  final bool financeRejected;
+  final bool financeReviewPending;
+  final String? financeRejectionReason;
+  bool get isDirect => kind == 'DIRECT_CUSTOMER';
+  bool get isFree => isDirect && billingMode == 'FREE';
+  factory CustomerShipmentWorkflow.fromJson(Map<String, dynamic> json) =>
+      CustomerShipmentWorkflow(
+        kind: json['shipmentKind'] as String?,
+        billingMode: json['billingMode'] as String?,
+        purpose: json['directPurpose'] as String?,
+        freeReason: json['freeReason'] as String?,
+        revision: (json['reviewRevision'] as num?)?.toInt() ?? 0,
+        salesConfirmed: json['salesConfirmed'] == true,
+        canConfirmSales: json['canConfirmSales'] == true,
+        financeRejected: json['financeRejected'] == true,
+        financeRejectionReason: json['financeRejectionReason'] as String?,
+        financeReviewPending: json['financeReviewPending'] == true,
+      );
+}
+
 class SalesDocListItem {
   const SalesDocListItem({
+    this.exactDecimals = const {},
+    this.shipmentWorkflow = const CustomerShipmentWorkflow(),
     required this.id,
     this.billNo,
     this.billDate,
@@ -452,6 +528,8 @@ class SalesDocListItem {
     this.financeConfirmed = false,
     this.financeRejected = false,
   });
+  final CustomerShipmentWorkflow shipmentWorkflow;
+  final Map<String, String> exactDecimals;
 
   final String id;
   final String? billNo;
@@ -503,6 +581,8 @@ class SalesDocListItem {
   factory SalesDocListItem.fromJson(
     Map<String, dynamic> json,
   ) => SalesDocListItem(
+    exactDecimals: readExactDecimalTexts(json),
+    shipmentWorkflow: CustomerShipmentWorkflow.fromJson(json),
     id: json['id'] as String,
     billNo: json['billNo'] as String?,
     billDate: json['billDate'] as String?,
@@ -546,6 +626,7 @@ class SalesDocListItem {
 
 class SalesDocItem {
   const SalesDocItem({
+    this.exactDecimals = const {},
     required this.id,
     this.lineNo,
     this.goodsId,
@@ -602,6 +683,7 @@ class SalesDocItem {
   });
 
   final String? id;
+  final Map<String, String> exactDecimals;
   final int? lineNo;
   final String? goodsId;
   final String? goodsCodeSnapshot;
@@ -655,6 +737,7 @@ class SalesDocItem {
   final int? priority;
 
   factory SalesDocItem.fromJson(Map<String, dynamic> json) => SalesDocItem(
+    exactDecimals: readExactDecimalTexts(json),
     id: json['id'] as String?,
     lineNo: (json['lineNo'] as num?)?.toInt(),
     goodsId: json['goodsId'] as String?,
@@ -773,6 +856,8 @@ class ScarceReservation {
 
 class SalesDocDetail {
   const SalesDocDetail({
+    this.exactDecimals = const {},
+    this.shipmentWorkflow = const CustomerShipmentWorkflow(),
     required this.id,
     this.legacyId,
     this.billNo,
@@ -843,6 +928,8 @@ class SalesDocDetail {
     this.financeRejectedAt,
     this.financeRejectedByName,
   });
+  final CustomerShipmentWorkflow shipmentWorkflow;
+  final Map<String, String> exactDecimals;
 
   final String id;
   final int? legacyId;
@@ -947,6 +1034,8 @@ class SalesDocDetail {
       partialShipmentConfirmedAt!.isNotEmpty;
 
   factory SalesDocDetail.fromJson(Map<String, dynamic> json) => SalesDocDetail(
+    exactDecimals: readExactDecimalTexts(json),
+    shipmentWorkflow: CustomerShipmentWorkflow.fromJson(json),
     shipments: [
       for (final e in (json['shipments'] as List? ?? const []))
         SalesOrderShipmentRef.fromJson(e as Map<String, dynamic>),

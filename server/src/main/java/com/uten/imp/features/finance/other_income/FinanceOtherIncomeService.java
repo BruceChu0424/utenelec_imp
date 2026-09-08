@@ -94,7 +94,7 @@ public class FinanceOtherIncomeService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<FinanceOtherIncome> p = incomeRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+        return new PageResponse<>(p.map(this::toList).getContent(), p);
     }
 
     @Transactional(readOnly = true)
@@ -318,9 +318,9 @@ public class FinanceOtherIncomeService {
         o.setAccountId(req.getAccountId());
         o.setCounterpartAccountId(req.getCounterpartAccountId());
         o.setCurrencyId(req.getCurrencyId());
-        if (req.getExchangeRate() != null) o.setExchangeRate(req.getExchangeRate());
-        if (req.getAmountOriginal() != null) o.setAmountOriginal(req.getAmountOriginal());
-        if (req.getAmountLocal() != null) o.setAmountLocal(req.getAmountLocal());
+        if (req.getExchangeRate() != null) o.setExchangeRate(com.uten.imp.common.util.FinancialExactAmount.rate(req.getExchangeRate(),"汇率"));
+        if (req.getAmountOriginal() != null) o.setAmountOriginal(com.uten.imp.common.util.FinancialExactAmount.require(req.getAmountOriginal(),"实际原币金额"));
+        if (req.getAmountLocal() != null) o.setAmountLocal(com.uten.imp.common.util.FinancialExactAmount.book(req.getAmountLocal(),"本币金额"));
         applyReceiptMethod(req, o);
         applyOperator(req.getOperatorId(), o);
         o.setRemark(req.getRemark());
@@ -373,10 +373,10 @@ public class FinanceOtherIncomeService {
             it.setDepartmentId(l.getDepartmentId());
             it.setCounterpartAccountId(l.getCounterpartAccountId());
             it.setCounterpartName(l.getCounterpartName());
-            it.setQty(l.getQty());
-            it.setPrice(l.getPrice());
-            it.setAmountOriginal(l.getAmountOriginal());
-            it.setAmountLocal(l.getAmountLocal());
+            it.setQty(l.getQty()==null?null:com.uten.imp.common.util.FinancialExactAmount.quantity(l.getQty(),"数量"));
+            it.setPrice(l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"单价"));
+            it.setAmountOriginal(com.uten.imp.common.util.FinancialExactAmount.optional(l.getAmountOriginal(),"实际原币金额"));
+            it.setAmountLocal(l.getAmountLocal()==null?null:com.uten.imp.common.util.FinancialExactAmount.book(l.getAmountLocal(),"本币金额"));
             it.setSummary(l.getSummary());
             it.setRemark(l.getRemark());
             itemRepo.save(it);

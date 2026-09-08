@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/employee_api_models.dart';
 
@@ -51,10 +52,12 @@ Future<String?> showEmployeeChangePhoneDialog(
                 controller: controller,
                 keyboardType: TextInputType.phone,
                 maxLength: 11,
-                decoration: InputDecoration(
-                  labelText: '新手机号',
-                  hintText: '11 位中国大陆手机号',
-                  error: utenFieldError(error),
+                decoration: UtenInputDecoration(
+                  InputDecoration(
+                    labelText: '新手机号',
+                    hintText: '11 位中国大陆手机号',
+                    error: utenFieldError(error),
+                  ),
                 ),
                 onChanged: (_) => setState(() => error = null),
               ),
@@ -230,7 +233,7 @@ Widget _vehicleEditor(
                 child: TextFormField(
                   errorBuilder: utenTextFieldErrorBuilder,
                   initialValue: v.plateNo,
-                  decoration: deco('车牌号 *(如 粤T12345)'),
+                  decoration: UtenInputDecoration(deco('车牌号 *(如 粤T12345)')),
                   onChanged: (x) => v.plateNo = x,
                 ),
               ),
@@ -248,7 +251,7 @@ Widget _vehicleEditor(
                 child: TextFormField(
                   errorBuilder: utenTextFieldErrorBuilder,
                   initialValue: v.vehicleType,
-                  decoration: deco('车型(非必填)'),
+                  decoration: UtenInputDecoration(deco('车型(非必填)')),
                   onChanged: (x) => v.vehicleType = x,
                 ),
               ),
@@ -257,7 +260,7 @@ Widget _vehicleEditor(
                 child: TextFormField(
                   errorBuilder: utenTextFieldErrorBuilder,
                   initialValue: v.brandModel,
-                  decoration: deco('品牌型号(非必填)'),
+                  decoration: UtenInputDecoration(deco('品牌型号(非必填)')),
                   onChanged: (x) => v.brandModel = x,
                 ),
               ),
@@ -270,7 +273,7 @@ Widget _vehicleEditor(
                 child: TextFormField(
                   errorBuilder: utenTextFieldErrorBuilder,
                   initialValue: v.color,
-                  decoration: deco('颜色(非必填)'),
+                  decoration: UtenInputDecoration(deco('颜色(非必填)')),
                   onChanged: (x) => v.color = x,
                 ),
               ),
@@ -279,7 +282,7 @@ Widget _vehicleEditor(
                 child: TextFormField(
                   errorBuilder: utenTextFieldErrorBuilder,
                   initialValue: v.remark,
-                  decoration: deco('备注(非必填)'),
+                  decoration: UtenInputDecoration(deco('备注(非必填)')),
                   onChanged: (x) => v.remark = x,
                 ),
               ),
@@ -343,10 +346,12 @@ Future<List<Map<String, dynamic>>?> showEmployeePhonesDialog(
                               child: TextFormField(
                                 errorBuilder: utenTextFieldErrorBuilder,
                                 initialValue: phones[i].label,
-                                decoration: const InputDecoration(
-                                  labelText: '标签',
-                                  isDense: true,
-                                  border: OutlineInputBorder(),
+                                decoration: const UtenInputDecoration(
+                                  InputDecoration(
+                                    labelText: '标签',
+                                    isDense: true,
+                                    border: OutlineInputBorder(),
+                                  ),
                                 ),
                                 onChanged: (x) => phones[i].label = x,
                               ),
@@ -357,10 +362,12 @@ Future<List<Map<String, dynamic>>?> showEmployeePhonesDialog(
                                 errorBuilder: utenTextFieldErrorBuilder,
                                 initialValue: phones[i].phone,
                                 keyboardType: TextInputType.phone,
-                                decoration: const InputDecoration(
-                                  labelText: '手机号',
-                                  isDense: true,
-                                  border: OutlineInputBorder(),
+                                decoration: const UtenInputDecoration(
+                                  InputDecoration(
+                                    labelText: '手机号',
+                                    isDense: true,
+                                    border: OutlineInputBorder(),
+                                  ),
                                 ),
                                 onChanged: (x) => phones[i].phone = x,
                               ),

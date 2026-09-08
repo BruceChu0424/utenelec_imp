@@ -1,246 +1,47 @@
 # 老库数据迁移 · 总索引
-> **当前共享源码候选（2026-09-04）**：迁移目录头为 **V476**，共 **438** 个迁移文件、
-> **438** 个唯一版本且无重号。V476 新增仓库主/子层级：`warehouses.parent_id` +
-> 一次性种子（仓库（14年版）=主仓，其余 5 仓挂子仓），主仓只作查询聚合（即时库存
-> 选它=子树汇总），一切单据/收发存/报工/物料分析必须落到具体子仓（前后端双重
-> 校验），见[迁移说明 92](92-V476仓库主子层级.md)。V475 权限面收口补遗：补 `finance.payables`（采购委外
-> 应付结算工作台）与 `quality.inspection-records`（品质检测记录）两个守卫页 surface
-> （V455「带路由守卫页面 100% 纳入目录」口径的漏网，零默认 grant，112→114 面），并按
-> V455 模式下线双端零引用孤儿码 `viewcontext:scoped`（无 @PreAuthorize 强制、无前端
-> 常量，存量授权一并清理；重置白名单版本门增至 V475/437）。V474 新增运行时直接超采公共在途追加账、订单级
-> exact/public 份额、仓库预计/实际去向投影与跨主仓 exact 闸门，并保留齐套器的
-> READY+WAITING 分批结果，见[迁移说明 91](91-V474运行时公共在途与入库去向.md)。V473 只以前向迁移把 `stock_doc:reverse_issue` 的权限目录
-> 文案统一为“取消生产领料出库”，不改权限 code、既有授权、兼容 API 或历史流水，见
-> [迁移说明 90](90-V473生产领料取消出库权限文案.md)。V471 保存“主领料仓 + 参与仓集合”，历史分析与旧形态写入口
-> 都归一为单主仓；参与仓只提供可调拨参考，不扩大齐套、预留或 DRAW。V472 把精确需求与
-> 公共超量拆账，后续分析以受容量锁和对象范围保护的显式 claim 采用公共在途，并登记
-> production_material_analysis:over_supply / production_material_analysis:claim_shared_future
-> 到权限目录、默认部门和 production.material-analysis 权限面。见
-> [迁移说明 89](89-V471-V472物料分析参与仓与公共在途认领.md)。目标库迁移、历史对账、
-> 岗位 UAT、恢复演练和签名发布均未完成，生产 **NO-GO**。下文旧段落中的“当前目录头”均为
-> 对应迁移时点的历史证据，不能覆盖本段 V475 头。
+> **当前正式目录：V532/491 (2026-09-08)**。V530补齐业务写入审计并修复已知旧触发器形状；V531使备用对象身份只读取主键列，不含INCLUDE附加列。最新审计31/31通过，原数据、审计及既有迁移字节保留，见[说明129](129-V530业务审计覆盖与稳定对象来源.md)。
+> **验证范围**：最新V532清库、旧导入SQL结构兼容、相关契约和双JAR包装复验通过，266 CLEAR/96 PRESERVE分类保留；实际服务器备份副本前向验证至V532，15,019个结构对象与全新建库一致，主档摘要保留。完整套件与后续增量证据、50万规模压力结果见[统一验收](../99-项目治理/2026-09-07-全平台本地审计与整改验收.md)。公司服务器尚未由本轮升级、清库或部署。
 >
-> **V470 生产执行工作台与报工即开工（2026-09-04）**：按最外层 analysis 聚合进行中，
-> 新车间任务页按主职/兼职/负责人/经理与有效权限求交；人工派工/确认开工从新入口下线，
-> 全量实发后直接可报工，首次创建日报与 `AUTO_START_ON_REPORT` 同事务；生产 DRAW 只能
-> 审核并出库一段式，首次报工前可取消出库、之后必须退料。见
-> [迁移说明 88](88-V470生产执行工作台与报工即开工.md)。
->
-> **V469 生产成品按明细分批登记送检（2026-09-04）**：前向解除 V430 的日报头唯一/整单
-> 全覆盖约束，保留来源行 UUID 全局唯一、追加式审计、幂等与 FQC/库存隔离；未选行继续待登记，
-> 旧登记零改写。见 [迁移说明 87](87-V469生产成品按明细分批登记送检.md) 与
-> [ADR-058 后置修订](../99-决策记录-ADR/ADR-058-生产成品仓库送检登记与库位快照.md)。
->
-> **当前共享源码候选(2026-09-04)**：迁移目录头为 V467，共 429 个迁移文件、429 个唯一版本且无重号。V467 委外权益委托触发器放开双路线（ADR-062 修订二配套修复）：V337 的 `fn_check_preplan_make_entitlement_delegation` 头触发器写死 MAKE 形状（route='MAKE'/PREPLAN_MAKE_TASK/MAKE_COMPONENT），b0a62cd1 让有子层委外「下达委外」也走 `preplan_make_entitlement_delegations` 迁移 exact 权益后，真库 INSERT 被 23514「invalid preplan MAKE entitlement delegation」拒绝、下达事务整体回滚（2026-09-04 事故，行为锁定在 `SubcontractMakeDelegationRouteGuardPostgresTest`）；本迁移把配对放开为 route→(document_type, child_source_type) 双路线（MAKE 与 SUBCONTRACT 各自配对、未知路线仍失败关闭），事件侧触发器与总量校验器本就形状无关不动；不加表、表计数不变，见 [迁移说明 86](86-V467委外权益委托触发器放开双路线.md)。V466 IQC 退回补货单通道收口：`v_preplan_buy_action_slice_progress`（V463 sources 分摊版）的 `open_order_qty` 计入「已退回不合格量」（`procurement_iqc_rejection_cases.return_recorded_at` 非空且四终态内），使原订单退回后的重新欠货计入在途——配合应用侧下达余量扣除（已取消 IQC 行动对应原订货单欠货），消除「原订单预计到货重开等待补货」与「物料分析取消行动邀请重新下单」双通道并存的重复补货；行动本体按 V250 追加式契约保持取消不复活；不新增表，见 [迁移说明 85](85-V466IQC退回补货单通道收口.md)。V465 ordered_qty 守卫与「放开超采」对齐（ADR-068/069 遗留修复）：`trg_purchase/subcontract_request/application_ordered_guard` 换成「只禁负数」的 `fn_guard_ordered_qty_non_negative`（触发器沿用原名），单行超采订货在财务批准回写 ordered_qty 时不再被 23514 拒绝；不新增表，见 [迁移说明 84](84-V465超采守卫对齐.md)。V463/V464 订货行多来源锚定（同货品合并生成订货单，ADR-069）：新增 `purchase_order_item_sources` / `subcontract_order_item_sources` 两张来源分配表（一条合并订货行锚定多条申请明细，SUM(alloc_qty)=行数量、历史行回填单来源 alloc=行数量、FIFO 分摊末位吸收超额），替换 `v_procurement_decomposition_tasks`（待财务占用按 sources 汇总）与 `v_preplan_buy_action_slice_progress`（切片进度经 sources 分摊）两视图，新增两个 FIFO 分摊 SQL 函数；V464 重发 `business_data_reset()` 孪生登记两新表（CLEAR 222→224、总数 318→320），ops/reset_business_data.sql 与 BusinessDataResetSqlContractTest 同步，见 [迁移说明 83](83-V463-V464订货行多来源锚定.md)。V462 工作台「清空业务数据」函数 `business_data_reset()`（应用内孪生：与 ops/reset_business_data.sql 同一份 318 表清单、清空+归零+校验+全员下线单事务；不加表，重置白名单版本门增至 V462/424），见 [迁移说明 82](82-V462工作台清空业务数据函数.md) 与 ADR-067。V461 恢复 V458 丢失的 `SUBCONTRACT_PREPARATION` 来源类型：V458 重写 `production_material_analysis_item_source_type_chk` 时基于 V234 基线、漏带 V436 增补值，委外备料链路（SubcontractPreparationCoordinator 等 7 个服务仍在写）真库 INSERT 被 23514 拒绝（迁移测试 fixture 即触发），仅恢复枚举值、不加表、表计数不变，见 [迁移说明 81](81-V461恢复委外备料来源类型.md)。V460 委外前置自制任务外部化守卫补漏：放行 (route='SUBCONTRACT', external_document_type='SUBCONTRACT_MAKE_TASK') 组合进入 V250 的 route×type CHECK 与 action/allocation 外部化握手守卫（真库「采用委外」被 23514 拒绝的根因修复），不加表、表计数不变，见 [迁移说明 80](80-V460委外前置自制任务外部化守卫补漏.md)。V459 部门定向审核待办弹窗基础：新增兼职部门表 `employee_secondary_departments`（PRESERVE，权限合成并入兼职部门链、per-user auth_version 即时吊销）；`notices` 加聚合定位与办结撤回四列（历史行全 NULL=永不撤回、零行为变化）与待办部分索引；`notice_user_states` 加 `snoozed_until`（稍后再看）；登记 `review_inbox:view` 与 `reviews.inbox` 面（110→111）——零默认 grant、不重写历史行，见 [迁移说明 79](79-V459部门定向审核待办弹窗基础.md)。V458 委外先做后审账本：新增 `preplan_subcontract_make_tasks` / `preplan_subcontract_make_task_batches` 两张业务事实表（reset 白名单 CLEAR，计数 315→317）。V457 货品后模镶件编号：`goods` 新增 `rear_insert_code varchar(100)`（模具编号之后的独立字段，解决模具师傅换错后模镶件），存量按老备注（老库 `B_Goods.Paper`→`goods.paper`）保守解析「换后模X镶件 / 后模镶件用X」两类写法回填，备注原文一字不动，未点明后模的（换镶件/换6M镶件等）保持 NULL 留人工补录；`migrate_goods_data.sql` 同口径解析，老库重迁一致。V457 不新增业务表、零默认 grant，重置白名单增至 V457/419（V458 再增至 V458/420、V459 增至 V459/421、V460/V461 再增至 V461/423、V463/V464 增至 V464/426、V465 增至 V465/427、V466 增至 V466/428、V467 增至 V467/429）。空库 V1→V458 与重置 PostgreSQL 测试已过（2026-09-02 补验 V458：`V238ToCurrentSyntheticMigrationPostgresTest` 等四个 DB 测试全绿、420 个迁移校验通过；V459 席位验证随本批合入执行）；目标库迁移、岗位 UAT、恢复与签名发布均未完成，生产 **NO-GO**。V457 见 [迁移说明 77](77-V457货品后模镶件编号.md)。V456 页面内授权入口接线见 [迁移说明 76](76-V456页面内授权入口接线.md)；V455 权限目录收口见 [迁移说明 75](75-V455权限目录收口.md)。
->
-> **V452/V453 供应商默认结算方式与账期维护**：V452 给供应商主档加 UUID 权威默认结算方式（镜像 V285 客户契约：精确 legacy 回填、price_style 同步触发器、活动引用守卫）；V453 登记结算方式管理页权限与权限面，账期策略（V330 五列）首次获得在线维护入口，系统角色 CASH/MONTHLY 口径锁定不可在线改。两者不新增业务表、零默认 grant；目标库迁移、岗位 UAT、恢复与签名发布均未完成，生产 **NO-GO**，见 [迁移说明 72](72-V452-V453供应商默认结算方式与结算方式账期维护.md)。
->
-> **V458 委外先自制后通知与分批通知**：有子层级的分析来源委外件在物料分析下达时不再
-> 立即生成委外申请——先在原分析内创建 `SUBCONTRACT_MAKE` 前置自制任务（子树委托），
-> 成品实收入库进入 `preplan_subcontract_make_tasks` 账本并以 `SUBCONTRACT_PREPARE_TASK`
-> 专属预留扣住库存；满批自动、未满批手动按可通知量分批生成委外申请并通知委外部。
-> 订货行以 `PREPARED_OUTBOUND` 批准即待出仓（预留自任务转入）；直下单放宽为分批出仓。
-> 见 [迁移说明 78](78-V458委外先自制后通知与分批通知.md) 与
-> [ADR-062](../99-决策记录-ADR/ADR-062-委外先自制后通知与分批通知.md)。
->
-> **V451 IQC 入库库位学习**：`warehouse_goods_place_preferences` 新增 `source_kind`（FINISHED_ARRIVAL / IQC_STOCK_IN）与可空 `source_iqc_batch_id`，互斥约束按类型二选一；IQC 确认入库新鲜路径在同事务 upsert 偏好并回写主档库位，幂等重放不重复计数，同维度歧义不学习。修复「上次入库库位带不出来」的断链，见 [迁移说明 71](71-IQC入库库位学习.md)。
->
-> **V443 销售货款后置口径**：共享目录现为 405 个唯一迁移。V443 增加客户月结/现金/定金人工标签、旧 `B_Client.Credit→credit_floor` 保守回填、全客户出货财审版本与数据库状态守卫，并以追加式 `sales_shipment_finance_release_events` 冻结每次 `RELEASED/REVOKED` 的审核时风险快照；历史不回填。财审后才通知仓库，最终 `SHIPPED` 上海业务日才立完整 AR/起算到期日，应收汇总的超铺底额保留负数。任何早于最终 V443 字节的 PostgreSQL 结果都须在事件表/不可变守卫合入后重跑；公司目标库、人工分类、历史对账和恢复仍未执行，见 [迁移说明 69](69-V443销售货款客户标签全客户发货财审与铺底口径.md)。
-> **V444 品质检测记录读路径索引**：V444 是共享目录第 406 个唯一迁移，只在既有 IQC/FQC 追加式事件账上增加全局 newest-first 记录流索引，不建第二套质量事实、不更新历史行；其后 V445 增加仓库单据历史权限。这里的 406/407 是对应迁移时点记录，当前目录头以上方 V447/409 为准。V444 是否已应用仍须以目标库 `flyway_schema_history`、非空回放和真实查询计划为准，见[品质检测记录页](../03-页面/品质检测记录页.md)。
->
-> **V446/V447 委外与仓库后置口径**：V446 只允许品质人员放行，仓库人员以独立权限、独立员工和实际库位确认后才写库存与正式供给。V447 对分析来源的前置自制按相对 BOM UUID 路径和货品/颜色/单位 UUID 建立 append-only TAKEOVER/RESTORE、future claim 与 OUT/IN exact 事件；原树已接管子件不再重复下达，未审批申请不算确认在途，仓库实际入库后精确权益自动转入目标分析。见 [迁移说明 70](70-V447委外前置自制跨分析权益交接.md) 与 [ADR-059](../99-决策记录-ADR/ADR-059-委外目标件出仓与前置自制准备.md)。
-> V427 新增生产日报有序参与人业务表 `production_daily_report_workers`，V428 增加登录会话审计关联，
-> V429 前向修复新参与人表审计触发器；V429 时零基线目录为 284 张父表、`CLEAR 192 / PRESERVE 92`。
-> V430 新增生产成品仓库送检登记头/行，把新 inspection 的仓库来源从生产日报移到仓库登记，
-> 并冻结逐行 `place_snapshot`；登记不录实收、不写库存或 `iqty`，PASS 后仍走 V338 点收。
-> V430 时点尚未更新的零基线分类，现已由下方 V436 治理基线后置覆盖。
-> 详见 [迁移说明 64](64-生产成品仓库送检登记与库位快照.md) 与
-> [ADR-058](../99-决策记录-ADR/ADR-058-生产成品仓库送检登记与库位快照.md)。
-> V431 后置增加 `warehouse + goods + color` 的共享库位建议偏好；它不回填历史、不覆盖
-> `goods.stock_place`、不改变库存分账，见 [迁移说明 65](65-仓库货品库位偏好.md)。
-> V432–V434 分别增加生产 FQC 全部通过批次、仓库到货异常批量入库与生产成品批量点收事实；
-> V435 增加实际重量流水及数量/重量双事实，见
-> [数量与重量治理边界](../99-项目治理/2026-08-30-数量与重量计量全链路审计及修复边界.md)。
-> V442 在此基础上增加按货品 UUID + 业务场景隔离的计量学习 profile、已审/过账/红冲证据账、
-> 人工覆盖事件、旧表能力 registry、manifest 绑定画像和异常隔离；旧通用 Weight 无单位时只生成
-> PROVISIONAL 建议，不自动确认、不创建 WEIGHT_ONLY 库存事实。见
-> [计量学习与旧库自动推断决策](../99-项目治理/2026-08-31-计量学习与旧库自动推断决策.md)。
-> V436 把新委外单改为“目标件出仓；有子层级先完整自制”，并保留 V304 旧 BOM 子件行为为
-> `LEGACY_BOM_COMPONENT`，见 [迁移说明 66](66-委外目标件出仓与前置自制准备.md) 与
-> [ADR-059](../99-决策记录-ADR/ADR-059-委外目标件出仓与前置自制准备.md)。
-> V437 新增委外前置自制 view/start、委外分页商业字段和仓库出仓页精确 surface；它只写目录/页面关联、零部门/角色/个人/负责人 grant，不复制旧 receipt-price 授权。
-> V438 候选文件已整理为唯一当前名 `V438__procurement_commercial_snapshot_guard.sql`。它在采购/委外订货进入财务 `PENDING/APPROVED` 前校验活动币种、正汇率、0..100 税率、活动结算方式、头行金额公式和金额快照；财务审批存在后冻结商业头与明细集。既有 PostgreSQL 16 空库到 V438 及 `ProcurementCommercialSnapshotGuardPostgresTest` 7/7 证据仅适用于当时冻结候选，不能外推为 V440/V441 或目标库证据。
-> V439 将采购订货/退货/报表价格权限从 `purchase_receipt:price:view` 拆分为三个精确页面码，同样只写目录/surface 且零默认 grant。旧自定义账号需权限管理员显式补授；未授权即服务端脱敏。PostgreSQL 16 空库 V1→V439 成功应用 401 个迁移；三权限/三 surface/零 grant 正向与“同名占位已存部门 grant 时必须失败回滚”负向各 1/1。
-> V440 新增采购/委外 IQC 不合格独立 case/event/command 与补货 allocation：IQC FAIL 只追加 outbox，异步投影冻结来源、数量、AP 与金额；实物退回后才允许确认完整负 AP 贷项或零金额无贷项结案。待检、部分处置和未达 `CREDIT_CONFIRMED/CLOSED_NO_CREDIT` 的失败件冻结付款、普通抵销及月结；专用贷项仅按来源正 AP 当前余额受控抵销，剩余负 AP 保持开放。迁移以 fail-fast 拒绝任何尚未逐行治理的历史 `PARTIAL/RESOLVED + FAIL`，并注册独立页面的 7 个零 grant 权限。
-> V441 将旧 `subcontract_material_issue:create` 标为 inactive/unassignable，保留历史 grant 作为审计并推进授权 epoch；正常新授权无法取得该权限，旧 POST 当前令牌走 403，仍携带历史 authority 的过渡调用在方法体固定 409。既有发料单的查看/编辑/删除/审核/红冲不受影响，新单只从仓库委外出仓任务生成。
-> 详见 [迁移说明 67](67-V437-V439委外采购权限目录与商业快照.md) 与 [迁移说明 68](68-V440-V441-IQC拒收财务闭环与旧委外手工新建退役.md)。V440 聚焦非 PG 61/61、PostgreSQL 16/16 已通过，空库可到 V441；这些结果不替代公司目标非空库、历史 FAIL 逐行对账、财务/仓库/品质岗位 UAT、恢复与部署回读，生产继续 **NO-GO**。
-> V440 当前业务清理分类已同步为 **293 张 = CLEAR 201 / PRESERVE 92**；两张 V436 新表
-> `subcontract_outbound_preparation_commands`、`subcontract_outbound_issue_reservation_allocations`
-> 与四张 V440 IQC case/event/command/replacement 表均归 CLEAR，并已进入 post-sweep 显式审计映射。审计覆盖、reset 契约和 V436 静态迁移契约
-> 定向测试 14 + 5 + 9（共 28）全部通过；这只证明源码治理契约一致，不授权在任何环境执行清理。
-> V442 目录存在时新增 8 张表：4 张业务派生 profile/line/evidence/decision 归 CLEAR，
-> 4 张单位治理/来源 registry/迁移画像/异常证据归 PRESERVE，因此静态完整目录为
-> **301 张 = CLEAR 205 / PRESERVE 96**；reset 同时兼容 V442 全部不存在，但拒绝只出现部分表。
-> **V425 当前为未授权 NO-GO 候选**：它会清空 `audit_log` 与冷归档 `audit_log_archive` 并
-> `RESTART IDENTITY`，既永久删除调查证据，又让旧导出/工单引用过的审计 ID 被新日志复用。本次需求没有
-> 授权清空任何环境。当前可丢弃本机开发库已有 V425 history，因此旧迁移必须保持不可变；正式 Spring 与
-> 独立 migrator 会在其它已有 history 的环境于 V425 前失败关闭，仅 0-history fresh chain 技术上可继续，
-> 且不构成清空授权。未注册 callback 的其它 Flyway 入口禁止；目标状态仍 NO-GO。详见
-> [迁移说明 63](63-V425审计日志全新开始.md)。
-> V426 只前向强化 `ZERO_MATERIAL / DIRECT_MAKE` 的计划行、物料分析行与货品/颜色/单位谱系，
-> V426 不授权跨越或执行尚未获准的破坏性 V425；未逐环境独立批准 V425 时必须停在 V424，V426 同样
-> 保持 **NO-GO**。
-> V424 审计日志降噪与中文化：通知 4 表（`notices`/`notice_user_states`/`notice_acknowledgments`/
-> `notice_blessings`）、业务/附件事件发件箱、账户月度流水汇总与 4 张幂等指令表退出审计触发器覆盖，
-> 批准的系统轮询/管道行为不再铺入主活动；人工通知与 HR 任务按钮使用事务一致的显式事件。通用页面
-> `TaskClaimHandle/TaskClaimSession` 自动 claim/release 仍保留证据，重复持有标为 `task_renew(自动协调)`；
-> 未获用户具体授权前不得继续移除。财务/安全/权限等底层证据仍可按 Request ID 下钻。页面先选人员 UUID 与
-> 北京时间单日/最长 31 天，未选择不加载，匿名安全事件走独立范围，审计同步导出
-> 最多 10,000 条。详见
-> [迁移说明 62](62-V424审计日志降噪与中文化.md)。
-> V423 下线货品「生产 BOM 策略」（删除 `goods.production_bom_policy`）与计划级 BOM 例外放行
-> （删除 `production_plans.bom_override_reason/by`），重写执行段 ZERO_MATERIAL 证据触发器并退役
-> `production_material_analysis:bom_override`、`production_plan:forward_rd` 两个权限点，
-> 见 [ADR-057](../99-决策记录-ADR/ADR-057-下线生产BOM策略与计划级例外放行.md)。
-> V420 建立 BUY 生产需求 exact 与公共安全库存补库的分账结构/只读投影；第二采购明细写命令已经
-> 业务显式授权且仅限员工在数量框确认后执行，SUBCONTRACT/MAKE 保持 NO-GO，见
-> [ADR-056](../99-决策记录-ADR/ADR-056-计划前生产需求与公共安全库存补库分账.md)。
-> V421 把即时库存金额权威切换到 `stock_balances.amount_local`，历史负/越界成本先写审计再修复，
-> 并增加应用与数据库双门禁，见 [ADR-055](../99-决策记录-ADR/ADR-055-即时库存台账金额与货品成本完整性.md)。
-> V422 前向冻结安全 action 单位快照并阻止公共 safety item 进入 demand allocation。当前开发库
-> 已成功应用 V420；V421 曾因生成列显式写入失败并完整回滚，修正后已在 V420 备份恢复克隆演练通过；
-> V422 已通过空库和核心分账 PostgreSQL 测试；当前开发库随后成功应用 V421/V422、JPA 校验和
-> liveness/readiness 均通过。该本机证据不能外推为公司目标库已升级。
-> 完整备份、checksum、测试与七个物料分账对账见
-> V407 为新收款增加 `settlement_authority_version=1`：AR 原币结算毛额、本位币毛额、真实账户币种/入账、
-> 扣除或另付费用、`fee_bearer=NONE/COMPANY` 承担方、公司直收/外贸代理结汇、`BASE_PER_SETTLEMENT` 汇率方向、来源/生效时间、银行入账时间、
-> 银行/代理单号、合作外贸公司 UUID/名称快照和创建幂等键分别冻结。V1 明细 `writeOff=0`；历史 V0
-> 有费收款不猜测、不自动升级。V408 将 `finance_reconciliations` 收口为全局 append-only 原币流水，新增
-> `posting_seq/entry_kind/reversal_of_id/account_currency_id/amount_local`，红冲追加镜像 `REVERSAL`，并用
-> `v_account_balance_integrity` 暴露缓存/流水差异。完整月份由可重建 `account_flow_monthly_summaries` 汇总，起始月仍从原始账本取尾段，`v_account_flow_monthly_integrity` 逐月核对。完整口径见
-> [ADR-053](../99-决策记录-ADR/ADR-053-多币种收款毛额净额与追加式账户流水.md)。
-> V1 `RECEIPT` 总账凭证同样不可删除；红冲在当前业务月追加关联 `RECEIPT_REV`，
-> `v_receipt_expected_gl_entries` 用冻结科目/金额拒绝“平衡但公式错”的原凭证，`v_receipt_gl_integrity` 暴露缺凭证、错金额、缺反向或不镜像异常；deferred `receipt_flow_terminal_guard` 拒绝收款终态单头缺真实账户流水。收款已移出可删除的期间重建集合。
-> V407 另以固定 UUID 创建收款银行手续费、收款汇兑损益和应收控制叶子，只为仍未映射的
-> `BANK_FEE_EXPENSE/FX_GAIN_LOSS/AR_CONTROL` 补 `style_id`，不覆盖任何既有已复核 UUID 映射。
-> 精确前向文件顺序是 `V407__finance_receipt_settlement_authority.sql`、
-> `V408__append_only_account_flow_and_integrity.sql`、`V416__finance_migration_exception_queues.sql`、
-> `V417__finance_payment_command_idempotency.sql`；已经执行的 V407/V408 不得修改，只能继续新增前向迁移。
-> V416 新增 V0 收款/GL 和旧账户流水异常队列，且要求新 V1 外部证据、金额公式、maker-checker 以及新流水
-> 来源 UUID/启用账户币种/本位币快照。V417 为付款创建保存 maker 范围幂等键和请求哈希，编辑要求
-> `expectedVersion`；同键异内容或陈旧版本均返回冲突。
-> V400 只对 `legacy_id IS NOT NULL AND currency_id IS NULL` 的旧账户按既有规则桥接：
-> `OFFSHORE` → 唯一使用中、未删除的 `currencies.legacy_id=3` 美金 UUID，其它 legacy 账户 →
-> 唯一使用中、未删除的 `currencies.legacy_id=1` 人民币 UUID；显式 UUID、在线/手工账户不推断，
-> 缺失/多匹配或桥接后活动账户仍非法均 SQLSTATE `23514` 回滚。本地只读实测 27 行（26+1）不是目标库
-> 事实。美金币种参考汇率 0 不影响账户原币余额、流水或余额核对；美元账户记美元，人民币账户记人民币，
-> 不同币种不直接相加。外币非零余额调整另由财务显式提供本位币 `localDelta`，不读取币种主档参考汇率。
-> V401 以 `local_amount_basis` 区分人民币同值、财务显式外币本位币金额和零差额；既有 V400 行保留旧依据
-> 仅供历史重放，新批次不得继续使用参考率路径。
-> V402 用数据库 INSERT 守卫禁止新写 `LEGACY_REFERENCE_RATE`；V403 将本位币身份绑定到唯一币种 UUID
-> 的 `is_base_currency` 标记，并校验新余额行 basis。币种编号、名称和参考汇率不再参与本位币身份判断。
-> V404 强制每条新调账明细的币种 UUID 等于账户当前币种 UUID，并共享锁定两者；V405 进一步禁止普通
-> 更新改变本位币主键 UUID。V406 为 `notice_user_states` 前向增加可空
-> `popup_acknowledged_at`，把关键事件居中弹窗的手动关闭与已读/待办完成分开；不猜测或回填历史用户
-> 是否看过弹窗。本机 Flyway 已执行的 V400–V408 字节必须保持不可变；后续修正只允许用 V416/V417 或更高前向版本，不能回改旧文件。
-> 目标库备份、可恢复非空副本、前后对账未完成，
-> 禁止改迁移/checksum 或 `flyway repair`，生产继续 **NO-GO**。
-> 财务增量证据：付款 PostgreSQL 在 V417/379 为 5/5；50 年账本/异常守卫在当前 V419/381 为 6/6，均 skipped=0。25 万条
-> EXPLAIN 使用月汇总与原流水 Index Only Scan、无原流水 Seq Scan，Execution Time 1.059 ms、Java/JDBC
-> 墙钟 20 ms，三类规模样本差异/异常均为 0。财务后端定向 74/74、Flutter 29/29、完整 analyze 0 issue；
-> 并发编辑停止后，当前稳定工作树完整 Maven 2,511 项为 0 failure/0 error、338 skipped；完整 Flutter 1,137/1,137。本轮 V418/V419 组合契约 73/73、PostgreSQL 15/15、Flutter 聚焦 26/26 和定向 analyze 也通过。尚未形成受保护签名 lineage，目标库/UAT 仍 **NO-GO**。详见 [迁移说明 61](61-V417财务迁移异常队列付款幂等与50年账本证据.md)。
-> V409–V415 完成日报命令并发去重、FQC 决定/放行守恒、仓库点收门禁、失败数量恢复授权及 SCRAP/REJECT 补产物料闭环；V418 令整单零实收保留 REJECTED 事实并生成全量同源 residual 重交单。V446 起采购/委外每次 IQC PASS 只形成合格待入库；仓库确认实际量和实际库位后，才按累计已入库差量写库存并推进正式供给，同单其它待检或待入库行不阻塞已确认切片。V419 到货登记同键同体回放、同键异体冲突。所有证据均不能外推为目标库已迁移。
-> **离线 bootstrap 冻结状态**：`server/legacy_migration/migrate.sh`、安全合同和说明已同步到 V426/388 与 `bootstrap-v10-v426`。这只表示源码校验常量一致；尚未生成并核验受保护 lineage 的 388 行 checksum manifest，也未在目标可恢复副本执行 bootstrap/对账/恢复，因此目标库和发布仍为 **NO-GO**。
-> 账户页面“全部使用中账户目标填 0”只是余额核对输入预设，保留期初、累计、流水和总账历史，禁用账户不参与。
-> 真正清业务历史的 `server/ops/reset_business_data.sql` 仅用于可丢弃本地/测试库：CLEAR 完成后以
-> `ops:reset_business_data` 审计身份把所有账户五个金额字段，以及客户/供应商期初往来、货品 legacy
-> 期初库存、`min_qty` 安全库存、20 项成本金额/费率和结算类别期初金额同事务归零，随后再记录
-> PRESERVE 计数基线并分别做全零断言。货品安全库存/成本的 NULL 也改为字面 `0`；客户/供应商/货品
-> `version` 与 `updated_at` 随真实变化推进，审计共用一次 request ID。货品 UUID/编号/名称/分类/单位/BOM、
-> `max_qty` 与业务售价 `price/a_price/price2` 不变。不得从页面调用，
-> 也不得用于公司目标库或生产。
->
-> **V399 阶段冻结证据（2026-08-26）**：空库 Testcontainers PostgreSQL 16.15 已从 V1 应用
-> **本机开发库零基线重置（现行口径）**：`server/ops/reset_business_data.sql` 按 CLEAR/PRESERVE 双目录在单事务内清零业务数据并刷新六张物化视图（仅限可丢弃本地/测试库；范围、三闸确认与门禁见脚本头部，禁止用于公司目标库或生产）。最近一次：2026-09-03 05:05（UTC-06:00）于 V461/423 按明确指示**不创建备份**执行；清前 14 张业务表共 74 行，清后 CLEAR 222 张全部 0 行、PRESERVE 96 张逐表行数与清前完全一致，五张库存事实表与六张月度物化视图均 0 行，27 个账户金额/完整性异常均为 0，客户/供应商/货品/结算类别期初及货品安全库存/成本预算异常均为 0，1 个归属业务表的 owned/identity 序列回到起点且 `is_called=false`，Flyway 仍为 V461/423、失败迁移 0、禁用用户触发器 0、其它客户端连接 0；固定提交 `d1e04629` 的 V461 脚本隔离 JUnit 契约测试 5/5（仅用缓存依赖执行 javac/java，未运行 Maven；本轮未执行迁移、未修改业务源码）。主档、人事、权限、审计、Flyway 与治理/编号高水位保留，ERP 应用保持停止；因本轮未建备份，不存在本轮恢复点；按要求未上传、未提交、未推送。2026-08-17 至 2026-09-01 间的历次清库流水（V399→V450 共 20 余次）已随 2026-09-01 文档清理移除，需要证据时查 git 历史。
-> 历史备份清理（2026-09-01）：按明确授权删除 `server/backups` 中 22 个旧备份和 PostgreSQL 容器 `/tmp` 中 7 个旧 dump；复查工作区备份文件 0、容器临时备份文件 0。删除不可恢复，不影响当前数据库卷。
-> 361 个迁移到 V399。V393–V397 收紧普通销售默认
-> 客户/销售范围，新增单客户只读共享、客户访问 CAS/事件、人员数据交接、离职并发责任守卫、全
-> `public` 审计 sweep 和 employee→user 固定锁序。V398 进一步移除部门/角色层的广泛
-> `client:assign`，统一 data scope owner 任职代际、单客户 grantee 与附件上传 current-user 守卫；新增带
-> source/default-target 代际的 offboarding event、handover 双端代际、requested/effective scope 数据库
-> 约束、employment history append-only 和全域责任恢复守卫。V399 为 `users` 增加独立 JPA 写入 CAS。
-> 当前本地证据：`FullChainEndToEndTest` 61/61、`DataHandoverPostgresTest` 10/10；Surefire
-> 538 suites / 2283 tests / 0 failures / 0 errors / 2 skipped，Failsafe packaging 1 suite / 2 tests /
-> 0 failures，合计 2285 test cases；Flutter 定向 40/40、全量 1007/1007、analyze 0 issues、Web release exit 0。
-> 详见 [迁移说明 59](59-客户访问与人员数据交接.md) 与
-> [ADR-050](../99-决策记录-ADR/ADR-050-客户访问与人员数据交接分层.md)。这些仍是本地源码候选，
-> 公司目标库迁移、历史对账、真实账号 UAT、恢复和部署均未执行；这组数字不覆盖 V400–V405，生产仍为 **NO-GO**。
-> **历史全目录复扫（2026-08-22，V375 时点）**：当时共享工作树目录最高 V375，共 337 个迁移文件、337 个唯一版本、无重号；下方“V329 当前头”段是页面权限子项目完成时的阶段快照，不再代表全目录头。生产相关新增 V337（MAKE exact entitlement 随 child ownership 交接）与 V338（生产 FINISHED_IN 仓库逐行实收、整单拒收、余量草稿与专用红冲）；V339–V375 为并行委外/供应商结算与审计候选，不改变 V337/V338 生产语义。V338 混合零/正实收只软删零源行并保留全量余量，整单零才 `REJECTED`；已点收单专用红冲 append-only 记录反向并重建 accepted slice replacement。生产仓库动作使用 inventory→plan/package/segment→document 锁序，权限与 `SUB_WH` 组织范围求交，当前无员工到具体仓库分配主档。V337/V338 均未部署目标库、未完成非空升级、仓库/车间岗位 UAT、恢复和签名发布，生产继续 **NO-GO**。见 [ADR-046](../99-决策记录-ADR/ADR-046-生产领料仓库点收报工归属与未来计件边界.md)。
->
-> **页面权限阶段快照(2026-08-22，V329 时点)**：当时目录最高 V329，共 309 个迁移文件、309 个唯一版本、无重号。V307–V314 是跨分析让料/权益守恒及审计链；V315–V325 是页面权限委派、来源隔离、代际与历史显式任职候选；V326 前向停用并永久禁止 V323 显式任职及其委派重新启用，同时增加中央覆盖 CAS、直属部门分页、姓名/工号 trigram 和负责人索引；V327 用中性 inactive tombstone 保留全局页取消覆盖后的单调版本；V328 以数据库 `permission_surfaces` + `permission_surface_permissions` 作为 85 个页面 surface 的唯一目录，登记十类动作、新增 204 个按钮级/端点级权限码，并用 207 条旧→新映射保真迁移四类旧授权来源；V329 增加当前员工 `full_name/code/id` 跨部门稳定分页部分覆盖索引并包含 `department_id/position_id`，不修改任何权限或负责人数据。V315–V328 旧字节不得改写。现行页面范围只认 `departments.manager_id`：普通负责人根覆盖未删除子树，总经办 `GM` 直属在册负责人覆盖公司；空部门筛选搜索全部授权范围，选中部门后取子树交集。上述仍是共享源码候选，目标非空库、公司 live history、V328 四类授权前后对账、历史 UNKNOWN 对账、真实负责人/对象范围 UAT、目标规模搜索/分页性能、恢复与发布均 **NO-GO**；当前全目录头只认本页顶部 V426/388。
-> V328 后补的 16 个生产码中，11 个为已有真实页面按钮和服务端门禁的 active/assignable 动作，覆盖执行分段、计划包与材料结清；另 5 个仅兼容历史端点，固定 `active=false/assignable=false` 且无 UI。生产细分已完成，不再是待授权决策。
-> 主数据再增加 `department:move` / `department:manager_assign`，两码均属 `org.department` surface，并已分别接入 Flutter 父级位置与负责人字段门禁；员工与附件、生产执行、主数据三组拆分均已完成并通过全量候选验收。
-> `rd_task:create` / `rd_task:assign` 因本轮无合法 UI 固定 `active=false/assignable=false` 并移出 Flutter 候选，只保留端点、旧授权映射和审计证据。附件对账两码只在中央目录，不挂 business surface；历史授权保真保留，但禁止新增授权和负责人转授。
-> 附件对账不是“严格 superAdmin-only”有效权限规则：既有历史非超管授权不得被文档抹除，后续处置须走显式对账与前向治理。
-> 最终本地候选验收：Maven 2058 项、0 failure/0 error（283 skip）；PostgreSQL 16-alpine 空库迁到 309 个版本，页面范围/代际 4/4、surface 目录 4/4，覆盖跨根/选中子树分页、总经办公司范围、V324 ABA 与 V329 无 Sort 索引计划；Flutter 848/848；全量 analyze 0 error/0 warning，仅保留 6 条既有 info。业务方已确认通用/生产源码默认开启，可通过 `UTEN_MANAGER_PERMISSION_DELEGATION_ENABLED=false` 紧急回退。公司目标库、历史授权对账、现场 UAT、目标规模性能、恢复与发布签字未完成前继续 **NO-GO**。
-> V328 兼容真实 V327 中缺少源码侧历史码 `production:view` 的数据形态：`production.plan` 与 `production.hub` 不再依赖该 tombstone；若 V328 的完整性门禁失败，PostgreSQL 会回滚本次迁移的结构、数据与 history 写入，必须修正候选并重新验证，禁止用 `flyway repair` 掩盖失败。
->
-> **客户预收当前目录头（2026-08-23）**：共享工作树迁移目录现为 V389，共 351 个版本化 SQL、
-> 351 个唯一版本且无重号。V379–V387 建立客户预收、普通收款逐订单 FIFO、预收转销、双币来源容量、
-> 活动订单与取消守卫；V388/V389 把 sales_orders.deposit 固定为不可改的 legacy 快照，新单只能零或空。
-> 正式 AR 仍只在 SHIPPED 形成。退款、历史多订单收款人工来源对账、目标非空库迁移、多岗位 UAT、
-> 恢复与签名发布未完成，生产继续 **NO-GO**。本段覆盖下方 V375/V329/V306/V289 等阶段目录数字，
-> 但不把源码候选写成目标库已升级。详见
-> [ADR-048](../99-决策记录-ADR/ADR-048-客户预收与销售订单资金事实分层.md)。
+> 新增迁移均向前追加：V492 保留销售订单完整修改前后快照和财审版本；V493 退役待审收件台；V494 将委外分批守恒限定到受影响任务；V495 补根委外直属物料归属；V496 补委外通知批次追加式冲销；V497 为未全通知前置任务建立热集合部分索引；V498 防止货品已有数量业务后改变基本单位。历史已审核订单、库存及账务记录不重写。
 
+| 说明 | 迁移 | 本次变化 |
+| --- | --- | --- |
+| [108](108-V492销售订单完整修改与财务版本复核.md) | V492 | 销售完整修改事实账、财审版本及清空策略同步 |
+| [109](109-V493待审收件台退役.md) | V493 | 停用旧收件台权限及页面权限面，旧链接回工作台 |
+| [110](110-V494委外分批通知守恒与并发.md) | V494 | 单任务守恒与分批并发校验 |
+| [111](111-V495根委外前置自制物料归属.md) | V495 | 根委外使用原树直属物料，不重复展开子件 |
+| [112](112-V496委外通知冲销与前置产出反向.md) | V496 | 已完整解除下游的通知批次可冲销，恢复前置产出反向资格 |
+| [113](113-V497委外待生产任务分页索引.md) | V497 | 未完成前置任务与正式委外业务统一分页，历史任务不进入热查询 |
+| [114](114-V498货品数量单位生命周期守卫.md) | V498 | 货品数量基准使用后固定，实际归一化与单位编辑互斥 |
+| [115](115-V499已结案订单的历史预收反向.md) | V499 | 历史预收合法反向不要求原订单重新开放，新登记/绑定/审批门禁保留 |
+| [116](116-V500实际平均库存价值核心.md) | V500 | 独立实际平均价值引擎、原出库退回及后补传播；后续业务接线和边界见126/127 |
+| [117](117-V501全局编号与前缀检索排序规则索引.md) | V501 | 修复 C 排序规则参数无法使用默认规则索引导致的历史全扫描 |
+| [118](118-V502委外目标件基本量与冻结换算率.md) | V502 | 委外目标件统一基本量，保留已执行历史换算事实 |
+| [119](119-V503批准后改量的来源份额与生产挂接对账.md) | V503 | 财审改量时精确同步原申请来源及生产挂接份额 |
+| [120](120-V504价值与来源改量事实清空策略.md) | V504 | 新增事实表与业务清空策略对应 |
+| [121](121-V505真实恢复库结构收敛.md) | V505 | 实际恢复库的触发器、索引及默认值差异前向收敛 |
+| [122](122-V506受控库存开账与历史余额待核对.md) | V506 | 实际成本开账与零库存历史残额分开核对 |
+| [123](123-V507退货反向与委外返修数量守恒.md) | V507 | 退货反向容量及委外返修不重复耗料 |
+| [124](124-V508执行段销量分摊有效容量.md) | V508 | 取消或反向的执行段释放占用，已完成产出仍计入容量 |
+| [125](125-V511客户零星发货统一流程.md) | V511 | 客户直发收费/免费使用统一销售、财审、仓库及实际发货事实 |
+| [126](126-V513至V526启动整合与业务守卫.md) | V513–V526 | 双币结清、实际物料流水、成本来源及银行字段整合；生产入库触发器按真实行类型分派 |
+| [127](127-V527-V528采购委外收货撤回.md) | V527/V528 | 未用入库按原保管区间反向；委外先恢复同源自有材料，再撤加工费/实物产出 |
+| [128](128-V529直接委外草稿准备.md) | V529 | SC-ORDER真实草稿行FK/快照、草稿内部生产、计划部门精确范围、送审/批准重核及真实出仓 |
+| [129](129-V530业务审计覆盖与稳定对象来源.md) | V530/V531 | 业务事实完整审计、已知形状修复、主键身份排除INCLUDE列及未知异形拒绝；原审计与数据保留 |
+| [130](130-V532销售来源UUID查询索引.md) | V532 | 按来源UUID定位往来台账，消除单张订单查询扫描50万条来源记录；业务数据与金额不变 |
 
+V532只为往来来源增加按来源类型、来源UUID、账本UUID查询的索引；不改表内数据、金额或业务规则。大数据实测发现的线性扫描及最新复验见[统一验收](../99-项目治理/2026-09-07-全平台本地审计与整改验收.md)。
 
-> **当前源码候选验证（V289/270，2026-08-15）**：启用 `UTEN_RUN_DB_TESTS=true` 的最终后端 `mvn clean verify` 生成 401 份 Surefire 报告、执行 1,714 项测试，0 failure / 0 error、2 项按门控跳过；Failsafe 双 JAR 打包门禁 2/2 通过。真实公司克隆演练因缺少带外数据库身份、备份摘要和批准引用而必须跳过；checksum exporter 默认拒绝写文件，但已另行显式执行 1/1 通过。PostgreSQL 16.14 隔离库已从空库应用全部 270 个唯一迁移到 V289，自动 V238→V289 非空演练通过；本地 PostgreSQL 16.4 又实际验证主 Boot JAR 从 V276/257 应用 13 条到 V289/270并健康返回 200，独立 migrator JAR 分别从空库执行 270 条、从 V276 执行 13 条，均先 validate、退出码 0且不回显凭据。双 JAR 的迁移集合与 270 行 Flyway checksum 清单一致。Flutter/Dart 已通过 734 个文件格式门禁、全量 analyze 0 issue、729/729 测试、4/4 Web 更新测试、729 个固定字体资产检查及同源无 CDN 的 Web release 构建；真实构建副本也通过 `stamp-web` 终态验证。部署链五组 Python 门禁共 909 项，0 failure / 0 error、5 项按真实 disposable-host 环境门控跳过；100 个部署 Python 文件、52 个 shell 脚本、隔离 systemd 合并图和官方模板合同均通过。本机真实 Docker 链已从受审源码包构建 15 个锁定分发包，生成并核验 lock、SHA-256 清单、SBOM 与证明，随后在断网双容器中完成 root-owned venv 安装校验及普通用户只读测试；updater 405 项通过，11 项仅按 root/真实主机条件门控跳过。正式 wheelhouse 仍必须由受保护 CI 或已验收构建机从冻结提交重新生成。以上均只是未提交工作树的本地源码候选证据，不代表真实公司克隆、公司目标库、签名发布或服务器安装已经完成，也不替代目标库预检、冲突与历史数据报告、金额/数量/来源对账、备份恢复演练及真实岗位 UAT。
-> **历史冻结验证（V287/268，已被当前 V289/270 目录头取代）**：加入 V288/V289 前的旧数字只对应当时冻结字节，不得冒充当前候选结果或目标环境证据。
+## 使用本索引
 
-> **非空升级演练边界**：`V238ToCurrentSyntheticMigrationPostgresTest` 自动从公司目标库最后一份只读版本基线构造非空 V238，再应用 V239–V289 并核对迁移数、业务表保留、用户身份、权限范围、收付款/库存合计、系统分类根、编号冲突、客户结算、PII 和现货借用审计合同。真实公司数据只允许在独立可恢复克隆上由 `CurrentHeadNonEmptyCloneRehearsalTest` 执行，并须显式绑定数据库名、PostgreSQL `system_identifier`、实际起点、备份 SHA-256、批准引用及两类规范化问题清单 SHA-256；该测试永不启用 Flyway `clean`。自动演练通过不等于公司克隆已演练，缺少带外证据时必须保持跳过。
->
-> **V282/V284/V286/V287 加密迁移与单版本切换**：V282 用 PostgreSQL 全局 advisory lock 串行化启动 runner 与两份受审 HR 导入；runner 以 100-id 小批逐员工锁住主行/sensitive 行，既有密文先解密对账、空目标才条件写。V286 只移除 `employee_sensitive.id_card_enc/phone_enc` 的数据库 `NOT NULL`，使 runner 可在锁内为尚未登记证件号/主手机号的 bootstrap/legacy 员工创建仅含实际存在扩展密文的行；V287 进一步要求主身份密文为空时相应 HMAC/last4 派生值也为空。二者都不合成身份值，也不放宽正常入职或补开账号校验。缺失行创建或重载失败、密文冲突、派生孤儿、失去所有权或最终旧明文残留非零仍失败关闭；完全没有旧扩展 PII 的员工无需被伪造一行。数据库拒绝无专用 backfill/legacy-import capability 的 7 个旧明文列写入，readiness 在 runner 完成前保持拒绝流量。V284 的 `profile_change_requests.value_encoding` 区分 `PLAIN`、`PGCRYPTO_V1`、`LEGACY_UNKNOWN`；敏感 INSERT/UPDATE 除领域密文外还必须有精确事务级 codec capability，旧实例/旧 JAR 无法审批新密文行。历史行逐行验证/加密，带版本密文按 keyring 选 key；无版本旧 pgcrypto 只试当前 key、不猜历史 key，失败保留原值并中止。迁移定向清除两种 profile-change target type 的 old/new/`review_comment` 审计副本。发布必须停写、排空全部旧实例后单版本切换，禁止滚动并存及旧 JAR 回滚；失败仅允许前向修复或恢复与旧版本完全一致的隔离验证备份。目标库仍须验证 7 列旧明文与 `LEGACY_UNKNOWN` 均为零、需要迁移扩展 PII 的员工均有可解密目标行、无主身份的扩展-only 行没有派生孤儿且不能开通账号、审计敏感键为零、旧 key 可读和完整审批回归。
->
-> **收付款类别引用守卫（V265/V267）**：类别层级/状态维护与费用、收入、收款其它费用、报销、账户、总账和资产子账引用共用 `PAYMENT_STYLE_HIERARCHY` 事务锁；数据库 BEFORE trigger 在加锁后按用途校验存在性、大类、启用状态和叶子节点。V267 将账户映射升级为 `accounts.style_id` UUID 真源并接入同一守卫；旧库财务导入只在单次事务使用受限兼容模式，并在提交前核对全部实际导入映射。详见 [26 §3.2](26-钱流管理-新库与迁移.md)与 [ADR-035](../99-决策记录-ADR/ADR-035-收付款类别分类页与财务引用一致性.md)。
->
-> **UUID 关系与主档编号后置治理（V257–V278）**：V257–V263 冻结销售、采购、仓库、委外明细的货品编号/名称快照；V264–V271 把报价转换、销售来源、总账来源、报工生成单、采购人员/部门等在线关系收敛到 UUID，单号/姓名/旧整数只作历史快照或受控导入影子；V272/V275 为各主档“未分类”根建立受保护 UUID 注册身份；V273 将 `B_PStyle` 与独立 `RecStyle` 分别迁入 `settlement_methods`、`finance_payment_methods`，不接 `payment_styles`；V274 明确仓库旧 `WorkID` 是操作员影子，当前车间只写部门 UUID；V275 补生产日报来源、库存调整命令 UUID 关系；V276 为业务主档编号建立同域终身保留；V277 收紧账户会计科目与类别关联账户 UUID；V278 建立 7 个固定系统过账角色到 `payment_styles.id` 的持久化映射。普通在线新建/编辑和总账过账不按编号、名称、路径或 `legacy_id` 反查生成关系。详见 [ADR-034](../99-决策记录-ADR/ADR-034-分类驱动业务编号与UUID关联.md)。这些仍是源码候选，目标库迁移、冲突预览、历史对账和多岗位 UAT 未完成。
->
-> **货品选择与 Excel 导入 UUID 边界**：`GoodsListItem` 直接返回颜色/单位 UUID，销售、采购、仓库、委外和生产新建单据直接透传，不再由 legacy 值二次换算。Excel `detect` 返回绑定操作者、文件 SHA-256、主档指纹和逐行 UUID/new-token 的五分钟一次性 `planId`；服务重启、过期、重复提交或文件/操作者/主档漂移时必须重新检测，`commit` 不按名称重新选“第一条”。
-> V253–V255 都与生产默认车间无关，生产的未来默认车间建议仍以 V192 `production_goods_workshop_preferences` 为唯一事实源。开发原库 `uten_imp`
-> 实测保持 V244/installed_rank 225，既有一次性隔离克隆已真实迁移到 V250/installed_rank 231；“233 个迁移到 V252”是更早时点的历史证据，当前候选目录事实与本地验证以顶部 V289/270 记录为准，
-> 仍不能据此宣称 V239–V289 已在公司目标环境验收。公司目标库仍保留 V238 既有只读证据。生产备份、V239–V289 正式迁移、全表及金额/数量/来源谱系
-> 对账尚未执行。统一证据和待办见
-> [新库上线与首装操作指引](../99-项目治理/2026-09-01-新库上线与首装操作指引.md)。
+本页保留当前迁移入口、首次离线导入的执行要求和模块清单，不再堆叠历次“当前版本”及旧测试数量。各版本的设计与兼容要求见对应迁移专册；实际数据库状态、最新验证和未完成事项以[统一验收记录](../99-项目治理/2026-09-07-全平台本地审计与整改验收.md)为准。旧设计不能覆盖[现行业务流程](../README.md)。
 
-> **货品批量导入审计增量（2026-08-11）**：V251 新增 `goods_import_batches` 与 `goods_import_creations`，分别保存导入/撤销状态和本批新建实体来源；两者都是解释、限定和追溯撤销的业务事实。V252 在不修改已应用 V251 的前提下重跑 fail-closed 全表审计覆盖，为缺失表补建唯一有效的 `trg_audit%` AFTER ROW I/U/D 触发器并复核全库契约。V252 只保护迁移后的新变化，不补造历史审计；公司目标库应用、`pg_trigger` 矩阵和导入/撤销岗位 UAT 未完成前不得视为生产放行。
-
-> **官网询盘增量（2026-08-11）**：V253 新增 `website_inquiries`、本表自己的审计触发器及 `webinquiry:view/manage` 权限。它不增加 `goods.default_workshop_department_id`，也不改变 V192 车间建议学习规则；后续生产结构修正必须使用 V254 或更高版本，禁止复用 V253。详见 [57-官网询盘汇入](57-官网询盘汇入.md)。
-
-> **官网询盘审计覆盖修正（2026-08-12）**：V254 以新的不可变迁移重跑完整 fail-closed audit sweep，并把 V253 的 `website_inquiries` 纳入合同测试；没有修改 V253，也不补造历史审计。目标库触发器矩阵、历史询盘事实和岗位 UAT 未验收前仍为生产 **NO-GO**。
-
-> **附件生命周期与审计覆盖（2026-08-12）**：尚未发布、未应用的 V255 将既有附件标记为 `LEGACY_UNVERIFIED`，增加隔离上传会话、扫描后提升、对象删除 Outbox、孤儿对账及审批权限；三个新表先安装唯一审计 trigger，再执行全库 fail-closed sweep。该迁移不会把历史对象冒充为已扫描；权威库副本演练、真实恶意文件扫描、双 Bucket/CORS/RAM、容量与恢复 UAT 完成前仍为生产 **NO-GO**。
-
-> **生产物料分析重构增量（2026-08-10）**：现行序列为 **V234/V237/V239 与 V247–V250**。V234 新增计划前需求、全树物料快照、供应动作、命令幂等和计划分批链接；V237 刷新新增公开业务表未来写入的审计覆盖且不补历史；V239 允许节点剩余 `required_qty` 在全量 plan-link claim 后合法归零，修复整批生成终态被旧 `> 0` 约束拒绝的问题；V247 冻结阶段/包装边及 start/finish/ship 三个 ready 字段，其中当前 ship 等于 finish 的参考投影而不是独立硬门槛；V248 冻结非线性精确执行需求，V249 显式区分 DEMANDED/ZERO_MATERIAL，V250 保护外部化申请/订货来源谱系。详见 [56-生产计划前需求与物料分析重构](56-生产计划前需求与物料分析重构.md)和本文 V247–V250 节。隔离 PostgreSQL 和真实 HTTP 证据不等于目标库迁移、历史对账或真实岗位/实物 UAT，生产写链路仍为 **NO-GO**。
-
-> **销售待收/应收/分批收款增量（2026-08-08）**：V236 增加 AR 收款拆分、行级汇率/冲销/余额快照和销售订单来源；V237 刷新审计覆盖；V238 在不改变已部署 V236 checksum 的前提下保守撤回不能证明安全的历史原币合成，并补启用的手续费/汇兑损益科目。详见 [20-销售管理](20-销售管理-新库与迁移.md) §十二、[26-钱流管理](26-钱流管理-新库与迁移.md) §十四与 [ADR-030](../99-决策记录-ADR/ADR-030-销售待收计划与正式应收分层.md)。目标库历史分类对账、回滚演练和财务 UAT 未完成前生产仍为 **NO-GO**。
->
-> **附件对象存储边界（2026-08-12）**：V240–V244 建立附件元数据、对象完整性与固定版本读取基础；V255 再增加隔离上传、扫描、提升、删除和对账状态机。OSS 模式必须使用不同的私有 staging/final Bucket：staging 强制 Versioning Off 与禁止覆盖，final 强制 Versioning Enabled 并固定 `versionId`；上传授权绑定用户、业务单据、key、类型和大小，下载和删除每次重新授权。目标 Bucket、CORS、RAM、AV、容量/告警、压测与恢复均未真实验收，上传开关继续关闭。
->
-> **附件生产发布门禁**：V255 默认把旧行置为 `LEGACY_UNVERIFIED`，只有 `CLEAN` 可列出/下载；不得仅回填 `storage_version` 就绕过扫描。源码已有 PostPolicy 大小前置门禁、staging→扫描→final、删除 Outbox、pending 配额和孤儿对账，但真实 AV、双 Bucket/CORS/RAM、恶意样本、告警、容量、压测、断网/掉电及恢复演练仍未完成，继续 **NO-GO**。
->
-> 云端架构是**本地唯一写主库 + 异步物理热备**，链路断开时公司继续写、远程整体 503，不存在双边写入后的自动合并。部署与真实故障矩阵见 [cloud Runbook](../../deploy/cloud/README-cloud.md) 和 [ADR-031](../99-决策记录-ADR/ADR-031-本地云端单主库部署架构.md)。当前真实目标库、阿里云 ECS/VPN/OSS、PITR 与故障切换尚未验收，不能表述为“填 `.env` 即可上线”，生产保持 **NO-GO**。
-
-<!-- PRODUCTION-PLANNING-V195-CURRENT -->
-> **历史记录：生产计划迁移增量（2026-08-02）**：以下 V190/V191–V195 状态只说明当时的迁移设计，
-> 不代表 2026-08-10 当前版本或目标库事实。V191 预排草案、V192 车间建议、V193 审计覆盖刷新、V194 MAKE 供给生命周期/三态人工放行/生产组织层级守卫，以及 V195 在 V194 后再次刷新审计覆盖，均为当时候选迁移，详见 [52-生产预排审核下达与车间建议](52-生产预排审核下达与车间建议.md)。新数据处置为 `READY`、`AUTO_WAIT`、`DEFERRED`；`release-defer` 只允许 DEFERRED 单向人工放行并立即重做齐套。车间、班组、负责人和日期由应用层与 V194 数据库守卫共同校验。V191–V195 全部禁止历史业务回填：不重算旧 BOM/计划、不补造计划包/子计划/供给分摊、不从旧单猜车间或延期状态；V193/V195 只保护迁移后的未来写入，不补历史审计。当前目标库/源码边界以本页顶部 2026-08-10 状态为准。
-
-> 本文件夹是「老库 `YTDQ_2023` → 新库」数据迁移的**执行中心**。
-> 看本 README 就懂：每个模块迁什么、代码在哪、怎么一键迁移、怎么加新模块。
-> 现行融合策略是“按模块幂等迁移、对账、统一切换写入口、老模块只读”，见
-> [ADR-017](../99-决策记录-ADR/ADR-017-模块化单体与异步旁路.md) 和
-
----
+| 目的 | 代码及文档入口 |
+|---|---|
+| 已有ERP版本的数据库结构升级 | `server/src/main/resources/db/migration`；[现役发布运行手册](../../deploy/simple/RUNBOOK.zh-CN.md) |
+| 首次导入YTDQ离线数据 | `server/legacy_migration/migrate.sh --bootstrap-all`；本页后续离线快照和Manifest要求 |
+| 开发/内部测试清空业务数据 | `server/ops/reset_business_data.sql`、`BusinessDataResetService`及迁移维护的`business_data_reset()`；保留主档、权限与审计，不等同于旧库业务导入 |
+| 当前目录兼容检查 | `server/src/test/java/com/uten/imp/migration/MigrationRehearsalSupport.java`、`LegacyBootstrapSchemaCompatibilityPostgresTest`、`BusinessDataResetServicePostgresTest` |
 
 ## 🔐 目标库迁移 authority 与停点
 
@@ -253,9 +54,7 @@
 5. **失败只前向或恢复**：失败时保留证据并保持入口关闭，只能新增更高版本的前向修复，或恢复与旧版本完全一致且已演练的备份；不得删约束、禁触发器、伪造回填或继续带病启动。
 
 （旧链的冻结签名 lineage、H01–H12 带外 authority、GITHUB_SIGNING/OOB 仪式已随 ADR-060 退役，相关 deploy/ 文档保留仅作参考。）
-上述步骤是 Flyway schema 升级；下面的 legacy bootstrap 是另一条首次离线业务数据导入链。两者必须分别有
-manifest、批准、对账和 terminal receipt，不能用“Flyway 成功”替代老库数据迁移，也不能用 `bootstrap-all`
-替代 V1→V426 的 schema history。当前 legacy bootstrap 源码校验已同步 V426/388，但目标 manifest、可恢复副本 bootstrap、业务对账和恢复演练仍未执行，不能把“常量一致”冒充迁移完成。
+上述步骤是 Flyway schema 升级；下面的 legacy bootstrap 是另一条首次离线业务数据导入链。两者分别记录来源、执行授权、对账和结果凭据，不能用“Flyway成功”代替旧业务数据导入，也不能用`bootstrap-all`代替完整schema history。导入映射版本和数据库迁移版本属于不同标识；本地兼容检查采用`MigrationRehearsalSupport`声明的当前目录，实际目标库数据导入与对账仍须单独留证。
 
 
 ## 🚨 执行边界：只有首次离线 bootstrap，不存在运行时增量迁移
@@ -264,7 +63,7 @@ manifest、批准、对账和 terminal receipt，不能用“Flyway 成功”替
 
 | 入口 | 覆盖范围 | 证据边界 | 可用于切流后追平 |
 |---|---|---|---|
-| `server/legacy_migration/migrate.sh --bootstrap-all` | 主档及采购、库存、销售、委外、生产、钱流等首次导入 | 源码校验已同步 V426/388 与 `bootstrap-v10-v426`；受保护 388 行 manifest、目标副本实跑、对账和恢复尚未完成；V426 不授权执行 V425 | **不可以** |
+| `server/legacy_migration/migrate.sh --bootstrap-all` | 主档及采购、库存、销售、委外、生产、钱流等首次导入 | 导入协调器仍冻结V426/388及`bootstrap-v10-v426`。较新结构上的SQL兼容检查不授权直接在新库执行该协调器；真实导入、manifest与对账另行验收 | **不可以** |
 | `/api/admin/dev/legacy-category-seed/*` | 四棵 classpath 分类样例 | 仅 `dev` profile 的页面/分类树调试 | **不可以** |
 
 运行中 ERP 不包含 SQL Server 驱动或老库 DataSource，也没有 `/api/admin/legacy-migration/all`。
@@ -297,7 +96,10 @@ bash server/legacy_migration/migrate.sh --bootstrap-all --confirm-destructive
 
 ---
 
-## 📦 模块清单
+
+离线 bootstrap 目标冻结为 V426/388，使用映射标识 `bootstrap-v10-v426` 和受保护 388 行 manifest，实际目标库的版本、脚本名、校验值必须与该 manifest 精确一致。V426 不授权跨越或执行尚未获准的破坏性 V425。该约束属于旧系统首次导入，不是当前ERP升级或业务清库的目录头；V531结构兼容专项不代表整套旧导入协调器已在V531执行。
+
+## 📦 首次旧库导入的模块清单
 
 > 表中每个 `migrate.sh` 目标均是脚本真实支持的单目标 flag；实际执行必须再传 `--confirm-destructive`
 > （或数据库名绑定的 `UTEN_CONFIRM_DESTRUCTIVE_MIGRATION`）。各目标必须分开调用，只有显式
@@ -467,6 +269,8 @@ server/src/main/resources/legacy-migration/     ← dev Java 路径读的 classp
 
 ## ✅ 校验
 
+以下按引入版本保留历史数据兼容要求；其中当时的候选状态、版本数量和流程描述不作为当前运行状态，现行操作统一查业务SOP。
+
 每个模块迁移后必须对账（详见各模块文档「校验」段）：总数恒等、主键（`legacy_id`）覆盖、
 关键金额/数量/状态汇总、外键/孤儿、抽样字段与业务单据。被跳过的数据必须进入 reject/quarantine
 并由业务批准处置；“脚本成功”或“源数−跳过数=目标数”不等于迁移验收通过。
@@ -523,7 +327,7 @@ authority、当前 UUID 关系、客户默认结算方式、仓库/车间映射�
 - V90 `chain_status=0` 且无有效预留的旧未结订单不得自动变为可发。新建 V187 出货必须提前 fail-closed；业务须逐订单行对账库存、历史已发和旧排产后显式激活。当前没有自动批量激活脚本，禁止为“让页面可用”伪造预留。
 - V187 不回写历史商业字段。新业务由应用从来源订单重建出货客户、币税/付款条件和行价格/金额；迁移不能替应用猜测或修复历史定价事实。
 
-目标库执行前后至少对账：四类销售主表/明细行数和数量金额汇总不变；V187 新列 null/枚举分布符合历史映射；V443 后旧 `LEGACY_PENDING` 草稿只能只读留证并从当前订单来源人工重建，新单和旧草稿都不能走旧审核；无权限用户看不到动作且直接调用 403。下文“171 个迁移至 V190、真实 PG 54/54”是 2026-08-01 的历史候选证据；V187–V189 与后续 V220 当前已包含在公司目标库 V238，但这仍不能替代历史全量对账、对象权限、岗位 UAT 和发布签字，销售生产门禁尚未关闭。
+目标库执行前后至少对账：四类销售主表/明细行数和数量金额汇总不变；V187 新列 null/枚举分布符合历史映射；V443 后旧 `LEGACY_PENDING` 草稿只能只读留证并从当前订单来源人工重建，新单和旧草稿都不能走旧审核；无权限用户看不到动作且直接调用 403。下文“171 个迁移至 V190、真实 PG 54/54”是 2026-08-01 的历史候选证据；V187–V189 与后续 V220 在该历史验证时点已包含于当时公司目标库V238，但这仍不能替代历史全量对账、对象权限、岗位 UAT 和发布签字，销售生产门禁尚未关闭。
 
 ### V188 销售仓库事件账迁移门禁
 
@@ -545,7 +349,7 @@ V190 不修改业务数据、不扫描回填历史 `audit_log`，也不能证明
 
 ### V196–V202 计划申请分解、订货财务审批与超量到货
 
-> 版本边界（2026-08-09 更新）：V191–V202 已包含在公司目标库当前 V238 以内；但迁移应用不替代
+> 历史版本边界(2026-08-09)：当时V191–V202已包含于公司目标库V238；但迁移应用不替代
 > 非空数据对账、恢复演练和真实岗位/实物 UAT，不能据此放行相应业务链。
 
 - `V196` 新建 `procurement_order_approval_cases/events`、`inbound_expectations/items`（原建 `workflow_responsibility_assignments` 已于 V229 删除，见 ADR-027）。生产物料分析按用户所选缺口下达采购/委外申请，业务端只读并跨申请选行、部分分解；一张订货单限一个供应商/委外商（订货仓库约束已随 V292/ADR-038 撤销）。V196 历史复合 `finance_order_approval:review` 已由 V328 停用并保真展开为 `:approve` / `:reject`。订货保存草稿后提交，通过才令订单 `status=1`、回写申请累计并生成预计到货。合格审核人只在精确 PENDING case 上临时读取隐藏详情；唯一写协议是 `{caseId,expectedVersion}` batch，决定、业务副作用和决定 receipt 同事务，case 结束后恢复普通对象范围。旧业务单笔路径只返回 fail-closed 提示。
@@ -589,13 +393,3 @@ allocation 汇总、allocation.external_item_id 对应的申请/应用/MAKE chil
 CANCELLED action 与来源单状态。任一不一致都应阻断迁移，不得用 `flyway repair`、删触发器或手工断链掩盖。
 
 ---
-
-> **现行覆盖说明**：以下 V306 历史段保留的“顶部 V375/337”是原时点措辞；现行迁移头一律只认本页
-> 顶部横幅（当前候选头），不得把历史数字重新写成当前候选。
-**历史清单更新（2026-08-20，V306 时点）**：该阶段目录最高 V306，共 287 个迁移文件、287 个唯一版本且无重复；当前全目录头只认本页顶部 V375/337 复扫。V265/V267 收付款类别引用守卫、V266 总账来源 UUID、V268–V271 生产/采购/销售 UUID 与历史快照、V272 未分类主档系统根、V273–V276 关系/编号治理、V277 账户科目 UUID strict authority、V278 系统过账角色 UUID 映射、V279 全局业务标识注册、V280/V281 人员与附件授权/元数据治理、V282 员工扩展 PII 局部加密、V283 生产关联订货审批快照锁守卫修正、V284 个人信息变更敏感快照/历史审计副本保护、V285 客户默认结算方式 UUID 收紧、V286 员工扩展-only 敏感行兼容、V287 可选主身份派生一致性、V288/V289 现货借用结构、终态守卫与全 `public` 审计 sweep、V290/V291 销售物流单号与退货处置纠错、V292 来源单号可读化清洗（`物料分析-UUID`/`MAKE-UUID` 改写为可读标签，订货仓库口径调整见 ADR-038）与 V293 IQC 权限，以及 V294 销售订货财务确认闸门（销售审核→财务确认→计划部接收）、V295 工资可变金额审计脱敏补漏、V296 仓储部收货权限补齐、V297 管理员临时密码 72 小时有效期、V298 计划前物料分析备料库存绑定（`PREPLAN_ANALYSIS` 归属预留，见 [ADR-039](../99-决策记录-ADR/ADR-039-计划前物料分析备料库存绑定.md)，不回填历史已入库库存）、V299 结算方式主档编号命名空间注册、V300 客户收货地址簿与销售订单财务驳回（含权限点 `client_address:delete` 与审计 sweep，见 [ADR-040](../99-决策记录-ADR/ADR-040-销售开单体验与财务审核中心.md)）、V301 采购/委外任务中心「等待财务审核」生命周期档（同名视图重建，不新建业务表）、V302 收货单价格脱敏权限点（采购收货/委外进仓）、V303 货品颜色/单位旧库哨兵 `0` 归一为 `NULL`、V304 委外发料计划/仓库出仓/损耗扣款权威链、V305 委外出仓独立权限点、V306 在 V304 新业务表之后刷新并强校验全 `public` 审计触发器覆盖，均仍是未提交源码候选；V288/V289 的在线 create/revoke、双趟生效计算和 Flutter UI 已接通并通过专项验证，但目标库/UAT/恢复/签名发布仍未完成。开发原库 V244/225、一次性隔离克隆 V250/231、公司目标库 V238 是不同环境证据，不能互相替代。
-下文保留 V190、V191–V202 等当时章节作为历史迁移设计，不得覆盖顶部当前事实。
-迁移脚本和多数业务映射已经形成，但当前发布结论仍为
-**NO-GO**：BOM 20,798 条拒绝行、委外发料 49,889 条历史数量、客户归属计数、
-总账开账/材料结转，以及全模块增量追平/回滚尚未关闭。财务 API/UI 已实现不等于财务数据已签字验收；
-一般费用单也不等于员工报销。销售—仓库—计划—生产/采购/委外当前边界以本页模块清单为准；
-最终发布仍须目标库对账与签字报告，现行链与验收口径见上方「目标库迁移 authority 与停点」。

@@ -2340,7 +2340,36 @@ class AppLocalizationsZh extends AppLocalizations {
   String get financeHubTaskApproval => '订货审批任务中心';
 
   @override
-  String get financeHubTaskApprovalSub => '分配给我的审批';
+  String get financeSalesAllQueueLabel => '销售订单财务确认';
+
+  @override
+  String get financeSalesInitialQueueLabel => '销售订单首次财务确认';
+
+  @override
+  String get financeSalesChangesQueueLabel => '销售订单修改';
+
+  @override
+  String financeSalesQueueCountLoading(String queue) {
+    return '正在加载$queue待办数量';
+  }
+
+  @override
+  String financeSalesQueueCountFailed(String queue) {
+    return '$queue待办数量加载失败，请进入任务页重试';
+  }
+
+  @override
+  String financeSalesQueueCountEmpty(String queue) {
+    return '没有待处理的$queue';
+  }
+
+  @override
+  String financeSalesQueueCountPending(String queue, int count) {
+    return '待处理$queue：$count项';
+  }
+
+  @override
+  String get financeHubTaskApprovalSub => '采购与委外订货审批';
 
   @override
   String get financeHubTaskOverDelivery => '超量到货审批';
@@ -2352,13 +2381,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get financeHubDocReceipt => '销售收款';
 
   @override
-  String get financeHubDocReceiptSub => '核销应收·直接收款';
+  String get financeHubDocReceiptSub => '登记客户付款，核对尚未收清的款项';
 
   @override
   String get financeHubDocPayment => '采购付款';
 
   @override
-  String get financeHubDocPaymentSub => '核销应付·直接付款';
+  String get financeHubDocPaymentSub => '支付供应商欠款，核对付款记录';
 
   @override
   String get financeHubDocExpense => '一般费用';
@@ -2373,7 +2402,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get financeHubDocBankTransfer => '银行存取款';
 
   @override
-  String get financeHubDocBankTransferSub => '账户间转入';
+  String get financeHubDocBankTransferSub => '账户之间转账';
 
   @override
   String get financeHubDocCheck => '支票管理';
@@ -2385,7 +2414,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get financeHubDocAssets => '资产与待摊';
 
   @override
-  String get financeHubDocAssetsSub => '子账·折旧·期间';
+  String get financeHubDocAssetsSub => '管理资产价值及每月费用';
 
   @override
   String get financeHubReportArAp => '应收应付';
@@ -2814,4 +2843,466 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get employeeAccountNotProvisionedContactSupport =>
       '该员工还未开通账号，请联系账号支持人员处理';
+
+  @override
+  String get materialMainWarehouse => '主仓库';
+
+  @override
+  String get materialIssueWarehouseSettings => '领料仓设置';
+
+  @override
+  String get materialWarehouseScopeExplanation =>
+      '主仓库包含所属子仓范围。齐套、预留和领料按下方实际领料仓计算；其它仓库存只作调拨参考，未调入前不算齐套。';
+
+  @override
+  String get materialSearchHint => '查找产品或物料';
+
+  @override
+  String get materialByProduct => '按产品看';
+
+  @override
+  String get materialByMaterial => '按物料汇总';
+
+  @override
+  String get materialIdentityByMaterial => '物料 / 来源';
+
+  @override
+  String get materialIdentityByProduct => '产品 / BOM 层级';
+
+  @override
+  String get materialRoute => '供应方式';
+
+  @override
+  String get materialRequired => '需要数量';
+
+  @override
+  String get materialAllocated => '已备数量';
+
+  @override
+  String get materialPreparedQuantityHint =>
+      '已分配给本批的合格物料，含本批正式预留和已领用量。合格到货已包含在分配中，不重复相加；待检与在途不计入。本批已备数量不等于仓库即时余额。';
+
+  @override
+  String get materialShortage => '还缺数量';
+
+  @override
+  String get materialPhysicalShortageHint =>
+      '本批需求扣除已覆盖本批的合格物料后仍缺的数量。下达采购、委外或车间计划不会减少实物缺口；合格入库并归属本批后才减少。待补数量另外扣除在途，避免重复下达。';
+
+  @override
+  String get materialSupplyProgressHint =>
+      '跟踪下单、财务审批、收货、检验与入库进度；双击行查看明细。下达后仍保留实物缺口，合格入库后更新。';
+
+  @override
+  String get materialToSupply => '建议下单';
+
+  @override
+  String get materialFutureSupply => '在途未到';
+
+  @override
+  String get materialProgress => '进度 / 待办';
+
+  @override
+  String get materialMixedRoutes => '多种路线';
+
+  @override
+  String materialAggregateSources(int products, int paths) {
+    return '$products 个产品 · $paths 条路径';
+  }
+
+  @override
+  String materialCreateRoutes(int count) {
+    return '确认路线($count)';
+  }
+
+  @override
+  String get materialRouteReasonTitle => '路线原因(选填)';
+
+  @override
+  String get materialRouteChangedRetry => '分析已更新，请核对当前所选路线后重试';
+
+  @override
+  String get materialWarehouseFacts => '仓库与供给明细';
+
+  @override
+  String get materialExactStock => '本节点合格绑定';
+
+  @override
+  String get materialPublicStock => '公共现货';
+
+  @override
+  String get materialScopeStock => '参与仓可用(参考)';
+
+  @override
+  String get materialTransferStock => '其它仓可调拨';
+
+  @override
+  String get materialClaimedSupply => '本节点已采用';
+
+  @override
+  String get materialTaskBuy => '下达采购';
+
+  @override
+  String get materialTaskSubcontract => '下达委外';
+
+  @override
+  String get materialTaskWorkshop => '下达车间';
+
+  @override
+  String get materialTaskIssued => '已下达';
+
+  @override
+  String get materialTaskBlocked => '需处理';
+
+  @override
+  String get materialTaskEmpty => '当前筛选没有任务';
+
+  @override
+  String get materialTaskBuyHint => '按剩余需求下达采购，已下达任务可查看订货、到货和质检进度。';
+
+  @override
+  String get materialTaskSubcontractHint => '按剩余需求下达委外，有子层物料先形成车间备料任务，进度可继续跟踪。';
+
+  @override
+  String get materialTaskWorkshopHint => '填写数量、车间和负责人后下达；缺料任务先进入待料，齐套并领料后才能开工。';
+
+  @override
+  String get materialTaskSectionHint => '按供料路线集中处理，查看未下达、已下达与待处理任务。';
+
+  @override
+  String get materialWarehouseLimit =>
+      '本次分析最多支持 100 个实际仓库，当前主仓范围超出限制，请调整仓库范围后再分析';
+
+  @override
+  String materialRoutesNext(int count) {
+    return '下一步：核对 $count 条待确认路线，勾选后点击“确认路线”。每条路线按当前选择保存。';
+  }
+
+  @override
+  String get materialIssueNext =>
+      '下一步：进入“下达采购 / 下达委外 / 下达车间”，按未下达余量办理并查看已下达进度。';
+
+  @override
+  String materialWorkshopNext(int count) {
+    return '下一步：$count 个产品可先下达车间。填写数量、车间和负责人；缺料批次等待齐套和领料后开工。';
+  }
+
+  @override
+  String materialPreparedChildCreated(int count) {
+    return '已创建 $count 个备料子任务，尚未下达车间';
+  }
+
+  @override
+  String get materialPreparedChildNext =>
+      '核对下方已选行的数量、车间和负责人，再点击“生成生产计划”；无审核权限时将提交审批。';
+
+  @override
+  String get materialPreparedChildNeedPlanner =>
+      '请由有生成生产计划权限的员工填写数量、车间和负责人并提交计划。';
+
+  @override
+  String get materialRouteMemoryLoading => '正在读取上次路线，请稍后确认';
+
+  @override
+  String get materialRouteMemoryUnavailable => '上次路线读取失败，请核对当前路线后确认';
+
+  @override
+  String get materialRootSupply => '顶层供料任务';
+
+  @override
+  String get materialRootRoutePending => '路线待确认';
+
+  @override
+  String get materialRootExternalRoute => '顶层已选择采购或委外，请到对应入口下达';
+
+  @override
+  String materialRootExistingStock(String quantity) {
+    return '将优先交接已分配现货 $quantity，下方只填写剩余的追加供料数量。';
+  }
+
+  @override
+  String get materialRootSupplyCompleted => '供料需求已完成';
+
+  @override
+  String get materialRootOutputHistory => '顶层供料交接记录';
+
+  @override
+  String get materialRootStockAllocation => '现货交接';
+
+  @override
+  String get materialRootReceivedSupply => '合格到货交接';
+
+  @override
+  String get materialRootOutputReversed => '交接已撤回';
+
+  @override
+  String get materialSupplyTasksAndReversals => '供给任务与撤回记录';
+
+  @override
+  String get materialNotificationReversalReconcile => '同步撤回';
+
+  @override
+  String get materialRevokeRootStock => '撤回现货交接';
+
+  @override
+  String get materialRootRevokeFailed => '现货交接撤回失败，请刷新后核对';
+
+  @override
+  String get materialRootSupplyProcessed => '本批供料已处理，现货交接和追加需求请查看对应记录';
+
+  @override
+  String get orderChangeQtyButton => '改量';
+
+  @override
+  String get orderChangeQtyTitle => '订单改量';
+
+  @override
+  String get orderChangeQtyWarning =>
+      '批准后改量立即生效，并自动重回财务复核；财务将看到修改清单（以前→现在）。驳回不会自动还原数量。';
+
+  @override
+  String orderChangeQtyCurrent(String qty) {
+    return '现 $qty';
+  }
+
+  @override
+  String get orderChangeQtyNewQty => '新数量';
+
+  @override
+  String get orderChangeQtyConfirm => '确认改量';
+
+  @override
+  String get orderChangeQtyInvalid => '存在无效数量（必须大于 0），请检查';
+
+  @override
+  String get orderChangeQtySuccess => '已改量，订货单已重回财务复核';
+
+  @override
+  String get orderChangeQtyFailed => '改量失败，请稍后重试';
+
+  @override
+  String orderQtyChangeOld(String value) {
+    return '以前 $value';
+  }
+
+  @override
+  String orderQtyChangeNew(String value) {
+    return '现在 $value';
+  }
+
+  @override
+  String get procurementApprovalStatusPending => '待财务复核';
+
+  @override
+  String procurementApprovalStatusChanged(int count) {
+    return '改后待复核 · 改量 $count 处';
+  }
+
+  @override
+  String procurementApprovalQtyChangesTitle(int count) {
+    return '修改清单 · 改量 $count 处';
+  }
+
+  @override
+  String get procurementApprovalQtyChangesHint =>
+      '订货单在财务批准后修改过数量，已自动重回财务复核；请逐行核对 以前→现在 后再复核。';
+
+  @override
+  String get productionMaterialRecheck => '重新检查物料';
+
+  @override
+  String get productionMaterialRecheckReady => '物料已齐套，已按实际子仓生成领料单。请仓库发料完成后开工。';
+
+  @override
+  String get productionMaterialRecheckWaiting =>
+      '已重新检查，当前仍有物料未满足，请核对实际入库和其他任务的预留。';
+
+  @override
+  String get fieldAutofilledReview => '已自动带出上次记录或默认值，请核对后使用';
+
+  @override
+  String get workflowQuantityHint => '按本行单位填写本次数量，箱、个、千克不要混填；引用来源时不能超过当前可用数量。';
+
+  @override
+  String get workflowOrderQuantityHint =>
+      '按本行单位填写客户订购数量。财务正在审核时不能修改；财务通过后再改会重新送审。';
+
+  @override
+  String get workflowReturnQuantityHint =>
+      '按原出货明细的单位填写实际退回量，不能超过尚可退数量。退回实物审核后先待检，不会直接成为可销售库存。';
+
+  @override
+  String get workflowPriceHint => '单价按本行单位和币种填写，金额随数量重新计算。不要把整行总金额填成单价。';
+
+  @override
+  String get workflowReturnPriceHint => '退货贷项在审核时按原发运事实和累计已退金额计算，参考价格不能提高可退金额。';
+
+  @override
+  String get workflowDiscountHint => '折扣填小数：1是不打折，0.9是九折；不要填9或90。';
+
+  @override
+  String get workflowExchangeRateHint =>
+      '填写1单位原币折合多少本币，最多6位小数。自动带出的汇率也要核对本次单据。';
+
+  @override
+  String get workflowTaxRateHint => '填百分数，例如13表示13%；不要填0.13。';
+
+  @override
+  String get workflowCurrencyHint => '币种决定本行单价和金额的含义；更换前请核对来源单据，不能只改显示名称。';
+
+  @override
+  String get workflowSettlementHint => '按与供应商约定的结算方式选择。不同供应商、币种或结算条款可能拆成不同订货单。';
+
+  @override
+  String get workflowPlanningQuantityHint =>
+      '这是本次要安排的数量，不是实收数量。已安排的在途货还未成为库存，下达任务也不代表车间已经可以开工。';
+
+  @override
+  String get workflowWorkshopQuantityHint =>
+      '填写本次交给车间的数量。任务可先下达，但开工和领料仍须满足物料及状态条件。';
+
+  @override
+  String get workflowReportQuantityHint =>
+      '按计划行单位填写本次实际完成量，不填累计产量。审核报工后还要经仓库登记、品质检查和入库。';
+
+  @override
+  String get workflowArrivalQuantityHint =>
+      '按本行单位填写本次实到数量。少到、多到都按实物登记；超出批准量的部分进入异常处理，不直接计入可用库存。';
+
+  @override
+  String get workflowIqcPassHint =>
+      '只填本次判定合格的数量，与本次不合格量合计不能超过剩余待检量。品质通过后仍需仓库确认入库。';
+
+  @override
+  String get workflowIqcFailHint => '只填本次判定不合格的数量。它不会进入可用库存，后续还要处理退回、返工或其它处置。';
+
+  @override
+  String get workflowPrepaymentAmountHint =>
+      '填写本次实际收到的预收款，按订单币种计。登记到账只记一次；以后用预收抵扣应收时不会再次记收款。';
+
+  @override
+  String get workflowReceiptAllocationHint =>
+      '把本次到账款分配到这张应收单，按应收币种填写，不能超过当前可收余额。同一笔到账款不要重复分配。';
+
+  @override
+  String get workflowBankFeeHint => '填写本次实际银行手续费。到账中已经扣除的费用，不要再作为另付费用重复登记。';
+
+  @override
+  String get workflowOtherFeeHint => '只填写银行手续费以外的本次费用，并选择对应费用项目；同一笔费用不要重复记录。';
+
+  @override
+  String get workflowReturnReasonHint =>
+      '写清退货原因和原出货来源。审核退货会形成待处理贷项，实物先待检；退款、换货等客户处理方案须另行确认。';
+
+  @override
+  String get workflowPrepaymentOrderHint =>
+      '先选这笔预收所属的销售订单，客户和币种会随订单确定；选错时请更换订单。';
+
+  @override
+  String get workflowPrepaymentApplyHint =>
+      '说明用哪笔预收抵扣哪些欠款及依据。抵扣只调整预收和应收余额，不会再次增加实收现金。';
+
+  @override
+  String get workflowFinanceReviewHint =>
+      '写下核对结果；订单有修改时先对照修改前后内容。财务确认不等于已经收款、出货或开工。';
+
+  @override
+  String get workflowFinanceRejectHint => '写明哪里不对、需要怎样修改。原因会通知销售，修改后再送财务审核。';
+
+  @override
+  String get workflowOptionalDetails => '补充信息(选填)';
+
+  @override
+  String get workflowReceiptEvidence => '汇率与到账凭证';
+
+  @override
+  String get workflowReceiptNoFees => '没有手续费，无需再填费用明细';
+
+  @override
+  String get workflowUnitUnknown => '验收单位待核对';
+
+  @override
+  String workflowIqcUnitHint(String sourceUnit, String rate, String baseUnit) {
+    return '原单1$sourceUnit = $rate$baseUnit；这里按$baseUnit验收，不要把原单包装数直接填进来。';
+  }
+
+  @override
+  String get moneySummaryCustomerPaid => '客户已付';
+
+  @override
+  String get moneySummaryGrossShipped => '已发货金额';
+
+  @override
+  String get moneySummaryReturned => '退货金额';
+
+  @override
+  String get moneySummaryUnusedReturns => '尚未处理的退货金额';
+
+  @override
+  String get moneySummaryNetReceivable => '当前还需收款';
+
+  @override
+  String get moneySummaryPendingBalance => '客户待处理余额';
+
+  @override
+  String get moneySummaryFutureShipment => '后续发货金额';
+
+  @override
+  String get moneySummaryExpectedNewCash => '预计还需新收';
+
+  @override
+  String get moneySummaryBalanceHint => '待处理余额需财务确认抵扣或退款，不表示已退款。';
+
+  @override
+  String get moneySummaryCollectionHint => '按当前应收、后续发货及未使用预收估算，不会自动抵扣或退款。';
+
+  @override
+  String get moneySummarySourceHint => '金额来自已审核单据。客户已付可能含代扣费用，银行实际到账以账户流水为准。';
+
+  @override
+  String get moneySummaryUnallocatedHint => '部分付款尚未对应到订单，请财务核对。';
+
+  @override
+  String get warehouseArrivalSourceLabel => '到货来源';
+
+  @override
+  String get warehouseArrivalSourceAutomatic => '自动识别';
+
+  @override
+  String get warehouseArrivalSourceNormal => '正常到货';
+
+  @override
+  String get warehouseArrivalSourceReplacement => '先补退货';
+
+  @override
+  String get warehouseArrivalSourceHint =>
+      '只有一种待收来源时，系统自动识别。同时有正常待到货和已退未补数量时，请按这批实物选择。选“先补退货”会先补回已退数量，超出的部分按正常到货处理；免费补回或重新计款由原退货处理结果决定。';
+
+  @override
+  String get subcontractPreparationWarehouse => '内部生产入库仓库';
+
+  @override
+  String get subcontractPreparationWarehouseHint =>
+      '直接下单的委外件有子件且现货不够时，需要先选内部生产的入库仓库。系统把缺口交给计划部，做好并实际入库后才能提交财务；没有子件或现货足够时可不选。';
+
+  @override
+  String get subcontractInternalProduction => '内部生产';
+
+  @override
+  String get subcontractPreparedQuantity => '已备齐';
+
+  @override
+  String get subcontractPreparationShortage => '还需生产';
+
+  @override
+  String get subcontractOpenPreparation => '查看生产安排';
+
+  @override
+  String get subcontractDraftPreparationHint => '先由计划安排内部生产，备齐入库后再提交财务。';
+
+  @override
+  String get subcontractWaitingPlan => '等待计划安排';
+
+  @override
+  String get subcontractReadyForFinance => '已备齐，可提交财务';
 }

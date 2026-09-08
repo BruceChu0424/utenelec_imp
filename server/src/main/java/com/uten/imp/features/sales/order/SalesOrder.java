@@ -150,6 +150,9 @@ public class SalesOrder extends SoftDeletableEntity {
     @Column(name = "finance_rejected", nullable = false)
     private boolean financeRejected = false;
 
+    @Column(name = "finance_review_revision", nullable = false)
+    private long financeReviewRevision;
+
     @Column(name = "finance_rejected_reason")
     private String financeRejectedReason;
 

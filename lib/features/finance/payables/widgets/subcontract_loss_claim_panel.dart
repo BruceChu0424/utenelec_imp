@@ -189,7 +189,7 @@ class _SubcontractLossClaimPanelState
               UtenButton(
                 type: UtenButtonType.ghost,
                 icon: Icons.refresh_rounded,
-                onPressed: _loading ? null : () => _load(),
+                onPressed: _loading ? null : () => _load(1),
                 child: const Text('刷新'),
               ),
             ],

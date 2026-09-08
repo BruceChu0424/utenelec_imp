@@ -20,9 +20,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -48,105 +46,7 @@ public class ProductionPurchaseRequestFacade {
     private final DocNumberService docNumberService;
     private final EntityManager em;
     private final OrganizationReferencePort organizationReferences;
-
-    /**
-     * Locks currently open purchase supply in stable header/item UUID order.
-     * The returned snapshot is advisory only until an explicit supply peg is
-     * persisted; matching dimensions never allocate a PO implicitly.
-     */
-    @Transactional(propagation = Propagation.MANDATORY)
-    public Map<MaterialDimension, OpenSupply> lockOpenSupply(
-            Collection<MaterialDimension> requestedDimensions) {
-        List<MaterialDimension> dimensions = requestedDimensions == null
-                ? List.of()
-                : requestedDimensions.stream().filter(Objects::nonNull).distinct().sorted().toList();
-        if (dimensions.isEmpty()) {
-            return Map.of();
-        }
-        List<UUID> goodsIds = dimensions.stream()
-                .map(MaterialDimension::goodsId)
-                .distinct()
-                .sorted()
-                .toList();
-
-        // Header before item is the shared purchase lock order.
-        em.createNativeQuery("""
-                        SELECT o.id
-                        FROM purchase_orders o
-                        WHERE o.status = 1
-                          AND o.is_deleted = FALSE
-                          AND COALESCE(o.is_stopped, FALSE) = FALSE
-                          AND o.is_closed = FALSE
-                          AND EXISTS (
-                              SELECT 1
-                              FROM purchase_order_items i
-                              WHERE i.order_id = o.id
-                                AND i.is_deleted = FALSE
-                                AND i.goods_id IN (:goodsIds)
-                          )
-                        ORDER BY o.id
-                        FOR UPDATE OF o
-                        """)
-                .setParameter("goodsIds", goodsIds)
-                .getResultList();
-
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(
-                em.createNativeQuery("""
-                                SELECT i.id, i.goods_id, i.color_id,
-                                       COALESCE(i.qty, 0),
-                                       COALESCE(i.received_qty, 0),
-                                       COALESCE(i.returned_qty, 0),
-                                       COALESCE(i.unit_rate, 1),
-                                       COALESCE(i.deliver_date, o.deliver_date)
-                                FROM purchase_order_items i
-                                JOIN purchase_orders o ON o.id = i.order_id
-                                WHERE o.status = 1
-                                  AND o.is_deleted = FALSE
-                                  AND COALESCE(o.is_stopped, FALSE) = FALSE
-                                  AND o.is_closed = FALSE
-                                  AND i.is_deleted = FALSE
-                                  AND i.goods_id IN (:goodsIds)
-                                ORDER BY i.id
-                                FOR UPDATE OF i
-                                """)
-                        .setParameter("goodsIds", goodsIds));
-
-        Map<MaterialDimension, OpenSupplyAccumulator> totals = new LinkedHashMap<>();
-        for (Object[] row : rows) {
-            MaterialDimension dimension =
-                    new MaterialDimension((UUID) row[1], (UUID) row[2]);
-            if (!dimensions.contains(dimension)) {
-                continue;
-            }
-            BigDecimal rate = decimal(row[6]);
-            if (rate.signum() <= 0) {
-                throw new ApiException(
-                        ErrorCode.CONFLICT,
-                        "开放采购订单存在无效单位换算率");
-            }
-            BigDecimal open = decimal(row[3])
-                    .subtract(decimal(row[4]))
-                    .add(decimal(row[5]))
-                    .max(BigDecimal.ZERO)
-                    .multiply(rate);
-            if (open.signum() <= 0) {
-                continue;
-            }
-            LocalDate expected = localDate(row[7]);
-            totals.computeIfAbsent(dimension, ignored -> new OpenSupplyAccumulator())
-                    .add(open, expected);
-        }
-        Map<MaterialDimension, OpenSupply> result = new LinkedHashMap<>();
-        dimensions.forEach(dimension -> {
-            OpenSupplyAccumulator value = totals.get(dimension);
-            result.put(
-                    dimension,
-                    value == null
-                            ? new OpenSupply(BigDecimal.ZERO, null)
-                            : value.toValue());
-        });
-        return result;
-    }
+    private final com.uten.imp.application.concurrency.FulfillmentMutationLocks mutationLocks;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public DraftResult createProductionDraft(
@@ -188,6 +88,9 @@ public class ProductionPurchaseRequestFacade {
                 : productionPlanNo + " 备料任务自动生成");
         request.setSourceDocNo(productionPlanNo);
         request.setStatus(STATUS_APPROVED);
+        var createdSource=new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.CommercialSource(
+                com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.CommercialType.PURCHASE_REQUEST,request.getId());
+        mutationLocks.expectCreatedSource(createdSource);
         requestRepo.save(request);
 
         List<DraftLineResult> created = new ArrayList<>(lines.size());
@@ -240,6 +143,7 @@ public class ProductionPurchaseRequestFacade {
         requestRepo.save(request);
         itemRepo.flush();
         requestRepo.flush();
+        mutationLocks.registerCreatedSource(createdSource);
         return new DraftResult(
                 request.getId(), request.getBillNo(), List.copyOf(created));
     }
@@ -361,35 +265,6 @@ public class ProductionPurchaseRequestFacade {
         return new BigDecimal(value.toString());
     }
 
-    private static LocalDate localDate(Object value) {
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof LocalDate date) {
-            return date;
-        }
-        if (value instanceof java.sql.Date date) {
-            return date.toLocalDate();
-        }
-        throw new ApiException(ErrorCode.CONFLICT, "采购预计日期类型异常");
-    }
-
-    private static final class OpenSupplyAccumulator {
-        private BigDecimal qty = BigDecimal.ZERO;
-        private LocalDate earliest;
-
-        private void add(BigDecimal increment, LocalDate expected) {
-            qty = qty.add(increment);
-            if (expected != null && (earliest == null || expected.isBefore(earliest))) {
-                earliest = expected;
-            }
-        }
-
-        private OpenSupply toValue() {
-            return new OpenSupply(qty, earliest);
-        }
-    }
-
     public enum LifecycleAction {
         CANCEL,
         REVERSE
@@ -413,9 +288,6 @@ public class ProductionPurchaseRequestFacade {
             String right = other.colorId == null ? "" : other.colorId.toString();
             return left.compareTo(right);
         }
-    }
-
-    public record OpenSupply(BigDecimal openQty, LocalDate earliestDate) {
     }
 
     public record DraftLine(

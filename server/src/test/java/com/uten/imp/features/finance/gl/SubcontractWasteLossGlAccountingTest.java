@@ -18,12 +18,14 @@ class SubcontractWasteLossGlAccountingTest {
 
         assertThat(projection)
                 .contains("line.excess_loss_qty>0")
-                .contains("line.valuation_status<>'VALUED'")
+                .contains("LEFT JOIN v_subcontract_loss_case_value actual ON actual.case_id=loss.id")
+                .contains("actual.complete IS DISTINCT FROM TRUE")
+                .contains("actual.loss_book_value_local IS NULL")
                 .contains("system_posting_style_id('SUBCONTRACT_ABNORMAL_LOSS')")
                 .contains("system_posting_style_id('INVENTORY_ASSET')")
-                .contains("voucher.id,1,loss_style.id,1,loss.loss_book_value_local")
-                .contains("voucher.id,2,inventory_style.id,-1,loss.loss_book_value_local")
-                .doesNotContain("AP_CONTROL", "SUBCONTRACT_LOSS_RECOVERY");
+                .contains("voucher.id,1,loss_style.id,1,actual.loss_book_value_local")
+                .contains("voucher.id,2,inventory_style.id,-1,actual.loss_book_value_local")
+                .doesNotContain("AP_CONTROL", "SUBCONTRACT_LOSS_RECOVERY", "loss.loss_book_value_local");
         assertThat(posting)
                 .contains("SubcontractWasteLossGlProjection.assertConfiguration(em, period)")
                 .contains("SubcontractWasteLossGlProjection.assertProjectionOwnership(em, period)")

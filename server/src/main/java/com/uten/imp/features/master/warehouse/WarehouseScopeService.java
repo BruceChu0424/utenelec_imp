@@ -35,6 +35,71 @@ public class WarehouseScopeService {
 
     private final WarehouseRepository repo;
 
+    /** Physical leaf warehouses sharing the selected warehouse's top-level owner. */
+    @Transactional(readOnly = true)
+    public Set<UUID> operationalLeafIds(UUID warehouseId) {
+        if (warehouseId == null) return Set.of();
+        List<Warehouse> all = activeWarehouses();
+        Map<UUID, Warehouse> byId = new HashMap<>();
+        Set<UUID> parents = new HashSet<>();
+        for (Warehouse warehouse : all) {
+            byId.put(warehouse.getId(), warehouse);
+            if (warehouse.getParentId() != null) parents.add(warehouse.getParentId());
+        }
+        UUID mainId = mainWarehouseId(warehouseId, byId);
+        if (mainId == null) return Set.of(warehouseId);
+        Set<UUID> result = new LinkedHashSet<>();
+        for (Warehouse warehouse : all) {
+            if (!parents.contains(warehouse.getId())
+                    && mainId.equals(mainWarehouseId(warehouse.getId(), byId))) {
+                result.add(warehouse.getId());
+            }
+        }
+        return Set.copyOf(result);
+    }
+
+    @Transactional(readOnly = true)
+    public UUID mainWarehouseId(UUID warehouseId) {
+        Map<UUID, Warehouse> byId = new HashMap<>();
+        activeWarehouses().forEach(warehouse -> byId.put(warehouse.getId(), warehouse));
+        return mainWarehouseId(warehouseId, byId);
+    }
+
+    /** One query snapshot for projections with many material allocations. */
+    @Transactional(readOnly = true)
+    public Map<UUID, UUID> mainWarehouseIds() {
+        Map<UUID, Warehouse> byId = new HashMap<>();
+        activeWarehouses().forEach(warehouse -> byId.put(warehouse.getId(), warehouse));
+        Map<UUID, UUID> result = new HashMap<>();
+        for (UUID id : byId.keySet()) {
+            UUID main = mainWarehouseId(id, byId);
+            if (main != null) result.put(id, main);
+        }
+        return Map.copyOf(result);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean sameMainWarehouse(UUID left, UUID right) {
+        if (left == null || right == null) return false;
+        if (left.equals(right)) return true;
+        Map<UUID, Warehouse> byId = new HashMap<>();
+        activeWarehouses().forEach(warehouse -> byId.put(warehouse.getId(), warehouse));
+        UUID mainId = mainWarehouseId(left, byId);
+        return mainId != null && mainId.equals(mainWarehouseId(right, byId));
+    }
+
+    private static UUID mainWarehouseId(UUID warehouseId, Map<UUID, Warehouse> byId) {
+        Set<UUID> visited = new HashSet<>();
+        UUID current = warehouseId;
+        while (current != null && visited.add(current)) {
+            Warehouse warehouse = byId.get(current);
+            if (warehouse == null) return null;
+            if (warehouse.getParentId() == null) return current;
+            current = warehouse.getParentId();
+        }
+        return null;
+    }
+
     /**
      * warehouseId 的查询范围：自身 + 全部未软删后代。
      * id 未知或已软删（历史余额可能仍引用）时退化为精确单仓集合，等价旧语义。

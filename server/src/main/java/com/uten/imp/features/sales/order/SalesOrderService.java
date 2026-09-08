@@ -112,6 +112,8 @@ public class SalesOrderService {
     private final AuditService auditService;
     private final SalesMasterReferenceValidator referenceValidator;
     private final TaskClaimService taskClaim;
+    private final SalesOrderRevisionService revisions;
+    private final com.uten.imp.features.sales.SalesMutationFootprintService mutationFootprint;
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_order:view')")
@@ -175,7 +177,7 @@ public class SalesOrderService {
         return new PageResponse<>(p.map(o -> toList(o,
                         nameResolver.nameOf(o.getSellerId()),
                         canEdit && accessPolicy.canWrite(o.getOwnerEmployeeId(), readScope))).getContent(),
-                page, size, p.getTotalElements(), p.getTotalPages());
+                p);
     }
 
     /**
@@ -316,18 +318,22 @@ public class SalesOrderService {
             double plannedQty = pgNum(row, 9);
             boolean financeConfirmed = Boolean.TRUE.equals(row[10]);
             boolean financeRejected = Boolean.TRUE.equals(row[11]);
+            boolean stopped = Boolean.TRUE.equals(row[15]);
+            boolean closed = Boolean.TRUE.equals(row[16]);
             double pct = orderQty > 0 ? Math.min(1.0, producedQty / orderQty) : 0.0;
             return new OrderProgressRow(
                     pgStr(row, 0), pgStr(row, 1), pgStr(row, 2), pgStr(row, 3), pgStr(row, 4),
                     orderQty, producedQty, shippedQty, reservedQty, plannedQty,
                     pct, progressStageOf(
                             orderQty, producedQty, shippedQty,
-                            reservedQty, plannedQty, financeRejected),
+                            reservedQty, plannedQty, financeRejected, stopped, closed),
                     financeConfirmed,
                     financeRejected,
                     pgStr(row, 12),
                     pgStr(row, 13),
-                    offsetDateTime(row[14]));
+                    offsetDateTime(row[14]),
+                    stopped,
+                    closed);
         }).toList();
         int totalPages = (int) Math.ceil((double) total / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
@@ -393,20 +399,27 @@ public class SalesOrderService {
                        o.finance_confirmed, o.finance_rejected,
                        o.finance_rejected_reason,
                        COALESCE(finance_reviewer.full_name, ''),
-                       o.finance_rejected_at
+                       o.finance_rejected_at,
+                       o.is_stopped, o.is_closed
                 """ + base + "\n" + """
                 GROUP BY o.id, o.bill_no, o.bill_date, o.deliver_date, c.name,
                          o.finance_confirmed, o.finance_rejected,
                          o.finance_rejected_reason, finance_reviewer.full_name,
-                         o.finance_rejected_at
+                         o.finance_rejected_at, o.is_stopped, o.is_closed
                 """;
     }
 
-    /** 阶段派生 SQL（作用于聚合子查询别名 t）：口径必须与 {@link #progressStageOf} 保持一致。 */
+    /**
+     * 阶段派生 SQL（作用于聚合子查询别名 t）：口径必须与 {@link #progressStageOf} 保持一致。
+     * CANCELED（整单取消/中止）与 CLOSED（已结案）是终态：不占活跃阶段段（待排产/生产中/
+     * 可发货）与阶段计数徽章，只在历史记录（stage='' 全量口径）中可见。
+     */
     static String progressStageExpr() {
         return """
                 CASE
                   WHEN t.finance_rejected THEN 'REJECTED'
+                  WHEN t.is_stopped THEN 'CANCELED'
+                  WHEN t.is_closed THEN 'CLOSED'
                   WHEN t.order_qty <= 0 THEN 'PENDING'
                   WHEN t.shipped_qty >= t.order_qty - 0.000001 THEN 'SHIPPED'
                   WHEN t.reserved_qty > 0.000001 THEN 'SHIPPABLE'
@@ -416,17 +429,22 @@ public class SalesOrderService {
                 """;
     }
 
-    /** stage 筛选谓词：'' = 全部；'OPEN' = 待完成（未发完，即非 SHIPPED）；其余按阶段精确匹配。 */
+    /**
+     * stage 筛选谓词：'' = 全部（历史记录口径，含驳回/进行中/已发货/已中止/已结案）；
+     * 'OPEN' = 待完成（活跃在途，即非 SHIPPED/CANCELED/CLOSED 三个终态）；其余按阶段精确匹配。
+     */
     static String progressStagePredicate() {
         String expr = progressStageExpr();
-        return "(:stage = '' OR (:stage = 'OPEN' AND (" + expr + ") <> 'SHIPPED')"
+        return "(:stage = '' OR (:stage = 'OPEN' AND (" + expr + ") NOT IN"
+                + " ('SHIPPED','CANCELED','CLOSED'))"
                 + " OR (:stage <> 'OPEN' AND (" + expr + ") = :stage))";
     }
 
     static String normalizeProgressStage(String stage) {
         String normalized = stage == null ? "" : stage.strip().toUpperCase();
         return switch (normalized) {
-            case "", "OPEN", "REJECTED", "PENDING", "PRODUCING", "SHIPPABLE", "SHIPPED" -> normalized;
+            case "", "OPEN", "REJECTED", "PENDING", "PRODUCING", "SHIPPABLE", "SHIPPED",
+                    "CANCELED", "CLOSED" -> normalized;
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "订单进度阶段无效");
         };
     }
@@ -456,7 +474,23 @@ public class SalesOrderService {
             double reservedQty,
             double plannedQty,
             boolean financeRejected) {
+        return progressStageOf(
+                orderQty, producedQty, shippedQty, reservedQty, plannedQty,
+                financeRejected, false, false);
+    }
+
+    static String progressStageOf(
+            double orderQty,
+            double producedQty,
+            double shippedQty,
+            double reservedQty,
+            double plannedQty,
+            boolean financeRejected,
+            boolean stopped,
+            boolean closed) {
         if (financeRejected) return "REJECTED";
+        if (stopped) return "CANCELED";
+        if (closed) return "CLOSED";
         if (orderQty <= 0) return "PENDING";
         if (shippedQty + 1e-6 >= orderQty) return "SHIPPED";
         if (reservedQty > 1e-6) return "SHIPPABLE";
@@ -776,12 +810,16 @@ public class SalesOrderService {
     @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail update(UUID id, OrderSaveRequest req) {
         tx.bind();
-        SalesOrder o = requireWritableOrderForUpdate(id);
+        SalesOrder o = requireWritableOrderForUpdate(id, req.getItems() == null ? List.of()
+                : req.getItems().stream().filter(line -> line.getGoodsId() != null)
+                    .map(line -> new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(
+                            line.getGoodsId(), line.getColorId())).toList());
         boolean rejectedRevision = o.isFinanceRejected()
                 && !o.isFinanceConfirmed()
                 && (o.getStatus() == STATUS_APPROVED || o.getStatus() == STATUS_DRAFT);
-        if (o.getStatus() != STATUS_DRAFT && !rejectedRevision) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
+        boolean approvedRevision = o.getStatus() == STATUS_APPROVED;
+        if (o.getStatus() != STATUS_DRAFT && !approvedRevision) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅草稿或有效已审核订单可编辑");
         }
         // 历史单只读保留 CUSTOMER_CONFIRM：不允许把其它策略的订单改回该历史值。
         if (req.getShipmentPolicy() != null
@@ -792,8 +830,19 @@ public class SalesOrderService {
                     "「客户确认后分批」仅历史单保留，请选择允许分批发货或整单齐套后发货");
         }
         referenceValidator.validate(req);
-        if (rejectedRevision) {
-            return reviseFinanceRejectedOrder(o, req);
+        if (rejectedRevision || approvedRevision) {
+            String before = revisions.snapshot(id);
+            OrderDetail revised = reviseApprovedOrder(o, req);
+            if (revisions.record(id, before)) {
+                o.setFinanceReviewRevision(o.getFinanceReviewRevision() + 1);
+                orderRepo.save(o);
+                orderRepo.flush();
+            }
+            // 已审核订单修改后自动重新送财务；驳回修订继续由销售检查草稿后自行审核。
+            if (approvedRevision && !rejectedRevision) {
+                return approve(id);
+            }
+            return revised;
         }
         applyHeader(req, o);
         // 发运策略必选：保存后草稿不得处于未选/历史未指定状态（历史草稿补选后才能保存）。
@@ -818,17 +867,15 @@ public class SalesOrderService {
      * 财务驳回后的受控修订。已审核订单先确认没有任何不可逆下游事实，再释放有效预留；
      * 旧行通过 is_deleted 留存，避免库存预留台账的 order_item_id 变成悬空引用。
      */
-    private OrderDetail reviseFinanceRejectedOrder(
+    private OrderDetail reviseApprovedOrder(
             SalesOrder order, OrderSaveRequest req) {
-        if (!order.isFinanceRejected() || order.isFinanceConfirmed()
-                || (order.getStatus() != STATUS_APPROVED
-                    && order.getStatus() != STATUS_DRAFT)) {
-            throw new ApiException(ErrorCode.CONFLICT, "订单当前不允许按财务驳回修订");
+        if (order.isStopped() || order.isClosed()) {
+            throw new ApiException(ErrorCode.CONFLICT, "已中止或已结案订单不可直接修订");
         }
 
         List<SalesOrderItem> existing = lockOrderItems(order.getId());
         if (existing.isEmpty()) {
-            throw new ApiException(ErrorCode.CONFLICT, "被驳回订单没有可修订的有效明细");
+            throw new ApiException(ErrorCode.CONFLICT, "订单没有可修订的有效明细");
         }
         Map<UUID, List<PlanOrderItemLink>> activeLinks = lockActivePlanLinks(existing);
         for (SalesOrderItem item : existing) {
@@ -945,7 +992,7 @@ public class SalesOrderService {
         if (count > 0) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "订单已有物料分析事实，须先完成受控反向后再修订");
+                    "订单已有物料分析事实；数量调整请使用改量，其余商业内容须先受控处理下游再修订");
         }
     }
 
@@ -1130,7 +1177,11 @@ public class SalesOrderService {
         }
         orderRepo.save(o);
         // V294 闸门：审核后先通知财务确认；财务确认后才通知计划部接手物料分析。
-        chainNotice.notifyOrderPendingFinanceConfirmation(id);
+        if (o.getFinanceReviewRevision() > 0) {
+            chainNotice.notifyOrderPendingFinanceConfirmation(id, true);
+        } else {
+            chainNotice.notifyOrderPendingFinanceConfirmation(id);
+        }
         return detail(id);
     }
 
@@ -1222,11 +1273,11 @@ public class SalesOrderService {
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核订单可改量(草稿请直接编辑)");
         }
-        if (o.isFinanceRejected()) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "订单已被财务驳回，请使用“修改订单”完成受控修订并重新审核");
-        }
+        // 2026-09-05 用户口径（反转）：财务确认后「允许」改量，但改完自动回到
+        // 「待财务确认」——重新进入财务队列，财务按修改清单（以前→现在）复核。
+        // 驳回单仍走上面的受控修订。
+        final boolean wasFinanceConfirmed = o.isFinanceConfirmed();
+        final boolean wasFinanceRejected = o.isFinanceRejected();
         if (o.isStopped()) {
             throw new ApiException(ErrorCode.BUSINESS, "已中止订单不可改量");
         }
@@ -1276,12 +1327,14 @@ public class SalesOrderService {
         requireNoFrozenExecutionAllocationDecrease(req, items);
         if (touchesPlanned) requirePlannedChangePermission();
 
-        // 第二遍：逐行应用
+        // 第二遍：逐行应用（同时记录改量事实，供财务确认页「修改清单」对照）。
+        List<Object[]> qtyChangeFacts = new ArrayList<>();
         for (var l : req.getItems()) {
             SalesOrderItem it = items.get(l.getOrderItemId());
             BigDecimal oldQty = nz(it.getQty());
             BigDecimal newQty = l.getNewQty();
             if (newQty.compareTo(oldQty) == 0) continue;
+            qtyChangeFacts.add(new Object[]{it.getId(), oldQty, newQty});
             BigDecimal delta = newQty.subtract(oldQty);
             BigDecimal reserved = nz(it.getReservedQty());
             BigDecimal planned = nz(it.getPlannedQty());
@@ -1376,7 +1429,42 @@ public class SalesOrderService {
                     WHERE id = :id
                     """).setParameter("id", id).executeUpdate();
         }
+        if (!qtyChangeFacts.isEmpty()) {
+            UUID actorEmployeeId = currentUser.requireEmployeeId();
+            for (Object[] fact : qtyChangeFacts) {
+                em.createNativeQuery("""
+                        INSERT INTO sales_order_qty_change_logs(
+                            order_id, order_item_id, old_qty, new_qty,
+                            changed_by_employee_id, changed_at)
+                        VALUES (:orderId, :itemId, :oldQty, :newQty,
+                                :employeeId, clock_timestamp())
+                        """)
+                        .setParameter("orderId", id)
+                        .setParameter("itemId", (UUID) fact[0])
+                        .setParameter("oldQty", (BigDecimal) fact[1])
+                        .setParameter("newQty", (BigDecimal) fact[2])
+                        .setParameter("employeeId", actorEmployeeId)
+                        .executeUpdate();
+            }
+            em.createNativeQuery("""
+                    UPDATE sales_orders
+                    SET finance_review_revision = finance_review_revision + 1
+                    WHERE id = :id
+                    """).setParameter("id", id).executeUpdate();
+            if (wasFinanceConfirmed || wasFinanceRejected) {
+                // 确认后改量：置回待确认重新入队（保留上次确认时间作为修改清单
+                // 的对照基线；重新确认后 finance_confirmed_at 前进、清单自然隐藏）。
+                em.createNativeQuery("""
+                        UPDATE sales_orders
+                        SET finance_confirmed = FALSE, finance_rejected = FALSE, updated_at = now()
+                        WHERE id = :id
+                        """).setParameter("id", id).executeUpdate();
+            }
+            chainNotice.notifyOrderPendingFinanceConfirmation(id, true);
+        }
         recalcTotalsAndClosed(id);
+        em.flush();
+        em.clear();
         return detail(id);
     }
 
@@ -1532,11 +1620,14 @@ public class SalesOrderService {
         if (priority == 1 && (req.getReason() == null || req.getReason().isBlank())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "设为急单须填写原因");
         }
+        UUID orderId = mutationFootprint.lockOrderItem(orderItemId);
         SalesOrderItem it = em.find(SalesOrderItem.class, orderItemId, LockModeType.PESSIMISTIC_WRITE);
         if (it == null || isDeletedOrderItem(orderItemId)) {
             throw new ApiException(ErrorCode.NOT_FOUND, "订单行不存在");
         }
-        SalesOrder order = requireOrder(it.getOrderId());
+        em.refresh(it, LockModeType.PESSIMISTIC_WRITE);
+        if (!orderId.equals(it.getOrderId())) throw new ApiException(ErrorCode.CONFLICT, "订单行来源已变化，请刷新");
+        SalesOrder order = requireWritableOrderForUpdate(orderId, "sales_order:priority");
         accessPolicy.requireWritable(order.getOwnerEmployeeId(), "无权设置该订单行优先级",
                 "sales_order:priority");
         if (order.isFinanceRejected()) {
@@ -1575,11 +1666,14 @@ public class SalesOrderService {
         if (req.getReason() == null || req.getReason().isBlank()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "让单须填写原因");
         }
+        UUID orderId = mutationFootprint.lockOrderItem(orderItemId);
         SalesOrderItem it = em.find(SalesOrderItem.class, orderItemId, LockModeType.PESSIMISTIC_WRITE);
         if (it == null || isDeletedOrderItem(orderItemId)) {
             throw new ApiException(ErrorCode.NOT_FOUND, "订单行不存在");
         }
-        SalesOrder o = requireOrder(it.getOrderId());
+        em.refresh(it, LockModeType.PESSIMISTIC_WRITE);
+        if (!orderId.equals(it.getOrderId())) throw new ApiException(ErrorCode.CONFLICT, "订单行来源已变化，请刷新");
+        SalesOrder o = requireWritableOrderForUpdate(orderId, "sales_order:reallocate");
         accessPolicy.requireWritable(o.getOwnerEmployeeId(), "无权让出该订单行预留",
                 "sales_order:reallocate");
         if (o.isFinanceRejected()) {
@@ -2546,7 +2640,14 @@ public class SalesOrderService {
      */
     private SalesOrder requireWritableOrderForUpdate(
             UUID id, String... operationAuthorities) {
+        return requireWritableOrderForUpdate(id, List.of(), operationAuthorities);
+    }
+
+    private SalesOrder requireWritableOrderForUpdate(UUID id,
+            List<com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension> requested,
+            String... operationAuthorities) {
         SalesOrder visible = requireWritableOrder(id, operationAuthorities);
+        mutationFootprint.lockOrder(id, requested);
         SalesOrder locked = em.find(
                 SalesOrder.class, visible.getId(),
                 jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
@@ -2561,6 +2662,7 @@ public class SalesOrderService {
                 locked.getOwnerEmployeeId(),
                 "只能操作本人负责的销售订货单",
                 operationAuthorities);
+        taskClaim.requireNoActiveClaim("SALES_ORDER_FINANCE_CONFIRM", id.toString());
         return locked;
     }
 

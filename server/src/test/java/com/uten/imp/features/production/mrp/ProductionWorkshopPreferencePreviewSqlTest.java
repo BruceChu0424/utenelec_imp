@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -22,7 +23,7 @@ import static org.mockito.Mockito.when;
 class ProductionWorkshopPreferencePreviewSqlTest {
 
     @Test
-    void previewUsesAnActiveLearnedWorkshopBeforeThePlanDepartmentFallback() {
+    void previewPreservesTheExplicitPlanWorkshopBeforeUsingLearnedDefaults() {
         EntityManager em = mock(EntityManager.class);
         UUID learnedWorkshopId = UUID.randomUUID();
         Object[] execution = executionRow(learnedWorkshopId);
@@ -44,21 +45,40 @@ class ProductionWorkshopPreferencePreviewSqlTest {
         // V298：快照前多一次 material_analysis_id 预查（分析备料绑定），第 1 个仍是主查询。
         verify(em, times(4)).createNativeQuery(sql.capture());
         assertThat(normalize(sql.getAllValues().getFirst()))
-                .contains("case when preferred_workshop_parent.id is not null then workshop_preference.workshop_department_id when plan_workshop_parent.id is not null then p.department_id else null end")
+                .contains("case when plan_workshop_parent.id is not null then p.department_id when preferred_workshop_parent.id is not null then workshop_preference.workshop_department_id else null end")
                 .contains("left join production_goods_workshop_preferences workshop_preference on workshop_preference.goods_id = product.id")
                 .contains("left join departments preferred_workshop on preferred_workshop.id = workshop_preference.workshop_department_id and preferred_workshop.is_deleted = false")
                 .contains("preferred_workshop_parent.code = 'dept_prod'")
-                .contains("plan_workshop_parent.code = 'dept_prod'");
+                .contains("plan_workshop_parent.code = 'dept_prod'")
+                .contains("fn_analysis_plan_material_matches( p.material_analysis_item_id, candidate.id)")
+                .contains("candidate.bom_item_id = b.id")
+                .contains("candidate.goods_id = component.id")
+                .contains("candidate.color_id is not distinct from resolved_color.id")
+                .contains("candidate.unit_id = component_unit.id")
+                .contains("count(distinct candidate.confirmed_route) > 1");
         String warehouseSql = normalize(sql.getAllValues().get(3));
         assertThat(warehouseSql)
                 .contains("from preplan_stock_entitlement_events tracked")
                 .contains("from v_preplan_stock_entitlement_beneficiary_balance balance")
                 .contains("balance.beneficiary_analysis_id = :analysisid")
                 .contains("beneficiary.analysis_id = balance.beneficiary_analysis_id")
-                .contains("beneficiary.analysis_item_id = :analysisitemid")
+                .contains("fn_analysis_plan_material_matches( :analysisitemid, beneficiary.id)")
                 .doesNotContain("preplan_analysis_stock_exact_pegs exact_peg")
                 .contains("a.available_qty + coalesce(own.own_qty, 0) - greatest(")
                 .doesNotContain("greatest( a.available_qty - greatest(");
+    }
+
+    @Test
+    void conflictingConfirmedRoutesCannotFallBackToMasterDataOrDuplicateDemand() {
+        EntityManager em = mock(EntityManager.class);
+        Object[] row = executionRow(UUID.randomUUID());
+        row[23] = "CONFLICT";
+        Query rows = resultQuery(Collections.singletonList(row));
+        Query items = resultQuery(List.of(row[0]));
+        when(em.createNativeQuery(anyString())).thenReturn(rows, items);
+        assertThatThrownBy(() -> new ProductionExecutionPlanningService(em)
+                .preview(UUID.randomUUID(), UUID.randomUUID()))
+                .hasMessageContaining("冲突的已确认路线");
     }
 
     private static Query resultQuery(List<?> values) {

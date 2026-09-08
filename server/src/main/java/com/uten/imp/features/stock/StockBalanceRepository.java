@@ -22,6 +22,19 @@ public interface StockBalanceRepository
 
     Optional<StockBalance> findByWarehouseIdAndGoodsIdAndColorId(UUID warehouseId, UUID goodsId, UUID colorId);
 
+    interface PhysicalSnapshot {
+        BigDecimal getQty();
+        BigDecimal getWeight();
+    }
+
+    /** Native scalar projection deliberately bypasses cached entities after same-transaction upserts. */
+    @Query(value="""
+            SELECT qty,weight FROM stock_balances WHERE warehouse_id=:warehouse AND goods_id=:goods
+                AND color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
+            """,nativeQuery=true)
+    java.util.List<PhysicalSnapshot> readPhysicalSnapshot(@Param("warehouse") UUID warehouseId,
+            @Param("goods") UUID goodsId,@Param("color") UUID colorId);
+
     /**
      * Operationally movable quantity in one warehouse, in base units.
      *

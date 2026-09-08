@@ -122,7 +122,9 @@ class SalesOrderPlanProgressServiceTest {
                 null,
                 null,
                 null,
-                null);
+                null,
+                null,
+                org.mockito.Mockito.mock(com.uten.imp.features.sales.SalesMutationFootprintService.class));
 
         PlanProgressLine line = service.planProgress(orderId).getFirst();
 

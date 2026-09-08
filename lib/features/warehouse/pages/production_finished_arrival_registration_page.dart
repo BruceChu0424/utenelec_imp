@@ -9,7 +9,9 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -57,6 +59,7 @@ class _ProductionFinishedArrivalRegistrationPageState
 
   ProductionFinishedArrivalRegistration? _detail;
   String? _warehouseId;
+  bool _warehouseAutofilled = false;
   String? _error;
   String? _validationError;
   bool _loading = false;
@@ -115,6 +118,8 @@ class _ProductionFinishedArrivalRegistrationPageState
       setState(() {
         _detail = detail;
         _warehouseId = detail.warehouseId;
+        _warehouseAutofilled =
+            !detail.registered && detail.warehouseId?.isNotEmpty == true;
         _removedLineCount = 0;
         _loading = false;
         _validationError = null;
@@ -337,6 +342,7 @@ class _ProductionFinishedArrivalRegistrationPageState
     setState(() {
       _detail = detail;
       _warehouseId = detail.warehouseId;
+      _warehouseAutofilled = false;
       _saving = false;
       _suggestionsLoading = false;
       _suggestionError = null;
@@ -501,7 +507,7 @@ class _ProductionFinishedArrivalRegistrationPageState
                                     Expanded(
                                       child: Text(
                                         '表格可左右滑动；可勾选或右键/长按明细移出本批送检。'
-                                        '报工数量只读，库位来源会在输入框下方标明。',
+                                        '报工数量只读，库位来源可通过输入框内提示图标查看。',
                                         style: theme.textTheme.bodySmall
                                             ?.copyWith(
                                               color: theme
@@ -833,6 +839,8 @@ class _ProductionFinishedArrivalRegistrationPageState
             UtenDropdownField(
               key: const Key('production-finished-arrival-warehouse'),
               label: '实际成品仓',
+              autofilled: _warehouseAutofilled,
+              info: _warehouseAutofilled ? '已带入来源成品仓，请核对本次实际存放仓库' : null,
               required: true,
               allowClear: false,
               enabled: _canRegister && !_saving,
@@ -855,6 +863,7 @@ class _ProductionFinishedArrivalRegistrationPageState
                 final warehouseChanged = _warehouseId != value;
                 setState(() {
                   _warehouseId = value;
+                  _warehouseAutofilled = false;
                   _validationError = null;
                   _suggestionError = null;
                 });
@@ -882,10 +891,12 @@ class _ProductionFinishedArrivalRegistrationPageState
     errorBuilder: utenTextFieldErrorBuilder,
     readOnly: true,
     initialValue: value,
-    decoration: InputDecoration(
-      labelText: label,
-      filled: true,
-      suffixIcon: const Icon(Icons.lock_outline, size: 16),
+    decoration: UtenInputDecoration(
+      InputDecoration(
+        labelText: label,
+        filled: true,
+        suffixIcon: const Icon(Icons.lock_outline, size: 16),
+      ),
     ),
   );
 
@@ -947,105 +958,66 @@ class _ProductionFinishedArrivalRegistrationPageState
       required: _canRegister && _warehouseId?.isNotEmpty == true,
       textOf: (row) => row.place.text,
       listenableOf: (row) => row.place,
-      cellBuilder: (context, row) {
-        final field = Semantics(
-          textField: true,
-          label: '${row.item.goodsName} 库位号',
-          child: TextField(
-            key: ValueKey(
-              'production-finished-arrival-place-${row.item.reportItemId}',
-            ),
-            controller: row.place,
-            enabled:
-                _canRegister &&
-                !_saving &&
-                _warehouseId?.isNotEmpty == true &&
-                !_suggestionsLoading,
-            inputFormatters: [LengthLimitingTextInputFormatter(100)],
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: _warehouseId?.isNotEmpty != true
+      cellBuilder: (context, row) =>
+          ValueListenableBuilder<_FinishedArrivalPlaceSource>(
+            valueListenable: row.placeSource,
+            builder: (context, source, _) {
+              final warehouseSelected = _warehouseId?.isNotEmpty == true;
+              final matching = warehouseSelected && _suggestionsLoading;
+              final sourceLabel = !warehouseSelected
                   ? '请先选择成品仓'
-                  : _suggestionsLoading
+                  : matching
                   ? '正在匹配默认库位'
-                  : row.item.placeHint?.trim().isNotEmpty == true
-                  ? row.item.placeHint
-                  : '必填',
-            ),
-            onChanged: (_) {
-              if (_validationError != null) {
-                setState(() => _validationError = null);
-              }
+                  : source.label;
+              final learned =
+                  warehouseSelected &&
+                  !matching &&
+                  source.isLearned &&
+                  row.place.text.trim().isNotEmpty;
+              final field = Semantics(
+                textField: true,
+                label: '${row.item.goodsName} 库位号，$sourceLabel',
+                child: TextField(
+                  key: ValueKey(
+                    'production-finished-arrival-place-${row.item.reportItemId}',
+                  ),
+                  controller: row.place,
+                  enabled:
+                      _canRegister &&
+                      !_saving &&
+                      warehouseSelected &&
+                      !matching,
+                  inputFormatters: [LengthLimitingTextInputFormatter(100)],
+                  decoration: applyAutofillHint(
+                    UtenInputDecoration(
+                      InputDecoration(
+                        isDense: true,
+                        hintText: !warehouseSelected
+                            ? '请先选择成品仓'
+                            : matching
+                            ? '正在匹配默认库位'
+                            : '必填',
+                      ),
+                      info: sourceLabel,
+                    ),
+                    Theme.of(context),
+                    autofilled: learned,
+                  ),
+                  onChanged: (_) {
+                    if (_validationError != null) {
+                      setState(() => _validationError = null);
+                    }
+                  },
+                ),
+              );
+              if (!_canRegister || !warehouseSelected || matching) return field;
+              return RequiredCellFrame(
+                listenable: row.place,
+                isEmpty: () => row.place.text.trim().isEmpty,
+                child: field,
+              );
             },
           ),
-        );
-        final fieldWithSource = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            field,
-            const SizedBox(height: UtenSpacing.s4),
-            ValueListenableBuilder<_FinishedArrivalPlaceSource>(
-              valueListenable: row.placeSource,
-              builder: (context, source, _) {
-                final warehouseSelected = _warehouseId?.isNotEmpty == true;
-                final matching = warehouseSelected && _suggestionsLoading;
-                final statusLabel = !warehouseSelected
-                    ? '请先选择成品仓'
-                    : matching
-                    ? '正在匹配默认库位'
-                    : source.label;
-                final statusIcon = !warehouseSelected
-                    ? Icons.warehouse_outlined
-                    : matching
-                    ? Icons.sync_rounded
-                    : source.icon;
-                final manual =
-                    warehouseSelected &&
-                    !matching &&
-                    source == _FinishedArrivalPlaceSource.manual;
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      statusIcon,
-                      size: 16,
-                      color: manual
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: UtenSpacing.s4),
-                    Expanded(
-                      child: Text(
-                        statusLabel,
-                        key: ValueKey(
-                          'production-finished-arrival-place-source-'
-                          '${row.item.reportItemId}',
-                        ),
-                        maxLines: 2,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: manual
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ],
-        );
-        if (!_canRegister ||
-            _warehouseId?.isNotEmpty != true ||
-            _suggestionsLoading) {
-          return fieldWithSource;
-        }
-        return RequiredCellFrame(
-          listenable: row.place,
-          isEmpty: () => row.place.text.trim().isEmpty,
-          child: fieldWithSource,
-        );
-      },
     ),
   ];
 
@@ -1069,6 +1041,7 @@ class _FinishedArrivalRegistrationGridRow extends EditableGridRow {
             ? _FinishedArrivalPlaceSource.goodsMaster
             : _FinishedArrivalPlaceSource.none,
       ) {
+    _lastPlaceText = place.text;
     place.addListener(_handlePlaceChanged);
   }
 
@@ -1076,8 +1049,12 @@ class _FinishedArrivalRegistrationGridRow extends EditableGridRow {
   final TextEditingController place;
   final ValueNotifier<_FinishedArrivalPlaceSource> placeSource;
   bool _applyingSuggestion = false;
+  late String _lastPlaceText;
 
   void _handlePlaceChanged() {
+    final textChanged = place.text != _lastPlaceText;
+    _lastPlaceText = place.text;
+    if (!textChanged) return;
     if (_applyingSuggestion ||
         placeSource.value == _FinishedArrivalPlaceSource.manual) {
       return;
@@ -1172,6 +1149,11 @@ enum _FinishedArrivalPlaceSource {
   none,
   manual;
 
+  bool get isLearned =>
+      this == warehousePreference ||
+      this == registrationHistory ||
+      this == goodsMaster;
+
   String get label => switch (this) {
     registrationSnapshot => '本次登记快照',
     warehousePreference => '该仓默认',
@@ -1179,14 +1161,5 @@ enum _FinishedArrivalPlaceSource {
     goodsMaster => '货品主档通用建议',
     none => '暂无默认',
     manual => '手工输入',
-  };
-
-  IconData get icon => switch (this) {
-    registrationSnapshot => Icons.lock_outline_rounded,
-    warehousePreference => Icons.warehouse_outlined,
-    registrationHistory => Icons.history_rounded,
-    goodsMaster => Icons.inventory_2_outlined,
-    none => Icons.info_outline_rounded,
-    manual => Icons.edit_outlined,
   };
 }

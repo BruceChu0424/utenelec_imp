@@ -93,7 +93,7 @@ public class PurchaseRequestService {
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
                         Map.of("billDate", "billDate", "total", "totalLocal")));
         Page<PurchaseRequest> p = requestRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+        return new PageResponse<>(p.map(this::toList).getContent(), p);
     }
 
     @Transactional(readOnly = true)
@@ -101,6 +101,71 @@ public class PurchaseRequestService {
         PurchaseRequest r = requireRequest(id);
         List<RequestItemDto> items = itemRepo.findByRequestIdOrderByLineNoAsc(id).stream().map(this::toItemDto).toList();
         return toDetail(r, items);
+    }
+
+    /**
+     * V477：计划下达申请的「分解前数量修正」。
+     *
+     * <p>计划来源申请落库即已审核（无草稿态），通用 [update] 的「仅草稿可编辑
+     * + 生产来源不可改」双闸不适用——本方法是这类申请唯一 sanctioned 的写入口：
+     * 仅已审核单据、且该明细既无已订货量也无待财务审核的订货占用时允许改量
+     * （否则订货行多来源 FIFO 分摊（ADR-069）的血缘会被破坏）。修正不重拍审批
+     * 快照、不动来源锚定；分解任务台的剩余量随新数量自然重算。</p>
+     */
+    @Transactional
+    public RequestDetail adjustItemQty(UUID requestId, UUID itemId, java.math.BigDecimal qty) {
+        tx.bind();
+        PurchaseRequest r = requestRepo.findById(requestId)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "采购申请不存在"));
+        if (r.isDeleted()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "采购申请不存在");
+        }
+        if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅已下达的申请可修正数量");
+        }
+        PurchaseRequestItem item = itemRepo.findById(itemId)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "申请明细不存在"));
+        if (!requestId.equals(item.getRequestId())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "明细不属于该申请");
+        }
+        if (qty == null || qty.signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "数量必须大于 0");
+        }
+        java.math.BigDecimal ordered = item.getOrderedQty();
+        if (ordered != null && ordered.signum() > 0) {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "该明细已生成订货单（在途 " + ordered.stripTrailingZeros().toPlainString()
+                            + "），不能直接修改数量");
+        }
+        java.math.BigDecimal pending = pendingApprovalOrderQty(itemId);
+        if (pending.signum() > 0) {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "该明细已有待财务审核的订货单（" + pending.stripTrailingZeros().toPlainString()
+                            + "），不能修改数量");
+        }
+        item.setQty(qty);
+        itemRepo.save(item);
+        return detail(requestId);
+    }
+
+    /** 待财务审核订货单对该申请明细的占用量（与工作台 V199 purchase_pending 同口径）。 */
+    private java.math.BigDecimal pendingApprovalOrderQty(UUID requestItemId) {
+        Object value = em.createNativeQuery("""
+                SELECT COALESCE(SUM(oi.qty), 0)
+                FROM procurement_order_approval_cases a
+                JOIN purchase_orders po
+                  ON a.order_type = 'PURCHASE' AND a.order_id = po.id
+                 AND a.status = 'PENDING'
+                JOIN purchase_order_items oi ON oi.order_id = po.id
+                WHERE po.status = 0
+                  AND po.is_deleted = FALSE
+                  AND oi.is_deleted = FALSE
+                  AND oi.request_item_id = :itemId
+                """)
+                .setParameter("itemId", requestItemId)
+                .getSingleResult();
+        return value == null ? java.math.BigDecimal.ZERO
+                : new java.math.BigDecimal(value.toString());
     }
 
     /** 分解预览（只读）：可下达量 = 申请数量 − 已下单 − 已进待财务审核的订货单数量，避免重复分解；并对每个申请取 PURCHASE_DECOMPOSE 任务认领守卫，他人正分解同一申请时拒绝重复操作（认领仅 UX 防碰撞层，正确性仍由下单/财务审核兜底）。 */

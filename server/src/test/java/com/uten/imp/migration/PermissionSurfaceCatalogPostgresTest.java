@@ -182,11 +182,24 @@ class PermissionSurfaceCatalogPostgresTest {
             assertEquals(0, scalarLong(statement, """
                     select count(*)
                     from permission_surfaces surface
-                    where not exists (
+                    where not (surface.surface_key = 'reviews.inbox' and surface.enabled = false)
+                      and not exists (
                         select 1
                         from permission_surface_permissions link
                         where link.surface_id = surface.id
                     )
+                    """));
+            // V493 deliberately retires exactly this surface and its links.
+            // All other surfaces, including inactive legacy surfaces, must
+            // still pass the zero-unmapped guard above.
+            assertEquals(1, scalarLong(statement, """
+                    select count(*) from permission_surfaces
+                    where surface_key='reviews.inbox' and enabled=false
+                    """));
+            assertEquals(0, linkCount(statement, "reviews.inbox", "review_inbox:view"));
+            assertEquals(1, scalarLong(statement, """
+                    select count(*) from permissions
+                    where code='review_inbox:view' and active=false and assignable=false
                     """));
         }
     }
@@ -201,8 +214,10 @@ class PermissionSurfaceCatalogPostgresTest {
                 new PermissionSurfaceCatalogRepository(
                         new JdbcTemplate(dataSource)));
 
+        // V486 退役 subcontract.preparation（停用不删除）：注册表只装载启用面，
+        // 总数对账改用启用口径，退役面不再可解析。
         Integer surfaceCount = new JdbcTemplate(dataSource).queryForObject(
-                "select count(*) from permission_surfaces", Integer.class);
+                "select count(*) from permission_surfaces where enabled", Integer.class);
         assertEquals(surfaceCount, registry.knownKeys().size());
         assertTrue(registry.knownKeys().size() >= 86);
         assertTrue(registry.permissionsFor("basic.goods").containsAll(Set.of(
@@ -213,10 +228,9 @@ class PermissionSurfaceCatalogPostgresTest {
                 "department:manager_assign", "position:create", "position:delete")));
         assertTrue(registry.permissionsFor("purchase.arrival-exception")
                 .contains("supplier_return_task:complete"));
-        assertEquals(Set.of(
-                        "subcontract_preparation:start",
-                        "subcontract_preparation:view"),
-                registry.permissionsFor("subcontract.preparation"));
+        assertFalse(registry.isKnown("subcontract.preparation"),
+                "V486 已停用委外准备中心权限面");
+        assertFalse(registry.isKnown("reviews.inbox"), "V493 已退役待审收件台权限面");
         assertTrue(registry.permissionsFor("purchase.order")
                 .contains("purchase_order:price:view"));
         assertTrue(registry.permissionsFor("purchase.return")

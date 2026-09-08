@@ -23,6 +23,7 @@ import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -102,6 +103,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
   TaskClaimSession? _decomposeClaim;
   // 币种默认（人民币 id）：新建行无记忆时的回落默认。
   String? _defaultCurrencyId;
+  int _termsLoadGeneration = 0;
 
   @override
   void initState() {
@@ -387,7 +389,13 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
   /// 回填各行尚未填的字段（供应商只回填启用中的；条款字典外的死值跳过）。
   /// 记忆未覆盖的字段回落默认（币种人民币/汇率 1/税率 0）。失败静默（提效加分项）。
   Future<void> _prefillRememberedTerms() async {
-    final pending = _grid.rows
+    final generation = ++_termsLoadGeneration;
+    final session = ref.read(sessionProvider);
+    final targets = {
+      for (final row in _grid.rows)
+        if (row.goods != null) row: (row.goods!.id, row.supplierId),
+    };
+    final pending = targets.keys
         .where(
           (r) =>
               r.goods != null &&
@@ -411,11 +419,22 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
     if (!mounted) return;
     final names = ref.read(masterNameServiceProvider);
     final settlementEntries = await _settlementEntries();
+    if (!mounted ||
+        generation != _termsLoadGeneration ||
+        !identical(session, ref.read(sessionProvider))) {
+      return;
+    }
     final currencyEntries = names.currencyEntries;
+    final currentRows = _grid.rows.toSet();
     var changed = false;
-    for (final r in _grid.rows) {
-      final goodsId = r.goods?.id;
-      if (goodsId == null) continue;
+    for (final target in targets.entries) {
+      final r = target.key;
+      if (!currentRows.contains(r) ||
+          r.goods?.id != target.value.$1 ||
+          r.supplierId != target.value.$2) {
+        continue;
+      }
+      final goodsId = target.value.$1;
       final terms = remembered[goodsId];
       if (terms != null) {
         if (r.supplierId == null &&
@@ -462,14 +481,17 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
     var changed = false;
     if (r.currencyId == null && _defaultCurrencyId != null) {
       r.currencyId = _defaultCurrencyId;
+      r.markTermsAutofilled('currency', _defaultCurrencyId!);
       changed = true;
     }
     if (r.exchangeRate.text.trim().isEmpty) {
       r.exchangeRate.text = '1';
+      r.markTermsAutofilled('rate', '1');
       changed = true;
     }
     if (r.taxRate.text.trim().isEmpty) {
       r.taxRate.text = '0';
+      r.markTermsAutofilled('tax', '0');
       changed = true;
     }
     return changed;
@@ -502,7 +524,13 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
     final settlementEntries = await _settlementEntries();
     if (!settlementEntries.containsKey(candidate)) return;
     if (!mounted) return;
+    final currentRows = _grid.rows.toSet();
     for (final r in targets) {
+      if (!currentRows.contains(r) ||
+          r.supplierId != supplierId ||
+          r.settlementMethodId != null) {
+        continue;
+      }
       r.settlementMethodId = candidate;
       // 供应商主档默认也是系统带入：黄标提醒核对。
       r.markTermsAutofilled('settlement', candidate);
@@ -1017,21 +1045,23 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
                                     errorBuilder: utenTextFieldErrorBuilder,
                                     readOnly: true,
                                     controller: _billNo,
-                                    decoration: InputDecoration(
-                                      labelText: '单据号',
-                                      hintText: _billNo.text.isEmpty
-                                          ? '保存后自动生成'
-                                          : null,
-                                      filled: _billNo.text.isEmpty,
-                                      suffixIcon: _billNo.text.isEmpty
-                                          ? const Icon(
-                                              Icons.autorenew_outlined,
-                                              size: 18,
-                                            )
-                                          : const Icon(
-                                              Icons.lock_outline,
-                                              size: 16,
-                                            ),
+                                    decoration: UtenInputDecoration(
+                                      InputDecoration(
+                                        labelText: '单据号',
+                                        hintText: _billNo.text.isEmpty
+                                            ? '保存后自动生成'
+                                            : null,
+                                        filled: _billNo.text.isEmpty,
+                                        suffixIcon: _billNo.text.isEmpty
+                                            ? const Icon(
+                                                Icons.autorenew_outlined,
+                                                size: 18,
+                                              )
+                                            : const Icon(
+                                                Icons.lock_outline,
+                                                size: 16,
+                                              ),
+                                      ),
                                     ),
                                   ),
                                   ...utenMakerAuditCells(

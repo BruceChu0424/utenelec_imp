@@ -626,7 +626,11 @@ class _FinanceArApOverviewPageState
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新',
-            onPressed: _load,
+            // 整页刷新：分类树 + 台账（与 initState 同口径）。
+            onPressed: () {
+              _loadTree();
+              _load();
+            },
           ),
           if (bp == UtenBreakpoint.compact)
             Builder(

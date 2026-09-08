@@ -7,6 +7,7 @@
 //  - 底栏双决策：驳回（必填原因，通知归属销售修正）/ 确认通过（选填备注，放行计划部）。
 // 本页不出现销售端运营操作（改量/排产进度/取消订单/红冲），职责分离。
 import 'package:flutter/material.dart';
+import '../../../shared/presentation/workflow_field_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -15,17 +16,19 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
-import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
-import '../../../shared/repositories/task_claim_repository.dart';
+import '../../../shared/providers/session_provider.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
+import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/sales_order_finance_confirmation.dart';
 import '../providers/sales_order_finance_confirmation_count_provider.dart';
@@ -33,9 +36,14 @@ import '../repositories/sales_order_finance_confirmation_repository.dart';
 import '../../../shared/widgets/sales_order_money_summary_card.dart';
 
 class FinanceSalesOrderReviewPage extends ConsumerStatefulWidget {
-  const FinanceSalesOrderReviewPage({super.key, required this.id});
+  const FinanceSalesOrderReviewPage({
+    super.key,
+    required this.id,
+    this.returnTo,
+  });
 
   final String id;
+  final String? returnTo;
 
   @override
   ConsumerState<FinanceSalesOrderReviewPage> createState() =>
@@ -49,10 +57,9 @@ class _FinanceSalesOrderReviewPageState
   bool _busy = false;
   String? _error;
 
-  // V459 认领会话：进入审核详情即认领 SALES_ORDER_FINANCE_CONFIRM——
-  // 其他财务的弹卡/收件台显示「XX 正在审核」。纯 UX/防碰撞层，fail-open。
+  // Decisions require confirmed live ownership, including after every dialog.
   TaskClaimSession? _reviewClaim;
-  String? _claimedByOtherName;
+  int _loadGeneration = 0;
 
   bool get _canConfirm =>
       ref.read(isSuperAdminProvider) ||
@@ -68,46 +75,73 @@ class _FinanceSalesOrderReviewPageState
 
   @override
   void dispose() {
+    ++_loadGeneration;
+    _reviewClaim?.removeListener(_claimChanged);
     _reviewClaim?.releaseAll().ignore();
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant FinanceSalesOrderReviewPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.id != widget.id) _load();
+  }
+
+  void _claimChanged() {
+    if (mounted) setState(() {});
+  }
+
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
+    final container = ProviderScope.containerOf(context, listen: false);
+    final identity = container.read(sessionProvider);
     setState(() {
       _loading = true;
       _error = null;
+      _review = null;
     });
     try {
+      _reviewClaim?.removeListener(_claimChanged);
+      await _reviewClaim?.releaseAll();
+      if (!mounted ||
+          generation != _loadGeneration ||
+          !identical(container.read(sessionProvider), identity)) {
+        return;
+      }
+      _reviewClaim = null;
+      if (_canConfirm) {
+        final claim = financeReviewClaim(container)..addListener(_claimChanged);
+        _reviewClaim = claim;
+        // Claim before reading the commercial facts protected by the lease.
+        await claim.claimAll('SALES_ORDER_FINANCE_CONFIRM', [widget.id]);
+        if (!mounted || generation != _loadGeneration || !claim.isCurrent) {
+          await claim.releaseAll();
+          return;
+        }
+      }
       final review = await ref
           .read(salesOrderFinanceConfirmationRepositoryProvider)
           .review(widget.id);
-      if (!mounted) return;
+      if (!mounted ||
+          generation != _loadGeneration ||
+          !identical(container.read(sessionProvider), identity)) {
+        return;
+      }
       setState(() {
         _review = review;
         _loading = false;
       });
-      // 待确认单据才认领（已确认/已驳回无认领意义）。
-      if (!review.financeConfirmed && !review.financeRejected) {
-        _reviewClaim = TaskClaimSession(ref.read(taskClaimRepositoryProvider));
-        await _reviewClaim!.claimAll('SALES_ORDER_FINANCE_CONFIRM', [
-          widget.id,
-        ]);
-        if (mounted) {
-          setState(() {
-            _claimedByOtherName = _reviewClaim!.blocked
-                ? _reviewClaim!.blockedByName
-                : null;
-          });
-        }
+      if (review.financeConfirmed || review.financeRejected) {
+        await _reviewClaim?.releaseAll();
       }
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _error = '审核详情加载失败，请检查网络或权限后重试';
         _loading = false;
@@ -118,6 +152,13 @@ class _FinanceSalesOrderReviewPageState
   Future<void> _confirm() async {
     if (!_canConfirm) {
       context.appWarning('您没有销售订单财务确认权限');
+      return;
+    }
+    final claim = _reviewClaim;
+    final reviewed = _review;
+    final generation = _loadGeneration;
+    if (claim == null || !claim.isReady || reviewed == null || _busy) {
+      context.appWarning('尚未取得有效审核占用，请重新认领并核对内容');
       return;
     }
     final controller = TextEditingController();
@@ -143,9 +184,12 @@ class _FinanceSalesOrderReviewPageState
                 controller: controller,
                 maxLength: 500,
                 maxLines: 2,
-                decoration: const InputDecoration(
-                  hintText: '确认备注(选填，≤500 字)',
-                  border: OutlineInputBorder(),
+                decoration: UtenInputDecoration(
+                  const InputDecoration(
+                    labelText: '确认备注(选填)',
+                    border: OutlineInputBorder(),
+                  ),
+                  info: workflowFieldText(context).workflowFinanceReviewHint,
                 ),
               ),
             ],
@@ -157,8 +201,9 @@ class _FinanceSalesOrderReviewPageState
             onPressed: () => Navigator.pop(dialogCtx, false),
             child: const Text('取消'),
           ),
-          FilledButton(
+          FinanceReviewClaimButton(
             key: const Key('finance-review-confirm-submit'),
+            claim: claim,
             onPressed: () => Navigator.pop(dialogCtx, true),
             child: const Text('确认通过'),
           ),
@@ -170,9 +215,26 @@ class _FinanceSalesOrderReviewPageState
     if (ok != true || !mounted) return;
     setState(() => _busy = true);
     try {
+      if (!await claim.validateForDecision() ||
+          !mounted ||
+          generation != _loadGeneration ||
+          !identical(reviewed, _review)) {
+        if (mounted) {
+          context.appWarning(claim.failureMessage ?? '审核内容或占用已变化，请重新认领并核对');
+        }
+        return;
+      }
       await ref
           .read(salesOrderFinanceConfirmationRepositoryProvider)
-          .confirm(widget.id, remark: remark);
+          .confirm(
+            widget.id,
+            remark: remark,
+            expectedRevision: reviewed.financeReviewRevision,
+            expectedClaimId: claim.claimIdFor(
+              'SALES_ORDER_FINANCE_CONFIRM',
+              widget.id,
+            )!,
+          );
       if (!mounted) return;
       context.appSuccess('已确认通过，计划部已可接手排产');
       ref.invalidate(salesOrderFinanceConfirmationCountProvider);
@@ -187,6 +249,16 @@ class _FinanceSalesOrderReviewPageState
   }
 
   String get widgetSafeBillNo => _review?.billNo ?? '';
+  String get _returnPath =>
+      widget.returnTo == '/finance/sales-order-changes' ||
+          (widget.returnTo == null && (_review?.financeReviewRevision ?? 0) > 0)
+      ? '/finance/sales-order-changes'
+      : '/finance/sales-order-confirmations';
+
+  Future<void> _leaveReview() async {
+    await _reviewClaim?.releaseAll();
+    if (mounted) _closeAfterDecision();
+  }
 
   /// 决策（确认/驳回）完成后的落点：
   /// - 从确认列表 push 进来 → 带 true 返回值 pop，列表刷新；
@@ -194,17 +266,30 @@ class _FinanceSalesOrderReviewPageState
   ///   直接 pop 会抛 GoError 并被外层 catch 误报「确认失败」（v2026.09.03-1
   ///   实际已确认成功）——改跳回确认列表页。
   void _closeAfterDecision() {
+    bumpListRefresh(ref, 'finance:sales-order:$_returnPath');
+    if (widget.returnTo != null ||
+        _returnPath == '/finance/sales-order-changes') {
+      context.go(_returnPath);
+      return;
+    }
     final navigator = Navigator.of(context);
     if (navigator.canPop()) {
       navigator.pop(true);
     } else {
-      context.go('/finance/sales-order-confirmations');
+      context.go(_returnPath);
     }
   }
 
   Future<void> _reject() async {
     if (!_canConfirm) {
       context.appWarning('您没有销售订单财务确认权限');
+      return;
+    }
+    final claim = _reviewClaim;
+    final reviewed = _review;
+    final generation = _loadGeneration;
+    if (claim == null || !claim.isReady || reviewed == null || _busy) {
+      context.appWarning('尚未取得有效审核占用，请重新认领并核对内容');
       return;
     }
     final controller = TextEditingController();
@@ -233,10 +318,13 @@ class _FinanceSalesOrderReviewPageState
                   autofocus: true,
                   maxLength: 500,
                   maxLines: 3,
-                  decoration: InputDecoration(
-                    hintText: '驳回原因(必填，如：客户欠款超限 / 价格待复核)',
-                    border: const OutlineInputBorder(),
-                    error: utenFieldError(errorText),
+                  decoration: UtenInputDecoration(
+                    InputDecoration(
+                      labelText: '驳回原因(必填)',
+                      border: const OutlineInputBorder(),
+                      error: utenFieldError(errorText),
+                    ),
+                    info: workflowFieldText(context).workflowFinanceRejectHint,
                   ),
                 ),
               ],
@@ -248,8 +336,9 @@ class _FinanceSalesOrderReviewPageState
               onPressed: () => Navigator.pop(dialogCtx, false),
               child: const Text('取消'),
             ),
-            FilledButton(
+            FinanceReviewClaimButton(
               key: const Key('finance-review-reject-submit'),
+              claim: claim,
               style: FilledButton.styleFrom(
                 backgroundColor: Theme.of(dialogCtx).colorScheme.error,
               ),
@@ -271,9 +360,26 @@ class _FinanceSalesOrderReviewPageState
     if (ok != true || !mounted) return;
     setState(() => _busy = true);
     try {
+      if (!await claim.validateForDecision() ||
+          !mounted ||
+          generation != _loadGeneration ||
+          !identical(reviewed, _review)) {
+        if (mounted) {
+          context.appWarning(claim.failureMessage ?? '审核内容或占用已变化，请重新认领并核对');
+        }
+        return;
+      }
       await ref
           .read(salesOrderFinanceConfirmationRepositoryProvider)
-          .reject(widget.id, reason: reason);
+          .reject(
+            widget.id,
+            reason: reason,
+            expectedRevision: reviewed.financeReviewRevision,
+            expectedClaimId: claim.claimIdFor(
+              'SALES_ORDER_FINANCE_CONFIRM',
+              widget.id,
+            )!,
+          );
       if (!mounted) return;
       context.appSuccess('已驳回，归属销售将收到修正通知');
       ref.invalidate(salesOrderFinanceConfirmationCountProvider);
@@ -289,6 +395,21 @@ class _FinanceSalesOrderReviewPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(sessionProvider);
+    ref.listen(sessionProvider, (previous, next) {
+      if (identical(previous, next)) return;
+      ++_loadGeneration;
+      _reviewClaim?.removeListener(_claimChanged);
+      _reviewClaim?.releaseAll().ignore();
+      _reviewClaim = null;
+      if (mounted) {
+        setState(() {
+          _review = null;
+          _loading = false;
+          _error = '登录身份已变化，请重新加载并认领审核';
+        });
+      }
+    });
     final theme = Theme.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
     final canViewMoneySummary =
@@ -297,12 +418,7 @@ class _FinanceSalesOrderReviewPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: '销售订单财务审核',
-        leading: UtenBackButton(
-          onPressed: () => backTo(
-            context,
-            defaultPath: '/finance/sales-order-confirmations',
-          ),
-        ),
+        leading: UtenBackButton(onPressed: _leaveReview),
       ),
       body: SafeArea(
         child: _loading
@@ -335,34 +451,13 @@ class _FinanceSalesOrderReviewPageState
                 child: ListView(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
-                    // V459 他人认领软提示（单人维护原则：提示不硬拒）。
-                    if (_claimedByOtherName != null) ...[
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(UtenSpacing.s12),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.tertiaryContainer.withValues(
-                            alpha: 0.5,
-                          ),
-                          borderRadius: UtenRadius.lgAll,
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.person_pin_circle_outlined,
-                              color: theme.colorScheme.onTertiaryContainer,
-                            ),
-                            const SizedBox(width: UtenSpacing.s12),
-                            Expanded(
-                              child: Text(
-                                '$_claimedByOtherName 正在审核此订单；请先与其沟通，避免重复处理。',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onTertiaryContainer,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                    if (_canConfirm &&
+                        !_review!.financeConfirmed &&
+                        !_review!.financeRejected &&
+                        _reviewClaim?.isReady != true) ...[
+                      FinanceReviewClaimNotice(
+                        claim: _reviewClaim,
+                        onRetry: _busy ? null : _load,
                       ),
                       const SizedBox(height: UtenSpacing.s12),
                     ],
@@ -376,6 +471,14 @@ class _FinanceSalesOrderReviewPageState
                       SalesOrderMoneySummaryCard(salesOrderId: widget.id),
                     ],
                     const SizedBox(height: UtenSpacing.s12),
+                    if (_review!.commercialChanges.isNotEmpty) ...[
+                      _commercialChangesCard(theme, _review!),
+                      const SizedBox(height: UtenSpacing.s16),
+                    ],
+                    if (_review!.qtyChanges.isNotEmpty) ...[
+                      _qtyChangesCard(theme, _review!),
+                      const SizedBox(height: UtenSpacing.s12),
+                    ],
                     _itemsCard(theme, _review!),
                     if (_review!.financeRejected) ...[
                       const SizedBox(height: UtenSpacing.s12),
@@ -420,14 +523,18 @@ class _FinanceSalesOrderReviewPageState
                             key: const Key('finance-review-reject'),
                             type: UtenButtonType.danger,
                             icon: Icons.undo_rounded,
-                            onPressed: _reject,
+                            onPressed: _reviewClaim?.isReady == true
+                                ? _reject
+                                : null,
                             child: const Text('驳回'),
                           ),
                           const SizedBox(width: UtenSpacing.s12),
                           UtenButton(
                             key: const Key('finance-review-confirm'),
                             icon: Icons.fact_check_outlined,
-                            onPressed: _confirm,
+                            onPressed: _reviewClaim?.isReady == true
+                                ? _confirm
+                                : null,
                             child: const Text('确认通过'),
                           ),
                         ],
@@ -644,6 +751,130 @@ class _FinanceSalesOrderReviewPageState
             kv('结帐方式', r.settlementMethodName),
             kv('合同号', r.contractNo),
             kv('备注', r.remark),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 修改清单（2026-09-05 确认后改量）：每行 以前数量 → 现在数量，
+  /// 财务按此复核后再确认；重新确认后本清单自动归档隐藏。
+  Widget _qtyChangesCard(ThemeData theme, SalesOrderFinanceReview r) {
+    final warning = theme.colorScheme.error;
+    return Container(
+      key: const Key('sales-order-finance-qty-changes'),
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      decoration: BoxDecoration(
+        color: warning.withValues(alpha: 0.08),
+        borderRadius: UtenRadius.mdAll,
+        border: Border.all(color: warning.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.edit_note_rounded, size: 20, color: warning),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Text(
+                  '修改清单 · 上次财务确认后改量 ${r.qtyChanges.length} 处',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: warning,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: UtenSpacing.s4),
+          Text(
+            '订单在财务确认后修改过数量，已重新进入确认队列；请逐行核对 以前→现在 后再确认。',
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          for (final change in r.qtyChanges)
+            Padding(
+              padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      [
+                        if (change.goodsName != null) change.goodsName!,
+                        if (change.goodsCode != null) '(${change.goodsCode!})',
+                        if (change.colorName?.isNotEmpty == true)
+                          change.colorName!,
+                      ].join(' '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Text(
+                    '以前 ${change.oldQty ?? '—'}'
+                    '${change.unitName == null ? '' : ' ${change.unitName}'}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      decoration: TextDecoration.lineThrough,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: UtenSpacing.s4),
+                  Icon(Icons.arrow_forward_rounded, size: 14, color: warning),
+                  const SizedBox(width: UtenSpacing.s4),
+                  Text(
+                    '现在 ${change.newQty ?? '—'}'
+                    '${change.unitName == null ? '' : ' ${change.unitName}'}',
+                    key: Key('qty-change-${change.orderItemId}'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: warning,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _commercialChangesCard(
+    ThemeData theme,
+    SalesOrderFinanceReview review,
+  ) {
+    return Card(
+      key: const Key('sales-order-commercial-changes'),
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('修改清单 · 商业内容', style: theme.textTheme.titleMedium),
+            const SizedBox(height: UtenSpacing.s8),
+            for (final change in review.commercialChanges)
+              Padding(
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(change.field, style: theme.textTheme.titleSmall),
+                    SelectableText('以前：${change.beforeValue}'),
+                    SelectableText(
+                      '修改后：${change.afterValue}',
+                      style: TextStyle(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      '${change.changedByName} · ${utenFmtIsoTime(change.changedAt)}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),

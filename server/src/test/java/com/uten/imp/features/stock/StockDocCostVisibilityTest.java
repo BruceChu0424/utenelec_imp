@@ -127,10 +127,17 @@ class StockDocCostVisibilityTest {
     void viewerWithoutCostPermissionCanStillCreatePureQuantityDocument() {
         StockDocItemLine line = quantityLine();
         UUID baseUnitId = UUID.randomUUID();
-        when(nativeQuery.getResultList()).thenReturn(
-                List.<Object[]>of(new Object[]{false, baseUnitId, false}),
-                List.<Object[]>of(new Object[]{line.getGoodsId(), "G-001", "纯数量货品"}),
-                List.of());
+        Query unitBasis = mock(Query.class);
+        when(unitBasis.setParameter(org.mockito.ArgumentMatchers.anyString(), any())).thenReturn(unitBasis);
+        when(unitBasis.getResultList()).thenReturn(List.<Object[]>of(new Object[]{false, baseUnitId, false}));
+        when(entityManager.createNativeQuery(org.mockito.ArgumentMatchers.contains("SELECT g.is_deleted, u.id")))
+                .thenReturn(unitBasis);
+        Query goodsSnapshot = mock(Query.class);
+        when(goodsSnapshot.setParameter(org.mockito.ArgumentMatchers.anyString(), any())).thenReturn(goodsSnapshot);
+        when(goodsSnapshot.getResultList()).thenReturn(
+                List.<Object[]>of(new Object[]{line.getGoodsId(), "G-001", "纯数量货品"}));
+        when(entityManager.createNativeQuery(org.mockito.ArgumentMatchers.contains("SELECT goods.id, goods.code, goods.name")))
+                .thenReturn(goodsSnapshot);
 
         var detail = assertDoesNotThrow(() -> service(false).create(request(line)));
 
@@ -210,7 +217,9 @@ class StockDocCostVisibilityTest {
                 access,
                 mock(ProductionStockTaskAccessPolicy.class),
                 mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class),
-                mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class));
+                mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class),
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
+                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
     }
 
     private static EntityManager stubbedEntityManager(Query query) {

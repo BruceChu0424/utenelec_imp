@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -260,10 +261,12 @@ class WarehouseQualityMergedTable extends StatelessWidget {
           enabled: draft.selected && !saving,
           maxLength: 100,
           errorBuilder: utenTextFieldErrorBuilder,
-          decoration: InputDecoration(
-            isDense: true,
-            counterText: '',
-            hintText: slice.placeHint ?? '实际库位',
+          decoration: UtenInputDecoration(
+            InputDecoration(
+              isDense: true,
+              counterText: '',
+              hintText: slice.placeHint ?? '实际库位',
+            ),
           ),
           onChanged: (_) => onChanged(),
         ),
@@ -300,12 +303,15 @@ class WarehouseQualityMergedTable extends StatelessWidget {
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           inputFormatters: [LengthLimitingTextInputFormatter(24)],
           errorBuilder: utenTextFieldErrorBuilder,
-          decoration: InputDecoration(
-            isDense: true,
-            counterText: '',
-            suffixText: '余 ${warehouseQualityQuantity(slice.remainingBaseQty)}',
-            suffixStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+          decoration: UtenInputDecoration(
+            InputDecoration(
+              isDense: true,
+              counterText: '',
+              suffixText:
+                  '余 ${warehouseQualityQuantity(slice.remainingBaseQty)}',
+              suffixStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
           onChanged: (_) => onChanged(),

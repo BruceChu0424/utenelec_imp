@@ -40,7 +40,8 @@ class WarehouseArrivalRegistrationIdempotencyTest {
         PurchaseReceiptService purchase = mock(PurchaseReceiptService.class);
         SubcontractReceiptService subcontract = mock(SubcontractReceiptService.class);
         var service = new WarehouseArrivalRegistrationService(
-                jdbc, mock(TxSessionVars.class), currentUser, purchase, subcontract);
+                jdbc, mock(TxSessionVars.class), currentUser, purchase, subcontract,
+                        com.uten.imp.support.FulfillmentMutationLockTestSupport.procurementLocks());
 
         var result = service.register(request);
 
@@ -65,7 +66,8 @@ class WarehouseArrivalRegistrationIdempotencyTest {
         PurchaseReceiptService purchase = mock(PurchaseReceiptService.class);
         SubcontractReceiptService subcontract = mock(SubcontractReceiptService.class);
         var service = new WarehouseArrivalRegistrationService(
-                jdbc, mock(TxSessionVars.class), currentUser, purchase, subcontract);
+                jdbc, mock(TxSessionVars.class), currentUser, purchase, subcontract,
+                        com.uten.imp.support.FulfillmentMutationLockTestSupport.procurementLocks());
 
         assertThatThrownBy(() -> service.register(request(
                 "arrival-retry-key-002", "不同内容", BigDecimal.ONE)))

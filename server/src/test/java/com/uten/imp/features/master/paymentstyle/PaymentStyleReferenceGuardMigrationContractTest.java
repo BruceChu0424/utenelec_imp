@@ -44,6 +44,10 @@ class PaymentStyleReferenceGuardMigrationContractTest {
             "finance_deferral_schedule_versions.expense_style_id",
             "finance_expense_items.expense_style_id",
             "finance_other_income_items.income_style_id",
+            "finance_payments.gl_account_style_id",
+            "finance_payments.gl_ap_style_id",
+            "finance_payments.gl_bank_fee_style_id",
+            "finance_payments.gl_fx_style_id",
             "finance_receipts.gl_account_style_id",
             "finance_receipts.gl_bank_fee_style_id",
             "finance_receipts.gl_counter_style_id",
@@ -140,6 +144,16 @@ class PaymentStyleReferenceGuardMigrationContractTest {
                 "finance_receipts.gl_counter_style_id",
                 "finance_receipts.gl_fee_payment_style_id",
                 "finance_receipts.gl_fx_style_id"));
+        String v523 = Files.readString(serverPath(
+                "src/main/resources/db/migration/V523__actual_bank_payment_authority_v2.sql"));
+        assertTrue(v523.contains("account_row.style_id IS DISTINCT FROM NEW.gl_account_style_id")
+                        && v523.contains("NEW.gl_ap_style_id IS DISTINCT FROM system_posting_style_id('AP_CONTROL')")
+                        && v523.contains("NEW.gl_bank_fee_style_id IS DISTINCT FROM system_posting_style_id('BANK_FEE_EXPENSE')")
+                        && v523.contains("NEW.gl_fx_style_id IS DISTINCT FROM system_posting_style_id('FX_GAIN_LOSS')"),
+                "V523 must bind every payment style UUID to its actual account or posting role");
+        guardedReferences.addAll(Set.of(
+                "finance_payments.gl_account_style_id", "finance_payments.gl_ap_style_id",
+                "finance_payments.gl_bank_fee_style_id", "finance_payments.gl_fx_style_id"));
 
         Set<String> expectedGuards = new TreeSet<>(EXPECTED_UUID_REFERENCES);
         expectedGuards.add("accounts.style_legacy_id");

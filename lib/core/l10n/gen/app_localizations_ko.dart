@@ -2346,7 +2346,36 @@ class AppLocalizationsKo extends AppLocalizations {
   String get financeHubTaskApproval => '주문 승인 작업';
 
   @override
-  String get financeHubTaskApprovalSub => '나에게 할당됨';
+  String get financeSalesAllQueueLabel => '판매 주문 재무 확인';
+
+  @override
+  String get financeSalesInitialQueueLabel => '판매 주문 최초 재무 승인';
+
+  @override
+  String get financeSalesChangesQueueLabel => '판매 주문 변경';
+
+  @override
+  String financeSalesQueueCountLoading(String queue) {
+    return '$queue 대기 건수 불러오는 중';
+  }
+
+  @override
+  String financeSalesQueueCountFailed(String queue) {
+    return '$queue 대기 건수를 불러오지 못했습니다. 작업 페이지에서 다시 시도하세요.';
+  }
+
+  @override
+  String financeSalesQueueCountEmpty(String queue) {
+    return '대기 중인 $queue 없음';
+  }
+
+  @override
+  String financeSalesQueueCountPending(String queue, int count) {
+    return '대기 중인 $queue: $count건';
+  }
+
+  @override
+  String get financeHubTaskApprovalSub => '구매 및 외주 주문 승인';
 
   @override
   String get financeHubTaskOverDelivery => '초과 입고 승인';
@@ -2824,4 +2853,492 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get employeeAccountNotProvisionedContactSupport =>
       '이 직원은 아직 계정이 없습니다. 계정 지원 담당자에게 문의하세요.';
+
+  @override
+  String get materialMainWarehouse => 'Main warehouse';
+
+  @override
+  String get materialIssueWarehouseSettings => 'Issue warehouse settings';
+
+  @override
+  String get materialWarehouseScopeExplanation =>
+      'The main warehouse includes its subwarehouses. Kit readiness, reservations and issues use the selected physical warehouse. Stock elsewhere is a transfer reference until received here.';
+
+  @override
+  String get materialSearchHint => 'Search products or materials';
+
+  @override
+  String get materialByProduct => 'By product';
+
+  @override
+  String get materialByMaterial => 'By material';
+
+  @override
+  String get materialIdentityByMaterial => 'Material / source';
+
+  @override
+  String get materialIdentityByProduct => 'Product / BOM hierarchy';
+
+  @override
+  String get materialRoute => 'Supply route';
+
+  @override
+  String get materialRequired => 'Demand';
+
+  @override
+  String get materialAllocated => '준비 수량';
+
+  @override
+  String get materialPreparedQuantityHint =>
+      '이번 생산분에 배정된 합격 자재 수량으로, 정식 예약 및 이미 출고한 자재를 포함합니다. 합격 입고는 한 번만 계산하며 검사 대기 및 입고 예정 수량은 제외합니다. 창고의 현재 잔량과는 다릅니다.';
+
+  @override
+  String get materialShortage => 'Kit shortage';
+
+  @override
+  String get materialPhysicalShortageHint =>
+      '이번 생산분에 배정된 합격 자재를 제외한 실제 부족 수량입니다. 구매, 외주 또는 작업 지시만으로는 줄어들지 않으며, 합격 입고 후 이번 생산분에 배정되어야 줄어듭니다. 추가 발주량은 입고 예정 수량을 별도로 차감하여 중복 발주를 방지합니다.';
+
+  @override
+  String get materialSupplyProgressHint =>
+      '발주, 재무 승인, 도착, 검사 및 입고 진행을 추적합니다. 행을 두 번 클릭하면 상세 내용을 확인할 수 있습니다. 지시 후에도 실제 부족 수량은 유지되며 합격 입고 후 갱신됩니다.';
+
+  @override
+  String get materialToSupply => 'Additional supply';
+
+  @override
+  String get materialFutureSupply => 'Expected supply';
+
+  @override
+  String get materialProgress => 'Progress / next step';
+
+  @override
+  String get materialMixedRoutes => 'Mixed routes';
+
+  @override
+  String materialAggregateSources(int products, int paths) {
+    return '$products products · $paths paths';
+  }
+
+  @override
+  String materialCreateRoutes(int count) {
+    return 'Confirm routes ($count)';
+  }
+
+  @override
+  String get materialRouteReasonTitle => 'Route reason (optional)';
+
+  @override
+  String get materialRouteChangedRetry =>
+      'Analysis updated. Review the selected routes and try again.';
+
+  @override
+  String get materialWarehouseFacts => 'Warehouse and supply details';
+
+  @override
+  String get materialExactStock => 'Qualified stock pegged here';
+
+  @override
+  String get materialPublicStock => 'Public stock';
+
+  @override
+  String get materialScopeStock => 'Scope availability (reference)';
+
+  @override
+  String get materialTransferStock => 'Transferable from other warehouses';
+
+  @override
+  String get materialClaimedSupply => 'Claimed for this task';
+
+  @override
+  String get materialTaskBuy => 'Issue purchasing';
+
+  @override
+  String get materialTaskSubcontract => 'Issue subcontracting';
+
+  @override
+  String get materialTaskWorkshop => 'Issue to workshop';
+
+  @override
+  String get materialTaskIssued => 'Issued';
+
+  @override
+  String get materialTaskBlocked => 'Needs attention';
+
+  @override
+  String get materialTaskEmpty => 'No tasks match this filter';
+
+  @override
+  String get materialTaskBuyHint =>
+      'Issue remaining purchasing demand and track orders, receipts and inspections.';
+
+  @override
+  String get materialTaskSubcontractHint =>
+      'Issue remaining subcontracting demand; components first create workshop preparation tasks.';
+
+  @override
+  String get materialTaskWorkshopHint =>
+      'Set quantity, workshop and owner before issuing. Material-short tasks wait until materials are ready and issued.';
+
+  @override
+  String get materialTaskSectionHint =>
+      'Manage preparation by route and review pending, issued and blocked tasks.';
+
+  @override
+  String get materialWarehouseLimit =>
+      'An analysis supports at most 100 physical warehouses. Adjust the warehouse scope before analyzing.';
+
+  @override
+  String materialRoutesNext(int count) {
+    return 'Next: review $count routes, select them and confirm. Each row keeps its selected route.';
+  }
+
+  @override
+  String get materialIssueNext =>
+      'Next: open purchasing, subcontracting or workshop tasks to issue remaining demand and track issued work.';
+
+  @override
+  String materialWorkshopNext(int count) {
+    return 'Next: $count products can be issued to workshops. Set quantity, workshop and owner; material-short batches wait for complete kits and material issues.';
+  }
+
+  @override
+  String materialPreparedChildCreated(int count) {
+    return 'Created $count preparation tasks; they have not been issued to a workshop yet.';
+  }
+
+  @override
+  String get materialPreparedChildNext =>
+      'Check quantity, workshop and owner in the selected rows, then generate the production plan. Approval is required before release.';
+
+  @override
+  String get materialPreparedChildNeedPlanner =>
+      'A planner with production-plan generation permission must set quantity, workshop and owner and submit the plan.';
+
+  @override
+  String get materialRouteMemoryLoading =>
+      'Loading previous routes. Confirm after they are ready.';
+
+  @override
+  String get materialRouteMemoryUnavailable =>
+      'Previous routes could not be loaded. Review the displayed routes before confirming.';
+
+  @override
+  String get materialRootSupply => 'Top-level supply task';
+
+  @override
+  String get materialRootRoutePending => 'Route pending';
+
+  @override
+  String get materialRootExternalRoute =>
+      'Issue this top-level product from its purchasing or subcontracting entry';
+
+  @override
+  String materialRootExistingStock(String quantity) {
+    return 'Allocated stock of $quantity will be handed over first. Enter only additional supply below.';
+  }
+
+  @override
+  String get materialRootSupplyCompleted => 'Supply demand fulfilled';
+
+  @override
+  String get materialRootOutputHistory => 'Top-level supply handovers';
+
+  @override
+  String get materialRootStockAllocation => 'Existing stock allocation';
+
+  @override
+  String get materialRootReceivedSupply => 'Qualified receipt handover';
+
+  @override
+  String get materialRootOutputReversed => 'Handover reversed';
+
+  @override
+  String get materialSupplyTasksAndReversals => '공급 작업 및 취소 기록';
+
+  @override
+  String get materialNotificationReversalReconcile => '취소 내역 동기화';
+
+  @override
+  String get materialRevokeRootStock => 'Reverse stock allocation';
+
+  @override
+  String get materialRootRevokeFailed =>
+      'Stock allocation could not be reversed. Refresh and review it.';
+
+  @override
+  String get materialRootSupplyProcessed =>
+      'Supply processed. Review the stock handovers and additional demand records.';
+
+  @override
+  String get orderChangeQtyButton => '수량 변경';
+
+  @override
+  String get orderChangeQtyTitle => '주문 수량 변경';
+
+  @override
+  String get orderChangeQtyWarning =>
+      '승인 후 수량 변경은 즉시 적용되며 자동으로 재무 재검토로 돌아갑니다. 재무는 변경 목록(이전→현재)을 확인합니다. 반려해도 수량이 자동 복원되지 않습니다.';
+
+  @override
+  String orderChangeQtyCurrent(String qty) {
+    return '현재 $qty';
+  }
+
+  @override
+  String get orderChangeQtyNewQty => '새 수량';
+
+  @override
+  String get orderChangeQtyConfirm => '수량 변경 확인';
+
+  @override
+  String get orderChangeQtyInvalid => '유효하지 않은 수량이 있습니다(0보다 커야 함). 확인해 주세요.';
+
+  @override
+  String get orderChangeQtySuccess => '수량이 변경되었으며 주문이 재무 재검토로 돌아갔습니다';
+
+  @override
+  String get orderChangeQtyFailed => '수량 변경에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+
+  @override
+  String orderQtyChangeOld(String value) {
+    return '이전 $value';
+  }
+
+  @override
+  String orderQtyChangeNew(String value) {
+    return '현재 $value';
+  }
+
+  @override
+  String get procurementApprovalStatusPending => '재무 재검토 대기';
+
+  @override
+  String procurementApprovalStatusChanged(int count) {
+    return '변경 후 재검토 대기 · 수량 변경 $count건';
+  }
+
+  @override
+  String procurementApprovalQtyChangesTitle(int count) {
+    return '변경 목록 · 수량 변경 $count건';
+  }
+
+  @override
+  String get procurementApprovalQtyChangesHint =>
+      '재무 승인 후 수량이 변경되어 자동으로 재검토 대기로 돌아갔습니다. 이전→현재를 한 줄씩 확인한 뒤 재검토해 주세요.';
+
+  @override
+  String get productionMaterialRecheck => '자재 다시 확인';
+
+  @override
+  String get productionMaterialRecheckReady =>
+      '자재가 준비되어 실제 창고별 출고 지시가 생성되었습니다. 자재 출고 완료 후 작업을 시작하세요.';
+
+  @override
+  String get productionMaterialRecheckWaiting =>
+      '아직 자재가 부족합니다. 실제 입고 및 다른 작업의 예약 수량을 확인하세요.';
+
+  @override
+  String get fieldAutofilledReview => '이전 기록 또는 기본값이 자동 입력되었습니다. 사용 전에 확인하세요.';
+
+  @override
+  String get workflowQuantityHint =>
+      '이 행의 단위로 이번 수량을 입력하세요. 박스, 개, kg을 혼동하지 말고 연결된 원본의 가능 수량을 넘기지 마세요.';
+
+  @override
+  String get workflowOrderQuantityHint =>
+      '이 행의 단위로 주문 수량을 입력하세요. 재무 검토 중에는 수정할 수 없으며 승인 후 수정하면 다시 검토됩니다.';
+
+  @override
+  String get workflowReturnQuantityHint =>
+      '원래 출고 행의 단위로 실제 반품 수량을 입력하세요. 반품 가능 잔량을 넘길 수 없고 승인된 반품은 검사 후에야 판매 가능 재고가 됩니다.';
+
+  @override
+  String get workflowPriceHint =>
+      '행의 단위와 통화에 맞는 단가를 입력하세요. 행 전체 금액을 단가로 입력하지 마세요.';
+
+  @override
+  String get workflowReturnPriceHint =>
+      '반품 대변 금액은 승인 시 원래 출고 및 누적 반품 금액으로 계산됩니다. 참고 단가로 환급 가능 금액을 늘릴 수 없습니다.';
+
+  @override
+  String get workflowDiscountHint =>
+      '할인 배수를 소수로 입력하세요. 1은 정상가, 0.9는 10% 할인입니다. 9나 90을 입력하지 마세요.';
+
+  @override
+  String get workflowExchangeRateHint =>
+      '원통화 1단위의 기준통화 금액을 소수 6자리 이내로 입력하세요. 자동 입력된 환율도 이번 거래와 대조하세요.';
+
+  @override
+  String get workflowTaxRateHint => '백분율로 입력하세요. 13은 13%입니다. 0.13을 입력하지 마세요.';
+
+  @override
+  String get workflowCurrencyHint =>
+      '통화는 이 행의 단가와 금액 기준입니다. 변경 전에 원본 문서를 확인하세요.';
+
+  @override
+  String get workflowSettlementHint =>
+      '공급업체와 합의한 결제 조건을 선택하세요. 공급업체, 통화 또는 조건이 다르면 발주서가 나뉠 수 있습니다.';
+
+  @override
+  String get workflowPlanningQuantityHint =>
+      '이번에 배정할 수량이며 실입고 수량이 아닙니다. 입고 예정 물량은 재고가 아니고 작업 지시만으로 착수 가능해지지 않습니다.';
+
+  @override
+  String get workflowWorkshopQuantityHint =>
+      '이번에 작업장에 지시할 수량을 입력하세요. 지시는 먼저 할 수 있지만 착수와 자재 출고 조건은 별도로 충족해야 합니다.';
+
+  @override
+  String get workflowReportQuantityHint =>
+      '계획 행 단위로 이번 실제 완료량을 입력하세요. 누적 생산량이 아닙니다. 보고 승인 후에도 창고 등록, 품질 검사 및 입고가 필요합니다.';
+
+  @override
+  String get workflowArrivalQuantityHint =>
+      '이 행 단위로 이번 실제 도착 수량을 입력하세요. 부족하거나 초과해도 실물대로 기록하며 승인 초과분은 예외 처리되고 가용 재고가 되지 않습니다.';
+
+  @override
+  String get workflowIqcPassHint =>
+      '이번 합격 수량만 입력하세요. 합격과 불합격 합계는 검사 잔량을 넘길 수 없으며 창고 입고 확인이 별도로 필요합니다.';
+
+  @override
+  String get workflowIqcFailHint =>
+      '이번 불합격 수량만 입력하세요. 가용 재고에 포함되지 않으며 반품, 재작업 등의 후속 처리가 필요합니다.';
+
+  @override
+  String get workflowPrepaymentAmountHint =>
+      '주문 통화로 실제 받은 선수금을 입력하세요. 입금은 한 번만 기록되며 나중에 미수금에 충당해도 중복 입금으로 기록되지 않습니다.';
+
+  @override
+  String get workflowReceiptAllocationHint =>
+      '이번 입금을 해당 미수금의 원통화로 배분하세요. 수금 가능 잔액을 넘기거나 동일 입금을 중복 배분하지 마세요.';
+
+  @override
+  String get workflowBankFeeHint =>
+      '이번 실제 은행 수수료를 입력하세요. 입금액에서 이미 공제한 수수료를 별도 지급으로 중복 기록하지 마세요.';
+
+  @override
+  String get workflowOtherFeeHint =>
+      '은행 수수료를 제외한 이번 비용만 입력하고 비용 항목을 선택하세요. 동일 비용을 중복 기록하지 마세요.';
+
+  @override
+  String get workflowReturnReasonHint =>
+      '반품 사유와 원래 출고를 명확히 적으세요. 승인하면 처리 대기 대변 금액이 생기고 실물은 검사 대기 상태가 됩니다. 환불·교환 결정은 별도입니다.';
+
+  @override
+  String get workflowPrepaymentOrderHint =>
+      '선수금이 속한 판매 주문을 먼저 선택하세요. 고객과 통화는 주문에서 결정되며 잘못 선택했다면 주문을 바꾸세요.';
+
+  @override
+  String get workflowPrepaymentApplyHint =>
+      '어떤 선수금으로 어떤 미수금을 충당하는지 근거를 적으세요. 충당은 잔액만 조정하며 현금 입금을 다시 늘리지 않습니다.';
+
+  @override
+  String get workflowFinanceReviewHint =>
+      '검토 결과를 적고 수정 주문은 변경 전후를 비교하세요. 재무 승인은 수금·출고·생산 착수 사실을 의미하지 않습니다.';
+
+  @override
+  String get workflowFinanceRejectHint =>
+      '잘못된 부분과 수정 방법을 적으세요. 영업 담당자에게 전달되며 수정 후 재검토를 요청할 수 있습니다.';
+
+  @override
+  String get workflowOptionalDetails => '추가 정보(선택)';
+
+  @override
+  String get workflowReceiptEvidence => '환율 및 입금 증빙';
+
+  @override
+  String get workflowReceiptNoFees => '수수료가 없으면 비용 내역을 입력할 필요가 없습니다';
+
+  @override
+  String get workflowUnitUnknown => '검사 단위 확인 필요';
+
+  @override
+  String workflowIqcUnitHint(String sourceUnit, String rate, String baseUnit) {
+    return '원본의 1$sourceUnit은 $rate$baseUnit입니다. 포장 수량이 아닌 $baseUnit으로 검사하세요.';
+  }
+
+  @override
+  String get moneySummaryCustomerPaid => '고객 결제액';
+
+  @override
+  String get moneySummaryGrossShipped => '출하 금액';
+
+  @override
+  String get moneySummaryReturned => '반품 금액';
+
+  @override
+  String get moneySummaryUnusedReturns => '미처리 반품 잔액';
+
+  @override
+  String get moneySummaryNetReceivable => '현재 수금 필요액';
+
+  @override
+  String get moneySummaryPendingBalance => '고객 처리 대기 잔액';
+
+  @override
+  String get moneySummaryFutureShipment => '향후 출하 금액';
+
+  @override
+  String get moneySummaryExpectedNewCash => '예상 추가 수금액';
+
+  @override
+  String get moneySummaryBalanceHint =>
+      '대기 잔액의 상계 또는 환불은 재무 확인이 필요하며, 환불 완료를 의미하지 않습니다.';
+
+  @override
+  String get moneySummaryCollectionHint =>
+      '현재 미수금, 향후 출하 및 미사용 선수금 기준 예상액이며 자동 상계나 환불은 이루어지지 않습니다.';
+
+  @override
+  String get moneySummarySourceHint =>
+      '금액은 승인된 전표 기준입니다. 고객 결제액에 공제 수수료가 포함될 수 있으며, 실제 은행 입금액은 계좌 거래를 확인하세요.';
+
+  @override
+  String get moneySummaryUnallocatedHint =>
+      '일부 결제가 이 주문에 연결되지 않았습니다. 재무 확인이 필요합니다.';
+
+  @override
+  String get warehouseArrivalSourceLabel => '입고 출처';
+
+  @override
+  String get warehouseArrivalSourceAutomatic => '자동 판별';
+
+  @override
+  String get warehouseArrivalSourceNormal => '정상 입고';
+
+  @override
+  String get warehouseArrivalSourceReplacement => '반품 보충 우선';
+
+  @override
+  String get warehouseArrivalSourceHint =>
+      '대기 중인 출처가 하나이면 자동으로 판별합니다. 정상 입고와 반품 보충이 함께 남아 있으면 이번 물품의 출처를 선택하세요. 반품 보충 우선은 반품 수량부터 채우고 나머지는 정상 입고로 처리합니다. 무상 보충 또는 재청구 여부는 원래 반품 처리 결과를 따릅니다.';
+
+  @override
+  String get subcontractPreparationWarehouse => '내부 생산 입고 창고';
+
+  @override
+  String get subcontractPreparationWarehouseHint =>
+      '직접 주문한 외주품에 하위 부품이 있고 재고가 부족하면 내부 생산 입고 창고를 선택하세요. 계획부가 부족량을 생산하고 실제 입고한 후 재무에 제출할 수 있습니다. 하위 부품이 없거나 재고가 충분하면 선택하지 않아도 됩니다.';
+
+  @override
+  String get subcontractInternalProduction => '내부 생산';
+
+  @override
+  String get subcontractPreparedQuantity => '준비 완료';
+
+  @override
+  String get subcontractPreparationShortage => '추가 생산 필요';
+
+  @override
+  String get subcontractOpenPreparation => '생산 계획 보기';
+
+  @override
+  String get subcontractDraftPreparationHint =>
+      '계획부에서 먼저 내부 생산을 준비합니다. 실제 입고가 완료되면 재무에 제출하세요.';
+
+  @override
+  String get subcontractWaitingPlan => '계획 대기';
+
+  @override
+  String get subcontractReadyForFinance => '준비 완료, 재무 제출 가능';
 }

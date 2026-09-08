@@ -22,6 +22,8 @@ class SalesOrderFinancePendingItem {
     this.financeRejected = false,
     this.financeRejectedReason,
     this.financeRejectedAt,
+    this.changeCount = 0,
+    this.financeReviewRevision = 0,
   });
 
   final String orderId;
@@ -50,6 +52,10 @@ class SalesOrderFinancePendingItem {
   final String? financeRejectedReason;
   final String? financeRejectedAt;
 
+  /// 上次财务确认之后的改量处数（>0 = 确认后修改、待重新确认）。
+  final int changeCount;
+  final int financeReviewRevision;
+
   bool get canConfirm => orderId.isNotEmpty;
 
   String get detailRoute =>
@@ -72,6 +78,8 @@ class SalesOrderFinancePendingItem {
       financeRejected: json['financeRejected'] == true,
       financeRejectedReason: _string(json['financeRejectedReason']),
       financeRejectedAt: _string(json['financeRejectedAt']),
+      changeCount: _int(json['changeCount']) ?? 0,
+      financeReviewRevision: _int(json['financeReviewRevision']) ?? 0,
     );
   }
 }
@@ -161,6 +169,9 @@ class SalesOrderFinanceReview {
     this.financeRejectedByName,
     this.financeRejectedAt,
     this.items = const [],
+    this.qtyChanges = const [],
+    this.commercialChanges = const [],
+    this.financeReviewRevision = 0,
   });
 
   final String orderId;
@@ -211,8 +222,14 @@ class SalesOrderFinanceReview {
 
   final List<SalesOrderFinanceReviewLine> items;
 
+  /// 修改清单（2026-09-05 确认后改量）：上次确认以后每行 以前→现在 数量。
+  final List<SalesOrderFinanceQtyChange> qtyChanges;
+  final List<SalesOrderCommercialChange> commercialChanges;
+  final int financeReviewRevision;
+
   factory SalesOrderFinanceReview.fromJson(Map<String, dynamic> json) {
     final rawItems = json['items'];
+    final rawChanges = json['qtyChanges'];
     return SalesOrderFinanceReview(
       orderId: _string(json['orderId']) ?? '',
       billNo: _string(json['billNo']) ?? '未生成单号',
@@ -258,6 +275,85 @@ class SalesOrderFinanceReview {
                 )
                 .toList(growable: false)
           : const [],
+      qtyChanges: rawChanges is List
+          ? rawChanges
+                .whereType<Map<Object?, Object?>>()
+                .map(
+                  (e) => SalesOrderFinanceQtyChange.fromJson(
+                    e.cast<String, dynamic>(),
+                  ),
+                )
+                .toList(growable: false)
+          : const [],
+      commercialChanges: (json['commercialChanges'] as List? ?? const [])
+          .whereType<Map<Object?, Object?>>()
+          .map((row) => SalesOrderCommercialChange.fromJson(row))
+          .toList(growable: false),
+      financeReviewRevision: _int(json['financeReviewRevision']) ?? 0,
+    );
+  }
+}
+
+class SalesOrderCommercialChange {
+  const SalesOrderCommercialChange({
+    required this.field,
+    required this.beforeValue,
+    required this.afterValue,
+    required this.changedByName,
+    required this.changedAt,
+  });
+
+  factory SalesOrderCommercialChange.fromJson(Map<Object?, Object?> json) =>
+      SalesOrderCommercialChange(
+        field: json['field']?.toString() ?? '',
+        beforeValue: json['beforeValue']?.toString() ?? '',
+        afterValue: json['afterValue']?.toString() ?? '',
+        changedByName: json['changedByName']?.toString() ?? '',
+        changedAt: json['changedAt']?.toString() ?? '',
+      );
+
+  final String field;
+  final String beforeValue;
+  final String afterValue;
+  final String changedByName;
+  final String changedAt;
+}
+
+/// 修改清单行（确认后改量）：货品 + 以前数量 → 现在数量 + 修改人/时间。
+class SalesOrderFinanceQtyChange {
+  const SalesOrderFinanceQtyChange({
+    required this.orderItemId,
+    this.goodsCode,
+    this.goodsName,
+    this.colorName,
+    this.unitName,
+    this.oldQty,
+    this.newQty,
+    this.changedByName,
+    this.changedAt,
+  });
+
+  final String orderItemId;
+  final String? goodsCode;
+  final String? goodsName;
+  final String? colorName;
+  final String? unitName;
+  final String? oldQty;
+  final String? newQty;
+  final String? changedByName;
+  final String? changedAt;
+
+  factory SalesOrderFinanceQtyChange.fromJson(Map<String, dynamic> json) {
+    return SalesOrderFinanceQtyChange(
+      orderItemId: _string(json['orderItemId']) ?? '',
+      goodsCode: _string(json['goodsCode']),
+      goodsName: _string(json['goodsName']),
+      colorName: _string(json['colorName']),
+      unitName: _string(json['unitName']),
+      oldQty: _string(json['oldQty']),
+      newQty: _string(json['newQty']),
+      changedByName: _string(json['changedByName']),
+      changedAt: _string(json['changedAt']),
     );
   }
 }

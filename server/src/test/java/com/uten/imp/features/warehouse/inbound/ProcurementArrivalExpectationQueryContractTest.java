@@ -33,7 +33,8 @@ class ProcurementArrivalExpectationQueryContractTest {
                         mock(SecurityContextCurrentUser.class),
                         mock(TxSessionVars.class),
                         mock(FinanceReviewerEligibilityPort.class),
-                        mock(ReceiptPriceMasker.class));
+                        mock(ReceiptPriceMasker.class),
+                        com.uten.imp.support.FulfillmentMutationLockTestSupport.procurementLocks());
 
         service.expectations(1, 20, "", "");
 

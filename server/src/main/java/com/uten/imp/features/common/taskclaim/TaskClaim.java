@@ -16,8 +16,8 @@ import java.util.UUID;
  *
  * <p>默认 show-as-locked：任务始终可见，被认领的目标显示「XXX 处理中」，他人快捷动作禁用。
  * 认领带短租约（按 target_type 配置，默认 30 分），过期惰性失效；认领人可续租/释放，
- * 持目标 manage 权限者可强制释放/接管。认领只是 UX/防碰撞层，不替代动作端点的
- * PESSIMISTIC_WRITE + 状态守卫（完整性底线）。
+ * 持目标 manage 权限者可强制释放/接管。财务新决策必须持本人有效租约，其他类型是软认领；
+ * 两者均不替代动作端点的 PESSIMISTIC_WRITE 与业务状态守卫。
  */
 @Getter
 @Setter

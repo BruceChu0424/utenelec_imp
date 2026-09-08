@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -17,6 +19,31 @@ import 'package:uten_imp/features/warehouse/providers/production_finished_inboun
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 const _reportId = '20000000-0000-0000-0000-000000000001';
+
+void _expectSourceInsideField(WidgetTester tester, String source) {
+  final field = tester.widget<TextField>(
+    _placeField('30000000-0000-0000-0000-000000000001'),
+  );
+  expect(field.decoration, isA<UtenInputDecoration>());
+  final decoration = field.decoration! as UtenInputDecoration;
+  expect(decoration.info, source);
+  expect(
+    decoration.autofilled,
+    {'货品主档通用建议', '最近登记：同仓同货品', '该仓默认'}.contains(source),
+  );
+  expect(
+    find.text(source),
+    findsNothing,
+    reason: 'Source must not consume a line below the field',
+  );
+  expect(
+    find.descendant(
+      of: _placeField('30000000-0000-0000-0000-000000000001'),
+      matching: find.byType(UtenFieldHintIcon),
+    ),
+    findsOneWidget,
+  );
+}
 
 void main() {
   testWidgets('自制单张登记右键移出一行后仅送检剩余行', (tester) async {
@@ -186,7 +213,7 @@ void main() {
           .enabled,
       isFalse,
     );
-    expect(find.text('本次登记快照'), findsOneWidget);
+    _expectSourceInsideField(tester, '本次登记快照');
     expect(
       find.byKey(const Key('production-finished-arrival-remember-places')),
       findsNothing,
@@ -291,7 +318,7 @@ void main() {
     final afterSelection = tester.widget<TextField>(placeField);
     expect(afterSelection.enabled, isTrue);
     expect(afterSelection.controller?.text, 'GLOBAL-A-01');
-    expect(find.text('货品主档通用建议'), findsOneWidget);
+    _expectSourceInsideField(tester, '货品主档通用建议');
     expect(_requiredPlaceHeader(), findsWidgets);
     expect(find.byType(RequiredCellFrame), findsOneWidget);
   });
@@ -311,7 +338,7 @@ void main() {
       tester.widget<TextField>(placeField).controller?.text,
       'GLOBAL-A-01',
     );
-    expect(find.text('货品主档通用建议'), findsOneWidget);
+    _expectSourceInsideField(tester, '货品主档通用建议');
     expect(
       tester
           .widget<SwitchListTile>(
@@ -325,7 +352,7 @@ void main() {
 
     await tester.enterText(placeField, 'MANUAL-A-02');
     await tester.pump();
-    expect(find.text('手工输入'), findsOneWidget);
+    _expectSourceInsideField(tester, '手工输入');
     expect(tester.takeException(), isNull);
   });
 
@@ -352,11 +379,11 @@ void main() {
       tester.widget<TextField>(placeField).controller?.text,
       'HISTORY-A-08',
     );
-    expect(find.text('最近登记：同仓同货品'), findsOneWidget);
+    _expectSourceInsideField(tester, '最近登记：同仓同货品');
 
     await tester.enterText(placeField, 'MANUAL-A-09');
     await tester.pump();
-    expect(find.text('手工输入'), findsOneWidget);
+    _expectSourceInsideField(tester, '手工输入');
   });
 
   testWidgets('warehouse preference replaces untouched global suggestion', (
@@ -380,7 +407,24 @@ void main() {
 
     final placeField = _placeField('30000000-0000-0000-0000-000000000001');
     expect(tester.widget<TextField>(placeField).controller?.text, 'WH-A-09');
-    expect(find.text('该仓默认'), findsOneWidget);
+    _expectSourceInsideField(tester, '该仓默认');
+    await tester.showKeyboard(placeField);
+    expect(
+      tester
+          .widget<EditableText>(
+            find.descendant(
+              of: placeField,
+              matching: find.byType(EditableText),
+            ),
+          )
+          .focusNode
+          .hasFocus,
+      isTrue,
+    );
+    tester.widget<TextField>(placeField).controller!.selection =
+        const TextSelection.collapsed(offset: 0);
+    await tester.pump();
+    _expectSourceInsideField(tester, '该仓默认');
   });
 
   testWidgets('late warehouse response cannot overwrite newer warehouse', (
@@ -399,7 +443,7 @@ void main() {
 
     final placeField = _placeField('30000000-0000-0000-0000-000000000001');
     expect(tester.widget<TextField>(placeField).controller?.text, 'WH-B-02');
-    expect(find.text('该仓默认'), findsOneWidget);
+    _expectSourceInsideField(tester, '该仓默认');
   });
 
   testWidgets('manual input survives retry for the same warehouse', (
@@ -438,7 +482,7 @@ void main() {
       tester.widget<TextField>(placeField).controller?.text,
       'MANUAL-A-07',
     );
-    expect(find.text('手工输入'), findsOneWidget);
+    _expectSourceInsideField(tester, '手工输入');
   });
 
   testWidgets('switching warehouse discards the previous manual place', (
@@ -474,7 +518,7 @@ void main() {
     await _revealGrid(tester);
 
     expect(tester.widget<TextField>(placeField).controller?.text, 'WH-B-02');
-    expect(find.text('该仓默认'), findsOneWidget);
+    _expectSourceInsideField(tester, '该仓默认');
   });
 
   testWidgets('switching to none restores the goods master fallback', (
@@ -503,7 +547,7 @@ void main() {
       tester.widget<TextField>(placeField).controller?.text,
       'GLOBAL-A-01',
     );
-    expect(find.text('货品主档通用建议'), findsOneWidget);
+    _expectSourceInsideField(tester, '货品主档通用建议');
   });
 
   testWidgets('failed next-warehouse lookup cannot retain prior auto place', (
@@ -523,7 +567,7 @@ void main() {
     final placeField = _placeField('30000000-0000-0000-0000-000000000001');
     expect(tester.widget<TextField>(placeField).enabled, isTrue);
     expect(tester.widget<TextField>(placeField).controller?.text, isEmpty);
-    expect(find.text('暂无默认'), findsOneWidget);
+    _expectSourceInsideField(tester, '暂无默认');
   });
 
   testWidgets('missing row suggestion cannot retain prior warehouse value', (

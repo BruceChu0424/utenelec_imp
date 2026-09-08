@@ -37,7 +37,7 @@ class SupplierPayableHoldGuardBehaviorTest {
                 .hasMessageContaining("失败基本量 2");
 
         List<NativeCall> holdQueries = calls.stream()
-                .filter(call -> call.sql().contains("with inspection_link as"))
+                .filter(call -> call.sql().contains("fn_procurement_iqc_ap_hold_reason"))
                 .toList();
         assertThat(holdQueries).hasSize(2);
         assertThat(holdQueries.get(0).parameters())
@@ -45,10 +45,10 @@ class SupplierPayableHoldGuardBehaviorTest {
         assertThat(holdQueries.get(1).parameters())
                 .containsEntry("allowedCaseId", null);
         assertThat(holdQueries.get(0).sql())
-                .contains("allowed_case.status='return_recorded'")
-                .contains("allowed_case.source_ap_ledger_id=ledger.id")
-                .contains("allowed_credit.status=1")
-                .contains("rejection.id=:allowedcaseid");
+                .contains("fn_procurement_iqc_ap_hold_reason(ledger.id,cast(:allowedcaseid as uuid)) is not null")
+                .contains("source_ap_ledger_id=ledger.id and parent_funding_slice_id is null")
+                .contains("fn_procurement_consideration_active('funding',id)")
+                .contains("receipt_type||'_receipt'=ledger.source_doc_type and status<>'reversed'");
     }
 
     @Test
@@ -68,7 +68,16 @@ class SupplierPayableHoldGuardBehaviorTest {
                         parameters.put(argument.getArgument(0), argument.getArgument(1));
                         return query;
                     });
-            when(query.getSingleResult()).thenReturn(1L);
+            when(query.getSingleResult()).thenAnswer(ignored -> {
+                boolean sameCase = caseId.equals(parameters.get("caseId"));
+                if (sql.contains("fn_procurement_iqc_slice_offset_authorized")) {
+                    @SuppressWarnings("unchecked")
+                    List<UUID> targets = (List<UUID>) parameters.get("targets");
+                    return sameCase && creditLedgerId.equals(parameters.get("source"))
+                            && targets.contains(targetLedgerId) ? 1L : 0L;
+                }
+                return 0L;
+            });
             return query;
         });
         SupplierPayableHoldGuard guard = new SupplierPayableHoldGuard(em);
@@ -78,18 +87,31 @@ class SupplierPayableHoldGuardBehaviorTest {
         assertThat(guard.authorizedIqcCreditOffset(
                 caseId, creditLedgerId, List.of(targetLedgerId, UUID.randomUUID()))).isFalse();
 
-        assertThat(calls).hasSize(1);
+        assertThat(calls).hasSize(2);
         NativeCall authorization = calls.getFirst();
         assertThat(authorization.parameters())
                 .containsEntry("caseId", caseId)
-                .containsEntry("sourceCreditLedgerId", creditLedgerId)
-                .containsEntry("targetLedgerId", targetLedgerId);
+                .containsEntry("source", creditLedgerId)
+                .containsEntry("targets", List.of(targetLedgerId));
         assertThat(authorization.sql())
-                .contains("rejection.status='return_recorded'")
-                .contains("rejection.source_ap_ledger_id=:targetledgerid")
-                .contains("credit.source_doc_id=rejection.id")
-                .contains("credit.status=1")
-                .contains("coalesce(credit.is_deleted,false)=false");
+                .contains("count(distinct funding.source_ap_ledger_id)")
+                .contains("funding.id=credit.funding_slice_id")
+                .contains("credit.case_id=:caseid")
+                .contains("funding.source_ap_ledger_id in (:targets)")
+                .contains("fn_procurement_iqc_slice_offset_authorized(:caseid,:source,funding.source_ap_ledger_id)");
+        assertThat(guard.authorizedIqcCreditOffset(
+                UUID.randomUUID(), creditLedgerId, List.of(targetLedgerId))).isFalse();
+        assertThat(guard.authorizedIqcCreditOffset(
+                caseId, UUID.randomUUID(), List.of(targetLedgerId))).isFalse();
+        assertThat(guard.authorizedIqcCreditOffset(
+                caseId, creditLedgerId, List.of(UUID.randomUUID()))).isFalse();
+        assertThat(calls.stream().filter(call -> call.sql().contains("from procurement_iqc_rejection_cases")))
+                .hasSize(3).allSatisfy(call -> assertThat(call.sql())
+                        .contains("rejection.status='return_recorded'")
+                        .contains("rejection.source_ap_ledger_id=:targetledgerid")
+                        .contains("credit.source_doc_id=rejection.id")
+                        .contains("credit.status=1")
+                        .contains("coalesce(credit.is_deleted,false)=false"));
     }
 
     @Test

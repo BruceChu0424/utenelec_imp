@@ -26,4 +26,15 @@ public class FinanceReceiptLineDto {
     private BigDecimal balanceAfterOriginal;
     private BigDecimal exchangeDiff;
     private String remark;
+
+    // Additive exact text never passes through a binary floating-point value.
+    public String getExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(exchangeRate); }
+    public String getAmountOriginalExact() { return com.uten.imp.common.util.DecimalText.of(amountOriginal); }
+    public String getAmountLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountLocal); }
+    public String getWriteOffAmountExact() { return com.uten.imp.common.util.DecimalText.of(writeOffAmount); }
+    public String getWriteOffLocalExact() { return com.uten.imp.common.util.DecimalText.of(writeOffLocal); }
+    public String getAppliedAmountLocalExact() { return com.uten.imp.common.util.DecimalText.of(appliedAmountLocal); }
+    public String getBalanceBeforeOriginalExact() { return com.uten.imp.common.util.DecimalText.of(balanceBeforeOriginal); }
+    public String getBalanceAfterOriginalExact() { return com.uten.imp.common.util.DecimalText.of(balanceAfterOriginal); }
+    public String getExchangeDiffExact() { return com.uten.imp.common.util.DecimalText.of(exchangeDiff); }
 }

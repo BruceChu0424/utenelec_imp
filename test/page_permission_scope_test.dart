@@ -266,7 +266,6 @@ Iterable<String> _businessPaths() sync* {
     '/sales/progress',
     '/sales/progress/order-1',
     '/subcontract',
-    '/subcontract/preparations',
     '/subcontract/report',
     '/subcontract/report/detail',
     '/production',

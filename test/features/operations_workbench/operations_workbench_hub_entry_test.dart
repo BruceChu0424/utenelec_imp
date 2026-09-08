@@ -106,7 +106,6 @@ void main() {
         overrides: [
           currentPermissionsProvider.overrideWithValue({
             Perm.subcontractApplicationView,
-            Perm.subcontractPreparationView,
             Perm.subcontractOrderView,
             Perm.subcontractOrderCreate,
             Perm.subcontractOutboundView,
@@ -132,8 +131,11 @@ void main() {
     expect(find.text('委外前置自制'), findsNothing);
     expect(find.text('仓库目标件出仓'), findsNothing);
     // V458：Hub 分组为 任务中心/单据/报表/历史兼容，卡片标题精简。
+    // 2026-09-06 收口：计划委外申请卡并入任务中心、回厂与品质卡退役，
+    // 单据组只保留订货等真实单据卡。
     expect(find.text('委外订货'), findsOneWidget);
-    expect(find.text('计划委外申请'), findsOneWidget);
+    expect(find.text('计划委外申请'), findsNothing);
+    expect(find.text('回厂与品质'), findsNothing);
     // 历史发料卡按 materialIssue:view 单独显隐，本账号未授权故不渲染。
     expect(find.text('历史 BOM 子件发料'), findsNothing);
     await tester.tap(find.text('委外任务中心'));

@@ -723,7 +723,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
             IconButton(
               icon: const Icon(Icons.refresh_rounded),
               tooltip: '刷新',
-              onPressed: _loading ? null : () => _load(),
+              onPressed: _loading ? null : () => _load(1),
             ),
         ],
       ),

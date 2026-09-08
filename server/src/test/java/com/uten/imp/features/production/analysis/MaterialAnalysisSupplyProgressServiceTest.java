@@ -133,6 +133,47 @@ class MaterialAnalysisSupplyProgressServiceTest {
     }
 
     @Test
+    void delegatedPurchaseWithoutArrivalIsWaitingNotStocked() {
+        // 2026-09-06 修复「采购未下单却显示已入库」：整批下达后 required/shortage
+        // 归零是转出不是齐套。无移交权益且链路未到货时，末步必须是 WAITING，
+        // 不能跳过下单/收货/验收直接完成。
+        ProjectionScenario scenario = new ProjectionScenario(true, false);
+        scenario.requiredQty = BigDecimal.ZERO;
+        scenario.shortageQty = BigDecimal.ZERO;
+
+        MaterialAnalysisContracts.SupplyProgressView view = scenario.service()
+                .supplyProgress(scenario.analysisId, scenario.materialLineId);
+
+        assertThat(step(view, "ORDER_PLACED").state()).isEqualTo("DONE");
+        assertThat(step(view, "RECEIVED").state()).isEqualTo("CURRENT");
+        assertThat(step(view, "QUALITY").state()).isEqualTo("CURRENT");
+        assertThat(step(view, "STOCKED").state()).isEqualTo("WAITING");
+        assertThat(step(view, "STOCKED").detail())
+                .contains("本批需求已转出采购")
+                .contains("等待到货合格入库");
+    }
+
+    @Test
+    void delegatedPurchaseWithoutOrderIsWaitingAtRequestStep() {
+        // 更早断点：订货单都还没生成（采购员未下单）——下单进行中、末步未开始。
+        ProjectionScenario scenario = new ProjectionScenario(true, false);
+        scenario.requiredQty = BigDecimal.ZERO;
+        scenario.shortageQty = BigDecimal.ZERO;
+        scenario.orderExists = false;
+
+        MaterialAnalysisContracts.SupplyProgressView view = scenario.service()
+                .supplyProgress(scenario.analysisId, scenario.materialLineId);
+
+        assertThat(step(view, "ORDER_PLACED").state()).isEqualTo("CURRENT");
+        assertThat(step(view, "FINANCE").state()).isEqualTo("WAITING");
+        assertThat(step(view, "RECEIVED").state()).isEqualTo("WAITING");
+        assertThat(step(view, "QUALITY").state()).isEqualTo("WAITING");
+        assertThat(step(view, "STOCKED").state()).isEqualTo("WAITING");
+        assertThat(step(view, "STOCKED").detail())
+                .contains("本批需求已转出采购");
+    }
+
+    @Test
     void safetyOnlyActionIsLinkedByPhysicalDimensionAndExplainedAsPublicStock() {
         ProjectionScenario scenario = new ProjectionScenario(true, false);
         scenario.splitProgress = new Object[]{
@@ -241,6 +282,7 @@ class MaterialAnalysisSupplyProgressServiceTest {
         private boolean make;
         private boolean subcontractMake;
         private boolean subcontractPlanExists = true;
+        private boolean orderExists = true;
         private final UUID analysisId = UUID.randomUUID();
         private final UUID materialLineId = UUID.randomUUID();
         private final UUID analysisItemId = UUID.randomUUID();
@@ -312,8 +354,10 @@ class MaterialAnalysisSupplyProgressServiceTest {
                         : List.of();
             }
             if (sql.contains("SELECT DISTINCT ord.id")) {
-                return rows(new Object[]{orderId, purchase ? "CG-001" : "WO-001",
-                        1, false, AT, makerId, targetOrderItemId});
+                return orderExists
+                        ? rows(new Object[]{orderId, purchase ? "CG-001" : "WO-001",
+                                1, false, AT, makerId, targetOrderItemId})
+                        : List.of();
             }
             if (sql.contains("FROM procurement_order_approval_cases")) {
                 return rows(new Object[]{"APPROVED", AT, makerId});

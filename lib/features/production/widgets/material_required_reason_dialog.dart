@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 
 // 通用「必填原因」对话框：标题/初始值/说明文案/确认按钮文案由调用方给定。
 // 说明文案走 fieldLabel 的 ⓘ 悬停提示（Tooltip 不依赖 LayoutBuilder，
@@ -13,6 +14,8 @@ class MaterialRequiredReasonDialog extends StatefulWidget {
     required this.initialValue,
     required this.info,
     required this.confirmLabel,
+    this.requireReason = true,
+    this.reasonLabel,
   });
 
   final String title;
@@ -20,6 +23,8 @@ class MaterialRequiredReasonDialog extends StatefulWidget {
   final String initialValue;
   final String info;
   final String confirmLabel;
+  final bool requireReason;
+  final String? reasonLabel;
 
   @override
   State<MaterialRequiredReasonDialog> createState() =>
@@ -51,8 +56,14 @@ class _MaterialRequiredReasonDialogState
       autofocus: true,
       minLines: 2,
       maxLines: 4,
-      decoration: InputDecoration(
-        label: fieldLabel('原因(必填)', Theme.of(context), info: widget.info),
+      decoration: UtenInputDecoration(
+        InputDecoration(
+          label: fieldLabel(
+            widget.reasonLabel ?? '原因(必填)',
+            Theme.of(context),
+            info: widget.info,
+          ),
+        ),
       ),
     ),
     actions: [
@@ -63,7 +74,7 @@ class _MaterialRequiredReasonDialogState
       FilledButton(
         onPressed: () {
           final value = _controller.text.trim();
-          if (value.isEmpty) return;
+          if (widget.requireReason && value.isEmpty) return;
           Navigator.pop(context, value);
         },
         child: Text(widget.confirmLabel),

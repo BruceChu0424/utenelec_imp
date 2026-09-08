@@ -135,9 +135,15 @@ class PurchaseOrderPendingCapacityTest {
                 mock(ProductionSupplySourceGuard.class),
                 unitPolicy,
                 mock(com.uten.imp.features.finance.procurement.ProcurementApprovalProjectionQuery.class),
+                mock(com.uten.imp.features.finance.procurement.ProcurementApprovalReconfirmationService.class),
+                // 2026-09-05 cancel() 撤回财务弹卡用；本测试不触达，传 mock 即可。
+                mock(com.uten.imp.features.notice.ChainNoticeService.class),
                 mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class),
                 mock(com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy.class),
-                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class));
+                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementReviewCancellationPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementOrderSourceRevisionPort.class),
+                        org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
 
         // 数量超过申请剩余量：不再抛「超过申请剩余量」，送审校验通过。
         assertDoesNotThrow(() -> service.lockAndValidateFinanceSubmission(orderId));

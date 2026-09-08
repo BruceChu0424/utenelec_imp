@@ -86,6 +86,7 @@ public class PurchaseReturnService {
     private final PurchaseLineUnitPolicy lineUnitPolicy;
     private final ProcurementArrivalControlPort arrivalControl;
     private final PurchaseDocumentAccessPolicy access;
+    private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
 
     @Autowired
     private CommercialPriceVisibility commercialPriceVisibility;
@@ -117,7 +118,7 @@ public class PurchaseReturnService {
                                 : Map.of("billDate", "billDate", "total", "totalLocal")));
         Page<PurchaseReturn> p = returnRepo.findAll(spec, pageable);
         return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
-                page, size, p.getTotalElements(), p.getTotalPages());
+                p);
     }
 
     @Transactional(readOnly = true)
@@ -132,6 +133,7 @@ public class PurchaseReturnService {
     @PreAuthorize("hasAuthority('purchase_return:create')")
     public ReturnDetail create(ReturnSaveRequest req) {
         tx.bind();
+        lockReturnRequest(null,req).verifyUnchanged();
         PurchaseReturn r = new PurchaseReturn();
         applyHeader(req, r, returnHeader(req));
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户
@@ -146,9 +148,11 @@ public class PurchaseReturnService {
     @PreAuthorize("hasAuthority('purchase_return:edit')")
     public ReturnDetail update(UUID id, ReturnSaveRequest req) {
         tx.bind();
+        var mutationGuard=lockReturnRequest(id,req);
         PurchaseReturn r = requireReturnForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的采购退货单");
         if (r.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
+        mutationGuard.verifyUnchanged();
         applyHeader(req, r, returnHeader(req));
         itemRepo.deleteByReturnId(id);
         itemRepo.flush();
@@ -161,12 +165,23 @@ public class PurchaseReturnService {
     @PreAuthorize("hasAuthority('purchase_return:delete')")
     public void delete(UUID id) {
         tx.bind();
+        var mutationGuard=mutationLocks.productReturn("PURCHASE",id);
         PurchaseReturn r = requireReturnForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的采购退货单");
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
+        mutationGuard.verifyUnchanged();
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         returnRepo.save(r);
+    }
+
+    private com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard lockReturnRequest(UUID id,ReturnSaveRequest req) {
+        List<ReturnItemLine> lines=req==null||req.getItems()==null?List.of():req.getItems();
+        var present=lines.stream().filter(java.util.Objects::nonNull).toList();
+        return mutationLocks.returnInputs("PURCHASE",id,false,present.stream().map(ReturnItemLine::getOrderItemId).toList(),
+                present.stream().map(ReturnItemLine::getReceiptItemId).toList(),present.stream().filter(line->line.getGoodsId()!=null)
+                        .map(line->new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(line.getGoodsId(),line.getColorId())).toList(),
+                req==null?null:req.getWarehouseId());
     }
 
     /** 审核：库存出库 + 回写收货/订货明细 returned_qty + 订货结案重算。 */
@@ -177,7 +192,9 @@ public class PurchaseReturnService {
         SupplierPeriodIdentityGuard.Identity periodIdentity =
         periodIdentityGuard.requireIdentity(SourceTable.PURCHASE_RETURN, id);
         periodIdentityGuard.requireOpenAtBillDate(periodIdentity, "采购退货审核");
+        var mutationGuard=mutationLocks.productReturn("PURCHASE",id);
         PurchaseReturn r = requireReturnForUpdate(id);
+        mutationGuard.verifyUnchanged();
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);
@@ -256,7 +273,9 @@ public class PurchaseReturnService {
         SupplierPeriodIdentityGuard.Identity periodIdentity =
         periodIdentityGuard.requireIdentity(SourceTable.PURCHASE_RETURN, id);
         periodIdentityGuard.requireOpenToday(periodIdentity, "采购退货红冲");
+        var mutationGuard=mutationLocks.productReturn("PURCHASE",id);
         PurchaseReturn r = requireReturnForUpdate(id);
+        mutationGuard.verifyUnchanged();
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);

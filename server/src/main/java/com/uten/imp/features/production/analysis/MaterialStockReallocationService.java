@@ -6,8 +6,8 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
-import com.uten.imp.features.stock.InventoryKey;
-import com.uten.imp.features.stock.InventoryMutationLock;
+import com.uten.imp.application.concurrency.FulfillmentMutationLocks;
+import com.uten.imp.application.port.ProductionMutationFootprintPort;
 import com.uten.imp.security.OwnerVisibility;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -48,7 +48,8 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
     private final MaterialAnalysisService analysisService;
     private final PreplanStockEntitlementService entitlements;
     private final ProductionDocumentAccessPolicy access;
-    private final InventoryMutationLock inventoryLock;
+    private final FulfillmentMutationLocks mutationLocks;
+    private final ProductionMutationFootprintPort mutationFootprints;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
 
@@ -165,10 +166,8 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
         if (sourceAnalysisId.equals(request.targetAnalysisId())) {
             throw validation("接受计划必须是另一份物料分析");
         }
-        Endpoint sourceSnapshot = endpoint(
-                sourceAnalysisId, request.sourceMaterialLineId(), false);
-        inventoryLock.lock(new InventoryKey(
-                sourceSnapshot.goodsId(), sourceSnapshot.colorId()));
+        var guard = mutationLocks.acquire(() -> mutationFootprints.forAnalyses(
+                List.of(sourceAnalysisId, request.targetAnalysisId())));
         Map<UUID, MaterialAnalysisService.AnalysisHeader> headers = lockHeaders(
                 sourceAnalysisId, request.targetAnalysisId());
         OwnerVisibility.OwnerScope scope = access.scope();
@@ -203,6 +202,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                 sourceAnalysisId, request.sourceMaterialLineId(), true);
         Endpoint target = endpoint(
                 request.targetAnalysisId(), request.targetMaterialLineId(), true);
+        guard.verifyUnchanged();
         validatePair(source, target);
         requireNoOpenEndpointRelation(source.materialId(), target.materialId());
         requireNoLegacyBorrow(source.analysisId(), source.materialId());
@@ -301,7 +301,8 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
         if (!sourceAnalysisId.equals(snapshot.fromAnalysisId())) {
             throw new ApiException(ErrorCode.NOT_FOUND, "让料记录不存在");
         }
-        inventoryLock.lock(new InventoryKey(snapshot.goodsId(), snapshot.colorId()));
+        var guard = mutationLocks.acquire(() -> mutationFootprints.forAnalyses(
+                List.of(snapshot.fromAnalysisId(), snapshot.toAnalysisId())));
         Map<UUID, MaterialAnalysisService.AnalysisHeader> headers = lockHeaders(
                 snapshot.fromAnalysisId(), snapshot.toAnalysisId());
         OwnerVisibility.OwnerScope scope = access.scope();
@@ -326,6 +327,9 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                 || header.priorityFulfilledQty().signum() > 0) {
             throw conflict("来源计划已经开始优先补齐，不能直接撤销让料");
         }
+        endpoint(header.fromAnalysisId(), header.fromMaterialId(), true);
+        endpoint(header.toAnalysisId(), header.toMaterialId(), true);
+        guard.verifyUnchanged();
         entitlements.reverseUnformalizedReallocation(
                 header.id(), header.fromAnalysisId(), header.fromMaterialId(),
                 header.toAnalysisId(), header.toMaterialId(), UUID.randomUUID(),
@@ -440,7 +444,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
         List<UUID> ordered = List.of(ids).stream().distinct().sorted().toList();
         Map<UUID, MaterialAnalysisService.AnalysisHeader> result =
                 new LinkedHashMap<>();
-        for (UUID id : ordered) result.put(id, analysisService.lockHeader(id));
+        for (UUID id : ordered) result.put(id, analysisService.headerAfterPrelock(id));
         return result;
     }
 

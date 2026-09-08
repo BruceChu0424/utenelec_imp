@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/network/api_exception.dart';
@@ -20,6 +21,7 @@ Future<bool?> showProductionMaterialSettlementSheet(
   BuildContext context,
   WidgetRef ref, {
   required String planId,
+  String? executionSegmentId,
   required bool canSettle,
   required bool canReverse,
   required bool canClose,
@@ -34,6 +36,7 @@ Future<bool?> showProductionMaterialSettlementSheet(
     transitionDuration: const Duration(milliseconds: 300),
     builder: (_) => _MaterialSettlementSheet(
       planId: planId,
+      executionSegmentId: executionSegmentId,
       canSettle: canSettle,
       canReverse: canReverse,
       canClose: canClose,
@@ -48,11 +51,15 @@ class _SettlementGridRow extends EditableGridRow {
   final TextEditingController consumed = TextEditingController();
   final TextEditingController loss = TextEditingController();
   final TextEditingController wip = TextEditingController();
+  bool consumptionSuggested = false;
 
   void fillAsConsumed() {
-    consumed.text = _number(source.unclearedQty);
-    loss.clear();
-    wip.clear();
+    if (consumed.text.trim().isNotEmpty) return;
+    final remaining =
+        source.unclearedQty - _positive(loss.text) - _positive(wip.text);
+    if (remaining <= 0) return;
+    consumed.text = _number(remaining);
+    consumptionSuggested = true;
   }
 
   @override
@@ -67,12 +74,14 @@ class _SettlementGridRow extends EditableGridRow {
 class _MaterialSettlementSheet extends ConsumerStatefulWidget {
   const _MaterialSettlementSheet({
     required this.planId,
+    this.executionSegmentId,
     required this.canSettle,
     required this.canReverse,
     required this.canClose,
   });
 
   final String planId;
+  final String? executionSegmentId;
   final bool canSettle;
   final bool canReverse;
   final bool canClose;
@@ -87,6 +96,11 @@ class _MaterialSettlementSheetState
   final _reason = TextEditingController();
   late final UtenEditableGridController<_SettlementGridRow> _grid;
   List<ProductionMaterialSettlementSource> _sources = const [];
+  ProductionMaterialCapabilities _capabilities =
+      const ProductionMaterialCapabilities();
+  bool get _canSettle => widget.canSettle && _capabilities.canSettle;
+  bool get _canReverse => widget.canReverse && _capabilities.canReverse;
+  bool get _canClose => widget.canClose && _capabilities.canClose;
   bool _loading = true;
   bool _busy = false;
   bool _closed = false;
@@ -114,8 +128,18 @@ class _MaterialSettlementSheetState
     try {
       final repo = ref.read(productionMaterialRepositoryProvider);
       final results = await Future.wait([
-        repo.clearance(widget.planId),
-        repo.settlementSources(widget.planId),
+        repo.clearance(
+          widget.planId,
+          executionSegmentId: widget.executionSegmentId,
+        ),
+        repo.settlementSources(
+          widget.planId,
+          executionSegmentId: widget.executionSegmentId,
+        ),
+        repo.capabilities(
+          widget.planId,
+          executionSegmentId: widget.executionSegmentId,
+        ),
       ]);
       if (!mounted) return;
       _grid.replaceAll([
@@ -124,6 +148,7 @@ class _MaterialSettlementSheetState
       ]);
       setState(() {
         _sources = results[1] as List<ProductionMaterialSettlementSource>;
+        _capabilities = results[2] as ProductionMaterialCapabilities;
         _loading = false;
       });
     } on ApiException catch (error) {
@@ -149,7 +174,7 @@ class _MaterialSettlementSheetState
   }
 
   Future<void> _submit() async {
-    if (!widget.canSettle) return;
+    if (!_canSettle) return;
     if (_busy) return;
     final lines = <ProductionMaterialSettlementLine>[];
     var requiresReason = false;
@@ -222,9 +247,11 @@ class _MaterialSettlementSheetState
             ),
             lines: lines,
             reason: reason.isEmpty ? null : reason,
+            executionSegmentId: widget.executionSegmentId,
           );
       if (!mounted) return;
       context.appSuccess('材料使用已入账，未结清数量已重新计算');
+      _closed = true;
       _reason.clear();
       await _load();
     } on ApiException catch (error) {
@@ -237,7 +264,7 @@ class _MaterialSettlementSheetState
   }
 
   Future<void> _reverse(ProductionMaterialSettlementSource source) async {
-    if (!widget.canReverse) return;
+    if (!_canReverse) return;
     final qty = TextEditingController(text: _number(source.reversibleQtyBase));
     final reason = TextEditingController();
     final result = await showDialog<(double, String)>(
@@ -256,11 +283,13 @@ class _MaterialSettlementSheetState
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: InputDecoration(
-                  label: fieldLabel(
-                    '冲销数量',
-                    Theme.of(dialogContext),
-                    info: '最多 ${_number(source.reversibleQtyBase)}',
+                decoration: UtenInputDecoration(
+                  InputDecoration(
+                    label: fieldLabel(
+                      '冲销数量',
+                      Theme.of(dialogContext),
+                      info: '最多 ${_number(source.reversibleQtyBase)}',
+                    ),
                   ),
                 ),
               ),
@@ -269,9 +298,8 @@ class _MaterialSettlementSheetState
                 errorBuilder: utenTextFieldErrorBuilder,
                 controller: reason,
                 maxLength: 500,
-                decoration: const InputDecoration(
-                  labelText: '冲销原因',
-                  hintText: '例如：误报、数量录入错误',
+                decoration: const UtenInputDecoration(
+                  InputDecoration(labelText: '冲销原因', hintText: '例如：误报、数量录入错误'),
                 ),
               ),
             ],
@@ -315,6 +343,7 @@ class _MaterialSettlementSheetState
               canonical,
             ),
             reason: result.$2,
+            executionSegmentId: widget.executionSegmentId,
             lines: [
               ProductionMaterialSettlementLine(
                 demandId: source.demandId,
@@ -326,6 +355,7 @@ class _MaterialSettlementSheetState
           );
       if (!mounted) return;
       context.appSuccess('材料结清记录已冲销');
+      _closed = true;
       await _load();
     } on ApiException catch (error) {
       if (mounted) context.appError(error.message);
@@ -337,7 +367,7 @@ class _MaterialSettlementSheetState
   }
 
   Future<void> _closePlan() async {
-    if (!widget.canClose) return;
+    if (!_canClose) return;
     if (_busy || !_allCleared) return;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -502,7 +532,7 @@ class _MaterialSettlementSheetState
                           ),
                         ),
                       ),
-                      if (widget.canSettle)
+                      if (_canSettle)
                         TextButton.icon(
                           onPressed: _busy ? null : _fillAllConsumed,
                           icon: const Icon(Icons.done_all_rounded, size: 18),
@@ -519,7 +549,7 @@ class _MaterialSettlementSheetState
                     showRowDelete: false,
                     emptyMessage: '尚未生成物料需求台账',
                   ),
-                  if (widget.canSettle) ...[
+                  if (_canSettle) ...[
                     const SizedBox(height: UtenSpacing.s12),
                     TextField(
                       controller: _reason,
@@ -531,27 +561,27 @@ class _MaterialSettlementSheetState
                       ),
                     ),
                   ],
-                  if (widget.canSettle || widget.canClose) ...[
+                  if (_canSettle || _canClose) ...[
                     const SizedBox(height: UtenSpacing.s12),
                     Wrap(
                       spacing: UtenSpacing.s8,
                       runSpacing: UtenSpacing.s8,
                       children: [
-                        if (widget.canSettle)
+                        if (_canSettle)
                           UtenButton(
                             icon: Icons.fact_check_outlined,
                             isLoading: _busy,
                             onPressed: _busy ? null : _submit,
                             child: const Text('提交本次材料结清'),
                           ),
-                        if (widget.canSettle)
+                        if (_canSettle && widget.executionSegmentId == null)
                           UtenButton(
                             type: UtenButtonType.secondary,
                             icon: Icons.keyboard_return_rounded,
                             onPressed: _busy ? null : _startReturn,
                             child: const Text('余料退库'),
                           ),
-                        if (widget.canClose)
+                        if (_canClose)
                           UtenButton(
                             type: UtenButtonType.tonal,
                             icon: Icons.task_alt_rounded,
@@ -711,14 +741,31 @@ class _MaterialSettlementSheetState
   ) => EditableGridColumn(
     key: key,
     label: label,
-    width: 108,
+    width: 138,
     numeric: true,
     cellBuilder: (_, row) => TextField(
+      key: ValueKey('material-$key-${row.source.demandId}'),
       controller: controller(row),
-      enabled: widget.canSettle && !_busy && row.source.unclearedQty > 0,
+      enabled: _canSettle && !_busy && row.source.unclearedQty > 0,
       textAlign: TextAlign.right,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      decoration: const InputDecoration(isDense: true, hintText: '0'),
+      onChanged: (_) {
+        if (key == 'consume' && row.consumptionSuggested) {
+          setState(() => row.consumptionSuggested = false);
+        }
+      },
+      decoration: applyAutofillHint(
+        UtenInputDecoration(
+          const InputDecoration(isDense: true, hintText: '0'),
+          info: key == 'consume'
+              ? '填写本次实际用掉的材料。黄色数值按已领未结清量减本次损耗、在制建议，请核对；余料应退库。提交后才入账。'
+              : key == 'loss'
+              ? '填写实际损耗的基本数量，并说明原因。系统不会按理论用量自动认定损耗。'
+              : '填写仍在本工单生产过程中的材料基本数量，并说明原因。',
+        ),
+        Theme.of(context),
+        autofilled: key == 'consume' && row.consumptionSuggested,
+      ),
     ),
   );
 
@@ -763,8 +810,7 @@ class _MaterialSettlementSheetState
                   source.createdAt,
                 ].whereType<String>().join(' · '),
               ),
-              trailing:
-                  widget.canReverse && !_busy && source.reversibleQtyBase > 0
+              trailing: _canReverse && !_busy && source.reversibleQtyBase > 0
                   ? TextButton(
                       onPressed: () => _reverse(source),
                       child: const Text('冲销'),

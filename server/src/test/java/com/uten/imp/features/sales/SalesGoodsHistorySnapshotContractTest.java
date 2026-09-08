@@ -70,10 +70,12 @@ class SalesGoodsHistorySnapshotContractTest {
                 .contains("preferredsnapshot(")
                 .contains("setgoodssnapshotlockedat(lockedat)");
 
-        assertThat(otherShipment)
-                .contains("salesgoodssnapshot.order_item_at_save")
-                .contains("salesgoodssnapshot.order_item_at_approval")
-                .contains("setgoodssnapshotlockedat(lockedat)");
+        // Historical other shipments no longer have online save/approval paths.
+        assertThat(occurrences(otherShipment, "throw retiredwrite()"))
+                .isEqualTo(4);
+        assertThat(shipment)
+                .contains("salesgoodssnapshot.master_at_save")
+                .contains("salesgoodssnapshot.master_at_approval");
 
         assertThat(salesReturn)
                 .contains("salesgoodssnapshot.shipment_item_at_save")
@@ -81,6 +83,23 @@ class SalesGoodsHistorySnapshotContractTest {
                 .contains("salesgoodssnapshot.order_item_at_save")
                 .contains("salesgoodssnapshot.order_item_at_approval")
                 .contains("setgoodssnapshotlockedat(lockedat)");
+    }
+
+    @Test
+    void retiredOtherShipmentWritesCannotReplaceHistoricalSnapshots() {
+        var legacy = org.mockito.Mockito.mock(
+                com.uten.imp.features.sales.other_shipment.SalesOtherShipmentService.class,
+                org.mockito.Answers.CALLS_REAL_METHODS);
+        java.util.UUID id = java.util.UUID.randomUUID();
+        for (org.assertj.core.api.ThrowableAssert.ThrowingCallable action :
+                List.<org.assertj.core.api.ThrowableAssert.ThrowingCallable>of(
+                        () -> legacy.create(null), () -> legacy.update(id, null),
+                        () -> legacy.delete(id), () -> legacy.approve(id))) {
+            org.assertj.core.api.Assertions.assertThatThrownBy(action)
+                    .isInstanceOf(com.uten.imp.common.web.ApiException.class)
+                    .extracting(error -> ((com.uten.imp.common.web.ApiException) error).getCode())
+                    .isEqualTo(com.uten.imp.common.web.ErrorCode.CONFLICT);
+        }
     }
 
     @Test

@@ -61,7 +61,7 @@ public class ProfileChangeQueryService {
                     rs.stream().map(ProfileChangeRequest::getFieldLabel).toList()
             ));
         }
-        return new ProfileChangeDto.Page<>(items, page, size, p.getTotalElements(), p.getTotalPages());
+        return new ProfileChangeDto.Page<>(items, p.getNumber() + 1, p.getSize(), p.getTotalElements(), p.getTotalPages());
     }
 
     /** 员工自查单批详情。 */
@@ -134,7 +134,7 @@ public class ProfileChangeQueryService {
                     null
             ));
         }
-        return new ProfileChangeDto.Page<>(items, page, size, p.getTotalElements(), p.getTotalPages());
+        return new ProfileChangeDto.Page<>(items, p.getNumber() + 1, p.getSize(), p.getTotalElements(), p.getTotalPages());
     }
 
     /** HR 单批详情（含完整 diff）。 */

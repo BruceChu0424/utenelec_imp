@@ -32,6 +32,9 @@ import java.util.UUID;
 @Table(name = "subcontract_order_items")
 public class SubcontractOrderItem extends BaseEntity {
 
+    @Column(name = "is_deleted", nullable = false)
+    private boolean deleted;
+
     private Integer legacyId;
 
     @Column(name = "bill_no")
@@ -65,13 +68,13 @@ public class SubcontractOrderItem extends BaseEntity {
     @Column(name = "qty", nullable = false, precision = 18, scale = 4)
     private BigDecimal qty;              // 订货量（成品）
 
-    @Column(name = "price", precision = 18, scale = 4)
+    @Column(name = "price", columnDefinition = "numeric")
     private BigDecimal price;            // 加工单价
 
-    @Column(name = "amount_original", precision = 18, scale = 4)
+    @Column(name = "amount_original", columnDefinition = "numeric")
     private BigDecimal amountOriginal;
 
-    @Column(name = "amount_local", precision = 18, scale = 4)
+    @Column(name = "amount_local", columnDefinition = "numeric")
     private BigDecimal amountLocal;
 
     /** 已进仓（E_In 审核回写）。 */

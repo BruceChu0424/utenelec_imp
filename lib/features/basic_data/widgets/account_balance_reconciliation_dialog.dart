@@ -6,6 +6,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -775,21 +776,24 @@ class _AccountBalanceReconciliationDialogState
     final reason = TextField(
       key: const ValueKey('account-balance-reason'),
       controller: _reasonController,
+      ignorePointers: false,
       enabled: !_submitting,
       minLines: 2,
       maxLines: 4,
       maxLength: 500,
-      decoration: InputDecoration(
-        label: fieldLabel(
-          '核对原因',
-          Theme.of(context),
-          required: true,
-          info: '原因会写入不可变调整批次和账户流水。',
+      decoration: UtenInputDecoration(
+        InputDecoration(
+          label: fieldLabel(
+            '核对原因',
+            Theme.of(context),
+            required: true,
+            info: '原因会写入不可变调整批次和账户流水。',
+          ),
+          hintText: '例如：新系统上线前按银行对账单和现金盘点结果重录余额',
+          error: _reasonError == null
+              ? null
+              : UtenFieldMessage.error(_reasonError!),
         ),
-        hintText: '例如：新系统上线前按银行对账单和现金盘点结果重录余额',
-        error: _reasonError == null
-            ? null
-            : UtenFieldMessage.error(_reasonError!),
       ),
     );
     final submitError = _submitError == null
@@ -943,6 +947,7 @@ class _AccountBalanceReconciliationDialogState
       textField: true,
       child: TextField(
         controller: controller,
+        ignorePointers: false,
         enabled: enabled && !_submitting,
         keyboardType: const TextInputType.numberWithOptions(
           decimal: true,
@@ -956,11 +961,13 @@ class _AccountBalanceReconciliationDialogState
           });
           _payloadChanged();
         },
-        decoration: InputDecoration(
-          isDense: true,
-          hintText: '重新输入',
-          error: error == null ? null : UtenFieldMessage.error(error),
-          constraints: const BoxConstraints(minHeight: 48),
+        decoration: UtenInputDecoration(
+          InputDecoration(
+            isDense: true,
+            hintText: '重新输入',
+            error: error == null ? null : UtenFieldMessage.error(error),
+            constraints: const BoxConstraints(minHeight: 48),
+          ),
         ),
       ),
     );
@@ -1132,22 +1139,26 @@ class _AccountBalanceReconciliationDialogState
     final delta = _deltaUnits(account);
     if (_isBaseCurrency(account)) {
       return InputDecorator(
-        decoration: InputDecoration(
-          isDense: true,
-          label: compact
-              ? fieldLabel('本位币调账额（仅总账）', theme, info: '人民币账户由系统自动取原币差额')
-              : null,
+        decoration: UtenInputDecoration(
+          InputDecoration(
+            isDense: true,
+            label: compact
+                ? fieldLabel('本位币调账额（仅总账）', theme, info: '人民币账户由系统自动取原币差额')
+                : null,
+          ),
         ),
         child: const Text('自动同原币差额'),
       );
     }
     if (delta == null || delta == BigInt.zero) {
       return InputDecorator(
-        decoration: InputDecoration(
-          isDense: true,
-          label: compact
-              ? fieldLabel('本位币调账额（仅总账）', theme, info: '原币余额不变时无需填写')
-              : null,
+        decoration: UtenInputDecoration(
+          InputDecoration(
+            isDense: true,
+            label: compact
+                ? fieldLabel('本位币调账额（仅总账）', theme, info: '原币余额不变时无需填写')
+                : null,
+          ),
         ),
         child: Text(
           delta == null ? '先输入有效目标余额' : '原币无变化，无需填写',
@@ -1164,6 +1175,7 @@ class _AccountBalanceReconciliationDialogState
       child: TextField(
         key: ValueKey('account-local-delta-${account.id}'),
         controller: _localDeltaControllers[account.id],
+        ignorePointers: false,
         enabled: enabled && !_submitting,
         keyboardType: const TextInputType.numberWithOptions(
           decimal: true,
@@ -1173,21 +1185,23 @@ class _AccountBalanceReconciliationDialogState
           setState(() => _localDeltaErrors.remove(account.id));
           _payloadChanged();
         },
-        decoration: InputDecoration(
-          isDense: true,
-          label: fieldLabel(
-            compact
-                ? '本位币调账额（仅总账）'
-                : '$accountName ${_currencyLabel(account)} 本位币调账额',
-            theme,
-            required: true,
-            info: '只用于总账，不改变账户原币余额',
+        decoration: UtenInputDecoration(
+          InputDecoration(
+            isDense: true,
+            label: fieldLabel(
+              compact
+                  ? '本位币调账额（仅总账）'
+                  : '$accountName ${_currencyLabel(account)} 本位币调账额',
+              theme,
+              required: true,
+              info: '只用于总账，不改变账户原币余额',
+            ),
+            hintText: '财务填写',
+            error: _localDeltaErrors[account.id] == null
+                ? null
+                : UtenFieldMessage.error(_localDeltaErrors[account.id]!),
+            constraints: const BoxConstraints(minHeight: 64),
           ),
-          hintText: '财务填写',
-          error: _localDeltaErrors[account.id] == null
-              ? null
-              : UtenFieldMessage.error(_localDeltaErrors[account.id]!),
-          constraints: const BoxConstraints(minHeight: 64),
         ),
       ),
     );

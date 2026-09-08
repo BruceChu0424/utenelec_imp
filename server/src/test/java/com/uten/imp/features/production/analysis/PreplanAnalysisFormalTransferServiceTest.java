@@ -7,6 +7,7 @@ import com.uten.imp.features.stock.InventoryMutationLock;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 
@@ -15,10 +16,12 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -32,6 +35,11 @@ class PreplanAnalysisFormalTransferServiceTest {
         UUID formalReservationId = UUID.randomUUID();
         PreparedPlanTransfer first = prepared(demandId, "4");
         PreparedPlanTransfer second = prepared(demandId, "6");
+        UUID warehouseId = UUID.randomUUID();
+        stubReservationWarehouses(f, List.of(
+                new Object[]{first.sourceStockReservationId(), warehouseId},
+                new Object[]{second.sourceStockReservationId(), warehouseId},
+                new Object[]{formalReservationId, warehouseId}));
 
         f.service().formalizePlanDemandTransfers(
                 packageId, List.of(first, second),
@@ -61,21 +69,36 @@ class PreplanAnalysisFormalTransferServiceTest {
         UUID demandId = UUID.randomUUID();
         PreparedPlanTransfer first = prepared(demandId, "4");
         PreparedPlanTransfer second = prepared(demandId, "6");
+        UUID formalReservationId = UUID.randomUUID();
+        UUID warehouseId = UUID.randomUUID();
+        stubReservationWarehouses(f, List.of(
+                new Object[]{first.sourceStockReservationId(), warehouseId},
+                new Object[]{second.sourceStockReservationId(), warehouseId},
+                new Object[]{formalReservationId, warehouseId}));
 
         assertThatThrownBy(() -> f.service().formalizePlanDemandTransfers(
                 packageId, List.of(first, second),
                 List.of(new FormalReservationSlice(
-                        demandId, UUID.randomUUID(), new BigDecimal("9.9999")))))
+                        demandId, formalReservationId, new BigDecimal("9.9999")))))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("does not cover");
+                .hasMessageContaining("正式领料预留未覆盖");
 
-        verify(f.entitlements(), never()).appendFormalize(
+        // FIFO 消耗：第一片 4 全额转正式，第二片吃掉剩余 5.9999 后仍缺 0.0001
+        // 即冲突回滚（整体事务由调用方回滚，单测锁「缺口前按 FIFO 尽量消耗」）。
+        verify(f.entitlements(), times(1)).appendFormalize(
                 eq(packageId), eq(first.sourceEntitlementEventId()),
                 eq(first.sourceStockReservationId()),
                 eq(first.beneficiaryAnalysisId()),
                 eq(first.beneficiaryAnalysisMaterialId()),
                 eq(first.qty()), eq(packageId), eq(demandId),
-                org.mockito.ArgumentMatchers.any(), anyString());
+                eq(formalReservationId), anyString());
+        verify(f.entitlements(), times(1)).appendFormalize(
+                eq(packageId), eq(second.sourceEntitlementEventId()),
+                eq(second.sourceStockReservationId()),
+                eq(second.beneficiaryAnalysisId()),
+                eq(second.beneficiaryAnalysisMaterialId()),
+                eq(new BigDecimal("5.9999")), eq(packageId), eq(demandId),
+                eq(formalReservationId), anyString());
     }
 
     @Test
@@ -112,17 +135,27 @@ class PreplanAnalysisFormalTransferServiceTest {
     private static Fixture fixture() {
         PreplanStockEntitlementService entitlements =
                 mock(PreplanStockEntitlementService.class);
+        EntityManager em = mock(EntityManager.class);
         PreplanAnalysisStockPegService service =
                 new PreplanAnalysisStockPegService(
-                        mock(EntityManager.class), mock(TxSessionVars.class),
+                        em, mock(TxSessionVars.class),
                         mock(SecurityContextCurrentUser.class),
                         mock(InventoryMutationLock.class), entitlements,
                         mock(ObjectProvider.class));
-        return new Fixture(service, entitlements);
+        return new Fixture(service, entitlements, em);
+    }
+
+    /** 预留→仓库 维度查询桩：formalize 按同仓库匹配消耗正式预留。 */
+    private static void stubReservationWarehouses(Fixture f, List<Object[]> rows) {
+        Query query = mock(Query.class);
+        when(f.em().createNativeQuery(anyString())).thenReturn(query);
+        when(query.setParameter(anyString(), any())).thenReturn(query);
+        when(query.getResultList()).thenReturn(rows);
     }
 
     private record Fixture(
             PreplanAnalysisStockPegService service,
-            PreplanStockEntitlementService entitlements) {
+            PreplanStockEntitlementService entitlements,
+            EntityManager em) {
     }
 }

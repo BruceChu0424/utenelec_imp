@@ -30,13 +30,18 @@ class CrossAnalysisReallocationWorkflowContractTest {
                     + "ProductionFulfillmentLedgerService.java");
 
     @Test
-    void explicitReallocationLocksInventoryBeforeBothHeadersAndChecksDualCasScope()
+    void explicitReallocationPrelocksBothCompleteSourcesBeforeHeadersAndChecksDualCasScope()
             throws Exception {
         String source = compact(REALLOCATION);
 
-        assertThat(source.indexOf("inventorylock.lock(new inventorykey"))
+        assertThat(source.indexOf("mutationlocks.acquire(() -> mutationfootprints.foranalyses("))
                 .isPositive()
                 .isLessThan(source.indexOf("map<uuid, materialanalysisservice.analysisheader> headers = lockheaders"));
+        assertThat(source).contains("list.of(sourceanalysisid, request.targetanalysisid())",
+                "list.of(snapshot.fromanalysisid(), snapshot.toanalysisid())",
+                "analysisservice.headerafterprelock(id)");
+        assertThat(occurrences(source,"guard.verifyunchanged()")).isEqualTo(2);
+        assertThat(source).doesNotContain("inventorylock.lock(new inventorykey");
         assertThat(occurrences(source, "access.requirewritable(headers.get(")).isGreaterThanOrEqualTo(2);
         assertThat(source).contains(
                 "analysisservice.requirecurrent(headers.get(sourceanalysisid)");

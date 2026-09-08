@@ -55,6 +55,8 @@ class SubcontractDocListItem {
     this.fulfill = false,
     this.legacyId,
     this.financeApproval,
+    this.statusOverride,
+    this.warehouseNameOverride,
   });
 
   final String id;
@@ -74,6 +76,11 @@ class SubcontractDocListItem {
   final bool fulfill;
   final int? legacyId;
   final ProcurementFinanceApproval? financeApproval;
+
+  /// 显示覆盖（2026-09-05 计划委外申请页合并待生产行）：待生产合成行用
+  /// 车间进度文案替代计划状态、用任务仓库名替代仓库 id 解析；真实单据行不传。
+  final String? statusOverride;
+  final String? warehouseNameOverride;
 
   factory SubcontractDocListItem.fromJson(Map<String, dynamic> json) =>
       SubcontractDocListItem(

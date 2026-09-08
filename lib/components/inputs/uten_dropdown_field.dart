@@ -18,6 +18,7 @@ import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import 'required_field_decoration.dart';
 import 'uten_field_message.dart';
+import 'uten_input_decoration.dart';
 
 /// 单选项：[value]（null=清空/不选）+ [label]（展示文本）。
 ///
@@ -52,6 +53,7 @@ class UtenDropdownField extends StatefulWidget {
     this.searchable,
     this.errorMessage,
     this.autofilled = false,
+    this.warningMessage,
     this.onAddNew,
     this.addNewLabel,
   });
@@ -71,18 +73,21 @@ class UtenDropdownField extends StatefulWidget {
   final bool enabled;
   final String? hintText;
 
-  /// 字段说明：收进标签旁 ⓘ 悬停提示，不常驻输入框下方（全站约定）。
+  /// Field guidance disclosed by the info icon inside the input.
   final String? info;
 
   /// 弹层是否带搜索框（输入实时过滤选项）。null=自动（选项 ≥4 个时启用）。
   final bool? searchable;
 
-  /// 校验错误文案（非空时红框 + 下方红字，同 TextField errorText）。
+  /// Validation error shown by a red border and an in-field error icon.
   final String? errorMessage;
 
-  /// 当前值是否系统预填（学习/主档带入）：黄框 + 下方「请核对」提醒，用户改值后置 false。
+  /// Prefilled values have an amber border and an in-field reminder icon.
   /// 优先级：errorMessage（红）> 必填空（红）> autofilled（黄）。
   final bool autofilled;
+
+  /// Non-blocking warning disclosed inside the field.
+  final String? warningMessage;
 
   /// 浮层内"添加新项"回调（如颜色/单位内联新建）：非空时在搜索框下方渲染浅绿"添加"按钮，
   /// 点击先关浮层再触发。null=不显示（默认，不影响其他调用方）。
@@ -169,7 +174,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
     // 预填黄框仅在「有值、无错误、非必填空」时呈现（必填空/错误仍走红，优先级更高）。
     final autofillHint =
         widget.enabled &&
-        widget.autofilled &&
+        (widget.autofilled || widget.warningMessage != null) &&
         hasValue &&
         widget.errorMessage == null;
     return CompositedTransformTarget(
@@ -179,24 +184,32 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
         child: InputDecorator(
           decoration: applyRequiredEmpty(
             applyAutofillHint(
-              InputDecoration(
-                label: widget.label == null
-                    ? null
-                    : fieldLabel(
-                        widget.label!,
-                        theme,
-                        required: widget.required,
-                        info: widget.info,
-                        base: theme.inputDecorationTheme.labelStyle,
-                      ),
-                hintText: widget.hintText,
-                helper: autofillHint
-                    ? const UtenFieldMessage.autofill('已按上次记录预填，请核对')
-                    : null,
-                error: widget.errorMessage == null
-                    ? null
-                    : UtenFieldMessage.error(widget.errorMessage!),
-                suffixIcon: const Icon(Icons.arrow_drop_down_rounded, size: 20),
+              UtenInputDecoration(
+                InputDecoration(
+                  label: widget.label == null
+                      ? null
+                      : fieldLabel(
+                          widget.label!,
+                          theme,
+                          required: widget.required,
+                          info: widget.info,
+                          base: theme.inputDecorationTheme.labelStyle,
+                        ),
+                  hintText: widget.hintText,
+                  helper: autofillHint
+                      ? UtenFieldMessage.autofill(
+                          widget.warningMessage ?? '已按上次记录预填，请核对',
+                        )
+                      : null,
+                  error: widget.errorMessage == null
+                      ? null
+                      : UtenFieldMessage.error(widget.errorMessage!),
+                  suffixIcon: const Icon(
+                    Icons.arrow_drop_down_rounded,
+                    size: 20,
+                  ),
+                ),
+                info: widget.info,
               ),
               theme,
               autofilled: autofillHint,

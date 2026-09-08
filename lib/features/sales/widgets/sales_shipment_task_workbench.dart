@@ -189,7 +189,7 @@ class _SalesShipmentTaskWorkbenchState
                 IconButton(
                   key: const Key('sales-shipment-task-refresh'),
                   tooltip: '刷新',
-                  onPressed: _loading ? null : _load,
+                  onPressed: _loading ? null : () => _load(1),
                   icon: const Icon(Icons.refresh_rounded),
                 ),
               ]
@@ -493,6 +493,14 @@ class _SalesShipmentTaskWorkbenchState
       value: (item) => names.client(item.clientId),
     ),
     MasterColumnDef(
+      key: 'shipmentKind',
+      label: '发货类型',
+      width: 160,
+      value: (item) => item.shipmentWorkflow.isDirect
+          ? (item.shipmentWorkflow.isFree ? '客户零星 · 不收费' : '客户零星 · 收费')
+          : '订货发货',
+    ),
+    MasterColumnDef(
       key: 'billDate',
       label: '出货日期',
       width: 120,
@@ -691,5 +699,9 @@ String _shortDate(String? value) {
 
 String _amount(SalesDocListItem item) {
   if (item.priceMasked) return '***';
-  return (item.totalOriginal ?? item.totalLocal)?.toStringAsFixed(2) ?? '—';
+  if (item.shipmentWorkflow.isFree) return '不收费（货款 0）';
+  return item.exactDecimals['totalOriginal'] ??
+      item.exactDecimals['totalLocal'] ??
+      (item.totalOriginal ?? item.totalLocal)?.toStringAsFixed(2) ??
+      '—';
 }

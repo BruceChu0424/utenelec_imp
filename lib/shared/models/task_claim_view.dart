@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 @immutable
 class TaskClaimView {
   const TaskClaimView({
+    this.claimId,
     required this.targetType,
     required this.targetKey,
     required this.claimedBy,
@@ -15,6 +16,7 @@ class TaskClaimView {
   });
 
   final String targetType;
+  final String? claimId;
   final String targetKey;
   final String claimedBy; // 认领人 employeeId
   final String claimedByName;
@@ -24,8 +26,9 @@ class TaskClaimView {
 
   /// 无认领时后端返回 null（200 + 空 body）。
   static TaskClaimView? fromJson(Object? json) {
-    if (json is! Map<String, dynamic>) return null;
+    if (json is! Map<String, dynamic> || json.isEmpty) return null;
     return TaskClaimView(
+      claimId: json['claimId'] as String?,
       targetType: json['targetType'] as String? ?? '',
       targetKey: json['targetKey'] as String? ?? '',
       claimedBy: json['claimedBy'] as String? ?? '',

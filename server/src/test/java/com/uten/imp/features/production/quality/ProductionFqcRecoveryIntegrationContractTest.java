@@ -21,6 +21,7 @@ class ProductionFqcRecoveryIntegrationContractTest {
                         + "ProductionFqcRecoveryService.java"));
         assertThat(quality).contains("recovery.applyFailureAdjustment(");
         assertThat(recovery)
+                .contains("mutationFootprint.requireInspection(inspectionId)")
                 .contains("SET fqty = COALESCE(fqty, 0) - :qty")
                 .contains("SET produced_qty = COALESCE(produced_qty, 0) - :qty")
                 .contains("INSERT INTO production_fqc_contribution_adjustments")
@@ -35,6 +36,8 @@ class ProductionFqcRecoveryIntegrationContractTest {
                 "src/main/java/com/uten/imp/features/production/dailyreport/"
                         + "ProductionDailyReportService.java"));
         assertThat(report)
+                .contains("mutationFootprint.beginReport(id)")
+                .contains("sourceGuard.verifyUnchanged()")
                 .contains("allocateApprovedRecoveryReportItem(")
                 .contains("effectiveContribution(")
                 .contains("if (qty.signum() > 0)")

@@ -179,13 +179,13 @@ Widget utenTextFieldErrorBuilder(BuildContext context, String errorText) {
 }
 
 /// Semantic error/autofill text for use with [InputDecoration.error] and
-/// [InputDecoration.helper]. 字段静态说明已全站收进 fieldLabel 的 ⓘ 悬停提示
-/// （required_field_decoration.dart），此处只承载实时状态（校验错误/预填提醒）。
+/// [InputDecoration.helper]. UtenInputDecoration reads these messages and moves
+/// them into the field. Standalone form/page errors retain visible text.
 class UtenFieldMessage extends StatelessWidget {
   const UtenFieldMessage.error(this.message, {super.key, this.maxLines = 1})
     : kind = UtenFieldMessageKind.error;
 
-  /// 预填默认值提醒（黄框字段的下方说明）：warning 文字色，非错误不抢焦点。
+  /// Non-blocking prefill reminder; UtenInputDecoration discloses it in-field.
   const UtenFieldMessage.autofill(this.message, {super.key, this.maxLines = 1})
     : kind = UtenFieldMessageKind.autofill;
 

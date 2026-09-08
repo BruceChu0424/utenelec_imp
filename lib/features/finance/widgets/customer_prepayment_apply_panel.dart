@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import '../../../shared/presentation/workflow_field_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -126,7 +128,7 @@ class _CustomerPrepaymentApplyPanelState
       final orderId = _targetOrderId(target);
       if (orderId == null) {
         context.appWarning(
-          '${target.appliedBillNo ?? '该应收'}：缺少唯一销售订单 UUID，暂不能应用预收',
+          '${target.appliedBillNo ?? '该应收'}：无法对应到唯一销售订单，请财务核对后再抵扣预收',
         );
         return;
       }
@@ -148,7 +150,7 @@ class _CustomerPrepaymentApplyPanelState
     if (!source.hasAvailable) return '所选客户预收已无可用余额，请刷新';
     if (_targets.isEmpty) return '请选择至少一笔同客户、同币种的正应收';
     if (_reason.text.trim().isEmpty) return '请填写应用预收原因';
-    final available = financeExactDecimalUnits(source.availableOriginal);
+    final available = financeAmountUnits(source.availableOriginal);
     if (available == null || available <= BigInt.zero) {
       return '所选客户预收可用余额待财务核验';
     }
@@ -157,7 +159,7 @@ class _CustomerPrepaymentApplyPanelState
       if (_targetOrderId(target) == null) {
         return '${target.appliedBillNo ?? '该应收'}缺少唯一销售订单 UUID';
       }
-      final units = financeExactDecimalUnits(target.receiptAmountText);
+      final units = financeAmountUnits(target.receiptAmountText);
       if (units == null || units <= BigInt.zero) {
         return '${target.appliedBillNo ?? '该应收'}的应用金额无效';
       }
@@ -255,11 +257,13 @@ class _CustomerPrepaymentApplyPanelState
           autofocus: true,
           maxLength: 2000,
           maxLines: 3,
-          decoration: InputDecoration(
-            label: fieldLabel(
-              '反转原因(必填)',
-              Theme.of(dialogContext),
-              info: '反转会恢复预收和目标应收余额，并保留审计记录',
+          decoration: UtenInputDecoration(
+            InputDecoration(
+              label: fieldLabel(
+                '反转原因(必填)',
+                Theme.of(dialogContext),
+                info: '反转会恢复预收和目标应收余额，并保留审计记录',
+              ),
             ),
           ),
         ),
@@ -383,7 +387,7 @@ class _CustomerPrepaymentApplyPanelState
         const SizedBox(height: UtenSpacing.s8),
         if (_targets.isEmpty)
           Text(
-            '尚未选择目标；仅允许同客户、同币种且带唯一销售订单 UUID 的正应收。',
+            '先选择要抵扣的应收单，只能选择同一客户、同一币种且能对应到销售订单的欠款。',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -405,12 +409,15 @@ class _CustomerPrepaymentApplyPanelState
           controller: _reason,
           maxLength: 2000,
           maxLines: 3,
+          ignorePointers: false,
           enabled: !_busy && _lastResult == null,
-          decoration: InputDecoration(
-            label: fieldLabel(
-              '应用原因(必填)',
-              theme,
-              info: '说明订单、客户通知或其它核销依据；服务端保留完整审计记录',
+          decoration: UtenInputDecoration(
+            InputDecoration(
+              label: fieldLabel(
+                '抵扣说明(必填)',
+                theme,
+                info: workflowFieldText(context).workflowPrepaymentApplyHint,
+              ),
             ),
           ),
         ),

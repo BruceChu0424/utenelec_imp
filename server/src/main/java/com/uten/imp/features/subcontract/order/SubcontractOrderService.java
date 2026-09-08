@@ -7,6 +7,8 @@ import com.uten.imp.application.port.ProcurementOrderApprovalPort.OrderSnapshot;
 import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
 import com.uten.imp.application.port.PreplanPublicSupplyCapturePort;
 import com.uten.imp.application.port.MasterReferenceValidationPort;
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeItem;
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeRequest;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -107,7 +109,13 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     private final ProcurementArrivalControlPort arrivalControl;
     private final SubcontractDocumentAccessPolicy access;
     private final com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService materialPlanService;
+    private final com.uten.imp.features.finance.procurement.ProcurementApprovalReconfirmationService reconfirmation;
     private final MasterReferenceValidationPort references;
+    private final com.uten.imp.application.port.ProcurementReviewCancellationPort reviewCancellation;
+    private final com.uten.imp.application.port.ProcurementOrderSourceRevisionPort sourceRevision;
+    private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
+    @Autowired
+    private com.uten.imp.application.port.SubcontractOrderPreparationPort orderPreparation;
 
     @Autowired
     private CommercialPriceVisibility commercialPriceVisibility;
@@ -147,7 +155,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 .map(row -> toList(row, approvals.get(row.getId()), priceMasked))
                 .toList();
         return new PageResponse<>(
-                items, page, size, p.getTotalElements(), p.getTotalPages());
+                items, p);
     }
 
     @Transactional(readOnly = true)
@@ -224,13 +232,19 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         tx.bind();
         requireRowsMatchHeaderSupplier(req);
         requireRowsMatchHeaderCommercial(req);
+        var mutationGuard=lockOrderRequest(null,req);
+        mutationGuard.verifyUnchanged();
         SubcontractOrder r = new SubcontractOrder();
         applyHeader(req, r);
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         r.setStatus(STATUS_DRAFT);
+        mutationLocks.expectCreatedOrder(orderType(),r.getId());
         orderRepo.save(r);
+        orderRepo.flush();
+        mutationLocks.registerCreatedOrder(orderType(),r.getId());
         List<OrderItemDto> items = saveItems(r, req.getItems());
         applyTotals(r, items);
+        prepareDraft(r);
         return toDetail(r, items);
     }
 
@@ -245,6 +259,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         requireDecompositionAuthorityIfNeeded(req);
         tx.bind();
         Map<CommercialGroupKey, List<OrderItemLine>> groups = groupByCommercial(req);
+        lockOrderRequest(null,req).verifyUnchanged();
         List<OrderDetail> created = new ArrayList<>();
         for (Map.Entry<CommercialGroupKey, List<OrderItemLine>> entry : groups.entrySet()) {
             CommercialGroupKey key = entry.getKey();
@@ -395,19 +410,39 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     @PreAuthorize("hasAuthority('subcontract_order:edit')")
     public OrderDetail update(UUID id, OrderSaveRequest req) {
         tx.bind();
+        var mutationGuard=lockOrderRequest(id,req);
         SubcontractOrder r = requireOrderForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外订货单");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
         approvalProjection.requireMutable(orderType(), id);
+        mutationGuard.verifyUnchanged();
         requireRowsMatchHeaderSupplier(req);
         requireRowsMatchHeaderCommercial(req);
+        var oldItems=itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        Map<OrderItemLine,SubcontractOrderItem> retained=new java.util.IdentityHashMap<>();
+        var remaining=new ArrayList<>(oldItems);
+        int requestedLine=0;
+        for(var line:req.getItems()){
+            requestedLine++;final int sameLine=line.getLineNo()==null?requestedLine:line.getLineNo();
+            if(!line.resolvedApplicationItemIds().isEmpty())continue;
+            var match=remaining.stream().filter(old->old.getApplicationItemId()==null
+                    && Objects.equals(old.getGoodsId(),line.getGoodsId()) && Objects.equals(old.getColorId(),line.getColorId())
+                    && Objects.equals(old.getUnitId(),line.getUnitId()) && old.getQty().compareTo(line.getQty())==0
+                    && old.getUnitRate().compareTo(line.getUnitRate()==null?BigDecimal.ONE:line.getUnitRate())==0)
+                    .sorted(java.util.Comparator.comparingInt(old->Objects.equals(old.getLineNo(),sameLine)?0:1)).findFirst();
+            if(match.isPresent()){retained.put(line,match.get());remaining.remove(match.get());}
+        }
+        if(!Objects.equals(r.getWarehouseId(),req.getWarehouseId()))
+            orderPreparation.releaseDraftPreparations(oldItems.stream().map(SubcontractOrderItem::getId).toList(),"委外草稿改仓，重新检查前置准备");
+        orderPreparation.releaseDraftPreparations(remaining.stream().map(SubcontractOrderItem::getId).toList(),"委外草稿修改或删除原行");
         applyHeader(req, r);
-        itemRepo.deleteByOrderId(id);
+        for(var removed:remaining){removed.setDeleted(true);itemRepo.save(removed);}
         itemRepo.flush();
-        List<OrderItemDto> items = saveItems(r, req.getItems());
+        List<OrderItemDto> items = saveItems(r, req.getItems(),retained);
         applyTotals(r, items);
+        prepareDraft(r);
         return toDetail(r, items);
     }
 
@@ -415,10 +450,13 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     @PreAuthorize("hasAuthority('subcontract_order:delete')")
     public void delete(UUID id) {
         tx.bind();
+        var mutationGuard=mutationLocks.order(orderType(),id);
         SubcontractOrder r = requireOrderForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外订货单");
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         approvalProjection.requireMutable(orderType(), id);
+        mutationGuard.verifyUnchanged();
+        orderPreparation.releaseDraftPreparations(itemRepo.findByOrderIdOrderByLineNoAsc(id).stream().map(SubcontractOrderItem::getId).toList(),"委外草稿删除");
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         orderRepo.save(r);
@@ -427,6 +465,15 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     @Override
     public String orderType() {
         return "SUBCONTRACT";
+    }
+
+    private com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard lockOrderRequest(UUID id,OrderSaveRequest req) {
+        List<OrderItemLine> lines=req==null||req.getItems()==null?List.of():req.getItems();
+        return mutationLocks.orderInputs(orderType(),id,lines.stream().filter(Objects::nonNull)
+                        .flatMap(line->line.resolvedApplicationItemIds().stream()).toList(),
+                lines.stream().filter(Objects::nonNull).filter(line->line.getGoodsId()!=null)
+                        .map(line->new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(line.getGoodsId(),line.getColorId())).toList(),
+                req==null?null:req.getWarehouseId());
     }
 
     @Override
@@ -465,7 +512,180 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 "委外订货");
         requireFinanceCommercialAuthority(order, items);
         lockAndValidateSourcesIncludingPending(order, items);
+        materialPlanService.lockOrderInventoryDimensions(id);
+        materialPlanService.requireNoMakeThenShortage(id);
         return snapshot(order, items);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean isFinanceApproved(UUID id) {
+        SubcontractOrder order = requireOrderForUpdate(id);
+        return order.getStatus() != null && order.getStatus() == STATUS_APPROVED;
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public OrderSnapshot lockFinanceReconfirmationSnapshot(UUID id) {
+        SubcontractOrder order = requireOrderForUpdate(id);
+        if (order.getStatus() == null || order.getStatus() != STATUS_APPROVED) {
+            throw new ApiException(ErrorCode.CONFLICT, "委外订货单已不在已批准状态，请刷新");
+        }
+        return snapshot(order, itemRepo.findByOrderIdOrderByLineNoAsc(id));
+    }
+
+    /**
+     * V486 财务批准后受控改量（对齐销售 V482）：立即生效 + 自动开财务复核 case
+     * + 逐行 old→new 事实账。最低量来自真实回厂与实发/实退的冻结量纲，
+     * 未执行出仓草稿和未消费预留同步收回；来源与毛实发历史保持可追溯。
+     * 已有前置生产分析不得静默改需求，有子层增量仍经真实前置生产链。
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('subcontract_order:change_qty')")
+    public OrderDetail changeQty(
+            UUID id, OrderQtyChangeRequest request) {
+        tx.bind();
+        var mutationGuard=mutationLocks.order(orderType(),id);
+        SubcontractOrder order = requireOrderForUpdate(id);
+        access.requireWritable(order.getMakerId(), "只能操作本人负责的委外订货单");
+        if (order.getStatus() == null || order.getStatus() != STATUS_APPROVED) {
+            throw new ApiException(
+                    ErrorCode.BUSINESS, "仅财务批准后的委外订货单可改量");
+        }
+        mutationGuard.verifyUnchanged();
+        materialPlanService.lockOrderInventoryDimensions(id);
+        requireNoPendingApprovalCase(id);
+        List<SubcontractOrderItem> items =
+                itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        Map<UUID, SubcontractOrderItem> byId = items.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        SubcontractOrderItem::getId, it -> it, (a, b) -> a,
+                        LinkedHashMap::new));
+        List<Object[]> changes = new ArrayList<>();
+        for (OrderQtyChangeItem change : request.items()) {
+            SubcontractOrderItem item = byId.get(change.orderItemId());
+            if (item == null) {
+                throw new ApiException(
+                        ErrorCode.NOT_FOUND,
+                        "改量行不存在或已不属于本订货单：" + change.orderItemId());
+            }
+            BigDecimal newQty = change.newQty();
+            BigDecimal oldQty = item.getQty();
+            if (newQty.compareTo(oldQty) == 0) {
+                continue;
+            }
+            var receiptBound=com.uten.imp.common.finance.ProcurementOrderQuantityBounds.receipts(em,orderType(),item.getId());
+            BigDecimal unitRate=item.getUnitRate()==null ? BigDecimal.ONE : item.getUnitRate();
+            BigDecimal locked = receiptBound.minimumOrderedQty(unitRate)
+                    .max(materialPlanService.minimumOrderQtyFromIssued(item.getId(),unitRate));
+            if (newQty.compareTo(locked) < 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "第 " + item.getLineNo() + " 行新数量不能低于已锁定数量 "
+                                + locked.stripTrailingZeros().toPlainString()
+                                + "（已回厂净量/已出仓目标件）");
+            }
+            changes.add(new Object[]{item, oldQty, newQty,receiptBound,UUID.randomUUID()});
+        }
+        if (changes.isEmpty()) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, "没有任何数量变化");
+        }
+        BigDecimal rate = order.getExchangeRate() == null
+                ? BigDecimal.ONE : order.getExchangeRate();
+        sourceRevision.prepare(orderType(),id,changes.stream().map(change -> {
+            SubcontractOrderItem item=(SubcontractOrderItem)change[0];
+            return new com.uten.imp.application.port.ProcurementOrderSourceRevisionPort.Line((UUID)change[4],item.getId(),
+                    (BigDecimal)change[1],(BigDecimal)change[2],item.getUnitRate()==null?BigDecimal.ONE:item.getUnitRate());
+        }).toList());
+        Map<UUID, BigDecimal> baseDelta = new LinkedHashMap<>();
+        Map<UUID, BigDecimal> unitRates = new LinkedHashMap<>();
+        Map<UUID, UUID> goodsByItem = new LinkedHashMap<>();
+        for (Object[] change : changes) {
+            SubcontractOrderItem item = (SubcontractOrderItem) change[0];
+            BigDecimal newQty = (BigDecimal) change[2];
+            BigDecimal unitRate = item.getUnitRate() == null
+                    ? BigDecimal.ONE : item.getUnitRate();
+            baseDelta.put(item.getId(),
+                    newQty.subtract((BigDecimal) change[1]).multiply(unitRate)
+                            .setScale(4, RoundingMode.HALF_UP));
+            unitRates.put(item.getId(), unitRate);
+            goodsByItem.put(item.getId(), item.getGoodsId());
+            item.setQty(newQty);
+            BigDecimal amountOriginal = item.getPrice() == null
+                    ? null : money(newQty.multiply(item.getPrice()));
+            item.setAmountOriginal(amountOriginal);
+            item.setAmountLocal(amountOriginal == null
+                    ? null : money(amountOriginal.multiply(rate)));
+            itemRepo.save(item);
+        }
+        recalcOrderTotals(order, items);
+        orderRepo.save(order);
+        orderRepo.flush();
+        sourceRevision.apply(orderType(),id,changes.stream().map(change ->(UUID)change[4]).toList());
+        for(Object[] change:changes) {
+            SubcontractOrderItem item=(SubcontractOrderItem)change[0];
+            com.uten.imp.common.finance.ProcurementOrderQuantityBounds.synchronizeExpectation(em,orderType(),
+                    item.getId(),(BigDecimal)change[2],item.getUnitRate()==null ? BigDecimal.ONE : item.getUnitRate(),
+                    (com.uten.imp.common.finance.ProcurementOrderQuantityBounds.ReceiptBound)change[3]);
+        }
+        materialPlanService.applyOrderQtyChange(
+                id, baseDelta, unitRates, goodsByItem);
+        com.uten.imp.common.finance.ProcurementOrderClosurePolicy.recalculate(em,orderType(),
+                ((SubcontractOrderItem)changes.getFirst()[0]).getId());
+        em.refresh(order);
+        OrderSnapshot postChange = snapshot(order, items);
+        UUID caseId = reconfirmation.openReconfirmationCase(
+                postChange, changes.size());
+        UUID actorEmployee = currentUser.requireEmployeeId();
+        for (Object[] change : changes) {
+            SubcontractOrderItem item = (SubcontractOrderItem) change[0];
+            em.createNativeQuery("""
+                    INSERT INTO procurement_order_qty_change_logs(
+                        id, order_type, order_id, order_item_id,
+                        old_qty, new_qty, case_id, changed_by_employee_id)
+                    VALUES (?, 'SUBCONTRACT', ?, ?, ?, ?, ?, ?)
+                    """)
+                    .setParameter(1, change[4])
+                    .setParameter(2, id)
+                    .setParameter(3, item.getId())
+                    .setParameter(4, change[1])
+                    .setParameter(5, change[2])
+                    .setParameter(6, caseId)
+                    .setParameter(7, actorEmployee)
+                    .executeUpdate();
+        }
+        orderRepo.flush();
+        itemRepo.flush();
+        return detail(id);
+    }
+
+    private void requireNoPendingApprovalCase(UUID id) {
+        Boolean pending = (Boolean) em.createNativeQuery("""
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM procurement_order_approval_cases
+                    WHERE order_type = 'SUBCONTRACT' AND order_id = :id
+                      AND status = 'PENDING')
+                """).setParameter("id", id).getSingleResult();
+        if (Boolean.TRUE.equals(pending)) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "订货单已在财务复核中，复核办结后才可再次改量");
+        }
+    }
+
+    private void recalcOrderTotals(
+            SubcontractOrder order, List<SubcontractOrderItem> items) {
+        BigDecimal original = BigDecimal.ZERO;
+        BigDecimal local = BigDecimal.ZERO;
+        for (SubcontractOrderItem item : items) {
+            original = original.add(item.getAmountOriginal() == null
+                    ? BigDecimal.ZERO : item.getAmountOriginal());
+            local = local.add(item.getAmountLocal() == null
+                    ? BigDecimal.ZERO : item.getAmountLocal());
+        }
+        order.setTotalOriginal(original);
+        order.setTotalLocal(local);
     }
 
     @Override
@@ -475,6 +695,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         if (order.getStatus() == null || order.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.CONFLICT, "订货单已不再是待生效草稿");
         }
+        materialPlanService.lockOrderInventoryDimensions(id);
+        materialPlanService.requireNoMakeThenShortage(id);
         references.requireSelectableSupplier(order.getSupplierId());
         List<SubcontractOrderItem> items =
                 itemRepo.findByOrderIdOrderByLineNoAsc(id);
@@ -526,11 +748,15 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     @PreAuthorize("hasAuthority('subcontract_order:reverse')")
     public OrderDetail reverse(UUID id) {
         tx.bind();
+        var mutationGuard=mutationLocks.order(orderType(),id);
         SubcontractOrder r = requireOrderForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外订货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
+        mutationGuard.verifyUnchanged();
+        reviewCancellation.cancelUnclaimedPending(orderType(),id,"ORDER_REVERSED");
+        materialPlanService.lockOrderInventoryDimensions(id);
         List<SubcontractOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
         if (items.stream().anyMatch(it ->
                 positive(it.getReceivedQty())
@@ -786,7 +1012,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     private static BigDecimal money(BigDecimal value) {
-        return value.setScale(4, RoundingMode.HALF_UP);
+        return com.uten.imp.common.util.FinancialExactAmount.canonicalMoney(value,"委外订货金额");
     }
 
     private static BigDecimal decimal(Object value) {
@@ -886,7 +1112,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         }
         r.setWarehouseId(req.getWarehouseId());
         r.setCurrencyId(req.getCurrencyId());
-        r.setExchangeRate(req.getExchangeRate());
+        r.setExchangeRate(req.getExchangeRate()==null?null:com.uten.imp.common.util.FinancialExactAmount.rate(req.getExchangeRate(),"委外汇率"));
         if (req.getSettlementMethodId() == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "委外订货必须选择结算方式");
         }
@@ -948,6 +1174,24 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     private List<OrderItemDto> saveItems(SubcontractOrder r, List<OrderItemLine> lines) {
+        return saveItems(r,lines,Map.of());
+    }
+
+    private void prepareDraft(SubcontractOrder order){
+        orderRepo.flush();itemRepo.flush();
+        materialPlanService.lockOrderInventoryDimensions(order.getId());
+        var shortage=materialPlanService.draftChildrenShortageByOrderItem(order.getId());
+        for(var item:itemRepo.findByOrderIdOrderByLineNoAsc(order.getId())){
+            if(item.getApplicationItemId()!=null)continue;
+            UUID baseUnit=(UUID)em.createNativeQuery("SELECT unit_id FROM goods WHERE id=:id",UUID.class).setParameter("id",item.getGoodsId()).getSingleResult();
+            orderPreparation.ensureDraftPreparation(new com.uten.imp.application.port.SubcontractOrderPreparationPort.DraftPreparationCommand(
+                    order.getId(),item.getId(),order.getBillNo(),item.getGoodsId(),item.getColorId(),baseUnit,
+                    shortage.getOrDefault(item.getId(),BigDecimal.ZERO),order.getWarehouseId(),
+                    item.getDeliverDate()==null?order.getDeliverDate():item.getDeliverDate()));
+        }
+    }
+
+    private List<OrderItemDto> saveItems(SubcontractOrder r, List<OrderItemLine> lines,Map<OrderItemLine,SubcontractOrderItem> retained) {
         List<OrderItemDto> out = new ArrayList<>(lines.size());
         // V463 同货品合并行：行数量按各申请行剩余量 FIFO 拆分到 sources
         //（末位来源吸收超额）；application_item_id 落首来源（主锚点）。
@@ -975,7 +1219,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             List<SourceSplit> lineSplits = splits.getOrDefault(l, List.of());
             UUID primarySource = lineSplits.isEmpty()
                     ? null : lineSplits.getFirst().applicationItemId();
-            SubcontractOrderItem it = new SubcontractOrderItem();
+            SubcontractOrderItem it = retained.getOrDefault(l,new SubcontractOrderItem());
             it.setOrderId(r.getId());
             it.setBillNo(r.getBillNo());
             it.setBillDate(r.getBillDate());
@@ -997,7 +1241,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             // 哈希失配导致 approve/reject 双 409（单据永久卡死）。
             it.setUnitRate(l.getUnitRate() == null ? BigDecimal.ONE : l.getUnitRate());
             it.setQty(l.getQty());
-            it.setPrice(l.getPrice());
+            it.setPrice(l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"委外加工单价"));
             it.setAmountOriginal(l.getAmountOriginal());
             it.setAmountLocal(l.getAmountLocal() != null ? l.getAmountLocal() : l.getAmountOriginal());
             it.setApplicationItemId(primarySource);

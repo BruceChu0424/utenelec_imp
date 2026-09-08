@@ -13,6 +13,7 @@ import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -743,18 +744,22 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                 // 简化：开始/结束用文本输入（YYYY-MM-DD）；生产可换日期选择器。
                 TextFormField(
                   errorBuilder: utenTextFieldErrorBuilder,
-                  decoration: const InputDecoration(
-                    labelText: '开始日期',
-                    hintText: 'YYYY-MM-DD(留空=今天)',
+                  decoration: const UtenInputDecoration(
+                    InputDecoration(
+                      labelText: '开始日期',
+                      hintText: 'YYYY-MM-DD(留空=今天)',
+                    ),
                   ),
                   onChanged: (v) =>
                       startDate = v.trim().isEmpty ? null : v.trim(),
                 ),
                 TextFormField(
                   errorBuilder: utenTextFieldErrorBuilder,
-                  decoration: const InputDecoration(
-                    labelText: '结束日期',
-                    hintText: 'YYYY-MM-DD(无固定期限留空)',
+                  decoration: const UtenInputDecoration(
+                    InputDecoration(
+                      labelText: '结束日期',
+                      hintText: 'YYYY-MM-DD(无固定期限留空)',
+                    ),
                   ),
                   onChanged: (v) =>
                       endDate = v.trim().isEmpty ? null : v.trim(),

@@ -61,6 +61,8 @@ public class ProcurementFinanceApprovalService {
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
     private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
+    private final com.uten.imp.application.port.TaskClaimMutationGuardPort taskClaims;
+    private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
 
     public ProcurementFinanceApprovalService(
             List<ProcurementOrderApprovalPort> availablePorts,
@@ -71,7 +73,9 @@ public class ProcurementFinanceApprovalService {
             ProcurementApprovalProjectionQuery projection,
             SecurityContextCurrentUser currentUser,
             TxSessionVars tx,
-            com.uten.imp.features.notice.ChainNoticeService chainNotice) {
+            com.uten.imp.features.notice.ChainNoticeService chainNotice,
+            com.uten.imp.application.port.TaskClaimMutationGuardPort taskClaims,
+            com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks) {
         this.ports = availablePorts.stream().collect(Collectors.toUnmodifiableMap(
                 port -> ProcurementApprovalProjectionQuery.requireOrderType(port.orderType()),
                 Function.identity()));
@@ -83,6 +87,8 @@ public class ProcurementFinanceApprovalService {
         this.currentUser = currentUser;
         this.tx = tx;
         this.chainNotice = chainNotice;
+        this.taskClaims = taskClaims;
+        this.mutationLocks = mutationLocks;
     }
 
     /** 提交财务审批：锁定订货单 + 规范 JSON 快照（sha256）+ 写 PENDING case（attempt 逐次递增，驳回后重提交自增），并预校验存在有资格的财务审核人，避免无人可批的死单。 */
@@ -92,8 +98,10 @@ public class ProcurementFinanceApprovalService {
         tx.bind();
         String orderType = ProcurementApprovalProjectionQuery.requireOrderType(rawOrderType);
         requireSubmitAuthority(orderType);
+        var mutationGuard=mutationLocks.order(orderType,orderId);
         ProcurementOrderApprovalPort port = requirePort(orderType);
         port.requireFinanceSubmitterWritable(orderId);
+        mutationGuard.verifyUnchanged();
         OrderSnapshot snapshot = port.lockAndValidateFinanceSubmission(orderId);
         requireNoPendingCase(orderType, orderId);
 
@@ -155,6 +163,10 @@ public class ProcurementFinanceApprovalService {
         tx.bind();
         requireEligibleReviewer();
         List<ResolvedBatchItem> items = resolveBatchItems(rawItems);
+        var mutationGuard=mutationLocks.orders(items.stream().map(item ->
+                new com.uten.imp.common.concurrency.ProcurementMutationFootprint.OrderRef(item.orderType(),item.orderId())).toList());
+        requireBatchReviewClaims(rawItems);
+        mutationGuard.verifyUnchanged();
         List<FinanceApproval> decisions = new ArrayList<>(items.size());
         for (ResolvedBatchItem item : items) {
             decisions.add(approveOne(
@@ -175,16 +187,26 @@ public class ProcurementFinanceApprovalService {
             String remark) {
         String orderType = ProcurementApprovalProjectionQuery.requireOrderType(rawOrderType);
         ProcurementOrderApprovalPort port = requirePort(orderType);
-        OrderSnapshot currentSnapshot =
-                port.lockAndValidateFinanceSubmission(orderId);
+        // V486 批准后改量复核：订单已批准时本 case 是「改后待复核」，数量变化
+        // 已在 change-qty 事务内生效并完成下游对账；复核通过仅确认，不重复执行
+        // 草稿校验、生效副作用或再建预计到货。
+        boolean reconfirmation = port.isFinanceApproved(orderId);
+        OrderSnapshot currentSnapshot = reconfirmation
+                ? port.lockFinanceReconfirmationSnapshot(orderId)
+                : port.lockAndValidateFinanceSubmission(orderId);
         ApprovalCase approvalCase = lockPendingCase(orderType, orderId);
         requireCaseIdentity(approvalCase, expectedCaseId);
         requireVersion(approvalCase, expectedVersion);
         requireUnchangedSnapshot(approvalCase, currentSnapshot);
+        if (reconfirmation) {
+            requireNoNewerQtyChange(orderType, orderId, approvalCase.caseId());
+        }
 
         UUID actorUser = currentUser.requireId();
         UUID actorEmployee = currentUser.requireEmployeeId();
-        port.applyFinanceApproval(orderId, actorEmployee);
+        if (!reconfirmation) {
+            port.applyFinanceApproval(orderId, actorEmployee);
+        }
         int changed = jdbc.update("""
                 UPDATE procurement_order_approval_cases
                 SET status = 'APPROVED',
@@ -211,7 +233,10 @@ public class ProcurementFinanceApprovalService {
                 null,
                 null,
                 approvedEventSnapshot(approvalCase, remark));
-        createInboundExpectation(approvalCase.caseId(), currentSnapshot, actorUser);
+        if (!reconfirmation) {
+            createInboundExpectation(
+                    approvalCase.caseId(), currentSnapshot, actorUser);
+        }
         publish(
                 EVENT_APPROVED,
                 approvalCase.caseId(),
@@ -221,6 +246,7 @@ public class ProcurementFinanceApprovalService {
         // V459 办结撤回：批准后撤回全部财务审核人待审弹卡（幂等）。
         chainNotice.resolveReviewNotices(
                 "PROCUREMENT_APPROVAL_CASE", approvalCase.caseId(), "APPROVED");
+        taskClaims.release("PROCUREMENT_FINANCE_APPROVE",approvalCase.caseId().toString());
         return projection.latestForOrder(orderType, orderId, (short) 1);
     }
 
@@ -234,6 +260,10 @@ public class ProcurementFinanceApprovalService {
         requireEligibleReviewer();
         String reason = normalizeReason(rawReason);
         List<ResolvedBatchItem> items = resolveBatchItems(rawItems);
+        var mutationGuard=mutationLocks.orders(items.stream().map(item ->
+                new com.uten.imp.common.concurrency.ProcurementMutationFootprint.OrderRef(item.orderType(),item.orderId())).toList());
+        requireBatchReviewClaims(rawItems);
+        mutationGuard.verifyUnchanged();
         List<FinanceApproval> decisions = new ArrayList<>(items.size());
         for (ResolvedBatchItem item : items) {
             decisions.add(rejectOne(
@@ -254,8 +284,10 @@ public class ProcurementFinanceApprovalService {
             String reason) {
         String orderType = ProcurementApprovalProjectionQuery.requireOrderType(rawOrderType);
         ProcurementOrderApprovalPort port = requirePort(orderType);
-        OrderSnapshot currentSnapshot =
-                port.lockAndValidateFinanceSubmission(orderId);
+        boolean reconfirmation = port.isFinanceApproved(orderId);
+        OrderSnapshot currentSnapshot = reconfirmation
+                ? port.lockFinanceReconfirmationSnapshot(orderId)
+                : port.lockAndValidateFinanceSubmission(orderId);
         ApprovalCase approvalCase = lockPendingCase(orderType, orderId);
         requireCaseIdentity(approvalCase, expectedCaseId);
         requireVersion(approvalCase, expectedVersion);
@@ -300,7 +332,8 @@ public class ProcurementFinanceApprovalService {
         // V459 办结撤回：驳回同样是办结（提交人收到的下一条通知是驳回修正指引）。
         chainNotice.resolveReviewNotices(
                 "PROCUREMENT_APPROVAL_CASE", approvalCase.caseId(), "REJECTED");
-        return projection.latestForOrder(orderType, orderId, (short) 0);
+        taskClaims.release("PROCUREMENT_FINANCE_APPROVE",approvalCase.caseId().toString());
+        return projection.latestForOrder(orderType, orderId, (short) (reconfirmation ? 1 : 0));
     }
 
     @Transactional(readOnly = true)
@@ -349,7 +382,10 @@ public class ProcurementFinanceApprovalService {
                        c.version,
                        c.submitted_by_employee_id,
                        submitter.full_name AS submitted_by_name,
-                       c.submitted_at
+                       c.submitted_at,
+                       (SELECT count(*)
+                        FROM procurement_order_qty_change_logs change_log
+                        WHERE change_log.case_id = c.id) AS change_count
                 FROM procurement_order_approval_cases c
                 LEFT JOIN purchase_orders po
                   ON c.order_type = 'PURCHASE' AND po.id = c.order_id
@@ -380,6 +416,7 @@ public class ProcurementFinanceApprovalService {
                         rs.getObject("submitted_by_employee_id", UUID.class),
                         rs.getString("submitted_by_name"),
                         rs.getObject("submitted_at", OffsetDateTime.class),
+                        rs.getLong("change_count"),
                         allowedActions),
                 params.toArray());
         int totalPages = total == 0
@@ -562,6 +599,8 @@ public class ProcurementFinanceApprovalService {
         List<String> allowedActions = "PENDING".equals(status)
                 ? currentReviewerActions()
                 : List.of();
+        List<ProcurementApprovalContracts.QtyChange> qtyChanges =
+                loadQtyChanges(caseId);
         return new ProcurementApprovalContracts.ApprovalReview(
                 (UUID) h[0],
                 orderType,
@@ -589,8 +628,70 @@ public class ProcurementFinanceApprovalService {
                 (BigDecimal) h[13],
                 (BigDecimal) h[23],
                 sourceDocNos.size(),
+                qtyChanges,
                 items,
                 history);
+    }
+
+    /**
+     * V486 修改清单（以前→现在）：本 case 关联的改量事实账（goods/unit 按
+     * 各域明细行解析；普通首次提交 case 无关联行，返回空列表）。
+     */
+    private List<ProcurementApprovalContracts.QtyChange> loadQtyChanges(
+            UUID caseId) {
+        List<Object[]> changeRows = jdbc.query("""
+                SELECT change_log.order_type,
+                       change_log.order_item_id,
+                       change_log.old_qty,
+                       change_log.new_qty,
+                       change_log.changed_at,
+                       COALESCE(changer.full_name, '') AS changed_by_name,
+                       COALESCE(po_item.line_no, so_item.line_no, 0) AS line_no,
+                       COALESCE(goods.code, '') AS goods_code,
+                       COALESCE(goods.name, '') AS goods_name,
+                       COALESCE(color.name, '') AS color_name,
+                       COALESCE(unit.name, '') AS unit_name
+                FROM procurement_order_qty_change_logs change_log
+                LEFT JOIN purchase_order_items po_item
+                  ON change_log.order_type = 'PURCHASE'
+                 AND po_item.id = change_log.order_item_id
+                LEFT JOIN subcontract_order_items so_item
+                  ON change_log.order_type = 'SUBCONTRACT'
+                 AND so_item.id = change_log.order_item_id
+                LEFT JOIN goods ON goods.id = COALESCE(po_item.goods_id, so_item.goods_id)
+                LEFT JOIN colors color
+                  ON color.id = COALESCE(po_item.color_id, so_item.color_id)
+                LEFT JOIN units unit
+                  ON unit.id = COALESCE(po_item.unit_id, so_item.unit_id)
+                LEFT JOIN employees changer ON changer.id = change_log.changed_by_employee_id
+                WHERE change_log.case_id = ?
+                ORDER BY change_log.changed_at, line_no
+                """,
+                (rs, rowNum) -> new Object[]{
+                        rs.getObject("order_item_id", UUID.class),
+                        rs.getInt("line_no"),
+                        rs.getString("goods_code"),
+                        rs.getString("goods_name"),
+                        rs.getString("color_name"),
+                        rs.getString("unit_name"),
+                        rs.getBigDecimal("old_qty"),
+                        rs.getBigDecimal("new_qty"),
+                        rs.getString("changed_by_name"),
+                        rs.getObject("changed_at", OffsetDateTime.class)},
+                caseId);
+        return changeRows.stream()
+                .map(row -> new ProcurementApprovalContracts.QtyChange(
+                        (UUID) row[0],
+                        (Integer) row[1],
+                        (String) row[2],
+                        (String) row[3],
+                        (String) row[4],
+                        (String) row[5],
+                        (BigDecimal) row[6],
+                        (BigDecimal) row[7],
+                        (String) row[8],
+                        (OffsetDateTime) row[9]))
+                .toList();
     }
 
     private List<ProcurementApprovalContracts.ReviewLine> loadReviewLines(
@@ -790,6 +891,12 @@ public class ProcurementFinanceApprovalService {
         return List.copyOf(normalized);
     }
 
+    private void requireBatchReviewClaims(List<BatchDecisionItem> items) {
+        taskClaims.requireActiveClaimsByMe("PROCUREMENT_FINANCE_APPROVE",items.stream()
+                .map(item -> new com.uten.imp.application.port.TaskClaimMutationGuardPort.ClaimExpectation(
+                        item.caseId().toString(),item.expectedClaimId())).toList());
+    }
+
     private void requireSubmitAuthority(String orderType) {
         String permission = "PURCHASE".equals(orderType)
                 ? "purchase_order:submit_finance"
@@ -880,8 +987,28 @@ public class ProcurementFinanceApprovalService {
         return rows.getFirst();
     }
 
-    private static void requireVersion(
-            ApprovalCase approvalCase, long expectedVersion) {
+    /**
+     * 改量复核不变量（防御性）：case 打开之后不允许再出现改量事实账行——
+     * change-qty 端点在存在 PENDING case 时直接拒绝，结构上已保证；此处
+     * 再按 changed_at 校验一次，防绕过。
+     */
+    private void requireNoNewerQtyChange(
+            String orderType, UUID orderId, UUID caseId) {
+        Long newer = jdbc.queryForObject("""
+                SELECT count(*)
+                FROM procurement_order_qty_change_logs
+                WHERE order_type = ? AND order_id = ?
+                  AND (case_id IS NULL OR case_id <> ?)
+                  AND changed_at > (SELECT submitted_at
+                                    FROM procurement_order_approval_cases
+                                    WHERE id = ?)
+                """, Long.class, orderType, orderId, caseId, caseId);
+        if (newer != null && newer > 0) {
+            throw concurrentChange();
+        }
+    }
+
+    private static void requireVersion(ApprovalCase approvalCase, long expectedVersion) {
         if (expectedVersion < 1
                 || approvalCase.version() != expectedVersion) {
             throw concurrentChange();
@@ -1006,57 +1133,7 @@ public class ProcurementFinanceApprovalService {
     }
 
     private String canonicalSnapshotJson(OrderSnapshot snapshot) {
-        Map<String, Object> header = new LinkedHashMap<>();
-        header.put("orderType", snapshot.orderType());
-        header.put("orderId", snapshot.orderId());
-        header.put("billNo", snapshot.billNo());
-        header.put("billDate", snapshot.billDate());
-        header.put("supplierId", snapshot.supplierId());
-        header.put("warehouseId", snapshot.warehouseId());
-        header.put("currencyId", snapshot.currencyId());
-        header.put("exchangeRate", canonicalDecimal(snapshot.exchangeRate()));
-        header.put("settlementMethodId", snapshot.settlementMethodId());
-        header.put("taxRate", canonicalDecimal(snapshot.taxRate()));
-        header.put("purchaserEmployeeId", snapshot.purchaserEmployeeId());
-        header.put("makerEmployeeId", snapshot.makerEmployeeId());
-        header.put("deliverDate", snapshot.deliverDate());
-        header.put("totalOriginal", canonicalDecimal(snapshot.totalOriginal()));
-        header.put("totalLocal", canonicalDecimal(snapshot.totalLocal()));
-        header.put("items", sortedItems(snapshot).stream()
-                .map(this::canonicalItem)
-                .toList());
-        return json(header);
-    }
-
-    private Map<String, Object> canonicalItem(ItemSnapshot item) {
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("itemId", item.itemId());
-        row.put("lineNo", item.lineNo());
-        row.put("sourceItemId", item.sourceItemId());
-        row.put("goodsId", item.goodsId());
-        row.put("colorId", item.colorId());
-        row.put("unitId", item.unitId());
-        row.put("unitRate", canonicalDecimal(item.unitRate()));
-        row.put("qty", canonicalDecimal(item.qty()));
-        row.put("price", canonicalDecimal(item.price()));
-        row.put("amountOriginal", canonicalDecimal(item.amountOriginal()));
-        row.put("amountLocal", canonicalDecimal(item.amountLocal()));
-        row.put("deliverDate", item.deliverDate());
-        return row;
-    }
-
-    /**
-     * 快照数值规范形。BigDecimal 的 Jackson 序列化保留 scale：同一数值在「提交时内存
-     * 归一（unitRate 缺省补 ONE，scale 0）」与「审批时从 numeric(18,6) 列重读
-     * （scale 6）」两种来源下会得到 1 与 1.000000 两个不同 JSON，requireUnchangedSnapshot
-     * 因此永久 409，approve/reject 双堵死。统一 stripTrailingZeros 的 plain string 归一，
-     * 历史哈希（按 scale 0 计算的存量 PENDING 案）与新计算重新一致，已卡死单据可驳回。
-     */
-    private static Object canonicalDecimal(java.math.BigDecimal value) {
-        if (value == null) {
-            return null;
-        }
-        return value.stripTrailingZeros().toPlainString();
+        return ProcurementApprovalSnapshot.json(snapshot, objectMapper);
     }
 
     private static List<ItemSnapshot> sortedItems(OrderSnapshot snapshot) {

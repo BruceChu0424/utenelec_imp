@@ -99,6 +99,7 @@ public class SubcontractReturnService {
     private final ProcurementArrivalControlPort arrivalControl;
     private final SubcontractDocumentAccessPolicy access;
     private final com.uten.imp.features.subcontract.LinkedOrderReadGate linkedOrderReadGate;
+    private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
 
     @Autowired
     private CommercialPriceVisibility commercialPriceVisibility;
@@ -129,7 +130,7 @@ public class SubcontractReturnService {
                         priceMasked ? Map.of("billDate", "billDate") : ALLOWED_SORT));
         Page<SubcontractReturn> p = returnRepo.findAll(spec, pageable);
         return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
-                page, size, p.getTotalElements(), p.getTotalPages());
+                p);
     }
 
     @Transactional(readOnly = true)
@@ -147,6 +148,7 @@ public class SubcontractReturnService {
     @PreAuthorize("hasAuthority('subcontract_return:create')")
     public ReturnDetail create(ReturnSaveRequest req) {
         tx.bind();
+        lockReturnRequest(null,req).verifyUnchanged();
         SubcontractReturn r = new SubcontractReturn();
         applyHeader(req, r, returnHeader(req));
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
@@ -162,11 +164,13 @@ public class SubcontractReturnService {
     @PreAuthorize("hasAuthority('subcontract_return:edit')")
     public ReturnDetail update(UUID id, ReturnSaveRequest req) {
         tx.bind();
+        var mutationGuard=lockReturnRequest(id,req);
         SubcontractReturn r = requireReturnForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
+        mutationGuard.verifyUnchanged();
         applyHeader(req, r, returnHeader(req));
         itemRepo.deleteByReturnId(id);
         itemRepo.flush();
@@ -179,12 +183,23 @@ public class SubcontractReturnService {
     @PreAuthorize("hasAuthority('subcontract_return:delete')")
     public void delete(UUID id) {
         tx.bind();
+        var mutationGuard=mutationLocks.productReturn("SUBCONTRACT",id);
         SubcontractReturn r = requireReturnForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
+        mutationGuard.verifyUnchanged();
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         returnRepo.save(r);
+    }
+
+    private com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard lockReturnRequest(UUID id,ReturnSaveRequest req) {
+        List<ReturnItemLine> lines=req==null||req.getItems()==null?List.of():req.getItems();
+        var present=lines.stream().filter(java.util.Objects::nonNull).toList();
+        return mutationLocks.returnInputs("SUBCONTRACT",id,false,present.stream().map(ReturnItemLine::getOrderItemId).toList(),
+                present.stream().map(ReturnItemLine::getReceiptItemId).toList(),present.stream().filter(line->line.getGoodsId()!=null)
+                        .map(line->new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(line.getGoodsId(),line.getColorId())).toList(),
+                req==null?null:req.getWarehouseId());
     }
 
     /**
@@ -197,7 +212,9 @@ public class SubcontractReturnService {
         SupplierPeriodIdentityGuard.Identity periodIdentity =
         periodIdentityGuard.requireIdentity(SourceTable.SUBCONTRACT_RETURN, id);
         periodIdentityGuard.requireOpenAtBillDate(periodIdentity, "委外退货审核");
+        var mutationGuard=mutationLocks.productReturn("SUBCONTRACT",id);
         SubcontractReturn r = requireReturnForUpdate(id);
+        mutationGuard.verifyUnchanged();
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);
@@ -298,7 +315,9 @@ public class SubcontractReturnService {
         SupplierPeriodIdentityGuard.Identity periodIdentity =
         periodIdentityGuard.requireIdentity(SourceTable.SUBCONTRACT_RETURN, id);
         periodIdentityGuard.requireOpenToday(periodIdentity, "委外退货红冲");
+        var mutationGuard=mutationLocks.productReturn("SUBCONTRACT",id);
         SubcontractReturn r = requireReturnForUpdate(id);
+        mutationGuard.verifyUnchanged();
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);

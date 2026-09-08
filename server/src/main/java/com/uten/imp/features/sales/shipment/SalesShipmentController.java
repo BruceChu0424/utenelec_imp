@@ -43,8 +43,12 @@ public class SalesShipmentController {
     private final SalesShipmentService service;
     private final AuditDetailViewRecorder viewAudit;
 
+    @GetMapping("/pending-finance-count")
+    @PreAuthorize("hasAuthority('finance_shipment_audit')")
+    public java.util.Map<String,Long> pendingFinanceCount() { return java.util.Map.of("count",service.countPendingFinanceAudit()); }
+
     @GetMapping
-    @PreAuthorize("hasAnyAuthority('sales_shipment:view','finance_shipment_audit','sales_shipment:warehouse-work')")
+    @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','finance_shipment_audit','sales_shipment:warehouse-work')")
     public PageResponse<ShipmentListItem> list(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) UUID clientId,
@@ -53,6 +57,7 @@ public class SalesShipmentController {
             @RequestParam(required = false) Boolean arPosted,
             @RequestParam(required = false) Short financeAudit,
             @RequestParam(required = false) String warehouseWorkStatus,
+            @RequestParam(required = false) String shipmentKind,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
@@ -62,11 +67,11 @@ public class SalesShipmentController {
         return service.list(new ShipmentQueryFilter(
                 keyword, clientId, warehouseId, status, arPosted, financeAudit,
                 warehouseWorkStatus,
-                dateFrom, dateTo), page, size, sort, order);
+                dateFrom, dateTo,shipmentKind), page, size, sort, order);
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('sales_shipment:view','finance_shipment_audit','sales_shipment:warehouse-work')")
+    @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','finance_shipment_audit','sales_shipment:warehouse-work')")
     public ShipmentDetail detail(@PathVariable UUID id) {
         ShipmentDetail detail = service.detail(id);
         viewAudit.record(
@@ -76,7 +81,7 @@ public class SalesShipmentController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('sales_shipment:create')")
+    @PreAuthorize("hasAnyAuthority('sales_shipment:create','sales_other_shipment:create')")
     public ShipmentDetail create(@Valid @RequestBody ShipmentSaveRequest req) {
         return service.create(req);
     }
@@ -90,15 +95,21 @@ public class SalesShipmentController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('sales_shipment:edit')")
+    @PreAuthorize("hasAnyAuthority('sales_shipment:edit','sales_other_shipment:edit')")
     public ShipmentDetail update(@PathVariable UUID id, @Valid @RequestBody ShipmentSaveRequest req) {
         return service.update(id, req);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('sales_shipment:delete')")
+    @PreAuthorize("hasAnyAuthority('sales_shipment:delete','sales_other_shipment:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
+    }
+
+    @PostMapping("/{id}/confirm-sales")
+    @PreAuthorize("hasAnyAuthority('sales_shipment:approve','sales_other_shipment:approve')")
+    public ShipmentDetail confirmSales(@PathVariable UUID id,@RequestParam Long expectedRevision) {
+        return service.confirmSales(id,expectedRevision);
     }
 
     @PostMapping("/{id}/approve")
@@ -139,8 +150,16 @@ public class SalesShipmentController {
     /** 所有客户出货均须先财务放行，之后仓库才收到待拣货通知。 */
     @PostMapping("/{id}/finance-audit")
     @PreAuthorize("hasAuthority('finance_shipment_audit')")
-    public java.util.Map<String, Object> financeAudit(@PathVariable UUID id) {
-        return service.financeAudit(id);
+    public java.util.Map<String, Object> financeAudit(@PathVariable UUID id,
+            @Valid @RequestBody(required=false) com.uten.imp.features.sales.shipment.dto.ShipmentFinanceDecisionRequest request) {
+        return service.financeAudit(id,request);
+    }
+
+    @PostMapping("/{id}/finance-audit-reject")
+    @PreAuthorize("hasAuthority('finance_shipment_audit')")
+    public java.util.Map<String,Object> financeAuditReject(@PathVariable UUID id,
+            @Valid @RequestBody com.uten.imp.features.sales.shipment.dto.ShipmentFinanceDecisionRequest request) {
+        return service.financeAuditReject(id,request);
     }
 
     /** 财务反审（仅仓库开始拣货前且当前已财审的单据）。 */

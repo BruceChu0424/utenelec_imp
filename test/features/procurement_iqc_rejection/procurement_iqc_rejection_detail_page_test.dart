@@ -76,8 +76,18 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('iqc-action-submit')));
       await tester.pump();
-      expect(find.text('退回凭证号不能为空'), findsOneWidget);
-      expect(find.text('退回说明不能为空'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Tooltip && (w.message ?? '').contains('退回凭证号不能为空'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Tooltip && (w.message ?? '').contains('退回说明不能为空'),
+        ),
+        findsOneWidget,
+      );
 
       await tester.enterText(
         find.byKey(const Key('iqc-action-reference')),
@@ -161,11 +171,22 @@ void main() {
 
     await tester.tap(find.byKey(const Key('iqc-detail-action-confirmCredit')));
     await tester.pumpAndSettle();
-    expect(find.text('服务器冻结贷项金额(只读)'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('iqc-action-submit')));
+    expect(find.text('服务器冻结贷项金额(只读)'), findsNothing);
+    expect(find.byKey(const Key('iqc-credit-actual')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('iqc-credit-preview')));
     await tester.pump();
-    expect(find.text('供应商贷项凭证号不能为空'), findsOneWidget);
-    expect(find.text('贷项确认原因不能为空'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is Tooltip && (w.message ?? '').contains('供应商贷项凭证号不能为空'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is Tooltip && (w.message ?? '').contains('贷项确认原因不能为空'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets(
@@ -307,6 +328,24 @@ class _Gateway implements ProcurementIqcRejectionGateway {
   }
 
   @override
+  Future<ProcurementIqcCreditPreview> previewCredit(
+    String id,
+    ProcurementIqcConfirmCreditCommand command,
+  ) async => ProcurementIqcCreditPreview(
+    bookAllocationHash: List.filled(64, 'a').join(),
+    amountOriginal: command.actualAmountOriginal,
+    amountLocal: command.actualAmountOriginal,
+    caseAllocations: [
+      for (final a in command.allocations)
+        ProcurementIqcCreditCaseBook(
+          caseId: a.caseId,
+          baseQty: a.baseQty,
+          amountOriginal: a.amountOriginal,
+          amountLocal: a.amountOriginal,
+        ),
+    ],
+  );
+  @override
   Future<ProcurementIqcRejectionDetail> closeNoCredit(
     String id,
     ProcurementIqcReasonCommand command,
@@ -340,6 +379,34 @@ class _Gateway implements ProcurementIqcRejectionGateway {
 ProcurementIqcRejectionDetail _detail(ProcurementIqcRejectionCase item) =>
     ProcurementIqcRejectionDetail(
       caseItem: item,
+      resolution: const ProcurementIqcResolution(
+        baseUnitName: '件',
+        creditableBaseQty: '5',
+        state: 'OPEN',
+        legacyUnclassified: false,
+      ),
+      creditSources: item.priceMasked
+          ? const []
+          : [
+              ProcurementIqcCreditSource(
+                sourceApLedgerId: 'ap-1',
+                sourceBillNo: 'AP-001',
+                amountOriginal: '25.0000',
+                amountLocal: '25.0000',
+                remainingAmountOriginal: '25.0000',
+                creditedAmountOriginal: '0',
+                cases: [
+                  ProcurementIqcCreditCase(
+                    caseId: item.id,
+                    version: item.version,
+                    receiptBillNo: item.receiptBillNo,
+                    goodsName: item.goodsName,
+                    creditableBaseQty: '5',
+                    baseUnitName: '件',
+                  ),
+                ],
+              ),
+            ],
       events: const [
         ProcurementIqcRejectionEvent(
           id: 'event-1',

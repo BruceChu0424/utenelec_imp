@@ -18,6 +18,7 @@ import '../layout/uten_adaptive_panel.dart';
 import '../layout/uten_picker_confirm_bar.dart';
 import 'required_field_decoration.dart';
 import 'uten_field_message.dart';
+import 'uten_input_decoration.dart';
 import 'uten_search_bar.dart';
 
 /// 人员候选项：id / 姓名 / 工号 / 部门名。
@@ -235,49 +236,51 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
             child: InputDecorator(
               isEmpty: display == null,
               decoration: applyRequiredEmpty(
-                InputDecoration(
-                  label: widget.label == null
-                      ? null
-                      : requiredLabel(
-                          widget.label!,
-                          theme,
-                          required: widget.required,
-                          base: theme.inputDecorationTheme.labelStyle,
-                        ),
-                  hintText: widget.hint,
-                  enabled: widget.enabled,
-                  error: field.errorText == null
-                      ? null
-                      : UtenFieldMessage.error(field.errorText!),
-                  prefixIcon: const Icon(Icons.person_search_rounded),
-                  suffixIcon: sel != null && widget.allowClear
-                      ? IconButton(
-                          tooltip: '清除选择',
-                          onPressed: widget.enabled ? _clear : null,
-                          icon: const Icon(Icons.clear_rounded),
-                        )
-                      : Icon(
-                          Icons.unfold_more_rounded,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: theme.colorScheme.outline),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: theme.colorScheme.outline),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(
-                      color: theme.colorScheme.primary,
-                      width: 2,
+                UtenInputDecoration(
+                  InputDecoration(
+                    label: widget.label == null
+                        ? null
+                        : requiredLabel(
+                            widget.label!,
+                            theme,
+                            required: widget.required,
+                            base: theme.inputDecorationTheme.labelStyle,
+                          ),
+                    hintText: widget.hint,
+                    enabled: widget.enabled,
+                    error: field.errorText == null
+                        ? null
+                        : UtenFieldMessage.error(field.errorText!),
+                    prefixIcon: const Icon(Icons.person_search_rounded),
+                    suffixIcon: sel != null && widget.allowClear
+                        ? IconButton(
+                            tooltip: '清除选择',
+                            onPressed: widget.enabled ? _clear : null,
+                            icon: const Icon(Icons.clear_rounded),
+                          )
+                        : Icon(
+                            Icons.unfold_more_rounded,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: theme.colorScheme.outline),
                     ),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: theme.colorScheme.outline),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(
+                        color: theme.colorScheme.primary,
+                        width: 2,
+                      ),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                   ),
                 ),
                 theme,

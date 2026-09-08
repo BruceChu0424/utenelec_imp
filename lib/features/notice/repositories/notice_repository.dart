@@ -267,6 +267,22 @@ class DioNoticeRepository implements NoticeRepository {
     List<String> ids,
   ) async {
     if (ids.isEmpty) return const [];
+    // Keep each heartbeat within the server's 50-id cap. Merge all batches so
+    // missing entries mean withdrawn access, not silently truncated input.
+    if (ids.length > 50) {
+      final results = <PendingReviewStatus>[];
+      for (var offset = 0; offset < ids.length; offset += 50) {
+        results.addAll(
+          await pendingReviewStatus(
+            ids.sublist(
+              offset,
+              offset + 50 < ids.length ? offset + 50 : ids.length,
+            ),
+          ),
+        );
+      }
+      return results;
+    }
     final json = await _api.get(
       ApiEndpoints.noticesPendingReviewStatus,
       query: {'ids': ids.join(',')},

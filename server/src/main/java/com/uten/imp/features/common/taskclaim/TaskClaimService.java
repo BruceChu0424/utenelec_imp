@@ -1,5 +1,9 @@
 package com.uten.imp.features.common.taskclaim;
 
+import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
+import com.uten.imp.application.port.SalesOrderFinanceReviewerEligibilityPort;
+import com.uten.imp.application.port.ReviewTaskTargetLockPort;
+import com.uten.imp.application.port.TaskClaimMutationGuardPort;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -12,6 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.Map;
+import java.util.List;
+import java.util.Comparator;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -23,31 +29,34 @@ import java.util.stream.Collectors;
  * 他人快捷动作禁用；不隐藏。认领带按类型短租约，过期惰性失效；认领人可续租/释放；持目标
  * manage 权限者可强制释放/接管。
  *
- * <p>认领只是 UX/防碰撞层。动作端点（审批/分解）仍须保留既有 PESSIMISTIC_WRITE + 状态守卫，
- * 并可调用 {@link #requireNoActiveClaimByOther} 做服务端兜底（防重复操作）。
+ * <p>财务新决策必须持有本人有效租约，并在业务header/case/claim锁内复核同代proof。
+ * 其他通用软认领可用 {@link #requireNoActiveClaimByOther} 防碰撞；所有动作仍保留业务状态与悲观锁守卫。
  */
 @Service
 @RequiredArgsConstructor
-public class TaskClaimService {
+public class TaskClaimService implements TaskClaimMutationGuardPort {
 
     private final TaskClaimRepository claimRepo;
     private final EmployeeNameResolver nameResolver;
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.audit.AuditService audit;
+    private final List<ReviewTaskTargetLockPort> reviewTargetLocks;
+    private final FinanceReviewerEligibilityPort procurementReviewers;
+    private final SalesOrderFinanceReviewerEligibilityPort salesReviewers;
 
     /** 认领（幂等：自己已认领=续租；他人在租约内=409；过期=惰性释放后重建）。 */
     @Transactional
     public TaskClaimView claim(String targetType, String targetKey) {
-        ClaimOutcome outcome = claimInternal(targetType, targetKey);
+        TaskClaimPolicy policy = TaskClaimPolicy.of(targetType);
+        UUID me = requireClaimant(targetType, targetKey, policy);
+        ClaimOutcome outcome = claimInternal(targetType, targetKey, policy, me);
         auditExplicit(outcome.action(), targetType, targetKey);
         return outcome.view();
     }
 
-    private ClaimOutcome claimInternal(String targetType, String targetKey) {
-        TaskClaimPolicy policy = TaskClaimPolicy.of(targetType);
-        UUID me = requireEmployeeWithPermission(policy.claimPermission());
+    private ClaimOutcome claimInternal(String targetType, String targetKey, TaskClaimPolicy policy, UUID me) {
         TaskClaim existing = claimRepo
-                .findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(targetType, targetKey)
+                .findUnreleasedForUpdate(targetType, targetKey)
                 .orElse(null);
         if (existing != null && existing.isActive()) {
             if (existing.getClaimedBy().equals(me)) {
@@ -65,12 +74,14 @@ public class TaskClaimService {
             existing.setReleasedAt(OffsetDateTime.now());
             existing.setReleaseReason("expired");
             claimRepo.save(existing);
+            // Free the partial unique key before Hibernate queues the replacement INSERT.
+            claimRepo.flush();
         }
         TaskClaim c = new TaskClaim();
         c.setTargetType(targetType);
         c.setTargetKey(targetKey);
         c.setClaimedBy(me);
-        c.setClaimedAt(OffsetDateTime.now());
+        c.setClaimedAt(OffsetDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS));
         c.setLeaseUntil(nowPlusLease(policy));
         c.setLastHeartbeat(OffsetDateTime.now());
         return new ClaimOutcome(
@@ -81,16 +92,23 @@ public class TaskClaimService {
     /** 释放（本人或持 manage 权限者；无有效认领时幂等成功）。 */
     @Transactional
     public void release(String targetType, String targetKey) {
+        release(targetType,targetKey,null);
+    }
+
+    @Transactional
+    public void release(String targetType,String targetKey,UUID expectedClaimId) {
         TaskClaimPolicy policy = TaskClaimPolicy.of(targetType);
         UUID me = currentUser.requireEmployeeId();
-        boolean canManage = hasPermission(policy.managePermission());
-        claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(targetType, targetKey)
-                .filter(TaskClaim::isActive)
+        boolean canManage = hasAnyPermission(policy.managePermissions());
+        lockReviewTargets(targetType,List.of(targetKey),false);
+        claimRepo.findUnreleasedForUpdate(targetType, targetKey)
                 .ifPresent(c -> {
+                    if (expectedClaimId!=null && !expectedClaimId.equals(c.getId())) return;
                     boolean byManager = !c.getClaimedBy().equals(me) && canManage;
                     if (!c.getClaimedBy().equals(me) && !canManage) {
                         throw new ApiException(ErrorCode.FORBIDDEN, "只能释放自己认领的事项(或由管理者释放)");
                     }
+                    if (byManager) requireReviewView(policy);
                     c.setReleasedAt(OffsetDateTime.now());
                     c.setReleasedBy(me);
                     c.setReleaseReason(byManager ? "admin_force_release" : "manual");
@@ -105,9 +123,10 @@ public class TaskClaimService {
     @Transactional
     public TaskClaimView takeover(String targetType, String targetKey) {
         TaskClaimPolicy policy = TaskClaimPolicy.of(targetType);
-        UUID me = requireEmployeeWithPermission(policy.managePermission());
+        requireEmployeeWithAnyPermission(policy.managePermissions());
+        UUID me = requireClaimant(targetType, targetKey, policy);
         TaskClaim previous = claimRepo
-                .findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(targetType, targetKey)
+                .findUnreleasedForUpdate(targetType, targetKey)
                 .orElse(null);
         boolean replacedOther = previous != null
                 && previous.isActive()
@@ -121,8 +140,9 @@ public class TaskClaimService {
             previous.setReleaseReason("takeover");
             previous.setRemark("被接管");
             claimRepo.save(previous);
+            claimRepo.flush();
         }
-        ClaimOutcome claimed = claimInternal(targetType, targetKey);
+        ClaimOutcome claimed = claimInternal(targetType, targetKey, policy, me);
         auditExplicit(
                 replacedOther ? "task_takeover"
                         : renewedSelf ? "task_renew" : claimed.action(),
@@ -135,9 +155,10 @@ public class TaskClaimService {
     @Transactional
     public void forceRelease(String targetType, String targetKey) {
         TaskClaimPolicy policy = TaskClaimPolicy.of(targetType);
-        UUID me = requireEmployeeWithPermission(policy.managePermission());
-        claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(targetType, targetKey)
-                .filter(TaskClaim::isActive)
+        requireReviewView(policy);
+        UUID me = requireEmployeeWithAnyPermission(policy.managePermissions());
+        lockReviewTargets(targetType,List.of(targetKey),false);
+        claimRepo.findUnreleasedForUpdate(targetType, targetKey)
                 .ifPresent(c -> {
                     c.setReleasedAt(OffsetDateTime.now());
                     c.setReleasedBy(me);
@@ -147,18 +168,24 @@ public class TaskClaimService {
                 });
     }
 
-    /** 心跳续租（仅认领人；过期/被接管则 409）。 */
+    /** 心跳续租先复核与新认领相同的权限和目标资格；仅本人可续，过期或被接管返回 409。 */
     @Transactional
     public TaskClaimView heartbeat(String targetType, String targetKey) {
+        return heartbeat(targetType,targetKey,null);
+    }
+
+    @Transactional
+    public TaskClaimView heartbeat(String targetType,String targetKey,UUID expectedClaimId) {
         TaskClaimPolicy policy = TaskClaimPolicy.of(targetType);
-        UUID me = currentUser.requireEmployeeId();
-        TaskClaim c = claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(targetType, targetKey)
+        UUID me = requireClaimant(targetType, targetKey, policy);
+        TaskClaim c = claimRepo.findUnreleasedForUpdate(targetType, targetKey)
                 .filter(TaskClaim::isActive)
                 .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "认领已过期或不存在，请重新认领"));
         if (!c.getClaimedBy().equals(me)) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "该事项正由 " + claimantName(c.getClaimedBy()) + " 处理中");
         }
+        requireGeneration(c,expectedClaimId);
         OffsetDateTime now = OffsetDateTime.now();
         long renewWhenRemainingSeconds = Math.max(
                 60L, policy.leaseMinutes() * 30L);
@@ -171,6 +198,68 @@ public class TaskClaimService {
         // The client pings every 30s. Returning the current lease without
         // touching the entity avoids a database UPDATE and trigger audit row.
         return toView(c, me);
+    }
+
+    private UUID requireClaimant(String targetType, String targetKey, TaskClaimPolicy policy) {
+        requireReviewView(policy);
+        UUID employee = requireEmployeeWithAnyPermission(policy.claimPermissions());
+        requireCurrentReviewerEligibility(targetType);
+        lockReviewTargets(targetType,List.of(targetKey),true);
+        requireCurrentReviewerEligibility(targetType);
+        return employee;
+    }
+
+    private void requireCurrentReviewerEligibility(String targetType) {
+        boolean eligible = switch (targetType) {
+            case "SALES_ORDER_FINANCE_CONFIRM" -> salesReviewers.isEligible(currentUser.requireId());
+            case "PROCUREMENT_FINANCE_APPROVE" -> procurementReviewers.findEligible(currentUser.requireId()).isPresent();
+            default -> true;
+        };
+        if (!eligible) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "当前人员不具备对应财务审核资格，无法认领或续租");
+        }
+    }
+
+    /** The caller's business transaction must own a live lease before changing financial facts. */
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void requireActiveClaimByMe(String targetType,String targetKey,UUID expectedClaimId) {
+        requireActiveClaimsByMe(targetType,List.of(new ClaimExpectation(targetKey,expectedClaimId)));
+    }
+
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void requireActiveClaimByMe(String targetType,String targetKey) {
+        requireActiveClaimByMe(targetType,targetKey,null);
+    }
+
+    /** Lock every header, then every case, then claims in stable order; one failure aborts the caller's whole batch. */
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void requireActiveClaimsByMe(String targetType,List<ClaimExpectation> expectations) {
+        if (expectations==null || expectations.isEmpty()) return;
+        TaskClaimPolicy policy=TaskClaimPolicy.of(targetType);
+        requireReviewView(policy);
+        UUID me=requireEmployeeWithAnyPermission(policy.claimPermissions());
+        requireCurrentReviewerEligibility(targetType);
+        List<ClaimExpectation> ordered=expectations.stream().sorted(Comparator.comparing(ClaimExpectation::targetKey)).toList();
+        lockReviewTargets(targetType,ordered.stream().map(ClaimExpectation::targetKey).toList(),true);
+        requireCurrentReviewerEligibility(targetType);
+        for (ClaimExpectation expected:ordered) {
+            TaskClaim claim=claimRepo.findUnreleasedForUpdate(targetType,expected.targetKey())
+                    .filter(TaskClaim::isActive).orElseThrow(() -> new ApiException(ErrorCode.CONFLICT,"请先认领并保持审核会话，当前认领不存在或已过期"));
+            if (!me.equals(claim.getClaimedBy())) throw new ApiException(ErrorCode.CONFLICT,"该事项已由其他人员认领，请重新进入审核");
+            requireGeneration(claim,expected.expectedClaimId());
+        }
+    }
+
+    private static void requireGeneration(TaskClaim claim,UUID expectedClaimId) {
+        if (expectedClaimId!=null && !expectedClaimId.equals(claim.getId())) {
+            throw new ApiException(ErrorCode.CONFLICT,"审核认领已更新，请重新进入审核");
+        }
+    }
+
+    private void requireReviewView(TaskClaimPolicy policy) {
+        if (policy.requiredViewPermission()!=null && !hasAnyPermission(java.util.Set.of(policy.requiredViewPermission()))) {
+            throw new ApiException(ErrorCode.FORBIDDEN,"无权查看对应财务审核任务");
+        }
     }
 
     /**
@@ -190,9 +279,41 @@ public class TaskClaimService {
                 });
     }
 
+    /** Commercial writes are blocked even when the salesperson also owns the review claim. */
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void requireNoActiveClaim(String targetType, String targetKey) {
+        claimRepo.findUnreleasedForUpdate(targetType, targetKey)
+                .filter(TaskClaim::isActive)
+                .ifPresent(claim -> {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "该订单正由 " + claimantName(claim.getClaimedBy())
+                                    + " 进行财务审核，请等待审核完成或退出审核后再修改");
+                });
+    }
+
+    private void lockReviewTargets(String targetType,List<String> keys,boolean requireReviewable) {
+        TaskClaimPolicy policy=TaskClaimPolicy.of(targetType);
+        if (policy.requiredViewPermission()==null) return;
+        ReviewTaskTargetLockPort port=reviewTargetLocks.stream().filter(value -> value.targetType().equals(targetType))
+                .findFirst().orElseThrow(() -> new IllegalStateException("Financial review target lock adapter missing: "+targetType));
+        List<ReviewTaskTargetLockPort.Target> targets=port.resolve(keys,requireReviewable).stream()
+                .sorted(Comparator.comparing(ReviewTaskTargetLockPort.Target::aggregateType)
+                        .thenComparing(value -> value.aggregateId().toString())
+                        .thenComparing(value -> value.targetId().toString())).toList();
+        if (requireReviewable && targets.size()!=keys.stream().distinct().count()) {
+            throw new ApiException(ErrorCode.CONFLICT,"审核目标已变化，请刷新后重试");
+        }
+        java.util.Set<String> headers=new java.util.HashSet<>();
+        for (var target:targets) if (headers.add(target.aggregateType()+"/"+target.aggregateId())) {
+            port.lockHeader(target,requireReviewable);
+        }
+        for (var target:targets) port.lockTarget(target,requireReviewable);
+    }
+
     /** 列表/看板装配：某类型的全部有效认领，key = targetKey。 */
     @Transactional(readOnly = true)
     public Map<String, TaskClaim> activeClaimsByTargetKey(String targetType) {
+        requireReviewView(TaskClaimPolicy.of(targetType));
         return claimRepo.findAllByTargetTypeAndReleasedAtIsNull(targetType).stream()
                 .filter(TaskClaim::isActive)
                 .collect(Collectors.toMap(TaskClaim::getTargetKey, Function.identity(), (a, b) -> a));
@@ -201,6 +322,7 @@ public class TaskClaimService {
     /** 列表/详情装配：某类型全部有效认领的视图（key=targetKey），供 DTO 回填 claimView 给前端显示「XX 处理中」。 */
     @Transactional(readOnly = true)
     public Map<String, TaskClaimView> activeClaimViewsByTargetKey(String targetType) {
+        requireReviewView(TaskClaimPolicy.of(targetType));
         UUID me = currentUser.employeeId().orElse(null);
         return claimRepo.findAllByTargetTypeAndReleasedAtIsNull(targetType).stream()
                 .filter(TaskClaim::isActive)
@@ -210,6 +332,7 @@ public class TaskClaimService {
     /** 单个目标的当前认领视图（详情页用）；无有效认领返回 empty。 */
     @Transactional(readOnly = true)
     public java.util.Optional<TaskClaimView> activeClaimView(String targetType, String targetKey) {
+        requireReviewView(TaskClaimPolicy.of(targetType));
         UUID me = currentUser.employeeId().orElse(null);
         return claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(targetType, targetKey)
                 .filter(TaskClaim::isActive)
@@ -232,10 +355,10 @@ public class TaskClaimService {
         return OffsetDateTime.now().plusMinutes(policy.leaseMinutes());
     }
 
-    private UUID requireEmployeeWithPermission(String permission) {
+    private UUID requireEmployeeWithAnyPermission(java.util.Set<String> permissions) {
         AuthUser user = currentUser.get()
                 .orElseThrow(() -> new ApiException(ErrorCode.FORBIDDEN, "无权认领/处理该任务"));
-        if (!user.isSuperAdmin() && !user.getPermissions().contains(permission)) {
+        if (!user.isSuperAdmin() && permissions.stream().noneMatch(user.getPermissions()::contains)) {
             throw new ApiException(ErrorCode.FORBIDDEN, "无权认领/处理该任务");
         }
         UUID emp = user.getEmployeeId();
@@ -245,22 +368,27 @@ public class TaskClaimService {
         return emp;
     }
 
-    private boolean hasPermission(String permission) {
+    private boolean hasAnyPermission(java.util.Set<String> permissions) {
         return currentUser.get()
-                .map(u -> u.isSuperAdmin() || u.getPermissions().contains(permission))
+                .map(u -> u.isSuperAdmin() || permissions.stream().anyMatch(u.getPermissions()::contains))
                 .orElse(false);
     }
 
     private TaskClaimView toView(TaskClaim c, UUID me) {
         return new TaskClaimView(c.getTargetType(), c.getTargetKey(),
                 c.getClaimedBy(), claimantName(c.getClaimedBy()),
-                c.getClaimedBy().equals(me), c.getClaimedAt(), c.getLeaseUntil());
+                c.getClaimedBy().equals(me), c.getClaimedAt(), c.getLeaseUntil(),c.getId());
     }
 
     public record TaskClaimView(
             String targetType, String targetKey,
             UUID claimedBy, String claimedByName, boolean claimedByMe,
-            OffsetDateTime claimedAt, OffsetDateTime leaseUntil) {}
+            OffsetDateTime claimedAt, OffsetDateTime leaseUntil,UUID claimId) {
+        public TaskClaimView(String targetType,String targetKey,UUID claimedBy,String claimedByName,boolean claimedByMe,
+                OffsetDateTime claimedAt,OffsetDateTime leaseUntil) {
+            this(targetType,targetKey,claimedBy,claimedByName,claimedByMe,claimedAt,leaseUntil,null);
+        }
+    }
 
     private record ClaimOutcome(TaskClaimView view, String action) {}
 }

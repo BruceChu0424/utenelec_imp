@@ -69,8 +69,9 @@ public class VisitorApplicationService {
                     ErrorCode.VALIDATION_FAILED,
                     "驾车来访时必须填写车牌号");
         }
-        VisitorAccount acc = accountRepo.findById(visitorId)
+        VisitorAccount acc = accountRepo.findAndLockById(visitorId)
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+        requireActiveAccount(acc);
         Employee host = employeeRepo.findById(req.hostEmployeeId())
                 .filter(employee -> !employee.isDeleted())
                 .filter(employee -> EmploymentStatusPolicy.isCurrentEmployee(employee.getStatus()))
@@ -194,6 +195,34 @@ public class VisitorApplicationService {
     /** 按 id 载入申请（staff 侧各 Service 共用）。 */
     VisitorApplication load(UUID id) {
         return appRepo.findById(id).orElseThrow(() -> new ApiException(ErrorCode.VISITOR_NOT_FOUND));
+    }
+
+    /** All visitor mutations lock account before application, including admission. */
+    VisitorApplication loadForUpdate(UUID id) {
+        UUID accountId = appRepo.findIdentityById(id)
+                .orElseThrow(() -> new ApiException(ErrorCode.VISITOR_NOT_FOUND))
+                .getVisitorAccountId();
+        if (accountId != null) {
+            accountRepo.findAndLockById(accountId)
+                    .orElseThrow(() -> new ApiException(ErrorCode.VISITOR_NOT_FOUND));
+        }
+        VisitorApplication application = appRepo.findAndLockById(id)
+                .filter(row -> !row.isDeleted())
+                .orElseThrow(() -> new ApiException(ErrorCode.VISITOR_NOT_FOUND));
+        if (!Objects.equals(accountId, application.getVisitorAccountId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "访客申请账号已变化，请刷新后重试");
+        }
+        return application;
+    }
+
+    void requireActiveAccount(VisitorApplication app) {
+        requireActiveAccount(accountOf(app));
+    }
+
+    private static void requireActiveAccount(VisitorAccount account) {
+        if (account == null || !"active".equals(account.getStatus())) {
+            throw new ApiException(ErrorCode.VISITOR_BLOCKED);
+        }
     }
 
     /** 申请对应的访客账号（可空）。 */

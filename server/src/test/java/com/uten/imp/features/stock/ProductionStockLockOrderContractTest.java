@@ -18,37 +18,34 @@ class ProductionStockLockOrderContractTest {
 
         String[][] commands = new String[][]{
                 {"public stockdocdetail approve(uuid id)",
-                        "approveinternal(id, false, false)"},
+                        "prelockproductiondocument(id)", "approveinternal(id, false, false)"},
                 {"public stockdocdetail approveandissue(uuid id, stockdocissuerequest req)",
-                        "requiredocforupdate(id)"},
+                        "lockproductiondocuments(list.of(id))", "requiredocforupdate(id)"},
                 {"private stockdocdetail reverseinternal( uuid id, boolean finishedinboundconfirmationlane)",
-                        "requiredocforupdate(id)"},
-                {"public stockdocdetail issue(uuid id, stockdocissuerequest req)",
-                        "requiredrawforissue(id)"},
+                        "prelockproductiondocument(id)", "requiredocforupdate(id)"},
                 {"public stockdocdetail reverseissue(uuid id, stockdocissuerequest req)",
-                        "requiredrawforissue(id)"}
+                        "lockproductiondocuments(list.of(id))", "requiredrawforissue(id)"}
         };
         for (String[] command : commands) {
-            String method = method(source, command[0]);
-            assertThat(method.indexOf("prelockproductiondocument(id)"))
-                    .as(command[0])
-                    .isNotNegative()
-                    .isLessThan(method.indexOf(command[1]));
+            String body = method(source, command[0]);
+            assertThat(body.indexOf(command[1])).as(command[0]).isNotNegative()
+                    .isLessThan(body.indexOf(command[2]));
         }
+        // Java evaluates the complete prelock argument before entering the issue body.
+        String issue = method(source, "public stockdocdetail issue(uuid id, stockdocissuerequest req)");
+        assertThat(issue.replace(" ", "")).contains(
+                "returnissueafterprelock(id,req,lockproductiondocuments(list.of(id)))");
         String prelude = method(source,
-                "private void prelockproductiondocument(uuid documentid)");
-        assertThat(prelude.indexOf("stockservice.lockinventory(dimensions)"))
-                .isNotNegative()
-                .isLessThan(prelude.indexOf(
-                        "lockproductiondocumentgraph(documentid)"));
+                "private fulfillmentmutationlocks.guard lockproductiondocuments(list<uuid> documentids)");
+        assertThat(prelude.indexOf("mutationlocks.acquire("))
+                .isNotNegative().isLessThan(prelude.indexOf("lockproductiondocumentgraphs(orderedids)"));
+        assertThat(prelude).contains("mutationfootprints.forstockdocuments(orderedids)");
         String graph = method(source,
-                "private void lockproductiondocumentgraph(uuid documentid)");
+                "private void lockproductiondocumentgraphs(list<uuid> documentids)");
         assertThat(graph.indexOf("from plan_draw_links link"))
-                .isLessThan(graph.indexOf(
-                        "from production_planning_packages package"));
+                .isNotNegative().isLessThan(graph.indexOf("from production_planning_packages package"));
         assertThat(graph.indexOf("from production_planning_packages package"))
-                .isLessThan(graph.indexOf(
-                        "from production_execution_segments segment"));
+                .isLessThan(graph.indexOf("from production_execution_segments segment"));
     }
 
     @Test

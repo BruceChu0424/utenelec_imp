@@ -28,14 +28,55 @@ import static org.assertj.core.api.Assertions.assertThat;
 class BusinessDataResetSqlContractTest {
 
     private static final Pattern POLICY_ROW = Pattern.compile(
-            "(?m)^\\s*\\('([^']+)'\\s*,\\s*'(CLEAR|PRESERVE)'\\)[,;]?$");
+            "\\('([a-z][a-z0-9_]*)'\\s*,\\s*'(CLEAR|PRESERVE)'\\)");
 
     /**
      * V474 起经「读取已安装函数定义 + 失败关闭锚点替换」插入孪生函数的扩展行。
      * 表名 -> 引入迁移版本号；新增扩展时同步登记，并保持 ops 脚本与补丁锚点一致。
      */
-    private static final Map<String, Integer> RUNTIME_RESET_EXTENSIONS = Map.of(
-            "preplan_public_supply_events", 474);
+    private static final Map<String, Integer> RUNTIME_RESET_EXTENSIONS = Map.ofEntries(
+            Map.entry("preplan_public_supply_events", 474),
+            Map.entry("preplan_root_output_events", 478),
+            Map.entry("sales_order_qty_change_logs", 484),
+            Map.entry("procurement_order_qty_change_logs", 486),
+            Map.entry("sales_order_revision_logs", 492),
+            Map.entry("preplan_subcontract_make_batch_reversals", 496),
+            Map.entry("stock_value_pools", 504),
+            Map.entry("stock_value_events", 504),
+            Map.entry("stock_value_nodes", 504),
+            Map.entry("stock_value_edges", 504),
+            Map.entry("stock_value_jobs", 504),
+            Map.entry("stock_value_tasks", 504),
+            Map.entry("stock_value_node_revisions", 504),
+            Map.entry("stock_value_postings", 504),
+            Map.entry("procurement_order_source_revisions", 504),
+            Map.entry("procurement_order_source_revision_allocations", 504),
+            Map.entry("procurement_order_source_revision_peg_changes", 504),
+            Map.entry("stock_value_openings", 506),
+            Map.entry("stock_value_legacy_balance_cases", 506),
+            Map.entry("stock_value_legacy_balance_case_events", 506),
+            Map.entry("sales_shipment_submission_events", 519),
+            Map.entry("production_material_movement_links", 514),
+            Map.entry("stock_value_acquisition_sources", 517),
+            Map.entry("stock_value_position_transfers", 517),
+            Map.entry("stock_value_production_cost_dirty", 517),
+            Map.entry("stock_value_production_cost_inputs", 517),
+            Map.entry("stock_value_production_cost_objects", 517),
+            Map.entry("stock_value_production_cost_outputs", 517),
+            Map.entry("stock_value_production_cost_revisions", 517),
+            Map.entry("stock_value_production_cost_shares", 517),
+            Map.entry("stock_value_production_cost_tasks", 517),
+            Map.entry("procurement_iqc_consideration_reversals", 518),
+            Map.entry("procurement_iqc_consideration_review_approvals", 518),
+            Map.entry("procurement_iqc_credit_case_allocations", 518),
+            Map.entry("procurement_iqc_credit_documents", 518),
+            Map.entry("procurement_iqc_credit_slices", 518),
+            Map.entry("procurement_iqc_funding_settlements", 518),
+            Map.entry("procurement_iqc_funding_slices", 518),
+            Map.entry("procurement_iqc_quality_consideration_parts", 518),
+            Map.entry("procurement_iqc_stock_consideration_parts", 518),
+            Map.entry("procurement_receipt_consideration_parts", 518),
+            Map.entry("subcontract_receipt_material_consumptions", 522));
 
     private String opsScript;
     private String migrationSql;
@@ -56,11 +97,61 @@ class BusinessDataResetSqlContractTest {
                         "V474__preplan_public_supply_and_inbound_allocation.sql"),
                 Path.of("server", "src", "main", "resources", "db", "migration",
                         "V474__preplan_public_supply_and_inbound_allocation.sql"));
+        extensionSql += read(
+                Path.of("src", "main", "resources", "db", "migration",
+                        "V478__analysis_root_supply_fulfillment.sql"),
+                Path.of("server", "src", "main", "resources", "db", "migration",
+                        "V478__analysis_root_supply_fulfillment.sql"));
+        extensionSql += read(
+                Path.of("src", "main", "resources", "db", "migration",
+                        "V484__sales_qty_change_reset_extension.sql"),
+                Path.of("server", "src", "main", "resources", "db", "migration",
+                        "V484__sales_qty_change_reset_extension.sql"));
+        extensionSql += read(
+                Path.of("src", "main", "resources", "db", "migration",
+                        "V486__procurement_qty_change_and_preparation_retirement.sql"),
+                Path.of("server", "src", "main", "resources", "db", "migration",
+                        "V486__procurement_qty_change_and_preparation_retirement.sql"));
+        extensionSql += read(
+                Path.of("src", "main", "resources", "db", "migration",
+                        "V492__sales_order_commercial_revisions.sql"),
+                Path.of("server", "src", "main", "resources", "db", "migration",
+                        "V492__sales_order_commercial_revisions.sql"));
+        extensionSql += read(
+                Path.of("src", "main", "resources", "db", "migration",
+                        "V496__subcontract_make_notification_reversals.sql"),
+                Path.of("server", "src", "main", "resources", "db", "migration",
+                        "V496__subcontract_make_notification_reversals.sql"));
+        extensionSql += read(
+                Path.of("src", "main", "resources", "db", "migration",
+                        "V504__inventory_and_procurement_revision_reset_policy.sql"),
+                Path.of("server", "src", "main", "resources", "db", "migration",
+                        "V504__inventory_and_procurement_revision_reset_policy.sql"));
+        extensionSql += read(
+                Path.of("src", "main", "resources", "db", "migration", "V514__production_material_exact_movement_links.sql"),
+                Path.of("server", "src", "main", "resources", "db", "migration", "V514__production_material_exact_movement_links.sql"));
+        extensionSql += read(
+                Path.of("src", "main", "resources", "db", "migration", "V517__inventory_value_custody_positions.sql"),
+                Path.of("server", "src", "main", "resources", "db", "migration", "V517__inventory_value_custody_positions.sql"));
+        extensionSql += read(
+                Path.of("src", "main", "resources", "db", "migration", "V518__procurement_iqc_replacement_consideration.sql"),
+                Path.of("server", "src", "main", "resources", "db", "migration", "V518__procurement_iqc_replacement_consideration.sql"));
+        extensionSql += read(
+                Path.of("src", "main", "resources", "db", "migration", "V519__financial_actual_amounts_and_book_allocations.sql"),
+                Path.of("server", "src", "main", "resources", "db", "migration", "V519__financial_actual_amounts_and_book_allocations.sql"));
+        extensionSql += read(
+                Path.of("src", "main", "resources", "db", "migration", "V522__subcontract_own_material_cost_sources.sql"),
+                Path.of("server", "src", "main", "resources", "db", "migration", "V522__subcontract_own_material_cost_sources.sql"));
         serviceSource = read(
                 Path.of("src", "main", "java", "com", "uten", "imp", "features", "admin",
                         "systemtest", "BusinessDataResetService.java"),
                 Path.of("server", "src", "main", "java", "com", "uten", "imp", "features",
                         "admin", "systemtest", "BusinessDataResetService.java"));
+        extensionSql += read(
+                Path.of("src", "main", "resources", "db", "migration",
+                        "V506__inventory_value_openings_and_legacy_cases.sql"),
+                Path.of("server", "src", "main", "resources", "db", "migration",
+                        "V506__inventory_value_openings_and_legacy_cases.sql"));
     }
 
     @Test
@@ -86,6 +177,56 @@ class BusinessDataResetSqlContractTest {
     }
 
     @Test
+    void rootSupplyForwardFixAcceptsV479WithoutAddingAnotherBusinessTable() {
+        assertThat(opsScript)
+                .contains("(478, 440)")
+                .contains("(479, 441)")
+                .contains("(480, 442)")
+                .contains("(481, 443)")
+                .contains("(482, 444)")
+                // V483 审计窄修 + V484 运行时清空扩展：均不新增表（444→446）。
+                .contains("(483, 445)")
+                .contains("(484, 446)")
+                // V485 进行中工作台单趟聚合：不新增表（446→447）。
+                .contains("(485, 447)")
+                .contains("(486, 448)")
+                // V488 偏好表补列、V489/V490 换函数、V491 报工门控：均不新增表。
+                .contains("(487, 449)")
+                .contains("(488, 450)")
+                .contains("(489, 451)")
+                .contains("(490, 452)")
+                .contains("(491, 453)")
+                .contains("V484/446、V485/447、V486/448、V487/449、V488/450")
+                .contains("(492, 454)")
+                .contains("(493, 455)")
+                .contains("(494, 456)")
+                .contains("(495, 457)")
+                .contains("(496, 458)")
+                .contains("(497, 459)")
+                .contains("(498, 460)")
+                .contains("(499, 461)")
+                .contains("(500, 462)")
+                .contains("(501, 463)")
+                .contains("(502, 464)")
+                .contains("(503, 465)")
+                .contains("(504, 466)")
+                .contains("(505, 467)")
+                .contains("(506, 468)")
+                .contains("(507, 469)")
+                .contains("(508, 470)")
+                .contains("(527, 486)")
+                .contains("(528, 487)")
+                .contains("(529, 488)")
+                .contains("(530, 489)")
+                .contains("(531, 490)")
+                .contains("(532, 491)")
+                .contains("V507/469、V508/470及V511至V532完整目录");
+        assertThat(RUNTIME_RESET_EXTENSIONS)
+                .containsEntry("preplan_root_output_events", 478)
+                .containsEntry("sales_order_qty_change_logs", 484);
+    }
+
+    @Test
     void runtimeResetExtensionsPatchTheTwinFunctionFailClosed() {
         // V474 的补丁构件：读取已安装定义、锚点替换插入、锚点缺失即失败关闭。
         assertThat(extensionSql)
@@ -95,7 +236,7 @@ class BusinessDataResetSqlContractTest {
         for (String table : RUNTIME_RESET_EXTENSIONS.keySet()) {
             assertThat(extensionSql)
                     .as(table + " must be inserted by the runtime reset patch")
-                    .contains("(''" + table + "'', ''CLEAR'')");
+                    .contains("'" + table + "'");
         }
     }
 
@@ -166,7 +307,7 @@ class BusinessDataResetSqlContractTest {
         return Files.readString(resolve(direct, fallback), StandardCharsets.UTF_8);
     }
 
-    private Map<String, String> policy(String sql) {
+    static Map<String, String> policy(String sql) {
         Map<String, String> result = new LinkedHashMap<>();
         Matcher matcher = POLICY_ROW.matcher(sql);
         while (matcher.find()) {

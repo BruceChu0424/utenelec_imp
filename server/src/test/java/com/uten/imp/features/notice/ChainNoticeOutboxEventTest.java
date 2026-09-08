@@ -23,7 +23,9 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
@@ -35,6 +37,22 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class ChainNoticeOutboxEventTest {
+
+    @Test
+    void customerShipmentRejectDeliveryCannotReuseAnOlderRevisionReason() {
+        UUID shipment=UUID.randomUUID();JdbcTemplate jdbc=mock(JdbcTemplate.class);
+        NoticeService notice=mock(NoticeService.class);UserAccountRepository users=mock(UserAccountRepository.class);
+        BusinessEventPublisher outbox=mock(BusinessEventPublisher.class);
+        when(jdbc.queryForList(contains("SELECT bill_no,shipment_kind,owner_employee_id,review_revision"),eq(shipment)))
+                .thenReturn(List.of(Map.of("bill_no","XC-REV2","shipment_kind","DIRECT_CUSTOMER","owner_employee_id",UUID.randomUUID(),"review_revision",2L)));
+        ChainNoticeService service=service(notice,users,mock(PermissionResolver.class),mock(UserRoleRepository.class),jdbc,outbox);
+        service.notifyShipmentFinanceRejected(shipment,"当前退回原因");
+        verify(outbox).publishOnce(ChainNoticeService.EVENT_DIRECT_SHIPMENT_FINANCE_REJECTED,"SALES_SHIPMENT",shipment,
+                Map.of("reason","当前退回原因","reviewRevision",2L),ChainNoticeService.EVENT_DIRECT_SHIPMENT_FINANCE_REJECTED+":"+shipment+":2");
+        service.deliverOutboxEvent(ChainNoticeService.EVENT_DIRECT_SHIPMENT_FINANCE_REJECTED,shipment,
+                new ObjectMapper().createObjectNode().put("reason","上一版已办结原因").put("reviewRevision",1));
+        verifyNoInteractions(notice,users);verifyNoMoreInteractions(outbox);
+    }
 
     @Test
     void preplanSupplyActionPublishesOnceAndDeliversToDeduplicatedPurchasePool() {
@@ -364,7 +382,8 @@ class ChainNoticeOutboxEventTest {
         UUID finishedInId = UUID.randomUUID();
         UUID shipmentId = UUID.randomUUID();
         BusinessEventPublisher outbox = mock(BusinessEventPublisher.class);
-        ChainNoticeService service = service(mock(JdbcTemplate.class), outbox);
+        JdbcTemplate jdbc=mock(JdbcTemplate.class);
+        ChainNoticeService service = service(jdbc, outbox);
 
         service.notifyFinishedInboundPending(finishedInId);
         service.notifyShipmentPendingPick(shipmentId);
@@ -385,14 +404,16 @@ class ChainNoticeOutboxEventTest {
                         + shipmentId + ":legacy");
 
         UUID financePendingId = UUID.randomUUID();
+        when(jdbc.queryForList(contains("SELECT shipment.review_revision"),eq(financePendingId)))
+                .thenReturn(List.of(Map.of("submission_identity","2:INITIAL")));
         service.notifyShipmentPendingFinanceAudit(financePendingId);
         verify(outbox).publishOnce(
                 ChainNoticeService.EVENT_SHIPMENT_PENDING_FINANCE,
                 "SALES_SHIPMENT",
                 financePendingId,
-                Map.of(),
+                Map.of("submissionIdentity","2:INITIAL"),
                 ChainNoticeService.EVENT_SHIPMENT_PENDING_FINANCE + ':'
-                        + financePendingId);
+                        + financePendingId+":2:INITIAL");
     }
 
     @Test
@@ -441,10 +462,10 @@ class ChainNoticeOutboxEventTest {
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq("/sales/shipments/" + shipmentId),
-                eq(ChainNoticeService.EVENT_SHIPMENT_PENDING_PICK));
+                eq(ChainNoticeService.EVENT_SHIPMENT_PENDING_PICK),eq("normal"),eq(shipmentId));
         verify(notice, never()).publishForUser(
                 eq(revokedWarehouseUserId), anyString(), anyString(), anyString(),
-                anyString(), anyString(), anyString());
+                anyString(), anyString(), anyString(),anyString(),any(UUID.class));
     }
 
     @Test
@@ -651,7 +672,7 @@ class ChainNoticeOutboxEventTest {
     }
 
     @Test
-    void iqcPendingTargetsOnlyActiveQualityViewersAndLinksLiveTaskCenter() {
+    void iqcPendingTargetsOnlyActiveQualityHandlersAndLinksLiveTaskCenter() {
         UUID receiptId = UUID.randomUUID();
         UUID qualityViewerId = UUID.randomUUID();
         UUID revokedViewerId = UUID.randomUUID();
@@ -684,8 +705,10 @@ class ChainNoticeOutboxEventTest {
         when(users.findById(revokedViewerId)).thenReturn(Optional.of(revokedViewer));
         when(users.findById(inactiveViewerId)).thenReturn(Optional.of(inactiveViewer));
         when(permissionResolver.permsOf(qualityViewer))
-                .thenReturn(Set.of("procurement_inspection:view"));
-        when(permissionResolver.permsOf(revokedViewer)).thenReturn(Set.of());
+                .thenReturn(Set.of("notice:read", "procurement_inspection:view",
+                        "procurement_inspection:handle"));
+        when(permissionResolver.permsOf(revokedViewer))
+                .thenReturn(Set.of("notice:read", "procurement_inspection:view"));
         ChainNoticeService service = new ChainNoticeService(
                 notice,
                 users,
@@ -718,16 +741,17 @@ class ChainNoticeOutboxEventTest {
                 eq(receiptId));
         verify(notice, never()).publishForUser(
                 eq(revokedViewerId), anyString(), anyString(), anyString(),
-                anyString(), anyString(), anyString());
+                anyString(), anyString(), anyString(), any(), any());
         verify(notice, never()).publishForUser(
                 eq(inactiveViewerId), anyString(), anyString(), anyString(),
-                anyString(), anyString(), anyString());
+                anyString(), anyString(), anyString(), any(), any());
     }
 
     @Test
     void approvedOrderSendsPlannerToMaterialAnalysisBeforeScheduling() {
         UUID orderId = UUID.randomUUID();
         UUID plannerUserId = UUID.randomUUID();
+        UUID viewerUserId = UUID.randomUUID();
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         NoticeService notice = mock(NoticeService.class);
         UserAccountRepository users = mock(UserAccountRepository.class);
@@ -741,22 +765,37 @@ class ChainNoticeOutboxEventTest {
                         "lines", 2L,
                         "deliver", "2026-08-20",
                         "goods", "FG-001 / FG-002")));
-        when(roles.findUserIdsByRoleCode("planner"))
-                .thenReturn(List.of(plannerUserId));
+        // 2026-09-05 修弹窗串台：接收池从「planner 角色 ∪ SUB_PLAN 主部门」收敛为
+        // 「(主/兼职部门 ∈ SUB_PLAN 子树) AND notice:read AND view AND create」
+        // ——夹具改为部门树命中 + 权限解析放行（角色查询不再参与）。
+        com.uten.imp.features.auth.PermissionResolver permissions =
+                mock(com.uten.imp.features.auth.PermissionResolver.class);
+        UserAccount planner = activeUser(plannerUserId);
+        UserAccount viewer = activeUser(viewerUserId);
+        when(permissions.permsOf(planner)).thenReturn(Set.of(
+                "notice:read", "production_material_analysis:view",
+                "production_material_analysis:create"));
+        when(permissions.permsOf(viewer)).thenReturn(Set.of(
+                "notice:read", "production_material_analysis:view"));
         when(jdbc.queryForList(
                 contains("WITH RECURSIVE subtree(id)"),
                 eq(UUID.class),
-                eq("SUB_PLAN"))).thenReturn(List.of());
+                eq("SUB_PLAN"))).thenReturn(List.of(plannerUserId, viewerUserId));
         when(users.findById(plannerUserId))
-                .thenReturn(Optional.of(activeUser(plannerUserId)));
+                .thenReturn(Optional.of(planner));
+        when(users.findById(viewerUserId)).thenReturn(Optional.of(viewer));
         ChainNoticeService service = service(
-                notice, users, roles, jdbc, mock(BusinessEventPublisher.class));
+                notice, users, permissions, roles, jdbc, mock(BusinessEventPublisher.class));
 
         service.deliverOutboxEvent(
                 ChainNoticeService.EVENT_ORDER_APPROVED,
                 orderId,
                 new ObjectMapper().createObjectNode());
 
+        // V477 办结闭环：事件注册进 ReviewNoticeCatalog 且发布绑定
+        // (SALES_ORDER, orderId) 聚合——生产部创建物料分析后可按聚合撤回。
+        assertTrue(ReviewNoticeCatalog.isReviewEvent(
+                ChainNoticeService.EVENT_ORDER_APPROVED));
         verify(notice).publishForUser(
                 eq(plannerUserId),
                 eq("新订单待物料分析：SO-001"),
@@ -765,7 +804,11 @@ class ChainNoticeOutboxEventTest {
                 anyString(),
                 eq("/production/material-analysis"),
                 eq(ChainNoticeService.EVENT_ORDER_APPROVED),
-                eq("normal"));
+                eq("normal"),
+                eq(orderId));
+        verify(notice, never()).publishForUser(
+                eq(viewerUserId), anyString(), anyString(), anyString(),
+                anyString(), anyString(), anyString(), any(), any());
     }
 
     @Test

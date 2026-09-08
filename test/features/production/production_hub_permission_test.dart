@@ -27,6 +27,10 @@ void main() {
       requiredAnyPermFor(RoutePath.productionPlanNew()),
       equals([Perm.productionMaterialAnalysisCreate]),
     );
+    expect(
+      requiredAllPermsFor(RoutePath.productionPlanNew()),
+      equals([Perm.productionMaterialAnalysisView]),
+    );
   });
 
   test('material analysis history route requires view only', () {
@@ -103,6 +107,23 @@ void main() {
 
     expect(find.text('生产计划历史'), findsOneWidget);
     expect(find.text('新建生产计划单'), findsNothing);
+  });
+
+  testWidgets('create without analysis view preserves permitted plan history', (
+    tester,
+  ) async {
+    await _setDesktopSize(tester);
+    await tester.pumpWidget(
+      _hubApp(const {
+        Perm.productionPlanView,
+        Perm.productionMaterialAnalysisCreate,
+      }),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('生产计划历史'), findsOneWidget);
+    expect(find.text('新建生产计划单'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('manage user opens the independent new-analysis page', (

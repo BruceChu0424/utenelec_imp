@@ -89,6 +89,9 @@ public class SubcontractWasteService {
     private final SubcontractDocumentAccessPolicy access;
     private final ArApLedgerService arApService;
     private final SubcontractLossClaimPort lossClaimPort;
+    private final com.uten.imp.application.port.SubcontractMaterialValuePort materialValue;
+    private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
+    private final com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService materialPlans;
     private final GlPostingService glPostingService;
 
     @Autowired
@@ -119,7 +122,7 @@ public class SubcontractWasteService {
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SubcontractWaste> p = wasteRepo.findAll(spec, pageable);
         return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
-                page, size, p.getTotalElements(), p.getTotalPages());
+                p);
     }
 
     @Transactional(readOnly = true)
@@ -184,7 +187,9 @@ public class SubcontractWasteService {
     @PreAuthorize("hasAuthority('subcontract_waste:approve')")
     public WasteDetail approve(UUID id) {
         tx.bind();
+        var mutationGuard=mutationLocks.materialWaste(id);
         SubcontractWaste r = requireWasteForUpdate(id);
+        mutationGuard.verifyUnchanged();
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外损耗单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -240,10 +245,13 @@ public class SubcontractWasteService {
             }
         }
         // 实物损耗与财务责任分离：deductAmount 仅作为历史/建议金额，不直接冲应付。
-        lossClaimPort.openForApprovedWaste(approvedWaste);
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         wasteRepo.save(r);
+        em.flush();
+        materialValue.wasteRecorded(id,currentUser.requireId(),false);
+        materialPlans.synchronizeWasteAllowance(id);
+        lossClaimPort.openForApprovedWaste(approvedWaste);
         return detail(id);
     }
 
@@ -255,7 +263,9 @@ public class SubcontractWasteService {
     @PreAuthorize("hasAuthority('subcontract_waste:reverse')")
     public WasteDetail reverse(UUID id) {
         tx.bind();
+        var mutationGuard=mutationLocks.materialWaste(id);
         SubcontractWaste r = requireWasteForUpdate(id);
+        mutationGuard.verifyUnchanged();
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外损耗单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
@@ -303,6 +313,9 @@ public class SubcontractWasteService {
         }
         r.setStatus(STATUS_REVERSED);
         wasteRepo.save(r);
+        em.flush();
+        materialValue.wasteRecorded(id,currentUser.requireId(),true);
+        materialPlans.synchronizeWasteAllowance(id);
         return detail(id);
     }
 

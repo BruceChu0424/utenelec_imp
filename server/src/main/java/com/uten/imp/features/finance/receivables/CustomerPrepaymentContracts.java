@@ -138,5 +138,15 @@ public final class CustomerPrepaymentContracts {
             String overpaidOriginal,
             boolean hasUnallocated,
             List<UnallocatedReceiptLine> unallocatedReceiptLines,
-            List<String> warnings) {}
+            List<String> warnings,
+            String returnCreditOriginal,
+            String returnCreditLocal,
+            String unusedReturnCreditOriginal,
+            String unusedReturnCreditLocal,
+            String netReceivableOriginal,
+            String netReceivableLocal,
+            String customerPendingBalanceOriginal,
+            String customerPendingBalanceLocal,
+            boolean positionComplete,
+            long unresolvedPositionCount) {}
 }

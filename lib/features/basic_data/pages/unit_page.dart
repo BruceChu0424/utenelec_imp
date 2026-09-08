@@ -140,6 +140,18 @@ class _UnitPageState extends ConsumerState<UnitPage> {
 
   // ---- 新建/编辑/删除 ---------------------------------------------------
 
+  /// 计量维度选项（value='' 表示未设置/清除；提交时服务端落
+  /// unit_measurement_profiles，重量型(MASS)单位的数量本身即重量）。
+  static const _dimensionOptions = [
+    MasterSelectOption(value: '', label: '未设置'),
+    MasterSelectOption(value: 'COUNT', label: '数量'),
+    MasterSelectOption(value: 'MASS', label: '重量'),
+    MasterSelectOption(value: 'LENGTH', label: '长度'),
+    MasterSelectOption(value: 'AREA', label: '面积'),
+    MasterSelectOption(value: 'VOLUME', label: '体积'),
+    MasterSelectOption(value: 'OTHER', label: '其他'),
+  ];
+
   static const _unitFields = [
     MasterFieldDef(key: 'name', label: '单位名称', required: true, group: '基础'),
     MasterFieldDef(key: 'code', label: '单位编号', group: '基础', hint: '留空自动生成'),
@@ -151,6 +163,14 @@ class _UnitPageState extends ConsumerState<UnitPage> {
       required: true,
       group: '基础',
     ),
+    MasterFieldDef(
+      key: 'measurementDimension',
+      label: '计量维度',
+      type: MasterFieldType.select,
+      options: _dimensionOptions,
+      group: '基础',
+      hint: '数量/重量等；重量型单位的实收数量本身就是重量，单据不再另录实称重量',
+    ),
   ];
 
   void _showCreate() {
@@ -158,7 +178,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
       context: context,
       title: '新增单位', // TODO(l10n): 补 arb
       fields: _unitFields,
-      initialValues: const {'status': '使用'},
+      initialValues: const {'status': '使用', 'measurementDimension': ''},
       readOnlyKeys: _canStatus ? null : const {'status'},
       onSubmit: _doCreate,
     );
@@ -186,6 +206,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
         'name': d.name ?? '',
         'code': d.code ?? '',
         'status': d.status ?? '',
+        'measurementDimension': d.measurementDimension ?? '',
       },
       readOnlyKeys: _canStatus ? null : const {'status'},
       onSubmit: (body) => _doUpdate(d.id, body),
@@ -303,6 +324,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
     MasterDetailRow('编号', u.code), // TODO(l10n): 补 arb
     MasterDetailRow('单位名称', u.name), // TODO(l10n): 补 arb
     MasterDetailRow('状态', u.status), // TODO(l10n): 补 arb
+    MasterDetailRow('计量维度', unitDimensionLabel(u.measurementDimension)),
     MasterDetailRow('旧系统 ID', u.legacyId?.toString()), // TODO(l10n): 补 arb
   ];
 
@@ -321,6 +343,12 @@ class _UnitPageState extends ConsumerState<UnitPage> {
       label: '状态',
       width: 100,
       value: (u) => u.status,
+    ),
+    MasterColumnDef(
+      key: 'dimension',
+      label: '计量维度',
+      width: 110,
+      value: (u) => unitDimensionLabel(u.measurementDimension),
     ),
   ];
 

@@ -7,6 +7,7 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy;
+import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.DocumentAccessPolicy.NativeReadScope;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
@@ -33,6 +34,12 @@ public class ProductionExecutionWorkbenchService {
     private final PurchaseDocumentAccessPolicy purchaseAccess;
     private final SubcontractDocumentReadAccessPort subcontractAccess;
     private final SecurityContextCurrentUser currentUser;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.features.production.SubcontractDraftPreparationAccessPolicy draftPreparationAccess;
+
+    private String rootVisibility(String normal){
+        return draftPreparationAccess.inPlanningPool()?"("+normal+" OR (root.root_type='ANALYSIS' AND "+draftPreparationAccess.sourcePredicate("root.root_id")+"))":normal;
+    }
 
     @Transactional(readOnly = true)
     public PageResponse<ProductionExecutionWorkbenchGroup> list(
@@ -53,8 +60,8 @@ public class ProductionExecutionWorkbenchService {
         String filters = rootFilters(
                 keyword, workshopDepartmentId, mine, employeeId,
                 canSearchClient);
-        String from = " FROM v_production_execution_workbench_roots root WHERE "
-                + scope.predicate() + filters;
+        String from = " FROM v_production_execution_workbench_roots root WHERE ("
+                + rootVisibility(scope.predicate()) + ") " + filters;
         Query count = em.createNativeQuery("SELECT COUNT(*)" + from);
         scope.bind(count);
         bindRootFilters(count, keyword, workshopDepartmentId, mine, employeeId);
@@ -89,7 +96,7 @@ public class ProductionExecutionWorkbenchService {
                 WHERE root.root_type = :rootType
                   AND root.root_id = :rootId
                   AND (%s)
-                """.formatted(scope.predicate()));
+                """.formatted(rootVisibility(scope.predicate())));
         query.setParameter("rootType", rootType);
         query.setParameter("rootId", rootId);
         scope.bind(query);
@@ -123,16 +130,30 @@ public class ProductionExecutionWorkbenchService {
             int requestedPage,
             int requestedSize,
             String keyword,
-            String rawStatus) {
+            String rawStatus,
+            UUID workshopDepartmentId) {
         UUID employeeId = currentUser.employeeId().orElse(null);
-        if (employeeId == null) {
+        // V477 读侧放行：超管在本页看全部车间任务（前端徽章本就放行超管，
+        // 两端口径必须一致）；写侧（报工）仍要求车间归属——FullChainEndToEndTest
+        // 锁定的「超管不豁免车间范围」是写侧口径，不受影响。2026-09-06 起支持
+        // 按车间筛选（超管看多车间时收敛视角；普通员工仍受本人范围约束）。
+        boolean seeAll = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
+        if (employeeId == null && !seeAll) {
             int size = boundedSize(requestedSize);
             return new PageResponse<>(List.of(), 1, size, 0, 0);
         }
         String status = normalizeTaskStatus(rawStatus);
-        String predicate = assignmentPredicate("task")
-                + " AND task.segment_status IN "
-                + "('WAITING','READY','DISPATCHED','IN_PROGRESS')";
+        // 「历史任务」= 已完工段（终态）：只在显式筛选时返回，默认列表与徽章
+        // 仍只看四个活动状态（终态不挂徽章——与全站计数口径一致）。
+        boolean history = "COMPLETED".equals(status);
+        String statuses = history
+                ? "('COMPLETED')"
+                : "('WAITING','READY','DISPATCHED','IN_PROGRESS')";
+        String predicate = (seeAll ? "1=1" : assignmentPredicate("task"))
+                + " AND task.segment_status IN " + statuses;
+        if (workshopDepartmentId != null) {
+            predicate += " AND task.workshop_department_id = :workshopId";
+        }
         if (keyword != null && !keyword.isBlank()) {
             predicate += """
                     AND (
@@ -148,18 +169,32 @@ public class ProductionExecutionWorkbenchService {
         }
         if (status != null) {
             predicate += switch (status) {
-                case "PREPARING" -> " AND task.preparation_status = 'PREPARING'";
-                case "READY_TO_REPORT", "READY_TO_START" ->
-                    " AND task.reportable = TRUE";
+                // 2026-09-06 车间任务页改版：「等待物料」= 全部未开工段
+                //（WAITING 等料 + READY/DISPATCHED 物料齐套·可开工）；
+                //「可报工」段退役（READY_TO_REPORT 仅作兼容参数保留）。
+                case "PREPARING" ->
+                    " AND task.segment_status <> 'IN_PROGRESS'";
+                case "READY_TO_REPORT" ->
+                    " AND task.reportable = TRUE"
+                    + " AND task.segment_status = 'IN_PROGRESS'";
+                case "READY_TO_START" ->
+                    " AND task.segment_status IN ('READY', 'DISPATCHED')"
+                    + " AND (task.issued OR task.zero_material)";
                 case "IN_PROGRESS" -> " AND task.segment_status = 'IN_PROGRESS'";
                 default -> "";
             };
         }
         String finalPredicate = predicate;
+        UUID scopedEmployeeId = seeAll ? null : employeeId;
         return segmentPage(
                 finalPredicate,
                 query -> {
-                    query.setParameter("employeeId", employeeId);
+                    if (scopedEmployeeId != null) {
+                        query.setParameter("employeeId", scopedEmployeeId);
+                    }
+                    if (workshopDepartmentId != null) {
+                        query.setParameter("workshopId", workshopDepartmentId);
+                    }
                     if (keyword != null && !keyword.isBlank()) {
                         query.setParameter(
                                 "keyword",
@@ -172,17 +207,46 @@ public class ProductionExecutionWorkbenchService {
 
     @Transactional(readOnly = true)
     public long workshopTaskCount() {
+        return workshopTaskCountBreakdown().total();
+    }
+
+    /** 顶部分类徽章与总数同源同范围：一次查询同时给出各状态计数。 */
+    @Transactional(readOnly = true)
+    public WorkshopTaskCountBreakdown workshopTaskCountBreakdown() {
         UUID employeeId = currentUser.employeeId().orElse(null);
-        if (employeeId == null) return 0;
+        boolean seeAll = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
+        if (employeeId == null && !seeAll) {
+            return new WorkshopTaskCountBreakdown(0, 0, 0, 0);
+        }
+        String predicate = seeAll ? "TRUE" : assignmentPredicate("task");
         Query query = em.createNativeQuery("""
-                SELECT COUNT(*)
-                FROM v_production_execution_workbench_segments task
-                WHERE task.segment_status IN (
-                    'WAITING','READY','DISPATCHED','IN_PROGRESS')
-                  AND (%s)
-                """.formatted(assignmentPredicate("task")));
-        query.setParameter("employeeId", employeeId);
-        return ((Number) query.getSingleResult()).longValue();
+                        SELECT COUNT(*),
+                               COUNT(*) FILTER (
+                                   WHERE task.segment_status <> 'IN_PROGRESS'),
+                               COUNT(*) FILTER (
+                                   WHERE task.reportable
+                                     AND task.segment_status <> 'IN_PROGRESS'),
+                               COUNT(*) FILTER (
+                                   WHERE task.segment_status = 'IN_PROGRESS')
+                        FROM v_production_execution_workbench_segments task
+                        WHERE task.segment_status IN (
+                            'WAITING','READY','DISPATCHED','IN_PROGRESS')
+                          AND (%s)
+                        """.formatted(predicate));
+        if (!seeAll) {
+            query.setParameter("employeeId", employeeId);
+        }
+        Object[] row = NativeQueryResults.objectArrayRows(query).getFirst();
+        return new WorkshopTaskCountBreakdown(
+                ((Number) row[0]).longValue(),
+                ((Number) row[1]).longValue(),
+                ((Number) row[2]).longValue(),
+                ((Number) row[3]).longValue());
+    }
+
+    /** 车间任务分段计数（与列表筛选口径一一对应）。 */
+    public record WorkshopTaskCountBreakdown(
+            long total, long preparing, long readyToReport, long inProgress) {
     }
 
     private PageResponse<ProductionExecutionWorkbenchSegment> segmentPage(
@@ -199,7 +263,7 @@ public class ProductionExecutionWorkbenchService {
         long total = ((Number) count.getSingleResult()).longValue();
         int totalPages = pages(total, size);
         if (totalPages > 0 && page > totalPages) page = totalPages;
-        Query data = em.createNativeQuery(segmentSelect() + from + """
+        Query data = em.createNativeQuery(segmentSelect() + from + "\n" + """
                 ORDER BY task.plan_end_date ASC NULLS LAST,
                          task.plan_no ASC,
                          task.segment_no ASC,
@@ -314,6 +378,13 @@ public class ProductionExecutionWorkbenchService {
                           AND %s
                         """.formatted(scope.predicate()));
                 bindings.add(new ScopeBinding(scope));
+                branches.add("""
+                        SELECT 'SUBCONTRACT', 'SUBCONTRACT_ORDER', document.id,document.bill_no,document.status::text
+                        FROM production_material_analysis_items preparation
+                        JOIN subcontract_order_items item ON item.id=preparation.subcontract_order_item_id AND item.is_deleted=FALSE
+                        JOIN subcontract_orders document ON document.id=item.order_id AND document.is_deleted=FALSE
+                        WHERE preparation.analysis_id=:rootId AND preparation.is_deleted=FALSE AND %s
+                        """.formatted(scope.predicate()));
             }
         }
         if (productionAccess.hasAuthority("production_plan:view")) {
@@ -367,7 +438,8 @@ public class ProductionExecutionWorkbenchService {
             return new PageResponse<>(List.of(), 1, size, 0, 0);
         }
         String candidates = "SELECT DISTINCT * FROM ("
-                + String.join(" UNION ALL ", branches) + ") candidate";
+                + String.join(" UNION ALL ", branches)
+                + ") candidate(route, document_type, document_id, document_no, status)";
         Query count = em.createNativeQuery("SELECT COUNT(*) FROM ("
                 + candidates + ") visible_documents");
         count.setParameter("rootId", rootId);
@@ -375,7 +447,7 @@ public class ProductionExecutionWorkbenchService {
         long total = ((Number) count.getSingleResult()).longValue();
         int totalPages = pages(total, size);
         if (totalPages > 0 && page > totalPages) page = totalPages;
-        Query data = em.createNativeQuery(candidates + """
+        Query data = em.createNativeQuery(candidates + "\n" + """
                 ORDER BY document_type, document_no, document_id
                 LIMIT :limit OFFSET :offset
                 """);
@@ -414,7 +486,11 @@ public class ProductionExecutionWorkbenchService {
                        root.warehouse_ready_count, root.issued_count,
                        root.reportable_count, root.fqc_pending_count,
                        root.finished_inbound_pending_count,
-                       root.earliest_begin_date, root.latest_end_date
+                       root.earliest_begin_date, root.latest_end_date,
+                       root.owner_employee_name,
+                       to_char(root.analyzed_at, 'YYYY-MM-DD HH24:MI'),
+                       root.root_planned_qty, root.root_inbound_qty,
+                       root.root_progress_ratio
                 """;
     }
 
@@ -436,17 +512,25 @@ public class ProductionExecutionWorkbenchService {
                        task.warehouse_ready, task.issued,
                        FALSE,
                        FALSE,
-                       (:allowReport AND task.reportable),
-                       (:allowReport AND task.reportable
+                       (:allowReport AND task.reportable AND task.segment_status = 'IN_PROGRESS'),
+                       (:allowReport AND task.reportable AND task.segment_status = 'IN_PROGRESS'
                         AND task.report_source_count = 1),
                        CASE
-                           WHEN :allowReport AND task.reportable THEN NULL
+                           WHEN :allowReport AND task.reportable
+                                AND task.segment_status = 'IN_PROGRESS' THEN NULL
                            WHEN task.reportable AND NOT :allowReport
+                                AND task.segment_status = 'IN_PROGRESS'
                              THEN '缺少生产报工权限'
                            ELSE task.blocked_reason
                        END,
                        task.plan_begin_date, task.plan_end_date,
-                       task.lock_version
+                       task.lock_version,
+                       task.zero_material,
+                       EXISTS (SELECT 1 FROM production_execution_segments current_segment
+                           WHERE current_segment.id = task.segment_id
+                             AND current_segment.status = 'WAITING'
+                             AND current_segment.auto_promote_when_ready = TRUE
+                             AND current_segment.is_deleted = FALSE)
                 """;
     }
 
@@ -556,38 +640,12 @@ public class ProductionExecutionWorkbenchService {
 
     /** Exact workshop subtree, including main and secondary departments. */
     private static String assignmentPredicate(String alias) {
-        return """
-                EXISTS (
-                        WITH RECURSIVE workshop_tree(id) AS (
-                            SELECT %1$s.workshop_department_id
-                            WHERE %1$s.workshop_department_id IS NOT NULL
-                            UNION ALL
-                            SELECT child.id
-                            FROM departments child
-                            JOIN workshop_tree parent ON child.parent_id = parent.id
-                            WHERE child.is_deleted = FALSE
-                        )
-                        SELECT 1
-                        FROM employees employee
-                        LEFT JOIN employee_secondary_departments secondary
-                          ON secondary.employee_id = employee.id
-                        WHERE employee.id = :employeeId
-                          AND employee.is_deleted = FALSE
-                          AND employee.status IN ('active','probation','onLeave')
-                          AND (
-                              %1$s.responsible_employee_id = employee.id
-                              OR employee.department_id IN (SELECT id FROM workshop_tree)
-                              OR secondary.department_id IN (SELECT id FROM workshop_tree)
-                              OR EXISTS (
-                                  SELECT 1 FROM departments managed
-                                  WHERE managed.id IN (SELECT id FROM workshop_tree)
-                                    AND managed.manager_id = employee.id
-                                    AND managed.is_deleted = FALSE))
-                )
-                """.formatted(alias);
+        return com.uten.imp.security.ProductionWorkshopAssignmentScope.predicate(alias);
     }
 
     private static ProductionExecutionWorkbenchGroup groupRow(Object[] row) {
+        Double progressRatio = row[42] == null
+                ? null : ((BigDecimal) row[42]).doubleValue();
         return new ProductionExecutionWorkbenchGroup(
                 text(row[0]), uuid(row[1]), text(row[3]), text(row[4]),
                 text(row[5]), integer(row[6]), bool(row[7]),
@@ -600,7 +658,9 @@ public class ProductionExecutionWorkbenchService {
                 integer(row[27]), integer(row[28]), integer(row[29]),
                 integer(row[30]), integer(row[31]), integer(row[32]),
                 integer(row[33]), integer(row[34]), integer(row[35]),
-                false, date(row[36]), date(row[37]));
+                false, date(row[36]), date(row[37]),
+                text(row[38]), text(row[39]),
+                decimal(row[40]), decimal(row[41]), progressRatio);
     }
 
     private static ProductionExecutionWorkbenchSegment segmentRow(Object[] row) {
@@ -614,7 +674,7 @@ public class ProductionExecutionWorkbenchService {
                 text(row[21]), text(row[22]), bool(row[23]), bool(row[24]),
                 bool(row[25]), bool(row[26]), bool(row[27]), bool(row[28]),
                 bool(row[29]), text(row[30]), date(row[31]), date(row[32]),
-                ((Number) row[33]).longValue());
+                ((Number) row[33]).longValue(), bool(row[34]), bool(row[35]));
     }
 
     private static int boundedSize(int requested) {
@@ -667,7 +727,7 @@ public class ProductionExecutionWorkbenchService {
         String normalized = value.strip().toUpperCase(Locale.ROOT);
         if (!Set.of(
                         "PREPARING", "READY_TO_REPORT",
-                        "READY_TO_START", "IN_PROGRESS")
+                        "READY_TO_START", "IN_PROGRESS", "COMPLETED")
                 .contains(normalized)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知车间任务状态");
         }

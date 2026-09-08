@@ -103,6 +103,9 @@ public class SubcontractReceiptService {
     private final com.uten.imp.features.subcontract.LinkedOrderReadGate linkedOrderReadGate;
     private final com.uten.imp.application.port.PreplanAnalysisPegPort preplanAnalysisPeg;
     private final com.uten.imp.features.purchase.receipt.ReceiptPriceMasker priceMasker;
+    private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
+    private final com.uten.imp.common.finance.ProcurementReceiptConsiderationService consideration;
+    private final com.uten.imp.application.port.ProcurementInventoryValuePort procurementValue;
 
     @Transactional(readOnly = true)
     public PageResponse<ReceiptListItem> list(ReceiptQueryFilter f, int page, int size, String sort, String order) {
@@ -130,7 +133,7 @@ public class SubcontractReceiptService {
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
                         priceMasked ? Map.of("billDate", "billDate") : ALLOWED_SORT));
         Page<SubcontractReceipt> p = receiptRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+        return new PageResponse<>(p.map(this::toList).getContent(), p);
     }
 
     @Transactional(readOnly = true)
@@ -151,6 +154,7 @@ public class SubcontractReceiptService {
     @PreAuthorize("hasAuthority('subcontract_receipt:create')")
     public ReceiptDetail create(ReceiptSaveRequest req) {
         tx.bind();
+        lockReceiptRequest(null,req).verifyUnchanged();
         lockAndRequireDraftOutboundCapacity(req.getItems(), null, List.of());
         SubcontractReceipt r = new SubcontractReceipt();
         applyHeader(req, r);
@@ -174,11 +178,13 @@ public class SubcontractReceiptService {
     @PreAuthorize("hasAuthority('subcontract_receipt:edit')")
     public ReceiptDetail update(UUID id, ReceiptSaveRequest req) {
         tx.bind();
+        var mutationGuard=lockReceiptRequest(id,req);
         SubcontractReceipt r = requireReceiptForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外进仓单");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
+        mutationGuard.verifyUnchanged();
         List<UUID> previousOrderItemIds = itemRepo.findByReceiptIdOrderByLineNoAsc(id)
                 .stream()
                 .map(SubcontractReceiptItem::getOrderItemId)
@@ -197,12 +203,22 @@ public class SubcontractReceiptService {
     @PreAuthorize("hasAuthority('subcontract_receipt:delete')")
     public void delete(UUID id) {
         tx.bind();
+        var mutationGuard=mutationLocks.receipt("SUBCONTRACT",id);
         SubcontractReceipt r = requireReceiptForUpdate(id);
+        mutationGuard.verifyUnchanged();
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外进仓单");
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         receiptRepo.save(r);
+    }
+
+    private com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard lockReceiptRequest(UUID id,ReceiptSaveRequest req) {
+        List<ReceiptItemLine> lines=req==null||req.getItems()==null?List.of():req.getItems();
+        return mutationLocks.receiptInputs("SUBCONTRACT",id,lines.stream().filter(java.util.Objects::nonNull).map(ReceiptItemLine::getOrderItemId).toList(),
+                lines.stream().filter(java.util.Objects::nonNull).filter(line->line.getGoodsId()!=null)
+                        .map(line->new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(line.getGoodsId(),line.getColorId())).toList(),
+                req==null?null:req.getWarehouseId());
     }
 
     /**
@@ -216,8 +232,10 @@ public class SubcontractReceiptService {
         SupplierPeriodIdentityGuard.Identity periodIdentity =
         periodIdentityGuard.requireIdentity(SourceTable.SUBCONTRACT_RECEIPT, id);
         periodIdentityGuard.requireOpenAtBillDate(periodIdentity, "委外进仓审核");
+        var mutationGuard=mutationLocks.receipt("SUBCONTRACT",id);
         productionSupply.lockSubcontractReceiptMutationDimensions(id);
         SubcontractReceipt r = requireReceiptForUpdate(id);
+        mutationGuard.verifyUnchanged();
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);
@@ -254,6 +272,7 @@ public class SubcontractReceiptService {
         arrivalControl.validateBeforeApproval(
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
         receiptAmountAuthority.apply(r, items);
+        var payable=consideration.freezeReceipt("SUBCONTRACT",id);
         productionSupply.lockSubcontractReceiptProductionDemands(
                 id, r.getWarehouseId());
         stockService.lockInventory(items.stream()
@@ -281,20 +300,23 @@ public class SubcontractReceiptService {
                         .activeAllocatedQty("SUBCONTRACT",it.getId());
                 BigDecimal firstReturnQty=it.getQty().subtract(replacementQty);
                 if(firstReturnQty.signum()>0){
-                    consumeIssuedMaterials(it.getOrderItemId(),firstReturnQty,+1);
+                    consumeIssuedMaterials(it.getId(),it.getOrderItemId(),firstReturnQty,+1);
                 }
             }
         }
         // ③ 立应付（AP, SUBCONTRACT_RECEIPT, +amount）—— 金额为正
-        postAp(r, r.getTotalOriginal(), totalLocalOf(items), +1);
+        boolean chargeable=payable.original().signum()!=0||payable.local().signum()!=0;
+        if(chargeable)postAp(r,payable.original(),payable.local(),+1);
         r.setStatus(STATUS_APPROVED);
         // 正式生产供给由仓库确认 IQC 合格入库量后推进；整单质检结案只做终态校准。
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         canonicalizeApprover(r);
-        r.setApPosted(true);
+        r.setApPosted(chargeable);
         receiptRepo.save(r);
         arrivalControl.recordApproval(
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
+        em.flush();
+        procurementValue.receiptApproved("SUBCONTRACT",id,currentUser.requireId());
         return detail(id);
     }
     /** Dedicated warehouse-arrival gateway; normal approval keeps its exact action authority. */
@@ -313,6 +335,7 @@ public class SubcontractReceiptService {
         SupplierPeriodIdentityGuard.Identity periodIdentity =
         periodIdentityGuard.requireIdentity(SourceTable.SUBCONTRACT_RECEIPT, id);
         periodIdentityGuard.requireOpenToday(periodIdentity, "委外进仓红冲");
+        var mutationGuard=mutationLocks.receipt("SUBCONTRACT",id);
         List<SubcontractReceiptItem> prelockItems =
                 itemRepo.findByReceiptIdOrderByLineNoAsc(id);
         stockService.lockInventory(prelockItems.stream()
@@ -320,6 +343,7 @@ public class SubcontractReceiptService {
                 .toList());
         productionSupply.lockSubcontractReceiptMutationDimensions(id);
         SubcontractReceipt r = requireReceiptForUpdate(id);
+        mutationGuard.verifyUnchanged();
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);
@@ -340,6 +364,7 @@ public class SubcontractReceiptService {
         preplanAnalysisPeg.releaseForReceipt(ProcurementInspectionPort.SUBCONTRACT, id);
         // 库存 advisory 锁已在任何 receipt/inspection/AP 行锁之前取得。
         // 反立帐（若有核销 amount_settled<>0 抛 IllegalStateException，对齐老库文案）
+        consideration.reverseReceipt("SUBCONTRACT",id,UUID.randomUUID(),"委外收货红冲");
         arApService.reverseArAp(r.getId(), StockService.SRC_SUBCONTRACT_RECEIPT);
         OffsetDateTime now = OffsetDateTime.now();
         boolean inspectionManaged = inspectionService.reverseResolvedStock(
@@ -361,7 +386,7 @@ public class SubcontractReceiptService {
                         .activeAllocatedQty("SUBCONTRACT",it.getId());
                 BigDecimal firstReturnQty=it.getQty().subtract(replacementQty);
                 if(firstReturnQty.signum()>0){
-                    consumeIssuedMaterials(it.getOrderItemId(),firstReturnQty,-1);
+                    consumeIssuedMaterials(it.getId(),it.getOrderItemId(),firstReturnQty,-1);
                 }
             }
         }
@@ -375,6 +400,7 @@ public class SubcontractReceiptService {
         arrivalControl.recordReversal(
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
         productionSupply.afterSubcontractReceiptReversed(id);
+        procurementValue.receiptReversed("SUBCONTRACT",id,currentUser.requireId());
         return detail(id);
     }
 
@@ -472,16 +498,18 @@ public class SubcontractReceiptService {
      *   <li>同组各行冻结单耗不一致（BOM 版本分叉）→ 409 人工核销（fail-closed，不猜测版本）；</li>
      *   <li>消费（+1）：组内 FIFO 按 {@code supplier_ending = at_supplier − consumed − returned − wasted}
      *       分摊，逐行 CAS；组内余量合计不足 → 409（DB CHECK supplier_ending≥0 为兜底）；</li>
-     *   <li>回退（−1）：组内 LIFO 从 {@code consumed_qty>0} 的行精确回减，逐行 CAS
-     *       {@code consumed_qty − :d ≥ 0}；组内可回退合计不足（其它回厂单已消费）→ 409 人工核销，
-     *       禁止静默钳位吞错账。</li>
+     *   <li>反向(-1)只回退本回厂明细冻结的原发料切片；原消费来源未核定的历史单不按累计量猜源。</li>
      * </ul>
      *
      * <p>单位口径：回厂父件量（父件单据单位）× frozen_unit_qty（子件/父件）= 子件单据单位，与
      * at_supplier_qty / returned_qty / wasted_qty 同口径。
      */
-    private void consumeIssuedMaterials(UUID orderItemId, BigDecimal receivedParentQty, int sign) {
+    private void consumeIssuedMaterials(UUID receiptItemId, UUID orderItemId, BigDecimal receivedParentQty, int sign) {
         if (orderItemId == null || receivedParentQty == null || receivedParentQty.signum() == 0) return;
+        if(sign<0){
+            reverseReceiptMaterialConsumptions(receiptItemId);
+            return;
+        }
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT id, goods_id, color_id, COALESCE(frozen_unit_qty, 0),
@@ -543,44 +571,58 @@ public class SubcontractReceiptService {
                         throw new ApiException(ErrorCode.CONFLICT,
                                 "委外回厂消费超过供应商在制余量(发料−已消费−已退−已损耗)，疑似超耗或错料，请人工核销");
                     }
+                    em.createNativeQuery("""
+                            INSERT INTO subcontract_receipt_material_consumptions(receipt_item_id,issue_item_id,
+                                qty_doc,qty_base,consumption_basis,created_by)
+                            SELECT :receipt,issue.id,:qty,:qty*COALESCE(issue.unit_rate,1),
+                                CASE WHEN EXISTS(SELECT 1 FROM subcontract_material_plan_items plan
+                                    JOIN subcontract_receipt_items receipt ON receipt.id=:receipt
+                                    WHERE plan.id=issue.plan_item_id AND plan.flow_mode<>'LEGACY_BOM_COMPONENT'
+                                      AND issue.goods_id=receipt.goods_id AND issue.color_id IS NOT DISTINCT FROM receipt.color_id
+                                      AND issue.frozen_unit_qty*COALESCE(issue.unit_rate,1)=COALESCE(receipt.unit_rate,1))
+                                    THEN 'DIRECT_TARGET' ELSE 'FROZEN_BOM_ESTIMATE' END,:actor
+                            FROM subcontract_material_issue_items issue WHERE issue.id=:issue
+                            """).setParameter("receipt",receiptItemId).setParameter("issue",(UUID)row[0])
+                            .setParameter("qty",take).setParameter("actor",currentUser.requireId()).executeUpdate();
                     remaining = remaining.subtract(take);
                 }
                 if (remaining.signum() > 0) {
                     throw new ApiException(ErrorCode.CONFLICT,
                             "委外回厂消费超过供应商在制余量(发料−已消费−已退−已损耗)，疑似超耗或错料，请人工核销");
                 }
-            } else {
-                for (int i = group.size() - 1; i >= 0; i--) {
-                    if (remaining.signum() <= 0) break;
-                    Object[] row = group.get(i);
-                    BigDecimal give = remaining.min((BigDecimal) row[5]);
-                    if (give.signum() <= 0) continue;
-                    int updated = em.createNativeQuery("""
-                                    UPDATE subcontract_material_issue_items
-                                    SET consumed_qty = consumed_qty - :delta
-                                    WHERE id = :id
-                                      AND COALESCE(consumed_qty, 0) >= :delta
-                                    """)
-                            .setParameter("delta", give)
-                            .setParameter("id", (UUID) row[0])
-                            .executeUpdate();
-                    if (updated != 1) {
-                        throw new ApiException(ErrorCode.CONFLICT,
-                                "委外回厂红冲回退与并发回厂消费冲突(子件已消费量已变化)，请重试或人工核销");
-                    }
-                    remaining = remaining.subtract(give);
-                }
-                if (remaining.signum() > 0) {
-                    throw new ApiException(ErrorCode.CONFLICT,
-                            "委外回厂红冲需回退的子件消费量不足(其它回厂单据已消费该子件)，请人工核销，禁止自动吞并错账");
-                }
             }
+        }
+    }
+
+    private void reverseReceiptMaterialConsumptions(UUID receiptItemId){
+        @SuppressWarnings("unchecked")
+        List<Object[]> sources=em.createNativeQuery("""
+                SELECT id,issue_item_id,qty_doc FROM subcontract_receipt_material_consumptions original
+                WHERE receipt_item_id=:receipt AND reversal_of IS NULL
+                  AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversal WHERE reversal.reversal_of=original.id)
+                ORDER BY issue_item_id,id
+                """).setParameter("receipt",receiptItemId).getResultList();
+        if(sources.isEmpty())throw new ApiException(ErrorCode.CONFLICT,"历史回厂未保存实际发料来源，须先核对原消费明细后红冲");
+        for(Object[] source:sources){
+            int updated=em.createNativeQuery("""
+                    UPDATE subcontract_material_issue_items SET consumed_qty=consumed_qty-:qty
+                    WHERE id=:issue AND consumed_qty>=:qty
+                    """).setParameter("issue",source[1]).setParameter("qty",source[2]).executeUpdate();
+            if(updated!=1)throw new ApiException(ErrorCode.CONFLICT,"原发料消费余量已变化，请刷新后重试");
+            em.createNativeQuery("""
+                    INSERT INTO subcontract_receipt_material_consumptions(receipt_item_id,issue_item_id,qty_doc,
+                        qty_base,consumption_basis,reversal_of,created_by)
+                    SELECT receipt_item_id,issue_item_id,qty_doc,qty_base,consumption_basis,id,:actor
+                    FROM subcontract_receipt_material_consumptions WHERE id=:source
+                    """).setParameter("source",source[0]).setParameter("actor",currentUser.requireId()).executeUpdate();
         }
     }
 
     /** V436 new flow: target-item receipt base quantity can never precede outbound. */
     private void requireTargetOutboundCapacity(
             List<SubcontractReceiptItem> items, UUID currentReceiptId) {
+        com.uten.imp.common.finance.ProcurementOrderQuantityBounds.requireConsistentTargetBasis(em,
+                items.stream().map(SubcontractReceiptItem::getOrderItemId).filter(java.util.Objects::nonNull).distinct().toList());
         Map<UUID, BigDecimal> currentBaseByOrderItem = new java.util.LinkedHashMap<>();
         for (SubcontractReceiptItem item : items) {
             if (item.getOrderItemId() == null) continue;
@@ -780,7 +822,7 @@ public class SubcontractReceiptService {
         r.setSupplierId(req.getSupplierId());
         r.setWarehouseId(req.getWarehouseId());
         r.setCurrencyId(req.getCurrencyId());
-        r.setExchangeRate(req.getExchangeRate());
+        r.setExchangeRate(req.getExchangeRate()==null?null:com.uten.imp.common.util.FinancialExactAmount.rate(req.getExchangeRate(),"委外收货汇率"));
         r.setTaxRate(req.getTaxRate());
         var receiver = nameResolver.resolveForWrite(
                 req.getSenderId(), req.getReceiverLegacyId(), req.getReceiverName(), "收货人");
@@ -846,7 +888,8 @@ public class SubcontractReceiptService {
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
             it.setQty(l.getQty());
-            it.setPrice(l.getPrice());
+            it.setReplacementIntent(l.getReplacementIntent());
+            it.setPrice(l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"委外收货单价"));
             it.setAmountOriginal(l.getAmountOriginal());
             it.setAmountLocal(l.getAmountLocal() != null ? l.getAmountLocal() : l.getAmountOriginal());
             it.setCheckQty(l.getCheckQty());

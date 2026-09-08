@@ -62,6 +62,8 @@ class SubcontractWasteStockAccountingTest {
         when(query.setParameter(anyString(), any())).thenReturn(query);
         when(query.executeUpdate()).thenReturn(1); // CAS 守卫要求 UPDATE 命中 1 行（发料子件有余量）
         when(query.getResultList()).thenReturn(List.of());
+        var mutationLocks=mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class);
+        when(mutationLocks.materialWaste(any())).thenReturn(mock(com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard.class));
         service = new SubcontractWasteService(
                 wasteRepo,
                 itemRepo,
@@ -75,6 +77,9 @@ class SubcontractWasteStockAccountingTest {
                 mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class),
                 arApService,
                 lossClaimPort,
+                mock(com.uten.imp.application.port.SubcontractMaterialValuePort.class),
+                mutationLocks,
+                mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class),
                 glPostingService);
     }
 

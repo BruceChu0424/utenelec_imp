@@ -241,7 +241,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(loadCount, 2);
       expect(find.textContaining('1 张生产计划、1 张执行工卡。'), findsOneWidget);
-      expect(find.text('工单已确认 / 仓库备料中'), findsOneWidget);
+      expect(find.text('等待车间领料'), findsOneWidget);
       expect(find.textContaining('仓库实际发料完成后可直接报工'), findsOneWidget);
 
       await tester.tap(
@@ -333,7 +333,7 @@ void main() {
 
     await tester.tap(find.text('打开已完成工卡'));
     await tester.pumpAndSettle();
-    expect(find.text('已完成 · 仅供存档'), findsOneWidget);
+    expect(find.text('已完工 · 仅供存档'), findsOneWidget);
     expect(find.textContaining('不得再次作为生产'), findsOneWidget);
   });
 

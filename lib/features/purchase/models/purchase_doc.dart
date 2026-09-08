@@ -29,10 +29,12 @@ enum PurchaseDocType {
       tryByPath(seg) ?? (throw ArgumentError.value(seg, 'seg', '未知采购单据路由段'));
 }
 
-/// 单据状态：0草稿 / 1已审 / -1红冲。
+/// 单据状态：0草稿 / 1已审 / -1红冲 / 2已取消（2026-09-05 起草稿单可取消，
+/// 保留轨迹；在审单取消时审批 case 同步置 CANCELED）。
 const int kPurchaseStatusDraft = 0;
 const int kPurchaseStatusApproved = 1;
 const int kPurchaseStatusReversed = -1;
+const int kPurchaseStatusCanceled = 2;
 
 String purchaseStatusLabel(int? code) {
   switch (code) {
@@ -42,6 +44,8 @@ String purchaseStatusLabel(int? code) {
       return '已审';
     case kPurchaseStatusReversed:
       return '红冲';
+    case kPurchaseStatusCanceled:
+      return '已取消';
     default:
       return '—';
   }
@@ -56,6 +60,8 @@ Color purchaseStatusColor(int? code, ThemeData theme) {
       return Colors.green;
     case kPurchaseStatusReversed:
       return theme.colorScheme.error;
+    case kPurchaseStatusCanceled:
+      return theme.colorScheme.outline;
     default:
       return theme.colorScheme.onSurfaceVariant;
   }

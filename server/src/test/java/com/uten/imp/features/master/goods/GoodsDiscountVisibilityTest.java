@@ -172,6 +172,33 @@ class GoodsDiscountVisibilityTest {
     // ---- 写侧守卫 ----
 
     @Test
+    void usedInactiveUnitStaysReadableAndUnchangedWhileOtherFieldsAreSaved() {
+        GoodsService service = serviceWith(Set.of("goods:view", "goods:edit"));
+        Goods goods = goodsWithDiscount();
+        var unit = new com.uten.imp.features.master.unit.Unit();
+        unit.setName("个");
+        unit.setLegacyId(12);
+        unit.setDeleted(true);
+        goods.setUnit(unit);
+        goods.setUnitLegacyId(12);
+        goods.setQuantityUnitLocked(true);
+        when(goodsRepo.findById(goods.getId())).thenReturn(Optional.of(goods));
+        when(goodsRepo.save(any(Goods.class))).thenAnswer(inv -> inv.getArgument(0));
+        GoodsSaveRequest request = saveRequest();
+        request.setName("只改名称");
+        request.setPrice(PRICE);
+        request.setUnitId(unit.getId());
+
+        GoodsDetail detail = service.update(goods.getId(), request);
+
+        assertEquals("只改名称", detail.getName());
+        assertEquals("个", detail.getUnitName());
+        assertEquals(unit.getId(), detail.getUnitId());
+        assertEquals(12, goods.getUnitLegacyId());
+        assertTrue(detail.isQuantityUnitLocked());
+    }
+
+    @Test
     void editorWithoutDiscountViewCanUpdateOtherFieldsWithoutBeingBlocked() {
         // 有 goods:edit、无折扣查看/价折扣编辑：改品名不得被折扣触碰判定 403。
         GoodsService service = serviceWith(Set.of("goods:view", "goods:edit"));

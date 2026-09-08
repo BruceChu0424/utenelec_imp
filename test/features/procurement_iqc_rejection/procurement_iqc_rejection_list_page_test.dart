@@ -144,6 +144,11 @@ class _Gateway implements ProcurementIqcRejectionGateway {
   int calls = 0;
 
   @override
+  Future<ProcurementIqcCreditPreview> previewCredit(
+    String id,
+    ProcurementIqcConfirmCreditCommand command,
+  ) => throw UnimplementedError();
+  @override
   Future<PagedResult<ProcurementIqcRejectionCase>> list(
     ProcurementIqcRejectionFilter filter,
   ) async {

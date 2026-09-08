@@ -66,6 +66,8 @@ class ProductionDailyReportCommandTest {
     @Mock private ProductionDocumentAccessPolicy access;
     @Mock private ProductionQualityInspectionPort qualityInspection;
     @Mock private ProductionFqcRecoveryPort fqcRecovery;
+    @Mock private com.uten.imp.application.port.ProductionCostTargetPort costTargets;
+    @Mock(answer=org.mockito.Answers.RETURNS_DEEP_STUBS) private com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService mutationFootprint;
     @InjectMocks private ProductionDailyReportService service;
 
     @Test

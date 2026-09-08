@@ -245,6 +245,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     private final TxSessionVars tx;
     private final FinanceReviewerEligibilityPort reviewerEligibility;
     private final ReceiptPriceMasker priceMasker;
+    private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
     private PreplanInboundAllocationReadPort inboundAllocationRead =
             PreplanInboundAllocationReadPort.NOOP;
 
@@ -255,7 +256,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             SecurityContextCurrentUser currentUser,
             TxSessionVars tx,
             FinanceReviewerEligibilityPort reviewerEligibility,
-            ReceiptPriceMasker priceMasker) {
+            ReceiptPriceMasker priceMasker,
+            com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.events = events;
@@ -263,12 +265,25 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         this.tx = tx;
         this.reviewerEligibility = reviewerEligibility;
         this.priceMasker = priceMasker;
+        this.mutationLocks = mutationLocks;
     }
 
     @Autowired
     void setInboundAllocationRead(PreplanInboundAllocationReadPort value) {
         this.inboundAllocationRead = value;
     }
+
+    /**
+     * 弹卡办结入口（setter 注入避免构造器签名变化牵连直构测试）：
+     * expectation 离开 OPEN 时撤回仓库「预计到货」居中行动卡。
+     * 单测直构不注入时为 null，静默跳过——通知只是提醒，不承载业务事实。
+     */
+    @Autowired(required = false)
+    void setChainNotice(com.uten.imp.features.notice.ChainNoticeService value) {
+        this.chainNotice = value;
+    }
+
+    private com.uten.imp.features.notice.ChainNoticeService chainNotice;
 
     /**
      * Fail-closed gate run before a receipt is approved: every receipt line must trace to a
@@ -298,8 +313,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         // 不会把 RECEIPT_ADJUSTED 推进到 CLOSED，异常一直挂在任务中心。
         Map<UUID, String> siblingOpenException =
                 siblingOpenExceptionReceipts(orderType, receiptId);
-        Map<UUID, BigDecimal> baseRemaining = new HashMap<>();
-        Map<UUID, BigDecimal> allocatedInReceipt = new HashMap<>();
+        Map<UUID, ArrivalCapacity> capacities = new HashMap<>();
         boolean blocked = false;
         boolean receiptBoundAllowance = false;
         for (ArrivalRow row : rows) {
@@ -310,11 +324,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         "该订货明细已在另一张收货单(" + blockingSibling
                                 + ")上产生到货异常，请先在那张收货单完成一键入库或作废异常，再审核本单");
             }
-            BigDecimal remaining = baseRemaining.computeIfAbsent(
-                    row.orderItemId(), ignored -> approvedRemaining(row,orderType));
-            BigDecimal beforeThisLine = allocatedInReceipt.getOrDefault(
-                    row.orderItemId(), BigDecimal.ZERO);
-            BigDecimal available = nonNegative(remaining.subtract(beforeThisLine));
+            ArrivalCapacity capacity = capacities.computeIfAbsent(
+                    row.orderItemId(), ignored -> arrivalCapacity(row,orderType));
+            BigDecimal available = capacity.available(row.replacementIntent());
             ExistingException exception = existing.get(row.receiptItemId());
 
             boolean exactlyFinanceAdjusted = exception != null
@@ -336,8 +348,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 blocked = true;
             }
 
-            BigDecimal capacityClaim = row.declaredQty().min(available);
-            allocatedInReceipt.merge(row.orderItemId(), capacityClaim, BigDecimal::add);
+            capacity.consume(row.replacementIntent(),row.declaredQty().min(available));
         }
         if (receiptBoundAllowance) {
             bindReceiptAllowance(orderType, receiptId);
@@ -509,6 +520,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 WHERE order_type = ? AND order_id = ?
                   AND status IN ('OPEN', 'CLOSED')
                 """, orderType, orderId);
+        // 订单红冲：撤回仓库「预计到货」居中行动卡。
+        if (chainNotice != null) {
+            chainNotice.resolveArrivalExpectationNotices(orderType, orderId);
+        }
     }
 
     @Override
@@ -677,7 +692,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     public ArrivalExceptionTask financeDecide(
             UUID id, ArrivalDecisionRequest request) {
         tx.bind();
+        StockTarget source=stockTargets(List.of(id)).get(id);
+        var mutationGuard=mutationLocks.receipt(source.orderType(),source.receiptId());
         LockedException exception = lockException(id);
+        requireSameStockTarget(source,exception);
         requireEligibleReviewer();
         requireVersion(exception.version(), request.expectedVersion());
         if (!PENDING_FINANCE.equals(exception.status())) {
@@ -716,6 +734,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         if (unaccepted.signum() > 0) {
             requireReturnOwner(exception.ownerUserId(), exception.ownerEmployeeId());
         }
+        mutationGuard.verifyUnchanged();
         adjustDraftReceipt(exception.orderType(), capacity.row(), accepted);
 
         UUID actorUser = currentUser.requireId();
@@ -781,7 +800,15 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     public ArrivalExceptionTask completeReturn(
             UUID returnTaskId, ReturnCompletionRequest request) {
         tx.bind();
+        List<UUID> parentIds=jdbc.queryForList(
+                "SELECT arrival_exception_id FROM supplier_return_tasks WHERE id=?",UUID.class,returnTaskId);
+        if (parentIds.size()!=1) throw new ApiException(ErrorCode.NOT_FOUND,"供应商退回任务不存在");
+        UUID exceptionId=parentIds.getFirst();
+        StockTarget source=stockTargets(List.of(exceptionId)).get(exceptionId);
+        var mutationGuard=mutationLocks.receipt(source.orderType(),source.receiptId());
+        requireSameStockTarget(source,lockException(exceptionId));
         LockedReturnTask task = lockReturnTask(returnTaskId);
+        if (!exceptionId.equals(task.exceptionId())) throw concurrentChange();
         requireExactOwner(task.ownerUserId(), task.ownerEmployeeId());
         requireVersion(task.version(), request.expectedVersion());
         if (!"PENDING_RETURN".equals(task.status())) {
@@ -790,6 +817,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         String note = normalizeNote(request.completionNote());
         UUID actorUser = currentUser.requireId();
         UUID actorEmployee = currentUser.requireEmployeeId();
+        mutationGuard.verifyUnchanged();
         int changed = jdbc.update("""
                 UPDATE supplier_return_tasks
                 SET status = 'COMPLETED',
@@ -932,12 +960,39 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     @PreAuthorize("hasAuthority('warehouse_inbound:stock_in')")
     public ArrivalExceptionTask stockInWithDecisionSession(
             UUID id, java.util.function.Consumer<StockTarget> approveAction) {
+        StockTarget source=stockTargets(List.of(id)).get(id);
+        var mutationGuard=mutationLocks.receipt(source.orderType(),source.receiptId());
         StockTarget target = requireStockableException(id);
+        if (!source.equals(target)) throw concurrentChange();
+        mutationGuard.verifyUnchanged();
         jdbc.queryForObject(
                 "SELECT set_config('app.procurement_arrival_decision', 'on', true)",
                 String.class);
         approveAction.accept(target);
         return warehouseExceptionDetail(id);
+    }
+
+    /** Read source identities before taking exception/receipt locks; no amounts are exposed. */
+    @Transactional(readOnly = true)
+    public Map<UUID,StockTarget> stockTargets(java.util.Collection<UUID> exceptionIds) {
+        List<UUID> ids=exceptionIds.stream().filter(Objects::nonNull).distinct()
+                .sorted(java.util.Comparator.comparing(UUID::toString)).toList();
+        if (ids.isEmpty()) return Map.of();
+        String placeholders=String.join(",",java.util.Collections.nCopies(ids.size(),"?"));
+        Map<UUID,StockTarget> result=new LinkedHashMap<>();
+        jdbc.query("SELECT id,order_type,receipt_id FROM procurement_arrival_exceptions WHERE id IN ("
+                +placeholders+") ORDER BY id",(org.springframework.jdbc.core.RowCallbackHandler) row -> {
+                    UUID receipt=row.getObject("receipt_id",UUID.class);
+                    if (receipt==null) throw new ApiException(ErrorCode.CONFLICT,"到货任务缺少收货单，请先核对来源");
+                    result.put(row.getObject("id",UUID.class),new StockTarget(row.getString("order_type"),receipt));
+                },ids.toArray());
+        if (result.size()!=ids.size()) throw new ApiException(ErrorCode.NOT_FOUND,"到货异常任务不存在或已变化");
+        return Map.copyOf(result);
+    }
+
+    private void requireSameStockTarget(StockTarget expected,LockedException actual) {
+        if (!Objects.equals(expected.orderType(),actual.orderType())
+                || !Objects.equals(expected.receiptId(),actual.receiptId())) throw concurrentChange();
     }
 
     @Transactional(readOnly = true)
@@ -1409,7 +1464,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                             ELSE GREATEST(item.ordered_qty-item.accepted_qty,0)
                        END AS remaining_qty,
                        COALESCE(inflight.registered_qty, 0) AS registered_qty,
-                       item.expected_date
+                       item.expected_date,
+                       remembered.warehouse_id AS last_receipt_warehouse_id,
+                       remembered.warehouse_name AS last_receipt_warehouse_name
                 FROM inbound_expectation_items item
                 JOIN inbound_expectations expectation
                   ON expectation.id = item.expectation_id
@@ -1417,6 +1474,48 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 LEFT JOIN colors color ON color.id = item.color_id
                 LEFT JOIN units unit ON unit.id = item.unit_id
                 LEFT JOIN units base_unit ON base_unit.id = goods.unit_id
+                LEFT JOIN LATERAL (
+                    SELECT history.warehouse_id, warehouse.name AS warehouse_name
+                    FROM (
+                        SELECT receipt.warehouse_id,receipt.updated_at,receipt.id
+                        FROM purchase_receipt_items line
+                        JOIN purchase_receipts receipt ON receipt.id=line.receipt_id
+                        WHERE line.goods_id=item.goods_id
+                          AND line.color_id IS NOT DISTINCT FROM item.color_id
+                          AND line.is_deleted=FALSE
+                          AND receipt.status=1 AND receipt.is_deleted=FALSE
+                        UNION ALL
+                        SELECT receipt.warehouse_id,receipt.updated_at,receipt.id
+                        FROM subcontract_receipt_items line
+                        JOIN subcontract_receipts receipt ON receipt.id=line.receipt_id
+                        WHERE line.goods_id=item.goods_id
+                          AND line.color_id IS NOT DISTINCT FROM item.color_id
+                          AND line.is_deleted=FALSE
+                          AND receipt.status=1 AND receipt.is_deleted=FALSE
+                    ) history
+                    JOIN warehouses warehouse ON warehouse.id=history.warehouse_id
+                     AND warehouse.is_deleted=FALSE
+                     AND COALESCE(warehouse.status,'')<>'禁用'
+                    WHERE (CAST(? AS uuid) IS NULL OR
+                           fn_warehouse_same_main(history.warehouse_id,CAST(? AS uuid)))
+                      AND NOT EXISTS (
+                          SELECT 1 FROM preplan_supply_action_allocations allocation
+                          JOIN preplan_supply_actions action ON action.id=allocation.action_id
+                           AND action.status<>'CANCELLED'
+                          WHERE allocation.external_item_id IN (
+                              SELECT source.request_item_id FROM purchase_order_item_sources source
+                              WHERE source.order_item_id=item.order_item_id
+                              UNION
+                              SELECT source.application_item_id FROM subcontract_order_item_sources source
+                              WHERE source.order_item_id=item.order_item_id)
+                            AND NOT fn_warehouse_same_main(
+                                history.warehouse_id,action.warehouse_id)
+                      )
+                      AND NOT EXISTS(SELECT 1 FROM warehouses child
+                          WHERE child.parent_id=warehouse.id AND child.is_deleted=FALSE)
+                    ORDER BY history.updated_at DESC,history.id DESC
+                    LIMIT 1
+                ) remembered ON TRUE
                 LEFT JOIN (
                     SELECT receipt_item.order_item_id,
                            SUM(receipt_item.qty) AS registered_qty
@@ -1455,7 +1554,11 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         rs.getBigDecimal("remaining_qty"),
                         rs.getBigDecimal("registered_qty"),
                         rs.getObject("expected_date", LocalDate.class),
-                        List.of()),
+                        List.of(),
+                        rs.getObject("last_receipt_warehouse_id", UUID.class),
+                        rs.getString("last_receipt_warehouse_name")),
+                suggestedWarehouseId == null ? header.warehouseId() : suggestedWarehouseId,
+                suggestedWarehouseId == null ? header.warehouseId() : suggestedWarehouseId,
                 header.id());
         Map<UUID, List<PreplanInboundAllocationReadPort.AllocationView>> expected =
                 inboundAllocationRead.expectedForOrderItems(
@@ -1480,7 +1583,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         item.registeredQty(), item.expectedDate(),
                         expected.getOrDefault(item.orderItemId(), List.of()).stream()
                                 .map(ProcurementArrivalControlService::toInboundAllocation)
-                                .toList())).toList();
+                                .toList(),
+                        item.lastReceiptWarehouseId(),
+                        item.lastReceiptWarehouseName())).toList();
         BigDecimal registeredQty = items.stream()
                 .map(InboundExpectationItem::registeredQty)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -1672,7 +1777,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 rs.getBigDecimal("finance_approved_qty"),
                 rs.getObject("owner_user_id", UUID.class),
                 rs.getObject("owner_employee_id", UUID.class),
-                rs.getString("owner_name")), receiptId);
+                rs.getString("owner_name"),rs.getString("replacement_intent")), receiptId);
     }
 
     private String purchaseArrivalSql() {
@@ -1715,6 +1820,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                        receipt_item.amount_original,
                        receipt_item.amount_local,
                        receipt_item.qty AS declared_qty,
+                       receipt_item.replacement_intent,
                        order_item.qty AS order_qty,
                        COALESCE(order_item.received_qty, 0) AS received_qty,
                        COALESCE(order_item.returned_qty, 0) AS returned_qty,
@@ -2028,20 +2134,50 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     }
 
     private CapacityAtLine capacityAt(List<ArrivalRow> rows, UUID receiptItemId) {
-        Map<UUID, BigDecimal> base = new HashMap<>();
-        Map<UUID, BigDecimal> allocated = new HashMap<>();
+        Map<UUID, ArrivalCapacity> capacities = new HashMap<>();
         for (ArrivalRow row : rows) {
-            BigDecimal remaining = base.computeIfAbsent(
-                    row.orderItemId(), ignored -> approvedRemaining(
-                            row,requireOrderTypeFromRow(row)));
-            BigDecimal before = allocated.getOrDefault(row.orderItemId(), BigDecimal.ZERO);
-            BigDecimal available = nonNegative(remaining.subtract(before));
+            ArrivalCapacity capacity=capacities.computeIfAbsent(row.orderItemId(),
+                    ignored->arrivalCapacity(row,requireOrderTypeFromRow(row)));
+            BigDecimal available=capacity.available(row.replacementIntent());
             if (row.receiptItemId().equals(receiptItemId)) {
                 return new CapacityAtLine(row, available);
             }
-            allocated.merge(row.orderItemId(), row.declaredQty().min(available), BigDecimal::add);
+            capacity.consume(row.replacementIntent(),row.declaredQty().min(available));
         }
         return null;
+    }
+
+    private ArrivalCapacity arrivalCapacity(ArrivalRow row,String orderType) {
+        if(row.financeApprovedQty()==null)throw new ApiException(ErrorCode.CONFLICT,"财务批准的预计到货明细缺失，禁止入库");
+        BigDecimal allocated=zero(jdbc.queryForObject("""
+                SELECT COALESCE(SUM(allocation.allocated_qty),0)
+                FROM procurement_iqc_replacement_allocations allocation
+                JOIN procurement_iqc_rejection_cases rejection ON rejection.id=allocation.case_id
+                WHERE rejection.receipt_type=? AND rejection.order_item_id=? AND allocation.status='ACTIVE'
+                  AND allocation.replacement_receipt_id<>?
+                """,BigDecimal.class,orderType,row.orderItemId(),row.receiptId()));
+        BigDecimal normal=nonNegative(row.financeApprovedQty().add(zero(row.returnedQty()))
+                .add(allocated).subtract(zero(row.receivedQty())));
+        BigDecimal replacement=nonNegative(returnedIqcFailureQty(orderType,row.orderItemId()).subtract(allocated));
+        return new ArrivalCapacity(normal,replacement);
+    }
+
+    /** Normal arrivals cannot consume a physically returned replacement entitlement. */
+    private static final class ArrivalCapacity {
+        private BigDecimal normal;
+        private BigDecimal replacement;
+        private ArrivalCapacity(BigDecimal normal,BigDecimal replacement){this.normal=normal;this.replacement=replacement;}
+        private boolean usesReplacement(String intent){
+            if(intent==null&&normal.signum()>0&&replacement.signum()>0)
+                throw new ApiException(ErrorCode.CONFLICT,"该订单同时存在正常待到货和已退未补数量，请明确选择到货来源");
+            return "RETURN_REPLACEMENT".equals(intent)||(intent==null&&replacement.signum()>0);
+        }
+        private BigDecimal available(String intent){return usesReplacement(intent)?normal.add(replacement):normal;}
+        private void consume(String intent,BigDecimal quantity){
+            BigDecimal replacementTake=usesReplacement(intent)?quantity.min(replacement):BigDecimal.ZERO;
+            replacement=replacement.subtract(replacementTake);
+            normal=normal.subtract(quantity.subtract(replacementTake));
+        }
     }
 
     private void adjustDraftReceipt(
@@ -2248,6 +2384,36 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         AND receipt_item.receipt_id = ?
                   )
                 """.formatted(receiptItemTable), orderType, receiptId);
+        // 弹卡办结：expectation 已 CLOSED（全部登记完）时撤回「预计到货」
+        // 行动卡；订单红冲路径置 CANCELED 时同样撤回（见 cancelForOrderReversal
+        // 另有直写）。仍在 OPEN（部分登记）不撤。通知为 null（单测直构）时跳过。
+        // 修正（2026-09-05，委外同构会话代修）：收货单头表没有 order_id 列
+        // （采购/委外收货单的订单锚点都在明细 order_item_id → 订单明细上），
+        // 原直查单头会在真库报 42P22（column "order_id" does not exist）。
+        if (chainNotice != null) {
+            String noticeReceiptTable = "PURCHASE".equals(orderType)
+                    ? "purchase_receipts" : "subcontract_receipts";
+            String noticeReceiptItemTable = "PURCHASE".equals(orderType)
+                    ? "purchase_receipt_items" : "subcontract_receipt_items";
+            String noticeOrderItemTable = "PURCHASE".equals(orderType)
+                    ? "purchase_order_items" : "subcontract_order_items";
+            List<UUID> orderIds = jdbc.queryForList("""
+                    SELECT DISTINCT order_item.order_id
+                    FROM %s receipt
+                    JOIN %s receipt_item
+                      ON receipt_item.receipt_id = receipt.id
+                     AND receipt_item.is_deleted = FALSE
+                    JOIN %s order_item
+                      ON order_item.id = receipt_item.order_item_id
+                    WHERE receipt.id = ?
+                      AND COALESCE(receipt.is_deleted, FALSE) = FALSE
+                    """.formatted(noticeReceiptTable, noticeReceiptItemTable,
+                            noticeOrderItemTable),
+                    UUID.class, receiptId);
+            for (UUID orderId : orderIds) {
+                chainNotice.resolveArrivalExpectationNotices(orderType, orderId);
+            }
+        }
     }
 
     private LockedException lockException(UUID id) {
@@ -2647,7 +2813,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             BigDecimal financeApprovedQty,
             UUID ownerUserId,
             UUID ownerEmployeeId,
-            String ownerName) {
+            String ownerName,
+            String replacementIntent) {
     }
 
     private record ExistingException(

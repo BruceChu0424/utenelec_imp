@@ -63,18 +63,21 @@ public class WarehouseArrivalRegistrationService {
     private final SecurityContextCurrentUser currentUser;
     private final PurchaseReceiptService purchaseReceiptService;
     private final SubcontractReceiptService subcontractReceiptService;
+    private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
 
     public WarehouseArrivalRegistrationService(
             JdbcTemplate jdbc,
             TxSessionVars tx,
             SecurityContextCurrentUser currentUser,
             PurchaseReceiptService purchaseReceiptService,
-            SubcontractReceiptService subcontractReceiptService) {
+            SubcontractReceiptService subcontractReceiptService,
+            com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks) {
         this.jdbc = jdbc;
         this.tx = tx;
         this.currentUser = currentUser;
         this.purchaseReceiptService = purchaseReceiptService;
         this.subcontractReceiptService = subcontractReceiptService;
+        this.mutationLocks = mutationLocks;
     }
 
     @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
@@ -94,8 +97,10 @@ public class WarehouseArrivalRegistrationService {
             }
             return replayResult(replay);
         }
-        UUID commandId = insertPendingCommand(
-                makerId, idempotencyKey, requestHash, orderType);
+        var mutationGuard=mutationLocks.receiptInputs(orderType,null,
+                request.items().stream().map(WarehouseArrivalRegisterRequest.ArrivalLine::orderItemId).toList(),
+                request.items().stream().map(item -> new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(
+                        item.goodsId(),item.colorId())).toList(),request.warehouseId());
         OrderHeader header = resolveOrderHeader(
                 orderType,
                 request.items().stream()
@@ -105,6 +110,8 @@ public class WarehouseArrivalRegistrationService {
             requireSubcontractOutboundReleased(request.items().stream()
                     .map(WarehouseArrivalRegisterRequest.ArrivalLine::orderItemId).toList());
         }
+        mutationGuard.verifyUnchanged();
+        UUID commandId = insertPendingCommand(makerId,idempotencyKey,requestHash,orderType);
         UUID receiptId;
         String billNo;
         if (PURCHASE.equals(orderType)) {
@@ -138,6 +145,11 @@ public class WarehouseArrivalRegistrationService {
     public WarehouseArrivalRegisterResult complete(UUID receiptId) {
         tx.bind();
         DraftReceipt draft = requireDraft(receiptId);
+        var mutationGuard=mutationLocks.receipt(draft.orderType(),receiptId);
+        lockReceiptHeaders(List.of(new com.uten.imp.common.concurrency.ProcurementMutationFootprint.ReceiptRef(draft.orderType(),receiptId)));
+        DraftReceipt locked=requireDraft(receiptId);
+        if (!draft.equals(locked)) throw new ApiException(ErrorCode.CONFLICT,"收货来源已变化，请刷新后重试");
+        mutationGuard.verifyUnchanged();
         return completeDraft(draft);
     }
 
@@ -172,6 +184,12 @@ public class WarehouseArrivalRegistrationService {
                 Boolean.class,
                 "WAREHOUSE_ARRIVAL_BATCH_COMPLETE|" + makerId + "|" + key);
 
+        List<com.uten.imp.common.concurrency.ProcurementMutationFootprint.ReceiptRef> sources=receiptSources(distinct);
+        var mutationGuard=mutationLocks.receipts(sources);
+        lockReceiptHeaders(sources);
+        if (!sources.equals(receiptSources(distinct))) throw new ApiException(ErrorCode.CONFLICT,"收货来源已变化，请刷新后重试");
+        mutationGuard.verifyUnchanged();
+
         List<WarehouseArrivalBatchCompleteItemResult> results = new ArrayList<>();
         for (UUID receiptId : distinct) {
             DraftReceipt draft = findDraft(receiptId);
@@ -196,6 +214,27 @@ public class WarehouseArrivalRegistrationService {
         }
         alignDraftHeader(draft, header);
         return approveAsArrival(draft.orderType(), draft.receiptId(), draft.billNo());
+    }
+
+    private List<com.uten.imp.common.concurrency.ProcurementMutationFootprint.ReceiptRef> receiptSources(java.util.Collection<UUID> receiptIds) {
+        List<UUID> ids=receiptIds.stream().distinct().sorted(java.util.Comparator.comparing(UUID::toString)).toList();
+        String placeholders=String.join(",",Collections.nCopies(ids.size(),"?"));
+        List<Object> parameters=new ArrayList<>(ids); parameters.addAll(ids);
+        var rows=jdbc.query("SELECT 'PURCHASE' AS kind,id FROM purchase_receipts WHERE id IN ("+placeholders+") AND is_deleted=FALSE UNION ALL SELECT 'SUBCONTRACT' AS kind,id FROM subcontract_receipts WHERE id IN ("+placeholders+") AND is_deleted=FALSE ORDER BY kind,id",
+                (rs,n) -> new com.uten.imp.common.concurrency.ProcurementMutationFootprint.ReceiptRef(rs.getString("kind"),rs.getObject("id",UUID.class)),parameters.toArray());
+        if (rows.size()!=ids.size()) throw new ApiException(ErrorCode.NOT_FOUND,"部分收货单不存在或来源不唯一，请刷新后重新选择");
+        return rows;
+    }
+
+    private void lockReceiptHeaders(List<com.uten.imp.common.concurrency.ProcurementMutationFootprint.ReceiptRef> sources) {
+        for (String type : List.of(PURCHASE,SUBCONTRACT)) {
+            List<UUID> ids=sources.stream().filter(source -> type.equals(source.type())).map(com.uten.imp.common.concurrency.ProcurementMutationFootprint.ReceiptRef::id)
+                    .sorted(java.util.Comparator.comparing(UUID::toString)).toList();
+            if (ids.isEmpty()) continue;
+            String table=PURCHASE.equals(type) ? "purchase_receipts" : "subcontract_receipts";
+            String placeholders=String.join(",",Collections.nCopies(ids.size(),"?"));
+            jdbc.queryForList("SELECT id FROM "+table+" WHERE id IN ("+placeholders+") ORDER BY id FOR UPDATE",UUID.class,ids.toArray());
+        }
     }
 
     /**
@@ -322,6 +361,7 @@ public class WarehouseArrivalRegistrationService {
             item.setUnitId(line.unitId());
             item.setUnitRate(line.unitRate());
             item.setQty(line.qty());
+            item.setReplacementIntent(line.replacementIntent());
             item.setWeight(line.weight());
             item.setOrderItemId(line.orderItemId());
             item.setSourceDocNo(line.sourceDocNo());
@@ -361,6 +401,7 @@ public class WarehouseArrivalRegistrationService {
             item.setUnitId(line.unitId());
             item.setUnitRate(line.unitRate());
             item.setQty(line.qty());
+            item.setReplacementIntent(line.replacementIntent());
             item.setWeight(line.weight());
             item.setOrderItemId(line.orderItemId());
             item.setSourceDocNo(line.sourceDocNo());
@@ -600,6 +641,10 @@ public class WarehouseArrivalRegistrationService {
             appendHash(canonical, item == null ? null : decimalText(item.unitRate()));
             appendHash(canonical, item == null ? null : decimalText(item.weight()));
             appendHash(canonical, item == null ? null : item.sourceDocNo());
+            if(item!=null&&item.replacementIntent()!=null){
+                appendHash(canonical,"replacementIntent");
+                appendHash(canonical,item.replacementIntent());
+            }
         }
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")

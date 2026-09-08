@@ -328,14 +328,14 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
       }
       currencyId ??= it.currencyId;
       final amountText = _amtCtrls[it.id]?.text.trim() ?? '';
-      final amountUnits = financeExactDecimalUnits(amountText);
+      final amountUnits = financeAmountUnits(amountText);
       if (amountUnits == null || amountUnits <= BigInt.zero) {
         _showSelectionMessage(
           '${it.billNo ?? '该$_ledgerNoun'}：请填写大于 0 的本次$_actionNoun金额',
         );
         return;
       }
-      final openUnits = financeExactDecimalUnits(it.amountBalanceOriginalText);
+      final openUnits = financeAmountUnits(it.amountBalanceOriginalText);
       if (openUnits != null && amountUnits > openUnits) {
         _showSelectionMessage(
           '${it.billNo ?? '该$_ledgerNoun'}：本次$_actionNoun不能超过${_isAr ? '未收' : '未付'}金额',
@@ -346,7 +346,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
         AppliedArAp(
           ledgerId: it.id,
           appliedBillNo: it.billNo,
-          receiptAmountText: financeExactDecimalFromUnits(amountUnits),
+          receiptAmountText: financeAmountFromUnits(amountUnits),
           sourceDocType: it.sourceDocType,
           sourceDocNo: it.sourceDocNo,
           currencyId: it.currencyId,

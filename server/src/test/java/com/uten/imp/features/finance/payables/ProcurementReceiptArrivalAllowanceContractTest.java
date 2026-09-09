@@ -45,6 +45,7 @@ class ProcurementReceiptArrivalAllowanceContractTest {
     }
 
     private static String source(String relative) throws Exception {
-        return Files.readString(Path.of("src/main/java/com/uten/imp/features", relative));
+        return Files.readString(Path.of("src/main/java/com/uten/imp/features", relative))
+                .replace("\r\n", "\n");
     }
 }

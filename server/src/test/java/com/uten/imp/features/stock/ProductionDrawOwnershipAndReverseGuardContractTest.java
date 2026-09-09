@@ -34,8 +34,11 @@ class ProductionDrawOwnershipAndReverseGuardContractTest {
                 "private UUID addDrawItem(");
         assertThat(readinessDraw)
                 .contains("document.setWorkerId(responsibleEmployeeId);")
-                .contains("document.setMakerId(currentUser.requireEmployeeId());")
+                .contains("document.setMakerId(actor.employeeId());")
                 .doesNotContain("? currentUser.requireEmployeeId()");
+        assertThat(readiness)
+                .contains("new PromotionActor(currentUser.requireId(), currentUser.requireEmployeeId())")
+                .contains("ReceiptKind.RECONCILE, new PromotionActor(null, null)");
     }
 
     @Test

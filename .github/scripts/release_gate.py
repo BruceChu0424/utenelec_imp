@@ -91,7 +91,7 @@ def validate_run(run, workflow_id, path, sha, repository):
             positive_integer(run.get("run_attempt"), "run attempt"))
 
 
-def require_release_gates(api, repository, sha):
+def require_release_gates(api, repository, sha, allow_running=False):
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
         raise GateError("GITHUB_REPOSITORY must identify one owner/repository.")
     if not re.fullmatch(r"[0-9a-f]{40}", sha):
@@ -136,6 +136,17 @@ def require_release_gates(api, repository, sha):
         latest_key = validate_run(latest, workflow_id, path, sha, repository)
         if current_key[:2] != latest_key[:2] or current_key[2] < latest_key[2]:
             raise GateError(f"Latest run/attempt evidence changed inconsistently for {path}.")
+        pending = current.get("status") in {"queued", "in_progress", "waiting", "pending", "requested"}
+        if allow_running and pending and current.get("conclusion") is None:
+            jobs = api.get(f"{prefix}/runs/{current_key[1]}/attempts/{current_key[2]}/jobs?per_page=100")
+            batch = jobs.get("jobs")
+            count = jobs.get("total_count")
+            if type(count) is not int or not isinstance(batch, list) or count != len(batch) or count > 100:
+                raise GateError(f"Incomplete job evidence for pending workflow {path}.")
+            if any(not isinstance(job, dict) or job.get("conclusion") not in (None, "success") for job in batch):
+                raise GateError(f"A job has already failed or did not succeed in pending workflow {path}.")
+            evidence.append(f"{filename}: run {current_key[1]} attempt {current_key[2]} is still running for {sha}; explicitly authorized manual release, CI not yet passed")
+            continue
         if current.get("status") != "completed" or current.get("conclusion") != "success":
             # Only known enum values are printed, never arbitrary API error text.
             known = {"completed", "queued", "in_progress", "waiting", "pending", "requested",
@@ -152,10 +163,14 @@ def require_release_gates(api, repository, sha):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sha", required=True)
+    parser.add_argument("--allow-running", action="store_true",
+                        help="Explicit manual dispatch only: permit pending checks, never failed checks")
     args = parser.parse_args(argv)
     try:
+        if args.allow_running and os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
+            raise GateError("Pending-check release requires an explicit manual workflow dispatch.")
         api = GitHubApi(os.environ.get("GH_TOKEN", ""), os.environ.get("GITHUB_API_URL", "https://api.github.com"))
-        evidence = require_release_gates(api, os.environ.get("GITHUB_REPOSITORY", ""), args.sha)
+        evidence = require_release_gates(api, os.environ.get("GITHUB_REPOSITORY", ""), args.sha, args.allow_running)
     except GateError as failure:
         print(f"::error::Release gate rejected: {failure}", file=sys.stderr)
         return 1

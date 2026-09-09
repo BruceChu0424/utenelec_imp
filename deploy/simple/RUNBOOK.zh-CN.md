@@ -106,6 +106,12 @@ systemctl enable --now uten-imp.service uten-imp-updater.timer
 
 ## 四、日常发版（全自动）
 
+2026-09-09 用户明确允许本次先发布、CI继续运行：手动 `workflow_dispatch` 可显式勾选
+`allow_running_checks`（默认关闭）。仍检查同一提交、最新运行与尝试，已失败/取消的工作流或任务、
+缺失及不完整证据继续阻断；只允许尚在排队/运行且没有已失败任务的检查继续并行。
+构建前和签名前各核对一次，发布记录标注“CI未完成”，不冒充检查全绿。普通tag触发不能开启此选项。
+版本包依然由原发布密钥签名并上传阿里云OSS，业务附件和数据库使用内部服务器。
+
 Simple Release现在在构建前强制核验实际检出提交SHA对应的三个既有工作流：
 `quality.yml`（Quality Gate）、`codeql.yml`（CodeQL）、`osv-scanner.yml`
 （Dependency Vulnerability Scan）。每个工作流以文件路径和GitHub数值ID识别，取该SHA的

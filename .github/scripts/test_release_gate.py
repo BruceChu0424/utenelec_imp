@@ -96,6 +96,39 @@ class ReleaseGateTest(unittest.TestCase):
                 with self.assertRaisesRegex(gate.GateError, status):
                     gate.require_release_gates(api, REPOSITORY, SHA)
 
+    def test_explicit_manual_mode_accepts_running_without_failed_jobs(self):
+        api = FixtureApi()
+        api.details[1000] = run(100, "quality.yml", 1000, status="in_progress", conclusion=None)
+        original_get = api.get
+        with patch.object(api, "get", side_effect=lambda path: (
+                {"total_count": 2, "jobs": [{"conclusion": "success"}, {"conclusion": None}]}
+                if "/jobs?" in path else original_get(path))):
+            evidence = gate.require_release_gates(api, REPOSITORY, SHA, allow_running=True)
+        self.assertIn("CI not yet passed", evidence[0])
+
+    def test_manual_mode_never_accepts_failed_or_incomplete_jobs(self):
+        for payload in ({"total_count": 1, "jobs": [{"conclusion": "failure"}]},
+                        {"total_count": 2, "jobs": [{"conclusion": None}]},
+                        {"total_count": 1, "jobs": [{"conclusion": "cancelled"}]}):
+            api = FixtureApi()
+            api.details[1000] = run(100, "quality.yml", 1000, status="in_progress", conclusion=None)
+            original_get = api.get
+            with self.subTest(payload=payload), patch.object(api, "get", side_effect=lambda path: (
+                    payload if "/jobs?" in path else original_get(path))):
+                with self.assertRaises(gate.GateError):
+                    gate.require_release_gates(api, REPOSITORY, SHA, allow_running=True)
+
+    def test_manual_mode_does_not_accept_completed_failure(self):
+        api = FixtureApi()
+        api.details[1000] = run(100, "quality.yml", 1000, conclusion="failure")
+        with self.assertRaises(gate.GateError):
+            gate.require_release_gates(api, REPOSITORY, SHA, allow_running=True)
+
+    def test_pending_override_cannot_be_used_for_a_tag_push(self):
+        with patch.dict("os.environ", {"GITHUB_EVENT_NAME": "push"}), \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(1, gate.main(["--sha", SHA, "--allow-running"]))
+
     def test_fresh_attempt_overrules_stale_green_listing(self):
         for status, conclusion in (("in_progress", None), ("completed", "failure"), ("completed", "cancelled")):
             with self.subTest(status=status, conclusion=conclusion):

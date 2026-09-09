@@ -12,9 +12,14 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "版本号 vYYYY.MM.DD-N（必须已通过 Quality Gate 的提交上手动触发）"
+        description: "版本号 vYYYY.MM.DD-N"
         required: true
         type: string
+      allow_running_checks:
+        description: "明确允许本次手动发布不等待仍在运行的CI（已失败的检查仍阻断）"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -63,11 +68,14 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          ALLOW_RUNNING_CHECKS: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_running_checks }}
         run: |
           set -euo pipefail
           CHECKOUT_SHA="$(git rev-parse HEAD)"
           test "$CHECKOUT_SHA" = "$GITHUB_SHA"
-          python3 .github/scripts/release_gate.py --sha "$CHECKOUT_SHA"
+          GATE_ARGS=()
+          if [ "$ALLOW_RUNNING_CHECKS" = "true" ]; then GATE_ARGS+=(--allow-running); fi
+          python3 .github/scripts/release_gate.py --sha "$CHECKOUT_SHA" "${GATE_ARGS[@]}"
 
       - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:
@@ -111,11 +119,14 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          ALLOW_RUNNING_CHECKS: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_running_checks }}
         run: |
           set -euo pipefail
           CHECKOUT_SHA="$(git rev-parse HEAD)"
           test "$CHECKOUT_SHA" = "$GITHUB_SHA"
-          python3 .github/scripts/release_gate.py --sha "$CHECKOUT_SHA"
+          GATE_ARGS=()
+          if [ "$ALLOW_RUNNING_CHECKS" = "true" ]; then GATE_ARGS+=(--allow-running); fi
+          python3 .github/scripts/release_gate.py --sha "$CHECKOUT_SHA" "${GATE_ARGS[@]}"
 
       - name: Sign SHA256SUMS (Ed25519)
         shell: bash
@@ -251,9 +262,11 @@ jobs:
         env:
           OSS_BUCKET: ${{ vars.OSS_BUCKET }}
           OSS_ENDPOINT: ${{ vars.OSS_ENDPOINT }}
+          ALLOW_RUNNING_CHECKS: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_running_checks }}
         run: |
           {
             echo "## 发布完成：$VERSION"
+            echo "- 本次明确允许CI仍在运行时手动发布：$ALLOW_RUNNING_CHECKS；不表示CI已通过"
             echo "- OSS：$OSS_BUCKET@$OSS_ENDPOINT（发布后自动清理旧版本，只保留本版）"
             echo "- 服务器每天 05:00（北京时间）自动检测；纯代码版本自动激活，含迁移的版本需手动 activate；要立即拉取可 SSH：sudo /usr/local/sbin/uten-imp-updater check"
           } >> "$GITHUB_STEP_SUMMARY"

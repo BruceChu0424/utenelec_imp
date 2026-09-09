@@ -2,6 +2,24 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 
 void main() {
+  test('legacy leaf figures do not invent a main warehouse safety budget', () {
+    final material = ProductionMaterialAnalysisMaterial.fromJson({
+      'materialLineId': 'legacy',
+      'warehouseBreakdown': [
+        {
+          'warehouseId': 'leaf',
+          'publicAvailableQty': 200,
+          'openSafetySupplyQty': 30,
+          'safetyReplenishmentGapQty': 99,
+        },
+      ],
+    });
+    expect(material.mainWarehousePublicAvailableQty, 0);
+    expect(material.mainWarehouseOpenSafetySupplyQty, 0);
+    expect(material.mainWarehouseSafetyReplenishmentGapQty, 0);
+    expect(material.warehouseStocks.single.safetyReplenishmentGapQty, 99);
+  });
+
   test(
     'historical notification responses do not offer reversal reconciliation',
     () {
@@ -61,6 +79,7 @@ void main() {
         {
           'materialLineId': 'material-line-1',
           'analysisLineId': 'product-line-1',
+          'planAnchorAnalysisLineId': 'plan-child-item-uuid',
           'nodeKey': 'node-1',
           'actionGroupKey': 'action-material-1',
           'materialKey': 'goods-1|color-1|unit-1',
@@ -76,6 +95,10 @@ void main() {
           'availableQty': 4,
           'allocatedAvailableQty': 3,
           'exactPeggedQty': 2,
+          'safetyStockQty': 8,
+          'mainWarehousePublicAvailableQty': 10,
+          'mainWarehouseOpenSafetySupplyQty': 2,
+          'mainWarehouseSafetyReplenishmentGapQty': 0,
           'shortageQty': 16,
           'demandSupplyGapQty': 17,
           'sourceSuggestion': 'BUY',
@@ -155,6 +178,7 @@ void main() {
       isNull,
     );
     final material = view.materials.single;
+    expect(material.planAnchorAnalysisLineId, 'plan-child-item-uuid');
     expect(material.actionGroupKey, 'action-material-1');
     expect(material.path, ['产品', '组件A', '共享紧固件']);
     expect(material.parentNodeKey, 'node-parent');
@@ -163,6 +187,9 @@ void main() {
     expect(material.availableQty, 4);
     expect(material.allocatedAvailableQty, 3);
     expect(material.exactPeggedQty, 2);
+    expect(material.mainWarehousePublicAvailableQty, 10);
+    expect(material.mainWarehouseOpenSafetySupplyQty, 2);
+    expect(material.mainWarehouseSafetyReplenishmentGapQty, 0);
     expect(material.demandSupplyGapQty, 17);
     expect(material.actionable, isFalse);
     expect(material.sourceSuggestion, MaterialSupplyRoute.buy);

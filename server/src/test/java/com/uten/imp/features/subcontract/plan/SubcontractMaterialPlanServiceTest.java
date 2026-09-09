@@ -462,6 +462,16 @@ class SubcontractMaterialPlanServiceTest {
             // V458：本用例订货行不来自前置自制账本，谱系查询应返回空。
             return List.of();
         }
+        if (sql.contains("SELECT child.analysis_id,child.id,SUM(reservation.qty-reservation.released_qty)")
+                && sql.contains("reservation.owner_type='SUBCONTRACT_ORDER_PREPARATION'")
+                && sql.contains("reservation.owner_id=:orderItem")
+                && sql.contains("fn_subcontract_preparation_reservation_has_qualified_origin(reservation.id)")) {
+            assertTrue(orderItemRows.stream()
+                    .anyMatch(row -> row[0].equals(parameters.get("orderItem"))),
+                    "direct preparation must be looked up by this order's exact item UUID");
+            // These ordinary approval fixtures have no prior original-order FG holder.
+            return List.of();
+        }
         if (sql.contains("FROM subcontract_order_items item")) {
             return orderItemRows;
         }

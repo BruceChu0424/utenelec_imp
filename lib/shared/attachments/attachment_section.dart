@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/io/file_saver.dart';
+import '../../core/l10n/gen/app_localizations.dart';
 import '../../components/cards/uten_card.dart';
 import '../../components/layout/uten_section_header.dart';
 import '../../core/theme/uten_colors.dart';
@@ -19,7 +20,6 @@ import '../../core/ui/app_notification.dart';
 import '../../core/utils/china_datetime.dart';
 import '../auth/permissions.dart';
 import 'attachment.dart';
-import 'attachment_image_compressor.dart';
 import 'attachment_service.dart';
 
 class AttachmentSection extends ConsumerStatefulWidget {
@@ -234,7 +234,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '支持图片 / PDF / Office / zip，单个不超过 25MB；图片自动压缩存储',
+                      AppLocalizations.of(context).attachmentUploadFormatsHint,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -401,7 +401,9 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
       final result = await FilePicker.platform.pickFiles(
         withData: true,
         allowMultiple: true,
+        allowCompression: false,
       );
+      if (!mounted) return;
       final files = result?.files ?? const <PlatformFile>[];
       if (files.isEmpty) return;
       final category = widget.categories == null
@@ -409,8 +411,9 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
           : (_filterCategory ?? widget.categories!.first);
       var attempted = 0;
       var succeeded = 0;
-      String? lastCompressNote;
+      String? uploadedFileName;
       for (final f in files) {
+        if (!mounted) break;
         setState(
           () => _progressLabel = files.length > 1
               ? '正在上传 ${++attempted}/${files.length}'
@@ -421,52 +424,39 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
           if (mounted) context.appError('无法读取「${f.name}」的内容');
           continue;
         }
-        var contentType = guessContentType(f.name);
+        final contentType = guessContentType(f.name);
         if (contentType == null) {
           if (mounted) {
             context.appError('「${f.name}」类型不支持(仅图片/PDF/Office/zip/txt)');
           }
           continue;
         }
-        // 图片先压缩再上传（长边≤1920 / JPEG q85；小图与 GIF 原样保留）
-        var uploadBytes = bytes;
-        var uploadName = f.name;
-        final compressed = await AttachmentImageCompressor.process(
-          bytes: bytes,
-          fileName: f.name,
-          contentType: contentType,
-        );
-        if (compressed.compressed) {
-          uploadBytes = compressed.bytes;
-          uploadName = compressed.fileName;
-          contentType = compressed.contentType;
-          lastCompressNote =
-              '图片已压缩 ${_fmtSize(compressed.originalSize ?? 0)}'
-              ' → ${_fmtSize(uploadBytes.length)}';
-        }
+        // File identity and original bytes are authoritative. Storage may use
+        // lossless compression without changing the uploaded/downloaded file.
         try {
           await ref
               .read(attachmentServiceProvider)
               .upload(
                 ownerType: widget.ownerType,
                 ownerId: widget.ownerId,
-                fileName: uploadName,
+                fileName: f.name,
                 contentType: contentType,
-                bytes: uploadBytes,
+                bytes: bytes,
                 category: category,
               );
           succeeded++;
+          uploadedFileName = f.name;
         } catch (e) {
           if (mounted) context.appError('「${f.name}」上传失败：$e');
         }
       }
-      if (succeeded > 0) widget.onChanged();
       if (mounted && succeeded > 0) {
-        final note = lastCompressNote == null ? '' : '($lastCompressNote)';
+        widget.onChanged();
+        final l10n = AppLocalizations.of(context);
         context.appSuccess(
           succeeded == 1
-              ? '已上传 ${files.first.name}$note'
-              : '已上传 $succeeded 个文件$note',
+              ? l10n.attachmentUploadedFile(uploadedFileName!)
+              : l10n.attachmentUploadedFiles(succeeded),
         );
       }
     } finally {

@@ -1,0 +1,14 @@
+{
+  "database": "uten_imp",
+  "socket_directory": "/run/postgresql",
+  "port": 5432,
+  "postgres_user": "postgres",
+  "media_root": "/var/lib/uten-imp-media/attachments",
+  "backup_root": "/data/uten-imp-backups/paired",
+  "pg_dump": "/usr/lib/postgresql/16/bin/pg_dump",
+  "min_free_bytes": 10737418240,
+  "min_free_percent": 15,
+  "bytes_per_second": 20971520,
+  "max_seconds": 1800,
+  "max_object_bytes": 1073741824
+}

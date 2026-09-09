@@ -29,8 +29,9 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
         db.update("INSERT INTO stock_value_production_cost_objects(execution_segment_id,product_pool_id,source_kind) VALUES (:id,:pool,:kind) ON CONFLICT DO NOTHING",
                 args("id",scope.sourceId(),"pool",pool.id(),"kind",scope.kind().name()));
         var current=object(scope.sourceId(),true);
-        if(!scope.kind().name().equals(current.get("source_kind"))||!pool.id().equals(current.get("product_pool_id")))
-            throw conflict("同一成本来源不能改挂不同业务类型、货品或归属仓");
+        if(!scope.kind().name().equals(current.get("source_kind")))
+            throw conflict("同一成本来源不能改挂不同业务类型");
+        requireSameProduct(current,pool);
     }
 
     @Override @Transactional(readOnly=true)
@@ -42,12 +43,51 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
     @Override @Transactional(propagation=Propagation.MANDATORY)
     public void registerOutput(UUID segment,PoolKey product,Output output){
         transaction();required(segment,"生产执行段UUID");product=key(product);requireHeld(product);
-        requireHeld(node(output.finishedSourceNodeId(),false).key());Pool pool=lockPool(product);
+        Node actual=node(output.finishedSourceNodeId(),false);requireHeld(actual.key());
+        if(!actual.key().equals(product))throw conflict("成品来源必须保留该笔实物入库的货品、颜色和实际仓库");
+        Pool pool=lockPool(product);
         db.update("INSERT INTO stock_value_production_cost_objects(execution_segment_id,product_pool_id) SELECT :segment,:pool WHERE NOT EXISTS(SELECT 1 FROM stock_value_production_cost_objects WHERE execution_segment_id=:segment) ON CONFLICT DO NOTHING",
                 args("segment",segment,"pool",pool.id()));
         Map<String,Object> object=object(segment,true);
-        if(!pool.id().equals(object.get("product_pool_id")))throw conflict("同执行段不能绑定不同产出产品和归属池");
+        requireSameProduct(object,pool);
         bindOutput(segment,product,output);
+    }
+
+    @Override @Transactional(propagation=Propagation.MANDATORY)
+    public MovementValue withdrawOutput(Withdrawal command){
+        transaction();EventContext c=context(command.context());PoolKey actual=key(command.actualPool());requireHeld(actual);
+        required(command.executionSegmentId(),"生产执行段UUID");required(command.originalMovementId(),"原成品流水UUID");required(command.reverseMovementId(),"成品撤回流水UUID");
+        var outputs=db.queryForList("SELECT * FROM stock_value_production_cost_outputs WHERE execution_segment_id=:scope AND movement_id=:movement",
+                args("scope",command.executionSegmentId(),"movement",command.originalMovementId()));
+        if(outputs.size()!=1)throw conflict("成品撤回必须保留唯一原执行段产出来源");
+        var output=outputs.getFirst();UUID source=(UUID)output.get("source_node_id");
+        if(!node(source,false).key().equals(actual)||((BigDecimal)output.get("qty_base")).compareTo(command.qtyBase())!=0)
+            throw conflict("成品撤回的实际仓、货品、颜色或原入库数量不一致");
+        if(output.get("withdrawn_movement_id")!=null){
+            if(!command.reverseMovementId().equals(output.get("withdrawn_movement_id")))throw conflict("该成品产出已被另一笔真实流水撤回");
+            return values.reverseUnusedProductionReceipt(c,command.reverseMovementId(),actual,command.expectedQtyBefore(),command.originalMovementId());
+        }
+        for(UUID input:db.queryForList("SELECT input_node_id FROM stock_value_production_cost_inputs WHERE execution_segment_id=:scope",args("scope",command.executionSegmentId()),UUID.class))requireHeld(node(input,false).key());
+        values.requireUnusedProductionReceipt(actual,command.expectedQtyBefore(),command.originalMovementId());
+        Map<String,Object> object=object(command.executionSegmentId(),true);
+        if(typedScopesInstalled&&!"PRODUCTION_EXECUTION".equals(object.get("source_kind")))throw conflict("该产出不属于原生产执行成本对象");
+        if(hasTasks((UUID)object.get("current_revision_id")))throw conflict("本工单原成本分配正在执行，请完成后重试成品撤回");
+        values.synchronizePoolProjection(actual);
+        if(db.update("UPDATE stock_value_production_cost_outputs SET withdrawn_movement_id=:reverse WHERE execution_segment_id=:scope AND source_node_id=:source AND withdrawn_movement_id IS NULL",
+                args("reverse",command.reverseMovementId(),"scope",command.executionSegmentId(),"source",source))!=1)throw conflict("成品产出撤回状态已变化");
+        if(object.get("current_revision_id")!=null){
+            var previous=plan((UUID)object.get("current_revision_id"));
+            EventContext revisionContext=new EventContext(command.reverseMovementId(),"PRODUCTION_OUTPUT_WITHDRAWAL",command.executionSegmentId(),source,
+                    number(object,"version")+1,c.actorUserId(),c.actorEmployeeId(),"WITHDRAW-COST:"+command.originalMovementId(),c.occurredAt());
+            Revised revised=revise(new Revision(revisionContext,command.executionSegmentId(),actual,number(object,"version"),
+                    (BigDecimal)previous.get("target_qty_base"),false,(UUID)previous.get("approval_evidence_id"),previous.get("approval_evidence_hash").toString(),List.of(),List.of()));
+            // Reclassifications use the existing per-input/per-output facts. Only this
+            // physical pool must finish propagation before its quantity can be removed.
+            for(UUID task:db.queryForList("SELECT id FROM stock_value_production_cost_tasks WHERE revision_id=:revision AND status='PENDING' ORDER BY task_sequence",
+                    args("revision",revised.revisionId()),UUID.class))apply(task);
+        }
+        values.synchronizePoolProjection(actual);
+        return values.reverseUnusedProductionReceipt(c,command.reverseMovementId(),actual,command.expectedQtyBefore(),command.originalMovementId());
     }
 
     @Override @Transactional(propagation=Propagation.MANDATORY)
@@ -78,7 +118,8 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
                 args("segment",command.executionSegmentId(),"pool",pool.id()));
         Map<String,Object> object=object(command.executionSegmentId(),true);
         replay=revisionReplay(c,request);if(replay!=null)return revisionResult(replay,true);
-        if(!pool.id().equals(object.get("product_pool_id"))||number(object,"version")!=command.expectedVersion())throw conflict("执行段产出归属或成本方案版本已变化");
+        requireSameProduct(object,pool);
+        if(number(object,"version")!=command.expectedVersion())throw conflict("执行段成本方案版本已变化");
         if(hasTasks((UUID)object.get("current_revision_id")))throw conflict("原成本版本正在分批执行，请先完成或重试原任务");
         for(Input input:inputs)registerInput(command.executionSegmentId(),input);
         for(Output output:outputs)bindOutput(command.executionSegmentId(),product,output);
@@ -112,6 +153,9 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
                         -round((i->>'value')::numeric*((i->>'quantityBasis')::numeric-(i->>'returnedQty')::numeric)*(o->>'from')::numeric/(r.target_qty_base*(i->>'quantityBasis')::numeric),4) END%s
                 FROM stock_value_production_cost_revisions r CROSS JOIN LATERAL jsonb_array_elements(r.input_snapshot) i
                     CROSS JOIN LATERAL jsonb_array_elements(r.output_snapshot) o WHERE r.id=:revision
+                    AND ((o->>'to')::numeric>(o->>'from')::numeric OR EXISTS(
+                        SELECT 1 FROM stock_value_production_cost_shares old WHERE old.input_node_id=(i->>'node')::uuid
+                            AND old.output_source_node_id=(o->>'source')::uuid AND old.allocated_value_local<>0))
                 """.formatted(consumptionReturnsInstalled?",input_returned_qty,input_quantity_basis,input_return_cursor_id":"",
                     consumptionReturnsInstalled?",(i->>'returnedQty')::numeric,(i->>'quantityBasis')::numeric,(i->>'returnCursor')::uuid":""),args("revision",revision));
         long pending=taskCount(revision);CostState next=pending>0?CostState.APPLYING:invalidBasis?CostState.PENDING_BASIS:
@@ -196,6 +240,9 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
                         OR EXISTS(SELECT 1 FROM stock_value_production_cost_tasks task WHERE task.revision_id=revision.id
                             AND task.output_source_node_id=:output AND task.status='PENDING' AND task.id<>:task)))
                 """,args("output",output.id(),"task",taskId),Boolean.class));
+        if(((BigDecimal)task.get("output_to")).compareTo((BigDecimal)task.get("output_from"))==0
+                &&Boolean.TRUE.equals(db.queryForObject("SELECT EXISTS(SELECT 1 FROM stock_value_production_cost_outputs WHERE execution_segment_id=:scope AND source_node_id=:output AND withdrawn_movement_id IS NOT NULL)",
+                args("scope",segment,"output",output.id()),Boolean.class)))complete=true;
         EventContext c=new EventContext((UUID)plan.get("id"),"PRODUCTION_COST_ALLOCATION",segment,taskId,number(plan,"version"),
                 (UUID)plan.get("actor_user_id"),(UUID)plan.get("actor_employee_id"),taskId.toString(),
                 ((java.sql.Timestamp)plan.get("occurred_at")).toInstant().atOffset(java.time.ZoneOffset.UTC));
@@ -256,6 +303,12 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
         if(!Boolean.TRUE.equals(db.queryForObject("SELECT EXISTS(SELECT 1 FROM stock_value_production_cost_inputs WHERE input_node_id=:node AND execution_segment_id=:segment AND approved_posting_id=:posting AND input_kind=:kind)",
                 args("node",n.id(),"segment",segment,"posting",input.approvedPostingId(),"kind",input.kind().name()),Boolean.class)))throw conflict("原耗用posting已经关联不同成本来源");
     }
+    private void requireSameProduct(Map<String,Object> object,Pool candidate){
+        Pool registered=poolById((UUID)object.get("product_pool_id"),false);
+        if(!sameGoods(registered.key(),candidate.key()))throw conflict("同一成本对象不能改挂不同货品或颜色");
+        // Keep the original pool as an immutable product identity anchor. Each output
+        // retains its own physical pool; source kind/id and COST_WIP ownership stay fixed.
+    }
     private void bindOutput(UUID segment,PoolKey product,Output output){Node n=node(output.finishedSourceNodeId(),false);
         if(!Set.of("SOURCE","RETURN_SOURCE").contains(n.kind())||!output.movementId().equals(n.movementId())||!sameGoods(n.key(),product))throw conflict("产出必须引用本产品确切的已入库来源及movement UUID");
         if(!Boolean.TRUE.equals(db.queryForObject("""
@@ -276,11 +329,12 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
                     'returnCursor',to_jsonb(n)->>'consumption_return_head_id') ORDER BY n.id),'[]'::jsonb)
                 FROM stock_value_production_cost_inputs i JOIN stock_value_nodes n ON n.id=i.input_node_id WHERE i.execution_segment_id=:segment) inputs,
                 coalesce(jsonb_agg(jsonb_build_object('source',s.source_node_id,'movement',s.movement_id,'qty',s.qty_base,
-                    'from',s.through_qty-s.qty_base,'to',s.through_qty) ORDER BY s.output_sequence),'[]'::jsonb) outputs,
-                coalesce(sum(s.qty_base),0) output_qty
-            FROM (SELECT o.*,sum(qty_base) OVER(ORDER BY output_sequence) through_qty
-                FROM stock_value_production_cost_outputs o WHERE execution_segment_id=:segment
-                    AND (to_jsonb(o)->>'withdrawn_movement_id') IS NULL) s
+                    'withdrawnMovement',to_jsonb(s)->>'withdrawn_movement_id',
+                    'from',s.through_qty-s.active_qty,'to',s.through_qty) ORDER BY s.output_sequence),'[]'::jsonb) outputs,
+                coalesce(sum(s.active_qty),0) output_qty
+            FROM (SELECT o.*,CASE WHEN (to_jsonb(o)->>'withdrawn_movement_id') IS NULL THEN qty_base ELSE 0 END active_qty,
+                    sum(CASE WHEN (to_jsonb(o)->>'withdrawn_movement_id') IS NULL THEN qty_base ELSE 0 END) OVER(ORDER BY output_sequence) through_qty
+                FROM stock_value_production_cost_outputs o WHERE execution_segment_id=:segment) s
             """,args("segment",segment));}
     private Map<String,Object> object(UUID id,boolean lock){List<Map<String,Object>> rows=db.queryForList("SELECT * FROM stock_value_production_cost_objects WHERE execution_segment_id=:id"+(lock?" FOR UPDATE":""),args("id",id));
         if(rows.size()!=1)throw conflict("生产成本对象尚未建立");return rows.getFirst();}

@@ -1,3 +1,7 @@
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +12,88 @@ import 'package:uten_imp/features/finance/payables/widgets/subcontract_loss_clai
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
+  for (final scenario in [
+    (
+      status: 'OPEN',
+      review: true,
+      masked: false,
+      visible: true,
+      writable: true,
+    ),
+    (
+      status: 'DISPUTED',
+      review: true,
+      masked: false,
+      visible: true,
+      writable: true,
+    ),
+    (
+      status: 'AWAITING_FULFILLMENT',
+      review: true,
+      masked: false,
+      visible: true,
+      writable: false,
+    ),
+    (
+      status: 'OPEN',
+      review: false,
+      masked: false,
+      visible: true,
+      writable: false,
+    ),
+    (
+      status: 'OPEN',
+      review: true,
+      masked: true,
+      visible: false,
+      writable: false,
+    ),
+  ]) {
+    testWidgets(
+      'loss originals freeze at decision: ${scenario.status}/${scenario.review}/${scenario.masked}',
+      (tester) async {
+        tester.view.physicalSize = const Size(1400, 1600);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await _pump(
+          tester,
+          detail: {
+            ..._openDetail,
+            'summary': {
+              ..._summaryBase,
+              'status': scenario.status,
+              'priceMasked': scenario.masked,
+            },
+          },
+          permissions: {
+            Perm.subcontractLossClaimView,
+            Perm.financeViewAll,
+            Perm.attachmentView,
+            Perm.attachmentUpload,
+            if (scenario.review) Perm.subcontractLossClaimReview,
+          },
+        );
+        expect(
+          find.text('损耗和责任凭证'),
+          scenario.visible ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.text('上传'),
+          scenario.writable ? findsOneWidget : findsNothing,
+        );
+        if (scenario.visible) {
+          final section = tester.widget<BusinessAttachmentSection>(
+            find.byType(BusinessAttachmentSection),
+          );
+          expect(section.ownerType, 'SUBCONTRACT_LOSS_CASE');
+          expect(section.ownerId, 'case-1');
+          expect(section.canManage, scenario.writable);
+        }
+      },
+    );
+  }
+
   testWidgets(
     'cash and physical plans are actionable while service reduction stays dedicated',
     (tester) async {
@@ -109,15 +195,25 @@ Future<void> _pump(
   required Map<String, dynamic> detail,
   required Set<String> permissions,
 }) async {
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiClientProvider.overrideWithValue(_DetailApi(detail)),
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        businessAttachmentsProvider((
+          type: 'SUBCONTRACT_LOSS_CASE',
+          id: 'case-1',
+        )).overrideWith((ref) async => []),
         subcontractLossClaimRepositoryProvider.overrideWithValue(
           SubcontractLossClaimRepository(_DetailApi(detail)),
         ),
         currentPermissionsProvider.overrideWithValue(permissions),
       ],
       child: const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: SubcontractLossClaimDetailPanel(caseId: 'case-1'),
       ),
     ),

@@ -1473,6 +1473,21 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 eventType + ":" + caseId + ":" + discriminator);
     }
 
+    /** Minimal existing-scope projection for the attachment owner policy. */
+    @Transactional(readOnly = true)
+    public CaseItem attachmentOwnerView(UUID id) {
+        return item(requireSummary(id));
+    }
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public CaseItem lockAttachmentOwner(UUID id) {
+        tx.bind();
+        var guard = mutationLocks.iqcCase(id);
+        lock(id);
+        guard.verifyUnchanged();
+        return item(requireSummary(id));
+    }
+
     private Object[] requireSummary(UUID id) {
         String scope = canViewAllCases() ? "" : " AND rejection.owner_user_id=:currentUserId";
         Query query = em.createNativeQuery(

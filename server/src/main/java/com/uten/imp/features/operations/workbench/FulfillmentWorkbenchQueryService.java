@@ -54,6 +54,14 @@ public class FulfillmentWorkbenchQueryService {
             LocalDate dateTo,
             int page,
             int size) {
+        return query(department, status, keyword, exception, dateFrom, dateTo, page, size, null);
+    }
+
+    @Transactional(readOnly = true)
+    public FulfillmentWorkbenchPage query(
+            String department, String status, String keyword, String exception,
+            LocalDate dateFrom, LocalDate dateTo, int page, int size,
+            FulfillmentWorkbenchTableQuery table) {
         if (!DEPARTMENTS.contains(department)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门无效");
         }
@@ -198,6 +206,7 @@ public class FulfillmentWorkbenchQueryService {
         if ("SUBCONTRACT".equals(department) && accessPolicy.canViewSubcontractPreparationTasks()) {
             sourceView = "(" + sourceView + " UNION ALL " + subcontractPreparationRows() + ")";
         }
+        sourceView = enrichTableRows(sourceView, department);
         String filters = """
                 department = :department
                   AND (:status = ''
@@ -220,6 +229,9 @@ public class FulfillmentWorkbenchQueryService {
                   AND (CAST(:date_to AS date) IS NULL
                        OR updated_at < CAST(:date_to AS date) + INTERVAL '1 day')
                 """;
+        String tableFilters = table == null ? "" : table.rangeSql() + table.filterSql(null);
+        String priority = "CASE WHEN can_create_order THEN 0 WHEN open_line_count > 0 THEN 1 ELSE 2 END, ";
+        String orderBy = priority + (table == null ? "need_date NULLS LAST, task_id" : table.orderSql());
 
         Query rowsQuery = em.createNativeQuery("""
                 SELECT department, task_id, package_id, plan_id, plan_no,
@@ -229,14 +241,15 @@ public class FulfillmentWorkbenchQueryService {
                        supply_pegged_qty, open_qty, task_status, need_date,
                        expected_date, exception_code, updated_at,
                        action_doc_type, action_doc_id, action_doc_no, action_item_id, action_doc_status,
-                       goods_count, open_line_count, action_item_ids
+                       goods_count, open_line_count, action_item_ids, issued_at, can_create_order
                 FROM %s
                 WHERE %s
-                ORDER BY need_date NULLS LAST, task_id
+                ORDER BY %s
                 OFFSET :offset LIMIT :limit
-                """.formatted(sourceView, filters));
+                """.formatted(sourceView, filters + tableFilters, orderBy));
         bind(rowsQuery, department, normalizedStatus, normalizedKeyword,
                 normalizedException, dateFrom, dateTo);
+        if (table != null) table.bind(rowsQuery);
         rowsQuery.setParameter("offset", (long) (safePage - 1) * safeSize);
         rowsQuery.setParameter("limit", safeSize);
         List<FulfillmentTaskRow> items =
@@ -252,9 +265,10 @@ public class FulfillmentWorkbenchQueryService {
                        COALESCE(SUM(open_qty), 0)
                 FROM %s
                 WHERE %s
-                """.formatted(sourceView, filters));
+                """.formatted(sourceView, filters + tableFilters));
         bind(summaryQuery, department, normalizedStatus, normalizedKeyword,
                 normalizedException, dateFrom, dateTo);
+        if (table != null) table.bind(summaryQuery);
         Object[] summary = (Object[]) summaryQuery.getSingleResult();
         long total = ((Number) summary[0]).longValue();
 
@@ -299,6 +313,38 @@ public class FulfillmentWorkbenchQueryService {
                 """.formatted(sourceView, filters));
         bind(pendingQuery, department, "", normalizedKeyword, normalizedException, null, null);
         long pendingTasks = ((Number) pendingQuery.getSingleResult()).longValue();
+        Map<String, List<FulfillmentWorkbenchPage.Facet>> facets = new LinkedHashMap<>();
+        Map<String, Long> nullCounts = new LinkedHashMap<>();
+        if (table != null) {
+            // One materialized candidate set; each column excludes its own filter, while
+            // retaining all other columns and the real date/category/keyword predicates.
+            String values = FulfillmentWorkbenchTableQuery.FIELDS.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey()).map(entry -> {
+                        String label = "goods".equals(entry.getKey())
+                                ? "NULLIF(concat_ws(' ',goods_code,goods_name),'')" : entry.getValue();
+                        return "('" + entry.getKey() + "'," + entry.getValue() + "," + label
+                                + ", (TRUE " + table.filterSql(entry.getKey()) + "))";
+                    }).collect(java.util.stream.Collectors.joining(","));
+            Query facetQuery = em.createNativeQuery("""
+                    WITH candidates AS MATERIALIZED (SELECT * FROM %s WHERE %s)
+                    SELECT facet.key, facet.value, MAX(facet.label), COUNT(*)
+                    FROM candidates CROSS JOIN LATERAL (VALUES %s) facet(key,value,label,included)
+                    WHERE facet.included
+                    GROUP BY facet.key,facet.value ORDER BY facet.key,facet.value NULLS LAST
+                    """.formatted(sourceView, filters + table.rangeSql(), values));
+            bind(facetQuery, department, normalizedStatus, normalizedKeyword, normalizedException, dateFrom, dateTo);
+            table.bind(facetQuery);
+            for (Object[] row : NativeQueryResults.objectArrayRows(facetQuery)) {
+                String key = (String) row[0];
+                long count = ((Number) row[3]).longValue();
+                if (row[1] == null) {
+                    nullCounts.put(key, count);
+                } else {
+                    facets.computeIfAbsent(key, ignored -> new java.util.ArrayList<>()).add(
+                            new FulfillmentWorkbenchPage.Facet(row[1].toString(), (String) row[2], count));
+                }
+            }
+        }
 
         return new FulfillmentWorkbenchPage(
                 items,
@@ -318,7 +364,7 @@ public class FulfillmentWorkbenchQueryService {
                         "PURCHASE".equals(department)
                                 && accessPolicy.canCreatePurchaseOrder(),
                         "SUBCONTRACT".equals(department)
-                                && accessPolicy.canCreateSubcontractOrder()));
+                                && accessPolicy.canCreateSubcontractOrder()), facets, nullCounts);
     }
 
     @Transactional(readOnly = true)
@@ -360,6 +406,66 @@ public class FulfillmentWorkbenchQueryService {
     }
 
     /** Pending preparation is a server-paged read-only task, never a client-side extra row. */
+    private String enrichTableRows(String source, String department) {
+        boolean subcontract = "SUBCONTRACT".equals(department);
+        boolean canCreate = subcontract ? accessPolicy.canCreateSubcontractOrder()
+                : "PURCHASE".equals(department) && accessPolicy.canCreatePurchaseOrder();
+        String requestType = subcontract ? "SUBCONTRACT_APPLICATION" : "PURCHASE_REQUEST";
+        List<String> types = "WAREHOUSE".equals(department) ? List.of("DRAW")
+                : subcontract ? List.of("SUBCONTRACT_APPLICATION", "SUBCONTRACT_ORDER", "SUBCONTRACT_MAKE_TASK")
+                : List.of("PURCHASE_REQUEST", "PURCHASE_ORDER");
+        String readable = types.stream().filter(type -> accessPolicy.documentAccess(department, type) != null
+                        && accessPolicy.documentAccess(department, type).canView())
+                .map(type -> "'" + type + "'").collect(java.util.stream.Collectors.joining(","));
+        String visibleDoc = readable.isEmpty() ? "NULL::text"
+                : "CASE WHEN base.action_doc_type IN (" + readable + ") THEN NULLIF(base.action_doc_no,'') END";
+        String issueJoin = subcontract ? """
+                LEFT JOIN LATERAL (
+                    WITH source_items AS (
+                        SELECT item::uuid AS application_item_id
+                        FROM unnest(base.action_item_ids) item
+                        WHERE base.action_doc_type='SUBCONTRACT_APPLICATION'
+                        UNION
+                        SELECT source.application_item_id
+                        FROM unnest(base.action_item_ids) item
+                        JOIN subcontract_order_item_sources source ON source.order_item_id=item::uuid
+                        WHERE base.action_doc_type='SUBCONTRACT_ORDER' AND source.alloc_qty > 0
+                    ), origin_actions AS (
+                        SELECT task.supply_action_id AS id
+                        FROM preplan_subcontract_make_tasks task
+                        WHERE base.action_doc_type='SUBCONTRACT_MAKE_TASK' AND task.id=base.action_doc_id
+                        UNION
+                        SELECT task.supply_action_id
+                        FROM source_items source
+                        JOIN preplan_subcontract_make_task_batches batch ON batch.application_item_id=source.application_item_id
+                        JOIN preplan_subcontract_make_tasks task ON task.id=batch.task_id
+                        UNION
+                        SELECT allocation.action_id
+                        FROM source_items source
+                        JOIN preplan_supply_action_allocations allocation ON allocation.external_item_id=source.application_item_id
+                        JOIN preplan_supply_actions action ON action.id=allocation.action_id
+                          AND action.external_document_type='SUBCONTRACT_APPLICATION' AND action.route='SUBCONTRACT'
+                        WHERE NOT EXISTS(SELECT 1 FROM preplan_subcontract_make_task_batches batch
+                                         WHERE batch.application_item_id=source.application_item_id)
+                    )
+                    SELECT MIN(action.created_at) AS issued_at
+                    FROM origin_actions origin JOIN preplan_supply_actions action ON action.id=origin.id
+                ) issue ON TRUE
+                """ : "";
+        // A grouped order can contain several real source issues. Its earliest source issue
+        // remains the displayed date; later preparation/app creation never substitutes for it.
+        return """
+                (SELECT base.*, %s AS issued_at,
+                        (%s AND base.task_status='WAITING_ORDER' AND base.action_doc_type='%s'
+                            AND base.open_line_count > 0) AS can_create_order,
+                        %s AS visible_doc_no,
+                        CASE WHEN base.action_doc_type='SUBCONTRACT_MAKE_TASK' THEN base.action_doc_status
+                             ELSE base.task_status END AS display_stage
+                 FROM %s base %s)
+                """.formatted(subcontract ? "issue.issued_at" : "NULL::timestamptz",
+                        canCreate ? "TRUE" : "FALSE", requestType, visibleDoc, source, issueJoin);
+    }
+
     private static String subcontractPreparationRows() {
         return """
                 SELECT 'SUBCONTRACT'::text AS department, task.id AS task_id,
@@ -403,7 +509,7 @@ public class FulfillmentWorkbenchQueryService {
                 new FulfillmentWorkbenchPage.Summary(
                         0, 0, 0, BigDecimal.ZERO,
                         Map.of(), Map.of(), 0),
-                new FulfillmentWorkbenchPage.Capabilities(false, false));
+                new FulfillmentWorkbenchPage.Capabilities(false, false), Map.of(), Map.of());
     }
 
     private static void bind(
@@ -461,7 +567,8 @@ public class FulfillmentWorkbenchQueryService {
                 false,
                 row[31] == null ? 0 : ((Number) row[31]).longValue(),
                 row[32] == null ? 0 : ((Number) row[32]).longValue(),
-                stringArray(row[33]));
+                stringArray(row[33]), row.length > 34 ? offsetDateTime(row[34]) : null,
+                row.length > 35 && Boolean.TRUE.equals(row[35]));
     }
 
     /** text[] 聚合列（归组行的明细 id 集合）→ 不可变字符串列表；空值回空表。 */
@@ -538,7 +645,8 @@ public class FulfillmentWorkbenchQueryService {
                 actionDocType, actionDocId, actionDocNo, actionDocItemId, actionDocStatus,
                 canView, canEdit, restricted,
                 row.goodsCount(), row.openLineCount(),
-                restricted ? List.of() : row.actionItemIds());
+                restricted ? List.of() : row.actionItemIds(), row.issuedAt(),
+                !restricted && row.canCreateOrder());
     }
 
     private static BigDecimal decimal(Object value) {

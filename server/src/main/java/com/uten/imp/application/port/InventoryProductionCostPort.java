@@ -29,6 +29,9 @@ public interface InventoryProductionCostPort {
                    long pendingTasks, CostState state, boolean replayed) {}
     record Work(UUID taskId, UUID executionSegmentId, PoolKey inputPool, PoolKey outputPool) {}
     record Applied(boolean applied, boolean replayed, boolean revisionComplete) {}
+    record Withdrawal(EventContext context, UUID executionSegmentId, PoolKey actualPool,
+                      UUID originalMovementId, UUID reverseMovementId, BigDecimal qtyBase,
+                      BigDecimal expectedQtyBefore) {}
     record Recalculation(UUID executionSegmentId, UUID sourceEventId, long currentVersion) {}
     record CostPosition(UUID executionSegmentId, long version, BigDecimal targetQtyBase,
                         BigDecimal actualKnownCostLocal, BigDecimal allocatedToOutputsLocal,
@@ -38,6 +41,8 @@ public interface InventoryProductionCostPort {
     /** Bind before the physical inbound transaction commits; later cost work cannot reassign its execution identity. */
     void registerOutput(UUID executionSegmentId, PoolKey productPool, Output output);
     void registerScope(Scope scope);
+    /** Withdraw one unused physical output and return its allocated cost to the same cost object. */
+    MovementValue withdrawOutput(Withdrawal command);
     Scope scope(UUID sourceId);
     Revised revise(Revision command);
     /** Reuses the current approved plan, only refreshing its actual-cost sources. */

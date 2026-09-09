@@ -624,53 +624,12 @@ abstract class _MaterialAnalysisPageBase
       }
       await ref.read(materialAnalysisWarehousePrefsProvider.notifier).syncNow();
       if (!mounted) return;
-      final names = ref.read(masterNameServiceProvider);
-      final warehouses = names.warehouseEntries;
       final preference = ref.read(materialAnalysisWarehousePrefsProvider);
-      if (_warehouseId == null && preference.primaryWarehouseId != null) {
-        _warehouseId = preference.primaryWarehouseId;
-      }
-      if (_warehouseIds.isEmpty) {
-        _warehouseIds.addAll(preference.warehouseIds);
-      }
-      // V476：主仓库（父仓）只作汇总查询，不参与分析——齐套/预留/DRAW 的仓库
-      // 真值必须是具体叶子仓（后端同口径校验）。旧偏好/兜底里落进父仓的一律剔除。
-      final parentIds = names.warehouseHierarchy
-          .map((e) => e.parentId)
-          .whereType<String>()
-          .toSet();
-      final leafIds = names.warehouseHierarchy
-          .where(
-            (e) =>
-                !parentIds.contains(e.id) &&
-                e.isAccountable &&
-                e.status != '禁用',
-          )
-          .map((e) => e.id)
-          .toList();
-      _warehouseIds.removeWhere(
-        (id) => !warehouses.containsKey(id) || parentIds.contains(id),
-      );
-      if (_warehouseId != null &&
-          (!warehouses.containsKey(_warehouseId) ||
-              parentIds.contains(_warehouseId))) {
-        _warehouseId = null;
-      }
-      if (_warehouseId == null && leafIds.isNotEmpty) {
-        _warehouseId = leafIds.first;
-      }
-      if (_warehouseId != null) _warehouseIds.add(_warehouseId!);
-      if (_warehouseId == null) {
-        setState(() {
-          _booting = false;
-          _error = '尚未维护可用仓库，无法按仓库分析物料';
-        });
-        return;
-      }
+      _warehouseId ??= preference.primaryWarehouseId;
       if (!_normalizeNewWarehouseScope()) {
         setState(() {
           _booting = false;
-          _error = _l10n.materialWarehouseLimit;
+          _error = '尚未维护可用主仓库，无法分析物料';
         });
         return;
       }
@@ -1346,7 +1305,8 @@ abstract class _MaterialAnalysisPageBase
   }
 
   /// 解析已确认路线的「先自制」委托子产品（MAKE 与有子层委外共用一套：
-  /// 只认服务端显式 delegated child ID 或对应 MAKE_TASK.documentId；
+  /// 优先取持久材料锚点 planAnchorAnalysisLineId，旧载荷只认显式
+  /// delegated child ID 或对应 MAKE_TASK.documentId；
   /// 同货可能出现在多条路径，禁止按 parentAnalysisLineId + goodsId 猜测）。
   /// 子产品经 productsById 索引取（原为全产品线性扫描）。
   ProductionMaterialAnalysisProduct? _delegatedChildProductOf(
@@ -1358,46 +1318,23 @@ abstract class _MaterialAnalysisPageBase
     final analysis = _analysis;
     if (analysis == null) return null;
     final indexes = _analysisIndexes(analysis);
-    String? childId = material.delegatedToAnalysisLineId;
+    String? childId =
+        material.planAnchorAnalysisLineId ?? material.delegatedToAnalysisLineId;
     if (childId == null) {
       for (final target in material.notifiedTargets) {
-        if (target.target != route || target.isRootOutput) continue;
+        if (target.target != route ||
+            target.isRootOutput ||
+            target.status?.toUpperCase() == 'CANCELLED') {
+          continue;
+        }
         if (target.documentType == documentType && target.documentId != null) {
           childId = target.documentId;
           break;
         }
       }
     }
-    // 新增兜底：某些场景下下发链路的 documentType 或 delegatedTo 可能未回填，
-    // 但 child 产品会明确带 parentAnalysisLineId，按父子关系可稳态映射。
-    // 前提是行号无歧义：同 analysisLineId 的物料行或同父线的子产品多于一个时
-    // （同货品多路径共享行号），禁止借用——否则会把别人路径的子任务算到本行头上。
-    if (childId == null && material.analysisLineId != null) {
-      final parentLineId = material.analysisLineId!;
-      final lineShared = analysis.materials.any(
-        (row) => row != material && row.analysisLineId == parentLineId,
-      );
-      if (!lineShared) {
-        final matched = indexes.productsById.values
-            .where(
-              (product) =>
-                  product.sourceType == sourceType &&
-                  product.parentAnalysisLineId == parentLineId,
-            )
-            .toList();
-        if (matched.length == 1) {
-          return matched.first;
-        }
-      }
-    }
-    for (final target in material.notifiedTargets) {
-      if (target.target == route && target.documentType == documentType) {
-        childId ??= target.documentId;
-        break;
-      }
-    }
     if (childId == null) return null;
-    final product = _analysisIndexes(analysis).productsById[childId];
+    final product = indexes.productsById[childId];
     if (product == null || product.sourceType != sourceType) return null;
     return product;
   }
@@ -1432,6 +1369,17 @@ abstract class _MaterialAnalysisPageBase
   ) {
     return _makeChildProductOf(material) ??
         _subcontractMakeChildProductOf(material);
+  }
+
+  /// A server-reported issued plan must not become a second executable MAKE
+  /// candidate while its exact child projection is unavailable.
+  bool _hasUnlinkedIssuedPlan(ProductionMaterialAnalysisMaterial material) {
+    if (_taskChildProductOf(material) != null) return false;
+    final stage = material.flowStage?.trim().toUpperCase();
+    return material.planAnchorAnalysisLineId != null ||
+        (stage != null &&
+            stage.startsWith('MAKE_') &&
+            stage != 'MAKE_PENDING_ISSUE');
   }
 }
 
@@ -1732,7 +1680,6 @@ class _ProductionMaterialAnalysisPageState
 
   Widget _analysisBody(ThemeData theme) {
     final analysis = _analysis!;
-    final offTargetWarehousePegs = _offTargetWarehousePegs(analysis);
     // 悬浮动作区不占布局空间：列表底部预留透明高度，
     // 让末尾内容能滚到悬浮按钮上方，不被常驻遮挡。
     final actionCount = _bottomActionButtons().length;
@@ -1746,15 +1693,6 @@ class _ProductionMaterialAnalysisPageState
         padding: const EdgeInsets.only(top: UtenSpacing.s8),
         child: _analysisHeader(theme, analysis),
       ),
-      if (offTargetWarehousePegs.isNotEmpty)
-        Padding(
-          padding: const EdgeInsets.only(top: UtenSpacing.s8),
-          child: _offTargetWarehouseBanner(
-            theme,
-            analysis,
-            offTargetWarehousePegs,
-          ),
-        ),
       if (_serverRefreshNotice != null)
         Padding(
           padding: const EdgeInsets.only(top: UtenSpacing.s8),
@@ -2007,6 +1945,9 @@ class _ProductionMaterialAnalysisPageState
           material.exactPeggedQty,
           material.reservedQty,
           material.safetyStockQty,
+          material.mainWarehousePublicAvailableQty,
+          material.mainWarehouseOpenSafetySupplyQty,
+          material.mainWarehouseSafetyReplenishmentGapQty,
           material.inboundQty,
           material.shortageQty,
           material.demandSupplyGapQty,

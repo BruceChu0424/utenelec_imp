@@ -840,6 +840,13 @@ class _FakeGateway implements OperationsWorkbenchGateway {
     String? exception,
     String? dateFrom,
     String? dateTo,
+    String? sort,
+    String? order,
+    Map<String, String?> columnFilters = const {},
+    String? issuedFrom,
+    String? issuedTo,
+    String? needFrom,
+    String? needTo,
   }) async {
     exceptions.add(exception);
     statuses.add(status);
@@ -874,6 +881,13 @@ class _RefreshBlockingGateway implements OperationsWorkbenchGateway {
     String? exception,
     String? dateFrom,
     String? dateTo,
+    String? sort,
+    String? order,
+    Map<String, String?> columnFilters = const {},
+    String? issuedFrom,
+    String? issuedTo,
+    String? needFrom,
+    String? needTo,
   }) {
     _calls++;
     // 首次（initState 概览）立即返回；此后每次加载都挂起，等测试手动放行。

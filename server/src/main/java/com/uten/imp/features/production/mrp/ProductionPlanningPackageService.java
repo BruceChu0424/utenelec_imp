@@ -2,6 +2,7 @@ package com.uten.imp.features.production.mrp;
 
 import com.uten.imp.application.port.PreplanAnalysisPegPort;
 import com.uten.imp.application.port.ProductionSubcontractRequestPort;
+import com.uten.imp.common.inventory.MainWarehouseStockBudget;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
@@ -68,7 +69,11 @@ public class ProductionPlanningPackageService {
                                 List.of(), snapshot.availability())
                         : executionPlanning.propose(snapshot);
         Map<MaterialKey, BigDecimal> targetWarehouseAvailable =
-                warehouseAvailability(warehouseId, rows);
+                new HashMap<>(warehouseAvailability(warehouseId, rows));
+        // Direct production materials must display the same qualified ownership budget
+        // that determines READY, rather than showing only unreserved public stock.
+        snapshot.availability().forEach((key, qty) -> targetWarehouseAvailable.put(
+                new MaterialKey(key.goodsId(), key.colorId()), qty));
         return new PlanningPreviewResult(
                 planId,
                 warehouseId,
@@ -454,19 +459,27 @@ public class ProductionPlanningPackageService {
         List<Object[]> values = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT a.goods_id, a.color_id,
-                                       GREATEST(a.available_qty
-                                                - GREATEST(COALESCE(g.min_qty, 0), 0), 0)
+                                       SUM(GREATEST(a.available_qty, 0)),
+                                       MAX(GREATEST(COALESCE(g.min_qty, 0), 0))::numeric
                                 FROM v_stock_available a
                                 JOIN goods g ON g.id = a.goods_id
-                                WHERE a.warehouse_id = :warehouseId
+                                JOIN warehouses warehouse ON warehouse.id = a.warehouse_id
+                                  AND warehouse.is_deleted = FALSE
+                                  AND warehouse.is_accountable = TRUE
+                                  AND warehouse.is_defective = FALSE
+                                  AND COALESCE(warehouse.status, '') <> '禁用'
+                                  AND NOT EXISTS (SELECT 1 FROM warehouses child
+                                      WHERE child.parent_id = warehouse.id AND child.is_deleted = FALSE)
+                                WHERE fn_warehouse_same_main(a.warehouse_id, :warehouseId)
                                   AND a.goods_id IN (:goodsIds)
+                                GROUP BY a.goods_id, a.color_id
                                 """)
                         .setParameter("warehouseId", warehouseId)
                         .setParameter("goodsIds", goodsIds));
         Map<MaterialKey, BigDecimal> result = new HashMap<>();
         values.forEach(row -> result.put(
                 new MaterialKey((UUID) row[0], (UUID) row[1]),
-                decimal(row[2])));
+                MainWarehouseStockBudget.publicBudget(decimal(row[2]), decimal(row[3]))));
         return result;
     }
 
@@ -536,13 +549,12 @@ public class ProductionPlanningPackageService {
                         SELECT COUNT(*)
                         FROM warehouses
                         WHERE id = :id AND is_deleted = FALSE
-                          AND NOT EXISTS (SELECT 1 FROM warehouses c
-                                          WHERE c.parent_id = warehouses.id AND c.is_deleted = FALSE)
+                          AND COALESCE(status, '') <> '禁用'
                         """)
                 .setParameter("id", warehouseId)
                 .getSingleResult();
         if (((Number) count).longValue() != 1) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "目标仓库不存在、已停用或不是具体子仓库");
+            throw new ApiException(ErrorCode.NOT_FOUND, "目标仓库不存在或已停用");
         }
     }
 

@@ -222,11 +222,9 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         JOIN preplan_supply_actions action
                           ON action.id = allocation.action_id
                          AND action.status <> 'CANCELLED'
-                         AND fn_warehouse_same_main(action.warehouse_id, :warehouseId)
                         JOIN production_material_analyses analysis
                           ON analysis.id = allocation.analysis_id
                          AND analysis.is_deleted = FALSE
-                         AND fn_warehouse_same_main(analysis.warehouse_id, :warehouseId)
                          AND analysis.status IN (
                              'ACTIVE', 'PARTIALLY_PLANNED', 'COMPLETED')
                         JOIN production_material_analysis_materials material
@@ -243,7 +241,6 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         FOR UPDATE OF action, allocation
                         """)
                     .setParameter("externalItemId", externalItemId)
-                    .setParameter("warehouseId", warehouseId)
                     .setParameter("goodsId", goodsId)
                     .setParameter("colorId", colorId));
 
@@ -441,15 +438,46 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         .max(BigDecimal.ZERO).min(remaining);
                 if (take.signum() <= 0) continue;
                 insertExactMakeReservation(
-                        allocationId, analysisId, materialId,
+                        allocationId, null, analysisId, materialId,
                         warehouseId, line.goodsId(), line.colorId(), take,
                         line.planItemId(), stockDocumentId,
                         line.stockDocumentItemId());
                 remaining = remaining.subtract(take);
             }
-            // Any output beyond the proven PREPLAN_MAKE_TASK allocation is
-            // intentionally left as public stock.
+            if (remaining.signum() > 0 && parentAnalysisMaterialId != null) {
+                // Current issuance retains a real MAKE_COMPONENT/parent-material
+                // anchor without creating a legacy notification action or another BOM.
+                BigDecimal capacity = directMakeCapacity(analysisId, analysisItemId,
+                        parentAnalysisMaterialId, stockDocumentId);
+                BigDecimal take = remaining.min(capacity);
+                if (take.signum() > 0) {
+                    insertExactMakeReservation(null, analysisItemId, analysisId,
+                            parentAnalysisMaterialId, warehouseId, line.goodsId(), line.colorId(), take,
+                            line.planItemId(), stockDocumentId, line.stockDocumentItemId());
+                }
+            }
+            // Only output beyond the original node's admitted requirement remains public.
         }
+    }
+
+    private BigDecimal directMakeCapacity(UUID analysisId, UUID childId, UUID materialId, UUID currentDocument) {
+        return decimal(em.createNativeQuery("""
+                SELECT GREATEST(LEAST(child.requested_qty,material.required_qty)-COALESCE((
+                    SELECT SUM(exact.qty) FROM preplan_analysis_stock_exact_pegs exact
+                    JOIN stock_document_items stock_item ON stock_item.id=exact.source_stock_document_item_id
+                    JOIN stock_documents document ON document.id=stock_item.doc_id
+                    JOIN production_plan_items plan_item ON plan_item.id=stock_item.upstream_item_id
+                    JOIN production_plans plan ON plan.id=plan_item.plan_id
+                    WHERE exact.source_receipt_type='MAKE' AND plan.material_analysis_item_id=child.id
+                      AND NOT document.is_deleted AND (document.status=1 OR document.id=:currentDocument)
+                ),0),0)
+                FROM production_material_analysis_items child
+                JOIN production_material_analysis_materials material ON material.id=child.parent_analysis_material_id
+                  AND material.analysis_id=child.analysis_id AND material.active
+                WHERE child.id=:child AND child.analysis_id=:analysis AND child.source_type='MAKE_COMPONENT'
+                  AND NOT child.is_deleted AND material.id=:material
+                """).setParameter("analysis",analysisId).setParameter("child",childId)
+                .setParameter("material",materialId).setParameter("currentDocument",currentDocument).getSingleResult());
     }
 
     /** Global lock order for analysis-derived plan/package mutations: inventory first. */
@@ -553,13 +581,11 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                               JOIN preplan_supply_actions action
                                 ON action.id = allocation.action_id
                                AND action.status <> 'CANCELLED'
-                               AND fn_warehouse_same_main(action.warehouse_id, :warehouseId)
                               JOIN production_material_analysis_materials material
                                 ON material.id = allocation.analysis_material_id
                                AND material.analysis_id = allocation.analysis_id
                                AND material.active = TRUE
                               WHERE allocation.external_item_id = :externalItemId
-                                AND fn_warehouse_same_main(analysis.warehouse_id, :warehouseId)
                                 AND material.goods_id = :goodsId
                                 AND material.color_id IS NOT DISTINCT FROM
                                     CAST(:colorId AS uuid)
@@ -568,7 +594,6 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         FOR UPDATE OF analysis
                         """)
                 .setParameter("externalItemId", externalItemId)
-                .setParameter("warehouseId", warehouseId)
                 .setParameter("goodsId", goodsId)
                 .setParameter("colorId", colorId)
                 .getResultList();
@@ -848,7 +873,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             for (UUID materialId : materialIds) {
                 if (remaining.signum() <= 0) break;
                 List<PreplanStockEntitlementService.AvailableLot> lots =
-                        entitlement.listAvailableBeneficiaryLotsWithinMainWarehouse(
+                        entitlement.listAvailableBeneficiaryLotsForProduction(
                                 analysisId, materialId, warehouseId,
                                 demand.goodsId(), demand.colorId(), true);
                 for (PreplanStockEntitlementService.AvailableLot lot : lots) {
@@ -861,7 +886,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                             lot.warehouseId(), demand.goodsId(), demand.colorId());
                     BigDecimal budget = transferableByDimension.computeIfAbsent(
                             dimension, ignored -> formalTransferBudget(
-                                    analysisId, analysisItemId, dimension));
+                                    analysisId, analysisItemId, warehouseId, dimension));
                     BigDecimal take = available.min(remaining).min(budget);
                     if (take.signum() <= 0) continue;
                     entitlement.consumePhysicalForFormalize(
@@ -924,7 +949,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                             (UUID) row[2], demand.goodsId(), demand.colorId());
                     BigDecimal budget = transferableByDimension.computeIfAbsent(
                             dimension, ignored -> formalTransferBudget(
-                                    analysisId, analysisItemId, dimension));
+                                    analysisId, analysisItemId, warehouseId, dimension));
                     BigDecimal take = decimal(row[1]).max(BigDecimal.ZERO)
                             .min(remaining).min(budget);
                     if (take.signum() <= 0) continue;
@@ -937,18 +962,30 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         return List.copyOf(prepared);
     }
 
-    /** A fixed leaf/dimension budget prevents separate owned lots eating the safety floor. */
+    /** Qualified owned stock follows its actual leaf. Public/legacy stock keeps the normal local safety floor. */
     private BigDecimal formalTransferBudget(
-            UUID analysisId, UUID analysisItemId, TransferDimension dimension) {
+            UUID analysisId, UUID analysisItemId, UUID plannedWarehouseId, TransferDimension dimension) {
         List<?> values = em.createNativeQuery("""
-                SELECT GREATEST(COALESCE(stock.qty, 0)
-                    - COALESCE((SELECT SUM(r.qty-r.consumed_qty-r.released_qty)
+                WITH physical AS (
+                    SELECT COALESCE(stock.qty,0) AS stock_qty,
+                    COALESCE((SELECT SUM(r.qty-r.consumed_qty-r.released_qty)
                         FROM stock_reservations r
                         WHERE r.goods_id = :goodsId
                           AND r.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
                           AND (r.warehouse_id IS NULL OR r.warehouse_id = :warehouseId)
-                          AND r.status = 0 AND r.is_deleted = FALSE), 0)
-                    + COALESCE((SELECT SUM(CASE
+                          AND r.status = 0 AND r.is_deleted = FALSE), 0) AS reserved_qty,
+                    GREATEST(COALESCE(goods.min_qty,0),0)::numeric AS safety_qty,
+                    (NOT warehouse.is_defective AND fn_warehouse_same_main(warehouse.id,:plannedWarehouseId)) AS local_normal
+                    FROM goods JOIN warehouses warehouse ON warehouse.id=:warehouseId
+                      AND NOT warehouse.is_deleted AND warehouse.is_accountable
+                      AND COALESCE(warehouse.status,'') <> '禁用'
+                      AND NOT EXISTS(SELECT 1 FROM warehouses child WHERE child.parent_id=warehouse.id AND NOT child.is_deleted)
+                    LEFT JOIN stock_balances stock ON stock.goods_id=goods.id
+                      AND stock.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid) AND stock.warehouse_id=warehouse.id
+                    WHERE goods.id=:goodsId AND NOT goods.is_deleted
+                ), owned AS (
+                    SELECT fn_preplan_reservation_has_qualified_origin(owned.id) AS qualified,
+                        CASE
                         WHEN EXISTS (SELECT 1 FROM preplan_stock_entitlement_events tracked
                             WHERE tracked.stock_reservation_id = owned.id)
                         THEN COALESCE((SELECT SUM(entitlement.effective_qty)
@@ -959,27 +996,28 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                                   entitlement.beneficiary_analysis_material_id)), 0)
                         WHEN owned.owner_id = :analysisId
                         THEN owned.qty-owned.consumed_qty-owned.released_qty
-                        ELSE 0 END)
+                        ELSE 0 END AS qty
                         FROM stock_reservations owned
                         WHERE owned.goods_id = :goodsId
                           AND owned.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
                           AND owned.warehouse_id = :warehouseId
                           AND owned.owner_type = 'PREPLAN_ANALYSIS'
-                          AND owned.status = 0 AND owned.is_deleted = FALSE), 0)
-                    - GREATEST(COALESCE(goods.min_qty, 0), 0)::numeric, 0)
-                FROM goods
-                JOIN warehouses warehouse ON warehouse.id = :warehouseId
-                  AND warehouse.is_deleted = FALSE AND warehouse.is_accountable = TRUE
-                  AND warehouse.is_defective = FALSE AND COALESCE(warehouse.status, '') <> '禁用'
-                  AND NOT EXISTS (SELECT 1 FROM warehouses child
-                      WHERE child.parent_id = warehouse.id AND child.is_deleted = FALSE)
-                LEFT JOIN stock_balances stock ON stock.goods_id = goods.id
-                  AND stock.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
-                  AND stock.warehouse_id = :warehouseId
-                WHERE goods.id = :goodsId AND goods.is_deleted = FALSE
+                          AND owned.status = 0 AND owned.is_deleted = FALSE
+                ), amounts AS (
+                    SELECT physical.*,
+                        COALESCE((SELECT SUM(qty) FROM owned WHERE qualified),0) AS qualified_qty,
+                        CASE WHEN local_normal THEN COALESCE((SELECT SUM(qty) FROM owned WHERE NOT qualified),0)
+                             ELSE 0 END AS legacy_qty
+                    FROM physical
+                )
+                SELECT GREATEST(LEAST(stock_qty-reserved_qty+qualified_qty+legacy_qty,
+                    qualified_qty+CASE WHEN local_normal THEN GREATEST(stock_qty-reserved_qty+legacy_qty-safety_qty,0)
+                                       ELSE 0 END),0)
+                FROM amounts
                 """)
                 .setParameter("analysisId", analysisId)
                 .setParameter("analysisItemId", analysisItemId)
+                .setParameter("plannedWarehouseId", plannedWarehouseId)
                 .setParameter("goodsId", dimension.goodsId())
                 .setParameter("colorId", dimension.colorId())
                 .setParameter("warehouseId", dimension.warehouseId())
@@ -1151,6 +1189,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
 
     private void insertExactMakeReservation(
             UUID allocationId,
+            UUID makeSourceAnalysisItemId,
             UUID analysisId,
             UUID analysisMaterialId,
             UUID warehouseId,
@@ -1167,8 +1206,9 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 SET CONSTRAINTS
                     trg_check_preplan_analysis_stock_exact_peg DEFERRED
                 """).executeUpdate();
-        String key = "PREPLAN-MAKE-EXACT:" + stockDocumentItemId
-                + ":" + allocationId;
+        String key = allocationId == null
+                ? "PREPLAN-MAKE-ANCHOR:" + stockDocumentItemId + ":" + makeSourceAnalysisItemId
+                : "PREPLAN-MAKE-EXACT:" + stockDocumentItemId + ":" + allocationId;
         insertReservation(
                 analysisId, warehouseId, goodsId, colorId, qtyBase,
                 SUPPLY_PRODUCTION_PLAN_ITEM, planItemId,
@@ -1186,7 +1226,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         em.createNativeQuery("""
                 INSERT INTO preplan_analysis_stock_exact_pegs (
                     id, stock_reservation_id,
-                    supply_action_allocation_id,
+                    supply_action_allocation_id, make_source_analysis_item_id,
                     origin_analysis_id, origin_analysis_material_id,
                     beneficiary_analysis_id, beneficiary_analysis_material_id,
                     qty, source_receipt_type, source_receipt_id,
@@ -1195,7 +1235,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     beneficiary_reason, idempotency_key,
                     created_by, updated_by
                 ) VALUES (
-                    :id, :reservationId, :allocationId,
+                    :id, :reservationId, :allocationId, :makeSourceItemId,
                     :analysisId, :materialId,
                     :analysisId, :materialId,
                     :qty, 'MAKE', :stockDocumentId,
@@ -1207,6 +1247,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 .setParameter("id", UUID.randomUUID())
                 .setParameter("reservationId", reservationId)
                 .setParameter("allocationId", allocationId)
+                .setParameter("makeSourceItemId", makeSourceAnalysisItemId)
                 .setParameter("analysisId", analysisId)
                 .setParameter("materialId", analysisMaterialId)
                 .setParameter("qty", qtyBase)

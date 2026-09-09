@@ -19,6 +19,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
@@ -73,6 +74,14 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
   bool get _canReverse => _hasPermission(_cfg.reversePerm);
   bool get _canConfirmGeneralLedger =>
       _hasPermission(Perm.financeExpenseGlConfirm);
+
+  String get _attachmentOwnerType => switch (widget.docType) {
+    FinanceDocType.receipt => 'FINANCE_RECEIPT',
+    FinanceDocType.payment => 'FINANCE_PAYMENT',
+    FinanceDocType.expense => 'FINANCE_EXPENSE',
+    FinanceDocType.otherIncome => 'FINANCE_OTHER_INCOME',
+    FinanceDocType.bankTransfer => 'FINANCE_BANK_TRANSFER',
+  };
 
   Future<void> _load() async {
     ref.invalidate(documentScopeCapabilityProvider(DocumentDataScope.finance));
@@ -246,11 +255,17 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final permissions = ref.watch(currentPermissionsProvider);
     final scopeCapability = ref.watch(
       documentScopeCapabilityProvider(DocumentDataScope.finance),
     );
     final theme = Theme.of(context);
     final names = ref.watch(financeNameServiceProvider);
+    final canViewFiles =
+        permissions.contains(_cfg.listPerm) &&
+        permissions.contains(Perm.financeViewAll) &&
+        (_detail?.receiptKind?.trim().toUpperCase() != 'CUSTOMER_PREPAYMENT' ||
+            permissions.contains(Perm.customerPrepaymentView));
     return Scaffold(
       appBar: UtenAppBar(
         title: '${_cfg.label}详情',
@@ -303,6 +318,21 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
                         _detail!.receiptKind == 'CUSTOMER_PREPAYMENT')) ...[
                       const SizedBox(height: UtenSpacing.s12),
                       _itemsCard(theme, names),
+                    ],
+                    if (canViewFiles) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      BusinessAttachmentSection(
+                        ownerType: _attachmentOwnerType,
+                        ownerId: _detail!.id,
+                        canView: canViewFiles,
+                        canManage:
+                            !_busy &&
+                            _canEdit &&
+                            _detail!.status == 0 &&
+                            !_detail!.closed,
+                        title: '单据和凭证',
+                        categories: const ['银行回单', '发票', '其他凭证'],
+                      ),
                     ],
                   ],
                 ),

@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.mrp;
 
+import com.uten.imp.common.inventory.MainWarehouseStockBudget;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -591,24 +592,26 @@ public class ProductionExecutionPlanningService {
                 ? null : (UUID) analysisIdentity.getFirst()[1];
         List<Object[]> values = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
-                                SELECT a.goods_id, a.color_id,
-                                       SUM(GREATEST(
-                                           a.available_qty + COALESCE(own.own_qty, 0)
-                                           - GREATEST(COALESCE(g.min_qty, 0), 0),
-                                           0
-                                       ))
+                                SELECT a.goods_id, a.color_id, a.warehouse_id,
+                                       a.available_qty, COALESCE(own.own_qty, 0),
+                                       COALESCE(own.qualified_qty, 0),
+                                       GREATEST(COALESCE(g.min_qty, 0), 0)::numeric,
+                                       (NOT warehouse.is_defective
+                                        AND fn_warehouse_same_main(a.warehouse_id, :warehouseId))
                                 FROM v_stock_available a
                                 JOIN goods g ON g.id = a.goods_id
                                 JOIN warehouses warehouse ON warehouse.id = a.warehouse_id
                                   AND warehouse.is_deleted = FALSE
                                   AND warehouse.is_accountable = TRUE
-                                  AND warehouse.is_defective = FALSE
                                   AND COALESCE(warehouse.status, '') <> '禁用'
                                   AND NOT EXISTS (SELECT 1 FROM warehouses child
                                       WHERE child.parent_id = warehouse.id
                                         AND child.is_deleted = FALSE)
                                 LEFT JOIN LATERAL (
-                                    SELECT SUM(CASE
+                                    SELECT SUM(owned.qty) AS own_qty,
+                                           SUM(CASE WHEN owned.qualified THEN owned.qty ELSE 0 END) AS qualified_qty
+                                    FROM (SELECT fn_preplan_reservation_has_qualified_origin(r.id) AS qualified,
+                                    CASE
                                         WHEN EXISTS (
                                             SELECT 1
                                             FROM preplan_stock_entitlement_events tracked
@@ -633,7 +636,7 @@ public class ProductionExecutionPlanningService {
                                         WHEN r.owner_id = :analysisId
                                         THEN r.qty - r.consumed_qty - r.released_qty
                                         ELSE 0
-                                    END) AS own_qty
+                                    END AS qty
                                     FROM stock_reservations r
                                     WHERE r.is_deleted = FALSE
                                       AND r.status = 0
@@ -641,12 +644,12 @@ public class ProductionExecutionPlanningService {
                                       AND r.warehouse_id = a.warehouse_id
                                       AND r.goods_id = a.goods_id
                                       AND r.color_id IS NOT DISTINCT FROM a.color_id
+                                    ) owned
                                 ) own ON TRUE
-                                WHERE (a.warehouse_id = :warehouseId OR (CAST(:analysisId AS uuid) IS NOT NULL
-                                  AND fn_warehouse_same_main(a.warehouse_id, :warehouseId)))
+                                WHERE (fn_warehouse_same_main(a.warehouse_id, :warehouseId)
+                                  OR COALESCE(own.qualified_qty, 0) > 0)
                                   AND a.goods_id IN (:goodsIds)
-                                GROUP BY a.goods_id, a.color_id
-                                ORDER BY a.goods_id, a.color_id NULLS FIRST
+                                ORDER BY a.goods_id, a.color_id NULLS FIRST, a.warehouse_id
                                 """)
                         .setParameter("analysisId", analysisId)
                         .setParameter("analysisItemId", analysisItemId)
@@ -654,14 +657,25 @@ public class ProductionExecutionPlanningService {
                         .setParameter("goodsIds", goodsIds));
         Map<CompleteKitAllocator.MaterialKey, BigDecimal> result =
                 new LinkedHashMap<>();
+        Map<CompleteKitAllocator.MaterialKey, List<MainWarehouseStockBudget.Leaf<UUID>>> leaves =
+                new LinkedHashMap<>();
+        Map<CompleteKitAllocator.MaterialKey, BigDecimal> safety = new HashMap<>();
         for (Object[] row : values) {
-            result.put(
-                    new CompleteKitAllocator.MaterialKey(
-                            (UUID) row[0], (UUID) row[1]),
-                    decimal(row[2]).setScale(
-                            CompleteKitAllocator.MATERIAL_SCALE,
-                            RoundingMode.DOWN));
+            var key = new CompleteKitAllocator.MaterialKey((UUID) row[0], (UUID) row[1]);
+            boolean publicAllowed = Boolean.TRUE.equals(row[7]);
+            BigDecimal owned = publicAllowed ? decimal(row[4]) : decimal(row[5]);
+            BigDecimal physicalFree = decimal(row[3]).add(owned).max(BigDecimal.ZERO);
+            owned = owned.max(BigDecimal.ZERO).min(physicalFree);
+            BigDecimal qualified = decimal(row[5]).max(BigDecimal.ZERO).min(owned);
+            BigDecimal publicFree = publicAllowed ? physicalFree.subtract(owned) : BigDecimal.ZERO;
+            leaves.computeIfAbsent(key, ignored -> new ArrayList<>()).add(
+                    new MainWarehouseStockBudget.Leaf<>((UUID) row[2], publicFree, owned, qualified));
+            safety.merge(key, decimal(row[6]), BigDecimal::max);
         }
+        leaves.forEach((key, materialLeaves) -> result.put(key,
+                MainWarehouseStockBudget.distribute(materialLeaves, safety.get(key)).values().stream()
+                        .reduce(BigDecimal.ZERO, BigDecimal::add)
+                        .setScale(CompleteKitAllocator.MATERIAL_SCALE, RoundingMode.DOWN)));
         lines.stream().flatMap(line -> line.materials().stream())
                 .map(CompleteKitAllocator.MaterialUsage::materialKey)
                 .forEach(key -> result.putIfAbsent(key, BigDecimal.ZERO.setScale(4)));

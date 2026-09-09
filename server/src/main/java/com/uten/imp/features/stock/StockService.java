@@ -233,13 +233,27 @@ public class StockService {
             // 不应被他人预留卡死；非负底线已防真实负库存。
             if (req.movementType() != TYPE_CHECK_LOSS
                     && !REVERSAL_RETURN_TYPES.contains(req.movementType())) {
-                BigDecimal movable = balanceRepo.warehouseAvailableBase(
-                        req.warehouseId(), req.goodsId(), req.colorId());
+                boolean allocatedProductionIssue = false;
+                if (req.costReference() instanceof InventoryMovementCostReference.ProductionMaterialEvent event) {
+                    if (req.movementType() != 5 || !"STOCK_DOC".equals(req.sourceDocType()) || event.eventId() == null) {
+                        throw new ApiException(ErrorCode.CONFLICT, "生产领料流水与领料记录不匹配");
+                    }
+                    BigDecimal posted = balanceRepo.unboundProductionIssueQuantity(event.eventId(), req.sourceDocId(),
+                            req.sourceItemId(), req.warehouseId(), req.goodsId(), req.colorId(), req.unitId(),
+                            req.unitRate() == null ? BigDecimal.ONE : req.unitRate());
+                    if (posted == null || posted.compareTo(req.qty()) != 0) {
+                        throw new ApiException(ErrorCode.CONFLICT, "本次领料没有对应的已扣预留记录，请刷新后重试");
+                    }
+                    allocatedProductionIssue = true;
+                }
+                BigDecimal movable = allocatedProductionIssue
+                        ? balanceRepo.warehouseUnreservedBase(req.warehouseId(), req.goodsId(), req.colorId())
+                        : balanceRepo.warehouseAvailableBase(req.warehouseId(), req.goodsId(), req.colorId());
                 if (movable == null) movable = BigDecimal.ZERO;
                 if (movable.compareTo(req.qty()) < 0) {
                     throw new ApiException(
                             ErrorCode.CONFLICT,
-                            "可动用库存不足(已扣硬预留和安全库存)：当前 "
+                            (allocatedProductionIssue ? "本仓剩余可领数量不足：当前 " : "可动用库存不足(已扣硬预留和安全库存)：当前 ")
                                     + movable.stripTrailingZeros().toPlainString()
                                     + "，本次出库 "
                                     + req.qty().stripTrailingZeros().toPlainString());

@@ -995,29 +995,10 @@ abstract class _MaterialAnalysisMaterialTableState
     if (row.contextOnly) return '—';
     final material = row.material ?? row.aggregate?.representative;
     if (material == null) return '—';
-    final stock = _selectedWarehouseStock(material);
-    // No legacy fallback to material.availableQty: that value is the shared
-    // pre-allocation snapshot and must not be relabelled as unassigned public stock.
-    return stock == null ? '—' : _qty(stock.publicAvailableQty);
+    // The main-warehouse budget is authoritative; per-leaf or pre-allocation
+    // figures cannot be relabelled as this group's unassigned public stock.
+    return _qty(material.mainWarehousePublicAvailableQty);
   }
-
-  double? _materialTableSelectedWarehousesAvailableQty(_MaterialTableRow row) =>
-      row.contextOnly || row.product != null
-      ? null
-      : row.aggregate != null
-      ? row.aggregate!.paths
-            .map((material) => material.selectedWarehousesAvailableQty)
-            .fold<double>(0, (max, value) => value > max ? value : max)
-      : row.material?.selectedWarehousesAvailableQty;
-
-  double? _materialTableOtherWarehouseTransferableQty(_MaterialTableRow row) =>
-      row.contextOnly || row.product != null
-      ? null
-      : row.aggregate != null
-      ? row.aggregate!.paths
-            .map((material) => material.selectedOtherWarehouseTransferableQty)
-            .fold<double>(0, (max, value) => value > max ? value : max)
-      : row.material?.selectedOtherWarehouseTransferableQty;
 
   double? _materialTableInboundQty(_MaterialTableRow row) => row.contextOnly
       ? null
@@ -1121,36 +1102,9 @@ abstract class _MaterialAnalysisMaterialTableState
       return const Text('—');
     }
     final recommended = _materialTableAdditionalRecommendedQty(row) ?? 0;
-    final transferable = _materialTableOtherWarehouseTransferableQty(row) ?? 0;
-    final afterTransfer = (recommended - transferable)
-        .clamp(0, double.infinity)
-        .toDouble();
-    final message = transferable > 0
-        ? '主仓当前仍建议另补 ${_qty(recommended)}；'
-              '其它勾选仓可调拨 ${_qty(transferable)}，'
-              '完成调拨入主仓后预计仍需另补 ${_qty(afterTransfer)}'
-        : '主仓当前建议另补 ${_qty(recommended)}；其它勾选仓暂无可调拨量';
     return Tooltip(
-      message: '参与仓只作调拨提示，未完成调拨前不提高齐套或可开工量。$message',
-      child: Semantics(
-        container: true,
-        label: message,
-        child: ExcludeSemantics(
-          child: Text(
-            transferable > 0
-                ? '另补 ${_qty(recommended)} · 可调 ${_qty(transferable)}'
-                : _qty(recommended),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: transferable > 0
-                  ? theme.colorScheme.tertiary
-                  : theme.colorScheme.onSurface,
-              fontWeight: transferable > 0 ? FontWeight.w700 : null,
-            ),
-          ),
-        ),
-      ),
+      message: '主仓汇总后，当前还需补充 ${_qty(recommended)}。',
+      child: Text(_qty(recommended), style: theme.textTheme.bodySmall),
     );
   }
 
@@ -1594,12 +1548,6 @@ abstract class _MaterialAnalysisMaterialTableState
                     ),
                     Text(
                       '${_l10n.materialPublicStock}: ${_materialTablePublicAvailableQty(row)}',
-                    ),
-                    Text(
-                      '${_l10n.materialScopeStock}: ${_qty(_materialTableSelectedWarehousesAvailableQty(row))}',
-                    ),
-                    Text(
-                      '${_l10n.materialTransferStock}: ${_qty(_materialTableOtherWarehouseTransferableQty(row))}',
                     ),
                     Text(
                       '${_l10n.materialClaimedSupply}: ${_qty(_materialTableSharedFutureClaimedQty(row))}',

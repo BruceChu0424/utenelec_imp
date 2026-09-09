@@ -21,6 +21,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/page_permission_action.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/goods_node.dart';
@@ -89,6 +90,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
   GoodsDetail? _detail;
   String? _goodsId;
   String? _categoryId;
+  bool _scopeWritable = false;
 
   GlobalKey<MasterEditFormState>? _formKey;
   bool _savingBasic = false;
@@ -100,6 +102,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
         ? _GoodsDetailMode.create
         : _GoodsDetailMode.view;
     _detail = widget.initialDetail;
+    _scopeWritable = widget.initialDetail?.writable == true;
     _goodsId = widget.initialDetail?.id;
     _categoryId = widget.initialDetail?.categoryId ?? widget.initialCategoryId;
     _formKey =
@@ -108,15 +111,30 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
         : null;
   }
 
+  @override
+  void didUpdateWidget(covariant GoodsDetailBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final latest = widget.initialDetail;
+    if (latest != null &&
+        latest.id == _goodsId &&
+        latest != oldWidget.initialDetail) {
+      _scopeWritable = latest.writable;
+    }
+  }
+
   bool get _canSaveBasic => switch (_mode) {
     _GoodsDetailMode.create => widget.canCreate,
-    _GoodsDetailMode.edit => widget.canEdit,
+    _GoodsDetailMode.edit => _canEditSaved,
     _GoodsDetailMode.view => false,
   };
+
+  bool get _writable => _goodsId == null || _scopeWritable;
+  bool get _canEditSaved => widget.canEdit && _writable;
 
   void _enterView(GoodsDetail detail) {
     setState(() {
       _detail = detail;
+      _scopeWritable = detail.writable;
       _goodsId = detail.id;
       _categoryId = detail.categoryId;
       _mode = _GoodsDetailMode.view;
@@ -126,7 +144,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
 
   /// 切到 edit 态（view 的「编辑」按钮 / create 保存成功后）。
   void _enterEdit(GoodsDetail? d) {
-    if (!widget.canEdit) {
+    if (!_canEditSaved) {
       if (d != null) {
         _enterView(d);
       } else {
@@ -137,6 +155,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
     setState(() {
       if (d != null) {
         _detail = d;
+        _scopeWritable = d.writable;
         _goodsId = d.id;
         _categoryId = d.categoryId;
       }
@@ -465,7 +484,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
       if (_mode == _GoodsDetailMode.create) {
         final created = await repo.create(body);
         if (!mounted) return;
-        if (widget.canEdit) {
+        if (widget.canEdit && created.writable) {
           context.appSuccess('货品已创建，可继续编辑基本信息');
           _enterEdit(created);
         } else {
@@ -516,10 +535,17 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
     final canViewCost =
         ref.watch(isSuperAdminProvider) ||
         ref.watch(currentPermissionsProvider).contains(Perm.goodsCostView);
+    final permissions = ref.watch(currentPermissionsProvider);
+    final canViewFiles =
+        _goodsId != null &&
+        permissions.contains(Perm.attachmentView) &&
+        (ref.watch(isSuperAdminProvider) ||
+            permissions.contains(Perm.goodsView));
     final tabs = <Tab>[
       const Tab(text: '基本信息'),
       const Tab(text: '组装信息'),
       if (canViewCost) const Tab(text: '成本预算'),
+      if (canViewFiles) const Tab(text: '图片和文件'),
     ];
     return SafeArea(
       child: DefaultTabController(
@@ -546,6 +572,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
                   _buildBasicTab(theme),
                   _buildBomTab(),
                   if (canViewCost) _buildCostTab(theme),
+                  if (canViewFiles) _buildFilesTab(),
                 ],
               ),
             ),
@@ -554,6 +581,35 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
       ),
     );
   }
+
+  Widget _buildFilesTab() => SingleChildScrollView(
+    padding: const EdgeInsets.all(UtenSpacing.s16),
+    child: Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 960),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('用于保存产品图片、图纸和规格资料。能查看该货品的同事也能查看这些文件，请不要放入价格、成本等保密凭证。'),
+            const SizedBox(height: UtenSpacing.s12),
+            BusinessAttachmentSection(
+              ownerType: 'GOODS',
+              ownerId: _goodsId!,
+              canView: true,
+              canManage:
+                  _canEditSaved &&
+                  (ref.watch(isSuperAdminProvider) ||
+                      ref
+                          .watch(currentPermissionsProvider)
+                          .contains(Perm.goodsEdit)),
+              title: '货品文件',
+              categories: const ['产品图片', '图纸', '规格资料'],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 
   Widget _header(ThemeData theme, String title) {
     return Padding(
@@ -638,7 +694,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
     final readOnlyKeys = <String>{
       if (!canEditPrice) 'price',
       if (!canEditPrice && canViewDiscount) 'discount',
-      if (!widget.canStatus) 'status',
+      if (!widget.canStatus || !_writable) 'status',
     };
     return Column(
       children: [
@@ -743,9 +799,9 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
           ),
         ),
         if (widget.onViewMovements != null ||
-            widget.onToggleStatus != null ||
-            widget.canEdit ||
-            widget.onDelete != null) ...[
+            (widget.onToggleStatus != null && _writable) ||
+            _canEditSaved ||
+            (widget.onDelete != null && _writable)) ...[
           const Divider(height: 1),
           Padding(
             padding: const EdgeInsets.all(UtenSpacing.s16),
@@ -762,7 +818,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
                   ),
                   const SizedBox(width: UtenSpacing.s8),
                 ],
-                if (widget.onToggleStatus != null) ...[
+                if (widget.onToggleStatus != null && _writable) ...[
                   UtenButton(
                     type: UtenButtonType.tonal,
                     icon: Icons.sync_alt_rounded,
@@ -771,7 +827,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
                   ),
                   const SizedBox(width: UtenSpacing.s8),
                 ],
-                if (widget.canEdit) ...[
+                if (_canEditSaved) ...[
                   UtenButton(
                     type: UtenButtonType.secondary,
                     icon: Icons.edit_outlined,
@@ -780,7 +836,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
                   ),
                   const SizedBox(width: UtenSpacing.s8),
                 ],
-                if (widget.onDelete != null)
+                if (widget.onDelete != null && _writable)
                   UtenButton(
                     type: UtenButtonType.danger,
                     icon: Icons.delete_outline,
@@ -953,7 +1009,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
         child: GoodsCostTab(
           key: ValueKey('cost-$_goodsId'),
           detail: _detail!,
-          canEdit: widget.canEdit,
+          canEdit: _canEditSaved,
           materialTotal: _detail!.sourceE,
           onSaved: () {
             _refreshDetail();

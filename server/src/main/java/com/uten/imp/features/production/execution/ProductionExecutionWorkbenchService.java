@@ -1,6 +1,7 @@
 package com.uten.imp.features.production.execution;
 
 import com.uten.imp.application.port.SubcontractDocumentReadAccessPort;
+import com.uten.imp.application.port.ProductionMaterialUsageReadPort;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -34,6 +35,7 @@ public class ProductionExecutionWorkbenchService {
     private final PurchaseDocumentAccessPolicy purchaseAccess;
     private final SubcontractDocumentReadAccessPort subcontractAccess;
     private final SecurityContextCurrentUser currentUser;
+    private final ProductionMaterialUsageReadPort materialUsage;
     @org.springframework.beans.factory.annotation.Autowired
     private com.uten.imp.features.production.SubcontractDraftPreparationAccessPolicy draftPreparationAccess;
 
@@ -278,9 +280,10 @@ public class ProductionExecutionWorkbenchService {
         data.setParameter("allowReport", allowReport);
         data.setParameter("limit", size);
         data.setParameter("offset", (long) (page - 1) * size);
-        List<ProductionExecutionWorkbenchSegment> items =
-                NativeQueryResults.objectArrayRows(data).stream()
-                        .map(ProductionExecutionWorkbenchService::segmentRow)
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(data);
+        var usage = materialUsage.forVisibleSegments(rows.stream().map(row -> uuid(row[0])).toList());
+        List<ProductionExecutionWorkbenchSegment> items = rows.stream()
+                        .map(row -> segmentRow(row, usage.getOrDefault(uuid(row[0]), ProductionMaterialUsageReadPort.UsageFlags.NONE)))
                         .toList();
         return new PageResponse<>(items, page, size, total, totalPages);
     }
@@ -663,7 +666,7 @@ public class ProductionExecutionWorkbenchService {
                 decimal(row[40]), decimal(row[41]), progressRatio);
     }
 
-    private static ProductionExecutionWorkbenchSegment segmentRow(Object[] row) {
+    private static ProductionExecutionWorkbenchSegment segmentRow(Object[] row, ProductionMaterialUsageReadPort.UsageFlags usage) {
         return new ProductionExecutionWorkbenchSegment(
                 uuid(row[0]), uuid(row[1]), text(row[2]), text(row[3]),
                 text(row[4]), uuid(row[5]), text(row[6]), text(row[7]),
@@ -674,7 +677,8 @@ public class ProductionExecutionWorkbenchService {
                 text(row[21]), text(row[22]), bool(row[23]), bool(row[24]),
                 bool(row[25]), bool(row[26]), bool(row[27]), bool(row[28]),
                 bool(row[29]), text(row[30]), date(row[31]), date(row[32]),
-                ((Number) row[33]).longValue(), bool(row[34]), bool(row[35]));
+                ((Number) row[33]).longValue(), bool(row[34]), bool(row[35]),
+                usage.hasMaterialActivity(), usage.hasUnregisteredMaterial());
     }
 
     private static int boundedSize(int requested) {

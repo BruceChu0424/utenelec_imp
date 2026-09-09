@@ -1,12 +1,13 @@
 {
   "@@locale": "zh",
-
   "appTitle": "优腾·综合管理平台",
-  "@appTitle": {"description": "应用标题"},
-
+  "@appTitle": {
+    "description": "应用标题"
+  },
   "appName": "UTEN IMP",
-  "@appName": {"description": "应用代号"},
-
+  "@appName": {
+    "description": "应用代号"
+  },
   "commonConfirm": "确认",
   "commonCancel": "取消",
   "commonSave": "保存",
@@ -30,7 +31,6 @@
   "commonMore": "更多",
   "commonViewAll": "查看全部",
   "commonAction": "操作",
-
   "loginAccountHint": "请输入员工工号或手机号",
   "loginAccountRequired": "请输入账号",
   "loginPasswordHint": "请输入密码",
@@ -45,28 +45,36 @@
   "loginServerRecoverySuccess": "已恢复自动选择，请重新登录",
   "loginServerRecoveryFailed": "服务器选择恢复失败，请稍后重试或联系管理员",
   "loginFooter": "© 2026 优腾 · 综合管理平台",
-
   "navDashboard": "工作台",
   "navNotice": "通知",
   "navProfile": "我的",
   "navSettings": "设置",
-
   "dashboardWelcome": "欢迎，{name}",
-  "@dashboardWelcome": {"placeholders": {"name": {}}},
+  "@dashboardWelcome": {
+    "placeholders": {
+      "name": {}
+    }
+  },
   "dashboardWelcomeSubtitle": "今天也要加油哦",
   "dashboardTodayStats": "今日概览",
   "dashboardQuickActions": "快捷操作",
-
   "statTodayOutput": "今日产量",
   "statOutputUnit": "件",
   "statInventory": "当前库存",
   "statOnlineEmployees": "在线员工",
   "statPendingTodos": "待办事项",
   "statTrendUp": "较昨日 +{percent}%",
-  "@statTrendUp": {"placeholders": {"percent": {}}},
+  "@statTrendUp": {
+    "placeholders": {
+      "percent": {}
+    }
+  },
   "statTrendDown": "较昨日 {percent}%",
-  "@statTrendDown": {"placeholders": {"percent": {}}},
-
+  "@statTrendDown": {
+    "placeholders": {
+      "percent": {}
+    }
+  },
   "settingsTitle": "设置",
   "settingsSectionAppearance": "外观",
   "settingsThemeMode": "主题模式",
@@ -82,7 +90,9 @@
   "settingsFontLarge": "大",
   "settingsFontXLarge": "超大",
   "settingsFontXXLarge": "超超大",
-  "@settingsFontXXLarge": {"description": "字号第 5 档：超超大"},
+  "@settingsFontXXLarge": {
+    "description": "字号第 5 档：超超大"
+  },
   "settingsSectionPerformance": "性能",
   "settingsPerformanceTier": "性能模式",
   "settingsPerformanceAuto": "自动",
@@ -94,18 +104,15 @@
   "settingsVersion": "版本",
   "settingsLogout": "退出登录",
   "settingsLogoutConfirm": "确定要退出登录吗？",
-
   "profileTitle": "我的",
   "profileEditProfile": "编辑资料",
   "profileChangePassword": "修改密码",
   "profileEmployeeCode": "工号",
   "profileDepartment": "部门",
   "profilePosition": "岗位",
-
   "entrySubtitle": "请选择登录方式",
   "entryStaff": "内部人员登录",
   "entryVisitor": "访客登录",
-
   "visitorLoginTitle": "访客登录",
   "visitorLoginSubtitle": "输入手机号获取验证码",
   "visitorPhoneLabel": "手机号",
@@ -115,15 +122,22 @@
   "visitorCodeRequired": "请输入验证码",
   "visitorGetCode": "获取验证码",
   "visitorCodeCountdown": "{seconds}s 后重发",
-  "@visitorCodeCountdown": {"placeholders": {"seconds": {}}},
+  "@visitorCodeCountdown": {
+    "placeholders": {
+      "seconds": {}
+    }
+  },
   "visitorLoginButton": "登 录",
   "visitorLoggingIn": "登录中…",
   "visitorCodeSent": "验证码已发送",
   "visitorCodeSentDev": "验证码：{code}(开发期)",
-  "@visitorCodeSentDev": {"placeholders": {"code": {}}},
+  "@visitorCodeSentDev": {
+    "placeholders": {
+      "code": {}
+    }
+  },
   "visitorIsEmployee": "该手机号为优腾员工账号，请走员工通道登录",
   "visitorPhoneInvalid": "请输入正确的手机号",
-
   "visitorHomeTitle": "我的访客预约",
   "visitorSettingsTitle": "访客设置",
   "visitorSettingsTooltip": "设置",
@@ -132,7 +146,6 @@
   "visitorFilterPending": "申请中",
   "visitorFilterApproved": "已批准",
   "visitorFilterRejected": "已拒绝",
-
   "visitorApplyTitle": "来访预约",
   "visitorApplyName": "姓名",
   "visitorApplyNameHint": "请输入真实姓名",
@@ -159,14 +172,12 @@
   "visitorApplyValidateVisitTimeFuture": "到访时间需晚于当前时间",
   "visitorApplyDuplicateTime": "您已有相同时段的进行中预约，请换一个时间",
   "visitorApplySuccess": "预约已提交，等待审批",
-
   "visitorStatusPending": "申请中",
   "visitorStatusHostReviewing": "待接待人确认",
   "visitorStatusApproved": "已批准",
   "visitorStatusRejected": "已拒绝",
   "visitorStatusCheckedIn": "已签到",
   "visitorStatusCancelled": "已取消",
-
   "visitorDetailTitle": "预约详情",
   "visitorDetailHost": "接待人",
   "visitorDetailPurpose": "来访事由",
@@ -179,7 +190,6 @@
   "visitorDetailQrHint": "请向保安出示此二维码核验入厂",
   "visitorDetailTimeline": "审批轨迹",
   "visitorLogout": "退出访客",
-
   "visitorApprovalTitle": "访客审批",
   "visitorApprovalPending": "待审批",
   "visitorApprovalProcessed": "已处理",
@@ -192,13 +202,11 @@
   "visitorApprovalConfirmReject": "确认拒绝该访客来访？",
   "visitorApprovalHostConfirmed": "接待人已确认",
   "visitorApprovalEmpty": "暂无待审批的访客",
-
   "myVisitorsTitle": "我的访客",
   "myVisitorsEmpty": "暂无需要您确认的访客",
   "myVisitorsConfirm": "同意接待",
   "myVisitorsReject": "拒绝接待",
   "myVisitorsConfirmHint": "确认接待该访客？",
-
   "securityTitle": "访客核验",
   "securityScanHint": "将访客二维码对准扫码框",
   "securityScanManual": "手动输入凭证",
@@ -220,21 +228,18 @@
   "securityHost": "接待人",
   "securityPlate": "车牌",
   "securityVisitTime": "到访时间",
-
   "navHrGroup": "人事管理",
   "navHrEmployees": "员工档案",
   "navHrDepartments": "部门管理",
   "navHrOnboarding": "入职办理",
   "navHrPayrollGenerate": "工资条生成",
   "navHrNoticePublish": "通知发布",
-
   "employeeTitle": "员工档案",
   "employeeFabOnboard": "入职",
   "employeeSearchHint": "搜索工号 / 姓名 / 车牌",
   "employeeEmpty": "暂无员工",
   "employeeEmptyHint": "点右下角「入职」添加新员工",
   "employeeLoadMore": "加载更多",
-
   "employeeDetailTitle": "员工详情",
   "employeeDetailBasic": "基本信息",
   "employeeDetailContact": "联系与地址",
@@ -264,14 +269,20 @@
   "employeeWorkYearsYandM": "{years} 年 {months} 个月",
   "@employeeWorkYearsYandM": {
     "placeholders": {
-      "years": { "type": "int" },
-      "months": { "type": "int" }
+      "years": {
+        "type": "int"
+      },
+      "months": {
+        "type": "int"
+      }
     }
   },
   "employeeWorkYearsMonths": "{months} 个月",
   "@employeeWorkYearsMonths": {
     "placeholders": {
-      "months": { "type": "int" }
+      "months": {
+        "type": "int"
+      }
     }
   },
   "employeeWorkYearsUnderOneMonth": "不足 1 个月",
@@ -293,7 +304,6 @@
   "employeeContractPeriodValue": "{start} ~ {end}",
   "employeeProbationValue": "{months} 个月(至 {end})",
   "employeeRenewCountValue": "{count}",
-
   "employeeFieldAccountStatus": "登录账号",
   "accountStatusActive": "正常",
   "accountStatusLocked": "已锁定",
@@ -303,7 +313,6 @@
   "employeeProbationExpired": "试用期已于 {date} 到期，请尽快办理转正或离职",
   "employeeContractExpiring": "劳动合同将于 {date} 到期(剩 {days} 天)，请及时续签",
   "employeeContractExpired": "劳动合同已于 {date} 到期，请尽快处理",
-
   "employeeEditTitle": "编辑员工",
   "employeeEditBasic": "基本信息",
   "employeeEditOrg": "组织信息",
@@ -319,7 +328,6 @@
   "employeeEditLoadFailed": "加载失败：{error}",
   "employeeEditNotFound": "员工不存在",
   "employeeEditRequired": "必填",
-
   "employeeOnboardTitle": "新员工入职",
   "employeeOnboardGroupProfile": "档案",
   "employeeOnboardGroupOrg": "组织",
@@ -334,7 +342,11 @@
   "positionPickerDepartmentFirst": "请先选择部门",
   "positionPickerSearchHint": "输入岗位名称、编码或职级",
   "positionPickerUseCustom": "使用“{name}”作为新岗位",
-  "@positionPickerUseCustom": {"placeholders": {"name": {}}},
+  "@positionPickerUseCustom": {
+    "placeholders": {
+      "name": {}
+    }
+  },
   "positionPickerCustomDescription": "确认后将按当前部门保存",
   "positionPickerNoPositions": "该部门暂无岗位，可直接填写新岗位",
   "positionPickerLoadFailed": "岗位加载失败，可重试或直接填写新岗位",
@@ -357,14 +369,16 @@
   "employeeOnboardPickHireDate": "请选择入职日期",
   "employeeOnboardPickDepartment": "请选择部门",
   "employeeOnboardFieldRequired": "{field}不能为空",
-  "@employeeOnboardFieldRequired": {"placeholders": {"field": {}}},
+  "@employeeOnboardFieldRequired": {
+    "placeholders": {
+      "field": {}
+    }
+  },
   "employeeOnboardLoadFailed": "加载失败",
-
   "idTypeIdCard": "身份证",
   "idTypePassport": "护照",
   "idTypeHmtPermit": "港澳台通行证",
   "idTypeOther": "其他",
-
   "employeeOffboardTitle": "离职办理",
   "employeeOffboardFieldType": "离职类型",
   "employeeOffboardFieldDate": "离职日期",
@@ -379,7 +393,6 @@
   "employeeOffboardBack": "上一步",
   "employeeOffboardCompleted": "离职办理完成",
   "employeeOffboardLoadFailed": "加载失败",
-
   "employeeActions": "更多操作",
   "employeeActionTransfer": "调岗",
   "employeeActionConfirm": "转正",
@@ -407,41 +420,33 @@
   "employeeDeleteTitle": "确认删除该员工档案？",
   "employeeDeleteBody": "删除后其登录账号将被停用，此操作不可恢复。",
   "employeeDeleteSuccess": "员工档案已删除",
-
   "resignTypeVoluntary": "主动辞职",
   "resignTypeDismissed": "公司辞退",
   "resignTypeContractEnd": "合同到期",
   "resignTypeRetire": "退休",
-
   "resignCheckAccess": "收回门禁卡",
   "resignCheckAssets": "回收公司资产",
   "resignCheckAccount": "停用系统账号",
   "resignCheckSocial": "停缴社保公积金",
-
   "employeeStatusActive": "在职",
   "employeeStatusProbation": "试用",
   "employeeStatusOnLeave": "休假",
   "employeeStatusResigned": "离职",
   "employeeStatusUnknown": "未知",
-
   "genderMale": "男",
   "genderFemale": "女",
-
   "employmentTypeRegular": "正式",
   "employmentTypeDispatch": "劳务派遣",
   "employmentTypeIntern": "实习",
   "employmentTypeOutsource": "外包",
-
   "contractTypeFixed": "固定期限",
   "contractTypeOpen": "无固定期限",
   "contractTypeTask": "任务",
   "contractTypeIntern": "实习",
-
   "historyEventOnboard": "入职",
   "historyEventTransfer": "调岗",
   "historyEventResign": "离职",
   "historyEventRehire": "复职",
-
   "departmentTitle": "部门管理",
   "departmentTreeTitle": "组织架构",
   "departmentEmpty": "选择部门",
@@ -462,27 +467,43 @@
   "departmentCreated": "已创建",
   "departmentDeleted": "已删除",
   "departmentDeleteConfirm": "确认删除「{name}」？仅无子部门且无员工的叶子部门可删。",
-  "@departmentDeleteConfirm": {"placeholders": {"name": {}}},
+  "@departmentDeleteConfirm": {
+    "placeholders": {
+      "name": {}
+    }
+  },
   "departmentLevelAndCode": "{level} · 编码 {code}",
-  "@departmentLevelAndCode": {"placeholders": {"level": {}, "code": {}}},
+  "@departmentLevelAndCode": {
+    "placeholders": {
+      "level": {},
+      "code": {}
+    }
+  },
   "departmentStatEmployees": "员工",
   "departmentStatChildren": "子部门",
   "departmentStatManager": "负责人",
   "departmentStatParent": "上级",
   "departmentEmployeesHeader": "员工({count})",
-  "@departmentEmployeesHeader": {"placeholders": {"count": {}}},
+  "@departmentEmployeesHeader": {
+    "placeholders": {
+      "count": {}
+    }
+  },
   "departmentEmployeesEmpty": "该部门(含子部门)暂无员工",
   "departmentStatValue": "{label}：{value}",
-  "@departmentStatValue": {"placeholders": {"label": {}, "value": {}}},
+  "@departmentStatValue": {
+    "placeholders": {
+      "label": {},
+      "value": {}
+    }
+  },
   "departmentLoadFailed": "加载失败",
-
   "departmentLevelCompany": "公司",
   "departmentLevelDecision": "决策层",
   "departmentLevelManagement": "管理中心",
   "departmentLevelPrimary": "一级部门",
   "departmentLevelSecondary": "二级班组",
   "departmentLevelTertiary": "三级科室",
-
   "payrollGenerateTitle": "工资条生成",
   "payrollStepScope": "选择范围",
   "payrollStepItems": "配置薪酬项",
@@ -498,26 +519,42 @@
   "payrollSubmitButton": "提交审核",
   "payrollSubmitted": "已提交审核，等待财务审核",
   "payrollLoadFailed": "加载失败：{error}",
-  "@payrollLoadFailed": {"placeholders": {"error": {}}},
+  "@payrollLoadFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
   "payrollEmptyPreview": "该范围无可计算员工",
   "payrollTableTotalLabel": "合计",
   "payrollTableTotalValue": "¥ {total} · {count} 人",
-  "@payrollTableTotalValue": {"placeholders": {"total": {}, "count": {}}},
+  "@payrollTableTotalValue": {
+    "placeholders": {
+      "total": {},
+      "count": {}
+    }
+  },
   "payrollTableHeaderName": "工号/姓名",
   "payrollTableHeaderNet": "实发",
   "payrollTableRowName": "{name}({code})",
-  "@payrollTableRowName": {"placeholders": {"name": {}, "code": {}}},
+  "@payrollTableRowName": {
+    "placeholders": {
+      "name": {},
+      "code": {}
+    }
+  },
   "payrollTableRowNet": "¥ {net}",
-  "@payrollTableRowNet": {"placeholders": {"net": {}}},
+  "@payrollTableRowNet": {
+    "placeholders": {
+      "net": {}
+    }
+  },
   "payrollNext": "下一步",
   "payrollBack": "上一步",
-
   "payrollDeptAll": "全员",
   "payrollDeptProduction": "生产部",
   "payrollDeptQuality": "质量部",
   "payrollDeptHr": "人事部",
   "payrollDeptFinance": "财务部",
-
   "noticePublishTitle": "发布通知",
   "noticePublishSaveDraft": "存草稿",
   "noticePublishDraftSaved": "已保存草稿",
@@ -531,13 +568,21 @@
   "noticePublishFieldDept": "部门",
   "noticePublishScopeAllHint": "将通知到全公司所有员工",
   "noticePublishScopeDeptHint": "将通知到「{dept}」全体员工",
-  "@noticePublishScopeDeptHint": {"placeholders": {"dept": {}}},
+  "@noticePublishScopeDeptHint": {
+    "placeholders": {
+      "dept": {}
+    }
+  },
   "noticePublishValidateTitle": "请填写标题",
   "noticePublishValidateContent": "请填写正文",
   "noticePublishConfirmTitle": "确认发布？",
   "noticePublishConfirmBodyAll": "将通知到全员",
   "noticePublishConfirmBodyDept": "将通知到「{dept}」",
-  "@noticePublishConfirmBodyDept": {"placeholders": {"dept": {}}},
+  "@noticePublishConfirmBodyDept": {
+    "placeholders": {
+      "dept": {}
+    }
+  },
   "noticePublishPublished": "通知已发布",
   "noticePublishPublishing": "发布中…",
   "noticePublishContentSection": "通知内容",
@@ -557,19 +602,36 @@
   "noticePublishEmployeeEmpty": "未找到可接收通知的在职账号",
   "noticePublishEmployeeSelectedCount": "已选 {count} 人",
   "@noticePublishEmployeeSelectedCount": {
-    "placeholders": { "count": { "type": "int" } }
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
   "noticePublishEmployeeClear": "清空",
   "noticePublishEmployeeConfirm": "确定",
   "noticePublishValidateAudience": "请至少选择一个部门或人员",
   "noticePublishAudienceSummary": "已选 {departmentCount} 个部门、{employeeCount} 人",
-  "@noticePublishAudienceSummary": {"placeholders": {"departmentCount": {}, "employeeCount": {}}},
+  "@noticePublishAudienceSummary": {
+    "placeholders": {
+      "departmentCount": {},
+      "employeeCount": {}
+    }
+  },
   "noticePublishAudienceRecalculateHint": "发布前会按当前组织与账号状态重新核算实际接收人数。",
   "noticePublishConfirmAudience": "将发送给 {summary}，实际接收 {count} 人。",
-  "@noticePublishConfirmAudience": {"placeholders": {"summary": {}, "count": {}}},
+  "@noticePublishConfirmAudience": {
+    "placeholders": {
+      "summary": {},
+      "count": {}
+    }
+  },
   "noticePublishPublishedTo": "通知已发布给 {count} 人",
-  "@noticePublishPublishedTo": {"placeholders": {"count": {}}},
-
+  "@noticePublishPublishedTo": {
+    "placeholders": {
+      "count": {}
+    }
+  },
   "noticeTypeAnnouncement": "公告",
   "noticeTypePolicy": "制度",
   "noticeTypeBenefit": "福利",
@@ -594,24 +656,54 @@
   "noticeInteractionReceived": "已收到",
   "noticeClickToReceive": "点击收到",
   "noticeAckCount": "{count}人已收到",
-  "@noticeAckCount": {"placeholders": {"count": {"type": "int"}}},
+  "@noticeAckCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "noticeAckYouAndCount": "你已收到 · 共 {count} 人收到",
-  "@noticeAckYouAndCount": {"placeholders": {"count": {"type": "int"}}},
+  "@noticeAckYouAndCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "noticeAckRecent": "近期已收到",
   "noticeSendBlessing": "送上祝福",
   "noticeBlessingSent": "已送祝福",
   "noticeBlessingCount": "{count} 条祝福",
-  "@noticeBlessingCount": {"placeholders": {"count": {"type": "int"}}},
+  "@noticeBlessingCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "noticeBlessingWall": "祝福墙",
   "noticeBlessingReceivedCount": "收到 {count} 条祝福",
-  "@noticeBlessingReceivedCount": {"placeholders": {"count": {"type": "int"}}},
+  "@noticeBlessingReceivedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "noticeBlessingWallEmpty": "还没有祝福，送上第一份祝福吧",
   "noticeBlessingPlaceholder": "写下你的祝福…",
   "noticeBlessingSendButton": "发送祝福",
   "noticeBlessingSending": "发送中…",
   "noticeBlessingWithdraw": "撤回",
   "noticeBlessingViewAll": "查看全部 {count} 条",
-  "@noticeBlessingViewAll": {"placeholders": {"count": {"type": "int"}}},
+  "@noticeBlessingViewAll": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "noticeBlessingTemplatesTitle": "选一句祝福",
   "noticeBlessingValidateEmpty": "请输入祝福内容",
   "noticeCelebrationSubjectLabel": "祝福对象",
@@ -619,7 +711,12 @@
   "noticeCelebrationSubjectRequired": "请选择祝福对象",
   "noticeCelebrationSubjectIsYou": "你",
   "noticeCelebrationFor": "祝 {name} {event}",
-  "@noticeCelebrationFor": {"placeholders": {"name": {}, "event": {}}},
+  "@noticeCelebrationFor": {
+    "placeholders": {
+      "name": {},
+      "event": {}
+    }
+  },
   "noticeQuickCelebrationTitle": "快捷发布祝福",
   "noticeQuickCelebrationSubtitle": "选择类型，系统自动套用模板",
   "noticeQuickPublish": "发通知",
@@ -628,29 +725,62 @@
   "noticeQuickWedding": "新婚",
   "noticeQuickNewborn": "新生儿",
   "celebrationPopupBirthday": "{name}，今天是你的生日！\n小优祝你生日快乐！",
-  "@celebrationPopupBirthday": {"placeholders": {"name": {}}},
+  "@celebrationPopupBirthday": {
+    "placeholders": {
+      "name": {}
+    }
+  },
   "celebrationPopupAnniversary": "{name}，今天是你的入职周年！\n小优祝你{label}！",
-  "@celebrationPopupAnniversary": {"placeholders": {"name": {}, "label": {}}},
+  "@celebrationPopupAnniversary": {
+    "placeholders": {
+      "name": {},
+      "label": {}
+    }
+  },
   "celebrationPopupWedding": "{name}，新婚大喜！\n小优祝你们百年好合！",
-  "@celebrationPopupWedding": {"placeholders": {"name": {}}},
+  "@celebrationPopupWedding": {
+    "placeholders": {
+      "name": {}
+    }
+  },
   "celebrationPopupNewborn": "{name}，恭喜喜添新丁！\n小优祝宝宝健康成长！",
-  "@celebrationPopupNewborn": {"placeholders": {"name": {}}},
+  "@celebrationPopupNewborn": {
+    "placeholders": {
+      "name": {}
+    }
+  },
   "celebrationDismiss": "谢谢小优",
   "celebrationCardBirthday": "今天是 {name} 的生日",
-  "@celebrationCardBirthday": {"placeholders": {"name": {}}},
+  "@celebrationCardBirthday": {
+    "placeholders": {
+      "name": {}
+    }
+  },
   "celebrationCardAnniversary": "今天是 {name} 的{label}",
-  "@celebrationCardAnniversary": {"placeholders": {"name": {}, "label": {}}},
+  "@celebrationCardAnniversary": {
+    "placeholders": {
+      "name": {},
+      "label": {}
+    }
+  },
   "celebrationCardWedding": "今天是 {name} 的新婚大喜",
-  "@celebrationCardWedding": {"placeholders": {"name": {}}},
+  "@celebrationCardWedding": {
+    "placeholders": {
+      "name": {}
+    }
+  },
   "celebrationCardNewborn": "{name} 喜添新丁",
-  "@celebrationCardNewborn": {"placeholders": {"name": {}}},
+  "@celebrationCardNewborn": {
+    "placeholders": {
+      "name": {}
+    }
+  },
   "celebrationCardCta": "送上祝福",
   "celebrationCardWall": "查看祝福墙",
   "noticeAutoCelebrationTitle": "自动祝福通知",
   "noticeAutoCelebrationEnabled": "每日自动为当天生日 / 入职周年的员工发布全员祝福",
   "noticeAutoCelebrationTypes": "自动类型",
   "noticeAutoCelebrationPublisher": "发布人名称",
-
   "profileChangeEditTitle": "修改个人信息",
   "profileChangeEditCta": "修改我的信息",
   "profileChangeEditHrOnlyHint": "以下字段请联系人事修改",
@@ -692,8 +822,11 @@
   "profileChangeReviewComment": "审核意见",
   "profileChangeDiffTitle": "本次修改",
   "profileChangeBatchItems": "共 {count} 项",
-  "@profileChangeBatchItems": {"placeholders": {"count": {}}},
-
+  "@profileChangeBatchItems": {
+    "placeholders": {
+      "count": {}
+    }
+  },
   "profileChangeHrQueueTitle": "员工修改审批",
   "profileChangeHrQueueEmpty": "暂无待审申请",
   "profileChangeReviewApprove": "批准",
@@ -713,13 +846,15 @@
   "profileChangeFieldEmergencyName": "紧急联系人姓名",
   "profileChangeFieldEmergencyPhone": "紧急联系人电话",
   "profileChangeFieldEmergencyRelationship": "与本人关系",
-
   "profilePendingBadge": "{count} 项待审",
-  "@profilePendingBadge": {"placeholders": {"count": {}}},
+  "@profilePendingBadge": {
+    "placeholders": {
+      "count": {}
+    }
+  },
   "profilePendingSectionTitle": "待我审核的修改申请",
   "profilePendingSectionEmpty": "该员工暂无待审申请",
   "profilePendingSectionViewAll": "全部 →",
-
   "profileFieldPhoneMask": "138****1234",
   "profileFieldIdCardMask": "****",
   "profileFieldBankAccountMask": "****1234",
@@ -730,7 +865,13 @@
   "profileFieldGroupOrganization": "组织信息",
   "profileEditPolicyHint": "绿色「可直接修改」提交后立即生效；黄色「需 HR 审核」由人事核对后生效；其余字段由人事统一维护。",
   "profileEditPendingConflictHint": "你有 {count} 条待审申请；相关字段在审核通过前再次修改，可能与在途申请冲突。",
-  "@profileEditPendingConflictHint": {"placeholders": {"count": {"type": "int"}}},
+  "@profileEditPendingConflictHint": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "profileEditFieldAction": "修改",
   "profileFieldGroupOrg": "组织与入职",
   "profileFieldGroupCompensation": "薪资与银行",
@@ -767,18 +908,22 @@
   "profileFieldContractEnd": "合同截止",
   "profileFieldProbationMonths": "试用期(月)",
   "profileFieldRenewCount": "续签次数",
-
   "hubDisabledChip": "未启用",
-  "@hubDisabledChip": {"description": "未启用单据卡片上的角标"},
+  "@hubDisabledChip": {
+    "description": "未启用单据卡片上的角标"
+  },
   "hubSectionTaskCenter": "任务中心",
   "hubDisabledDocNotice": "该单据类型暂未启用(老库无数据)",
   "hubSubDetailPerItem": "一行一货品",
-  "@hubSubDetailPerItem": {"description": "明细报表共享副标题：一行一货品"},
+  "@hubSubDetailPerItem": {
+    "description": "明细报表共享副标题：一行一货品"
+  },
   "hubSubSummaryPerDoc": "一行一单",
-  "@hubSubSummaryPerDoc": {"description": "汇总报表共享副标题：一行一整单"},
+  "@hubSubSummaryPerDoc": {
+    "description": "汇总报表共享副标题：一行一整单"
+  },
   "hubSubPendingReturnQty": "待入库的退货量",
   "hubSubReadOnlyPlan": "计划只读",
-
   "salesHubTitle": "销售管理",
   "salesHubSectionReports": "销售报表",
   "salesHubSectionScarcity": "稀缺仲裁",
@@ -798,7 +943,6 @@
   "salesHubReportSummary": "销售汇总报表",
   "salesHubScarcity": "稀缺库存让单",
   "salesHubScarcitySub": "释放低优先级占用",
-
   "purchaseHubTitle": "采购管理",
   "purchaseHubSectionReports": "采购报表",
   "purchaseHubTaskCenter": "采购任务中心",
@@ -815,7 +959,6 @@
   "purchaseHubReportSummary": "采购汇总报表",
   "purchaseHubReportExpediting": "采购催料单",
   "purchaseHubReportExpeditingSub": "订货未收·库存",
-
   "subcontractHubTitle": "委外管理",
   "subcontractHubSectionReports": "委外报表",
   "subcontractHubTaskCenter": "委外任务中心",
@@ -825,7 +968,6 @@
   "subcontractHubReportSummary": "委外汇总报表",
   "subcontractHubReportInOut": "委外出入状况表",
   "subcontractHubReportInOutSub": "进出综合状况",
-
   "productionHubTitle": "生产管理",
   "productionHubSectionReports": "生产报表",
   "productionHubSchedule": "生产调度与进度",
@@ -844,7 +986,6 @@
   "productionHubReportPlanSummarySub": "单号·制单·审核",
   "productionHubWhereUsed": "物料反查产成品",
   "productionHubWhereUsedSub": "材料用在哪些产品",
-
   "financeHubTitle": "钱流管理",
   "financeHubSectionReports": "钱流报表",
   "financeHubApprovalOwners": "审批负责人设置",
@@ -853,13 +994,40 @@
   "financeSalesInitialQueueLabel": "销售订单首次财务确认",
   "financeSalesChangesQueueLabel": "销售订单修改",
   "financeSalesQueueCountLoading": "正在加载{queue}待办数量",
-  "@financeSalesQueueCountLoading": {"placeholders": {"queue": {"type": "String"}}},
+  "@financeSalesQueueCountLoading": {
+    "placeholders": {
+      "queue": {
+        "type": "String"
+      }
+    }
+  },
   "financeSalesQueueCountFailed": "{queue}待办数量加载失败，请进入任务页重试",
-  "@financeSalesQueueCountFailed": {"placeholders": {"queue": {"type": "String"}}},
+  "@financeSalesQueueCountFailed": {
+    "placeholders": {
+      "queue": {
+        "type": "String"
+      }
+    }
+  },
   "financeSalesQueueCountEmpty": "没有待处理的{queue}",
-  "@financeSalesQueueCountEmpty": {"placeholders": {"queue": {"type": "String"}}},
+  "@financeSalesQueueCountEmpty": {
+    "placeholders": {
+      "queue": {
+        "type": "String"
+      }
+    }
+  },
   "financeSalesQueueCountPending": "待处理{queue}：{count}项",
-  "@financeSalesQueueCountPending": {"placeholders": {"queue": {"type": "String"}, "count": {"type": "int"}}},
+  "@financeSalesQueueCountPending": {
+    "placeholders": {
+      "queue": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "financeHubTaskApprovalSub": "采购与委外订货审批",
   "financeHubTaskOverDelivery": "超量到货审批",
   "financeHubTaskOverDeliverySub": "审核超量到货",
@@ -892,7 +1060,6 @@
   "financeHubReportCostSub": "产品·销售成本",
   "financeHubReportGl": "总账报表",
   "financeHubReportGlSub": "科目·资产·利润",
-
   "warehouseHubTitle": "仓库管理",
   "warehouseHubSectionDocs": "出入库单据",
   "warehouseHubSectionDocsDesc": "调拨·其它出入库·领退料·产成品进出仓·盘点",
@@ -930,7 +1097,6 @@
   "warehouseHubInventoryMovementSub": "进出流水明细",
   "warehouseHubReportDetail": "仓库明细报表",
   "warehouseHubReportSummary": "仓库汇总报表",
-
   "basicDataHubTitle": "基础资料",
   "basicDataHubGoods": "货品资料",
   "basicDataHubGoodsSub": "物料分类树与货品主档",
@@ -962,11 +1128,23 @@
   "impersonationTargetPickerTitle": "选择要查看的员工",
   "impersonationSearchHint": "搜索姓名 / 工号",
   "impersonationBannerTitle": "正在以 {name} 身份查看(只读)",
-  "@impersonationBannerTitle": {"placeholders": {"name": {"type": "String"}}},
+  "@impersonationBannerTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "impersonationBannerSwitch": "切换",
   "impersonationBannerExit": "退出模拟",
   "impersonationRemainingMinutes": "剩余 {count} 分钟",
-  "@impersonationRemainingMinutes": {"placeholders": {"count": {"type": "int"}}},
+  "@impersonationRemainingMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "impersonationWrongPassword": "密码错误",
   "impersonationExited": "已退出模拟身份",
   "impersonationWindowExpired": "模拟窗口已到期，已退出",
@@ -983,9 +1161,21 @@
   "exportDownloadEncrypted": "加密下载",
   "exportFailed": "导出失败，请稍后重试",
   "exportDownloadStarted": "已开始下载 {name}",
-  "@exportDownloadStarted": {"placeholders": {"name": {"type": "String"}}},
+  "@exportDownloadStarted": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "exportDownloadSaved": "已保存：{path}",
-  "@exportDownloadSaved": {"placeholders": {"path": {"type": "String"}}},
+  "@exportDownloadSaved": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
   "profileLoadingMessage": "正在加载员工档案…",
   "profileLoadFailed": "员工档案加载失败",
   "profileUnboundTitle": "当前账号未绑定员工档案",
@@ -1003,7 +1193,13 @@
   "profileCompensationBoundaryDescription": "薪酬与银行信息不会在“我的”页展示；这是有意设置的隐私边界。本人月度收入请从工资条核对，其他问题请联系授权人事。",
   "profileMissingEmergencyContact": "尚未登记紧急联系人，请先联系人事登记；登记后可在这里申请修改。",
   "profileAlternatePhoneCount": "已登记 {count} 个备用号码",
-  "@profileAlternatePhoneCount": {"placeholders": {"count": {"type": "int"}}},
+  "@profileAlternatePhoneCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "profileVehiclesPhonesEmptyHint": "登记车辆与备用手机号，按车牌快速找到你",
   "historyEventConfirm": "转正",
   "accountProvisionPermissionDenied": "你没有开通账号权限，请联系账号支持人员处理",
@@ -1021,8 +1217,7 @@
   "employeeResignedCannotProvision": "该员工已离职，不能开通登录账号",
   "employeeAccountNotProvisionedContactSupport": "该员工还未开通账号，请联系账号支持人员处理",
   "materialMainWarehouse": "主仓库",
-  "materialIssueWarehouseSettings": "领料仓设置",
-  "materialWarehouseScopeExplanation": "主仓库包含所属子仓范围。齐套、预留和领料按下方实际领料仓计算；其它仓库存只作调拨参考，未调入前不算齐套。",
+  "materialWarehouseScopeExplanation": "按主仓库合计备料，实际领料由仓库安排。",
   "materialSearchHint": "查找产品或物料",
   "materialByProduct": "按产品看",
   "materialByMaterial": "按物料汇总",
@@ -1063,8 +1258,6 @@
   "materialWarehouseFacts": "仓库与供给明细",
   "materialExactStock": "本节点合格绑定",
   "materialPublicStock": "公共现货",
-  "materialScopeStock": "参与仓可用(参考)",
-  "materialTransferStock": "其它仓可调拨",
   "materialClaimedSupply": "本节点已采用",
   "materialTaskBuy": "下达采购",
   "materialTaskSubcontract": "下达委外",
@@ -1127,63 +1320,92 @@
   "materialRevokeRootStock": "撤回现货交接",
   "materialRootRevokeFailed": "现货交接撤回失败，请刷新后核对",
   "materialRootSupplyProcessed": "本批供料已处理，现货交接和追加需求请查看对应记录",
-
   "orderChangeQtyButton": "改量",
-  "@orderChangeQtyButton": {"description": "订货单批准后改量按钮（采购/委外）"},
+  "@orderChangeQtyButton": {
+    "description": "订货单批准后改量按钮（采购/委外）"
+  },
   "orderChangeQtyTitle": "订单改量",
-  "@orderChangeQtyTitle": {"description": "改量弹窗标题"},
+  "@orderChangeQtyTitle": {
+    "description": "改量弹窗标题"
+  },
   "orderChangeQtyWarning": "批准后改量立即生效，并自动重回财务复核；财务将看到修改清单（以前→现在）。驳回不会自动还原数量。",
-  "@orderChangeQtyWarning": {"description": "改量弹窗顶部红色警示"},
+  "@orderChangeQtyWarning": {
+    "description": "改量弹窗顶部红色警示"
+  },
   "orderChangeQtyCurrent": "现 {qty}",
   "@orderChangeQtyCurrent": {
     "description": "改量弹窗行内当前数量前缀",
     "placeholders": {
-      "qty": {"type": "String"}
+      "qty": {
+        "type": "String"
+      }
     }
   },
   "orderChangeQtyNewQty": "新数量",
-  "@orderChangeQtyNewQty": {"description": "改量弹窗输入框标签"},
+  "@orderChangeQtyNewQty": {
+    "description": "改量弹窗输入框标签"
+  },
   "orderChangeQtyConfirm": "确认改量",
-  "@orderChangeQtyConfirm": {"description": "改量弹窗确认按钮"},
+  "@orderChangeQtyConfirm": {
+    "description": "改量弹窗确认按钮"
+  },
   "orderChangeQtyInvalid": "存在无效数量（必须大于 0），请检查",
-  "@orderChangeQtyInvalid": {"description": "改量行内校验失败提示"},
+  "@orderChangeQtyInvalid": {
+    "description": "改量行内校验失败提示"
+  },
   "orderChangeQtySuccess": "已改量，订货单已重回财务复核",
-  "@orderChangeQtySuccess": {"description": "改量成功提示"},
+  "@orderChangeQtySuccess": {
+    "description": "改量成功提示"
+  },
   "orderChangeQtyFailed": "改量失败，请稍后重试",
-  "@orderChangeQtyFailed": {"description": "改量失败提示"},
+  "@orderChangeQtyFailed": {
+    "description": "改量失败提示"
+  },
   "orderQtyChangeOld": "以前 {value}",
   "@orderQtyChangeOld": {
     "description": "修改清单旧行前缀（删除线）",
     "placeholders": {
-      "value": {"type": "String"}
+      "value": {
+        "type": "String"
+      }
     }
   },
   "orderQtyChangeNew": "现在 {value}",
   "@orderQtyChangeNew": {
     "description": "修改清单新值前缀（加粗）",
     "placeholders": {
-      "value": {"type": "String"}
+      "value": {
+        "type": "String"
+      }
     }
   },
   "procurementApprovalStatusPending": "待财务复核",
-  "@procurementApprovalStatusPending": {"description": "订货审批任务列表默认状态"},
+  "@procurementApprovalStatusPending": {
+    "description": "订货审批任务列表默认状态"
+  },
   "procurementApprovalStatusChanged": "改后待复核 · 改量 {count} 处",
   "@procurementApprovalStatusChanged": {
     "description": "订货审批任务列表改量徽标",
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "procurementApprovalQtyChangesTitle": "修改清单 · 改量 {count} 处",
   "@procurementApprovalQtyChangesTitle": {
     "description": "订货审批审核详情修改清单卡片标题",
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "procurementApprovalQtyChangesHint": "订货单在财务批准后修改过数量，已自动重回财务复核；请逐行核对 以前→现在 后再复核。",
-  "@procurementApprovalQtyChangesHint": {"description": "修改清单卡片说明"},
-  "productionMaterialRecheck": "重新检查物料",
+  "@procurementApprovalQtyChangesHint": {
+    "description": "修改清单卡片说明"
+  },
+  "productionMaterialRecheck": "重新核对备料",
   "productionMaterialRecheckReady": "物料已齐套，已按实际子仓生成领料单。请仓库发料完成后开工。",
   "productionMaterialRecheckWaiting": "已重新检查，当前仍有物料未满足，请核对实际入库和其他任务的预留。",
   "fieldAutofilledReview": "已自动带出上次记录或默认值，请核对后使用",
@@ -1255,5 +1477,103 @@
   "subcontractOpenPreparation": "查看生产安排",
   "subcontractDraftPreparationHint": "先由计划安排内部生产，备齐入库后再提交财务。",
   "subcontractWaitingPlan": "等待计划安排",
-  "subcontractReadyForFinance": "已备齐，可提交财务"
+  "subcontractReadyForFinance": "已备齐，可提交财务",
+  "materialIssuedPlanSyncPending": "已下达，计划进度待同步",
+  "subcontractOrderBlockedProducing": "正在生产，暂时不能下委外单",
+  "subcontractOrderBlockedPreparation": "前置生产尚未完成，暂时不能下委外单",
+  "subcontractOrderBlockedNotification": "前置生产已完成，请先通知委外后再下单",
+  "subcontractOrderBlockedCancelled": "生产任务已取消，暂时不能下委外单",
+  "subcontractPlanIssuedDate": "计划下达日期",
+  "subcontractPlanIssuedDateHint": "计划部门首次下达这项委外任务的日期",
+  "subcontractOrderBlockedRefresh": "已通知委外，请刷新任务列表后下单",
+  "serverStatusTitle": "服务器状态",
+  "serverStatusRefresh": "刷新",
+  "serverStatusAccessRequired": "没有服务器状态查看权限",
+  "serverStatusResources": "运行资源",
+  "serverStatusStorage": "磁盘空间",
+  "serverStatusDataProtection": "数据库与备份",
+  "serverStatusOverview": "运行总览",
+  "serverStatusOverviewHint": "根据服务器最近一次采集的数据展示运行情况。",
+  "serverStatusCollecting": "正在等待服务器采集运行数据。",
+  "serverStatusStale": "数据已过期，正在等待新的采集结果。",
+  "serverStatusRefreshFailed": "暂时无法更新。上次数据仅供参考，请稍后刷新。",
+  "serverStatusUpdatedAt": "采集时间",
+  "serverStatusEnvironment": "运行环境",
+  "serverStatusVersion": "应用版本",
+  "serverStatusUptime": "已运行",
+  "serverStatusPolling": "每 {seconds} 秒自动刷新，离开页面后暂停",
+  "serverStatusCpu": "处理器(CPU)",
+  "serverStatusMemory": "系统内存",
+  "serverStatusAppMemory": "应用内存",
+  "serverStatusDbPool": "数据库连接池",
+  "serverStatusDisk": "磁盘",
+  "serverStatusUsed": "已使用",
+  "serverStatusFree": "可用空间",
+  "serverStatusCapacity": "总容量",
+  "serverStatusDatabase": "数据库",
+  "serverStatusDatabaseHint": "查看数据库是否能够响应，以及当前连接数量。",
+  "serverStatusResponse": "响应耗时",
+  "serverStatusConnections": "当前 / 最大连接数",
+  "serverStatusBackup": "最近备份",
+  "serverStatusHours": "小时",
+  "serverStatusLastBackup": "最近成功时间",
+  "serverStatusAttention": "需要留意",
+  "serverStatusNotCollected": "尚未采集到这项数据",
+  "serverStatusUptimeValue": "{days}天 {hours}小时 {minutes}分钟",
+  "serverStatusThresholdUnknown": "暂无可用提醒阈值",
+  "serverStatusThresholds": "黄色提醒 ≥ {warning}；红色告警 ≥ {critical}",
+  "serverStatusNormal": "正常",
+  "serverStatusWarning": "留意",
+  "serverStatusCritical": "需处理",
+  "serverStatusUnknown": "未知",
+  "@serverStatusPolling": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "@serverStatusUptimeValue": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      },
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "@serverStatusThresholds": {
+    "placeholders": {
+      "warning": {
+        "type": "String"
+      },
+      "critical": {
+        "type": "String"
+      }
+    }
+  },
+  "attachmentUploadFormatsHint": "支持图片 / PDF / Office / zip / txt，单个不超过 25MB",
+  "attachmentUploadedFile": "已上传 {fileName}",
+  "@attachmentUploadedFile": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      }
+    }
+  },
+  "attachmentUploadedFiles": "已上传 {count} 个文件",
+  "@attachmentUploadedFiles": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "productionMaterialRecheckHelp": "重新核对本任务已合格到货和可用库存；不能代替仓库入库或登记实耗。",
+  "productionMaterialRegisterUsage": "登记实际用料",
+  "productionMaterialViewUsage": "查看用料记录"
 }

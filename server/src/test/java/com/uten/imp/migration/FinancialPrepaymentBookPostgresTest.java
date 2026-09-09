@@ -105,5 +105,5 @@ class FinancialPrepaymentBookPostgresTest {
     }
     private record Fixture(UUID client,UUID currency,UUID base,UUID maker,UUID approver,UUID actor,UUID order,UUID target,UUID ref){}
     private static Connection connect(PostgreSQLContainer<?> pg)throws SQLException{return DriverManager.getConnection(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword());}
-    private static void migrate(PostgreSQLContainer<?> pg,String target){Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("filesystem:src/main/resources/db/migration","filesystem:../.codex-tmp/valuation-positions","filesystem:../.codex-tmp/iqc-consideration","filesystem:../.codex-tmp/financial-exact").target(target).load().migrate();}
+    private static void migrate(PostgreSQLContainer<?> pg,String target){Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target(target).load().migrate();}
 }

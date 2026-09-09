@@ -112,6 +112,7 @@ class SubcontractLossClaimSummary {
     this.claimAmountLocal,
     required this.version,
     this.createdAt,
+    this.priceMasked = true,
   });
 
   final String id;
@@ -128,6 +129,7 @@ class SubcontractLossClaimSummary {
   final String? claimAmountLocal;
   final int version;
   final String? createdAt;
+  final bool priceMasked;
 
   String get statusLabel => subcontractLossClaimStatusLabel(status);
   bool get canReview => status == 'OPEN' || status == 'DISPUTED';
@@ -150,6 +152,7 @@ class SubcontractLossClaimSummary {
         claimAmountLocal: _text(json['claimAmountLocal']),
         version: _intValue(json['version']),
         createdAt: _text(json['createdAt']),
+        priceMasked: json['priceMasked'] != false,
       );
 }
 

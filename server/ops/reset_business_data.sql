@@ -1,11 +1,12 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空（V443–V467；保留主档、人事、权限与治理证据）
+-- 本地/测试库业务数据一键清空（支持至 V538；保留主档、人事、权限与治理证据）
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
 --       干净测试起点。只允许在可丢弃的本地/测试库停写后运行。
 --
 -- 唯一范围事实：
+--   · V538 当前目录：CLEAR 266 张、PRESERVE 96 张；下列历史说明用于旧版本兼容。
 --   · CLEAR 212/214/219/220 张：V443 为212张，V446新增两张 IQC 仓库入库事实表后为214张，V447新增五张交接事实表后为219张；V448–V450不新增父表；
 --     V448 只增合并页读路径索引、不新增业务表，CLEAR 维持 219 张；
 --     V449 只替换 V446 的 IQC 入库校验触发器函数（放开同人放行+确认限制），
@@ -36,7 +37,9 @@
 -- 安全边界：
 --   · confirm、数据库名、PostgreSQL system_identifier 三重带外确认。
 --   · 必须先停止应用、定时任务和 outbox worker；存在其它客户端连接即拒绝。
---   · outbox 有待处理/失败事件，或存在非人事附件 owner 时拒绝执行。
+--   · outbox 有待处理/失败事件，或业务附件尚无完整物理删除证明时拒绝执行。
+--     V537 正常完成删除的历史附件/上传会话/队列继续保留审计，不再阻止清空；
+--     旧目录缺少新证明函数时仍按原严格 owner 保护拒绝，绝不默认放行。
 --   · 当前 public 非分区普通表/分区父表必须恰好分类一次；未知表失败关闭。
 --   · 不使用级联扩大范围；新增未分类 FK 表会让执行失败，而不是被静默删除。
 --   · 单事务完成业务表及其 identity 清空、账户金额/遗留期初/货品安全库存与成本预算归零、
@@ -171,23 +174,25 @@ BEGIN
             blocked_outbox;
     END IF;
 
-    SELECT count(*)
-    INTO unsafe_attachment_owners
-    FROM (
-        SELECT owner_type
-        FROM attachments
-        WHERE upper(btrim(owner_type))
-              NOT IN ('EMPLOYEE', 'EMPLOYEE_CONTRACT')
-        UNION ALL
-        SELECT owner_type
-        FROM attachment_upload_sessions
-        WHERE upper(btrim(owner_type))
-              NOT IN ('EMPLOYEE', 'EMPLOYEE_CONTRACT')
-    ) unsafe_owner;
+    IF to_regprocedure('fn_business_attachment_reset_blockers()') IS NOT NULL THEN
+        SELECT count(*) INTO unsafe_attachment_owners FROM fn_business_attachment_reset_blockers();
+    ELSE
+        IF EXISTS (SELECT 1 FROM flyway_schema_history WHERE success AND version ~ '^[0-9]+$' AND version::integer >= 537) THEN
+            RAISE EXCEPTION 'V537 附件删除完成证明函数缺失，拒绝清空';
+        END IF;
+        -- Older supported catalogs retain the original strict guard; absence is never permission.
+        SELECT count(*) INTO unsafe_attachment_owners FROM (
+            SELECT owner_type FROM attachments
+            WHERE upper(btrim(owner_type)) NOT IN ('EMPLOYEE', 'EMPLOYEE_CONTRACT')
+            UNION ALL
+            SELECT owner_type FROM attachment_upload_sessions
+            WHERE upper(btrim(owner_type)) NOT IN ('EMPLOYEE', 'EMPLOYEE_CONTRACT')
+        ) unsafe_owner;
+    END IF;
 
     IF unsafe_attachment_owners > 0 THEN
         RAISE EXCEPTION
-            '拒绝执行：附件或上传会话存在 % 条非人事 owner；必须先走对象删除/对账流程，禁止制造孤儿文件',
+            '拒绝执行：仍有 % 项业务文件未完成删除；请先完成测试附件清理准备并等待文件队列结束，禁止制造孤儿文件',
             unsafe_attachment_owners;
     END IF;
 END $$;
@@ -899,10 +904,16 @@ BEGIN
         (529, 488),
         (530, 489),
         (531, 490),
-        (532, 491)
+        (532, 491),
+        (533, 492),
+        (534, 493),
+        (535, 494),
+        (536, 495),
+        (537, 496),
+        (538, 497)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V532完整目录，当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V538完整目录，当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 

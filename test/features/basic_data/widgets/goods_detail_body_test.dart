@@ -30,6 +30,7 @@ void main() {
           home: Scaffold(
             body: GoodsDetailBody(
               initialDetail: GoodsDetail(
+                writable: true,
                 id: 'goods-1',
                 code: 'P-001',
                 name: '测试货品',
@@ -90,6 +91,7 @@ void main() {
           home: Scaffold(
             body: GoodsDetailBody(
               initialDetail: GoodsDetail(
+                writable: true,
                 id: 'goods-1',
                 name: '测试货品',
                 status: '使用',
@@ -155,6 +157,7 @@ void main() {
           home: Scaffold(
             body: GoodsDetailBody(
               initialDetail: GoodsDetail(
+                writable: true,
                 id: 'goods-legacy-only',
                 name: 'Legacy-only goods',
                 status: '浣跨敤',

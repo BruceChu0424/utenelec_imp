@@ -36,4 +36,6 @@ public class RequestDetail {
     private boolean canDelete;
     private boolean canReverse;
     private String restrictionReason;
+    /** Display only; applicantId remains the stable employee reference. */
+    private String applicantName;
 }

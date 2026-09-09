@@ -150,9 +150,10 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
     final permissions = ref.watch(currentPermissionsProvider);
     bool can(String permission) => isAdmin || permissions.contains(permission);
     final canCreate = can(Perm.goodsCreate);
-    final canEdit = can(Perm.goodsEdit);
-    final canDelete = can(Perm.goodsDelete);
-    final canStatus = can(Perm.goodsStatus);
+    final writable = _isCreate || _detail?.writable == true;
+    final canEdit = can(Perm.goodsEdit) && writable;
+    final canDelete = can(Perm.goodsDelete) && writable;
+    final canStatus = can(Perm.goodsStatus) && writable;
     final canBomCreate = can(Perm.goodsBomCreate);
     final canBomEdit = can(Perm.goodsBomEdit);
     final canBomDelete = can(Perm.goodsBomDelete);

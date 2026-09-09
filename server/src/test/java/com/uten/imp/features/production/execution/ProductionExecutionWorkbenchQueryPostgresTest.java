@@ -1,6 +1,10 @@
 package com.uten.imp.features.production.execution;
 
 import com.uten.imp.application.port.SubcontractDocumentReadAccessPort;
+import com.uten.imp.features.stock.allocation.ProductionMaterialSettlementService;
+import com.uten.imp.features.stock.allocation.ProductionMaterialTaskAccessPolicy;
+import com.uten.imp.features.stock.valuation.ProductionInventoryValueService;
+import com.uten.imp.security.TxSessionVars;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy;
 import com.uten.imp.security.DocumentAccessPolicy.NativeReadScope;
@@ -20,6 +24,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -42,7 +48,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
     private ProductionExecutionWorkbenchService service;
 
     @BeforeAll
-    static void startPostgres() {
+    static void startPostgres() throws Exception {
         POSTGRES.start();
         jdbc = new JdbcTemplate(new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
@@ -93,6 +99,21 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                     earliest_begin_date date DEFAULT '2026-09-05', latest_end_date date DEFAULT '2026-09-06', owner_employee_name text, analyzed_at timestamp,
                     root_planned_qty numeric DEFAULT 0, root_inbound_qty numeric DEFAULT 0, root_progress_ratio numeric DEFAULT 0);
                 """);
+        jdbc.execute("""
+                CREATE TABLE production_material_demands(id uuid PRIMARY KEY, plan_id uuid,
+                    execution_segment_id uuid, goods_id uuid, color_id uuid, required_qty numeric,
+                    status text DEFAULT 'ACTIVE', is_deleted boolean DEFAULT FALSE);
+                CREATE TABLE production_material_stock_postings(id uuid PRIMARY KEY, demand_id uuid,
+                    posting_type text, qty_base numeric);
+                CREATE TABLE production_material_settlement_events(id uuid PRIMARY KEY, event_type text);
+                CREATE TABLE production_material_settlement_postings(id uuid PRIMARY KEY, demand_id uuid,
+                    event_id uuid, settlement_type text, qty_base numeric);
+                """);
+        // Execute the formal authoritative clearance view, not a test copy of its arithmetic.
+        String migration = Files.readString(Path.of("src/main/resources/db/migration/V152__production_material_issue_return_ledger.sql"));
+        int start = migration.lastIndexOf("CREATE OR REPLACE VIEW v_production_material_clearance AS");
+        assertThat(start).isGreaterThanOrEqualTo(0);
+        jdbc.execute(migration.substring(start, migration.indexOf(';', start) + 1));
         jdbc.update("INSERT INTO departments(id) VALUES (?), (?)", WORKSHOP, OTHER_WORKSHOP);
         jdbc.update("INSERT INTO employees(id, department_id) VALUES (?, ?)", EMPLOYEE, WORKSHOP);
         jdbc.update("INSERT INTO production_plans(id, bill_no, status, maker_id) VALUES (?, 'PLAN-001', 1, ?)", PLAN, EMPLOYEE);
@@ -103,6 +124,19 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         insertSegment(4, "IN_PROGRESS", "READY_TO_REPORT", true, WORKSHOP);
         insertSegment(5, "COMPLETED", "COMPLETE", false, WORKSHOP);
         insertSegment(6, "READY", "PREPARING", false, OTHER_WORKSHOP);
+        for (int number : new int[]{2, 3, 4, 6}) {
+            UUID demand = new UUID(1, number);
+            jdbc.update("INSERT INTO production_material_demands(id,plan_id,execution_segment_id,goods_id,required_qty) VALUES (?,?,?,?,10)",
+                    demand, PLAN, new UUID(0, number), UUID.randomUUID());
+            jdbc.update("INSERT INTO production_material_stock_postings VALUES (?,?, 'ISSUE',?)",
+                    UUID.randomUUID(), demand, number == 2 ? 4 : 10);
+        }
+        UUID settlementEvent = UUID.randomUUID();
+        jdbc.update("INSERT INTO production_material_settlement_events VALUES (?,'POST')", settlementEvent);
+        jdbc.update("INSERT INTO production_material_settlement_postings VALUES (?,?,?,'CONSUMED',10)",
+                UUID.randomUUID(), new UUID(1, 3), settlementEvent);
+        jdbc.update("INSERT INTO production_material_stock_postings VALUES (?,?,'ISSUE_REVERSE',10)",
+                UUID.randomUUID(), new UUID(1, 4));
         factory = new Configuration()
                 .setProperty("hibernate.connection.driver_class", "org.postgresql.Driver")
                 .setProperty("hibernate.connection.url", POSTGRES.getJdbcUrl())
@@ -132,9 +166,34 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         when(currentUser.employeeId()).thenReturn(Optional.of(EMPLOYEE));
         when(currentUser.get()).thenReturn(Optional.empty());
         service = new ProductionExecutionWorkbenchService(em, access,
-                mock(PurchaseDocumentAccessPolicy.class), mock(SubcontractDocumentReadAccessPort.class), currentUser);
+                mock(PurchaseDocumentAccessPolicy.class), mock(SubcontractDocumentReadAccessPort.class), currentUser,
+                new ProductionMaterialSettlementService(em, mock(TxSessionVars.class),
+                        mock(ProductionMaterialTaskAccessPolicy.class), mock(ProductionInventoryValueService.class)));
         org.springframework.test.util.ReflectionTestUtils.setField(service,"draftPreparationAccess",
                 mock(com.uten.imp.features.production.SubcontractDraftPreparationAccessPolicy.class));
+    }
+
+    @Test
+    void materialEntryFlagsUseActualLedgerBalancesInOneScopedBatch() {
+        factory.getStatistics().setStatisticsEnabled(true);
+        factory.getStatistics().clear();
+        var page = service.workshopTasks(1, 50, null, null, null);
+        assertThat(page.getItems()).extracting(ProductionExecutionWorkbenchSegment::segmentId)
+                .containsExactly(new UUID(0, 1), new UUID(0, 2), new UUID(0, 3), new UUID(0, 4));
+        var empty = page.getItems().get(0);
+        assertThat(empty.hasMaterialActivity()).isFalse();
+        assertThat(empty.hasUnregisteredMaterial()).isFalse();
+        var partiallyIssued = page.getItems().get(1);
+        assertThat(partiallyIssued.issued()).isFalse();
+        assertThat(partiallyIssued.hasMaterialActivity()).isTrue();
+        assertThat(partiallyIssued.hasUnregisteredMaterial()).isTrue();
+        var consumed = page.getItems().get(2);
+        assertThat(consumed.hasMaterialActivity()).isTrue();
+        assertThat(consumed.hasUnregisteredMaterial()).isFalse();
+        var reversedIssue = page.getItems().get(3);
+        assertThat(reversedIssue.hasMaterialActivity()).isTrue();
+        assertThat(reversedIssue.hasUnregisteredMaterial()).isFalse();
+        assertThat(factory.getStatistics().getPrepareStatementCount()).isEqualTo(3);
     }
 
     /** V477 读侧放行回归锁：超管在我的车间任务页看到全部车间的活跃段与角标。 */

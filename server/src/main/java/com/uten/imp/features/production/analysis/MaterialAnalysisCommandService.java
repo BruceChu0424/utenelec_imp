@@ -185,7 +185,7 @@ public class MaterialAnalysisCommandService {
                     }
                 }
             }
-            SafetySnapshot safety = safetySnapshot(view.warehouseId(), group);
+            SafetySnapshot safety = groupSafetySnapshot(group.materials());
             BigDecimal confirmedSafety = input == null
                     || input.safetyReplenishmentQty() == null
                     ? null
@@ -696,16 +696,26 @@ public class MaterialAnalysisCommandService {
     /**
      * 下达车间的候选锚点（2026-09-05 简化）：按操作组只补建「剩余缺口」的
      * MAKE_COMPONENT 锚点行——不建 preplan action、不委托权益、不展开子树，
-     * 物料行保持原位（计划员照常在采购/委外桶下达）；重试/重复下达按增量
-     * 归零自然跳过。锚点行的 requested_qty = 组的实时剩余缺口（首建全量、
-     * 重开增量），与 notify 的增量口径一致。
+     * 物料行保持原位（计划员照常在采购/委外桶下达）。已有锚点只消费其
+     * remainingQty，不从仍存在的物理缺口再次增加来源需求；数量变化由明确
+     * 的来源变更处理。新锚点才按当前缺口建立需求。
      */
     private void ensureWorkshopChildAnchors(
             UUID analysisId, AnalysisView view, List<UUID> makeLineIds) {
         List<ActionGroup> groups = selectedGroups(view, new NotifyRequest(
                 null, null, "issue-anchor-" + analysisId, "MAKE",
                 makeLineIds, null, null));
+        Map<UUID, ProductView> products = view.products().stream()
+                .collect(Collectors.toMap(ProductView::analysisLineId, product -> product));
         for (ActionGroup group : groups) {
+            UUID anchorId = group.materials().getFirst().planAnchorAnalysisLineId();
+            if (anchorId != null) {
+                ProductView anchor = products.get(anchorId);
+                if (anchor == null || !"MAKE_COMPONENT".equals(anchor.sourceType())) {
+                    throw conflict("物料节点的计划锚点来源不一致，请刷新后核对路线");
+                }
+                continue;
+            }
             BigDecimal delta = group.demandRequiredQty()
                     .subtract(activeOpenActionQty(analysisId, group))
                     .subtract(cancelledIqcReplacementInFlight(analysisId, group))
@@ -1047,30 +1057,37 @@ public class MaterialAnalysisCommandService {
         return result;
     }
 
-    private SafetySnapshot safetySnapshot(UUID warehouseId, ActionGroup group) {
-        List<WarehouseBreakdown> rows = group.materials().stream()
-                .flatMap(material -> material.warehouseBreakdown().stream())
-                .filter(row -> Objects.equals(row.warehouseId(), warehouseId))
-                .toList();
-        if (rows.isEmpty()) {
-            throw conflict("目标仓安全库存快照缺失，请刷新物料分析后重试");
+    /** One authoritative main-warehouse budget, repeated on each path of this material group. */
+    static SafetySnapshot groupSafetySnapshot(List<MaterialView> materials) {
+        if (materials.isEmpty() || materials.stream().anyMatch(material ->
+                material.mainWarehousePublicAvailableQty() == null
+                        || material.mainWarehouseOpenSafetySupplyQty() == null
+                        || material.mainWarehouseSafetyReplenishmentGapQty() == null
+                        || material.safetyStockQty() == null)) {
+            throw conflict("主仓安全库存汇总缺失，请刷新物料分析后重试");
         }
-        BigDecimal safetyStock = group.materials().stream()
+        if (materials.stream().anyMatch(material ->
+                material.mainWarehousePublicAvailableQty().signum() < 0
+                        || material.mainWarehouseOpenSafetySupplyQty().signum() < 0
+                        || material.mainWarehouseSafetyReplenishmentGapQty().signum() < 0
+                        || material.safetyStockQty().signum() < 0)) {
+            throw conflict("主仓安全库存汇总无效，请刷新物料分析后重试");
+        }
+        BigDecimal safetyStock = materials.stream()
                 .map(MaterialView::safetyStockQty)
                 .reduce(BigDecimal.ZERO, BigDecimal::max)
-                .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING);
-        BigDecimal publicAvailable = rows.stream()
-                .map(WarehouseBreakdown::publicAvailableQty)
-                .reduce(BigDecimal.ZERO, BigDecimal::max)
-                .max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN);
-        BigDecimal openSupply = rows.stream()
-                .map(WarehouseBreakdown::openSafetySupplyQty)
-                .reduce(BigDecimal.ZERO, BigDecimal::max)
-                .max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN);
+                .setScale(4, RoundingMode.CEILING);
+        MaterialView first = materials.getFirst();
+        BigDecimal publicAvailable = first.mainWarehousePublicAvailableQty()
+                .setScale(4, RoundingMode.DOWN);
+        BigDecimal openSupply = first.mainWarehouseOpenSafetySupplyQty()
+                .setScale(4, RoundingMode.DOWN);
         BigDecimal gap = MaterialAnalysisService.publicSafetyReplenishmentGap(
                 safetyStock, publicAvailable, openSupply);
-        boolean inconsistent = rows.stream().anyMatch(row ->
-                row.safetyReplenishmentGapQty().compareTo(gap) != 0);
+        boolean inconsistent = materials.stream().anyMatch(material ->
+                material.mainWarehousePublicAvailableQty().compareTo(publicAvailable) != 0
+                        || material.mainWarehouseOpenSafetySupplyQty().compareTo(openSupply) != 0
+                        || material.mainWarehouseSafetyReplenishmentGapQty().compareTo(gap) != 0);
         if (inconsistent) {
             throw conflict("公共安全库存补库快照不一致，请刷新后重试");
         }
@@ -2589,7 +2606,7 @@ public class MaterialAnalysisCommandService {
         }
     }
 
-    private record SafetySnapshot(
+    record SafetySnapshot(
             BigDecimal safetyStockQty,
             BigDecimal publicAvailableQty,
             BigDecimal openSupplyQty,

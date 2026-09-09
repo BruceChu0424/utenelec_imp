@@ -10,8 +10,9 @@ import java.util.UUID;
 /**
  * 附件对象存储抽象。业务代码只依赖本接口，后端可换：
  * <ul>
- *   <li>{@code local} —— 本地磁盘（开发/本地测试默认）。</li>
- *   <li>{@code oss} —— 阿里云 OSS，预签名 URL 直传直下。</li>
+ *   <li>{@code internal} —— 公司内部私有、不可覆盖、可验证还原的文件存储。</li>
+ *   <li>{@code local} —— 本地磁盘（仅开发/本地测试）。</li>
+ *   <li>{@code oss} —— 仅历史对象的精确版本读取；不接受新增上传。</li>
  * </ul>
  * 上传两阶段：{@link #presignUpload} 返回客户端直传目标 URL + storageKey；
  * 客户端按返回 method/headers/formFields 上传；再由业务层 {@link #describe}
@@ -37,7 +38,12 @@ public interface StorageService {
 
     /** 对象校验/元信息。 */
     record StoredObject(boolean exists, long size, String contentType,
-                        String versionId, String eTag) {
+                        String versionId, String eTag, long storedSize,
+                        String encoding, String contentSha256) {
+        public StoredObject(boolean exists, long size, String contentType,
+                            String versionId, String eTag) {
+            this(exists, size, contentType, versionId, eTag, size, "IDENTITY", null);
+        }
     }
 
     enum ObjectLocation {
@@ -61,6 +67,11 @@ public interface StorageService {
 
     /** Opens the stored bytes so the server can compute a trusted digest/type check at confirm. */
     InputStream openForValidation(String storageKey, String versionId);
+
+    /** Server-side exact-version access for authorized avatars and proxied downloads. */
+    default InputStream openFinal(String storageKey, String versionId) {
+        throw new UnsupportedOperationException("Server-side final-object reads are not enabled");
+    }
 
     /** Copies or moves one inspected staging object into the final namespace. */
     StoredObject promoteToFinal(String storageKey, StoredObject stagingObject);

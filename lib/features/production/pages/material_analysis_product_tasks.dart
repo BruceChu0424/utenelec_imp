@@ -342,7 +342,11 @@ abstract class _MaterialAnalysisProductTasksState
             target.status?.toUpperCase() != 'CANCELLED',
       );
       final existingChild = _taskChildProductOf(material);
-      if (hasActiveTask || existingChild != null) continue;
+      if (hasActiveTask ||
+          existingChild != null ||
+          _hasUnlinkedIssuedPlan(material)) {
+        continue;
+      }
 
       final directShortages = _directNodeMaterials(material, analysis)
           .where(
@@ -1004,7 +1008,6 @@ abstract class _MaterialAnalysisProductTasksState
         ? null
         : _productExecutionStage(taskChild);
     final exactPeggedQty = material.exactPeggedQty;
-    final warehouseStock = _selectedWarehouseStock(material);
     final coverage = _coverageOf(material);
     final requirementView = coverage == null
         ? _requirementStateView(theme, material)
@@ -1034,15 +1037,13 @@ abstract class _MaterialAnalysisProductTasksState
       if (material.subcontractHandoffFutureQty > 0)
         '委外前置自制已接管供给 ${_qty(material.subcontractHandoffFutureQty)}',
       if (material.reservedQty > 0) '已预留 ${_qty(material.reservedQty)}',
-      if (warehouseStock != null &&
-          (coverage != null || warehouseStock.publicAvailableQty > 0))
-        '公共可用 ${_qty(warehouseStock.publicAvailableQty)}',
+      if (coverage != null || material.mainWarehousePublicAvailableQty > 0)
+        '公共可用 ${_qty(material.mainWarehousePublicAvailableQty)}',
       if (material.safetyStockQty > 0) '安全保护 ${_qty(material.safetyStockQty)}',
-      if (warehouseStock != null &&
-          (coverage != null || warehouseStock.openSafetySupplyQty > 0))
-        '公共补库在途 ${_qty(warehouseStock.openSafetySupplyQty)}',
-      if ((warehouseStock?.safetyReplenishmentGapQty ?? 0) > 0)
-        '公共补库待补 ${_qty(warehouseStock!.safetyReplenishmentGapQty)}',
+      if (coverage != null || material.mainWarehouseOpenSafetySupplyQty > 0)
+        '公共补库在途 ${_qty(material.mainWarehouseOpenSafetySupplyQty)}',
+      if (material.mainWarehouseSafetyReplenishmentGapQty > 0)
+        '公共补库待补 ${_qty(material.mainWarehouseSafetyReplenishmentGapQty)}',
       if (material.inboundQty > 0) '本批供给预计在途 ${_qty(material.inboundQty)}',
       if (material.unitName?.isNotEmpty == true) '单位 ${material.unitName}',
       _materialStageLabel(material),
@@ -1199,6 +1200,13 @@ abstract class _MaterialAnalysisProductTasksState
     // 2026-09-06 统一流程阶段优先：已下达/链路中的行显示真实停在哪一步。
     // 锚点模型下已转生产的行 requiredQty 常为 0——不能因此退化为
     // 「本批需求已转入生产计划」这类通用文案，进度必须与具体单据对应。
+    if (_hasUnlinkedIssuedPlan(material)) {
+      return _StatusView(
+        _l10n.materialIssuedPlanSyncPending,
+        Icons.sync_rounded,
+        theme.colorScheme.tertiary,
+      );
+    }
     final serverStage = _serverFlowStageOf(group);
     if (serverStage != null) {
       return _StatusView(

@@ -20,6 +20,7 @@ import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.security.PermissionDelegationPolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -127,6 +128,7 @@ class PermissionResolverManagerDelegationTest {
         assertTrue(result.managerGrants().contains(CODE));
         assertTrue(result.revokes().contains(CODE));
         assertFalse(result.effective().contains(CODE));
+        assertEquals(result.effective(), resolver.permsOf(fixture.targetAccount()));
     }
 
     @Test
@@ -156,6 +158,7 @@ class PermissionResolverManagerDelegationTest {
         assertTrue(effective.effective().contains(CODE));
         assertTrue(effective.managerGrants().contains(CODE));
         assertFalse(ceiling.contains(CODE));
+        assertEquals(effective.effective(), resolver.permsOf(fixture.targetAccount()));
     }
 
     @Test

@@ -41,5 +41,7 @@ public record ProductionExecutionWorkbenchSegment(
         LocalDate planEndDate,
         long lockVersion,
         boolean zeroMaterial,
-        boolean canRecheckMaterial) {
+        boolean canRecheckMaterial,
+        boolean hasMaterialActivity,
+        boolean hasUnregisteredMaterial) {
 }

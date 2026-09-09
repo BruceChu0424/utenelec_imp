@@ -65,8 +65,16 @@ public class FulfillmentWorkbenchController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        return queryService.query("SUBCONTRACT", status, keyword, exception, dateFrom, dateTo, page, size);
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(defaultValue = "needDate") String sort,
+            @RequestParam(defaultValue = "asc") String order,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate issuedFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate issuedTo,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate needFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate needTo,
+            @RequestParam Map<String, String> params) {
+        return queryService.query("SUBCONTRACT", status, keyword, exception, dateFrom, dateTo, page, size,
+                FulfillmentWorkbenchTableQuery.from(sort, order, params, issuedFrom, issuedTo, needFrom, needTo));
     }
 
     @GetMapping("/subcontract/count")

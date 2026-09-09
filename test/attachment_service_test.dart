@@ -204,4 +204,82 @@ void main() {
       expect(grantRequests, 2);
     },
   );
+
+  test(
+    'internal download uses a fresh authenticated grant and returns original bytes',
+    () async {
+      final original = Uint8List.fromList(
+        '%PDF-1.7\noriginal file\n%%EOF'.codeUnits,
+      );
+      final requests = <RequestOptions>[];
+      final apiDio = Dio(
+        BaseOptions(
+          baseUrl: 'https://office.example.com/api',
+          headers: {'Authorization': 'Bearer staff-session'},
+        ),
+      );
+      apiDio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (request, handler) {
+            requests.add(request);
+            expect(request.headers['Authorization'], 'Bearer staff-session');
+            if (request.path == '/attachments/attachment-id/download-grant') {
+              handler.resolve(
+                Response<dynamic>(
+                  requestOptions: request,
+                  statusCode: 200,
+                  data: {'url': '/attachments/raw/opaque-object'},
+                ),
+              );
+            } else {
+              expect(
+                request.uri.toString(),
+                'https://office.example.com/api/attachments/raw/opaque-object',
+              );
+              handler.resolve(
+                Response<List<int>>(
+                  requestOptions: request,
+                  statusCode: 200,
+                  data: original,
+                ),
+              );
+            }
+          },
+        ),
+      );
+      final external = Dio();
+      external.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (request, handler) {
+            fail(
+              'Internal attachment download must stay on the authenticated API',
+            );
+          },
+        ),
+      );
+      final service = AttachmentService(
+        ApiClient(apiDio),
+        externalDio: external,
+      );
+      final attachment = Attachment(
+        id: 'attachment-id',
+        ownerType: 'EMPLOYEE_CONTRACT',
+        ownerId: 'contract-id',
+        storageKey: 'opaque-object',
+        originalName: '原始合同.pdf',
+        contentType: 'application/pdf',
+        sizeBytes: original.length,
+        downloadUrl: 'https://stale-legacy-bucket.example/expired',
+      );
+
+      expect(await service.downloadBytes(attachment), orderedEquals(original));
+      expect(attachment.originalName, '原始合同.pdf');
+      expect(attachment.contentType, 'application/pdf');
+      expect(attachment.sizeBytes, original.length);
+      expect(requests.map((request) => request.path), [
+        '/attachments/attachment-id/download-grant',
+        '/attachments/raw/opaque-object',
+      ]);
+    },
+  );
 }

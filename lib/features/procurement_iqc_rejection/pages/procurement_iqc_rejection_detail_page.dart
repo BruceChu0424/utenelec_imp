@@ -13,6 +13,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/attachments/business_attachment_section.dart';
 import '../models/procurement_iqc_rejection.dart';
 import '../repositories/procurement_iqc_rejection_repository.dart';
 import '../widgets/procurement_iqc_rejection_action_dialog.dart';
@@ -208,6 +209,7 @@ class _ProcurementIqcRejectionDetailPageState
 
   Widget _buildDetail() {
     final detail = _detail!;
+    final permissions = ref.watch(currentPermissionsProvider);
     return UtenContentContainer.wide(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s12),
@@ -237,6 +239,24 @@ class _ProcurementIqcRejectionDetailPageState
             ];
             final workflow = <Widget>[
               _buildActions(detail.caseItem),
+              const SizedBox(height: UtenSpacing.s12),
+              BusinessAttachmentSection(
+                ownerType: 'PROCUREMENT_IQC_REJECTION',
+                ownerId: detail.caseItem.id,
+                title: '退回和贷项凭证',
+                canView:
+                    !detail.caseItem.priceMasked &&
+                    permissions.contains(Perm.procurementIqcRejectionView) &&
+                    permissions.contains(
+                      Perm.procurementIqcRejectionAmountView,
+                    ),
+                canManage: detail.caseItem.allowedActions.any(
+                  (action) =>
+                      action == ProcurementIqcRejectionAction.recordReturn ||
+                      action == ProcurementIqcRejectionAction.confirmCredit,
+                ),
+                categories: const ['退回凭证', '供应商确认', '其他'],
+              ),
               const SizedBox(height: UtenSpacing.s12),
               _buildEvents(detail),
             ];

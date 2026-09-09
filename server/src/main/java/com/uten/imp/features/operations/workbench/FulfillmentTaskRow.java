@@ -43,7 +43,9 @@ public record FulfillmentTaskRow(
         boolean actionDocRestricted,
         long goodsCount,
         long openLineCount,
-        List<String> actionItemIds) {
+        List<String> actionItemIds,
+        OffsetDateTime issuedAt,
+        boolean canCreateOrder) {
 
     /** 按单据归组的行（采购/委外）：一行代表一张申请或订货单的整批明细。 */
     public boolean isDocumentGrouped() {

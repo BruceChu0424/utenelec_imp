@@ -32,7 +32,7 @@ Future<bool?> showProductionMaterialSettlementSheet(
     drawerWidth: 840,
     panelElevation: 16,
     barrierColor: Colors.black.withValues(alpha: .38),
-    barrierLabel: '关闭材料结清面板',
+    barrierLabel: '关闭用料记录面板',
     transitionDuration: const Duration(milliseconds: 300),
     builder: (_) => _MaterialSettlementSheet(
       planId: planId,
@@ -95,10 +95,18 @@ class _MaterialSettlementSheetState
     extends ConsumerState<_MaterialSettlementSheet> {
   final _reason = TextEditingController();
   late final UtenEditableGridController<_SettlementGridRow> _grid;
+  List<ProductionMaterialClearanceRow> _clearance = const [];
   List<ProductionMaterialSettlementSource> _sources = const [];
+  bool _showLossAndWip = false;
+  int get _lossAndWipItems => _grid.rows
+      .where(
+        (row) => _positive(row.loss.text) > 0 || _positive(row.wip.text) > 0,
+      )
+      .length;
   ProductionMaterialCapabilities _capabilities =
       const ProductionMaterialCapabilities();
   bool get _canSettle => widget.canSettle && _capabilities.canSettle;
+  bool get _canRegister => _canSettle && _grid.rows.isNotEmpty;
   bool get _canReverse => widget.canReverse && _capabilities.canReverse;
   bool get _canClose => widget.canClose && _capabilities.canClose;
   bool _loading = true;
@@ -142,11 +150,14 @@ class _MaterialSettlementSheetState
         ),
       ]);
       if (!mounted) return;
+      final clearance = results[0] as List<ProductionMaterialClearanceRow>;
       _grid.replaceAll([
-        for (final row in results[0] as List<ProductionMaterialClearanceRow>)
-          _SettlementGridRow(row),
+        for (final row in clearance)
+          if (row.issuedQty > 0 && row.unclearedQty > 0)
+            _SettlementGridRow(row),
       ]);
       setState(() {
+        _clearance = clearance;
         _sources = results[1] as List<ProductionMaterialSettlementSource>;
         _capabilities = results[2] as ProductionMaterialCapabilities;
         _loading = false;
@@ -174,7 +185,7 @@ class _MaterialSettlementSheetState
   }
 
   Future<void> _submit() async {
-    if (!_canSettle) return;
+    if (!_canRegister) return;
     if (_busy) return;
     final lines = <ProductionMaterialSettlementLine>[];
     var requiresReason = false;
@@ -186,7 +197,7 @@ class _MaterialSettlementSheetState
       if (total > row.source.unclearedQty + 0.0000001) {
         context.appError(
           '${row.source.goodsName ?? row.source.goodsCode ?? '物料'} '
-          '本次结清 ${_number(total)}，超过未结清 ${_number(row.source.unclearedQty)}',
+          '本次登记 ${_number(total)}，超过待登记 ${_number(row.source.unclearedQty)}',
         );
         return;
       }
@@ -250,14 +261,14 @@ class _MaterialSettlementSheetState
             executionSegmentId: widget.executionSegmentId,
           );
       if (!mounted) return;
-      context.appSuccess('材料使用已入账，未结清数量已重新计算');
+      context.appSuccess('用料已登记，待登记数量已更新');
       _closed = true;
       _reason.clear();
       await _load();
     } on ApiException catch (error) {
       if (mounted) context.appError(error.message);
     } catch (_) {
-      if (mounted) context.appError('材料结清失败，请稍后重试');
+      if (mounted) context.appError('用料登记失败，请稍后重试');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -267,10 +278,10 @@ class _MaterialSettlementSheetState
     if (!_canReverse) return;
     final qty = TextEditingController(text: _number(source.reversibleQtyBase));
     final reason = TextEditingController();
-    final result = await showDialog<(double, String)>(
+    final dialog = DialogRoute<(double, String)>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('冲销材料结清记录'),
+        title: const Text('冲销用料登记'),
         content: SizedBox(
           width: 420,
           child: Column(
@@ -327,6 +338,12 @@ class _MaterialSettlementSheetState
         ],
       ),
     );
+    final result = await Navigator.of(
+      context,
+      rootNavigator: true,
+    ).push(dialog);
+    // Popping returns before the exit animation removes the form from the tree.
+    await dialog.completed;
     qty.dispose();
     reason.dispose();
     if (result == null || !mounted) return;
@@ -354,7 +371,7 @@ class _MaterialSettlementSheetState
             ],
           );
       if (!mounted) return;
-      context.appSuccess('材料结清记录已冲销');
+      context.appSuccess('原用料登记已冲销');
       _closed = true;
       await _load();
     } on ApiException catch (error) {
@@ -454,13 +471,10 @@ class _MaterialSettlementSheetState
   }
 
   bool get _allCleared =>
-      _grid.rows.isNotEmpty && _grid.rows.every((row) => row.source.canClose);
+      _clearance.isNotEmpty && _clearance.every((row) => row.canClose);
 
-  double get _totalUncleared =>
-      _grid.rows.fold(0, (sum, row) => sum + row.source.unclearedQty);
-
-  double get _totalReturnable =>
-      _grid.rows.fold(0, (sum, row) => sum + row.source.maxReturnQty);
+  int get _returnableItems =>
+      _clearance.where((row) => row.maxReturnQty > 0).length;
 
   @override
   Widget build(BuildContext context) {
@@ -468,18 +482,7 @@ class _MaterialSettlementSheetState
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('材料使用、退库与结清'),
-            Text(
-              '数量守恒：已领 = 实耗 + 良品退库 + 批准损耗 + 合法在制',
-              style: theme.textTheme.labelMedium?.copyWith(
-                fontWeight: FontWeight.w400,
-              ),
-            ),
-          ],
-        ),
+        title: Text(_canRegister ? '登记实际用料' : '用料记录'),
         actions: [
           IconButton(
             tooltip: '刷新',
@@ -522,59 +525,90 @@ class _MaterialSettlementSheetState
                   const SizedBox(height: UtenSpacing.s8),
                   _notice(theme),
                   const SizedBox(height: UtenSpacing.s12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '材料结清台账(${_grid.length} 种)',
+                  if (_grid.rows.isNotEmpty) ...[
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: UtenSpacing.s8,
+                      children: [
+                        Text(
+                          '待登记材料（${_grid.length} 项）',
                           style: theme.textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                      ),
-                      if (_canSettle)
-                        TextButton.icon(
-                          onPressed: _busy ? null : _fillAllConsumed,
-                          icon: const Icon(Icons.done_all_rounded, size: 18),
-                          label: const Text('未结清全部填入实耗'),
+                        if (_canRegister)
+                          TextButton.icon(
+                            onPressed: _busy ? null : _fillAllConsumed,
+                            icon: const Icon(Icons.done_all_rounded, size: 18),
+                            label: const Text('将待登记量填入实耗'),
+                          ),
+                      ],
+                    ),
+                    if (_canRegister)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: _busy
+                              ? null
+                              : () => setState(
+                                  () => _showLossAndWip = !_showLossAndWip,
+                                ),
+                          icon: Icon(
+                            _showLossAndWip
+                                ? Icons.expand_less
+                                : Icons.expand_more,
+                          ),
+                          label: Text(
+                            _showLossAndWip
+                                ? '收起损耗 / 在制'
+                                : _lossAndWipItems > 0
+                                ? '损耗 / 在制（已填 $_lossAndWipItems 项）'
+                                : '填写损耗 / 在制',
+                          ),
                         ),
-                    ],
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  UtenEditableGrid<_SettlementGridRow>(
-                    controller: _grid,
-                    columns: _columns(),
-                    createBlankRow: () => throw UnsupportedError('材料行只能来自需求台账'),
-                    showAddRow: false,
-                    showRowDelete: false,
-                    emptyMessage: '尚未生成物料需求台账',
-                  ),
-                  if (_canSettle) ...[
+                      ),
+                    const SizedBox(height: UtenSpacing.s4),
+                    UtenEditableGrid<_SettlementGridRow>(
+                      controller: _grid,
+                      columns: _columns(),
+                      createBlankRow: () =>
+                          throw UnsupportedError('材料行只能来自需求台账'),
+                      showAddRow: false,
+                      showRowDelete: false,
+                    ),
+                  ],
+                  if (_canRegister) ...[
                     const SizedBox(height: UtenSpacing.s12),
                     TextField(
                       controller: _reason,
                       maxLength: 500,
-                      decoration: const InputDecoration(
-                        labelText: '本次说明',
-                        hintText: '损耗、报废、留作在制时必须填写；仅登记实际消耗可选填',
-                        prefixIcon: Icon(Icons.notes_rounded),
+                      decoration: const UtenInputDecoration(
+                        InputDecoration(
+                          labelText: '本次说明',
+                          hintText: '仅登记实耗时可选填',
+                          prefixIcon: Icon(Icons.notes_rounded),
+                        ),
+                        info: '登记损耗或在制时必须填写原因。',
                       ),
                     ),
                   ],
-                  if (_canSettle || _canClose) ...[
+                  if (_canRegister || _canClose) ...[
                     const SizedBox(height: UtenSpacing.s12),
                     Wrap(
                       spacing: UtenSpacing.s8,
                       runSpacing: UtenSpacing.s8,
                       children: [
-                        if (_canSettle)
+                        if (_canRegister)
                           UtenButton(
                             icon: Icons.fact_check_outlined,
                             isLoading: _busy,
                             onPressed: _busy ? null : _submit,
-                            child: const Text('提交本次材料结清'),
+                            child: const Text('提交用料登记'),
                           ),
-                        if (_canSettle && widget.executionSegmentId == null)
+                        if (_canRegister &&
+                            widget.executionSegmentId == null &&
+                            _returnableItems > 0)
                           UtenButton(
                             type: UtenButtonType.secondary,
                             icon: Icons.keyboard_return_rounded,
@@ -594,6 +628,7 @@ class _MaterialSettlementSheetState
                     ),
                   ],
                   const SizedBox(height: UtenSpacing.s16),
+                  _ledger(theme),
                   _history(theme),
                 ],
               ),
@@ -603,14 +638,14 @@ class _MaterialSettlementSheetState
 
   Widget _stats(ThemeData theme) {
     final cards = [
-      ('物料种类', '${_grid.length}', Icons.inventory_2_outlined),
+      ('材料明细', '${_clearance.length} 项', Icons.inventory_2_outlined),
       (
-        '已结清',
-        '${_grid.rows.where((row) => row.source.canClose).length}',
+        '已平衡',
+        '${_clearance.where((row) => row.canClose).length} 项',
         Icons.check_circle_outline,
       ),
-      ('待处理数量', _number(_totalUncleared), Icons.pending_actions_outlined),
-      ('最多可退', _number(_totalReturnable), Icons.keyboard_return_outlined),
+      ('待登记', '${_grid.length} 项', Icons.pending_actions_outlined),
+      ('可退料', '$_returnableItems 项', Icons.keyboard_return_outlined),
     ];
     return Wrap(
       spacing: UtenSpacing.s8,
@@ -675,9 +710,10 @@ class _MaterialSettlementSheetState
           Expanded(
             child: Text(
               _allCleared
-                  ? '所有材料已平衡；系统仍会核对成品累计合格入库数量，二者同时满足后才能完成任务。'
-                  : '有余料时先走“余料退库”，仓库点收后再刷新；损耗和在制必须说明原因。'
-                        '系统不允许用“实耗”掩盖未归还余料，也不允许结清数量超过已领数量。',
+                  ? '当前材料已平衡，可展开台账查看记录。完成任务仍需满足成品合格入库要求。'
+                  : _grid.rows.isEmpty
+                  ? '当前没有已领未登记的材料，可展开台账查看记录。'
+                  : '填写这次实际用掉的材料；未用的余料走退库。登记不改变仓库库存。',
               style: theme.textTheme.bodySmall,
             ),
           ),
@@ -703,22 +739,21 @@ class _MaterialSettlementSheetState
               row.source.goodsCode,
               row.source.executionSegmentCode,
               row.source.colorName,
+              row.source.unitName == null
+                  ? '单位待核实'
+                  : '单位：${row.source.unitName}',
             ].where((value) => value?.isNotEmpty == true).join(' · '),
             style: Theme.of(context).textTheme.labelSmall,
           ),
         ],
       ),
     ),
-    _numberColumn('required', '需求', (row) => row.source.requiredQty),
-    _numberColumn('issued', '已领', (row) => row.source.issuedQty),
-    _numberColumn('returned', '已退', (row) => row.source.returnedQty),
-    _numberColumn('settled', '已实耗', (row) => row.source.consumedQty),
-    _numberColumn('lossDone', '已损耗', (row) => row.source.approvedLossQty),
-    _numberColumn('wipDone', '已在制', (row) => row.source.legalWipQty),
-    _numberColumn('uncleared', '未结清', (row) => row.source.unclearedQty),
+    _numberColumn('uncleared', '待登记', (row) => row.source.unclearedQty),
     _inputColumn('consume', '本次实耗', (row) => row.consumed),
-    _inputColumn('loss', '本次损耗', (row) => row.loss),
-    _inputColumn('wip', '本次在制', (row) => row.wip),
+    if (_showLossAndWip) ...[
+      _inputColumn('loss', '本次损耗', (row) => row.loss),
+      _inputColumn('wip', '本次在制', (row) => row.wip),
+    ],
   ];
 
   EditableGridColumn<_SettlementGridRow> _numberColumn(
@@ -758,7 +793,7 @@ class _MaterialSettlementSheetState
         UtenInputDecoration(
           const InputDecoration(isDense: true, hintText: '0'),
           info: key == 'consume'
-              ? '填写本次实际用掉的材料。黄色数值按已领未结清量减本次损耗、在制建议，请核对；余料应退库。提交后才入账。'
+              ? '填写本次实际用掉的材料。黄色建议量为待登记量减本次损耗、在制，请核对；提交后才记账。'
               : key == 'loss'
               ? '填写实际损耗的基本数量，并说明原因。系统不会按理论用量自动认定损耗。'
               : '填写仍在本工单生产过程中的材料基本数量，并说明原因。',
@@ -769,15 +804,57 @@ class _MaterialSettlementSheetState
     ),
   );
 
+  Widget _ledger(ThemeData theme) => ExpansionTile(
+    key: const ValueKey('material-clearance-ledger'),
+    tilePadding: EdgeInsets.zero,
+    title: const Text('材料数量台账'),
+    subtitle: const Text('每项：已领 = 实耗 + 已退 + 损耗 + 在制 + 待登记'),
+    children: [
+      if (_clearance.isEmpty) const ListTile(title: Text('尚未生成物料需求台账')),
+      for (final row in _clearance)
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+          title: Text(
+            [
+                  row.goodsName ?? row.goodsCode ?? '物料',
+                  row.colorName,
+                  row.executionSegmentCode,
+                ]
+                .whereType<String>()
+                .where((value) => value.isNotEmpty)
+                .join(' · '),
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: UtenSpacing.s8),
+            child: Wrap(
+              spacing: UtenSpacing.s16,
+              runSpacing: UtenSpacing.s8,
+              children: [
+                for (final entry in [
+                  ('需求', row.requiredQty),
+                  ('已领', row.issuedQty),
+                  ('实耗', row.consumedQty),
+                  ('已退', row.returnedQty),
+                  ('损耗', row.approvedLossQty),
+                  ('在制', row.legalWipQty),
+                  ('待登记', row.unclearedQty),
+                  ('可退料', row.maxReturnQty),
+                ])
+                  Text(
+                    '${entry.$1} ${_number(entry.$2)} ${row.unitName ?? '（单位待核实）'}',
+                  ),
+              ],
+            ),
+          ),
+        ),
+    ],
+  );
+
   Widget _history(ThemeData theme) {
-    final active = _sources
-        .where((source) => source.reversibleQtyBase > 0)
-        .toList();
     return ExpansionTile(
-      initiallyExpanded: active.isNotEmpty,
       tilePadding: EdgeInsets.zero,
       title: Text(
-        '已提交记录(${_sources.length})',
+        '有效登记与冲销（${_sources.length} 条）',
         style: theme.textTheme.titleSmall?.copyWith(
           fontWeight: FontWeight.w700,
         ),

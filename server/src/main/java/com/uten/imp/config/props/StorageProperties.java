@@ -11,7 +11,8 @@ import java.util.List;
  * 附件对象存储配置。复用 SMS 网关的多实现范式：
  * <ul>
  *   <li>{@code local}（默认）—— 本地磁盘，开发与本地测试用，不依赖云。</li>
- *   <li>{@code oss} —— 阿里云 OSS，预签名 URL 直传直下；云端 ECS 用 RAM 角色免密钥。</li>
+ *   <li>{@code internal} —— 公司内部服务器的专用私有目录。</li>
+ *   <li>{@code oss} —— 历史对象只读兼容，不接受新上传。</li>
  *   <li>{@code disabled} —— 未启用，上传接口报 503。</li>
  * </ul>
  * 切换后端只改 {@code UTEN_STORAGE_PROVIDER}，业务代码只依赖 {@code StorageService} 接口。
@@ -22,7 +23,7 @@ import java.util.List;
 @ConfigurationProperties(prefix = "uten.storage")
 public class StorageProperties {
 
-    /** 存储后端：local / oss / disabled。 */
+    /** 存储后端：internal(公司) / local(开发) / oss(历史只读) / disabled。 */
     private String provider = "local";
 
     /** 单文件大小上限（字节），默认 25MB。 */
@@ -53,10 +54,28 @@ public class StorageProperties {
     /** 本地后端磁盘根目录。 */
     private String localDir = "./data/attachments";
 
+    private Internal internal = new Internal();
+
     private Oss oss = new Oss();
     private MalwareScan malwareScan = new MalwareScan();
     private Reconciliation reconciliation = new Reconciliation();
     private Outbox outbox = new Outbox();
+
+    @Getter
+    @Setter
+    public static class Internal {
+        /** Dedicated existing durable directory; never a static-resource/web root. */
+        private String root = "";
+        private int maxConcurrentIo = 2;
+        /** Hard bound for old downloads too; changing the upload limit does not reinterpret existing objects. */
+        private long maxObjectBytes = 268435456L;
+        private long minFreeBytes = 1073741824L;
+        private int operationTimeoutSeconds = 120;
+        private long compressionMinBytes = 65536L;
+        private long compressionMinSavingsBytes = 4096L;
+        private int compressionMinSavingsPercent = 10;
+        private int maxInventoryObjects = 10000;
+    }
 
     @Getter
     @Setter

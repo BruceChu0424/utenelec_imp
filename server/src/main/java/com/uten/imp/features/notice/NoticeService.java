@@ -180,6 +180,7 @@ public class NoticeService {
         List<Notice> notices = noticeRepo.findVisible(
                 userId,
                 onlyUnread,
+                reviewAudience.workshopScope(requireStaff()),
                 PageRequest.of(0, MAX_LIST_ITEMS));
         Map<UUID, NoticeUserState> states = stateMap(
                 userId,
@@ -218,6 +219,7 @@ public class NoticeService {
                 userId,
                 afterPublishedAt,
                 afterId,
+                reviewAudience.workshopScope(requireStaff()),
                 PageRequest.of(0, safeLimit + 1));
         boolean hasMore = fetched.size() > safeLimit;
         List<Notice> page = List.copyOf(
@@ -247,7 +249,7 @@ public class NoticeService {
     @Transactional(readOnly = true)
     public long unreadCount() {
         UUID userId = requireStaffId();
-        return noticeRepo.countVisibleUnread(userId);
+        return noticeRepo.countVisibleUnread(userId, reviewAudience.workshopScope(requireStaff()));
     }
 
     /** 当前用户未完成的通知待办；业务批量待办由 Dashboard 聚合服务另行生成。 */
@@ -257,6 +259,7 @@ public class NoticeService {
         int safeLimit = Math.min(Math.max(limit, 1), MAX_TODO_ITEMS);
         List<Notice> notices = noticeRepo.findPendingTodos(
                 userId,
+                reviewAudience.workshopScope(requireStaff()),
                 PageRequest.of(0, safeLimit));
         Map<UUID, NoticeUserState> states = stateMap(
                 userId,
@@ -271,7 +274,7 @@ public class NoticeService {
 
     @Transactional(readOnly = true)
     public long pendingTodoCount() {
-        return noticeRepo.countPendingTodos(requireStaffId());
+        return noticeRepo.countPendingTodos(requireStaffId(), reviewAudience.workshopScope(requireStaff()));
     }
 
     /** 详情（不存在 / 定向他人 / 已被当前用户删除 → 404 语义）。 */
@@ -885,7 +888,7 @@ public class NoticeService {
     @Transactional(readOnly = true)
     public long unreadCountBySourceEvents(List<String> events) {
         if (events == null || events.isEmpty()) return 0;
-        return noticeRepo.countUnreadBySourceEvents(requireStaffId(), events);
+        return noticeRepo.countUnreadBySourceEvents(requireStaffId(), events, reviewAudience.workshopScope(requireStaff()));
     }
 
     /** 按业务事件来源批量标记已读（如打开订单进度页清空完工徽章）。 */
@@ -934,8 +937,9 @@ public class NoticeService {
         Map<UUID, NoticeUserState> states = stateMap(
                 userId,
                 loaded.stream().map(Notice::getId).toList());
+        Set<UUID> scopedWorkshopNotices = visibleWorkshopNoticeIds(loaded, userId);
         Map<UUID, Notice> notices = loaded.stream()
-                .filter(notice -> visibleTo(notice, userId, states.get(notice.getId())))
+                .filter(notice -> visibleTo(notice, userId, states.get(notice.getId()), scopedWorkshopNotices))
                 .collect(Collectors.toMap(Notice::getId, notice -> notice));
         Instant now = Instant.now();
         int deleted = 0;
@@ -974,6 +978,21 @@ public class NoticeService {
      * 可见性：全员广播人人可见；单用户定向仅本人；selected 以预创建状态行作为接收快照。
      */
     private boolean visibleTo(Notice n, UUID userId, NoticeUserState state) {
+        return visibleTo(n, userId, state, visibleWorkshopNoticeIds(List.of(n), userId));
+    }
+
+    private Set<UUID> visibleWorkshopNoticeIds(List<Notice> notices, UUID userId) {
+        Set<UUID> ids = notices.stream()
+                .filter(n -> ReviewNoticeAudience.WORKSHOP_EVENT.equals(n.getSourceEvent()))
+                .map(Notice::getId).collect(Collectors.toSet());
+        if (ids.isEmpty()) return Set.of();
+        return Set.copyOf(noticeRepo.findScopedVisibleNoticeIds(userId, ids,
+                reviewAudience.workshopScope(requireStaff())));
+    }
+
+    private boolean visibleTo(Notice n, UUID userId, NoticeUserState state, Set<UUID> scopedWorkshopNotices) {
+        if (ReviewNoticeAudience.WORKSHOP_EVENT.equals(n.getSourceEvent())
+                && !scopedWorkshopNotices.contains(n.getId())) return false;
         if (n.getAudienceUserId() != null) {
             return n.getAudienceUserId().equals(userId);
         }
@@ -1146,13 +1165,14 @@ public class NoticeService {
                 .toList();
         List<Notice> notices = noticeRepo.findAllById(safeIds);
         Set<String> reviewEvents = reviewEventsFor(notices);
+        Set<UUID> scopedWorkshopNotices = visibleWorkshopNoticeIds(notices, userId);
         Map<UUID, NoticeUserState> states = stateMap(userId, safeIds);
         Set<String> claimTypes=new HashSet<>();Set<String> claimKeys=new HashSet<>();
         for (Notice notice:notices) {
             var entry=ReviewNoticeCatalog.of(notice.getSourceEvent());
             if (notice.getResolvedAt()==null && notice.getAggregateId()!=null && entry.isPresent()
                     && entry.get().claimTargetType()!=null && reviewEvents.contains(notice.getSourceEvent())
-                    && visibleTo(notice,userId,states.get(notice.getId()))) {
+                    && visibleTo(notice,userId,states.get(notice.getId()),scopedWorkshopNotices)) {
                 claimTypes.add(entry.get().claimTargetType());claimKeys.add(notice.getAggregateId().toString());
             }
         }
@@ -1168,7 +1188,7 @@ public class NoticeService {
         List<PendingReviewStatusDto> result = new ArrayList<>();
         for (Notice n : notices) {
             NoticeUserState st = states.get(n.getId());
-            if (!visibleTo(n, userId, st) || (st != null && st.getDeletedAt() != null)) {
+            if (!visibleTo(n, userId, st, scopedWorkshopNotices) || (st != null && st.getDeletedAt() != null)) {
                 continue;
             }
             if (!isActionableReview(n) || !reviewEvents.contains(n.getSourceEvent())
@@ -1213,6 +1233,7 @@ public class NoticeService {
         List<Notice> notices = noticeRepo.findVisiblePendingReviews(
                 userId,
                 List.copyOf(reviewEvents),
+                reviewAudience.workshopScope(requireStaff()),
                 PageRequest.of(0, 20));
         Map<UUID, NoticeUserState> states = stateMap(
                 userId,
@@ -1419,7 +1440,9 @@ public class NoticeService {
 
     private static boolean isActionableReview(Notice notice) {
         return notice.getAggregateId() != null && notice.getAggregateKind() != null
-                && ReviewNoticeCatalog.isReviewEvent(notice.getSourceEvent());
+                && ReviewNoticeCatalog.isReviewEvent(notice.getSourceEvent())
+                && (!ReviewNoticeAudience.WORKSHOP_EVENT.equals(notice.getSourceEvent())
+                    || !"normal".equals(notice.getPriority()));
     }
 
     private NoticeDto toDto(

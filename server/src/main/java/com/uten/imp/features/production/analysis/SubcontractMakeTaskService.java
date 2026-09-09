@@ -615,7 +615,7 @@ public class SubcontractMakeTaskService {
                        production_item.unit_id,
                        COALESCE(production_item.unit_rate, 1),
                        task.goods_id, task.color_id, task.unit_id,
-                       task.warehouse_id
+                       stock_doc.warehouse_id
                 FROM stock_document_items stock_item
                 JOIN stock_documents stock_doc
                   ON stock_doc.id = stock_item.doc_id
@@ -645,7 +645,8 @@ public class SubcontractMakeTaskService {
             UUID taskId = (UUID) row[0];
             UUID stockItemId = (UUID) row[1];
             BigDecimal baseQty = decimal(row[4]);
-            // 维度与冻结仓逐项核验：与 V436 前置自制入库同口径 fail-closed。
+            // Keep the task identity and unit snapshot; custody follows the
+            // actual qualified FINISHED_IN document, including another main warehouse.
             boolean dimensionOk = Objects.equals(row[7], row[11])
                     && Objects.equals(row[8], row[12])
                     && Objects.equals(row[9], row[13])
@@ -657,7 +658,7 @@ public class SubcontractMakeTaskService {
                     || decimal(row[10]).compareTo(BigDecimal.ONE) != 0
                     || !Objects.equals(row[14], warehouseId)) {
                 throw new ApiException(ErrorCode.CONFLICT,
-                        "委外前置自制成品入库与任务的货品、单位、换算率或冻结仓不一致，"
+                        "委外前置自制成品入库与任务货品、单位、换算率或实收单据仓不一致，"
                                 + "禁止静默释放通知委外");
             }
             if (baseQty.signum() <= 0) continue;

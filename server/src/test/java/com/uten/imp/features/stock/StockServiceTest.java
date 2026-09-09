@@ -252,6 +252,64 @@ class StockServiceTest {
     }
 
     @Test
+    void provenProductionIssueUsesItsAllocatedLeafWithoutSubtractingSafetyAgain() {
+        var req = productionIssueRequest();
+        stockAt(req, "30");
+        when(balanceRepo.unboundProductionIssueQuantity(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq(req.sourceDocId()), org.mockito.ArgumentMatchers.eq(req.sourceItemId()),
+                org.mockito.ArgumentMatchers.eq(req.warehouseId()), org.mockito.ArgumentMatchers.eq(req.goodsId()),
+                org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.eq(req.unitId()),
+                org.mockito.ArgumentMatchers.eq(BigDecimal.ONE))).thenReturn(new BigDecimal("30"));
+        when(balanceRepo.warehouseUnreservedBase(req.warehouseId(), req.goodsId(), null)).thenReturn(new BigDecimal("30"));
+
+        new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation()).recordMovement(req);
+
+        verify(balanceRepo, never()).warehouseAvailableBase(req.warehouseId(), req.goodsId(), null);
+        verify(movementRepo).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void productionEventWithoutExactUnboundPostingCannotBypassStockRules() {
+        var req = productionIssueRequest();
+        stockAt(req, "30");
+        assertThrows(ApiException.class, () -> new StockService(movementRepo, balanceRepo, tx,
+                inventoryLock, quantityTestValuation()).recordMovement(req));
+        verify(balanceRepo, never()).warehouseUnreservedBase(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        verify(movementRepo, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void provenProductionIssueStillCannotTakeAnotherOrdersHardReservation() {
+        var req = productionIssueRequest();
+        stockAt(req, "30");
+        when(balanceRepo.unboundProductionIssueQuantity(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq(req.sourceDocId()), org.mockito.ArgumentMatchers.eq(req.sourceItemId()),
+                org.mockito.ArgumentMatchers.eq(req.warehouseId()), org.mockito.ArgumentMatchers.eq(req.goodsId()),
+                org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.eq(req.unitId()),
+                org.mockito.ArgumentMatchers.eq(BigDecimal.ONE))).thenReturn(new BigDecimal("30"));
+        when(balanceRepo.warehouseUnreservedBase(req.warehouseId(), req.goodsId(), null)).thenReturn(new BigDecimal("29"));
+        assertThrows(ApiException.class, () -> new StockService(movementRepo, balanceRepo, tx,
+                inventoryLock, quantityTestValuation()).recordMovement(req));
+        verify(movementRepo, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    private void stockAt(StockService.MovementRequest req, String qty) {
+        StockBalance balance = new StockBalance();
+        balance.setQty(new BigDecimal(qty));
+        when(balanceRepo.readPhysicalSnapshot(req.warehouseId(), req.goodsId(), null))
+                .thenReturn(java.util.List.of(snapshot(balance)));
+    }
+
+    private StockService.MovementRequest productionIssueRequest() {
+        return new StockService.MovementRequest(OffsetDateTime.now(), (short) 5, "STOCK_DOC",
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), null, UUID.randomUUID(),
+                StockService.DIR_OUT, new BigDecimal("30"), UUID.randomUUID(), BigDecimal.ONE,
+                null, null, null, null,
+                new com.uten.imp.application.port.InventoryMovementCostReference.ProductionMaterialEvent(UUID.randomUUID()));
+    }
+
+    @Test
     void countLossCanRecordPhysicalRealityBelowProtectedQuantity() {
         UUID warehouseId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();

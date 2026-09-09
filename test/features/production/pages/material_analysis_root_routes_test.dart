@@ -88,6 +88,135 @@ void main() {
   }
 
   testWidgets(
+    'seven issued plans with five direct MAKE anchors stay zero pending after refresh',
+    (tester) async {
+      final data = _issuedPlanAnchors();
+      final harness = await _pump(tester, data, generate: true, refresh: true);
+      await _openBucket(tester, 'workshop');
+      expect(find.text('等待下达车间 (0)'), findsOneWidget);
+      expect(find.text('已下达 (7)'), findsOneWidget);
+      await tester.tap(find.text('已下达 (7)'));
+      await tester.pumpAndSettle();
+      expect(find.text('物料齐套 · 可开工'), findsNWidgets(3));
+      expect(find.text('车间已收到 · 等待物料'), findsNWidgets(4));
+      expect(find.text('创建生产计划(1)'), findsNothing);
+      await _closeBucket(tester);
+      final refreshes = harness.requests
+          .where((request) => request.path.endsWith('/preview'))
+          .length;
+      await tester.tap(find.byTooltip('按最新库存刷新分析'));
+      await tester.pumpAndSettle();
+      expect(
+        harness.requests.where((request) => request.path.endsWith('/preview')),
+        hasLength(refreshes + 1),
+      );
+      await _openBucket(tester, 'workshop');
+      expect(find.text('等待下达车间 (0)'), findsOneWidget);
+      expect(find.text('已下达 (7)'), findsOneWidget);
+      expect(
+        harness.requests.where(
+          (request) =>
+              request.path.endsWith('/issue-plans') ||
+              request.path.endsWith('/notify'),
+        ),
+        isEmpty,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'same goods on two anchored paths schedule only the existing child remainder',
+    (tester) async {
+      final data = _issuedPlanAnchors(partialSecondPath: true);
+      final harness = await _pump(tester, data, generate: true);
+      await _openBucket(tester, 'workshop');
+      expect(find.text('等待下达车间 (1)'), findsOneWidget);
+      expect(find.text('已下达 (7)'), findsOneWidget);
+      expect(find.text('自制组件 1'), findsNothing);
+      expect(find.text('自制组件 2'), findsOneWidget);
+      expect(find.text('来源自制件 2'), findsNothing);
+      final row = find
+          .ancestor(of: find.text('自制组件 2'), matching: find.byType(Row))
+          .first;
+      final quantity = find.descendant(
+        of: row,
+        matching: find.byType(TextField),
+      );
+      expect(tester.widget<TextField>(quantity).controller!.text, '4000');
+      await tester.tap(
+        find.descendant(of: row, matching: find.byType(Checkbox)),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('创建生产计划(1)'), findsOneWidget);
+      await tester.tap(find.text('已下达 (7)'));
+      await tester.pumpAndSettle();
+      expect(find.text('创建生产计划(1)'), findsNothing);
+      expect(
+        tester
+            .widgetList<Checkbox>(find.byType(Checkbox))
+            .where((checkbox) => checkbox.onChanged != null),
+        isEmpty,
+      );
+      await tester.tap(find.text('等待下达车间 (1)'));
+      await tester.pumpAndSettle();
+      final pendingRow = find
+          .ancestor(of: find.text('自制组件 2'), matching: find.byType(Row))
+          .first;
+      final check = find.descendant(
+        of: pendingRow,
+        matching: find.byType(Checkbox),
+      );
+      if (tester.widget<Checkbox>(check).value != true) {
+        await tester.tap(check);
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(
+        find.byKey(const Key('material-analysis-bucket-action-ready')),
+      );
+      await tester.pumpAndSettle();
+      final issue = harness.requests.singleWhere(
+        (request) => request.path.endsWith('/issue-plans'),
+      );
+      final lines = ((issue.data as Map<String, dynamic>)['lines'] as List)
+          .cast<Map<String, dynamic>>();
+      expect(lines, hasLength(1));
+      expect(lines.single['analysisLineId'], 'plan-anchor-2');
+      expect(lines.single['materialLineId'], isNull);
+      expect(lines.single['qty'], 4000);
+      expect((data['products'] as List), hasLength(7));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'issued legacy flow without its child identity remains read only until progress syncs',
+    (tester) async {
+      final data = _issuedPlanAnchors();
+      final first = (data['flatMaterials'] as List)
+          .cast<Map<String, dynamic>>()
+          .singleWhere((row) => row['materialLineId'] == 'child-1-1');
+      first.remove('planAnchorAnalysisLineId');
+      first['flowStage'] = 'MAKE_WAITING_DRAW';
+      (data['products'] as List).removeWhere(
+        (row) => (row as Map)['analysisLineId'] == 'plan-anchor-1',
+      );
+      final harness = await _pump(tester, data, generate: true);
+      expect(find.text('已下达，计划进度待同步'), findsWidgets);
+      await _openBucket(tester, 'workshop');
+      expect(find.text('等待下达车间 (0)'), findsOneWidget);
+      expect(find.text('已下达 (6)'), findsOneWidget);
+      expect(
+        harness.requests.where(
+          (request) => request.path.endsWith('/issue-plans'),
+        ),
+        isEmpty,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     '501 mixed BOM routes confirm deepest first before a purchased root removes them',
     (tester) async {
       final data = _analysis(routes: ['BUY'], childrenPerProduct: 501);
@@ -545,6 +674,7 @@ Future<_Harness> _pump(
   WidgetTester tester,
   Map<String, dynamic> data, {
   bool generate = false,
+  bool refresh = false,
   bool removeBomAfterExternalRootConfirmation = false,
 }) async {
   tester.view.physicalSize = const Size(1700, 1050);
@@ -576,6 +706,11 @@ Future<_Harness> _pump(
               },
           ];
         } else if (request.path == '/production/material-analyses/analysis') {
+          result = harness.data;
+        } else if (request.path == '/production/material-analyses/preview') {
+          harness.data =
+              jsonDecode(jsonEncode(harness.data)) as Map<String, dynamic>;
+          harness.data['version'] = (harness.data['version'] as int) + 1;
           result = harness.data;
         } else if (request.path.endsWith('/routes') &&
             request.method == 'PUT') {
@@ -674,6 +809,7 @@ Future<_Harness> _pump(
           Perm.productionMaterialAnalysisView,
           Perm.productionMaterialAnalysisRoute,
           Perm.productionMaterialAnalysisNotify,
+          if (refresh) Perm.productionMaterialAnalysisRefresh,
           if (generate) Perm.productionMaterialAnalysisGenerate,
           if (generate) Perm.productionPlanApprove,
         }),
@@ -755,6 +891,123 @@ class _Departments implements DepartmentRepository {
   ];
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+Map<String, dynamic> _issuedPlanAnchors({bool partialSecondPath = false}) {
+  final data =
+      jsonDecode(
+            jsonEncode(
+              _analysis(
+                routes: ['MAKE'],
+                confirmed: true,
+                childrenPerProduct: 6,
+              ),
+            ),
+          )
+          as Map<String, dynamic>;
+  (data['allowedActions'] as List).add('REFRESH');
+  final products = (data['products'] as List).cast<Map<String, dynamic>>();
+  final materials = (data['flatMaterials'] as List)
+      .cast<Map<String, dynamic>>();
+  final root = products.single;
+  root.addAll({
+    'requestedQty': 10000,
+    'approvedQty': 10000,
+    'submittedQty': 0,
+    'remainingQty': 0,
+    'canSchedule': false,
+    'maxSchedulableQty': 0,
+    'planExecutionStatus': 'WAITING',
+    'planExecutionPlannedQty': 10000,
+    'latestPlanId': 'root-plan',
+  });
+  materials.first.addAll({
+    'requiredQty': 10000,
+    'shortageQty': 10000,
+    'demandSupplyGapQty': 10000,
+  });
+  for (var index = 1; index <= 6; index++) {
+    final subcontract = index == 6;
+    final partial = partialSecondPath && index == 2;
+    final sameGoods = index <= 2 ? 'shared-make-goods' : 'make-goods-$index';
+    materials[index].addAll({
+      'goodsId': sameGoods,
+      'goodsCode': 'M-$index',
+      'goodsName': '来源自制件 $index',
+      'sourceSuggestion': subcontract ? 'SUBCONTRACT' : 'MAKE',
+      'sourceConfirmed': subcontract ? 'SUBCONTRACT' : 'MAKE',
+      'routeConfirmed': true,
+      'requiredQty': 10000, 'shortageQty': 10000, 'demandSupplyGapQty': 10000,
+      'planAnchorAnalysisLineId': 'plan-anchor-$index',
+      // Direct MAKE issuance has a persistent anchor but no supply action.
+      if (subcontract)
+        'notifiedTargets': [
+          {
+            'target': 'SUBCONTRACT',
+            'documentType': 'SUBCONTRACT_MAKE_TASK',
+            'documentId': 'plan-anchor-$index',
+            'status': 'CREATED',
+            'qty': 10000,
+          },
+        ],
+    });
+    products.add({
+      'analysisLineId': 'plan-anchor-$index',
+      'sourceType': subcontract ? 'SUBCONTRACT_MAKE' : 'MAKE_COMPONENT',
+      'parentAnalysisLineId': 'p1',
+      'goodsId': sameGoods,
+      'goodsCode': 'M-$index',
+      'goodsName': '自制组件 $index',
+      'unitId': 'piece',
+      'unitName': '件',
+      'unitRate': 1,
+      'requestedQty': 10000,
+      'approvedQty': partial ? 6000 : 10000,
+      'submittedQty': 0,
+      'remainingQty': partial ? 4000 : 0,
+      'canSchedule': partial,
+      'maxSchedulableQty': partial ? 4000 : 0,
+      'readyNowQty': 0,
+      'hasProductionMaterialChildren': false,
+      'planExecutionStatus': index <= 3 ? 'READY' : 'WAITING',
+      'planExecutionPlannedQty': partial ? 6000 : 10000,
+      'latestPlanId': 'plan-$index',
+    });
+  }
+  // The seven procurement actions belong to original BOM paths. Child plan
+  // anchors have no copied material subtree and no second physical demand.
+  for (var index = 1; index <= 7; index++) {
+    materials.add({
+      'materialLineId': 'raw-$index',
+      'analysisLineId': 'p1',
+      'nodeKey': 'raw-node-$index',
+      'parentNodeKey': 'child-node-1-${(index - 1) % 6 + 1}',
+      'nodeRole': 'BOM_COMPONENT',
+      'level': 2,
+      'actionGroupKey': 'raw-action-$index',
+      'goodsId': 'raw-goods-$index',
+      'goodsName': '采购原料 $index',
+      'unitId': 'piece',
+      'unitName': '件',
+      'requiredQty': 10000,
+      'shortageQty': 10000,
+      'demandSupplyGapQty': 10000,
+      'actionable': true,
+      'sourceConfirmed': 'BUY',
+      'sourceSuggestion': 'BUY',
+      'routeConfirmed': true,
+      'notifiedTargets': [
+        {
+          'target': 'BUY',
+          'documentType': 'PURCHASE_REQUEST',
+          'documentId': 'purchase-request-$index',
+          'status': 'CREATED',
+          'qty': 10000,
+        },
+      ],
+    });
+  }
+  return data;
 }
 
 Map<String, dynamic> _analysis({

@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -22,7 +23,10 @@ void main() {
 
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [apiClientProvider.overrideWithValue(_workshopApi())],
+          overrides: [
+            masterNameServiceProvider.overrideWithValue(_PlanningMainNames()),
+            apiClientProvider.overrideWithValue(_workshopApi()),
+          ],
           child: MaterialApp(
             home: ProductionPlanSummarySheetPage(
               analysisId: 'analysis-1',
@@ -41,6 +45,7 @@ void main() {
           .map((w) => w.text.toPlainText())
           .join('\n');
       expect(headFacts, contains('主仓'));
+      expect(headFacts, isNot(contains('实际子仓')));
       expect(headFacts, contains('分析版本'));
 
       // 三分区
@@ -96,6 +101,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          masterNameServiceProvider.overrideWithValue(_PlanningMainNames()),
           apiClientProvider.overrideWithValue(_workshopApi(coverAll: true)),
         ],
         child: MaterialApp(
@@ -124,7 +130,10 @@ void main() {
 
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [apiClientProvider.overrideWithValue(api)],
+          overrides: [
+            masterNameServiceProvider.overrideWithValue(_PlanningMainNames()),
+            apiClientProvider.overrideWithValue(api),
+          ],
           child: MaterialApp(
             home: ProductionPlanSummarySheetPage(
               analysisId: 'analysis-1',
@@ -187,7 +196,10 @@ void main() {
       final api = _ControlledWorkshopApi();
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [apiClientProvider.overrideWithValue(api)],
+          overrides: [
+            masterNameServiceProvider.overrideWithValue(_PlanningMainNames()),
+            apiClientProvider.overrideWithValue(api),
+          ],
           child: MaterialApp(
             home: ProductionPlanSummarySheetPage(
               analysisId: 'analysis-1',
@@ -217,7 +229,10 @@ void main() {
     final api = _ControlledWorkshopApi();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [apiClientProvider.overrideWithValue(api)],
+        overrides: [
+          masterNameServiceProvider.overrideWithValue(_PlanningMainNames()),
+          apiClientProvider.overrideWithValue(api),
+        ],
         child: MaterialApp(
           home: ProductionPlanSummarySheetPage(
             analysisId: 'analysis-1',
@@ -247,7 +262,10 @@ void main() {
     addTearDown(router.dispose);
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [apiClientProvider.overrideWithValue(api)],
+        overrides: [
+          masterNameServiceProvider.overrideWithValue(_PlanningMainNames()),
+          apiClientProvider.overrideWithValue(api),
+        ],
         child: MaterialApp.router(routerConfig: router),
       ),
     );
@@ -449,3 +467,14 @@ ProductionMaterialAnalysisView _analysis() =>
         ),
       ],
     );
+
+class _PlanningMainNames extends MasterNameService {
+  _PlanningMainNames() : super(ApiClient(Dio()));
+  @override
+  Future<void> ensureCommonLoaded() async {}
+  @override
+  List<WarehouseDictEntry> get warehouseHierarchy => const [
+    WarehouseDictEntry(id: 'planning-main', name: '主仓'),
+    WarehouseDictEntry(id: 'wh-1', name: '实际子仓', parentId: 'planning-main'),
+  ];
+}

@@ -37,7 +37,7 @@ uten:
     provider: ${UTEN_SMS_PROVIDER:disabled}
     expose-code: false
   storage:
-    provider: ${UTEN_STORAGE_PROVIDER:oss}
+    provider: ${UTEN_STORAGE_PROVIDER:internal}
     # Remains false until the real POST-policy, ClamAV, quota, outbox,
     # reconciliation, load, alert and restore acceptance evidence is approved.
     uploads-enabled: ${UTEN_ATTACHMENT_UPLOADS_ENABLED:false}

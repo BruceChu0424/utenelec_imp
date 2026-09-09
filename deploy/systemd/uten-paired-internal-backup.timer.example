@@ -1,0 +1,14 @@
+[Unit]
+Description=Off-peak paired internal backup
+
+[Timer]
+# Review pgBackRest / business schedules before enabling. This is separate from
+# the old 01:30 non-atomic rsync task, not a replacement for pgBackRest or repo2.
+OnCalendar=*-*-* 03:40:00
+Persistent=true
+RandomizedDelaySec=5min
+AccuracySec=1min
+Unit=uten-paired-internal-backup.service
+
+[Install]
+WantedBy=timers.target

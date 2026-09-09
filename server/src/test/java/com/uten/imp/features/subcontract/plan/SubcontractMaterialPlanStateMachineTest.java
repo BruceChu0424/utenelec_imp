@@ -354,6 +354,12 @@ class SubcontractMaterialPlanStateMachineTest {
                     .as(label)
                     .contains("UUID、货色、单位或换算率不一致");
         });
+        Object[] wrongActualWarehouse = exact.clone();
+        wrongActualWarehouse[29] = UUID.randomUUID();
+        candidate.set(wrongActualWarehouse);
+        assertThat(assertThrows(ApiException.class,
+                () -> service.afterFinishedInboundApproved(UUID.randomUUID(), warehouseId)))
+                .hasMessageContaining("真实成品实收单据不一致");
         assertThat(callsContaining("insert into stock_reservations")).isEmpty();
         verify(issueRepo, never()).save(any());
     }
@@ -518,7 +524,8 @@ class SubcontractMaterialPlanStateMachineTest {
                 goodsId, null, unitId, BigDecimal.ONE,
                 unitId, BigDecimal.ONE,
                 goodsId, null, unitId,
-                analysisId, analysisItemId, (short) 1};
+                analysisId, analysisItemId, (short) 1,
+                warehouseId}; // stock_doc.warehouse_id: actual physical receipt, separate from index 6.
     }
 
     private Object[] readyRow(

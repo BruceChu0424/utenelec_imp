@@ -52,9 +52,14 @@ abstract class _MaterialAnalysisBomTreeState
       }
     }
 
+    // Persisted material-to-plan anchors cover direct MAKE issuance without
+    // supply-action documents. Two equal SKUs retain separate path ownership.
     // Use exact active task documents, never a goods/name match. Two equal
     // SKUs on different BOM paths must retain separate child ownership.
     for (final material in analysis.materials) {
+      if (material.planAnchorAnalysisLineId != null) {
+        link(material.planAnchorAnalysisLineId!, material.materialLineId);
+      }
       for (final target in material.notifiedTargets) {
         if (target.status == 'CANCELLED' || target.documentId == null) continue;
         if (target.documentType == 'PREPLAN_MAKE_TASK' ||
@@ -164,136 +169,6 @@ abstract class _MaterialAnalysisBomTreeState
     ).rootIdsByMaterial[material.materialLineId];
     final product = _analysisIndexes(analysis).productsById[rootId];
     return product != null && !_isEmbeddedMakeChildProduct(product);
-  }
-
-  /// 去重后筛出非目标仓，避免同 SKU 在多个 BOM 兄弟节点上重复报数。
-  List<_OffTargetWarehousePeg> _offTargetWarehousePegs(
-    ProductionMaterialAnalysisView analysis,
-  ) {
-    final targetWarehouseId = analysis.warehouseId?.trim();
-    if (targetWarehouseId == null || targetWarehouseId.isEmpty) return const [];
-
-    final seenDimensions = <String>{};
-    final result = <_OffTargetWarehousePeg>[];
-    for (final material in analysis.materials) {
-      final dimensionKey = _materialDimensionKey(material);
-      if (!seenDimensions.add(dimensionKey)) continue;
-
-      for (final stock in material.warehouseStocks) {
-        if (stock.warehouseId == targetWarehouseId || stock.ownPeggedQty <= 0) {
-          continue;
-        }
-        result.add(
-          _OffTargetWarehousePeg(
-            materialLabel: _goodsLabel(material),
-            unitName: material.unitName,
-            warehouseLabel:
-                stock.warehouseName ?? stock.warehouseCode ?? stock.warehouseId,
-            qty: stock.ownPeggedQty,
-          ),
-        );
-      }
-    }
-    result.sort((left, right) {
-      final byWarehouse = left.warehouseLabel.compareTo(right.warehouseLabel);
-      return byWarehouse != 0
-          ? byWarehouse
-          : left.materialLabel.compareTo(right.materialLabel);
-    });
-    return List.unmodifiable(result);
-  }
-
-  String _goodsLabel(ProductionMaterialAnalysisMaterial material) {
-    final name = material.goodsName?.trim();
-    final code = material.goodsCode?.trim();
-    if (name?.isNotEmpty == true && code?.isNotEmpty == true) {
-      return '$name($code)';
-    }
-    return name?.isNotEmpty == true
-        ? name!
-        : code?.isNotEmpty == true
-        ? code!
-        : '未命名物料';
-  }
-
-  Widget _offTargetWarehouseBanner(
-    ThemeData theme,
-    ProductionMaterialAnalysisView analysis,
-    List<_OffTargetWarehousePeg> pegs,
-  ) {
-    final targetWarehouse = analysis.warehouses
-        .where((warehouse) => warehouse.warehouseId == analysis.warehouseId)
-        .firstOrNull;
-    final targetWarehouseLabel =
-        targetWarehouse?.warehouseName ?? analysis.warehouseId ?? '当前分析仓';
-    return Semantics(
-      container: true,
-      liveRegion: true,
-      label: '合格到货在非分析仓，当前不计入备料',
-      child: Container(
-        key: const Key('material-analysis-off-target-warehouse-warning'),
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.errorContainer.withValues(alpha: 0.55),
-          borderRadius: UtenRadius.mdAll,
-          border: Border.all(
-            color: theme.colorScheme.error.withValues(alpha: 0.55),
-          ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.warning_amber_rounded, color: theme.colorScheme.error),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '合格到货在非分析仓，当前不计入备料',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: theme.colorScheme.onErrorContainer,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    '目标仓：$targetWarehouseLabel。以下数量已通过品质并绑定本分析，'
-                    '但实际位于其它仓：',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onErrorContainer,
-                      height: 1.45,
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  for (final peg in pegs)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-                      child: Text(
-                        '• ${peg.materialLabel}：${peg.warehouseLabel} '
-                        '${_qty(peg.qty)}${peg.unitName?.isNotEmpty == true ? ' ${peg.unitName}' : ''}',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onErrorContainer,
-                          fontWeight: FontWeight.w700,
-                          height: 1.45,
-                        ),
-                      ),
-                    ),
-                  Text(
-                    '普通调拨不会迁移这笔分析绑定。请走收货红冲/更正流程，'
-                    '并在目标仓重新登记、验收；处理后刷新分析。',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onErrorContainer,
-                      height: 1.45,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   /// 树顶筛选按钮（全部 BOM/只看缺料/待确认路线 + 按产品看/按物料汇总）。

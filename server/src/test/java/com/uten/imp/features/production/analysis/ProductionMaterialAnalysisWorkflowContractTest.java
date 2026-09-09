@@ -91,12 +91,14 @@ class ProductionMaterialAnalysisWorkflowContractTest {
     }
 
     @Test
-    void committedSourceQuantityCannotBeExpandedInPlace() throws Exception {
+    void committedSourceIncreasePreservesCommitmentsAndRequiresCurrentAdmittedCapacity() throws Exception {
         String source = source("features/production/analysis/MaterialAnalysisService.java");
 
         assertThat(source).contains("BigDecimal committed = decimal(row[7]).add(decimal(row[8]))");
-        assertThat(source).contains("committed.signum() > 0");
-        assertThat(source).contains("requested.compareTo(decimal(row[9])) > 0");
+        assertThat(source).contains("requested.requestedQty().compareTo(decimal(row[9])) > 0");
+        assertThat(source).contains("if (!sameWarehouseScope)");
+        assertThat(source).contains("requireCurrentBomSnapshot(analysisId, committedIncreases)");
+        assertThat(source).contains("requested.subtract(source.requestedQty()).compareTo(additionalCapacity) > 0");
         assertThat(source).contains("requested.compareTo(committed) < 0");
     }
 

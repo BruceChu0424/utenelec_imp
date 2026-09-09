@@ -127,6 +127,7 @@ public class AttachmentController {
                 .replace("+", "%20");
         return ResponseEntity.ok()
                 .contentType(mediaType)
+                .contentLength(download.sizeBytes())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encoded)
                 .header("X-Content-Type-Options", "nosniff")
                 // 授权后才可读的档案文件（合同/证件/报销发票）不得进浏览器磁盘缓存

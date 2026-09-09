@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/operations_workbench/models/operations_workbench.dart';
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
@@ -12,6 +13,61 @@ import 'package:uten_imp/features/subcontract/pages/subcontract_decomposition_pa
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
+  testWidgets(
+    'shared headers send server sort and full-scope facet filters with true planning issue date',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final gateway = _Gateway(
+        _data(capability: true, includePreparation: true),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.subcontractApplicationView,
+              Perm.subcontractOrderView,
+              Perm.subcontractOrderCreate,
+              Perm.subcontractOrderDecompose,
+            }),
+            apiClientProvider.overrideWithValue(_api()),
+          ],
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(repository: gateway),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('待处理'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.text('FG-task-1 委外目标件')).dy,
+        lessThan(tester.getTopLeft(find.text('SC-A 委外件A')).dy),
+      );
+      expect(find.text('计划下达日期'), findsOneWidget);
+      expect(find.text('2026-09-08'), findsWidgets);
+      await tester.tap(find.text('计划下达日期'));
+      await tester.pumpAndSettle();
+      expect(find.text('从近到远'), findsOneWidget);
+      await tester.tap(find.text('从近到远'));
+      await tester.pumpAndSettle();
+      expect(gateway.queries.last['sort'], 'issuedAt');
+      expect(gateway.queries.last['order'], 'desc');
+      expect(gateway.queries.last['page'], 1);
+      await tester.tap(find.text('委外目标件').first);
+      await tester.pumpAndSettle();
+      expect(find.text('完整范围物料 (125)'), findsOneWidget);
+      await tester.tap(find.text('完整范围物料 (125)'));
+      await tester.pumpAndSettle();
+      expect(gateway.queries.last['filters'], {'goods': 'goods-source-uuid'});
+      expect(gateway.queries.last['status'], 'WAITING_ORDER');
+      expect(gateway.queries.last['page'], 1);
+      expect(find.byType(PopupMenuButton<dynamic>), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'each category and fullscreen have one table-owned selection action',
     (tester) async {
@@ -224,13 +280,46 @@ void main() {
       expect(find.textContaining('委外件C'), findsNothing);
       expect(find.text('正在生产中'), findsOneWidget);
       expect(find.text('正在等待安排生产'), findsOneWidget);
+      final table = tester.widget<MasterDataTableView<OperationsWorkbenchTask>>(
+        find.byKey(const Key('subcontract-decomposition-table')),
+      );
+      final blocked = table.items.firstWhere(
+        (task) => task.preparationTaskId == 'task-a',
+      );
+      final ready = table.items.firstWhere((task) => task.taskId == 'task-1');
+      expect(table.rowColor!(blocked), isNotNull);
+      expect(table.rowColor!(ready), isNull);
+      expect(table.idOf!(blocked), isNull);
+      expect(table.idOf!(ready), 'task-1');
+      final denied = _task(
+        'denied',
+        'application-denied',
+        'item-denied',
+        canCreateOrder: false,
+      );
+      expect(table.idOf!(denied), isNull);
+      expect(
+        table.rowColor!(denied),
+        isNotNull,
+        reason:
+            'An explicit server denial overrides otherwise complete legacy application facts.',
+      );
       // 真实申请行与合成行同表。
       expect(find.text('EA-application-1'), findsWidgets);
 
-      // 双击合成行（第一行是 task-a 合成行）→ 产品进度弹窗（车间进度时间线）。
+      // 双击不可下单的合成行 → 产品进度弹窗(车间进度时间线)。
       await _doubleTapRow(tester, find.textContaining('SC-A 委外件A'));
       await tester.pumpAndSettle();
       expect(find.textContaining('产品进度 ·'), findsOneWidget);
+      expect(find.text('正在生产，暂时不能下委外单'), findsOneWidget);
+      expect(
+        tester
+            .getTopLeft(
+              find.byKey(const Key('subcontract-order-production-blocked')),
+            )
+            .dy,
+        lessThan(tester.getTopLeft(find.text('生产中（当前）')).dy),
+      );
       expect(find.text('已通知委外·生成申请'), findsOneWidget);
       expect(find.text('生产中（当前）'), findsOneWidget);
       await tester.tap(find.text('关闭'));
@@ -240,6 +329,10 @@ void main() {
       await _doubleTapRow(tester, find.text('FG-task-1 委外目标件'));
       await tester.pumpAndSettle();
       expect(find.text('待生成委外订货单（当前）'), findsOneWidget);
+      expect(
+        find.byKey(const Key('subcontract-order-production-blocked')),
+        findsNothing,
+      );
       expect(find.text('查看申请单'), findsOneWidget);
       await tester.tap(find.text('关闭'));
       await tester.pumpAndSettle();
@@ -348,6 +441,7 @@ class _Gateway implements OperationsWorkbenchGateway {
   _Gateway(this.data);
   final OperationsWorkbenchData data;
   final List<String?> statuses = <String?>[];
+  final List<Map<String, Object?>> queries = [];
 
   @override
   Future<OperationsWorkbenchData> load({
@@ -359,8 +453,22 @@ class _Gateway implements OperationsWorkbenchGateway {
     String? exception,
     String? dateFrom,
     String? dateTo,
+    String? sort,
+    String? order,
+    Map<String, String?> columnFilters = const {},
+    String? issuedFrom,
+    String? issuedTo,
+    String? needFrom,
+    String? needTo,
   }) async {
     statuses.add(status);
+    queries.add({
+      'page': page,
+      'sort': sort,
+      'order': order,
+      'status': status,
+      'filters': Map<String, String?>.from(columnFilters),
+    });
     return data;
   }
 }
@@ -378,12 +486,12 @@ OperationsWorkbenchData _data({
     statusCounts: {'WAITING_ORDER': includePreparation ? 4 : 2},
   ),
   items: [
+    _task('task-1', 'application-1', 'application-item-1'),
+    _task('task-2', 'application-2', 'application-item-2'),
     if (includePreparation) ...[
       _preparationRow('task-a', 'SC-A', '委外件A', 'IN_PRODUCTION'),
       _preparationRow('task-b', 'SC-B', '委外件B', 'NOTIFYING_WORKSHOP'),
     ],
-    _task('task-1', 'application-1', 'application-item-1'),
-    _task('task-2', 'application-2', 'application-item-2'),
   ],
   page: 1,
   size: 20,
@@ -392,13 +500,23 @@ OperationsWorkbenchData _data({
   capabilities: OperationsWorkbenchCapabilities(
     canCreateSubcontractOrder: capability,
   ),
+  facets: const {
+    'goods': [
+      MasterFacetBucket(
+        value: 'goods-source-uuid',
+        label: '完整范围物料',
+        count: 125,
+      ),
+    ],
+  },
 );
 
 OperationsWorkbenchTask _task(
   String taskId,
   String applicationId,
-  String applicationItemId,
-) => OperationsWorkbenchTask(
+  String applicationItemId, {
+  bool canCreateOrder = true,
+}) => OperationsWorkbenchTask(
   taskId: taskId,
   packageId: 'package-1',
   planId: 'plan-1',
@@ -420,6 +538,8 @@ OperationsWorkbenchTask _task(
   expectedDate: null,
   exceptionCode: null,
   updatedAt: '2026-08-30T10:00:00Z',
+  issuedAt: '2026-09-07T18:30:00Z',
+  canCreateOrder: canCreateOrder,
   actionDocument: OperationsActionDocument(
     id: applicationId,
     docType: 'SUBCONTRACT_APPLICATION',

@@ -57,13 +57,14 @@ public class OssStorageService implements StorageService {
     private final String finalBucket;
     private final String keyPrefix;
     private final URI endpoint;
+    private final boolean legacyReadOnly;
 
     public OssStorageService(StorageProperties properties) {
         this(properties, createClientBundle(properties));
     }
 
     private OssStorageService(StorageProperties properties, ClientBundle bundle) {
-        this(properties, bundle.client(), bundle.credentialsProvider());
+        this(properties, bundle.client(), bundle.credentialsProvider(), true);
     }
 
     OssStorageService(StorageProperties properties, OSS client) {
@@ -72,27 +73,40 @@ public class OssStorageService implements StorageService {
 
     OssStorageService(StorageProperties properties, OSS client,
                       CredentialsProvider credentialsProvider) {
+        this(properties, client, credentialsProvider, false);
+    }
+
+    static OssStorageService legacyReader(StorageProperties properties) {
+        ClientBundle bundle = createClientBundle(properties);
+        try { return new OssStorageService(properties,bundle.client(),bundle.credentialsProvider(),true); }
+        catch(RuntimeException failure) { bundle.client().shutdown();throw failure; }
+    }
+
+    OssStorageService(StorageProperties properties, OSS client,
+                      CredentialsProvider credentialsProvider, boolean legacyReadOnly) {
         this.properties = properties;
         this.client = client;
         this.credentialsProvider = credentialsProvider;
+        this.legacyReadOnly = legacyReadOnly;
         StorageProperties.Oss oss = properties.getOss();
         this.endpoint = requireHttpsEndpoint(oss.getEndpoint());
-        this.stagingBucket = requireConfigured(
+        this.stagingBucket = legacyReadOnly ? oss.getStagingBucket() : requireConfigured(
                 "UTEN_OSS_STAGING_BUCKET", oss.getStagingBucket());
         this.finalBucket = requireConfigured(
                 "UTEN_OSS_FINAL_BUCKET", oss.getFinalBucket());
-        if (stagingBucket.equals(finalBucket)) {
+        if (!legacyReadOnly && stagingBucket.equals(finalBucket)) {
             throw new IllegalStateException(
                     "OSS staging and final Buckets must be different");
         }
         this.keyPrefix = canonicalPrefix(oss.getKeyPrefix());
-        verifyProductionSafety(oss);
+        if (!legacyReadOnly) verifyProductionSafety(oss);
         log.info("OSS attachment storage enabled stagingBucket={} finalBucket={} prefix={}",
                 stagingBucket, finalBucket, keyPrefix);
     }
 
     @Override
     public PresignedUpload presignUpload(UploadRequest request) {
+        requireWritableBackend();
         if (request.contentLength() <= 0) {
             throw new IllegalArgumentException("Attachment content length must be positive");
         }
@@ -137,6 +151,7 @@ public class OssStorageService implements StorageService {
 
     @Override
     public StoredObject describe(String storageKey) {
+        requireWritableBackend();
         try {
             ObjectMetadata metadata = client.getObjectMetadata(
                     stagingBucket, stagingKey(storageKey));
@@ -157,6 +172,7 @@ public class OssStorageService implements StorageService {
 
     @Override
     public InputStream openForValidation(String storageKey, String versionId) {
+        requireWritableBackend();
         requireUnversionedStaging(versionId);
         GetObjectRequest request = new GetObjectRequest(
                 stagingBucket, stagingKey(storageKey));
@@ -165,6 +181,7 @@ public class OssStorageService implements StorageService {
 
     @Override
     public StoredObject promoteToFinal(String storageKey, StoredObject stagingObject) {
+        requireWritableBackend();
         requireUnversionedStaging(stagingObject.versionId());
         StoredObject existing = describeFinal(storageKey);
         if (existing.exists()) {
@@ -241,19 +258,30 @@ public class OssStorageService implements StorageService {
     }
 
     @Override
+    public InputStream openFinal(String storageKey, String versionId) {
+        requirePinnedVersion(versionId);
+        GetObjectRequest request = new GetObjectRequest(finalBucket, finalKey(storageKey));
+        request.setVersionId(versionId);
+        return client.getObject(request).getObjectContent();
+    }
+
+    @Override
     public void delete(String storageKey, String versionId) {
+        requireWritableBackend();
         requirePinnedVersion(versionId);
         deleteAt(finalBucket, finalKey(storageKey), versionId, "final");
     }
 
     @Override
     public void deleteStaging(String storageKey, String versionId) {
+        requireWritableBackend();
         requireUnversionedStaging(versionId);
         deleteAt(stagingBucket, stagingKey(storageKey), null, "staging");
     }
 
     @Override
     public List<StoredObjectRef> inventory() {
+        requireWritableBackend();
         if (!properties.getReconciliation().isEnabled()) {
             throw new UnsupportedOperationException(
                     "OSS attachment inventory grant is not enabled");
@@ -267,6 +295,10 @@ public class OssStorageService implements StorageService {
     @Override
     public boolean isEnabled() {
         return true;
+    }
+
+    private void requireWritableBackend() {
+        if(legacyReadOnly) throw new UnsupportedOperationException("Historical OSS adapter is read-only; retirement requires a separately audited migration procedure");
     }
 
     @Override
@@ -416,7 +448,7 @@ public class OssStorageService implements StorageService {
     }
 
     private void requirePinnedVersion(String versionId) {
-        if (properties.getOss().isRequireVersioning()
+        if ((legacyReadOnly || properties.getOss().isRequireVersioning())
                 && (!StringUtils.hasText(versionId)
                 || "null".equalsIgnoreCase(versionId.trim()))) {
             throw new IllegalStateException(

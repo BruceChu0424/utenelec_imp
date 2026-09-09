@@ -26,8 +26,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.concurrent.*;
@@ -66,15 +64,30 @@ class InventoryPositionPostgresTest {
                 CREATE FUNCTION business_data_reset() RETURNS TABLE(table_name text,policy text) LANGUAGE sql
                     AS $$ VALUES ('stock_value_postings', 'CLEAR') $$;
                 """);
-        for(String migration:List.of("V500__inventory_value_core.sql","V506__inventory_value_openings_and_legacy_cases.sql"))
+        for(String migration:List.of("V500__inventory_value_core.sql","V506__inventory_value_openings_and_legacy_cases.sql",
+                "V517__inventory_value_custody_positions.sql"))
             try(var in=InventoryPositionPostgresTest.class.getResourceAsStream("/db/migration/"+migration)){
                 db.execute(new String(Objects.requireNonNull(in).readAllBytes(),StandardCharsets.UTF_8));}
-        // Candidate remains outside Flyway's formal directory until this package passes.
-        db.execute(Files.readString(Path.of("../.codex-tmp/valuation-positions/V517__inventory_value_custody_positions.sql")));
         // This fixture exercises the value core. FullChainEndToEndTest applies the complete V524,
         // including its actual production completion authorization and business event checks.
-        String consumptionReturns=Files.readString(Path.of("../.codex-tmp/valuation-positions/V524__inventory_consumption_returns.sql"));
+        String consumptionReturns;
+        try(var in=InventoryPositionPostgresTest.class.getResourceAsStream("/db/migration/V524__inventory_consumption_returns.sql")){
+            consumptionReturns=new String(Objects.requireNonNull(in).readAllBytes(),StandardCharsets.UTF_8);
+        }
         db.execute(consumptionReturns.substring(0,consumptionReturns.indexOf("-- Correcting an explicit material settlement")));
+        db.execute("ALTER TABLE stock_value_production_cost_objects ADD COLUMN source_kind text NOT NULL DEFAULT 'PRODUCTION_EXECUTION', ADD COLUMN business_refresh_pending boolean NOT NULL DEFAULT false");
+        db.execute("CREATE TABLE stock_documents(id uuid PRIMARY KEY,doc_type text,warehouse_id uuid,status smallint,is_deleted boolean DEFAULT false)");
+        db.execute("CREATE TABLE stock_document_items(id uuid PRIMARY KEY,doc_id uuid,execution_segment_id uuid)");
+        try(var in=InventoryPositionPostgresTest.class.getResourceAsStream("/db/migration/V527__unused_procurement_stock_in_reversal.sql")){
+            db.execute(new String(Objects.requireNonNull(in).readAllBytes(),StandardCharsets.UTF_8));
+        }
+        try(var in=InventoryPositionPostgresTest.class.getResourceAsStream("/db/migration/V528__unused_subcontract_receipt_value_reversal.sql")){
+            String migration=new String(Objects.requireNonNull(in).readAllBytes(),StandardCharsets.UTF_8);
+            db.execute(migration.substring(0,migration.indexOf("CREATE FUNCTION fn_check_subcontract_material_unconsume")));
+        }
+        try(var in=InventoryPositionPostgresTest.class.getResourceAsStream("/db/migration/V536__production_cost_actual_output_pools_and_withdrawals.sql")){
+            db.execute(new String(Objects.requireNonNull(in).readAllBytes(),StandardCharsets.UTF_8));
+        }
         var factory=new LocalContainerEntityManagerFactoryBean();factory.setDataSource(ds);factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
         factory.setPackagesToScan("com.uten.imp.features.common.taskclaim");var props=new Properties();props.setProperty("hibernate.hbm2ddl.auto","none");
         factory.setJpaProperties(props);factory.afterPropertiesSet();emf=factory.getObject();em=SharedEntityManagerCreator.createSharedEntityManager(emf);
@@ -325,13 +338,14 @@ class InventoryPositionPostgresTest {
     }
 
     private record Production(UUID segment,PoolKey product,PoolKey b,PoolKey e,UUID bSource,UUID bInput,UUID eInput,MovementValue fg){}
-    private static Production production(){
+    private static Production production(){return production("5",false);}
+    private static Production production(String firstQty,boolean physicalDocument){
         UUID segment=UUID.randomUUID();PoolKey product=key(),b=key(),e=key();PositionValue bCost=acquire(b,"20","400","0",true,List.of()),eCost=acquire(e,"20","200","0",true,List.of());
         PositionValue bg=move(b,bCost.positionRootId(),"20",Owner.QUALITY_PASSED),eg=move(e,eCost.positionRootId(),"20",Owner.QUALITY_PASSED);
         store(b,List.of(slice(bg.positionRootId(),"20")));store(e,List.of(slice(eg.positionRootId(),"20")));
         UUID bi=consume(b,segment),ei=consume(e,segment);
-        MovementValue fg=locked(product,()->{EventContext c=context();MovementValue r=values.receive(new Receive(c,UUID.randomUUID(),product,bd("5"),bd("0"),null,false));
-            physical(r,c,product,bd("5"),1);productionCosts.registerOutput(segment,product,new InventoryProductionCostPort.Output(r.valueNodeId(),r.movementId()));return r;});
+        MovementValue fg=physicalDocument?finished(segment,product,firstQty):locked(product,()->{EventContext c=context();MovementValue r=values.receive(new Receive(c,UUID.randomUUID(),product,bd(firstQty),bd("0"),null,false));
+            physical(r,c,product,bd(firstQty),1);productionCosts.registerOutput(segment,product,new InventoryProductionCostPort.Output(r.valueNodeId(),r.movementId()));return r;});
         return new Production(segment,product,b,e,bCost.fundingSourceNodeId(),bi,ei,fg);
     }
     private static UUID consume(PoolKey k,UUID segment){return locked(k,()->{EventContext c=context();MovementValue issued=values.issue(new Issue(c,UUID.randomUUID(),k,bd("20"),qty(k),Destination.WIP,segment));
@@ -373,4 +387,91 @@ class InventoryPositionPostgresTest {
     private static void money(BigDecimal n,String expected){assertThat(n).isEqualByComparingTo(expected);}
     private static void drain(){for(int i=0;i<500;i++){List<PropagationWork> work=values.pendingWork(100);if(work.isEmpty())return;boolean progress=false;for(PropagationWork w:work)progress|=locked(w.lockKey(),()->values.propagate(w.taskId())).applied();assertThat(progress).isTrue();}fail("Propagation did not finish");}
     private static void await(CountDownLatch latch){try{if(!latch.await(15,TimeUnit.SECONDS))throw new IllegalStateException("barrier timeout");}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}}
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints={0,1,2})
+    void sameCostObjectSplitsNonzeroOutputsAcrossPoolsAndWithdrawnOutputNeverReceivesLateCost(int returnPath){
+        Production p=production("0.4",true);PoolKey c=otherWarehouse(p.product()),d=otherWarehouse(p.product());
+        MovementValue second=finished(p.segment(),c,"0.6");
+        productionRevision(p,0,"1",true);drainProduction();
+        physicalPool(p.product(),"0.4","240");physicalPool(c,"0.6","360");costPosition(p,"600","600","0","0","0");
+        locked(p.product(),()->{EventContext event=context();var sold=values.issue(new Issue(event,UUID.randomUUID(),p.product(),bd("0.2"),poolQty(p.product()),Destination.COGS,event.sourceItemId()));physical(sold,event,p.product(),bd("0.2"),-1);return sold;});
+        adjust(p.b(),p.bSource(),"150");drain();lockedAll(List.of(p.product(),p.b(),p.e()),()->productionCosts.recalculate(context(),p.segment(),1));drainProduction();
+        physicalPool(p.product(),"0.2","150");physicalPool(c,"0.6","450");money(owned(p.product(),"COGS"),"150");
+        MovementValue issued=locked(c,()->{EventContext out=context();var result=values.issue(new Issue(out,UUID.randomUUID(),c,bd("0.6"),poolQty(c),Destination.SUBCONTRACT_WIP,UUID.randomUUID()));
+            physical(result,out,c,bd("0.6"),-1);return result;});
+        if(returnPath==2){
+            locked(c,()->{EventContext back=context();var part=positions.store(new Store(back,UUID.randomUUID(),c,poolQty(c),
+                    List.of(new Slice(issued.valueNodeId(),bd("0.2"),issued.valueNodeId()))));physical(part,back,c,bd("0.2"),1);return part;});
+            assertThatThrownBy(()->locked(c,()->{values.requireUnusedProductionReceipt(c,poolQty(c),second.movementId());return true;}))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("已有出库");
+        }
+        locked(c,()->{EventContext back=context();BigDecimal returnedQty=bd(returnPath==2?"0.4":"0.6");
+            var returned=returnPath==0?values.returnIssue(new ReturnIssue(back,UUID.randomUUID(),c,returnedQty,poolQty(c),issued.valueNodeId()))
+                    :positions.store(new Store(back,UUID.randomUUID(),c,poolQty(c),List.of(new Slice(issued.valueNodeId(),returnedQty,issued.valueNodeId()))));
+            physical(returned,back,c,returnedQty,1);return returned;});
+        physicalPool(c,"0.6","450");
+        UUID originalDoc=db.queryForObject("SELECT source_doc_id FROM stock_movements WHERE id=?",UUID.class,second.movementId());
+        UUID originalItem=db.queryForObject("SELECT source_item_id FROM stock_movements WHERE id=?",UUID.class,second.movementId());
+        EventContext reversal=new EventContext(UUID.randomUUID(),"STOCK_DOC",originalDoc,originalItem,2,USER,EMPLOYEE,UUID.randomUUID().toString(),context().occurredAt());
+        var command=new InventoryProductionCostPort.Withdrawal(reversal,p.segment(),c,second.movementId(),UUID.randomUUID(),bd("0.6"),bd("0.6"));
+        lockedAll(List.of(c,p.product(),p.b(),p.e()),()->{var result=productionCosts.withdrawOutput(command);physical(result,reversal,c,bd("0.6"),-1);
+            db.update("UPDATE stock_documents SET status=-1 WHERE id=?",originalDoc);
+            assertThat(productionCosts.withdrawOutput(command).replayed()).isTrue();return result;});
+        drain();physicalPool(c,"0","0");costPosition(p,"750","300","450","0","0");
+        money(db.queryForObject("SELECT sum(allocated_value_local) FROM stock_value_production_cost_shares WHERE output_source_node_id=?",BigDecimal.class,second.valueNodeId()),"0");
+        assertThatThrownBy(()->db.update("""
+                INSERT INTO stock_value_production_cost_revisions
+                SELECT forged.* FROM stock_value_production_cost_revisions original
+                CROSS JOIN LATERAL jsonb_populate_record(NULL::stock_value_production_cost_revisions,
+                    to_jsonb(original)||jsonb_build_object('id',gen_random_uuid(),'output_snapshot',
+                        (SELECT jsonb_agg(part-'withdrawnMovement') FROM jsonb_array_elements(original.output_snapshot) part))) forged
+                WHERE original.execution_segment_id=? AND original.version=3
+                """,p.segment())).hasMessageContaining("cost revision must freeze the actual output withdrawal identity");
+        adjust(p.b(),p.bSource(),"250");drain();lockedAll(List.of(p.product(),p.b(),p.e()),()->productionCosts.recalculate(context(),p.segment(),3));drainProduction();
+        physicalPool(p.product(),"0.2","200");physicalPool(c,"0","0");money(owned(p.product(),"COGS"),"200");costPosition(p,"1000","400","600","0","0");
+        finished(p.segment(),d,"0.6");lockedAll(List.of(p.product(),p.b(),p.e()),()->productionCosts.recalculate(context(),p.segment(),4));drainProduction();
+        physicalPool(d,"0.6","600");physicalPool(p.product(),"0.2","200");money(owned(p.product(),"COGS"),"200");costPosition(p,"1000","1000","0","0","0");
+        money(db.queryForObject("SELECT sum(qty_base) FROM stock_value_production_cost_outputs WHERE execution_segment_id=? AND withdrawn_movement_id IS NULL",BigDecimal.class,p.segment()),"1");
+        assertThat(db.queryForObject("SELECT count(*) FROM stock_value_production_cost_objects WHERE execution_segment_id=?",Integer.class,p.segment())).isEqualTo(1);
+        var used=new InventoryProductionCostPort.Withdrawal(context(),p.segment(),p.product(),p.fg().movementId(),UUID.randomUUID(),bd("0.4"),bd("0.2"));
+        assertThatThrownBy(()->lockedAll(List.of(p.product(),p.b(),p.e()),()->productionCosts.withdrawOutput(used))).isInstanceOf(ApiException.class).hasMessageContaining("已有出库");
+    }
+
+    @Test void unrelatedReceiptCannotReplaceTheUnreturnedPartOfTheOriginalIssue(){
+        Production p=production("0.4",true);
+        MovementValue issued=locked(p.product(),()->{EventContext event=context();var result=values.issue(new Issue(event,UUID.randomUUID(),p.product(),bd("0.4"),poolQty(p.product()),Destination.SUBCONTRACT_WIP,UUID.randomUUID()));
+            physical(result,event,p.product(),bd("0.4"),-1);return result;});
+        locked(p.product(),()->{EventContext back=context();var returned=positions.store(new Store(back,UUID.randomUUID(),p.product(),poolQty(p.product()),
+                List.of(new Slice(issued.valueNodeId(),bd("0.2"),issued.valueNodeId()))));physical(returned,back,p.product(),bd("0.2"),1);return returned;});
+        locked(p.product(),()->{EventContext other=context();var receipt=values.receive(new Receive(other,UUID.randomUUID(),p.product(),bd("0.2"),poolQty(p.product()),bd("50"),true));
+            physical(receipt,other,p.product(),bd("0.2"),1);return receipt;});
+        money(poolQty(p.product()),"0.4");
+        assertThatThrownBy(()->locked(p.product(),()->{values.requireUnusedProductionReceipt(p.product(),poolQty(p.product()),p.fg().movementId());return true;}))
+                .isInstanceOf(ApiException.class).hasMessageContaining("已有出库");
+    }
+
+    @Test void outputWarehouseCanChangeButProductColorAndBusinessScopeCannot(){
+        Production p=production("0.4",true);PoolKey actual=otherWarehouse(p.product());
+        assertThatThrownBy(()->locked(actual,()->{EventContext event=context();var value=values.receive(new Receive(event,UUID.randomUUID(),actual,bd("0.6"),BigDecimal.ZERO,null,false));
+            physical(value,event,actual,bd("0.6"),1);productionCosts.registerOutput(p.segment(),p.product(),new InventoryProductionCostPort.Output(value.valueNodeId(),value.movementId()));return value;}))
+                .isInstanceOf(ApiException.class).hasMessageContaining("实际仓库");
+        PoolKey wrong=key();
+        assertThatThrownBy(()->finished(p.segment(),wrong,"0.6")).isInstanceOf(ApiException.class).hasMessageContaining("不同货品或颜色");
+        UUID color=UUID.randomUUID();db.update("INSERT INTO colors VALUES (?)",color);PoolKey wrongColor=new PoolKey(actual.warehouseId(),actual.goodsId(),color);
+        assertThatThrownBy(()->finished(p.segment(),wrongColor,"0.6")).isInstanceOf(ApiException.class).hasMessageContaining("不同货品或颜色");
+        assertThatThrownBy(()->locked(p.product(),()->{productionCosts.registerScope(new InventoryProductionCostPort.Scope(p.segment(),InventoryProductionCostPort.ScopeKind.SUBCONTRACT_RECEIPT_ITEM,p.product()));return null;}))
+                .isInstanceOf(ApiException.class).hasMessageContaining("不同业务类型");
+    }
+
+    private static PoolKey otherWarehouse(PoolKey product){UUID warehouse=UUID.randomUUID();db.update("INSERT INTO warehouses VALUES (?)",warehouse);return new PoolKey(warehouse,product.goodsId(),product.colorId());}
+    private static MovementValue finished(UUID segment,PoolKey pool,String qty){return locked(pool,()->{
+        UUID doc=UUID.randomUUID(),item=UUID.randomUUID();db.update("INSERT INTO stock_documents(id,doc_type,warehouse_id,status) VALUES (?,'FINISHED_IN',?,1)",doc,pool.warehouseId());
+        db.update("INSERT INTO stock_document_items VALUES (?,?,?)",item,doc,segment);
+        var event=new EventContext(UUID.randomUUID(),"STOCK_DOC",doc,item,1,USER,EMPLOYEE,UUID.randomUUID().toString(),context().occurredAt());
+        var value=values.receive(new Receive(event,UUID.randomUUID(),pool,bd(qty),poolQty(pool),null,false));physical(value,event,pool,bd(qty),1);
+        productionCosts.registerOutput(segment,pool,new InventoryProductionCostPort.Output(value.valueNodeId(),value.movementId()));return value;
+    });}
+    private static BigDecimal poolQty(PoolKey pool){return db.queryForObject("SELECT coalesce(sum(qty),0) FROM stock_balances WHERE warehouse_id=? AND goods_id=? AND color_id IS NOT DISTINCT FROM CAST(? AS uuid)",BigDecimal.class,pool.warehouseId(),pool.goodsId(),pool.colorId());}
+    private static void physicalPool(PoolKey pool,String qty,String value){money(poolQty(pool),qty);money(db.queryForObject("SELECT coalesce(sum(amount_local),0) FROM stock_balances WHERE warehouse_id=? AND goods_id=? AND color_id IS NOT DISTINCT FROM CAST(? AS uuid)",BigDecimal.class,pool.warehouseId(),pool.goodsId(),pool.colorId()),value);}
 }

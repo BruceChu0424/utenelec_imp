@@ -70,19 +70,24 @@ void main() {
   });
 }
 
-GoodsDetail _detail({required bool locked, bool unresolved = false}) =>
-    GoodsDetail.fromJson({
-      'id': 'goods-1',
-      'name': '数量基准货品',
-      'code': 'HP000001',
-      'categoryId': 'category-1',
-      'sourceType': '采购',
-      'status': '使用',
-      'unitId': unresolved ? null : 'unit-piece',
-      'unitName': unresolved ? '旧单位12' : '个',
-      'unitLegacyId': 12,
-      'quantityUnitLocked': locked,
-    });
+GoodsDetail _detail({
+  required bool locked,
+  bool unresolved = false,
+}) => GoodsDetail.fromJson({
+  'id': 'goods-1',
+  'name': '数量基准货品',
+  'code': 'HP000001',
+  'categoryId': 'category-1',
+  'sourceType': '采购',
+  'status': '使用',
+  // These unit-lifecycle cases use a permitted editor of this exact goods object.
+  // The current detail API supplies object scope independently of button permissions.
+  'writable': true,
+  'unitId': unresolved ? null : 'unit-piece',
+  'unitName': unresolved ? '旧单位12' : '个',
+  'unitLegacyId': 12,
+  'quantityUnitLocked': locked,
+});
 
 Finder _unitPicker() => find.byWidgetPredicate(
   (widget) => widget is UtenDropdownField && widget.label == '基本单位',

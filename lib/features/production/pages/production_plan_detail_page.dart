@@ -832,7 +832,7 @@ class _ProductionPlanDetailPageState
                   icon: Icons.fact_check_outlined,
                   onPressed: _commandBusy ? null : _openMaterialSettlement,
                   child: Text(
-                    _canManageProductionMaterials ? '材料退库与结清' : '查看材料台账',
+                    _canManageProductionMaterials ? '材料用量与退库' : '查看用料记录',
                   ),
                 ),
               ],

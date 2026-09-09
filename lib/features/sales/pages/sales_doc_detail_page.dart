@@ -26,6 +26,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../../shared/providers/sales_shipment_finance_count_provider.dart';
 import '../../../shared/widgets/source_doc_link.dart';
@@ -1302,6 +1303,25 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                     ],
                     const SizedBox(height: UtenSpacing.s12),
                     _itemsCard(theme, names),
+                    if (_cfg.type == SalesDocType.order) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      BusinessAttachmentSection(
+                        ownerType: 'SALES_ORDER',
+                        ownerId: _detail!.id,
+                        canView:
+                            !_detail!.priceMasked &&
+                            permissions.contains(Perm.salesOrderView),
+                        canManage:
+                            _canEdit &&
+                            !_detail!.closed &&
+                            !_detail!.stopped &&
+                            (_detail!.status == kSalesStatusDraft ||
+                                (_detail!.status == kSalesStatusApproved &&
+                                    _detail!.financeRejected &&
+                                    !_detail!.financeConfirmed)),
+                        categories: const ['合同', '客户确认', '图片', '其他'],
+                      ),
+                    ],
                     if (_cfg.type == SalesDocType.returnDoc &&
                         _detail!.status == kSalesStatusApproved &&
                         _canViewReturnQuality) ...[

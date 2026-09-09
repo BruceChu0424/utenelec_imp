@@ -15,6 +15,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../operations_workbench/models/operations_workbench.dart';
 import '../../production/models/production_material_analysis.dart';
@@ -102,6 +103,56 @@ class _ProgressDialogBody extends ConsumerWidget {
           ),
           const SizedBox(height: UtenSpacing.s4),
           if (mt != null) ...[
+            Semantics(
+              container: true,
+              liveRegion: true,
+              child: Container(
+                key: const Key('subcontract-order-production-blocked'),
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                margin: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.errorContainer.withValues(
+                    alpha: 0.65,
+                  ),
+                  borderRadius: UtenRadius.mdAll,
+                  border: Border.all(
+                    color: theme.colorScheme.error.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.block_rounded, color: theme.colorScheme.error),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Expanded(
+                      child: Text(
+                        switch (mt.workshopStatus) {
+                          'PRODUCED' => workflowFieldText(
+                            context,
+                          ).subcontractOrderBlockedNotification,
+                          'FULLY_NOTIFIED' => workflowFieldText(
+                            context,
+                          ).subcontractOrderBlockedRefresh,
+                          'CANCELLED' => workflowFieldText(
+                            context,
+                          ).subcontractOrderBlockedCancelled,
+                          'NOTIFYING_WORKSHOP' || null => workflowFieldText(
+                            context,
+                          ).subcontractOrderBlockedPreparation,
+                          _ => workflowFieldText(
+                            context,
+                          ).subcontractOrderBlockedProducing,
+                        },
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: theme.colorScheme.onErrorContainer,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             _facts(theme, [
               ('需求量', _qty(mt.requiredQty, mt.unitName)),
               ('已完工入库', _qty(mt.producedQty, mt.unitName)),

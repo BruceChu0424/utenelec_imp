@@ -590,8 +590,6 @@ class _FinanceSalesOrderConfirmationPageState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _summaryStrip(theme, result),
-        const SizedBox(height: UtenSpacing.s12),
         _filters(theme),
         if (_error != null) ...[
           const SizedBox(height: UtenSpacing.s12),
@@ -677,8 +675,6 @@ class _FinanceSalesOrderConfirmationPageState
         physics: const AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.only(bottom: selectable ? 96 : UtenSpacing.s24),
         children: [
-          _summaryStrip(Theme.of(context), result),
-          const SizedBox(height: UtenSpacing.s12),
           _filters(Theme.of(context)),
           if (_error != null) ...[
             const SizedBox(height: UtenSpacing.s12),
@@ -817,63 +813,22 @@ class _FinanceSalesOrderConfirmationPageState
     ),
   ];
 
-  Widget _summaryStrip(ThemeData theme, SalesOrderFinancePendingPage result) {
-    return Container(
-      key: const Key('sales-order-finance-summary'),
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s16,
-        vertical: UtenSpacing.s12,
-      ),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.34),
-        borderRadius: UtenRadius.lgAll,
-        border: Border.all(
-          color: theme.colorScheme.primary.withValues(alpha: 0.18),
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.fact_check_outlined, color: theme.colorScheme.primary),
-          const SizedBox(width: UtenSpacing.s12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _showRejected
-                      ? '已驳回 ${result.total} 笔'
-                      : '待财务放行 ${result.total} 笔',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s4),
-                Text(
-                  _showRejected
-                      ? '等待销售受控修订并重新审核；当前页面只读，不可越过整改直接确认。'
-                      : '确认仅放行计划部可见与排产，不代表收款或正式应收；请核对金额、应收与发运策略。',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _filters(ThemeData theme) {
+    final count = ref.watch(
+      salesOrderFinanceQueueCountProvider(widget.changesOnly),
+    );
+    final pendingCount = count.isLoading || count.hasError
+        ? null
+        : count.valueOrNull;
     // 全平台统一筛选工具条：分段 + 胶囊搜索框（窄屏自动换行）。
     // 整批提交期间不响应分段切换（原 onSelectionChanged 置空的语义收进回调守卫）。
     return UtenFilterToolbar<bool>(
       segmentsKey: const Key('sales-order-finance-tabs'),
       searchKey: const Key('sales-order-finance-search'),
       compactBreakpoint: UtenBreakpoints.mediumStart,
-      segments: const [
-        UtenFilterSegment(value: false, label: '待确认'),
-        UtenFilterSegment(value: true, label: '已驳回'),
+      segments: [
+        UtenFilterSegment(value: false, label: '待确认', count: pendingCount),
+        const UtenFilterSegment(value: true, label: '已驳回'),
       ],
       selected: {_showRejected},
       onSelectionChanged: (value) {

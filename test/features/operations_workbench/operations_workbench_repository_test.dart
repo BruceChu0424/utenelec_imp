@@ -6,6 +6,105 @@ import 'package:uten_imp/features/operations_workbench/repositories/operations_w
 
 void main() {
   test(
+    'subcontract column queries preserve stage and history filters and read server facets',
+    () async {
+      late RequestOptions captured;
+      final repository = OperationsWorkbenchRepository(
+        _api((request) {
+          captured = request;
+          return {
+            'items': [
+              {
+                'taskId': 'application-task',
+                'planNo': 'PP-1',
+                'warehouseName': '主仓 / 子仓',
+                'goodsCode': 'G1',
+                'goodsName': '目标件',
+                'spec': '',
+                'colorName': '',
+                'unitName': '件',
+                'supplyRoute': 'SUBCONTRACT',
+                'requiredQty': 10,
+                'allocatedQty': 0,
+                'fulfilledQty': 0,
+                'supplyPeggedQty': 0,
+                'openQty': 10,
+                'taskStatus': 'WAITING_ORDER',
+                'issuedAt': '2026-09-07T18:30:00Z',
+                'canCreateOrder': true,
+                'needDate': '2026-09-20',
+                'updatedAt': '2026-09-09T00:00:00Z',
+                'actionDocType': 'SUBCONTRACT_APPLICATION',
+                'actionDocId': 'application-1',
+                'actionDocStatus': '1',
+                'actionDocCanView': true,
+                'actionDocRestricted': false,
+              },
+            ],
+            'page': 2,
+            'size': 50,
+            'total': 125,
+            'totalPages': 3,
+            'summary': {
+              'totalTasks': 125,
+              'overdueTasks': 0,
+              'openTasks': 125,
+              'openQty': 1250,
+              'statusCounts': {'WAITING_ORDER': 125},
+            },
+            'capabilities': {'canCreateSubcontractOrder': true},
+            'facets': {
+              'goods': [
+                {'value': 'goods-source-uuid', 'label': 'G1 目标件', 'count': 125},
+              ],
+            },
+            'nullCounts': {'issuedAt': 4},
+          };
+        }),
+      );
+      final data = await repository.load(
+        department: OperationsWorkbenchDepartment.subcontract,
+        page: 2,
+        size: 50,
+        status: 'WAITING_ORDER',
+        dateFrom: '2026-09-01',
+        dateTo: '2026-09-30',
+        sort: 'issuedAt',
+        order: 'desc',
+        columnFilters: {
+          'goods': 'goods-source-uuid',
+          'spec': '__null__',
+          'status': 'IN_PRODUCTION',
+        },
+        issuedFrom: '2026-09-08',
+        issuedTo: '2026-09-08',
+        needFrom: '2026-09-15',
+        needTo: '2026-09-20',
+      );
+      expect(captured.queryParameters, {
+        'page': 2,
+        'size': 50,
+        'status': 'WAITING_ORDER',
+        'dateFrom': '2026-09-01',
+        'dateTo': '2026-09-30',
+        'sort': 'issuedAt',
+        'order': 'desc',
+        'f.goods': 'goods-source-uuid',
+        'f.spec': '__null__',
+        'f.status': 'IN_PRODUCTION',
+        'issuedFrom': '2026-09-08',
+        'issuedTo': '2026-09-08',
+        'needFrom': '2026-09-15',
+        'needTo': '2026-09-20',
+      });
+      expect(data.items.single.issuedAt, '2026-09-07T18:30:00Z');
+      expect(data.items.single.canCreateOrder, isTrue);
+      expect(data.facets['goods']!.single.value, 'goods-source-uuid');
+      expect(data.facets['goods']!.single.count, 125);
+      expect(data.nullCounts['issuedAt'], 4);
+    },
+  );
+  test(
     'loads action status and sends the server-side exception filter',
     () async {
       late RequestOptions captured;

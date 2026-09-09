@@ -287,9 +287,8 @@ class FulfillmentWorkbenchQueryServiceTest {
 
     private static void assertPermission(String methodName, String expected) throws Exception {
         // 控制器读端点签名：status/exception/keyword + dateFrom/dateTo + 分页。
-        Method method = FulfillmentWorkbenchController.class.getDeclaredMethod(
-                methodName, String.class, String.class, String.class,
-                LocalDate.class, LocalDate.class, int.class, int.class);
+        Method method = java.util.Arrays.stream(FulfillmentWorkbenchController.class.getDeclaredMethods())
+                .filter(candidate -> candidate.getName().equals(methodName)).findFirst().orElseThrow();
         assertEquals(expected, method.getAnnotation(PreAuthorize.class).value());
     }
 

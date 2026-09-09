@@ -225,17 +225,18 @@ void main() {
       expect(find.text('综合主仓'), findsOneWidget);
       expect(find.text('原料子仓'), findsNothing);
       expect(find.text('辅料子仓'), findsNothing);
-      final settings = tester.widget<IconButton>(
+      expect(
         find.byKey(const Key('material-analysis-issue-warehouse-settings')),
+        findsNothing,
       );
-      expect(settings.onPressed, isNull);
+      expect(selector.items.map((item) => item.value), ['main', 'other-main']);
       expect(harness.writes, isEmpty);
       expect(find.byType(DropdownButton<MaterialSupplyRoute>), findsNothing);
     },
   );
 
   testWidgets(
-    'warehouse switch expands root leaves and failed refresh restores old scope',
+    'warehouse switch sends main scope and failed refresh restores old scope',
     (tester) async {
       final harness = await _pump(
         tester,
@@ -256,13 +257,24 @@ void main() {
         (r) => r.path.endsWith('/preview'),
       );
       final body = preview.data! as Map<String, dynamic>;
-      expect(body['warehouseId'], 'warehouse-3');
-      expect(body['warehouseIds'], ['warehouse-3']);
+      expect(body['warehouseId'], 'other-main');
+      expect(body['warehouseIds'], ['other-main']);
       expect(
         find.byKey(const ValueKey('material-analysis-main-warehouse-main')),
         findsOneWidget,
       );
       expect(find.text('综合主仓'), findsOneWidget);
+
+      harness.failRefresh = false;
+      await tester.tap(find.byTooltip('按最新库存刷新分析'));
+      await tester.pumpAndSettle();
+      final restored =
+          harness.requests
+                  .lastWhere((request) => request.path.endsWith('/preview'))
+                  .data!
+              as Map<String, dynamic>;
+      expect(restored['warehouseId'], 'warehouse-1');
+      expect(restored['warehouseIds'], ['warehouse-1', 'warehouse-2']);
     },
   );
 

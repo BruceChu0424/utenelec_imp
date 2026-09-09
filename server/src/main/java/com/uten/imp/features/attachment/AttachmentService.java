@@ -6,6 +6,7 @@ import com.uten.imp.application.port.AttachmentOwnerAccessPolicy;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.storage.BlobStore;
 import com.uten.imp.common.storage.StorageService;
+import com.uten.imp.common.storage.StorageProviderRegistry;
 import com.uten.imp.common.storage.StorageService.PresignedUpload;
 import com.uten.imp.common.storage.StorageService.StoredObject;
 import com.uten.imp.common.storage.StorageService.UploadRequest;
@@ -23,7 +24,6 @@ import com.uten.imp.features.attachment.dto.AttachmentPresignResponse;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,7 +48,6 @@ public class AttachmentService implements AttachmentAccessPort {
     private final AttachmentRepository repository;
     private final StorageProperties properties;
     private final SecurityContextCurrentUser currentUser;
-    private final ObjectProvider<BlobStore> blobStore;
     private final List<AttachmentOwnerAccessPolicy> ownerPolicies;
     private final AttachmentUploadGrantService uploadGrants;
     private final AuditService audit;
@@ -57,6 +56,29 @@ public class AttachmentService implements AttachmentAccessPort {
     private final AttachmentUploadSessionStore uploadSessions;
     private final AttachmentMalwareScanner malwareScanner;
     private final AttachmentObjectOutboxStore objectOutbox;
+    private final StorageProviderRegistry storageProviders;
+    private final AttachmentDownloadVerifier downloadVerifier;
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.Optional<AttachmentAccessPort.AvatarContent> openSelectedAvatar(String ownerType, UUID ownerId) {
+        AuthUser user = requireStaff();
+        String type = normalizeOwnerType(ownerType);
+        policy(type).requireCanViewAvatar(ownerId, user);
+        List<Attachment> selected = repository.findByOwnerTypeAndOwnerIdAndLifecycleStateOrderByCreatedAtAsc(
+                        type, ownerId, AttachmentLifecycleState.CLEAN).stream()
+                .filter(Attachment::isAvatar).toList();
+        if (selected.isEmpty()) return java.util.Optional.empty();
+        if (selected.size() != 1) throw new ApiException(ErrorCode.CONFLICT, "Selected avatar identity is not unique");
+        Attachment image = selected.getFirst();
+        String contentType=normalizeContentType(image.getContentType());
+        if (contentType==null || !java.util.Set.of("image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp")
+                .contains(contentType)) return java.util.Optional.empty();
+        InputStream input = downloadVerifier.open(image);
+        auditDownloadOrClose(input,user,"attachment_avatar_download",image.getId());
+        return java.util.Optional.of(new AttachmentAccessPort.AvatarContent(input, image.getContentType(),
+                image.getOriginalName(), image.getSizeBytes(), image.getSha256()));
+    }
 
     /** Reserves quota before returning an upload-only staging capability. */
     public AttachmentPresignResponse presign(AttachmentPresignRequest request) {
@@ -77,7 +99,7 @@ public class AttachmentService implements AttachmentAccessPort {
                 upload.storageKey(), ownerType, request.ownerId(), user.getId(), fileName,
                 contentType, request.sizeBytes(), canonicalExpiry);
         String confirmToken = uploadGrants.issue(grant);
-        uploadSessions.reserve(grant);
+        uploadSessions.reserve(grant, storage.backend());
         return new AttachmentPresignResponse(
                 upload.storageKey(), upload.url(), upload.method(), upload.headers(),
                 upload.formFields(), canonicalExpiry, confirmToken);
@@ -114,7 +136,8 @@ public class AttachmentService implements AttachmentAccessPort {
         uploadGrants.requireUnexpired(grant);
         AttachmentUploadSessionStore.UploadSession session = uploadSessions.claimForScan(grant);
         try {
-            StoredObject stagingObject = storage.describe(request.storageKey());
+            StorageService objectStorage = storageProviders.require(session.storageProvider());
+            StoredObject stagingObject = objectStorage.describe(request.storageKey());
             if (!stagingObject.exists()) {
                 throw new ApiException(ErrorCode.CONFLICT,
                         "Attachment upload is not complete; upload before confirming");
@@ -137,18 +160,22 @@ public class AttachmentService implements AttachmentAccessPort {
             AttachmentContentInspector.Inspection inspection;
             try {
                 inspection = AttachmentContentInspector.inspect(
-                        storage.openForValidation(request.storageKey(), stagingObject.versionId()),
+                        objectStorage.openForValidation(request.storageKey(), stagingObject.versionId()),
                         stagingObject.size(), fileName, contentType);
             } catch (ApiException invalidContent) {
                 reject(session, stagingObject, "CONTENT_INSPECTION_REJECTED", null);
                 throw invalidContent;
+            }
+            if (stagingObject.contentSha256()!=null && !stagingObject.contentSha256().equals(inspection.sha256())) {
+                reject(session,stagingObject,"STAGED_DIGEST_CHANGED",null);
+                throw new ApiException(ErrorCode.CONFLICT,"Uploaded object digest changed before scanning");
             }
             uploadSessions.recordStaging(
                     session.id(), stagingObject.versionId(), stagingObject.eTag(),
                     inspection.sha256());
 
             ScanResult scan = malwareScanner.scan(
-                    storage.openForValidation(request.storageKey(), stagingObject.versionId()),
+                    objectStorage.openForValidation(request.storageKey(), stagingObject.versionId()),
                     stagingObject.size());
             if (scan.verdict() != Verdict.CLEAN) {
                 reject(session, stagingObject, "MALWARE_DETECTED", scan);
@@ -156,15 +183,16 @@ public class AttachmentService implements AttachmentAccessPort {
                         "Attachment was quarantined by malware scanning");
             }
 
-            StoredObject finalObject = storage.promoteToFinal(
+            StoredObject finalObject = objectStorage.promoteToFinal(
                     request.storageKey(), stagingObject);
-            if (!finalObject.exists() || finalObject.size() != stagingObject.size()) {
+            if (!finalObject.exists() || finalObject.size() != stagingObject.size()
+                    || (finalObject.contentSha256()!=null && !finalObject.contentSha256().equals(inspection.sha256()))) {
                 throw new IllegalStateException("Promoted attachment metadata is inconsistent");
             }
             Attachment entity = confirmTransaction.persist(
                     session.id(), grant, user, ownerPolicy, stagingObject, finalObject,
                     StringUtils.hasText(actualContentType) ? actualContentType : contentType,
-                    inspection.sha256(), scan, request.category());
+                    inspection.sha256(), scan, request.category(), session.storageProvider());
             return toDto(entity);
         } catch (AttachmentScanUnavailableException unavailable) {
             uploadSessions.releaseAfterTransientFailure(session.id(), "SCANNER_UNAVAILABLE");
@@ -247,7 +275,7 @@ public class AttachmentService implements AttachmentAccessPort {
         requireClean(attachment);
         policy(attachment.getOwnerType()).requireCanView(attachment.getOwnerId(), user);
 
-        StorageService.PresignedDownload grant = storage.presignDownload(
+        StorageService.PresignedDownload grant = storageProviders.require(attachment.getStorageProvider()).presignDownload(
                 attachment.getStorageKey(), attachment.getStorageVersion());
         audit.logExplicit(user.getId(), user.getLoginAccount(),
                 "attachment_download_grant", "attachments",
@@ -276,7 +304,7 @@ public class AttachmentService implements AttachmentAccessPort {
         attachment.setDeleteFailure(null);
         repository.saveAndFlush(attachment);
         objectOutbox.enqueueFinal(
-                attachment.getId(), attachment.getStorageKey(), attachment.getStorageVersion());
+                attachment.getId(), attachment.getStorageKey(), attachment.getStorageVersion(), attachment.getStorageProvider());
     }
 
     /** Local-only raw upload, still bound to the signed reservation and hard length. */
@@ -301,8 +329,8 @@ public class AttachmentService implements AttachmentAccessPort {
                     "Attachment object is already bound and cannot be overwritten");
         }
 
-        BlobStore store = blobStore.getIfAvailable();
-        if (store == null) {
+        StorageService objectStorage=storageProviders.require(session.storageProvider());
+        if (!(objectStorage instanceof BlobStore store)) {
             throw new ApiException(ErrorCode.NOT_FOUND,
                     "Local raw upload is not enabled for this storage provider");
         }
@@ -312,7 +340,7 @@ public class AttachmentService implements AttachmentAccessPort {
             throw new ApiException(ErrorCode.CONFLICT,
                     "Attachment write failed or the object already exists");
         }
-        StoredObject stored = storage.describe(storageKey);
+        StoredObject stored = objectStorage.describe(storageKey);
         if (!stored.exists() || stored.size() != contentLength) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "Stored attachment length differs from its signed grant");
@@ -328,28 +356,25 @@ public class AttachmentService implements AttachmentAccessPort {
         requireClean(metadata);
         policy(metadata.getOwnerType()).requireCanView(metadata.getOwnerId(), user);
 
-        BlobStore store = blobStore.getIfAvailable();
-        if (store == null) {
-            return null;
-        }
-        InputStream input;
-        try {
-            input = store.read(storageKey);
-        } catch (IllegalStateException e) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "Attachment object not found");
-        }
+        InputStream input = downloadVerifier.open(metadata);
         String fileName = metadata.getOriginalName() != null
                 ? metadata.getOriginalName() : storageKey;
         String contentType = metadata.getContentType() != null
                 ? metadata.getContentType() : MediaType.APPLICATION_OCTET_STREAM_VALUE;
         // 与 downloadGrant（OSS/通用入口）对等的业务级下载审计：谁在何时取走了哪个附件。
-        audit.logExplicit(user.getId(), user.getLoginAccount(),
-                "attachment_download_raw", "attachments",
-                metadata.getId().toString(), "success");
-        return new RawDownload(input, contentType, fileName);
+        auditDownloadOrClose(input,user,"attachment_download_raw",metadata.getId());
+        return new RawDownload(input, contentType, fileName, metadata.getSizeBytes());
     }
 
-    public record RawDownload(InputStream stream, String contentType, String fileName) {
+    private void auditDownloadOrClose(InputStream input, AuthUser user, String action, UUID attachmentId) {
+        try { audit.logExplicit(user.getId(),user.getLoginAccount(),action,"attachments",attachmentId.toString(),"success"); }
+        catch(RuntimeException failure) {
+            try { input.close(); } catch(java.io.IOException closeFailure) { failure.addSuppressed(closeFailure); }
+            throw failure;
+        }
+    }
+
+    public record RawDownload(InputStream stream, String contentType, String fileName, long sizeBytes) {
     }
 
     private void reject(AttachmentUploadSessionStore.UploadSession session,
@@ -359,7 +384,7 @@ public class AttachmentService implements AttachmentAccessPort {
                 scan == null ? malwareScanner.provider() : scan.engine(),
                 scan == null ? failureCode : scan.signature());
         objectOutbox.enqueueStaging(
-                session.id(), session.storageKey(), stagingObject.versionId());
+                session.id(), session.storageKey(), stagingObject.versionId(), session.storageProvider());
     }
 
     private AttachmentDto toDto(Attachment attachment) {

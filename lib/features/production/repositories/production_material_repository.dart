@@ -40,6 +40,7 @@ class ProductionMaterialClearanceRow {
     this.colorName,
     this.executionSegmentId,
     this.executionSegmentCode,
+    this.unitName,
   });
 
   final String planId;
@@ -51,6 +52,9 @@ class ProductionMaterialClearanceRow {
   final String? colorName;
   final String? executionSegmentId;
   final String? executionSegmentCode;
+
+  /// The base unit saved on this material demand, not a display-unit conversion.
+  final String? unitName;
   final double requiredQty;
   final double issuedQty;
   final double returnedQty;
@@ -73,6 +77,7 @@ class ProductionMaterialClearanceRow {
       colorName: json['colorName'] as String?,
       executionSegmentId: json['executionSegmentId'] as String?,
       executionSegmentCode: json['executionSegmentCode'] as String?,
+      unitName: json['unitName'] as String?,
       requiredQty: number('requiredQty'),
       issuedQty: number('issuedQty'),
       returnedQty: number('returnedQty'),

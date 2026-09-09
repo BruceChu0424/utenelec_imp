@@ -215,6 +215,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
     private final RdTaskService rdTaskService;
     private final FinanceReviewerEligibilityPort financeReviewerEligibility;
     private final SalesOrderFinanceConfirmerEligibility salesOrderFinanceConfirmers;
+    private final NoticePermissionCandidateQuery permissionCandidates;
 
     public ChainNoticeService(NoticeService noticeService,
                               UserAccountRepository userRepo,
@@ -225,6 +226,21 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                               RdTaskService rdTaskService,
                               FinanceReviewerEligibilityPort financeReviewerEligibility,
                               SalesOrderFinanceConfirmerEligibility salesOrderFinanceConfirmers) {
+        this(noticeService, userRepo, permissionResolver, userRoleRepo, jdbc, outbox,
+                rdTaskService, financeReviewerEligibility, salesOrderFinanceConfirmers, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ChainNoticeService(NoticeService noticeService,
+                              UserAccountRepository userRepo,
+                              PermissionResolver permissionResolver,
+                              UserRoleRepository userRoleRepo,
+                              JdbcTemplate jdbc,
+                              BusinessEventPublisher outbox,
+                              RdTaskService rdTaskService,
+                              FinanceReviewerEligibilityPort financeReviewerEligibility,
+                              SalesOrderFinanceConfirmerEligibility salesOrderFinanceConfirmers,
+                              NoticePermissionCandidateQuery permissionCandidates) {
         this.noticeService = noticeService;
         this.userRepo = userRepo;
         this.permissionResolver = permissionResolver;
@@ -234,6 +250,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         this.rdTaskService = rdTaskService;
         this.financeReviewerEligibility = financeReviewerEligibility;
         this.salesOrderFinanceConfirmers = salesOrderFinanceConfirmers;
+        this.permissionCandidates = permissionCandidates;
     }
 
     /** Called only by the locked outbox processor inside its delivery transaction. */
@@ -318,8 +335,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                         notifySubcontractOutboundReversed(aggregateId);
                 case EVENT_SUBCONTRACT_RETURN_DUE ->
                         notifySubcontractReturnDue(aggregateId);
-                case EVENT_MATERIAL_ANALYSIS_READY ->
-                        deliverMaterialAnalysisReady(aggregateId, payload);
+                case EVENT_MATERIAL_ANALYSIS_READY -> {
+                    // Retired planner-ready event: acknowledge old queued deliveries
+                    // without recreating a planner task or sending a notice.
+                }
                 case EVENT_ORDER_CANCELED -> notifyOrderCanceled(aggregateId);
                 case EVENT_ORDER_APPROVED -> notifyOrderApproved(aggregateId);
                 case EVENT_ORDER_PENDING_FINANCE ->
@@ -2674,123 +2693,6 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         return label.isBlank() ? "目标件" : label;
     }
 
-    /**
-     * Publishes the durable handoff used when a receipt or manual recheck makes
-     * more of an existing material analysis executable. Delivery is strictly
-     * scoped to the analysis maker's active account.
-     */
-    public void notifyMaterialAnalysisReady(
-            UUID analysisId,
-            UUID makerEmployeeId,
-            String sourceType,
-            UUID sourceDocumentId,
-            BigDecimal readyFinishDelta,
-            BigDecimal readyFinishQty) {
-        if (isOutboxDelivery()) {
-            throw new IllegalStateException(
-                    "Material-analysis READY delivery must use the outbox payload");
-        }
-        if (analysisId == null
-                || readyFinishDelta == null
-                || readyFinishDelta.signum() <= 0) {
-            return;
-        }
-        UUID authoritativeMaker = materialAnalysisMaker(analysisId);
-        if (authoritativeMaker == null) return;
-        String normalizedSource = normalizeAnalysisReadySource(sourceType);
-        BigDecimal total = readyFinishQty == null
-                ? BigDecimal.ZERO : readyFinishQty.max(BigDecimal.ZERO);
-        String sourceId = sourceDocumentId == null
-                ? "" : sourceDocumentId.toString();
-        Map<String, String> payload = Map.of(
-                "makerEmployeeId", authoritativeMaker.toString(),
-                "sourceType", normalizedSource,
-                "sourceDocumentId", sourceId,
-                "readyFinishDelta", qty(readyFinishDelta),
-                "readyFinishQty", qty(total));
-        String sourceKey = sourceId.isBlank() ? qty(total) : sourceId;
-        outbox.publishOnce(
-                EVENT_MATERIAL_ANALYSIS_READY,
-                "PRODUCTION_MATERIAL_ANALYSIS",
-                analysisId,
-                payload,
-                EVENT_MATERIAL_ANALYSIS_READY + ':' + analysisId + ':'
-                        + normalizedSource + ':' + sourceKey);
-    }
-
-    private void deliverMaterialAnalysisReady(
-            UUID analysisId,
-            JsonNode payload) {
-        deliverAtomically(() -> {
-            UUID currentMaker = materialAnalysisMaker(analysisId);
-            if (currentMaker == null) return;
-            UUID payloadMaker = uuidOrNull(
-                    payload.path("makerEmployeeId").asText(""));
-            // The analysis row remains authoritative if ownership ever changes
-            // between event creation and delivery. Never broadcast to a guessed
-            // role or to the stale payload owner.
-            UUID makerEmployeeId = payloadMaker != null
-                    && payloadMaker.equals(currentMaker)
-                    ? payloadMaker : currentMaker;
-            UUID makerUserId = userIdOfEmployee(makerEmployeeId);
-            if (makerUserId == null) return;
-            BigDecimal delta = decimal(
-                    payload.path("readyFinishDelta").asText("0"));
-            if (delta.signum() <= 0) return;
-            BigDecimal readyQty = decimal(
-                    payload.path("readyFinishQty").asText("0"));
-            String sourceType = normalizeAnalysisReadySource(
-                    payload.path("sourceType").asText(""));
-            String sourceLabel = analysisReadySourceLabel(sourceType);
-            // 来源只展示业务单号（CJ/EJ/CR…）；id 仅作关联键，不进用户可见文案。
-            String sourceDocumentNo = payload.path("sourceDocumentNo").asText("");
-            notifyUser(
-                    makerUserId,
-                    TYPE_TASK,
-                    "剩余物料已可下达：新增 " + qty(delta),
-                    sourceLabel + "后，本物料分析新增可完工下达数量 "
-                            + qty(delta) + "，当前累计可完工下达 "
-                            + qty(readyQty)
-                            + (sourceDocumentNo.isBlank()
-                                    ? "。"
-                                    : "(来源单据 " + sourceDocumentNo + ")。")
-                            + "请打开物料分析复核后，再生成下一批正式生产计划。",
-                    "/production/material-analysis",
-                    EVENT_MATERIAL_ANALYSIS_READY);
-        });
-    }
-
-    private UUID materialAnalysisMaker(UUID analysisId) {
-        Map<String, Object> row = one("""
-                SELECT maker_id
-                FROM production_material_analyses
-                WHERE id = ?
-                  AND is_deleted = FALSE
-                  AND status IN ('ACTIVE', 'PARTIALLY_PLANNED')
-                """, analysisId);
-        return row == null ? null : (UUID) row.get("maker_id");
-    }
-
-    static String analysisReadySourceLabel(String sourceType) {
-        return switch (normalizeAnalysisReadySource(sourceType)) {
-            case "PURCHASE" -> "采购到货";
-            case "SUBCONTRACT" -> "委外回厂";
-            case "MAKE" -> "自制件完工入库";
-            case "MANUAL" -> "人工复核";
-            default -> "物料状态变化";
-        };
-    }
-
-    private static String normalizeAnalysisReadySource(String sourceType) {
-        String normalized = sourceType == null ? "" : sourceType.strip();
-        if ("MANUAL_RELEASE".equals(normalized)) return "MANUAL";
-        return switch (normalized) {
-            case "PURCHASE", "SUBCONTRACT", "MAKE", "MANUAL" ->
-                    normalized;
-            default -> "UNKNOWN";
-        };
-    }
-
     /** ④ 数量不足（补产）通知销售：报工完结缺额自动生成补产计划后。 */
     public void notifyRemakeCreated(UUID reportId) {
         if (!isOutboxDelivery()) {
@@ -2960,7 +2862,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
     private void publishWorkshopTasksForDraw(
             UUID stockDocId,
             String triggerDescription,
-            boolean onlyReadyToReport) {
+            boolean onlyFullyIssued) {
         List<UUID> segmentIds = jdbc.queryForList("""
                 SELECT DISTINCT demand.execution_segment_id
                 FROM stock_document_items item
@@ -2992,7 +2894,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                 """, UUID.class, stockDocId);
         for (UUID segmentId : segmentIds) {
             publishWorkshopTask(
-                    segmentId, triggerDescription, onlyReadyToReport);
+                    segmentId, triggerDescription, onlyFullyIssued);
         }
     }
 
@@ -3009,7 +2911,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
     private void publishWorkshopTask(
             UUID segmentId,
             String triggerDescription,
-            boolean onlyReadyToReport) {
+            boolean onlyFullyIssued) {
         // Scheduler delivery and on-demand workers can rebuild the same aggregate
         // concurrently. Lock the segment row so resolve + publish stays serialized.
         List<UUID> lockedSegmentIds = jdbc.queryForList("""
@@ -3025,27 +2927,31 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                        task.product_color_name, task.product_unit_name,
                        task.planned_qty, task.segment_status,
                        task.material_status, task.preparation_status,
-                       task.issued, task.reportable,
+                       task.issued,
                        task.workshop_department_id, task.workshop_name,
                        task.responsible_employee_id,
                        task.responsible_employee_name,
-                       draw.bill_no AS draw_no,
-                       draw.warehouse_name AS draw_warehouse_name
+                       draw.summary AS draw_summary
                 FROM v_production_execution_workbench_segments task
                 LEFT JOIN LATERAL (
-                    SELECT document.bill_no, warehouse.name AS warehouse_name
-                    FROM production_planning_package_documents link
-                    JOIN stock_documents document
-                      ON document.id=link.document_id
-                     AND document.doc_type='DRAW'
-                     AND document.is_deleted=FALSE
-                     AND document.status <> -1
-                    LEFT JOIN warehouses warehouse
-                      ON warehouse.id=document.warehouse_id
-                    WHERE link.execution_segment_id=task.segment_id
-                      AND link.document_type='DRAW'
-                    ORDER BY document.created_at DESC,document.id DESC
-                    LIMIT 1
+                    SELECT string_agg(draw_row.summary, '；'
+                        ORDER BY draw_row.created_at,draw_row.id) AS summary
+                    FROM (
+                        SELECT DISTINCT document.id, document.created_at,
+                               document.bill_no || '（' ||
+                               COALESCE(parent.name || ' - ' || warehouse.name,
+                                        warehouse.name, '仓库待核实') || '）' AS summary
+                        FROM production_planning_package_documents link
+                        JOIN stock_documents document
+                          ON document.id=link.document_id
+                         AND document.doc_type='DRAW'
+                         AND document.is_deleted=FALSE
+                         AND document.status <> -1
+                        LEFT JOIN warehouses warehouse ON warehouse.id=document.warehouse_id
+                        LEFT JOIN warehouses parent ON parent.id=warehouse.parent_id
+                        WHERE link.execution_segment_id=task.segment_id
+                          AND link.document_type='DRAW'
+                    ) draw_row
                 ) draw ON TRUE
                 WHERE task.segment_id = ?
                 """, segmentId);
@@ -3059,30 +2965,23 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         if (workshopId == null) return;
 
         boolean issued = Boolean.TRUE.equals(task.get("issued"));
-        boolean reportable = Boolean.TRUE.equals(task.get("reportable"));
-        String drawNo = str(task.get("draw_no"));
-        String drawWarehouse = str(task.get("draw_warehouse_name"));
-        if (onlyReadyToReport && !reportable && !issued) return;
+        boolean canStart = issued && Set.of("READY", "DISPATCHED").contains(status);
+        String drawNo = str(task.get("draw_summary"));
+        if (onlyFullyIssued && !canStart) return;
         noticeService.resolveReviewNotices(
                 "PRODUCTION_EXECUTION_SEGMENT", segmentId, "STATE_CHANGED");
         String taskState;
         String titlePrefix;
-        if (reportable || issued) {
-            taskState = "备料完毕"
-                    + (drawNo.isBlank() ? "" : "，领料单 " + drawNo)
-                    + (drawWarehouse.isBlank()
-                            ? "" : "，发料仓 " + drawWarehouse)
-                    + "，可直接报工";
-            titlePrefix = "备料完毕·可报工：";
+        if (canStart) {
+            taskState = "物料已领齐，可以开工"
+                    + (drawNo.isBlank() ? "" : "；领料单 " + drawNo);
+            titlePrefix = "物料已领齐·可以开工：";
         } else if ("KIT_SHORT".equals(str(task.get("material_status")))
                 || "WAITING".equals(status)) {
             taskState = "物料尚未齐套，任务已分配并持续跟踪";
             titlePrefix = "生产任务·备料中：";
         } else if (!drawNo.isBlank()) {
-            taskState = "物料已齐套，领料单 " + drawNo
-                    + (drawWarehouse.isBlank()
-                            ? "" : "，发料仓 " + drawWarehouse)
-                    + "；请按仓库安排领料";
+            taskState = "物料已齐套，领料单 " + drawNo + "；请按仓库安排领料";
             titlePrefix = "物料齐套·等待领料：";
         } else {
             taskState = "物料已齐套，仓库正在生成或核对领料单；"
@@ -3105,8 +3004,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                         ? "" : " " + str(task.get("product_unit_name")))
                 + (workshop.isBlank() ? "" : "，车间 " + workshop)
                 + "；当前状态：" + taskState
-                + "。请从“我的车间任务”查看实时物料与报工入口。";
-        boolean actionable = reportable || issued || !drawNo.isBlank();
+                + "。请从“我的车间任务”查看进度；开工后才能报工。";
+        boolean actionable = canStart || (!drawNo.isBlank() && !"WAITING".equals(status));
         for (UUID recipient : workshopRecipientUserIds(
                 workshopId, responsibleId)) {
             if (actionable) {
@@ -3122,7 +3021,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                         recipient, TYPE_TASK, titlePrefix + segmentCode, content,
                         "/production/workshop-tasks",
                         EVENT_PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED,
-                        "normal");
+                        "normal", segmentId);
             }
         }
     }
@@ -3176,14 +3075,12 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                   AND user_account.status = 'active'
                 ORDER BY user_account.id
                 """, UUID.class, workshopDepartmentId, responsibleEmployeeId);
-        Set<String> required = Set.of(
-                NOTICE_READ_AUTHORITY, "production_execution:view");
         return candidates.stream()
                 .filter(userId -> userRepo.findById(userId)
                         .filter(account -> !account.isDeleted()
                                 && "active".equals(account.getStatus()))
                         .map(permissionResolver::permsOf)
-                        .map(permissions -> permissions.containsAll(required))
+                        .map(ReviewNoticeAudience::canHandleWorkshop)
                         .orElse(false))
                 .toList();
     }
@@ -3884,31 +3781,41 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
     }
 
     private Set<UUID> userIdsWithPermissions(String... required) {
-        Set<String> permissions = Set.of(required);
-        Set<UUID> result = new LinkedHashSet<>();
-        for (UserAccount user : userRepo.findAll()) {
-            if (user == null || user.isDeleted() || !"active".equals(user.getStatus())) continue;
-            if (permissionResolver.permsOf(user).containsAll(permissions)) {
-                result.add(user.getId());
-            }
-        }
-        return result;
+        return userIdsWithRequiredAndAnyPermission(Set.of(required), Set.of());
     }
 
     /** Active users with notice read plus at least one all-case/action permission. */
     private Set<UUID> userIdsWithNoticeAndAnyPermission(
             String... anyPermission) {
-        Set<String> alternatives = Set.of(anyPermission);
+        return userIdsWithRequiredAndAnyPermission(
+                Set.of(NOTICE_READ_AUTHORITY), Set.of(anyPermission));
+    }
+
+    /** One effective snapshot per active candidate, including all required page/action gates. */
+    private Set<UUID> userIdsWithRequiredAndAnyPermission(
+            Set<String> required, Set<String> alternatives) {
+        Set<String> possibleActions = new LinkedHashSet<>(alternatives.isEmpty() ? required : alternatives);
+        possibleActions.remove(NOTICE_READ_AUTHORITY);
+        List<UserAccount> candidates = permissionCandidates == null ? userRepo.findAll()
+                : permissionCandidates.possibleUsers(possibleActions)
+                        .map(userRepo::findAllById).orElseGet(userRepo::findAll);
         Set<UUID> result = new LinkedHashSet<>();
-        for (UserAccount user : userRepo.findAll()) {
+        Set<String> administratorPermissions = null;
+        for (UserAccount user : candidates) {
             if (user == null
                     || user.isDeleted()
                     || !"active".equals(user.getStatus())) {
                 continue;
             }
-            Set<String> permissions = permissionResolver.permsOf(user);
-            if (!permissions.contains(NOTICE_READ_AUTHORITY)) continue;
-            if (alternatives.stream().anyMatch(permissions::contains)) {
+            Set<String> permissions;
+            if (user.isSuperAdmin()) {
+                if (administratorPermissions == null) administratorPermissions = permissionResolver.permsOf(user);
+                permissions = administratorPermissions;
+            } else {
+                permissions = permissionResolver.permsOf(user);
+            }
+            if (!permissions.containsAll(required)) continue;
+            if (alternatives.isEmpty() || alternatives.stream().anyMatch(permissions::contains)) {
                 result.add(user.getId());
             }
         }
@@ -3918,12 +3825,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
     /** IQC task notices must open successfully: notice read + exact page view + one role action. */
     private Set<UUID> userIdsWithIqcViewAndAnyPermission(
             String... anyPermission) {
-        Set<UUID> result = userIdsWithNoticeAndAnyPermission(anyPermission);
-        result.removeIf(userId -> !userHasPermissions(
-                userId,
-                NOTICE_READ_AUTHORITY,
-                IQC_REJECTION_VIEW_AUTHORITY));
-        return result;
+        return userIdsWithRequiredAndAnyPermission(
+                Set.of(NOTICE_READ_AUTHORITY, IQC_REJECTION_VIEW_AUTHORITY),
+                Set.of(anyPermission));
     }
 
     private boolean userHasPermissions(UUID userId, String... required) {

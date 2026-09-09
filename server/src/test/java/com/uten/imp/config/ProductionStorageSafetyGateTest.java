@@ -12,12 +12,26 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ProductionStorageSafetyGateTest {
 
+    @org.junit.jupiter.api.io.TempDir java.nio.file.Path directory;
+
+    @ParameterizedTest
+    @ValueSource(strings={"prod","cloud"})
+    void acceptsExplicitInternalStorageWithoutPretendingItIsTheDevProvider(String profile) {
+        var properties=new StorageProperties();properties.setProvider("internal");
+        properties.getInternal().setRoot(directory.toString());
+        assertDoesNotThrow(()->gate(profile,properties).validate());
+        properties.getInternal().setRoot("relative/data");
+        assertThrows(IllegalStateException.class,()->gate(profile,properties).validate());
+        properties.getInternal().setRoot(directory.toString());properties.getInternal().setMinFreeBytes(0);
+        assertThrows(IllegalStateException.class,()->gate(profile,properties).validate());
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"prod", "cloud"})
-    void productionProfilesAcceptOnlySafeOssConfiguration(String activeProfile) {
+    void productionProfilesRejectOssEvenWithSafeVersioning(String activeProfile) {
         StorageProperties properties = safeOssProperties();
 
-        assertDoesNotThrow(() -> gate(activeProfile, properties).validate());
+        assertThrows(IllegalStateException.class, () -> gate(activeProfile, properties).validate());
     }
 
     @ParameterizedTest

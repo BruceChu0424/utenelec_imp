@@ -15,8 +15,7 @@ class FinancialActualBankReceiptPostgresTest {
         try(var pg=new PostgreSQLContainer<>("postgres:16-alpine")) {
             pg.start();
             Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())
-                .locations("filesystem:src/main/resources/db/migration","filesystem:../.codex-tmp/valuation-positions",
-                    "filesystem:../.codex-tmp/iqc-consideration","filesystem:../.codex-tmp/financial-exact")
+                .locations("classpath:db/migration")
                 .target("520").load().migrate();
             try(var c=DriverManager.getConnection(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())) {
                 UUID client=UUID.randomUUID(),foreign=UUID.randomUUID(),approver=UUID.randomUUID();

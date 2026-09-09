@@ -152,8 +152,8 @@ uten:
     send-interval-seconds: 60
     daily-limit: 10
   storage:
-    # 附件对象存储后端：local（本地磁盘，开发/本地测试默认）/ oss（阿里云，生产/云端）/ disabled。
-    # 切换只改此变量；云端 ECS 用 RAM 角色（UTEN_OSS_USE_INSTANCE_ROLE=true）可免 AccessKey。
+    # 公司附件只用 internal；local 仅供开发，oss 仅历史精确只读，disabled 关闭附件服务。
+    # internal 需要显式配置同一持久卷中的私有根目录。
     provider: ${UTEN_STORAGE_PROVIDER:local}
     # Upload intake is a separate fail-closed capability. Reading already-clean
     # objects does not require this switch.
@@ -165,6 +165,17 @@ uten:
     max-pending-bytes-per-owner: ${UTEN_ATTACHMENT_MAX_PENDING_BYTES_PER_OWNER:262144000}
     presigned-expiry-seconds: ${UTEN_STORAGE_PRESIGN_EXPIRY:300}
     local-dir: ${UTEN_STORAGE_LOCAL_DIR:./data/attachments}
+    internal:
+      # One dedicated durable filesystem: staging, final and scratch all live below this root.
+      root: ${UTEN_INTERNAL_STORAGE_ROOT:}
+      max-concurrent-io: ${UTEN_INTERNAL_STORAGE_MAX_CONCURRENT_IO:2}
+      max-object-bytes: ${UTEN_INTERNAL_STORAGE_MAX_OBJECT_BYTES:268435456}
+      min-free-bytes: ${UTEN_INTERNAL_STORAGE_MIN_FREE_BYTES:1073741824}
+      operation-timeout-seconds: ${UTEN_INTERNAL_STORAGE_OPERATION_TIMEOUT_SECONDS:120}
+      compression-min-bytes: ${UTEN_INTERNAL_STORAGE_COMPRESSION_MIN_BYTES:65536}
+      compression-min-savings-bytes: ${UTEN_INTERNAL_STORAGE_COMPRESSION_MIN_SAVINGS_BYTES:4096}
+      compression-min-savings-percent: ${UTEN_INTERNAL_STORAGE_COMPRESSION_MIN_SAVINGS_PERCENT:10}
+      max-inventory-objects: ${UTEN_INTERNAL_STORAGE_MAX_INVENTORY_OBJECTS:10000}
     malware-scan:
       provider: ${UTEN_ATTACHMENT_SCANNER_PROVIDER:disabled}
       host: ${UTEN_CLAMAV_HOST:127.0.0.1}

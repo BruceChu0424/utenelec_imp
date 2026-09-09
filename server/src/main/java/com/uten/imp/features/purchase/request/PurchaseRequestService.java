@@ -53,6 +53,22 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class PurchaseRequestService {
+    /** Same pending financial commitment on the detail and order-generation paths.
+     * The correlated lookup uses the request-item index instead of aggregating every order source. */
+    private static final String PENDING_ORDER_QUANTITY_JOIN = """
+            LEFT JOIN LATERAL (
+                SELECT COALESCE(SUM(src.alloc_qty), 0) AS pending_qty
+                FROM purchase_order_item_sources src
+                JOIN purchase_order_items oi ON oi.id = src.order_item_id
+                JOIN purchase_orders o ON o.id = oi.order_id
+                WHERE src.request_item_id = i.id
+                  AND oi.is_deleted = FALSE AND o.status = 0 AND o.is_deleted = FALSE
+                  AND EXISTS (
+                      SELECT 1 FROM procurement_order_approval_cases approval
+                      WHERE approval.order_type = 'PURCHASE' AND approval.order_id = o.id
+                        AND approval.status = 'PENDING')
+            ) pending ON TRUE
+            """;
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -99,7 +115,16 @@ public class PurchaseRequestService {
     @Transactional(readOnly = true)
     public RequestDetail detail(UUID id) {
         PurchaseRequest r = requireRequest(id);
-        List<RequestItemDto> items = itemRepo.findByRequestIdOrderByLineNoAsc(id).stream().map(this::toItemDto).toList();
+        Map<UUID, BigDecimal> pending = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT i.id, pending.pending_qty FROM purchase_request_items i
+                %s
+                WHERE i.request_id = :requestId AND i.is_deleted = FALSE
+                """.formatted(PENDING_ORDER_QUANTITY_JOIN)).setParameter("requestId", id))) {
+            pending.put(uuid(row[0]), decimal(row[1]));
+        }
+        List<RequestItemDto> items = itemRepo.findByRequestIdOrderByLineNoAsc(id).stream()
+                .map(item -> toItemDto(item, pending.getOrDefault(item.getId(), BigDecimal.ZERO))).toList();
         return toDetail(r, items);
     }
 
@@ -184,23 +209,7 @@ public class PurchaseRequestService {
                                                 NULLIF(r.source_doc_no, ''), r.bill_no)
                                 FROM purchase_request_items i
                                 JOIN purchase_requests r ON r.id = i.request_id
-                                LEFT JOIN (
-                                    SELECT src.request_item_id,
-                                           SUM(COALESCE(src.alloc_qty, 0)) AS pending_qty
-                                    FROM purchase_order_item_sources src
-                                    JOIN purchase_order_items oi ON oi.id = src.order_item_id
-                                    JOIN purchase_orders o ON o.id = oi.order_id
-                                    JOIN (
-                                        SELECT DISTINCT order_id
-                                        FROM procurement_order_approval_cases
-                                        WHERE order_type = 'PURCHASE'
-                                          AND status = 'PENDING'
-                                    ) pending_case ON pending_case.order_id = o.id
-                                    WHERE oi.is_deleted = FALSE
-                                      AND o.status = 0
-                                      AND o.is_deleted = FALSE
-                                    GROUP BY src.request_item_id
-                                ) pending ON pending.request_item_id = i.id
+                                %s
                                 WHERE i.id IN (:itemIds)
                                   AND i.is_deleted = FALSE
                                   AND r.status = 1
@@ -213,7 +222,7 @@ public class PurchaseRequestService {
                                         - COALESCE(i.ordered_qty, 0)
                                         - COALESCE(pending.pending_qty, 0) > 0
                                 ORDER BY i.id
-                                """)
+                                """.formatted(PENDING_ORDER_QUANTITY_JOIN))
                         .setParameter("itemIds", itemIds));
 
         // 并发认领守卫（PURCHASE_DECOMPOSE，最高双工风险）：他人正分解同一申请时拒绝重复操作。
@@ -459,26 +468,36 @@ public class PurchaseRequestService {
     }
 
     private RequestItemDto toItemDto(PurchaseRequestItem it) {
+        return toItemDto(it, BigDecimal.ZERO);
+    }
+
+    private RequestItemDto toItemDto(PurchaseRequestItem it, BigDecimal pendingQty) {
         return new RequestItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
                 it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getOrderedQty(), it.getGiftQty(), it.getWeight(),
                 it.getSourceDocNo(), it.getDeliverDate(), it.getProductionPlanNo(),
-                it.getSalesOrderNo(), it.getRemark());
+                it.getSalesOrderNo(), it.getRemark(), pendingQty,
+                (it.getQty() == null ? BigDecimal.ZERO : it.getQty())
+                        .subtract(it.getOrderedQty() == null ? BigDecimal.ZERO : it.getOrderedQty())
+                        .subtract(pendingQty).max(BigDecimal.ZERO));
     }
 
     private RequestDetail toDetail(PurchaseRequest r, List<RequestItemDto> items) {
         boolean productionLinked =
                 productionSourceGuard.isPurchaseRequestLinked(r.getId());
+        String makerName = nameResolver.nameOf(r.getMakerId());
+        String applicantName = java.util.Objects.equals(r.getApplicantId(), r.getMakerId())
+                ? makerName : nameResolver.nameOf(r.getApplicantId());
         return new RequestDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getWarehouseId(), r.getDepartmentId(), r.getApplicantId(), r.getMakerId(), r.getApproverId(),
                 r.getNeedDate(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(),
                 r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
-                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(),
+                makerName, r.getCreatedAt(),
                 productionLinked, !productionLinked, !productionLinked,
                 !productionLinked,
-                restrictionReason(productionLinked));
+                restrictionReason(productionLinked), applicantName);
     }
 
     private String restrictionReason(boolean linked) {

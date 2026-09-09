@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -189,6 +190,10 @@ class PurchaseRequestServiceUnitPolicyTest {
         when(query.setParameter(anyString(), any())).thenReturn(query);
         when(query.getResultList()).thenReturn(List.<Object[]>of(
                 new Object[]{goodsId, goodsId, "G-TEST", "测试货品"}));
+        Query pending = mock(Query.class);
+        when(em.createNativeQuery(contains("pending.pending_qty FROM purchase_request_items"))).thenReturn(pending);
+        when(pending.setParameter(anyString(), any())).thenReturn(pending);
+        when(pending.getResultList()).thenReturn(List.of());
     }
 
     private static final class Fixture {

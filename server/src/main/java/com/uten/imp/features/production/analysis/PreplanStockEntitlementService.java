@@ -164,7 +164,7 @@ public class PreplanStockEntitlementService {
             boolean forUpdate) {
         return listAvailableBeneficiaryLots(
                 analysisId, analysisMaterialId, warehouseId, goodsId,
-                colorId, forUpdate, false);
+                colorId, forUpdate, false, false);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -173,12 +173,21 @@ public class PreplanStockEntitlementService {
             UUID goodsId, UUID colorId, boolean forUpdate) {
         return listAvailableBeneficiaryLots(
                 analysisId, analysisMaterialId, warehouseId, goodsId,
-                colorId, forUpdate, true);
+                colorId, forUpdate, true, false);
+    }
+
+    /** Proven qualified source lots follow their actual warehouse; legacy pools keep the normal local scope. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<AvailableLot> listAvailableBeneficiaryLotsForProduction(
+            UUID analysisId, UUID analysisMaterialId, UUID warehouseId,
+            UUID goodsId, UUID colorId, boolean forUpdate) {
+        return listAvailableBeneficiaryLots(analysisId, analysisMaterialId, warehouseId,
+                goodsId, colorId, forUpdate, true, true);
     }
 
     private List<AvailableLot> listAvailableBeneficiaryLots(
             UUID analysisId, UUID analysisMaterialId, UUID warehouseId,
-            UUID goodsId, UUID colorId, boolean forUpdate, boolean sameMain) {
+            UUID goodsId, UUID colorId, boolean forUpdate, boolean sameMain, boolean followQualifiedSource) {
         tx.bind();
         String lock = forUpdate ? " FOR UPDATE OF positive, reservation" : "";
         Query query = em.createNativeQuery("""
@@ -223,10 +232,16 @@ public class PreplanStockEntitlementService {
                             'REALLOCATE_OUT',
                             'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                   ), 0) > 0
-                ORDER BY positive.created_at, positive.id
-                """.formatted(sameMain
+                ORDER BY %s positive.created_at, positive.id
+                """.formatted(followQualifiedSource ? """
+                        (fn_preplan_reservation_has_qualified_origin(reservation.id)
+                         OR (fn_warehouse_same_main(reservation.warehouse_id, :warehouseId)
+                             AND EXISTS(SELECT 1 FROM warehouses warehouse
+                                 WHERE warehouse.id=reservation.warehouse_id AND NOT warehouse.is_defective)))
+                        """ : sameMain
                         ? "fn_warehouse_same_main(reservation.warehouse_id, :warehouseId)"
-                        : "reservation.warehouse_id = :warehouseId") + lock)
+                        : "reservation.warehouse_id = :warehouseId",
+                        followQualifiedSource ? "fn_preplan_reservation_has_qualified_origin(reservation.id) DESC," : "") + lock)
                 .setParameter("analysisId", analysisId)
                 .setParameter("materialId", analysisMaterialId)
                 .setParameter("warehouseId", warehouseId)

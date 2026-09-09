@@ -23,6 +23,7 @@ import '../../../core/router/route_names.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/widgets/source_doc_link.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -511,6 +512,29 @@ class _SubcontractDocDetailPageState
                     ],
                     const SizedBox(height: UtenSpacing.s12),
                     _itemsCard(theme),
+                    if (widget.docType == SubcontractDocType.order) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      BusinessAttachmentSection(
+                        ownerType: 'SUBCONTRACT_ORDER',
+                        ownerId: _detail!.id,
+                        canView:
+                            _canViewCommercialAmounts &&
+                            (canViewOrderProgress ||
+                                (_hasPermission(
+                                      Perm.financeOrderApprovalView,
+                                    ) &&
+                                    _detail!.financeApproval?.isPending ==
+                                        true)),
+                        canManage:
+                            !widget.forceReadOnly &&
+                            _canEdit &&
+                            _detail!.canEdit &&
+                            _detail!.status == kSubcontractStatusDraft &&
+                            !_detail!.closed &&
+                            _detail!.financeApproval?.isPending != true,
+                        categories: const ['合同', '加工要求', '图片', '其他'],
+                      ),
+                    ],
                   ],
                 ),
         ),

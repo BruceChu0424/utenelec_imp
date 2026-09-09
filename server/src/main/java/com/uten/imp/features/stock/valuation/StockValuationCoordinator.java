@@ -43,6 +43,21 @@ public class StockValuationCoordinator {
         if(request.direction()==StockService.DIR_OUT&&request.costReference() instanceof InventoryMovementCostReference.ProcurementStockIn ref){
             return procurement.reverseStock(ref.stockInItemId(),movement,pool,before,context);
         }
+        if(request.direction()==StockService.DIR_OUT&&"STOCK_DOC".equals(request.sourceDocType())){
+            var finished=db.queryForList("""
+                    SELECT item.execution_segment_id,original.id AS original_movement
+                    FROM stock_document_items item JOIN stock_documents document ON document.id=item.doc_id
+                    JOIN stock_movements original ON original.source_doc_type='STOCK_DOC' AND original.source_doc_id=document.id
+                        AND original.source_item_id=item.id AND original.direction=1 AND original.movement_type=13
+                    WHERE item.id=:item AND document.id=:doc AND document.doc_type='FINISHED_IN' AND item.execution_segment_id IS NOT NULL
+                    """,Map.of("item",request.sourceItemId(),"doc",request.sourceDocId()));
+            if(!finished.isEmpty()){
+                if(finished.size()!=1)throw conflict("成品原入库流水不唯一，不能猜测成本撤回");
+                var original=finished.getFirst();
+                return production.withdrawOutput(new InventoryProductionCostPort.Withdrawal(context,(UUID)original.get("execution_segment_id"),pool,
+                        (UUID)original.get("original_movement"),movement,request.qty(),before));
+            }
+        }
         if(request.direction()==StockService.DIR_OUT){
             Destination destination=switch(request.movementType()){
                 case 3,20 -> Destination.COGS;

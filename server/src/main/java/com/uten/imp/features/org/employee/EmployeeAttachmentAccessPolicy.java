@@ -52,6 +52,19 @@ public class EmployeeAttachmentAccessPolicy implements AttachmentOwnerAccessPoli
     }
 
     @Override
+    public void requireCanViewAvatar(UUID ownerId, AuthUser user) {
+        if (user == null || user.isVisitor() || user.isMustChangePassword()) {
+            throw notFound();
+        }
+        requireEmployee(ownerId);
+        if (user.isSuperAdmin() || ownerId.equals(user.getEmployeeId())
+                || user.getPermissions().contains("employee:view")) {
+            return;
+        }
+        throw notFound();
+    }
+
+    @Override
     public void requireCanManage(UUID ownerId, AuthUser user) {
         requireEmployee(ownerId);
         if (user.isSuperAdmin() || user.getPermissions().contains("employee:edit")) {

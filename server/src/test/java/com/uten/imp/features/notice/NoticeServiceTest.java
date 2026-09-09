@@ -79,6 +79,7 @@ class NoticeServiceTest {
         audienceService = mock(NoticeAudienceService.class);
         systemSettings = mock(SystemSettingsService.class);
         reviewAudience = mock(ReviewNoticeAudience.class);
+        when(reviewAudience.workshopScope(any())).thenReturn(ReviewNoticeAudience.WorkshopScope.NONE);
         when(reviewAudience.eligibleEvents(any())).thenReturn(ReviewNoticeCatalog.events());
         nameLookup = mock(com.uten.imp.application.port.EmployeeNameLookupPort.class);
         claims=mock(com.uten.imp.features.common.taskclaim.TaskClaimRepository.class);
@@ -147,7 +148,7 @@ class NoticeServiceTest {
         notice.setSourceEvent("SYSTEM_TEST_EVENT");
         notice.setPublisher("system");
         notice.setPublishedAt(Instant.parse("2026-07-30T00:00:00Z"));
-        when(noticeRepository.findVisible(eq(userId), eq(false), any()))
+        when(noticeRepository.findVisible(eq(userId), eq(false), any(), any()))
                 .thenReturn(List.of(notice));
         when(stateRepository.findByIdUserIdAndIdNoticeIdIn(eq(userId), any()))
                 .thenReturn(List.of());
@@ -170,7 +171,7 @@ class NoticeServiceTest {
                 Instant.parse("2024-01-01T00:00:00Z"), "历史未读公告");
         UUID zeroId = new UUID(0L, 0L);
         when(noticeRepository.findVisibleArrivalsAfter(
-                eq(userId), eq(Instant.EPOCH), eq(zeroId), any()))
+                eq(userId), eq(Instant.EPOCH), eq(zeroId), any(), any()))
                 .thenReturn(List.of(unread));
         when(stateRepository.findByIdUserIdAndIdNoticeIdIn(
                 eq(userId), any())).thenReturn(List.of());
@@ -184,7 +185,7 @@ class NoticeServiceTest {
         ArgumentCaptor<Pageable> pageable =
                 ArgumentCaptor.forClass(Pageable.class);
         verify(noticeRepository).findVisibleArrivalsAfter(
-                eq(userId), eq(Instant.EPOCH), eq(zeroId), pageable.capture());
+                eq(userId), eq(Instant.EPOCH), eq(zeroId), any(), pageable.capture());
         assertEquals(101, pageable.getValue().getPageSize());
     }
 
@@ -199,7 +200,7 @@ class NoticeServiceTest {
         Notice overflow = arrivalNotice(
                 Instant.parse("2026-08-22T01:03:00Z"), "公告三");
         when(noticeRepository.findVisibleArrivalsAfter(
-                eq(userId), eq(after), eq(afterId), any()))
+                eq(userId), eq(after), eq(afterId), any(), any()))
                 .thenReturn(List.of(first, second, overflow));
         when(stateRepository.findByIdUserIdAndIdNoticeIdIn(
                 eq(userId), any())).thenReturn(List.of());
@@ -216,7 +217,7 @@ class NoticeServiceTest {
         ArgumentCaptor<Pageable> pageable =
                 ArgumentCaptor.forClass(Pageable.class);
         verify(noticeRepository).findVisibleArrivalsAfter(
-                eq(userId), eq(after), eq(afterId), pageable.capture());
+                eq(userId), eq(after), eq(afterId), any(), pageable.capture());
         assertEquals(3, pageable.getValue().getPageSize());
         verify(ackRepository, never()).countByIdNoticeId(any());
         verify(blessRepo, never()).countByNoticeId(any());
@@ -235,6 +236,7 @@ class NoticeServiceTest {
                         UUID.class,
                         Instant.class,
                         UUID.class,
+                        ReviewNoticeAudience.WorkshopScope.class,
                         Pageable.class)
                 .getAnnotation(Query.class);
         assertNotNull(query);
@@ -248,7 +250,7 @@ class NoticeServiceTest {
 
     @Test
     void unreadCountIsCalculatedByTheDatabase() {
-        when(noticeRepository.countVisibleUnread(userId)).thenReturn(123L);
+        when(noticeRepository.countVisibleUnread(eq(userId), any())).thenReturn(123L);
 
         assertEquals(123L, service.unreadCount());
     }
@@ -464,7 +466,7 @@ class NoticeServiceTest {
         review.setAggregateId(UUID.randomUUID());
         when(noticeRepository.findVisiblePendingReviews(
                 eq(userId), argThat(events -> events.contains(
-                        "SALES_ORDER_PENDING_FINANCE_CONFIRM")), any()))
+                        "SALES_ORDER_PENDING_FINANCE_CONFIRM")), any(), any()))
                 .thenReturn(List.of(review));
         when(stateRepository.findByIdUserIdAndIdNoticeIdIn(eq(userId), any()))
                 .thenReturn(List.of());
@@ -482,7 +484,7 @@ class NoticeServiceTest {
     void revokedReviewQualificationStopsLoginPopupWithoutQueryingPendingContent() {
         when(reviewAudience.eligibleEvents(authUser)).thenReturn(Set.of());
         assertTrue(service.pendingReviews().isEmpty());
-        verify(noticeRepository, never()).findVisiblePendingReviews(any(), any(), any());
+        verify(noticeRepository, never()).findVisiblePendingReviews(any(), any(), any(), any());
     }
 
     @Test
@@ -510,7 +512,7 @@ class NoticeServiceTest {
         notice.setAggregateKind("SALES_ORDER");
         notice.setAggregateId(UUID.randomUUID());
         when(reviewAudience.eligibleEvents(authUser)).thenReturn(Set.of());
-        when(noticeRepository.findVisibleArrivalsAfter(eq(userId), any(), any(), any()))
+        when(noticeRepository.findVisibleArrivalsAfter(eq(userId), any(), any(), any(), any()))
                 .thenReturn(List.of(notice));
         var page = service.arrivals(null, null, 20);
         assertTrue(page.items().isEmpty());
@@ -537,7 +539,8 @@ class NoticeServiceTest {
     void productionWorkshopTaskIsBothARegularNoticeAndInteractivePopup() {
         Notice task = new Notice();
         task.setId(UUID.randomUUID());
-        task.setTitle("备料完毕·可报工：ZX00000001");
+        task.setTitle("物料已领齐·可以开工：ZX00000001");
+        task.setPriority("important");
         task.setContent("请从我的车间任务办理");
         task.setType("task");
         task.setPublisher("系统");
@@ -550,7 +553,7 @@ class NoticeServiceTest {
         task.setAggregateId(UUID.randomUUID());
         when(noticeRepository.findVisiblePendingReviews(
                 eq(userId), argThat(events -> events.contains(
-                        "PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED")), any()))
+                        "PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED")), any(), any()))
                 .thenReturn(List.of(task));
         when(stateRepository.findByIdUserIdAndIdNoticeIdIn(eq(userId), any()))
                 .thenReturn(List.of());

@@ -6,8 +6,6 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 
@@ -25,7 +23,9 @@ class InventoryValueAuthorityMigrationPostgresTest {
             db.update("INSERT INTO stock_value_pools(id,warehouse_id,goods_id,state,legacy_qty,legacy_amount_local) VALUES ('00500509-0000-0000-0000-000000000005','00500509-0000-0000-0000-000000000003','00500509-0000-0000-0000-000000000002','LEGACY_UNVERIFIED',7,999)");
             List<String> tables=db.queryForList("SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename<>'flyway_schema_history' ORDER BY tablename",String.class);
             var before=digest(db,tables);
-            db.execute(Files.readString(Path.of("../.codex-tmp/valuation-positions/V517__inventory_value_custody_positions.sql")));
+            var migration=Flyway.configure().dataSource(ds).locations("classpath:db/migration")
+                    .target("517").load().migrate();
+            assertThat(migration.migrationsExecuted).isEqualTo(1);
             assertThat(digest(db,tables)).isEqualTo(before);
             for(String table:List.of("stock_value_acquisition_sources","stock_value_position_transfers","stock_value_production_cost_objects",
                     "stock_value_production_cost_inputs","stock_value_production_cost_outputs","stock_value_production_cost_revisions",

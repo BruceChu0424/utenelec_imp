@@ -196,5 +196,5 @@ class FinancialActualBankPaymentPostgresTest {
     private record Part(UUID source,BigDecimal amount){}
     private record Planned(Part part,BigDecimal beforeA,BigDecimal beforeB,BigDecimal cash,BigDecimal sourceA,BigDecimal sourceB,BigDecimal book){}
     private static Connection connect(PostgreSQLContainer<?> pg)throws SQLException{return DriverManager.getConnection(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword());}
-    private static void migrate(PostgreSQLContainer<?> pg,String target){Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("filesystem:src/main/resources/db/migration","filesystem:../.codex-tmp/valuation-positions","filesystem:../.codex-tmp/iqc-consideration","filesystem:../.codex-tmp/financial-exact","filesystem:../.codex-tmp/financial-payment").target(target).load().migrate();}
+    private static void migrate(PostgreSQLContainer<?> pg,String target){Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target(target).load().migrate();}
 }

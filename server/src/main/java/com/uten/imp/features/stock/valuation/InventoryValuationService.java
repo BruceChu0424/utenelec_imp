@@ -17,6 +17,72 @@ public class InventoryValuationService extends InventoryValueLedger implements I
         super(db,inventoryMutex);
     }
 
+    void requireUnusedProductionReceipt(PoolKey raw,BigDecimal before,UUID movement){
+        PoolKey key=key(raw);requireHeld(key);Pool pool=lockPool(key);Node head=requireBefore(pool,before);
+        var originals=db.queryForList("SELECT result_head_id,pool_id FROM stock_value_events WHERE movement_id=:movement AND operation='RECEIVE'",args("movement",movement));
+        if(originals.size()!=1||head==null||!pool.id().equals(originals.getFirst().get("pool_id"))
+                ||!Boolean.TRUE.equals(db.queryForObject("SELECT fn_stock_value_unused_receipt_head(:current,:original)",
+                args("current",head.id(),"original",originals.getFirst().get("result_head_id")),Boolean.class)))
+            throw conflict("该成品入库之后已有出库、使用或未撤回的后续入库，不能直接撤回原成本");
+    }
+
+    /** Complete only this already-locked physical pool's pending value projection. */
+    void synchronizePoolProjection(PoolKey raw){
+        PoolKey key=key(raw);requireHeld(key);Pool pool=lockPool(key);
+        for(int batch=0;batch<1000;batch++){
+            var tasks=db.queryForList("""
+                    SELECT task.id FROM stock_value_tasks task
+                    JOIN stock_value_edges edge ON edge.id=task.edge_id
+                    JOIN stock_value_nodes child ON child.id=edge.child_node_id
+                    WHERE child.pool_id=:pool AND task.status='PENDING'
+                    ORDER BY task.task_sequence LIMIT 100
+                    """,args("pool",pool.id()),UUID.class);
+            if(tasks.isEmpty())return;
+            boolean progress=false;for(UUID task:tasks)progress|=propagate(task).applied();
+            if(!progress)throw conflict("本批成品成本正在等待前序传播，请稍后重试撤回");
+        }
+        throw conflict("本批成品成本传播尚未完成，请待后台处理后重试撤回");
+    }
+
+    /** Costs have already moved back to the original WIP; remove only the exact unused physical receipt. */
+    MovementValue reverseUnusedProductionReceipt(EventContext raw,UUID movement,PoolKey rawKey,BigDecimal before,UUID originalMovement){
+        transaction();EventContext c=context(raw);PoolKey key=key(rawKey);requireHeld(key);
+        Request request=request("POSITION_STORE_REVERSE",c,args("pool",keyText(key),"originalMovement",originalMovement));
+        Event prior=replay("POSITION_STORE_REVERSE",c,request);if(prior!=null)return prior.movement(true);
+        requireUnusedProductionReceipt(key,before,originalMovement);
+        Pool pool=lockPool(key);Node current=requireBefore(pool,before);
+        var original=db.queryForMap("SELECT * FROM stock_value_events WHERE movement_id=:movement AND operation='RECEIVE'",args("movement",originalMovement));
+        Node source=node((UUID)original.get("result_node_id"),true),originalHead=node((UUID)original.get("result_head_id"),false);
+        if(source.value().signum()!=0||Boolean.TRUE.equals(db.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM stock_value_production_cost_shares WHERE output_source_node_id=:source AND allocated_value_local<>0)
+                    OR EXISTS(SELECT 1 FROM stock_value_production_cost_tasks WHERE output_source_node_id=:source AND status='PENDING')
+                """,args("source",source.id()),Boolean.class)))throw conflict("成品已分配成本尚未完整回到原在制来源");
+        var predecessors=db.queryForList("SELECT parent.id FROM stock_value_edges edge JOIN stock_value_nodes parent ON parent.id=edge.parent_node_id WHERE edge.child_node_id=:head AND parent.kind='POOL'",
+                args("head",originalHead.id()),UUID.class);
+        if(predecessors.size()>1)throw conflict("成品原入库前置库存归属不唯一");
+        Node predecessor=predecessors.isEmpty()?null:node(predecessors.getFirst(),false);
+        BigDecimal qty=(BigDecimal)original.get("qty_base"),left=predecessor==null?ZERO:predecessor.qty();
+        if(before.compareTo(originalHead.qty())!=0||before.subtract(qty).compareTo(left)!=0||current.value().compareTo(value(predecessor))!=0)
+            throw conflict("成品撤回的原数量、成本传播或前置库存余额不一致");
+        UUID event=UUID.randomUUID();
+        Node archived=createNode(pool,"REVERSED_POOL_CURSOR",null,null,null,null,current.qty(),ZERO,current.qty(),current.value(),pending(current),true,true,event);
+        edge(current,archived,ZERO,BigDecimal.ONE,BigDecimal.ONE,event);
+        Node next=createNode(pool,"POOL",null,null,null,null,left,ZERO,left,value(predecessor),pending(predecessor),true,true,event);
+        if(predecessor==null)edge(current,next,ZERO,ZERO,current.qty(),event);else edge(predecessor,next,ZERO,BigDecimal.ONE,BigDecimal.ONE,event);
+        deactivate(current);head(pool,next.id(),pool.headId());
+        db.update("""
+                INSERT INTO stock_value_events(id,operation,source_event_id,source_doc_type,source_doc_id,source_item_id,source_version,
+                    actor_user_id,actor_employee_id,occurred_at,idempotency_key,request_hash,request_payload,pool_id,movement_id,
+                    qty_base,qty_before,known_value_local,result_node_id,result_head_id,result_state,source_node_id,result_source_revision,position_store_reversal_of)
+                VALUES(:id,'POSITION_STORE_REVERSE',:sourceEvent,:docType,:doc,:item,:version,:user,:employee,:at,:key,:hash,CAST(:payload AS jsonb),
+                    :pool,:movement,:qty,:before,0,:result,:head,:state,:source,:revision,:original)
+                """,args("id",event,"sourceEvent",c.sourceEventId(),"docType",c.sourceDocType(),"doc",c.sourceDocId(),"item",c.sourceItemId(),"version",c.sourceVersion(),
+                "user",c.actorUserId(),"employee",c.actorEmployeeId(),"at",c.occurredAt(),"key",c.idempotencyKey(),"hash",request.hash(),"payload",request.json(),
+                "pool",pool.id(),"movement",movement,"qty",qty,"before",before,"result",archived.id(),"head",next.id(),"state",state(source).name(),
+                "source",source.id(),"revision",source.revision(),"original",original.get("id")));
+        return new MovementValue(event,movement,archived.id(),next.id(),ZERO,state(source),false);
+    }
+
     @Override @Transactional(propagation = Propagation.MANDATORY)
     public MovementValue receive(Receive command) {
         transaction();

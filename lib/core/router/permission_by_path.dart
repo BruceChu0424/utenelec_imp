@@ -67,6 +67,9 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.auditLogView];
   }
   // 其余系统管理页面仍由授权管理权限保护。
+  if (routePath == RouteName.adminServerStatus) {
+    return const [Perm.serverStatusView];
+  }
   if (location == RouteName.adminSystemSettings ||
       location.startsWith('/admin/')) {
     return const [Perm.authorizationManage];

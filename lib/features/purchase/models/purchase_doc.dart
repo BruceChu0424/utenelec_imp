@@ -129,6 +129,8 @@ class PurchaseDocItem {
     this.amountOriginal,
     this.amountLocal,
     this.orderedQty,
+    this.pendingQty,
+    this.remainingQty,
     this.receivedQty,
     this.returnedQty,
     this.giftQty,
@@ -157,6 +159,8 @@ class PurchaseDocItem {
   final double? amountOriginal;
   final double? amountLocal;
   final double? orderedQty;
+  final double? pendingQty;
+  final double? remainingQty;
   final double? receivedQty;
   final double? returnedQty;
   final double? giftQty;
@@ -193,6 +197,8 @@ class PurchaseDocItem {
         amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
         amountLocal: (json['amountLocal'] as num?)?.toDouble(),
         orderedQty: (json['orderedQty'] as num?)?.toDouble(),
+        pendingQty: (json['pendingQty'] as num?)?.toDouble(),
+        remainingQty: (json['remainingQty'] as num?)?.toDouble(),
         receivedQty: (json['receivedQty'] as num?)?.toDouble(),
         returnedQty: (json['returnedQty'] as num?)?.toDouble(),
         giftQty: (json['giftQty'] as num?)?.toDouble(),
@@ -249,6 +255,7 @@ class PurchaseDocDetail {
     this.exchangeRate,
     this.taxRate,
     this.applicantId,
+    this.applicantName,
     this.purchaserId,
     this.settlementMethodId,
     this.settlementStyleLegacy,
@@ -291,6 +298,7 @@ class PurchaseDocDetail {
   final double? exchangeRate;
   final double? taxRate;
   final String? applicantId;
+  final String? applicantName;
   final String? purchaserId;
   final String? settlementMethodId;
   final int? settlementStyleLegacy;
@@ -344,6 +352,7 @@ class PurchaseDocDetail {
         exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
         taxRate: (json['taxRate'] as num?)?.toDouble(),
         applicantId: json['applicantId'] as String?,
+        applicantName: json['applicantName'] as String?,
         purchaserId: json['purchaserId'] as String?,
         settlementMethodId: json['settlementMethodId'] as String?,
         settlementStyleLegacy: (json['settlementStyleLegacy'] as num?)?.toInt(),

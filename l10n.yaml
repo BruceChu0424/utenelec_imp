@@ -5,3 +5,4 @@ output-class: AppLocalizations
 preferred-supported-locales: [zh, en, ko]
 output-dir: lib/core/l10n/gen
 nullable-getter: false
+format: true

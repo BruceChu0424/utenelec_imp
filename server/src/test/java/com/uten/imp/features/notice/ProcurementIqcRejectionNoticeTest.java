@@ -30,6 +30,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.mockingDetails;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class ProcurementIqcRejectionNoticeTest {
 
@@ -43,6 +48,96 @@ class ProcurementIqcRejectionNoticeTest {
             "procurement_iqc_rejection:record_return";
     private static final String CLOSE =
             "procurement_iqc_rejection:close_no_credit";
+
+    @Test
+    void thousandCandidateAudienceResolvesOncePerUserAndRechecksNextEvent() {
+        var users = mock(UserAccountRepository.class);
+        var permissions = mock(PermissionResolver.class);
+        var accounts = new ArrayList<UserAccount>();
+        for (int index = 0; index < 1000; index++) {
+            var account = activeUser(UUID.randomUUID());
+            accounts.add(account);
+            when(users.findById(account.getId())).thenReturn(Optional.of(account));
+            when(permissions.permsOf(account)).thenReturn(Set.of(NOTICE_READ, VIEW, CONFIRM));
+        }
+        when(users.findAll()).thenReturn(accounts);
+        var service = service(mock(NoticeService.class), users, permissions, mock(JdbcTemplate.class));
+        Set<UUID> first = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                service, "userIdsWithIqcViewAndAnyPermission", (Object) new String[]{CONFIRM});
+        assertEquals(1000, first.size());
+        assertEquals(1000, mockingDetails(permissions).getInvocations().size(),
+                "旧的两轮判断调用 2000 次；同一事件必须只完整解析 1000 次");
+        verify(users, never()).findById(any());
+
+        // Offboard/disabled and deleted accounts remain excluded before permission lookup,
+        // even if their stale account object still carries the super-admin flag.
+        accounts.get(0).setSuperAdmin(true); accounts.get(0).setStatus("disabled");
+        accounts.get(1).setSuperAdmin(true); accounts.get(1).setDeleted(true);
+        when(permissions.permsOf(accounts.get(2))).thenReturn(Set.of(NOTICE_READ, VIEW));
+        when(permissions.permsOf(accounts.get(3))).thenReturn(Set.of(NOTICE_READ, CONFIRM));
+        clearInvocations(users, permissions);
+        Set<UUID> next = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                service, "userIdsWithIqcViewAndAnyPermission", (Object) new String[]{CONFIRM});
+        assertEquals(996, next.size());
+        for (int index = 0; index < 4; index++) assertFalse(next.contains(accounts.get(index).getId()));
+        verify(permissions, never()).permsOf(accounts.get(0));
+        verify(permissions, never()).permsOf(accounts.get(1));
+        verify(permissions, times(1)).permsOf(accounts.get(2));
+        assertEquals(998, mockingDetails(permissions).getInvocations().size());
+    }
+
+    @Test
+    void administratorCatalogIsSharedOnlyInsideCurrentAudienceResolution() {
+        var users = mock(UserAccountRepository.class);
+        var permissions = mock(PermissionResolver.class);
+        var accounts = new ArrayList<UserAccount>();
+        for (int index = 0; index < 164; index++) {
+            var account = activeUser(UUID.randomUUID()); account.setSuperAdmin(true); accounts.add(account);
+        }
+        when(users.findAll()).thenReturn(accounts);
+        when(permissions.permsOf(any())).thenReturn(Set.of(NOTICE_READ, VIEW, CONFIRM));
+        var service = service(mock(NoticeService.class), users, permissions, mock(JdbcTemplate.class));
+        Set<UUID> first = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                service, "userIdsWithIqcViewAndAnyPermission", (Object) new String[]{CONFIRM});
+        assertEquals(164, first.size());
+        verify(permissions, times(1)).permsOf(any());
+        when(permissions.permsOf(any())).thenReturn(Set.of(NOTICE_READ, VIEW));
+        Set<UUID> next = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                service, "userIdsWithIqcViewAndAnyPermission", (Object) new String[]{CONFIRM});
+        assertEquals(Set.of(), next);
+        verify(permissions, times(2)).permsOf(any());
+    }
+
+    @Test
+    void positiveCandidatesStillRequireCurrentPageActionAndAccountState() {
+        var users = mock(UserAccountRepository.class);
+        var permissions = mock(PermissionResolver.class);
+        var query = mock(NoticePermissionCandidateQuery.class);
+        var eligible = activeUser(UUID.randomUUID());
+        var revoked = activeUser(UUID.randomUUID());
+        var disabled = activeUser(UUID.randomUUID()); disabled.setStatus("disabled"); disabled.setSuperAdmin(true);
+        var lateGrant = activeUser(UUID.randomUUID());
+        var initialIds = Set.of(eligible.getId(), revoked.getId(), disabled.getId());
+        when(query.possibleUsers(Set.of(CONFIRM))).thenReturn(Optional.of(initialIds));
+        when(users.findAllById(initialIds)).thenReturn(List.of(eligible, revoked, disabled));
+        when(permissions.permsOf(eligible)).thenReturn(Set.of(NOTICE_READ, VIEW, CONFIRM));
+        when(permissions.permsOf(revoked)).thenReturn(Set.of(NOTICE_READ, VIEW));
+        var service = new ChainNoticeService(mock(NoticeService.class), users, permissions,
+                mock(UserRoleRepository.class), mock(JdbcTemplate.class), mock(BusinessEventPublisher.class),
+                mock(RdTaskService.class), mock(FinanceReviewerEligibilityPort.class),
+                mock(SalesOrderFinanceConfirmerEligibility.class), query);
+        Set<UUID> first = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                service, "userIdsWithIqcViewAndAnyPermission", (Object)new String[]{CONFIRM});
+        assertEquals(Set.of(eligible.getId()), first);
+        verify(users, never()).findAll();
+        verify(permissions, never()).permsOf(disabled);
+        when(query.possibleUsers(Set.of(CONFIRM))).thenReturn(Optional.of(Set.of(lateGrant.getId())));
+        when(users.findAllById(Set.of(lateGrant.getId()))).thenReturn(List.of(lateGrant));
+        when(permissions.permsOf(lateGrant)).thenReturn(Set.of(NOTICE_READ, VIEW, CONFIRM));
+        Set<UUID> next = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                service, "userIdsWithIqcViewAndAnyPermission", (Object)new String[]{CONFIRM});
+        assertEquals(Set.of(lateGrant.getId()), next, "each dispatch must re-read newly granted candidates");
+    }
 
     @Test
     void detectedProjectionTriggerIsExplicitlySilent() {

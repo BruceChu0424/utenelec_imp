@@ -27,6 +27,8 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/attachments/attachment.dart';
 import '../../../shared/attachments/attachment_section.dart';
+import '../../../shared/attachments/employee_avatar.dart';
+import '../../profile/providers/profile_change_providers.dart';
 import '../models/employee_api_models.dart';
 import '../models/work_years.dart';
 import '../repositories/employee_repository.dart';
@@ -255,8 +257,10 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
           .read(employeeRepositoryProvider)
           .setAvatar(widget.employeeId, attachmentId);
       if (!mounted) return;
+      ref.invalidate(employeeAvatarProvider);
+      ref.invalidate(myEmployeeProfileProvider);
       context.appSuccess('已设为头像');
-      _load();
+      await _load();
     } on ApiException catch (e) {
       if (!mounted) return;
       context.appApiError(e);
@@ -292,14 +296,11 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         children: [
           Row(
             children: [
-              CircleAvatar(
-                radius: 28,
-                backgroundColor: theme.colorScheme.primaryContainer,
-                foregroundColor: theme.colorScheme.onPrimaryContainer,
-                child: Text(
-                  (p.fullName ?? '?').characters.first,
-                  style: theme.textTheme.titleLarge,
-                ),
+              EmployeeAvatar(
+                employeeId: p.id,
+                revision: p.avatarStorageKey,
+                name: p.fullName,
+                size: 56,
               ),
               const SizedBox(width: UtenSpacing.s12),
               Expanded(

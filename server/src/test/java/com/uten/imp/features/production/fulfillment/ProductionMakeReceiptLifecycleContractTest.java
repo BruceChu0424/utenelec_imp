@@ -133,9 +133,12 @@ class ProductionMakeReceiptLifecycleContractTest {
                 .contains("preplan_reservation.owner_type = 'PREPLAN_ANALYSIS'")
                 .contains(
                         "preplan_reservation.warehouse_id = scope.id")
-                .contains("COALESCE(balance.qty, 0)"
-                        + " - COALESCE(reserved.qty, 0)"
-                        + " + COALESCE(own.qty, 0)");
+                .contains("COALESCE(balance.qty,0), COALESCE(reserved.qty,0)")
+                .contains("COALESCE(own.qty,0), COALESCE(own.qualified_qty,0)")
+                .contains("NOT scope.is_defective AND fn_warehouse_same_main(scope.id,:warehouseId)")
+                .contains("BigDecimal owned = publicAllowed ? decimal(row[4]) : decimal(row[5])")
+                .contains("MainWarehouseStockBudget.publicBudget(budget[0], budget[3])")
+                .contains("fn_preplan_reservation_has_qualified_origin(preplan_reservation.id)");
     }
 
     private static String source(String relative) throws Exception {

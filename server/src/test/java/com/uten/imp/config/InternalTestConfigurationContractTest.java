@@ -36,13 +36,15 @@ class InternalTestConfigurationContractTest {
     }
 
     @Test
-    void productionProfilesStillRequireOss() throws IOException {
+    void productionProfilesDefaultToInternalAndKeepHistoricalOssVersionIdentity() throws IOException {
         String production = Files.readString(productionConfig(), StandardCharsets.UTF_8);
         String cloud = Files.readString(cloudConfig(), StandardCharsets.UTF_8);
 
-        assertTrue(production.contains("provider: ${UTEN_STORAGE_PROVIDER:oss}"));
+        assertTrue(production.contains("provider: ${UTEN_STORAGE_PROVIDER:internal}"));
+        assertFalse(production.contains("provider: ${UTEN_STORAGE_PROVIDER:oss}"));
         assertTrue(production.contains("require-versioning: ${UTEN_OSS_REQUIRE_VERSIONING:true}"));
-        assertTrue(cloud.contains("provider: ${UTEN_STORAGE_PROVIDER:oss}"));
+        assertTrue(cloud.contains("provider: ${UTEN_STORAGE_PROVIDER:internal}"));
+        assertFalse(cloud.contains("provider: ${UTEN_STORAGE_PROVIDER:oss}"));
         assertTrue(cloud.contains("require-versioning: ${UTEN_OSS_REQUIRE_VERSIONING:true}"));
     }
 

@@ -1,13 +1,12 @@
 package com.uten.imp.config;
 
 import com.uten.imp.config.props.StorageProperties;
+import com.uten.imp.common.storage.InternalStorageService;
 import jakarta.annotation.PostConstruct;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
-import java.net.URI;
 
 /**
  * Fails application startup when a production-like profile weakens attachment storage safety.
@@ -33,35 +32,14 @@ public class ProductionStorageSafetyGate {
             return;
         }
 
-        if (!"oss".equalsIgnoreCase(storageProperties.getProvider())) {
-            throw new IllegalStateException(
-                    "prod/cloud profiles require UTEN_STORAGE_PROVIDER=oss");
+        if ("internal".equalsIgnoreCase(storageProperties.getProvider())) {
+            InternalStorageService.validateConfiguration(storageProperties);
+            // The provider separately proves real-directory fsync and create-only
+            // publication at startup; local/dev storage is never this capability.
+            if (storageProperties.getInternal().getMinFreeBytes() < 268435456L)
+                throw new IllegalStateException("Production internal storage requires at least 256 MiB free-space reserve");
+            return;
         }
-
-        StorageProperties.Oss oss = storageProperties.getOss();
-        if (oss == null || !oss.isRequireVersioning()) {
-            throw new IllegalStateException(
-                    "prod/cloud profiles require UTEN_OSS_REQUIRE_VERSIONING=true");
-        }
-        requireHttpsEndpoint(oss.getEndpoint());
-    }
-
-    private static void requireHttpsEndpoint(String value) {
-        if (!StringUtils.hasText(value)) {
-            throw new IllegalStateException(
-                    "prod/cloud profiles require UTEN_OSS_ENDPOINT to be HTTPS");
-        }
-        try {
-            URI endpoint = URI.create(value.trim());
-            if (!"https".equalsIgnoreCase(endpoint.getScheme())
-                    || !StringUtils.hasText(endpoint.getHost())
-                    || endpoint.getUserInfo() != null) {
-                throw new IllegalStateException(
-                        "prod/cloud profiles require UTEN_OSS_ENDPOINT to be HTTPS");
-            }
-        } catch (IllegalArgumentException e) {
-            throw new IllegalStateException(
-                    "prod/cloud profiles require a valid HTTPS UTEN_OSS_ENDPOINT", e);
-        }
+        throw new IllegalStateException("prod/cloud profiles require UTEN_STORAGE_PROVIDER=internal; OSS is historical read-only");
     }
 }

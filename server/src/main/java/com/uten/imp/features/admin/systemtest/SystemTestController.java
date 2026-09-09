@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -38,6 +39,27 @@ public class SystemTestController {
 
     private final BusinessDataResetService businessDataResetService;
     private final SecurityContextCurrentUser currentUser;
+    private final BusinessAttachmentResetPreparationService attachmentPreparation;
+
+    public record PrepareAttachmentsRequest(@NotBlank String confirm,
+            @NotBlank String database, @NotBlank String fingerprint) {}
+
+    @GetMapping("/business-data/attachments/preview")
+    public com.uten.imp.application.port.BusinessAttachmentResetPreparationPort.Preview previewAttachments() {
+        return attachmentPreparation.preview(currentUser.requireId());
+    }
+
+    @PostMapping("/business-data/attachments/prepare")
+    public com.uten.imp.application.port.BusinessAttachmentResetPreparationPort.Preview prepareAttachments(
+            @Valid @RequestBody PrepareAttachmentsRequest request) {
+        if (!"清理测试业务附件".equals(request.confirm())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请逐字输入「清理测试业务附件」");
+        }
+        AuthUser operator = currentUser.get().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+        return attachmentPreparation.prepare(operator.getId(), operator.getLoginAccount(),
+                new com.uten.imp.application.port.BusinessAttachmentResetPreparationPort.Confirmation(
+                        request.database(), request.fingerprint()));
+    }
 
     public record ResetBusinessDataRequest(@NotBlank String confirm) {
     }

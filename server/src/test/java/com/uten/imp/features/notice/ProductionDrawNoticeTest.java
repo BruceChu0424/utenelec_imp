@@ -198,7 +198,7 @@ class ProductionDrawNoticeTest {
         when(users.findById(workshopUserId))
                 .thenReturn(Optional.of(workshopUser));
         when(permissions.permsOf(workshopUser)).thenReturn(Set.of(
-                "notice:read", "production_execution:view"));
+                "notice:read", "production_execution:view", "production_execution:start"));
 
         ChainNoticeService service = service(
                 notices, users, permissions, jdbc,
@@ -210,8 +210,8 @@ class ProductionDrawNoticeTest {
 
         verify(notices).publishForUser(
                 eq(workshopUserId),
-                eq("备料完毕·可报工：SEG-002"),
-                contains("当前状态：备料完毕，可直接报工"),
+                eq("物料已领齐·可以开工：SEG-002"),
+                contains("当前状态：物料已领齐，可以开工"),
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq("/production/workshop-tasks"),

@@ -100,20 +100,6 @@ final class _BomFilterProjection {
   final int visibleNodeCount;
 }
 
-class _OffTargetWarehousePeg {
-  const _OffTargetWarehousePeg({
-    required this.materialLabel,
-    required this.warehouseLabel,
-    required this.qty,
-    this.unitName,
-  });
-
-  final String materialLabel;
-  final String warehouseLabel;
-  final double qty;
-  final String? unitName;
-}
-
 enum _ReadinessState { ready, waitingMake, waitingSupply, waiting }
 
 enum _BomViewMode {

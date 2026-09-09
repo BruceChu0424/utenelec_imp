@@ -44,7 +44,6 @@ public class PreplanInboundAllocationProjectionService
 
         List<Slice> slices = expectedSlices(receiptType, receiptId, passEventIds);
         if (slices.isEmpty()) return Map.of();
-        Map<UUID, UUID> warehouseRoots = warehouseScope.mainWarehouseIds();
         List<SourceAnchor> anchors = sourceAnchors(
                 receiptType,
                 slices.stream().map(Slice::receiptItemId).distinct().toList());
@@ -67,6 +66,15 @@ public class PreplanInboundAllocationProjectionService
         Map<UUID, List<SourceAnchor>> anchorsByReceipt = new LinkedHashMap<>();
         anchors.forEach(anchor -> anchorsByReceipt.computeIfAbsent(
                 anchor.receiptItemId(), ignored -> new ArrayList<>()).add(anchor));
+        // Source capacity belongs to an order-item/source/mode, not a PASS event
+        // or receipt row. Repeated anchors must reuse it rather than add capacity.
+        Map<SourceBudgetKey, BigDecimal> sourceBudgets = new HashMap<>();
+        for (SourceAnchor anchor : anchors) {
+            sourceBudgets.merge(new SourceBudgetKey(anchor.orderItemId(), anchor.externalItemId(), false),
+                    anchor.exactRemainingQty().max(BigDecimal.ZERO), BigDecimal::min);
+            sourceBudgets.merge(new SourceBudgetKey(anchor.orderItemId(), anchor.externalItemId(), true),
+                    anchor.sharedRemainingQty().max(BigDecimal.ZERO), BigDecimal::min);
+        }
 
         Map<UUID, List<AllocationView>> result = new LinkedHashMap<>();
         for (Slice slice : slices) {
@@ -76,30 +84,19 @@ public class PreplanInboundAllocationProjectionService
             Set<String> mismatchedIntendedWarehouses = new LinkedHashSet<>();
             for (SourceAnchor anchor : anchorsByReceipt.getOrDefault(
                     slice.receiptItemId(), List.of())) {
-                BigDecimal exactBudget = anchor.exactRemainingQty();
-                BigDecimal sharedBudget = anchor.sharedRemainingQty();
                 for (PreplanCandidate candidate : anchor.externalItemId() == null
                         ? List.<PreplanCandidate>of()
                         : preplan.getOrDefault(anchor.externalItemId(), List.of())) {
-                    boolean warehouseMatches = sameMainWarehouse(warehouseRoots,
-                            slice.warehouseId(), candidate.targetWarehouseId())
-                            && sameMainWarehouse(warehouseRoots,
-                                    slice.warehouseId(), candidate.analysisWarehouseId());
-                    if (!warehouseMatches) {
-                        mismatchedReservationIntent |= candidate.headroom().signum() > 0;
-                        if (candidate.headroom().signum() > 0
-                                && candidate.targetWarehouseName() != null) {
-                            mismatchedIntendedWarehouses.add(
-                                    candidate.targetWarehouseName());
-                        }
-                        continue;
-                    }
+                    // The exact request/allocation identity determines the beneficiary.
+                    // The eventual stock-in warehouse is its physical location, not a new owner.
                     if (!slice.matches(candidate.goodsId(), candidate.colorId())) continue;
                     BigDecimal headroom = preplanHeadroom.getOrDefault(
                             candidate.allocationId(), BigDecimal.ZERO);
                     boolean shared = "SHARED_FUTURE_CLAIM".equals(
                             candidate.operationType());
-                    BigDecimal budget = shared ? sharedBudget : exactBudget;
+                    SourceBudgetKey budgetKey = new SourceBudgetKey(
+                            anchor.orderItemId(), anchor.externalItemId(), shared);
+                    BigDecimal budget = sourceBudgets.getOrDefault(budgetKey, BigDecimal.ZERO);
                     BigDecimal take = remaining.min(headroom).min(budget)
                             .max(BigDecimal.ZERO);
                     if (take.signum() <= 0) continue;
@@ -107,11 +104,7 @@ public class PreplanInboundAllocationProjectionService
                             slice.passEventId(), take,
                             slice.warehouseId(), slice.warehouseName(), true));
                     preplanHeadroom.put(candidate.allocationId(), headroom.subtract(take));
-                    if (shared) {
-                        sharedBudget = sharedBudget.subtract(take);
-                    } else {
-                        exactBudget = exactBudget.subtract(take);
-                    }
+                    sourceBudgets.put(budgetKey, budget.subtract(take));
                     remaining = remaining.subtract(take);
                     if (remaining.signum() <= 0) break;
                 }
@@ -698,7 +691,6 @@ public class PreplanInboundAllocationProjectionService
 
     private Map<UUID, List<String>> intendedWarehouses(List<ActualSlice> slices) {
         Map<UUID, LinkedHashSet<String>> result = new LinkedHashMap<>();
-        Map<UUID, UUID> warehouseRoots = warehouseScope.mainWarehouseIds();
         for (String type : List.of("PURCHASE", "SUBCONTRACT")) {
             List<ActualSlice> typed = slices.stream()
                     .filter(slice -> type.equals(slice.orderType()))
@@ -706,28 +698,13 @@ public class PreplanInboundAllocationProjectionService
             if (typed.isEmpty()) continue;
             List<UUID> orderItemIds = typed.stream().map(ActualSlice::orderItemId)
                     .distinct().toList();
-            List<SourceAnchor> anchors = orderSourceAnchors(type, orderItemIds);
-            Set<UUID> externalIds = anchors.stream().map(SourceAnchor::externalItemId)
-                    .filter(Objects::nonNull)
-                    .collect(LinkedHashSet::new, Set::add, Set::addAll);
-            Map<UUID, List<PreplanCandidate>> preplan = preplanCandidates(externalIds);
             Map<UUID, List<FormalCandidate>> formal = formalCandidates(
                     type, new LinkedHashSet<>(orderItemIds));
-            Map<UUID, List<SourceAnchor>> byOrder = new LinkedHashMap<>();
-            anchors.forEach(anchor -> byOrder.computeIfAbsent(
-                    anchor.orderItemId(), ignored -> new ArrayList<>()).add(anchor));
             for (ActualSlice slice : typed) {
                 LinkedHashSet<String> names = result.computeIfAbsent(
                         slice.batchItemId(), ignored -> new LinkedHashSet<>());
-                for (SourceAnchor anchor : byOrder.getOrDefault(
-                        slice.orderItemId(), List.of())) {
-                    (anchor.externalItemId() == null ? List.<PreplanCandidate>of()
-                            : preplan.getOrDefault(anchor.externalItemId(), List.of())).stream()
-                            .filter(candidate -> !sameMainWarehouse(warehouseRoots,
-                                    candidate.targetWarehouseId(), slice.warehouseId()))
-                            .map(PreplanCandidate::targetWarehouseName)
-                            .filter(Objects::nonNull).forEach(names::add);
-                }
+                // Preplan-owned receipts follow their actual warehouse. Only the
+                // separate legacy direct-formal route still has an intended-warehouse warning.
                 formal.getOrDefault(slice.orderItemId(), List.of()).stream()
                         .filter(candidate -> !Objects.equals(
                                 candidate.targetWarehouseId(), slice.warehouseId()))
@@ -884,7 +861,7 @@ public class PreplanInboundAllocationProjectionService
     private List<AllocationView> actualFormalizedEntitlements(List<UUID> itemIds) {
         return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT origin.event_group_id,exact.source_disposition_event_id,
-                       formal.qty,demand.warehouse_id,warehouse.name,
+                       formal.qty,target_reservation.warehouse_id,warehouse.name,
                        source_event.beneficiary_analysis_id,
                        source_event.beneficiary_analysis_material_id,
                        product.code,product.name,
@@ -905,6 +882,9 @@ public class PreplanInboundAllocationProjectionService
                  AND formal.event_type='FORMALIZE'
                 JOIN production_material_demands demand
                   ON demand.id=formal.target_demand_id
+                JOIN stock_reservations target_reservation
+                  ON target_reservation.id=formal.target_stock_reservation_id
+                 AND target_reservation.demand_id=demand.id
                 JOIN production_plans plan ON plan.id=demand.plan_id
                 LEFT JOIN production_execution_segments segment
                   ON segment.id=demand.execution_segment_id
@@ -915,7 +895,7 @@ public class PreplanInboundAllocationProjectionService
                   ON source.analysis_id=material.analysis_id
                  AND source.id=material.analysis_item_id
                 LEFT JOIN goods product ON product.id=source.goods_id
-                LEFT JOIN warehouses warehouse ON warehouse.id=demand.warehouse_id
+                LEFT JOIN warehouses warehouse ON warehouse.id=target_reservation.warehouse_id
                 LEFT JOIN departments workshop
                   ON workshop.id=segment.workshop_department_id
                 LEFT JOIN employees responsible
@@ -982,6 +962,8 @@ public class PreplanInboundAllocationProjectionService
             BigDecimal exactRemainingQty,
             BigDecimal sharedRemainingQty) {
     }
+
+    private record SourceBudgetKey(UUID orderItemId, UUID externalItemId, boolean sharedClaim) {}
 
     private record PreplanCandidate(
             UUID externalItemId, UUID allocationId, UUID actionId,

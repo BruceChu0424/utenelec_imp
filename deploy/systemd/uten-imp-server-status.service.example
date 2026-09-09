@@ -1,0 +1,31 @@
+[Unit]
+Description=Publish a minimal local backup summary for the ERP server status page
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=root
+Group=uten-imp
+UMask=0027
+StateDirectory=uten-imp-server-status
+StateDirectoryMode=0750
+ExecStart=/usr/bin/python3 -I -B /usr/local/libexec/uten-imp-monitoring/server_status_export.py
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateNetwork=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+ReadOnlyPaths=-/var/lib/uten-imp-backup-health
+ReadWritePaths=/var/lib/uten-imp-server-status
+CPUQuota=10%
+MemoryMax=64M
+TasksMax=8
+Nice=15
+IOSchedulingClass=idle
+TimeoutStartSec=15s

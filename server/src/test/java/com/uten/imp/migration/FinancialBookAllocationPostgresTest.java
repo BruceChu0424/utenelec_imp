@@ -18,7 +18,7 @@ class FinancialBookAllocationPostgresTest {
             UUID supplier=UUID.randomUUID(),currency=UUID.randomUUID();
             UUID[] receipts={UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID()};
             Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())
-                .locations("filesystem:src/main/resources/db/migration").target("508").load().migrate();
+                .locations("classpath:db/migration").target("508").load().migrate();
             try(var c=DriverManager.getConnection(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())) {
                 execute(c,"INSERT INTO suppliers(id,code,name,status,code_sequence) VALUES(?,'BOOK-S','Book source','使用',100001)",supplier);
                 execute(c,"INSERT INTO currencies(id,code,name,exchange_rate,status) VALUES(?,'BOOK-FX','Book currency',3.333333,'使用')",currency);
@@ -36,8 +36,7 @@ class FinancialBookAllocationPostgresTest {
                 c.commit();
             }
             Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())
-                .locations("filesystem:src/main/resources/db/migration", "filesystem:../.codex-tmp/valuation-positions",
-                    "filesystem:../.codex-tmp/iqc-consideration","filesystem:../.codex-tmp/financial-exact")
+                .locations("classpath:db/migration")
                 .target("520").load().migrate();
             try(var c=DriverManager.getConnection(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())) {
                 assertEquals("0.000000000000000000000007000001",value(c,"SELECT (1e-24::numeric*7.000001::numeric)::text"));

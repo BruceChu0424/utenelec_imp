@@ -1,6 +1,5 @@
 package com.uten.imp.features.production.analysis;
 
-import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.common.util.NativeQueryResults;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
@@ -9,10 +8,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -31,32 +28,27 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class MaterialAnalysisSupplyWakeupService {
 
-    static final String EVENT_READY = "PRODUCTION_MATERIAL_ANALYSIS_READY";
-    static final String AGGREGATE_TYPE = "PRODUCTION_MATERIAL_ANALYSIS";
-
     private final EntityManager em;
     private final MaterialAnalysisService materialAnalysisService;
-    private final BusinessEventPublisher events;
     private final com.uten.imp.application.concurrency.FulfillmentMutationLocks mutationLocks;
     private final com.uten.imp.application.port.ProductionMutationFootprintPort mutationFootprints;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterPurchaseReceiptApproved(UUID receiptId) {
-        refreshReceipt("PURCHASE", receiptId, false, true);
+        refreshReceipt("PURCHASE", receiptId, false);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterPurchaseReceiptReversed(UUID receiptId) {
-        refreshReceipt("PURCHASE", receiptId, true, false);
+        refreshReceipt("PURCHASE", receiptId, true);
     }
 
     /**
      * IQC 仓库确认入库（单张或批量，整批同事务）后的整批一轮唤醒：
      * 目标 = 本次确认的待检行维度 ∪ 该收货单 RESOLVED 维度上的活跃分析，
-     * 按分析去重后每个分析只整棵刷新一次。聚合的 readyFinish 前后差值
-     * 与旧「逐条明细刷新」的逐次差值之和完全一致（刷新是从当前库态的
-     * 全量重算，最终态相同），通知从每条一条聚合为每批一条，
-     * dedupe key 携带入库批次号避免跨批次碰撞。
+     * 按分析去重后每个分析只刷新一次。到货更新实际物料进度，
+     * 不再向计划制单人发送“物料已可下达”的旧提醒；车间就绪通知由
+     * 执行段实际状态变化单独发送。
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterInspectionStockInConfirmed(
@@ -81,104 +73,50 @@ public class MaterialAnalysisSupplyWakeupService {
         List<AnalysisTarget> targets = new ArrayList<>(makers.size());
         makers.forEach((analysisId, makerEmployeeId) ->
                 targets.add(new AnalysisTarget(analysisId, makerEmployeeId)));
-        refreshTargets(
-                sourceType,
-                receiptId,
-                targets,
-                true,
-                warehouseStockInBatchId,
-                ":IQC_STOCK_IN:" + warehouseStockInBatchId);
+        refreshTargets(targets);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterSubcontractReceiptApproved(UUID receiptId) {
-        refreshReceipt("SUBCONTRACT", receiptId, false, true);
+        refreshReceipt("SUBCONTRACT", receiptId, false);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterSubcontractReceiptReversed(UUID receiptId) {
-        refreshReceipt("SUBCONTRACT", receiptId, true, false);
+        refreshReceipt("SUBCONTRACT", receiptId, true);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterFinishedInboundApproved(UUID stockDocumentId) {
-        refreshTargets(
-                "MAKE", stockDocumentId, finishedInboundTargets(stockDocumentId, 1), true, null, "");
+        refreshTargets(finishedInboundTargets(stockDocumentId, 1));
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterFinishedInboundReversed(UUID stockDocumentId) {
-        refreshTargets(
-                "MAKE", stockDocumentId, finishedInboundTargets(stockDocumentId, -1), false, null, "");
+        refreshTargets(finishedInboundTargets(stockDocumentId, -1));
     }
 
     private void refreshReceipt(
             String sourceType,
             UUID receiptId,
-            boolean includeLegacyFallback,
-            boolean publishIncrease) {
+            boolean includeLegacyFallback) {
         List<AnalysisTarget> targets = "PURCHASE".equals(sourceType)
                 ? purchaseTargets(receiptId, includeLegacyFallback)
                 : subcontractTargets(receiptId, includeLegacyFallback);
-        refreshTargets(sourceType, receiptId, targets, publishIncrease, null, "");
+        refreshTargets(targets);
     }
 
-    private void refreshTargets(
-            String sourceType,
-            UUID sourceDocumentId,
-            List<AnalysisTarget> targets,
-            boolean publishIncrease,
-            UUID sourceEventId,
-            String eventKeySuffix) {
+    private void refreshTargets(List<AnalysisTarget> targets) {
         if (!targets.isEmpty()) {
             mutationLocks.requireCovered(mutationFootprints.forAnalyses(
                     targets.stream().map(AnalysisTarget::analysisId).toList()));
         }
         for (AnalysisTarget target : targets) {
-            Map<UUID, BigDecimal> before = readyFinishByOpenItem(target.analysisId());
             materialAnalysisService.refreshLocked(target.analysisId());
-            Map<UUID, BigDecimal> after = readyFinishByOpenItem(target.analysisId());
-            if (!publishIncrease || target.makerEmployeeId() == null) continue;
-
-            // Quantities from different analysis items may represent different
-            // products and units, so they must never be scalar-summed. A mixed
-            // reallocation (one line rises while another falls) is also not a
-            // genuine readiness increase and must remain silent.
-            boolean anyDecrease = before.entrySet().stream().anyMatch(entry ->
-                    after.getOrDefault(entry.getKey(), BigDecimal.ZERO)
-                            .compareTo(entry.getValue()) < 0);
-            if (anyDecrease) continue;
-
-            String sourceId = sourceDocumentId.toString();
-            // 展示用来源单号：通知文案面向业务人员，禁止把 UUID 当单号展示。
-            String sourceNo = sourceDocumentNo(sourceType, sourceDocumentId);
-            for (Map.Entry<UUID, BigDecimal> entry : after.entrySet()) {
-                UUID analysisItemId = entry.getKey();
-                BigDecimal previous = before.getOrDefault(
-                        analysisItemId, BigDecimal.ZERO);
-                BigDecimal delta = entry.getValue().subtract(previous);
-                if (delta.signum() <= 0) continue;
-                Map<String, String> payload = new LinkedHashMap<>();
-                payload.put("makerEmployeeId", target.makerEmployeeId().toString());
-                payload.put("sourceType", sourceType);
-                payload.put("sourceDocumentId", sourceId);
-                payload.put("sourceDocumentNo", sourceNo);
-                if (sourceEventId != null) {
-                    payload.put("sourceEventId", sourceEventId.toString());
-                }
-                payload.put("analysisItemId", analysisItemId.toString());
-                payload.put("readyFinishDelta", quantityText(delta));
-                payload.put("readyFinishQty", quantityText(entry.getValue()));
-                events.publishOnce(
-                        EVENT_READY,
-                        AGGREGATE_TYPE,
-                        target.analysisId(),
-                        Map.copyOf(payload),
-                        EVENT_READY + ':' + target.analysisId() + ':'
-                                + analysisItemId + ':' + sourceType + ':' + sourceId
-                                + eventKeySuffix);
-            }
         }
+        // Planning can issue tasks before materials arrive. A stock receipt must
+        // update these facts, not ask the plan maker to issue the same work again.
+        // Actual WAITING -> READY notifications belong to the exact workshop task.
     }
 
     private List<AnalysisTarget> inspectionStockInTargets(
@@ -315,7 +253,8 @@ public class MaterialAnalysisSupplyWakeupService {
         return em.createNativeQuery("WITH dimensions AS MATERIALIZED (\n" + dimensionSql + """
                 ), candidates AS MATERIALIZED (
                     SELECT DISTINCT analysis.id, analysis.maker_id, analysis.status,
-                           analysis.warehouse_id, dimension.warehouse_id AS source_warehouse_id
+                           analysis.warehouse_id, dimension.warehouse_id AS source_warehouse_id,
+                           material.id AS source_material_id, material.goods_id, material.color_id
                     FROM dimensions dimension
                     JOIN production_material_analysis_materials material
                       ON dimension.goods_id = material.goods_id
@@ -331,7 +270,11 @@ public class MaterialAnalysisSupplyWakeupService {
                 WHERE (analysis.status IN ('ACTIVE','PARTIALLY_PLANNED')
                     OR analysis.status='COMPLETED'
                       AND fn_material_analysis_fulfillment_status(analysis.id)<>'COMPLETED')
-                  AND fn_warehouse_same_main(analysis.source_warehouse_id,analysis.warehouse_id)
+                  AND (fn_warehouse_same_main(analysis.source_warehouse_id,analysis.warehouse_id)
+                    OR """ + MaterialAnalysisWakeupScopeSql.ownsQualifiedAt(
+                        "analysis.id", "analysis.source_material_id", "analysis.source_warehouse_id",
+                        "analysis.goods_id", "analysis.color_id") + """
+                    )
                 ORDER BY analysis.id
                 """);
     }
@@ -340,46 +283,6 @@ public class MaterialAnalysisSupplyWakeupService {
         return NativeQueryResults.objectArrayRows(query).stream()
                 .map(row -> new AnalysisTarget((UUID) row[0], (UUID) row[1]))
                 .toList();
-    }
-
-    /** 按来源类型解析业务单号（采购收货 CJ/委外进仓 EJ/产成品入库 CR）；查不到返回空串。 */
-    private String sourceDocumentNo(String sourceType, UUID sourceDocumentId) {
-        String table = switch (sourceType) {
-            case "PURCHASE" -> "purchase_receipts";
-            case "SUBCONTRACT" -> "subcontract_receipts";
-            case "MAKE" -> "stock_documents";
-            default -> null;
-        };
-        if (table == null) return "";
-        List<?> rows = em.createNativeQuery(
-                "SELECT bill_no FROM " + table + " WHERE id = :id")
-                .setParameter("id", sourceDocumentId)
-                .getResultList();
-        return rows.isEmpty() || rows.getFirst() == null
-                ? "" : String.valueOf(rows.getFirst());
-    }
-
-    private Map<UUID, BigDecimal> readyFinishByOpenItem(UUID analysisId) {
-        Map<UUID, BigDecimal> result = new LinkedHashMap<>();
-        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT id, ready_finish_qty
-                FROM production_material_analysis_items
-                WHERE analysis_id = :analysisId
-                  AND is_deleted = FALSE
-                  AND requested_qty - submitted_qty - approved_qty > 0
-                ORDER BY id
-                """).setParameter("analysisId", analysisId))) {
-            result.put((UUID) row[0], decimal(row[1]));
-        }
-        return Map.copyOf(result);
-    }
-
-    private static BigDecimal decimal(Object value) {
-        return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString());
-    }
-
-    private static String quantityText(BigDecimal value) {
-        return value.max(BigDecimal.ZERO).stripTrailingZeros().toPlainString();
     }
 
     record AnalysisTarget(UUID analysisId, UUID makerEmployeeId) {

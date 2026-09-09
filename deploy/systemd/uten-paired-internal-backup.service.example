@@ -1,0 +1,38 @@
+[Unit]
+Description=Consistent PostgreSQL and internal attachment backup
+After=postgresql@16-main.service
+RequiresMountsFor=/data/uten-imp-backups/paired /var/lib/uten-imp-media/attachments
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+ExecStart=/usr/bin/python3 /usr/local/lib/uten-imp/paired_internal_backup.py --config /etc/uten-imp/paired-internal-backup.json
+TimeoutStartSec=35min
+TimeoutStopSec=15s
+KillMode=control-group
+Nice=15
+IOSchedulingClass=idle
+CPUQuota=50%
+CPUWeight=10
+MemoryHigh=384M
+MemoryMax=768M
+TasksMax=16
+IOWeight=10
+# Both the DB and backup currently share /data's HDD array. Initial hard limits
+# apply to the whole cgroup, including pg_dump; validate devices after migration.
+IOReadBandwidthMax=/data 20M
+IOWriteBandwidthMax=/data 20M
+IOReadBandwidthMax=/var/lib/uten-imp-media 20M
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths=/data/uten-imp-backups/paired
+ReadOnlyPaths=/var/lib/uten-imp-media/attachments /run/postgresql
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_DAC_READ_SEARCH
+LockPersonality=true
+RestrictRealtime=true

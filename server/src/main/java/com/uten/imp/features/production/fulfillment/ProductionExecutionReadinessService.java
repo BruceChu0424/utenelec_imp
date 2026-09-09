@@ -81,8 +81,8 @@ public class ProductionExecutionReadinessService
                          AND plan.is_deleted = FALSE
                         JOIN production_planning_packages package
                           ON package.plan_id = plan.id
-                         AND fn_warehouse_same_main(
-                             package.warehouse_id, source_reservation.warehouse_id)
+                         AND (fn_warehouse_same_main(package.warehouse_id, source_reservation.warehouse_id)
+                              OR fn_preplan_reservation_has_qualified_origin(source_reservation.id))
                          AND package.status = 'CONFIRMED'
                          AND package.execution_model_version = 1
                          AND package.is_deleted = FALSE
@@ -965,10 +965,11 @@ public class ProductionExecutionReadinessService
                 && contributions.values().stream().allMatch(List::isEmpty);
         List<ProductionMaterialAllocationFacade.AllocationResult> allocated =
                 sameMainWarehouse
-                        ? stockAllocation.allocateWithinMainWarehouse(requests,
+                        ? stockAllocation.allocateWithQualifiedSources(requests,
                                 preparedTransfers.stream().map(value ->
-                                        new ProductionMaterialAllocationFacade.AllocationPreference(
-                                                value.demandId(), value.warehouseId(), value.qty()))
+                                        new ProductionMaterialAllocationFacade.QualifiedSourcePreference(
+                                                value.demandId(), value.warehouseId(), value.qty(),
+                                                value.sourceEntitlementEventId(), value.sourceStockReservationId()))
                                         .toList())
                         : stockAllocation.allocate(requests);
         Map<UUID, BigDecimal> quantityByDemand = new HashMap<>();
@@ -1076,25 +1077,29 @@ public class ProductionExecutionReadinessService
             boolean explainShortage) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
-                        SELECT demand.id,
-                               SUM(GREATEST(
-                                   COALESCE(balance.qty, 0)
-                                   - COALESCE(reserved.qty, 0)
-                                   + COALESCE(own.qty, 0)
-                                   - GREATEST(COALESCE(goods.min_qty, 0), 0),
-                                   0
-                               )) AS available_qty, goods.code, goods.name
+                        SELECT demand.id, scope.id, COALESCE(balance.qty,0), COALESCE(reserved.qty,0),
+                               COALESCE(own.qty,0), COALESCE(own.qualified_qty,0),
+                               GREATEST(COALESCE(goods.min_qty,0),0)::numeric,
+                               (NOT scope.is_defective AND fn_warehouse_same_main(scope.id,:warehouseId)) AS public_allowed,
+                               fn_warehouse_same_main(scope.id,:warehouseId) AS may_allocate,
+                               goods.code, goods.name
                         FROM production_material_demands demand
                         JOIN goods ON goods.id = demand.goods_id
                         JOIN warehouses scope ON scope.is_deleted = FALSE
                           AND scope.is_accountable = TRUE
-                          AND scope.is_defective = FALSE
                           AND COALESCE(scope.status, '') <> '禁用'
                           AND NOT EXISTS (SELECT 1 FROM warehouses child
                               WHERE child.parent_id = scope.id AND child.is_deleted = FALSE)
-                          AND (scope.id = :warehouseId OR
-                               (CAST(:analysisId AS uuid) IS NOT NULL
-                                AND fn_warehouse_same_main(scope.id, :warehouseId)))
+                          AND (scope.id = :warehouseId OR fn_warehouse_same_main(scope.id, :warehouseId)
+                               OR EXISTS (
+                                   SELECT 1 FROM stock_reservations source
+                                   JOIN v_preplan_stock_entitlement_beneficiary_balance entitlement
+                                     ON entitlement.stock_reservation_id=source.id AND entitlement.effective_qty>0
+                                   WHERE source.warehouse_id=scope.id AND source.goods_id=demand.goods_id
+                                     AND source.color_id IS NOT DISTINCT FROM demand.color_id
+                                     AND entitlement.beneficiary_analysis_id=:analysisId
+                                     AND fn_analysis_plan_material_matches(:analysisItemId,entitlement.beneficiary_analysis_material_id)
+                                     AND fn_preplan_reservation_has_qualified_origin(source.id)))
                         LEFT JOIN stock_balances balance
                           ON balance.goods_id = demand.goods_id
                          AND balance.color_id IS NOT DISTINCT FROM demand.color_id
@@ -1113,7 +1118,10 @@ public class ProductionExecutionReadinessService
                               AND reservation.is_deleted = FALSE
                         ) reserved ON TRUE
                         LEFT JOIN LATERAL (
-                            SELECT SUM(CASE
+                            SELECT SUM(owned.qty) AS qty,
+                                   SUM(CASE WHEN owned.qualified THEN owned.qty ELSE 0 END) AS qualified_qty
+                            FROM (SELECT fn_preplan_reservation_has_qualified_origin(preplan_reservation.id) AS qualified,
+                                CASE
                                 WHEN EXISTS (
                                     SELECT 1
                                     FROM preplan_stock_entitlement_events tracked
@@ -1142,7 +1150,7 @@ public class ProductionExecutionReadinessService
                                      - preplan_reservation.consumed_qty
                                      - preplan_reservation.released_qty
                                 ELSE 0
-                            END) AS qty
+                            END AS qty
                             FROM stock_reservations preplan_reservation
                             WHERE preplan_reservation.is_deleted = FALSE
                               AND preplan_reservation.status = :effective
@@ -1152,12 +1160,11 @@ public class ProductionExecutionReadinessService
                               AND preplan_reservation.goods_id = demand.goods_id
                               AND preplan_reservation.color_id
                                   IS NOT DISTINCT FROM demand.color_id
+                            ) owned
                         ) own ON TRUE
                         WHERE demand.id IN (:demandIds)
-                        GROUP BY demand.id, demand.goods_id, demand.color_id,
-                                 goods.code, goods.name
                         ORDER BY demand.goods_id,
-                                 demand.color_id NULLS FIRST, demand.id
+                                 demand.color_id NULLS FIRST, demand.id, scope.id
                         """)
                         .setParameter("warehouseId", warehouseId)
                         .setParameter("effective", RESERVATION_EFFECTIVE)
@@ -1165,8 +1172,23 @@ public class ProductionExecutionReadinessService
                         .setParameter("analysisItemId", analysisItemId)
                         .setParameter("demandIds",
                                 demands.stream().map(DemandRow::id).toList()));
+        Map<UUID, BigDecimal[]> budgets = new HashMap<>();
+        for (Object[] row : rows) {
+            boolean publicAllowed = Boolean.TRUE.equals(row[7]);
+            BigDecimal owned = publicAllowed ? decimal(row[4]) : decimal(row[5]);
+            BigDecimal physical = decimal(row[2]).subtract(decimal(row[3])).add(owned).max(BigDecimal.ZERO);
+            BigDecimal qualified = decimal(row[5]).max(BigDecimal.ZERO).min(physical);
+            BigDecimal unprotected = publicAllowed ? physical.subtract(qualified) : BigDecimal.ZERO;
+            BigDecimal[] budget = budgets.computeIfAbsent(uuid(row[0]), ignored -> new BigDecimal[]{
+                    BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO});
+            budget[0] = budget[0].add(unprotected);
+            if (Boolean.TRUE.equals(row[8])) budget[1] = budget[1].add(unprotected);
+            budget[2] = budget[2].add(qualified);
+            budget[3] = budget[3].max(decimal(row[6]));
+        }
         Map<UUID, BigDecimal> available = new HashMap<>();
-        rows.forEach(row -> available.put(uuid(row[0]), decimal(row[1])));
+        budgets.forEach((id, budget) -> available.put(id, budget[2].add(budget[1].min(
+                com.uten.imp.common.inventory.MainWarehouseStockBudget.publicBudget(budget[0], budget[3])))));
         Map<ProductionMaterialAllocationFacade.MaterialDimension, BigDecimal> required =
                 new LinkedHashMap<>();
         demands.forEach(demand -> required.merge(new ProductionMaterialAllocationFacade
@@ -1183,12 +1205,12 @@ public class ProductionExecutionReadinessService
                     .getOrDefault(demand.id(), BigDecimal.ZERO));
             if (missing.signum() <= 0) continue;
             String label = rows.stream().filter(row -> demand.id().equals(uuid(row[0])))
-                    .findFirst().map(row -> Objects.toString(row[2], "") + " "
-                            + Objects.toString(row[3], "")).orElse(demand.goodsId().toString());
+                    .findFirst().map(row -> Objects.toString(row[9], "") + " "
+                            + Objects.toString(row[10], "")).orElse(demand.goodsId().toString());
             shortages.add(label.strip() + " 缺 " + missing.stripTrailingZeros().toPlainString());
         }
         if (explainShortage && !shortages.isEmpty()) {
-            throw conflict("按当前主仓实存扣除其他预留后仍缺料: "
+            throw conflict("按本任务已合格入库来源及可用公共库存核算后仍缺料: "
                     + String.join("; ", shortages.stream().limit(8).toList())
                     + (shortages.size() > 8 ? "; 另有 " + (shortages.size() - 8) + " 项" : ""));
         }

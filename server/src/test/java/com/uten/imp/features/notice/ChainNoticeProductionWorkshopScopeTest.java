@@ -32,7 +32,7 @@ import static org.mockito.Mockito.when;
 class ChainNoticeProductionWorkshopScopeTest {
 
     @Test
-    void workshopRecipientsRequireBothCurrentPermissions() {
+    void workshopRecipientsRequireViewAndCurrentActionPermissions() {
         NoticeService notices = mock(NoticeService.class);
         UserAccountRepository users = mock(UserAccountRepository.class);
         PermissionResolver permissions = mock(PermissionResolver.class);
@@ -55,7 +55,7 @@ class ChainNoticeProductionWorkshopScopeTest {
         when(users.findById(noNoticeId)).thenReturn(Optional.of(noNotice));
         when(users.findById(noTaskId)).thenReturn(Optional.of(noTask));
         when(permissions.permsOf(eligible)).thenReturn(
-                Set.of("notice:read", "production_execution:view"));
+                Set.of("notice:read", "production_execution:view", "production_execution:start"));
         when(permissions.permsOf(noNotice)).thenReturn(
                 Set.of("production_execution:view"));
         when(permissions.permsOf(noTask)).thenReturn(Set.of("notice:read"));

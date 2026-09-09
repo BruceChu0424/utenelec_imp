@@ -86,6 +86,13 @@ class _FakeGateway implements OperationsWorkbenchGateway {
     String? exception,
     String? dateFrom,
     String? dateTo,
+    String? sort,
+    String? order,
+    Map<String, String?> columnFilters = const {},
+    String? issuedFrom,
+    String? issuedTo,
+    String? needFrom,
+    String? needTo,
   }) async => data;
 }
 

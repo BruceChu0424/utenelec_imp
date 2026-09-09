@@ -6,6 +6,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Set;
+import java.util.UUID;
+import java.util.LinkedHashSet;
 import java.util.stream.Collectors;
 
 /** Current department membership and action authority govern actionable reminders. */
@@ -13,6 +15,57 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ReviewNoticeAudience {
     private final JdbcTemplate jdbc;
+
+    static final String WORKSHOP_EVENT = "PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED";
+    private static final UUID NO_EMPLOYEE = new UUID(0, 0);
+
+    /** Bounded organization scope, never a list of all execution segments. */
+    public record WorkshopScope(boolean allowed, UUID employeeId, Set<UUID> departmentIds) {
+        static final WorkshopScope NONE = new WorkshopScope(false, NO_EMPLOYEE, Set.of(NO_EMPLOYEE));
+        public WorkshopScope {
+            departmentIds = departmentIds.isEmpty() ? Set.of(NO_EMPLOYEE) : Set.copyOf(departmentIds);
+        }
+    }
+
+    static boolean canHandleWorkshop(Set<String> permissions) {
+        return permissions != null && permissions.containsAll(Set.of("notice:read", "production_execution:view"))
+                && (permissions.contains("production_execution:start")
+                    || permissions.containsAll(Set.of("production_daily_report:view", "production_daily_report:create")));
+    }
+
+    /** Reverse of the sender's workshop subtree membership, checked once per request. */
+    public WorkshopScope workshopScope(AuthUser user) {
+        if (user == null || user.isVisitor() || user.getEmployeeId() == null
+                || !canHandleWorkshop(user.getPermissions())) return WorkshopScope.NONE;
+        var rows = jdbc.queryForList("""
+                WITH RECURSIVE active_employee AS (
+                    SELECT employee.id, employee.department_id FROM employees employee
+                    JOIN users account ON account.employee_id=employee.id
+                    WHERE account.id=? AND employee.id=?
+                      AND account.is_deleted=FALSE AND account.status='active'
+                      AND employee.is_deleted=FALSE
+                      AND employee.status IN ('active','probation','onLeave')
+                ), memberships(id) AS (
+                    SELECT department_id FROM active_employee
+                    UNION SELECT secondary.department_id FROM employee_secondary_departments secondary
+                        JOIN active_employee employee ON employee.id=secondary.employee_id
+                    UNION SELECT department.id FROM departments department
+                        JOIN active_employee employee ON employee.id=department.manager_id
+                        WHERE department.is_deleted=FALSE
+                ), ancestry(id,parent_id) AS (
+                    SELECT department.id,department.parent_id FROM departments department
+                    JOIN memberships member ON member.id=department.id WHERE department.is_deleted=FALSE
+                    UNION SELECT department.id,department.parent_id FROM departments department
+                    JOIN ancestry child ON child.parent_id=department.id WHERE department.is_deleted=FALSE
+                )
+                SELECT employee.id AS employee_id, ancestry.id AS department_id
+                FROM active_employee employee LEFT JOIN ancestry ON TRUE
+                """, user.getId(), user.getEmployeeId());
+        if (rows.isEmpty()) return WorkshopScope.NONE;
+        Set<UUID> departments = new LinkedHashSet<>();
+        rows.forEach(row -> { if (row.get("department_id") instanceof UUID id) departments.add(id); });
+        return new WorkshopScope(true, user.getEmployeeId(), departments);
+    }
 
     /** One membership query per feed/status request, never one query per notice. */
     public Set<String> eligibleEvents(AuthUser user) {
@@ -62,10 +115,7 @@ public class ReviewNoticeAudience {
                     any(departments, "SUB_PLAN", "DEPT_PROD")
                     && permissions.contains("production_material_analysis:view")
                     && any(permissions, "production_material_analysis:route", "production_material_analysis:generate");
-            case "PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED" -> departments.contains("DEPT_PROD")
-                    && permissions.contains("production_execution:view")
-                    && (permissions.contains("production_execution:start")
-                        || permissions.containsAll(Set.of("production_daily_report:view", "production_daily_report:create")));
+            case WORKSHOP_EVENT -> canHandleWorkshop(permissions);
             case "PROCUREMENT_IQC_STOCK_IN_PENDING" -> departments.contains("SUB_WH")
                     && permissions.containsAll(Set.of("warehouse_iqc_stock_in:view", "warehouse_iqc_stock_in:confirm"));
             case "PRODUCTION_DRAW_PENDING" -> departments.contains("SUB_WH")

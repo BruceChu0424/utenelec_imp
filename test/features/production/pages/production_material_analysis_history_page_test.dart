@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,6 +49,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            masterNameServiceProvider.overrideWithValue(_PlanningMainNames()),
             productionPlanRepositoryProvider.overrideWithValue(
               ProductionPlanRepository(api),
             ),
@@ -129,3 +131,18 @@ Map<String, dynamic> _analysisPage() => {
   'total': 1,
   'totalPages': 1,
 };
+
+class _PlanningMainNames extends MasterNameService {
+  _PlanningMainNames() : super(ApiClient(Dio()));
+  @override
+  Future<void> ensureCommonLoaded() async {}
+  @override
+  List<WarehouseDictEntry> get warehouseHierarchy => const [
+    WarehouseDictEntry(id: 'planning-main', name: '主仓'),
+    WarehouseDictEntry(
+      id: 'warehouse-1',
+      name: '实际子仓',
+      parentId: 'planning-main',
+    ),
+  ];
+}

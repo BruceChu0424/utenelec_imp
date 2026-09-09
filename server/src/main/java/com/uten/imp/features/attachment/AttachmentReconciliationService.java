@@ -1,6 +1,7 @@
 package com.uten.imp.features.attachment;
 
 import com.uten.imp.common.storage.StorageService;
+import com.uten.imp.common.storage.StorageProviderRegistry;
 import com.uten.imp.common.storage.StorageService.StoredObjectRef;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -33,6 +34,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AttachmentReconciliationService {
     private final StorageService storage;
+    private final StorageProviderRegistry storageProviders;
     private final StorageProperties properties;
     private final JdbcTemplate jdbc;
     private final SecurityContextCurrentUser currentUser;
@@ -58,25 +60,25 @@ public class AttachmentReconciliationService {
                     "Attachment reconciliation is disabled");
         }
         for (StoredObjectRef object : inventory) {
-            if (isReferenced(jdbc, object.location().name(), object.storageKey(),
+            if (isReferenced(jdbc, storage.backend(), object.location().name(), object.storageKey(),
                     object.versionId())) {
                 jdbc.update("""
                         UPDATE attachment_reconciliation_findings
                         SET finding_state = 'IGNORED', resolved_at = now(), updated_at = now()
-                        WHERE object_location = ? AND storage_key = ?
+                        WHERE storage_provider = ? AND object_location = ? AND storage_key = ?
                           AND storage_version IS NOT DISTINCT FROM ?
                           AND finding_state = 'OBSERVED'
-                        """, object.location().name(), object.storageKey(), object.versionId());
+                        """, storage.backend(), object.location().name(), object.storageKey(), object.versionId());
                 continue;
             }
-            String evidence = evidenceDigest(object);
+            String evidence = evidenceDigest(storage.backend(), object);
             jdbc.update("""
                     INSERT INTO attachment_reconciliation_findings (
-                        object_location, storage_key, storage_version, size_bytes,
+                        storage_provider, object_location, storage_key, storage_version, size_bytes,
                         observed_modified_at, evidence_sha256)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (
-                        object_location, storage_key, (COALESCE(storage_version, ''))
+                        storage_provider, object_location, storage_key, (COALESCE(storage_version, ''))
                     ) DO UPDATE
                     SET size_bytes = EXCLUDED.size_bytes,
                         observed_modified_at = EXCLUDED.observed_modified_at,
@@ -85,7 +87,7 @@ public class AttachmentReconciliationService {
                         last_seen_at = now(), updated_at = now()
                     WHERE attachment_reconciliation_findings.finding_state = 'OBSERVED'
                     """,
-                    object.location().name(), object.storageKey(), object.versionId(),
+                    storage.backend(), object.location().name(), object.storageKey(), object.versionId(),
                     object.size(), object.lastModified(), evidence);
         }
     }
@@ -112,13 +114,13 @@ public class AttachmentReconciliationService {
         }
         Finding finding = jdbc.query("""
                 SELECT id, object_location, storage_key, storage_version, size_bytes,
-                       finding_state, observation_count, first_seen_at, evidence_sha256
+                       finding_state, observation_count, first_seen_at, evidence_sha256, storage_provider
                 FROM attachment_reconciliation_findings WHERE id = ?
                 """, result -> result.next() ? finding(result) : null, findingId);
         if (finding == null) {
             throw new ApiException(ErrorCode.NOT_FOUND, "Reconciliation finding not found");
         }
-        StoredObjectRef exact = storage.inventory().stream()
+        StoredObjectRef exact = storageProviders.require(finding.storageProvider()).inventory().stream()
                 .filter(object -> object.location().name().equals(finding.location()))
                 .filter(object -> object.storageKey().equals(finding.storageKey()))
                 .filter(object -> Objects.equals(object.versionId(), finding.storageVersion()))
@@ -126,7 +128,7 @@ public class AttachmentReconciliationService {
                 .findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT,
                         "The exact orphan object version is no longer present"));
-        if (!evidenceDigest(exact).equals(finding.evidenceSha256())) {
+        if (!evidenceDigest(finding.storageProvider(),exact).equals(finding.evidenceSha256())) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "Orphan evidence changed; reconcile again before approval");
         }
@@ -144,42 +146,49 @@ public class AttachmentReconciliationService {
         return user;
     }
 
-    static boolean isReferenced(JdbcTemplate jdbc, String location,
+    static boolean isReferenced(JdbcTemplate jdbc, String provider, String location,
                                 String storageKey, String storageVersion) {
         String sql = "STAGING".equals(location) ? """
                 SELECT EXISTS (
                     SELECT 1 FROM attachment_upload_sessions
-                    WHERE storage_key = ? AND status IN ('PENDING','SCANNING')
+                    WHERE (storage_provider = ? OR storage_provider='legacy_unknown')
+                      AND storage_key = ? AND status IN ('PENDING','SCANNING')
                     UNION ALL
                     SELECT 1 FROM attachment_object_outbox
-                    WHERE operation = 'DELETE_STAGING' AND storage_key = ?
+                    WHERE (storage_provider = ? OR storage_provider='legacy_unknown')
+                      AND operation = 'DELETE_STAGING' AND storage_key = ?
                       AND storage_version IS NOT DISTINCT FROM ?
                       AND status <> 'SUCCEEDED'
                 )
                 """ : """
                 SELECT EXISTS (
                     SELECT 1 FROM attachments
-                    WHERE storage_key = ?
+                    WHERE (storage_provider = ? OR storage_provider='legacy_unknown') AND storage_key = ?
                       AND storage_version IS NOT DISTINCT FROM ?
                       AND lifecycle_state <> 'DELETED'
                     UNION ALL
+                    SELECT 1 FROM attachment_upload_sessions
+                    WHERE (storage_provider = ? OR storage_provider='legacy_unknown')
+                      AND storage_key = ? AND status IN ('PENDING','SCANNING')
+                    UNION ALL
                     SELECT 1 FROM attachment_object_outbox
-                    WHERE operation = 'DELETE_FINAL' AND storage_key = ?
+                    WHERE (storage_provider = ? OR storage_provider='legacy_unknown')
+                      AND operation = 'DELETE_FINAL' AND storage_key = ?
                       AND storage_version IS NOT DISTINCT FROM ?
                       AND status <> 'SUCCEEDED'
                 )
                 """;
         Boolean referenced = "STAGING".equals(location)
                 ? jdbc.queryForObject(sql, Boolean.class,
-                storageKey, storageKey, storageVersion)
+                provider, storageKey, provider, storageKey, storageVersion)
                 : jdbc.queryForObject(sql, Boolean.class,
-                storageKey, storageVersion, storageKey, storageVersion);
+                provider, storageKey, storageVersion, provider, storageKey, provider, storageKey, storageVersion);
         return Boolean.TRUE.equals(referenced);
     }
 
-    static String evidenceDigest(StoredObjectRef object) {
+    static String evidenceDigest(String provider, StoredObjectRef object) {
         try {
-            String canonical = object.location().name() + "\n"
+            String canonical = provider + "\n" + object.location().name() + "\n"
                     + object.storageKey() + "\n"
                     + (object.versionId() == null ? "" : object.versionId()) + "\n"
                     + object.size() + "\n"
@@ -216,11 +225,11 @@ public class AttachmentReconciliationService {
                 result.getString("finding_state"),
                 result.getInt("observation_count"),
                 result.getTimestamp("first_seen_at").toInstant(),
-                result.getString("evidence_sha256"));
+                result.getString("evidence_sha256"),result.getString("storage_provider"));
     }
 
     record Finding(UUID id, String location, String storageKey, String storageVersion,
                    long sizeBytes, String state, int observationCount,
-                   Instant firstSeenAt, String evidenceSha256) {
+                   Instant firstSeenAt, String evidenceSha256, String storageProvider) {
     }
 }

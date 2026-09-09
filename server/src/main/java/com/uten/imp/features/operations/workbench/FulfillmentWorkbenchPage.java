@@ -11,7 +11,11 @@ public record FulfillmentWorkbenchPage(
         long total,
         int totalPages,
         Summary summary,
-        Capabilities capabilities) {
+        Capabilities capabilities,
+        Map<String, List<Facet>> facets,
+        Map<String, Long> nullCounts) {
+
+    public record Facet(String value, String label, long count) {}
 
     public record Summary(
             long totalTasks,

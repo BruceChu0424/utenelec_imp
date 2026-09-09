@@ -1,0 +1,12 @@
+# /etc/systemd/system/clamav-daemon.service.d/uten-imp-resources.conf
+# clamd.conf must separately bind TCPAddr 127.0.0.1 / TCPSocket 3310,
+# MaxThreads 2 and StreamMaxLength at least UTEN_STORAGE_MAX_BYTES.
+# Never expose the unauthenticated scanner port to the office network.
+[Service]
+CPUQuota=100%
+MemoryMax=3G
+TasksMax=64
+Nice=10
+IOWeight=100
+Restart=on-failure
+RestartSec=10s

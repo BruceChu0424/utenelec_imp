@@ -28,8 +28,10 @@ public class BusinessDataResetDrainGate {
     private int inFlight = 0;
 
     /** 过滤器调用：非清空期间的请求进入在途计数。调用方必须保证 finally 里 {@link #leave()}。 */
-    public synchronized void enter() {
+    public synchronized boolean tryEnter() {
+        if (phase != Phase.IDLE) return false;
         inFlight++;
+        return true;
     }
 
     public synchronized void leave() {

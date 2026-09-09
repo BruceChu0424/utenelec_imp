@@ -21,6 +21,10 @@ class AuditNoisePolicyTest {
         assertTrue(AuditNoisePolicy.isSuccessfulStoredAutomaticRequest(
                 request("GET", "/api/notices/unread-count", 200, "success")));
         assertTrue(AuditNoisePolicy.isSuccessfulStoredAutomaticRequest(
+                request("GET", "/api/admin/server-status", 200, "success")));
+        assertFalse(AuditNoisePolicy.isSuccessfulStoredAutomaticRequest(
+                request("GET", "/api/admin/server-status", 403, "denied")));
+        assertTrue(AuditNoisePolicy.isSuccessfulStoredAutomaticRequest(
                 request("POST", "/api/auth/refresh", 200, "succeeded;mode=rotated")));
         assertTrue(AuditNoisePolicy.isSuccessfulStoredAutomaticRequest(
                 request("POST", "/api/task-claims/TYPE/key/heartbeat", 200, "success")));

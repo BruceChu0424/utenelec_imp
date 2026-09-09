@@ -123,6 +123,7 @@ public class ProductionPlanningRequestValidator {
                         SELECT COUNT(*)
                         FROM warehouses
                         WHERE id = :id AND is_deleted = FALSE
+                          AND COALESCE(status, '') <> '禁用'
                         """)
                 .setParameter("id", request.getWarehouseId())
                 .getSingleResult()).longValue();

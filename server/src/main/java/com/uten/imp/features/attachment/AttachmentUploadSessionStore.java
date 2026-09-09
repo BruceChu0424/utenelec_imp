@@ -33,7 +33,7 @@ class AttachmentUploadSessionStore {
     private final StorageProperties properties;
 
     @Transactional
-    UUID reserve(Grant grant) {
+    UUID reserve(Grant grant, String storageProvider) {
         List<String> locks = new ArrayList<>(List.of(
                 "attachment-owner:" + grant.ownerType() + ":" + grant.ownerId(),
                 "attachment-user:" + grant.userId()));
@@ -59,8 +59,8 @@ class AttachmentUploadSessionStore {
             jdbc.update("""
                     INSERT INTO attachment_upload_sessions (
                         id, storage_key, owner_type, owner_id, user_id,
-                        original_name, content_type, expected_size_bytes, expires_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        original_name, content_type, expected_size_bytes, expires_at, storage_provider)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     id,
                     grant.storageKey(),
@@ -70,7 +70,7 @@ class AttachmentUploadSessionStore {
                     grant.originalName(),
                     grant.contentType(),
                     grant.sizeBytes(),
-                    Timestamp.from(grant.expiresAt()));
+                    Timestamp.from(grant.expiresAt()), storageProvider);
         } catch (DataIntegrityViolationException e) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "Attachment upload reservation already exists");
@@ -107,7 +107,7 @@ class AttachmentUploadSessionStore {
         return new UploadSession(
                 session.id(), session.storageKey(), session.ownerType(), session.ownerId(),
                 session.userId(), session.originalName(), session.contentType(),
-                session.expectedSizeBytes(), session.expiresAt(), "SCANNING");
+                session.expectedSizeBytes(), session.expiresAt(), "SCANNING", session.storageProvider());
     }
 
     @Transactional
@@ -144,15 +144,17 @@ class AttachmentUploadSessionStore {
     @Transactional
     void completePromotion(UUID sessionId, String stagingVersion, String stagingEtag,
                            String sha256, String finalVersion, String finalEtag,
-                           String scanEngine, String scanSignature) {
+                           String scanEngine, String scanSignature,
+                           long finalStoredSize, String finalEncoding) {
         int changed = jdbc.update("""
                 UPDATE attachment_upload_sessions
                 SET status = 'PROMOTED', staging_version = ?, staging_etag = ?,
                     sha256 = ?, final_version = ?, final_etag = ?,
-                    scan_engine = ?, scan_signature = ?, completed_at = now(), updated_at = now()
+                    scan_engine = ?, scan_signature = ?, final_stored_size_bytes = ?,
+                    final_storage_encoding = ?, completed_at = now(), updated_at = now()
                 WHERE id = ? AND status = 'SCANNING'
                 """, stagingVersion, stagingEtag, sha256, finalVersion, finalEtag,
-                scanEngine, scanSignature, sessionId);
+                scanEngine, scanSignature, finalStoredSize, finalEncoding, sessionId);
         if (changed != 1) {
             throw new IllegalStateException("Attachment upload session cannot complete promotion");
         }
@@ -161,7 +163,7 @@ class AttachmentUploadSessionStore {
     UploadSession findByStorageKey(String storageKey) {
         return jdbc.query("""
                 SELECT id, storage_key, owner_type, owner_id, user_id, original_name,
-                       content_type, expected_size_bytes, expires_at, status
+                       content_type, expected_size_bytes, expires_at, status, storage_provider
                 FROM attachment_upload_sessions
                 WHERE storage_key = ?
                 """, result -> result.next() ? map(result) : null, storageKey);
@@ -189,10 +191,10 @@ class AttachmentUploadSessionStore {
                     completed_at = now(), updated_at = now()
                 FROM candidate
                 WHERE target.id = candidate.id
-                RETURNING target.id, target.storage_key
+                RETURNING target.id, target.storage_key, target.storage_provider
                 """, result -> result.next()
                         ? new ExpiredSession(
-                        result.getObject("id", UUID.class), result.getString("storage_key"))
+                        result.getObject("id", UUID.class), result.getString("storage_key"), result.getString("storage_provider"))
                         : null,
                 staleMinutes);
     }
@@ -208,7 +210,7 @@ class AttachmentUploadSessionStore {
     private UploadSession findForUpdate(String storageKey) {
         return jdbc.query("""
                 SELECT id, storage_key, owner_type, owner_id, user_id, original_name,
-                       content_type, expected_size_bytes, expires_at, status
+                       content_type, expected_size_bytes, expires_at, status, storage_provider
                 FROM attachment_upload_sessions
                 WHERE storage_key = ?
                 FOR UPDATE
@@ -238,7 +240,7 @@ class AttachmentUploadSessionStore {
                 result.getString("content_type"),
                 result.getLong("expected_size_bytes"),
                 result.getTimestamp("expires_at").toInstant(),
-                result.getString("status"));
+                result.getString("status"), result.getString("storage_provider"));
     }
 
     private static void requireQuota(Quota current, int countLimit, long byteLimit,
@@ -260,7 +262,7 @@ class AttachmentUploadSessionStore {
 
     record UploadSession(UUID id, String storageKey, String ownerType, UUID ownerId,
                          UUID userId, String originalName, String contentType,
-                         long expectedSizeBytes, Instant expiresAt, String status) {
+                         long expectedSizeBytes, Instant expiresAt, String status, String storageProvider) {
         boolean matches(Grant grant) {
             return Objects.equals(storageKey, grant.storageKey())
                     && Objects.equals(ownerType, grant.ownerType())
@@ -287,7 +289,7 @@ class AttachmentUploadSessionStore {
         }
     }
 
-    record ExpiredSession(UUID id, String storageKey) {
+    record ExpiredSession(UUID id, String storageKey, String storageProvider) {
     }
 
     private record Quota(int count, long bytes) {

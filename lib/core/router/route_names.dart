@@ -166,6 +166,7 @@ abstract final class RouteName {
       '/admin/audit-logs/sessions/:sessionId';
   // 系统设置（安全/业务策略阈值；超管 authorization:manage，改设置二次密码确认）
   static const String adminSystemSettings = '/admin/system-settings';
+  static const String adminServerStatus = '/admin/server-status';
 
   // 财税部主数据别名入口（复用基础资料真实页面）
   static const String financeCustomers = '/finance/customers';

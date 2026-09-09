@@ -1175,6 +1175,9 @@ void main() {
         ..['shortageQty'] = 1000
         ..['demandSupplyGapQty'] = 0
         ..['safetyStockQty'] = 100000
+        ..['mainWarehousePublicAvailableQty'] = 0
+        ..['mainWarehouseOpenSafetySupplyQty'] = 0
+        ..['mainWarehouseSafetyReplenishmentGapQty'] = 100000
         ..['exactPeggedQty'] = 1000
         ..['warehouseBreakdown'] = [
           {
@@ -1222,36 +1225,40 @@ void main() {
   );
 
   testWidgets(
-    'off-target qualified receipt explains zero and deduplicates sibling BOM nodes',
+    'planning does not expose subwarehouse stock positions across BOM roots',
     (tester) async {
       final analysis = _analysisJson(const ['VIEW']);
       final materials = (analysis['flatMaterials']! as List<dynamic>)
           .cast<Map<String, dynamic>>();
+      materials[1]['analysisLineId'] = 'product-line-2';
       for (final material in materials.take(2)) {
-        // 两个兄弟节点是同一 goods/color/unit 维度，服务端会返回
-        // 同一份分仓聚合；告警只能报一次，不能把到货翻倍。
+        // The API's analysis-wide SKU/warehouse total repeats across roots.
+        // A location row represents that total once, not one total per BOM node.
         material['warehouseBreakdown'] = [
           {
             'warehouseId': 'warehouse-1',
-            'warehouseCode': 'WH-01',
             'warehouseName': '主仓',
             'onHandQty': 0,
-            'reservedQty': 0,
             'availableQty': 0,
             'ownPeggedQty': 0,
           },
           {
             'warehouseId': 'warehouse-2',
-            'warehouseCode': 'WH-02',
             'warehouseName': '委外收货仓',
             'onHandQty': 2,
-            'reservedQty': 0,
             'availableQty': 2,
             'ownPeggedQty': 2,
           },
         ];
       }
-
+      // A later root may be the first response row carrying another location.
+      (materials[1]['warehouseBreakdown'] as List<dynamic>).add({
+        'warehouseId': 'warehouse-3',
+        'warehouseName': '成品子仓',
+        'onHandQty': 3,
+        'availableQty': 3,
+        'ownPeggedQty': 3,
+      });
       await _pumpPage(
         tester,
         size: const Size(1200, 900),
@@ -1263,15 +1270,163 @@ void main() {
       );
 
       expect(
-        find.byKey(const Key('material-analysis-off-target-warehouse-warning')),
-        findsOneWidget,
+        find.byKey(const Key('material-analysis-stock-locations')),
+        findsNothing,
       );
-      expect(find.text('合格到货在非分析仓，当前不计入备料'), findsOneWidget);
-      expect(find.textContaining('目标仓：主仓'), findsOneWidget);
-      expect(find.text('• 共享紧固件(M-1)：委外收货仓 2 个'), findsOneWidget);
-      expect(find.textContaining('普通调拨不会迁移这笔分析绑定'), findsOneWidget);
+      expect(
+        find.byKey(const Key('material-analysis-issue-warehouse-settings')),
+        findsNothing,
+      );
+      expect(find.text('物料存放位置'), findsNothing);
+      expect(find.text('共享紧固件(M-1)：委外收货仓 2 个'), findsNothing);
+      expect(find.text('共享紧固件(M-1)：成品子仓 3 个'), findsNothing);
+      expect(find.textContaining('不计入备料'), findsNothing);
+      expect(find.textContaining('红冲'), findsNothing);
+      expect(tester.takeException(), isNull);
     },
   );
+
+  for (final selectedByServer in [true, false]) {
+    testWidgets(
+      'planning main totals keep qualified quantities from ${selectedByServer ? 'same main warehouse children' : 'proven external source warehouses'}',
+      (tester) async {
+        final analysis = _analysisJson(const ['VIEW']);
+        analysis['analysisId'] = '6b03a2cd-1147-4776-a0ad-a8be9d7fb01b';
+        analysis['warehouseId'] = 'warehouse-planned';
+        analysis['warehouseIds'] = ['warehouse-planned'];
+        analysis['warehouses'] = [
+          {
+            'warehouseId': 'warehouse-planned',
+            'warehouseName': '原材料不良仓',
+            'selected': true,
+            'primary': true,
+          },
+          {
+            'warehouseId': 'warehouse-finished',
+            'warehouseName': '成品仓库',
+            'selected': selectedByServer,
+          },
+          {
+            'warehouseId': 'warehouse-track',
+            'warehouseName': '轨道车间',
+            'selected': selectedByServer,
+          },
+        ];
+        // Reproduce the user's confirmed server projection: 5 / 10000 / 20000,
+        // all allocated, no physical gap, despite different leaf warehouse UUIDs.
+        final samples = [
+          (
+            code: 'UT3015',
+            qty: 5,
+            warehouse: 'warehouse-finished',
+            name: '成品仓库',
+          ),
+          (
+            code: 'UT1090',
+            qty: 10000,
+            warehouse: 'warehouse-track',
+            name: '轨道车间',
+          ),
+          (
+            code: 'V51150',
+            qty: 20000,
+            warehouse: 'warehouse-finished',
+            name: '成品仓库',
+          ),
+        ];
+        analysis['flatMaterials'] = [
+          for (final sample in samples)
+            {
+              ..._materialJson(
+                id: sample.code,
+                level: 1,
+                path: ['测试产品', sample.code],
+                routeConfirmed: true,
+              ),
+              'goodsId': 'goods-${sample.code}',
+              'materialKey': 'goods-${sample.code}|NONE|unit-1',
+              'goodsCode': sample.code,
+              'goodsName': null,
+              'requiredQty': sample.qty,
+              'availableQty': sample.qty,
+              'allocatedAvailableQty': sample.qty,
+              'exactPeggedQty': sample.qty,
+              'selectedWarehousesAvailableQty': sample.qty,
+              'shortageQty': 0,
+              'demandSupplyGapQty': 0,
+              'warehouseBreakdown': [
+                {
+                  'warehouseId': sample.warehouse,
+                  'warehouseName': sample.name,
+                  'onHandQty': sample.qty,
+                  'availableQty': sample.qty,
+                  'ownPeggedQty': sample.qty,
+                },
+              ],
+            },
+        ];
+        await _pumpPage(
+          tester,
+          size: selectedByServer
+              ? const Size(1200, 1000)
+              : const Size(600, 1000),
+          theme: selectedByServer ? ThemeData.light() : ThemeData.dark(),
+          permissions: const {
+            Perm.productionMaterialAnalysisCreate,
+            Perm.productionMaterialAnalysisRefresh,
+          },
+          analysisId: '6b03a2cd-1147-4776-a0ad-a8be9d7fb01b',
+          analysisJson: analysis,
+          responseOverride: (request) =>
+              request.method == 'GET' &&
+                  request.path ==
+                      '/production/material-analyses/6b03a2cd-1147-4776-a0ad-a8be9d7fb01b'
+              ? analysis
+              : null,
+          warehouseEntries: const [
+            {'id': 'main-warehouse', 'name': '公司主仓'},
+            {
+              'id': 'warehouse-planned',
+              'name': '原材料不良仓',
+              'parentId': 'main-warehouse',
+            },
+            {
+              'id': 'warehouse-finished',
+              'name': '成品仓库',
+              'parentId': 'main-warehouse',
+            },
+            {
+              'id': 'warehouse-track',
+              'name': '轨道车间',
+              'parentId': 'main-warehouse',
+            },
+          ],
+        );
+        expect(find.textContaining('不计入备料'), findsNothing);
+        expect(find.textContaining('重新登记'), findsNothing);
+        expect(
+          find.byKey(
+            const Key('material-analysis-off-target-warehouse-warning'),
+          ),
+          findsNothing,
+        );
+        expect(find.text('物料存放位置'), findsNothing);
+        expect(find.text('成品仓库'), findsNothing);
+        expect(find.text('轨道车间'), findsNothing);
+        final main = tester.widget<UtenDropdownField>(
+          find.byKey(
+            const ValueKey('material-analysis-main-warehouse-main-warehouse'),
+          ),
+        );
+        expect(main.value, 'main-warehouse');
+        expect(main.items.map((item) => item.value), ['main-warehouse']);
+        await _openMaterialTableDetails(tester, 'UT3015');
+        expect(find.text('合格库存保障 5/5(100%)'), findsOneWidget);
+        expect(find.text('本节点合格入库绑定 5'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('selected master defaults confirm without an optional reason', (
     tester,
@@ -2924,6 +3079,73 @@ void main() {
     },
   );
 
+  for (final budget in [
+    (available: 12, open: 0, gap: 0),
+    (available: 4, open: 2, gap: 4),
+  ]) {
+    testWidgets(
+      'main warehouse budget ignores the default leaf and repeated paths: ${budget.gap}',
+      (tester) async {
+        final analysis = _buySafetySplitAnalysisJson();
+        final rows = (analysis['flatMaterials'] as List<dynamic>)
+            .cast<Map<String, dynamic>>();
+        for (final material in rows.where(
+          (row) => row['sourceConfirmed'] == 'BUY',
+        )) {
+          material
+            ..['mainWarehousePublicAvailableQty'] = budget.available
+            ..['mainWarehouseOpenSafetySupplyQty'] = budget.open
+            ..['mainWarehouseSafetyReplenishmentGapQty'] = budget.gap
+            ..['warehouseBreakdown'] = [
+              {
+                'warehouseId': 'warehouse-1',
+                'publicAvailableQty': 0,
+                'openSafetySupplyQty': 0,
+                'safetyReplenishmentGapQty': 10,
+              },
+              {
+                'warehouseId': 'warehouse-2',
+                'publicAvailableQty': budget.available,
+                'openSafetySupplyQty': budget.open,
+                'safetyReplenishmentGapQty': budget.gap,
+              },
+            ];
+        }
+        final harness = await _pumpPage(
+          tester,
+          size: const Size(1200, 900),
+          permissions: const {
+            Perm.productionMaterialAnalysisCreate,
+            Perm.productionMaterialAnalysisRefresh,
+            Perm.productionMaterialAnalysisNotify,
+          },
+          allowedActions: const ['NOTIFY_SUPPLY'],
+          analysisJson: analysis,
+        );
+        await _openBucketDetail(tester, 'buy');
+        await _tapBucketRowCheckbox(tester, '采购件一');
+        await _tapBucketRowCheckbox(tester, '采购件二');
+        await tester.tap(find.text('提交采购需求(2)'));
+        await tester.pumpAndSettle();
+        expect(find.text('共 2 个品种，合计 ${16 + budget.gap}。'), findsOneWidget);
+        await _confirmSupplyQuantityDialog(tester);
+        final request = harness.requests.singleWhere(
+          (request) => request.path.endsWith('/notify'),
+        );
+        final quantities =
+            (request.data! as Map<String, dynamic>)['quantities']
+                as List<dynamic>;
+        expect(
+          quantities.map(
+            (row) => (row as Map<String, dynamic>)['safetyReplenishmentQty'],
+          ),
+          [budget.gap.toDouble(), 0.0],
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'SUBCONTRACT safety gap is fail-closed with a clear BUY-only reason',
     (tester) async {
@@ -2936,6 +3158,9 @@ void main() {
       subcontract
         ..['demandSupplyGapQty'] = 8
         ..['safetyStockQty'] = 10
+        ..['mainWarehousePublicAvailableQty'] = 2
+        ..['mainWarehouseOpenSafetySupplyQty'] = 2
+        ..['mainWarehouseSafetyReplenishmentGapQty'] = 6
         ..['warehouseBreakdown'] = [
           {
             'warehouseId': 'warehouse-1',
@@ -5650,12 +5875,14 @@ void main() {
   });
 
   testWidgets(
-    'warehouse scope hides leaves and issue settings retain all siblings',
+    'historical leaf analysis displays only the actual main warehouse and preserves its stored scope',
     (tester) async {
-      final analysis = _analysisJson(const ['REFRESH']);
+      final analysis = _analysisJson(const ['REFRESH'])
+        ..['warehouseIds'] = ['warehouse-1', 'warehouse-2'];
       final harness = await _pumpPage(
         tester,
         size: const Size(1200, 900),
+        analysisId: 'analysis-1',
         permissions: const {
           Perm.productionMaterialAnalysisCreate,
           Perm.productionMaterialAnalysisRefresh,
@@ -5664,11 +5891,10 @@ void main() {
         analysisJson: analysis,
         warehouseEntries: const [
           {'id': 'warehouse-root', 'name': '总仓'},
-          {'id': 'warehouse-1', 'name': '主仓', 'parentId': 'warehouse-root'},
-          {'id': 'warehouse-2', 'name': '备用仓', 'parentId': 'warehouse-root'},
+          {'id': 'warehouse-1', 'name': '原主领料仓', 'parentId': 'warehouse-root'},
+          {'id': 'warehouse-2', 'name': '备用子仓', 'parentId': 'warehouse-root'},
         ],
       );
-
       final main = tester.widget<UtenDropdownField>(
         find.byKey(
           const ValueKey('material-analysis-main-warehouse-warehouse-root'),
@@ -5676,50 +5902,60 @@ void main() {
       );
       expect(main.value, 'warehouse-root');
       expect(main.items.map((item) => item.value), ['warehouse-root']);
-      final picker = find.byKey(
-        const Key('material-analysis-issue-warehouse-settings'),
-      );
-      await tester.ensureVisible(picker);
-      await tester.tap(picker);
-      await tester.pumpAndSettle();
       expect(
-        find.descendant(
-          of: find.byType(AlertDialog),
-          matching: find.byType(Checkbox),
-        ),
+        find.byKey(const Key('material-analysis-issue-warehouse-settings')),
         findsNothing,
       );
-      final primary = find.byKey(
-        const ValueKey('material-analysis-warehouse-primary-warehouse-2'),
-      );
-      await tester.tap(primary);
+      expect(find.text('原主领料仓'), findsNothing);
+      expect(find.text('备用子仓'), findsNothing);
+      await tester.tap(find.byTooltip('按最新库存刷新分析'));
       await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<RadioGroup<String>>(find.byType(RadioGroup<String>))
-            .groupValue,
-        'warehouse-2',
+      final request = harness.requests.lastWhere(
+        (request) => request.path == '/production/material-analyses/preview',
       );
-
-      await tester.tap(
-        find.byKey(const Key('material-analysis-warehouse-confirm')),
-      );
-      await tester.pumpAndSettle();
-
-      final previews = harness.requests.where(
-        (request) =>
-            request.method == 'POST' &&
-            request.path == '/production/material-analyses/preview',
-      );
-      expect(previews.length, greaterThanOrEqualTo(2));
-      final body = previews.last.data! as Map<String, dynamic>;
-      expect(body['warehouseId'], 'warehouse-2');
+      final body = request.data! as Map<String, dynamic>;
+      expect(body['warehouseId'], 'warehouse-1');
       expect(body['warehouseIds'], ['warehouse-1', 'warehouse-2']);
     },
   );
 
+  testWidgets('new planning request names only the selected main warehouse', (
+    tester,
+  ) async {
+    final harness = await _pumpPage(
+      tester,
+      size: const Size(1200, 900),
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+      },
+      allowedActions: const ['VIEW'],
+      analysisJson: _analysisJson(const ['VIEW']),
+      warehouseEntries: [
+        const {'id': 'warehouse-root', 'name': '总仓'},
+        for (var index = 1; index <= 101; index++)
+          {
+            'id': 'warehouse-$index',
+            'name': '子仓$index',
+            'parentId': 'warehouse-root',
+          },
+      ],
+    );
+    final request = harness.requests.singleWhere(
+      (request) => request.path == '/production/material-analyses/preview',
+    );
+    final body = request.data! as Map<String, dynamic>;
+    expect(body['warehouseId'], 'warehouse-root');
+    expect(body['warehouseIds'], ['warehouse-root']);
+    expect(
+      find.byKey(const Key('material-analysis-issue-warehouse-settings')),
+      findsNothing,
+    );
+    expect(find.text('子仓2'), findsNothing);
+  });
+
   testWidgets(
-    'material-table-selected warehouses show transfer hint without inflating readiness',
+    'planning uses server main totals without inventing a subwarehouse transfer step',
     (tester) async {
       final analysis = _buySelectionAnalysisJson()
         ..['warehouseIds'] = ['warehouse-1', 'warehouse-2'];
@@ -5758,12 +5994,12 @@ void main() {
         findsOneWidget,
       );
       await _scrollToMaterialTable(tester);
-      expect(find.text('另补 1000 · 可调 1500'), findsOneWidget);
+      expect(find.textContaining('可调 1500'), findsNothing);
       expect(
         find.byWidgetPredicate(
           (widget) =>
               widget is Tooltip &&
-              widget.message?.contains('参与仓只作调拨提示，未完成调拨前不提高齐套或可开工量') == true,
+              widget.message?.contains('主仓汇总后，当前还需补充 1000。') == true,
         ),
         findsWidgets,
       );
@@ -6671,6 +6907,9 @@ Map<String, dynamic> _analysisJson(
       'allocatedAvailableQty': 4,
       'availableQty': 7,
       'shortageQty': 16,
+      'mainWarehousePublicAvailableQty': 7,
+      'mainWarehouseOpenSafetySupplyQty': 0,
+      'mainWarehouseSafetyReplenishmentGapQty': 0,
       'warehouseBreakdown': [
         {
           'warehouseId': 'warehouse-1',
@@ -6742,6 +6981,9 @@ Map<String, dynamic> _buySafetySplitAnalysisJson() {
       ..['materialKey'] = 'shared-buy-goods|shared-color|unit-1'
       ..['demandSupplyGapQty'] = 8
       ..['safetyStockQty'] = 10
+      ..['mainWarehousePublicAvailableQty'] = 2
+      ..['mainWarehouseOpenSafetySupplyQty'] = 2
+      ..['mainWarehouseSafetyReplenishmentGapQty'] = 6
       ..['warehouseBreakdown'] = [
         {
           'warehouseId': 'warehouse-1',
@@ -7150,6 +7392,9 @@ Map<String, dynamic> _makeExecutionProjectionJson({
     ..['shortageQty'] = inventoryCovered ? 0 : 10
     ..['demandSupplyGapQty'] = inventoryCovered ? 0 : 10
     ..['requirementState'] = 'ACTIVE'
+    ..['mainWarehousePublicAvailableQty'] = inventoryCovered ? 10 : 0
+    ..['mainWarehouseOpenSafetySupplyQty'] = 0
+    ..['mainWarehouseSafetyReplenishmentGapQty'] = 0
     ..['warehouseBreakdown'] = [
       {
         'warehouseId': 'warehouse-1',
@@ -7605,6 +7850,9 @@ Map<String, dynamic> _routeMaterial({
   'publicSurplusRemainingQty': 0,
   'sharedFutureClaimedQty': 0,
   'sharedFutureSupplyRefs': const <Map<String, dynamic>>[],
+  'mainWarehousePublicAvailableQty': 0,
+  'mainWarehouseOpenSafetySupplyQty': 0,
+  'mainWarehouseSafetyReplenishmentGapQty': 0,
   'warehouseBreakdown': const [
     {
       'warehouseId': 'warehouse-1',
@@ -7658,6 +7906,9 @@ Map<String, dynamic> _materialJson({
   'publicSurplusRemainingQty': 0,
   'sharedFutureClaimedQty': 0,
   'sharedFutureSupplyRefs': const <Map<String, dynamic>>[],
+  'mainWarehousePublicAvailableQty': 0,
+  'mainWarehouseOpenSafetySupplyQty': 0,
+  'mainWarehouseSafetyReplenishmentGapQty': 0,
   'warehouseBreakdown': const [
     {
       'warehouseId': 'warehouse-1',

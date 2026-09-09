@@ -1,6 +1,7 @@
 package com.uten.imp.features.attachment;
 
 import com.uten.imp.common.storage.StorageService;
+import com.uten.imp.common.storage.StorageProviderRegistry;
 import com.uten.imp.common.storage.StorageService.StoredObject;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +18,7 @@ final class AttachmentUploadExpiryScheduler {
 
     private final AttachmentUploadSessionStore sessions;
     private final AttachmentObjectOutboxStore outbox;
-    private final StorageService storage;
+    private final StorageProviderRegistry storageProviders;
 
     @Scheduled(fixedDelayString = "${uten.storage.outbox.poll-delay-millis:2000}",
             initialDelayString = "${uten.storage.outbox.poll-delay-millis:2000}")
@@ -28,10 +29,10 @@ final class AttachmentUploadExpiryScheduler {
                 return;
             }
             try {
-                StoredObject object = storage.describe(session.storageKey());
+                StoredObject object = storageProviders.require(session.storageProvider()).describe(session.storageKey());
                 if (object.exists()) {
                     outbox.enqueueStaging(
-                            session.id(), session.storageKey(), object.versionId());
+                            session.id(), session.storageKey(), object.versionId(), session.storageProvider());
                     sessions.recordExpiryCleanup(session.id(), "EXPIRY_DELETE_QUEUED");
                 } else {
                     sessions.recordExpiryCleanup(session.id(), "NO_STAGING_OBJECT");

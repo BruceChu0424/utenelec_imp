@@ -56,7 +56,8 @@ class SensitiveDetailViewAuditControllerTest {
                 mock(EmployeeCommandService.class),
                 mock(UserAccountAdminService.class),
                 mock(DataHandoverService.class),
-                audit);
+                audit,
+                mock(com.uten.imp.application.port.AttachmentAccessPort.class));
         assertSame(employee, employeeController.detail(employeeId));
         verify(audit).record(
                 "view_employee_detail", "employees", employeeId,

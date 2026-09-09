@@ -18,6 +18,11 @@ public interface AttachmentOwnerAccessPolicy {
 
     void requireCanView(UUID ownerId, AuthUser user);
 
+    /** Separate selected-avatar visibility; it never authorizes listing private documents. */
+    default void requireCanViewAvatar(UUID ownerId, AuthUser user) {
+        requireCanView(ownerId, user);
+    }
+
     void requireCanManage(UUID ownerId, AuthUser user);
 
     default void requireCanManageForUpdate(UUID ownerId, AuthUser user) {

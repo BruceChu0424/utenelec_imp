@@ -183,14 +183,57 @@ class AuditServiceTransactionContractTest {
                 "download grant audit must keep the attachment UUID as target_id");
         org.junit.jupiter.api.Assertions.assertTrue(
                 compact.contains(
-                        "\"attachment_download_raw\",\"attachments\","
-                                + "metadata.getId().toString(),\"success\""),
-                "raw download audit must keep the attachment UUID as target_id");
+                        "auditDownloadOrClose(input,user,\"attachment_download_raw\",metadata.getId())"),
+                "raw download must pass its exact attachment UUID into the audited stream boundary");
+        org.junit.jupiter.api.Assertions.assertTrue(
+                compact.contains(
+                        "auditDownloadOrClose(input,user,\"attachment_avatar_download\",image.getId())"),
+                "avatar download must use the same fail-closed audited stream boundary");
         org.junit.jupiter.api.Assertions.assertFalse(
                 compact.contains("storage.backend(),\"success\""),
                 "storage backend must never be a result code");
         org.junit.jupiter.api.Assertions.assertFalse(
                 compact.contains("；存储="),
                 "target_id must stay a resolvable UUID, not a detail string");
+
+        // Exercise the shared boundary rather than requiring inline audit calls.
+        // A failed independent audit must not return a verified stream or leak its I/O slot.
+        var audit = org.mockito.Mockito.mock(AuditService.class);
+        var service = org.mockito.Mockito.mock(
+                com.uten.imp.features.attachment.AttachmentService.class,
+                org.mockito.Mockito.CALLS_REAL_METHODS);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "audit", audit);
+        java.util.UUID actor = java.util.UUID.randomUUID(), attachment = java.util.UUID.randomUUID();
+        var user = new com.uten.imp.security.AuthUser(actor, actor, "reader",
+                java.util.Set.of(), java.util.Set.of("attachment:download"), false, true, false);
+        for (String action : java.util.List.of("attachment_download_raw", "attachment_avatar_download")) {
+            org.mockito.Mockito.reset(audit);
+            var successStream = org.mockito.Mockito.mock(java.io.InputStream.class);
+            org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                    service, "auditDownloadOrClose", successStream, user, action, attachment);
+            org.mockito.Mockito.verify(audit).logExplicit(
+                    actor, "reader", action, "attachments", attachment.toString(), "success");
+            org.mockito.Mockito.verify(successStream, org.mockito.Mockito.never()).close();
+
+            var auditFailure = new IllegalStateException("audit write unavailable");
+            org.mockito.Mockito.doThrow(auditFailure).when(audit).logExplicit(
+                    actor, "reader", action, "attachments", attachment.toString(), "success");
+            var failureStream = org.mockito.Mockito.mock(java.io.InputStream.class);
+            org.junit.jupiter.api.Assertions.assertSame(auditFailure,
+                    org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                            () -> org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                                    service, "auditDownloadOrClose", failureStream, user, action, attachment)));
+            org.mockito.Mockito.verify(failureStream).close();
+
+            var closeFailure = new java.io.IOException("close failed");
+            var brokenStream = org.mockito.Mockito.mock(java.io.InputStream.class);
+            org.mockito.Mockito.doThrow(closeFailure).when(brokenStream).close();
+            org.junit.jupiter.api.Assertions.assertSame(auditFailure,
+                    org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                            () -> org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                                    service, "auditDownloadOrClose", brokenStream, user, action, attachment)));
+            org.junit.jupiter.api.Assertions.assertArrayEquals(
+                    new Throwable[]{closeFailure}, auditFailure.getSuppressed());
+        }
     }
 }

@@ -324,9 +324,9 @@ class DataHandoverPostgresTest {
         jdbc.update("""
                 INSERT INTO attachment_upload_sessions(
                     id,storage_key,owner_type,owner_id,user_id,original_name,
-                    content_type,expected_size_bytes,expires_at,status)
+                    content_type,expected_size_bytes,expires_at,status,storage_provider)
                 VALUES (?,?, 'CLIENT',?,?, 'handover.txt','text/plain',16,
-                        now()+interval '1 hour','PENDING')
+                        now()+interval '1 hour','PENDING','local')
                 """, uploadSessionId, uploadStorageKey,
                 deletedViewerClient, source.userId());
 

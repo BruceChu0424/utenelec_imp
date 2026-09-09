@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
+import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/shared/models/task_claim_view.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -238,6 +239,56 @@ Future<void> _pumpReview(
 }
 
 void main() {
+  for (final size in [const Size(1200, 900), const Size(390, 844)]) {
+    testWidgets(
+      'pending category owns the full queue badge without the summary card at $size',
+      (tester) async {
+        final repository = _FakeConfirmationRepository([
+          _item(id: 'one', billNo: 'XD-ONE'),
+          _item(id: 'two', billNo: 'XD-TWO'),
+          _item(id: 'rejected', billNo: 'XD-REJECTED', rejected: true),
+        ]);
+        await _pumpPage(tester, repository, size: size);
+        UtenSegmentBadgeLabel pendingBadge() =>
+            tester.widget<UtenSegmentBadgeLabel>(
+              find.byWidgetPredicate(
+                (widget) =>
+                    widget is UtenSegmentBadgeLabel && widget.label == '待确认',
+              ),
+            );
+        expect(
+          find.byKey(const Key('sales-order-finance-summary')),
+          findsNothing,
+        );
+        expect(find.textContaining('待财务放行'), findsNothing);
+        expect(pendingBadge().count, 2);
+        final search = find.descendant(
+          of: find.byKey(const Key('sales-order-finance-search')),
+          matching: find.byType(TextField),
+        );
+        await tester.enterText(search, 'XD-ONE');
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pumpAndSettle();
+        expect(
+          pendingBadge().count,
+          2,
+          reason:
+              'Badge follows the full queue, not the filtered visible row count.',
+        );
+        await tester.tap(find.text('已驳回'));
+        await tester.pumpAndSettle();
+        expect(pendingBadge().count, 2);
+        final rejected = tester.widget<UtenSegmentBadgeLabel>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is UtenSegmentBadgeLabel && widget.label == '已驳回',
+          ),
+        );
+        expect(rejected.count, isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
   testWidgets('销售批量任一认领失败则整批不提交并释放已取得的认领', (tester) async {
     final repository = _FakeConfirmationRepository([
       _item(id: 'order-1', billNo: 'XD001'),

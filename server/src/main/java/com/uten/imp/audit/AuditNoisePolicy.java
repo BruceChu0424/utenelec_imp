@@ -9,6 +9,7 @@ import java.util.regex.Pattern;
 final class AuditNoisePolicy {
 
     private static final Set<String> AUTOMATIC_READ_PATHS = Set.of(
+            "/api/admin/server-status",
             "/api/settings/public",
             "/api/auth/me",
             "/api/master/goods/facets",

@@ -13,4 +13,9 @@ public interface BlobStore {
 
     /** 打开对象的输入流用于下载（调用方负责关闭）。 */
     InputStream read(String storageKey);
+
+    /** Internal immutable objects require the version pinned during confirmation. */
+    default InputStream read(String storageKey, String versionId) {
+        return read(storageKey);
+    }
 }

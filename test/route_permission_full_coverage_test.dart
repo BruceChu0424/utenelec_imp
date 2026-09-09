@@ -84,7 +84,7 @@ void _collect(RouteBase base, String parent, List<String> out) {
 /// 文档口径的守卫/豁免计数（权限体系总设计.md §二「180 守卫/18 豁免」）。
 /// 断言精确计数：新增路由必须同步改代码守卫 + 本处计数 + 文档数字，
 /// 防止「文档说 180、实际已 190」的静默漂移。
-const _expectedGuardedCount = 180;
+const _expectedGuardedCount = 181;
 const _expectedExemptCount = 19;
 
 void main() {

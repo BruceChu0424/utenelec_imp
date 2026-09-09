@@ -1,6 +1,7 @@
 package com.uten.imp.features.org.employee;
 
 import com.uten.imp.audit.AuditDetailViewRecorder;
+import com.uten.imp.application.port.AttachmentAccessPort;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.admin.UserAccountAdminService;
 import com.uten.imp.features.org.employee.dto.*;
@@ -9,6 +10,11 @@ import com.uten.imp.responsibility.dto.DataHandoverPreview;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -27,6 +33,7 @@ public class EmployeeController {
     private final UserAccountAdminService userAccountAdminService;
     private final DataHandoverService dataHandoverService;
     private final AuditDetailViewRecorder viewAudit;
+    private final AttachmentAccessPort attachmentAccess;
 
     @GetMapping
     @PreAuthorize("hasAuthority('employee:view')")
@@ -133,6 +140,21 @@ public class EmployeeController {
     @PreAuthorize("hasAuthority('employee:contract_renew')")
     public void renewContract(@PathVariable UUID id, @Valid @RequestBody RenewContractRequest req) {
         commandService.renewContract(id, req);
+    }
+
+    /** Reads only the selected clean avatar; ordinary employee documents stay private. */
+    @GetMapping("/{id}/avatar")
+    @PreAuthorize("isAuthenticated() and !hasAuthority('CHANGE_PASSWORD')")
+    public ResponseEntity<Resource> avatar(@PathVariable UUID id) {
+        var selected = attachmentAccess.openSelectedAvatar("EMPLOYEE", id);
+        if (selected.isEmpty()) return ResponseEntity.notFound().build();
+        var image = selected.get();
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(image.contentType()))
+                .contentLength(image.sizeBytes())
+                .header(HttpHeaders.CACHE_CONTROL, "private, no-store")
+                .header("X-Content-Type-Options", "nosniff")
+                .body(new InputStreamResource(image.stream()));
     }
 
     /** 设置员工头像（HR；附件须为该员工的图片）。 */

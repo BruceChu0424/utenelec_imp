@@ -7,6 +7,7 @@ import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
 import '../../../../shared/auth/permissions.dart';
+import '../../../../shared/attachments/business_attachment_section.dart';
 import '../models/subcontract_loss_claim.dart';
 import '../repositories/subcontract_loss_claim_repository.dart';
 import 'subcontract_loss_claim_actions.dart';
@@ -298,6 +299,7 @@ class _SubcontractLossClaimDetailPanelState
   Widget _detailBody() {
     final detail = _detail!;
     final theme = Theme.of(context);
+    final permissions = ref.watch(currentPermissionsProvider);
     return SafeArea(
       child: ListView(
         padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -316,6 +318,20 @@ class _SubcontractLossClaimDetailPanelState
           else
             for (final resolution in detail.resolutions)
               _resolutionCard(theme, detail, resolution),
+          const SizedBox(height: UtenSpacing.s12),
+          BusinessAttachmentSection(
+            ownerType: 'SUBCONTRACT_LOSS_CASE',
+            ownerId: detail.summary.id,
+            title: '损耗和责任凭证',
+            canView:
+                !detail.summary.priceMasked &&
+                permissions.contains(Perm.subcontractLossClaimView) &&
+                permissions.contains(Perm.financeViewAll),
+            canManage:
+                permissions.contains(Perm.subcontractLossClaimReview) &&
+                const {'OPEN', 'DISPUTED'}.contains(detail.summary.status),
+            categories: const ['损耗说明', '责任确认', '图片', '其他'],
+          ),
           const SizedBox(height: UtenSpacing.s12),
           _sectionTitle(theme, '处理事件 (${detail.events.length})'),
           if (detail.events.isEmpty)

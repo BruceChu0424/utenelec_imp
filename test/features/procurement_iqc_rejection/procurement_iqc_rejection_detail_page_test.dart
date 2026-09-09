@@ -1,4 +1,9 @@
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'dart:async';
+
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +17,96 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
+  for (final scenario in [
+    (
+      name: 'active',
+      masked: false,
+      amount: true,
+      actions: const {ProcurementIqcRejectionAction.recordReturn},
+      visible: true,
+      writable: true,
+    ),
+    (
+      name: 'decided',
+      masked: false,
+      amount: true,
+      actions: const {ProcurementIqcRejectionAction.reverse},
+      visible: true,
+      writable: false,
+    ),
+    (
+      name: 'server masked',
+      masked: true,
+      amount: true,
+      actions: const {ProcurementIqcRejectionAction.recordReturn},
+      visible: false,
+      writable: false,
+    ),
+    (
+      name: 'amount permission missing',
+      masked: false,
+      amount: false,
+      actions: const {ProcurementIqcRejectionAction.recordReturn},
+      visible: false,
+      writable: false,
+    ),
+  ]) {
+    testWidgets(
+      'IQC originals follow owner amount and action gates: ${scenario.name}',
+      (tester) async {
+        _largeView(tester);
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              sharedPreferencesProvider.overrideWithValue(preferences),
+              currentPermissionsProvider.overrideWithValue({
+                Perm.procurementIqcRejectionView,
+                Perm.attachmentView,
+                Perm.attachmentUpload,
+                if (scenario.amount) Perm.procurementIqcRejectionAmountView,
+              }),
+              businessAttachmentsProvider((
+                type: 'PROCUREMENT_IQC_REJECTION',
+                id: 'case-1',
+              )).overrideWith((ref) async => []),
+            ],
+            child: MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: ProcurementIqcRejectionDetailPage(
+                id: 'case-1',
+                repository: _Gateway(
+                  _detail(
+                    _case(masked: scenario.masked, actions: scenario.actions),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.text('退回和贷项凭证'),
+          scenario.visible ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.text('上传'),
+          scenario.writable ? findsOneWidget : findsNothing,
+        );
+        if (scenario.visible) {
+          final section = tester.widget<BusinessAttachmentSection>(
+            find.byType(BusinessAttachmentSection),
+          );
+          expect(section.ownerType, 'PROCUREMENT_IQC_REJECTION');
+          expect(section.ownerId, 'case-1');
+          expect(section.canManage, scenario.writable);
+        }
+      },
+    );
+  }
+
   testWidgets('view-only and amount-view roles still obey server priceMasked', (
     tester,
   ) async {

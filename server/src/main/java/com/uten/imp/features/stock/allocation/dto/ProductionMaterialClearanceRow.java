@@ -22,5 +22,6 @@ public record ProductionMaterialClearanceRow(
         BigDecimal legalWipQty,
         BigDecimal maxReturnQty,
         BigDecimal unclearedQty,
-        boolean canClose) {
+        boolean canClose,
+        String unitName) {
 }

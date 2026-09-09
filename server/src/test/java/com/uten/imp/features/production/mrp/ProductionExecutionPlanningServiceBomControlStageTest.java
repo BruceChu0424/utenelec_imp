@@ -217,7 +217,10 @@ class ProductionExecutionPlanningServiceBomControlStageTest {
         EntityManager em = mock(EntityManager.class);
         Query bomRows = resultQuery(rows);
         Query sourceItems = resultQuery(List.of((UUID) rows.getFirst()[0]));
-        Query stock = resultQuery(availability);
+        Query stock = resultQuery(availability.stream().map(row -> new Object[]{
+                row[0], row[1], UUID.randomUUID(), row[2], BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, true
+        }).toList());
         // V298 之后第一个原生查询是 material_analysis_id 预查（typedRows→UUID）：
         // 按 SQL 分流，该测试的计划无分析来源 → 空结果；其余按原顺序消费。
         java.util.Iterator<Query> ordered =

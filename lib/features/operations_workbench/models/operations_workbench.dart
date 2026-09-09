@@ -1,3 +1,5 @@
+import '../../basic_data/models/master_facet.dart';
+
 enum OperationsWorkbenchDepartment {
   warehouse('warehouse', '仓库任务工作台'),
   purchase('purchase', '采购任务工作台'),
@@ -288,6 +290,8 @@ class OperationsWorkbenchTask {
     this.actionItemIds = const [],
     this.preparationTaskId,
     this.preparationStatus,
+    this.issuedAt,
+    this.canCreateOrder,
   });
 
   final String taskId;
@@ -322,6 +326,12 @@ class OperationsWorkbenchTask {
   final List<String> actionItemIds;
   final String? preparationTaskId;
   final String? preparationStatus;
+
+  /// Earliest real planning issue instant for this task, never an order date.
+  final String? issuedAt;
+
+  /// Server-authored ordering readiness; independent from account capability.
+  final bool? canCreateOrder;
 
   String get id => taskId;
   String get taskNo => taskId;
@@ -388,6 +398,10 @@ class OperationsWorkbenchTask {
       expectedDate: _optionalString(json, 'expectedDate'),
       exceptionCode: _optionalString(json, 'exceptionCode'),
       updatedAt: _optionalString(json, 'updatedAt'),
+      issuedAt: _optionalString(json, 'issuedAt'),
+      canCreateOrder: json['canCreateOrder'] is bool
+          ? json['canCreateOrder'] as bool
+          : null,
       actionDocument: OperationsActionDocument.fromTaskJson(json, department),
       actionDocItemId: _optionalString(json, 'actionDocItemId'),
       actionDocumentRestricted: json['actionDocRestricted'] == true,
@@ -439,6 +453,8 @@ class OperationsWorkbenchData {
     required this.total,
     required this.totalPages,
     required this.capabilities,
+    this.facets = const {},
+    this.nullCounts = const {},
   });
 
   final OperationsWorkbenchDepartment department;
@@ -449,6 +465,8 @@ class OperationsWorkbenchData {
   final int total;
   final int totalPages;
   final OperationsWorkbenchCapabilities capabilities;
+  final Map<String, List<MasterFacetBucket>> facets;
+  final Map<String, int> nullCounts;
 
   List<OperationsWorkbenchMetric> get metrics => summary.metricsFor(department);
 
@@ -497,6 +515,20 @@ class OperationsWorkbenchData {
       capabilities: OperationsWorkbenchCapabilities.fromJson(
         (json['capabilities'] as Map?)?.cast<String, dynamic>(),
       ),
+      facets: {
+        for (final entry in (json['facets'] as Map? ?? const {}).entries)
+          entry.key.toString(): (entry.value as List)
+              .map(
+                (row) => MasterFacetBucket.fromJson(
+                  (row as Map).cast<String, dynamic>(),
+                ),
+              )
+              .toList(growable: false),
+      },
+      nullCounts: {
+        for (final entry in (json['nullCounts'] as Map? ?? const {}).entries)
+          entry.key.toString(): (entry.value as num).toInt(),
+      },
     );
   }
 }

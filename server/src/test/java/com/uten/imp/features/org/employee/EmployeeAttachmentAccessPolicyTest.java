@@ -85,6 +85,33 @@ class EmployeeAttachmentAccessPolicyTest {
         assertEquals(ErrorCode.NOT_FOUND, failure.getCode());
     }
     @Test
+    void selectedAvatarIsVisibleToStaffViewersButTheirArchiveAccessStaysDenied() {
+        employeeExists();
+        AuthUser viewer = user(null, "employee:view");
+        assertDoesNotThrow(() -> policy.requireCanViewAvatar(employeeId, viewer));
+        ApiException failure = assertThrows(ApiException.class,
+                () -> policy.requireCanView(employeeId, viewer));
+        assertEquals(ErrorCode.NOT_FOUND, failure.getCode());
+        assertDoesNotThrow(() -> policy.requireCanViewAvatar(employeeId, user(employeeId)));
+    }
+
+    @Test
+    void selectedAvatarRejectsUnrelatedStaffVisitorsAndUnknownEmployees() {
+        employeeExists();
+        for (AuthUser caller : new AuthUser[]{
+                user(UUID.randomUUID()),
+                AuthUser.visitor(UUID.randomUUID(), "visitor", "VIS-1", Set.of("employee:view"))}) {
+            ApiException failure = assertThrows(ApiException.class,
+                    () -> policy.requireCanViewAvatar(employeeId, caller));
+            assertEquals(ErrorCode.NOT_FOUND, failure.getCode());
+        }
+        when(repository.findById(employeeId)).thenReturn(Optional.empty());
+        ApiException failure = assertThrows(ApiException.class,
+                () -> policy.requireCanViewAvatar(employeeId, user(null, "employee:view")));
+        assertEquals(ErrorCode.NOT_FOUND, failure.getCode());
+    }
+
+    @Test
     void avatarEditCanSelectEmployeeAvatarButCannotUploadOrDeleteArchiveFiles() {
         employeeExists();
         AuthUser avatarEditor = user(null, "employee:avatar_edit");

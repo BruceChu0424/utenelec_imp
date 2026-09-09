@@ -319,33 +319,20 @@ abstract class _MaterialAnalysisSupplyActionsState
     return residual > 0 ? residual : 0;
   }
 
-  MaterialWarehouseStock? _selectedWarehouseStock(
-    ProductionMaterialAnalysisMaterial material,
-  ) {
-    final warehouseId = _analysis?.warehouseId ?? _warehouseId;
-    if (warehouseId == null || warehouseId.isEmpty) return null;
-    return material.warehouseStocks
-        .where((stock) => stock.warehouseId == warehouseId)
-        .firstOrNull;
-  }
-
+  /// Each path repeats the authoritative main-warehouse budget. Never sum it
+  /// across BOM roots or rebuild it from the selected/default leaf warehouse.
   double _groupSafetyReplenishmentGapQty(_MaterialGroup group) => group.paths
-      .map(_selectedWarehouseStock)
-      .whereType<MaterialWarehouseStock>()
+      .map((material) => material.mainWarehouseSafetyReplenishmentGapQty)
       .fold(
         0.0,
-        (max, stock) => stock.safetyReplenishmentGapQty > max
-            ? stock.safetyReplenishmentGapQty
-            : max,
+        (largest, quantity) => quantity > largest ? quantity : largest,
       );
 
   double _groupOpenSafetySupplyQty(_MaterialGroup group) => group.paths
-      .map(_selectedWarehouseStock)
-      .whereType<MaterialWarehouseStock>()
+      .map((material) => material.mainWarehouseOpenSafetySupplyQty)
       .fold(
         0.0,
-        (max, stock) =>
-            stock.openSafetySupplyQty > max ? stock.openSafetySupplyQty : max,
+        (largest, quantity) => quantity > largest ? quantity : largest,
       );
 
   bool _routeBlockedBySafetyGap(
@@ -404,6 +391,7 @@ abstract class _MaterialAnalysisSupplyActionsState
       (group.actionable || _hasRootStockToAllocate(group, route)) &&
       _planningBlockForGroup(group) == null &&
       group.paths.every(_hasResolvedMaterialSource) &&
+      !group.paths.any(_hasUnlinkedIssuedPlan) &&
       group.representative.confirmedRoute == route &&
       _draftRoute(group) == route &&
       !_dirtyRouteGroups.contains(group.key) &&
@@ -1065,17 +1053,14 @@ abstract class _MaterialAnalysisSupplyActionsState
       if (material.safetyStockQty > safetyStock) {
         safetyStock = material.safetyStockQty;
       }
-      final stock = _selectedWarehouseStock(material);
-      if (stock != null) {
-        if (stock.publicAvailableQty > publicAvailable) {
-          publicAvailable = stock.publicAvailableQty;
-        }
-        if (stock.openSafetySupplyQty > openSafetySupply) {
-          openSafetySupply = stock.openSafetySupplyQty;
-        }
-        if (stock.safetyReplenishmentGapQty > safetyGap) {
-          safetyGap = stock.safetyReplenishmentGapQty;
-        }
+      if (material.mainWarehousePublicAvailableQty > publicAvailable) {
+        publicAvailable = material.mainWarehousePublicAvailableQty;
+      }
+      if (material.mainWarehouseOpenSafetySupplyQty > openSafetySupply) {
+        openSafetySupply = material.mainWarehouseOpenSafetySupplyQty;
+      }
+      if (material.mainWarehouseSafetyReplenishmentGapQty > safetyGap) {
+        safetyGap = material.mainWarehouseSafetyReplenishmentGapQty;
       }
       for (final notified in material.notifiedTargets) {
         if (notified.target != route || notified.isRootOutput) continue;

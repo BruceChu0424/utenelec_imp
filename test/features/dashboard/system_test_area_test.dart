@@ -21,6 +21,29 @@ class _FakeRepository implements SystemTestRepository {
   final BusinessDataResetResult? result;
   final ApiException? error;
   int calls = 0;
+  int filePrepareCalls = 0;
+  BusinessAttachmentResetPreview? files;
+  ApiException? preparationError;
+  BusinessAttachmentResetPreview? submittedPreview;
+
+  @override
+  Future<BusinessAttachmentResetPreview> previewBusinessAttachments() async =>
+      files ??
+      const BusinessAttachmentResetPreview(
+        database: 'test',
+        fingerprint: 'test',
+        blockingCount: 0,
+      );
+
+  @override
+  Future<BusinessAttachmentResetPreview> prepareBusinessAttachments(
+    BusinessAttachmentResetPreview preview,
+  ) async {
+    filePrepareCalls++;
+    submittedPreview = preview;
+    if (preparationError != null) throw preparationError!;
+    return files ?? preview;
+  }
 
   @override
   Future<BusinessDataResetResult> resetBusinessData() async {
@@ -85,6 +108,101 @@ Future<void> _expandAndOpenDialog(WidgetTester tester) async {
 }
 
 void main() {
+  const blockedFiles = BusinessAttachmentResetPreview(
+    database: 'local_test',
+    fingerprint: 'reviewed-objects',
+    blockingCount: 1,
+    items: [
+      {
+        'type': 'ATTACHMENT',
+        'id': 'file-a',
+        'ownerType': 'SALES_ORDER',
+        'ownerId': 'order-a',
+        'fileName': '合同原件.pdf',
+        'state': 'CLEAN',
+        'message': '文件仍在使用，需先确认删除',
+      },
+    ],
+  );
+
+  testWidgets('文件未删完不允许清空；准备需独立强确认且绑定预览', (tester) async {
+    final repository = _FakeRepository()..files = blockedFiles;
+    await _pump(
+      tester,
+      superAdmin: true,
+      repository: repository,
+      notifier: _TestSessionNotifier(),
+    );
+    await _expandAndOpenDialog(tester);
+    await tester.enterText(
+      find.byKey(const Key('system-test-clear-confirm-input')),
+      '清空业务数据',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('system-test-clear-confirm-submit')));
+    expect(repository.calls, 0);
+    await tester.tap(find.text('先清理业务附件'));
+    await tester.pumpAndSettle();
+    expect(find.text('合同原件.pdf'), findsOneWidget);
+    expect(find.text('目标数据库：local_test'), findsOneWidget);
+    final input = find.byKey(const Key('business-attachment-prepare-confirm'));
+    final submit = find.byKey(const Key('business-attachment-prepare-submit'));
+    await tester.enterText(input, '清理');
+    await tester.pump();
+    await tester.tap(submit);
+    expect(repository.filePrepareCalls, 0);
+    await tester.enterText(input, '清理测试业务附件');
+    await tester.pump();
+    await tester.tap(submit);
+    await tester.pumpAndSettle();
+    expect(repository.filePrepareCalls, 1);
+    expect(repository.submittedPreview!.fingerprint, 'reviewed-objects');
+    expect(repository.calls, 0);
+    expect(find.textContaining('还有 1 项文件或删除任务未完成'), findsOneWidget);
+    repository.files = const BusinessAttachmentResetPreview(
+      database: 'local_test',
+      fingerprint: 'finished',
+      blockingCount: 0,
+    );
+    await tester.tap(find.text('刷新核对'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('文件已核对完成'), findsOneWidget);
+    await tester.tap(find.text('返回'));
+    await tester.pumpAndSettle();
+    expect(find.text('先清理业务附件'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('预览过期被拒绝后必须重新核对，不能重复旧确认', (tester) async {
+    final repository = _FakeRepository()
+      ..files = blockedFiles
+      ..preparationError = ApiException('CONFLICT', '文件已变化，请重新预览');
+    await _pump(
+      tester,
+      superAdmin: true,
+      repository: repository,
+      notifier: _TestSessionNotifier(),
+    );
+    await _expandAndOpenDialog(tester);
+    await tester.tap(find.text('先清理业务附件'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('business-attachment-prepare-confirm')),
+      '清理测试业务附件',
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const Key('business-attachment-prepare-submit')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('文件已变化，请重新预览'), findsOneWidget);
+    expect(
+      find.byKey(const Key('business-attachment-prepare-submit')),
+      findsNothing,
+    );
+    expect(repository.calls, 0);
+  });
+
   testWidgets('非超管不渲染系统测试区', (tester) async {
     await _pump(
       tester,

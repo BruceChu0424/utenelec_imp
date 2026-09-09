@@ -12,6 +12,8 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../shared/attachments/business_attachment_section.dart';
+import '../../../shared/auth/permissions.dart';
 import '../models/production_fqc_inspection.dart';
 import '../repositories/production_fqc_repository.dart';
 
@@ -184,6 +186,35 @@ class _ProductionFqcDetailDialogState
             '更新时间',
             ChinaDateTime.formatInstant(inspection.updatedAt),
           ),
+          const SizedBox(height: UtenSpacing.s12),
+          BusinessAttachmentSection(
+            ownerType: 'PRODUCTION_QUALITY_INSPECTION',
+            ownerId: inspection.id,
+            canView: ref
+                .watch(currentPermissionsProvider)
+                .contains(Perm.productionQualityInspectionView),
+            canManage:
+                widget.canApprove &&
+                ref
+                    .watch(currentPermissionsProvider)
+                    .contains(Perm.productionQualityInspectionApprove) &&
+                inspection.status == 'PENDING' &&
+                inspection.passedQty == 0 &&
+                inspection.failedQty == 0 &&
+                inspection.remainingQty > 0,
+            title: '检验图片和文件',
+            categories: const ['检验照片', '检验报告', '其他证据'],
+          ),
+          if (ref
+              .watch(currentPermissionsProvider)
+              .contains(Perm.attachmentView))
+            Padding(
+              padding: const EdgeInsets.only(top: UtenSpacing.s8),
+              child: Text(
+                '请在登记检验结果前添加证据。登记结果后（包括部分检验），文件保留供查阅，不能替换或删除。',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
           if (!inspection.active || !widget.canApprove) ...[
             const SizedBox(height: UtenSpacing.s8),
             Row(

@@ -31,7 +31,9 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../operations_workbench/models/operations_workbench.dart';
 import '../../operations_workbench/repositories/operations_workbench_repository.dart';
 import '../../production/models/production_material_analysis.dart';
@@ -72,6 +74,9 @@ class _SubcontractDecompositionPageState
   int _page = 1;
   int _requestId = 0;
   String _keyword = '';
+  String? _sortColumn;
+  bool _sortAscending = true;
+  final Map<String, String?> _columnFilters = {};
 
   /// 当前选中阶段分段；null = 未选择引导态（内容不加载）。
   _DecompositionSeg? _seg;
@@ -132,9 +137,15 @@ class _SubcontractDecompositionPageState
         exception: seg == null || seg.history ? null : _exception,
         dateFrom: range == null ? null : ChinaDateTime.formatDate(range.start),
         dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+        sort: _sortColumn,
+        order: _sortAscending ? 'asc' : 'desc',
+        columnFilters: _columnFilters,
       );
       if (!mounted || requestId != _requestId) return;
-      final visibleIds = next.items.map((item) => item.id).toSet();
+      final visibleIds = next.items
+          .where(_canOrderTask)
+          .map((item) => item.id)
+          .toSet();
       setState(() {
         _data = next;
         _page = next.page;
@@ -158,6 +169,7 @@ class _SubcontractDecompositionPageState
       _page = 1;
       if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
       _selectedIds.clear();
+      _columnFilters.clear();
     });
     if (!seg.history || !_historyTime.isNone) {
       _load(page: 1);
@@ -273,6 +285,7 @@ class _SubcontractDecompositionPageState
   }
 
   void _toggle(OperationsWorkbenchTask task) {
+    if (!_canOrderTask(task)) return;
     setState(() {
       if (!_selectedIds.add(task.id)) _selectedIds.remove(task.id);
     });
@@ -280,6 +293,17 @@ class _SubcontractDecompositionPageState
 
   bool _isSynthetic(OperationsWorkbenchTask task) =>
       task.preparationTaskId != null;
+
+  bool _canOrderTask(OperationsWorkbenchTask task) =>
+      task.canCreateOrder ??
+      (!_isSynthetic(task) &&
+          task.taskStatus == 'WAITING_ORDER' &&
+          task.actionDocument?.isIssuedSubcontractApplication == true &&
+          _applicationItemIdsOf(task).isNotEmpty &&
+          (task.openQty > 0 || task.openLineCount > 0));
+
+  bool _orderBlocked(OperationsWorkbenchTask task) =>
+      _seg?.code == 'WAITING_ORDER' && !_canOrderTask(task);
 
   Future<void> _openTask(OperationsWorkbenchTask task) async {
     final preparationId = task.preparationTaskId;
@@ -324,6 +348,30 @@ class _SubcontractDecompositionPageState
   }
 
   List<OperationsWorkbenchTask> get _displayItems => _data?.items ?? const [];
+
+  Map<String, List<MasterFacetBucket>> _tableFacets(
+    OperationsWorkbenchData data,
+  ) => {
+    ...data.facets,
+    if (data.facets.containsKey('status'))
+      'status': [
+        for (final bucket in data.facets['status']!)
+          MasterFacetBucket(
+            value: bucket.value,
+            count: bucket.count,
+            label:
+                const {
+                  'NOTIFYING_WORKSHOP',
+                  'WAITING_MATERIALS',
+                  'IN_PRODUCTION',
+                  'PRODUCED',
+                  'FULLY_NOTIFIED',
+                }.contains(bucket.value)
+                ? SubcontractMakeTask.workshopStatusLabelFor(bucket.value)
+                : operationsWorkbenchStatusLabel(bucket.value),
+          ),
+      ],
+  };
 
   String _stageLabelOf(OperationsWorkbenchTask task) =>
       task.preparationTaskId == null
@@ -556,9 +604,10 @@ class _SubcontractDecompositionPageState
                     task: task,
                     stageLabel: _stageLabelOf(task),
                     synthetic: _isSynthetic(task),
+                    blocked: _orderBlocked(task),
                     selected: _selectedIds.contains(task.id),
                     selectable:
-                        !_isSynthetic(task) &&
+                        _canOrderTask(task) &&
                         _hasDecomposePermissions &&
                         data.capabilities.canCreateSubcontractOrder,
                     onSelected: () => _toggle(task),
@@ -591,6 +640,7 @@ class _SubcontractDecompositionPageState
       columns: [
         MasterColumnDef(
           key: 'planNo',
+          sortable: true,
           label: '来源计划',
           width: 140,
           value: (t) => t.planNo,
@@ -599,6 +649,7 @@ class _SubcontractDecompositionPageState
           // ADR-065 修订：行=当前执行单据；归组行（多货品合并申请）显示
           // 物料规模摘要；待生产合成行显示「待生产」。
           key: 'docNo',
+          sortable: true,
           label: '委外申请号',
           width: 160,
           value: (t) => _isSynthetic(t)
@@ -609,6 +660,7 @@ class _SubcontractDecompositionPageState
         ),
         MasterColumnDef(
           key: 'goods',
+          sortable: true,
           label: '委外目标件',
           width: 240,
           value: (t) => t.isDocumentGrouped
@@ -617,6 +669,7 @@ class _SubcontractDecompositionPageState
         ),
         MasterColumnDef(
           key: 'spec',
+          sortable: true,
           label: '规格 / 颜色',
           width: 180,
           value: (t) => t.isDocumentGrouped
@@ -644,7 +697,17 @@ class _SubcontractDecompositionPageState
                     : '${_number(t.openQty)} ${t.unitName}'.trim()),
         ),
         MasterColumnDef(
+          key: 'issuedAt',
+          label: workflowFieldText(context).subcontractPlanIssuedDate,
+          info: workflowFieldText(context).subcontractPlanIssuedDateHint,
+          width: 160,
+          type: 'date',
+          sortable: true,
+          value: (task) => _issuedDate(task.issuedAt),
+        ),
+        MasterColumnDef(
           key: 'needDate',
+          sortable: true,
           label: '需求日期',
           width: 120,
           type: 'date',
@@ -652,6 +715,7 @@ class _SubcontractDecompositionPageState
         ),
         MasterColumnDef(
           key: 'status',
+          sortable: true,
           label: '阶段',
           width: 170,
           value: (t) => _stageLabelOf(t),
@@ -670,11 +734,34 @@ class _SubcontractDecompositionPageState
         ),
       ],
       items: _displayItems,
-      facets: const {},
-      nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
+      facets: _tableFacets(data),
+      nullCounts: data.nullCounts,
+      filters: _columnFilters,
+      onFilterChanged: (column, value) {
+        setState(() {
+          if (value == null) {
+            _columnFilters.remove(column);
+          } else {
+            _columnFilters[column] = value;
+          }
+          _selectedIds.clear();
+        });
+        _load(page: 1);
+      },
+      sortColumn: _sortColumn,
+      sortAscending: _sortAscending,
+      onSortChange: (column, ascending) {
+        setState(() {
+          _sortColumn = column;
+          _sortAscending = ascending;
+          _selectedIds.clear();
+        });
+        _load(page: 1);
+      },
       onRowTap: _openTask,
+      rowColor: (task) => _orderBlocked(task)
+          ? Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.42)
+          : null,
       // 合成行双击=产品进度弹窗（视为可打开）；真实行=关联申请/订货详情。
       canOpenRow: (task) =>
           _isSynthetic(task) || task.actionDocument?.canView == true,
@@ -682,7 +769,7 @@ class _SubcontractDecompositionPageState
           _hasDecomposePermissions &&
           data.capabilities.canCreateSubcontractOrder,
       // 待生产合成行没有申请单，不提供勾选（批量下单只对真实申请行）。
-      idOf: (task) => _isSynthetic(task) ? null : task.id,
+      idOf: (task) => _canOrderTask(task) ? task.id : null,
       selectedIds: _selectedIds,
       onSelectedIdsChanged: (next) => setState(() {
         _selectedIds
@@ -711,6 +798,11 @@ class _SubcontractDecompositionPageState
             .toStringAsFixed(3)
             .replaceFirst(RegExp(r'0+$'), '')
             .replaceFirst(RegExp(r'\.$'), '');
+
+  static String? _issuedDate(String? value) {
+    final date = ChinaDateTime.tryParse(value);
+    return date == null ? null : ChinaDateTime.formatDate(date);
+  }
 }
 
 class _SubcontractDemandCard extends StatelessWidget {
@@ -718,6 +810,7 @@ class _SubcontractDemandCard extends StatelessWidget {
     required this.task,
     required this.stageLabel,
     required this.synthetic,
+    required this.blocked,
     required this.selected,
     required this.selectable,
     required this.onSelected,
@@ -728,6 +821,7 @@ class _SubcontractDemandCard extends StatelessWidget {
   final OperationsWorkbenchTask task;
   final String stageLabel;
   final bool synthetic;
+  final bool blocked;
   final bool selected;
   final bool selectable;
   final VoidCallback onSelected;
@@ -743,7 +837,11 @@ class _SubcontractDemandCard extends StatelessWidget {
       label: '${task.title}，$stageLabel',
       child: Card(
         margin: EdgeInsets.zero,
-        color: selected ? theme.colorScheme.primaryContainer : null,
+        color: blocked
+            ? theme.colorScheme.errorContainer.withValues(alpha: 0.42)
+            : selected
+            ? theme.colorScheme.primaryContainer
+            : null,
         child: Padding(
           padding: const EdgeInsets.all(UtenSpacing.s12),
           child: Column(
@@ -813,6 +911,10 @@ class _SubcontractDemandCard extends StatelessWidget {
                   if (!synthetic) Text('待下单 ${task.quantityText}'),
                   if ((task.needDate ?? '').isNotEmpty)
                     Text('需求日 ${task.needDate}'),
+                  Text(
+                    '${workflowFieldText(context).subcontractPlanIssuedDate} '
+                    '${_SubcontractDecompositionPageState._issuedDate(task.issuedAt) ?? '—'}',
+                  ),
                 ],
               ),
               const SizedBox(height: UtenSpacing.s8),

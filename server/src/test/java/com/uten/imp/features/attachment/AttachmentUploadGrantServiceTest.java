@@ -86,6 +86,6 @@ class AttachmentUploadGrantServiceTest {
         return new AttachmentUploadSessionStore.UploadSession(
                 UUID.randomUUID(), grant.storageKey(), grant.ownerType(), grant.ownerId(),
                 grant.userId(), grant.originalName(), grant.contentType(), grant.sizeBytes(),
-                persistedExpiry, "PENDING");
+                persistedExpiry, "PENDING", "internal");
     }
 }

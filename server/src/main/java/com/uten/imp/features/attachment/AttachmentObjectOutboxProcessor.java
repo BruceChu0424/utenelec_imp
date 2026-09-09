@@ -1,6 +1,7 @@
 package com.uten.imp.features.attachment;
 
 import com.uten.imp.common.storage.StorageService;
+import com.uten.imp.common.storage.StorageProviderRegistry;
 import com.uten.imp.config.props.StorageProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,7 +19,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AttachmentObjectOutboxProcessor {
     private final JdbcTemplate jdbc;
-    private final StorageService storage;
+    private final StorageProviderRegistry storageProviders;
     private final StorageProperties properties;
 
     public boolean processNext() {
@@ -27,6 +28,7 @@ public class AttachmentObjectOutboxProcessor {
             return false;
         }
         try {
+            StorageService storage=storageProviders.require(item.storageProvider());
             if ("DELETE_STAGING".equals(item.operation())) {
                 storage.deleteStaging(item.storageKey(), item.storageVersion());
             } else if ("DELETE_FINAL".equals(item.operation())) {
@@ -63,7 +65,7 @@ public class AttachmentObjectOutboxProcessor {
                 FROM candidate
                 WHERE target.id = candidate.id
                 RETURNING target.id, target.attachment_id, target.operation,
-                          target.storage_key, target.storage_version, target.attempts
+                          target.storage_key, target.storage_version, target.attempts, target.storage_provider
                 """, result -> result.next() ? map(result) : null, staleMinutes);
     }
 
@@ -85,10 +87,10 @@ public class AttachmentObjectOutboxProcessor {
         jdbc.update("""
                 UPDATE attachment_reconciliation_findings
                 SET finding_state = 'RESOLVED', resolved_at = now(), updated_at = now()
-                WHERE object_location = ? AND storage_key = ?
+                WHERE storage_provider = ? AND object_location = ? AND storage_key = ?
                   AND storage_version IS NOT DISTINCT FROM ?
                   AND finding_state = 'QUEUED'
-                """, location, item.storageKey(), item.storageVersion());
+                """, item.storageProvider(), location, item.storageKey(), item.storageVersion());
     }
 
     private void markFailed(OutboxItem item, RuntimeException error) {
@@ -127,10 +129,10 @@ public class AttachmentObjectOutboxProcessor {
                 result.getString("operation"),
                 result.getString("storage_key"),
                 result.getString("storage_version"),
-                result.getInt("attempts"));
+                result.getInt("attempts"), result.getString("storage_provider"));
     }
 
     private record OutboxItem(UUID id, UUID attachmentId, String operation,
-                              String storageKey, String storageVersion, int attempts) {
+                              String storageKey, String storageVersion, int attempts, String storageProvider) {
     }
 }

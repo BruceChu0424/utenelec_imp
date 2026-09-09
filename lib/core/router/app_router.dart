@@ -11,6 +11,7 @@ import '../../features/admin/pages/admin_audit_log_page.dart';
 import '../../features/admin/pages/admin_audit_session_detail_page.dart';
 import '../../features/admin/models/audit_session.dart';
 import '../../features/admin/pages/admin_system_settings_page.dart';
+import '../../features/admin/pages/server_status_page.dart';
 import '../../features/admin/pages/admin_permissions_page.dart';
 import '../../features/admin/pages/page_permission_settings_page.dart';
 import '../../features/auth/pages/login_page.dart';
@@ -1582,6 +1583,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.adminSystemSettings,
             name: 'admin-system-settings',
             builder: (_, _) => const AdminSystemSettingsPage(),
+          ),
+          GoRoute(
+            path: RouteName.adminServerStatus,
+            name: 'admin-server-status',
+            builder: (_, _) => const ServerStatusPage(),
           ),
         ],
       ),

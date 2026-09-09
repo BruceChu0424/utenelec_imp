@@ -810,7 +810,7 @@ public class StockDocService {
         Map<UUID,UUID> materialMovements=new LinkedHashMap<>();
         for (StockDocIssueRequest.Line line : req.getLines()) {
             StockDocumentItem item = findItem(items, line.getItemId());
-            materialMovements.put(item.getId(),applyIssueMovement(d, item, line.getQty(), ts, +1));
+            materialMovements.put(item.getId(),applyIssueMovement(d, item, line.getQty(), ts, +1, posted.eventId()));
             item.setIssuedQty(item.getIssuedQty().add(line.getQty()));
             itemRepo.save(item);
         }
@@ -973,7 +973,7 @@ public class StockDocService {
         Map<UUID,UUID> materialMovements=new LinkedHashMap<>();
         for (StockDocIssueRequest.Line line : req.getLines()) {
             StockDocumentItem item = findItem(items, line.getItemId());
-            materialMovements.put(item.getId(),applyIssueMovement(d, item, line.getQty(), ts, -1));
+            materialMovements.put(item.getId(),applyIssueMovement(d, item, line.getQty(), ts, -1, null));
         }
         productionMaterialLedger.completeReverseIssue(prepared);
         productionMaterialLedger.bindMovements(prepared.eventId(),materialMovements);
@@ -1912,7 +1912,7 @@ public class StockDocService {
      * issued_qty；必须走能够证明原物理流水的专用对账修复。</p>
      */
     private UUID applyIssueMovement(StockDocument d, StockDocumentItem it, BigDecimal issueQty,
-                                    OffsetDateTime ts, int sign) {
+                                    OffsetDateTime ts, int sign, UUID issueEventId) {
         BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
         if (issueQty == null || issueQty.signum() <= 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "本次领料数量必须大于 0");
@@ -1941,7 +1941,8 @@ public class StockDocService {
         return stockService.recordMovement(new StockService.MovementRequest(
                 ts, T_DRAW, SRC_STOCK_DOC, d.getId(), it.getId(),
                 it.getGoodsId(), it.getColorId(), d.getWarehouseId(), (short) (DIR_OUT * sign), baseQty,
-                it.getUnitId(), it.getUnitRate(), amount, it.getRemark(), weight));
+                it.getUnitId(), it.getUnitRate(), amount, it.getRemark(), weight, null,
+                issueEventId == null ? null : new com.uten.imp.application.port.InventoryMovementCostReference.ProductionMaterialEvent(issueEventId)));
     }
 
     private static void requirePositiveStockItem(StockDocumentItem item, String action) {

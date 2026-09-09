@@ -63,8 +63,7 @@ import 'app_localizations_zh.dart';
 /// be consistent with the languages listed in the AppLocalizations.supportedLocales
 /// property.
 abstract class AppLocalizations {
-  AppLocalizations(String locale)
-    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+  AppLocalizations(String locale) : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -72,8 +71,7 @@ abstract class AppLocalizations {
     return Localizations.of<AppLocalizations>(context, AppLocalizations)!;
   }
 
-  static const LocalizationsDelegate<AppLocalizations> delegate =
-      _AppLocalizationsDelegate();
+  static const LocalizationsDelegate<AppLocalizations> delegate = _AppLocalizationsDelegate();
 
   /// A list of this localizations delegate along with the default localizations
   /// delegates.
@@ -85,19 +83,18 @@ abstract class AppLocalizations {
   /// Additional delegates can be added by appending to this list in
   /// MaterialApp. This list does not have to be used at all if a custom list
   /// of delegates is preferred or required.
-  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
-      <LocalizationsDelegate<dynamic>>[
-        delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ];
+  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates = <LocalizationsDelegate<dynamic>>[
+    delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+  ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('zh'),
     Locale('en'),
-    Locale('ko'),
+    Locale('ko')
   ];
 
   /// 应用标题
@@ -3038,10 +3035,7 @@ abstract class AppLocalizations {
   ///
   /// In zh, this message translates to:
   /// **'已选 {departmentCount} 个部门、{employeeCount} 人'**
-  String noticePublishAudienceSummary(
-    Object departmentCount,
-    Object employeeCount,
-  );
+  String noticePublishAudienceSummary(Object departmentCount, Object employeeCount);
 
   /// No description provided for @noticePublishAudienceRecalculateHint.
   ///
@@ -5521,16 +5515,10 @@ abstract class AppLocalizations {
   /// **'主仓库'**
   String get materialMainWarehouse;
 
-  /// No description provided for @materialIssueWarehouseSettings.
-  ///
-  /// In zh, this message translates to:
-  /// **'领料仓设置'**
-  String get materialIssueWarehouseSettings;
-
   /// No description provided for @materialWarehouseScopeExplanation.
   ///
   /// In zh, this message translates to:
-  /// **'主仓库包含所属子仓范围。齐套、预留和领料按下方实际领料仓计算；其它仓库存只作调拨参考，未调入前不算齐套。'**
+  /// **'按主仓库合计备料，实际领料由仓库安排。'**
   String get materialWarehouseScopeExplanation;
 
   /// No description provided for @materialSearchHint.
@@ -5670,18 +5658,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'公共现货'**
   String get materialPublicStock;
-
-  /// No description provided for @materialScopeStock.
-  ///
-  /// In zh, this message translates to:
-  /// **'参与仓可用(参考)'**
-  String get materialScopeStock;
-
-  /// No description provided for @materialTransferStock.
-  ///
-  /// In zh, this message translates to:
-  /// **'其它仓可调拨'**
-  String get materialTransferStock;
 
   /// No description provided for @materialClaimedSupply.
   ///
@@ -5980,7 +5956,7 @@ abstract class AppLocalizations {
   /// No description provided for @productionMaterialRecheck.
   ///
   /// In zh, this message translates to:
-  /// **'重新检查物料'**
+  /// **'重新核对备料'**
   String get productionMaterialRecheck;
 
   /// No description provided for @productionMaterialRecheckReady.
@@ -6336,10 +6312,333 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'已备齐，可提交财务'**
   String get subcontractReadyForFinance;
+
+  /// No description provided for @materialIssuedPlanSyncPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'已下达，计划进度待同步'**
+  String get materialIssuedPlanSyncPending;
+
+  /// No description provided for @subcontractOrderBlockedProducing.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在生产，暂时不能下委外单'**
+  String get subcontractOrderBlockedProducing;
+
+  /// No description provided for @subcontractOrderBlockedPreparation.
+  ///
+  /// In zh, this message translates to:
+  /// **'前置生产尚未完成，暂时不能下委外单'**
+  String get subcontractOrderBlockedPreparation;
+
+  /// No description provided for @subcontractOrderBlockedNotification.
+  ///
+  /// In zh, this message translates to:
+  /// **'前置生产已完成，请先通知委外后再下单'**
+  String get subcontractOrderBlockedNotification;
+
+  /// No description provided for @subcontractOrderBlockedCancelled.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产任务已取消，暂时不能下委外单'**
+  String get subcontractOrderBlockedCancelled;
+
+  /// No description provided for @subcontractPlanIssuedDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'计划下达日期'**
+  String get subcontractPlanIssuedDate;
+
+  /// No description provided for @subcontractPlanIssuedDateHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'计划部门首次下达这项委外任务的日期'**
+  String get subcontractPlanIssuedDateHint;
+
+  /// No description provided for @subcontractOrderBlockedRefresh.
+  ///
+  /// In zh, this message translates to:
+  /// **'已通知委外，请刷新任务列表后下单'**
+  String get subcontractOrderBlockedRefresh;
+
+  /// No description provided for @serverStatusTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器状态'**
+  String get serverStatusTitle;
+
+  /// No description provided for @serverStatusRefresh.
+  ///
+  /// In zh, this message translates to:
+  /// **'刷新'**
+  String get serverStatusRefresh;
+
+  /// No description provided for @serverStatusAccessRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有服务器状态查看权限'**
+  String get serverStatusAccessRequired;
+
+  /// No description provided for @serverStatusResources.
+  ///
+  /// In zh, this message translates to:
+  /// **'运行资源'**
+  String get serverStatusResources;
+
+  /// No description provided for @serverStatusStorage.
+  ///
+  /// In zh, this message translates to:
+  /// **'磁盘空间'**
+  String get serverStatusStorage;
+
+  /// No description provided for @serverStatusDataProtection.
+  ///
+  /// In zh, this message translates to:
+  /// **'数据库与备份'**
+  String get serverStatusDataProtection;
+
+  /// No description provided for @serverStatusOverview.
+  ///
+  /// In zh, this message translates to:
+  /// **'运行总览'**
+  String get serverStatusOverview;
+
+  /// No description provided for @serverStatusOverviewHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'根据服务器最近一次采集的数据展示运行情况。'**
+  String get serverStatusOverviewHint;
+
+  /// No description provided for @serverStatusCollecting.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在等待服务器采集运行数据。'**
+  String get serverStatusCollecting;
+
+  /// No description provided for @serverStatusStale.
+  ///
+  /// In zh, this message translates to:
+  /// **'数据已过期，正在等待新的采集结果。'**
+  String get serverStatusStale;
+
+  /// No description provided for @serverStatusRefreshFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂时无法更新。上次数据仅供参考，请稍后刷新。'**
+  String get serverStatusRefreshFailed;
+
+  /// No description provided for @serverStatusUpdatedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'采集时间'**
+  String get serverStatusUpdatedAt;
+
+  /// No description provided for @serverStatusEnvironment.
+  ///
+  /// In zh, this message translates to:
+  /// **'运行环境'**
+  String get serverStatusEnvironment;
+
+  /// No description provided for @serverStatusVersion.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用版本'**
+  String get serverStatusVersion;
+
+  /// No description provided for @serverStatusUptime.
+  ///
+  /// In zh, this message translates to:
+  /// **'已运行'**
+  String get serverStatusUptime;
+
+  /// No description provided for @serverStatusPolling.
+  ///
+  /// In zh, this message translates to:
+  /// **'每 {seconds} 秒自动刷新，离开页面后暂停'**
+  String serverStatusPolling(int seconds);
+
+  /// No description provided for @serverStatusCpu.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理器(CPU)'**
+  String get serverStatusCpu;
+
+  /// No description provided for @serverStatusMemory.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统内存'**
+  String get serverStatusMemory;
+
+  /// No description provided for @serverStatusAppMemory.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用内存'**
+  String get serverStatusAppMemory;
+
+  /// No description provided for @serverStatusDbPool.
+  ///
+  /// In zh, this message translates to:
+  /// **'数据库连接池'**
+  String get serverStatusDbPool;
+
+  /// No description provided for @serverStatusDisk.
+  ///
+  /// In zh, this message translates to:
+  /// **'磁盘'**
+  String get serverStatusDisk;
+
+  /// No description provided for @serverStatusUsed.
+  ///
+  /// In zh, this message translates to:
+  /// **'已使用'**
+  String get serverStatusUsed;
+
+  /// No description provided for @serverStatusFree.
+  ///
+  /// In zh, this message translates to:
+  /// **'可用空间'**
+  String get serverStatusFree;
+
+  /// No description provided for @serverStatusCapacity.
+  ///
+  /// In zh, this message translates to:
+  /// **'总容量'**
+  String get serverStatusCapacity;
+
+  /// No description provided for @serverStatusDatabase.
+  ///
+  /// In zh, this message translates to:
+  /// **'数据库'**
+  String get serverStatusDatabase;
+
+  /// No description provided for @serverStatusDatabaseHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看数据库是否能够响应，以及当前连接数量。'**
+  String get serverStatusDatabaseHint;
+
+  /// No description provided for @serverStatusResponse.
+  ///
+  /// In zh, this message translates to:
+  /// **'响应耗时'**
+  String get serverStatusResponse;
+
+  /// No description provided for @serverStatusConnections.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前 / 最大连接数'**
+  String get serverStatusConnections;
+
+  /// No description provided for @serverStatusBackup.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近备份'**
+  String get serverStatusBackup;
+
+  /// No description provided for @serverStatusHours.
+  ///
+  /// In zh, this message translates to:
+  /// **'小时'**
+  String get serverStatusHours;
+
+  /// No description provided for @serverStatusLastBackup.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近成功时间'**
+  String get serverStatusLastBackup;
+
+  /// No description provided for @serverStatusAttention.
+  ///
+  /// In zh, this message translates to:
+  /// **'需要留意'**
+  String get serverStatusAttention;
+
+  /// No description provided for @serverStatusNotCollected.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚未采集到这项数据'**
+  String get serverStatusNotCollected;
+
+  /// No description provided for @serverStatusUptimeValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'{days}天 {hours}小时 {minutes}分钟'**
+  String serverStatusUptimeValue(int days, int hours, int minutes);
+
+  /// No description provided for @serverStatusThresholdUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无可用提醒阈值'**
+  String get serverStatusThresholdUnknown;
+
+  /// No description provided for @serverStatusThresholds.
+  ///
+  /// In zh, this message translates to:
+  /// **'黄色提醒 ≥ {warning}；红色告警 ≥ {critical}'**
+  String serverStatusThresholds(String warning, String critical);
+
+  /// No description provided for @serverStatusNormal.
+  ///
+  /// In zh, this message translates to:
+  /// **'正常'**
+  String get serverStatusNormal;
+
+  /// No description provided for @serverStatusWarning.
+  ///
+  /// In zh, this message translates to:
+  /// **'留意'**
+  String get serverStatusWarning;
+
+  /// No description provided for @serverStatusCritical.
+  ///
+  /// In zh, this message translates to:
+  /// **'需处理'**
+  String get serverStatusCritical;
+
+  /// No description provided for @serverStatusUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'未知'**
+  String get serverStatusUnknown;
+
+  /// No description provided for @attachmentUploadFormatsHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'支持图片 / PDF / Office / zip / txt，单个不超过 25MB'**
+  String get attachmentUploadFormatsHint;
+
+  /// No description provided for @attachmentUploadedFile.
+  ///
+  /// In zh, this message translates to:
+  /// **'已上传 {fileName}'**
+  String attachmentUploadedFile(String fileName);
+
+  /// No description provided for @attachmentUploadedFiles.
+  ///
+  /// In zh, this message translates to:
+  /// **'已上传 {count} 个文件'**
+  String attachmentUploadedFiles(int count);
+
+  /// No description provided for @productionMaterialRecheckHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新核对本任务已合格到货和可用库存；不能代替仓库入库或登记实耗。'**
+  String get productionMaterialRecheckHelp;
+
+  /// No description provided for @productionMaterialRegisterUsage.
+  ///
+  /// In zh, this message translates to:
+  /// **'登记实际用料'**
+  String get productionMaterialRegisterUsage;
+
+  /// No description provided for @productionMaterialViewUsage.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看用料记录'**
+  String get productionMaterialViewUsage;
 }
 
-class _AppLocalizationsDelegate
-    extends LocalizationsDelegate<AppLocalizations> {
+class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
   const _AppLocalizationsDelegate();
 
   @override
@@ -6348,28 +6647,26 @@ class _AppLocalizationsDelegate
   }
 
   @override
-  bool isSupported(Locale locale) =>
-      <String>['en', 'ko', 'zh'].contains(locale.languageCode);
+  bool isSupported(Locale locale) => <String>['en', 'ko', 'zh'].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
 }
 
 AppLocalizations lookupAppLocalizations(Locale locale) {
+
+
   // Lookup logic when only language code is specified.
   switch (locale.languageCode) {
-    case 'en':
-      return AppLocalizationsEn();
-    case 'ko':
-      return AppLocalizationsKo();
-    case 'zh':
-      return AppLocalizationsZh();
+    case 'en': return AppLocalizationsEn();
+    case 'ko': return AppLocalizationsKo();
+    case 'zh': return AppLocalizationsZh();
   }
 
   throw FlutterError(
     'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
     'an issue with the localizations generation tool. Please file an issue '
     'on GitHub with a reproducible sample app and the gen-l10n configuration '
-    'that was used.',
+    'that was used.'
   );
 }

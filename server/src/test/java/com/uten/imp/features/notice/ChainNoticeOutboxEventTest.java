@@ -1069,86 +1069,19 @@ class ChainNoticeOutboxEventTest {
     }
 
     @Test
-    void materialAnalysisReadyUsesAuthoritativeMakerAndOutboxDelivery() {
-        UUID analysisId = UUID.randomUUID();
-        UUID makerEmployeeId = UUID.randomUUID();
-        UUID makerUserId = UUID.randomUUID();
-        UUID receiptId = UUID.randomUUID();
+    void retiredPlannerReadyEventIsAcknowledgedWithoutQueryOrDeliveryEvenWhenReplayed() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         NoticeService notice = mock(NoticeService.class);
         UserAccountRepository users = mock(UserAccountRepository.class);
         BusinessEventPublisher outbox = mock(BusinessEventPublisher.class);
-        when(jdbc.queryForList(
-                contains("FROM production_material_analyses"),
-                eq(analysisId))).thenReturn(List.of(Map.of(
-                        "maker_id", makerEmployeeId)));
-        when(users.findByEmployeeId(makerEmployeeId))
-                .thenReturn(Optional.of(activeUser(makerUserId)));
-        when(users.findById(makerUserId))
-                .thenReturn(Optional.of(activeUser(makerUserId)));
         ChainNoticeService service = service(notice, users, jdbc, outbox);
-
-        service.notifyMaterialAnalysisReady(
-                analysisId,
-                UUID.randomUUID(),
-                "PURCHASE",
-                receiptId,
-                new BigDecimal("3.0000"),
-                new BigDecimal("8.0000"));
-
-        Map<String, String> payload = Map.of(
-                "makerEmployeeId", makerEmployeeId.toString(),
-                "sourceType", "PURCHASE",
-                "sourceDocumentId", receiptId.toString(),
-                "readyFinishDelta", "3",
-                "readyFinishQty", "8");
-        verify(outbox).publishOnce(
-                ChainNoticeService.EVENT_MATERIAL_ANALYSIS_READY,
-                "PRODUCTION_MATERIAL_ANALYSIS",
-                analysisId,
-                payload,
-                ChainNoticeService.EVENT_MATERIAL_ANALYSIS_READY + ':'
-                        + analysisId + ":PURCHASE:" + receiptId);
-
-        service.deliverOutboxEvent(
-                ChainNoticeService.EVENT_MATERIAL_ANALYSIS_READY,
-                analysisId,
-                new ObjectMapper().valueToTree(payload));
-
-        verify(notice).publishForUser(
-                eq(makerUserId),
-                contains("剩余物料已可下达"),
-                contains("采购到货后"),
-                eq(ChainNoticeService.TYPE_TASK),
-                anyString(),
-                eq("/production/material-analysis"),
-                eq(ChainNoticeService.EVENT_MATERIAL_ANALYSIS_READY));
-    }
-
-    @Test
-    void terminalMaterialAnalysisDropsQueuedReadyNotice() {
+        var payload = new ObjectMapper().createObjectNode()
+                .put("makerEmployeeId", UUID.randomUUID().toString())
+                .put("sourceType", "PURCHASE").put("readyFinishDelta", "3");
         UUID analysisId = UUID.randomUUID();
-        JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        NoticeService notice = mock(NoticeService.class);
-        when(jdbc.queryForList(
-                contains("status IN ('ACTIVE', 'PARTIALLY_PLANNED')"),
-                eq(analysisId))).thenReturn(List.of());
-        ChainNoticeService service = service(
-                notice,
-                mock(UserAccountRepository.class),
-                jdbc,
-                mock(BusinessEventPublisher.class));
-
-        service.deliverOutboxEvent(
-                ChainNoticeService.EVENT_MATERIAL_ANALYSIS_READY,
-                analysisId,
-                new ObjectMapper().createObjectNode()
-                        .put("makerEmployeeId", UUID.randomUUID().toString())
-                        .put("sourceType", "PURCHASE")
-                        .put("readyFinishDelta", "3")
-                        .put("readyFinishQty", "8"));
-
-        verifyNoInteractions(notice);
+        service.deliverOutboxEvent(ChainNoticeService.EVENT_MATERIAL_ANALYSIS_READY, analysisId, payload);
+        service.deliverOutboxEvent(ChainNoticeService.EVENT_MATERIAL_ANALYSIS_READY, analysisId, payload);
+        verifyNoInteractions(jdbc, notice, users, outbox);
     }
 
     @Test
@@ -1164,14 +1097,7 @@ class ChainNoticeOutboxEventTest {
         assertEquals("物料状态变化",
                 ChainNoticeService.executionReadySourceLabel("UNKNOWN"));
 
-        assertEquals("采购到货",
-                ChainNoticeService.analysisReadySourceLabel("PURCHASE"));
-        assertEquals("委外回厂",
-                ChainNoticeService.analysisReadySourceLabel("SUBCONTRACT"));
-        assertEquals("自制件完工入库",
-                ChainNoticeService.analysisReadySourceLabel("MAKE"));
-        assertEquals("人工复核",
-                ChainNoticeService.analysisReadySourceLabel("MANUAL"));
+
     }
 
     private static ChainNoticeService service(

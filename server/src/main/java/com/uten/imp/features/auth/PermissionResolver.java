@@ -173,6 +173,10 @@ public class PermissionResolver {
     }
 
     public Set<String> permsOf(UserAccount user) {
+        // Effective-only callers do not need the management-page breakdown.
+        // Account/employment eligibility remains the caller's existing gate;
+        // super-admin effective permissions have always been the active catalog.
+        if (user.isSuperAdmin()) return allPermissionCodes();
         return breakdownOf(user).effective();
     }
 

@@ -172,6 +172,7 @@ class GoodsDetail {
     this.stockPlace,
     this.version,
     this.quantityUnitLocked = false,
+    this.writable = false,
   });
 
   final String id;
@@ -245,6 +246,9 @@ class GoodsDetail {
   // ===== 折扣可见性（goods:discount:view；未授权时 discount 置 null 且 discountMasked=true） =====
   final bool discountMasked;
 
+  /// Server object scope; missing capability on older responses is read-only.
+  final bool writable;
+
   // ===== 即时库存（聚合 stock_balances，仅参与核算仓库；详情展示+关联仓库） =====
   final double? stockQty; // 各参与核算仓库余量合计
   final List<GoodsStockRow> stockByWarehouse; // 按仓库（×颜色）展开
@@ -317,6 +321,7 @@ class GoodsDetail {
     sourceType: json['sourceType'] as String?,
     costMasked: json['costMasked'] as bool? ?? false,
     discountMasked: json['discountMasked'] as bool? ?? false,
+    writable: json['writable'] == true,
     stockQty: (json['stockQty'] as num?)?.toDouble(),
     stockByWarehouse:
         (json['stockByWarehouse'] as List?)

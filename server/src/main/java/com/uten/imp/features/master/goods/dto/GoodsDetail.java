@@ -108,6 +108,8 @@ public class GoodsDetail {
     private UUID thicknessUnitId;                // 厚度单位 UUID 真源
     private UUID mWeightUnitId;                   // 单重单位 UUID 真源
     private boolean quantityUnitLocked;           // DB-owned quantity/BOM lifecycle capability
+    /** Object scope only; each action still requires its own functional authority. */
+    private boolean writable;
 
     @JsonProperty("mWeight")
     public BigDecimal getMWeight() {

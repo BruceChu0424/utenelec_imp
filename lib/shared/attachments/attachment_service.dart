@@ -9,6 +9,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/network/api_endpoints.dart';
 import 'attachment.dart';
 
 class AttachmentService {
@@ -59,6 +60,11 @@ class AttachmentService {
   }
 
   Future<void> delete(String id) => _api.delete('$_base/$id');
+
+  /// Reads only the employee's selected avatar through its dedicated gate.
+  /// The opaque storage key is never converted into a public download URL.
+  Future<Uint8List> employeeAvatarBytes(String employeeId) =>
+      _api.getBytes(ApiEndpoints.employeeAvatar(employeeId));
 
   Future<void> uploadBytes(PresignResult upload, Uint8List bytes) async {
     final uploadUrl = upload.url;

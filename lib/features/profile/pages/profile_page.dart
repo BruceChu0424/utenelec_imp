@@ -21,7 +21,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_status_badge.dart';
-import '../../../components/data_display/uten_user_avatar.dart';
+import '../../../shared/attachments/employee_avatar.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_section_header.dart';
@@ -923,7 +923,12 @@ class _HeroCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              UtenUserAvatar(size: avatarSize, name: name),
+              EmployeeAvatar(
+                employeeId: profile.id,
+                revision: profile.avatarStorageKey,
+                size: avatarSize,
+                name: name,
+              ),
               const SizedBox(width: UtenSpacing.s16),
               Expanded(
                 child: Column(

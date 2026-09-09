@@ -1075,6 +1075,18 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         return claimId;
     }
 
+    @Transactional(readOnly = true)
+    public CaseSummary attachmentOwnerView(UUID id) {
+        return requireSummary(id);
+    }
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public CaseSummary lockAttachmentOwner(UUID id) {
+        tx.bind();
+        lockCase(id);
+        return requireSummary(id);
+    }
+
     private CaseSummary requireSummary(UUID id) {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery(summarySelect()

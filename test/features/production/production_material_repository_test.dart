@@ -18,6 +18,7 @@ void main() {
             'goodsId': 'goods-1',
             'goodsCode': 'MAT-001',
             'goodsName': '轴套',
+            'unitName': '千克',
             'requiredQty': 10,
             'issuedQty': 8,
             'returnedQty': 1,
@@ -36,6 +37,7 @@ void main() {
 
     expect(captured.path, '/stock/production-materials/plans/plan-1/clearance');
     expect(rows.single.goodsName, '轴套');
+    expect(rows.single.unitName, '千克');
     expect(rows.single.executionSegmentId, 'segment-1');
     expect(rows.single.executionSegmentCode, 'SEG-001');
     expect(rows.single.unclearedQty, 1);

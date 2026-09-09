@@ -25,6 +25,7 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_material_analysis.dart';
 import '../repositories/production_repository.dart';
 
@@ -73,6 +74,8 @@ class _ProductionPlanSummarySheetPageState
   }
 
   Future<void> _initialize() async {
+    await ref.read(masterNameServiceProvider).ensureCommonLoaded();
+    if (!mounted) return;
     if (_analysis == null) {
       await _loadAnalysis();
       return;
@@ -262,16 +265,12 @@ class _ProductionPlanSummarySheetPageState
             .where((row) => row.workshop == null || row.workshop!.isEmpty)
             .toList(growable: false);
 
-  String get _warehouseName {
-    final id = _view.warehouseId;
-    if (id == null) return '未指定';
-    for (final warehouse in _view.warehouses) {
-      if (warehouse.warehouseId == id) {
-        return warehouse.warehouseName ?? '未命名仓库';
-      }
-    }
-    return '未指定';
-  }
+  String get _warehouseName =>
+      ref
+          .read(masterNameServiceProvider)
+          .mainWarehouseOf(_view.warehouseId)
+          ?.name ??
+      '主仓库资料待更新';
 
   String get _makerName {
     final user = ref.read(sessionProvider).user;
@@ -473,7 +472,7 @@ class _ProductionPlanSummarySheetPageState
           children: [
             _headFact('开单日期', _today),
             _headFact('制单人', _makerName),
-            _headFact('分析仓库', _warehouseName),
+            _headFact('主仓库', _warehouseName),
             _headFact('分析版本', 'v${_view.version}'),
           ],
         ),
@@ -804,7 +803,7 @@ class _ProductionPlanSummarySheetPageState
           pw.Center(
             child: pw.Text(
               '开单日期：$_today    制单人：$_makerName    '
-              '分析仓库：$_warehouseName    分析版本：v${_view.version}',
+              '主仓库：$_warehouseName    分析版本：v${_view.version}',
               style: const pw.TextStyle(fontSize: 9),
             ),
           ),

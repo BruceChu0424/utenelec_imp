@@ -79,7 +79,7 @@ void main() {
       );
 
       await _rightClick(tester, find.text('产品 C'));
-      await tester.tap(find.text('重新检查物料'));
+      await tester.tap(find.text('重新核对备料'));
       await tester.pumpAndSettle();
       expect(planRepository.recheckedSegmentIds, ['segment-c']);
       expect(
@@ -348,6 +348,70 @@ void main() {
 }
 
 void materialUsageEntryTests() {
+  for (final (activity, pending, issued, permission, label) in [
+    (false, false, true, true, null),
+    (true, false, true, true, '查看用料记录'),
+    (true, true, false, true, '登记实际用料'),
+    (true, true, true, false, '查看用料记录'),
+  ]) {
+    testWidgets(
+      'material entry uses ledger facts activity=$activity pending=$pending issued=$issued permission=$permission',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1700, 1100));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final router = _router();
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              isSuperAdminProvider.overrideWithValue(false),
+              currentPermissionsProvider.overrideWithValue({
+                Perm.productionExecutionView,
+                if (permission) Perm.productionMaterialSettle,
+              }),
+              productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+                _repository(
+                  readyIssued: issued,
+                  materialActivity: activity,
+                  unregisteredMaterial: pending,
+                ),
+              ),
+            ],
+            child: MaterialApp.router(
+              routerConfig: router,
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              locale: const Locale('zh'),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('等待物料'));
+        await tester.pumpAndSettle();
+        final entry = find.byKey(
+          const ValueKey('workshop-material-usage-segment-a'),
+        );
+        expect(entry, label == null ? findsNothing : findsOneWidget);
+        if (label != null) {
+          expect(
+            find.descendant(of: entry, matching: find.text(label)),
+            findsOneWidget,
+          );
+        }
+        await _rightClick(tester, find.text('产品 A'));
+        expect(
+          find.text('登记实际用料'),
+          label == '登记实际用料' ? findsNWidgets(2) : findsNothing,
+        );
+        expect(
+          find.text('查看用料记录'),
+          label == '查看用料记录' ? findsNWidgets(2) : findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   for (final (canSettle, serverAllows) in [
     (true, true),
     (false, true),
@@ -387,6 +451,7 @@ void materialUsageEntryTests() {
                           'demandId': 'demand-a',
                           'goodsId': 'goods-material',
                           'goodsName': '本工单原料',
+                          'unitName': '件',
                           'executionSegmentId': 'segment-a',
                           'requiredQty': 10,
                           'issuedQty': 10,
@@ -417,7 +482,7 @@ void materialUsageEntryTests() {
                 if (canSettle) Perm.productionMaterialClose,
               }),
               productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
-                _repository(),
+                _repository(materialActivity: true, unregisteredMaterial: true),
               ),
               productionMaterialRepositoryProvider.overrideWithValue(
                 ProductionMaterialRepository(ApiClient(dio)),
@@ -435,7 +500,7 @@ void materialUsageEntryTests() {
         await tester.tap(find.text('生产中'));
         await tester.pumpAndSettle();
         await _rightClick(tester, find.text('产品 A'));
-        await tester.tap(find.text('物料使用情况'));
+        await tester.tap(find.text(canSettle ? '登记实际用料' : '查看用料记录').last);
         await tester.pumpAndSettle();
         expect(find.text('本工单原料'), findsOneWidget);
         expect(reads.length, 3);
@@ -449,7 +514,7 @@ void materialUsageEntryTests() {
         expect(find.text('检查并完成任务'), findsNothing, reason: '单段任务权限不能关闭整个计划');
         expect(find.text('余料退库'), findsNothing, reason: '任务入口不能跳入未过滤的全计划退料选择器');
         if (canSettle && serverAllows) {
-          await tester.tap(find.text('未结清全部填入实耗'));
+          await tester.tap(find.text('将待登记量填入实耗'));
           await tester.pumpAndSettle();
           final field = tester.widget<TextField>(
             find.byKey(const ValueKey('material-consume-demand-a')),
@@ -463,8 +528,8 @@ void materialUsageEntryTests() {
             findsOneWidget,
           );
           expect(writes, isEmpty, reason: '建议量必须人工提交后才入账');
-          await tester.ensureVisible(find.text('提交本次材料结清'));
-          await tester.tap(find.text('提交本次材料结清'));
+          await tester.ensureVisible(find.text('提交用料登记'));
+          await tester.tap(find.text('提交用料登记'));
           await tester.pumpAndSettle();
           expect(writes.length, 1);
           final payload = writes.single.data as Map<String, dynamic>;
@@ -474,8 +539,8 @@ void materialUsageEntryTests() {
             containsPair('demandId', 'demand-a'),
           );
         } else {
-          expect(find.text('未结清全部填入实耗'), findsNothing);
-          expect(find.text('提交本次材料结清'), findsNothing);
+          expect(find.text('将待登记量填入实耗'), findsNothing);
+          expect(find.text('提交用料登记'), findsNothing);
           expect(
             tester
                 .widget<TextField>(
@@ -518,6 +583,8 @@ ProductionExecutionWorkbenchRepository _repository({
   bool mixedWorkshops = false,
   bool withWaitingRow = false,
   bool readyIssued = true,
+  bool materialActivity = false,
+  bool unregisteredMaterial = false,
 }) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
@@ -533,6 +600,8 @@ ProductionExecutionWorkbenchRepository _repository({
                     ? 'IN_PROGRESS'
                     : 'READY',
                 issued: readyIssued,
+                materialActivity: materialActivity,
+                unregisteredMaterial: unregisteredMaterial,
               ),
               _task(
                 'segment-b',
@@ -582,6 +651,8 @@ Map<String, dynamic> _task(
   bool issued = true,
   bool canReport = true,
   bool canBatchReport = true,
+  bool materialActivity = false,
+  bool unregisteredMaterial = false,
 }) => {
   'segmentId': id,
   'planId': 'plan-$id',
@@ -608,6 +679,8 @@ Map<String, dynamic> _task(
   'canBatchReport': canBatchReport,
   'lockVersion': 1,
   'canRecheckMaterial': status == 'WAITING',
+  'hasMaterialActivity': materialActivity,
+  'hasUnregisteredMaterial': unregisteredMaterial,
 };
 
 /// 只记录批量开工调用的计划仓库桩（等待物料分类的「批量开工」链路）。

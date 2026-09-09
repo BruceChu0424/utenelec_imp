@@ -247,7 +247,7 @@ abstract class _MaterialAnalysisCandidatesState
     }
     final warehouseIds = _warehouseIds.toList()..sort();
     if (!warehouseIds.contains(warehouseId)) {
-      context.appWarning('参与仓库必须包含主领料仓');
+      context.appWarning('仓库范围不完整，请重新选择主仓库');
       return;
     }
     if (_sources.isEmpty) {
@@ -856,73 +856,28 @@ abstract class _MaterialAnalysisCandidatesState
 
   @override
   bool _normalizeNewWarehouseScope() {
-    final root = _warehouseRootOf(_warehouseId);
+    final names = ref.read(masterNameServiceProvider);
+    final root =
+        _warehouseRootOf(_warehouseId) ??
+        names.warehouseHierarchy
+            .where((entry) => entry.parentId == null || entry.parentId!.isEmpty)
+            .firstOrNull;
     if (root == null) return false;
-    final leaves = _warehouseScopeLeaves(root.id);
-    if (leaves.length > 100) {
-      _warehouseIds.clear();
-      return false;
-    }
+    // New planning requests name the main warehouse. The server resolves stock scope.
+    _warehouseId = root.id;
     _warehouseIds
       ..clear()
-      ..addAll(leaves.map((entry) => entry.id));
+      ..add(root.id);
     return true;
   }
 
-  List<WarehouseDictEntry> _warehouseScopeLeaves(String rootId) {
-    final hierarchy = ref.read(masterNameServiceProvider).warehouseHierarchy;
-    final children = <String, List<WarehouseDictEntry>>{};
-    final byId = {for (final entry in hierarchy) entry.id: entry};
-    for (final entry in hierarchy) {
-      if (entry.parentId != null) {
-        children.putIfAbsent(entry.parentId!, () => []).add(entry);
-      }
-    }
-    final leaves = <WarehouseDictEntry>[];
-    final pending = <String>[rootId];
-    final seen = <String>{};
-    while (pending.isNotEmpty) {
-      final id = pending.removeLast();
-      if (!seen.add(id)) continue;
-      final entry = byId[id];
-      if (entry == null) continue;
-      final descendants = children[id] ?? const <WarehouseDictEntry>[];
-      if (descendants.isEmpty) {
-        if (entry.isAccountable && entry.status != '禁用') leaves.add(entry);
-      } else {
-        pending.addAll(descendants.reversed.map((entry) => entry.id));
-      }
-    }
-    leaves.sort((left, right) {
-      final byCode = (left.code ?? '').compareTo(right.code ?? '');
-      return byCode != 0 ? byCode : left.id.compareTo(right.id);
-    });
-    return leaves;
-  }
-
-  WarehouseDictEntry? _warehouseRootOf(String? warehouseId) {
-    final byId = {
-      for (final entry
-          in ref.read(masterNameServiceProvider).warehouseHierarchy)
-        entry.id: entry,
-    };
-    var current = byId[warehouseId];
-    final seen = <String>{};
-    while (current != null && seen.add(current.id)) {
-      final parent = byId[current.parentId];
-      if (parent == null) return current;
-      current = parent;
-    }
-    return null;
-  }
+  WarehouseDictEntry? _warehouseRootOf(String? warehouseId) =>
+      ref.read(masterNameServiceProvider).mainWarehouseOf(warehouseId);
 
   Widget _warehouseField() {
     final hierarchy = ref.watch(masterNameServiceProvider).warehouseHierarchy;
-    final ids = hierarchy.map((entry) => entry.id).toSet();
     final roots = hierarchy
-        .where(
-          (entry) => entry.parentId == null || !ids.contains(entry.parentId),
-        )
+        .where((entry) => entry.parentId == null || entry.parentId!.isEmpty)
         .toList();
     final root = _warehouseRootOf(_warehouseId);
     return Row(
@@ -934,95 +889,21 @@ abstract class _MaterialAnalysisCandidatesState
             value: root?.id,
             label: _l10n.materialMainWarehouse,
             allowClear: false,
-            info:
-                '${_l10n.materialWarehouseScopeExplanation}\n${_l10n.materialIssueWarehouseSettings}: ${ref.read(masterNameServiceProvider).warehouseEntries[_warehouseId] ?? '—'}',
+            info: _l10n.materialWarehouseScopeExplanation,
             enabled: !_busy && _canManage && roots.isNotEmpty,
             items: [
               for (final entry in roots)
                 UtenDropdownItem(value: entry.id, label: entry.name),
             ],
             onChanged: (value) {
-              if (value == null) return;
-              final leaves = _warehouseScopeLeaves(value);
-              if (leaves.isEmpty) return;
-              final selected = leaves.map((entry) => entry.id).toSet();
-              final primary = selected.contains(_warehouseId)
-                  ? _warehouseId!
-                  : leaves.first.id;
-              _applyWarehouseSelection(primary, selected);
+              // Displaying an old leaf-backed analysis must not rewrite its identity.
+              if (value == null || value == root?.id) return;
+              _applyWarehouseSelection(value, {value});
             },
           ),
         ),
-        IconButton(
-          key: const Key('material-analysis-issue-warehouse-settings'),
-          tooltip: _l10n.materialIssueWarehouseSettings,
-          onPressed: _busy || root == null || !_canManage
-              ? null
-              : _pickWarehouses,
-          icon: const Icon(Icons.tune_rounded),
-        ),
       ],
     );
-  }
-
-  /// The main selector is a scope. Physical reservations keep their leaf UUID.
-  Future<void> _pickWarehouses() async {
-    final root = _warehouseRootOf(_warehouseId);
-    if (root == null || _busy || !_canManage) return;
-    final leaves = _warehouseScopeLeaves(root.id);
-    if (leaves.isEmpty) return;
-    var primary = _warehouseId;
-    final result = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(_l10n.materialIssueWarehouseSettings),
-          content: SizedBox(
-            width: 480,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(_l10n.materialWarehouseScopeExplanation),
-                const SizedBox(height: UtenSpacing.s12),
-                Flexible(
-                  child: RadioGroup<String>(
-                    groupValue: primary,
-                    onChanged: (value) => setDialogState(() => primary = value),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: leaves.length,
-                      itemBuilder: (_, index) => RadioListTile<String>(
-                        key: ValueKey(
-                          'material-analysis-warehouse-primary-${leaves[index].id}',
-                        ),
-                        value: leaves[index].id,
-                        title: Text(leaves[index].name),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: Text(_l10n.commonCancel),
-            ),
-            FilledButton(
-              key: const Key('material-analysis-warehouse-confirm'),
-              onPressed: primary == null
-                  ? null
-                  : () => Navigator.pop(dialogContext, primary),
-              child: Text(_l10n.commonConfirm),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (result == null || !mounted) return;
-    _applyWarehouseSelection(result, leaves.map((entry) => entry.id).toSet());
   }
 
   List<MasterColumnDef<MaterialAnalysisSalesCandidateLine>>

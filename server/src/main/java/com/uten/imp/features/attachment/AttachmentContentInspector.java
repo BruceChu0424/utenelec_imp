@@ -81,6 +81,8 @@ final class AttachmentContentInspector {
             return new Inspection(HexFormat.of().formatHex(digest.digest()), count);
         } catch (ApiException e) {
             throw e;
+        } catch (com.uten.imp.common.storage.StorageResourceUnavailableException busy) {
+            throw busy;
         } catch (IOException e) {
             throw new ApiException(ErrorCode.CONFLICT, "无法读取已上传附件，请重新上传");
         } catch (Exception e) {

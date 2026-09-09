@@ -42,11 +42,12 @@ mvn spring-boot:run             # 读取 .env，Flyway 自动建表 + 种子
 以上命令**只用于本地开发**。生产不得复制开发 `.env` 或直接运行 `spring-boot:run`；应使用不可变 JAR、
 受控密钥注入、Nginx/systemd 和维护窗口迁移，见上方现役发布运行手册。
 
-本地开发必须在 `.env` 中显式保留 `UTEN_PROFILE=dev`。当前内部 ERP 测试服务器必须只使用
-`UTEN_PROFILE=internal-test`，完整契约见
-[`deploy/internal-test-runtime.zh-CN.md`](../deploy/internal-test-runtime.zh-CN.md)。未设置 profile 时服务端按 `prod`
-启动并要求生产数据库、JWT issuer、CORS 等变量齐全，配置缺失直接失败，避免把开发默认值误带到
-生产。
+本机开发在 `.env` 中显式设置 `UTEN_PROFILE=dev`。当前公司内网版本的目标配置为 `prod`，使用
+专用内部附件目录、回环后端、HTTPS反向代理和独立迁移；必须配齐数据库、JWT issuer、CORS及密钥。
+`internal-test` 是旧受限测试运行配置，仍保留其安全门禁，默认禁止附件上传，不能当成新内部附件版本的配置模板。
+现役发布步骤以 [简化发布手册](../deploy/simple/RUNBOOK.zh-CN.md) 与
+[本轮服务器验收记录](../docs/99-项目治理/2026-09-08-内部附件实施与服务器验收.md) 为准。
+2026-09-08只读核查发现公司旧版本实际仍为 `dev`；本轮需要完成配置校准，不把文档中的目标状态说成已经安装。
 
 ### 运维脚本（server/ops/）
 
@@ -55,26 +56,22 @@ mvn spring-boot:run             # 读取 .env，Flyway 自动建表 + 种子
 | `ops/reset_business_data.sql` | 停写后的业务重置。目标数据库与系统标识必须精确匹配；CLEAR/PRESERVE目录必须完整分类，未知表或未完成Outbox拒绝。清空业务单据、库存与资金事实，保留主档身份、人事、账号权限、审计和迁移证据；账户/遗留期初与预算字段按明确清单归零。当前支持版本、表分类和真实psql验收见迁移索引。 |
 | `ops/audit_retention.sql` | 审计日志 180 天热保留 + 归档冷存，幂等，可手动或定时执行 |
 
-### 本地/云端生产 profile
+### 公司内网运行与历史配置
 
 | 站点 | 必须 profile | 数据库行为 | 员工访问边界 |
 |---|---|---|---|
-| 当前内部 ERP 测试服务器 | 仅 `internal-test` | 写本机干净测试库；运行后端禁用 Flyway，迁移只走独立 migration-only 流程 | 内部 DNS + HTTPS；Nginx 精确办公网 CIDR；后端只监听回环 |
-| 公司本地 | `prod` | 写公司本地主库；由本地实例执行 Flyway | `/api/**` 只接受 `UTEN_LOCAL_ALLOWED_CIDRS` 内来源 |
-| 阿里云 ECS | `cloud,prod` | 正常时仍写公司主库；云端 PostgreSQL 只作异步热备；云端不执行 Flyway | 只有 `remote_access=TRUE` 员工可登录/refresh/访问业务 API |
+| 本机开发 | `dev` | 独立本机开发库，启动时执行正式 Flyway 迁移 | 仅开发使用，不作为公司服务器配置 |
+| 公司内网目标配置 | `prod` | 公司本地主库；运行后端禁用Flyway，更新时使用独立migrator | 内部DNS + HTTPS，精确办公网CIDR，后端仅回环 |
+| 旧受限测试配置 | 仅 `internal-test` | 独立测试库及原安全门禁 | 默认关闭上传，不作为本次附件上线入口 |
 
-正常链路下两个 App 提交到同一个主库，不做数据库双写。公司到云端断链时，本地继续写，云端员工业务
-请求返回 `503 PRIMARY_UNAVAILABLE`，不得缓存或恢复后静默重放。若要求断链期间两端都写，必须另做逐业务域
-冲突/补偿设计，不能把云端副本开放写入。
+当前只交付公司内网场景。旧云端单主库、远程访问及历史OSS规则见
+[ADR-031](../docs/99-决策记录-ADR/ADR-031-本地云端单主库部署架构.md)；不据此启用第二个可写主库。
+Release客户端端点在构建期固定，员工不用填写服务器地址。
 
-员工远程权限由超管 `PUT /api/admin/users/{id}/remote-access` 管理，默认关闭；变化会撤销 refresh token
-并使旧 access 的授权版本失效。访客 OTP 是独立公网主体，不取得员工 ERP 权限，也不由 `users.remote_access`
-字段表示。Release 客户端端点必须构建期固定；禁止让员工手填任意 host。
-
-`prod/cloud` 还会强制 `UTEN_STORAGE_PROVIDER=oss`、HTTPS endpoint、
-`UTEN_OSS_REQUIRE_VERSIONING=true`。附件使用两个不同 Bucket：upload-only staging 必须 Versioning=Off，
-server-only final 必须 Versioning=Enabled；启动时读取并核对两者，配置或权限不足即拒绝启动。
-这些 fail-fast 只证明配置没有降级，不证明真实 CORS、RAM、版本重放、恶意扫描或恢复演练已经通过。
+新文件固定 `UTEN_STORAGE_PROVIDER=internal`，`UTEN_INTERNAL_STORAGE_ROOT` 指向经过验证的专用持久卷，
+正式文件、暂存和还原临时文件均在同一卷。旧OSS对象仅按已保存的精确后端及版本只读访问，新上传不发往阿里云。
+启用上传需要实际ClamAV、原件往返、权限、删除与成套恢复验证；开关和目录存在不等于验收通过。
+入口及对象权限见 [ADR-074](../docs/99-决策记录-ADR/ADR-074-公司内部附件存储与原件保留.md)。
 数据库侧同样 fail-closed：`prod/cloud` 的非回环 `spring.datasource.url` 必须包含
 `sslmode=verify-full` 与绝对 `sslrootcert` 路径；cloud 主/副库即使是回环也执行该要求，并拒绝自定义
 SSL factory/hostname verifier。明确的本机回环继续允许开发、内部测试和固定 migration-only 流程。

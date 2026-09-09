@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
@@ -21,6 +22,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/widgets/source_doc_link.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
@@ -53,6 +55,57 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
   PurchaseDocDetail? _detail;
   bool _loading = false;
   bool _busy = false;
+  bool _openingOrder = false;
+  final Set<String> _selectedRequestItemIds = {};
+
+  bool get _canGenerateRequestOrder =>
+      widget.docType == PurchaseDocType.request &&
+      _detail?.status == kPurchaseStatusApproved &&
+      _detail?.closed == false &&
+      _hasPermission(Perm.purchaseOrderCreate) &&
+      _hasPermission(Perm.purchaseOrderDecompose);
+
+  double _remainingRequestQty(PurchaseDocItem item) =>
+      item.remainingQty ??
+      ((item.qty ?? 0) - (item.orderedQty ?? 0) - (item.pendingQty ?? 0)).clamp(
+        0,
+        double.infinity,
+      );
+
+  bool _canSelectRequestItem(PurchaseDocItem item) =>
+      !_busy && item.id?.isNotEmpty == true && _remainingRequestQty(item) > 0;
+
+  static String _requestQtyText(double? value) => value == null
+      ? '—'
+      : value.toStringAsFixed(4).replaceFirst(RegExp(r'\.?0+$'), '');
+
+  Future<void> _generateSelectedOrder() async {
+    if (!_canGenerateRequestOrder ||
+        _openingOrder ||
+        _busy ||
+        _changedQtyItems.isNotEmpty) {
+      return;
+    }
+    final ids = [
+      for (final item in _detail!.items)
+        if (_selectedRequestItemIds.contains(item.id) &&
+            _canSelectRequestItem(item))
+          item.id!,
+    ];
+    if (ids.isEmpty) return;
+    setState(() => _openingOrder = true);
+    try {
+      await context.push(
+        '/purchase/orders/new?requestItemIds=${ids.join(',')}',
+      );
+      if (mounted) {
+        _selectedRequestItemIds.clear();
+        await _load();
+      }
+    } finally {
+      if (mounted) setState(() => _openingOrder = false);
+    }
+  }
 
   // V477 分解前数量修正：申请明细行内编辑（键=明细 id）。仅计划下达的
   // 已审核申请、且明细尚无订货/待审占用时可编辑；保存走专用修正端点。
@@ -65,14 +118,17 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       _hasPermission(Perm.purchaseOrderDecompose);
 
   bool _itemQtyEditable(PurchaseDocItem item) =>
-      _canAdjustRequestQty && (item.orderedQty ?? 0) <= 0 && item.id != null;
+      _canAdjustRequestQty &&
+      (item.orderedQty ?? 0) <= 0 &&
+      (item.pendingQty ?? 0) <= 0 &&
+      item.id != null;
 
   TextEditingController _qtyControllerOf(PurchaseDocItem item) {
     final id = item.id!;
     var controller = _qtyControllers[id];
     if (controller == null) {
       controller = TextEditingController(
-        text: item.qty?.toStringAsFixed(2) ?? '',
+        text: item.qty == null ? '' : _requestQtyText(item.qty),
       );
       controller.addListener(() {
         if (mounted) setState(() {});
@@ -89,7 +145,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       for (final item in _detail!.items)
         if (_itemQtyEditable(item) &&
             _qtyControllerOf(item).text.trim() !=
-                (item.qty?.toStringAsFixed(2) ?? ''))
+                (item.qty == null ? '' : _requestQtyText(item.qty)))
           (
             item,
             double.tryParse(_qtyControllerOf(item).text.trim()) ?? double.nan,
@@ -217,6 +273,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       if (!mounted) return;
       setState(() {
         _detail = d;
+        _selectedRequestItemIds.retainAll({
+          for (final item in d.items)
+            if (item.id != null && _remainingRequestQty(item) > 0) item.id!,
+        });
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -585,6 +645,28 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
                     ],
                     const SizedBox(height: UtenSpacing.s12),
                     _itemsCard(theme, names),
+                    if (widget.docType == PurchaseDocType.order) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      BusinessAttachmentSection(
+                        ownerType: 'PURCHASE_ORDER',
+                        ownerId: _detail!.id,
+                        canView:
+                            _canViewCommercialAmounts &&
+                            (_hasPermission(Perm.purchaseOrderView) ||
+                                (_hasPermission(
+                                      Perm.financeOrderApprovalView,
+                                    ) &&
+                                    _detail!.financeApproval?.isPending ==
+                                        true)),
+                        canManage:
+                            _canEdit &&
+                            _detail!.canEdit &&
+                            _detail!.status == kPurchaseStatusDraft &&
+                            !_detail!.closed &&
+                            _detail!.financeApproval?.isPending != true,
+                        categories: const ['合同', '供应商确认', '图片', '其他'],
+                      ),
+                    ],
                   ],
                 ),
         ),
@@ -609,7 +691,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         _KV('币种', names.currency(d.currencyId)),
       if (canViewCommercialAmounts && d.exchangeRate != null)
         _KV('汇率', d.exchangeRate?.toString()),
-      if (_cfg.hasApplicant) _KV('申请人', d.applicantId ?? '—'),
+      if (_cfg.hasApplicant) _KV('申请人', d.applicantName ?? '—'),
       if (_cfg.hasPurchaser) _KV('采购员', d.purchaserId ?? '—'),
       if (_cfg.hasSender) _KV('交货人', d.senderId ?? '—'),
       if (_cfg.hasReceiver) _KV('收货人', d.receiverId ?? '—'),
@@ -732,6 +814,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
                 ),
               ),
             ),
+            if (_canGenerateRequestOrder)
+              const UtenFieldHintIcon(
+                info: '勾选这次需要采购的明细，再生成订货单；下一页可填写本批数量。剩余部分以后再选，不会带入未勾选的明细。',
+              ),
             // V477：分解前的数量修正（有改动才出现）。
             if (changedCount > 0) ...[
               Text(
@@ -755,6 +841,16 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         const SizedBox(height: UtenSpacing.s8),
         MasterDataTableView<PurchaseDocItem>(
           embedded: true,
+          selectable: _canGenerateRequestOrder,
+          idOf: (item) => _canSelectRequestItem(item) ? item.id : null,
+          rowKeyOf: (item) => item.id,
+          rowWidgetKeyOf: (item) => ValueKey('purchase-request-row-${item.id}'),
+          selectedIds: _selectedRequestItemIds,
+          onSelectedIdsChanged: (next) => setState(() {
+            _selectedRequestItemIds
+              ..clear()
+              ..addAll(next);
+          }),
           columns: [
             MasterColumnDef(
               key: 'goods',
@@ -785,7 +881,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
               label: '数量',
               width: _canAdjustRequestQty ? 130 : 90,
               type: 'number',
-              value: (it) => it.qty?.toStringAsFixed(2),
+              value: (it) => _requestQtyText(it.qty),
               cellBuilderHandlesSemantics: true,
               // V477：申请明细在分解前可直接改量（已订货/待审占用的行只读）。
               cellBuilder: (context, it) => _itemQtyEditable(it)
@@ -807,7 +903,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
                     )
                   : Align(
                       alignment: Alignment.centerRight,
-                      child: Text(it.qty?.toStringAsFixed(2) ?? '—'),
+                      child: Text(_requestQtyText(it.qty)),
                     ),
             ),
             // 实际重量列已下线（2026-09-04：单位已表达重量，编辑页不再录入）。
@@ -833,6 +929,29 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
             ],
             if (widget.docType == PurchaseDocType.request ||
                 widget.docType == PurchaseDocType.order) ...[
+              if (widget.docType == PurchaseDocType.request) ...[
+                MasterColumnDef(
+                  key: 'approvedOrderQty',
+                  label: '已批准订货',
+                  width: 115,
+                  type: 'number',
+                  value: (it) => _requestQtyText(it.orderedQty ?? 0),
+                ),
+                MasterColumnDef(
+                  key: 'pendingOrderQty',
+                  label: '待财务确认',
+                  width: 115,
+                  type: 'number',
+                  value: (it) => _requestQtyText(it.pendingQty ?? 0),
+                ),
+                MasterColumnDef(
+                  key: 'remainingOrderQty',
+                  label: '可继续采购',
+                  width: 115,
+                  type: 'number',
+                  value: (it) => _requestQtyText(_remainingRequestQty(it)),
+                ),
+              ],
               MasterColumnDef(
                 key: 'planNo',
                 label: '生产计划',
@@ -1003,27 +1122,24 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     }
 
     if (widget.docType == PurchaseDocType.request) {
-      // 与任务中心同一条链路：详情页直达订货编辑页（预填时后端
-      // decompositionPreview 自动过滤已分解完的明细；全部分解完会提示）。
-      final canDecompose =
-          s == kPurchaseStatusApproved &&
-          _hasPermission(Perm.purchaseOrderCreate) &&
-          _hasPermission(Perm.purchaseOrderDecompose);
-      final requestItemIds = d.items
-          .map((it) => it.id)
-          .whereType<String>()
-          .map((id) => id.trim())
-          .where((id) => id.isNotEmpty)
-          .toList();
-      if (canDecompose && requestItemIds.isNotEmpty) {
+      // Only selected still-available sources enter the shared decomposition flow.
+      // The backend rechecks quantity and ownership when opening and saving the order.
+      if (_canGenerateRequestOrder && d.items.isNotEmpty) {
         addAction(
           UtenButton(
             key: const Key('purchase-request-generate-order'),
             icon: Icons.add_shopping_cart_rounded,
-            onPressed: () => context.push(
-              '/purchase/orders/new?requestItemIds=${requestItemIds.join(',')}',
+            isLoading: _openingOrder,
+            onPressed:
+                _selectedRequestItemIds.isEmpty ||
+                    _busy ||
+                    _changedQtyItems.isNotEmpty
+                ? null
+                : _generateSelectedOrder,
+            onDisabledTap: () => context.appInfo(
+              _changedQtyItems.isNotEmpty ? '请先保存明细数量的修改' : '请先勾选本次需要采购的明细',
             ),
-            child: const Text('生成采购订货单'),
+            child: const Text('按所选生成采购订货单'),
           ),
         );
       }

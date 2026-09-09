@@ -3946,7 +3946,7 @@ class FullChainEndToEndTest {
     }
 
     @Test
-    void preplanReceiptOtherMainWarehouseRemainsPublic() {
+    void preplanReceiptOtherMainWarehouseKeepsQualifiedOriginalSource() {
         verifyPreplanReceiptWarehouseBoundary(false);
     }
 
@@ -4090,22 +4090,22 @@ class FullChainEndToEndTest {
         assertEquals(0,stockBalance(receiptWarehouse,material).compareTo(new BigDecimal("5")));
         assertEquals(0,stockBalance(w.warehouseId(),material).compareTo(BigDecimal.ZERO),
                 "逻辑分析仓不得虚增物理库存");
-        assertEquals(sameMain ? 1 : 0,count("""
+        assertEquals(1,count("""
                 SELECT count(*) FROM preplan_analysis_stock_exact_pegs peg
                 JOIN stock_reservations reservation ON reservation.id=peg.stock_reservation_id
                 WHERE peg.source_receipt_id=? AND peg.origin_analysis_material_id=?
                   AND reservation.warehouse_id=? AND reservation.qty=5 AND reservation.status=0
                 """,receiptId,original.materialLineId(),receiptWarehouse));
         assertEquals(0,publicAvailable(receiptWarehouse,material)
-                .compareTo(sameMain ? BigDecimal.ZERO : new BigDecimal("5")));
+                .compareTo(BigDecimal.ZERO));
         loginAs(w.superAdminUserId());
         MaterialView current = analysisService.detail(analysis.analysisId()).flatMaterials().stream()
                 .filter(row -> row.materialLineId().equals(original.materialLineId()))
                 .findFirst().orElseThrow();
         assertEquals(0,current.exactPeggedQty()
-                .compareTo(sameMain ? new BigDecimal("5") : BigDecimal.ZERO));
+                .compareTo(new BigDecimal("5")));
         assertEquals(0,current.shortageQty()
-                .compareTo(sameMain ? new BigDecimal("5") : new BigDecimal("10")));
+                .compareTo(new BigDecimal("5")));
         var pendingItem = arrivalControl.expectations(1,50,"PURCHASE","M-" + suffix)
                 .getItems().stream().flatMap(task -> task.items().stream())
                 .filter(item -> item.orderItemId().equals(orderItemId))
@@ -7973,7 +7973,7 @@ class FullChainEndToEndTest {
 
         // Drive the BUY shortage through a real request, formal PO and finance
         // approval. It is still a pre-plan source, so the qualified receipt is
-        // free stock for the analysis refresh rather than a formal reservation.
+        // qualified stock owned by this analysis, not yet a formal execution reservation.
         UUID orderItemId = approvePurchaseForAnalysis(w, initial, material);
         UUID receiptId = receiveIntoQuarantine(
                 w, material, orderItemId, "20");
@@ -8020,27 +8020,23 @@ class FullChainEndToEndTest {
         assertEquals(0, analysisService.detail(analysisId).products().getFirst()
                         .readyFinishQty().compareTo(new BigDecimal("5")),
                 "首批仓库确认后可完工量由 0 增至 5");
-        assertEquals(1, count("""
+        assertEquals(0, count("""
                 select count(*) from business_outbox
                 where event_type = 'PRODUCTION_MATERIAL_ANALYSIS_READY'
                   and aggregate_id = ?
-                  and payload->>'sourceType' = 'PURCHASE'
-                  and payload->>'sourceDocumentId' = ?
-                  and payload->>'sourceEventId' is not null
-                  and payload->>'readyFinishDelta' = '5'
-                  and payload->>'readyFinishQty' = '5'
-                """, analysisId, receiptId.toString()),
-                "首批仓库入库用 stock-in item lineage 产生一条 durable ready 事件");
+                """, analysisId),
+                "物料进度正常刷新，但不再向计划制单人发送旧齐套下达提醒");
 
         loginAs(w.superAdminUserId());
         inspectionService.dispose("PURCHASE", receiptId, inspectionItemId,
                 new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest(
                         "PASS", new BigDecimal("10"), "部分合格", partialKey));
-        assertEquals(1, count("""
+        assertEquals(0, count("""
                 select count(*) from business_outbox
                 where event_type = 'PRODUCTION_MATERIAL_ANALYSIS_READY'
                   and aggregate_id = ?
-                """, analysisId), "IQC replay 不重复发布 ready 事件");
+                """, analysisId),
+                "物料进度正常刷新，但不再向计划制单人发送旧齐套下达提醒");
 
         String finalKey = "analysis-wakeup-final-" + receiptId;
         inspectionService.dispose("PURCHASE", receiptId, inspectionItemId,
@@ -8053,12 +8049,12 @@ class FullChainEndToEndTest {
         assertEquals(0, analysisService.detail(analysisId).products().getFirst()
                         .readyFinishQty().compareTo(new BigDecimal("5")),
                 "最终切片仓库确认前可完工量保持 5");
-        assertEquals(1, count("""
+        assertEquals(0, count("""
                 select count(*) from business_outbox
                 where event_type = 'PRODUCTION_MATERIAL_ANALYSIS_READY'
                   and aggregate_id = ?
                 """, analysisId),
-                "品质整单结案不额外发布齐套事件");
+                "物料进度正常刷新，但不再向计划制单人发送旧齐套下达提醒");
 
         loginAs(warehouseConfirmer);
         iqcStockInService.confirm(
@@ -8075,16 +8071,12 @@ class FullChainEndToEndTest {
         assertEquals(0, analysisService.detail(analysisId).products().getFirst()
                         .readyFinishQty().compareTo(new BigDecimal("10")),
                 "最终仓库确认把可完工量刷新至 10");
-        assertEquals(1, count("""
+        assertEquals(0, count("""
                 select count(*) from business_outbox
                 where event_type = 'PRODUCTION_MATERIAL_ANALYSIS_READY'
                   and aggregate_id = ?
-                  and payload->>'sourceDocumentId' = ?
-                  and payload->>'sourceEventId' is not null
-                  and payload->>'readyFinishDelta' = '5'
-                  and payload->>'readyFinishQty' = '10'
-                """, analysisId, receiptId.toString()),
-                "最终仓库入库切片使用 stock-in item 幂等 lineage");
+                """, analysisId),
+                "物料进度正常刷新，但不再向计划制单人发送旧齐套下达提醒");
 
         purchaseReceiptService.reverse(receiptId);
 
@@ -8094,11 +8086,12 @@ class FullChainEndToEndTest {
         assertEquals(0, analysisService.detail(analysisId).products().getFirst()
                         .readyFinishQty().compareTo(BigDecimal.ZERO),
                 "红冲后自动刷新并降低可完工量，不能留下虚高快照");
-        assertEquals(2, count("""
+        assertEquals(0, count("""
                 select count(*) from business_outbox
                 where event_type = 'PRODUCTION_MATERIAL_ANALYSIS_READY'
                   and aggregate_id = ?
-                """, analysisId), "红冲只刷新，不发送齐套增加通知");
+                """, analysisId),
+                "物料进度正常刷新，但不再向计划制单人发送旧齐套下达提醒");
     }
 
     @Test

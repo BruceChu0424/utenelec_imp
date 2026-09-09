@@ -56,7 +56,7 @@ uten:
     swagger-enabled: false
   storage:
     # 云端 ECS 默认用实例 RAM 角色访问 OSS（免 AccessKey）。
-    provider: ${UTEN_STORAGE_PROVIDER:oss}
+    provider: ${UTEN_STORAGE_PROVIDER:internal}
     oss:
       use-instance-role: ${UTEN_OSS_USE_INSTANCE_ROLE:true}
       require-versioning: ${UTEN_OSS_REQUIRE_VERSIONING:true}

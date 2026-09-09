@@ -16,6 +16,8 @@ import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/attachments/business_attachment_section.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../models/finance_asset_models.dart';
@@ -723,6 +725,11 @@ class _FinanceAssetDetailSurfaceState
   }
 
   Widget _references(ThemeData theme, FinanceAssetDetail detail) {
+    final permissions = ref.watch(currentPermissionsProvider);
+    final canViewFiles =
+        widget.capabilities.canView &&
+        permissions.contains(Perm.financeAssetView) &&
+        permissions.contains(Perm.financeViewAll);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -756,7 +763,7 @@ class _FinanceAssetDetailSurfaceState
           ),
         ),
         if (detail.documentReferences.isEmpty)
-          const Text('暂无文档引用；附件服务未启用，本页不提供上传入口。')
+          const Text('暂无文档引用。')
         else
           for (final reference in detail.documentReferences)
             ListTile(
@@ -764,6 +771,22 @@ class _FinanceAssetDetailSurfaceState
               leading: const Icon(Icons.description_outlined),
               title: SelectableText(reference),
             ),
+        if (canViewFiles) ...[
+          const SizedBox(height: UtenSpacing.s12),
+          BusinessAttachmentSection(
+            ownerType: widget.ledger == FinanceAssetLedger.fixedAsset
+                ? 'FINANCE_ASSET'
+                : 'FINANCE_DEFERRED_EXPENSE',
+            ownerId: detail.summary.id,
+            canView: canViewFiles,
+            canManage:
+                permissions.contains(Perm.financeAssetEdit) &&
+                _permitted('EDIT') &&
+                detail.summary.status == 'DRAFT',
+            title: '资产相关文件',
+            categories: const ['购置凭证', '验收文件', '其他凭证'],
+          ),
+        ],
       ],
     );
   }

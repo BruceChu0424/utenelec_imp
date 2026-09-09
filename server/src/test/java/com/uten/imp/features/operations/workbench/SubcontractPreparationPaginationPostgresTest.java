@@ -62,6 +62,10 @@ class SubcontractPreparationPaginationPostgresTest {
         jdbc.execute("CREATE TABLE production_plans(id uuid PRIMARY KEY, material_analysis_item_id uuid, is_deleted boolean, is_canceled boolean)");
         jdbc.execute("CREATE TABLE production_execution_segments(id uuid PRIMARY KEY, plan_id uuid, status text, is_deleted boolean)");
         jdbc.execute("CREATE TABLE production_material_analysis_plan_links(analysis_id uuid, analysis_item_id uuid, submitted_qty numeric, allocation_status text)");
+        jdbc.execute("CREATE TABLE preplan_supply_actions(id uuid PRIMARY KEY, created_at timestamptz, external_document_type text, route text)");
+        jdbc.execute("CREATE TABLE preplan_supply_action_allocations(id uuid PRIMARY KEY, external_item_id uuid, action_id uuid)");
+        jdbc.execute("CREATE TABLE preplan_subcontract_make_task_batches(id uuid PRIMARY KEY, application_item_id uuid, task_id uuid)");
+        jdbc.execute("CREATE TABLE subcontract_order_item_sources(order_item_id uuid, application_item_id uuid, alloc_qty numeric)");
         jdbc.execute("""
                 CREATE TABLE workbench_documents(department text, action_doc_id uuid, plan_no text,
                     warehouse_id uuid, warehouse_name text, goods_id uuid, goods_code text, goods_name text,
@@ -93,6 +97,7 @@ class SubcontractPreparationPaginationPostgresTest {
                 CREATE INDEX idx_preplan_subcontract_make_tasks_open
                     ON preplan_subcontract_make_tasks(status,updated_at,id) WHERE status='ACTIVE';
                 """);
+        jdbc.execute("ALTER TABLE preplan_subcontract_make_tasks ADD COLUMN supply_action_id uuid");
         jdbc.execute("VACUUM ANALYZE preplan_subcontract_make_tasks");
         planBeforeIndex = countPlan();
         try (var migration = Objects.requireNonNull(SubcontractPreparationPaginationPostgresTest.class
@@ -194,6 +199,94 @@ class SubcontractPreparationPaginationPostgresTest {
         });
         assertThat(plan).contains("idx_subcontract_make_pending")
                 .doesNotContain("Seq Scan on preplan_subcontract_make_tasks");
+    }
+
+    @Test void orderableDocumentsPrecedePreparationAcrossPagesAndColumnFacetsUseAllMatchingRows() {
+        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), employeeId, "decomposer",
+                Set.of(), Set.of("subcontract_application:view", "subcontract_order:create", "subcontract_order:decompose"), false, true, false)));
+        transactions.executeWithoutResult(tx -> {
+            jdbc.update("UPDATE workbench_documents SET need_date=CURRENT_DATE+90");
+            var options = new FulfillmentWorkbenchTableQuery("docNo", "desc", Map.of(), null, null, null, null);
+            var first = service.query("SUBCONTRACT", "", "", "", null, null, 1, 2, options);
+            var second = service.query("SUBCONTRACT", "", "", "", null, null, 2, 2, options);
+            assertThat(first.items()).extracting(FulfillmentTaskRow::actionDocNo).containsExactly("APP-3", "APP-2");
+            assertThat(first.items()).allMatch(FulfillmentTaskRow::canCreateOrder);
+            assertThat(second.items().getFirst().actionDocNo()).isEqualTo("APP-1");
+            assertThat(second.items().get(1).canCreateOrder()).isFalse();
+            assertThat(first.total()).isEqualTo(128);
+            var filtered = service.query("SUBCONTRACT", "", "", "", null, null, 1, 2,
+                    new FulfillmentWorkbenchTableQuery("docNo", "asc", Map.of("docNo", "APP-3"), null, null, null, null));
+            assertThat(filtered.total()).isEqualTo(1);
+            assertThat(filtered.facets().get("docNo")).extracting(FulfillmentWorkbenchPage.Facet::value)
+                    .contains("APP-1", "APP-2", "APP-3", "PREP-125");
+            var stage = service.query("SUBCONTRACT", "", "", "", null, null, 1, 2,
+                    new FulfillmentWorkbenchTableQuery("planNo", "asc", Map.of("status", "NOTIFYING_WORKSHOP"), null, null, null, null));
+            assertThat(stage.total()).isEqualTo(125);
+            assertThat(stage.facets().get("status")).contains(new FulfillmentWorkbenchPage.Facet("WAITING_ORDER", "WAITING_ORDER", 3));
+            var exactGoods = service.query("SUBCONTRACT", "", "", "", null, null, 1, 2,
+                    new FulfillmentWorkbenchTableQuery("goods", "desc", Map.of("goods", id("goods-125").toString()), null, null, null, null));
+            assertThat(exactGoods.total()).isEqualTo(1);
+            assertThat(exactGoods.items().getFirst().goodsCode()).isEqualTo("SKU-125");
+            tx.setRollbackOnly();
+        });
+    }
+
+    @Test void issueDateUsesOriginalPlanningActionThroughPreparationAndOrderSourcesAndKeepsUnknownNull() {
+        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), employeeId, "decomposer",
+                Set.of(), Set.of("subcontract_application:view", "subcontract_order:view", "subcontract_order:create", "subcontract_order:decompose"), false, true, false)));
+        transactions.executeWithoutResult(tx -> {
+            jdbc.update("INSERT INTO preplan_supply_actions VALUES (?,TIMESTAMPTZ '2026-09-01 16:30:00+00','SUBCONTRACT_MAKE_TASK','SUBCONTRACT'),(?,TIMESTAMPTZ '2026-09-06 00:00:00+00','SUBCONTRACT_APPLICATION','SUBCONTRACT'),(?,TIMESTAMPTZ '2026-09-03 08:00:00+00','SUBCONTRACT_APPLICATION','SUBCONTRACT')",
+                    id("issue-original"), id("issue-after-production"), id("issue-direct"));
+            jdbc.update("UPDATE preplan_subcontract_make_tasks SET supply_action_id=? WHERE id=?",id("issue-original"),id("task-1"));
+            jdbc.update("INSERT INTO preplan_subcontract_make_task_batches VALUES(?,?,?)",UUID.randomUUID(),id("doc-item-1"),id("task-1"));
+            jdbc.update("INSERT INTO preplan_supply_action_allocations VALUES(?,?,?),(?,?,?)",UUID.randomUUID(),id("doc-item-1"),id("issue-after-production"),UUID.randomUUID(),id("doc-item-2"),id("issue-direct"));
+            jdbc.update("INSERT INTO subcontract_order_item_sources VALUES(?,?,10)",id("ordered-item"),id("doc-item-1"));
+            jdbc.update("""
+                    INSERT INTO workbench_documents
+                    SELECT department,?,plan_no,warehouse_id,warehouse_name,goods_id,goods_code,goods_name,
+                        spec,color_id,color_name,unit_id,unit_name,supply_route,required_qty,allocated_qty,
+                        fulfilled_qty,supply_pegged_qty,open_qty,'ORDER_PENDING_APPROVAL',need_date,expected_date,
+                        exception_code,updated_at,'SUBCONTRACT_ORDER','ORDER-A',?,'0'
+                    FROM workbench_documents WHERE action_doc_id=?
+                    """,id("ordered-document"),id("ordered-item"),id("document-1"));
+            var date = java.time.LocalDate.of(2026,9,2);
+            var result = service.query("SUBCONTRACT", "", "", "", null, null, 1, 50,
+                    new FulfillmentWorkbenchTableQuery("issuedAt", "desc", Map.of(), date, date, null, null));
+            assertThat(result.items()).extracting(FulfillmentTaskRow::taskId)
+                    .containsExactlyInAnyOrder(id("task-1"),id("document-1"),id("ordered-document"));
+            assertThat(result.items()).allSatisfy(row -> assertThat(row.issuedAt().toInstant())
+                    .isEqualTo(java.time.Instant.parse("2026-09-01T16:30:00Z")));
+            var applications = service.query("SUBCONTRACT", "", "APP-", "", null, null, 1, 50,
+                    new FulfillmentWorkbenchTableQuery("issuedAt", "desc", Map.of(), null, null, null, null));
+            assertThat(applications.items()).extracting(FulfillmentTaskRow::actionDocNo).containsExactly("APP-2","APP-1","APP-3");
+            assertThat(applications.items().getLast().issuedAt()).isNull();
+            assertThat(applications.nullCounts()).containsEntry("issuedAt",1L);
+            assertThat(applications.facets().get("issuedAt")).extracting(FulfillmentWorkbenchPage.Facet::value)
+                    .containsExactly("2026-09-02","2026-09-03");
+            tx.setRollbackOnly();
+        });
+    }
+
+    @Test void restrictedDocumentNumbersCannotLeakViaNewFacetsOrColumnFiltersAndUnknownKeysFailClosed() {
+        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), employeeId, "orders-only",
+                Set.of(), Set.of("subcontract_order:view"), false, true, false)));
+        transactions.executeWithoutResult(tx -> {
+            var result=service.query("SUBCONTRACT","","","",null,null,1,50,
+                    new FulfillmentWorkbenchTableQuery("docNo","asc",Map.of(),null,null,null,null));
+            assertThat(result.items()).allMatch(FulfillmentTaskRow::actionDocRestricted);
+            assertThat(result.facets()).doesNotContainKey("docNo");
+            assertThat(result.nullCounts()).containsEntry("docNo",3L);
+            assertThat(service.query("SUBCONTRACT","","","",null,null,1,50,
+                    new FulfillmentWorkbenchTableQuery("docNo","asc",Map.of("docNo","APP-1"),null,null,null,null)).total()).isZero();
+        });
+        assertThatThrownBy(()->new FulfillmentWorkbenchTableQuery("task_id;DROP TABLE goods","asc",Map.of(),null,null,null,null))
+                .isInstanceOf(com.uten.imp.common.web.ApiException.class);
+        assertThatThrownBy(()->new FulfillmentWorkbenchTableQuery("planNo","asc",Map.of("unknown","x"),null,null,null,null))
+                .isInstanceOf(com.uten.imp.common.web.ApiException.class);
+    }
+
+    private static UUID id(String key) {
+        return jdbc.queryForObject("SELECT md5(?)::uuid",UUID.class,key);
     }
 
     private static String countPlan() {

@@ -32,6 +32,15 @@ public class Attachment extends BaseEntity {
     @Column(name = "storage_key", nullable = false)
     private String storageKey;
 
+    @Column(name = "storage_provider", nullable = false, length = 24)
+    private String storageProvider;
+
+    @Column(name = "stored_size_bytes")
+    private Long storedSizeBytes;
+
+    @Column(name = "storage_encoding", length = 16)
+    private String storageEncoding;
+
     /** OSS versioning 开启时固定到 confirm 校验过的版本；本地存储为 null。 */
     @Column(name = "storage_version")
     private String storageVersion;

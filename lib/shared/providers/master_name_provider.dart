@@ -57,6 +57,7 @@ class WarehouseDictEntry {
     required this.name,
     this.code,
     this.parentId,
+    this.parentName,
     this.status,
     this.isAccountable = true,
   });
@@ -65,6 +66,7 @@ class WarehouseDictEntry {
   final String name;
   final String? code;
   final String? parentId;
+  final String? parentName;
   final String? status;
   final bool isAccountable;
 
@@ -74,6 +76,7 @@ class WarehouseDictEntry {
         name: (json['name'] ?? '') as String,
         code: json['code'] as String?,
         parentId: json['parentId'] as String?,
+        parentName: json['parentName'] as String?,
         status: json['status'] as String?,
         isAccountable: json['isAccountable'] as bool? ?? true,
       );
@@ -90,6 +93,8 @@ class MasterDictionaryService {
 
   Map<String, String> _warehouses = {};
   List<WarehouseDictEntry> _warehouseList = [];
+  Map<String, WarehouseDictEntry> _warehouseById = {};
+  final Map<String, WarehouseDictEntry?> _mainWarehouseCache = {};
   Map<String, String> _currencies = {};
   Map<String, String> _colors = {};
   Map<String, String> _units = {};
@@ -132,8 +137,10 @@ class MasterDictionaryService {
       () => api.getList(ApiEndpoints.warehousesDict),
       (entries) {
         final hierarchy = entries.map(WarehouseDictEntry.fromJson).toList();
-        _warehouses = _nameMap(entries);
+        _warehouses = warehouseDisplayNames(hierarchy);
         _warehouseList = hierarchy;
+        _warehouseById = {for (final entry in hierarchy) entry.id: entry};
+        _mainWarehouseCache.clear();
       },
     ),
     ensureDictionaryLoaded(
@@ -202,6 +209,73 @@ class MasterDictionaryService {
   );
 
   String warehouse(String? id) => resolveName(_warehouses, id);
+
+  /// Build once per dictionary load, so document rows share a stable parent/child label.
+  /// References remain UUIDs; names are never used to join or choose a warehouse.
+  static Map<String, String> warehouseDisplayNames(
+    List<WarehouseDictEntry> entries,
+  ) {
+    final byId = {for (final entry in entries) entry.id: entry};
+    return {
+      for (final entry in entries)
+        entry.id: () {
+          final labels = <String>[entry.name];
+          final visited = <String>{entry.id};
+          var current = entry;
+          while (current.parentId != null) {
+            final parentId = current.parentId!;
+            if (!visited.add(parentId)) return '仓库层级异常';
+            final parent = byId[parentId];
+            if (parent == null) {
+              final parentName = current.parentName?.trim();
+              if (parentName != null && parentName.isNotEmpty) {
+                labels.insert(0, parentName);
+              }
+              break;
+            }
+            labels.insert(0, parent.name);
+            current = parent;
+          }
+          return labels.join(' - ');
+        }(),
+    };
+  }
+
+  /// Resolve only proven parent links. An orphan/cycle is not a new main warehouse.
+  WarehouseDictEntry? mainWarehouseOf(String? id) {
+    if (id == null) return null;
+    if (_warehouseById.isEmpty) {
+      return resolveMainWarehouse(warehouseHierarchy, id);
+    }
+    return _mainWarehouseCache.putIfAbsent(
+      id,
+      () => _mainWarehouseFromIndex(_warehouseById, id),
+    );
+  }
+
+  static WarehouseDictEntry? resolveMainWarehouse(
+    Iterable<WarehouseDictEntry> entries,
+    String? id,
+  ) {
+    return _mainWarehouseFromIndex({
+      for (final entry in entries) entry.id: entry,
+    }, id);
+  }
+
+  static WarehouseDictEntry? _mainWarehouseFromIndex(
+    Map<String, WarehouseDictEntry> byId,
+    String? id,
+  ) {
+    var current = byId[id];
+    final visited = <String>{};
+    while (current != null && visited.add(current.id)) {
+      final parentId = current.parentId;
+      if (parentId == null || parentId.isEmpty) return current;
+      current = byId[parentId];
+    }
+    return null;
+  }
+
   String currency(String? id) => resolveName(_currencies, id);
   String color(String? id) => resolveName(_colors, id);
   String unit(String? id) => resolveName(_units, id);

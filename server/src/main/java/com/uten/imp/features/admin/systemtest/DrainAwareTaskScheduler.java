@@ -45,10 +45,11 @@ public class DrainAwareTaskScheduler implements TaskScheduler, DisposableBean {
     /** 清空窗口内静默跳过本轮执行（下一周期照常），否则原样执行。 */
     private Runnable gated(Runnable task) {
         return () -> {
-            if (drainGate.blockingNewRequests()) {
+            if (!drainGate.tryEnter()) {
                 return;
             }
-            task.run();
+            try { task.run(); }
+            finally { drainGate.leave(); }
         };
     }
 

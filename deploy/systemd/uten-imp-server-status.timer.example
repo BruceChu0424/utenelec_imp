@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh the ERP backup status summary once a minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Unit=uten-imp-server-status.service
+
+[Install]
+WantedBy=timers.target

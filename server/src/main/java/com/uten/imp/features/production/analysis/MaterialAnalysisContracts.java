@@ -538,7 +538,11 @@ public final class MaterialAnalysisContracts {
             BigDecimal selectedOtherWarehouseTransferableQty,
             LocalDate publicSurplusExpectedDate,
             List<SharedFutureSupplyRef> sharedFutureSupplyRefs,
-            String flowStage) {
+            String flowStage,
+            UUID planAnchorAnalysisLineId,
+            BigDecimal mainWarehousePublicAvailableQty,
+            BigDecimal mainWarehouseOpenSafetySupplyQty,
+            BigDecimal mainWarehouseSafetyReplenishmentGapQty) {
         @JsonProperty("nodeRole")
         public String nodeRole() {
             return level == 0 ? "ROOT_SUPPLY" : "BOM_COMPONENT";

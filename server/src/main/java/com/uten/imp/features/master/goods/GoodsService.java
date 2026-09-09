@@ -662,7 +662,7 @@ public class GoodsService {
     /**
      * 归属可见性守卫（详情/编辑前调用）：归属货品非本人且未授权 → 404（不透出存在性）。
      */
-    private void requireVisible(Goods g) {
+    void requireVisible(Goods g) {
         var scope = goodsScope();
         if (scope.seeAll() || g.getOwnerEmployeeId() == null) return;
         if (!scope.visibleOwners().contains(g.getOwnerEmployeeId())) {
@@ -670,12 +670,16 @@ public class GoodsService {
         }
     }
 
-    private void requireWritable(Goods g) {
-        var scope = goodsScope();
-        if (scope.seeAll() || g.getOwnerEmployeeId() == null) return;
-        if (!scope.writableOwners().contains(g.getOwnerEmployeeId())) {
+    void requireWritable(Goods g) {
+        if (!canWrite(g)) {
             throw new ApiException(ErrorCode.NOT_FOUND, "货品不存在");
         }
+    }
+
+    boolean canWrite(Goods g) {
+        var scope = goodsScope();
+        return scope.seeAll() || g.getOwnerEmployeeId() == null
+                || scope.writableOwners().contains(g.getOwnerEmployeeId());
     }
 
     @Transactional(readOnly = true)
@@ -1084,7 +1088,7 @@ public class GoodsService {
                 g.getSeries(), g.getStockPlace(),
                 g.getThicknessUnit() == null ? null : g.getThicknessUnit().getId(),
                 g.getMWeightUnit() == null ? null : g.getMWeightUnit().getId(),
-                g.isQuantityUnitLocked());
+                g.isQuantityUnitLocked(), canWrite(g));
         // 成本可见性（goods:cost:view）：未授权清空 18 个成本字段 + 置 costMasked（前端隐藏成本 Tab）
         if (!costMasker.canView()) {
             d.setSourceE(null); d.setMachiningE(null); d.setIncidentalE(null); d.setLacquerE(null);

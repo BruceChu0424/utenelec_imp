@@ -257,8 +257,8 @@ class MasterDataTableView<T> extends StatefulWidget {
   batchActionsBuilder;
 
   /// 多选模式开关：true 时在最前列渲染勾选框 + 表头三态全选，行高亮改由 [selectedIds] 驱动
-  /// （此时单选 [isSelected]/[onSelectionChanged]/内部 _selectedItem 全部失效）。仅用于列表页；
-  /// embedded（picker/明细表）勿开（initState 断言拦截）。多选模式下单击行 = 切换勾选，
+  /// （此时单选 [isSelected]/[onSelectionChanged]/内部 _selectedItem 全部失效）。
+  /// 列表和嵌入式业务明细共用；未启用多选的 picker 保留原单击选取。多选时单击行 = 切换勾选，
   /// 双击行 = [onRowTap] 打开详情。
   final bool selectable;
 
@@ -568,10 +568,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     assert(
       !widget.selectable || widget.idOf != null,
       'MasterDataTableView: selectable:true 需提供 idOf(行→业务 id 提取器)。',
-    );
-    assert(
-      !widget.embedded || !widget.selectable,
-      'MasterDataTableView: selectable 仅用于列表页，勿用在 embedded picker/明细表。',
     );
     assert(
       !widget.primary || !widget.embedded,
@@ -1077,7 +1073,17 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (widget.embedded) {
       return Column(
         mainAxisSize: MainAxisSize.min,
-        children: [_buildTable(context)],
+        children: [
+          _buildTable(context),
+          if (_hasFloatingBatchActions)
+            Padding(
+              padding: const EdgeInsets.only(top: UtenSpacing.s8),
+              child: Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: _buildFloatingBatchActions(context),
+              ),
+            ),
+        ],
       );
     }
     return Column(
@@ -2003,7 +2009,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 例外：embedded（picker/滑窗内明细表）保留单击直达——picker 行的单击
     // 语义本来就是「选中这条」，不是「打开页面」。
     Widget interactive;
-    if (widget.embedded) {
+    if (widget.embedded && !widget.selectable) {
       interactive = InkWell(
         onTap: () {
           selectRow();
@@ -2036,7 +2042,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         child: row,
       );
     }
-    if (!widget.embedded && onRowTap != null) {
+    if ((!widget.embedded || widget.selectable) && onRowTap != null) {
       interactive = Semantics(
         customSemanticsActions: {
           const CustomSemanticsAction(label: '打开详情'): openRow,

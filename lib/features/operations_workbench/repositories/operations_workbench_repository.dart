@@ -13,6 +13,13 @@ abstract interface class OperationsWorkbenchGateway {
     String? exception,
     String? dateFrom,
     String? dateTo,
+    String? sort,
+    String? order,
+    Map<String, String?> columnFilters = const {},
+    String? issuedFrom,
+    String? issuedTo,
+    String? needFrom,
+    String? needTo,
   });
 }
 
@@ -31,6 +38,13 @@ class OperationsWorkbenchRepository implements OperationsWorkbenchGateway {
     String? exception,
     String? dateFrom,
     String? dateTo,
+    String? sort,
+    String? order,
+    Map<String, String?> columnFilters = const {},
+    String? issuedFrom,
+    String? issuedTo,
+    String? needFrom,
+    String? needTo,
   }) async {
     final json = await api.get(
       '/operations/workbench/${department.apiValue}',
@@ -43,6 +57,14 @@ class OperationsWorkbenchRepository implements OperationsWorkbenchGateway {
         if (exception != null && exception.isNotEmpty) 'exception': exception,
         'dateFrom': ?dateFrom,
         'dateTo': ?dateTo,
+        'sort': ?sort,
+        if (sort != null) 'order': order ?? 'asc',
+        for (final entry in columnFilters.entries)
+          if (entry.value != null) 'f.${entry.key}': entry.value,
+        'issuedFrom': ?issuedFrom,
+        'issuedTo': ?issuedTo,
+        'needFrom': ?needFrom,
+        'needTo': ?needTo,
       },
     );
     return OperationsWorkbenchData.fromJson(json, department);

@@ -13,6 +13,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_material_analysis.dart';
 import '../repositories/production_repository.dart';
@@ -75,6 +76,9 @@ class _ProductionMaterialAnalysisHistoryPageState
       _error = null;
     });
     try {
+      final namesReady = ref
+          .read(masterNameServiceProvider)
+          .ensureCommonLoaded();
       final result = await ref
           .read(productionPlanRepositoryProvider)
           .materialAnalysisList(
@@ -83,6 +87,7 @@ class _ProductionMaterialAnalysisHistoryPageState
             status: _status.isEmpty ? null : _status,
             sourceType: _sourceType.isEmpty ? null : _sourceType,
           );
+      await namesReady;
       if (!mounted) return;
       setState(() {
         _page = result;
@@ -323,9 +328,9 @@ class _ProductionMaterialAnalysisHistoryPageState
       width: 230,
       value: (item) => _join(item.productLabels),
     ),
-    const MasterColumnDef(
+    MasterColumnDef(
       key: 'warehouse',
-      label: '分析仓库',
+      label: '主仓库',
       width: 150,
       value: _warehouseLabel,
     ),
@@ -574,13 +579,12 @@ class _ProductionMaterialAnalysisHistoryPageState
         : '$typeText · $refText';
   }
 
-  static String _warehouseLabel(MaterialAnalysisListItem item) {
-    final values = [item.warehouseCode, item.warehouseName]
-        .whereType<String>()
-        .where((value) => value.trim().isNotEmpty)
-        .toList(growable: false);
-    return values.isEmpty ? '未记录' : values.join(' ');
-  }
+  String _warehouseLabel(MaterialAnalysisListItem item) =>
+      ref
+          .read(masterNameServiceProvider)
+          .mainWarehouseOf(item.warehouseId)
+          ?.name ??
+      '主仓库资料待更新';
 
   static String _ownerLabel(MaterialAnalysisListItem item) =>
       item.makerName?.trim().isNotEmpty == true

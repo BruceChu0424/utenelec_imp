@@ -32,4 +32,6 @@ public class RequestItemDto {
     private String productionPlanNo;
     private String salesOrderNo;
     private String remark;
+    private BigDecimal pendingQty;
+    private BigDecimal remainingQty;
 }

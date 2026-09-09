@@ -1,9 +1,7 @@
 {
   "@@locale": "en",
-
   "appTitle": "Uten Integrated Management Platform",
   "appName": "UTEN IMP",
-
   "commonConfirm": "Confirm",
   "commonCancel": "Cancel",
   "commonSave": "Save",
@@ -27,7 +25,6 @@
   "commonMore": "More",
   "commonViewAll": "View all",
   "commonAction": "Action",
-
   "loginAccountHint": "Employee code or phone number",
   "loginAccountRequired": "Please enter your account",
   "loginPasswordHint": "Enter your password",
@@ -42,17 +39,14 @@
   "loginServerRecoverySuccess": "Automatic server selection restored. Please sign in again.",
   "loginServerRecoveryFailed": "Could not restore server selection. Try again or contact an administrator.",
   "loginFooter": "© 2026 Uten Integrated Management Platform",
-
   "navDashboard": "Dashboard",
   "navNotice": "Notices",
   "navProfile": "Me",
   "navSettings": "Settings",
-
   "dashboardWelcome": "Welcome, {name}",
   "dashboardWelcomeSubtitle": "Let's make today productive",
   "dashboardTodayStats": "Today's overview",
   "dashboardQuickActions": "Quick actions",
-
   "statTodayOutput": "Today's output",
   "statOutputUnit": "units",
   "statInventory": "Inventory",
@@ -60,7 +54,6 @@
   "statPendingTodos": "Pending todos",
   "statTrendUp": "+{percent}% vs yesterday",
   "statTrendDown": "{percent}% vs yesterday",
-
   "settingsTitle": "Settings",
   "settingsSectionAppearance": "Appearance",
   "settingsThemeMode": "Theme mode",
@@ -76,7 +69,9 @@
   "settingsFontLarge": "Large",
   "settingsFontXLarge": "Extra large",
   "settingsFontXXLarge": "Extra extra large",
-  "@settingsFontXXLarge": {"description": "Font scale tier 5: extra extra large"},
+  "@settingsFontXXLarge": {
+    "description": "Font scale tier 5: extra extra large"
+  },
   "settingsSectionPerformance": "Performance",
   "settingsPerformanceTier": "Performance mode",
   "settingsPerformanceAuto": "Auto",
@@ -88,18 +83,15 @@
   "settingsVersion": "Version",
   "settingsLogout": "Sign out",
   "settingsLogoutConfirm": "Are you sure you want to sign out?",
-
   "profileTitle": "Me",
   "profileEditProfile": "Edit profile",
   "profileChangePassword": "Change password",
   "profileEmployeeCode": "Employee code",
   "profileDepartment": "Department",
   "profilePosition": "Position",
-
   "entrySubtitle": "Choose how to sign in",
   "entryStaff": "Staff Sign In",
   "entryVisitor": "Visitor Sign In",
-
   "visitorLoginTitle": "Visitor Sign In",
   "visitorLoginSubtitle": "Enter your phone to get a code",
   "visitorPhoneLabel": "Phone",
@@ -109,15 +101,22 @@
   "visitorCodeRequired": "Please enter the verification code",
   "visitorGetCode": "Get code",
   "visitorCodeCountdown": "Resend in {seconds}s",
-  "@visitorCodeCountdown": {"placeholders": {"seconds": {}}},
+  "@visitorCodeCountdown": {
+    "placeholders": {
+      "seconds": {}
+    }
+  },
   "visitorLoginButton": "Sign In",
   "visitorLoggingIn": "Signing in…",
   "visitorCodeSent": "Code sent",
   "visitorCodeSentDev": "Code: {code} (dev)",
-  "@visitorCodeSentDev": {"placeholders": {"code": {}}},
+  "@visitorCodeSentDev": {
+    "placeholders": {
+      "code": {}
+    }
+  },
   "visitorIsEmployee": "This phone is a Uten employee account, please use staff sign in",
   "visitorPhoneInvalid": "Please enter a valid phone number",
-
   "visitorHomeTitle": "My Appointments",
   "visitorSettingsTitle": "Visitor Settings",
   "visitorSettingsTooltip": "Settings",
@@ -126,7 +125,6 @@
   "visitorFilterPending": "Pending",
   "visitorFilterApproved": "Approved",
   "visitorFilterRejected": "Rejected",
-
   "visitorApplyTitle": "Visit Appointment",
   "visitorApplyName": "Name",
   "visitorApplyNameHint": "Enter your full name",
@@ -153,14 +151,12 @@
   "visitorApplyValidateVisitTimeFuture": "Visit time must be later than now",
   "visitorApplyDuplicateTime": "You already have an active visit at this time",
   "visitorApplySuccess": "Submitted, awaiting approval",
-
   "visitorStatusPending": "Pending",
   "visitorStatusHostReviewing": "Awaiting host confirm",
   "visitorStatusApproved": "Approved",
   "visitorStatusRejected": "Rejected",
   "visitorStatusCheckedIn": "Checked in",
   "visitorStatusCancelled": "Cancelled",
-
   "visitorDetailTitle": "Appointment Detail",
   "visitorDetailHost": "Host",
   "visitorDetailPurpose": "Purpose",
@@ -173,7 +169,6 @@
   "visitorDetailQrHint": "Show this QR to the security guard",
   "visitorDetailTimeline": "Timeline",
   "visitorLogout": "Sign out",
-
   "visitorApprovalTitle": "Visitor Approval",
   "visitorApprovalPending": "Pending",
   "visitorApprovalProcessed": "Processed",
@@ -186,13 +181,11 @@
   "visitorApprovalConfirmReject": "Reject this visitor?",
   "visitorApprovalHostConfirmed": "Host confirmed",
   "visitorApprovalEmpty": "No visitors to approve",
-
   "myVisitorsTitle": "My Visitors",
   "myVisitorsEmpty": "No visitors need your confirmation",
   "myVisitorsConfirm": "Accept",
   "myVisitorsReject": "Decline",
   "myVisitorsConfirmHint": "Confirm to host this visitor?",
-
   "securityTitle": "Visitor Check",
   "securityScanHint": "Point the visitor QR at the frame",
   "securityScanManual": "Enter code manually",
@@ -214,21 +207,18 @@
   "securityHost": "Host",
   "securityPlate": "Plate",
   "securityVisitTime": "Visit time",
-
   "navHrGroup": "HR Management",
   "navHrEmployees": "Employees",
   "navHrDepartments": "Departments",
   "navHrOnboarding": "Onboarding",
   "navHrPayrollGenerate": "Payslip Generation",
   "navHrNoticePublish": "Publish Notice",
-
   "employeeTitle": "Employees",
   "employeeFabOnboard": "Onboard",
   "employeeSearchHint": "Search by code, name or plate",
   "employeeEmpty": "No employees yet",
   "employeeEmptyHint": "Tap the Onboard button to add",
   "employeeLoadMore": "Load more",
-
   "employeeDetailTitle": "Employee Detail",
   "employeeDetailBasic": "Basic info",
   "employeeDetailContact": "Contact & address",
@@ -274,25 +264,51 @@
   "employeeFieldBankBranch": "Bank branch",
   "employeeFieldBankAccount": "Bank account",
   "employeeContractPeriodValue": "{start} ~ {end}",
-  "@employeeContractPeriodValue": {"placeholders": {"start": {}, "end": {}}},
+  "@employeeContractPeriodValue": {
+    "placeholders": {
+      "start": {},
+      "end": {}
+    }
+  },
   "employeeProbationValue": "{months} months (until {end})",
-  "@employeeProbationValue": {"placeholders": {"months": {}, "end": {}}},
+  "@employeeProbationValue": {
+    "placeholders": {
+      "months": {},
+      "end": {}
+    }
+  },
   "employeeRenewCountValue": "{count}",
-
   "employeeFieldAccountStatus": "Login account",
   "accountStatusActive": "Active",
   "accountStatusLocked": "Locked",
   "accountStatusDisabled": "Disabled",
   "accountStatusNone": "Not provisioned",
   "employeeProbationExpiring": "Probation ends on {date} ({days} days left) — confirm employment in time",
-  "@employeeProbationExpiring": {"placeholders": {"date": {}, "days": {}}},
+  "@employeeProbationExpiring": {
+    "placeholders": {
+      "date": {},
+      "days": {}
+    }
+  },
   "employeeProbationExpired": "Probation ended on {date} — please confirm employment or offboard",
-  "@employeeProbationExpired": {"placeholders": {"date": {}}},
+  "@employeeProbationExpired": {
+    "placeholders": {
+      "date": {}
+    }
+  },
   "employeeContractExpiring": "Contract ends on {date} ({days} days left) — please renew in time",
-  "@employeeContractExpiring": {"placeholders": {"date": {}, "days": {}}},
+  "@employeeContractExpiring": {
+    "placeholders": {
+      "date": {},
+      "days": {}
+    }
+  },
   "employeeContractExpired": "Contract expired on {date} — please handle it",
-  "@employeeContractExpired": {"placeholders": {"date": {}}},
-
+  "@employeeContractExpired": {
+    "placeholders": {
+      "date": {}
+    }
+  },
   "employeeEditTitle": "Edit employee",
   "employeeEditBasic": "Basic info",
   "employeeEditOrg": "Organization",
@@ -306,10 +322,13 @@
   "employeeEditSaved": "Saved",
   "employeeEditSaveFailed": "Save failed, please try again",
   "employeeEditLoadFailed": "Failed to load: {error}",
-  "@employeeEditLoadFailed": {"placeholders": {"error": {}}},
+  "@employeeEditLoadFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
   "employeeEditNotFound": "Employee not found",
   "employeeEditRequired": "Required",
-
   "employeeOnboardTitle": "New Employee Onboarding",
   "employeeOnboardGroupProfile": "Profile",
   "employeeOnboardGroupOrg": "Organization",
@@ -324,7 +343,11 @@
   "positionPickerDepartmentFirst": "Select a department first",
   "positionPickerSearchHint": "Search by position name, code, or level",
   "positionPickerUseCustom": "Use “{name}” as a new position",
-  "@positionPickerUseCustom": {"placeholders": {"name": {}}},
+  "@positionPickerUseCustom": {
+    "placeholders": {
+      "name": {}
+    }
+  },
   "positionPickerCustomDescription": "It will be saved under the selected department after confirmation",
   "positionPickerNoPositions": "This department has no positions; enter a new one directly",
   "positionPickerLoadFailed": "Positions could not be loaded; retry or enter a new one directly",
@@ -347,14 +370,16 @@
   "employeeOnboardPickHireDate": "Please pick a hire date",
   "employeeOnboardPickDepartment": "Please select a department",
   "employeeOnboardFieldRequired": "{field} is required",
-  "@employeeOnboardFieldRequired": {"placeholders": {"field": {}}},
+  "@employeeOnboardFieldRequired": {
+    "placeholders": {
+      "field": {}
+    }
+  },
   "employeeOnboardLoadFailed": "Failed to load",
-
   "idTypeIdCard": "ID card",
   "idTypePassport": "Passport",
   "idTypeHmtPermit": "HK/Macao/Taiwan permit",
   "idTypeOther": "Other",
-
   "employeeOffboardTitle": "Offboarding",
   "employeeOffboardFieldType": "Resign type",
   "employeeOffboardFieldDate": "Last day",
@@ -369,7 +394,6 @@
   "employeeOffboardBack": "Back",
   "employeeOffboardCompleted": "Offboarding completed",
   "employeeOffboardLoadFailed": "Failed to load",
-
   "employeeActions": "More actions",
   "employeeActionTransfer": "Transfer",
   "employeeActionConfirm": "Confirm employment",
@@ -397,41 +421,33 @@
   "employeeDeleteTitle": "Delete this employee record?",
   "employeeDeleteBody": "The login account will be disabled. This cannot be undone.",
   "employeeDeleteSuccess": "Employee record deleted",
-
   "resignTypeVoluntary": "Voluntary",
   "resignTypeDismissed": "Dismissed",
   "resignTypeContractEnd": "Contract ended",
   "resignTypeRetire": "Retirement",
-
   "resignCheckAccess": "Return access card",
   "resignCheckAssets": "Recover company assets",
   "resignCheckAccount": "Disable system account",
   "resignCheckSocial": "Stop social insurance & housing fund",
-
   "employeeStatusActive": "Active",
   "employeeStatusProbation": "Probation",
   "employeeStatusOnLeave": "On leave",
   "employeeStatusResigned": "Resigned",
   "employeeStatusUnknown": "Unknown",
-
   "genderMale": "Male",
   "genderFemale": "Female",
-
   "employmentTypeRegular": "Regular",
   "employmentTypeDispatch": "Dispatch",
   "employmentTypeIntern": "Intern",
   "employmentTypeOutsource": "Outsource",
-
   "contractTypeFixed": "Fixed-term",
   "contractTypeOpen": "Open-ended",
   "contractTypeTask": "Task-based",
   "contractTypeIntern": "Intern",
-
   "historyEventOnboard": "Onboard",
   "historyEventTransfer": "Transfer",
   "historyEventResign": "Resign",
   "historyEventRehire": "Rehire",
-
   "departmentTitle": "Departments",
   "departmentTreeTitle": "Organization",
   "departmentEmpty": "Select a department",
@@ -452,27 +468,43 @@
   "departmentCreated": "Created",
   "departmentDeleted": "Deleted",
   "departmentDeleteConfirm": "Delete \"{name}\"? Only leaf departments without sub-departments or employees can be removed.",
-  "@departmentDeleteConfirm": {"placeholders": {"name": {}}},
+  "@departmentDeleteConfirm": {
+    "placeholders": {
+      "name": {}
+    }
+  },
   "departmentLevelAndCode": "{level} · Code {code}",
-  "@departmentLevelAndCode": {"placeholders": {"level": {}, "code": {}}},
+  "@departmentLevelAndCode": {
+    "placeholders": {
+      "level": {},
+      "code": {}
+    }
+  },
   "departmentStatEmployees": "Employees",
   "departmentStatChildren": "Sub-departments",
   "departmentStatManager": "Manager",
   "departmentStatParent": "Parent",
   "departmentEmployeesHeader": "Employees ({count})",
-  "@departmentEmployeesHeader": {"placeholders": {"count": {}}},
+  "@departmentEmployeesHeader": {
+    "placeholders": {
+      "count": {}
+    }
+  },
   "departmentEmployeesEmpty": "No employees in this department (or its sub-departments)",
   "departmentStatValue": "{label}: {value}",
-  "@departmentStatValue": {"placeholders": {"label": {}, "value": {}}},
+  "@departmentStatValue": {
+    "placeholders": {
+      "label": {},
+      "value": {}
+    }
+  },
   "departmentLoadFailed": "Failed to load",
-
   "departmentLevelCompany": "Company",
   "departmentLevelDecision": "Decision layer",
   "departmentLevelManagement": "Management center",
   "departmentLevelPrimary": "Primary department",
   "departmentLevelSecondary": "Secondary team",
   "departmentLevelTertiary": "Tertiary unit",
-
   "payrollGenerateTitle": "Payslip Generation",
   "payrollStepScope": "Scope",
   "payrollStepItems": "Pay items",
@@ -488,26 +520,42 @@
   "payrollSubmitButton": "Submit for review",
   "payrollSubmitted": "Submitted for finance review",
   "payrollLoadFailed": "Failed to load: {error}",
-  "@payrollLoadFailed": {"placeholders": {"error": {}}},
+  "@payrollLoadFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
   "payrollEmptyPreview": "No employees in this scope",
   "payrollTableTotalLabel": "Total",
   "payrollTableTotalValue": "¥ {total} · {count}",
-  "@payrollTableTotalValue": {"placeholders": {"total": {}, "count": {}}},
+  "@payrollTableTotalValue": {
+    "placeholders": {
+      "total": {},
+      "count": {}
+    }
+  },
   "payrollTableHeaderName": "Code/Name",
   "payrollTableHeaderNet": "Net",
   "payrollTableRowName": "{name} ({code})",
-  "@payrollTableRowName": {"placeholders": {"name": {}, "code": {}}},
+  "@payrollTableRowName": {
+    "placeholders": {
+      "name": {},
+      "code": {}
+    }
+  },
   "payrollTableRowNet": "¥ {net}",
-  "@payrollTableRowNet": {"placeholders": {"net": {}}},
+  "@payrollTableRowNet": {
+    "placeholders": {
+      "net": {}
+    }
+  },
   "payrollNext": "Next",
   "payrollBack": "Back",
-
   "payrollDeptAll": "All employees",
   "payrollDeptProduction": "Production",
   "payrollDeptQuality": "Quality",
   "payrollDeptHr": "HR",
   "payrollDeptFinance": "Finance",
-
   "noticePublishTitle": "Publish Notice",
   "noticePublishSaveDraft": "Save draft",
   "noticePublishDraftSaved": "Draft saved",
@@ -521,13 +569,21 @@
   "noticePublishFieldDept": "Department",
   "noticePublishScopeAllHint": "Notify every employee in the company",
   "noticePublishScopeDeptHint": "Notify everyone in \"{dept}\"",
-  "@noticePublishScopeDeptHint": {"placeholders": {"dept": {}}},
+  "@noticePublishScopeDeptHint": {
+    "placeholders": {
+      "dept": {}
+    }
+  },
   "noticePublishValidateTitle": "Please enter a title",
   "noticePublishValidateContent": "Please enter the body",
   "noticePublishConfirmTitle": "Confirm publish?",
   "noticePublishConfirmBodyAll": "Notify all employees",
   "noticePublishConfirmBodyDept": "Notify \"{dept}\"",
-  "@noticePublishConfirmBodyDept": {"placeholders": {"dept": {}}},
+  "@noticePublishConfirmBodyDept": {
+    "placeholders": {
+      "dept": {}
+    }
+  },
   "noticePublishPublished": "Notice published",
   "noticePublishPublishing": "Publishing…",
   "noticePublishContentSection": "Notice content",
@@ -547,19 +603,36 @@
   "noticePublishEmployeeEmpty": "No active recipient account found",
   "noticePublishEmployeeSelectedCount": "{count} selected",
   "@noticePublishEmployeeSelectedCount": {
-    "placeholders": { "count": { "type": "int" } }
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
   "noticePublishEmployeeClear": "Clear",
   "noticePublishEmployeeConfirm": "Done",
   "noticePublishValidateAudience": "Choose at least one department or person",
   "noticePublishAudienceSummary": "{departmentCount} departments and {employeeCount} people selected",
-  "@noticePublishAudienceSummary": {"placeholders": {"departmentCount": {}, "employeeCount": {}}},
+  "@noticePublishAudienceSummary": {
+    "placeholders": {
+      "departmentCount": {},
+      "employeeCount": {}
+    }
+  },
   "noticePublishAudienceRecalculateHint": "The server recalculates the actual recipient count from the current organisation and account status before publishing.",
   "noticePublishConfirmAudience": "Send to {summary}; {count} actual recipients.",
-  "@noticePublishConfirmAudience": {"placeholders": {"summary": {}, "count": {}}},
+  "@noticePublishConfirmAudience": {
+    "placeholders": {
+      "summary": {},
+      "count": {}
+    }
+  },
   "noticePublishPublishedTo": "Notice published to {count} people",
-  "@noticePublishPublishedTo": {"placeholders": {"count": {}}},
-
+  "@noticePublishPublishedTo": {
+    "placeholders": {
+      "count": {}
+    }
+  },
   "noticeTypeAnnouncement": "Announcement",
   "noticeTypePolicy": "Policy",
   "noticeTypeBenefit": "Benefit",
@@ -584,24 +657,54 @@
   "noticeInteractionReceived": "Acknowledged",
   "noticeClickToReceive": "Tap to acknowledge",
   "noticeAckCount": "{count} acknowledged",
-  "@noticeAckCount": {"placeholders": {"count": {"type": "int"}}},
+  "@noticeAckCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "noticeAckYouAndCount": "You acknowledged · {count} total",
-  "@noticeAckYouAndCount": {"placeholders": {"count": {"type": "int"}}},
+  "@noticeAckYouAndCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "noticeAckRecent": "Recent",
   "noticeSendBlessing": "Send blessing",
   "noticeBlessingSent": "Blessing sent",
   "noticeBlessingCount": "{count} blessings",
-  "@noticeBlessingCount": {"placeholders": {"count": {"type": "int"}}},
+  "@noticeBlessingCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "noticeBlessingWall": "Blessing Wall",
   "noticeBlessingReceivedCount": "{count} blessings received",
-  "@noticeBlessingReceivedCount": {"placeholders": {"count": {"type": "int"}}},
+  "@noticeBlessingReceivedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "noticeBlessingWallEmpty": "No blessings yet — send the first one",
   "noticeBlessingPlaceholder": "Write your blessing…",
   "noticeBlessingSendButton": "Send blessing",
   "noticeBlessingSending": "Sending…",
   "noticeBlessingWithdraw": "Withdraw",
   "noticeBlessingViewAll": "View all {count}",
-  "@noticeBlessingViewAll": {"placeholders": {"count": {"type": "int"}}},
+  "@noticeBlessingViewAll": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "noticeBlessingTemplatesTitle": "Pick a blessing",
   "noticeBlessingValidateEmpty": "Please enter a blessing",
   "noticeCelebrationSubjectLabel": "Honoree",
@@ -609,7 +712,12 @@
   "noticeCelebrationSubjectRequired": "Please choose an honoree",
   "noticeCelebrationSubjectIsYou": "You",
   "noticeCelebrationFor": "{name} · {event}",
-  "@noticeCelebrationFor": {"placeholders": {"name": {}, "event": {}}},
+  "@noticeCelebrationFor": {
+    "placeholders": {
+      "name": {},
+      "event": {}
+    }
+  },
   "noticeQuickCelebrationTitle": "Quick celebration",
   "noticeQuickCelebrationSubtitle": "Pick a type; the template fills automatically",
   "noticeQuickPublish": "New notice",
@@ -618,29 +726,62 @@
   "noticeQuickWedding": "Wedding",
   "noticeQuickNewborn": "Newborn",
   "celebrationPopupBirthday": "{name}, today is your birthday!\nXiao You wishes you a happy birthday!",
-  "@celebrationPopupBirthday": {"placeholders": {"name": {}}},
+  "@celebrationPopupBirthday": {
+    "placeholders": {
+      "name": {}
+    }
+  },
   "celebrationPopupAnniversary": "{name}, today is your work anniversary!\nXiao You wishes you {label}!",
-  "@celebrationPopupAnniversary": {"placeholders": {"name": {}, "label": {}}},
+  "@celebrationPopupAnniversary": {
+    "placeholders": {
+      "name": {},
+      "label": {}
+    }
+  },
   "celebrationPopupWedding": "{name}, congratulations on your wedding!\nXiao You wishes you a lifetime of happiness!",
-  "@celebrationPopupWedding": {"placeholders": {"name": {}}},
+  "@celebrationPopupWedding": {
+    "placeholders": {
+      "name": {}
+    }
+  },
   "celebrationPopupNewborn": "{name}, congratulations on the new baby!\nXiao You wishes your little one health and joy!",
-  "@celebrationPopupNewborn": {"placeholders": {"name": {}}},
+  "@celebrationPopupNewborn": {
+    "placeholders": {
+      "name": {}
+    }
+  },
   "celebrationDismiss": "Thanks, Xiao You",
   "celebrationCardBirthday": "Today is {name}'s birthday",
-  "@celebrationCardBirthday": {"placeholders": {"name": {}}},
+  "@celebrationCardBirthday": {
+    "placeholders": {
+      "name": {}
+    }
+  },
   "celebrationCardAnniversary": "Today is {name}'s {label}",
-  "@celebrationCardAnniversary": {"placeholders": {"name": {}, "label": {}}},
+  "@celebrationCardAnniversary": {
+    "placeholders": {
+      "name": {},
+      "label": {}
+    }
+  },
   "celebrationCardWedding": "Today is {name}'s wedding day",
-  "@celebrationCardWedding": {"placeholders": {"name": {}}},
+  "@celebrationCardWedding": {
+    "placeholders": {
+      "name": {}
+    }
+  },
   "celebrationCardNewborn": "{name} welcomes a new baby",
-  "@celebrationCardNewborn": {"placeholders": {"name": {}}},
+  "@celebrationCardNewborn": {
+    "placeholders": {
+      "name": {}
+    }
+  },
   "celebrationCardCta": "Send blessings",
   "celebrationCardWall": "View blessing wall",
   "noticeAutoCelebrationTitle": "Auto celebration notices",
   "noticeAutoCelebrationEnabled": "Auto-publish a company-wide blessing daily for birthdays and anniversaries",
   "noticeAutoCelebrationTypes": "Auto types",
   "noticeAutoCelebrationPublisher": "Publisher name",
-
   "profileChangeEditTitle": "Edit profile",
   "profileChangeEditCta": "Edit my profile",
   "profileChangeEditHrOnlyHint": "Please contact HR to change the fields below",
@@ -682,8 +823,11 @@
   "profileChangeReviewComment": "Review comment",
   "profileChangeDiffTitle": "Changes in this request",
   "profileChangeBatchItems": "{count} field(s)",
-  "@profileChangeBatchItems": {"placeholders": {"count": {}}},
-
+  "@profileChangeBatchItems": {
+    "placeholders": {
+      "count": {}
+    }
+  },
   "profileChangeHrQueueTitle": "Profile change reviews",
   "profileChangeHrQueueEmpty": "No pending reviews",
   "profileChangeReviewApprove": "Approve",
@@ -703,13 +847,15 @@
   "profileChangeFieldEmergencyName": "Emergency contact name",
   "profileChangeFieldEmergencyPhone": "Emergency contact phone",
   "profileChangeFieldEmergencyRelationship": "Relationship",
-
   "profilePendingBadge": "{count} pending",
-  "@profilePendingBadge": {"placeholders": {"count": {}}},
+  "@profilePendingBadge": {
+    "placeholders": {
+      "count": {}
+    }
+  },
   "profilePendingSectionTitle": "Pending profile change reviews",
   "profilePendingSectionEmpty": "No pending reviews for this employee",
   "profilePendingSectionViewAll": "All →",
-
   "profileFieldPhoneMask": "138****1234",
   "profileFieldIdCardMask": "****",
   "profileFieldBankAccountMask": "****1234",
@@ -720,7 +866,13 @@
   "profileFieldGroupOrganization": "Organization",
   "profileEditPolicyHint": "Green \"direct edit\" fields apply immediately; yellow fields take effect after HR review; all other fields are maintained by HR.",
   "profileEditPendingConflictHint": "You have {count} pending request(s); editing the same fields again before approval may conflict with them.",
-  "@profileEditPendingConflictHint": {"placeholders": {"count": {"type": "int"}}},
+  "@profileEditPendingConflictHint": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "profileEditFieldAction": "Edit",
   "profileFieldGroupOrg": "Organization",
   "profileFieldGroupCompensation": "Compensation & bank",
@@ -757,18 +909,22 @@
   "profileFieldContractEnd": "Contract end",
   "profileFieldProbationMonths": "Probation (months)",
   "profileFieldRenewCount": "Renewal count",
-
   "hubDisabledChip": "Not enabled",
-  "@hubDisabledChip": {"description": "Chip shown on a disabled hub card (e.g. legacy doc with no data)"},
+  "@hubDisabledChip": {
+    "description": "Chip shown on a disabled hub card (e.g. legacy doc with no data)"
+  },
   "hubSectionTaskCenter": "Task center",
   "hubDisabledDocNotice": "This document type is not yet enabled (no legacy data)",
   "hubSubDetailPerItem": "Line-by-item details",
-  "@hubSubDetailPerItem": {"description": "Shared subtitle for detail reports: one row per item"},
+  "@hubSubDetailPerItem": {
+    "description": "Shared subtitle for detail reports: one row per item"
+  },
   "hubSubSummaryPerDoc": "Per-document totals",
-  "@hubSubSummaryPerDoc": {"description": "Shared subtitle for summary reports: one row per document"},
+  "@hubSubSummaryPerDoc": {
+    "description": "Shared subtitle for summary reports: one row per document"
+  },
   "hubSubPendingReturnQty": "Pending stock-in returns",
   "hubSubReadOnlyPlan": "Read-only plan",
-
   "salesHubTitle": "Sales",
   "salesHubSectionReports": "Sales reports",
   "salesHubSectionScarcity": "Stock arbitration",
@@ -788,7 +944,6 @@
   "salesHubReportSummary": "Sales summary report",
   "salesHubScarcity": "Scarcity reallocation",
   "salesHubScarcitySub": "Free low-priority stock",
-
   "purchaseHubTitle": "Purchasing",
   "purchaseHubSectionReports": "Purchase reports",
   "purchaseHubTaskCenter": "Purchasing tasks",
@@ -805,7 +960,6 @@
   "purchaseHubReportSummary": "Purchase summary report",
   "purchaseHubReportExpediting": "Purchase expediting",
   "purchaseHubReportExpeditingSub": "Shortfalls & stock",
-
   "subcontractHubTitle": "Subcontracting",
   "subcontractHubSectionReports": "Subcontract reports",
   "subcontractHubTaskCenter": "Subcontracting tasks",
@@ -815,7 +969,6 @@
   "subcontractHubReportSummary": "Subcontract summary report",
   "subcontractHubReportInOut": "In-out status",
   "subcontractHubReportInOutSub": "Overall in/out status",
-
   "productionHubTitle": "Production",
   "productionHubSectionReports": "Production reports",
   "productionHubSchedule": "Scheduling & progress",
@@ -834,7 +987,6 @@
   "productionHubReportPlanSummarySub": "Doc, maker, approver",
   "productionHubWhereUsed": "Where-used",
   "productionHubWhereUsedSub": "Where a material is used",
-
   "financeHubTitle": "Finance",
   "financeHubSectionReports": "Finance reports",
   "financeHubApprovalOwners": "Approval owners",
@@ -878,7 +1030,6 @@
   "financeHubReportCostSub": "Product & sales cost",
   "financeHubReportGl": "General ledger",
   "financeHubReportGlSub": "Accounts, assets, P&L",
-
   "warehouseHubTitle": "Warehouse",
   "warehouseHubSectionDocs": "Stock documents",
   "warehouseHubSectionDocsDesc": "Transfer, in/out, picking, finished goods, stocktake",
@@ -916,7 +1067,6 @@
   "warehouseHubInventoryMovementSub": "In/out movement log",
   "warehouseHubReportDetail": "Warehouse detail report",
   "warehouseHubReportSummary": "Warehouse summary report",
-
   "basicDataHubTitle": "Master data",
   "basicDataHubGoods": "Items",
   "basicDataHubGoodsSub": "Item categories & master",
@@ -948,11 +1098,23 @@
   "impersonationTargetPickerTitle": "Select an employee to view",
   "impersonationSearchHint": "Search name / employee code",
   "impersonationBannerTitle": "Viewing as {name} (read-only)",
-  "@impersonationBannerTitle": {"placeholders": {"name": {"type": "String"}}},
+  "@impersonationBannerTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "impersonationBannerSwitch": "Switch",
   "impersonationBannerExit": "Exit",
   "impersonationRemainingMinutes": "{count} min left",
-  "@impersonationRemainingMinutes": {"placeholders": {"count": {"type": "int"}}},
+  "@impersonationRemainingMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "impersonationWrongPassword": "Wrong password",
   "impersonationExited": "Exited impersonation",
   "impersonationWindowExpired": "Impersonation window expired",
@@ -969,9 +1131,21 @@
   "exportDownloadEncrypted": "Download encrypted",
   "exportFailed": "Export failed. Try again later.",
   "exportDownloadStarted": "Download started: {name}",
-  "@exportDownloadStarted": {"placeholders": {"name": {"type": "String"}}},
+  "@exportDownloadStarted": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "exportDownloadSaved": "Saved to {path}",
-  "@exportDownloadSaved": {"placeholders": {"path": {"type": "String"}}},
+  "@exportDownloadSaved": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
   "profileLoadingMessage": "Loading employee record…",
   "profileLoadFailed": "Employee record failed to load",
   "profileUnboundTitle": "This account is not linked to an employee record",
@@ -989,7 +1163,13 @@
   "profileCompensationBoundaryDescription": "Salary and bank information are intentionally not shown on My Profile. Check monthly income in Payslips, or contact authorized HR for other questions.",
   "profileMissingEmergencyContact": "No emergency contact is registered. Ask HR to register one before requesting changes here.",
   "profileAlternatePhoneCount": "{count} alternate phone(s) registered",
-  "@profileAlternatePhoneCount": {"placeholders": {"count": {"type": "int"}}},
+  "@profileAlternatePhoneCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "profileVehiclesPhonesEmptyHint": "Register vehicles and alternate phones for quick plate lookup",
   "historyEventConfirm": "Confirmation",
   "accountProvisionPermissionDenied": "You do not have permission to provision accounts. Contact account support.",
@@ -1007,8 +1187,7 @@
   "employeeResignedCannotProvision": "A resigned employee cannot be given a login account",
   "employeeAccountNotProvisionedContactSupport": "This employee does not have an account. Contact account support.",
   "materialMainWarehouse": "Main warehouse",
-  "materialIssueWarehouseSettings": "Issue warehouse settings",
-  "materialWarehouseScopeExplanation": "The main warehouse includes its subwarehouses. Kit readiness, reservations and issues use the selected physical warehouse. Stock elsewhere is a transfer reference until received here.",
+  "materialWarehouseScopeExplanation": "Planning uses main-warehouse totals. Warehouse staff arrange the picking locations.",
   "materialSearchHint": "Search products or materials",
   "materialByProduct": "By product",
   "materialByMaterial": "By material",
@@ -1032,8 +1211,6 @@
   "materialWarehouseFacts": "Warehouse and supply details",
   "materialExactStock": "Qualified stock pegged here",
   "materialPublicStock": "Public stock",
-  "materialScopeStock": "Scope availability (reference)",
-  "materialTransferStock": "Transferable from other warehouses",
   "materialClaimedSupply": "Claimed for this task",
   "materialTaskBuy": "Issue purchasing",
   "materialTaskSubcontract": "Issue subcontracting",
@@ -1068,14 +1245,15 @@
   "materialRevokeRootStock": "Reverse stock allocation",
   "materialRootRevokeFailed": "Stock allocation could not be reversed. Refresh and review it.",
   "materialRootSupplyProcessed": "Supply processed. Review the stock handovers and additional demand records.",
-
   "orderChangeQtyButton": "Change Qty",
   "orderChangeQtyTitle": "Order Qty Change",
   "orderChangeQtyWarning": "Changes after approval take effect immediately and automatically re-enter finance review; finance will see the change list (before → after). Rejection does not restore quantities.",
   "orderChangeQtyCurrent": "Now {qty}",
   "@orderChangeQtyCurrent": {
     "placeholders": {
-      "qty": {"type": "String"}
+      "qty": {
+        "type": "String"
+      }
     }
   },
   "orderChangeQtyNewQty": "New qty",
@@ -1086,30 +1264,38 @@
   "orderQtyChangeOld": "Before {value}",
   "@orderQtyChangeOld": {
     "placeholders": {
-      "value": {"type": "String"}
+      "value": {
+        "type": "String"
+      }
     }
   },
   "orderQtyChangeNew": "After {value}",
   "@orderQtyChangeNew": {
     "placeholders": {
-      "value": {"type": "String"}
+      "value": {
+        "type": "String"
+      }
     }
   },
   "procurementApprovalStatusPending": "Awaiting finance review",
   "procurementApprovalStatusChanged": "Re-review after change · {count} qty changes",
   "@procurementApprovalStatusChanged": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "procurementApprovalQtyChangesTitle": "Change list · {count} qty changes",
   "@procurementApprovalQtyChangesTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "procurementApprovalQtyChangesHint": "Quantities were changed after finance approval and the order has automatically re-entered review; please verify each line (before → after) before reviewing.",
-  "productionMaterialRecheck": "Recheck materials",
+  "productionMaterialRecheck": "Recheck material readiness",
   "productionMaterialRecheckReady": "Materials are ready. Draw orders were created for the actual warehouses. Start after all materials have been issued.",
   "productionMaterialRecheckWaiting": "Materials are still short. Check completed stock receipts and reservations for other tasks.",
   "fieldAutofilledReview": "Filled from a previous record or default. Please review before use.",
@@ -1181,5 +1367,59 @@
   "subcontractOpenPreparation": "View production plan",
   "subcontractDraftPreparationHint": "Planning arranges internal production first. Submit to finance after the goods are received into stock.",
   "subcontractWaitingPlan": "Waiting for planning",
-  "subcontractReadyForFinance": "Ready for finance submission"
+  "subcontractReadyForFinance": "Ready for finance submission",
+  "materialIssuedPlanSyncPending": "Issued; waiting for plan progress to sync",
+  "subcontractOrderBlockedProducing": "Production is in progress. Subcontract ordering is not available yet.",
+  "subcontractOrderBlockedPreparation": "Preparation is not complete. Subcontract ordering is not available yet.",
+  "subcontractOrderBlockedNotification": "Production is complete. Notify subcontracting before placing the order.",
+  "subcontractOrderBlockedCancelled": "The production task was cancelled. Subcontract ordering is unavailable.",
+  "subcontractPlanIssuedDate": "Task issue date",
+  "subcontractPlanIssuedDateHint": "The date planning first issued this subcontract task.",
+  "subcontractOrderBlockedRefresh": "Subcontracting has been notified. Refresh the task list before ordering.",
+  "serverStatusTitle": "Server status",
+  "serverStatusRefresh": "Refresh",
+  "serverStatusAccessRequired": "You do not have permission to view server status",
+  "serverStatusResources": "Resources",
+  "serverStatusStorage": "Disk space",
+  "serverStatusDataProtection": "Database and backups",
+  "serverStatusOverview": "Health overview",
+  "serverStatusOverviewHint": "Based on the server’s latest collected measurements.",
+  "serverStatusCollecting": "Waiting for the server to collect measurements.",
+  "serverStatusStale": "Measurements are out of date. Waiting for a new sample.",
+  "serverStatusRefreshFailed": "Unable to update. Previous measurements are for reference only; try refreshing shortly.",
+  "serverStatusUpdatedAt": "Collected at",
+  "serverStatusEnvironment": "Environment",
+  "serverStatusVersion": "Application version",
+  "serverStatusUptime": "Uptime",
+  "serverStatusPolling": "Refreshes every {seconds} seconds while this page is visible",
+  "serverStatusCpu": "Processor (CPU)",
+  "serverStatusMemory": "System memory",
+  "serverStatusAppMemory": "Application memory",
+  "serverStatusDbPool": "Database connection pool",
+  "serverStatusDisk": "Disk",
+  "serverStatusUsed": "Used",
+  "serverStatusFree": "Free space",
+  "serverStatusCapacity": "Capacity",
+  "serverStatusDatabase": "Database",
+  "serverStatusDatabaseHint": "Database responsiveness and current connection count.",
+  "serverStatusResponse": "Response time",
+  "serverStatusConnections": "Current / maximum connections",
+  "serverStatusBackup": "Latest backup",
+  "serverStatusHours": "hours",
+  "serverStatusLastBackup": "Last successful backup",
+  "serverStatusAttention": "Needs attention",
+  "serverStatusNotCollected": "This measurement is not available yet",
+  "serverStatusUptimeValue": "{days}d {hours}h {minutes}m",
+  "serverStatusThresholdUnknown": "No alert thresholds are available",
+  "serverStatusThresholds": "Warning ≥ {warning}; critical ≥ {critical}",
+  "serverStatusNormal": "Normal",
+  "serverStatusWarning": "Warning",
+  "serverStatusCritical": "Critical",
+  "serverStatusUnknown": "Unknown",
+  "attachmentUploadFormatsHint": "Images / PDF / Office / zip / txt, up to 25MB per file",
+  "attachmentUploadedFile": "Uploaded {fileName}",
+  "attachmentUploadedFiles": "Uploaded {count} files",
+  "productionMaterialRecheckHelp": "Recheck qualified receipts for this task and available stock. This does not receive stock or record actual consumption.",
+  "productionMaterialRegisterUsage": "Record actual usage",
+  "productionMaterialViewUsage": "View usage records"
 }

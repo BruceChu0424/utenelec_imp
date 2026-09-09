@@ -192,6 +192,8 @@ public class LocalDiskStorageService implements StorageService, BlobStore {
         }
     }
 
+    @Override public InputStream openFinal(String key, String versionId) { return read(key); }
+
     @Override
     public boolean isEnabled() {
         return true;

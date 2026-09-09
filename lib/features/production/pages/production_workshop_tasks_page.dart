@@ -77,11 +77,18 @@ class _ProductionWorkshopTasksPageState
         permissions.contains(Perm.productionDailyReportCreate);
   }
 
-  bool get _canConfirmMaterialUsage =>
+  bool get _canRegisterMaterialUsage =>
       ref.read(isSuperAdminProvider) ||
       ref
           .read(currentPermissionsProvider)
           .contains(Perm.productionMaterialSettle);
+
+  String _materialUsageLabel(ProductionExecutionWorkbenchSegment task) {
+    final l10n = AppLocalizations.of(context);
+    return _canRegisterMaterialUsage && task.hasUnregisteredMaterial
+        ? l10n.productionMaterialRegisterUsage
+        : l10n.productionMaterialViewUsage;
+  }
 
   /// 当前分类是否「等待物料」（未开工段：等料 + 齐套可开工）。
   bool get _isPreparing => _status == 'PREPARING';
@@ -305,7 +312,12 @@ class _ProductionWorkshopTasksPageState
   Future<void> _openMaterialUsage(
     ProductionExecutionWorkbenchSegment task,
   ) async {
-    if (_navigating || task.planId.isEmpty || task.segmentId.isEmpty) return;
+    if (_navigating ||
+        !task.hasMaterialActivity ||
+        task.planId.isEmpty ||
+        task.segmentId.isEmpty) {
+      return;
+    }
     final permissions = ref.read(currentPermissionsProvider);
     final admin = ref.read(isSuperAdminProvider);
     setState(() => _navigating = true);
@@ -505,12 +517,13 @@ class _ProductionWorkshopTasksPageState
                               ),
                           ],
                           rowMenuBuilder: (task) => [
-                            UtenMenuItem(
-                              label: '物料使用情况',
-                              icon: Icons.fact_check_outlined,
-                              enabled: !_navigating,
-                              onTap: () => _openMaterialUsage(task),
-                            ),
+                            if (task.hasMaterialActivity)
+                              UtenMenuItem(
+                                label: _materialUsageLabel(task),
+                                icon: Icons.fact_check_outlined,
+                                enabled: !_navigating,
+                                onTap: () => _openMaterialUsage(task),
+                              ),
                             if (_canStart && task.canRecheckMaterial)
                               UtenMenuItem(
                                 label: AppLocalizations.of(
@@ -582,10 +595,18 @@ class _ProductionWorkshopTasksPageState
       value: (task) => _flowStageOf(task).displayLabel,
       cellBuilder: (_, task) {
         final stage = _flowStageOf(task);
-        return UtenStatusBadge(
+        final badge = UtenStatusBadge(
           label: stage.displayLabel,
           type: productionFlowBadgeType(stage),
         );
+        return task.canRecheckMaterial
+            ? Tooltip(
+                message: AppLocalizations.of(
+                  context,
+                ).productionMaterialRecheckHelp,
+                child: badge,
+              )
+            : badge;
       },
     ),
     MasterColumnDef(
@@ -642,14 +663,16 @@ class _ProductionWorkshopTasksPageState
     MasterColumnDef(
       key: 'materialUsage',
       label: '物料使用',
-      width: 140,
+      width: 160,
       value: (_) => '',
-      cellBuilder: (_, task) => TextButton.icon(
-        key: ValueKey('workshop-material-usage-${task.segmentId}'),
-        onPressed: _navigating ? null : () => _openMaterialUsage(task),
-        icon: const Icon(Icons.fact_check_outlined, size: 18),
-        label: Text(_canConfirmMaterialUsage ? '确认用料' : '查看用料'),
-      ),
+      cellBuilder: (_, task) => !task.hasMaterialActivity
+          ? const SizedBox.shrink()
+          : TextButton.icon(
+              key: ValueKey('workshop-material-usage-${task.segmentId}'),
+              onPressed: _navigating ? null : () => _openMaterialUsage(task),
+              icon: const Icon(Icons.fact_check_outlined, size: 18),
+              label: Text(_materialUsageLabel(task)),
+            ),
     ),
   ];
 }

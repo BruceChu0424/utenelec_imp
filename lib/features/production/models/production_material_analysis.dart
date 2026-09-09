@@ -956,6 +956,9 @@ class ProductionMaterialAnalysisMaterial {
     this.exactPeggedQty = 0,
     this.reservedQty = 0,
     this.safetyStockQty = 0,
+    this.mainWarehousePublicAvailableQty = 0,
+    this.mainWarehouseOpenSafetySupplyQty = 0,
+    this.mainWarehouseSafetyReplenishmentGapQty = 0,
     this.inboundQty = 0,
     this.publicSurplusApprovedInboundQty = 0,
     this.publicSurplusRemainingQty = 0,
@@ -969,6 +972,7 @@ class ProductionMaterialAnalysisMaterial {
     this.demandSupplyGapQty = 0,
     this.subcontractHandoffFutureQty = 0,
     this.requirementState,
+    this.planAnchorAnalysisLineId,
     this.delegatedToAnalysisLineId,
     this.delegatedToSourceRef,
     this.delegatedToRequestedQty,
@@ -1041,6 +1045,12 @@ class ProductionMaterialAnalysisMaterial {
   final double exactPeggedQty;
   final double reservedQty;
   final double safetyStockQty;
+
+  /// Server-calculated main-warehouse public budget, repeated across BOM paths.
+  /// Leaf warehouse breakdowns remain explanatory and cannot replace this scope.
+  final double mainWarehousePublicAvailableQty;
+  final double mainWarehouseOpenSafetySupplyQty;
+  final double mainWarehouseSafetyReplenishmentGapQty;
   final double inboundQty;
   final double publicSurplusApprovedInboundQty;
   final double publicSurplusRemainingQty;
@@ -1068,6 +1078,13 @@ class ProductionMaterialAnalysisMaterial {
   /// 当前路径为什么有/没有本批需求。服务端按需求、父路线与 MAKE child
   /// ownership 计算；旧响应可为空，界面只做保守兼容展示。
   final MaterialRequirementState? requirementState;
+
+  /// Exact child analysis item created for this material through the persisted
+  /// parent_analysis_material_id link. It is a product/item UUID, not a material
+  /// UUID, parent product ID, supply action ID or a goods-based match.
+  /// The child remains authoritative for issued and remaining plan quantities,
+  /// including direct MAKE issuance that creates no supply action.
+  final String? planAnchorAnalysisLineId;
 
   /// `DELEGATED_TO_MAKE_CHILD` 对应的系统自制 child analysis item。
   final String? delegatedToAnalysisLineId;
@@ -1149,6 +1166,12 @@ class ProductionMaterialAnalysisMaterial {
     exactPeggedQty: _double(json['exactPeggedQty']) ?? 0,
     reservedQty: _double(json['reservedQty']) ?? 0,
     safetyStockQty: _double(json['safetyStockQty']) ?? 0,
+    mainWarehousePublicAvailableQty:
+        _double(json['mainWarehousePublicAvailableQty']) ?? 0,
+    mainWarehouseOpenSafetySupplyQty:
+        _double(json['mainWarehouseOpenSafetySupplyQty']) ?? 0,
+    mainWarehouseSafetyReplenishmentGapQty:
+        _double(json['mainWarehouseSafetyReplenishmentGapQty']) ?? 0,
     inboundQty: _double(json['inboundQty']) ?? 0,
     publicSurplusApprovedInboundQty:
         _double(json['publicSurplusApprovedInboundQty']) ?? 0,
@@ -1172,6 +1195,7 @@ class ProductionMaterialAnalysisMaterial {
     requirementState: MaterialRequirementState.fromWire(
       json['requirementState'],
     ),
+    planAnchorAnalysisLineId: _string(json['planAnchorAnalysisLineId']),
     delegatedToAnalysisLineId: _string(json['delegatedToAnalysisLineId']),
     delegatedToSourceRef: _string(json['delegatedToSourceRef']),
     delegatedToRequestedQty: _double(json['delegatedToRequestedQty']),

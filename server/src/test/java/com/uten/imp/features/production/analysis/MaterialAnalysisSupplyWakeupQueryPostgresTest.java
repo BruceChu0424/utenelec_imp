@@ -70,7 +70,7 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
     @BeforeAll static void start() throws Exception {
         DB.start();
         Flyway.configure().dataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword())
-                .locations("classpath:db/migration").target("531").load().migrate();
+                .locations("classpath:db/migration").load().migrate();
         var source=new DriverManagerDataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword());db=new JdbcTemplate(source);
         var builder=new LocalContainerEntityManagerFactoryBean();builder.setDataSource(source);
         builder.setJpaVendorAdapter(new HibernateJpaVendorAdapter());builder.setPackagesToScan("com.uten.imp.features.common.taskclaim");
@@ -79,7 +79,7 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
         EntityManager observer=mock(EntityManager.class);
         when(observer.createNativeQuery(anyString())).thenAnswer(call->{lastSql=call.getArgument(0);return em.createNativeQuery(lastSql);});
         // Only query discovery is invoked; no refresh, locking or notification collaborator is mocked out of a write path.
-        service=new MaterialAnalysisSupplyWakeupService(observer,null,null,null,null);
+        service=new MaterialAnalysisSupplyWakeupService(observer,null,null,null);
         unit=UUID.randomUUID();db.update("INSERT INTO units(id,code,name) VALUES (?,?,'wakeup piece')",unit,"WU-U-"+unit);
         try(var connection=connection()){connection.setAutoCommit(false);actor=ProcurementReceiptFixtureSupport.createActor(connection);connection.commit();}
         maker=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,actor);

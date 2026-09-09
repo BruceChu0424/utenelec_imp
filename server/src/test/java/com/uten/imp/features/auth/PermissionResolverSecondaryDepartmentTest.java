@@ -32,6 +32,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -123,6 +125,7 @@ class PermissionResolverSecondaryDepartmentTest {
         assertTrue(breakdown.effective().contains(PRIMARY_CODE));
         assertTrue(breakdown.effective().contains(SECONDARY_CODE));
         assertTrue(breakdown.departmentPermissions().contains(SECONDARY_CODE));
+        assertEquals(breakdown.effective(), resolver.permsOf(userAccountRepo.findById(userId).orElseThrow()));
     }
 
     @Test
@@ -139,6 +142,7 @@ class PermissionResolverSecondaryDepartmentTest {
                 .findPermissionCodesByDepartmentIdsWithAncestors(List.of(primaryDeptId));
         verify(departmentPermissionRepo, never())
                 .findPermissionCodesByDepartmentIdWithAncestors(primaryDeptId);
+        assertEquals(breakdown.effective(), resolver.permsOf(userAccountRepo.findById(userId).orElseThrow()));
     }
 
     @Test
@@ -155,6 +159,7 @@ class PermissionResolverSecondaryDepartmentTest {
         assertFalse(breakdown.effective().contains(SECONDARY_REVOKED_CODE));
         assertTrue(breakdown.effective().contains(PRIMARY_CODE));
         assertEquals(Set.of(SECONDARY_REVOKED_CODE), Set.copyOf(breakdown.revokes()));
+        assertEquals(breakdown.effective(), resolver.permsOf(userAccountRepo.findById(userId).orElseThrow()));
     }
 
     @Test
@@ -171,5 +176,25 @@ class PermissionResolverSecondaryDepartmentTest {
 
         assertFalse(breakdown.effective().contains(SECONDARY_CODE));
         verify(secondaryDeptRepo, never()).findDepartmentIdsByEmployeeId(employeeId);
+    }
+
+    @Test
+    void superAdminEffectiveSnapshotEqualsFullBreakdownWithOneCatalogQuery() {
+        UserAccount account = userAccountRepo.findById(userId).orElseThrow();
+        account.setSuperAdmin(true);
+        stubDepartments(List.of(secondaryDeptId), List.of(PRIMARY_CODE, SECONDARY_CODE));
+        when(overrideRepo.findCodeAndEffectByUserId(userId))
+                .thenReturn(List.<Object[]>of(new Object[]{SECONDARY_CODE, "revoke", "SUPER_ADMIN_CONFIRMED"}));
+        var primary = new com.uten.imp.features.rbac.Permission(); primary.setCode(PRIMARY_CODE);
+        var secondary = new com.uten.imp.features.rbac.Permission(); secondary.setCode(SECONDARY_CODE);
+        when(permissionRepo.findAllByActiveTrue()).thenReturn(List.of(primary, secondary));
+        var management = resolver.breakdownOf(account);
+        assertTrue(management.revokes().contains(SECONDARY_CODE), "管理页仍保留完整个人撤销来源");
+        clearInvocations(permissionRepo, roleRepo, rolePermissionRepo, departmentPermissionRepo,
+                overrideRepo, employeeRepo, secondaryDeptRepo, managerDelegationRepo, userAccountRepo);
+        assertEquals(management.effective(), resolver.permsOf(account));
+        verify(permissionRepo).findAllByActiveTrue();
+        verifyNoInteractions(roleRepo, rolePermissionRepo, departmentPermissionRepo,
+                overrideRepo, employeeRepo, secondaryDeptRepo, managerDelegationRepo, userAccountRepo);
     }
 }

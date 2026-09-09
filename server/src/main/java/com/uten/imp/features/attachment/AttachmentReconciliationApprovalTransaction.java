@@ -22,7 +22,7 @@ class AttachmentReconciliationApprovalTransaction {
     void approve(UUID findingId, UUID userId, String approvalReference) {
         AttachmentReconciliationService.Finding finding = jdbc.query("""
                 SELECT id, object_location, storage_key, storage_version, size_bytes,
-                       finding_state, observation_count, first_seen_at, evidence_sha256
+                       finding_state, observation_count, first_seen_at, evidence_sha256, storage_provider
                 FROM attachment_reconciliation_findings
                 WHERE id = ?
                 FOR UPDATE
@@ -36,7 +36,7 @@ class AttachmentReconciliationApprovalTransaction {
                         result.getString("finding_state"),
                         result.getInt("observation_count"),
                         result.getTimestamp("first_seen_at").toInstant(),
-                        result.getString("evidence_sha256"))
+                        result.getString("evidence_sha256"),result.getString("storage_provider"))
                         : null,
                 findingId);
         if (finding == null || !"OBSERVED".equals(finding.state())) {
@@ -48,7 +48,7 @@ class AttachmentReconciliationApprovalTransaction {
                 String.class,
                 "attachment-object:" + finding.storageKey());
         if (AttachmentReconciliationService.isReferenced(
-                jdbc, finding.location(), finding.storageKey(), finding.storageVersion())) {
+                jdbc, finding.storageProvider(), finding.location(), finding.storageKey(), finding.storageVersion())) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "Object became referenced; deletion approval was cancelled");
         }
@@ -65,9 +65,9 @@ class AttachmentReconciliationApprovalTransaction {
                 WHERE id = ? AND finding_state = 'OBSERVED'
                 """, userId, approvalReference, findingId);
         if ("STAGING".equals(finding.location())) {
-            outbox.enqueueStaging(null, finding.storageKey(), finding.storageVersion());
+            outbox.enqueueStaging(null, finding.storageKey(), finding.storageVersion(), finding.storageProvider());
         } else {
-            outbox.enqueueFinal(null, finding.storageKey(), finding.storageVersion());
+            outbox.enqueueFinal(null, finding.storageKey(), finding.storageVersion(), finding.storageProvider());
         }
     }
 }

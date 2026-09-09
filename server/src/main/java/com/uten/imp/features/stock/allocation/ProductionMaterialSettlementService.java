@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock.allocation;
 
+import com.uten.imp.application.port.ProductionMaterialUsageReadPort;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -21,6 +22,9 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
@@ -31,7 +35,7 @@ import java.util.UUID;
 /** Explicit material clearing; never derives actual use from BOM quantities. */
 @Service
 @RequiredArgsConstructor
-public class ProductionMaterialSettlementService {
+public class ProductionMaterialSettlementService implements ProductionMaterialUsageReadPort {
 
     private static final Set<String> TYPES =
             Set.of("CONSUMED", "APPROVED_LOSS", "LEGAL_WIP");
@@ -40,6 +44,42 @@ public class ProductionMaterialSettlementService {
     private final TxSessionVars tx;
     private final ProductionMaterialTaskAccessPolicy taskAccess;
     private final com.uten.imp.features.stock.valuation.ProductionInventoryValueService inventoryValue;
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<UUID, UsageFlags> forVisibleSegments(Collection<UUID> segmentIds) {
+        if (segmentIds == null || segmentIds.isEmpty()) return Map.of();
+        if (segmentIds.size() > 100 || segmentIds.stream().anyMatch(Objects::isNull)) {
+            throw new IllegalArgumentException("Material usage requires a bounded page of exact segment IDs");
+        }
+        var query = em.createNativeQuery("""
+                SELECT segment.id,
+                       EXISTS (
+                           SELECT 1 FROM production_material_demands demand
+                           WHERE demand.execution_segment_id=segment.id
+                             AND (EXISTS (
+                                 SELECT 1 FROM production_material_stock_postings posting
+                                 WHERE posting.demand_id=demand.id
+                                   AND posting.posting_type='ISSUE' AND posting.qty_base>0)
+                               OR EXISTS (
+                                 SELECT 1 FROM production_material_settlement_postings posting
+                                 JOIN production_material_settlement_events event ON event.id=posting.event_id
+                                 WHERE posting.demand_id=demand.id
+                                   AND event.event_type='POST' AND posting.qty_base>0))),
+                       EXISTS (
+                           SELECT 1 FROM v_production_material_clearance clearance
+                           JOIN production_material_demands demand ON demand.id=clearance.demand_id
+                           WHERE demand.execution_segment_id=segment.id
+                             AND clearance.issued_qty>0 AND clearance.uncleared_qty>0)
+                FROM production_execution_segments segment
+                WHERE segment.id IN (:segments) AND segment.is_deleted=FALSE
+                """).setParameter("segments", segmentIds.stream().distinct().sorted().toList());
+        Map<UUID, UsageFlags> result = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
+            result.put((UUID) row[0], new UsageFlags(Boolean.TRUE.equals(row[1]), Boolean.TRUE.equals(row[2])));
+        }
+        return Map.copyOf(result);
+    }
 
     @Transactional(readOnly=true)
     public ProductionMaterialTaskAccessPolicy.Capabilities capabilities(UUID planId, UUID segmentId) {
@@ -372,13 +412,14 @@ public class ProductionMaterialSettlementService {
                                c.confirmed_consumed_qty, c.approved_loss_qty,
                                c.legal_wip_qty,
                                GREATEST(c.uncleared_qty, 0),
-                               c.uncleared_qty, c.can_close
+                               c.uncleared_qty, c.can_close, demand_unit.name
                         FROM v_production_material_clearance c
                         JOIN production_material_demands demand
                           ON demand.id = c.demand_id
                         LEFT JOIN production_execution_segments segment
                           ON segment.id = demand.execution_segment_id
                         JOIN goods g ON g.id = c.goods_id
+                        LEFT JOIN units demand_unit ON demand_unit.id = demand.unit_id
                         LEFT JOIN colors color ON color.id = c.color_id
                         WHERE c.plan_id = :planId
                         """ + (scope.all() ? "" : " AND demand.execution_segment_id IN (:segments)")
@@ -393,7 +434,7 @@ public class ProductionMaterialSettlementService {
                         decimal(row[9]), decimal(row[10]), decimal(row[11]),
                         decimal(row[12]), decimal(row[13]), decimal(row[14]),
                         decimal(row[15]), decimal(row[16]),
-                        Boolean.TRUE.equals(row[17])))
+                        Boolean.TRUE.equals(row[17]), (String) row[18]))
                 .toList();
     }
 

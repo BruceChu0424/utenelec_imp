@@ -29,6 +29,7 @@ public class BusinessDataResetDrainFilter extends OncePerRequestFilter {
 
     /** 清空端点路径（过滤器按去 contextPath 后的绝对路径精确匹配豁免）。 */
     static final String RESET_PATH = "/api/system-test/business-data/reset";
+    static final String ATTACHMENT_PREPARE_PATH = "/api/system-test/business-data/attachments/prepare";
 
     private final BusinessDataResetDrainGate gate;
     private final ObjectMapper objectMapper;
@@ -47,16 +48,15 @@ public class BusinessDataResetDrainFilter extends OncePerRequestFilter {
         if (contextPath != null && !contextPath.isEmpty() && path.startsWith(contextPath)) {
             path = path.substring(contextPath.length());
         }
-        if (RESET_PATH.equals(path)) {
+        if (RESET_PATH.equals(path) || ATTACHMENT_PREPARE_PATH.equals(path)) {
             // 清空端点自身：不计数、不拦截（排水等它之外的所有请求）。
             chain.doFilter(request, response);
             return;
         }
-        if (gate.blockingNewRequests()) {
+        if (!gate.tryEnter()) {
             writeServiceUnavailable(response);
             return;
         }
-        gate.enter();
         try {
             chain.doFilter(request, response);
         } finally {

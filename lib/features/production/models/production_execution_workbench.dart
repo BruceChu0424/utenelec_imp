@@ -184,6 +184,8 @@ class ProductionExecutionWorkbenchSegment {
     required this.lockVersion,
     required this.zeroMaterial,
     this.canRecheckMaterial = false,
+    this.hasMaterialActivity = false,
+    this.hasUnregisteredMaterial = false,
     this.salesOrderNos,
     this.workshopDepartmentId,
     this.workshopName,
@@ -233,6 +235,13 @@ class ProductionExecutionWorkbenchSegment {
   final int lockVersion;
   final bool zeroMaterial;
   final bool canRecheckMaterial;
+
+  /// Actual issue/settlement history for this exact task, including reversals.
+  final bool hasMaterialActivity;
+
+  /// A positive issued-but-unregistered balance from the material ledger.
+  /// This is independent of kit readiness and whether all material is issued.
+  final bool hasUnregisteredMaterial;
 
   /// 报工进度比（报工量 / 计划量，0-1；计划量为 0 时为 null）。
   double? get reportProgressRatio {
@@ -301,6 +310,8 @@ class ProductionExecutionWorkbenchSegment {
     lockVersion: (json['lockVersion'] as num?)?.toInt() ?? 0,
     zeroMaterial: json['zeroMaterial'] == true,
     canRecheckMaterial: json['canRecheckMaterial'] == true,
+    hasMaterialActivity: json['hasMaterialActivity'] == true,
+    hasUnregisteredMaterial: json['hasUnregisteredMaterial'] == true,
   );
 }
 

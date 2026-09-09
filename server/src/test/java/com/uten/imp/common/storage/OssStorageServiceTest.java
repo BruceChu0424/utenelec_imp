@@ -50,6 +50,23 @@ import static org.mockito.Mockito.when;
 class OssStorageServiceTest {
 
     @Test
+    void historicalAdapterRequiresAnExactVersionAndCannotCreateOrDeleteRemoteObjects() throws Exception {
+        OSS client=mock(OSS.class);var properties=properties(false);properties.getOss().setStagingBucket("");
+        var storage=new OssStorageService(properties,client,null,true);
+        OSSObject object=new OSSObject();InputStream bytes=new ByteArrayInputStream(new byte[]{1,2,3});object.setObjectContent(bytes);
+        when(client.getObject(any(GetObjectRequest.class))).thenReturn(object);
+        assertThrows(IllegalStateException.class,()->storage.openFinal("old.pdf",null));
+        assertSame(bytes,storage.openFinal("old.pdf","original-version"));
+        var request=ArgumentCaptor.forClass(GetObjectRequest.class);verify(client).getObject(request.capture());
+        assertEquals("original-version",request.getValue().getVersionId());
+        verify(client,never()).getBucketVersioning(anyString());
+        assertThrows(UnsupportedOperationException.class,()->storage.presignUpload(
+                new StorageService.UploadRequest("EMPLOYEE","new.pdf","application/pdf",10)));
+        assertThrows(UnsupportedOperationException.class,()->storage.delete("old.pdf","original-version"));
+        assertThrows(UnsupportedOperationException.class,()->storage.promoteToFinal("old.pdf",new StorageService.StoredObject(true,10,null,null,null)));
+    }
+
+    @Test
     void postPolicyCarriesNoOverwriteAndExactLength() {
         OSS client = mock(OSS.class);
         when(client.generatePostPolicy(any(), any(PolicyConditions.class))).thenReturn("policy");

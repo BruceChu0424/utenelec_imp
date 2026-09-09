@@ -30,6 +30,7 @@ import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/router/permission_by_path.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
@@ -476,6 +477,11 @@ const _allGroups = <_ModuleGroup>[
     color: UtenColors.teal900,
     items: [
       _ModuleItem(
+        icon: Icons.monitor_heart_outlined,
+        label: '',
+        location: RouteName.adminServerStatus,
+      ),
+      _ModuleItem(
         icon: Icons.admin_panel_settings_outlined,
         label: '权限管理',
         location: RouteName.adminPermissions,
@@ -545,6 +551,9 @@ class _ModuleTile extends StatelessWidget {
     final theme = Theme.of(context);
     // 功能规划接入中的卡片：置灰、名字追加「（功能规划接入中）」、不响应点击。
     final comingSoon = item.comingSoon;
+    final label = item.location == RouteName.adminServerStatus
+        ? AppLocalizations.of(context).serverStatusTitle
+        : item.label;
     final accent = comingSoon ? theme.disabledColor : color;
     return Material(
       type: MaterialType.transparency,
@@ -581,7 +590,7 @@ class _ModuleTile extends StatelessWidget {
                   const SizedBox(width: UtenSpacing.s12),
                   Expanded(
                     child: Text(
-                      comingSoon ? '${item.label}(功能规划接入中)' : item.label,
+                      comingSoon ? '$label(功能规划接入中)' : label,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w500,
                         color: comingSoon

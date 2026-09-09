@@ -1,0 +1,22 @@
+# Install as /etc/systemd/system/uten-imp.service.d/internal-storage.conf
+# Only after the dedicated media filesystem and private directory exist.
+# EnvironmentFile values take precedence over these defaults. Replace old
+# storage/scanner values in /etc/uten-imp/server.env during activation as well.
+[Unit]
+RequiresMountsFor=/var/lib/uten-imp-media /data/postgresql/16/main
+After=clamav-daemon.service
+Wants=clamav-daemon.service
+
+[Service]
+ReadWritePaths=/var/lib/uten-imp-media/attachments
+Environment=UTEN_STORAGE_PROVIDER=internal
+Environment=UTEN_INTERNAL_STORAGE_ROOT=/var/lib/uten-imp-media/attachments
+Environment=UTEN_INTERNAL_STORAGE_MAX_CONCURRENT_IO=2
+Environment=UTEN_INTERNAL_STORAGE_MIN_FREE_BYTES=10737418240
+Environment=UTEN_ATTACHMENT_SCANNER_PROVIDER=clamav
+Environment=UTEN_CLAMAV_HOST=127.0.0.1
+Environment=UTEN_CLAMAV_PORT=3310
+Environment=UTEN_SERVER_STATUS_BACKUP_PATH=/data/backups/pgbackrest
+Environment=UTEN_SERVER_STATUS_BACKUP_STATUS_FILE=/var/lib/uten-imp-server-status/backup.json
+# Set UTEN_ATTACHMENT_UPLOADS_ENABLED=true in server.env only after real
+# ClamAV, original-file roundtrip and paired-backup restore checks pass.

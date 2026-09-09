@@ -31,6 +31,9 @@ final class AttachmentUploadSafetyGate {
         if (!properties.isUploadsEnabled()) {
             return;
         }
+        if ("oss".equals(storage.backend())) {
+            throw new IllegalStateException("OSS supports historical reads only; new attachments require internal storage");
+        }
         if (!storage.isEnabled() || "disabled".equals(scanner.provider())) {
             throw new IllegalStateException(
                     "Attachment uploads require storage and a malware scanner");
@@ -52,6 +55,9 @@ final class AttachmentUploadSafetyGate {
         if (!properties.isUploadsEnabled()) {
             throw new ApiException(ErrorCode.BUSINESS,
                     "Attachment upload is disabled pending security acceptance");
+        }
+        if ("oss".equals(storage.backend())) {
+            throw new ApiException(ErrorCode.BUSINESS,"新附件只允许写入内部服务器，OSS仅供历史读取");
         }
         if (!storage.isEnabled() || "disabled".equals(scanner.provider())) {
             throw new ApiException(ErrorCode.BUSINESS,

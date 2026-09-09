@@ -26,6 +26,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../repositories/system_test_repository.dart';
+import 'business_attachment_reset_dialog.dart';
 
 class SystemTestArea extends ConsumerStatefulWidget {
   const SystemTestArea({super.key});
@@ -167,6 +168,42 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
 
   final TextEditingController _controller = TextEditingController();
   bool _running = false;
+  bool _checkingFiles = true;
+  BusinessAttachmentResetPreview? _files;
+  String? _fileError;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_checkFiles);
+  }
+
+  Future<void> _checkFiles() async {
+    setState(() {
+      _checkingFiles = true;
+      _fileError = null;
+      _files = null;
+    });
+    try {
+      final value = await ref
+          .read(systemTestRepositoryProvider)
+          .previewBusinessAttachments();
+      if (mounted) setState(() => _files = value);
+    } catch (_) {
+      if (mounted) setState(() => _fileError = '无法核对业务附件，暂时不能清空。请重试。');
+    } finally {
+      if (mounted) setState(() => _checkingFiles = false);
+    }
+  }
+
+  Future<void> _prepareFiles() async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const BusinessAttachmentResetDialog(),
+    );
+    if (mounted) await _checkFiles();
+  }
 
   @override
   void dispose() {
@@ -174,7 +211,10 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
     super.dispose();
   }
 
-  bool get _confirmed => _controller.text.trim() == _confirmPhrase;
+  bool get _confirmed =>
+      _controller.text.trim() == _confirmPhrase &&
+      !_checkingFiles &&
+      _files?.blockingCount == 0;
 
   Future<void> _submit() async {
     if (!_confirmed || _running) return;
@@ -210,6 +250,18 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('即将在本环境执行不可恢复的清空（不创建备份）：', style: theme.textTheme.bodyMedium),
+            if (_checkingFiles) const LinearProgressIndicator(),
+            if (_fileError != null) Text(_fileError!),
+            if (_fileError != null)
+              TextButton(onPressed: _checkFiles, child: const Text('重新核对附件')),
+            if ((_files?.blockingCount ?? 0) > 0) ...[
+              Text('还有 ${_files!.blockingCount} 项业务文件或删除任务未完成，先处理附件后才能清空。'),
+              TextButton.icon(
+                onPressed: _running ? null : _prepareFiles,
+                icon: const Icon(Icons.folder_delete_outlined),
+                label: const Text('先清理业务附件'),
+              ),
+            ],
             const SizedBox(height: UtenSpacing.s12),
             ...[
               '保留：基础资料（货品/客户/供应商/账户/仓库…）、人事、账号权限、审计日志',

@@ -81,6 +81,25 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
             result.row("original-entitlement", row); result.analysis((UUID) row[1]);
             result.inventory((UUID) row[2], (UUID) row[3]);
         }
+        // FG withdrawal returns registered cost shares to their actual input
+        // nodes. Historical/manual inputs need not exist in the current BOM.
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT DISTINCT input.input_node_id,pool.goods_id,pool.color_id,
+                       fn_warehouse_main_id(pool.warehouse_id),md5(to_jsonb(input)::text)
+                FROM stock_document_items item
+                JOIN stock_movements movement ON movement.source_doc_type='STOCK_DOC'
+                  AND movement.source_doc_id=item.doc_id AND movement.source_item_id=item.id AND movement.direction=1
+                JOIN stock_value_production_cost_outputs output ON output.movement_id=movement.id
+                JOIN stock_value_production_cost_inputs input ON input.execution_segment_id=output.execution_segment_id
+                JOIN stock_value_nodes node ON node.id=input.input_node_id
+                JOIN stock_value_pools pool ON pool.id=node.pool_id
+                WHERE item.doc_id IN (:ids) AND item.bill_type='FINISHED_IN'
+                ORDER BY input.input_node_id
+                """).setParameter("ids",ids))) {
+            result.row("finished-cost-input",row);
+            result.inventory((UUID)row[1],(UUID)row[2]);
+            if(row[3]!=null)result.warehouses.add((UUID)row[3]);
+        }
         if (!planItems.isEmpty()) {
             for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                     SELECT item.id,item.plan_id,item.sales_order_item_id,sales_item.order_id,
@@ -220,6 +239,15 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         List<WarehouseDimension> dimensions = changed.stream().distinct()
                 .sorted(Comparator.comparing(WarehouseDimension::toString)).toList();
         dimensions.forEach(d -> result.parts.add("changed-supply:" + d));
+        // Before the first stock-in no ORIGIN/reservation exists yet. The
+        // procurement footprint supplies its exact commercial analysis IDs;
+        // the requested physical warehouse must already be locked as well.
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id,fn_warehouse_main_id(id) FROM warehouses WHERE id IN (:ids) ORDER BY id
+                """).setParameter("ids", dimensions.stream().map(WarehouseDimension::warehouseId).distinct().toList()))) {
+            result.row("changed-warehouse", row);
+            if (row[1]!=null) result.warehouses.add((UUID)row[1]);
+        }
         String warehouses = dimensions.stream().map(d -> d.warehouseId().toString()).collect(Collectors.joining(","));
         String goods = dimensions.stream().map(d -> d.goodsId().toString()).collect(Collectors.joining(","));
         String colors = dimensions.stream().map(d -> Objects.toString(d.colorId(), "")).collect(Collectors.joining(","));
@@ -235,9 +263,13 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                   AND (analysis.status IN ('ACTIVE','PARTIALLY_PLANNED') OR analysis.status='COMPLETED'
                     AND fn_material_analysis_fulfillment_status(analysis.id)<>'COMPLETED')
                   AND EXISTS(SELECT 1 FROM production_material_analysis_materials material
-                    JOIN dimensions d ON fn_warehouse_same_main(d.warehouse_id,analysis.warehouse_id)
-                      AND d.goods_id=material.goods_id AND d.color_id IS NOT DISTINCT FROM material.color_id
-                    WHERE material.analysis_id=analysis.id AND material.active=TRUE)
+                    JOIN dimensions d ON d.goods_id=material.goods_id
+                      AND d.color_id IS NOT DISTINCT FROM material.color_id
+                    WHERE material.analysis_id=analysis.id AND material.active=TRUE
+                      AND (fn_warehouse_same_main(d.warehouse_id,analysis.warehouse_id)
+                        OR """ + MaterialAnalysisWakeupScopeSql.ownsQualifiedAt(
+                            "analysis.id", "material.id", "d.warehouse_id", "d.goods_id", "d.color_id") + """
+                        ))
                 ORDER BY analysis.id
                 """).setParameter("warehouses", warehouses).setParameter("goods", goods).setParameter("colors", colors))) {
             result.analysis((UUID) row[0]);
@@ -298,16 +330,51 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                 """, UUID.class).setParameter("ids",analyses),UUID.class);
         addCurrentBom(result,roots);
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT DISTINCT reservation.id,reservation.goods_id,reservation.color_id,md5(to_jsonb(reservation)::text)
+                SELECT DISTINCT reservation.id,reservation.goods_id,reservation.color_id,md5(to_jsonb(reservation)::text),
+                       fn_warehouse_main_id(reservation.warehouse_id)
                 FROM stock_reservations reservation
                 WHERE reservation.is_deleted=FALSE AND reservation.status=0
                   AND (reservation.owner_type='PREPLAN_ANALYSIS' AND reservation.owner_id IN (:ids)
                     OR EXISTS(SELECT 1 FROM v_preplan_stock_entitlement_beneficiary_balance entitlement
                        WHERE entitlement.stock_reservation_id=reservation.id
-                         AND entitlement.beneficiary_analysis_id IN (:ids) AND entitlement.effective_qty>0))
+                         AND entitlement.beneficiary_analysis_id IN (:ids) AND entitlement.effective_qty>0)
+                    OR reservation.owner_type='PRODUCTION_MATERIAL_DEMAND' AND reservation.qty>reservation.released_qty
+                      AND EXISTS(SELECT 1 FROM preplan_stock_entitlement_events formalize
+                        WHERE formalize.event_type='FORMALIZE' AND formalize.target_stock_reservation_id=reservation.id
+                          AND formalize.beneficiary_analysis_id IN (:ids)
+                          AND NOT EXISTS(SELECT 1 FROM preplan_stock_entitlement_events restored
+                            WHERE restored.event_type='RESTORE' AND restored.counter_event_id=formalize.id)))
                 ORDER BY reservation.id
                 """).setParameter("ids", analyses))) {
             result.row("reservation", row); result.inventory((UUID) row[1], (UUID) row[2]);
+            if (row[4]!=null) result.warehouses.add((UUID)row[4]);
+        }
+        // Intermediate SC assembly stays outside final-component entitlement.
+        // Its original task and converted outbound reservations still require
+        // their actual warehouses in the same directed mutation lock plan.
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT reservation.id,reservation.goods_id,reservation.color_id,
+                       fn_warehouse_main_id(reservation.warehouse_id),md5(to_jsonb(reservation)::text)
+                FROM stock_reservations reservation
+                WHERE NOT reservation.is_deleted AND reservation.status=0 AND reservation.qty>reservation.released_qty
+                  AND reservation.supply_type='PRODUCTION_FINISHED_IN'
+                  AND (reservation.owner_type='SUBCONTRACT_PREPARE_TASK' AND EXISTS(
+                        SELECT 1 FROM preplan_subcontract_make_tasks task
+                        WHERE task.id=reservation.owner_id AND task.analysis_id IN (:ids))
+                    OR reservation.owner_type='SUBCONTRACT_OUTBOUND' AND EXISTS(
+                        SELECT 1 FROM subcontract_material_plan_items item
+                        WHERE item.id=reservation.owner_id AND item.preparation_analysis_id IN (:ids))
+                    OR reservation.owner_type='SUBCONTRACT_ORDER_PREPARATION' AND EXISTS(
+                        SELECT 1 FROM stock_document_items item
+                        JOIN production_plan_items production_item ON production_item.id=item.upstream_item_id
+                        JOIN production_plans plan ON plan.id=production_item.plan_id
+                        WHERE item.id=reservation.supply_id AND plan.material_analysis_id IN (:ids)))
+                  AND fn_subcontract_preparation_reservation_has_qualified_origin(reservation.id)
+                ORDER BY reservation.id
+                """).setParameter("ids",analyses))) {
+            result.row("subcontract-preparation-source",row);
+            result.inventory((UUID)row[1],(UUID)row[2]);
+            if(row[3]!=null)result.warehouses.add((UUID)row[3]);
         }
     }
 

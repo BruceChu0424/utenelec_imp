@@ -38,12 +38,61 @@ abstract interface class SystemTestRepository {
   /// 执行清空业务数据。成功后服务端已让所有人（含当前账号）下线，
   /// 调用方应立即本地登出并跳登录页。
   Future<BusinessDataResetResult> resetBusinessData();
+  Future<BusinessAttachmentResetPreview> previewBusinessAttachments();
+  Future<BusinessAttachmentResetPreview> prepareBusinessAttachments(
+    BusinessAttachmentResetPreview preview,
+  );
+}
+
+class BusinessAttachmentResetPreview {
+  const BusinessAttachmentResetPreview({
+    required this.database,
+    required this.fingerprint,
+    required this.blockingCount,
+    this.items = const [],
+    this.hasMore = false,
+  });
+  final String database;
+  final String fingerprint;
+  final int blockingCount;
+  final List<Map<String, dynamic>> items;
+  final bool hasMore;
+  factory BusinessAttachmentResetPreview.fromJson(Map<String, dynamic> json) =>
+      BusinessAttachmentResetPreview(
+        database: json['database'] as String,
+        fingerprint: json['fingerprint'] as String,
+        blockingCount: (json['blockingCount'] as num).toInt(),
+        items: (json['items'] as List? ?? const [])
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .toList(),
+        hasMore: json['hasMore'] == true,
+      );
 }
 
 class ApiSystemTestRepository implements SystemTestRepository {
   const ApiSystemTestRepository(this._api);
 
   final ApiClient _api;
+
+  @override
+  Future<BusinessAttachmentResetPreview> previewBusinessAttachments() async =>
+      BusinessAttachmentResetPreview.fromJson(
+        await _api.get('/system-test/business-data/attachments/preview'),
+      );
+
+  @override
+  Future<BusinessAttachmentResetPreview> prepareBusinessAttachments(
+    BusinessAttachmentResetPreview preview,
+  ) async => BusinessAttachmentResetPreview.fromJson(
+    await _api.post(
+      '/system-test/business-data/attachments/prepare',
+      body: {
+        'confirm': '清理测试业务附件',
+        'database': preview.database,
+        'fingerprint': preview.fingerprint,
+      },
+    ),
+  );
 
   @override
   Future<BusinessDataResetResult> resetBusinessData() async {

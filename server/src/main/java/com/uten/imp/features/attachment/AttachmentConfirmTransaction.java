@@ -36,7 +36,7 @@ class AttachmentConfirmTransaction {
                        String persistedContentType,
                        String sha256,
                        ScanResult scan,
-                       String category) {
+                       String category, String storageProvider) {
         ownerPolicy.requireCanManageForUpdate(grant.ownerId(), user);
         jdbc.queryForObject(
                 "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))::text",
@@ -59,6 +59,9 @@ class AttachmentConfirmTransaction {
         entity.setOwnerType(grant.ownerType());
         entity.setOwnerId(grant.ownerId());
         entity.setStorageKey(grant.storageKey());
+        entity.setStorageProvider(storageProvider);
+        entity.setStoredSizeBytes(finalObject.storedSize());
+        entity.setStorageEncoding(finalObject.encoding());
         entity.setStorageVersion(finalObject.versionId());
         entity.setStorageEtag(finalObject.eTag());
         entity.setOriginalName(grant.originalName());
@@ -77,13 +80,13 @@ class AttachmentConfirmTransaction {
                     sessionId,
                     stagingObject.versionId(), stagingObject.eTag(), sha256,
                     finalObject.versionId(), finalObject.eTag(),
-                    scan.engine(), scan.signature());
+                    scan.engine(), scan.signature(), finalObject.storedSize(), finalObject.encoding());
             // Keep the immutable staging object until the signed POST policy is
             // expired. With overwrite prevention this closes the only replay
             // window between successful confirmation and asynchronous cleanup.
             outbox.enqueueStagingAfter(
                     sessionId, grant.storageKey(), stagingObject.versionId(),
-                    grant.expiresAt());
+                    grant.expiresAt(), storageProvider);
             return saved;
         } catch (DataIntegrityViolationException e) {
             throw new ApiException(ErrorCode.CONFLICT,

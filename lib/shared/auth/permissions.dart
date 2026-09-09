@@ -22,6 +22,9 @@ abstract final class Perm {
   /// 权限、数据范围和系统设置管理；后端同时要求超级管理员身份。
   static const authorizationManage = 'authorization:manage';
 
+  /// Read-only server health and capacity overview.
+  static const serverStatusView = 'server_status:view';
+
   /// 查看审计中心及核查本机操作回执。
   static const auditLogView = 'audit_log:view';
 
@@ -898,6 +901,7 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.accountSupport,
       Perm.dashboardFinanceSensitiveView,
       Perm.authorizationManage,
+      Perm.serverStatusView,
       Perm.auditLogView,
       Perm.auditLogExport,
       Perm.payrollViewSelf,

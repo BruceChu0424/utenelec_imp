@@ -8,7 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.sql.DriverManager;
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Exercises the exact production SQL predicate; full V537 migration and HTTP flow have a separate test. */
+/** Exercises the forward correction without changing the already-applied V537 migration. */
 @Testcontainers(disabledWithoutDocker=true)
 class BusinessAttachmentResetCompletionPostgresTest {
     @Container static final PostgreSQLContainer<?> POSTGRES=new PostgreSQLContainer<>("postgres:16-alpine");
@@ -26,6 +26,10 @@ class BusinessAttachmentResetCompletionPostgresTest {
             try(var input=getClass().getResourceAsStream("/db/migration/V537__business_attachment_reset_completion_proof.sql")){
                 String migration=new String(input.readAllBytes(),StandardCharsets.UTF_8);
                 st.execute(migration.substring(0,migration.indexOf("DO $reset_attachment_guard$")));
+            }
+            try(var input=getClass().getResourceAsStream("/db/migration/V539__attachment_reset_completion_guards_forward.sql")){
+                assertThat(input).isNotNull();
+                st.execute(new String(input.readAllBytes(),StandardCharsets.UTF_8));
             }
             st.execute("""
                     INSERT INTO attachments VALUES
@@ -70,6 +74,17 @@ class BusinessAttachmentResetCompletionPostgresTest {
                       ('00000000-0000-0000-0000-000000000007',NULL,'00000000-0000-0000-0000-000000000006','DELETE_STAGING','internal','unconfirmed',NULL,'SUCCEEDED',now()),
                       ('00000000-0000-0000-0000-000000000008',NULL,'00000000-0000-0000-0000-000000000006','DELETE_FINAL','internal','unconfirmed',NULL,'SUCCEEDED',now())
                     """);
+            assertThat(blockers(st)).isZero();
+            st.execute("UPDATE attachment_upload_sessions SET staging_version='v2' WHERE id='00000000-0000-0000-0000-000000000004'");
+            assertThat(blockers(st)).as("another staging version cannot prove deletion").isEqualTo(1);
+            st.execute("UPDATE attachment_object_outbox SET storage_version='v2' WHERE id='00000000-0000-0000-0000-000000000005'");
+            assertThat(blockers(st)).isZero();
+            st.execute("""
+                    INSERT INTO attachment_object_outbox VALUES
+                      ('00000000-0000-0000-0000-000000000009',NULL,NULL,'DELETE_FINAL','internal','orphan','v1','SUCCEEDED',NULL)
+                    """);
+            assertThat(blockers(st)).as("an unlinked successful operation still needs its completion time").isEqualTo(1);
+            st.execute("UPDATE attachment_object_outbox SET completed_at=now() WHERE id='00000000-0000-0000-0000-000000000009'");
             assertThat(blockers(st)).isZero();
             try(var result=st.executeQuery("SELECT lifecycle_state FROM attachments WHERE owner_type='EMPLOYEE'")){
                 result.next();assertThat(result.getString(1)).isEqualTo("CLEAN");

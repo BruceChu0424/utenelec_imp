@@ -15,3 +15,7 @@ a0c7668dc49c85c2184c8d65207961ed4e50378e:test/features/production/fixtures/analy
 a0c7668dc49c85c2184c8d65207961ed4e50378e:test/features/production/fixtures/analysis_freeze_repro.json:generic-api-key:361
 a0c7668dc49c85c2184c8d65207961ed4e50378e:test/features/production/fixtures/analysis_freeze_repro.json:generic-api-key:407
 abed98f4ac0a70e5d9d1dec927388b9c5791e2a1:deploy/release/offline_release.py:generic-api-key:1350
+# Reviewed object-path fixtures: a business/month prefix plus generated UUID, and a
+# deterministic temporary .txt filename. Neither value authenticates any service.
+1516ad9a8ff7fe0f8795a27ae0eff9ef011863c9:deploy/postgres/backup/test_paired_internal_backup.py:generic-api-key:127
+1516ad9a8ff7fe0f8795a27ae0eff9ef011863c9:server/src/test/java/com/uten/imp/common/storage/InternalStorageServiceTest.java:generic-api-key:22

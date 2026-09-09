@@ -80,7 +80,9 @@ class ProductionMaterialAnalysisWorkflowContractTest {
 
         assertThat(source).contains("currentUser.requireEmployeeId() + \":\" + request.idempotencyKey()");
         assertThat(source).contains("requireReusablePayloadMatches(");
-        assertThat(source).contains("Objects.equals(header.warehouseId(), warehouseId)");
+        assertThat(source).contains("samePlanningWarehouseScope(");
+        assertThat(source).contains("SELECT id, fn_warehouse_main_id(id) AS main_id");
+        assertThat(source).contains("Objects.equals(mains.get(first), mains.get(second))");
         assertThat(source).contains("decimal(existing[6]).compareTo(item.requestedQty()) != 0");
         assertThat(source).contains("Objects.equals(date(existing[7]), expectedDelivery)");
         int exactMatch = source.indexOf("requireReusablePayloadMatches(",

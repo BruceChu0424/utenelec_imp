@@ -573,7 +573,7 @@ public class SubcontractMaterialIssueService {
         r.setSupplierId(req.getSupplierId());
         // V476 运营红线：委外发料出仓必须落到具体叶子仓；主仓库只作查询聚合。
         if (warehouseScopes != null) {
-            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "发出仓库");
+            warehouseScopes.requireNewLeafSelection(r.getWarehouseId(), req.getWarehouseId(), "发出仓库");
         }
         r.setWarehouseId(req.getWarehouseId());
         var operator = nameResolver.resolveForWrite(

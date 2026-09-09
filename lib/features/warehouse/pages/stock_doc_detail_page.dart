@@ -154,8 +154,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     final ctrls = {
       for (final it in lines)
         it.id!: TextEditingController(
-          text: (reverse ? (it.issuedQty ?? 0) : it.remainingQty)
-              .toStringAsFixed(2),
+          text: _quantityInputText(
+            reverse ? (it.issuedQty ?? 0) : it.remainingQty,
+          ),
         ),
     };
     final reasonController = reverse ? TextEditingController() : null;
@@ -168,6 +169,12 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           child: ListView(
             shrinkWrap: true,
             children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  '${reverse ? '退回原仓' : '领料仓库'}：${names.warehouse(_d!.warehouseId)}',
+                ),
+              ),
               for (final it in lines)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
@@ -176,7 +183,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                       Expanded(
                         flex: 3,
                         child: Text(
-                          '${names.goods(it.goodsId)}\n${reverse ? '可取消 ${(it.issuedQty ?? 0).toStringAsFixed(2)}' : '本次最多 ${it.remainingQty.toStringAsFixed(2)}'}',
+                          '${names.goods(it.goodsId)}\n${reverse ? '可取消 ${_quantityInputText(it.issuedQty ?? 0)}' : '本次最多 ${_quantityInputText(it.remainingQty)}'}',
                           style: Theme.of(context).textTheme.labelMedium
                               ?.copyWith(fontWeight: FontWeight.w400),
                         ),
@@ -768,7 +775,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                               label: '账面数量',
                               width: 90,
                               type: 'number',
-                              value: (it) => (it.qty ?? 0).toStringAsFixed(2),
+                              value: (it) => _quantityInputText(it.qty ?? 0),
                             ),
                             MasterColumnDef(
                               key: 'countQty',

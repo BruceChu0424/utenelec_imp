@@ -1108,7 +1108,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         r.setSupplierId(req.getSupplierId());
         // V476 运营红线：委外订货仓库必须选具体叶子仓（发料/回厂沿用）。
         if (warehouseScopes != null) {
-            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "仓库");
+            warehouseScopes.requireNewLeafSelection(r.getWarehouseId(), req.getWarehouseId(), "仓库");
         }
         r.setWarehouseId(req.getWarehouseId());
         r.setCurrencyId(req.getCurrencyId());

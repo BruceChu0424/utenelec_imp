@@ -4998,7 +4998,6 @@ public class MaterialAnalysisService {
                  AND material.analysis_id=balance.beneficiary_analysis_id
                 JOIN warehouses warehouse ON warehouse.id=reservation.warehouse_id
                   AND warehouse.is_deleted=FALSE AND warehouse.is_accountable=TRUE
-                  AND COALESCE(warehouse.status,'')<>'禁用'
                   AND NOT EXISTS(SELECT 1 FROM warehouses child
                       WHERE child.parent_id=warehouse.id AND child.is_deleted=FALSE)
                 WHERE balance.beneficiary_analysis_id=:analysisId AND balance.effective_qty>0
@@ -5032,7 +5031,7 @@ public class MaterialAnalysisService {
                        COALESCE(v.on_hand_qty,0), COALESCE(v.reserved_qty,0),
                        GREATEST(COALESCE(v.available_qty,0),0),
                        COALESCE(own.own_qty,0),
-                       (NOT w.is_defective AND COALESCE(w.status,'')<>'禁用'
+                       (NOT w.is_defective
                         AND NOT EXISTS(SELECT 1 FROM warehouses child
                             WHERE child.parent_id=w.id AND child.is_deleted=FALSE)
                         AND (CAST(:warehouseId AS uuid) IS NULL
@@ -5877,7 +5876,7 @@ public class MaterialAnalysisService {
                        COALESCE(own.own_qty,0),
                        GREATEST(COALESCE(g.min_qty,0),0),
                        COALESCE(open_safety.open_qty,0),
-                       (NOT w.is_defective AND COALESCE(w.status,'')<>'禁用'
+                       (NOT w.is_defective
                         AND NOT EXISTS(SELECT 1 FROM warehouses child
                             WHERE child.parent_id=w.id AND child.is_deleted=FALSE)) AS public_allowed, fn_warehouse_main_id(w.id) AS main_warehouse_id
                 FROM dimensions dimension

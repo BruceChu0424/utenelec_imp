@@ -43,8 +43,91 @@ class QualifiedSourceWarehouseEndToEndTest {
     @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
     @Autowired com.uten.imp.application.port.ProductionMutationFootprintPort footprints;
     @Autowired com.uten.imp.application.port.PreplanInboundAllocationReadPort inboundAllocations;
+    @Autowired com.uten.imp.features.production.fulfillment.ProductionReadinessReconciler readinessReconciler;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+    com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService readiness;
     private FullChainEndToEndTest fixture;
     @BeforeEach void prepare(){fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);}
+
+    @Test void missedArrivalCallbackIsReconciledBySystemWithoutReorderingOrDuplicateNotices(){
+        var world=fixture.seedWorld("missed-readiness-callback");
+        UUID main=warehouse("reconcile-main",false);
+        db.update("UPDATE warehouses SET parent_id=? WHERE id=?",main,world.warehouseId());
+        UUID actual=warehouse("reconcile-actual-location",false);
+        db.update("UPDATE warehouses SET parent_id=? WHERE id=?",main,actual);
+        Case c=create(world,"missed",new BigDecimal("10000"),main);
+        UUID receipt=receive(c,actual,"10000");
+        // Reproduce a missed callback only; receipt, quality, physical stock and
+        // exact entitlement still execute their real services and constraints.
+        org.mockito.Mockito.doNothing().when(readinessTarget()).applyPriorityForOriginEvent(org.mockito.ArgumentMatchers.any());
+        try {pass(c,actual,receipt,"10000");}
+        finally {org.mockito.Mockito.doCallRealMethod().when(readinessTarget()).applyPriorityForOriginEvent(org.mockito.ArgumentMatchers.any());}
+        assertEquals("WAITING",status(c));assertEquals(0,drawCount(c));
+        long purchases=db.queryForObject("SELECT count(*) FROM purchase_receipts",Long.class);
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        readinessReconciler.runBatch();
+        assertEquals("READY",status(c));assertEquals(1,drawCount(c));
+        qty("10000",db.queryForObject("""
+                SELECT SUM(event.qty) FROM preplan_stock_entitlement_events event
+                WHERE event.target_package_id=? AND event.event_type='FORMALIZE'
+                    AND event.created_by IS NULL AND event.system_reason='AUTOMATIC_READINESS_RECHECK'
+                """,BigDecimal.class,c.packageId()));
+        assertTrue(db.queryForObject("SELECT count(*) FROM audit_log WHERE actor_id IS NULL AND actor_account='系统自动核对备料'",Long.class)>0);
+        long audit=db.queryForObject("SELECT count(*) FROM audit_log",Long.class);
+        long notices=db.queryForObject("SELECT count(*) FROM notices",Long.class);
+        readinessReconciler.runBatch();
+        assertEquals(audit,db.queryForObject("SELECT count(*) FROM audit_log",Long.class));
+        assertEquals(notices,db.queryForObject("SELECT count(*) FROM notices",Long.class));
+        assertEquals(purchases,db.queryForObject("SELECT count(*) FROM purchase_receipts",Long.class));
+        assertEquals(1,drawCount(c));
+        assertSystemActorGuards(c,world.superAdminUserId());
+        fixture.loginAs(world.superAdminUserId());
+        UUID draw=db.queryForObject("SELECT document_id FROM production_planning_package_documents WHERE package_id=? AND document_type='DRAW'",UUID.class,c.packageId());
+        com.uten.imp.features.stock.dto.StockDocIssueRequest issue=call("drawIssueRequest",draw,
+                "reconciled-draw-"+draw,null,BigDecimal.ZERO);
+        stockDocuments.approveAndIssue(draw,issue);
+        qty("0",db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=? AND color_id IS NULL",BigDecimal.class,actual,c.material()));
+    }
+
+    @Test void qualifiedPurchaseInDisabledSiblingWarehouseAutomaticallyReadiesAndIssuesOriginalStock(){
+        var world=fixture.seedWorld("disabled-qualified-10000");
+        UUID main=warehouse("main-with-disabled-storage",false);
+        db.update("UPDATE warehouses SET parent_id=? WHERE id=?",main,world.warehouseId());
+        UUID actual=warehouse("existing-disabled-storage",false);
+        db.update("UPDATE warehouses SET parent_id=? WHERE id=?",main,actual);
+        db.update("UPDATE goods SET min_qty=0 WHERE id=?",world.goodsD());
+        Case c=create(world,"disabled",new BigDecimal("10000"),main);
+        UUID receipt=receive(c,actual,"10000");
+        assertEquals("WAITING",status(c));assertEquals(0,drawCount(c));
+        org.mockito.Mockito.doNothing().when(readinessTarget()).applyPriorityForOriginEvent(org.mockito.ArgumentMatchers.any());
+        try {pass(c,actual,receipt,"10000");}
+        finally {org.mockito.Mockito.doCallRealMethod().when(readinessTarget()).applyPriorityForOriginEvent(org.mockito.ArgumentMatchers.any());}
+        // Stock was lawfully received while the location was active. Retiring
+        // that location must not make its existing qualified stock disappear.
+        db.update("UPDATE warehouses SET status='禁用' WHERE id=?",actual);
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        readinessReconciler.runBatch();
+        assertEquals("READY",status(c));assertEquals(1,drawCount(c));
+        var draw=db.queryForMap("""
+                SELECT document.id,document.warehouse_id FROM production_planning_package_documents link
+                JOIN stock_documents document ON document.id=link.document_id
+                WHERE link.package_id=? AND link.document_type='DRAW' AND NOT document.is_deleted
+                """,c.packageId());
+        assertEquals(actual,draw.get("warehouse_id"));
+        qty("10000",db.queryForObject("SELECT SUM(qty-released_qty) FROM stock_reservations WHERE demand_id IN (SELECT id FROM production_material_demands WHERE execution_segment_id=?) AND warehouse_id=? AND NOT is_deleted",BigDecimal.class,c.segment(),actual));
+        UUID drawId=(UUID)draw.get("id");fixture.loginAs(world.superAdminUserId());
+        com.uten.imp.features.stock.dto.StockDocIssueRequest issue=call("drawIssueRequest",drawId,
+                "disabled-qualified-issue-"+drawId,null,BigDecimal.ZERO);
+        stockDocuments.approveAndIssue(drawId,issue);stockDocuments.approveAndIssue(drawId,issue);
+        qty("0",db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=? AND color_id IS NULL",BigDecimal.class,actual,c.material()));
+        qty("10000",db.queryForObject("SELECT SUM(consumed_qty) FROM stock_reservations WHERE demand_id IN (SELECT id FROM production_material_demands WHERE execution_segment_id=?) AND warehouse_id=? AND NOT is_deleted",BigDecimal.class,c.segment(),actual));
+        assertEquals("禁用",db.queryForObject("SELECT status FROM warehouses WHERE id=?",String.class,actual));
+        com.uten.imp.features.stock.dto.StockDocIssueRequest reverse=call("drawIssueRequest",drawId,
+                "disabled-qualified-return-"+drawId,"退回原入库位置",BigDecimal.ZERO);
+        stockDocuments.reverseIssue(drawId,reverse);
+        qty("10000",db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=? AND color_id IS NULL",BigDecimal.class,actual,c.material()));
+        qty("500000",db.queryForObject("SELECT amount_local FROM stock_balances WHERE warehouse_id=? AND goods_id=? AND color_id IS NULL",BigDecimal.class,actual,c.material()));
+    }
 
     @Test void qualifiedReceiptsStillCoverDemandWhenPublicSafetyThresholdExceedsTheWholeBatch(){
         for(boolean special:List.of(false,true)){
@@ -213,19 +296,53 @@ class QualifiedSourceWarehouseEndToEndTest {
     private String segmentStatus(UUID plan){return db.queryForObject("SELECT status FROM production_execution_segments WHERE plan_id=?",String.class,plan);}
 
     private Case create(FullChainEndToEndTest.World w,String suffix){
+        return create(w,suffix,BigDecimal.TEN,w.warehouseId());
+    }
+
+    private com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService readinessTarget(){
+        return org.springframework.test.util.AopTestUtils.getUltimateTargetObject(readiness);
+    }
+
+    private void assertSystemActorGuards(Case c,UUID unrelatedActor){
+        UUID original=db.queryForObject("SELECT id FROM preplan_stock_entitlement_events WHERE target_package_id=? AND created_by IS NULL AND event_type='FORMALIZE'",UUID.class,c.packageId());
+        long before=db.queryForObject("SELECT count(*) FROM preplan_stock_entitlement_events",Long.class);
+        var transaction=new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+        for(String attack:List.of("missing-marker","fake-human-actor","wrong-event-type")){
+            RuntimeException error=assertThrows(RuntimeException.class,()->transaction.executeWithoutResult(ignored->{
+                db.queryForObject("SELECT set_config('app.production_readiness_reconcile',?,true)",String.class,attack.equals("missing-marker")?"":"v1");
+                db.queryForObject("SELECT set_config('app.actor_id',?,true)",String.class,attack.equals("fake-human-actor")?unrelatedActor.toString():"");
+                db.queryForObject("SELECT set_config('app.actor_account','系统自动核对备料',true)",String.class);
+                db.update("""
+                        INSERT INTO preplan_stock_entitlement_events
+                        SELECT (jsonb_populate_record(NULL::preplan_stock_entitlement_events,
+                            to_jsonb(event)||jsonb_build_object('id',gen_random_uuid(),'idempotency_key',?,
+                                'event_type',?))).*
+                        FROM preplan_stock_entitlement_events event WHERE event.id=?
+                        ""","blocked-system-"+UUID.randomUUID(),attack.equals("wrong-event-type")?"ORIGIN_IQC":"FORMALIZE",original);
+            }));
+            Throwable cause=error;while(cause.getCause()!=null)cause=cause.getCause();
+            assertInstanceOf(org.postgresql.util.PSQLException.class,cause);
+            var postgres=(org.postgresql.util.PSQLException)cause;
+            assertEquals("23514",postgres.getSQLState());
+            assertEquals("preplan_system_formalize_actor_guard",postgres.getServerErrorMessage().getConstraint());
+            assertEquals(before,db.queryForObject("SELECT count(*) FROM preplan_stock_entitlement_events",Long.class));
+        }
+    }
+
+    private Case create(FullChainEndToEndTest.World w,String suffix,BigDecimal quantity,UUID plannedWarehouse){
         fixture.loginAs(w.superAdminUserId());UUID product=UUID.randomUUID();
         fixture.insertGoods(product,"QUAL-"+product,"按原需求跨仓领料","自制",w.unitId(),w.unitLegacy());
         fixture.insertBom(product,w.goodsD(),"1");
-        var view=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"qualified-preview-"+product,
-                List.of(new PreviewItem("OTHER",null,product,null,w.unitId(),"qualified-"+product,"实际来源资格验证",BusinessTime.today().plusDays(10),BigDecimal.TEN))));
+        var view=analyses.preview(new PreviewRequest(null,null,null,plannedWarehouse,"qualified-preview-"+product,
+                List.of(new PreviewItem("OTHER",null,product,null,w.unitId(),"qualified-"+product,"实际来源资格验证",BusinessTime.today().plusDays(10),quantity))));
         view=analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"qualified-routes-"+product,
                 view.flatMaterials().stream().map(m->new RouteDecision(m.materialLineId(),m.actionGroupKey(),m.goodsId().equals(product)?"MAKE":"BUY",null)).toList()));
         UUID materialLine=view.flatMaterials().stream().filter(m->m.goodsId().equals(w.goodsD())).map(MaterialView::materialLineId).findFirst().orElseThrow();
         commands.notifySupply(view.analysisId(),new NotifyRequest(view.version(),view.fingerprint(),"qualified-notify-"+product,"BUY",List.of(materialLine),null,null));
         view=analyses.detail(view.analysisId());UUID root=view.products().getFirst().analysisLineId();
         var issued=commands.issueWorkshopPlans(view.analysisId(),new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),
-                "qualified-issue-"+product,w.warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,
-                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(root,BigDecimal.TEN))));
+                "qualified-issue-"+product,plannedWarehouse,BusinessTime.today(),BusinessTime.today().plusDays(10),true,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(root,quantity))));
         UUID plan=issued.plans().getFirst().planId();UUID analysis=view.analysisId();
         UUID orderItem=call("approveExistingAnalysisPurchase",w,analysis,w.goodsD());
         UUID segment=db.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=?",UUID.class,plan);

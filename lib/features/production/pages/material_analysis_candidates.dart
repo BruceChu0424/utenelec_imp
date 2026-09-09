@@ -857,10 +857,15 @@ abstract class _MaterialAnalysisCandidatesState
   @override
   bool _normalizeNewWarehouseScope() {
     final names = ref.read(masterNameServiceProvider);
+    final preferred = _warehouseRootOf(_warehouseId);
     final root =
-        _warehouseRootOf(_warehouseId) ??
+        (preferred?.status == '禁用' ? null : preferred) ??
         names.warehouseHierarchy
-            .where((entry) => entry.parentId == null || entry.parentId!.isEmpty)
+            .where(
+              (entry) =>
+                  (entry.parentId == null || entry.parentId!.isEmpty) &&
+                  entry.status != '禁用',
+            )
             .firstOrNull;
     if (root == null) return false;
     // New planning requests name the main warehouse. The server resolves stock scope.
@@ -893,7 +898,12 @@ abstract class _MaterialAnalysisCandidatesState
             enabled: !_busy && _canManage && roots.isNotEmpty,
             items: [
               for (final entry in roots)
-                UtenDropdownItem(value: entry.id, label: entry.name),
+                if (entry.status != '禁用' || entry.id == root?.id)
+                  UtenDropdownItem(
+                    value: entry.id,
+                    label: entry.name,
+                    enabled: entry.status != '禁用',
+                  ),
             ],
             onChanged: (value) {
               // Displaying an old leaf-backed analysis must not rewrite its identity.

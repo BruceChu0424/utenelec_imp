@@ -2,6 +2,9 @@ package com.uten.imp.features.master.warehouse;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import jakarta.persistence.LockModeType;
 
 import java.util.Collection;
 import java.util.List;
@@ -15,6 +18,11 @@ import java.util.UUID;
  * 范式同 {@code CurrencyRepository}（扁平表，无 categoryId）。
  */
 public interface WarehouseRepository extends JpaRepository<Warehouse, UUID>, JpaSpecificationExecutor<Warehouse> {
+
+    /** Keep warehouse status and ancestry stable until the new document transaction completes. */
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    @Query("select w from Warehouse w where w.deleted = false and w.id in :ids order by w.id")
+    List<Warehouse> findAllForNewSelection(@org.springframework.data.repository.query.Param("ids") Collection<UUID> ids);
 
     /** 迁移/校验用：按老库主键反查。 */
     Optional<Warehouse> findByLegacyId(Integer legacyId);

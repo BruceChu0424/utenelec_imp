@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -112,21 +113,28 @@ class _ProductionFinishedArrivalRegistrationPageState
         for (final item in detail.items)
           _FinishedArrivalRegistrationGridRow(item),
       ]);
-      if (detail.warehouseId?.isNotEmpty != true) {
+      final selectedWarehouseId =
+          detail.registered ||
+              WarehouseSelection(
+                ref.read(masterNameServiceProvider).warehouseHierarchy,
+              ).selectableIds.contains(detail.warehouseId)
+          ? detail.warehouseId
+          : null;
+      if (selectedWarehouseId?.isNotEmpty != true) {
         _clearAutomaticPlaceSuggestions();
       }
       setState(() {
         _detail = detail;
-        _warehouseId = detail.warehouseId;
+        _warehouseId = selectedWarehouseId;
         _warehouseAutofilled =
-            !detail.registered && detail.warehouseId?.isNotEmpty == true;
+            !detail.registered && selectedWarehouseId?.isNotEmpty == true;
         _removedLineCount = 0;
         _loading = false;
         _validationError = null;
         _suggestionError = null;
         _rememberError = null;
       });
-      final warehouseId = detail.warehouseId;
+      final warehouseId = selectedWarehouseId;
       if (!detail.registered && warehouseId?.isNotEmpty == true) {
         await _loadPlaceSuggestions(warehouseId!);
       }
@@ -848,11 +856,15 @@ class _ProductionFinishedArrivalRegistrationPageState
               // V476：主/子层级（父仓置灰分组，实收落具体仓）；
               // 孤儿仓值（仓库已删但单据仍引用）仍回显名称。
               items: [
-                ...warehouseHierarchyItems(names.warehouseHierarchy),
+                ...warehouseHierarchyItems(
+                  names.warehouseHierarchy,
+                  currentValue: _warehouseId,
+                ),
                 if (_warehouseId != null &&
                     !names.warehouseEntries.containsKey(_warehouseId))
                   UtenDropdownItem(
                     value: _warehouseId!,
+                    enabled: false,
                     label: detail.warehouseName ?? _warehouseId!,
                   ),
               ],

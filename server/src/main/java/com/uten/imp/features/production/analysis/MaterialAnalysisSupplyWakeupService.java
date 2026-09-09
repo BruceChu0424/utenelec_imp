@@ -271,7 +271,7 @@ public class MaterialAnalysisSupplyWakeupService {
                     OR analysis.status='COMPLETED'
                       AND fn_material_analysis_fulfillment_status(analysis.id)<>'COMPLETED')
                   AND (fn_warehouse_same_main(analysis.source_warehouse_id,analysis.warehouse_id)
-                    OR """ + MaterialAnalysisWakeupScopeSql.ownsQualifiedAt(
+                """ + " OR " + MaterialAnalysisWakeupScopeSql.ownsQualifiedAt(
                         "analysis.id", "analysis.source_material_id", "analysis.source_warehouse_id",
                         "analysis.goods_id", "analysis.color_id") + """
                     )

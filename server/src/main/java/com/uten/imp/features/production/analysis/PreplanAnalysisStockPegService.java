@@ -807,6 +807,21 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     public List<PreparedPlanTransfer> transferToPlanDemands(
             UUID analysisId, UUID planId,
             UUID warehouseId, List<DemandSlice> demands) {
+        return transferToPlanDemands(analysisId, planId, warehouseId, demands, null, false);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<PreparedPlanTransfer> transferToPlanDemands(
+            UUID analysisId, UUID planId, UUID warehouseId,
+            List<DemandSlice> demands, UUID actorId) {
+        entitlement.requireFormalizationActor(actorId);
+        return transferToPlanDemands(analysisId, planId, warehouseId, demands, actorId, true);
+    }
+
+    private List<PreparedPlanTransfer> transferToPlanDemands(
+            UUID analysisId, UUID planId, UUID warehouseId,
+            List<DemandSlice> demands, UUID actorId, boolean explicitActor) {
         tx.bind();
         if (analysisId == null || planId == null || warehouseId == null
                 || demands == null || demands.isEmpty()) {
@@ -889,8 +904,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                                     analysisId, analysisItemId, warehouseId, dimension));
                     BigDecimal take = available.min(remaining).min(budget);
                     if (take.signum() <= 0) continue;
-                    entitlement.consumePhysicalForFormalize(
-                            lot.stockReservationId(), take);
+                    consumeForFormalize(lot.stockReservationId(), take, actorId, explicitActor);
                     transferableByDimension.put(dimension, budget.subtract(take));
                     prepared.add(new PreparedPlanTransfer(
                             lot.entitlementEventId(), lot.stockReservationId(),
@@ -953,13 +967,18 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     BigDecimal take = decimal(row[1]).max(BigDecimal.ZERO)
                             .min(remaining).min(budget);
                     if (take.signum() <= 0) continue;
-                    entitlement.consumePhysicalForFormalize((UUID) row[0], take);
+                    consumeForFormalize((UUID) row[0], take, actorId, explicitActor);
                     transferableByDimension.put(dimension, budget.subtract(take));
                     remaining = remaining.subtract(take);
                 }
             }
         }
         return List.copyOf(prepared);
+    }
+
+    private void consumeForFormalize(UUID reservationId, BigDecimal qty, UUID actorId, boolean explicitActor) {
+        if (explicitActor) entitlement.consumePhysicalForFormalize(reservationId, qty, actorId);
+        else entitlement.consumePhysicalForFormalize(reservationId, qty);
     }
 
     /** Qualified owned stock follows its actual leaf. Public/legacy stock keeps the normal local safety floor. */
@@ -978,7 +997,6 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     (NOT warehouse.is_defective AND fn_warehouse_same_main(warehouse.id,:plannedWarehouseId)) AS local_normal
                     FROM goods JOIN warehouses warehouse ON warehouse.id=:warehouseId
                       AND NOT warehouse.is_deleted AND warehouse.is_accountable
-                      AND COALESCE(warehouse.status,'') <> '禁用'
                       AND NOT EXISTS(SELECT 1 FROM warehouses child WHERE child.parent_id=warehouse.id AND NOT child.is_deleted)
                     LEFT JOIN stock_balances stock ON stock.goods_id=goods.id
                       AND stock.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid) AND stock.warehouse_id=warehouse.id
@@ -1034,6 +1052,21 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             UUID packageId,
             List<PreparedPlanTransfer> prepared,
             List<FormalReservationSlice> formalReservations) {
+        formalizePlanDemandTransfers(packageId, prepared, formalReservations, null, false);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void formalizePlanDemandTransfers(
+            UUID packageId, List<PreparedPlanTransfer> prepared,
+            List<FormalReservationSlice> formalReservations, UUID actorId) {
+        entitlement.requireFormalizationActor(actorId);
+        formalizePlanDemandTransfers(packageId, prepared, formalReservations, actorId, true);
+    }
+
+    private void formalizePlanDemandTransfers(
+            UUID packageId, List<PreparedPlanTransfer> prepared,
+            List<FormalReservationSlice> formalReservations, UUID actorId, boolean explicitActor) {
         tx.bind();
         if (prepared == null || prepared.isEmpty()) return;
         List<FormalReservationSlice> formal = formalReservations == null
@@ -1071,13 +1104,19 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 BigDecimal available = availableByReservation.get(target.stockReservationId());
                 BigDecimal take = remaining.min(available);
                 if (take.signum() <= 0) continue;
-                entitlement.appendFormalize(packageId,
-                        slice.sourceEntitlementEventId(), slice.sourceStockReservationId(),
-                        slice.beneficiaryAnalysisId(), slice.beneficiaryAnalysisMaterialId(),
-                        take, packageId, slice.demandId(), target.stockReservationId(),
-                        "PREPLAN-FORMALIZE:" + packageId + ":" + slice.demandId() + ":"
-                                + slice.sourceEntitlementEventId() + ":"
-                                + target.stockReservationId());
+                String key = "PREPLAN-FORMALIZE:" + packageId + ":" + slice.demandId() + ":"
+                        + slice.sourceEntitlementEventId() + ":" + target.stockReservationId();
+                if (explicitActor) {
+                    entitlement.appendFormalize(packageId,
+                            slice.sourceEntitlementEventId(), slice.sourceStockReservationId(),
+                            slice.beneficiaryAnalysisId(), slice.beneficiaryAnalysisMaterialId(),
+                            take, packageId, slice.demandId(), target.stockReservationId(), key, actorId);
+                } else {
+                    entitlement.appendFormalize(packageId,
+                            slice.sourceEntitlementEventId(), slice.sourceStockReservationId(),
+                            slice.beneficiaryAnalysisId(), slice.beneficiaryAnalysisMaterialId(),
+                            take, packageId, slice.demandId(), target.stockReservationId(), key);
+                }
                 availableByReservation.put(target.stockReservationId(), available.subtract(take));
                 remaining = remaining.subtract(take);
             }

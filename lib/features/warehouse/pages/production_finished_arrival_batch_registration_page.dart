@@ -8,6 +8,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -127,7 +128,13 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
         final last = await ref
             .read(productionFinishedInboundTaskRepositoryProvider)
             .lastArrivalWarehouse();
-        warehouseId = last?.warehouseId;
+        final candidate = last?.warehouseId;
+        warehouseId =
+            WarehouseSelection(
+              ref.read(masterNameServiceProvider).warehouseHierarchy,
+            ).selectableIds.contains(candidate)
+            ? candidate
+            : null;
       } catch (_) {
         /* 上次仓拉取失败不阻断，仅不预选 */
       }
@@ -798,7 +805,10 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
               value: _defaultWarehouseId,
               autofilled: _warehouseAutofilled,
               // V476：主/子层级（父仓置灰分组，实收落具体仓）。
-              items: warehouseHierarchyItems(names.warehouseHierarchy),
+              items: warehouseHierarchyItems(
+                names.warehouseHierarchy,
+                currentValue: _defaultWarehouseId,
+              ),
               onChanged: _onDefaultWarehouseChanged,
             ),
           ],
@@ -1224,7 +1234,9 @@ class _WarehousePickerDialogState extends State<_WarehousePickerDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final keyword = _keyword.trim().toLowerCase();
+    final selection = WarehouseSelection(widget.entries);
     final entries = widget.entries
+        .where((entry) => selection.visibleIds.contains(entry.id))
         .where(
           (entry) =>
               keyword.isEmpty ||

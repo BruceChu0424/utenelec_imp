@@ -846,6 +846,30 @@ public class ProductionExecutionReadinessService
             UUID triggeringReceiptId,
             UUID expectedWarehouseId,
             ReceiptKind triggeringKind) {
+        tryPromote(segmentId, triggeringReceiptId, expectedWarehouseId, triggeringKind, null);
+    }
+
+    /** A distinct internal actor keeps automatic advancement from impersonating a staff member. */
+    private record PromotionActor(UUID userId, UUID employeeId) {}
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void reconcileWaitingSegment(UUID planId, UUID segmentId, UUID warehouseId) {
+        if (currentUser.get().isPresent()) {
+            throw new IllegalStateException("自动备料补偿不能冒用登录员工身份");
+        }
+        Number match = (Number) em.createNativeQuery("SELECT count(*) FROM production_execution_segments WHERE id=:segment AND plan_id=:plan AND is_deleted=FALSE")
+                .setParameter("segment",segmentId).setParameter("plan",planId).getSingleResult();
+        if (match.longValue() != 1) return;
+        em.createNativeQuery("SELECT set_config('app.production_readiness_reconcile','v1',true), set_config('app.actor_id','',true), set_config('app.actor_account','系统自动核对备料',true)").getSingleResult();
+        tryPromote(segmentId, segmentId, warehouseId, ReceiptKind.RECONCILE, new PromotionActor(null, null));
+    }
+
+    private void tryPromote(
+            UUID segmentId,
+            UUID triggeringReceiptId,
+            UUID expectedWarehouseId,
+            ReceiptKind triggeringKind,
+            PromotionActor systemActor) {
         lockExecutionSegmentMaterialDimensions(
                 segmentId, expectedWarehouseId);
         List<Object[]> segmentRows = NativeQueryResults.objectArrayRows(
@@ -868,6 +892,10 @@ public class ProductionExecutionReadinessService
                                  AND package.is_deleted = FALSE
                                 JOIN production_plans plan
                                   ON plan.id = segment.plan_id
+                                 AND plan.status = 1 AND plan.is_deleted = FALSE
+                                 AND COALESCE(plan.is_closed,FALSE) = FALSE
+                                 AND COALESCE(plan.is_canceled,FALSE) = FALSE
+                                 AND COALESCE(plan.is_stopped,FALSE) = FALSE
                                 WHERE segment.id = :segmentId
                                   AND segment.auto_promote_when_ready = TRUE
                                   AND segment.is_deleted = FALSE
@@ -938,29 +966,26 @@ public class ProductionExecutionReadinessService
             }
             return;
         }
+        PromotionActor actor = systemActor == null
+                ? new PromotionActor(currentUser.requireId(), currentUser.requireEmployeeId()) : systemActor;
         contributions.values().stream()
                 .flatMap(List::stream)
-                .forEach(this::updatePegConsumed);
+                .forEach(contribution -> updatePegConsumed(contribution, actor.userId()));
 
         List<PreplanAnalysisPegPort.PreparedPlanTransfer> preparedTransfers =
                 analysisId == null
                         ? List.of()
+                        : systemActor == null ? preplanAnalysisPeg.transferToPlanDemands(
+                                analysisId, planId, warehouseId, demandSlices(demands))
                         : preplanAnalysisPeg.transferToPlanDemands(
-                                analysisId, planId, warehouseId,
-                                demands.stream()
-                                        .map(demand -> new PreplanAnalysisPegPort
-                                                .DemandSlice(
-                                                demand.id(), demand.goodsId(),
-                                                demand.colorId(),
-                                                demand.requiredQty()))
-                                        .toList());
+                                analysisId, planId, warehouseId, demandSlices(demands), actor.userId());
         List<ProductionMaterialAllocationFacade.AllocationRequest> requests = demands.stream()
                 .map(demand -> new ProductionMaterialAllocationFacade.AllocationRequest(
                         packageId, demand.id(), demand.goodsId(), demand.colorId(),
                         warehouseId, demand.requiredQty(), packageId + ":REKIT:"
                                 + demand.id() + ":" + triggeringReceiptId
                                 + ":V" + segmentRow[9],
-                        currentUser.requireId())).toList();
+                        actor.userId())).toList();
         boolean sameMainWarehouse = analysisId != null
                 && contributions.values().stream().allMatch(List::isEmpty);
         List<ProductionMaterialAllocationFacade.AllocationResult> allocated =
@@ -981,15 +1006,14 @@ public class ProductionExecutionReadinessService
             throw conflict("齐套判定的可用库存在提升就绪时已变化，请刷新后重试");
         }
 
-        preplanAnalysisPeg.formalizePlanDemandTransfers(
-                packageId, preparedTransfers,
-                allocated.stream()
-                        .filter(allocation -> allocation.allocationId() != null)
-                        .map(allocation -> new PreplanAnalysisPegPort
-                                .FormalReservationSlice(
-                                allocation.demandId(), allocation.allocationId(),
-                                allocation.allocatedQty()))
-                        .toList());
+        var formalReservations = allocated.stream().filter(allocation -> allocation.allocationId() != null)
+                .map(allocation -> new PreplanAnalysisPegPort.FormalReservationSlice(
+                        allocation.demandId(), allocation.allocationId(), allocation.allocatedQty())).toList();
+        if (systemActor == null) {
+            preplanAnalysisPeg.formalizePlanDemandTransfers(packageId, preparedTransfers, formalReservations);
+        } else {
+            preplanAnalysisPeg.formalizePlanDemandTransfers(packageId, preparedTransfers, formalReservations, actor.userId());
+        }
 
         Map<UUID, StockGoodsSnapshot> goodsSnapshots =
                 StockGoodsSnapshot.fromMaster(
@@ -1009,16 +1033,16 @@ public class ProductionExecutionReadinessService
                         ? warehouseId : allocation.warehouseId();
                 StockDocument draw = drawsByWarehouse.computeIfAbsent(actualWarehouseId,
                         ignored -> createDraw(packageId, segmentId, planId, planNo,
-                                actualWarehouseId, workshopDepartmentId, responsibleEmployeeId));
+                                actualWarehouseId, workshopDepartmentId, responsibleEmployeeId, actor));
                 BigDecimal receiptQty = BigDecimal.ZERO;
                 for (ReceiptContribution contribution : demandContributions) {
                     receiptQty = receiptQty.add(contribution.qty());
                     UUID drawItemId = addDrawItem(draw, packageId, demand,
                             contribution.qty(), lineNumbers.merge(actualWarehouseId, 1, Integer::sum),
                             planNo, contribution.kind().name() + " receipt " + contribution.receiptId(),
-                            StockGoodsSnapshot.require(goodsSnapshots, demand.goodsId(), "齐套领料明细"));
+                            StockGoodsSnapshot.require(goodsSnapshots, demand.goodsId(), "齐套领料明细"), actor.userId());
                     recordReceiptAllocation(contribution, packageId, demand.id(),
-                            allocation.allocationId(), draw.getId(), drawItemId);
+                            allocation.allocationId(), draw.getId(), drawItemId, actor.userId());
                 }
                 // Formal receipt conversion keeps the existing one-warehouse path.
                 // Analysis entitlement conversion may produce several physical slices.
@@ -1030,7 +1054,7 @@ public class ProductionExecutionReadinessService
                     addDrawItem(draw, packageId, demand, genericQty,
                             lineNumbers.merge(actualWarehouseId, 1, Integer::sum),
                             planNo, "齐套现有库存",
-                            StockGoodsSnapshot.require(goodsSnapshots, demand.goodsId(), "齐套领料明细"));
+                            StockGoodsSnapshot.require(goodsSnapshots, demand.goodsId(), "齐套领料明细"), actor.userId());
                 }
             }
             touched.add(demand.id());
@@ -1051,7 +1075,7 @@ public class ProductionExecutionReadinessService
                           AND auto_promote_when_ready = TRUE
                           AND is_deleted = FALSE
                         """)
-                .setParameter("actorId", currentUser.requireId())
+                .setParameter("actorId", actor.userId())
                 .setParameter("segmentId", segmentId)
                 .executeUpdate();
         if (promoted != 1) {
@@ -1067,6 +1091,11 @@ public class ProductionExecutionReadinessService
                 triggeringKind == null
                         ? "MANUAL_RELEASE"
                         : triggeringKind.name());
+    }
+
+    private static List<PreplanAnalysisPegPort.DemandSlice> demandSlices(List<DemandRow> demands) {
+        return demands.stream().map(demand -> new PreplanAnalysisPegPort.DemandSlice(
+                demand.id(), demand.goodsId(), demand.colorId(), demand.requiredQty())).toList();
     }
 
     private boolean isFullyAvailable(
@@ -1087,7 +1116,6 @@ public class ProductionExecutionReadinessService
                         JOIN goods ON goods.id = demand.goods_id
                         JOIN warehouses scope ON scope.is_deleted = FALSE
                           AND scope.is_accountable = TRUE
-                          AND COALESCE(scope.status, '') <> '禁用'
                           AND NOT EXISTS (SELECT 1 FROM warehouses child
                               WHERE child.parent_id = scope.id AND child.is_deleted = FALSE)
                           AND (scope.id = :warehouseId OR fn_warehouse_same_main(scope.id, :warehouseId)
@@ -1537,7 +1565,7 @@ public class ProductionExecutionReadinessService
             String planNo,
             UUID warehouseId,
             UUID workshopDepartmentId,
-            UUID responsibleEmployeeId) {
+            UUID responsibleEmployeeId, PromotionActor actor) {
         StockDocument document = new StockDocument();
         document.setDocType("DRAW");
         document.setBillNo(
@@ -1552,7 +1580,7 @@ public class ProductionExecutionReadinessService
                         + segmentId);
         document.setDepartmentId(workshopDepartmentId);
         document.setWorkerId(responsibleEmployeeId);
-        document.setMakerId(currentUser.requireEmployeeId());
+        document.setMakerId(actor.employeeId());
         document.setStatus((short) 0);
         stockDocumentRepo.saveAndFlush(document);
         ledger.recordDocument(
@@ -1561,7 +1589,7 @@ public class ProductionExecutionReadinessService
                 "DRAW",
                 document.getId(),
                 document.getBillNo(),
-                currentUser.requireId());
+                actor.userId());
         em.createNativeQuery("""
                         INSERT INTO plan_draw_links(
                             plan_id, draw_id, created_by)
@@ -1569,7 +1597,7 @@ public class ProductionExecutionReadinessService
                         """)
                 .setParameter("planId", planId)
                 .setParameter("drawId", document.getId())
-                .setParameter("actorId", currentUser.requireId())
+                .setParameter("actorId", actor.userId())
                 .executeUpdate();
         return document;
     }
@@ -1582,7 +1610,7 @@ public class ProductionExecutionReadinessService
             int lineNo,
             String planNo,
             String remark,
-            StockGoodsSnapshot goodsSnapshot) {
+            StockGoodsSnapshot goodsSnapshot, UUID actorId) {
         StockDocumentItem item = new StockDocumentItem();
         item.setDocId(draw.getId());
         item.setBillType("DRAW");
@@ -1612,13 +1640,13 @@ public class ProductionExecutionReadinessService
                 .setParameter("demandId", demand.id())
                 .setParameter("drawId", draw.getId())
                 .setParameter("itemId", item.getId())
-                .setParameter("actorId", currentUser.requireId())
+                .setParameter("actorId", actorId)
                 .executeUpdate();
         return item.getId();
     }
 
     private void updatePegConsumed(
-            ReceiptContribution contribution) {
+            ReceiptContribution contribution, UUID actorId) {
         int updated = em.createNativeQuery("""
                         UPDATE production_material_supply_pegs
                         SET consumed_qty =
@@ -1637,7 +1665,7 @@ public class ProductionExecutionReadinessService
                               - released_qty >= :qty
                         """)
                 .setParameter("qty", contribution.qty())
-                .setParameter("actorId", currentUser.requireId())
+                .setParameter("actorId", actorId)
                 .setParameter("pegId", contribution.pegId())
                 .executeUpdate();
         if (updated != 1) {
@@ -1651,7 +1679,7 @@ public class ProductionExecutionReadinessService
             UUID demandId,
             UUID reservationId,
             UUID drawId,
-            UUID drawItemId) {
+            UUID drawItemId, UUID actorId) {
         String table = allocationTable(contribution.kind());
         String pegColumn = allocationPegColumn(contribution.kind());
         em.createNativeQuery("""
@@ -1690,7 +1718,7 @@ public class ProductionExecutionReadinessService
                                 + contribution.pegId()
                                 + ":"
                                 + reservationId)
-                .setParameter("actorId", currentUser.requireId())
+                .setParameter("actorId", actorId)
                 .executeUpdate();
     }
 
@@ -1703,7 +1731,7 @@ public class ProductionExecutionReadinessService
                     "production_material_subcontract_receipt_allocations";
             case MAKE ->
                     "production_material_make_receipt_allocations";
-            case PREPLAN, RECHECK -> throw new IllegalArgumentException(
+            case PREPLAN, RECHECK, RECONCILE -> throw new IllegalArgumentException(
                     "PREPLAN entitlement has no receipt-allocation table");
         };
     }
@@ -1719,7 +1747,7 @@ public class ProductionExecutionReadinessService
             case PURCHASE -> "SEG-REKIT:";
             case SUBCONTRACT -> "SEG-SUB-REKIT:";
             case MAKE -> "SEG-MAKE-REKIT:";
-            case PREPLAN, RECHECK -> throw new IllegalArgumentException(
+            case PREPLAN, RECHECK, RECONCILE -> throw new IllegalArgumentException(
                     "PREPLAN entitlement has no receipt-allocation key");
         };
     }
@@ -1777,6 +1805,7 @@ public class ProductionExecutionReadinessService
         SUBCONTRACT,
         MAKE,
         PREPLAN,
-        RECHECK
+        RECHECK,
+        RECONCILE
     }
 }

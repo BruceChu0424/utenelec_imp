@@ -20,6 +20,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -146,7 +147,10 @@ class _SubcontractDocEditPageState
           final last = await ref
               .read(subcontractRepositoryProvider(widget.docType))
               .list(size: 1);
-          if (last.items.isNotEmpty && last.items.first.warehouseId != null) {
+          if (last.items.isNotEmpty &&
+              WarehouseSelection(
+                ref.read(mn.masterNameServiceProvider).warehouseHierarchy,
+              ).selectableIds.contains(last.items.first.warehouseId)) {
             _warehouseId = last.items.first.warehouseId;
           }
         } catch (_) {
@@ -910,7 +914,10 @@ class _SubcontractDocEditPageState
                     label: '仓库',
                     value: _warehouseId,
                     required: _cfg.warehouseRequired,
-                    items: warehouseHierarchyItems(names.warehouseHierarchy),
+                    items: warehouseHierarchyItems(
+                      names.warehouseHierarchy,
+                      currentValue: _warehouseId,
+                    ),
                     onChanged: (v) => setState(() => _warehouseId = v),
                   ),
                 if (_cfg.hasCurrency && !_commercialTermsInheritedFromSource)

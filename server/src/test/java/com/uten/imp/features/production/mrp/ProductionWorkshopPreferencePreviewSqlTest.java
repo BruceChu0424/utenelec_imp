@@ -64,7 +64,10 @@ class ProductionWorkshopPreferencePreviewSqlTest {
                 .contains("beneficiary.analysis_id = balance.beneficiary_analysis_id")
                 .contains("fn_analysis_plan_material_matches( :analysisitemid, beneficiary.id)")
                 .doesNotContain("preplan_analysis_stock_exact_pegs exact_peg")
-                .contains("a.available_qty + coalesce(own.own_qty, 0) - greatest(")
+                .contains("a.available_qty, coalesce(own.own_qty, 0)")
+                .contains("coalesce(own.qualified_qty, 0)")
+                .contains("fn_warehouse_same_main(a.warehouse_id, :warehouseid)")
+                .doesNotContain("a.available_qty + coalesce(own.own_qty, 0) - greatest(")
                 .doesNotContain("greatest( a.available_qty - greatest(");
     }
 

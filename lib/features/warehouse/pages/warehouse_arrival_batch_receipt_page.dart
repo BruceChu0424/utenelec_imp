@@ -9,6 +9,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -131,6 +132,15 @@ class _WarehouseArrivalBatchReceiptPageState
         for (final item in prefill.items)
           _BatchArrivalLine(prefill, item, onChanged: _onLineChanged),
     ]);
+    final selectable = WarehouseSelection(
+      ref.read(masterNameServiceProvider).warehouseHierarchy,
+    ).selectableIds;
+    for (final line in _lineGrid.rows) {
+      if (!selectable.contains(line.warehouseId)) {
+        line.warehouseId = null;
+        line.warehouseAutofilled = false;
+      }
+    }
     _removedLineCount = 0;
     if (mounted) setState(() => _loading = false);
   }

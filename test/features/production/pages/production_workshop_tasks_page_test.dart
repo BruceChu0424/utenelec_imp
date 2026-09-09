@@ -75,7 +75,7 @@ void main() {
       );
       expect(
         container.read(appNotificationProvider).single.message,
-        contains('物料尚未齐套'),
+        contains('子件还没全部备齐'),
       );
 
       await _rightClick(tester, find.text('产品 C'));
@@ -96,6 +96,10 @@ void main() {
         container.read(appNotificationProvider).last.message,
         contains('已开工 1 个工单'),
       );
+      await _rightClick(tester, find.text('产品 C'));
+      await tester.tap(find.text('查看物料进度'));
+      await tester.pumpAndSettle();
+      expect(find.text('计划 plan-segment-c'), findsOneWidget);
     },
   );
 
@@ -137,7 +141,7 @@ void main() {
       );
       expect(
         container.read(appNotificationProvider).last.message,
-        contains('尚未完成全部备料出库'),
+        contains('等待仓库发料'),
       );
     },
   );
@@ -670,6 +674,8 @@ Map<String, dynamic> _task(
   'reportedQty': status == 'IN_PROGRESS' ? 2 : 0,
   'remainingReportQty': status == 'IN_PROGRESS' ? 8 : 10,
   'segmentStatus': status,
+  if (status == 'WAITING' || status == 'READY')
+    'blockedReason': '请先在我的车间任务中开工，开工后才能报工',
   'materialStatus': kitShort ? 'KIT_SHORT' : 'KIT_READY',
   'preparationStatus': 'PREPARED',
   'materialReady': !kitShort,

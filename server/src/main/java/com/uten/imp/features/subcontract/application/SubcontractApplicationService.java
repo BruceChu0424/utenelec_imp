@@ -273,7 +273,7 @@ public class SubcontractApplicationService {
         r.setSupplierId(req.getSupplierId());
         // V476 运营红线：委外申请仓库必须选具体叶子仓（后续订货/发料沿用）。
         if (warehouseScopes != null) {
-            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "仓库");
+            warehouseScopes.requireNewLeafSelection(r.getWarehouseId(), req.getWarehouseId(), "仓库");
         }
         r.setWarehouseId(req.getWarehouseId());
         r.setApplicantId(req.getApplicantId());

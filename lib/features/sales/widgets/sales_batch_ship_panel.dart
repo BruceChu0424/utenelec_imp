@@ -222,7 +222,10 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
                   hintText: '审核前可补',
                   value: _warehouseId,
                   // V476：主/子层级（父仓置灰分组，出货落具体仓）。
-                  items: warehouseHierarchyItems(names.warehouseHierarchy),
+                  items: warehouseHierarchyItems(
+                    names.warehouseHierarchy,
+                    currentValue: _warehouseId,
+                  ),
                   onChanged: (v) => setState(() => _warehouseId = v),
                 ),
               ),

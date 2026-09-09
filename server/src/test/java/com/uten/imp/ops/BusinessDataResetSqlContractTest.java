@@ -227,7 +227,8 @@ class BusinessDataResetSqlContractTest {
                 .contains("(537, 496)")
                 .contains("(538, 497)")
                 .contains("(539, 498)")
-                .contains("V507/469、V508/470及V511至V539完整目录");
+                .contains("(540, 499)")
+                .contains("V507/469、V508/470及V511至V540完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);

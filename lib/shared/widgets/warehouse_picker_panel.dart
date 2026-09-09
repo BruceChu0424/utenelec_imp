@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../../components/layout/uten_adaptive_panel.dart';
 import '../providers/master_name_provider.dart';
 import '../../core/theme/uten_tokens.dart';
+import 'warehouse_selection.dart';
 
 /// 面板选定结果：叶子仓 id + 「主仓名-子仓名」显示名（无父级时只有仓名）。
 class WarehousePickerResult {
@@ -101,13 +102,15 @@ class _WarehousePickerSheet extends StatefulWidget {
 class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
   /// 当前层级的父仓 id 栈：null = 顶层（主仓列表）。
   final List<String> _drilldown = [];
+  late final WarehouseSelection _selection;
 
   @override
   void initState() {
     super.initState();
+    _selection = WarehouseSelection(widget.hierarchy);
     // 带初始值时直接展开其父仓层，当前仓高亮，便于对照改选。
     final initial = widget.initialWarehouseId;
-    if (initial != null && initial.isNotEmpty) {
+    if (initial != null && _selection.selectableIds.contains(initial)) {
       final parent = widget.hierarchy
           .where((entry) => entry.id == initial)
           .map((entry) => entry.parentId)
@@ -128,9 +131,10 @@ class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
     return [
       // 顶层 = 无父级或父级不在字典内（parentId 悬空按顶层处理）。
       for (final entry in widget.hierarchy)
-        if (parentId == null
-            ? entry.parentId == null || !ids.contains(entry.parentId)
-            : entry.parentId == parentId)
+        if (_selection.visibleIds.contains(entry.id) &&
+            (parentId == null
+                ? entry.parentId == null || !ids.contains(entry.parentId)
+                : entry.parentId == parentId))
           entry,
     ];
   }

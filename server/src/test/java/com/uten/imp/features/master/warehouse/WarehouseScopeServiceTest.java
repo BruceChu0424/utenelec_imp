@@ -25,6 +25,12 @@ class WarehouseScopeServiceTest {
     private final WarehouseRepository repo = mock(WarehouseRepository.class);
     private final WarehouseScopeService service = new WarehouseScopeService(repo);
 
+    @org.junit.jupiter.api.BeforeEach
+    void unlockedHierarchyMatchesLockedRowsUnlessExplicitlyOverridden() {
+        org.mockito.Mockito.lenient().when(repo.findAll()).thenAnswer(invocation ->
+                repo.findAllForNewSelection(java.util.List.of()));
+    }
+
     private static Warehouse wh(String id, String parentId) {
         Warehouse w = new Warehouse();
         ReflectionTestUtils.setField(w, "id", UUID.fromString(id));
@@ -131,5 +137,66 @@ class WarehouseScopeServiceTest {
         assertThat(service.operationalLeafIds(UUID.fromString(MAIN)))
                 .containsExactly(UUID.fromString(MAIN));
         assertThat(service.sameMainWarehouse(null, UUID.fromString(MAIN))).isFalse();
+    }
+
+    @Test
+    void newSelectionAllowsAccountingLeafUnderNonAccountingMain() {
+        Warehouse main = wh(MAIN, null);
+        main.setAccountable(false);
+        when(repo.findAllForNewSelection(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(main, wh(TRACK, MAIN)));
+        assertThatCode(() -> service.requireNewLeafSelection(null, UUID.fromString(TRACK), "仓库"))
+                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(UUID.fromString(MAIN), "仓库"))
+                .isInstanceOf(ApiException.class);
+    }
+
+    @Test
+    void disabledPhysicalStockRemainsVisibleButCannotBeNewlySelected() {
+        Warehouse leaf = wh(TRACK, MAIN);
+        leaf.setStatus("禁用");
+        List<Warehouse> rows = List.of(wh(MAIN, null), leaf);
+        when(repo.findAll()).thenReturn(rows);
+        when(repo.findAllForNewSelection(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(rows);
+        UUID id = UUID.fromString(TRACK);
+        assertThat(service.operationalLeafIds(UUID.fromString(MAIN))).contains(id);
+        assertThatCode(() -> service.requireNewLeafSelection(id, id, "仓库"))
+                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> service.requireNewLeafSelection(null, id, "仓库"))
+                .isInstanceOf(ApiException.class).hasMessageContaining("停用");
+        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(id, "入库仓库"))
+                .isInstanceOf(ApiException.class).hasMessageContaining("停用");
+    }
+
+    @Test
+    void disabledOrMissingAncestorAndUnaccountableLeafCannotBeBypassed() {
+        UUID id = UUID.fromString(TRACK);
+        Warehouse main = wh(MAIN, null);
+        Warehouse leaf = wh(TRACK, MAIN);
+        main.setStatus("禁用");
+        when(repo.findAllForNewSelection(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(main, leaf));
+        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(id, "仓库"))
+                .isInstanceOf(ApiException.class).hasMessageContaining("停用");
+        when(repo.findAllForNewSelection(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(leaf));
+        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(id, "仓库"))
+                .isInstanceOf(ApiException.class).hasMessageContaining("不完整");
+        main.setStatus("使用");
+        leaf.setAccountable(false);
+        when(repo.findAllForNewSelection(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(main, leaf));
+        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(id, "仓库"))
+                .isInstanceOf(ApiException.class).hasMessageContaining("记账");
+        leaf.setAccountable(true);
+        leaf.setDeleted(true);
+        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(id, "仓库"))
+                .isInstanceOf(ApiException.class).hasMessageContaining("删除");
+    }
+
+    @Test
+    void activeSelectionRejectsCyclesAndUnknownIds() {
+        when(repo.findAllForNewSelection(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(
+                wh(MAIN, FINISHED), wh(FINISHED, MAIN), wh(TRACK, MAIN)));
+        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(UUID.fromString(TRACK), "仓库"))
+                .isInstanceOf(ApiException.class).hasMessageContaining("不完整");
+        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(UUID.randomUUID(), "仓库"))
+                .isInstanceOf(ApiException.class).hasMessageContaining("不存在");
     }
 }

@@ -156,6 +156,63 @@ public class WarehouseScopeService {
         }
     }
 
+    /** Editing unrelated fields must not invalidate a historical storage identity. */
+    @Transactional
+    public void requireNewLeafSelection(UUID previousId, UUID requestedId, String label) {
+        if (previousId != null && previousId.equals(requestedId)) {
+            requireLeafWarehouse(requestedId, label);
+        } else {
+            requireActiveLeafWarehouse(requestedId, label);
+        }
+    }
+
+    /** New selections/inbound require an enabled accounting leaf and enabled ancestry.
+     * Existing proven stock issues deliberately continue using their original location. */
+    @Transactional
+    public void requireActiveLeafWarehouse(UUID warehouseId, String label) {
+        if (warehouseId == null) return;
+        Map<UUID, Warehouse> byId = new HashMap<>();
+        Set<UUID> parents = new HashSet<>();
+        for (Warehouse warehouse : activeWarehouses()) {
+            if (warehouse.isDeleted()) continue;
+            byId.put(warehouse.getId(), warehouse);
+            if (warehouse.getParentId() != null) parents.add(warehouse.getParentId());
+        }
+        Set<UUID> path = new HashSet<>();
+        UUID ancestorId = warehouseId;
+        while (ancestorId != null && path.add(ancestorId)) {
+            Warehouse ancestor = byId.get(ancestorId);
+            ancestorId = ancestor == null ? null : ancestor.getParentId();
+        }
+        // Lock only this ancestry; unrelated warehouses remain independent.
+        Map<UUID, Warehouse> locked = new HashMap<>();
+        for (Warehouse warehouse : repo.findAllForNewSelection(path)) {
+            if (!warehouse.isDeleted()) locked.put(warehouse.getId(), warehouse);
+        }
+        byId = locked;
+        Warehouse selected = byId.get(warehouseId);
+        if (selected == null || !selected.isAccountable()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    label + "不存在、已删除或不参与库存记账，请重新选择");
+        }
+        if (parents.contains(warehouseId)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    label + "必须选择具体子仓库，主仓库只用于汇总查询");
+        }
+        Set<UUID> visited = new HashSet<>();
+        Warehouse current = selected;
+        while (current != null && visited.add(current.getId())) {
+            if ("禁用".equals(current.getStatus())) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        label + "或所属主仓已停用，请选择其他启用仓库");
+            }
+            if (current.getParentId() == null) return;
+            current = byId.get(current.getParentId());
+        }
+        throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                label + "的所属主仓不完整，请先修正仓库资料");
+    }
+
     private List<Warehouse> activeWarehouses() {
         List<Warehouse> all = new ArrayList<>();
         for (Warehouse w : repo.findAll()) {

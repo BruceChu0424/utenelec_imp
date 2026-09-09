@@ -101,13 +101,18 @@ class _ProductionWorkshopTasksPageState
 
   /// 未开工行点击/勾选受限的明确原因（物料未入库、库存不足、备料未完成等）。
   String _blockedReasonOf(ProductionExecutionWorkbenchSegment task) {
+    if (task.materialStatus == 'KIT_SHORT') {
+      return '子件还没全部备齐，打开任务可以查看缺少的物料和进度';
+    }
+    if (task.segmentStatus == 'WAITING') {
+      return '正在核对备料，打开任务可以查看各项物料的进度';
+    }
+    if (!task.issued && !task.zeroMaterial) {
+      return '物料已齐，等待仓库发料；发料完成后即可开工';
+    }
     final reason = task.blockedReason?.trim();
     if (reason != null && reason.isNotEmpty) return reason;
-    if (task.materialStatus == 'KIT_SHORT') {
-      return '物料尚未齐套：采购/委外未入库或仓库库存不足，无法开工';
-    }
-    if (task.segmentStatus == 'WAITING') return '物料尚未齐套，无法开工';
-    return '仓库尚未完成全部备料出库，暂不能开工';
+    return '当前任务暂不能开工，请打开任务查看详情';
   }
 
   @override
@@ -290,12 +295,8 @@ class _ProductionWorkshopTasksPageState
 
   Future<void> _openPlan(ProductionExecutionWorkbenchSegment task) async {
     if (_navigating) return;
-    // 等待物料分类里未齐的行：双击不跳详情，先把「为什么不能开工」说清楚
-    //（物料未入库 / 库存不足 / 备料未完成）——点了必须有反馈。
-    if (_isPreparing && !_canStartTask(task)) {
-      context.appInfo(_blockedReasonOf(task));
-      return;
-    }
+    // Waiting tasks still need their child-material progress and related documents.
+    // Opening a detail does not grant permission to start or issue materials.
     if (task.planId.isEmpty) {
       context.appWarning('当前工单缺少生产计划关联，请刷新后重试');
       return;
@@ -545,8 +546,14 @@ class _ProductionWorkshopTasksPageState
                                 icon: Icons.help_outline_rounded,
                                 onTap: () =>
                                     context.appInfo(_blockedReasonOf(task)),
-                              )
-                            else
+                              ),
+                            if (_isPreparing && !_canStartTask(task))
+                              UtenMenuItem(
+                                label: '查看物料进度',
+                                icon: Icons.open_in_new_rounded,
+                                onTap: () => _openPlan(task),
+                              ),
+                            if (!_isPreparing)
                               UtenMenuItem(
                                 label: '查看生产计划',
                                 icon: Icons.open_in_new_rounded,

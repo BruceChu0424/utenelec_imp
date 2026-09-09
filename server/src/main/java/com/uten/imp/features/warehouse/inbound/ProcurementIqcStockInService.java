@@ -76,6 +76,9 @@ public class ProcurementIqcStockInService {
             PreplanInboundAllocationReadPort.NOOP;
 
     @Autowired
+    private com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScopes;
+
+    @Autowired
     void setInboundAllocationRead(PreplanInboundAllocationReadPort value) {
         this.inboundAllocationRead = value;
     }
@@ -218,6 +221,13 @@ public class ProcurementIqcStockInService {
             if (item.baseQty().compareTo(slice.remainingBaseQty()) > 0) {
                 throw conflict("本次入库数量不得超过品质放行待入库余量");
             }
+        }
+        // Replay above remains valid for old stock. Every newly posted receipt
+        // must recheck the actual warehouse, including its current ancestors.
+        for (UUID warehouseId : command.items().stream()
+                .map(item -> locked.get(item.passEventId()).warehouseId())
+                .distinct().toList()) {
+            warehouseScopes.requireActiveLeafWarehouse(warehouseId, "入库仓库");
         }
         command=splitSubcontractMaterialBatches(type,command);
         stockService.lockInventory(command.items().stream()

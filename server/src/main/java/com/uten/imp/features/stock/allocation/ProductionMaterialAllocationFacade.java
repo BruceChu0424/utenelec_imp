@@ -276,7 +276,6 @@ public class ProductionMaterialAllocationFacade {
                   AND reservation.is_deleted=FALSE AND reservation.owner_type='PREPLAN_ANALYSIS'
                 JOIN warehouses warehouse ON warehouse.id=reservation.warehouse_id
                   AND warehouse.is_deleted=FALSE AND warehouse.is_accountable=TRUE
-                  AND COALESCE(warehouse.status,'')<>'禁用'
                   AND NOT EXISTS(SELECT 1 FROM warehouses child
                       WHERE child.parent_id=warehouse.id AND child.is_deleted=FALSE)
                 JOIN production_material_demands demand ON demand.id IN (:demands)
@@ -376,7 +375,6 @@ public class ProductionMaterialAllocationFacade {
                 FROM warehouses warehouse
                 WHERE fn_warehouse_main_id(warehouse.id) IN (:mains)
                   AND NOT warehouse.is_deleted AND warehouse.is_accountable AND NOT warehouse.is_defective
-                  AND COALESCE(warehouse.status,'')<>'禁用'
                   AND NOT EXISTS(SELECT 1 FROM warehouses child
                       WHERE child.parent_id=warehouse.id AND NOT child.is_deleted)
                 ORDER BY warehouse.id

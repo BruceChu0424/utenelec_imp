@@ -116,11 +116,21 @@ public interface PreplanAnalysisPegPort {
             UUID analysisId, UUID planId,
             UUID warehouseId, List<DemandSlice> demands);
 
+    /** Internal reconciliation only; a null actor requires the exact system transaction capability. */
+    List<PreparedPlanTransfer> transferToPlanDemands(
+            UUID analysisId, UUID planId, UUID warehouseId,
+            List<DemandSlice> demands, UUID actorId);
+
     /** Persist FORMALIZE events after the formal demand reservations exist. */
     void formalizePlanDemandTransfers(
             UUID packageId,
             List<PreparedPlanTransfer> prepared,
             List<FormalReservationSlice> formalReservations);
+
+    /** Internal counterpart of the explicit-actor transfer; ordinary callers keep the signature above. */
+    void formalizePlanDemandTransfers(
+            UUID packageId, List<PreparedPlanTransfer> prepared,
+            List<FormalReservationSlice> formalReservations, UUID actorId);
 
     /**
      * Restore unissued formalized lots after their formal reservations have

@@ -420,6 +420,9 @@ public class StockDocService {
         if (document.getWarehouseId() == null) {
             throw new ApiException(ErrorCode.CONFLICT, "成品点收必须指定目标仓库");
         }
+        if (warehouseScopes != null) {
+            warehouseScopes.requireActiveLeafWarehouse(document.getWarehouseId(), "入库仓库");
+        }
         UUID planId = requireApprovedLinkedProductionPlan(document);
         List<StockDocumentItem> items =
                 itemRepo.findByDocIdOrderByLineNoAsc(id);
@@ -599,6 +602,15 @@ public class StockDocService {
         }
         if (d.getStatus() == null || d.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
+        if (warehouseScopes != null) {
+            if (Set.of("OTHER_IN", "FINISHED_IN", "CHECK").contains(d.getDocType())) {
+                warehouseScopes.requireActiveLeafWarehouse(d.getWarehouseId(), "入库仓库");
+            } else if ("TRANSFER".equals(d.getDocType())) {
+                warehouseScopes.requireActiveLeafWarehouse(d.getToWarehouseId(), "调入仓");
+            }
+            // DRAW/WDRAW retain proven original material locations. They must
+            // pass the reservation/event ledger checks below, even when disabled.
+        }
         if (("DRAW".equals(d.getDocType()) || "FINISHED_IN".equals(d.getDocType()))
                 && d.getWarehouseId() == null) {
             throw new ApiException(ErrorCode.CONFLICT,
@@ -2608,8 +2620,8 @@ public class StockDocService {
         d.setBillDate(req.getBillDate());
         // V476 运营红线：仓库单据必须落到具体叶子仓；主仓库只作查询聚合。
         if (warehouseScopes != null) {
-            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "仓库");
-            warehouseScopes.requireLeafWarehouse(req.getToWarehouseId(), "调入仓");
+            warehouseScopes.requireNewLeafSelection(d.getWarehouseId(), req.getWarehouseId(), "仓库");
+            warehouseScopes.requireNewLeafSelection(d.getToWarehouseId(), req.getToWarehouseId(), "调入仓");
         }
         d.setWarehouseId(req.getWarehouseId());
         d.setToWarehouseId(req.getToWarehouseId());

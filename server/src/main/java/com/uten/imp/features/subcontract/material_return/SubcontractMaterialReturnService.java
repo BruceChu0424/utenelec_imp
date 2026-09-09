@@ -321,7 +321,7 @@ public class SubcontractMaterialReturnService {
         r.setSupplierId(req.getSupplierId());
         // V476 运营红线：委外退料入仓必须落到具体叶子仓。
         if (warehouseScopes != null) {
-            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "仓库");
+            warehouseScopes.requireNewLeafSelection(r.getWarehouseId(), req.getWarehouseId(), "仓库");
         }
         r.setWarehouseId(req.getWarehouseId());
         var operator = nameResolver.resolveForWrite(

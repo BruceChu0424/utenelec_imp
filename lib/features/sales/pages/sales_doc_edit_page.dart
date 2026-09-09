@@ -12,6 +12,7 @@
 // 保存组装 body 调 create/update，成功后跳详情。
 // 路由用 SalesRoutePath 字面量（route_names.dart 由上层统一加 sales_*）。
 import 'package:flutter/material.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../shared/models/decimal_text.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -217,7 +218,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           final last = await ref
               .read(salesRepositoryProvider(widget.docType))
               .list(size: 1);
-          if (last.items.isNotEmpty && last.items.first.warehouseId != null) {
+          if (last.items.isNotEmpty &&
+              WarehouseSelection(
+                ref.read(salesMasterNameServiceProvider).warehouseHierarchy,
+              ).selectableIds.contains(last.items.first.warehouseId)) {
             _warehouseId = last.items.first.warehouseId;
             // 预填值黄标提醒核对（用户改选即清除）。
             _autofilled.add('warehouse');
@@ -1414,6 +1418,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                           : null,
                                       items: warehouseHierarchyItems(
                                         names.warehouseHierarchy,
+                                        currentValue: _warehouseId,
                                       ),
                                       onChanged: (v) {
                                         setState(() => _warehouseId = v);

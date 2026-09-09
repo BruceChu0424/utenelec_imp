@@ -79,7 +79,11 @@ class InternalAttachmentLifecyclePostgresTest {
     @MockitoSpyBean EmployeeAttachmentAccessPolicy ownerPolicy;
     private String token,refresh,password="InternalAttachmentInitial-1!",employee;
 
-    @BeforeEach void login() {
+    // This class shares one real browser session. Re-authenticating for every
+    // file scenario plus the reset recovery exhausts the real login limiter.
+    @BeforeAll void initializeSession() { login(); }
+
+    private void login() {
         var response=http.postForEntity("/api/auth/login",Map.of("loginAccount","internal-attachment-test","password",password),JsonNode.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         token=response.getBody().path("accessToken").asText();refresh=response.getBody().path("refreshToken").asText();
@@ -92,8 +96,9 @@ class InternalAttachmentLifecyclePostgresTest {
         }
         employee=profile.path("employeeId").asText();assertThat(employee).isNotBlank();
     }
-    @AfterEach void logout() {
-        http.postForEntity("/api/auth/logout",Map.of("refreshToken",refresh),Void.class);token=null;refresh=null;
+    @AfterAll void logout() {
+        if (refresh != null) http.postForEntity("/api/auth/logout",Map.of("refreshToken",refresh),Void.class);
+        token=null;refresh=null;
     }
     public static class Cleanup extends AbstractTestExecutionListener {
         @Override public int getOrder() { return new DirtiesContextTestExecutionListener().getOrder()-1; }

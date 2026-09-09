@@ -30,11 +30,15 @@ class UtenDropdownItem {
     required this.label,
     this.enabled = true,
     this.indent = 0,
+    this.visible = true,
   });
   final String? value;
   final String label;
   final bool enabled;
   final double indent;
+
+  /// A historical value can retain its label without appearing in new choices.
+  final bool visible;
 }
 
 /// outlined 单选下拉，Overlay 弹层样式对齐货品资料筛选下拉。
@@ -263,11 +267,13 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                 child: StatefulBuilder(
                   builder: (ctx, setOverlayState) {
                     final q = _searchCtl?.text.trim().toLowerCase() ?? '';
-                    final filtered = q.isEmpty
-                        ? widget.items
-                        : widget.items
-                              .where((it) => it.label.toLowerCase().contains(q))
-                              .toList();
+                    final filtered = widget.items
+                        .where(
+                          (it) =>
+                              it.visible &&
+                              (q.isEmpty || it.label.toLowerCase().contains(q)),
+                        )
+                        .toList();
                     return Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [

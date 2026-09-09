@@ -36,10 +36,34 @@ public class PreplanStockEntitlementService {
     private static final short RESERVATION_EFFECTIVE = 0;
     private static final short RESERVATION_DONE = 1;
     private static final String OWNER_PREPLAN = "PREPLAN_ANALYSIS";
+    private static final String AUTOMATIC_READINESS_REASON = "AUTOMATIC_READINESS_RECHECK";
 
     private final EntityManager em;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
+
+    /** Package-internal capability check; no HTTP input selects a system identity. */
+    void requireFormalizationActor(UUID actorId) {
+        if (actorId != null) {
+            if (!actorId.equals(currentUser.requireId())) {
+                throw new ApiException(ErrorCode.FORBIDDEN, "备料操作人与当前登录人员不一致");
+            }
+            return;
+        }
+        if (currentUser.get().isPresent()) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "登录人员不能使用系统备料身份");
+        }
+        Object authorized = em.createNativeQuery("""
+                SELECT COALESCE(
+                    current_setting('app.production_readiness_reconcile', true) = 'v1'
+                    AND NULLIF(current_setting('app.actor_id', true), '') IS NULL
+                    AND current_setting('app.actor_account', true) = '系统自动核对备料',
+                    FALSE)
+                """).getSingleResult();
+        if (!Boolean.TRUE.equals(authorized)) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "缺少系统自动核对备料的事务凭据");
+        }
+    }
 
     /** Only immutable origin supply may be selected by a manual reallocation. */
     @Transactional(propagation = Propagation.MANDATORY)
@@ -665,6 +689,28 @@ public class PreplanStockEntitlementService {
             UUID demandId,
             UUID formalReservationId,
             String idempotencyKey) {
+        return appendFormalize(eventGroupId, sourceEntitlementEventId, sourceReservationId,
+                beneficiaryAnalysisId, beneficiaryAnalysisMaterialId, qty, packageId,
+                demandId, formalReservationId, idempotencyKey, null, false);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public UUID appendFormalize(
+            UUID eventGroupId, UUID sourceEntitlementEventId, UUID sourceReservationId,
+            UUID beneficiaryAnalysisId, UUID beneficiaryAnalysisMaterialId, BigDecimal qty,
+            UUID packageId, UUID demandId, UUID formalReservationId, String idempotencyKey,
+            UUID actorId) {
+        requireFormalizationActor(actorId);
+        return appendFormalize(eventGroupId, sourceEntitlementEventId, sourceReservationId,
+                beneficiaryAnalysisId, beneficiaryAnalysisMaterialId, qty, packageId,
+                demandId, formalReservationId, idempotencyKey, actorId, true);
+    }
+
+    private UUID appendFormalize(
+            UUID eventGroupId, UUID sourceEntitlementEventId, UUID sourceReservationId,
+            UUID beneficiaryAnalysisId, UUID beneficiaryAnalysisMaterialId, BigDecimal qty,
+            UUID packageId, UUID demandId, UUID formalReservationId, String idempotencyKey,
+            UUID actorId, boolean explicitActor) {
         tx.bind();
         AvailableLot sourceLot = listRemainingLotsForReservation(
                 sourceReservationId, true).stream()
@@ -681,7 +727,7 @@ public class PreplanStockEntitlementService {
         return appendFormalize(
                 eventGroupId, sourceLot, qty,
                 packageId, demandId, formalReservationId,
-                idempotencyKey);
+                idempotencyKey, actorId, explicitActor);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -689,10 +735,18 @@ public class PreplanStockEntitlementService {
             UUID eventGroupId, AvailableLot sourceLot, BigDecimal qty,
             UUID packageId, UUID demandId, UUID formalReservationId,
             String idempotencyKey) {
+        return appendFormalize(eventGroupId, sourceLot, qty, packageId, demandId,
+                formalReservationId, idempotencyKey, null, false);
+    }
+
+    private UUID appendFormalize(
+            UUID eventGroupId, AvailableLot sourceLot, BigDecimal qty,
+            UUID packageId, UUID demandId, UUID formalReservationId,
+            String idempotencyKey, UUID actorId, boolean explicitActor) {
         tx.bind();
         requirePositiveWithin(qty, sourceLot.remainingQty(),
                 "Formalized entitlement exceeds the source lot balance");
-        return insertEvent(new EventDraft(
+        EventDraft draft = new EventDraft(
                 eventGroupId, sourceLot.stockReservationId(),
                 sourceLot.beneficiaryAnalysisId(),
                 sourceLot.beneficiaryAnalysisMaterialId(),
@@ -700,7 +754,10 @@ public class PreplanStockEntitlementService {
                 sourceLot.reallocationId(), null,
                 null, null, null, null, null,
                 packageId, demandId, formalReservationId,
-                null, idempotencyKey));
+                null, idempotencyKey);
+        return explicitActor
+                ? insertEventWithResult(draft, actorId, actorId == null).eventId()
+                : insertEvent(draft);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -722,6 +779,17 @@ public class PreplanStockEntitlementService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void consumePhysicalForFormalize(UUID reservationId, BigDecimal qty) {
         tx.bind();
+        consumePhysicalForFormalizeAuthorized(reservationId, qty, currentUser.requireId());
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void consumePhysicalForFormalize(UUID reservationId, BigDecimal qty, UUID actorId) {
+        requireFormalizationActor(actorId);
+        tx.bind();
+        consumePhysicalForFormalizeAuthorized(reservationId, qty, actorId);
+    }
+
+    private void consumePhysicalForFormalizeAuthorized(UUID reservationId, BigDecimal qty, UUID actorId) {
         int updated = em.createNativeQuery("""
                 UPDATE stock_reservations
                 SET released_qty = released_qty + :qty,
@@ -740,7 +808,7 @@ public class PreplanStockEntitlementService {
                 .setParameter("qty", qty)
                 .setParameter("done", RESERVATION_DONE)
                 .setParameter("effective", RESERVATION_EFFECTIVE)
-                .setParameter("actorId", currentUser.requireId())
+                .setParameter("actorId", actorId)
                 .setParameter("id", reservationId)
                 .setParameter("ownerType", OWNER_PREPLAN)
                 .executeUpdate();
@@ -1280,10 +1348,20 @@ public class PreplanStockEntitlementService {
     }
 
     private OriginAppendResult insertEventWithResult(EventDraft draft) {
+        return insertEventWithResult(draft, currentUser.requireId(), false);
+    }
+
+    private OriginAppendResult insertEventWithResult(EventDraft draft, UUID actorId, boolean automatic) {
+        if (automatic) {
+            requireFormalizationActor(actorId);
+            if (actorId != null || !"FORMALIZE".equals(draft.eventType())) {
+                throw new ApiException(ErrorCode.FORBIDDEN, "系统备料身份仅用于正式领料归属");
+            }
+        }
         requirePositiveWithin(draft.qty(), draft.qty(),
                 "Entitlement event quantity must be positive");
         UUID proposedId = UUID.randomUUID();
-        int inserted = em.createNativeQuery("""
+        Query insert = em.createNativeQuery("""
                 INSERT INTO preplan_stock_entitlement_events (
                     id, event_group_id, stock_reservation_id,
                     beneficiary_analysis_id, beneficiary_analysis_material_id,
@@ -1294,7 +1372,7 @@ public class PreplanStockEntitlementService {
                     source_stock_document_id, source_stock_document_item_id,
                     target_package_id, target_demand_id,
                     target_stock_reservation_id, counter_event_id,
-                    idempotency_key, created_by
+                    idempotency_key, created_by%s
                 ) VALUES (
                     :id, :eventGroupId, :reservationId,
                     :analysisId, :materialId,
@@ -1303,10 +1381,10 @@ public class PreplanStockEntitlementService {
                     :receiptType, :receiptId, :dispositionEventId,
                     :stockDocumentId, :stockDocumentItemId,
                     :packageId, :demandId, :targetReservationId,
-                    :counterEventId, :key, :actorId
+                    :counterEventId, :key, :actorId%s
                 )
                 ON CONFLICT (idempotency_key) DO NOTHING
-                """)
+                """.formatted(automatic ? ", system_reason" : "", automatic ? ", :systemReason" : ""))
                 .setParameter("id", proposedId)
                 .setParameter("eventGroupId", draft.eventGroupId())
                 .setParameter("reservationId", draft.stockReservationId())
@@ -1327,8 +1405,9 @@ public class PreplanStockEntitlementService {
                 .setParameter("targetReservationId", draft.targetStockReservationId())
                 .setParameter("counterEventId", draft.counterEventId())
                 .setParameter("key", draft.idempotencyKey())
-                .setParameter("actorId", currentUser.requireId())
-                .executeUpdate();
+                .setParameter("actorId", actorId);
+        if (automatic) insert.setParameter("systemReason", AUTOMATIC_READINESS_REASON);
+        int inserted = insert.executeUpdate();
         List<Object[]> replay = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                         SELECT id, event_group_id, stock_reservation_id,

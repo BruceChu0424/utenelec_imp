@@ -78,7 +78,8 @@ class WarehouseDictEntry {
         parentId: json['parentId'] as String?,
         parentName: json['parentName'] as String?,
         status: json['status'] as String?,
-        isAccountable: json['isAccountable'] as bool? ?? true,
+        isAccountable:
+            (json['accountable'] ?? json['isAccountable']) as bool? ?? true,
       );
 }
 

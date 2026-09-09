@@ -23,6 +23,48 @@ import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 void main() {
+  testWidgets(
+    'disabled remembered warehouse is cleared before a new arrival and hidden in the picker',
+    (tester) async {
+      tester.view.physicalSize = const Size(1400, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = _BatchApi(disabledFirst: true);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            sessionProvider.overrideWith(_TestSessionNotifier.new),
+            masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+          ],
+          child: MaterialApp(
+            home: WarehouseArrivalBatchReceiptPage(
+              prefills: _prefills(),
+              canRegister: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('成品仓'), findsNothing);
+      expect(find.text('必选 · 点击选择'), findsNWidgets(3));
+      await tester.tap(
+        find.byKey(const Key('warehouse-arrival-batch-apply-warehouse-all')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('warehouse-picker-entry-warehouse-1')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('warehouse-picker-entry-warehouse-2')),
+        findsOneWidget,
+      );
+      expect(api.arrivalPostBodies, isEmpty);
+    },
+  );
+
   testWidgets('预计到货：待登记行可勾选，批量登记送检按钮随选择计数', (tester) async {
     tester.view.physicalSize = const Size(1400, 1000);
     tester.view.devicePixelRatio = 1;
@@ -326,7 +368,8 @@ class _ExpectationsApi extends ApiClient {
 
 /// 批量登记页桩：主档字典 + 登记端点回执。
 class _BatchApi extends ApiClient {
-  _BatchApi() : super(Dio());
+  _BatchApi({this.disabledFirst = false}) : super(Dio());
+  final bool disabledFirst;
 
   final List<Map<String, dynamic>> arrivalPostBodies = [];
 
@@ -345,8 +388,13 @@ class _BatchApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     if (path == '/master/warehouses/dict') {
-      return const [
-        {'id': 'warehouse-1', 'name': '成品仓'},
+      return [
+        {
+          'id': 'warehouse-1',
+          'name': '成品仓',
+          'status': disabledFirst ? '禁用' : '使用',
+          'accountable': true,
+        },
         {'id': 'warehouse-2', 'name': '原料仓'},
       ];
     }

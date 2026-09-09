@@ -1015,6 +1015,7 @@ class _SubcontractOrderEditPageState
                                       enabled: !_saving,
                                       items: warehouseHierarchyItems(
                                         names.warehouseHierarchy,
+                                        currentValue: _warehouseId,
                                       ),
                                       onChanged: (id) =>
                                           setState(() => _warehouseId = id),

@@ -229,6 +229,9 @@ public class SalesReturnService {
         if (r.getWarehouseId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "退货单需指定仓库");
         }
+        if (warehouseScopes != null) {
+            warehouseScopes.requireActiveLeafWarehouse(r.getWarehouseId(), "入库仓库");
+        }
         if (r.getClientId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "退货单需指定客户");
         }
@@ -1119,7 +1122,7 @@ public class SalesReturnService {
         r.setClientId(req.getClientId());
         // V476 运营红线：退货入库必须落到具体叶子仓。
         if (warehouseScopes != null) {
-            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "仓库");
+            warehouseScopes.requireNewLeafSelection(r.getWarehouseId(), req.getWarehouseId(), "仓库");
         }
         r.setWarehouseId(req.getWarehouseId());
         r.setCurrencyId(req.getCurrencyId());

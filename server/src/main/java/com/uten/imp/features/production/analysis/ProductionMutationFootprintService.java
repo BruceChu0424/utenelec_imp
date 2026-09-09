@@ -267,7 +267,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                       AND d.color_id IS NOT DISTINCT FROM material.color_id
                     WHERE material.analysis_id=analysis.id AND material.active=TRUE
                       AND (fn_warehouse_same_main(d.warehouse_id,analysis.warehouse_id)
-                        OR """ + MaterialAnalysisWakeupScopeSql.ownsQualifiedAt(
+                """ + " OR " + MaterialAnalysisWakeupScopeSql.ownsQualifiedAt(
                             "analysis.id", "material.id", "d.warehouse_id", "d.goods_id", "d.color_id") + """
                         ))
                 ORDER BY analysis.id

@@ -935,7 +935,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         o.setSupplierId(req.getSupplierId());
         // V476 运营红线：订货仓库必须选具体叶子仓（收货沿用同仓）。
         if (warehouseScopes != null) {
-            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "仓库");
+            warehouseScopes.requireNewLeafSelection(o.getWarehouseId(), req.getWarehouseId(), "仓库");
         }
         o.setWarehouseId(req.getWarehouseId());
         o.setCurrencyId(req.getCurrencyId());

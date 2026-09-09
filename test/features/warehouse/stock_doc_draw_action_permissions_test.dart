@@ -35,17 +35,45 @@ class _AllowAllStockDocumentScope implements DocumentScopeCapabilityRepository {
 }
 
 class _DrawDetailApi extends ApiClient {
-  _DrawDetailApi({required this.status, required this.issuedQty})
+  _DrawDetailApi({required this.status, required this.issuedQty, this.qty = 5})
     : super(Dio());
 
-  final int status;
-  final double issuedQty;
+  int status;
+  double issuedQty;
+  final double qty;
+  Map<String, dynamic>? posted;
+  String? postedPath;
 
   @override
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
-  }) async => const <Map<String, dynamic>>[];
+  }) async => path == '/master/warehouses/dict'
+      ? [
+          {'id': 'main', 'name': '主仓库', 'accountable': false, 'status': '使用'},
+          {
+            'id': 'hardware',
+            'name': '五金仓库',
+            'parentId': 'main',
+            'accountable': true,
+            'status': '禁用',
+          },
+        ]
+      : const <Map<String, dynamic>>[];
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+  }) async {
+    postedPath = path;
+    posted = Map<String, dynamic>.from(body as Map);
+    status = 1;
+    issuedQty = qty;
+    return get('/stock/docs/draw-1');
+  }
 
   @override
   Future<Map<String, dynamic>> get(
@@ -61,6 +89,7 @@ class _DrawDetailApi extends ApiClient {
       'billNo': 'LL-TEST-001',
       'billDate': '2026-09-04',
       'status': status,
+      'warehouseId': 'hardware',
       'issueStatus': issuedQty > 0 ? 1 : 0,
       'productionLinked': true,
       'canEdit': false,
@@ -69,7 +98,7 @@ class _DrawDetailApi extends ApiClient {
         <String, dynamic>{
           'id': 'draw-item-1',
           'lineNo': 1,
-          'qty': 5,
+          'qty': qty,
           'issuedQty': issuedQty,
           'unitRate': 1,
           'executionSegmentId': 'segment-1',
@@ -84,6 +113,7 @@ Future<ProviderContainer> _pumpDrawDetail(
   required int status,
   required double issuedQty,
   required Set<String> permissions,
+  _DrawDetailApi? apiOverride,
 }) async {
   tester.view.physicalSize = const Size(1200, 900);
   tester.view.devicePixelRatio = 1;
@@ -92,7 +122,8 @@ Future<ProviderContainer> _pumpDrawDetail(
     tester.view.resetDevicePixelRatio();
   });
 
-  final api = _DrawDetailApi(status: status, issuedQty: issuedQty);
+  final api =
+      apiOverride ?? _DrawDetailApi(status: status, issuedQty: issuedQty);
   final container = ProviderContainer(
     overrides: [
       currentPermissionsProvider.overrideWith(
@@ -141,6 +172,46 @@ Future<ProviderContainer> _pumpDrawDetail(
 Finder _action(String label) => find.widgetWithText(UtenButton, label);
 
 void main() {
+  testWidgets(
+    'existing disabled source stays visible and exact four-decimal draw reaches the API',
+    (tester) async {
+      final api = _DrawDetailApi(status: 0, issuedQty: 0, qty: 0.0001);
+      await _pumpDrawDetail(
+        tester,
+        status: 0,
+        issuedQty: 0,
+        apiOverride: api,
+        permissions: const {
+          Perm.stockDocView,
+          Perm.stockDocApprove,
+          Perm.stockDocIssue,
+        },
+      );
+      await tester.tap(_action('出库'));
+      await tester.pumpAndSettle();
+      expect(find.text('领料仓库：主仓库 - 五金仓库'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(
+              find.descendant(
+                of: find.byType(AlertDialog),
+                matching: find.byType(TextField),
+              ),
+            )
+            .controller
+            ?.text,
+        '0.0001',
+      );
+      await tester.tap(find.text('确认出库'));
+      await tester.pumpAndSettle();
+      expect(api.postedPath, '/stock/docs/draw-1/approve-and-issue');
+      expect(api.posted?['lines'], [
+        {'itemId': 'draw-item-1', 'qty': 0.0001},
+      ]);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'draft production DRAW exposes only atomic issue and reacts to permission revoke',
     (tester) async {

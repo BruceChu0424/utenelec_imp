@@ -249,6 +249,7 @@ public class SubcontractReceiptService {
         if (r.getSupplierId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "进仓单需指定委外商");
         }
+        warehouseScopes.requireActiveLeafWarehouse(r.getWarehouseId(), "入库仓库");
         List<SubcontractReceiptItem> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id);
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
@@ -813,6 +814,9 @@ public class SubcontractReceiptService {
         }
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScopes;
+
     private void applyHeader(ReceiptSaveRequest req, SubcontractReceipt r) {
         // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
         if (r.getBillNo() == null || r.getBillNo().isBlank()) {
@@ -820,6 +824,7 @@ public class SubcontractReceiptService {
         }
         r.setBillDate(req.getBillDate());
         r.setSupplierId(req.getSupplierId());
+        warehouseScopes.requireNewLeafSelection(r.getWarehouseId(), req.getWarehouseId(), "入库仓库");
         r.setWarehouseId(req.getWarehouseId());
         r.setCurrencyId(req.getCurrencyId());
         r.setExchangeRate(req.getExchangeRate()==null?null:com.uten.imp.common.util.FinancialExactAmount.rate(req.getExchangeRate(),"委外收货汇率"));

@@ -52,6 +52,8 @@ public class ProductionFinishedArrivalRegistrationService {
     private final ProductionStockTaskAccessPolicy access;
     private final ProductionQualityInspectionPort qualityInspection;
     private final TxSessionVars tx;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScopes;
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('stock_doc:view')")
@@ -249,6 +251,7 @@ public class ProductionFinishedArrivalRegistrationService {
                 pendingReportItemIds, normalized.places().keySet());
 
         WarehouseSnapshot warehouse = lockWarehouse(normalized.warehouseId());
+        warehouseScopes.requireActiveLeafWarehouse(normalized.warehouseId(), "入库仓库");
         EmployeeSnapshot receiver = requireReceiver(receiverEmployeeId);
         UUID registrationId = UUID.randomUUID();
         em.createNativeQuery("""

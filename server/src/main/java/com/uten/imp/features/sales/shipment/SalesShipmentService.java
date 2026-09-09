@@ -2646,7 +2646,7 @@ public class SalesShipmentService {
         }
         // V476 运营红线：出货必须落到具体叶子仓；主仓库只作查询聚合。
         if (warehouseScopes != null) {
-            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "出货仓库");
+            warehouseScopes.requireNewLeafSelection(s.getWarehouseId(), req.getWarehouseId(), "出货仓库");
         }
         s.setWarehouseId(req.getWarehouseId());
         s.setCurrencyId(req.getCurrencyId());

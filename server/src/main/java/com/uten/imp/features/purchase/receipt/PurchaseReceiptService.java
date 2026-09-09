@@ -228,6 +228,9 @@ public class PurchaseReceiptService {
         if (r.getWarehouseId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "收货单需指定仓库");
         }
+        if (warehouseScopes != null) {
+            warehouseScopes.requireActiveLeafWarehouse(r.getWarehouseId(), "入库仓库");
+        }
         List<PurchaseReceiptItem> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id);
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
@@ -425,7 +428,7 @@ public class PurchaseReceiptService {
         r.setSupplierId(req.getSupplierId());
         // V476 运营红线：收货入库必须落到具体叶子仓；主仓库只作查询聚合。
         if (warehouseScopes != null) {
-            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "入库仓库");
+            warehouseScopes.requireNewLeafSelection(r.getWarehouseId(), req.getWarehouseId(), "入库仓库");
         }
         r.setWarehouseId(req.getWarehouseId());
         r.setCurrencyId(req.getCurrencyId());

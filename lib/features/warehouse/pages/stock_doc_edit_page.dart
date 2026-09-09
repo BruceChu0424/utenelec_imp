@@ -9,6 +9,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -105,7 +106,10 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
         final last = await ref
             .read(stockDocRepositoryProvider(widget.docType))
             .list(size: 1);
-        if (last.items.isNotEmpty && last.items.first.warehouseId != null) {
+        if (last.items.isNotEmpty &&
+            WarehouseSelection(
+              ref.read(masterNameServiceProvider).warehouseHierarchy,
+            ).selectableIds.contains(last.items.first.warehouseId)) {
           _warehouseId = last.items.first.warehouseId;
         }
       } catch (_) {
@@ -553,6 +557,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                                     required: true,
                                     items: warehouseHierarchyItems(
                                       names.warehouseHierarchy,
+                                      currentValue: _warehouseId,
                                     ),
                                     onChanged: (v) {
                                       setState(() => _warehouseId = v);
@@ -568,6 +573,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                                       required: true,
                                       items: warehouseHierarchyItems(
                                         names.warehouseHierarchy,
+                                        currentValue: _toWarehouseId,
                                       ),
                                       onChanged: (v) =>
                                           setState(() => _toWarehouseId = v),

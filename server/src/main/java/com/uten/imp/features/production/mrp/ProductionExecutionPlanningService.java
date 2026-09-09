@@ -603,7 +603,6 @@ public class ProductionExecutionPlanningService {
                                 JOIN warehouses warehouse ON warehouse.id = a.warehouse_id
                                   AND warehouse.is_deleted = FALSE
                                   AND warehouse.is_accountable = TRUE
-                                  AND COALESCE(warehouse.status, '') <> '禁用'
                                   AND NOT EXISTS (SELECT 1 FROM warehouses child
                                       WHERE child.parent_id = warehouse.id
                                         AND child.is_deleted = FALSE)

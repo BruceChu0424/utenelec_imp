@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 
 import '../../components/inputs/uten_dropdown_field.dart';
 import '../providers/master_name_provider.dart';
+import 'warehouse_selection.dart';
 
 class WarehouseHierarchyDropdown extends StatelessWidget {
   const WarehouseHierarchyDropdown({
@@ -44,6 +45,10 @@ class WarehouseHierarchyDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final selection = WarehouseSelection(entries);
+    final historical = !allowParent && !selection.visibleIds.contains(value)
+        ? entries.where((entry) => entry.id == value).firstOrNull
+        : null;
     final ids = entries.map((e) => e.id).toSet();
     // 被引用为上级的仓 = 分组父仓；其子仓缩进展示。
     final parentIds = entries
@@ -52,38 +57,41 @@ class WarehouseHierarchyDropdown extends StatelessWidget {
         .where(ids.contains)
         .toSet();
     return DropdownButtonFormField<String?>(
-      initialValue: value,
+      initialValue: historical == null ? value : null,
+      hint: historical == null ? null : Text(historical.name),
       isExpanded: true,
       // 本 Flutter 版本 DropdownButtonFormField 无 enabled 参数：禁用=onChanged 置空。
       decoration: InputDecoration(isDense: true, labelText: labelText),
       items: [
         if (includeAll) const DropdownMenuItem<String?>(child: Text('全部')),
         for (final e in entries)
-          () {
-            final hasChildren = entries.any((o) => o.parentId == e.id);
-            final selectable = allowParent || !hasChildren;
-            final isChild =
-                e.parentId != null && parentIds.contains(e.parentId);
-            return DropdownMenuItem<String?>(
-              // 禁选标题用哨兵值保 value 唯一；已保存的父仓值仍按真实 id 匹配回显。
-              value: selectable || value == e.id ? e.id : 'group:${e.id}',
-              enabled: selectable,
-              child: Padding(
-                padding: EdgeInsets.only(left: isChild ? 16 : 0),
-                child: Text(
-                  e.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: hasChildren && !allowParent
-                      ? TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        )
-                      : null,
+          if (allowParent || selection.visibleIds.contains(e.id))
+            () {
+              final hasChildren = entries.any((o) => o.parentId == e.id);
+              final selectable =
+                  allowParent || selection.selectableIds.contains(e.id);
+              final isChild =
+                  e.parentId != null && parentIds.contains(e.parentId);
+              return DropdownMenuItem<String?>(
+                // 禁选标题用哨兵值保 value 唯一；已保存的父仓值仍按真实 id 匹配回显。
+                value: selectable || value == e.id ? e.id : 'group:${e.id}',
+                enabled: selectable,
+                child: Padding(
+                  padding: EdgeInsets.only(left: isChild ? 16 : 0),
+                  child: Text(
+                    e.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: hasChildren && !allowParent
+                        ? TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          )
+                        : null,
+                  ),
                 ),
-              ),
-            );
-          }(),
+              );
+            }(),
       ],
       onChanged: enabled ? onChanged : null,
     );
@@ -95,7 +103,9 @@ class WarehouseHierarchyDropdown extends StatelessWidget {
 List<UtenDropdownItem> warehouseHierarchyItems(
   List<WarehouseDictEntry> hierarchy, {
   bool allowParent = false,
+  String? currentValue,
 }) {
+  final selection = WarehouseSelection(hierarchy);
   final ids = hierarchy.map((e) => e.id).toSet();
   final parentIds = hierarchy
       .map((e) => e.parentId)
@@ -104,11 +114,15 @@ List<UtenDropdownItem> warehouseHierarchyItems(
       .toSet();
   return [
     for (final e in hierarchy)
-      UtenDropdownItem(
-        value: e.id,
-        label: e.name,
-        enabled: allowParent || !hierarchy.any((o) => o.parentId == e.id),
-        indent: e.parentId != null && parentIds.contains(e.parentId) ? 16 : 0,
-      ),
+      if (allowParent ||
+          selection.visibleIds.contains(e.id) ||
+          currentValue == e.id)
+        UtenDropdownItem(
+          value: e.id,
+          label: e.name,
+          enabled: allowParent || selection.selectableIds.contains(e.id),
+          visible: allowParent || selection.visibleIds.contains(e.id),
+          indent: e.parentId != null && parentIds.contains(e.parentId) ? 16 : 0,
+        ),
   ];
 }

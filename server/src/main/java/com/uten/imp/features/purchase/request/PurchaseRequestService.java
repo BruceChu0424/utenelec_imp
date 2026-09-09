@@ -341,7 +341,7 @@ public class PurchaseRequestService {
         r.setBillDate(req.getBillDate());
         // V476 运营红线：申请仓库必须选具体叶子仓（后续订货/收货沿用）。
         if (warehouseScopes != null) {
-            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "仓库");
+            warehouseScopes.requireNewLeafSelection(r.getWarehouseId(), req.getWarehouseId(), "仓库");
         }
         r.setWarehouseId(req.getWarehouseId());
         applyDepartmentReference(req, r);

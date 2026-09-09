@@ -34,5 +34,8 @@ RestrictAddressFamilies=AF_UNIX
 ReadWritePaths=/data/uten-imp-backups/paired
 ReadOnlyPaths=/var/lib/uten-imp-media/attachments /run/postgresql
 CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_DAC_READ_SEARCH
+# Preserve these same bounded capabilities across exec with NoNewPrivileges so
+# the root-owned job can temporarily use postgres for local peer authentication.
+AmbientCapabilities=CAP_SETUID CAP_SETGID CAP_DAC_READ_SEARCH
 LockPersonality=true
 RestrictRealtime=true

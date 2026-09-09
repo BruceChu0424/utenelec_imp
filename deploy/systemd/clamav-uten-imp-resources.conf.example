@@ -2,6 +2,8 @@
 # clamd.conf must separately bind TCPAddr 127.0.0.1 / TCPSocket 3310,
 # MaxThreads 2 and StreamMaxLength at least UTEN_STORAGE_MAX_BYTES.
 # Never expose the unauthenticated scanner port to the office network.
+# Ubuntu's socket-activated clamd also needs clamav-uten-imp-loopback.socket.conf.example;
+# clamd.conf alone does not add a TCP listener when systemd supplies only a Unix socket.
 [Service]
 CPUQuota=100%
 MemoryMax=3G

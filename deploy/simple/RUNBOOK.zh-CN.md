@@ -106,6 +106,10 @@ systemctl enable --now uten-imp.service uten-imp-updater.timer
 
 ## 四、日常发版（全自动）
 
+公司运行 `prod` 且强制HTTPS时，更新器的 `UTEN_HEALTH_URL` 也必须指向Nginx提供的HTTPS
+readiness地址，使用证书中包含的内部域名或IP，并安装内部CA；不能仍用会302跳转的后端HTTP地址，
+也不能用 `-k` 绕过证书检查。局域网白名单从实际网卡的CIDR核对，不能默认公司一定使用 `/24`。
+
 2026-09-09 用户明确允许本次先发布、CI继续运行：手动 `workflow_dispatch` 可显式勾选
 `allow_running_checks`（默认关闭）。仍检查同一提交、最新运行与尝试，已失败/取消的工作流或任务、
 缺失及不完整证据继续阻断；只允许尚在排队/运行且没有已失败任务的检查继续并行。

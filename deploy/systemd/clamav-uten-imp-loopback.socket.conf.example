@@ -1,0 +1,4 @@
+# /etc/systemd/system/clamav-daemon.socket.d/uten-loopback.conf
+# Keep the distribution's Unix socket and add only the same-host scanner port.
+[Socket]
+ListenStream=127.0.0.1:3310

@@ -70,16 +70,19 @@ class InternalTestRuntimeContractTest(unittest.TestCase):
         self.assertNotIn("UTEN_STORAGE_LOCAL_DIR", profile)
         self.assertNotIn("UTEN_OSS_", profile)
 
-    def test_prod_and_cloud_oss_gates_are_unchanged(self) -> None:
+    def test_prod_and_cloud_require_internal_storage_and_keep_historical_identity(self) -> None:
         gate = read(
             "server/src/main/java/com/uten/imp/config/ProductionStorageSafetyGate.java"
         )
         production = read("server/src/main/resources/application-prod.yml")
         cloud = read("server/src/main/resources/application-cloud.yml")
         self.assertIn('Profiles.of("prod", "cloud")', gate)
-        self.assertIn('!"oss".equalsIgnoreCase', gate)
-        self.assertIn("provider: ${UTEN_STORAGE_PROVIDER:oss}", production)
-        self.assertIn("provider: ${UTEN_STORAGE_PROVIDER:oss}", cloud)
+        self.assertIn('"internal".equalsIgnoreCase(storageProperties.getProvider())', gate)
+        self.assertIn("InternalStorageService.validateConfiguration(storageProperties)", gate)
+        self.assertIn("getMinFreeBytes() < 268435456L", gate)
+        self.assertIn("prod/cloud profiles require UTEN_STORAGE_PROVIDER=internal", gate)
+        self.assertIn("provider: ${UTEN_STORAGE_PROVIDER:internal}", production)
+        self.assertIn("provider: ${UTEN_STORAGE_PROVIDER:internal}", cloud)
         self.assertIn("require-versioning: ${UTEN_OSS_REQUIRE_VERSIONING:true}", production)
         self.assertIn("require-versioning: ${UTEN_OSS_REQUIRE_VERSIONING:true}", cloud)
 

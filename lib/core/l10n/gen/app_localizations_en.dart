@@ -45,7 +45,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get connectionReconnecting => 'The network is unstable. Reconnecting…';
 
   @override
-  String get connectionDisconnected => 'The server is temporarily unavailable. Reconnecting automatically';
+  String get connectionDisconnected =>
+      'The server is temporarily unavailable. Reconnecting automatically';
 
   @override
   String get connectionRestored => 'Connection restored. You can continue.';
@@ -114,13 +115,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get loginServerRecoveryAction => 'Restore automatic server selection';
 
   @override
-  String get loginServerRecoveryHint => 'Use this after changing networks or if sign-in fails. Only the trusted office and cloud addresses built into this app are used.';
+  String get loginServerRecoveryHint =>
+      'Use this after changing networks or if sign-in fails. Only the trusted office and cloud addresses built into this app are used.';
 
   @override
-  String get loginServerRecoverySuccess => 'Automatic server selection restored. Please sign in again.';
+  String get loginServerRecoverySuccess =>
+      'Automatic server selection restored. Please sign in again.';
 
   @override
-  String get loginServerRecoveryFailed => 'Could not restore server selection. Try again or contact an administrator.';
+  String get loginServerRecoveryFailed =>
+      'Could not restore server selection. Try again or contact an administrator.';
 
   @override
   String get loginFooter => '© 2026 Uten Integrated Management Platform';
@@ -325,7 +329,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get visitorIsEmployee => 'This phone is a Uten employee account, please use staff sign in';
+  String get visitorIsEmployee =>
+      'This phone is a Uten employee account, please use staff sign in';
 
   @override
   String get visitorPhoneInvalid => 'Please enter a valid phone number';
@@ -412,7 +417,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get visitorApplyValidateName => 'Please enter your name';
 
   @override
-  String get visitorApplyValidateIdCard => 'Please enter a valid 18-digit resident ID number';
+  String get visitorApplyValidateIdCard =>
+      'Please enter a valid 18-digit resident ID number';
 
   @override
   String get visitorApplyValidatePurpose => 'Please fill in the purpose';
@@ -424,10 +430,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get visitorApplyValidateVisitTime => 'Please select visit time';
 
   @override
-  String get visitorApplyValidateVisitTimeFuture => 'Visit time must be later than now';
+  String get visitorApplyValidateVisitTimeFuture =>
+      'Visit time must be later than now';
 
   @override
-  String get visitorApplyDuplicateTime => 'You already have an active visit at this time';
+  String get visitorApplyDuplicateTime =>
+      'You already have an active visit at this time';
 
   @override
   String get visitorApplySuccess => 'Submitted, awaiting approval';
@@ -885,16 +893,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeOnboardSubmit => 'Submit Onboarding';
 
   @override
-  String get employeeOnboardSuccess => 'Onboarding completed and the one-time password was delivered';
+  String get employeeOnboardSuccess =>
+      'Onboarding completed and the one-time password was delivered';
 
   @override
   String get employeeOnboardSubmitFailed => 'Submit failed, please try again';
 
   @override
-  String get employeeOnboardNote => 'Submitting auto-generates the employee code (UT prefix), uses the phone number as the login account, and issues a one-time password (last 6 digits of the ID number). It must be changed at first sign-in.';
+  String get employeeOnboardNote =>
+      'Submitting auto-generates the employee code (UT prefix), uses the phone number as the login account, and issues a one-time password (last 6 digits of the ID number). It must be changed at first sign-in.';
 
   @override
-  String get employeeOnboardCodeAutoNote => 'Employee code is auto-generated on submit (UT prefix, unique and incremental)';
+  String get employeeOnboardCodeAutoNote =>
+      'Employee code is auto-generated on submit (UT prefix, unique and incremental)';
 
   @override
   String get positionPickerTitle => 'Select or enter a position';
@@ -906,7 +917,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get positionPickerDepartmentFirst => 'Select a department first';
 
   @override
-  String get positionPickerSearchHint => 'Search by position name, code, or level';
+  String get positionPickerSearchHint =>
+      'Search by position name, code, or level';
 
   @override
   String positionPickerUseCustom(Object name) {
@@ -914,13 +926,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get positionPickerCustomDescription => 'It will be saved under the selected department after confirmation';
+  String get positionPickerCustomDescription =>
+      'It will be saved under the selected department after confirmation';
 
   @override
-  String get positionPickerNoPositions => 'This department has no positions; enter a new one directly';
+  String get positionPickerNoPositions =>
+      'This department has no positions; enter a new one directly';
 
   @override
-  String get positionPickerLoadFailed => 'Positions could not be loaded; retry or enter a new one directly';
+  String get positionPickerLoadFailed =>
+      'Positions could not be loaded; retry or enter a new one directly';
 
   @override
   String get positionPickerClear => 'Clear';
@@ -929,19 +944,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeOnboardCredentialTitle => 'Account created';
 
   @override
-  String get employeeOnboardCredentialWarning => 'This temporary password is shown only once. Deliver it securely now; the plaintext cannot be retrieved after closing.';
+  String get employeeOnboardCredentialWarning =>
+      'This temporary password is shown only once. Deliver it securely now; the plaintext cannot be retrieved after closing.';
 
   @override
   String get employeeOnboardAccountLabel => 'Login account';
 
   @override
-  String get employeeOnboardTemporaryPasswordLabel => 'One-time temporary password';
+  String get employeeOnboardTemporaryPasswordLabel =>
+      'One-time temporary password';
 
   @override
   String get employeeOnboardCopyTemporaryPassword => 'Copy password';
 
   @override
-  String get employeeOnboardTemporaryPasswordCopied => 'Temporary password copied';
+  String get employeeOnboardTemporaryPasswordCopied =>
+      'Temporary password copied';
 
   @override
   String get employeeOnboardCredentialSaved => 'I saved it securely';
@@ -1015,13 +1033,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeOffboardPickDateRequired => 'Please pick the last day';
 
   @override
-  String get employeeOffboardChecksRequired => 'Please confirm all recovery items';
+  String get employeeOffboardChecksRequired =>
+      'Please confirm all recovery items';
 
   @override
   String get employeeOffboardConfirmTitle => 'Confirm offboarding?';
 
   @override
-  String get employeeOffboardConfirmBody => 'This employee account will be disabled.';
+  String get employeeOffboardConfirmBody =>
+      'This employee account will be disabled.';
 
   @override
   String get employeeOffboardConfirmAction => 'Confirm offboarding';
@@ -1072,7 +1092,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeUnlockAccountSuccess => 'Account unlocked';
 
   @override
-  String get employeeProvisionConfirm => 'This creates a login account for the employee. The account defaults to the phone number, the initial password is the last 6 digits of the ID number, and it must be changed on first login. Continue?';
+  String get employeeProvisionConfirm =>
+      'This creates a login account for the employee. The account defaults to the phone number, the initial password is the last 6 digits of the ID number, and it must be changed on first login. Continue?';
 
   @override
   String get employeeTransferTitle => 'Employee transfer';
@@ -1105,7 +1126,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeRehireTitle => 'Confirm rehire?';
 
   @override
-  String get employeeRehireBody => 'The employee will become Active again and the login account will be re-enabled (re-login required).';
+  String get employeeRehireBody =>
+      'The employee will become Active again and the login account will be re-enabled (re-login required).';
 
   @override
   String get employeeRehireSuccess => 'Rehired';
@@ -1114,7 +1136,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeDeleteTitle => 'Delete this employee record?';
 
   @override
-  String get employeeDeleteBody => 'The login account will be disabled. This cannot be undone.';
+  String get employeeDeleteBody =>
+      'The login account will be disabled. This cannot be undone.';
 
   @override
   String get employeeDeleteSuccess => 'Employee record deleted';
@@ -1285,7 +1308,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get departmentEmployeesEmpty => 'No employees in this department (or its sub-departments)';
+  String get departmentEmployeesEmpty =>
+      'No employees in this department (or its sub-departments)';
 
   @override
   String departmentStatValue(Object label, Object value) {
@@ -1347,7 +1371,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get payrollItemTax => 'Income tax (-5%)';
 
   @override
-  String get payrollSubmitNote => 'After submission it enters finance review. Once approved, HR releases the slips to employees.';
+  String get payrollSubmitNote =>
+      'After submission it enters finance review. Once approved, HR releases the slips to employees.';
 
   @override
   String get payrollSubmitButton => 'Submit for review';
@@ -1442,7 +1467,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticePublishFieldDept => 'Department';
 
   @override
-  String get noticePublishScopeAllHint => 'Notify every employee in the company';
+  String get noticePublishScopeAllHint =>
+      'Notify every employee in the company';
 
   @override
   String noticePublishScopeDeptHint(Object dept) {
@@ -1485,16 +1511,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticePublishContentLabel => 'Body';
 
   @override
-  String get noticePublishUrgentHint => 'Urgent notices use a high-priority alert. Use this only for items requiring immediate attention.';
+  String get noticePublishUrgentHint =>
+      'Urgent notices use a high-priority alert. Use this only for items requiring immediate attention.';
 
   @override
-  String get noticePublishTopPriorityHint => 'Pinned notices appear first and alert recipients as important.';
+  String get noticePublishTopPriorityHint =>
+      'Pinned notices appear first and alert recipients as important.';
 
   @override
   String get noticePublishScopeSelected => 'Selected audience';
 
   @override
-  String get noticePublishScopeSelectedHint => 'Departments and people can be combined. Departments include descendants and duplicate recipients are removed.';
+  String get noticePublishScopeSelectedHint =>
+      'Departments and people can be combined. Departments include descendants and duplicate recipients are removed.';
 
   @override
   String get noticePublishDepartmentsLabel => 'Departments (multiple)';
@@ -1529,15 +1558,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticePublishEmployeeConfirm => 'Done';
 
   @override
-  String get noticePublishValidateAudience => 'Choose at least one department or person';
+  String get noticePublishValidateAudience =>
+      'Choose at least one department or person';
 
   @override
-  String noticePublishAudienceSummary(Object departmentCount, Object employeeCount) {
+  String noticePublishAudienceSummary(
+    Object departmentCount,
+    Object employeeCount,
+  ) {
     return '$departmentCount departments and $employeeCount people selected';
   }
 
   @override
-  String get noticePublishAudienceRecalculateHint => 'The server recalculates the actual recipient count from the current organisation and account status before publishing.';
+  String get noticePublishAudienceRecalculateHint =>
+      'The server recalculates the actual recipient count from the current organisation and account status before publishing.';
 
   @override
   String noticePublishConfirmAudience(Object summary, Object count) {
@@ -1577,31 +1611,39 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticeTypeNewborn => 'Newborn';
 
   @override
-  String get noticeTypeAnnouncementDesc => 'Company announcement; everyone can tap “Acknowledge”';
+  String get noticeTypeAnnouncementDesc =>
+      'Company announcement; everyone can tap “Acknowledge”';
 
   @override
-  String get noticeTypePolicyDesc => 'Policy release; everyone can tap “Acknowledge”';
+  String get noticeTypePolicyDesc =>
+      'Policy release; everyone can tap “Acknowledge”';
 
   @override
-  String get noticeTypeBenefitDesc => 'Benefit notice; everyone can tap “Acknowledge”';
+  String get noticeTypeBenefitDesc =>
+      'Benefit notice; everyone can tap “Acknowledge”';
 
   @override
-  String get noticeTypeSystemDesc => 'System notice; everyone can tap “Acknowledge”';
+  String get noticeTypeSystemDesc =>
+      'System notice; everyone can tap “Acknowledge”';
 
   @override
   String get noticeTypeUrgentDesc => 'Urgent notice with high-priority alert';
 
   @override
-  String get noticeTypeBirthdayDesc => 'Celebrate a birthday; everyone can “Send blessing”';
+  String get noticeTypeBirthdayDesc =>
+      'Celebrate a birthday; everyone can “Send blessing”';
 
   @override
-  String get noticeTypeAnniversaryDesc => 'Work anniversary; everyone can “Send blessing”';
+  String get noticeTypeAnniversaryDesc =>
+      'Work anniversary; everyone can “Send blessing”';
 
   @override
-  String get noticeTypeWeddingDesc => 'Wedding blessing; everyone can “Send blessing”';
+  String get noticeTypeWeddingDesc =>
+      'Wedding blessing; everyone can “Send blessing”';
 
   @override
-  String get noticeTypeNewbornDesc => 'Newborn blessing; everyone can “Send blessing”';
+  String get noticeTypeNewbornDesc =>
+      'Newborn blessing; everyone can “Send blessing”';
 
   @override
   String get noticeGroupBroadcast => 'Broadcast';
@@ -1680,7 +1722,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticeCelebrationSubjectLabel => 'Honoree';
 
   @override
-  String get noticeCelebrationSubjectHint => 'Choose the colleague to celebrate';
+  String get noticeCelebrationSubjectHint =>
+      'Choose the colleague to celebrate';
 
   @override
   String get noticeCelebrationSubjectRequired => 'Please choose an honoree';
@@ -1697,7 +1740,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticeQuickCelebrationTitle => 'Quick celebration';
 
   @override
-  String get noticeQuickCelebrationSubtitle => 'Pick a type; the template fills automatically';
+  String get noticeQuickCelebrationSubtitle =>
+      'Pick a type; the template fills automatically';
 
   @override
   String get noticeQuickPublish => 'New notice';
@@ -1767,7 +1811,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticeAutoCelebrationTitle => 'Auto celebration notices';
 
   @override
-  String get noticeAutoCelebrationEnabled => 'Auto-publish a company-wide blessing daily for birthdays and anniversaries';
+  String get noticeAutoCelebrationEnabled =>
+      'Auto-publish a company-wide blessing daily for birthdays and anniversaries';
 
   @override
   String get noticeAutoCelebrationTypes => 'Auto types';
@@ -1782,16 +1827,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileChangeEditCta => 'Edit my profile';
 
   @override
-  String get profileChangeEditHrOnlyHint => 'Please contact HR to change the fields below';
+  String get profileChangeEditHrOnlyHint =>
+      'Please contact HR to change the fields below';
 
   @override
-  String get profileChangeSectionBasic => 'Basic info (changes apply immediately)';
+  String get profileChangeSectionBasic =>
+      'Basic info (changes apply immediately)';
 
   @override
-  String get profileChangeSectionReview => 'Contact & important fields (require HR review)';
+  String get profileChangeSectionReview =>
+      'Contact & important fields (require HR review)';
 
   @override
-  String get profileChangeSectionIdentity => 'Name & emergency contacts (require HR review)';
+  String get profileChangeSectionIdentity =>
+      'Name & emergency contacts (require HR review)';
 
   @override
   String get profileChangeFieldDirect => 'Direct edit';
@@ -1803,7 +1852,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileChangeFieldHrOnly => 'Contact HR';
 
   @override
-  String get profileChangePasswordHint => 'For your safety, please enter your current password';
+  String get profileChangePasswordHint =>
+      'For your safety, please enter your current password';
 
   @override
   String get profileChangePasswordLabel => 'Current password';
@@ -1821,10 +1871,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileChangeSubmitFailed => 'Submit failed, please retry';
 
   @override
-  String get profileChangeConflict => 'Profile has been updated by someone else, please refresh';
+  String get profileChangeConflict =>
+      'Profile has been updated by someone else, please refresh';
 
   @override
-  String get profileChangeRateLimited => 'You already submitted a change for this field in the last 24 hours';
+  String get profileChangeRateLimited =>
+      'You already submitted a change for this field in the last 24 hours';
 
   @override
   String get profileChangeListTitle => 'My change requests';
@@ -1916,16 +1968,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileChangeRejectDialogTitle => 'Reject request';
 
   @override
-  String get profileChangeRejectReasonRequired => 'Rejection reason is required';
+  String get profileChangeRejectReasonRequired =>
+      'Rejection reason is required';
 
   @override
-  String get profileChangeRejectReasonHint => 'Explain why; the employee will see this';
+  String get profileChangeRejectReasonHint =>
+      'Explain why; the employee will see this';
 
   @override
   String get profileChangeApproveDialogTitle => 'Confirm approval?';
 
   @override
-  String get profileChangeApproveDialogBody => 'Changes will be merged into the employee profile immediately';
+  String get profileChangeApproveDialogBody =>
+      'Changes will be merged into the employee profile immediately';
 
   @override
   String get profileChangeConfirm => 'Confirm';
@@ -1966,7 +2021,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profilePendingSectionTitle => 'Pending profile change reviews';
 
   @override
-  String get profilePendingSectionEmpty => 'No pending reviews for this employee';
+  String get profilePendingSectionEmpty =>
+      'No pending reviews for this employee';
 
   @override
   String get profilePendingSectionViewAll => 'All →';
@@ -1996,7 +2052,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileFieldGroupOrganization => 'Organization';
 
   @override
-  String get profileEditPolicyHint => 'Green \"direct edit\" fields apply immediately; yellow fields take effect after HR review; all other fields are maintained by HR.';
+  String get profileEditPolicyHint =>
+      'Green \"direct edit\" fields apply immediately; yellow fields take effect after HR review; all other fields are maintained by HR.';
 
   @override
   String profileEditPendingConflictHint(int count) {
@@ -2118,7 +2175,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hubSectionTaskCenter => 'Task center';
 
   @override
-  String get hubDisabledDocNotice => 'This document type is not yet enabled (no legacy data)';
+  String get hubDisabledDocNotice =>
+      'This document type is not yet enabled (no legacy data)';
 
   @override
   String get hubSubDetailPerItem => 'Line-by-item details';
@@ -2280,19 +2338,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get productionHubPlan => 'New production plan';
 
   @override
-  String get productionHubPlanSub => 'Reference a sales order or create manually; history';
+  String get productionHubPlanSub =>
+      'Reference a sales order or create manually; history';
 
   @override
   String get productionHubPlanHistory => 'Production plan history';
 
   @override
-  String get productionHubPlanHistorySub => 'View plans, approvals, and batch records';
+  String get productionHubPlanHistorySub =>
+      'View plans, approvals, and batch records';
 
   @override
   String get productionHubMaterialAnalysis => 'Material readiness analysis';
 
   @override
-  String get productionHubMaterialAnalysisSub => 'Readiness, route confirmation, batch planning';
+  String get productionHubMaterialAnalysisSub =>
+      'Readiness, route confirmation, batch planning';
 
   @override
   String get productionHubDaily => 'Production daily';
@@ -2334,7 +2395,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get financeSalesAllQueueLabel => 'sales order finance confirmations';
 
   @override
-  String get financeSalesInitialQueueLabel => 'initial sales order finance approvals';
+  String get financeSalesInitialQueueLabel =>
+      'initial sales order finance approvals';
 
   @override
   String get financeSalesChangesQueueLabel => 'sales order changes';
@@ -2360,7 +2422,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get financeHubTaskApprovalSub => 'Purchase and subcontract order approvals';
+  String get financeHubTaskApprovalSub =>
+      'Purchase and subcontract order approvals';
 
   @override
   String get financeHubTaskOverDelivery => 'Over-delivery approval';
@@ -2462,19 +2525,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseHubSectionDocs => 'Stock documents';
 
   @override
-  String get warehouseHubSectionDocsDesc => 'Transfer, in/out, picking, finished goods, stocktake';
+  String get warehouseHubSectionDocsDesc =>
+      'Transfer, in/out, picking, finished goods, stocktake';
 
   @override
   String get warehouseHubSectionInventory => 'Inventory queries';
 
   @override
-  String get warehouseHubSectionInventoryDesc => 'Live stock, balances, movements';
+  String get warehouseHubSectionInventoryDesc =>
+      'Live stock, balances, movements';
 
   @override
   String get warehouseHubSectionReports => 'Warehouse reports';
 
   @override
-  String get warehouseHubSectionReportsDesc => 'Detail (per item) & summary (per doc)';
+  String get warehouseHubSectionReportsDesc =>
+      'Detail (per item) & summary (per doc)';
 
   @override
   String get warehouseHubTaskExpected => 'Expected arrivals';
@@ -2633,7 +2699,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get basicDataHubSettlementMethod => 'Settlement methods';
 
   @override
-  String get basicDataHubSettlementMethodSub => 'Terms dictionary and payment-term rules';
+  String get basicDataHubSettlementMethodSub =>
+      'Terms dictionary and payment-term rules';
 
   @override
   String get impersonationSwitchPerson => 'Switch person';
@@ -2642,7 +2709,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get impersonationEnterPasswordTitle => 'Confirm switch person';
 
   @override
-  String get impersonationEnterPasswordHint => 'For security, enter your login password. After that you can switch freely for 15 minutes without re-entering.';
+  String get impersonationEnterPasswordHint =>
+      'For security, enter your login password. After that you can switch freely for 15 minutes without re-entering.';
 
   @override
   String get impersonationPasswordLabel => 'Login password';
@@ -2694,10 +2762,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get exportDialogTitle => 'Export Excel';
 
   @override
-  String get exportPasswordOptionalHint => 'A password is optional. Leave it blank for a regular Excel file, or enter 1–128 characters to encrypt it.';
+  String get exportPasswordOptionalHint =>
+      'A password is optional. Leave it blank for a regular Excel file, or enter 1–128 characters to encrypt it.';
 
   @override
-  String get exportPasswordOptionalLabel => 'Opening password (optional, 1–128)';
+  String get exportPasswordOptionalLabel =>
+      'Opening password (optional, 1–128)';
 
   @override
   String get exportPasswordConfirmLabel => 'Confirm password';
@@ -2734,13 +2804,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileLoadFailed => 'Employee record failed to load';
 
   @override
-  String get profileUnboundTitle => 'This account is not linked to an employee record';
+  String get profileUnboundTitle =>
+      'This account is not linked to an employee record';
 
   @override
-  String get profileUnboundDescription => 'Contact an administrator or HR to link this account to an employee record.';
+  String get profileUnboundDescription =>
+      'Contact an administrator or HR to link this account to an employee record.';
 
   @override
-  String get profileSessionUnavailable => 'You are not signed in or the session is unavailable';
+  String get profileSessionUnavailable =>
+      'You are not signed in or the session is unavailable';
 
   @override
   String get profileValueNotProvided => 'Not provided';
@@ -2770,10 +2843,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileScopeNoticeTitle => 'Information scope';
 
   @override
-  String get profileCompensationBoundaryDescription => 'Salary and bank information are intentionally not shown on My Profile. Check monthly income in Payslips, or contact authorized HR for other questions.';
+  String get profileCompensationBoundaryDescription =>
+      'Salary and bank information are intentionally not shown on My Profile. Check monthly income in Payslips, or contact authorized HR for other questions.';
 
   @override
-  String get profileMissingEmergencyContact => 'No emergency contact is registered. Ask HR to register one before requesting changes here.';
+  String get profileMissingEmergencyContact =>
+      'No emergency contact is registered. Ask HR to register one before requesting changes here.';
 
   @override
   String profileAlternatePhoneCount(int count) {
@@ -2781,22 +2856,26 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get profileVehiclesPhonesEmptyHint => 'Register vehicles and alternate phones for quick plate lookup';
+  String get profileVehiclesPhonesEmptyHint =>
+      'Register vehicles and alternate phones for quick plate lookup';
 
   @override
   String get historyEventConfirm => 'Confirmation';
 
   @override
-  String get accountProvisionPermissionDenied => 'You do not have permission to provision accounts. Contact account support.';
+  String get accountProvisionPermissionDenied =>
+      'You do not have permission to provision accounts. Contact account support.';
 
   @override
-  String get accountProvisionAlreadyExists => 'This employee already has an account or the account is inactive; it cannot be provisioned again.';
+  String get accountProvisionAlreadyExists =>
+      'This employee already has an account or the account is inactive; it cannot be provisioned again.';
 
   @override
   String get accountProvisionConfirmTitle => 'Confirm account provisioning';
 
   @override
-  String get accountProvisionFailed => 'Account provisioning failed. Try again later.';
+  String get accountProvisionFailed =>
+      'Account provisioning failed. Try again later.';
 
   @override
   String get accountProvisionInProgress => 'Provisioning';
@@ -2808,31 +2887,39 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accountStatusInactive => 'Account inactive';
 
   @override
-  String get pagePermissionAccountNotProvisionedTitle => 'This person does not have an account, so permissions cannot be configured yet';
+  String get pagePermissionAccountNotProvisionedTitle =>
+      'This person does not have an account, so permissions cannot be configured yet';
 
   @override
-  String get pagePermissionAccountNotProvisionedCanProvision => 'Provision the account first. After the one-time credentials are saved, this person\'s permissions will load automatically.';
+  String get pagePermissionAccountNotProvisionedCanProvision =>
+      'Provision the account first. After the one-time credentials are saved, this person\'s permissions will load automatically.';
 
   @override
-  String get pagePermissionAccountNotProvisionedNoAccess => 'Contact someone with Account Support permission to provision the login account.';
+  String get pagePermissionAccountNotProvisionedNoAccess =>
+      'Contact someone with Account Support permission to provision the login account.';
 
   @override
-  String get employeePermissionSettingsTooltip => 'Configure employee permissions';
+  String get employeePermissionSettingsTooltip =>
+      'Configure employee permissions';
 
   @override
-  String get employeeAccountNotProvisionedTooltip => 'Employee account not provisioned';
+  String get employeeAccountNotProvisionedTooltip =>
+      'Employee account not provisioned';
 
   @override
-  String get employeeResignedCannotProvision => 'A resigned employee cannot be given a login account';
+  String get employeeResignedCannotProvision =>
+      'A resigned employee cannot be given a login account';
 
   @override
-  String get employeeAccountNotProvisionedContactSupport => 'This employee does not have an account. Contact account support.';
+  String get employeeAccountNotProvisionedContactSupport =>
+      'This employee does not have an account. Contact account support.';
 
   @override
   String get materialMainWarehouse => 'Main warehouse';
 
   @override
-  String get materialWarehouseScopeExplanation => 'Planning uses main-warehouse totals. Warehouse staff arrange the picking locations.';
+  String get materialWarehouseScopeExplanation =>
+      'Planning uses main-warehouse totals. Warehouse staff arrange the picking locations.';
 
   @override
   String get materialSearchHint => 'Search products or materials';
@@ -2859,16 +2946,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialAllocated => 'Prepared quantity';
 
   @override
-  String get materialPreparedQuantityHint => 'Qualified material allocated to this batch, including its formal reservations and material already issued. Qualified receipts are included once; pending inspection and future supply are excluded. This is batch coverage, not the current warehouse balance.';
+  String get materialPreparedQuantityHint =>
+      'Qualified material allocated to this batch, including its formal reservations and material already issued. Qualified receipts are included once; pending inspection and future supply are excluded. This is batch coverage, not the current warehouse balance.';
 
   @override
   String get materialShortage => 'Still short';
 
   @override
-  String get materialPhysicalShortageHint => 'Batch demand still lacking qualified material. Issuing purchase, subcontract or workshop work does not reduce this shortage; qualified stock-in allocated to this batch does. Additional supply separately deducts incoming supply to prevent duplicate requests.';
+  String get materialPhysicalShortageHint =>
+      'Batch demand still lacking qualified material. Issuing purchase, subcontract or workshop work does not reduce this shortage; qualified stock-in allocated to this batch does. Additional supply separately deducts incoming supply to prevent duplicate requests.';
 
   @override
-  String get materialSupplyProgressHint => 'Track ordering, finance approval, arrival, inspection and stock-in. Double-click for details. Physical shortage remains after issue and updates after qualified stock-in.';
+  String get materialSupplyProgressHint =>
+      'Track ordering, finance approval, arrival, inspection and stock-in. Double-click for details. Physical shortage remains after issue and updates after qualified stock-in.';
 
   @override
   String get materialToSupply => 'Suggested order';
@@ -2896,7 +2986,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialRouteReasonTitle => 'Route reason (optional)';
 
   @override
-  String get materialRouteChangedRetry => 'Analysis updated. Review the selected routes and try again.';
+  String get materialRouteChangedRetry =>
+      'Analysis updated. Review the selected routes and try again.';
 
   @override
   String get materialWarehouseFacts => 'Warehouse and supply details';
@@ -2929,19 +3020,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialTaskEmpty => 'No tasks match this filter';
 
   @override
-  String get materialTaskBuyHint => 'Issue remaining purchasing demand and track orders, receipts and inspections.';
+  String get materialTaskBuyHint =>
+      'Issue remaining purchasing demand and track orders, receipts and inspections.';
 
   @override
-  String get materialTaskSubcontractHint => 'Issue remaining subcontracting demand; components first create workshop preparation tasks.';
+  String get materialTaskSubcontractHint =>
+      'Issue remaining subcontracting demand; components first create workshop preparation tasks.';
 
   @override
-  String get materialTaskWorkshopHint => 'Set quantity, workshop and owner before issuing. Material-short tasks wait until materials are ready and issued.';
+  String get materialTaskWorkshopHint =>
+      'Set quantity, workshop and owner before issuing. Material-short tasks wait until materials are ready and issued.';
 
   @override
-  String get materialTaskSectionHint => 'Manage preparation by route and review pending, issued and blocked tasks.';
+  String get materialTaskSectionHint =>
+      'Manage preparation by route and review pending, issued and blocked tasks.';
 
   @override
-  String get materialWarehouseLimit => 'An analysis supports at most 100 physical warehouses. Adjust the warehouse scope before analyzing.';
+  String get materialWarehouseLimit =>
+      'An analysis supports at most 100 physical warehouses. Adjust the warehouse scope before analyzing.';
 
   @override
   String materialRoutesNext(int count) {
@@ -2949,7 +3045,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get materialIssueNext => 'Next: open purchasing, subcontracting or workshop tasks to issue remaining demand and track issued work.';
+  String get materialIssueNext =>
+      'Next: open purchasing, subcontracting or workshop tasks to issue remaining demand and track issued work.';
 
   @override
   String materialWorkshopNext(int count) {
@@ -2962,16 +3059,20 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get materialPreparedChildNext => 'Check quantity, workshop and owner in the selected rows, then generate the production plan. Approval is required before release.';
+  String get materialPreparedChildNext =>
+      'Check quantity, workshop and owner in the selected rows, then generate the production plan. Approval is required before release.';
 
   @override
-  String get materialPreparedChildNeedPlanner => 'A planner with production-plan generation permission must set quantity, workshop and owner and submit the plan.';
+  String get materialPreparedChildNeedPlanner =>
+      'A planner with production-plan generation permission must set quantity, workshop and owner and submit the plan.';
 
   @override
-  String get materialRouteMemoryLoading => 'Loading previous routes. Confirm after they are ready.';
+  String get materialRouteMemoryLoading =>
+      'Loading previous routes. Confirm after they are ready.';
 
   @override
-  String get materialRouteMemoryUnavailable => 'Previous routes could not be loaded. Review the displayed routes before confirming.';
+  String get materialRouteMemoryUnavailable =>
+      'Previous routes could not be loaded. Review the displayed routes before confirming.';
 
   @override
   String get materialRootSupply => 'Top-level supply task';
@@ -2980,7 +3081,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialRootRoutePending => 'Route pending';
 
   @override
-  String get materialRootExternalRoute => 'Issue this top-level product from its purchasing or subcontracting entry';
+  String get materialRootExternalRoute =>
+      'Issue this top-level product from its purchasing or subcontracting entry';
 
   @override
   String materialRootExistingStock(String quantity) {
@@ -3012,10 +3114,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialRevokeRootStock => 'Reverse stock allocation';
 
   @override
-  String get materialRootRevokeFailed => 'Stock allocation could not be reversed. Refresh and review it.';
+  String get materialRootRevokeFailed =>
+      'Stock allocation could not be reversed. Refresh and review it.';
 
   @override
-  String get materialRootSupplyProcessed => 'Supply processed. Review the stock handovers and additional demand records.';
+  String get materialRootSupplyProcessed =>
+      'Supply processed. Review the stock handovers and additional demand records.';
 
   @override
   String get orderChangeQtyButton => 'Change Qty';
@@ -3024,7 +3128,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get orderChangeQtyTitle => 'Order Qty Change';
 
   @override
-  String get orderChangeQtyWarning => 'Changes after approval take effect immediately and automatically re-enter finance review; finance will see the change list (before → after). Rejection does not restore quantities.';
+  String get orderChangeQtyWarning =>
+      'Changes after approval take effect immediately and automatically re-enter finance review; finance will see the change list (before → after). Rejection does not restore quantities.';
 
   @override
   String orderChangeQtyCurrent(String qty) {
@@ -3038,13 +3143,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get orderChangeQtyConfirm => 'Confirm Change';
 
   @override
-  String get orderChangeQtyInvalid => 'Some quantities are invalid (must be greater than 0). Please check.';
+  String get orderChangeQtyInvalid =>
+      'Some quantities are invalid (must be greater than 0). Please check.';
 
   @override
-  String get orderChangeQtySuccess => 'Quantities changed; the order has re-entered finance review';
+  String get orderChangeQtySuccess =>
+      'Quantities changed; the order has re-entered finance review';
 
   @override
-  String get orderChangeQtyFailed => 'Failed to change quantities. Please try again later.';
+  String get orderChangeQtyFailed =>
+      'Failed to change quantities. Please try again later.';
 
   @override
   String orderQtyChangeOld(String value) {
@@ -3070,94 +3178,123 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get procurementApprovalQtyChangesHint => 'Quantities were changed after finance approval and the order has automatically re-entered review; please verify each line (before → after) before reviewing.';
+  String get procurementApprovalQtyChangesHint =>
+      'Quantities were changed after finance approval and the order has automatically re-entered review; please verify each line (before → after) before reviewing.';
 
   @override
   String get productionMaterialRecheck => 'Recheck material readiness';
 
   @override
-  String get productionMaterialRecheckReady => 'Materials are ready. Draw orders were created for the actual warehouses. Start after all materials have been issued.';
+  String get productionMaterialRecheckReady =>
+      'Materials are ready. Draw orders were created for the actual warehouses. Start after all materials have been issued.';
 
   @override
-  String get productionMaterialRecheckWaiting => 'Materials are still short. Check completed stock receipts and reservations for other tasks.';
+  String get productionMaterialRecheckWaiting =>
+      'Materials are still short. Check completed stock receipts and reservations for other tasks.';
 
   @override
-  String get fieldAutofilledReview => 'Filled from a previous record or default. Please review before use.';
+  String get fieldAutofilledReview =>
+      'Filled from a previous record or default. Please review before use.';
 
   @override
-  String get workflowQuantityHint => 'Enter this quantity in the row unit. Do not mix boxes, pieces or kilograms; a linked source must have enough available quantity.';
+  String get workflowQuantityHint =>
+      'Enter this quantity in the row unit. Do not mix boxes, pieces or kilograms; a linked source must have enough available quantity.';
 
   @override
-  String get workflowOrderQuantityHint => 'Enter the ordered quantity in the row unit. Editing is locked during finance review; changes after approval require a new review.';
+  String get workflowOrderQuantityHint =>
+      'Enter the ordered quantity in the row unit. Editing is locked during finance review; changes after approval require a new review.';
 
   @override
-  String get workflowReturnQuantityHint => 'Use the original shipment line unit for the actual returned quantity. Do not exceed the remaining returnable quantity. Approved returns await inspection before becoming saleable stock.';
+  String get workflowReturnQuantityHint =>
+      'Use the original shipment line unit for the actual returned quantity. Do not exceed the remaining returnable quantity. Approved returns await inspection before becoming saleable stock.';
 
   @override
-  String get workflowPriceHint => 'Enter the price per row unit in its currency. The line amount follows quantity; do not enter the line total as a unit price.';
+  String get workflowPriceHint =>
+      'Enter the price per row unit in its currency. The line amount follows quantity; do not enter the line total as a unit price.';
 
   @override
-  String get workflowReturnPriceHint => 'Return credit is calculated at approval from the original shipment and prior returns. A reference price cannot increase the refundable amount.';
+  String get workflowReturnPriceHint =>
+      'Return credit is calculated at approval from the original shipment and prior returns. A reference price cannot increase the refundable amount.';
 
   @override
-  String get workflowDiscountHint => 'Use a decimal multiplier: 1 is full price and 0.9 means 10% off. Do not enter 9 or 90.';
+  String get workflowDiscountHint =>
+      'Use a decimal multiplier: 1 is full price and 0.9 means 10% off. Do not enter 9 or 90.';
 
   @override
-  String get workflowExchangeRateHint => 'Enter the base-currency value of one unit of the original currency, with up to 6 decimals. Check any prefilled rate for this transaction.';
+  String get workflowExchangeRateHint =>
+      'Enter the base-currency value of one unit of the original currency, with up to 6 decimals. Check any prefilled rate for this transaction.';
 
   @override
-  String get workflowTaxRateHint => 'Enter a percentage: 13 means 13%. Do not enter 0.13.';
+  String get workflowTaxRateHint =>
+      'Enter a percentage: 13 means 13%. Do not enter 0.13.';
 
   @override
-  String get workflowCurrencyHint => 'The currency defines this line’s prices and amounts. Check the source document before changing it.';
+  String get workflowCurrencyHint =>
+      'The currency defines this line’s prices and amounts. Check the source document before changing it.';
 
   @override
-  String get workflowSettlementHint => 'Select the agreed supplier settlement terms. Different suppliers, currencies or terms may produce separate orders.';
+  String get workflowSettlementHint =>
+      'Select the agreed supplier settlement terms. Different suppliers, currencies or terms may produce separate orders.';
 
   @override
-  String get workflowPlanningQuantityHint => 'This is the quantity to arrange now, not the received quantity. Incoming supply is not stock, and issuing a task does not make it ready to start.';
+  String get workflowPlanningQuantityHint =>
+      'This is the quantity to arrange now, not the received quantity. Incoming supply is not stock, and issuing a task does not make it ready to start.';
 
   @override
-  String get workflowWorkshopQuantityHint => 'Enter the quantity assigned to the workshop now. Dispatch can happen first; starting and material issue still require the necessary materials and state.';
+  String get workflowWorkshopQuantityHint =>
+      'Enter the quantity assigned to the workshop now. Dispatch can happen first; starting and material issue still require the necessary materials and state.';
 
   @override
-  String get workflowReportQuantityHint => 'Enter the output completed this time in the plan-line unit, not cumulative output. Approved reporting still requires warehouse registration, quality inspection and stock-in.';
+  String get workflowReportQuantityHint =>
+      'Enter the output completed this time in the plan-line unit, not cumulative output. Approved reporting still requires warehouse registration, quality inspection and stock-in.';
 
   @override
-  String get workflowArrivalQuantityHint => 'Enter the actual quantity received now in the row unit, including shortages or excess. Quantity above approval enters exception handling rather than available stock.';
+  String get workflowArrivalQuantityHint =>
+      'Enter the actual quantity received now in the row unit, including shortages or excess. Quantity above approval enters exception handling rather than available stock.';
 
   @override
-  String get workflowIqcPassHint => 'Enter only the quantity passed this time. Passed plus failed quantity must not exceed the uninspected balance; warehouse confirmation is still needed for stock-in.';
+  String get workflowIqcPassHint =>
+      'Enter only the quantity passed this time. Passed plus failed quantity must not exceed the uninspected balance; warehouse confirmation is still needed for stock-in.';
 
   @override
-  String get workflowIqcFailHint => 'Enter only the quantity failed this time. It does not become available stock and still needs return, rework or another disposition.';
+  String get workflowIqcFailHint =>
+      'Enter only the quantity failed this time. It does not become available stock and still needs return, rework or another disposition.';
 
   @override
-  String get workflowPrepaymentAmountHint => 'Enter the advance payment actually received in the order currency. Receipt is recorded once; later applying it to receivables does not record another cash receipt.';
+  String get workflowPrepaymentAmountHint =>
+      'Enter the advance payment actually received in the order currency. Receipt is recorded once; later applying it to receivables does not record another cash receipt.';
 
   @override
-  String get workflowReceiptAllocationHint => 'Allocate this receipt to the receivable in its original currency, up to its collectible balance. Do not allocate the same received money twice.';
+  String get workflowReceiptAllocationHint =>
+      'Allocate this receipt to the receivable in its original currency, up to its collectible balance. Do not allocate the same received money twice.';
 
   @override
-  String get workflowBankFeeHint => 'Enter the actual bank fee. A fee deducted from the receipt must not also be recorded as a separate payment.';
+  String get workflowBankFeeHint =>
+      'Enter the actual bank fee. A fee deducted from the receipt must not also be recorded as a separate payment.';
 
   @override
-  String get workflowOtherFeeHint => 'Enter only other fees for this receipt and select their expense category. Do not record a fee twice.';
+  String get workflowOtherFeeHint =>
+      'Enter only other fees for this receipt and select their expense category. Do not record a fee twice.';
 
   @override
-  String get workflowReturnReasonHint => 'Describe the return reason and original shipment. Approval creates a credit awaiting disposition and quarantines the goods; refund or replacement decisions are separate.';
+  String get workflowReturnReasonHint =>
+      'Describe the return reason and original shipment. Approval creates a credit awaiting disposition and quarantines the goods; refund or replacement decisions are separate.';
 
   @override
-  String get workflowPrepaymentOrderHint => 'Select the sales order for this advance payment. Its customer and currency are inherited; change the order if the source is wrong.';
+  String get workflowPrepaymentOrderHint =>
+      'Select the sales order for this advance payment. Its customer and currency are inherited; change the order if the source is wrong.';
 
   @override
-  String get workflowPrepaymentApplyHint => 'Explain which advance payment covers which receivables and why. Applying it adjusts balances without recording another cash receipt.';
+  String get workflowPrepaymentApplyHint =>
+      'Explain which advance payment covers which receivables and why. Applying it adjusts balances without recording another cash receipt.';
 
   @override
-  String get workflowFinanceReviewHint => 'Record your review. Compare before and after values for changed orders. Finance approval does not mean payment, shipment or production has occurred.';
+  String get workflowFinanceReviewHint =>
+      'Record your review. Compare before and after values for changed orders. Finance approval does not mean payment, shipment or production has occurred.';
 
   @override
-  String get workflowFinanceRejectHint => 'State what is wrong and what must change. Sales receives this reason and can resubmit after correction.';
+  String get workflowFinanceRejectHint =>
+      'State what is wrong and what must change. Sales receives this reason and can resubmit after correction.';
 
   @override
   String get workflowOptionalDetails => 'Additional details (optional)';
@@ -3201,16 +3338,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get moneySummaryExpectedNewCash => 'Estimated new payment needed';
 
   @override
-  String get moneySummaryBalanceHint => 'Finance must confirm how this balance is applied or refunded. It does not mean a refund has been paid.';
+  String get moneySummaryBalanceHint =>
+      'Finance must confirm how this balance is applied or refunded. It does not mean a refund has been paid.';
 
   @override
-  String get moneySummaryCollectionHint => 'Estimated from current receivables, future shipments and unused advances. No credit or refund is applied automatically.';
+  String get moneySummaryCollectionHint =>
+      'Estimated from current receivables, future shipments and unused advances. No credit or refund is applied automatically.';
 
   @override
-  String get moneySummarySourceHint => 'Amounts come from approved documents. Customer payments may include deducted fees; bank cash received is shown in account transactions.';
+  String get moneySummarySourceHint =>
+      'Amounts come from approved documents. Customer payments may include deducted fees; bank cash received is shown in account transactions.';
 
   @override
-  String get moneySummaryUnallocatedHint => 'Some payments have not been matched to this order. Finance needs to reconcile them.';
+  String get moneySummaryUnallocatedHint =>
+      'Some payments have not been matched to this order. Finance needs to reconcile them.';
 
   @override
   String get warehouseArrivalSourceLabel => 'Arrival source';
@@ -3225,13 +3366,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseArrivalSourceReplacement => 'Replace returns first';
 
   @override
-  String get warehouseArrivalSourceHint => 'The system identifies the source when only one is available. If both normal arrivals and returned goods are outstanding, select the source of this batch. Replace returns first fills the returned quantity first; any remainder is a normal arrival. Whether replacement is free or billed follows the original return resolution.';
+  String get warehouseArrivalSourceHint =>
+      'The system identifies the source when only one is available. If both normal arrivals and returned goods are outstanding, select the source of this batch. Replace returns first fills the returned quantity first; any remainder is a normal arrival. Whether replacement is free or billed follows the original return resolution.';
 
   @override
   String get subcontractPreparationWarehouse => 'Internal production warehouse';
 
   @override
-  String get subcontractPreparationWarehouseHint => 'For a direct subcontract order with components and insufficient stock, select the warehouse for internal production receipts. Planning receives the shortage; finance submission becomes available after actual receipt. Optional when there are no components or stock is sufficient.';
+  String get subcontractPreparationWarehouseHint =>
+      'For a direct subcontract order with components and insufficient stock, select the warehouse for internal production receipts. Planning receives the shortage; finance submission becomes available after actual receipt. Optional when there are no components or stock is sufficient.';
 
   @override
   String get subcontractInternalProduction => 'Internal production';
@@ -3246,7 +3389,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get subcontractOpenPreparation => 'View production plan';
 
   @override
-  String get subcontractDraftPreparationHint => 'Planning arranges internal production first. Submit to finance after the goods are received into stock.';
+  String get subcontractDraftPreparationHint =>
+      'Planning arranges internal production first. Submit to finance after the goods are received into stock.';
 
   @override
   String get subcontractWaitingPlan => 'Waiting for planning';
@@ -3255,28 +3399,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String get subcontractReadyForFinance => 'Ready for finance submission';
 
   @override
-  String get materialIssuedPlanSyncPending => 'Issued; waiting for plan progress to sync';
+  String get materialIssuedPlanSyncPending =>
+      'Issued; waiting for plan progress to sync';
 
   @override
-  String get subcontractOrderBlockedProducing => 'Production is in progress. Subcontract ordering is not available yet.';
+  String get subcontractOrderBlockedProducing =>
+      'Production is in progress. Subcontract ordering is not available yet.';
 
   @override
-  String get subcontractOrderBlockedPreparation => 'Preparation is not complete. Subcontract ordering is not available yet.';
+  String get subcontractOrderBlockedPreparation =>
+      'Preparation is not complete. Subcontract ordering is not available yet.';
 
   @override
-  String get subcontractOrderBlockedNotification => 'Production is complete. Notify subcontracting before placing the order.';
+  String get subcontractOrderBlockedNotification =>
+      'Production is complete. Notify subcontracting before placing the order.';
 
   @override
-  String get subcontractOrderBlockedCancelled => 'The production task was cancelled. Subcontract ordering is unavailable.';
+  String get subcontractOrderBlockedCancelled =>
+      'The production task was cancelled. Subcontract ordering is unavailable.';
 
   @override
   String get subcontractPlanIssuedDate => 'Task issue date';
 
   @override
-  String get subcontractPlanIssuedDateHint => 'The date planning first issued this subcontract task.';
+  String get subcontractPlanIssuedDateHint =>
+      'The date planning first issued this subcontract task.';
 
   @override
-  String get subcontractOrderBlockedRefresh => 'Subcontracting has been notified. Refresh the task list before ordering.';
+  String get subcontractOrderBlockedRefresh =>
+      'Subcontracting has been notified. Refresh the task list before ordering.';
 
   @override
   String get serverStatusTitle => 'Server status';
@@ -3285,7 +3436,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverStatusRefresh => 'Refresh';
 
   @override
-  String get serverStatusAccessRequired => 'You do not have permission to view server status';
+  String get serverStatusAccessRequired =>
+      'You do not have permission to view server status';
 
   @override
   String get serverStatusResources => 'Resources';
@@ -3300,16 +3452,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverStatusOverview => 'Health overview';
 
   @override
-  String get serverStatusOverviewHint => 'Based on the server’s latest collected measurements.';
+  String get serverStatusOverviewHint =>
+      'Based on the server’s latest collected measurements.';
 
   @override
-  String get serverStatusCollecting => 'Waiting for the server to collect measurements.';
+  String get serverStatusCollecting =>
+      'Waiting for the server to collect measurements.';
 
   @override
-  String get serverStatusStale => 'Measurements are out of date. Waiting for a new sample.';
+  String get serverStatusStale =>
+      'Measurements are out of date. Waiting for a new sample.';
 
   @override
-  String get serverStatusRefreshFailed => 'Unable to update. Previous measurements are for reference only; try refreshing shortly.';
+  String get serverStatusRefreshFailed =>
+      'Unable to update. Previous measurements are for reference only; try refreshing shortly.';
 
   @override
   String get serverStatusUpdatedAt => 'Collected at';
@@ -3356,7 +3512,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverStatusDatabase => 'Database';
 
   @override
-  String get serverStatusDatabaseHint => 'Database responsiveness and current connection count.';
+  String get serverStatusDatabaseHint =>
+      'Database responsiveness and current connection count.';
 
   @override
   String get serverStatusResponse => 'Response time';
@@ -3377,7 +3534,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverStatusAttention => 'Needs attention';
 
   @override
-  String get serverStatusNotCollected => 'This measurement is not available yet';
+  String get serverStatusNotCollected =>
+      'This measurement is not available yet';
 
   @override
   String serverStatusUptimeValue(int days, int hours, int minutes) {
@@ -3385,7 +3543,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get serverStatusThresholdUnknown => 'No alert thresholds are available';
+  String get serverStatusThresholdUnknown =>
+      'No alert thresholds are available';
 
   @override
   String serverStatusThresholds(String warning, String critical) {
@@ -3405,7 +3564,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverStatusUnknown => 'Unknown';
 
   @override
-  String get attachmentUploadFormatsHint => 'Images / PDF / Office / zip / txt, up to 25MB per file';
+  String get attachmentUploadFormatsHint =>
+      'Images / PDF / Office / zip / txt, up to 25MB per file';
 
   @override
   String attachmentUploadedFile(String fileName) {
@@ -3418,7 +3578,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get productionMaterialRecheckHelp => 'Recheck qualified receipts for this task and available stock. This does not receive stock or record actual consumption.';
+  String get productionMaterialRecheckHelp =>
+      'Recheck qualified receipts for this task and available stock. This does not receive stock or record actual consumption.';
 
   @override
   String get productionMaterialRegisterUsage => 'Record actual usage';

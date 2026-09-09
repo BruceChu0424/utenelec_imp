@@ -114,13 +114,15 @@ class AppLocalizationsKo extends AppLocalizations {
   String get loginServerRecoveryAction => '자동 서버 선택 복원';
 
   @override
-  String get loginServerRecoveryHint => '네트워크를 변경했거나 로그인에 실패할 때 사용하세요. 앱에 내장된 신뢰할 수 있는 사내 및 클라우드 주소만 사용합니다.';
+  String get loginServerRecoveryHint =>
+      '네트워크를 변경했거나 로그인에 실패할 때 사용하세요. 앱에 내장된 신뢰할 수 있는 사내 및 클라우드 주소만 사용합니다.';
 
   @override
   String get loginServerRecoverySuccess => '자동 서버 선택이 복원되었습니다. 다시 로그인해 주세요.';
 
   @override
-  String get loginServerRecoveryFailed => '서버 선택을 복원하지 못했습니다. 다시 시도하거나 관리자에게 문의하세요.';
+  String get loginServerRecoveryFailed =>
+      '서버 선택을 복원하지 못했습니다. 다시 시도하거나 관리자에게 문의하세요.';
 
   @override
   String get loginFooter => '© 2026 우텅 통합 관리 플랫폼';
@@ -427,7 +429,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get visitorApplyValidateVisitTimeFuture => '방문 시간은 현재 이후여야 합니다';
 
   @override
-  String get visitorApplyDuplicateTime => '같은 시간에 진행 중인 예약이 있습니다. 다른 시간을 선택해 주세요';
+  String get visitorApplyDuplicateTime =>
+      '같은 시간에 진행 중인 예약이 있습니다. 다른 시간을 선택해 주세요';
 
   @override
   String get visitorApplySuccess => '제출되었습니다. 승인을 기다려 주세요';
@@ -891,7 +894,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get employeeOnboardSubmitFailed => '제출에 실패했습니다. 다시 시도해 주세요';
 
   @override
-  String get employeeOnboardNote => '제출 시 사번(UT 접두사)이 자동 생성되고, 휴대전화번호가 로그인 계정으로 사용되며, 1회성 비밀번호(신분증 뒤 6자리)가 발급됩니다. 최초 로그인 시 반드시 변경해야 합니다.';
+  String get employeeOnboardNote =>
+      '제출 시 사번(UT 접두사)이 자동 생성되고, 휴대전화번호가 로그인 계정으로 사용되며, 1회성 비밀번호(신분증 뒤 6자리)가 발급됩니다. 최초 로그인 시 반드시 변경해야 합니다.';
 
   @override
   String get employeeOnboardCodeAutoNote => '사번은 제출 시 자동 생성됩니다(UT 접두사, 고유 증가)';
@@ -929,7 +933,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get employeeOnboardCredentialTitle => '계정이 생성되었습니다';
 
   @override
-  String get employeeOnboardCredentialWarning => '이 임시 비밀번호는 한 번만 표시됩니다. 지금 안전하게 전달하세요. 닫은 후에는 평문을 다시 볼 수 없습니다.';
+  String get employeeOnboardCredentialWarning =>
+      '이 임시 비밀번호는 한 번만 표시됩니다. 지금 안전하게 전달하세요. 닫은 후에는 평문을 다시 볼 수 없습니다.';
 
   @override
   String get employeeOnboardAccountLabel => '로그인 계정';
@@ -1072,7 +1077,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get employeeUnlockAccountSuccess => '계정 잠금이 해제되었습니다';
 
   @override
-  String get employeeProvisionConfirm => '이 직원의 로그인 계정을 개통합니다. 계정은 기본적으로 휴대폰 번호, 초기 비밀번호는 신분증 번호 마지막 6자리이며 첫 로그인 시 변경해야 합니다. 계속하시겠습니까?';
+  String get employeeProvisionConfirm =>
+      '이 직원의 로그인 계정을 개통합니다. 계정은 기본적으로 휴대폰 번호, 초기 비밀번호는 신분증 번호 마지막 6자리이며 첫 로그인 시 변경해야 합니다. 계속하시겠습니까?';
 
   @override
   String get employeeTransferTitle => '부서 이동';
@@ -1347,7 +1353,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get payrollItemTax => '소득세 (-5%)';
 
   @override
-  String get payrollSubmitNote => '제출 후 재무 검토 단계로 넘어갑니다. 승인되면 인사가 직원에게 명세서를 전달합니다.';
+  String get payrollSubmitNote =>
+      '제출 후 재무 검토 단계로 넘어갑니다. 승인되면 인사가 직원에게 명세서를 전달합니다.';
 
   @override
   String get payrollSubmitButton => '검토 제출';
@@ -1485,7 +1492,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get noticePublishContentLabel => '본문';
 
   @override
-  String get noticePublishUrgentHint => '긴급 공지는 최우선 알림을 사용합니다. 즉시 주의가 필요한 경우에만 사용하세요.';
+  String get noticePublishUrgentHint =>
+      '긴급 공지는 최우선 알림을 사용합니다. 즉시 주의가 필요한 경우에만 사용하세요.';
 
   @override
   String get noticePublishTopPriorityHint => '고정된 공지는 먼저 표시되며 중요 알림으로 전달됩니다.';
@@ -1494,7 +1502,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get noticePublishScopeSelected => '선택된 대상';
 
   @override
-  String get noticePublishScopeSelectedHint => '부서와 인원을 함께 선택할 수 있습니다. 부서는 하위 조직을 포함하며 중복 수신자는 자동 제거됩니다.';
+  String get noticePublishScopeSelectedHint =>
+      '부서와 인원을 함께 선택할 수 있습니다. 부서는 하위 조직을 포함하며 중복 수신자는 자동 제거됩니다.';
 
   @override
   String get noticePublishDepartmentsLabel => '수신 부서 (여러 개 선택)';
@@ -1532,12 +1541,16 @@ class AppLocalizationsKo extends AppLocalizations {
   String get noticePublishValidateAudience => '하나 이상의 부서 또는 인원을 선택하세요';
 
   @override
-  String noticePublishAudienceSummary(Object departmentCount, Object employeeCount) {
+  String noticePublishAudienceSummary(
+    Object departmentCount,
+    Object employeeCount,
+  ) {
     return '부서 $departmentCount개, 인원 $employeeCount명 선택됨';
   }
 
   @override
-  String get noticePublishAudienceRecalculateHint => '게시 전 현재 조직과 계정 상태를 기준으로 실제 수신자 수를 다시 계산합니다.';
+  String get noticePublishAudienceRecalculateHint =>
+      '게시 전 현재 조직과 계정 상태를 기준으로 실제 수신자 수를 다시 계산합니다.';
 
   @override
   String noticePublishConfirmAudience(Object summary, Object count) {
@@ -1824,7 +1837,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get profileChangeConflict => '누군가에 의해 기록이 업데이트되었습니다. 새로고침 후 다시 시도하세요';
 
   @override
-  String get profileChangeRateLimited => '지난 24시간 내 이 항목의 변경을 이미 제출했습니다. 처리를 기다려 주세요';
+  String get profileChangeRateLimited =>
+      '지난 24시간 내 이 항목의 변경을 이미 제출했습니다. 처리를 기다려 주세요';
 
   @override
   String get profileChangeListTitle => '내 변경 요청';
@@ -1996,7 +2010,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get profileFieldGroupOrganization => '조직 정보';
 
   @override
-  String get profileEditPolicyHint => '녹색 \'직접 수정\' 필드는 제출 즉시 적용되고, 노란색 필드는 인사 검토 후 적용됩니다. 나머지 필드는 인사에서 관리합니다.';
+  String get profileEditPolicyHint =>
+      '녹색 \'직접 수정\' 필드는 제출 즉시 적용되고, 노란색 필드는 인사 검토 후 적용됩니다. 나머지 필드는 인사에서 관리합니다.';
 
   @override
   String profileEditPendingConflictHint(int count) {
@@ -2642,7 +2657,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get impersonationEnterPasswordTitle => '사용자 전환 확인';
 
   @override
-  String get impersonationEnterPasswordHint => '보안을 위해 로그인 비밀번호를 입력하세요. 통과 후 15분간 자유롭게 전환할 수 있습니다.';
+  String get impersonationEnterPasswordHint =>
+      '보안을 위해 로그인 비밀번호를 입력하세요. 통과 후 15분간 자유롭게 전환할 수 있습니다.';
 
   @override
   String get impersonationPasswordLabel => '로그인 비밀번호';
@@ -2694,7 +2710,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get exportDialogTitle => 'Excel 내보내기';
 
   @override
-  String get exportPasswordOptionalHint => '비밀번호는 선택 사항입니다. 비워 두면 일반 Excel 파일로, 1–128자를 입력하면 암호화하여 다운로드합니다.';
+  String get exportPasswordOptionalHint =>
+      '비밀번호는 선택 사항입니다. 비워 두면 일반 Excel 파일로, 1–128자를 입력하면 암호화하여 다운로드합니다.';
 
   @override
   String get exportPasswordOptionalLabel => '열기 비밀번호(선택, 1–128자)';
@@ -2737,7 +2754,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get profileUnboundTitle => '현재 계정에 직원 기록이 연결되어 있지 않습니다';
 
   @override
-  String get profileUnboundDescription => '관리자 또는 인사 담당자에게 계정과 직원 기록 연결을 요청하세요.';
+  String get profileUnboundDescription =>
+      '관리자 또는 인사 담당자에게 계정과 직원 기록 연결을 요청하세요.';
 
   @override
   String get profileSessionUnavailable => '로그인하지 않았거나 세션을 사용할 수 없습니다';
@@ -2770,10 +2788,12 @@ class AppLocalizationsKo extends AppLocalizations {
   String get profileScopeNoticeTitle => '정보 범위 안내';
 
   @override
-  String get profileCompensationBoundaryDescription => '급여와 은행 정보는 개인정보 보호를 위해 내 정보 화면에 표시하지 않습니다. 월별 소득은 급여명세서에서 확인하고, 그 밖의 문의는 권한이 있는 인사 담당자에게 하세요.';
+  String get profileCompensationBoundaryDescription =>
+      '급여와 은행 정보는 개인정보 보호를 위해 내 정보 화면에 표시하지 않습니다. 월별 소득은 급여명세서에서 확인하고, 그 밖의 문의는 권한이 있는 인사 담당자에게 하세요.';
 
   @override
-  String get profileMissingEmergencyContact => '등록된 비상 연락처가 없습니다. 먼저 인사 담당자에게 등록을 요청한 뒤 여기에서 변경을 신청하세요.';
+  String get profileMissingEmergencyContact =>
+      '등록된 비상 연락처가 없습니다. 먼저 인사 담당자에게 등록을 요청한 뒤 여기에서 변경을 신청하세요.';
 
   @override
   String profileAlternatePhoneCount(int count) {
@@ -2787,10 +2807,12 @@ class AppLocalizationsKo extends AppLocalizations {
   String get historyEventConfirm => '정규 전환';
 
   @override
-  String get accountProvisionPermissionDenied => '계정 개통 권한이 없습니다. 계정 지원 담당자에게 문의하세요.';
+  String get accountProvisionPermissionDenied =>
+      '계정 개통 권한이 없습니다. 계정 지원 담당자에게 문의하세요.';
 
   @override
-  String get accountProvisionAlreadyExists => '이미 계정이 있거나 계정이 비활성 상태이므로 다시 개통할 수 없습니다.';
+  String get accountProvisionAlreadyExists =>
+      '이미 계정이 있거나 계정이 비활성 상태이므로 다시 개통할 수 없습니다.';
 
   @override
   String get accountProvisionConfirmTitle => '계정 개통 확인';
@@ -2808,13 +2830,16 @@ class AppLocalizationsKo extends AppLocalizations {
   String get accountStatusInactive => '계정 비활성';
 
   @override
-  String get pagePermissionAccountNotProvisionedTitle => '이 직원은 아직 계정이 없어 권한을 설정할 수 없습니다';
+  String get pagePermissionAccountNotProvisionedTitle =>
+      '이 직원은 아직 계정이 없어 권한을 설정할 수 없습니다';
 
   @override
-  String get pagePermissionAccountNotProvisionedCanProvision => '먼저 로그인 계정을 개통하세요. 일회성 자격 증명을 저장하면 권한 상세가 자동으로 로드됩니다.';
+  String get pagePermissionAccountNotProvisionedCanProvision =>
+      '먼저 로그인 계정을 개통하세요. 일회성 자격 증명을 저장하면 권한 상세가 자동으로 로드됩니다.';
 
   @override
-  String get pagePermissionAccountNotProvisionedNoAccess => '계정 지원 권한이 있는 담당자에게 로그인 계정 개통을 요청하세요.';
+  String get pagePermissionAccountNotProvisionedNoAccess =>
+      '계정 지원 권한이 있는 담당자에게 로그인 계정 개통을 요청하세요.';
 
   @override
   String get employeePermissionSettingsTooltip => '직원 권한 설정';
@@ -2826,13 +2851,15 @@ class AppLocalizationsKo extends AppLocalizations {
   String get employeeResignedCannotProvision => '퇴사한 직원에게는 로그인 계정을 개통할 수 없습니다';
 
   @override
-  String get employeeAccountNotProvisionedContactSupport => '이 직원은 아직 계정이 없습니다. 계정 지원 담당자에게 문의하세요.';
+  String get employeeAccountNotProvisionedContactSupport =>
+      '이 직원은 아직 계정이 없습니다. 계정 지원 담당자에게 문의하세요.';
 
   @override
   String get materialMainWarehouse => 'Main warehouse';
 
   @override
-  String get materialWarehouseScopeExplanation => '계획은 주창고 합계로 확인하고, 실제 출고 위치는 창고에서 처리합니다.';
+  String get materialWarehouseScopeExplanation =>
+      '계획은 주창고 합계로 확인하고, 실제 출고 위치는 창고에서 처리합니다.';
 
   @override
   String get materialSearchHint => 'Search products or materials';
@@ -2859,16 +2886,19 @@ class AppLocalizationsKo extends AppLocalizations {
   String get materialAllocated => '준비 수량';
 
   @override
-  String get materialPreparedQuantityHint => '이번 생산분에 배정된 합격 자재 수량으로, 정식 예약 및 이미 출고한 자재를 포함합니다. 합격 입고는 한 번만 계산하며 검사 대기 및 입고 예정 수량은 제외합니다. 창고의 현재 잔량과는 다릅니다.';
+  String get materialPreparedQuantityHint =>
+      '이번 생산분에 배정된 합격 자재 수량으로, 정식 예약 및 이미 출고한 자재를 포함합니다. 합격 입고는 한 번만 계산하며 검사 대기 및 입고 예정 수량은 제외합니다. 창고의 현재 잔량과는 다릅니다.';
 
   @override
   String get materialShortage => 'Kit shortage';
 
   @override
-  String get materialPhysicalShortageHint => '이번 생산분에 배정된 합격 자재를 제외한 실제 부족 수량입니다. 구매, 외주 또는 작업 지시만으로는 줄어들지 않으며, 합격 입고 후 이번 생산분에 배정되어야 줄어듭니다. 추가 발주량은 입고 예정 수량을 별도로 차감하여 중복 발주를 방지합니다.';
+  String get materialPhysicalShortageHint =>
+      '이번 생산분에 배정된 합격 자재를 제외한 실제 부족 수량입니다. 구매, 외주 또는 작업 지시만으로는 줄어들지 않으며, 합격 입고 후 이번 생산분에 배정되어야 줄어듭니다. 추가 발주량은 입고 예정 수량을 별도로 차감하여 중복 발주를 방지합니다.';
 
   @override
-  String get materialSupplyProgressHint => '발주, 재무 승인, 도착, 검사 및 입고 진행을 추적합니다. 행을 두 번 클릭하면 상세 내용을 확인할 수 있습니다. 지시 후에도 실제 부족 수량은 유지되며 합격 입고 후 갱신됩니다.';
+  String get materialSupplyProgressHint =>
+      '발주, 재무 승인, 도착, 검사 및 입고 진행을 추적합니다. 행을 두 번 클릭하면 상세 내용을 확인할 수 있습니다. 지시 후에도 실제 부족 수량은 유지되며 합격 입고 후 갱신됩니다.';
 
   @override
   String get materialToSupply => 'Additional supply';
@@ -2896,7 +2926,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get materialRouteReasonTitle => 'Route reason (optional)';
 
   @override
-  String get materialRouteChangedRetry => 'Analysis updated. Review the selected routes and try again.';
+  String get materialRouteChangedRetry =>
+      'Analysis updated. Review the selected routes and try again.';
 
   @override
   String get materialWarehouseFacts => 'Warehouse and supply details';
@@ -2929,19 +2960,24 @@ class AppLocalizationsKo extends AppLocalizations {
   String get materialTaskEmpty => 'No tasks match this filter';
 
   @override
-  String get materialTaskBuyHint => 'Issue remaining purchasing demand and track orders, receipts and inspections.';
+  String get materialTaskBuyHint =>
+      'Issue remaining purchasing demand and track orders, receipts and inspections.';
 
   @override
-  String get materialTaskSubcontractHint => 'Issue remaining subcontracting demand; components first create workshop preparation tasks.';
+  String get materialTaskSubcontractHint =>
+      'Issue remaining subcontracting demand; components first create workshop preparation tasks.';
 
   @override
-  String get materialTaskWorkshopHint => 'Set quantity, workshop and owner before issuing. Material-short tasks wait until materials are ready and issued.';
+  String get materialTaskWorkshopHint =>
+      'Set quantity, workshop and owner before issuing. Material-short tasks wait until materials are ready and issued.';
 
   @override
-  String get materialTaskSectionHint => 'Manage preparation by route and review pending, issued and blocked tasks.';
+  String get materialTaskSectionHint =>
+      'Manage preparation by route and review pending, issued and blocked tasks.';
 
   @override
-  String get materialWarehouseLimit => 'An analysis supports at most 100 physical warehouses. Adjust the warehouse scope before analyzing.';
+  String get materialWarehouseLimit =>
+      'An analysis supports at most 100 physical warehouses. Adjust the warehouse scope before analyzing.';
 
   @override
   String materialRoutesNext(int count) {
@@ -2949,7 +2985,8 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get materialIssueNext => 'Next: open purchasing, subcontracting or workshop tasks to issue remaining demand and track issued work.';
+  String get materialIssueNext =>
+      'Next: open purchasing, subcontracting or workshop tasks to issue remaining demand and track issued work.';
 
   @override
   String materialWorkshopNext(int count) {
@@ -2962,16 +2999,20 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get materialPreparedChildNext => 'Check quantity, workshop and owner in the selected rows, then generate the production plan. Approval is required before release.';
+  String get materialPreparedChildNext =>
+      'Check quantity, workshop and owner in the selected rows, then generate the production plan. Approval is required before release.';
 
   @override
-  String get materialPreparedChildNeedPlanner => 'A planner with production-plan generation permission must set quantity, workshop and owner and submit the plan.';
+  String get materialPreparedChildNeedPlanner =>
+      'A planner with production-plan generation permission must set quantity, workshop and owner and submit the plan.';
 
   @override
-  String get materialRouteMemoryLoading => 'Loading previous routes. Confirm after they are ready.';
+  String get materialRouteMemoryLoading =>
+      'Loading previous routes. Confirm after they are ready.';
 
   @override
-  String get materialRouteMemoryUnavailable => 'Previous routes could not be loaded. Review the displayed routes before confirming.';
+  String get materialRouteMemoryUnavailable =>
+      'Previous routes could not be loaded. Review the displayed routes before confirming.';
 
   @override
   String get materialRootSupply => 'Top-level supply task';
@@ -2980,7 +3021,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get materialRootRoutePending => 'Route pending';
 
   @override
-  String get materialRootExternalRoute => 'Issue this top-level product from its purchasing or subcontracting entry';
+  String get materialRootExternalRoute =>
+      'Issue this top-level product from its purchasing or subcontracting entry';
 
   @override
   String materialRootExistingStock(String quantity) {
@@ -3012,10 +3054,12 @@ class AppLocalizationsKo extends AppLocalizations {
   String get materialRevokeRootStock => 'Reverse stock allocation';
 
   @override
-  String get materialRootRevokeFailed => 'Stock allocation could not be reversed. Refresh and review it.';
+  String get materialRootRevokeFailed =>
+      'Stock allocation could not be reversed. Refresh and review it.';
 
   @override
-  String get materialRootSupplyProcessed => 'Supply processed. Review the stock handovers and additional demand records.';
+  String get materialRootSupplyProcessed =>
+      'Supply processed. Review the stock handovers and additional demand records.';
 
   @override
   String get orderChangeQtyButton => '수량 변경';
@@ -3024,7 +3068,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get orderChangeQtyTitle => '주문 수량 변경';
 
   @override
-  String get orderChangeQtyWarning => '승인 후 수량 변경은 즉시 적용되며 자동으로 재무 재검토로 돌아갑니다. 재무는 변경 목록(이전→현재)을 확인합니다. 반려해도 수량이 자동 복원되지 않습니다.';
+  String get orderChangeQtyWarning =>
+      '승인 후 수량 변경은 즉시 적용되며 자동으로 재무 재검토로 돌아갑니다. 재무는 변경 목록(이전→현재)을 확인합니다. 반려해도 수량이 자동 복원되지 않습니다.';
 
   @override
   String orderChangeQtyCurrent(String qty) {
@@ -3070,94 +3115,121 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get procurementApprovalQtyChangesHint => '재무 승인 후 수량이 변경되어 자동으로 재검토 대기로 돌아갔습니다. 이전→현재를 한 줄씩 확인한 뒤 재검토해 주세요.';
+  String get procurementApprovalQtyChangesHint =>
+      '재무 승인 후 수량이 변경되어 자동으로 재검토 대기로 돌아갔습니다. 이전→현재를 한 줄씩 확인한 뒤 재검토해 주세요.';
 
   @override
   String get productionMaterialRecheck => '자재 준비 재확인';
 
   @override
-  String get productionMaterialRecheckReady => '자재가 준비되어 실제 창고별 출고 지시가 생성되었습니다. 자재 출고 완료 후 작업을 시작하세요.';
+  String get productionMaterialRecheckReady =>
+      '자재가 준비되어 실제 창고별 출고 지시가 생성되었습니다. 자재 출고 완료 후 작업을 시작하세요.';
 
   @override
-  String get productionMaterialRecheckWaiting => '아직 자재가 부족합니다. 실제 입고 및 다른 작업의 예약 수량을 확인하세요.';
+  String get productionMaterialRecheckWaiting =>
+      '아직 자재가 부족합니다. 실제 입고 및 다른 작업의 예약 수량을 확인하세요.';
 
   @override
   String get fieldAutofilledReview => '이전 기록 또는 기본값이 자동 입력되었습니다. 사용 전에 확인하세요.';
 
   @override
-  String get workflowQuantityHint => '이 행의 단위로 이번 수량을 입력하세요. 박스, 개, kg을 혼동하지 말고 연결된 원본의 가능 수량을 넘기지 마세요.';
+  String get workflowQuantityHint =>
+      '이 행의 단위로 이번 수량을 입력하세요. 박스, 개, kg을 혼동하지 말고 연결된 원본의 가능 수량을 넘기지 마세요.';
 
   @override
-  String get workflowOrderQuantityHint => '이 행의 단위로 주문 수량을 입력하세요. 재무 검토 중에는 수정할 수 없으며 승인 후 수정하면 다시 검토됩니다.';
+  String get workflowOrderQuantityHint =>
+      '이 행의 단위로 주문 수량을 입력하세요. 재무 검토 중에는 수정할 수 없으며 승인 후 수정하면 다시 검토됩니다.';
 
   @override
-  String get workflowReturnQuantityHint => '원래 출고 행의 단위로 실제 반품 수량을 입력하세요. 반품 가능 잔량을 넘길 수 없고 승인된 반품은 검사 후에야 판매 가능 재고가 됩니다.';
+  String get workflowReturnQuantityHint =>
+      '원래 출고 행의 단위로 실제 반품 수량을 입력하세요. 반품 가능 잔량을 넘길 수 없고 승인된 반품은 검사 후에야 판매 가능 재고가 됩니다.';
 
   @override
-  String get workflowPriceHint => '행의 단위와 통화에 맞는 단가를 입력하세요. 행 전체 금액을 단가로 입력하지 마세요.';
+  String get workflowPriceHint =>
+      '행의 단위와 통화에 맞는 단가를 입력하세요. 행 전체 금액을 단가로 입력하지 마세요.';
 
   @override
-  String get workflowReturnPriceHint => '반품 대변 금액은 승인 시 원래 출고 및 누적 반품 금액으로 계산됩니다. 참고 단가로 환급 가능 금액을 늘릴 수 없습니다.';
+  String get workflowReturnPriceHint =>
+      '반품 대변 금액은 승인 시 원래 출고 및 누적 반품 금액으로 계산됩니다. 참고 단가로 환급 가능 금액을 늘릴 수 없습니다.';
 
   @override
-  String get workflowDiscountHint => '할인 배수를 소수로 입력하세요. 1은 정상가, 0.9는 10% 할인입니다. 9나 90을 입력하지 마세요.';
+  String get workflowDiscountHint =>
+      '할인 배수를 소수로 입력하세요. 1은 정상가, 0.9는 10% 할인입니다. 9나 90을 입력하지 마세요.';
 
   @override
-  String get workflowExchangeRateHint => '원통화 1단위의 기준통화 금액을 소수 6자리 이내로 입력하세요. 자동 입력된 환율도 이번 거래와 대조하세요.';
+  String get workflowExchangeRateHint =>
+      '원통화 1단위의 기준통화 금액을 소수 6자리 이내로 입력하세요. 자동 입력된 환율도 이번 거래와 대조하세요.';
 
   @override
   String get workflowTaxRateHint => '백분율로 입력하세요. 13은 13%입니다. 0.13을 입력하지 마세요.';
 
   @override
-  String get workflowCurrencyHint => '통화는 이 행의 단가와 금액 기준입니다. 변경 전에 원본 문서를 확인하세요.';
+  String get workflowCurrencyHint =>
+      '통화는 이 행의 단가와 금액 기준입니다. 변경 전에 원본 문서를 확인하세요.';
 
   @override
-  String get workflowSettlementHint => '공급업체와 합의한 결제 조건을 선택하세요. 공급업체, 통화 또는 조건이 다르면 발주서가 나뉠 수 있습니다.';
+  String get workflowSettlementHint =>
+      '공급업체와 합의한 결제 조건을 선택하세요. 공급업체, 통화 또는 조건이 다르면 발주서가 나뉠 수 있습니다.';
 
   @override
-  String get workflowPlanningQuantityHint => '이번에 배정할 수량이며 실입고 수량이 아닙니다. 입고 예정 물량은 재고가 아니고 작업 지시만으로 착수 가능해지지 않습니다.';
+  String get workflowPlanningQuantityHint =>
+      '이번에 배정할 수량이며 실입고 수량이 아닙니다. 입고 예정 물량은 재고가 아니고 작업 지시만으로 착수 가능해지지 않습니다.';
 
   @override
-  String get workflowWorkshopQuantityHint => '이번에 작업장에 지시할 수량을 입력하세요. 지시는 먼저 할 수 있지만 착수와 자재 출고 조건은 별도로 충족해야 합니다.';
+  String get workflowWorkshopQuantityHint =>
+      '이번에 작업장에 지시할 수량을 입력하세요. 지시는 먼저 할 수 있지만 착수와 자재 출고 조건은 별도로 충족해야 합니다.';
 
   @override
-  String get workflowReportQuantityHint => '계획 행 단위로 이번 실제 완료량을 입력하세요. 누적 생산량이 아닙니다. 보고 승인 후에도 창고 등록, 품질 검사 및 입고가 필요합니다.';
+  String get workflowReportQuantityHint =>
+      '계획 행 단위로 이번 실제 완료량을 입력하세요. 누적 생산량이 아닙니다. 보고 승인 후에도 창고 등록, 품질 검사 및 입고가 필요합니다.';
 
   @override
-  String get workflowArrivalQuantityHint => '이 행 단위로 이번 실제 도착 수량을 입력하세요. 부족하거나 초과해도 실물대로 기록하며 승인 초과분은 예외 처리되고 가용 재고가 되지 않습니다.';
+  String get workflowArrivalQuantityHint =>
+      '이 행 단위로 이번 실제 도착 수량을 입력하세요. 부족하거나 초과해도 실물대로 기록하며 승인 초과분은 예외 처리되고 가용 재고가 되지 않습니다.';
 
   @override
-  String get workflowIqcPassHint => '이번 합격 수량만 입력하세요. 합격과 불합격 합계는 검사 잔량을 넘길 수 없으며 창고 입고 확인이 별도로 필요합니다.';
+  String get workflowIqcPassHint =>
+      '이번 합격 수량만 입력하세요. 합격과 불합격 합계는 검사 잔량을 넘길 수 없으며 창고 입고 확인이 별도로 필요합니다.';
 
   @override
-  String get workflowIqcFailHint => '이번 불합격 수량만 입력하세요. 가용 재고에 포함되지 않으며 반품, 재작업 등의 후속 처리가 필요합니다.';
+  String get workflowIqcFailHint =>
+      '이번 불합격 수량만 입력하세요. 가용 재고에 포함되지 않으며 반품, 재작업 등의 후속 처리가 필요합니다.';
 
   @override
-  String get workflowPrepaymentAmountHint => '주문 통화로 실제 받은 선수금을 입력하세요. 입금은 한 번만 기록되며 나중에 미수금에 충당해도 중복 입금으로 기록되지 않습니다.';
+  String get workflowPrepaymentAmountHint =>
+      '주문 통화로 실제 받은 선수금을 입력하세요. 입금은 한 번만 기록되며 나중에 미수금에 충당해도 중복 입금으로 기록되지 않습니다.';
 
   @override
-  String get workflowReceiptAllocationHint => '이번 입금을 해당 미수금의 원통화로 배분하세요. 수금 가능 잔액을 넘기거나 동일 입금을 중복 배분하지 마세요.';
+  String get workflowReceiptAllocationHint =>
+      '이번 입금을 해당 미수금의 원통화로 배분하세요. 수금 가능 잔액을 넘기거나 동일 입금을 중복 배분하지 마세요.';
 
   @override
-  String get workflowBankFeeHint => '이번 실제 은행 수수료를 입력하세요. 입금액에서 이미 공제한 수수료를 별도 지급으로 중복 기록하지 마세요.';
+  String get workflowBankFeeHint =>
+      '이번 실제 은행 수수료를 입력하세요. 입금액에서 이미 공제한 수수료를 별도 지급으로 중복 기록하지 마세요.';
 
   @override
-  String get workflowOtherFeeHint => '은행 수수료를 제외한 이번 비용만 입력하고 비용 항목을 선택하세요. 동일 비용을 중복 기록하지 마세요.';
+  String get workflowOtherFeeHint =>
+      '은행 수수료를 제외한 이번 비용만 입력하고 비용 항목을 선택하세요. 동일 비용을 중복 기록하지 마세요.';
 
   @override
-  String get workflowReturnReasonHint => '반품 사유와 원래 출고를 명확히 적으세요. 승인하면 처리 대기 대변 금액이 생기고 실물은 검사 대기 상태가 됩니다. 환불·교환 결정은 별도입니다.';
+  String get workflowReturnReasonHint =>
+      '반품 사유와 원래 출고를 명확히 적으세요. 승인하면 처리 대기 대변 금액이 생기고 실물은 검사 대기 상태가 됩니다. 환불·교환 결정은 별도입니다.';
 
   @override
-  String get workflowPrepaymentOrderHint => '선수금이 속한 판매 주문을 먼저 선택하세요. 고객과 통화는 주문에서 결정되며 잘못 선택했다면 주문을 바꾸세요.';
+  String get workflowPrepaymentOrderHint =>
+      '선수금이 속한 판매 주문을 먼저 선택하세요. 고객과 통화는 주문에서 결정되며 잘못 선택했다면 주문을 바꾸세요.';
 
   @override
-  String get workflowPrepaymentApplyHint => '어떤 선수금으로 어떤 미수금을 충당하는지 근거를 적으세요. 충당은 잔액만 조정하며 현금 입금을 다시 늘리지 않습니다.';
+  String get workflowPrepaymentApplyHint =>
+      '어떤 선수금으로 어떤 미수금을 충당하는지 근거를 적으세요. 충당은 잔액만 조정하며 현금 입금을 다시 늘리지 않습니다.';
 
   @override
-  String get workflowFinanceReviewHint => '검토 결과를 적고 수정 주문은 변경 전후를 비교하세요. 재무 승인은 수금·출고·생산 착수 사실을 의미하지 않습니다.';
+  String get workflowFinanceReviewHint =>
+      '검토 결과를 적고 수정 주문은 변경 전후를 비교하세요. 재무 승인은 수금·출고·생산 착수 사실을 의미하지 않습니다.';
 
   @override
-  String get workflowFinanceRejectHint => '잘못된 부분과 수정 방법을 적으세요. 영업 담당자에게 전달되며 수정 후 재검토를 요청할 수 있습니다.';
+  String get workflowFinanceRejectHint =>
+      '잘못된 부분과 수정 방법을 적으세요. 영업 담당자에게 전달되며 수정 후 재검토를 요청할 수 있습니다.';
 
   @override
   String get workflowOptionalDetails => '추가 정보(선택)';
@@ -3201,16 +3273,20 @@ class AppLocalizationsKo extends AppLocalizations {
   String get moneySummaryExpectedNewCash => '예상 추가 수금액';
 
   @override
-  String get moneySummaryBalanceHint => '대기 잔액의 상계 또는 환불은 재무 확인이 필요하며, 환불 완료를 의미하지 않습니다.';
+  String get moneySummaryBalanceHint =>
+      '대기 잔액의 상계 또는 환불은 재무 확인이 필요하며, 환불 완료를 의미하지 않습니다.';
 
   @override
-  String get moneySummaryCollectionHint => '현재 미수금, 향후 출하 및 미사용 선수금 기준 예상액이며 자동 상계나 환불은 이루어지지 않습니다.';
+  String get moneySummaryCollectionHint =>
+      '현재 미수금, 향후 출하 및 미사용 선수금 기준 예상액이며 자동 상계나 환불은 이루어지지 않습니다.';
 
   @override
-  String get moneySummarySourceHint => '금액은 승인된 전표 기준입니다. 고객 결제액에 공제 수수료가 포함될 수 있으며, 실제 은행 입금액은 계좌 거래를 확인하세요.';
+  String get moneySummarySourceHint =>
+      '금액은 승인된 전표 기준입니다. 고객 결제액에 공제 수수료가 포함될 수 있으며, 실제 은행 입금액은 계좌 거래를 확인하세요.';
 
   @override
-  String get moneySummaryUnallocatedHint => '일부 결제가 이 주문에 연결되지 않았습니다. 재무 확인이 필요합니다.';
+  String get moneySummaryUnallocatedHint =>
+      '일부 결제가 이 주문에 연결되지 않았습니다. 재무 확인이 필요합니다.';
 
   @override
   String get warehouseArrivalSourceLabel => '입고 출처';
@@ -3225,13 +3301,15 @@ class AppLocalizationsKo extends AppLocalizations {
   String get warehouseArrivalSourceReplacement => '반품 보충 우선';
 
   @override
-  String get warehouseArrivalSourceHint => '대기 중인 출처가 하나이면 자동으로 판별합니다. 정상 입고와 반품 보충이 함께 남아 있으면 이번 물품의 출처를 선택하세요. 반품 보충 우선은 반품 수량부터 채우고 나머지는 정상 입고로 처리합니다. 무상 보충 또는 재청구 여부는 원래 반품 처리 결과를 따릅니다.';
+  String get warehouseArrivalSourceHint =>
+      '대기 중인 출처가 하나이면 자동으로 판별합니다. 정상 입고와 반품 보충이 함께 남아 있으면 이번 물품의 출처를 선택하세요. 반품 보충 우선은 반품 수량부터 채우고 나머지는 정상 입고로 처리합니다. 무상 보충 또는 재청구 여부는 원래 반품 처리 결과를 따릅니다.';
 
   @override
   String get subcontractPreparationWarehouse => '내부 생산 입고 창고';
 
   @override
-  String get subcontractPreparationWarehouseHint => '직접 주문한 외주품에 하위 부품이 있고 재고가 부족하면 내부 생산 입고 창고를 선택하세요. 계획부가 부족량을 생산하고 실제 입고한 후 재무에 제출할 수 있습니다. 하위 부품이 없거나 재고가 충분하면 선택하지 않아도 됩니다.';
+  String get subcontractPreparationWarehouseHint =>
+      '직접 주문한 외주품에 하위 부품이 있고 재고가 부족하면 내부 생산 입고 창고를 선택하세요. 계획부가 부족량을 생산하고 실제 입고한 후 재무에 제출할 수 있습니다. 하위 부품이 없거나 재고가 충분하면 선택하지 않아도 됩니다.';
 
   @override
   String get subcontractInternalProduction => '내부 생산';
@@ -3246,7 +3324,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get subcontractOpenPreparation => '생산 계획 보기';
 
   @override
-  String get subcontractDraftPreparationHint => '계획부에서 먼저 내부 생산을 준비합니다. 실제 입고가 완료되면 재무에 제출하세요.';
+  String get subcontractDraftPreparationHint =>
+      '계획부에서 먼저 내부 생산을 준비합니다. 실제 입고가 완료되면 재무에 제출하세요.';
 
   @override
   String get subcontractWaitingPlan => '계획 대기';
@@ -3261,10 +3340,12 @@ class AppLocalizationsKo extends AppLocalizations {
   String get subcontractOrderBlockedProducing => '생산 중이므로 아직 외주 주문을 할 수 없습니다.';
 
   @override
-  String get subcontractOrderBlockedPreparation => '선행 생산이 완료되지 않아 아직 외주 주문을 할 수 없습니다.';
+  String get subcontractOrderBlockedPreparation =>
+      '선행 생산이 완료되지 않아 아직 외주 주문을 할 수 없습니다.';
 
   @override
-  String get subcontractOrderBlockedNotification => '선행 생산이 완료되었습니다. 외주에 통지한 후 주문하세요.';
+  String get subcontractOrderBlockedNotification =>
+      '선행 생산이 완료되었습니다. 외주에 통지한 후 주문하세요.';
 
   @override
   String get subcontractOrderBlockedCancelled => '생산 작업이 취소되어 외주 주문을 할 수 없습니다.';
@@ -3276,7 +3357,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get subcontractPlanIssuedDateHint => '계획부에서 이 외주 작업을 최초로 지시한 날짜입니다.';
 
   @override
-  String get subcontractOrderBlockedRefresh => '외주에 통지했습니다. 작업 목록을 새로 고친 후 주문하세요.';
+  String get subcontractOrderBlockedRefresh =>
+      '외주에 통지했습니다. 작업 목록을 새로 고친 후 주문하세요.';
 
   @override
   String get serverStatusTitle => '서버 상태';
@@ -3309,7 +3391,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get serverStatusStale => '데이터가 만료되었습니다. 새 수집 결과를 기다리고 있습니다.';
 
   @override
-  String get serverStatusRefreshFailed => '현재 업데이트할 수 없습니다. 이전 데이터는 참고용이며 잠시 후 새로 고침하세요.';
+  String get serverStatusRefreshFailed =>
+      '현재 업데이트할 수 없습니다. 이전 데이터는 참고용이며 잠시 후 새로 고침하세요.';
 
   @override
   String get serverStatusUpdatedAt => '수집 시각';
@@ -3405,7 +3488,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get serverStatusUnknown => '알 수 없음';
 
   @override
-  String get attachmentUploadFormatsHint => '이미지 / PDF / Office / zip / txt, 파일당 최대 25MB';
+  String get attachmentUploadFormatsHint =>
+      '이미지 / PDF / Office / zip / txt, 파일당 최대 25MB';
 
   @override
   String attachmentUploadedFile(String fileName) {
@@ -3418,7 +3502,8 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get productionMaterialRecheckHelp => '이 작업의 합격 입고와 가용 재고를 다시 확인합니다. 창고 입고나 실제 사용량 등록을 대신하지 않습니다.';
+  String get productionMaterialRecheckHelp =>
+      '이 작업의 합격 입고와 가용 재고를 다시 확인합니다. 창고 입고나 실제 사용량 등록을 대신하지 않습니다.';
 
   @override
   String get productionMaterialRegisterUsage => '실제 사용량 등록';

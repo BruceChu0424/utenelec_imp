@@ -44,9 +44,13 @@ final salesCompletionCountProvider = FutureProvider.autoDispose<int>((
 ///
 /// 驳回数取订单进度聚合的 `REJECTED` 桶，天然沿用订单负责人/数据范围；完工数沿用
 /// 通知接收人快照。工作台「销售管理」与销售 Hub「订单进度查询」必须共用本口径。
-final salesAttentionCountProvider = FutureProvider.autoDispose<int>((
-  ref,
-) async {
+// 徽章计数 provider 一律**常驻**（不 autoDispose）——2026-09-11 用户反馈：
+// 仓库/品质的徽章「进页面要等一会才出现」「冒出来又消失又冒出来」，而采购点进去就有。
+// 差别不在后端快慢，在生命周期：采购是常驻 StateNotifier，这些是 autoDispose，
+// 离开页面即销毁、回来从零 loading，而 todo_badge_registry 把 loading 记成 0。
+// 常驻后 invalidateSelf 刷新期间 AsyncValue 会带住旧值（见 registry 的 valueOrNull），
+// 徽章不再闪；没人看时定时器不再续期，也不会空转发请求。
+final salesAttentionCountProvider = FutureProvider<int>((ref) async {
   if (!ref.watch(currentPermissionsProvider).contains(Perm.salesOrderView) &&
       !ref.watch(isSuperAdminProvider)) {
     return 0;

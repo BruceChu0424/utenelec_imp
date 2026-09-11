@@ -526,10 +526,12 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     this.removeRowsMessageBuilder,
     this.rowMenuExtraBuilder,
     this.showColumnSettings = false,
+    this.toolbarActions = const <Widget>[],
     this.initialColumnOrder,
     this.initialHiddenColumnKeys,
     this.onColumnSettingsChanged,
     this.showSelectAllToggle = true,
+    this.showRemoveRowsAction = true,
   }) : assert(
          !showAddRow || createBlankRow != null,
          'showAddRow=true 必须提供 createBlankRow（「添加行」按钮需要构造空行）',
@@ -616,6 +618,13 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
   /// 默认关闭以保持既有嵌入式/任务表布局不变，业务编辑页按需开启。
   final bool showColumnSettings;
 
+  /// 工具条上「表头设置」右侧的常驻按钮（**不随选择态禁用**）。
+  ///
+  /// 与 [batchActionsBuilder] 的区别：后者作用于当前选择集、未选中即整组变灰；
+  /// 这里放的是跟选择无关的入口，典型是「从上游引入」——它此前单独占一行，
+  /// 用户 2026-09-11 要求与「表头设置」并排（高度也一并统一到 48）。
+  final List<Widget> toolbarActions;
+
   /// 列设置持久化（与 [showColumnSettings] 配用，由宿主页注入；典型宿主是
   /// UtenPagePrefsNotifier 子类）。key 均为稳定列 key：未知 key 忽略、新增列
   /// 追加到末尾；若持久化状态把所有列都隐藏了则回落为全显示（至少保留一列）。
@@ -629,6 +638,12 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
   /// 操作条是否渲染「全选/取消全选」按钮（默认 true）。批量下达类页面（表头
   /// 复选框已覆盖当页选择、跨页由页面自管）传 false 收敛入口。
   final bool showSelectAllToggle;
+
+  /// 操作条是否渲染「移出/批量删除」按钮（默认 true）。
+  ///
+  /// 传 false 只撤掉**工具条上的按钮**，[onRemoveRows] 的能力仍在行右键/长按
+  /// 菜单里（与「统一设置条款」同一收敛思路：常驻按钮与行菜单重复时留行菜单）。
+  final bool showRemoveRowsAction;
 
   /// 是否渲染行首选选列。
   bool get _showSelect => showAddRow || selectable;
@@ -1727,9 +1742,19 @@ class _UtenEditableGridState<T extends EditableGridRow>
   Widget? _actionsBar(ThemeData theme) {
     final editMode = widget.showAddRow;
     final clone = widget.cloneRow;
+    // 两个显隐开关都关掉后条上就没东西了——别渲染一条 8px 的空白。
+    final hasSelectAll =
+        !editMode && widget._showSelect && widget.showSelectAllToggle;
+    final hasRemove =
+        !editMode &&
+        widget.showRemoveRowsAction &&
+        (widget.showAddRow || widget.onRemoveRows != null);
     if (widget.showColumnSettings ||
         widget.batchActionsBuilder != null ||
-        (!editMode && (widget._showSelect || widget.onRemoveRows != null))) {
+        widget.toolbarActions.isNotEmpty ||
+        hasSelectAll ||
+        hasRemove ||
+        (!editMode && clone != null)) {
       return ListenableBuilder(
         listenable: widget.controller,
         builder: (context, _) {
@@ -1743,6 +1768,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
             child: Wrap(
               spacing: UtenSpacing.s4,
               runSpacing: UtenSpacing.s4,
+              // 条内控件高度不一（48 的表头设置 / 36 的文字动作）时居中对齐，
+              // 默认的 start 会让矮按钮顶在上沿，看起来像没对齐。
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 if (widget.showColumnSettings)
                   UtenColumnChooserButton(
@@ -1761,6 +1789,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
                     onReorder: _reorderColumns,
                     onReset: _resetColumnSettings,
                   ),
+                // 与选择无关的常驻入口（「从上游引入」），紧挨表头设置同排同高。
+                ...widget.toolbarActions,
                 if (!editMode &&
                     widget._showSelect &&
                     widget.showSelectAllToggle)
@@ -1777,6 +1807,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
                         const <Widget>[])
                   _selectionActionGate(action),
                 if (!editMode &&
+                    widget.showRemoveRowsAction &&
                     (widget.showAddRow || widget.onRemoveRows != null))
                   _actBtn(
                     theme,

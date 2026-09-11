@@ -3,8 +3,9 @@
 //     「登记并送检」一步化后该状态基本不再出现，只放开断点行使多选形同虚设。
 //     待登记（canCreateReceipt）行同样可勾选，批量动作升级为「批量登记送检」。
 //  ② 批量登记页（/warehouse/inbound/receipts/batch）：多张订货单明细汇成行级表，
-//     本次实收默认=批准剩余，入库仓库行级必填（建议仓预填），「统一设置入库仓库」
-//     一键落仓；提交按「订货单 × 入库仓库」分组逐张登记（同幂等键范式）。
+//     本次实收默认=批准剩余，入库仓库行级必填（建议仓预填）；2026-09-11 起
+//     表头上方的批量按钮全撤，改为**勾选多行后改其中任意一行 = 整批落值**。
+//     提交按「订货单 × 入库仓库」分组逐张登记（同幂等键范式）。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -49,8 +50,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('成品仓'), findsNothing);
       expect(find.text('必选 · 点击选择'), findsNWidgets(3));
+      // 2026-09-11 起表头上方不再有「批量设置入库仓库」按钮：直接点行内仓库格
+      // （未勾选任何行 = 只改这一行）。
       await tester.tap(
-        find.byKey(const Key('warehouse-arrival-batch-apply-warehouse-all')),
+        find.byKey(const Key('warehouse-arrival-batch-wh-batch-item-1')),
       );
       await tester.pumpAndSettle();
       expect(
@@ -145,9 +148,23 @@ void main() {
     expect(find.text('必选 · 点击选择'), findsNWidgets(2));
     expect(find.text('入库仓库（默认）'), findsNothing);
 
-    // 统一设置入库仓库：一键落仓到「原料仓」（覆盖建议仓预填）。
-    await tester.tap(
+    // 2026-09-11 新交互：表头全选勾上 3 行后，点**其中任意一行**的仓库格选
+    // 「原料仓」，三行一起落仓（覆盖建议仓预填）。表头上方不再有批量按钮。
+    expect(
       find.byKey(const Key('warehouse-arrival-batch-apply-warehouse-all')),
+      findsNothing,
+      reason: '「批量设置入库仓库」常驻按钮已撤',
+    );
+    expect(find.text('移出本次登记 (0)'), findsNothing, reason: '「移出本次登记」已搬进行右键');
+    final headerSelectAll = find.byWidgetPredicate(
+      (widget) => widget is Checkbox && widget.tristate,
+    );
+    expect(headerSelectAll, findsWidgets);
+    await tester.tap(headerSelectAll.first);
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('warehouse-arrival-batch-wh-batch-item-1')),
     );
     await tester.pumpAndSettle();
     expect(find.text('先选主仓，再选子仓'), findsOneWidget);
@@ -155,7 +172,11 @@ void main() {
       find.byKey(const Key('warehouse-picker-entry-warehouse-2')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('原料仓'), findsNWidgets(3));
+    expect(
+      find.text('原料仓'),
+      findsNWidgets(3),
+      reason: '勾了 3 行就该 3 行一起落仓，而不是只改点到的那一行',
+    );
     expect(find.text('必选 · 点击选择'), findsNothing);
 
     // One batch can contain normal arrivals and physically returned replacements.

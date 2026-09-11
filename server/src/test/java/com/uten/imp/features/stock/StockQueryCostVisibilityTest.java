@@ -125,7 +125,10 @@ class StockQueryCostVisibilityTest {
         assertNull(row.getCostAmount());
         assertTrue(row.isCostMasked());
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(entityManager, times(2)).createNativeQuery(sql.capture());
+        // 列表 + 计数 + 两条服务端合计（ReportTotalsCalculator 按分组维度各发一条）。
+        // 合计把列表 SQL 整个包进 FROM (...) t，所以脱敏投影必须在**所有**四条里都成立：
+        // 少脱一条，无成本权限的人就能从表尾合计里看到金额。
+        verify(entityManager, times(4)).createNativeQuery(sql.capture());
         assertTrue(sql.getAllValues().stream().noneMatch(value -> value.contains("g.c_total")));
         assertTrue(sql.getAllValues().stream().allMatch(value -> value.contains("CAST(NULL AS NUMERIC)")));
     }
@@ -152,7 +155,8 @@ class StockQueryCostVisibilityTest {
         assertEquals(new BigDecimal("123.45"), row.getCostAmount());
         assertFalse(row.isCostMasked());
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(entityManager, times(2)).createNativeQuery(sql.capture());
+        // 同上：列表 + 计数 + 两条服务端合计，成本口径（台账聚合而非主档单价×数量）四条一致。
+        verify(entityManager, times(4)).createNativeQuery(sql.capture());
         assertTrue(sql.getAllValues().stream()
                 .allMatch(value -> value.contains("SUM(u.amount_local) AS amount_local")));
         assertTrue(sql.getAllValues().stream()

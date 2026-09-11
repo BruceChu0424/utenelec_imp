@@ -87,12 +87,14 @@ void main() {
       expect(find.text('PR-2026-017'), findsOneWidget);
       expect(find.text('SA-2026-021'), findsOneWidget);
 
+      await _expandReferenceSection(tester, '溯源单据');
       await tester.tap(find.text('SO-2026-001'));
       await tester.pumpAndSettle();
       expect(find.text('已打开销售订单 so-1'), findsOneWidget);
 
       router.pop();
       await tester.pumpAndSettle();
+      await _expandReferenceSection(tester, '溯源单据');
       await tester.tap(find.text('LL-2026-009'));
       await tester.pumpAndSettle();
       expect(find.text('已打开领料单 draw-1'), findsOneWidget);
@@ -101,18 +103,21 @@ void main() {
       router.pop();
       await tester.pumpAndSettle();
       expect(planReads, greaterThan(readsBeforeDrawReturn));
+      await _expandReferenceSection(tester, '溯源单据');
       await tester.tap(find.text('RK-2026-010'));
       await tester.pumpAndSettle();
       expect(find.text('已打开成品入库 inbound-1'), findsOneWidget);
 
       router.pop();
       await tester.pumpAndSettle();
+      await _expandReferenceSection(tester, '溯源单据');
       await tester.tap(find.text('PR-2026-017'));
       await tester.pumpAndSettle();
       expect(find.text('已打开采购申请 pr-1'), findsOneWidget);
 
       router.pop();
       await tester.pumpAndSettle();
+      await _expandReferenceSection(tester, '溯源单据');
       await tester.tap(find.text('SA-2026-021'));
       await tester.pumpAndSettle();
       expect(find.text('已打开委外申请 sa-1'), findsOneWidget);
@@ -202,4 +207,26 @@ ApiClient _traceApi({bool includeLinks = true, VoidCallback? onPlanRead}) {
     ),
   );
   return ApiClient(dio);
+}
+
+/// 展开参考区的折叠块（2026-09-11 详情页重排后，附件/溯源/执行单据/关联单据/
+/// 子计划默认收起——第一屏留给摘要与执行子计划）。
+///
+/// **幂等**：已展开就直接返回。折叠状态从标题行 chevron 的 AnimatedRotation
+/// 读（turns==0 即展开），比猜「点过一次就是开的」可靠——路由 pop 回来重建后
+/// 折叠块会回到默认收起。
+Future<void> _expandReferenceSection(WidgetTester tester, String title) async {
+  final section = find.byKey(ValueKey('production-plan-reference-$title'));
+  expect(section, findsOneWidget, reason: '参考区应有「$title」折叠块');
+  await tester.ensureVisible(section);
+  await tester.pumpAndSettle();
+  final chevron = find.descendant(
+    of: section,
+    matching: find.byType(AnimatedRotation),
+  );
+  if (tester.widget<AnimatedRotation>(chevron.first).turns == 0) return;
+  await tester.tap(
+    find.descendant(of: section, matching: find.byType(InkWell)).first,
+  );
+  await tester.pumpAndSettle();
 }

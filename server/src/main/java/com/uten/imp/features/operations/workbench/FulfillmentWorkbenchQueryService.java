@@ -376,6 +376,20 @@ public class FulfillmentWorkbenchQueryService {
                                 && accessPolicy.canCreateSubcontractOrder()), facets, nullCounts);
     }
 
+    /**
+     * 任务中心红徽章数（工作台模块卡 → hub → 任务中心逐级累加的叶子值）。
+     *
+     * <p><b>只数「等本部门动手」的阶段</b>（2026-09-11 用户反馈：采购任务中心的
+     * 通知合计里混进了「财务已通过」）。采购/委外五档里，申请待分解
+     * {@code WAITING_ORDER} 与财务驳回 {@code FINANCE_REJECTED} 才要本部门去办；
+     * 等待财务审核 {@code ORDER_PENDING_APPROVAL} 与财务已通过·待采购完成
+     * {@code FINANCE_APPROVED} 下一步在别人手上，是监控数——前端
+     * operations_workbench_page 的 {@code _stageCountForm} 早已把这两档判为
+     * browsing（中性括号、不累加），这里同步收敛，红徽章合计=各红色分段之和。
+     * {@code COMPLETED} 是终态，本就被 {@code open_qty > 0} 挡掉。
+     *
+     * <p>口径依据 docs/00-项目准则/14-徽章与计数口径.md。
+     */
     @Transactional(readOnly = true)
     public long countPending(String department) {
         if (!DEPARTMENTS.contains(department)) {
@@ -388,7 +402,7 @@ public class FulfillmentWorkbenchQueryService {
         boolean decomposition = "PURCHASE".equals(department)
                 || "SUBCONTRACT".equals(department);
         // 与列表同口径：采购/委外按单据归组计数（一张申请/订货单=一个待办）；
-        // 仓库按领料单张数计数（一张 DRAW=一个待办，未挂单的行退回行级）。
+        // 仓库按单张领料单计数（一张 DRAW=一个待办，未挂单的行退回行级）。
         boolean includePreparation = "SUBCONTRACT".equals(department)
                 && accessPolicy.canViewSubcontractPreparationTasks();
         String preparation = includePreparation
@@ -400,6 +414,7 @@ public class FulfillmentWorkbenchQueryService {
                         SELECT DISTINCT action_doc_id
                         FROM v_procurement_decomposition_tasks
                         WHERE department = :department AND open_qty > 0
+                          AND task_status IN ('WAITING_ORDER', 'FINANCE_REJECTED')
                         %s
                     ) documents
                     """.formatted(preparation)

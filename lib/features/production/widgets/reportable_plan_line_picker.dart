@@ -12,18 +12,22 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/reportable_plan_line.dart';
 import '../repositories/production_repository.dart';
 
-/// 选择本次报工对应的生产子任务。
+/// 选择本次报工对应的生产子任务（2026-09-11 起**支持多选**）。
 ///
 /// 桌面端右侧 840px 滑入（外壳 showUtenAdaptivePanel，带面板投影），
 /// 手机端底部全屏；数据只来自服务端“可报工计划”读侧，不在客户端猜
 /// 计划号或销售订单分摊。
-Future<ReportablePlanLine?> showReportablePlanLinePicker(
+///
+/// 返回**按点选顺序**的列表：调用方把第一条填进当前行，其余各开一行
+/// （用户原话：「新建生产日报里面应该可以多选，现在只是单选」）。
+/// 取消/关闭返回 null；确认但一条没选返回空列表不可能发生（确认键会禁用）。
+Future<List<ReportablePlanLine>?> showReportablePlanLinePicker(
   BuildContext context,
   WidgetRef ref, {
   String? departmentId,
   String? executionSegmentId,
 }) {
-  return showUtenAdaptivePanel<ReportablePlanLine>(
+  return showUtenAdaptivePanel<List<ReportablePlanLine>>(
     context: context,
     compactHeightFactor: 0.94,
     drawerWidth: 840,
@@ -54,8 +58,17 @@ class _ReportablePlanLineSheetState
   String? _error;
   int _total = 0;
 
-  /// 已点选（高亮）的计划行；底部「确定」才 pop 返回（二次操作契约）。
-  ReportablePlanLine? _picked;
+  /// 已点选（高亮）的计划行，**按点选先后保序**；底部「确定」才 pop 返回
+  /// （二次操作契约）。保序是因为调用方按这个顺序建行，用户点的顺序=行序。
+  final List<ReportablePlanLine> _picked = [];
+
+  /// 行身份：同一执行段的同一计划行只能选一次。执行段为空（老数据）时
+  /// 退回计划行 id，仍然唯一。
+  String _lineKey(ReportablePlanLine item) =>
+      '${item.executionSegmentId ?? ''}|${item.planItemId}';
+
+  bool _isPicked(ReportablePlanLine item) =>
+      _picked.any((picked) => _lineKey(picked) == _lineKey(item));
 
   @override
   void initState() {
@@ -188,16 +201,23 @@ class _ReportablePlanLineSheetState
             const Divider(height: 1),
             Expanded(child: _body(theme)),
             UtenPickerConfirmBar(
-              selectedCount: _picked == null ? 0 : 1,
-              selectedLabel: _picked == null
+              selectedCount: _picked.length,
+              selectedLabel: _picked.isEmpty
                   ? null
-                  : (_picked!.executionSegmentCode ?? _picked!.planNo),
-              hint: _picked == null
+                  : _picked
+                        .map(
+                          (picked) =>
+                              picked.executionSegmentCode ?? picked.planNo,
+                        )
+                        .join('、'),
+              hint: _picked.isEmpty
                   ? (_total > 100
                         ? '共 $_total 条，当前展示前 100 条，可继续搜索缩小范围'
-                        : '共 $_total 条报工/恢复任务')
+                        : '共 $_total 条报工/恢复任务；可勾选多条，一条一行')
                   : null,
-              onConfirm: () => Navigator.of(context).pop(_picked),
+              onConfirm: () => Navigator.of(
+                context,
+              ).pop(List<ReportablePlanLine>.unmodifiable(_picked)),
             ),
           ],
         ),
@@ -314,17 +334,30 @@ class _ReportablePlanLineSheetState
         nullCounts: const {},
         filters: const {},
         onFilterChanged: (_, _) {},
+        // embedded 表单击 = selectRow()（表格自己切勾选）+ onRowTap。
+        // 所以这里**只负责提示**，不再自己 _toggle，否则一次点击切两下。
         onRowTap: (item) {
           if (!item.canReport) {
             context.appWarning(
               item.blockedReason ?? '当前来源没有可报数量，请刷新后重试',
               force: true,
             );
-            return;
           }
-          setState(() => _picked = item);
         },
-        isSelected: (item) => identical(_picked, item),
+        // 勾选列与点行是同一个选择集：点行切换、勾选框也切换，
+        // 不可报工的行 idOf 返回 null → 勾不上（与点行的拦截同口径）。
+        selectable: true,
+        idOf: (item) => item.canReport ? _lineKey(item) : null,
+        selectedIds: {for (final picked in _picked) _lineKey(picked)},
+        onSelectedIdsChanged: (next) => setState(() {
+          _picked.removeWhere((picked) => !next.contains(_lineKey(picked)));
+          for (final item in items) {
+            if (next.contains(_lineKey(item)) && !_isPicked(item)) {
+              _picked.add(item);
+            }
+          }
+        }),
+        isSelected: (item) => _isPicked(item),
         emptyMessage: '没有符合条件的可报工任务',
         rowColor: (item) {
           if (!item.canReport) {

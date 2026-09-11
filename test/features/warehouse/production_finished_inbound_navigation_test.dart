@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/nav_helpers.dart';
@@ -79,9 +79,10 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(api.taskRequestCount, 2);
+      // 2026-09-11 起顶栏动作统一走 UtenAppBarActionButton（与「权限设置」同高 36）。
       expect(
         tester
-            .widget<UtenButton>(
+            .widget<UtenAppBarActionButton>(
               find.byKey(const Key('production-finished-inbound-refresh')),
             )
             .onPressed,

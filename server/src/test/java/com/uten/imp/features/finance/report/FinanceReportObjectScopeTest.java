@@ -139,7 +139,9 @@ class FinanceReportObjectScopeTest {
                 1,
                 50);
 
-        assertThat(fixture.queries()).hasSize(2);
+        // 列表 + 计数 + 服务端合计（ReportTotalsCalculator 把同一份 where 包一层 SUM）。
+        // 合计查询也必须原样带上关键词谓词与同一个 :kw 绑定，否则表尾合计会比列表多算。
+        assertThat(fixture.queries()).hasSize(3);
         for (CapturedQuery captured : fixture.queries()) {
             assertThat(captured.sql())
                     .contains("COALESCE(c.code,'') AS partyCode")
@@ -205,7 +207,10 @@ class FinanceReportObjectScopeTest {
         List<CapturedQuery> sensitiveQueries = fixture.queries().stream()
                 .filter(query -> directlyReadsFinanceDocument(query.sql()))
                 .toList();
-        assertThat(sensitiveQueries).hasSize(2);
+        // 列表 + 计数 + 两条服务端合计（按分组维度归并，一维一条）。
+        // 合计查询是把列表 SQL 整个包进 FROM (...) t，所以同样直读凭证表——
+        // 它必须和列表走同一份归属谓词，否则 view:all 之外的人能从表尾合计里反推总额。
+        assertThat(sensitiveQueries).hasSize(4);
         for (CapturedQuery captured : sensitiveQueries) {
             assertThat(captured.sql()).contains("AND 1=1");
             verify(captured.query(), never()).setParameter(eq(OWNERS_PARAM), any());

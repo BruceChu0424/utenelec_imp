@@ -307,3 +307,18 @@ return MasterDataTableView<Map<String, dynamic>>(
 - 联动模式横向滚动条同时监听竖向滚动与内容尺寸变化，每帧合并测量；表头收起、详情返回或行高改变后不能把旧滚动条位置留在数据行中部。
 
 > **2026-09-11 列头 ⓘ 收敛**：列头说明图标改用 [`UtenColumnHintIcon`](UtenTableColumnKit.md)（与 UtenEditableGrid 同一份实现：悬停/点按/键盘同入口、长按被吞掉不触发排序或拖拽隐藏），原私有 `_ColumnHeaderInfo`（Material Tooltip + showDialog）已删除。
+
+
+## externalFilterKeys —— 空态「清除筛选」的豁免清单（2026-09-11）
+
+空态的「清除筛选」按钮只对**本表能清掉的列**渲染。宿主把两类列名传进
+`externalFilterKeys` 豁免掉：
+
+1. **被页面钉死的列**：分段子页用 `fixedOrderType` 把 `orderType` 固定住，
+   `onFilterChanged` 里直接 `return`——不豁免的话空态会出现一个点了没反应的
+   死按钮（用户原话：「入库任务中心明明没有任务了，还会显示个清除筛选的按钮」）。
+2. **入口在表外的列**：待检处置的类型分段条在表格上方、空态也一直看得见，
+   表里再给一次是重复入口。
+
+豁免只影响按钮与空态说明里的「N 个表头筛选生效」计数，不影响过滤本身。
+回归用例：`test/features/basic_data/master_table_external_filter_keys_test.dart`。

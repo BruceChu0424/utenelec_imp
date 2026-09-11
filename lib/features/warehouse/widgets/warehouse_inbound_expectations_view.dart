@@ -587,6 +587,11 @@ class _WarehouseInboundExpectationsViewState
             },
             nullCounts: const {},
             filters: {'orderType': _orderType?.name.toUpperCase()},
+            // 分段子页把类型钉死时，下面的 onFilterChanged 会直接 return——
+            // 空态再给「清除筛选」就是个点了没反应的死按钮。
+            externalFilterKeys: widget.fixedOrderType != null
+                ? const {'orderType'}
+                : const {},
             onFilterChanged: (key, value) {
               if (key != 'orderType' || widget.fixedOrderType != null) return;
               _selectType(switch (value) {

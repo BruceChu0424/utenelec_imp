@@ -7,8 +7,8 @@
 //   - 入库仓库（2026-09-06 行级必填）：表头不再设默认仓——每行必选入库仓库，走
 //     右侧主/子仓级联滑窗（先选主仓再选子仓，显示「主仓名-子仓名」）；预计到货带
 //     建议仓（物料分析目标仓）时逐行预填，改离建议仓时提示（合格库存将入所选仓，
-//     分析进度按所选仓刷新）；多行同仓勾选后用表格批量动作「批量设置入库仓库」
-//     一次落仓（同款「批量填写库位」一次写库位号），未勾选时作用于全部明细行；
+//     分析进度按所选仓刷新）；**勾选多行后在其中任意一行改仓/写库位即整批落值**
+//     （2026-09-11 起不再有表头上方的批量按钮），并记住上次所落仓与库位下次自动带；
 //   - 提交时按行级仓库分组，每仓一张收货单顺序登记（幂等键按「仓库+行+数量」内容
 //     派生：响应丢失重试复用同键安全重放，部分失败时已成功仓不会重复登记）；
 //   - 单位紧跟「本次实收」列展示；不设「实际重量」列——2026-09-05 起重量统计走
@@ -61,9 +61,9 @@ import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
+import '../providers/warehouse_arrival_fill_memory.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/procurement_inbound_repository.dart';
-import '../widgets/batch_place_fill_dialog.dart';
 import '../widgets/warehouse_inbound_allocation_view.dart';
 import '../widgets/warehouse_autofill_text_field.dart';
 import '../widgets/warehouse_arrival_source_field.dart';
@@ -220,10 +220,20 @@ class _WarehouseArrivalReceiptPageState
     final selectable = WarehouseSelection(
       ref.read(masterNameServiceProvider).warehouseHierarchy,
     ).selectableIds;
+    // 上次落仓/库位记忆只补空位：行内已有值（上次收货仓 / 建议仓 / 货品资料带出的
+    // 库位）优先级都更高，见 warehouse_arrival_fill_memory.dart。
+    final memory = ref.read(warehouseArrivalFillMemoryProvider);
+    final rememberedWarehouse = selectable.contains(memory.warehouseId)
+        ? memory.warehouseId
+        : null;
     for (final line in _lineGrid.rows) {
       if (!selectable.contains(line.warehouseId)) {
-        line.warehouseId = null;
-        line.warehouseAutofilled = false;
+        line.warehouseId = rememberedWarehouse;
+        line.warehouseAutofilled = rememberedWarehouse != null;
+      }
+      final place = memory.stockPlace;
+      if (place != null && line.stockPlace.text.trim().isEmpty) {
+        line.stockPlace.setAutomaticText(place);
       }
     }
     _removedLineCount = 0;
@@ -267,99 +277,58 @@ class _WarehouseArrivalReceiptPageState
     );
   }
 
-  /// 表格批量动作：勾选若干行后一次设仓 / 一次填库位。
-  /// 表格上方的「统一设置入库仓库」按钮 2026-09-11 撤除，能力搬到这里；未勾选
-  /// 任何行时沿用它的旧口径作用于全部明细行（计数即作用行数，按钮上可见）。
-  List<Widget> _buildBatchActions(
-    BuildContext context,
-    UtenEditableGridController<_ArrivalReceiptLine> controller,
-  ) {
-    final selected = controller.selectedRows;
-    final targets = selected.isEmpty ? _lines : selected;
-    final count = targets.length;
-    return [
-      Tooltip(
-        message: '把选中行的入库仓库一次设成同一个仓；未勾选时作用于全部明细行，行内仍可单独改仓',
-        child: UtenButton(
-          key: const Key('warehouse-arrival-apply-warehouse-all'),
-          size: UtenButtonSize.large,
-          icon: Icons.warehouse_outlined,
-          onPressed: _saving || count == 0
-              ? null
-              : () => _applyWarehouseToLines(targets),
-          child: Text('批量设置入库仓库($count)'),
-        ),
-      ),
-      Tooltip(
-        message: '一次输入库位号应用到选中行（整托同架场景）；未勾选时作用于全部明细行',
-        child: UtenButton(
-          key: const Key('warehouse-arrival-batch-place'),
-          type: UtenButtonType.secondary,
-          size: UtenButtonSize.large,
-          icon: Icons.edit_note_outlined,
-          onPressed: _saving || count == 0
-              ? null
-              : () => _batchFillPlace(targets),
-          child: Text('批量填写库位($count)'),
-        ),
-      ),
-    ];
+  /// 一次改动的落值范围（与批量登记页、新建采购订货单同一套口径）。
+  ///
+  /// 2026-09-11 起表头上方不再有「批量设置入库仓库 / 批量填写库位」按钮：
+  /// **勾选若干行 → 在其中任意一行改仓/写库位 = 批量落到全部选中行**；
+  /// 点的行不在选中集里（或压根没勾）就只改这一行。
+  List<_ArrivalReceiptLine> _writeTargets(_ArrivalReceiptLine row) {
+    final selected = _lineGrid.selectedRows;
+    return selected.contains(row) ? selected : [row];
   }
 
-  /// 批量落仓：一次写入全部目标行（行内仍可单独改仓）。
-  /// 批量写入视同已核对，清掉学习预填的黄标。
-  Future<void> _applyWarehouseToLines(List<_ArrivalReceiptLine> rows) async {
-    if (_saving || rows.isEmpty) return;
-    final whole = rows.length == _lines.length;
-    final picked = await showUtenWarehousePickerPanel(
-      context,
-      hierarchy: ref.read(masterNameServiceProvider).warehouseHierarchy,
-      title: '批量设置入库仓库（${whole ? '全部' : '选中'} ${rows.length} 行）',
-    );
-    if (picked == null || !mounted) return;
-    setState(() {
-      for (final line in rows) {
-        line.warehouseId = picked.id;
-        line.warehouseAutofilled = false;
-      }
-    });
-  }
-
-  /// 批量填库位：复用产成品登记页同一个弹窗（不另写校验），一次输入写入全部目标行。
-  Future<void> _batchFillPlace(List<_ArrivalReceiptLine> rows) async {
-    if (_saving || rows.isEmpty) return;
-    final place = await showBatchPlaceFillDialog(
-      context,
-      rowCount: rows.length,
-      inputKey: const Key('warehouse-arrival-batch-place-input'),
-      applyKey: const Key('warehouse-arrival-batch-place-apply'),
-    );
-    if (place == null || !mounted) return;
-    if (place.isEmpty) {
-      context.appWarning('库位号不能为空');
-      return;
+  /// 行内写库位：落到 [_writeTargets] 并记住本次库位号（下次登记自动带）。
+  void _onStockPlaceChanged(_ArrivalReceiptLine line, String value) {
+    final targets = _writeTargets(line);
+    if (targets.length > 1) {
+      setState(() {
+        for (final target in targets) {
+          if (identical(target, line)) continue;
+          target.setCheckedStockPlace(value);
+        }
+      });
     }
-    setState(() {
-      for (final line in rows) {
-        line.setCheckedStockPlace(place);
-      }
-    });
+    ref
+        .read(warehouseArrivalFillMemoryProvider.notifier)
+        .rememberStockPlace(value);
   }
 
-  /// 行级入库仓库选择（主/子仓级联滑窗；行级必填）。
+  /// 行级入库仓库选择（主/子仓级联滑窗；行级必填）：
+  /// 落到 [_writeTargets]，并记住这次选的仓。
   Future<void> _pickLineWarehouse(_ArrivalReceiptLine line) async {
     if (_saving) return;
+    final targets = _writeTargets(line);
     final picked = await showUtenWarehousePickerPanel(
       context,
       hierarchy: ref.read(masterNameServiceProvider).warehouseHierarchy,
       initialWarehouseId: line.warehouseId ?? _suggestedWarehouseId,
-      title: '选择入库仓库 · ${line.item.goodsName}',
+      title: targets.length > 1
+          ? '批量设置入库仓库（选中 ${targets.length} 行）'
+          : '选择入库仓库 · ${line.item.goodsName}',
     );
     if (picked == null || !mounted) return;
     setState(() {
-      line.warehouseId = picked.id;
-      line.warehouseAutofilled = false;
+      for (final target in targets) {
+        target.warehouseId = picked.id;
+        target.warehouseAutofilled = false;
+      }
     });
+    ref
+        .read(warehouseArrivalFillMemoryProvider.notifier)
+        .rememberWarehouse(picked.id);
+    if (targets.length > 1) {
+      context.appInfo('已把入库仓库写到选中的 ${targets.length} 行');
+    }
   }
 
   Future<void> _save() async {
@@ -720,7 +689,10 @@ class _WarehouseArrivalReceiptPageState
               removeRowsMessageBuilder: (count) =>
                   '确认从本次登记移出选中的 $count 行？'
                   '该操作不删除订货明细、不改变库存或历史；返回任务中心后仍保持待登记送检。',
-              batchActionsBuilder: canRegister ? _buildBatchActions : null,
+              // 2026-09-11 表头上方常驻按钮全撤：全选走表头复选框，移出走行右键，
+              // 落仓/写库位改成「勾选多行后改任意一行即整批落值」。
+              showSelectAllToggle: false,
+              showRemoveRowsAction: false,
               emptyMessage: '该任务没有可登记明细，请返回任务中心刷新',
               footer: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1112,8 +1084,9 @@ class _WarehouseArrivalReceiptPageState
         label: '${line.item.goodsName} 库位号',
         child: WarehouseAutofillTextField(
           controller: line.stockPlace,
-          source: '库位来自货品资料，请核对本次实物存放位置',
+          source: '库位来自货品资料或上次登记，请核对本次实物存放位置',
           enabled: !_saving,
+          onChanged: (value) => _onStockPlaceChanged(line, value),
         ),
       ),
     ),

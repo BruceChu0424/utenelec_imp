@@ -9,11 +9,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/feedback/uten_module_todo_chip.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/feedback/uten_draft_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -111,15 +111,8 @@ class PurchaseHubPage extends ConsumerWidget {
           // 顶栏「本模块累计」：数字由注册表对采购下全部登记入口求和得出
           //（任务中心 + 待退回供应商 + 三张单据草稿），页面里不要手写加法，
           // 否则与工作台「采购管理」卡的口径会各算各的。0 时组件自身不渲染。
-          Padding(
-            padding: const EdgeInsets.only(right: UtenSpacing.s12),
-            child: Center(
-              child: UtenNotificationBadge(
-                count: todoModuleCount(TodoModule.purchase, ref.watch),
-                size: 20,
-                showLabel: true,
-              ),
-            ),
+          UtenModuleTodoChip(
+            count: todoModuleCount(TodoModule.purchase, ref.watch),
           ),
         ],
       ),

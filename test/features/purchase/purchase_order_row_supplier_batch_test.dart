@@ -6,6 +6,7 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
@@ -106,8 +107,8 @@ void main() {
     await tester.pump();
     await tester.tap(checkboxes.at(1));
     await tester.pumpAndSettle();
-    // 操作条批量按钮显示已选 2 行（一次写全套条款）。
-    expect(find.text('统一设置条款 (2)'), findsOneWidget);
+    // 2026-09-11「统一设置条款」从工具条撤到行右键菜单（工具条上与右键重复）。
+    expect(find.text('统一设置条款 (2)'), findsNothing, reason: '工具条上不该再有它');
 
     // 点击第一个选中行的供应商单元格（必填未选显示红字提示）→ 右侧滑入供应商面板。
     final cells = find.text('必选供应商');
@@ -124,6 +125,17 @@ void main() {
     // 两个选中行的单元格显示供应商名（×2），未选中的第三行仍是必填提示。
     expect(find.text('洪武五金'), findsNWidgets(2));
     expect(find.text('必选供应商'), findsOneWidget);
+
+    // 「统一设置条款」的新家：行右键菜单，作用于当前选择集（仍是那 2 行）。
+    // 放在流程末尾验证，免得残留的菜单浮层吃掉后续点击。
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('洪武五金').first),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryButton,
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(find.text('统一设置条款 (2)'), findsOneWidget, reason: '行右键菜单里要有');
   });
 }
 

@@ -4,8 +4,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
-import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -56,16 +56,11 @@ class _WarehouseSalesOutboundPageState
           onPressed: () => popOrBackTo(context, defaultPath: '/warehouse'),
         ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: UtenSpacing.s8),
-            child: UtenButton(
-              key: const Key('warehouse-sales-outbound-refresh'),
-              size: UtenButtonSize.large,
-              type: UtenButtonType.tonal,
-              icon: Icons.refresh_rounded,
-              onPressed: () => setState(() => _refreshTick++),
-              child: const Text('刷新'),
-            ),
+          UtenAppBarActionButton(
+            key: const Key('warehouse-sales-outbound-refresh'),
+            label: '刷新',
+            icon: Icons.refresh_rounded,
+            onPressed: () => setState(() => _refreshTick++),
           ),
         ],
       ),

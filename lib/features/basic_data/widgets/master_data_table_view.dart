@@ -158,6 +158,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     required this.facets,
     required this.nullCounts,
     required this.filters,
+    this.externalFilterKeys = const <String>{},
     required this.onFilterChanged,
     this.onRowTap,
     this.canOpenRow,
@@ -216,6 +217,14 @@ class MasterDataTableView<T> extends StatefulWidget {
   final Map<String, List<MasterFacetBucket>> facets;
   final Map<String, int> nullCounts;
   final Map<String, String?> filters;
+
+  /// 由宿主页自己承担入口的筛选列 key（不参与空态「清除筛选」）。
+  ///
+  /// 两类：① 被页面钉死、表里根本改不动的（分段子页的 fixedOrderType）；
+  /// ② 表外分段条上一直看得见、用户随时能切回去的（待检处置的类型分段）。
+  /// 这两类若也算进空态清除按钮，得到的要么是**点了没反应的死按钮**，要么是
+  /// 与分段条重复的入口——2026-09-11 用户对「没有任务却有清除筛选」的两次反馈。
+  final Set<String> externalFilterKeys;
   final void Function(String key, String? value) onFilterChanged;
 
   /// 行的「打开」操作。列表页（非 embedded）统一为「双击打开」——单击只选中；
@@ -1201,6 +1210,17 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       if (entry.value != null && entry.value!.isNotEmpty) entry.key,
   ];
 
+  /// 空态「清除筛选」真正能清掉的列 = 有值 − 宿主自管的列。
+  ///
+  /// 2026-09-11 用户反馈「入库任务中心明明没有任务了，还显示个清除筛选按钮」：
+  /// 那个分段页把 orderType 钉死（fixedOrderType），onFilterChanged 直接 return，
+  /// 按钮点了毫无反应；待检处置则是同一个筛选在表外的分段条上一直看得见，
+  /// 表里再给一个是重复入口。两种都由宿主用 [externalFilterKeys] 声明。
+  List<String> get _clearableFilterKeys => [
+    for (final key in _activeFilterKeys)
+      if (!widget.externalFilterKeys.contains(key)) key,
+  ];
+
   /// 全屏切换按钮：工具条与空态共用一份（全屏里 0 行时也必须能退出，否则
   /// 表头筛选把表过滤成空后会被困在全屏路由——2026-09-10 物料分析反馈）。
   /// 高度对齐工具条统一口径 48；按钮态靠 `_fsTick` 重建时读 `_fullscreen`。
@@ -1218,7 +1238,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 成功空态仍保留调用方业务工具条(例如 BOM 的“添加组件”)。加载中/错误态不走
   /// 本壳，避免基础数据尚未确认时开放依赖现状的写动作。
   Widget _emptyStateWithToolbarActions(Widget child) {
-    final activeFilterKeys = _activeFilterKeys;
+    final activeFilterKeys = _clearableFilterKeys;
     final actions = <Widget>[
       // 空表不给「进全屏」：一张没有行的表放大到整屏毫无意义，用户反而会以为
       // 数据被按钮挡住了（2026-09-11 销售订单财务确认「待确认」空态反馈）。
@@ -1310,7 +1330,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     );
     // 主数据为空且无任何前导分组 → 空态占位（有分组时仍渲染表头 + 分组行）。
     if (widget.items.isEmpty && !hasGroupRows) {
-      final activeFilters = _activeFilterKeys.length;
+      final activeFilters = _clearableFilterKeys.length;
       return _emptyStateWithToolbarActions(
         UtenEmpty(
           icon: Icons.table_rows_outlined,
@@ -2125,9 +2145,14 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 大表拖选+自动滚动时触发 selection 子树访问已销毁行（FM2 defunct 崩溃）。
     // 手动判定下单击立即生效、双击窗口内同行再点即打开，无任何竞技场副作用。
     // 例外：embedded（picker/滑窗内明细表）保留单击直达——picker 行的单击
-    // 语义本来就是「选中这条」，不是「打开页面」。
+    // 语义本来就是「选中这条」，不是「打开页面」。**多选 picker 同样走这条**
+    //（2026-09-11 报工来源选择器改多选时踩到）：落到下面的单击选中/双击打开
+    // 分支后，单击只会 selectRow()，而 idOf 返回 null 的不可选行连 selectRow
+    // 都提前返回——用户点了不可报工的行毫无反应，也拿不到「为什么不能选」的提示。
+    // 这里 selectRow() 负责勾选、onRowTap 负责提示，调用方的 onRowTap 里
+    // **不要再自己切换选中**，否则一次点击切两下等于没切。
     Widget interactive;
-    if (widget.embedded && !widget.selectable) {
+    if (widget.embedded) {
       interactive = InkWell(
         onTap: () {
           selectRow();

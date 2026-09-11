@@ -93,9 +93,13 @@ class FinanceReportPartyStatementTest {
         EntityManager em = mock(EntityManager.class);
         Query rowsQuery = mock(Query.class);
         when(rowsQuery.setParameter(anyString(), any())).thenReturn(rowsQuery);
+        // total_in/total_out 是窗口聚合，覆盖**整个筛选后结果集**而不是本页——
+        // 两行 out 合计 25 即来自于此。
         when(rowsQuery.getResultList()).thenReturn(List.<Object[]>of(
-                accountRow(LocalDate.of(2026, 2, 5), "TARGET-1", "0", "20", "130", "shown", 2L, 2L),
-                accountRow(LocalDate.of(2026, 2, 7), "TARGET-2", "0", "5", "135", "shown", 4L, 2L)));
+                accountRow(LocalDate.of(2026, 2, 5), "TARGET-1", "0", "20", "130",
+                        "shown", 2L, 2L, "0", "25"),
+                accountRow(LocalDate.of(2026, 2, 7), "TARGET-2", "0", "5", "135",
+                        "shown", 4L, 2L, "0", "25")));
         when(em.createNativeQuery(anyString())).thenReturn(rowsQuery);
 
         ReportTableResponse result = service(em).accountStatement(
@@ -107,6 +111,11 @@ class FinanceReportPartyStatementTest {
         assertThat((BigDecimal) result.rows().get(0).get("balance")).isEqualByComparingTo("130");
         assertThat((BigDecimal) result.rows().get(1).get("balance")).isEqualByComparingTo("135");
         assertThat(result.rows().getFirst().get("balanceText")).isEqualTo("130");
+        // 表尾合计只声明收/支；余额是滚动值，逐行相加无意义，不得出现在合计里。
+        assertThat(result.totals()).extracting(total -> total.key())
+                .containsExactly("inAmount", "outAmount");
+        assertThat(result.totals().get(1).groups().getFirst().value())
+                .isEqualByComparingTo("25");
         verify(rowsQuery).setParameter(eq("toExclusive"), any());
         verify(em, org.mockito.Mockito.atLeastOnce()).createNativeQuery(argThat(sql ->
                 sql.contains("AT TIME ZONE 'Asia/Shanghai'")
@@ -263,15 +272,22 @@ class FinanceReportPartyStatementTest {
         };
     }
 
+    /**
+     * 列序必须与 {@code accountStatementAuthorized} 的最外层 SELECT 一字不差：
+     * …entry_id(14), sort_posting_seq(15), total_count(16), <b>total_in(17), total_out(18)</b>。
+     * 后两列是窗口聚合出来的表尾合计（同一条查询里带回，不额外跑聚合），
+     * 少给就会在 {@code rows.getFirst()[17]} 上抛 ArrayIndexOutOfBounds。
+     */
     private static Object[] accountRow(LocalDate date, String billNo,
                                        String inAmount, String outAmount, String balance,
-                                       String remark, long postingSeq, long totalCount) {
+                                       String remark, long postingSeq, long totalCount,
+                                       String totalIn, String totalOut) {
         return new Object[]{
                 Date.valueOf(date), billNo, "", remark, "客户", "销售收款", null,
                 new BigDecimal(inAmount), new BigDecimal(outAmount),
                 new BigDecimal(balance), "RECEIPT", UUID.nameUUIDFromBytes(billNo.getBytes()),
                 "POSTING", null, UUID.nameUUIDFromBytes((billNo + "-entry").getBytes()),
-                postingSeq, totalCount
+                postingSeq, totalCount, new BigDecimal(totalIn), new BigDecimal(totalOut)
         };
     }
 }

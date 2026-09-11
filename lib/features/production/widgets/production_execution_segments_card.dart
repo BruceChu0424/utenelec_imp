@@ -715,13 +715,49 @@ class _ProductionExecutionSegmentsCardState
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                      Text(
-                        '等待物料 $waitingMaterial · 等待领料 $waitingDraw · '
-                        '可开工 $readyToStart · 人工暂缓 $deferred · '
-                        '生产中 $running · 已完工 $completed',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
+                      // 各档带自己的颜色（与流程词表同一色表）：一眼看出
+                      // 「哪几段该我动手」，而不是一排灰字里找数字。
+                      Wrap(
+                        spacing: UtenSpacing.s8,
+                        runSpacing: 2,
+                        children: [
+                          _countChip(
+                            theme,
+                            '等待物料',
+                            waitingMaterial,
+                            ProductionFlowTone.waiting,
+                          ),
+                          _countChip(
+                            theme,
+                            '去领料',
+                            waitingDraw,
+                            ProductionFlowTone.toDraw,
+                          ),
+                          _countChip(
+                            theme,
+                            '可开工',
+                            readyToStart,
+                            ProductionFlowTone.ready,
+                          ),
+                          _countChip(
+                            theme,
+                            '人工暂缓',
+                            deferred,
+                            ProductionFlowTone.pending,
+                          ),
+                          _countChip(
+                            theme,
+                            '生产中',
+                            running,
+                            ProductionFlowTone.active,
+                          ),
+                          _countChip(
+                            theme,
+                            '已完工',
+                            completed,
+                            ProductionFlowTone.done,
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -733,6 +769,10 @@ class _ProductionExecutionSegmentsCardState
                 ),
               ],
             ),
+            // 「该去仓库领料」横幅（2026-09-11 用户要求「写的明显点」）：
+            // 车间任务双击进来的人，第一眼就得知道下一步是自己跑一趟仓库，
+            // 而不是在卡片堆里找一行小字。
+            if (waitingDraw > 0) _goDrawBanner(theme, waitingDraw),
             // 快递式流程步骤条：等待物料 → 等待领料 → 生产中 → 已完工，
             // 当前位置取「最落后的活动段」（词表口径，全站一致）。
             ProductionFlowSteps(
@@ -759,6 +799,70 @@ class _ProductionExecutionSegmentsCardState
                   ],
                 );
               },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 分档计数小药丸：0 不渲染（不给用户一排 0 去数）。
+  Widget _countChip(
+    ThemeData theme,
+    String label,
+    int count,
+    ProductionFlowTone tone,
+  ) {
+    if (count <= 0) return const SizedBox.shrink();
+    final color = productionFlowToneColor(theme, tone);
+    return Text(
+      '$label $count',
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: color,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+  }
+
+  /// 「去领料」横幅：橙底 + 搬运图标 + 一句话说清去哪、干什么、之后能干什么。
+  Widget _goDrawBanner(ThemeData theme, int count) {
+    final color = productionFlowToneColor(theme, ProductionFlowTone.toDraw);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+      child: Container(
+        key: const Key('production-segments-go-draw-banner'),
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(UtenRadius.control),
+          border: Border.all(color: color.withValues(alpha: 0.55)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.move_to_inbox_rounded, color: color),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '去领料：$count 个执行段物料已齐套',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '请到仓库把这些段的物料领出来（仓库侧对应「生产领料任务」）；'
+                    '领料完成后本段即可开工报工。',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),

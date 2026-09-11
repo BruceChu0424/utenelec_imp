@@ -22,7 +22,16 @@ abstract final class UtenDialog {
         // 不与页面 region 嵌套；TextField 不受影响，自带原生选择）。
         child: AlertDialog(
           title: Text(title),
-          content: content,
+          // 比例护栏（2026-09-11）：AlertDialog 的 content 既不限宽也不滚动，
+          // 一段长说明就能把弹窗顶到满屏高（用户反馈「登记并送检的弹窗巨长」）。
+          // 这里统一限宽 460、限高 60% 屏高并让内容自己滚。
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 460,
+              maxHeight: MediaQuery.sizeOf(ctx).height * 0.6,
+            ),
+            child: SingleChildScrollView(child: content),
+          ),
           // 按钮整体居中（全仓弹窗统一规范）
           actionsAlignment: MainAxisAlignment.center,
           actions: [

@@ -404,10 +404,15 @@ void invalidateTodoBadgeCaches(WidgetRef ref) {
   ref.invalidate(salesAttentionCountProvider);
 }
 
+/// 异步计数取值：**刷新期间保留上一次的数**，只有从没成功过才按 0。
+///
+/// 此前写成 `loading: () => 0`，于是每 60 秒自失效轮询都把徽章打回 0 再弹回来
+/// ——用户 2026-09-11 反馈的「徽章会突然消失下又出现，然后又消失又出现」就是它。
+/// AsyncValue 在 refresh/invalidate 期间会带住旧值（copyWithPrevious），
+/// `valueOrNull` 正好取到；错误态同理保留旧值，不让一次网络抖动清空整列徽章。
+/// 前提是 provider 常驻（不 autoDispose），否则销毁重建后没有「上一次」可留。
 int _async(TodoWatch watch, ProviderListenable<AsyncValue<int>> provider) =>
-    watch(
-      provider,
-    ).when(data: (value) => value, error: (_, _) => 0, loading: () => 0);
+    watch(provider).valueOrNull ?? 0;
 
 bool _can(TodoWatch watch, String permission) =>
     watch(isSuperAdminProvider) ||

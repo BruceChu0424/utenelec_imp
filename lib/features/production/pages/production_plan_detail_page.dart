@@ -1,4 +1,14 @@
-// 生产计划单详情页（全页路由）：主表头卡 + 只读明细子表 + 状态门控操作（审核/红冲/编辑/删除）。
+// 生产计划单详情页（全页路由）：摘要主卡 + 执行子计划 + 折叠参考区 + 右下角悬浮操作组。
+//
+// 信息层级（2026-09-11 重排，原因见各区块注释）：本页此前是一条等权重的卡片流，
+// 打开后要在七八张同样大小的卡片里自己找重点。现在按「进来先看什么 → 在哪儿办事 →
+// 需要时才翻什么」拆成三层：
+//   ① 摘要区：单号/状态/产品/数量/交期/车间——决定"这单是什么、能不能动"的事实，
+//      独占视觉权重最高的主卡，第一屏内看完；
+//   ② 主体区：执行子计划卡——本页真正的操作面（派工/开工/报工），紧跟摘要，
+//      不让附件、溯源这些查证型内容把它挤到屏幕下方；
+//   ③ 参考区：附件/溯源/执行单据入口/本批次关联单据/自制子计划——查证时才翻，
+//      统一收进默认折叠的 UtenCollapsibleSection，标题带条目数，不展开也知道有没有东西。
 //
 // 状态机：草稿(0)→可编辑/删除/审核；已审(1)→仅红冲；红冲(-1)→只读。编辑/删除/审核/红冲分别按对应动作权限控制。
 // is_closed（CheckFulfill4 派生：所有明细 qty-iqty≤0）/ is_stopped / is_canceled 经徽章副标体现。
@@ -16,7 +26,10 @@ import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_section_header.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/responsive/dialog_size.dart';
@@ -1073,6 +1086,7 @@ class _ProductionPlanDetailPageState
               : ListView(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
+                    // 越权/只读提示永远压在最顶：它决定了下面所有按钮点不点得动。
                     DocumentScopeWriteNotice(
                       capability: scopeCapability,
                       ownerEmployeeId: _detail!.makerId,
@@ -1082,31 +1096,17 @@ class _ProductionPlanDetailPageState
                         ),
                       ),
                     ),
-                    _headerCard(theme, names),
+                    // ① 摘要区。
+                    _summaryHeroCard(theme, names),
+                    // 草稿态额外保留产品明细摘要（含编号/颜色/来源销售订单这些
+                    // 主卡放不下的核对信息）；已审计划的权威口径在执行子计划里，
+                    // 因此仍只对草稿展示，沿用原有可见性。
                     if (_detail!.status == kProductionStatusDraft) ...[
                       const SizedBox(height: UtenSpacing.s12),
                       _planProductSummary(theme, names),
                     ],
-                    if (_hasTraceability) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      _traceabilityCard(theme),
-                    ],
-                    // 生产计划附件（图纸/样品图/排产确认）：详情=审核页，一律只读，
-                    // 增删回编辑页做（2026-09-11 用户要求，全站同改）。
-                    const SizedBox(height: UtenSpacing.s12),
-                    BusinessAttachmentSection(
-                      ownerType: 'PRODUCTION_PLAN',
-                      ownerId: _detail!.id,
-                      canView: ref
-                          .watch(currentPermissionsProvider)
-                          .contains(Perm.productionPlanView),
-                      canManage: false,
-                      readOnlyNote: BusinessAttachmentSection
-                          .kReviewReadOnlyAttachmentNote,
-                      title: '附件（图纸/样品图/排产确认）',
-                      categories: const ['图纸', '样品图', '确认件', '其他'],
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
+                    // ② 主体区：执行子计划卡自带标题与状态计数，不再另加区块标题。
+                    const SizedBox(height: UtenSpacing.s16),
                     ProductionExecutionSegmentsCard(
                       key: ValueKey('${widget.id}|$_executionSegmentsRevision'),
                       planId: widget.id,
@@ -1117,25 +1117,123 @@ class _ProductionPlanDetailPageState
                       initialSegmentId: _focusedExecutionSegmentId,
                       onChanged: _loadSubplans,
                     ),
-                    if (_detail!.status == kProductionStatusApproved) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      _executionDocumentsCard(theme),
-                    ],
-                    if (_relatedDocumentsCardVisible) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      _relatedDocumentsCard(theme),
-                    ],
-                    if (_subplanError != null)
-                      const SizedBox(height: UtenSpacing.s12),
-                    _subplanErrorCard(theme),
-                    if (_subplans != null && _subplans!.isNotEmpty)
-                      const SizedBox(height: UtenSpacing.s12),
-                    _subplansCard(theme),
+                    // ③ 参考区（默认折叠）。
+                    ..._referenceSections(theme),
                   ],
                 ),
         ),
       ),
-      bottomNavigationBar: _detail == null ? null : _actions(theme),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: _detail == null ? null : _actions(theme),
+    );
+  }
+
+  /// 参考区（信息层级第三层）：附件、溯源、执行单据入口、本批次关联单据、自制子计划。
+  ///
+  /// 这几块的共同点是「需要时才翻的旁证」——它们不推进本单的下一步动作，却因为
+  /// 过去和执行子计划平铺在同一条流里，把真正要办事的地方顶到了屏幕之外。统一收进
+  /// 默认折叠的分区后，标题上的条目数让人不展开也能判断里面有没有东西、值不值得点。
+  ///
+  /// 两个刻意的例外：
+  /// - 子计划加载失败是要人立刻处理的告警，始终平铺，不藏进折叠；
+  /// - 每个区块的间距跟着它自己的可见条件走（原来 `if(...) SizedBox` 后面跟无条件
+  ///   卡片，卡片不渲染时会多出一段空白），这里统一由 sections 列表拼装，杜绝错位。
+  List<Widget> _referenceSections(ThemeData theme) {
+    final detail = _detail!;
+    final permissions = ref.watch(currentPermissionsProvider);
+    // 附件折叠头的出现条件与 BusinessAttachmentSection 自身完全一致（单据查看权 +
+    // 附件查看权）：无权的人不该看见一个永远空的「附件」标题，标题上的计数也因此
+    // 不会额外触发一次附件列表请求（复用同一个 provider 实例）。
+    final attachmentsVisible =
+        permissions.contains(Perm.productionPlanView) &&
+        permissions.contains(Perm.attachmentView);
+    final attachmentCount = attachmentsVisible
+        ? ref
+              .watch(
+                businessAttachmentsProvider((
+                  type: 'PRODUCTION_PLAN',
+                  id: detail.id,
+                )),
+              )
+              .valueOrNull
+              ?.length
+        : null;
+    final traceCount =
+        detail.traceSalesOrders.length +
+        detail.traceMaterialDraws.length +
+        detail.tracePurchaseRequests.length +
+        detail.traceSubcontractApplications.length +
+        detail.traceDailyReports.length;
+    final subplans = _subplans ?? const <MrpSubplanRef>[];
+
+    final sections = <Widget>[
+      if (_subplanError != null) _subplanErrorCard(theme),
+      if (attachmentsVisible)
+        _referenceSection(
+          title: '附件',
+          count: attachmentCount,
+          // 详情=审核页，一律只读，增删回编辑页做（2026-09-11 用户要求，全站同改）。
+          child: BusinessAttachmentSection(
+            ownerType: 'PRODUCTION_PLAN',
+            ownerId: detail.id,
+            canView: permissions.contains(Perm.productionPlanView),
+            canManage: false,
+            readOnlyNote:
+                BusinessAttachmentSection.kReviewReadOnlyAttachmentNote,
+            title: '附件（图纸/样品图/排产确认）',
+            categories: const ['图纸', '样品图', '确认件', '其他'],
+          ),
+        ),
+      if (_hasTraceability)
+        _referenceSection(
+          title: '溯源单据',
+          count: traceCount,
+          child: _traceabilityCard(theme),
+        ),
+      if (detail.status == kProductionStatusApproved)
+        _referenceSection(
+          title: '执行单据与材料台账入口',
+          child: _executionDocumentsCard(theme),
+        ),
+      if (_relatedDocumentsCardVisible)
+        _referenceSection(
+          title: '本批次关联单据',
+          // 还在加载时不给数字，免得先显示 0 再跳数。
+          count: _relatedDocumentsLoading && _relatedDocuments == null
+              ? null
+              : _relatedDocumentCount,
+          child: _relatedDocumentsCard(theme),
+        ),
+      if (subplans.isNotEmpty)
+        _referenceSection(
+          title: '自制子计划',
+          count: subplans.length,
+          child: _subplansCard(theme),
+        ),
+    ];
+    if (sections.isEmpty) return const [];
+    return [
+      const SizedBox(height: UtenSpacing.s16),
+      const UtenSectionHeader(title: '查证与关联资料（默认收起）', subdued: true),
+      for (final section in sections) ...[
+        const SizedBox(height: UtenSpacing.s8),
+        section,
+      ],
+    ];
+  }
+
+  /// 参考区统一外壳：折叠头（标题 + 括号计数）+ 原卡片原样放进去。
+  /// 计数用中性括号（浏览型计数，不是待办，不参与红徽章累加）。
+  Widget _referenceSection({
+    required String title,
+    required Widget child,
+    int? count,
+  }) {
+    return UtenCollapsibleSection(
+      key: ValueKey('production-plan-reference-$title'),
+      title: count == null ? title : '$title ($count)',
+      initiallyExpanded: false,
+      child: child,
     );
   }
 
@@ -1144,6 +1242,11 @@ class _ProductionPlanDetailPageState
     if (analysisId == null || analysisId.isEmpty) return false;
     return _relatedDocumentsLoading || (_relatedDocuments?.isNotEmpty ?? false);
   }
+
+  /// 关联单据条目数：与卡片内过滤口径一致（本批次计划树本身不算"关联单据"）。
+  int get _relatedDocumentCount => (_relatedDocuments ?? const [])
+      .where((doc) => doc.documentType != 'PRODUCTION_PLAN')
+      .length;
 
   /// 本批次关联单据：采购/委外申请与订货单（可点进对应单据看进度——
   /// 订货/审批/收货/IQC/入库的深链进度在各自详情页与物料分析进度弹窗）。
@@ -1463,22 +1566,229 @@ class _ProductionPlanDetailPageState
     );
   }
 
-  Widget _headerCard(ThemeData theme, MasterNameService names) {
+  /// 摘要主卡（信息层级第一层）：进这张单最先要回答的六件事——
+  /// 哪张单(单号) / 现在什么状态 / 做什么(产品) / 做多少(数量) / 什么时候要(交期) /
+  /// 谁在做(车间)。它们独占全页最高视觉权重：单号用 titleLarge+w800 当标题，
+  /// 状态徽章钉在右上角，三个关键值用带底色的指标块 titleMedium+w800 呈现，
+  /// 这样"重点"是被字号和留白推出来的，而不是让人在等权重的字段表里自己找。
+  ///
+  /// 制单员/制单时间/跟单员/备注等审计型字段不推进任何决策，降级到卡片下半区
+  /// 的小字双列（宽屏两列、窄屏一列），内容一个不少，但不再和关键事实抢视线。
+  Widget _summaryHeroCard(ThemeData theme, MasterNameService names) {
     final d = _detail!;
-    final rows = <_KV>[
-      _KV('单据号', d.billNo),
-      _KV('单据日期', d.billDate),
-      _KV('制单员', d.makerName),
-      _KV('制单时间', utenFmtIsoTime(d.createdAt)),
-      if ((d.fStyle ?? '').isNotEmpty) _KV('生产类型', d.fStyle),
-      if (d.deliveryDate != null) _KV('交货日', d.deliveryDate),
-      if (d.departmentId != null || (d.workshopName ?? '').isNotEmpty)
-        _KV(
-          '车间',
-          d.departmentId != null
-              ? names.department(d.departmentId)
-              : d.workshopName,
+    final scheme = theme.colorScheme;
+    final items = d.items;
+
+    final workshop = d.departmentId != null
+        ? names.department(d.departmentId)
+        : (d.workshopName ?? '');
+    // 交货日优先取表头；物料分析下达的计划表头常为空，退回首行计划交期，
+    // 让"什么时候要"这一格尽量给出真实日期而不是「—」。
+    final delivery = productionDateOnly(
+      (d.deliveryDate ?? '').isNotEmpty
+          ? d.deliveryDate
+          : items.firstOrNull?.outboundDate,
+    );
+    // 数量按单位分组合计（跨单位不相加，口径与产品摘要卡一致）。
+    final totalQty = items.isEmpty
+        ? '—'
+        : measurementTotalsText(
+            items.map(
+              (item) => MeasuredAmount(
+                value: item.qty ?? 0,
+                unitId: item.unitId,
+                unitName: names.unit(item.unitId),
+              ),
+            ),
+          );
+    final productLine = items.isEmpty
+        ? '暂无计划产品'
+        : items.length == 1
+        ? [
+            names.goods(items.first.goodsId),
+            items.first.productNo ?? '',
+            names.color(items.first.colorId),
+          ].where((value) => value.isNotEmpty && value != '—').join(' · ')
+        : '${names.goods(items.first.goodsId)} 等 ${items.length} 项';
+
+    return Card(
+      key: const Key('production-plan-summary-hero'),
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 主色条：与折叠分区同款 4px 色条，一眼区分"这是主卡、下面是参考"。
+                Container(
+                  width: 4,
+                  height: 34,
+                  margin: const EdgeInsets.only(
+                    right: UtenSpacing.s8,
+                    top: UtenSpacing.s2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: scheme.primary,
+                    borderRadius: UtenRadius.xsAll,
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '生产计划单',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: UtenSpacing.s2),
+                      Text(
+                        (d.billNo ?? '').isEmpty ? '—' : d.billNo!,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                ProductionStatusBadge(
+                  status: d.status,
+                  closed: d.closed,
+                  stopped: d.stopped,
+                  canceled: d.canceled,
+                ),
+              ],
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.widgets_outlined, size: 18, color: scheme.primary),
+                const SizedBox(width: UtenSpacing.s8),
+                Expanded(
+                  child: Text(
+                    productLine.isEmpty ? '—' : productLine,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            _heroMetrics(
+              theme,
+              totalQty: totalQty,
+              delivery: delivery.isEmpty ? '—' : delivery,
+              workshop: workshop.isEmpty ? '—' : workshop,
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            Divider(height: 1, color: scheme.outlineVariant),
+            const SizedBox(height: UtenSpacing.s8),
+            _secondaryFactsGrid(theme, names),
+          ],
         ),
+      ),
+    );
+  }
+
+  /// 三个关键指标（数量/交期/车间）：宽屏一行三格、窄屏逐行铺满，
+  /// 用带底色的小块把数字从字段表里"抬"出来。
+  Widget _heroMetrics(
+    ThemeData theme, {
+    required String totalQty,
+    required String delivery,
+    required String workshop,
+  }) {
+    final tiles = <(String, String, IconData)>[
+      ('计划数量', totalQty, Icons.straighten_rounded),
+      ('交货日', delivery, Icons.event_outlined),
+      ('车间', workshop, Icons.factory_outlined),
+    ];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = UtenSpacing.s8;
+        final threeUp = constraints.maxWidth >= 520;
+        final width = threeUp
+            ? (constraints.maxWidth - gap * 2) / 3
+            : constraints.maxWidth;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final tile in tiles)
+              SizedBox(
+                width: width,
+                child: _heroMetricTile(theme, tile.$1, tile.$2, tile.$3),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _heroMetricTile(
+    ThemeData theme,
+    String label,
+    String value,
+    IconData icon,
+  ) {
+    final scheme = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s12,
+        vertical: UtenSpacing.s8,
+      ),
+      decoration: BoxDecoration(
+        color: scheme.primary.withValues(alpha: 0.06),
+        borderRadius: UtenRadius.controlAll,
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: scheme.onSurfaceVariant),
+              const SizedBox(width: UtenSpacing.s4),
+              Flexible(
+                child: Text(
+                  label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: UtenSpacing.s2),
+          Text(
+            value,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 主卡下半区：审计型字段，一个不少但全部降权。
+  List<_KV> _secondaryFacts(MasterNameService names) {
+    final d = _detail!;
+    return <_KV>[
+      _KV('单据日期', d.billDate),
+      if ((d.fStyle ?? '').isNotEmpty) _KV('生产类型', d.fStyle),
       if (d.workerId != null || (d.workerName ?? '').isNotEmpty)
         _KV(
           '计划负责人',
@@ -1489,27 +1799,34 @@ class _ProductionPlanDetailPageState
           '跟单员',
           d.sellerId != null ? names.employee(d.sellerId) : d.sellerName,
         ),
+      _KV('制单员', d.makerName),
+      _KV('制单时间', utenFmtIsoTime(d.createdAt)),
       if ((d.sourceDocNo ?? '').isNotEmpty) _KV('来源单号', d.sourceDocNo),
-      if ((d.remark ?? '').isNotEmpty) _KV('备注', d.remark),
-      _KV(
-        '状态',
-        null,
-        badge: ProductionStatusBadge(
-          status: d.status,
-          closed: d.closed,
-          stopped: d.stopped,
-          canceled: d.canceled,
-        ),
-      ),
+      // 备注长度不可控，独占整行，免得把右列挤成竖条。
+      if ((d.remark ?? '').isNotEmpty) _KV('备注', d.remark, fullWidth: true),
     ];
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [for (final r in rows) _kvRow(theme, r)],
-        ),
-      ),
+  }
+
+  Widget _secondaryFactsGrid(ThemeData theme, MasterNameService names) {
+    final facts = _secondaryFacts(names);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = UtenSpacing.s12;
+        final twoColumns = constraints.maxWidth >= 480;
+        final width = twoColumns
+            ? (constraints.maxWidth - gap) / 2
+            : constraints.maxWidth;
+        return Wrap(
+          spacing: gap,
+          children: [
+            for (final fact in facts)
+              SizedBox(
+                width: fact.fullWidth ? constraints.maxWidth : width,
+                child: _kvRow(theme, fact),
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -1528,7 +1845,7 @@ class _ProductionPlanDetailPageState
               ),
             ),
           ),
-          Expanded(child: r.badge ?? Text(r.value ?? '—')),
+          Expanded(child: Text(r.value ?? '—')),
         ],
       ),
     );
@@ -1752,20 +2069,13 @@ class _ProductionPlanDetailPageState
         ),
       );
     }
-    return SafeArea(
-      child: Container(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          border: Border(
-            top: BorderSide(color: theme.colorScheme.outlineVariant),
-          ),
-        ),
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: children,
-        ),
-      ),
+    // 2026-09-11：底部固定条 → 右下角悬浮组（与编辑页/任务页同一形态、同一高度）。
+    // children 里原本夹着手写的 SizedBox(width:) 间距，悬浮组自己有 spacing，去掉。
+    return UtenFloatingActionGroup(
+      children: [
+        for (final child in children)
+          if (child is! SizedBox) child,
+      ],
     );
   }
 }
@@ -1795,9 +2105,13 @@ class _PlanningResultSelection {
   final bool printWorkCards;
 }
 
+/// 主卡下半区的一条审计型字段。状态不再走这里——它已经是摘要主卡右上角的徽章，
+/// 所以这个结构只剩纯文本键值（原先的 badge 槽位没有任何调用方了）。
 class _KV {
-  const _KV(this.label, this.value, {this.badge});
+  const _KV(this.label, this.value, {this.fullWidth = false});
   final String label;
   final String? value;
-  final Widget? badge;
+
+  /// 在主卡下半区的双列栅格里独占整行（长文本字段，如备注）。
+  final bool fullWidth;
 }

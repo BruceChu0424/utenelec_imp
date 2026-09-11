@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
@@ -476,17 +477,12 @@ class _FinanceSalesOrderConfirmationPageState
         ),
         actions: allowed
             ? [
-                Padding(
-                  padding: const EdgeInsets.only(right: UtenSpacing.s8),
-                  child: UtenButton(
-                    key: const Key('sales-order-finance-confirm-refresh'),
-                    size: UtenButtonSize.large,
-                    type: UtenButtonType.tonal,
-                    icon: Icons.refresh_rounded,
-                    isLoading: _loading || _batchBusy,
-                    onPressed: _loading || _batchBusy ? null : _refreshCurrent,
-                    child: const Text('刷新'),
-                  ),
+                UtenAppBarActionButton(
+                  key: const Key('sales-order-finance-confirm-refresh'),
+                  label: '刷新',
+                  icon: Icons.refresh_rounded,
+                  isLoading: _loading || _batchBusy,
+                  onPressed: _loading || _batchBusy ? null : _refreshCurrent,
                 ),
               ]
             : null,

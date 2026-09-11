@@ -128,7 +128,9 @@ class _ProductionWorkshopTasksPageState
       return '正在核对备料，打开任务可以查看各项物料的进度';
     }
     if (!task.issued && !task.zeroMaterial) {
-      return '物料已齐，等待仓库发料；发料完成后即可开工';
+      // 2026-09-11 用户口径：这一步是**车间自己去仓库领**，不是干等仓库送。
+      // 措辞要说清「去哪、干什么」，否则工人以为只能等。
+      return '物料已齐，请到仓库领料；领料完成后即可开工';
     }
     final reason = task.blockedReason?.trim();
     if (reason != null && reason.isNotEmpty) return reason;

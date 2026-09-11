@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../components/buttons/uten_app_bar_action_button.dart';
+import '../../../components/data_display/uten_selection_summary_pill.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -334,25 +337,21 @@ class _WarehouseQualityResultDetailPageState
           ),
         ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: UtenSpacing.s8),
-            child: UtenButton(
-              key: const Key('warehouse-quality-detail-refresh'),
-              size: UtenButtonSize.large,
-              type: UtenButtonType.tonal,
-              icon: Icons.refresh_rounded,
-              isLoading: _loading && detail != null,
-              onPressed: _loading || _saving
-                  ? null
-                  : () => _load(preserveInputs: true),
-              child: const Text('刷新'),
-            ),
+          UtenAppBarActionButton(
+            key: const Key('warehouse-quality-detail-refresh'),
+            label: '刷新',
+            icon: Icons.refresh_rounded,
+            isLoading: _loading && detail != null,
+            onPressed: _loading || _saving
+                ? null
+                : () => _load(preserveInputs: true),
           ),
         ],
       ),
       body: SafeArea(child: _body()),
-      bottomNavigationBar: detail != null && _canConfirm && _drafts.isNotEmpty
-          ? _bottomBar()
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: detail != null && _canConfirm && _drafts.isNotEmpty
+          ? _floatingActions()
           : null,
     );
   }
@@ -698,59 +697,36 @@ class _WarehouseQualityResultDetailPageState
     );
   }
 
-  Widget _bottomBar() {
+  /// 右下角悬浮操作组（2026-09-11：原来是钉在页底的固定条）。
+  ///
+  /// 与全站一致：左「已选 N 项」胶囊 + 右主动作；主动作红底白字
+  /// （UtenButtonType.danger——「点了就往下走一步」的统一配色），
+  /// 高度由 UtenFloatingActionGroup 统一到 52。
+  Widget _floatingActions() {
     final selected = _drafts.where((draft) => draft.selected).length;
-    return SafeArea(
-      top: false,
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: UtenSpacing.s16,
-          vertical: UtenSpacing.s12,
+    return UtenFloatingActionGroup(
+      children: [
+        UtenSelectionSummaryPill(
+          count: selected,
+          clearKey: const Key('warehouse-quality-detail-clear-selection'),
+          onClear: selected == 0
+              ? null
+              : () => setState(() {
+                  for (final draft in _drafts) {
+                    draft.selected = false;
+                  }
+                }),
         ),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          border: Border(
-            top: BorderSide(
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-          ),
+        UtenButton(
+          key: const Key('warehouse-quality-detail-confirm'),
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          icon: Icons.move_to_inbox_rounded,
+          isLoading: _saving,
+          onPressed: _saving || selected == 0 ? null : _confirmStockIn,
+          child: Text(selected == 0 ? '确认入库' : '确认入库($selected)'),
         ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final summary = Text(
-              selected == 0 ? '请勾选本次要点收的放行切片' : '已选择 $selected 条放行切片',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-            );
-            final action = UtenButton(
-              key: const Key('warehouse-quality-detail-confirm'),
-              size: UtenButtonSize.large,
-              icon: Icons.move_to_inbox_rounded,
-              isLoading: _saving,
-              onPressed: _saving || selected == 0 ? null : _confirmStockIn,
-              child: Text(selected == 0 ? '确认入库' : '确认入库($selected)'),
-            );
-            if (constraints.maxWidth < 560) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  summary,
-                  const SizedBox(height: UtenSpacing.s8),
-                  action,
-                ],
-              );
-            }
-            return Row(
-              children: [
-                Expanded(child: summary),
-                const SizedBox(width: UtenSpacing.s12),
-                action,
-              ],
-            );
-          },
-        ),
-      ),
+      ],
     );
   }
 

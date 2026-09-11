@@ -22,10 +22,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/feedback/uten_module_todo_chip.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/feedback/uten_draft_badge.dart';
-import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -156,15 +156,8 @@ class WarehouseHubPage extends ConsumerWidget {
         actions: [
           // 本模块累计：数字由注册表对 TodoModule.warehouse 名下入口求和得出
           //（四张任务中心 + 仓库草稿），页面里不要再手写加法；0 由徽章自己不渲染。
-          Padding(
-            padding: const EdgeInsets.only(right: UtenSpacing.s8),
-            child: Center(
-              child: UtenNotificationBadge(
-                count: todoModuleCount(TodoModule.warehouse, ref.watch),
-                size: 20,
-                showLabel: true,
-              ),
-            ),
+          UtenModuleTodoChip(
+            count: todoModuleCount(TodoModule.warehouse, ref.watch),
           ),
         ],
       ),

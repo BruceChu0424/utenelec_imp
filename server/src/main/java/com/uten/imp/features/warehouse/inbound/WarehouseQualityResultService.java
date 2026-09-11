@@ -342,9 +342,16 @@ public class WarehouseQualityResultService {
     }
 
     /**
-     * 角标计数（统一口径 = 未完结任务数：等待检查结果 + 待入库 + 需退回）。
-     * 复用列表聚合管线按 (来源类型, 作业状态) 分组后排除「已完结」——与页内
-     * 分段徽章同一 STATUS_CASE，口径不漂移；hub 卡角标与父分类分段计数共用。
+     * 角标计数（口径 = <b>轮到仓库动手</b>的任务数：待入库 + 需退回）。
+     *
+     * <p>2026-09-11 起<b>剔除「等待检查结果」</b>（{@code WAITING_INSPECTION}）：
+     * 那一档球在品质部手上，仓库看得见但办不了，计进红徽章等于天天挂着一个
+     * 点进去什么也做不了的数字（用户原话：「等待检查这个不计入消息累计，
+     * 只有检查结束后通知」）。它仍在页内分段里以中性计数呈现，只是不上卷。
+     * 「已完结」是终态，本就排除。
+     *
+     * <p>复用列表聚合管线按 (来源类型, 作业状态) 分组，与页内分段同一
+     * STATUS_CASE，口径不漂移；hub 卡角标与父分类分段计数共用。
      */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('" + WarehouseQualityResultPermissions.STOCK_IN_VIEW + "')"
@@ -362,7 +369,11 @@ public class WarehouseQualityResultService {
             counts.put(known, 0L);
         }
         for (Object[] row : rows) {
-            if (COMPLETED.equals(str(row[1]))) continue;
+            String workStatus = str(row[1]);
+            // 终态不数；等待检查结果不数（见方法注释：那一档不是仓库的待办）。
+            if (COMPLETED.equals(workStatus) || WAITING_INSPECTION.equals(workStatus)) {
+                continue;
+            }
             counts.merge(str(row[0]), number(row[2]).longValue(), Long::sum);
         }
         return counts;

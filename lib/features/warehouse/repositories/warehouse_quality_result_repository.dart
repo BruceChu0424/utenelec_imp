@@ -22,7 +22,8 @@ abstract interface class WarehouseQualityResultGateway {
     String? keyword,
   });
 
-  /// 角标：未完结任务数（等待检查结果 + 待入库 + 需退回，全来源之和）。
+  /// 角标：轮到仓库动手的任务数（待入库 + 需退回，全来源之和）。
+  /// 「等待检查结果」球在品质部手上，2026-09-11 起不计入（后端同口径）。
   Future<int> pendingCount();
 
   /// 父分类（来源类型）分段计数：各来源未完结任务数。

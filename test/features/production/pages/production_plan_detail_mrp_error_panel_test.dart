@@ -84,8 +84,10 @@ void main() {
         isEmpty,
       );
 
+      await _expandReferenceSection(tester, '执行单据与材料台账入口');
       final openDocuments = find.text('查看执行单据');
       await tester.ensureVisible(openDocuments);
+      await tester.pumpAndSettle();
       await tester.tap(openDocuments);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
@@ -379,6 +381,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await _expandReferenceSection(tester, '执行单据与材料台账入口');
       final openResult = find.text('查看执行单据');
       await tester.ensureVisible(openResult);
       await tester.tap(openResult);
@@ -696,3 +699,25 @@ Map<String, dynamic> _detailWorkCardJson() => {
     },
   ],
 };
+
+/// 展开参考区的折叠块（2026-09-11 详情页重排后，附件/溯源/执行单据/关联单据/
+/// 子计划默认收起——第一屏留给摘要与执行子计划）。
+///
+/// **幂等**：已展开就直接返回。折叠状态从标题行 chevron 的 AnimatedRotation
+/// 读（turns==0 即展开），比猜「点过一次就是开的」可靠——路由 pop 回来重建后
+/// 折叠块会回到默认收起。
+Future<void> _expandReferenceSection(WidgetTester tester, String title) async {
+  final section = find.byKey(ValueKey('production-plan-reference-$title'));
+  expect(section, findsOneWidget, reason: '参考区应有「$title」折叠块');
+  await tester.ensureVisible(section);
+  await tester.pumpAndSettle();
+  final chevron = find.descendant(
+    of: section,
+    matching: find.byType(AnimatedRotation),
+  );
+  if (tester.widget<AnimatedRotation>(chevron.first).turns == 0) return;
+  await tester.tap(
+    find.descendant(of: section, matching: find.byType(InkWell)).first,
+  );
+  await tester.pumpAndSettle();
+}

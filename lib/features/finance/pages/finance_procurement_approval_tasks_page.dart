@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
@@ -503,19 +504,12 @@ class _FinanceProcurementApprovalTasksPageState
         ),
         actions: allowed
             ? [
-                Padding(
-                  padding: const EdgeInsets.only(right: UtenSpacing.s8),
-                  child: UtenButton(
-                    key: const Key('finance-approval-refresh'),
-                    size: UtenButtonSize.large,
-                    type: UtenButtonType.tonal,
-                    icon: Icons.refresh_rounded,
-                    isLoading: (_loading && _result != null) || _busyDecision,
-                    onPressed: _loading || _busyDecision
-                        ? null
-                        : _refreshCurrent,
-                    child: const Text('刷新'),
-                  ),
+                UtenAppBarActionButton(
+                  key: const Key('finance-approval-refresh'),
+                  label: '刷新',
+                  icon: Icons.refresh_rounded,
+                  isLoading: (_loading && _result != null) || _busyDecision,
+                  onPressed: _loading || _busyDecision ? null : _refreshCurrent,
                 ),
               ]
             : null,

@@ -70,13 +70,16 @@ class OperationsWorkbenchRepository implements OperationsWorkbenchGateway {
     return OperationsWorkbenchData.fromJson(json, department);
   }
 
-  /// 采购任务中心待分解申请明细数（WAITING_ORDER），与采购管理角标同源。
+  /// 采购任务中心待办单据数（申请待分解 + 财务驳回），与采购管理角标同源。
+  /// 「等待财务审核 / 财务已通过」不计入（监控数，页面里是中性括号）。
   Future<int> purchaseTaskCount() async {
     final json = await api.get('/operations/workbench/purchase/count');
     return (json['count'] as num?)?.toInt() ?? 0;
   }
 
-  /// 委外任务中心待办数（待分解 + 待采购完成 + 财务驳回），与委外管理角标同源。
+  /// 委外任务中心待办数（待分解 + 财务驳回），与委外管理角标同源。
+  /// 2026-09-11 起「财务已通过·待采购完成」与「等待财务审核」不再计入——
+  /// 下一步在别人手上，是监控数（见后端 countPending 的口径说明）。
   Future<int> subcontractTaskCount() async {
     final json = await api.get('/operations/workbench/subcontract/count');
     return (json['count'] as num?)?.toInt() ?? 0;

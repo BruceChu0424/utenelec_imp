@@ -18,6 +18,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -522,16 +523,11 @@ class _QualityPendingDisposalPageState
               backTo(context, defaultPath: RouteName.qualityTaskCenter),
         ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: UtenSpacing.s8),
-            child: UtenButton(
-              size: UtenButtonSize.large,
-              type: UtenButtonType.tonal,
-              icon: Icons.refresh_rounded,
-              isLoading: _loading && _rows.isNotEmpty,
-              onPressed: _loading ? null : _load,
-              child: const Text('刷新'),
-            ),
+          UtenAppBarActionButton(
+            label: '刷新',
+            icon: Icons.refresh_rounded,
+            isLoading: _loading && _rows.isNotEmpty,
+            onPressed: _loading ? null : _load,
           ),
         ],
       ),
@@ -603,6 +599,9 @@ class _QualityPendingDisposalPageState
                 },
                 nullCounts: const {},
                 filters: {'docType': _typeFilter, 'status': _statusFilter},
+                // 类型分段条在表外、空态也一直看得见，用户随时能切回「全部」；
+                // 表里再给一个「清除筛选」是重复入口（状态筛选只有表头有，保留）。
+                externalFilterKeys: const {'docType'},
                 onFilterChanged: (key, value) {
                   if (key == 'status') {
                     setState(() {
@@ -1226,16 +1225,11 @@ class _ProcurementInspectionDetailPageState
               popOrBackTo(context, defaultPath: RouteName.warehouseInspections),
         ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: UtenSpacing.s8),
-            child: UtenButton(
-              size: UtenButtonSize.large,
-              type: UtenButtonType.tonal,
-              icon: Icons.refresh_rounded,
-              isLoading: _loading && _items.isNotEmpty,
-              onPressed: _loading || _busyDecision ? null : _load,
-              child: const Text('刷新'),
-            ),
+          UtenAppBarActionButton(
+            label: '刷新',
+            icon: Icons.refresh_rounded,
+            isLoading: _loading && _items.isNotEmpty,
+            onPressed: _loading || _busyDecision ? null : _load,
           ),
         ],
       ),
@@ -1461,8 +1455,10 @@ class _ProcurementInspectionDetailPageState
     MasterColumnDef(
       key: 'unit',
       label: '验收单位',
-      width: 90,
-      value: (item) => inspectionQuantityUnit(context, item),
+      width: 190,
+      // 单位后直接带上本行的换算事实（原单 1 箱 = 24 个）：合格/不合格列的 ⓘ
+      // 已上表头，逐行不同的倍率必须在正文里看得见，否则会有人把箱数当个数填。
+      value: (item) => inspectionQuantityUnitCell(context, item),
     ),
     MasterColumnDef(
       key: 'sourceOrderNo',
@@ -1482,6 +1478,8 @@ class _ProcurementInspectionDetailPageState
       label: '合格数量',
       width: 120,
       type: 'number',
+      // 2026-09-11：提示 ⓘ 统一挂表头，行内只留报错（行内 ⓘ 把输入框挤窄）。
+      info: inspectionQuantityColumnHint(context, passed: true),
       value: (item) => _reportRows[item.id]?.pass.text ?? '0',
       cellBuilder: (context, item) {
         final row = _reportRows[item.id];
@@ -1495,9 +1493,8 @@ class _ProcurementInspectionDetailPageState
             enabled: _canHandle && !_busyDecision,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             textAlign: TextAlign.right,
-            decoration: UtenInputDecoration(
-              const InputDecoration(isDense: true),
-              info: inspectionQuantityHint(context, item, passed: true),
+            decoration: const UtenInputDecoration(
+              InputDecoration(isDense: true),
             ),
           ),
         );
@@ -1508,6 +1505,7 @@ class _ProcurementInspectionDetailPageState
       label: '不合格数量',
       width: 120,
       type: 'number',
+      info: inspectionQuantityColumnHint(context, passed: false),
       value: (item) => _reportRows[item.id]?.fail.text ?? '0',
       cellBuilder: (context, item) {
         final row = _reportRows[item.id];
@@ -1528,7 +1526,6 @@ class _ProcurementInspectionDetailPageState
                     ? null
                     : UtenFieldMessage.error(row.validate()!),
               ),
-              info: inspectionQuantityHint(context, item, passed: false),
             ),
           ),
         );

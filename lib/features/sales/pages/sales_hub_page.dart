@@ -15,10 +15,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/feedback/uten_module_todo_chip.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/feedback/uten_draft_badge.dart';
-import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -100,15 +100,8 @@ class SalesHubPage extends ConsumerWidget {
         actions: [
           // 本模块累计：数字由 todo_badge_registry 对 TodoModule.sales 下全部登记入口
           // 求和得出（已含各单据卡草稿），**页面里不要手写加法**——新增入口只改注册表。
-          Padding(
-            padding: const EdgeInsets.only(right: UtenSpacing.s8),
-            child: Center(
-              child: UtenNotificationBadge(
-                count: todoModuleCount(TodoModule.sales, ref.watch),
-                size: 20,
-                showLabel: true,
-              ),
-            ),
+          UtenModuleTodoChip(
+            count: todoModuleCount(TodoModule.sales, ref.watch),
           ),
         ],
       ),

@@ -295,7 +295,10 @@ void main() {
     await tester.pumpAndSettle();
 
     Finder submit() => find.widgetWithText(UtenButton, '登记并送检');
-    expect(find.text('移出本次登记 (0)'), findsNothing);
+    // 2026-09-11 起表头上方的「移出本次登记/全选」按钮全撤（移出搬进行右键、
+    // 全选走表头复选框），写权限的可见凭据改看**行首勾选列在不在**
+    //（UtenEditableGrid.selectable = canRegister）。
+    expect(find.byType(Checkbox), findsNothing);
     expect(tester.widget<UtenButton>(submit()).onPressed, isNull);
 
     container.read(_testArrivalPermissionsProvider.notifier).replace({
@@ -303,14 +306,14 @@ void main() {
       Perm.warehouseInboundStockIn,
     });
     await tester.pumpAndSettle();
-    expect(find.text('移出本次登记 (0)'), findsOneWidget);
+    expect(find.byType(Checkbox), findsWidgets);
     expect(tester.widget<UtenButton>(submit()).onPressed, isNotNull);
 
     container.read(_testArrivalPermissionsProvider.notifier).replace({
       Perm.warehouseInboundView,
     });
     await tester.pumpAndSettle();
-    expect(find.text('移出本次登记 (0)'), findsNothing);
+    expect(find.byType(Checkbox), findsNothing);
     expect(tester.widget<UtenButton>(submit()).onPressed, isNull);
   });
 
@@ -412,7 +415,9 @@ void main() {
     await tester.tap(find.text('打开登记'));
     await tester.pumpAndSettle();
 
-    expect(find.text('移出本次登记 (0)'), findsOneWidget);
+    // 「移出本次登记」只在行右键菜单里（表头上方不再有常驻按钮）。
+    expect(find.text('移出本次登记 (0)'), findsNothing);
+    expect(find.byType(Checkbox), findsWidgets);
     expect(
       find.byKey(const Key('warehouse-arrival-allocation-warehouse-notice')),
       findsOneWidget,
@@ -657,11 +662,15 @@ void main() {
     expect(lineWarehouseCell, findsOneWidget);
     expect(find.text('成品仓'), findsWidgets);
 
-    // 多行统一改仓：点「统一设置入库仓库」→ 主/子仓级联滑窗 → 选「原料仓」
-    // （叶子仓直接选定），全部明细行整体换仓。
+    // 多行统一改仓（2026-09-11 新交互）：表头全选勾上所有行 → 点**其中任意一行**
+    // 的仓库格 → 主/子仓级联滑窗 → 选「原料仓」，全部明细行整体换仓。
     await tester.tap(
-      find.byKey(const Key('warehouse-arrival-apply-warehouse-all')),
+      find
+          .byWidgetPredicate((widget) => widget is Checkbox && widget.tristate)
+          .first,
     );
+    await tester.pumpAndSettle();
+    await tester.tap(lineWarehouseCell);
     await tester.pumpAndSettle();
     expect(find.text('先选主仓，再选子仓'), findsOneWidget);
     await tester.tap(
@@ -752,8 +761,18 @@ void main() {
       ..remove('idempotencyKey');
     router.push<void>('/warehouse/inbound/receipts/new', extra: firstPrefill);
     await tester.pumpAndSettle();
+    // 同上：表头全选后点任意一行的仓库格即整批落仓。
     await tester.tap(
-      find.byKey(const Key('warehouse-arrival-apply-warehouse-all')),
+      find
+          .byWidgetPredicate((widget) => widget is Checkbox && widget.tristate)
+          .first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('warehouse-arrival-lines-grid')),
+        matching: find.byKey(const Key('warehouse-arrival-wh-order-item-1')),
+      ),
     );
     await tester.pumpAndSettle();
     await tester.tap(

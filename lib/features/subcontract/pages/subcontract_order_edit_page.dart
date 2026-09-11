@@ -23,6 +23,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_drafts_button.dart';
 import '../../../components/buttons/uten_edit_floating_actions.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/buttons/uten_import_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/forms/maker_audit_fields.dart';
@@ -1147,16 +1148,8 @@ class _SubcontractOrderEditPageState
                         ),
                       ],
                       const SizedBox(height: UtenSpacing.s12),
-                      // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）：只留右对齐引入入口。
-                      Row(
-                        children: [
-                          const Spacer(),
-                          UtenImportButton(
-                            label: '从上游引入',
-                            onPressed: _importFromUpstream,
-                          ),
-                        ],
-                      ),
+                      // 「明细 (N)」标题行 2026-09-11 撤除；同日「从上游引入」也并入
+                      // 明细表工具条，与「表头设置」同排同高（不再单独占一行）。
                       // 列显隐/排序持久化（本页固定订货模式，单桶即可；账号级）。
                       Builder(
                         builder: (_) {
@@ -1174,26 +1167,20 @@ class _SubcontractOrderEditPageState
                                       .notifier,
                                 )
                                 .updateFor('order', order, hidden),
-                            batchActionsBuilder: (ctx, ctl) => [
-                              TextButton.icon(
-                                onPressed: ctl.selectedCount > 0
-                                    ? _batchSetTerms
-                                    : null,
-                                icon: const Icon(Icons.tune_rounded, size: 16),
-                                label: Text('统一设置条款 (${ctl.selectedCount})'),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Theme.of(
-                                    ctx,
-                                  ).colorScheme.primary,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 2,
-                                  ),
-                                  minimumSize: const Size(0, 36),
-                                  tapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                  textStyle: Theme.of(ctx).textTheme.titleSmall,
-                                ),
+                            toolbarActions: [
+                              UtenImportButton(
+                                label: '从上游引入',
+                                onPressed: _importFromUpstream,
+                              ),
+                            ],
+                            // 「统一设置条款」2026-09-11 从工具条撤到行右键菜单
+                            // （与采购订货单同改：多选右键已有入口，工具条上重复）。
+                            rowMenuExtraBuilder: (ctx, selected) => [
+                              UtenMenuItem(
+                                label: '统一设置条款 (${selected.length})',
+                                icon: Icons.tune_rounded,
+                                enabled: selected.isNotEmpty,
+                                onTap: _batchSetTerms,
                               ),
                             ],
                             columns: subcontractGridColumns(

@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -138,6 +139,13 @@ class FulfillmentWorkbenchQueryServiceTest {
         String captured = sql.getValue();
         assertTrue(captured.contains("v_procurement_decomposition_tasks"));
         assertTrue(captured.contains("open_qty > 0"));
+        // 红徽章只数「等本部门动手」的两档（2026-09-11）：等待财务审核 / 财务已通过
+        // 下一步在财务和供应商手上，是监控数，混进合计会让工作台卡片数字对不上
+        // 页面里各红色分段之和。
+        assertTrue(captured.contains(
+                "task_status IN ('WAITING_ORDER', 'FINANCE_REJECTED')"));
+        assertFalse(captured.contains("FINANCE_APPROVED"));
+        assertFalse(captured.contains("ORDER_PENDING_APPROVAL"));
         verify(countQuery).setParameter("department", "PURCHASE");
     }
 

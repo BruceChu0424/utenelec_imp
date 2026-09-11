@@ -27,6 +27,7 @@ class UtenAppBarActionButton extends StatelessWidget {
     this.tooltip,
     this.compact = false,
     this.badge,
+    this.isLoading = false,
   });
 
   /// 按钮文案（[compact]=true 时不渲染，仅进 tooltip / 语义标签）。
@@ -46,6 +47,9 @@ class UtenAppBarActionButton extends StatelessWidget {
   /// 数字才是用户要看的那一眼，收的是文案不是计数。
   final Widget? badge;
 
+  /// 进行中（「刷新」这类会等网络的动作）：走 UtenButton 自带的转圈，高度不变。
+  final bool isLoading;
+
   /// 顶栏动作统一高度（顶栏 56 高，留出上下呼吸）。
   static const double height = 36;
 
@@ -59,6 +63,7 @@ class UtenAppBarActionButton extends StatelessWidget {
           size: UtenButtonSize.small,
           height: height,
           icon: icon,
+          isLoading: isLoading,
           onPressed: onPressed,
           // compact 下仍走同一个 UtenButton：图标已由 icon 渲染，文案让位，
           // 但徽章保留（数字是用户要看的那一眼）。

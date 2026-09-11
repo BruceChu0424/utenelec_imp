@@ -136,7 +136,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('等待物料'));
       await tester.pumpAndSettle();
-      expect(find.text('物料齐套 · 待仓库发料'), findsOneWidget);
+      // 2026-09-11 用户口径：这一步是车间自己去仓库领，不是干等仓库送。
+      expect(find.text('物料齐套 · 去领料'), findsOneWidget);
+      expect(find.text('物料齐套 · 待仓库发料'), findsNothing);
       await _rightClick(tester, find.text('产品 A'));
       await tester.tap(find.text('为什么不能开工'));
       await tester.pumpAndSettle();
@@ -145,7 +147,7 @@ void main() {
       );
       expect(
         container.read(appNotificationProvider).last.message,
-        contains('等待仓库发料'),
+        contains('请到仓库领料'),
       );
     },
   );

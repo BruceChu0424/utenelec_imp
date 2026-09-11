@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -390,13 +389,13 @@ void main() {
     expect(find.textContaining('待检量 48 个'), findsOneWidget);
     expect(find.textContaining('48 箱'), findsNothing);
     final pass = find.byKey(const Key('iqc-report-pass-inspection-item-1'));
-    await tester.tap(
+    // 2026-09-11：合格/不合格数量的 ⓘ 统一收到表头，行内只留报错。
+    // 逐行不同的换算倍率改在「验收单位」列正文里明示——不用点开就看得见。
+    expect(
       find.descendant(of: pass, matching: find.byType(UtenFieldHintIcon)),
+      findsNothing,
     );
-    await tester.pumpAndSettle();
     expect(find.textContaining('原单1箱 = 24个'), findsWidgets);
-    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-    await tester.pumpAndSettle();
     await _selectRow(tester, '盒装零件(G0001)');
     await tester.enterText(pass, '24');
     await tester.enterText(

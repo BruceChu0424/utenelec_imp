@@ -56,3 +56,14 @@ UtenAppBarActionButton(
 
 - [`test/components/uten_drafts_button_test.dart`](../../test/components/uten_drafts_button_test.dart)
   （权限隐藏 / 计数 / 落点带 returnTo / tooltip；**Tooltip 在按钮内部**，按后代查而非祖先）
+
+
+## isLoading（2026-09-11）
+
+顶栏「刷新」这类要等网络的动作传 `isLoading: true`：走 UtenButton 自带的转圈，
+**高度不变**（仍是 36），不会在加载时把整条顶栏顶高一格。
+
+同日把全站 17 个页面共 20 处顶栏动作（清一色
+`Padding + UtenButton(size: large, type: tonal)` 的「刷新」）收敛到本组件——
+用户反馈「刷新和权限设置按钮高度不一致，统一都和权限设置一致」。
+仍有少量顶栏用裸 `IconButton`（纯图标、无文案），那是另一种形态，不在本次收敛范围。

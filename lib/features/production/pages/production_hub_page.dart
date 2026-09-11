@@ -13,10 +13,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/feedback/uten_module_todo_chip.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/feedback/uten_draft_badge.dart';
-import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -54,15 +54,8 @@ class ProductionHubPage extends ConsumerWidget {
           // 全部入口求和得出（待排产 + 车间任务 + 本模块草稿），页面里不要手写加法，
           // 否则新增入口时顶栏又会小于卡片之和。0 由徽章组件自行不渲染。
           // AppBar 的 actions 行是 crossAxisAlignment.stretch，故包 Center 才竖直居中。
-          Padding(
-            padding: const EdgeInsets.only(right: UtenSpacing.s8),
-            child: Center(
-              child: UtenNotificationBadge(
-                count: todoModuleCount(TodoModule.production, ref.watch),
-                size: 20,
-                showLabel: true,
-              ),
-            ),
+          UtenModuleTodoChip(
+            count: todoModuleCount(TodoModule.production, ref.watch),
           ),
         ],
       ),

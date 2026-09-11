@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
@@ -216,9 +217,20 @@ void main() {
     tester,
   ) async {
     _viewport(tester, const Size(1200, 900));
+    // 2026-09-11 起**只选中一张时不弹批量表**，直接进该单的详情页办理；
+    // 批量表只为「跨多张单一次过」而存在。所以本用例造两张单、两张都勾。
     final gateway = _QualityGateway([
       WarehouseQualityResultTask.fromJson(
         _summaryJson('ALL_PASSED', pendingSliceCount: 1, passedLineCount: 1),
+      ),
+      WarehouseQualityResultTask.fromJson(
+        _summaryJson(
+          'ALL_PASSED',
+          pendingSliceCount: 1,
+          passedLineCount: 1,
+          receiptId: 'receipt-2',
+          billNo: 'PR-002',
+        ),
       ),
     ]);
     final preferences = await SharedPreferences.getInstance();
@@ -233,8 +245,12 @@ void main() {
     await tester.tap(find.text('全部合格'));
     await tester.pumpAndSettle();
 
-    // 勾选行（表头三态全选 + 行勾选框；单行场景取最后一个）。
-    await tester.tap(find.byType(Checkbox).last);
+    // 表头三态全选：两行一起勾上。
+    await tester.tap(
+      find
+          .byWidgetPredicate((widget) => widget is Checkbox && widget.tristate)
+          .first,
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(
@@ -273,25 +289,87 @@ void main() {
 
     final command = gateway.lastBatchCommand;
     expect(command, isNotNull);
-    final entry = command!.batches.single;
-    expect(entry.receiptType, 'PURCHASE');
-    expect(entry.receiptId, 'receipt-1');
-    expect(entry.items.single.baseQty, 3.5);
-    expect(entry.items.single.expectedRemainingBaseQty, 5);
-    expect(entry.items.single.place, 'B-02');
+    // 「grouped」的本意：一张收货单一组，两张单一次提交。
+    expect(command!.batches, hasLength(2));
+    final first = command.batches.firstWhere(
+      (batch) => batch.receiptId == 'receipt-1',
+    );
+    expect(first.receiptType, 'PURCHASE');
+    expect(first.items.single.baseQty, 3.5);
+    expect(first.items.single.expectedRemainingBaseQty, 5);
+    expect(first.items.single.place, 'B-02');
+    // 第二张没改：数量/库位走批量表的默认预填。
+    final second = command.batches.firstWhere(
+      (batch) => batch.receiptId == 'receipt-2',
+    );
+    expect(second.items, hasLength(1));
     expect(gateway.batchConfirmCalls, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('只选中一张时「批量入库」直接进该单详情页，不弹批量表', (tester) async {
+    // 2026-09-11 用户口径：「只选中一个的情况，点击批量入库也应该去到对应的详情页，
+    // 不是弹窗」——详情页信息全、能逐行核对；批量表只为跨多张单而存在。
+    _viewport(tester, const Size(1200, 900));
+    final gateway = _QualityGateway([
+      WarehouseQualityResultTask.fromJson(
+        _summaryJson('ALL_PASSED', pendingSliceCount: 1, passedLineCount: 1),
+      ),
+    ]);
+    final preferences = await SharedPreferences.getInstance();
+    final pushed = <String>[];
+    final router = GoRouter(
+      initialLocation: '/warehouse/quality-results',
+      routes: [
+        GoRoute(
+          path: '/warehouse/quality-results',
+          builder: (_, _) => const WarehouseQualityResultsPage(),
+        ),
+        GoRoute(
+          path: '/warehouse/quality-results/:receiptType/:receiptId',
+          builder: (context, state) {
+            pushed.add(state.uri.path);
+            return const Scaffold(body: Text('品质检查结果详情'));
+          },
+        ),
+      ],
+    );
+    await tester.pumpWidget(_app(null, gateway, preferences, router: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('采购收货'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('全部合格'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Checkbox).last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('warehouse-quality-result-batch-stock-in')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('warehouse-quality-batch-confirm')),
+      findsNothing,
+      reason: '单选不该再弹批量表',
+    );
+    expect(pushed, ['/warehouse/quality-results/PURCHASE/receipt-1']);
+    expect(find.text('品质检查结果详情'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
 
+/// [router] 非空时用它建壳（需要真实导航的用例传；其余仍用最轻的 MaterialApp）。
 Widget _app(
-  Widget page,
+  Widget? page,
   WarehouseQualityResultGateway gateway,
   SharedPreferences preferences, {
   Set<String> permissions = const {
     Perm.warehouseIqcStockInView,
     Perm.warehouseIqcStockInConfirm,
   },
+  GoRouter? router,
 }) {
   return ProviderScope(
     overrides: [
@@ -303,7 +381,9 @@ Widget _app(
       currentPermissionsProvider.overrideWithValue(permissions),
       isSuperAdminProvider.overrideWithValue(false),
     ],
-    child: MaterialApp(home: page),
+    child: router != null
+        ? MaterialApp.router(routerConfig: router)
+        : MaterialApp(home: page),
   );
 }
 
@@ -367,7 +447,7 @@ class _QualityGateway implements WarehouseQualityResultGateway {
   Future<WarehouseQualityResultDetail> detail(
     String receiptType,
     String receiptId,
-  ) async => WarehouseQualityResultDetail.fromJson(_detailJson);
+  ) async => WarehouseQualityResultDetail.fromJson(_detailJsonFor(receiptId));
 
   @override
   Future<WarehouseQualityBatchConfirmResult> batchConfirm(
@@ -420,10 +500,12 @@ Map<String, dynamic> _summaryJson(
   int passedLineCount = 0,
   int failedLineCount = 0,
   int openItemCount = 0,
+  String receiptId = 'receipt-1',
+  String billNo = 'PR-001',
 }) => {
   'receiptType': 'PURCHASE',
-  'receiptId': 'receipt-1',
-  'billNo': 'PR-001',
+  'receiptId': receiptId,
+  'billNo': billNo,
   'billDate': '2026-08-31',
   'supplierId': 'supplier-1',
   'supplierName': '示例供应商',
@@ -439,45 +521,55 @@ Map<String, dynamic> _summaryJson(
   'lastActivityAt': '2026-08-31T09:00:00Z',
 };
 
-Map<String, dynamic> get _detailJson => {
-  ..._summaryJson('ALL_PASSED', pendingSliceCount: 1, passedLineCount: 1),
-  'qualityStatus': 'RESOLVED',
-  'completed': false,
-  'containsOwnRelease': false,
-  'allowedActions': <String>['CONFIRM'],
-  'items': [
-    {
-      'passEventId': 'pass-1',
-      'inspectionItemId': 'inspection-1',
-      'goodsId': 'goods-1',
-      'goodsCode': 'G-001',
-      'goodsName': '测试产品',
-      'colorName': '黑色',
-      'unitId': 'unit-1',
-      'unitName': '件',
-      'sourceOrderNo': 'PO-001',
-      'receivedBaseQty': 10,
-      'qualityPassedBaseQty': 5,
-      'warehouseStockedBaseQty': 0,
-      'releasedBaseQty': 5,
-      'stockedForReleaseBaseQty': 0,
-      'remainingBaseQty': 5,
-      'releasedWeight': 2.5,
-      'weightUnitId': 'kg',
-      'weightUnitName': 'kg',
-      'placeHint': 'A-01',
-      'releaseNote': '抽检合格',
-      'releasedBy': '品质员',
-      'releasedAt': '2026-08-31T09:00:00Z',
-      'expectedAllocations': [
-        _allocationJson(kind: 'EXACT_ANALYSIS', qty: 4),
-        _allocationJson(kind: 'PUBLIC', qty: 1),
-      ],
-    },
-  ],
-  'history': <Map<String, dynamic>>[],
-  'rejections': <Map<String, dynamic>>[],
-};
+/// 按收货单造详情：passEventId 随单号走，两张单同时进批量表时行 key 不撞车。
+Map<String, dynamic> _detailJsonFor(String receiptId) {
+  final suffix = receiptId == 'receipt-1' ? '1' : receiptId.split('-').last;
+  return {
+    ..._summaryJson(
+      'ALL_PASSED',
+      pendingSliceCount: 1,
+      passedLineCount: 1,
+      receiptId: receiptId,
+      billNo: receiptId == 'receipt-1' ? 'PR-001' : 'PR-00$suffix',
+    ),
+    'qualityStatus': 'RESOLVED',
+    'completed': false,
+    'containsOwnRelease': false,
+    'allowedActions': <String>['CONFIRM'],
+    'items': [
+      {
+        'passEventId': 'pass-$suffix',
+        'inspectionItemId': 'inspection-$suffix',
+        'goodsId': 'goods-1',
+        'goodsCode': 'G-001',
+        'goodsName': '测试产品',
+        'colorName': '黑色',
+        'unitId': 'unit-1',
+        'unitName': '件',
+        'sourceOrderNo': 'PO-001',
+        'receivedBaseQty': 10,
+        'qualityPassedBaseQty': 5,
+        'warehouseStockedBaseQty': 0,
+        'releasedBaseQty': 5,
+        'stockedForReleaseBaseQty': 0,
+        'remainingBaseQty': 5,
+        'releasedWeight': 2.5,
+        'weightUnitId': 'kg',
+        'weightUnitName': 'kg',
+        'placeHint': 'A-01',
+        'releaseNote': '抽检合格',
+        'releasedBy': '品质员',
+        'releasedAt': '2026-08-31T09:00:00Z',
+        'expectedAllocations': [
+          _allocationJson(kind: 'EXACT_ANALYSIS', qty: 4),
+          _allocationJson(kind: 'PUBLIC', qty: 1),
+        ],
+      },
+    ],
+    'history': <Map<String, dynamic>>[],
+    'rejections': <Map<String, dynamic>>[],
+  };
+}
 
 Map<String, dynamic> _allocationJson({
   required String kind,

@@ -176,13 +176,9 @@ abstract class _MaterialAnalysisProductTasksState
   bool _productExecutionCompleted(ProductionMaterialAnalysisProduct product) =>
       _productExecutionStage(product)?.tone == ProductionFlowTone.done;
 
-  Color _productExecutionColor(ThemeData theme, ProductionFlowStage stage) {
-    return switch (stage.tone) {
-      ProductionFlowTone.done => theme.colorScheme.primary,
-      ProductionFlowTone.active => theme.colorScheme.tertiary,
-      ProductionFlowTone.pending => theme.colorScheme.outline,
-    };
-  }
+  /// 与流程徽章共用同一份色表（2026-09-11 起 6 档一色一步）。
+  Color _productExecutionColor(ThemeData theme, ProductionFlowStage stage) =>
+      productionFlowToneColor(theme, stage.tone);
 
   /// Bottom-up material readiness for a product/assembly card. This controls
   /// whether material may be issued and production may start; scheduling uses

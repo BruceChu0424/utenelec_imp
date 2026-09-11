@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -208,16 +209,11 @@ class _ProcurementReturnTasksPageState
           onPressed: () => backTo(context, defaultPath: _defaultBack),
         ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: UtenSpacing.s8),
-            child: UtenButton(
-              size: UtenButtonSize.large,
-              type: UtenButtonType.tonal,
-              icon: Icons.refresh_rounded,
-              isLoading: _loading && result != null,
-              onPressed: _loading ? null : () => _load(1),
-              child: const Text('刷新'),
-            ),
+          UtenAppBarActionButton(
+            label: '刷新',
+            icon: Icons.refresh_rounded,
+            isLoading: _loading && result != null,
+            onPressed: _loading ? null : () => _load(1),
           ),
         ],
       ),
@@ -589,16 +585,11 @@ class _ProcurementReturnTaskDetailPageState
         actions: task == null
             ? null
             : [
-                Padding(
-                  padding: const EdgeInsets.only(right: UtenSpacing.s8),
-                  child: UtenButton(
-                    size: UtenButtonSize.large,
-                    type: UtenButtonType.tonal,
-                    icon: Icons.refresh_rounded,
-                    onPressed: _loading || _saving ? null : _load,
-                    child: const Text('刷新'),
-                  ),
-                ),
+                UtenAppBarActionButton(
+            label: '刷新',
+            icon: Icons.refresh_rounded,
+            onPressed: _loading || _saving ? null : _load,
+          ),
               ],
       ),
       body: SafeArea(

@@ -247,25 +247,43 @@ class _ProductionDailyReportEditPageState
     await _pickSource(row);
   }
 
+  /// 选报工来源。2026-09-11 起选择器可多选：第一条落到点开的这一行，
+  /// 其余各追加一行（用户：「新建生产日报里面应该可以多选」）。
+  /// 追加的行插在被点行后面，保持用户勾选的先后顺序。
   Future<void> _pickSource(
     DailyGridRow row, {
     String? executionSegmentId,
   }) async {
-    final source = await showReportablePlanLinePicker(
+    final sources = await showReportablePlanLinePicker(
       context,
       ref,
       departmentId: _departmentId,
       executionSegmentId: executionSegmentId,
     );
-    if (source == null || !mounted) return;
-    if (!source.canReport) {
+    if (sources == null || sources.isEmpty || !mounted) return;
+    final blocked = sources.firstWhere(
+      (source) => !source.canReport,
+      orElse: () => sources.first,
+    );
+    if (!blocked.canReport) {
       context.appWarning(
-        source.blockedReason ?? '当前来源没有可报数量，请刷新后重试',
+        blocked.blockedReason ?? '当前来源没有可报数量，请刷新后重试',
         force: true,
       );
       return;
     }
-    _applySource(row, source);
+    _applySource(row, sources.first);
+    if (sources.length == 1) return;
+    var insertAt = _grid.rows.indexOf(row) + 1;
+    for (final source in sources.skip(1)) {
+      final extra = DailyGridRow();
+      _grid.insertAt(insertAt, extra);
+      _applySource(extra, source);
+      insertAt++;
+    }
+    if (mounted) {
+      context.appInfo('已按所选 ${sources.length} 个报工任务建好 ${sources.length} 行明细');
+    }
   }
 
   /// 卡片“分批报工”已给出精确执行子任务。若读侧只有一条可报分摊，直接

@@ -70,6 +70,15 @@ class DocumentDraftCountScopePostgresTest {
         UUID employeeA = employeeOf(sellerA);
         UUID employeeB = employeeOf(sellerB);
 
+        // 本类不带 @Transactional，和同容器的其它用例共用一个库；而归属谓词是
+        // 「owner IS NULL OR owner IN (:owners)」——无归属单据对所有人可见（全平台读口径，
+        // 见 DocumentAccessPolicy.nativeReadScope）。别的用例留下的无主草稿会被合法地数进来，
+        // 所以这里断言**增量**而不是绝对值：增量才是「本人归属收敛」这条不变量本身。
+        fixture.loginAs(sellerA);
+        DraftCountsResponse baseA = drafts.counts();
+        fixture.loginAs(sellerB);
+        DraftCountsResponse baseB = drafts.counts();
+
         // A：2 张自审草稿 + 1 张财务驳回草稿 + 1 张已审；B：1 张草稿。
         insertSalesOrder(docNo("XD", seq + 1), world.clientId(), employeeA, (short) 0, false);
         insertSalesOrder(docNo("XD", seq + 2), world.clientId(), employeeA, (short) 0, false);
@@ -81,16 +90,17 @@ class DocumentDraftCountScopePostgresTest {
 
         fixture.loginAs(sellerA);
         DraftCountsResponse forA = drafts.counts();
-        assertEquals(2, forA.salesOrder(),
-                "只数本人待自审草稿：财务驳回单已在 REJECTED 桶计数，已审单不是草稿");
-        assertEquals(1, forA.purchaseOrder(), "maker_id 归属列同样按本人收敛");
-        assertEquals(0, forA.stockDocument(), "没有 stock_doc:view 权限时固定为 0");
+        assertEquals(2, forA.salesOrder() - baseA.salesOrder(),
+                "只数本人待自审草稿：财务驳回单已在 REJECTED 桶计数，已审单不是草稿；"
+                        + "B 的那张也不能落到 A 头上");
+        assertEquals(1, forA.purchaseOrder() - baseA.purchaseOrder(), "maker_id 归属列同样按本人收敛");
+        assertEquals(0, forA.stockDocument(), "没有 stock_doc:view 权限时固定为 0（与库里有多少无关）");
         assertEquals(0, forA.financeReceipt(), "没有 finance_receipt:view 权限时固定为 0");
 
         fixture.loginAs(sellerB);
         DraftCountsResponse forB = drafts.counts();
-        assertEquals(1, forB.salesOrder(), "B 看不到 A 的草稿");
-        assertEquals(0, forB.purchaseOrder(), "B 没有 purchase_order:view");
+        assertEquals(1, forB.salesOrder() - baseB.salesOrder(), "B 看不到 A 的 3 张草稿");
+        assertEquals(0, forB.purchaseOrder(), "B 没有 purchase_order:view，权限自卫直接 0 不查库");
     }
 
     /** 超管走 seeAll 分支（谓词 {@code 1=1}），一次把 21 条 count 都在真实 schema 上执行一遍。 */
@@ -126,6 +136,10 @@ class DocumentDraftCountScopePostgresTest {
         UUID keeper = fixture.createUserWithPerms(world, "wk-" + tag, "stock_doc:view");
         UUID keeperEmployee = employeeOf(keeper);
 
+        // 同上：共用库 + 无主单据全员可见，故切片计数也只断言增量。
+        fixture.loginAs(keeper);
+        DraftCountsResponse base = drafts.counts();
+
         // 本人：2 张调拨草稿 + 1 张盘点草稿 + 1 张已审调拨（不是草稿）。
         insertStockDocument("TRANSFER", docNo("CB", seq + 1), keeperEmployee, (short) 0);
         insertStockDocument("TRANSFER", docNo("CB", seq + 2), keeperEmployee, (short) 0);
@@ -135,8 +149,10 @@ class DocumentDraftCountScopePostgresTest {
         fixture.loginAs(keeper);
         DraftCountsResponse counts = drafts.counts();
 
-        assertEquals(2, counts.stockTransfer(), "调拨切片只数 doc_type=TRANSFER 的草稿");
-        assertEquals(1, counts.stockCheck(), "盘点切片只数 doc_type=CHECK 的草稿");
+        assertEquals(2, counts.stockTransfer() - base.stockTransfer(),
+                "调拨切片只数 doc_type=TRANSFER 的草稿");
+        assertEquals(1, counts.stockCheck() - base.stockCheck(),
+                "盘点切片只数 doc_type=CHECK 的草稿");
         assertTrue(counts.stockDocument() >= counts.stockTransfer() + counts.stockCheck(),
                 "两个切片之和不得超过整表合计（切片必须是合计的子集）");
     }

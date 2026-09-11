@@ -14,7 +14,17 @@ import 'package:flutter/material.dart';
 /// 两边共用同一份键与文案，弹窗内的逐步时间线（supply-progress）仍是深钻事实。
 enum ProductionFlowRoute { make, buy, subcontract }
 
-enum ProductionFlowTone { pending, active, done }
+/// 阶段色调。2026-09-11 由 3 档扩到 6 档——原先「等待物料 / 去领料 / 可开工 /
+/// 生产中」共用一个 active（清一色蓝），用户在车间任务里分不出哪一步该干什么。
+///
+/// 现在按**该谁动手、动什么手**分色，同一条链里相邻步骤必然不同色：
+/// - [pending]    还没轮到本环节（等下达、待审核）—— 中性灰
+/// - [waiting]    在等别人/等物料到位 —— 琥珀（看得见但不催人）
+/// - [toDraw]     料齐了，**该去仓库领料**（本人要跑一趟）—— 橙，最扎眼
+/// - [ready]      料在手上，**可开工** —— 靛蓝
+/// - [active]     生产中 · 可报工 —— 品牌青（主色系）
+/// - [done]       已完工 —— 绿
+enum ProductionFlowTone { pending, waiting, toDraw, ready, active, done }
 
 class ProductionFlowStage {
   const ProductionFlowStage({
@@ -49,9 +59,14 @@ class ProductionFlowStage {
     return (clamped * 100).round().clamp(0, 99);
   }
 
+  /// 图标也按档分（不只靠颜色区分——色盲/黑白打印同样要读得出来）。
   IconData get icon => switch (tone) {
     ProductionFlowTone.done => Icons.task_alt_rounded,
     ProductionFlowTone.active => Icons.play_circle_outline_rounded,
+    ProductionFlowTone.ready => Icons.play_arrow_rounded,
+    // 去领料 = 要跑一趟仓库，用「搬运/取货」语义的图标。
+    ProductionFlowTone.toDraw => Icons.move_to_inbox_rounded,
+    ProductionFlowTone.waiting => Icons.hourglass_bottom_rounded,
     ProductionFlowTone.pending => Icons.schedule_rounded,
   };
 
@@ -96,12 +111,12 @@ class ProductionFlowStage {
       'MAKE_WAITING_MATERIAL' => _make(
         2,
         '车间已收到 · 等待物料',
-        ProductionFlowTone.active,
+        ProductionFlowTone.waiting,
       ),
       // 2026-09-06 车间任务页改版：齐套（READY/DISPATCHED）语义 = 物料齐套、
       // 车间可开工（开工动作在此分类/计划详情触发，与报工自动开工同口径）。
-      'MAKE_WAITING_DRAW' => _make(3, '物料齐套 · 可开工', ProductionFlowTone.active),
-      'MAKE_ZERO_READY' => _make(3, '无需领料 · 可开工', ProductionFlowTone.active),
+      'MAKE_WAITING_DRAW' => _make(3, '物料齐套 · 可开工', ProductionFlowTone.ready),
+      'MAKE_ZERO_READY' => _make(3, '无需领料 · 可开工', ProductionFlowTone.ready),
       'MAKE_IN_PROGRESS' => _make(
         4,
         '生产中 · 可报工',
@@ -150,22 +165,26 @@ class ProductionFlowStage {
   }) {
     final status = segmentStatus.trim().toUpperCase();
     return switch (status) {
-      'WAITING' => _make(2, '车间已收到 · 等待物料', ProductionFlowTone.active),
+      'WAITING' => _make(2, '车间已收到 · 等待物料', ProductionFlowTone.waiting),
       'READY' =>
         zeroMaterial
-            ? _make(3, '无需领料 · 可开工', ProductionFlowTone.active)
+            ? _make(3, '无需领料 · 可开工', ProductionFlowTone.ready)
             : _make(
                 3,
-                materialIssued ? '物料齐套 · 可开工' : '物料齐套 · 待仓库发料',
-                ProductionFlowTone.active,
+                materialIssued ? '物料齐套 · 可开工' : '物料齐套 · 去领料',
+                materialIssued
+                    ? ProductionFlowTone.ready
+                    : ProductionFlowTone.toDraw,
               ),
       'DISPATCHED' =>
         zeroMaterial
-            ? _make(3, '无需领料 · 可开工', ProductionFlowTone.active)
+            ? _make(3, '无需领料 · 可开工', ProductionFlowTone.ready)
             : _make(
                 3,
-                materialIssued ? '物料齐套 · 可开工' : '物料齐套 · 待仓库发料',
-                ProductionFlowTone.active,
+                materialIssued ? '物料齐套 · 可开工' : '物料齐套 · 去领料',
+                materialIssued
+                    ? ProductionFlowTone.ready
+                    : ProductionFlowTone.toDraw,
               ),
       'IN_PROGRESS' => _make(
         4,
@@ -199,15 +218,15 @@ class ProductionFlowStage {
     return switch (status) {
       'SUBMITTED' => _make(1, '计划待审核', ProductionFlowTone.pending),
       'APPROVED' ||
-      'WAITING' => _make(2, '车间已收到 · 等待物料', ProductionFlowTone.active),
+      'WAITING' => _make(2, '车间已收到 · 等待物料', ProductionFlowTone.waiting),
       'READY' =>
         zeroMaterial
-            ? _make(3, '无需领料 · 可开工', ProductionFlowTone.active)
-            : _make(3, '物料齐套 · 可开工', ProductionFlowTone.active),
+            ? _make(3, '无需领料 · 可开工', ProductionFlowTone.ready)
+            : _make(3, '物料齐套 · 可开工', ProductionFlowTone.ready),
       'DISPATCHED' =>
         zeroMaterial
-            ? _make(3, '无需领料 · 可开工', ProductionFlowTone.active)
-            : _make(3, '物料齐套 · 可开工', ProductionFlowTone.active),
+            ? _make(3, '无需领料 · 可开工', ProductionFlowTone.ready)
+            : _make(3, '物料齐套 · 可开工', ProductionFlowTone.ready),
       'IN_PROGRESS' => _make(
         4,
         '生产中 · 可报工',

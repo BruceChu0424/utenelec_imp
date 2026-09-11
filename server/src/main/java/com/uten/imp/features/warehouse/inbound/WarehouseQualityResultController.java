@@ -50,7 +50,8 @@ public class WarehouseQualityResultController {
         return service.statusCounts(receiptType, keyword);
     }
 
-    /** 合并页角标：未完结任务数（等待检查结果 + 待入库 + 需退回，全来源之和）。 */
+    /** 合并页角标：轮到仓库动手的任务数（待入库 + 需退回，全来源之和；
+     *  「等待检查结果」球在品质部手上，2026-09-11 起不计入）。 */
     @GetMapping("/count")
     public Map<String, Long> count() {
         return Map.of("count", service.countPending());

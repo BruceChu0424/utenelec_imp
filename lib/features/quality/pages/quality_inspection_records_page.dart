@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -188,18 +189,13 @@ class _QualityInspectionRecordsPageState
               backTo(context, defaultPath: RouteName.qualityTaskCenter),
         ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: UtenSpacing.s8),
-            child: UtenButton(
-              size: UtenButtonSize.large,
-              type: UtenButtonType.tonal,
-              icon: Icons.refresh_rounded,
-              isLoading: _loading && _data != null,
-              onPressed: _loading || _domain == null
-                  ? null
-                  : () => _load(page: 1),
-              child: const Text('刷新'),
-            ),
+          UtenAppBarActionButton(
+            label: '刷新',
+            icon: Icons.refresh_rounded,
+            isLoading: _loading && _data != null,
+            onPressed: _loading || _domain == null
+                ? null
+                : () => _load(page: 1),
           ),
         ],
       ),

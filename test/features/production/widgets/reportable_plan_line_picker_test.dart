@@ -84,8 +84,10 @@ class _PickerHostState extends ConsumerState<_PickerHost> {
                     context,
                     ref,
                   );
-                  if (mounted && result != null) {
-                    setState(() => selected = result);
+                  // 2026-09-11 起选择器返回**列表**（支持多选）；
+                  // 本用例只点一条，取首条即可。
+                  if (mounted && result != null && result.isNotEmpty) {
+                    setState(() => selected = result.first);
                   }
                 },
                 child: const Text('选择来源'),

@@ -99,8 +99,13 @@ void main() {
               .toList()
             ..sort();
       expect(drawn, [1, 2, 3]);
-      // 顶栏那枚是本模块累计 1+2+3，与卡上的数字同源但不是同一个徽章。
-      expect(find.text('6'), findsOneWidget);
+      // 顶栏那枚是本模块累计 1+2+3。2026-09-11 起它不再是一颗裸红数字
+      // （用户问「右上角为什么有个消息数量徽章」），改成自解释的「待办 N」药丸。
+      expect(
+        find.byKey(const ValueKey('uten-module-todo-chip')),
+        findsOneWidget,
+      );
+      expect(find.text('待办 6'), findsOneWidget);
     });
 
     testWidgets('草稿为 0 时徽章整个不渲染（不留「0」噪声）', (tester) async {
@@ -119,6 +124,8 @@ void main() {
       }
       expect(find.text('0'), findsNothing);
       expect(find.text('(0)'), findsNothing);
+      // 顶栏累计为 0 时整枚药丸也不渲染（没有待办就不该有红色）。
+      expect(find.byKey(const ValueKey('uten-module-todo-chip')), findsNothing);
     });
 
     testWidgets('无收货/退货查看权限时，这两张卡与其数字都不出现', (tester) async {
@@ -208,7 +215,7 @@ void main() {
         ),
         findsNothing,
       );
-      expect(find.text('11'), findsOneWidget); // 顶栏累计那一枚
+      expect(find.text('待办 11'), findsOneWidget); // 顶栏累计那一枚（自解释药丸）
     });
 
     testWidgets('切片为 0 时不渲染（整模块合计不会漏到卡上）', (tester) async {
@@ -229,7 +236,7 @@ void main() {
         expect(badge.count, 0);
       }
       // 顶栏累计仍按整模块合计显示 11（切片为 0 不代表模块没草稿）。
-      expect(find.text('11'), findsOneWidget);
+      expect(find.text('待办 11'), findsOneWidget);
     });
   });
 }

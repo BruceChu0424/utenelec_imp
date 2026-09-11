@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
@@ -260,6 +261,13 @@ class _WarehouseQualityResultsPageState
       );
       return;
     }
+    // 只选中一张时不弹「批量」表——那是一张单据，直接进它自己的详情页办理
+    // （用户 2026-09-11：「只选中一个的情况，点击批量入库也应该去到对应的详情页」）。
+    // 详情页信息全、能逐行核对，弹窗是为「跨多张单一次过」才存在的。
+    if (targets.length == 1) {
+      await _openDetail(targets.single);
+      return;
+    }
     final repo = ref.read(warehouseQualityResultRepositoryProvider);
     final List<WarehouseQualityResultDetail> details;
     try {
@@ -331,17 +339,12 @@ class _WarehouseQualityResultsPageState
           onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
         ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: UtenSpacing.s8),
-            child: UtenButton(
-              key: const Key('warehouse-quality-result-refresh'),
-              size: UtenButtonSize.large,
-              type: UtenButtonType.tonal,
-              icon: Icons.refresh_rounded,
-              isLoading: _loading && _result != null,
-              onPressed: _loading ? null : () => _load(1),
-              child: const Text('刷新'),
-            ),
+          UtenAppBarActionButton(
+            key: const Key('warehouse-quality-result-refresh'),
+            label: '刷新',
+            icon: Icons.refresh_rounded,
+            isLoading: _loading && _result != null,
+            onPressed: _loading ? null : () => _load(1),
           ),
         ],
       ),
@@ -850,10 +853,13 @@ class _BatchStockInDialogState extends ConsumerState<_BatchStockInDialog> {
         ),
         UtenButton(
           key: const Key('warehouse-quality-batch-confirm'),
+          // 「点了就往下走一步」的主动作统一红底白字（与详情页「确认入库」、
+          // 编辑页「保存」同色；2026-09-11 全站口径）。
+          type: UtenButtonType.danger,
           size: UtenButtonSize.large,
           icon: Icons.move_to_inbox_rounded,
           isLoading: _saving,
-          onPressed: _saving ? null : _submit,
+          onPressed: _saving || _selected.isEmpty ? null : _submit,
           child: Text('确认批量入库(${_selected.length} 条)'),
         ),
       ],

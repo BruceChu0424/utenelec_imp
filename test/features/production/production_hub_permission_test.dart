@@ -101,7 +101,9 @@ void main() {
 
   testWidgets('view-only user keeps a visible history entry', (tester) async {
     await _setDesktopSize(tester);
-    await tester.pumpWidget(_hubApp(const {Perm.productionPlanView}, preferences));
+    await tester.pumpWidget(
+      _hubApp(const {Perm.productionPlanView}, preferences),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('生产计划历史'), findsOneWidget);
@@ -114,7 +116,10 @@ void main() {
   ) async {
     await _setDesktopSize(tester);
     await tester.pumpWidget(
-      _hubApp(const {Perm.productionPlanView, Perm.productionPlanEdit}, preferences),
+      _hubApp(const {
+        Perm.productionPlanView,
+        Perm.productionPlanEdit,
+      }, preferences),
     );
     await tester.pumpAndSettle();
 
@@ -182,17 +187,17 @@ void main() {
 
 Widget _hubApp(Set<String> permissions, SharedPreferences preferences) =>
     ProviderScope(
-  overrides: [
-    currentPermissionsProvider.overrideWithValue(permissions),
-    sharedPreferencesProvider.overrideWithValue(preferences),
-  ],
-  child: const MaterialApp(
-    localizationsDelegates: AppLocalizations.localizationsDelegates,
-    supportedLocales: AppLocalizations.supportedLocales,
-    locale: Locale('zh'),
-    home: ProductionHubPage(),
-  ),
-);
+      overrides: [
+        currentPermissionsProvider.overrideWithValue(permissions),
+        sharedPreferencesProvider.overrideWithValue(preferences),
+      ],
+      child: const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: Locale('zh'),
+        home: ProductionHubPage(),
+      ),
+    );
 
 Future<void> _setDesktopSize(WidgetTester tester) async {
   tester.view.physicalSize = const Size(1200, 800);

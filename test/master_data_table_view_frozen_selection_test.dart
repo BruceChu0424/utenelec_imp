@@ -76,11 +76,7 @@ void main() {
         .where((box) => box.attached)
         .map((box) => box.localToGlobal(Offset.zero).dx)
         .toList();
-    expect(
-      visible.any((dx) => dx < 48),
-      isTrue,
-      reason: '横滚后表头全选框必须仍钉在视口左缘',
-    );
+    expect(visible.any((dx) => dx < 48), isTrue, reason: '横滚后表头全选框必须仍钉在视口左缘');
 
     // 点它：整页应被全选（这正是用户说的「失灵」）。
     await tester.tap(headerChecks.last);
@@ -95,9 +91,7 @@ void main() {
     // 行内那一份勾选格：Checkbox 的最近 DecoratedBox 祖先只画右线，
     // 且其上不能出现 ColoredBox（自带底色 = 盖掉行底线、与行底色不一致）。
     final rowCheckbox = find
-        .byWidgetPredicate(
-          (widget) => widget is Checkbox && !widget.tristate,
-        )
+        .byWidgetPredicate((widget) => widget is Checkbox && !widget.tristate)
         .first;
     final coloredAncestors = find
         .ancestor(of: rowCheckbox, matching: find.byType(ColoredBox))
@@ -116,14 +110,8 @@ void main() {
         .width;
     expect(cellWidth, lessThanOrEqualTo(48));
     for (final colored in coloredAncestors) {
-      final box = tester.renderObject<RenderBox>(
-        find.byWidget(colored),
-      );
-      expect(
-        box.size.width,
-        greaterThan(48),
-        reason: '勾选格这一层不能自带底色，只有整行那层可以',
-      );
+      final box = tester.renderObject<RenderBox>(find.byWidget(colored));
+      expect(box.size.width, greaterThan(48), reason: '勾选格这一层不能自带底色，只有整行那层可以');
     }
   });
 }

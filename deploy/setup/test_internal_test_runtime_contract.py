@@ -314,6 +314,13 @@ class InternalTestRuntimeContractTest(unittest.TestCase):
                 ),
                 ("PUT", "/api/attachments/raw/{key}"),
                 ("GET", "/api/attachments/raw/{key}"),
+                # 2026-09-11 新增两条，已按本测试的用意复核过网关策略：
+                #   preview 是读（返回文件字节），category 是极小的写（48 字符内的标注），
+                # 两者都落在下方通用 `location /api/`（不限方法、走同一限流区），
+                # 不需要像 presign/confirm（内网部署一律 404）或 raw（只放行 GET/HEAD）
+                # 那样单开 location。改动这两条时请重新做同样的判断。
+                ("GET", "/api/attachments/{id}/preview"),
+                ("PUT", "/api/attachments/{id}/category"),
             },
         )
         inquiry_controller = read(
@@ -345,9 +352,11 @@ class InternalTestRuntimeContractTest(unittest.TestCase):
             inquiry_status_request,
         )
         for permission, expected_count in {
-            "attachment:upload": 3,
+            # 2026-09-11：+1 upload（PUT /{id}/category，整理自己传的文件，
+            # 刻意不借用 delete 权限）、+1 download（GET /{id}/preview，读文件字节）。
+            "attachment:upload": 4,
             "attachment:view": 1,
-            "attachment:download": 2,
+            "attachment:download": 3,
             "attachment:delete": 1,
             "attachment:reconcile:view": 1,
             "attachment:reconcile:approve_delete": 1,

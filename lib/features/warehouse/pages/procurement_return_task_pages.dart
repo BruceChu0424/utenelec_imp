@@ -586,10 +586,10 @@ class _ProcurementReturnTaskDetailPageState
             ? null
             : [
                 UtenAppBarActionButton(
-            label: '刷新',
-            icon: Icons.refresh_rounded,
-            onPressed: _loading || _saving ? null : _load,
-          ),
+                  label: '刷新',
+                  icon: Icons.refresh_rounded,
+                  onPressed: _loading || _saving ? null : _load,
+                ),
               ],
       ),
       body: SafeArea(

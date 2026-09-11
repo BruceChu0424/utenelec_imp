@@ -19,6 +19,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -337,6 +338,9 @@ class _SalesOrderProgressPageState
                 children: [
                   // 阶段行（统一分段卡）：财务驳回/待排产/生产中/可发货
                   // + 搜索 + 末尾历史记录（全部订单按时间查阅）。
+                  // 计数形态：只有「财务驳回」是销售自己要改单重报的待办（与
+                  // salesAttentionCountProvider 同源）→ 红徽章；待排产/生产中/
+                  // 可发货下一步是生产与仓库在办，是进度监控数 → 中性括号。
                   UtenFilterToolbar<_ProgressSeg>(
                     segmentsKey: const Key('sales-order-progress-stages'),
                     segments: [
@@ -350,6 +354,9 @@ class _SalesOrderProgressPageState
                           value: _ProgressSeg.stage(stage),
                           label: salesProgressStageLabel(stage),
                           count: _stageCounts?[stage],
+                          countForm: stage == 'REJECTED'
+                              ? UtenSegmentCountForm.actionable
+                              : UtenSegmentCountForm.browsing,
                         ),
                       const UtenFilterSegment(
                         value: _ProgressSeg.history(),
@@ -456,7 +463,8 @@ class _SalesOrderProgressPageState
       MasterColumnDef(
         key: 'stage',
         label: '阶段',
-        width: 110,
+        // 部分排产文案「待排产·部分已排 4/10」需要更宽（V545）。
+        width: 170,
         value: (r) => _stageText(r),
         // 阶段语义底色（cellColor 而非自绘 chip）：深色底由表格自动切白字；
         // 行选中时表格统一深绿高亮+白字，色块自动让位，不再有深绿底上看
@@ -519,7 +527,7 @@ class _SalesOrderProgressPageState
     if (r.closed || r.stage == 'CLOSED') return '已结案';
     if (r.financeRejected) return '财务驳回';
     if (!r.financeConfirmed) return '等待财务审核';
-    return salesProgressStageLabel(r.stage);
+    return salesProgressStageText(r);
   }
 
   /// 阶段列语义底色：与文本同优先级。等待财务审核用 tertiary（与进度详情页

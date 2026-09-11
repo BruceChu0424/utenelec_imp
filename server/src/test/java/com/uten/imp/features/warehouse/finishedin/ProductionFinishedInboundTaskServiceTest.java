@@ -92,9 +92,10 @@ class ProductionFinishedInboundTaskServiceTest {
                         "document.doc_type = 'FINISHED_IN'")
                         && value.contains("document.status = 0")
                         && value.contains("'ARRIVAL_REGISTRATION'::text")
+                        // V548：待登记谓词统一走数据库视图。
                         && value.contains(
-                        "production_finished_arrival_registration_items")
-                        && value.contains(
+                        "v_production_report_items_pending_registration")
+                        && !value.contains(
                         "registered_item.source_report_item_id")
                         && value.contains(
                         "source_daily_report_item_id IS NOT NULL")));

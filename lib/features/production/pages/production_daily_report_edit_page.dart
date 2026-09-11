@@ -13,22 +13,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_edit_floating_actions.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_employee_multi_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/buttons/uten_drafts_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/attachments/business_attachment_section.dart';
+import '../../../shared/attachments/pending_attachment_controller.dart';
+import '../../../shared/attachments/pending_attachment_flow.dart';
 import '../../../shared/auth/document_scope_capability.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
@@ -75,6 +82,12 @@ class _ProductionDailyReportEditPageState
   String? _productionDeptId;
 
   final _grid = UtenEditableGridController<DailyGridRow>();
+
+  /// 新建日报保存前暂存的附件（ADR-074：保存拿到 UUID 后逐个确认上传）。
+  final _pendingFiles = PendingAttachmentController();
+
+  /// 日报已创建但仍有附件上传失败：再点「保存」只重试附件，不重复建单。
+  String? _createdReportId;
   final _scrollCtl = ScrollController();
   bool _saving = false;
   bool _loading = false;
@@ -95,6 +108,7 @@ class _ProductionDailyReportEditPageState
   void dispose() {
     _billNo.dispose();
     _remark.dispose();
+    _pendingFiles.dispose();
     _grid.dispose(); // 自动 dispose 各行控制器
     _scrollCtl.dispose();
     super.dispose();
@@ -418,7 +432,30 @@ class _ProductionDailyReportEditPageState
       ? value.toStringAsFixed(0)
       : value.toStringAsFixed(4).replaceFirst(RegExp(r'0+$'), '');
 
+  /// 把暂存附件上传到刚创建的日报；全部成功才跳详情，失败项留在页面供重试。
+  Future<void> _finishCreatedReport(String createdId) async {
+    setState(() => _saving = true);
+    try {
+      final ok = await flushPendingAttachments(
+        context,
+        ref,
+        _pendingFiles,
+        ownerType: 'PRODUCTION_DAILY_REPORT',
+        ownerIds: [createdId],
+      );
+      if (!mounted || !ok) return;
+      context.replace('/production/daily-reports/$createdId');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<void> _save() async {
+    if (_createdReportId case final createdId?) {
+      // 日报已创建、附件未全部上传：只补传附件，成功后进入详情。
+      await _finishCreatedReport(createdId);
+      return;
+    }
     final rows = _grid.rows;
     if (rows.isEmpty || rows.every((r) => r.goods == null)) {
       context.appError('请至少添加一条明细');
@@ -535,6 +572,11 @@ class _ProductionDailyReportEditPageState
           : await repo.update(widget.id!, body, expectedVersion: _rowVersion);
       if (!mounted) return;
       context.appSuccess(widget.id == null ? '已创建' : '已保存');
+      if (widget.id == null && _pendingFiles.isNotEmpty) {
+        setState(() => _createdReportId = d.id);
+        await _finishCreatedReport(d.id);
+        return;
+      }
       context.replace('/production/daily-reports/${d.id}');
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -564,57 +606,62 @@ class _ProductionDailyReportEditPageState
   }
 
   Widget _workerPicker() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        UtenEmployeeMultiPicker(
-          key: ValueKey(_workers.map((worker) => worker.id).join('|')),
-          enabled: _departmentId != null || _productionDeptId != null,
-          label: '生产参与人员',
-          hint: '可选择多人或整条流水线成员',
-          sheetTitle: '选择本次报工参与人员',
-          searchHint: '搜索生产部员工姓名 / 工号',
-          emptyMessage: '当前生产部门没有匹配的在职或试用员工',
-          initialSelection: _workers,
-          loader: (kw) async {
-            final deptId = _departmentId ?? _productionDeptId;
-            if (deptId == null) return const <UtenEmployeePickerItem>[];
-            final res = await ref
-                .read(employeeRepositoryProvider)
-                .list(
-                  size: 100,
-                  search: kw,
-                  statuses: const {'active', 'probation'},
-                  departmentId: deptId,
-                  includeSubtree: true,
-                );
-            return [
-              for (final e in res.items)
-                UtenEmployeePickerItem(
-                  id: e.id,
-                  name: e.fullName,
-                  employeeCode: e.code,
-                  departmentName: e.departmentName,
-                ),
-            ];
-          },
-          onChanged: (items) => setState(() {
-            _workers = List.unmodifiable(items);
-            for (final item in items) {
-              _empCache[item.id] = item;
-            }
-          }),
-        ),
-        const SizedBox(height: UtenSpacing.s4),
-        Text(
+    return UtenEmployeeMultiPicker(
+      key: ValueKey(_workers.map((worker) => worker.id).join('|')),
+      enabled: _departmentId != null || _productionDeptId != null,
+      label: '生产参与人员',
+      hint: '可选择多人或整条流水线成员',
+      // 候选范围与口径说明收进标签 ⓘ（悬停/点按查看），不再摊在输入框下面。
+      info:
           '候选范围：制造与研发管理中心 / 生产部。选择车间后收窄到该车间及班组；'
           '这里记录整单参与人员，不代表个人产量或计件工资。',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
+      sheetTitle: '选择本次报工参与人员',
+      searchHint: '搜索生产部员工姓名 / 工号',
+      emptyMessage: '当前生产部门没有匹配的在职或试用员工',
+      initialSelection: _workers,
+      loader: (kw) async {
+        final deptId = _departmentId ?? _productionDeptId;
+        if (deptId == null) return const <UtenEmployeePickerItem>[];
+        final res = await ref
+            .read(employeeRepositoryProvider)
+            .list(
+              size: 100,
+              search: kw,
+              statuses: const {'active', 'probation'},
+              departmentId: deptId,
+              includeSubtree: true,
+            );
+        return [
+          for (final e in res.items)
+            UtenEmployeePickerItem(
+              id: e.id,
+              name: e.fullName,
+              employeeCode: e.code,
+              departmentName: e.departmentName,
+            ),
+        ];
+      },
+      onChanged: (items) => setState(() {
+        _workers = List.unmodifiable(items);
+        for (final item in items) {
+          _empCache[item.id] = item;
+        }
+      }),
     );
+  }
+
+  /// 新建态 AppBar 右上角「草稿(N)」入口。
+  ///
+  /// 生产 hub 卡片直达新建页，从 hub 打不开列表；本按钮是用户回到自己草稿的
+  /// 入口（点击进列表并预选草稿段）。编辑既有单据时不显示。
+  List<Widget>? get _draftsAction {
+    if (widget.id != null) return null;
+    return [
+      const UtenDraftsButton(
+        kind: DraftDocKind.productionDailyReport,
+        listLocation: RouteName.productionDailyReportList,
+      ),
+    ];
   }
 
   @override
@@ -628,14 +675,7 @@ class _ProductionDailyReportEditPageState
       appBar: UtenAppBar(
         title: widget.id == null ? '新建生产日报' : '编辑生产日报',
         showBackButton: true,
-        actions: [
-          UtenButton(
-            type: UtenButtonType.tonal,
-            icon: Icons.history_rounded,
-            onPressed: () => context.push('/production/daily-reports'),
-            child: const Text('查看历史'),
-          ),
-        ],
+        actions: _draftsAction,
       ),
       body: SafeArea(
         child: _loading
@@ -646,7 +686,13 @@ class _ProductionDailyReportEditPageState
                   thumbVisibility: true,
                   child: ListView(
                     controller: _scrollCtl,
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    // 底部多留一段：右下角悬浮的「取消/保存」不压住最后一行明细。
+                    padding: const EdgeInsets.fromLTRB(
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenSpacing.s12 + 88,
+                    ),
                     children: [
                       Card(
                         child: Padding(
@@ -772,16 +818,42 @@ class _ProductionDailyReportEditPageState
                           ],
                         ),
                       ),
+                      // 日报附件（报工照片/检验记录）：已有单直接挂 PRODUCTION_DAILY_REPORT；
+                      // 新建单先本地暂存，保存拿到 UUID 后逐个确认上传（ADR-074）。
                       const SizedBox(height: UtenSpacing.s12),
-                      Text(
-                        '明细 (${_grid.length})',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
+                      if (widget.id != null)
+                        BusinessAttachmentSection(
+                          ownerType: 'PRODUCTION_DAILY_REPORT',
+                          ownerId: widget.id!,
+                          canView: ref
+                              .watch(currentPermissionsProvider)
+                              .contains(Perm.attachmentView),
+                          // 进入编辑页即已确认可写；草稿状态与归属由服务端附件策略再校验。
+                          canManage: !_saving,
+                          title: '附件（报工照片/检验记录）',
+                          categories: const ['报工照片', '检验记录', '签认单', '其他'],
+                        )
+                      else ...[
+                        if (_createdReportId != null)
+                          const PendingAttachmentRetryNotice(
+                            documentLabel: '生产日报',
+                          ),
+                        BusinessAttachmentSection.draft(
+                          key: const ValueKey('daily-report-draft-attachments'),
+                          controller: _pendingFiles,
+                          canManage: ref
+                              .watch(currentPermissionsProvider)
+                              .contains(Perm.productionDailyReportCreate),
+                          title: '附件（报工照片/检验记录）',
+                          categories: const ['报工照片', '检验记录', '签认单', '其他'],
                         ),
-                      ),
+                      ],
+                      // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）。
+                      const SizedBox(height: UtenSpacing.s12),
                       UtenEditableGrid<DailyGridRow>(
                         controller: _grid,
                         columns: dailyGridColumns(
+                          context: context,
                           onPickGoods: _pickGoods,
                           onPickSource: _pickSource,
                           onClearSource: _clearSource,
@@ -796,34 +868,18 @@ class _ProductionDailyReportEditPageState
                 ),
               ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border(
-              top: BorderSide(color: theme.colorScheme.outlineVariant),
+      // 详情尚未回填时不出按钮：此刻点保存会把空表单当草稿提交。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: _loading
+          ? null
+          : UtenEditFloatingActions(
+              onCancel: () => popOrBackTo(
+                context,
+                defaultPath: RouteName.productionDailyReportList,
+              ),
+              onSave: _save,
+              saving: _saving,
             ),
-          ),
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              UtenButton(
-                type: UtenButtonType.secondary,
-                onPressed: () => context.pop(),
-                child: const Text('取消'),
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              UtenButton(
-                isLoading: _saving,
-                icon: Icons.save_outlined,
-                onPressed: _saving ? null : _save,
-                child: const Text('保存'),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

@@ -38,7 +38,14 @@
   "loginServerRecoveryHint": "네트워크를 변경했거나 로그인에 실패할 때 사용하세요. 앱에 내장된 신뢰할 수 있는 사내 및 클라우드 주소만 사용합니다.",
   "loginServerRecoverySuccess": "자동 서버 선택이 복원되었습니다. 다시 로그인해 주세요.",
   "loginServerRecoveryFailed": "서버 선택을 복원하지 못했습니다. 다시 시도하거나 관리자에게 문의하세요.",
-  "loginFooter": "© 2026 우텅 통합 관리 플랫폼",
+  "loginFooter": "© {year} 우텅 통합 관리 플랫폼",
+  "@loginFooter": {
+    "placeholders": {
+      "year": {
+        "type": "int"
+      }
+    }
+  },
   "navDashboard": "워크벤치",
   "navNotice": "공지",
   "navProfile": "내 정보",
@@ -86,7 +93,6 @@
   "profileEmployeeCode": "사번",
   "profileDepartment": "부서",
   "profilePosition": "직책",
-  "entrySubtitle": "로그인 방법을 선택하세요",
   "entryStaff": "임직원 로그인",
   "entryVisitor": "방문자 로그인",
   "visitorLoginTitle": "방문자 로그인",

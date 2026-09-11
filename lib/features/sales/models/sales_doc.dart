@@ -84,32 +84,36 @@ String priorityLabel(int? p) {
   }
 }
 
-/// 订单行链路状态（chain_status）标签。
-String chainStatusLabel(int? code) {
-  switch (code) {
-    case 1:
-      return '部分预留';
-    case 2:
-      return '待排产';
-    case 3:
-      return '待物料';
-    case 4:
-      return '已排产';
-    case 5:
-      return '生产中';
-    case 6:
-      return '部分完工';
-    case 7:
-      return '可发货';
-    case 8:
-      return '部分发货';
-    case 9:
-      return '已发货';
-    case -1:
-      return '已取消';
-    default:
-      return '—';
+/// 数量短文本：整数不带小数，其余最多 4 位并去掉尾零（链路标签/阶段文案用）。
+String salesQtyText(double value) {
+  if (value == value.roundToDouble()) return value.toStringAsFixed(0);
+  return value
+      .toStringAsFixed(4)
+      .replaceFirst(RegExp(r'0+$'), '')
+      .replaceFirst(RegExp(r'\.$'), '');
+}
+
+/// 订单行链路状态（chain_status）标签。V545：待排产/部分预留行若已排了一部分
+/// （[plannedQty]>0），追加「·部分已排 已排/订货」——部分排产的行仍停在待排产，
+/// 文案上标明已排多少，剩余未排量一目了然。
+String chainStatusLabel(int? code, {double? plannedQty, double? qty}) {
+  final base = switch (code) {
+    1 => '部分预留',
+    2 => '待排产',
+    3 => '待物料',
+    4 => '已排产',
+    5 => '生产中',
+    6 => '部分完工',
+    7 => '可发货',
+    8 => '部分发货',
+    9 => '已发货',
+    -1 => '已取消',
+    _ => '—',
+  };
+  if ((code == 1 || code == 2) && (plannedQty ?? 0) > 0.0001) {
+    return '$base·部分已排 ${salesQtyText(plannedQty!)}/${salesQtyText(qty ?? 0)}';
   }
+  return base;
 }
 
 /// 链路状态色（绿=可发货/完成，橙=进行中，红=缺料，灰=未上链）。
@@ -1134,6 +1138,7 @@ class OrderPlanProgressLine {
     this.producedQty,
     this.shippedQty,
     this.chainStatus,
+    this.unplannedQty,
     this.materialAnalysisId,
     this.materialAnalysisLineId,
     this.materialAnalysisStatus,
@@ -1160,6 +1165,9 @@ class OrderPlanProgressLine {
   final double? producedQty;
   final double? shippedQty;
   final int? chainStatus;
+
+  /// 剩余未排量（服务端派生：未交付 − 预留 − 未完工计划量；V545）。>0 即仍待排产。
+  final double? unplannedQty;
   final String? materialAnalysisId;
   final String? materialAnalysisLineId;
   final String? materialAnalysisStatus;
@@ -1202,6 +1210,7 @@ class OrderPlanProgressLine {
       producedQty: (j['producedQty'] as num?)?.toDouble(),
       shippedQty: (j['shippedQty'] as num?)?.toDouble(),
       chainStatus: (j['chainStatus'] as num?)?.toInt(),
+      unplannedQty: (j['unplannedQty'] as num?)?.toDouble(),
       materialAnalysisId:
           (fact('materialAnalysisId') ?? fact('analysisId')) as String?,
       materialAnalysisLineId: fact('materialAnalysisLineId') as String?,

@@ -1,10 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
-import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/features/sales/widgets/sales_grid_columns.dart';
+
+Future<List<EditableGridColumn<SalesGridRow>>> _columnsFor(
+  WidgetTester tester,
+  SalesDocType docType,
+) async {
+  late final List<EditableGridColumn<SalesGridRow>> columns;
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Builder(
+        builder: (context) {
+          columns = salesGridColumns(
+            context: context,
+            onPickGoods: (_) async {},
+            docType: docType,
+            colorEntries: const {},
+            unitEntries: const {},
+          );
+          return const SizedBox();
+        },
+      ),
+    ),
+  );
+  return columns;
+}
 
 void main() {
   test('销售订单折扣只接受 0 到 1 之间且最多四位小数的普通倍率', () {
@@ -43,19 +66,9 @@ void main() {
     copied.dispose();
   });
 
-  test('销售单据数量列统一使用“数量”', () {
-    final orderColumns = salesGridColumns(
-      onPickGoods: (_) async {},
-      docType: SalesDocType.order,
-      colorEntries: const {},
-      unitEntries: const {},
-    );
-    final shipmentColumns = salesGridColumns(
-      onPickGoods: (_) async {},
-      docType: SalesDocType.shipment,
-      colorEntries: const {},
-      unitEntries: const {},
-    );
+  testWidgets('销售单据数量列统一使用“数量”', (tester) async {
+    final orderColumns = await _columnsFor(tester, SalesDocType.order);
+    final shipmentColumns = await _columnsFor(tester, SalesDocType.shipment);
 
     expect(
       orderColumns.singleWhere((column) => column.key == 'qty').label,
@@ -73,22 +86,26 @@ void main() {
     row.price.text = '10';
     final controller = UtenEditableGridController<SalesGridRow>(initial: [row]);
     addTearDown(controller.dispose);
+    late final List<EditableGridColumn<SalesGridRow>> builtColumns;
 
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: SizedBox(
             width: 1200,
-            child: UtenEditableGrid<SalesGridRow>(
-              controller: controller,
-              columns: salesGridColumns(
-                onPickGoods: (_) async {},
-                docType: SalesDocType.order,
-                colorEntries: const {},
-                unitEntries: const {},
+            child: Builder(
+              builder: (context) => UtenEditableGrid<SalesGridRow>(
+                controller: controller,
+                columns: builtColumns = salesGridColumns(
+                  context: context,
+                  onPickGoods: (_) async {},
+                  docType: SalesDocType.order,
+                  colorEntries: const {},
+                  unitEntries: const {},
+                ),
+                showAddRow: false,
+                showRowDelete: false,
               ),
-              showAddRow: false,
-              showRowDelete: false,
             ),
           ),
         ),
@@ -104,17 +121,11 @@ void main() {
     );
     expect(tester.widget<TextField>(priceField).readOnly, isTrue);
     expect(tester.widget<TextField>(discountField).readOnly, isFalse);
-    expect(
-      (tester.widget<TextField>(discountField).decoration
-              as UtenInputDecoration)
-          .info,
-      contains('0.9'),
-    );
-    expect(
-      (tester.widget<TextField>(priceField).decoration as UtenInputDecoration)
-          .info,
-      contains('不可在订货单修改'),
-    );
+    // 列说明已上移表头（2026-09-09 口径）：格内不再渲染 ⓘ，断言列头 headerInfo。
+    final discountColumn = builtColumns.firstWhere((c) => c.key == 'discount');
+    final priceColumn = builtColumns.firstWhere((c) => c.key == 'price');
+    expect(discountColumn.headerInfo, contains('0.9'));
+    expect(priceColumn.headerInfo, contains('不可在订货单修改'));
 
     await tester.enterText(discountField, '0.8');
     await tester.pump();

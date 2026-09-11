@@ -297,7 +297,11 @@ class AuditTriggerCoverageMigrationContractTest {
                     // V486 采购订货改量事实账（同迁移自带 trg_audit_* 行级触发器）。
                     Map.entry("procurement_order_qty_change_logs", 486),
                     Map.entry("sales_order_revision_logs", 492),
-                    Map.entry("sales_shipment_submission_events", 511));
+                    Map.entry("sales_shipment_submission_events", 511),
+                    // V547 品质检查单聚合层、V548 送检登记撤回：同迁移自带 trg_audit_*。
+                    Map.entry("production_fqc_inspection_sheets", 547),
+                    Map.entry("production_fqc_inspection_sheet_items", 547),
+                    Map.entry("production_finished_arrival_registration_reversals", 548));
 
     /** Business tables repaired by a later narrow forward audit migration. */
     private static final Map<String, Integer> POST_SWEEP_FORWARD_AUDIT_TABLES =

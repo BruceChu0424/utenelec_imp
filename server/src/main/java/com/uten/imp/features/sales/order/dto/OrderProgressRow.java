@@ -11,8 +11,8 @@ import java.time.OffsetDateTime;
  *   <li>REJECTED 财务驳回：当前仍待销售修订或重新审核，优先于生产阶段</li>
  *   <li>CANCELED 已中止：整单取消（释放预留、断排产联动）；终态，不占活跃阶段段，只在历史记录（stage='' 全量口径）可见</li>
  *   <li>CLOSED 已结案：正常履约完结；终态，同上只在历史记录可见</li>
- *   <li>PENDING 待排产：未排产且未完工</li>
- *   <li>PRODUCING 生产中：含已排产/待物料/生产中/部分完工（produced>0 且未齐套）</li>
+ *   <li>PENDING 待排产：存在剩余未排量（V545：部分排产的单仍是待排产，plannedQty 表示已排部分）</li>
+ *   <li>PRODUCING 生产中：未排量归零后含已排产/待物料/生产中/部分完工（produced>0 且未齐套）</li>
  *   <li>SHIPPABLE 可分批发货：存在大于零的成品销售预留，不要求整单全部完工</li>
  *   <li>SHIPPED 已发货：已发数量已达订货量</li>
  * </ul>
@@ -32,6 +32,7 @@ public record OrderProgressRow(
         double shippedQty,
         double reservedQty,
         double plannedQty,
+        double unplannedQty,
         double productionPct,
         String stage,
         boolean financeConfirmed,

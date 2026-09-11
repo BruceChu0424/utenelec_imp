@@ -42,6 +42,8 @@ import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContr
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService;
 import com.uten.imp.features.stock.StockDocService;
+import com.uten.imp.features.stock.dto.StockDocIssueBatchRequest;
+import com.uten.imp.features.stock.dto.StockDocIssueBatchResponse;
 import com.uten.imp.features.stock.dto.StockDocIssueRequest;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.features.attachment.AttachmentService;
@@ -184,7 +186,11 @@ class FullChainEndToEndTest {
     @Autowired private ProductionFqcInspectionService fqcService;
     @Autowired private ProductionFinishedArrivalRegistrationService
             finishedArrivalRegistrationService;
+    @Autowired private com.uten.imp.features.warehouse.finishedin.ProductionFinishedInboundTaskService
+            finishedInboundTasks;
     @Autowired private StockDocService stockDocService;
+    @Autowired private com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryService
+            fulfillmentWorkbenchQuery;
     @Autowired private com.uten.imp.features.stock.allocation.ProductionMaterialSettlementService materialSettlementService;
     @Autowired private SalesShipmentService shipmentService;
     @Autowired private GlPostingService glPostingService;
@@ -589,6 +595,151 @@ class FullChainEndToEndTest {
         int chain = itemChainStatus(orderId);
         assertTrue(chain == 3 || chain == 4,
                 "chain advanced from 待排产(2) to 待物料(3)/已排产(4), got " + chain);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // #20b V545 partial scheduling. Order 10, plan 4 approved: the line must STAY in 待排产
+    // (chain_status 2, planned_qty 4, schedule need 6, sales progress stage PENDING with an
+    // unchanged PENDING count, sales-list 待生产 group still matching) instead of jumping to
+    // 生产中. Report approval on the partial plan keeps chain 2 (facts still land in
+    // links.produced_qty). Only when the remaining 6 is scheduled does the line move to 3/4,
+    // and the next report approval advances it to 5.
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void partialScheduling_keepsLineInPendingUntilUnplannedQtyIsZero() {
+        World w = seedWorld("s20partial");
+        receiveOpeningInputsForA(w, "10");
+        UUID orderId = createApprovedOrder(w, w.goodsA(), "10", "100");
+        UUID orderItemId = orderItemId(orderId);
+        String orderNo = billNo(orderId).toLowerCase();
+        loginAs(w.superAdminUserId());
+        long pendingBefore = salesOrderService.progressStageCounts().getOrDefault("PENDING", 0L);
+        var statsBefore = salesOrderService.stats();
+
+        UUID plan4 = createLegacyTestDraft(orderItemId, w.goodsA(), "4");
+        planService.approve(plan4);
+
+        assertEquals(2, itemChainStatusByItem(orderItemId), "订 10 排 4 → 行仍待排产(2)");
+        assertEquals(0, plannedQty(orderId).compareTo(new BigDecimal("4")), "planned_qty = 4");
+        var pendingRow = schedulePendingRow(orderNo, orderItemId);
+        assertNotNull(pendingRow, "调度待排产列表仍含该行");
+        assertEquals(0, pendingRow.needQty().compareTo(new BigDecimal("6")), "缺口 = 未排 6");
+        assertEquals(0, pendingRow.plannedQty().compareTo(new BigDecimal("4")), "已排 4");
+        var progressRow = progressRow(orderId, orderNo, "PENDING");
+        assertNotNull(progressRow, "销售进度 PENDING 段仍含该单");
+        assertEquals(4.0, progressRow.plannedQty(), 1e-6);
+        assertEquals(6.0, progressRow.unplannedQty(), 1e-6, "进度行下发剩余未排量");
+        assertEquals(pendingBefore,
+                salesOrderService.progressStageCounts().getOrDefault("PENDING", 0L),
+                "PENDING 阶段计数不因部分排产减少");
+        var stats = salesOrderService.stats();
+        assertEquals(statsBefore.pendingProduction(), stats.pendingProduction(),
+                "待生产大类计数不变（数量派生）");
+        assertEquals(statsBefore.inProduction() + 1, stats.inProduction(),
+                "生产中大类 +1（有未完工计划量，一单两卡）");
+        assertTrue(listHasOrder(orderId, orderNo, "pending"), "订货列表 chainGroup=pending 命中");
+        assertTrue(listHasOrder(orderId, orderNo, "production"), "订货列表 chainGroup=production 命中");
+        assertEquals(0, salesOrderService.planProgress(orderId).getFirst().unplannedQty()
+                        .compareTo(new BigDecimal("6")),
+                "plan-progress 行级 未排 = 6");
+
+        // 报工 4 审核：事实写 links.produced_qty，但未排 6 仍在 → 行不进 5。
+        issueReadyPlanAndMaterials(w, plan4);
+        UUID planItem4 = planItemIdFor(plan4, w.goodsA());
+        reportAndApprove(w, planItem4, orderItemId, w.goodsA(), "4");
+        assertEquals(0, bigDecimalFor(
+                "select produced_qty from plan_order_item_links where plan_item_id = ? "
+                        + "and order_item_id = ? and is_deleted = false",
+                planItem4, orderItemId).compareTo(new BigDecimal("4")),
+                "报工事实仍回写 links.produced_qty");
+        assertEquals(2, itemChainStatusByItem(orderItemId), "部分排产行报工后仍待排产(2)");
+        assertNotNull(schedulePendingRow(orderNo, orderItemId), "报工后仍在待排产列表");
+
+        // 排剩余 6 并审核 → 未排归零 → 3/4；离开待排产列表；销售进度转 PRODUCING。
+        UUID plan6 = createLegacyTestDraft(orderItemId, w.goodsA(), "6");
+        planService.approve(plan6);
+        int chain = itemChainStatusByItem(orderItemId);
+        assertTrue(chain == 3 || chain == 4, "排满 → 待物料(3)/已排产(4), got " + chain);
+        assertNull(schedulePendingRow(orderNo, orderItemId), "排满后离开待排产列表");
+        assertNull(progressRow(orderId, orderNo, "PENDING"), "排满后不再是 PENDING");
+        assertNotNull(progressRow(orderId, orderNo, "PRODUCING"), "排满后进入 PRODUCING");
+        assertFalse(listHasOrder(orderId, orderNo, "pending"), "排满后离开待生产大类");
+        assertTrue(listHasOrder(orderId, orderNo, "production"));
+
+        // 排满后的报工审核 → 5 生产中。
+        issueReadyPlanAndMaterials(w, plan6);
+        UUID planItem6 = planItemIdFor(plan6, w.goodsA());
+        reportAndApprove(w, planItem6, orderItemId, w.goodsA(), "6");
+        assertEquals(5, itemChainStatusByItem(orderItemId), "排满后报工 → 5 生产中");
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // #20c V545 reverse branches on a partially scheduled line keep chain_status consistent with
+    // the remaining unplanned qty: plan reversal (4/10 → 0/10 stays 2), partial finished inbound
+    // (4 produced + reserved, 6 unplanned → 1 部分预留, not 6), inbound reversal (→ 2 again).
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void partialScheduling_reverseBranchesFollowUnplannedQty() {
+        World w = seedWorld("s20partialrev");
+        receiveOpeningInputsForA(w, "10");
+        UUID orderId = createApprovedOrder(w, w.goodsA(), "10", "100");
+        UUID orderItemId = orderItemId(orderId);
+        loginAs(w.superAdminUserId());
+
+        // 计划红冲：4/10 → 0/10，行仍待排产。
+        UUID reversed = createLegacyTestDraft(orderItemId, w.goodsA(), "4");
+        planService.approve(reversed);
+        assertEquals(2, itemChainStatusByItem(orderItemId));
+        planService.reverse(reversed);
+        assertEquals(0, plannedQty(orderId).compareTo(BigDecimal.ZERO), "红冲回退 planned_qty");
+        assertEquals(2, itemChainStatusByItem(orderItemId), "计划红冲后仍待排产(2)");
+
+        // 部分入库：排 4 报 4 入 4 → produced 4 / reserved 4，未排 6 → 1 部分预留（非 6 部分完工）。
+        UUID plan4 = createLegacyTestDraft(orderItemId, w.goodsA(), "4");
+        planService.approve(plan4);
+        issueReadyPlanAndMaterials(w, plan4);
+        UUID planItem4 = planItemIdFor(plan4, w.goodsA());
+        UUID reportId = reportAndApprove(w, planItem4, orderItemId, w.goodsA(), "4");
+        UUID finishedInId = finishedInDocForReport(reportId);
+        confirmFinishedInboundFully(finishedInId);
+        assertEquals(0, producedQty(orderItemId).compareTo(new BigDecimal("4")));
+        assertEquals(0, reservedQty(orderItemId).compareTo(new BigDecimal("4")));
+        assertEquals(1, itemChainStatusByItem(orderItemId),
+                "部分入库但未排 6 → 1 部分预留，仍待排产");
+        String orderNo = billNo(orderId).toLowerCase();
+        var pendingRow = schedulePendingRow(orderNo, orderItemId);
+        assertNotNull(pendingRow, "仍在待排产列表");
+        assertEquals(0, pendingRow.needQty().compareTo(new BigDecimal("6")), "缺口 6");
+
+        // 入库红冲：produced/reserved 回 0 → 未排 6 → 2。
+        stockDocService.reverseFinishedInbound(finishedInId);
+        assertEquals(0, producedQty(orderItemId).compareTo(BigDecimal.ZERO));
+        assertEquals(2, itemChainStatusByItem(orderItemId), "入库红冲后回待排产(2)");
+    }
+
+    private com.uten.imp.features.production.schedule.dto.PendingPlanRow schedulePendingRow(
+            String orderNo, UUID orderItemId) {
+        return scheduleService.pending(1, 50, orderNo, null, null, "deliverDate", "asc", null)
+                .getItems().stream()
+                .filter(r -> orderItemId.equals(r.orderItemId()))
+                .findFirst().orElse(null);
+    }
+
+    private com.uten.imp.features.sales.order.dto.OrderProgressRow progressRow(
+            UUID orderId, String orderNo, String stage) {
+        return salesOrderService.progress(1, 50, stage, orderNo, null, null)
+                .getItems().stream()
+                .filter(r -> orderId.toString().equals(r.orderId()))
+                .findFirst().orElse(null);
+    }
+
+    private boolean listHasOrder(UUID orderId, String orderNo, String chainGroup) {
+        return salesOrderService.list(
+                        new com.uten.imp.features.sales.order.dto.OrderQueryFilter(
+                                orderNo, null, null, null, null, null, null, null, chainGroup),
+                        1, 50, null, null)
+                .getItems().stream()
+                .anyMatch(o -> orderId.equals(o.getId()));
     }
 
     UUID createApprovedOrder(World w, UUID goodsId, String qty, String price) {
@@ -1960,6 +2111,238 @@ class FullChainEndToEndTest {
                   and goods_id in (?,?)
                 """, w.warehouseId(), w.goodsB(), w.goodsE())),
                 "报工后取消失败不得改变物理库存");
+    }
+
+    /**
+     * 领料任务中心批量出库（2026-09-10）：草稿 DRAW 在批内走「审核并出库」，已部分出库的单
+     * 按剩余量补齐，统一备注落单据；任一单库存不足整批回滚且错误带单号；同人同批量键
+     * 重放 replayed=true；换批量键时已出完的单只是 skipped；>50 张 422；未知单据 404；
+     * 无审核权限账号对草稿单 403 并列出单号。同时坐实 F5b：一张「一行已出完、一行待领」
+     * 的 DRAW 在履约列表与子分类徽章都记 PARTIAL，且徽章计数与列表 statusCounts 逐条相等。
+     */
+    @Test
+    void productionDrawBatchIssueApprovesDraftsRollsBackWholeBatchAndReplays() {
+        World w = seedWorld("sDrawBatch");
+        // BOM A -> {B, E}；每张 10 件计划需 B 20 + E 10，四张计划刚好用完。
+        jdbc.update("""
+                insert into stock_balances(warehouse_id, goods_id, color_id, qty)
+                values (?,?,NULL,?)
+                """, w.warehouseId(), w.goodsB(), new BigDecimal("80"));
+        jdbc.update("""
+                insert into stock_balances(warehouse_id, goods_id, color_id, qty)
+                values (?,?,NULL,?)
+                """, w.warehouseId(), w.goodsE(), new BigDecimal("40"));
+        String statusSql = """
+                select status::text || '|' || issue_status::text
+                from stock_documents where id = ?
+                """;
+        loginAs(w.superAdminUserId());
+        List<UUID> drawIds = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            drawIds.add(generateSingleWarehouseDraw(w, "draw-batch-" + i + "-" + w.warehouseId()));
+        }
+        UUID draftA = drawIds.get(0);
+        UUID draftB = drawIds.get(1);
+        UUID partial = drawIds.get(2);
+        UUID outsider = drawIds.get(3);
+        for (UUID drawId : drawIds) {
+            assertEquals("0|0", strFor(statusSql, drawId), "生产链领料单以草稿生成");
+            assertEquals(2, count("""
+                    select count(*) from stock_document_items
+                    where doc_id = ? and is_deleted = false
+                    """, drawId), "A 的两种物料各一行");
+        }
+
+        // 第三张只发第一行：已审 + 部分出库（一行 DONE、一行 READY）。
+        List<Map<String, Object>> partialLines = jdbc.queryForList("""
+                select id, goods_id, qty
+                from stock_document_items
+                where doc_id = ? and is_deleted = false
+                order by line_no nulls last, id
+                """, partial);
+        Map<String, Object> firstLine = partialLines.getFirst();
+        StockDocIssueRequest partialIssue = new StockDocIssueRequest();
+        partialIssue.setIdempotencyKey("draw-batch-partial-" + partial);
+        StockDocIssueRequest.Line firstOnly = new StockDocIssueRequest.Line();
+        firstOnly.setItemId((UUID) firstLine.get("id"));
+        firstOnly.setQty((BigDecimal) firstLine.get("qty"));
+        partialIssue.setLines(List.of(firstOnly));
+        stockDocService.approveAndIssue(partial, partialIssue);
+        assertEquals("1|1", strFor(statusSql, partial), "部分出库单：已审、issue_status=PARTIAL");
+        String partialBillNo = strFor("select bill_no from stock_documents where id = ?", partial);
+
+        // F5b：列表与子分类徽章同源——部分领取单两处都记 PARTIAL，计数逐条相等。
+        var partialPage = fulfillmentWorkbenchQuery.query(
+                "WAREHOUSE", "PARTIAL", partialBillNo, "", null, null, 1, 20);
+        assertTrue(partialPage.items().stream().anyMatch(row ->
+                        partial.equals(row.actionDocId()) && "PARTIAL".equals(row.taskStatus())),
+                "一行已出完、一行待领的领料单在列表记 PARTIAL");
+        Map<String, Long> listCounts = fulfillmentWorkbenchQuery.query(
+                "WAREHOUSE", "", "", "", null, null, 1, 1).summary().statusCounts();
+        Map<String, Long> breakdown = fulfillmentWorkbenchQuery.warehouseStatusBreakdown();
+        assertEquals(listCounts.getOrDefault("PARTIAL", 0L), breakdown.get("PARTIAL"),
+                "子分类徽章 PARTIAL 与列表 statusCounts 同源");
+        assertEquals(listCounts.getOrDefault("READY_TO_PICK", 0L), breakdown.get("READY_TO_PICK"),
+                "子分类徽章 READY_TO_PICK 与列表 statusCounts 同源");
+        assertEquals(breakdown.get("READY_TO_PICK") + breakdown.get("PARTIAL"), breakdown.get("OPEN_ANY"));
+        assertTrue(breakdown.get("PARTIAL") >= 1, "至少本用例的部分领取单");
+        assertTrue(breakdown.get("READY_TO_PICK") >= 3, "至少本用例的三张草稿单");
+
+        List<UUID> batchIds = List.of(draftA, draftB, partial);
+        List<String> batchBillNos = batchIds.stream()
+                .map(id -> strFor("select bill_no from stock_documents where id = ?", id))
+                .toList();
+        BigDecimal balanceBBefore = stockBalance(w.warehouseId(), w.goodsB());
+        BigDecimal balanceEBefore = stockBalance(w.warehouseId(), w.goodsE());
+        BigDecimal remainingB = remainingDrawBaseQty(batchIds, w.goodsB());
+        BigDecimal remainingE = remainingDrawBaseQty(batchIds, w.goodsE());
+        assertTrue(remainingB.signum() > 0 && remainingE.signum() > 0);
+
+        // 库存不足 → 整批回滚，错误码不变且带单号；草稿仍是草稿，不留领料事件。
+        // 选「部分出库单尚未发出」的那种物料清零：批内每张单都还需要它。
+        UUID shortGoods = w.goodsB().equals(firstLine.get("goods_id")) ? w.goodsE() : w.goodsB();
+        BigDecimal shortBefore = stockBalance(w.warehouseId(), shortGoods);
+        jdbc.update("update stock_balances set qty = 0 where warehouse_id = ? and goods_id = ?",
+                w.warehouseId(), shortGoods);
+        StockDocIssueBatchRequest shortBatch =
+                drawBatchRequest("draw-batch-short-" + w.warehouseId(), batchIds, null);
+        ApiException shortage = assertThrows(ApiException.class,
+                () -> stockDocService.issueFullBatch(shortBatch));
+        assertEquals(ErrorCode.CONFLICT, shortage.getCode(), shortage.getMessage());
+        assertTrue(shortage.getMessage().startsWith("领料单 "), shortage.getMessage());
+        assertTrue(batchBillNos.stream().anyMatch(no -> shortage.getMessage().contains(no)),
+                "批量错误必须带上失败那张领料单的单号：" + shortage.getMessage());
+        assertEquals("0|0", strFor(statusSql, draftA), "整批回滚：草稿 A 保持草稿");
+        assertEquals("0|0", strFor(statusSql, draftB), "整批回滚：草稿 B 保持草稿");
+        assertEquals("1|1", strFor(statusSql, partial), "整批回滚：部分出库单不变");
+        assertEquals(0, count("""
+                select count(*) from production_material_stock_events
+                where stock_document_id in (?, ?) and event_type = 'ISSUE'
+                """, draftA, draftB), "回滚后草稿单不得留下领料事件");
+        assertEquals(0, count("""
+                select count(*) from stock_movements
+                where source_doc_type = 'STOCK_DOC' and source_doc_id in (?, ?)
+                """, draftA, draftB), "回滚后草稿单不得留下物理库存流水");
+        jdbc.update("update stock_balances set qty = ? where warehouse_id = ? and goods_id = ?",
+                shortBefore, w.warehouseId(), shortGoods);
+        assertEquals(0, balanceBBefore.compareTo(stockBalance(w.warehouseId(), w.goodsB())));
+        assertEquals(0, balanceEBefore.compareTo(stockBalance(w.warehouseId(), w.goodsE())));
+
+        // 正常批量：两张草稿审核并出库、部分出库单补齐剩余量；统一备注落单据。
+        StockDocIssueBatchRequest batch =
+                drawBatchRequest("draw-batch-issue-" + w.warehouseId(), batchIds, "夜班统一发料");
+        StockDocIssueBatchResponse response = stockDocService.issueFullBatch(batch);
+        assertEquals(3, response.issuedCount());
+        assertEquals(0, response.skippedCount());
+        assertEquals(0, response.replayedCount());
+        assertFalse(response.replayed());
+        assertEquals(3, response.issuedDocNos().size());
+        assertTrue(response.issuedDocNos().containsAll(batchBillNos));
+        for (UUID id : batchIds) {
+            assertEquals("1|2", strFor(statusSql, id), "批量后全部已审且 issue_status=FULL");
+            assertTrue(strFor("select coalesce(remark, '') from stock_documents where id = ?", id)
+                    .contains("夜班统一发料"), "统一备注追加到每张单的备注");
+        }
+        assertEquals(0, balanceBBefore.subtract(remainingB)
+                        .compareTo(stockBalance(w.warehouseId(), w.goodsB())),
+                "B 按三张单剩余基本量扣减");
+        assertEquals(0, balanceEBefore.subtract(remainingE)
+                        .compareTo(stockBalance(w.warehouseId(), w.goodsE())),
+                "E 按三张单剩余基本量扣减");
+        int issueEvents = count("""
+                select count(*) from production_material_stock_events
+                where stock_document_id in (?, ?, ?) and event_type = 'ISSUE'
+                """, draftA, draftB, partial);
+
+        // 同人同批量键重放：不重复扣账，按子键识别为「本批此前已完成」。
+        StockDocIssueBatchResponse replay = stockDocService.issueFullBatch(batch);
+        assertTrue(replay.replayed());
+        assertEquals(0, replay.issuedCount());
+        assertEquals(3, replay.replayedCount());
+        assertEquals(0, replay.skippedCount());
+        assertEquals(issueEvents, count("""
+                select count(*) from production_material_stock_events
+                where stock_document_id in (?, ?, ?) and event_type = 'ISSUE'
+                """, draftA, draftB, partial), "重放不得重复写领料事件");
+        assertEquals(0, balanceBBefore.subtract(remainingB)
+                .compareTo(stockBalance(w.warehouseId(), w.goodsB())), "重放不得重复扣库存");
+
+        // 换批量键：已出完的单只是 skipped，不算重放。
+        StockDocIssueBatchResponse other = stockDocService.issueFullBatch(
+                drawBatchRequest("draw-batch-other-" + w.warehouseId(), batchIds, null));
+        assertFalse(other.replayed());
+        assertEquals(0, other.issuedCount());
+        assertEquals(3, other.skippedCount());
+        assertEquals(0, other.replayedCount());
+
+        // >50 张 → 422；未知单据 → 404。
+        List<UUID> tooMany = new ArrayList<>();
+        for (int i = 0; i < 51; i++) tooMany.add(UUID.randomUUID());
+        assertEquals(ErrorCode.VALIDATION_FAILED, assertThrows(ApiException.class,
+                () -> stockDocService.issueFullBatch(
+                        drawBatchRequest("draw-batch-too-many-" + w.warehouseId(), tooMany, null)))
+                .getCode());
+        assertEquals(ErrorCode.NOT_FOUND, assertThrows(ApiException.class,
+                () -> stockDocService.issueFullBatch(drawBatchRequest(
+                        "draw-batch-unknown-" + w.warehouseId(), List.of(UUID.randomUUID()), null)))
+                .getCode());
+
+        // 只有出库权限、没有审核权限的账号：草稿单 403 并列出单号，草稿保持草稿。
+        UUID issuerOnly = createUserWithPerms(
+                w, "draw-batch-issuer", "stock_doc:view", "stock_doc:issue");
+        loginAs(issuerOnly);
+        String outsiderBillNo = strFor("select bill_no from stock_documents where id = ?", outsider);
+        ApiException forbidden = assertThrows(ApiException.class,
+                () -> stockDocService.issueFullBatch(drawBatchRequest(
+                        "draw-batch-forbidden-" + w.warehouseId(), List.of(outsider), null)));
+        assertEquals(ErrorCode.FORBIDDEN, forbidden.getCode(), forbidden.getMessage());
+        assertTrue(forbidden.getMessage().contains(outsiderBillNo), forbidden.getMessage());
+        assertEquals("0|0", strFor(statusSql, outsider));
+    }
+
+    /** 单仓一张领料单：物料分析「其它」来源下达 10 件 A（BOM A→{B,E}），库存全在主仓。 */
+    private UUID generateSingleWarehouseDraw(World w, String tag) {
+        AnalysisView view = analysisService.preview(new PreviewRequest(
+                null, null, null, w.warehouseId(), tag + "-preview",
+                List.of(new PreviewItem("OTHER", null, w.goodsA(), null, w.unitId(),
+                        tag, "批量出库用例", LocalDate.of(2026, 9, 25),
+                        new BigDecimal("10")))));
+        UUID analysisId = view.analysisId();
+        UUID itemId = view.products().getFirst().analysisLineId();
+        confirmRootMakeRoute(analysisId, view);
+        view = analysisService.detail(analysisId);
+        GeneratedPlan plan = analysisCommandService.issueWorkshopPlans(analysisId,
+                new IssueWorkshopPlansRequest(view.version(), view.fingerprint(),
+                        tag + "-issue", w.warehouseId(),
+                        LocalDate.of(2026, 9, 6), null, true,
+                        List.of(new IssueWorkshopPlansRequest.IssuePlanLine(
+                                null, itemId, new BigDecimal("10"),
+                                null, null, null, null, null, null, null))))
+                .plans().getFirst();
+        assertEquals(1, plan.drawIds().size(), tag + "：库存全在同一仓只生成一张领料单");
+        return plan.drawIds().getFirst();
+    }
+
+    private StockDocIssueBatchRequest drawBatchRequest(
+            String idempotencyKey, List<UUID> docIds, String reason) {
+        StockDocIssueBatchRequest request = new StockDocIssueBatchRequest();
+        request.setIdempotencyKey(idempotencyKey);
+        request.setDocIds(List.copyOf(docIds));
+        request.setReason(reason);
+        return request;
+    }
+
+    /** 若干领料单某种物料的剩余基本量之和（qty − issued_qty，×unit_rate）。 */
+    private BigDecimal remainingDrawBaseQty(List<UUID> drawIds, UUID goodsId) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (UUID drawId : drawIds) {
+            total = total.add(bigDecimalFor("""
+                    select coalesce(sum((qty - coalesce(issued_qty, 0)) * coalesce(unit_rate, 1)), 0)
+                    from stock_document_items
+                    where doc_id = ? and goods_id = ? and is_deleted = false
+                    """, drawId, goodsId));
+        }
+        return total;
     }
 
     @Test
@@ -6098,7 +6481,7 @@ class FullChainEndToEndTest {
             assertEquals(2,count("SELECT count(*) FROM production_daily_reports WHERE id IN (?,?) AND status=1",firstReport,second.id()));
             UUID secondItem=jdbc.queryForObject("SELECT id FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted",UUID.class,second.id());
             finishedArrivalRegistrationService.register(second.id(),new ArrivalRegistrationRequest(
-                    "prefix-second-arrival-"+second.id(),w.warehouseId(),List.of(new ArrivalRegistrationItemRequest(secondItem,"PREFIX-SECOND-05"))));
+                    "prefix-second-arrival-"+second.id(),w.warehouseId(),List.of(new ArrivalRegistrationItemRequest(secondItem,"PREFIX-SECOND-05")), null));
             remainingInspections.add(jdbc.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?",UUID.class,secondItem));
         }
         var batch=new com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchRequest(
@@ -6121,7 +6504,7 @@ class FullChainEndToEndTest {
             loginAs(report.reporter()); reportService.approve(report.id()); loginAs(w.superAdminUserId());
             UUID reportItem=jdbc.queryForObject("SELECT id FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted",UUID.class,report.id());
             finishedArrivalRegistrationService.register(report.id(),new ArrivalRegistrationRequest(
-                    "prefix-fqc-arrival-"+report.id(),w.warehouseId(),List.of(new ArrivalRegistrationItemRequest(reportItem,"PREFIX-FQC-01"))));
+                    "prefix-fqc-arrival-"+report.id(),w.warehouseId(),List.of(new ArrivalRegistrationItemRequest(reportItem,"PREFIX-FQC-01")), null));
             UUID inspection=jdbc.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?",UUID.class,reportItem);
             fqcService.decide(inspection,new DecisionRequest("PASS",new BigDecimal("5"),null,null,null,"prefix-pass-"+inspection));
             UUID inbound=finishedInDocForReport(report.id());
@@ -10675,7 +11058,7 @@ class FullChainEndToEndTest {
                         "e2e-arrival-" + UUID.randomUUID(),
                         w.warehouseId(),
                         List.of(new ArrivalRegistrationItemRequest(
-                                reportItemId, "E2E-FINISHED-01"))));
+                                reportItemId, "E2E-FINISHED-01")), null));
         UUID inspectionId = jdbc.queryForObject("""
                         SELECT id
                         FROM production_fqc_inspections
@@ -10703,6 +11086,198 @@ class FullChainEndToEndTest {
                         .compareTo(passed));
         return report.getId();
     }
+
+
+    // ---------------------------------------------------------------------------------------------
+    // V547/V548 「登记成品」对照采购到货登记：行级成品仓 → 同报工按仓拆成多个登记批次，
+    // 每个登记命令 + 仓形成一张品质检查单；品质未处理前可撤回登记，报工行重新可登记。
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void arrivalRegistration_rowLevelWarehousesFormTwoBatchesTwoSheetsAndInheritInbound() {
+        World w=seedWorld("fqc-sheet-rows"); UUID warehouseB=leafWarehouse("fqc-sheet-rows-b");
+        receiveOpeningInputsForA(w,"10"); UUID plan=approvedPlan(w,w.goodsA(),"10","10");
+        issueReadyPlanAndMaterials(w,plan); UUID planItem=planItemIdFor(plan,w.goodsA()); UUID orderItem=orderItemIdOfPlan(plan);
+        MultiLineReport report=approvedMultiLineReport(w,plan,planItem,orderItem,"5","5");
+        List<UUID> items=report.itemIds(); assertEquals(2,items.size());
+        loginAs(w.superAdminUserId()); long activeBefore=fqcService.countActive();
+        String pageKey="sheet-rows-"+UUID.randomUUID();
+        var requestA=new ArrivalRegistrationRequest(pageKey+":"+w.warehouseId(),w.warehouseId(),
+                List.of(new ArrivalRegistrationItemRequest(items.get(0),"A-01")),"  行仓 A  ");
+        var first=finishedArrivalRegistrationService.register(report.id(),requestA);
+        assertTrue(first.registered()); assertNotNull(first.sheetId()); assertTrue(first.sheetNo().startsWith("FQC"));
+        assertEquals("行仓 A",first.remark(),"备注 trim 后随登记批次留痕");
+        assertFalse(finishedArrivalRegistrationService.detail(report.id()).registered(),"另一行仍待登记");
+        var second=finishedArrivalRegistrationService.register(report.id(),new ArrivalRegistrationRequest(pageKey+":"+warehouseB,warehouseB,
+                List.of(new ArrivalRegistrationItemRequest(items.get(1),"B-01")),null));
+        assertFalse(first.registrationId().equals(second.registrationId())); assertFalse(first.sheetId().equals(second.sheetId()));
+        assertEquals(2,count("SELECT count(*) FROM production_finished_arrival_registrations WHERE source_report_id=?",report.id()));
+        assertEquals(2,count("SELECT count(*) FROM production_fqc_inspections WHERE source_report_id=?",report.id()));
+        assertEquals(w.warehouseId(),jdbc.queryForObject("SELECT warehouse_id FROM production_fqc_inspections WHERE source_report_item_id=?",UUID.class,items.get(0)));
+        assertEquals(warehouseB,jdbc.queryForObject("SELECT warehouse_id FROM production_fqc_inspections WHERE source_report_item_id=?",UUID.class,items.get(1)));
+        // 同键同体重放：原批次、不再建检查单。
+        var replay=finishedArrivalRegistrationService.register(report.id(),requestA);
+        assertEquals(first.registrationId(),replay.registrationId()); assertEquals(first.sheetId(),replay.sheetId());
+        assertEquals(1,count("SELECT count(*) FROM production_fqc_inspection_sheets WHERE batch_idempotency_key=?",pageKey+":"+w.warehouseId()));
+        var detail=finishedArrivalRegistrationService.detail(report.id());
+        assertTrue(detail.registered()); assertEquals(2,detail.batches().size());
+        assertTrue(detail.batches().stream().allMatch(batch->batch.reversible()&&batch.sheetNo()!=null));
+        // 品质侧回看：检查单号、仓、库位、登记备注。
+        UUID inspectionA=jdbc.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?",UUID.class,items.get(0));
+        UUID inspectionB=jdbc.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?",UUID.class,items.get(1));
+        var view=fqcService.detail(inspectionA);
+        assertEquals(first.sheetNo(),view.sheetNo()); assertEquals("A-01",view.place()); assertEquals("行仓 A",view.registrationRemark());
+        assertNotNull(view.warehouseName()); assertNotNull(view.receiverName());
+        assertEquals(activeBefore+2,fqcService.countActive(),"角标口径=检查单行数：两张单");
+        assertEquals(1,fqcService.list("ACTIVE","",first.sheetId().toString(),1,50).getTotal());
+        // PASS 各自生成 FINISHED_IN，继承各自登记的仓与库位。
+        fqcService.decide(inspectionA,new DecisionRequest("PASS",null,null,null,null,"sheet-rows-pass-a-"+inspectionA));
+        fqcService.decide(inspectionB,new DecisionRequest("PASS",null,null,null,null,"sheet-rows-pass-b-"+inspectionB));
+        assertEquals(w.warehouseId(),jdbc.queryForObject("SELECT d.warehouse_id FROM stock_documents d JOIN stock_document_items i ON i.doc_id=d.id WHERE i.source_daily_report_item_id=? AND d.doc_type='FINISHED_IN' AND NOT d.is_deleted",UUID.class,items.get(0)));
+        assertEquals(warehouseB,jdbc.queryForObject("SELECT d.warehouse_id FROM stock_documents d JOIN stock_document_items i ON i.doc_id=d.id WHERE i.source_daily_report_item_id=? AND d.doc_type='FINISHED_IN' AND NOT d.is_deleted",UUID.class,items.get(1)));
+        assertEquals("B-01",strFor("SELECT i.place FROM stock_document_items i JOIN stock_documents d ON d.id=i.doc_id WHERE i.source_daily_report_item_id=? AND d.doc_type='FINISHED_IN' AND NOT d.is_deleted",items.get(1)));
+        assertEquals(activeBefore,fqcService.countActive());
+        var closed=fqcService.listSheets("CLOSED","",1,200).getItems().stream().map(sheet->sheet.id()).toList();
+        assertTrue(closed.contains(first.sheetId())&&closed.contains(second.sheetId()),"两张检查单全部决定后进入 CLOSED");
+        assertTrue(fqcService.listSheets("ACTIVE","",1,200).getItems().stream().noneMatch(sheet->sheet.id().equals(first.sheetId())));
+    }
+
+    @Test
+    void arrivalRegistration_batchGroupsSameWarehouseIntoOneSheetAndSheetHandlingStaysPerInspection() {
+        World w=seedWorld("fqc-sheet-batch"); UUID warehouseB=leafWarehouse("fqc-sheet-batch-b");
+        receiveOpeningInputsForA(w,"30");
+        MultiLineReport p=approvedMultiLineReportOfNewPlan(w,"3","3","4");
+        MultiLineReport q=approvedMultiLineReportOfNewPlan(w,"5","5");
+        MultiLineReport r=approvedMultiLineReportOfNewPlan(w,"10");
+        loginAs(w.superAdminUserId()); long activeBefore=fqcService.countActive();
+        String batchKey="sheet-batch-"+UUID.randomUUID();
+        var request=new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchArrivalRegistrationRequest(batchKey,List.of(
+                new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchReportRegistrationRequest(p.id(),w.warehouseId(),placesFor(p,"P")),
+                new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchReportRegistrationRequest(q.id(),w.warehouseId(),placesFor(q,"Q")),
+                new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchReportRegistrationRequest(r.id(),warehouseB,placesFor(r,"R"))),"批量送检");
+        var result=finishedArrivalRegistrationService.batchRegister(request);
+        assertEquals(3,result.registeredCount()); assertEquals(2,result.sheets().size(),"同仓合并：A 一张、B 一张");
+        var sheetA=result.sheets().stream().filter(sheet->sheet.warehouseId().equals(w.warehouseId())).findFirst().orElseThrow();
+        var sheetB=result.sheets().stream().filter(sheet->sheet.warehouseId().equals(warehouseB)).findFirst().orElseThrow();
+        assertEquals(5,sheetA.itemCount()); assertEquals(1,sheetB.itemCount());
+        assertTrue(result.reports().stream().allMatch(row->row.sheetNo()!=null));
+        // 同键重放：原登记批次、不新增检查单。
+        var replay=finishedArrivalRegistrationService.batchRegister(request);
+        assertEquals(result.reports().stream().map(row->row.registrationId()).toList(),replay.reports().stream().map(row->row.registrationId()).toList());
+        assertEquals(2,count("SELECT count(*) FROM production_fqc_inspection_sheets WHERE batch_idempotency_key=?",batchKey));
+        assertEquals(activeBefore+2,fqcService.countActive());
+        var active=fqcService.listSheets("ACTIVE","",1,50);
+        var headA=active.getItems().stream().filter(sheet->sheet.id().equals(sheetA.sheetId())).findFirst().orElseThrow();
+        assertEquals(5,headA.itemCount()); assertEquals(5,headA.activeCount()); assertTrue(headA.pendingQtyText().startsWith("20 "));
+        assertEquals("批量送检",headA.remark()); assertTrue(headA.reportNos().contains(p.billNo())&&headA.reportNos().contains(q.billNo()));
+        // 检查单办理仍按 inspection：一条 FAIL 不影响同单其它行；其余全合格后整单关闭。
+        var sheetDetail=fqcService.sheetDetail(sheetA.sheetId()); assertEquals(5,sheetDetail.inspections().size());
+        UUID failed=sheetDetail.inspections().getFirst().id();
+        fqcService.decide(failed,new DecisionRequest("FAIL",null,null,"REWORK","批量单内单行返工","sheet-batch-fail-"+failed));
+        assertEquals(4,fqcService.sheetDetail(sheetA.sheetId()).inspections().stream().filter(item->"PENDING".equals(item.status())).count());
+        List<UUID> remaining=fqcService.sheetDetail(sheetA.sheetId()).inspections().stream().filter(item->"PENDING".equals(item.status())).map(item->item.id()).toList();
+        fqcService.passAll(new com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchRequest(remaining,"sheet-batch-pass-"+UUID.randomUUID()));
+        assertEquals(0,count("SELECT count(*) FROM production_fqc_inspection_sheet_items si JOIN production_fqc_inspections i ON i.id=si.inspection_id WHERE si.sheet_id=? AND i.status IN ('PENDING','PARTIAL')",sheetA.sheetId()));
+        assertEquals(1,fqcService.listSheets("CLOSED","",1,50).getItems().stream().filter(sheet->sheet.id().equals(sheetA.sheetId())).count());
+        assertEquals(activeBefore+1,fqcService.countActive(),"只剩 B 仓那张单");
+        // 来源报工红冲：inspection CANCELLED，检查单及明细保留为历史。
+        loginAs(r.reporter()); reportService.reverse(r.id()); loginAs(w.superAdminUserId());
+        assertEquals("CANCELLED",strFor("SELECT i.status FROM production_fqc_inspection_sheet_items si JOIN production_fqc_inspections i ON i.id=si.inspection_id WHERE si.sheet_id=?",sheetB.sheetId()));
+        assertEquals(1,count("SELECT count(*) FROM production_fqc_inspection_sheet_items WHERE sheet_id=?",sheetB.sheetId()));
+        assertEquals(activeBefore,fqcService.countActive());
+    }
+
+    @Test
+    void arrivalRegistration_reversalReopensLinesAllowsAnotherWarehouseAndBlocksAfterDecision() {
+        World w=seedWorld("fqc-reg-reverse"); UUID warehouseB=leafWarehouse("fqc-reg-reverse-b");
+        receiveOpeningInputsForA(w,"20"); UUID plan=approvedPlan(w,w.goodsA(),"10","10");
+        issueReadyPlanAndMaterials(w,plan); UUID planItem=planItemIdFor(plan,w.goodsA()); UUID orderItem=orderItemIdOfPlan(plan);
+        MultiLineReport report=approvedMultiLineReport(w,plan,planItem,orderItem,"5","5");
+        loginAs(w.superAdminUserId()); long activeBefore=fqcService.countActive();
+        var registered=finishedArrivalRegistrationService.register(report.id(),new ArrivalRegistrationRequest("reg-reverse-first-"+report.id(),w.warehouseId(),placesFor(report,"A"),"错仓登记"));
+        assertTrue(registered.registered()&&registered.reversible());
+        assertEquals(0,finishedInboundTasks.list(report.billNo(),1,40).getTotal(),"登记后任务不再出现");
+        UUID sheet=registered.sheetId();
+        var reversal=new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationReversalRequest("reg-reverse-cmd-"+report.id(),"  仓库选错，撤回重登  ");
+        var reversed=finishedArrivalRegistrationService.reverse(registered.registrationId(),reversal);
+        assertTrue(reversed.registered()); assertNotNull(reversed.reversedAt()); assertEquals("仓库选错，撤回重登",reversed.reversalReason()); assertFalse(reversed.reversible());
+        assertEquals(2,count("SELECT count(*) FROM production_fqc_cancellation_events WHERE reason_code='REGISTRATION_REVERSED' AND source_report_id=?",report.id()));
+        assertEquals(2,count("SELECT count(*) FROM production_fqc_inspections WHERE source_report_id=? AND status='CANCELLED'",report.id()));
+        assertEquals(2,count("SELECT count(*) FROM production_finished_arrival_registration_items WHERE registration_id=? AND reversal_id IS NOT NULL",registered.registrationId()));
+        assertEquals(2,count("SELECT count(*) FROM production_fqc_inspection_sheet_items WHERE sheet_id=?",sheet),"检查单明细保留为历史");
+        assertEquals(activeBefore,fqcService.countActive(),"已撤回的待检不计入角标");
+        assertEquals(2,count("SELECT count(*) FROM v_production_report_items_pending_registration WHERE report_id=?",report.id()));
+        var pending=finishedArrivalRegistrationService.detail(report.id());
+        assertFalse(pending.registered()); assertEquals(2,pending.items().size()); assertEquals(1,pending.batches().size());
+        assertNull(pending.items().getFirst().lastWarehouseId(),"已撤回的登记不作为逐行「上次成品仓」建议");
+        assertEquals(1,finishedInboundTasks.list(report.billNo(),1,40).getTotal(),"撤回后任务重新出现");
+        // 同键重放撤回：幂等，不新增撤回记录。
+        assertEquals(reversed.registrationId(),finishedArrivalRegistrationService.reverse(registered.registrationId(),reversal).registrationId());
+        assertEquals(1,count("SELECT count(*) FROM production_finished_arrival_registration_reversals WHERE registration_id=?",registered.registrationId()));
+        assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->finishedArrivalRegistrationService.reverse(registered.registrationId(),
+                new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationReversalRequest("reg-reverse-again-"+report.id(),"再撤一次"))).getCode());
+        // 重新登记到另一仓：新批次、新 inspection、新检查单；上次成品仓建议来自有效登记（已撤回不算）。
+        var again=finishedArrivalRegistrationService.register(report.id(),new ArrivalRegistrationRequest("reg-reverse-second-"+report.id(),warehouseB,placesFor(report,"B"),null));
+        assertTrue(again.registered()); assertFalse(again.registrationId().equals(registered.registrationId())); assertFalse(again.sheetId().equals(sheet));
+        assertEquals(2,count("SELECT count(*) FROM production_fqc_inspections WHERE source_report_id=? AND status='PENDING' AND warehouse_id=?",report.id(),warehouseB));
+        assertEquals(4,count("SELECT count(*) FROM production_fqc_inspections WHERE source_report_id=?",report.id()));
+        assertEquals(activeBefore+1,fqcService.countActive()); assertEquals(2,finishedArrivalRegistrationService.detail(report.id()).batches().size());
+        MultiLineReport sibling=approvedMultiLineReportOfNewPlan(w,"10"); loginAs(w.superAdminUserId());
+        assertEquals(warehouseB,finishedArrivalRegistrationService.detail(sibling.id()).items().getFirst().lastWarehouseId(),"同货品最近有效登记仓作为逐行建议");
+        // 品质已处理（PASS 一行）后不能再撤回；数据库守卫同样拒绝绕过服务的撤回。
+        UUID passed=jdbc.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=? AND status='PENDING'",UUID.class,report.itemIds().getFirst());
+        fqcService.decide(passed,new DecisionRequest("PASS",null,null,null,null,"reg-reverse-pass-"+passed));
+        assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->finishedArrivalRegistrationService.reverse(again.registrationId(),
+                new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationReversalRequest("reg-reverse-third-"+report.id(),"品质已处理后撤回"))).getCode());
+        assertFalse(finishedArrivalRegistrationService.detail(report.id()).batches().stream().filter(batch->batch.registrationId().equals(again.registrationId())).findFirst().orElseThrow().reversible());
+        var raw=assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("INSERT INTO production_finished_arrival_registration_reversals(id,registration_id,reason,idempotency_key,request_hash,created_by) VALUES (?,?,'绕过服务',?,?,?)",
+                UUID.randomUUID(),again.registrationId(),"raw-reverse-"+UUID.randomUUID(),"a".repeat(64),w.superAdminUserId()));
+        assertTrue(String.valueOf(raw.getMostSpecificCause().getMessage()).contains("reversal command"),raw.getMostSpecificCause().getMessage());
+    }
+
+    /** 多行报工（同一执行段拆多行）：登记页行级成品仓场景的固定来源。 */
+    private MultiLineReport approvedMultiLineReport(World w,UUID planId,UUID planItem,UUID orderItem,String... qtys) {
+        loginAs(w.superAdminUserId()); StartedSegment segment=startedSegmentFor(w,planId,planItem,orderItem);
+        var assigned=jdbc.queryForMap("SELECT workshop_department_id,responsible_employee_id FROM production_execution_segments WHERE id=?",segment.segmentId());
+        UUID reporter=createUserWithPerms(w,"lines-reporter-"+UUID.randomUUID().toString().substring(0,8),
+                "production_execution:view","production_daily_report:create","production_daily_report:approve","production_daily_report:reverse");
+        jdbc.update("UPDATE employees SET department_id=? WHERE id=(SELECT employee_id FROM users WHERE id=?)",assigned.get("workshop_department_id"),reporter);
+        DailyReportSaveRequest request=new DailyReportSaveRequest(); request.setIdempotencyKey("lines-report-"+UUID.randomUUID());
+        request.setBillDate(LocalDate.of(2026,1,25)); request.setWarehouseId(w.warehouseId());
+        request.setDepartmentId((UUID)assigned.get("workshop_department_id")); request.setWorkerId((UUID)assigned.get("responsible_employee_id"));
+        request.setWorkerIds(List.of((UUID)assigned.get("responsible_employee_id")));
+        List<DailyReportItemLine> lines=new ArrayList<>(); int lineNo=0;
+        for(String qty:qtys) {
+            DailyReportItemLine line=new DailyReportItemLine(); line.setLineNo(++lineNo); line.setGoodsId(w.goodsA()); line.setUnitId(w.unitId()); line.setUnitRate(BigDecimal.ONE);
+            line.setQty(new BigDecimal(qty)); line.setPlanItemId(planItem); line.setSalesOrderItemId(orderItem);
+            line.setExecutionSegmentId(segment.segmentId()); line.setExecutionSegmentSalesAllocationId(segment.salesAllocationId()); lines.add(line);
+        }
+        request.setItems(lines);
+        loginAs(reporter);
+        try {
+            DailyReportDetail created=reportService.create(request); reportService.approve(created.getId());
+            List<UUID> itemIds=jdbc.queryForList("SELECT id FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted ORDER BY line_no NULLS LAST, id",UUID.class,created.getId());
+            return new MultiLineReport(created.getId(),created.getBillNo(),reporter,itemIds);
+        } finally {loginAs(w.superAdminUserId());}
+    }
+
+    private MultiLineReport approvedMultiLineReportOfNewPlan(World w,String... qtys) {
+        UUID plan=approvedPlan(w,w.goodsA(),"10","10"); issueReadyPlanAndMaterials(w,plan);
+        return approvedMultiLineReport(w,plan,planItemIdFor(plan,w.goodsA()),orderItemIdOfPlan(plan),qtys);
+    }
+
+    private static List<ArrivalRegistrationItemRequest> placesFor(MultiLineReport report,String prefix) {
+        List<ArrivalRegistrationItemRequest> items=new ArrayList<>(); int index=0;
+        for(UUID itemId:report.itemIds()) items.add(new ArrivalRegistrationItemRequest(itemId,prefix+"-"+String.format("%02d",++index)));
+        return items;
+    }
+
+    private UUID leafWarehouse(String tag) {
+        UUID id=UUID.randomUUID();
+        jdbc.update("INSERT INTO warehouses(id,code,name,status,is_accountable) VALUES (?,?,?,'使用',TRUE)",id,"WH-"+tag,"成品仓-"+tag);
+        return id;
+    }
+
+    private record MultiLineReport(UUID id,String billNo,UUID reporter,List<UUID> itemIds) {}
 
     private ProductionAssignment productionAssignment(String tag) {
         UUID productionDepartmentId = jdbc.queryForObject(

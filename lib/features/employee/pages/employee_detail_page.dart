@@ -523,15 +523,23 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         UtenInfoRow(
           label: l10n.employeeFieldStatus,
           value: null,
-          valueWidget: EmployeeStatusBadge(
-            status: _p.status,
-            size: UtenStatusBadgeSize.medium,
+          // Align 松开 Expanded 的紧约束：徽章按内容宽、靠右对齐
+          //（否则胶囊底色被拉满整行）。
+          valueWidget: Align(
+            alignment: Alignment.centerRight,
+            child: EmployeeStatusBadge(
+              status: _p.status,
+              size: UtenStatusBadgeSize.medium,
+            ),
           ),
         ),
         UtenInfoRow(
           label: l10n.employeeFieldAccountStatus,
           value: null,
-          valueWidget: _accountStatusBadge(theme, l10n),
+          valueWidget: Align(
+            alignment: Alignment.centerRight,
+            child: _accountStatusBadge(theme, l10n),
+          ),
         ),
         UtenInfoRow(
           label: l10n.employeeFieldEmploymentType,

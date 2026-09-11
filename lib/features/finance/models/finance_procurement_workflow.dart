@@ -361,6 +361,7 @@ class FinanceProcurementReviewLine {
     this.goodsCode,
     this.goodsName,
     this.colorName,
+    this.unitId,
     this.unitName,
     this.unitRate,
     this.qty,
@@ -375,6 +376,9 @@ class FinanceProcurementReviewLine {
   final String? goodsCode;
   final String? goodsName;
   final String? colorName;
+
+  /// 单位主键：「合计数量」按它分组，不同单位的数量绝不相加。
+  final String? unitId;
   final String? unitName;
   final String? unitRate;
   final String? qty;
@@ -390,6 +394,7 @@ class FinanceProcurementReviewLine {
       goodsCode: _string(json['goodsCode']),
       goodsName: _string(json['goodsName']),
       colorName: _string(json['colorName']),
+      unitId: _string(json['unitId']),
       unitName: _string(json['unitName']),
       unitRate: _firstNullableString([json['unitRate']]),
       qty: _firstNullableString([json['qty']]),

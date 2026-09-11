@@ -260,8 +260,7 @@ abstract class _MaterialAnalysisSupplyActionsState
           (group) =>
               _selectedMaterialGroupKeys.contains(group.key) &&
               _canEditMaterialRoute(group) &&
-              (group.representative.confirmedRoute == null ||
-                  _dirtyRouteGroups.contains(group.key)),
+              _routeGroupSelectable(group),
         )
         .toList(growable: false);
     if (groups.isEmpty) return;

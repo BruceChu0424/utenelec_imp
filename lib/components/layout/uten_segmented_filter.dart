@@ -1,4 +1,8 @@
 // UtenSegmentedFilter - 分段筛选器（用于"全部/待处理/已处理"切换）
+//
+// 计数形态：一律中性括号 `(N)`（浏览型分段口径，见
+// docs/00-项目准则/14-徽章与计数口径.md），数字用等宽字形保证多段对齐。
+// 需要红色待办徽章的分段用 UtenFilterToolbar + UtenSegmentBadgeLabel(countForm: actionable)。
 // 文档：docs-02-组件库/UtenSegmentedFilter.md（待写）
 
 import 'package:flutter/material.dart';
@@ -90,11 +94,16 @@ class _SegmentButton<T> extends StatelessWidget {
               borderRadius: radius,
             ),
             child: Text(
+              // 计数就地拼在标签里（中性括号形态，符合浏览型分段口径）：**保持单个
+              // Text**——分段标签是 28 个页面/组件测试的锚点（find.text('已下达 (1)')），
+              // 拆成「标签 + UtenCountSuffix」两个 Text 只为给括号调淡一点颜色，
+              // 不值当（2026-09-11 试过，全量测试 28 处红）。数字对齐靠等宽数字字形。
               segment.displayLabel,
               style: theme.textTheme.titleSmall?.copyWith(
                 color: selected
                     ? theme.colorScheme.onPrimary
                     : theme.colorScheme.onSurfaceVariant,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
           ),
@@ -110,5 +119,8 @@ class UtenSegment<T> {
   final String label;
   final int? count;
 
+  /// 「标签 (计数)」单串：分段按钮直接渲染它，导出/打印/日志也用同一串。
+  /// 计数形态是中性括号（浏览型分段口径，见 docs/00-项目准则/14-徽章与计数口径.md）；
+  /// 需要红色待办徽章的分段改用 UtenFilterToolbar + UtenSegmentBadgeLabel。
   String get displayLabel => count != null ? '$label ($count)' : label;
 }

@@ -30,7 +30,11 @@ public class StockDocIssueRequest {
     @Size(min = 1, max = RequestLimits.DOCUMENT_LINES)
     private List<Line> lines;
 
-    /** Required by the cancellation endpoint; ignored for a forward issue. */
+    /**
+     * 取消出库：必填的取消原因（进审计，不落 remark）。
+     * 正向出库（issue / approve-and-issue / 批量）：选填的出库备注，服务端按单条
+     * ≤200 字追加到单据 remark（多轮出库用「；」连接、整条相同不重复、总长 ≤500）。
+     */
     @Size(max = 1000)
     private String reason;
 

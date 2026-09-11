@@ -29,6 +29,7 @@ class UtenSearchBar extends StatefulWidget {
     this.autofocus = false,
     this.debounce = const Duration(milliseconds: 300),
     this.controller,
+    this.dense = false,
   });
 
   final String hint;
@@ -45,6 +46,15 @@ class UtenSearchBar extends StatefulWidget {
   final bool autofocus;
   final Duration debounce;
   final TextEditingController? controller;
+
+  /// 紧凑态：收紧内边距与图标（高约 36 而非 44）。
+  ///
+  /// 只给「筛选面板里的一格」用（报表/明细表的左侧筛选区）——那里搜索框是一堆
+  /// 筛选项中的一项，默认高度显得笨重（2026-09-11 用户要求「搜索的框显示小点」）。
+  /// **不要给页面主搜索框或 UtenFilterToolbar 里的搜索框传 dense**：工具条用
+  /// IntrinsicHeight+stretch 让分类分段跟搜索框同高，改高度会把全站分段一起带走
+  /// （2026-09-10 已因此回退过一次）。
+  final bool dense;
 
   @override
   State<UtenSearchBar> createState() => _UtenSearchBarState();
@@ -115,7 +125,9 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
       onSubmitted: widget.onSubmitted,
       textInputAction: TextInputAction.search,
       decoration: _decoration(theme),
-      style: theme.textTheme.bodyMedium,
+      style: widget.dense
+          ? theme.textTheme.bodySmall
+          : theme.textTheme.bodyMedium,
     );
   }
 
@@ -136,10 +148,13 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
       hintText: widget.hint,
       prefixIcon: Icon(
         Icons.search_rounded,
-        size: 20,
+        size: widget.dense ? 18 : 20,
         color: theme.colorScheme.onSurfaceVariant,
       ),
-      prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 32),
+      prefixIconConstraints: BoxConstraints(
+        minWidth: widget.dense ? 34 : 40,
+        minHeight: widget.dense ? 28 : 32,
+      ),
       suffixIcon: _controller.text.isNotEmpty
           ? IconButton(
               icon: const Icon(Icons.close_rounded, size: 18),
@@ -149,10 +164,16 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
             )
           : null,
       suffixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 32),
+      // 高度由内容驱动（contentPadding 10 + 单行文本 ≈ 44），**不设 minHeight 48**：
+      // UtenFilterToolbar 用 IntrinsicHeight+stretch 让分段条跟搜索框同高，强拉到
+      // 48 会把全站分类分段一起拉高（2026-09-10 用户反馈「分类变高了不正常」已回退）。
+      // 需要与本框等高的行尾下拉自行传紧凑 contentPadding（见即时库存页）。
       isDense: true,
       filled: true,
       fillColor: theme.inputDecorationTheme.fillColor,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      contentPadding: widget.dense
+          ? const EdgeInsets.symmetric(horizontal: 12, vertical: 6)
+          : const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       enabledBorder: border(theme.colorScheme.outline),
       focusedBorder: border(theme.colorScheme.primary, 2),
     );

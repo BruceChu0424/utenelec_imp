@@ -1,26 +1,31 @@
-// 工资条列表页（卡片网格版）
+// 工资条列表页（表格版）
+//
+// 2026-09-09 表格化改版：卡片网格 → MasterDataTableView（列对齐 + 分页）。
+// 列：期间/应发合计/扣除合计/实发合计/状态/发布时间（原卡片字段全部保留）。
+// 顶部 UtenSegmentedFilter 分段（全部/未查看/已查看/已下载）保留；行双击进详情；
+// 无多选（工资条对员工本人只有「看/下载」，没有可批量的状态动作）。分页走表格内置
+// 翻页条（含跳页）。
+// 2026-09-10 表头筛选：「状态」列筛选桶 = 分段可选状态集（已发布未查看/已查看/
+// 已下载），选中即切到对应分段并回第 1 页（下推后端 status 参数，非页内裁剪）。
 // 文档：docs/03-页面/工资条列表页.md
 //
 // 响应式：compact 由页面自套 UtenContentContainer（gutter 16）；
-// medium+ 外壳（MainShellPage）已收敛内容区，页面不再重复套容器
+// medium+ 外壳（MainShellPage）已收敛内容区，页面不再重复套容器；
+// 窄屏表格横向滚动即可。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/cards/uten_card.dart';
-import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_paged_grid.dart';
-import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
-import '../../../core/theme/uten_colors.dart';
-import '../../../core/theme/uten_tokens.dart';
+import '../../basic_data/models/master_facet.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/payroll_slip.dart';
 import '../providers/payroll_providers.dart';
 
@@ -33,71 +38,33 @@ class PayrollSlipListPage extends ConsumerWidget {
     final filter = ref.watch(payrollFilterProvider);
 
     // compact 自套容器补 gutter；medium+ 外壳已收敛，避免双层 gutter
-    Widget body = Column(
-      children: [
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: () => ref.read(payrollListProvider.notifier).refresh(),
-            child: list.when(
-              loading: () => const UtenSkeletonList(itemCount: 8),
-              error: (e, _) => UtenEmpty.error(
-                message: '加载失败：$e',
-                actionLabel: '重试',
-                onAction: () => ref.invalidate(payrollListProvider),
-              ),
-              data: (page) {
-                final slips = page.items;
-                if (slips.isEmpty) {
-                  return ListView(
-                    children: const [
-                      SizedBox(height: 80),
-                      UtenEmpty(
-                        icon: Icons.account_balance_wallet_outlined,
-                        message: '此状态下暂无工资条',
-                      ),
-                    ],
-                  );
-                }
-                return SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(
-                    vertical: UtenSpacing.s16,
-                  ),
-                  child: Column(
-                    children: [
-                      UtenResponsiveGrid(
-                        itemCount: slips.length,
-                        itemBuilder: (context, i, _) => _SlipCard(
-                          slip: slips[i],
-                          onTap: () => context.push(
-                            RoutePath.payrollSlipDetail(slips[i].id),
-                          ),
-                        ),
-                      ),
-                      if (page.totalPages > 1)
-                        UtenGridPager(
-                          currentPage: page.page,
-                          totalPages: page.totalPages,
-                          totalItems: page.total,
-                          onPrev: !list.isLoading && page.page > 1
-                              ? () => ref
-                                    .read(payrollListProvider.notifier)
-                                    .previousPage()
-                              : null,
-                          onNext: !list.isLoading && page.page < page.totalPages
-                              ? () => ref
-                                    .read(payrollListProvider.notifier)
-                                    .nextPage()
-                              : null,
-                        ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
+    Widget body = list.when(
+      loading: () => const UtenSkeletonList(itemCount: 8),
+      error: (e, _) => UtenEmpty.error(
+        message: '加载失败：$e',
+        actionLabel: '重试',
+        onAction: () => ref.invalidate(payrollListProvider),
+      ),
+      data: (page) => RefreshIndicator(
+        onRefresh: () => ref.read(payrollListProvider.notifier).refresh(),
+        child: MasterDataTableView<PayrollSlip>(
+          key: const Key('payroll-slip-table'),
+          columns: _columns,
+          items: page.items,
+          facets: {'status': _statusFacets()},
+          nullCounts: const {},
+          filters: {'status': _statusFilterOf(filter)},
+          onFilterChanged: (key, value) => _onFilterChanged(ref, key, value),
+          // 双击行进入工资条详情。
+          onRowTap: (slip) =>
+              context.push(RoutePath.payrollSlipDetail(slip.id)),
+          emptyMessage: '此状态下暂无工资条',
+          currentPage: page.page,
+          totalPages: page.totalPages,
+          onPageChange: (p) =>
+              ref.read(payrollListProvider.notifier).goToPage(p),
         ),
-      ],
+      ),
     );
     if (context.breakpoint.isCompact) {
       body = UtenContentContainer(child: body);
@@ -123,152 +90,84 @@ class PayrollSlipListPage extends ConsumerWidget {
   }
 }
 
-/// 工资条卡片（竖版，用于网格）
-class _SlipCard extends StatelessWidget {
-  const _SlipCard({required this.slip, required this.onTap});
-  final PayrollSlip slip;
-  final VoidCallback onTap;
+/// 「状态」列筛选桶：员工可见的三态（待发布对员工不可见，不进桶）。
+/// value = PayrollSlipStatus 枚举名，桶不带计数（按页拉取，无全量计数口径）。
+List<MasterFacetBucket> _statusFacets() => [
+  for (final status in const [
+    PayrollSlipStatus.published,
+    PayrollSlipStatus.viewed,
+    PayrollSlipStatus.downloaded,
+  ])
+    MasterFacetBucket(value: status.name, count: 0, label: status.label),
+];
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isNew = slip.status == PayrollSlipStatus.published;
+/// 分段 → 表头选中值（全部段不选中任何状态）。
+String? _statusFilterOf(PayrollFilter filter) => switch (filter) {
+  PayrollFilter.all => null,
+  PayrollFilter.published => PayrollSlipStatus.published.name,
+  PayrollFilter.viewed => PayrollSlipStatus.viewed.name,
+  PayrollFilter.downloaded => PayrollSlipStatus.downloaded.name,
+};
 
-    return UtenCard(
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 第一行：图标 + 状态徽章
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: (isNew ? UtenColors.warning : UtenColors.teal600)
-                      .withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  isNew
-                      ? Icons.mark_email_unread_outlined
-                      : Icons.receipt_long_rounded,
-                  color: isNew ? UtenColors.warning : UtenColors.teal600,
-                  size: 20,
-                ),
-              ),
-              UtenStatusBadge(
-                label: slip.status.label,
-                type: _badgeType(slip.status),
-                size: UtenStatusBadgeSize.small,
-              ),
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s16),
-          // 第二行：期间
-          Text(
-            slip.periodLabelZh,
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          // 第三行：实发金额（突出）
-          Text(
-            '实发金额',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                '¥ ',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Text(
-                _formatAmount(slip.netIncome),
-                style: theme.textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: theme.colorScheme.primary,
-                  height: 1,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          const Divider(),
-          const SizedBox(height: UtenSpacing.s8),
-          // 第四行：应发 / 扣除
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _miniStat(
-                '应发',
-                '¥${_formatAmount(slip.grossIncome)}',
-                UtenColors.success,
-              ),
-              _miniStat(
-                '扣除',
-                '¥${_formatAmount(slip.totalDeduction)}',
-                UtenColors.error,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _miniStat(String label, String value, Color color) {
-    return Builder(
-      builder: (context) {
-        final theme = Theme.of(context);
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              value,
-              style: theme.textTheme.titleSmall?.copyWith(
-                color: color,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  String _formatAmount(double v) {
-    if (v >= 10000) return '${(v / 10000).toStringAsFixed(2)}万';
-    return v.toStringAsFixed(2);
-  }
-
-  UtenStatusBadgeType _badgeType(PayrollSlipStatus s) => switch (s) {
-    PayrollSlipStatus.pending => UtenStatusBadgeType.neutral,
-    PayrollSlipStatus.published => UtenStatusBadgeType.warning,
-    PayrollSlipStatus.viewed => UtenStatusBadgeType.accent,
-    PayrollSlipStatus.downloaded => UtenStatusBadgeType.success,
+/// 表头状态筛选 → 切到对应分段（provider 重建即回第 1 页）。
+void _onFilterChanged(WidgetRef ref, String key, String? value) {
+  if (key != 'status') return;
+  final next = switch (value) {
+    null => PayrollFilter.all,
+    _ when value == PayrollSlipStatus.published.name => PayrollFilter.published,
+    _ when value == PayrollSlipStatus.viewed.name => PayrollFilter.viewed,
+    _ when value == PayrollSlipStatus.downloaded.name =>
+      PayrollFilter.downloaded,
+    _ => PayrollFilter.all,
   };
+  ref.read(payrollFilterProvider.notifier).state = next;
+}
+
+final List<MasterColumnDef<PayrollSlip>> _columns = [
+  MasterColumnDef(
+    key: 'period',
+    label: '期间',
+    width: 110,
+    value: (s) => s.periodLabelZh,
+  ),
+  MasterColumnDef(
+    key: 'grossIncome',
+    label: '应发合计',
+    width: 110,
+    type: 'money',
+    value: (s) => s.grossIncome.toStringAsFixed(2),
+  ),
+  MasterColumnDef(
+    key: 'totalDeduction',
+    label: '扣除合计',
+    width: 110,
+    type: 'money',
+    value: (s) => s.totalDeduction.toStringAsFixed(2),
+  ),
+  MasterColumnDef(
+    key: 'netIncome',
+    label: '实发合计',
+    width: 120,
+    type: 'money',
+    value: (s) => s.netIncome.toStringAsFixed(2),
+  ),
+  MasterColumnDef(
+    key: 'status',
+    label: '状态',
+    width: 100,
+    info: '表头筛选与顶部分段同一口径：选中状态即切到对应分段并回第 1 页。',
+    value: (s) => s.status.label,
+  ),
+  MasterColumnDef(
+    key: 'publishedAt',
+    label: '发布时间',
+    width: 160,
+    type: 'date',
+    value: (s) => s.publishedAt == null ? '—' : _formatTime(s.publishedAt!),
+  ),
+];
+
+String _formatTime(DateTime t) {
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
 }

@@ -104,8 +104,9 @@ class PermissionSurfaceCatalogPostgresTest {
                     statement, "hr.visitor-security", "visitor:verify"));
             // V455 retired the zero-reference mrp codes (generate_draw /
             // generate_finished_in); V470 把 dispatch/start 从本面下架（工作台
-            // 不再广告手动派工/开工），12 = execution 4 + mrp 1 + package 4 + material 3。
-            assertEquals(12, scalarLong(statement, """
+            // 不再广告手动派工/开工）；V543 把停用的 execution cancel/reverse 与
+            // mrp generate_purchase 从本面下架，9 = execution 2 + package 4 + material 3。
+            assertEquals(9, scalarLong(statement, """
                     select count(*)
                     from permission_surface_permissions link
                     join permission_surfaces surface
@@ -123,6 +124,52 @@ class PermissionSurfaceCatalogPostgresTest {
             // V470 下架后 production.plan 不再挂 dispatch/start。
             assertEquals(0, linkCount(
                     statement, "production.plan", "production_execution:dispatch"));
+            // V543：生产面下架五个停用码；我的车间任务面补齐真实按钮三码。
+            assertEquals(0, scalarLong(statement, """
+                    select count(*)
+                    from permission_surface_permissions link
+                    join permission_surfaces surface
+                      on surface.id = link.surface_id
+                    join permissions permission
+                      on permission.id = link.permission_id
+                    where surface.surface_key like 'production.%'
+                      and permission.code in (
+                          'production_execution:cancel',
+                          'production_execution:reverse',
+                          'production_mrp:generate_purchase',
+                          'production_material_analysis:manage',
+                          'planning_supply_request:view')
+                    """));
+            assertEquals(1, linkCount(
+                    statement, "production.workshop-tasks", "production_execution:start"));
+            assertEquals(1, linkCount(
+                    statement, "production.workshop-tasks", "production_material:settle"));
+            assertEquals(1, linkCount(
+                    statement, "production.workshop-tasks", "production_material:reverse"));
+            // V543：`*:view:all` 是对象范围码，退出批量三档。
+            assertEquals(0, scalarLong(statement, """
+                    select count(*) from permissions
+                    where active and code like '%:view:all' and bulk_assignable
+                    """));
+            assertEquals(0, scalarLong(statement, """
+                    select count(*)
+                    from department_permissions grant_row
+                    join departments department
+                      on department.id = grant_row.department_id
+                    join permissions permission
+                      on permission.id = grant_row.permission_id
+                    where department.code = 'DEPT_PROD'
+                      and (permission.code = 'production_plan:view:all'
+                           or permission.code like 'production_planning_package:%'
+                           or permission.code in (
+                               'production_plan:delete', 'production_plan:batchDelete',
+                               'production_plan:reverse', 'production_plan:flags',
+                               'production_execution:overview',
+                               'production_execution:assign',
+                               'production_execution:dispatch',
+                               'mould:create', 'mould:delete', 'mould:status')
+                           or permission.active = false)
+                    """));
             assertEquals(1, linkCount(
                     statement, "production.plan", "production_material:close"));
             assertEquals(1, scalarLong(statement, """

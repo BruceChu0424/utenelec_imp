@@ -333,9 +333,29 @@ public final class MaterialAnalysisContracts {
             List<String> allowedActions,
             boolean fqcReplenishmentOnly,
             UUID fqcRecoveryAuthorizationId,
-            Map<UUID, String> planningBlockedReasons) {
+            Map<UUID, String> planningBlockedReasons,
+            /**
+             * 本次刷新（POST /preview）因主档/BOM 事实变更而被清空的人工确认路线条数；
+             * 只在刷新响应上非零，详情/命令响应恒为 0。前端据此提示
+             * 「N 条路线因主档变更需重新确认」，让静默清空可见。
+             */
+            int routeResetCount) {
         public AnalysisView {
             planningBlockedReasons = Map.copyOf(planningBlockedReasons);
+        }
+
+        public AnalysisView(UUID analysisId, String status, long version,
+                String fingerprint, String analysisFingerprint, UUID warehouseId,
+                List<UUID> warehouseIds, OffsetDateTime analyzedAt,
+                List<ProductView> products, List<MaterialView> flatMaterials,
+                List<WarehouseView> warehouses, List<SupplyActionView> supplyActions,
+                List<String> allowedActions, boolean fqcReplenishmentOnly,
+                UUID fqcRecoveryAuthorizationId,
+                Map<UUID, String> planningBlockedReasons) {
+            this(analysisId, status, version, fingerprint, analysisFingerprint,
+                    warehouseId, warehouseIds, analyzedAt, products, flatMaterials,
+                    warehouses, supplyActions, allowedActions, fqcReplenishmentOnly,
+                    fqcRecoveryAuthorizationId, planningBlockedReasons, 0);
         }
 
         public AnalysisView(UUID analysisId, String status, long version,
@@ -349,6 +369,15 @@ public final class MaterialAnalysisContracts {
                     warehouseId, warehouseIds, analyzedAt, products, flatMaterials,
                     warehouses, supplyActions, allowedActions, fqcReplenishmentOnly,
                     fqcRecoveryAuthorizationId, Map.of());
+        }
+
+        /** 刷新入口专用：把本次被清空的确认路线数挂到响应上，其余字段不变。 */
+        public AnalysisView withRouteResetCount(int count) {
+            return count == routeResetCount ? this : new AnalysisView(
+                    analysisId, status, version, fingerprint, analysisFingerprint,
+                    warehouseId, warehouseIds, analyzedAt, products, flatMaterials,
+                    warehouses, supplyActions, allowedActions, fqcReplenishmentOnly,
+                    fqcRecoveryAuthorizationId, planningBlockedReasons, count);
         }
     }
 

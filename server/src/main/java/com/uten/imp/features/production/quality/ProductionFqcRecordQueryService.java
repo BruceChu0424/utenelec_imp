@@ -271,10 +271,15 @@ public class ProductionFqcRecordQueryService {
                        decision_event.decided_at,
                        inspection.status AS current_status,
                        inspection.status <> 'CANCELLED' AS effective,
-                       inspection.report_maker_id AS owner_id
+                       inspection.report_maker_id AS owner_id,
+                       sheet.sheet_no AS sheet_no
                 FROM production_fqc_decision_events decision_event
                 JOIN production_fqc_inspections inspection
                   ON inspection.id = decision_event.inspection_id
+                LEFT JOIN production_fqc_inspection_sheet_items sheet_item
+                  ON sheet_item.inspection_id = inspection.id
+                LEFT JOIN production_fqc_inspection_sheets sheet
+                  ON sheet.id = sheet_item.sheet_id
                 JOIN production_daily_reports report
                   ON report.id = inspection.source_report_id
                 JOIN production_execution_segments segment
@@ -322,6 +327,8 @@ public class ProductionFqcRecordQueryService {
                        CASE cancellation.reason_code
                            WHEN 'SOURCE_REPORT_REVERSED'
                                THEN '来源生产日报已红冲'
+                           WHEN 'REGISTRATION_REVERSED'
+                               THEN '仓库送检登记已撤回'
                            ELSE cancellation.reason_code
                        END AS reason,
                        cancellation_user.employee_id
@@ -330,10 +337,15 @@ public class ProductionFqcRecordQueryService {
                        cancellation.created_at AS decided_at,
                        inspection.status AS current_status,
                        TRUE AS effective,
-                       inspection.report_maker_id AS owner_id
+                       inspection.report_maker_id AS owner_id,
+                       sheet.sheet_no AS sheet_no
                 FROM production_fqc_cancellation_events cancellation
                 JOIN production_fqc_inspections inspection
                   ON inspection.id = cancellation.inspection_id
+                LEFT JOIN production_fqc_inspection_sheet_items sheet_item
+                  ON sheet_item.inspection_id = inspection.id
+                LEFT JOIN production_fqc_inspection_sheets sheet
+                  ON sheet.id = sheet_item.sheet_id
                 JOIN production_daily_reports report
                   ON report.id = inspection.source_report_id
                 JOIN production_execution_segments segment
@@ -387,7 +399,8 @@ public class ProductionFqcRecordQueryService {
                 nullableString(row[30]),
                 offsetDateTime(row[31]),
                 string(row[32]),
-                Boolean.TRUE.equals(row[33]));
+                Boolean.TRUE.equals(row[33]),
+                nullableString(row[35]));
     }
 
     private static LocalDate localDate(Object value) {

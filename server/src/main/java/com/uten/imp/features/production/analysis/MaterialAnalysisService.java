@@ -246,12 +246,12 @@ public class MaterialAnalysisService {
                     .executeUpdate();
         }
         validateSourceCapacity(loadSourceLines(analysisId, false));
-        refreshLocked(analysisId);
+        int routeResets = refreshLocked(analysisId);
         if (growMakeAnchorQuotasAfterSourcePreview(analysisId, previousMakeAnchorRequirements)) {
-            refreshLocked(analysisId);
+            routeResets += refreshLocked(analysisId);
         }
         recordSimpleCommand(analysisId, "PREVIEW", request.idempotencyKey(), requestHash);
-        return detailInternal(analysisId, false);
+        return detailInternal(analysisId, false).withRouteResetCount(routeResets);
     }
 
     /**
@@ -1294,7 +1294,7 @@ public class MaterialAnalysisService {
                 """).setParameter("analysisId",analysisId).executeUpdate();
     }
 
-    void refreshLocked(UUID analysisId) {
+    int refreshLocked(UUID analysisId) {
         AnalysisHeader header = lockHeader(analysisId);
         if (!isOpenForFulfillment(header)) {
             throw conflict("物料分析已结束，不能刷新");
@@ -1346,6 +1346,12 @@ public class MaterialAnalysisService {
                 .executeUpdate();
         AvailabilitySnapshot availability = availability(
                 analysisId, header.warehouseId(), nodes, sources);
+        // 2026-09-10 性能：逐节点单行 INSERT…ON CONFLICT（上千节点=上千次往返）改为
+        // 多行 VALUES 分块一条语句提交（upsertNodeSnapshots）；冲突键、列语义与
+        // 「BOM 事实变更即清人工确认」条件（NODE_FACT_CHANGED_CONDITION）不变。
+        // 写入前后各取一次已确认节点键，统计本次被清空的人工确认数（返回给刷新响应）。
+        Set<String> confirmedBefore = confirmedRouteNodeKeys(analysisId);
+        List<NodeSnapshotRow> snapshotRows = new ArrayList<>(nodes.size());
         for (BomNode node : nodes) {
             MaterialDimension key = node.dimension();
             StockValue stock = availability.stock().getOrDefault(key, StockValue.ZERO);
@@ -1363,219 +1369,221 @@ public class MaterialAnalysisService {
                     && ("MAKE".equals(node.suggestion())
                         || "SUBCONTRACT".equals(node.suggestion()))
                     && shortage.signum() > 0;
-            em.createNativeQuery("""
-                    INSERT INTO production_material_analysis_materials (
-                        id, analysis_id, analysis_item_id, node_key, parent_node_key,
-                        bom_item_id, goods_id, color_id, unit_id, depth, path,
-                        per_product_qty, required_qty, available_qty, reserved_qty,
-                        allocated_available_qty, safety_stock_qty, inbound_qty,
-                        allocated_start_qty, allocated_finish_qty, allocated_ship_qty,
-                        shortage_qty, expected_ready_date,
-                        control_stage, consumption_basis, basis_output_qty,
-                        allow_partial_package, hard_gate, bom_qty,
-                        parent_per_product_qty, calculation_mode,
-                        source_suggestion, lower_level_pending, active,
-                        created_by, updated_by
-                    ) VALUES (
-                        :id, :analysisId, :analysisItemId, :nodeKey, :parentNodeKey,
-                        :bomItemId, :goodsId, :colorId, :unitId, :depth, :path,
-                        :perProductQty, :requiredQty, :availableQty, :reservedQty,
-                        :allocatedAvailableQty, :safetyStockQty, :inboundQty,
-                        :allocatedAvailableQty, :allocatedAvailableQty,
-                        :allocatedAvailableQty,
-                        :shortageQty, :expectedReadyDate,
-                        :controlStage, :consumptionBasis, :basisOutputQty,
-                        :allowPartialPackage, :hardGate, :bomQty,
-                        :parentPerProductQty, 'EDGE_RULE',
-                        :suggestion, :lowerPending, TRUE, :actorId, :actorId
-                    )
-                    ON CONFLICT (analysis_item_id, node_key) DO UPDATE SET
-                        parent_node_key = EXCLUDED.parent_node_key,
-                        bom_item_id = EXCLUDED.bom_item_id,
-                        goods_id = EXCLUDED.goods_id,
-                        color_id = EXCLUDED.color_id,
-                        unit_id = EXCLUDED.unit_id,
-                        depth = EXCLUDED.depth,
-                        path = EXCLUDED.path,
-                        per_product_qty = EXCLUDED.per_product_qty,
-                        required_qty = EXCLUDED.required_qty,
-                        available_qty = EXCLUDED.available_qty,
-                        allocated_available_qty = EXCLUDED.allocated_available_qty,
-                        allocated_start_qty = EXCLUDED.allocated_start_qty,
-                        allocated_finish_qty = EXCLUDED.allocated_finish_qty,
-                        allocated_ship_qty = EXCLUDED.allocated_ship_qty,
-                        reserved_qty = EXCLUDED.reserved_qty,
-                        safety_stock_qty = EXCLUDED.safety_stock_qty,
-                        inbound_qty = EXCLUDED.inbound_qty,
-                        shortage_qty = EXCLUDED.shortage_qty,
-                        expected_ready_date = EXCLUDED.expected_ready_date,
-                        control_stage = EXCLUDED.control_stage,
-                        consumption_basis = EXCLUDED.consumption_basis,
-                        basis_output_qty = EXCLUDED.basis_output_qty,
-                        allow_partial_package = EXCLUDED.allow_partial_package,
-                        hard_gate = EXCLUDED.hard_gate,
-                        bom_qty = EXCLUDED.bom_qty,
-                        parent_per_product_qty = EXCLUDED.parent_per_product_qty,
-                        calculation_mode = EXCLUDED.calculation_mode,
-                        source_suggestion = EXCLUDED.source_suggestion,
-                        lower_level_pending = EXCLUDED.lower_level_pending,
-                        confirmed_route = CASE WHEN
-                            production_material_analysis_materials.goods_id
-                                IS DISTINCT FROM EXCLUDED.goods_id
-                            OR production_material_analysis_materials.color_id
-                                IS DISTINCT FROM EXCLUDED.color_id
-                            OR production_material_analysis_materials.unit_id
-                                IS DISTINCT FROM EXCLUDED.unit_id
-                            OR production_material_analysis_materials.parent_node_key
-                                IS DISTINCT FROM EXCLUDED.parent_node_key
-                            OR production_material_analysis_materials.path
-                                IS DISTINCT FROM EXCLUDED.path
-                            OR production_material_analysis_materials.per_product_qty
-                                IS DISTINCT FROM EXCLUDED.per_product_qty
-                            OR production_material_analysis_materials.control_stage
-                                IS DISTINCT FROM EXCLUDED.control_stage
-                            OR production_material_analysis_materials.consumption_basis
-                                IS DISTINCT FROM EXCLUDED.consumption_basis
-                            OR production_material_analysis_materials.basis_output_qty
-                                IS DISTINCT FROM EXCLUDED.basis_output_qty
-                            OR production_material_analysis_materials.allow_partial_package
-                                IS DISTINCT FROM EXCLUDED.allow_partial_package
-                            OR production_material_analysis_materials.hard_gate
-                                IS DISTINCT FROM EXCLUDED.hard_gate
-                            OR production_material_analysis_materials.bom_qty
-                                IS DISTINCT FROM EXCLUDED.bom_qty
-                            OR production_material_analysis_materials.source_suggestion
-                                IS DISTINCT FROM EXCLUDED.source_suggestion
-                            THEN NULL
-                            ELSE production_material_analysis_materials.confirmed_route END,
-                        route_reason = CASE WHEN
-                            production_material_analysis_materials.goods_id
-                                IS DISTINCT FROM EXCLUDED.goods_id
-                            OR production_material_analysis_materials.color_id
-                                IS DISTINCT FROM EXCLUDED.color_id
-                            OR production_material_analysis_materials.unit_id
-                                IS DISTINCT FROM EXCLUDED.unit_id
-                            OR production_material_analysis_materials.parent_node_key
-                                IS DISTINCT FROM EXCLUDED.parent_node_key
-                            OR production_material_analysis_materials.path
-                                IS DISTINCT FROM EXCLUDED.path
-                            OR production_material_analysis_materials.per_product_qty
-                                IS DISTINCT FROM EXCLUDED.per_product_qty
-                            OR production_material_analysis_materials.control_stage
-                                IS DISTINCT FROM EXCLUDED.control_stage
-                            OR production_material_analysis_materials.consumption_basis
-                                IS DISTINCT FROM EXCLUDED.consumption_basis
-                            OR production_material_analysis_materials.basis_output_qty
-                                IS DISTINCT FROM EXCLUDED.basis_output_qty
-                            OR production_material_analysis_materials.allow_partial_package
-                                IS DISTINCT FROM EXCLUDED.allow_partial_package
-                            OR production_material_analysis_materials.hard_gate
-                                IS DISTINCT FROM EXCLUDED.hard_gate
-                            OR production_material_analysis_materials.bom_qty
-                                IS DISTINCT FROM EXCLUDED.bom_qty
-                            OR production_material_analysis_materials.source_suggestion
-                                IS DISTINCT FROM EXCLUDED.source_suggestion
-                            THEN NULL
-                            ELSE production_material_analysis_materials.route_reason END,
-                        route_confirmed_by = CASE WHEN
-                            production_material_analysis_materials.goods_id
-                                IS DISTINCT FROM EXCLUDED.goods_id
-                            OR production_material_analysis_materials.color_id
-                                IS DISTINCT FROM EXCLUDED.color_id
-                            OR production_material_analysis_materials.unit_id
-                                IS DISTINCT FROM EXCLUDED.unit_id
-                            OR production_material_analysis_materials.parent_node_key
-                                IS DISTINCT FROM EXCLUDED.parent_node_key
-                            OR production_material_analysis_materials.path
-                                IS DISTINCT FROM EXCLUDED.path
-                            OR production_material_analysis_materials.per_product_qty
-                                IS DISTINCT FROM EXCLUDED.per_product_qty
-                            OR production_material_analysis_materials.control_stage
-                                IS DISTINCT FROM EXCLUDED.control_stage
-                            OR production_material_analysis_materials.consumption_basis
-                                IS DISTINCT FROM EXCLUDED.consumption_basis
-                            OR production_material_analysis_materials.basis_output_qty
-                                IS DISTINCT FROM EXCLUDED.basis_output_qty
-                            OR production_material_analysis_materials.allow_partial_package
-                                IS DISTINCT FROM EXCLUDED.allow_partial_package
-                            OR production_material_analysis_materials.hard_gate
-                                IS DISTINCT FROM EXCLUDED.hard_gate
-                            OR production_material_analysis_materials.bom_qty
-                                IS DISTINCT FROM EXCLUDED.bom_qty
-                            OR production_material_analysis_materials.source_suggestion
-                                IS DISTINCT FROM EXCLUDED.source_suggestion
-                            THEN NULL
-                            ELSE production_material_analysis_materials.route_confirmed_by END,
-                        route_confirmed_at = CASE WHEN
-                            production_material_analysis_materials.goods_id
-                                IS DISTINCT FROM EXCLUDED.goods_id
-                            OR production_material_analysis_materials.color_id
-                                IS DISTINCT FROM EXCLUDED.color_id
-                            OR production_material_analysis_materials.unit_id
-                                IS DISTINCT FROM EXCLUDED.unit_id
-                            OR production_material_analysis_materials.parent_node_key
-                                IS DISTINCT FROM EXCLUDED.parent_node_key
-                            OR production_material_analysis_materials.path
-                                IS DISTINCT FROM EXCLUDED.path
-                            OR production_material_analysis_materials.per_product_qty
-                                IS DISTINCT FROM EXCLUDED.per_product_qty
-                            OR production_material_analysis_materials.control_stage
-                                IS DISTINCT FROM EXCLUDED.control_stage
-                            OR production_material_analysis_materials.consumption_basis
-                                IS DISTINCT FROM EXCLUDED.consumption_basis
-                            OR production_material_analysis_materials.basis_output_qty
-                                IS DISTINCT FROM EXCLUDED.basis_output_qty
-                            OR production_material_analysis_materials.allow_partial_package
-                                IS DISTINCT FROM EXCLUDED.allow_partial_package
-                            OR production_material_analysis_materials.hard_gate
-                                IS DISTINCT FROM EXCLUDED.hard_gate
-                            OR production_material_analysis_materials.bom_qty
-                                IS DISTINCT FROM EXCLUDED.bom_qty
-                            OR production_material_analysis_materials.source_suggestion
-                                IS DISTINCT FROM EXCLUDED.source_suggestion
-                            THEN NULL
-                            ELSE production_material_analysis_materials.route_confirmed_at END,
-                        active = TRUE,
-                        updated_at = now(), updated_by = EXCLUDED.updated_by
-                    """)
-                    .setParameter("id", UUID.randomUUID())
-                    .setParameter("analysisId", analysisId)
-                    .setParameter("analysisItemId", node.analysisItemId())
-                    .setParameter("nodeKey", node.nodeKey())
-                    .setParameter("parentNodeKey", node.parentNodeKey())
-                    .setParameter("bomItemId", node.bomItemId())
-                    .setParameter("goodsId", node.goodsId())
-                    .setParameter("colorId", node.colorId())
-                    .setParameter("unitId", node.unitId())
-                    .setParameter("depth", node.depth())
-                    .setParameter("path", node.path())
-                    .setParameter("perProductQty", node.perProductQty())
-                    .setParameter("requiredQty", required)
-                    .setParameter("availableQty", available)
-                    .setParameter("reservedQty", stock.reserved())
-                    .setParameter("allocatedAvailableQty", BigDecimal.ZERO)
-                    .setParameter("safetyStockQty", node.safetyStock())
-                    .setParameter("inboundQty", inbound.qty())
-                    .setParameter("shortageQty", shortage)
-                    .setParameter("expectedReadyDate", inbound.expectedDate())
-                    .setParameter("controlStage", node.controlStage())
-                    .setParameter("consumptionBasis", node.consumptionBasis())
-                    .setParameter("basisOutputQty", node.basisOutputQty())
-                    .setParameter("allowPartialPackage", node.allowPartialPackage())
-                    .setParameter("hardGate", node.hardGate())
-                    .setParameter("bomQty", node.bomQty())
-                    .setParameter("parentPerProductQty", node.parentPerProductQty())
-                    .setParameter("suggestion", node.suggestion())
-                    .setParameter("lowerPending", lowerPending)
-                    .setParameter("actorId", currentUser.requireId())
-                    .executeUpdate();
+            snapshotRows.add(new NodeSnapshotRow(node, required, available,
+                    stock.reserved(), inbound.qty(), shortage, inbound.expectedDate(),
+                    lowerPending));
+        }
+        upsertNodeSnapshots(analysisId, snapshotRows);
+        int routeResets = 0;
+        if (!confirmedBefore.isEmpty()) {
+            Set<String> confirmedAfter = confirmedRouteNodeKeys(analysisId);
+            for (BomNode node : nodes) {
+                String nodeRef = nodeRef(node.analysisItemId(), node.nodeKey());
+                if (confirmedBefore.contains(nodeRef) && !confirmedAfter.contains(nodeRef)) {
+                    routeResets++;
+                }
+            }
         }
         validateActiveBorrowEndpointsAfterRefresh(analysisId);
         persistAllocationSnapshot(
                 analysisId, header.warehouseId(), sources, nodes, availability);
         if (rootSupply != null) rootSupply.refreshRootNodes(analysisId,activeFutureCoverageByMaterial(analysisId));
         bumpFingerprint(analysisId);
+        return routeResets;
     }
+
+    private static String nodeRef(UUID analysisItemId, String nodeKey) {
+        return analysisItemId + "|" + nodeKey;
+    }
+
+    /** 当前仍有人工确认路线的节点键（含未激活行；调用方只与本次树节点求交）。 */
+    private Set<String> confirmedRouteNodeKeys(UUID analysisId) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT analysis_item_id, node_key
+                FROM production_material_analysis_materials
+                WHERE analysis_id = :analysisId AND confirmed_route IS NOT NULL
+                """).setParameter("analysisId", analysisId));
+        Set<String> keys = new HashSet<>();
+        for (Object[] row : rows) keys.add(nodeRef(uuid(row[0]), string(row[1])));
+        return keys;
+    }
+
+    /** 刷新初始快照的一行（权威分配随后由 persistAllocationSnapshot 覆盖）。 */
+    private record NodeSnapshotRow(
+            BomNode node, BigDecimal required, BigDecimal available, BigDecimal reserved,
+            BigDecimal inbound, BigDecimal shortage, LocalDate expectedReadyDate,
+            boolean lowerPending) {}
+
+    /** 多行语句每块节点数：27 参数/行，100 行≈2700 参数，远低于 PostgreSQL 65535 上限。 */
+    private static final int NODE_WRITE_CHUNK = 100;
+
+    /**
+     * 节点 upsert「BOM 事实变更即清人工确认」条件，四个路线确认列共用。
+     * 2026-09-10（F8 前向批注）：旧快照的 REVIEW 建议升级为具体建议（如主档来源为空的
+     * BOM 父件改按自制建议）不算事实变更，不清人工确认；主档真的改了来源仍清。
+     */
+    private static final String NODE_FACT_CHANGED_CONDITION = """
+            production_material_analysis_materials.goods_id
+                IS DISTINCT FROM EXCLUDED.goods_id
+            OR production_material_analysis_materials.color_id
+                IS DISTINCT FROM EXCLUDED.color_id
+            OR production_material_analysis_materials.unit_id
+                IS DISTINCT FROM EXCLUDED.unit_id
+            OR production_material_analysis_materials.parent_node_key
+                IS DISTINCT FROM EXCLUDED.parent_node_key
+            OR production_material_analysis_materials.path
+                IS DISTINCT FROM EXCLUDED.path
+            OR production_material_analysis_materials.per_product_qty
+                IS DISTINCT FROM EXCLUDED.per_product_qty
+            OR production_material_analysis_materials.control_stage
+                IS DISTINCT FROM EXCLUDED.control_stage
+            OR production_material_analysis_materials.consumption_basis
+                IS DISTINCT FROM EXCLUDED.consumption_basis
+            OR production_material_analysis_materials.basis_output_qty
+                IS DISTINCT FROM EXCLUDED.basis_output_qty
+            OR production_material_analysis_materials.allow_partial_package
+                IS DISTINCT FROM EXCLUDED.allow_partial_package
+            OR production_material_analysis_materials.hard_gate
+                IS DISTINCT FROM EXCLUDED.hard_gate
+            OR production_material_analysis_materials.bom_qty
+                IS DISTINCT FROM EXCLUDED.bom_qty
+            OR (production_material_analysis_materials.source_suggestion
+                    IS DISTINCT FROM EXCLUDED.source_suggestion
+                AND production_material_analysis_materials.source_suggestion
+                    IS DISTINCT FROM 'REVIEW')
+            """;
+
+    private static String resetUnlessFactsUnchanged(String column) {
+        return "CASE WHEN " + NODE_FACT_CHANGED_CONDITION
+                + " THEN NULL ELSE production_material_analysis_materials." + column + " END";
+    }
+
+    private static final String NODE_UPSERT_ON_CONFLICT =
+            "ON CONFLICT (analysis_item_id, node_key) DO UPDATE SET\n"
+            + "    parent_node_key = EXCLUDED.parent_node_key,\n"
+            + "    bom_item_id = EXCLUDED.bom_item_id,\n"
+            + "    goods_id = EXCLUDED.goods_id,\n"
+            + "    color_id = EXCLUDED.color_id,\n"
+            + "    unit_id = EXCLUDED.unit_id,\n"
+            + "    depth = EXCLUDED.depth,\n"
+            + "    path = EXCLUDED.path,\n"
+            + "    per_product_qty = EXCLUDED.per_product_qty,\n"
+            + "    required_qty = EXCLUDED.required_qty,\n"
+            + "    available_qty = EXCLUDED.available_qty,\n"
+            + "    allocated_available_qty = EXCLUDED.allocated_available_qty,\n"
+            + "    allocated_start_qty = EXCLUDED.allocated_start_qty,\n"
+            + "    allocated_finish_qty = EXCLUDED.allocated_finish_qty,\n"
+            + "    allocated_ship_qty = EXCLUDED.allocated_ship_qty,\n"
+            + "    reserved_qty = EXCLUDED.reserved_qty,\n"
+            + "    safety_stock_qty = EXCLUDED.safety_stock_qty,\n"
+            + "    inbound_qty = EXCLUDED.inbound_qty,\n"
+            + "    shortage_qty = EXCLUDED.shortage_qty,\n"
+            + "    expected_ready_date = EXCLUDED.expected_ready_date,\n"
+            + "    control_stage = EXCLUDED.control_stage,\n"
+            + "    consumption_basis = EXCLUDED.consumption_basis,\n"
+            + "    basis_output_qty = EXCLUDED.basis_output_qty,\n"
+            + "    allow_partial_package = EXCLUDED.allow_partial_package,\n"
+            + "    hard_gate = EXCLUDED.hard_gate,\n"
+            + "    bom_qty = EXCLUDED.bom_qty,\n"
+            + "    parent_per_product_qty = EXCLUDED.parent_per_product_qty,\n"
+            + "    calculation_mode = EXCLUDED.calculation_mode,\n"
+            + "    source_suggestion = EXCLUDED.source_suggestion,\n"
+            + "    lower_level_pending = EXCLUDED.lower_level_pending,\n"
+            + "    confirmed_route = " + resetUnlessFactsUnchanged("confirmed_route") + ",\n"
+            + "    route_reason = " + resetUnlessFactsUnchanged("route_reason") + ",\n"
+            + "    route_confirmed_by = " + resetUnlessFactsUnchanged("route_confirmed_by") + ",\n"
+            + "    route_confirmed_at = " + resetUnlessFactsUnchanged("route_confirmed_at") + ",\n"
+            + "    active = TRUE,\n"
+            + "    updated_at = now(), updated_by = EXCLUDED.updated_by";
+
+    private static String nodeUpsertRow(int index) {
+        String i = Integer.toString(index);
+        // allocated_available/start/finish/ship 初始恒为 0（权威分配随后覆盖）。
+        return "(:id" + i + ", :analysisId, :analysisItemId" + i + ", :nodeKey" + i
+                + ", :parentNodeKey" + i + ", :bomItemId" + i + ", :goodsId" + i
+                + ", :colorId" + i + ", :unitId" + i + ", :depth" + i + ", :path" + i
+                + ", :perProductQty" + i + ", :requiredQty" + i + ", :availableQty" + i
+                + ", :reservedQty" + i + ", 0, :safetyStockQty" + i + ", :inboundQty" + i
+                + ", 0, 0, 0, :shortageQty" + i + ", :expectedReadyDate" + i
+                + ", :controlStage" + i + ", :consumptionBasis" + i + ", :basisOutputQty" + i
+                + ", :allowPartialPackage" + i + ", :hardGate" + i + ", :bomQty" + i
+                + ", :parentPerProductQty" + i + ", 'EDGE_RULE', :suggestion" + i
+                + ", :lowerPending" + i + ", TRUE, :actorId, :actorId)";
+    }
+
+    private static String nodeUpsertSql(int rows) {
+        StringBuilder values = new StringBuilder();
+        for (int index = 0; index < rows; index++) {
+            if (index > 0) values.append(",\n");
+            values.append(nodeUpsertRow(index));
+        }
+        return """
+                INSERT INTO production_material_analysis_materials (
+                    id, analysis_id, analysis_item_id, node_key, parent_node_key,
+                    bom_item_id, goods_id, color_id, unit_id, depth, path,
+                    per_product_qty, required_qty, available_qty, reserved_qty,
+                    allocated_available_qty, safety_stock_qty, inbound_qty,
+                    allocated_start_qty, allocated_finish_qty, allocated_ship_qty,
+                    shortage_qty, expected_ready_date,
+                    control_stage, consumption_basis, basis_output_qty,
+                    allow_partial_package, hard_gate, bom_qty,
+                    parent_per_product_qty, calculation_mode,
+                    source_suggestion, lower_level_pending, active,
+                    created_by, updated_by
+                ) VALUES
+                """ + values + "\n" + NODE_UPSERT_ON_CONFLICT;
+    }
+
+    /** 多行 upsert 节点初始快照；同一语句内同键不能重复命中 ON CONFLICT，按键去重后者覆盖。 */
+    private void upsertNodeSnapshots(UUID analysisId, List<NodeSnapshotRow> rows) {
+        Map<String, NodeSnapshotRow> distinct = new LinkedHashMap<>();
+        for (NodeSnapshotRow row : rows) {
+            distinct.put(nodeRef(row.node().analysisItemId(), row.node().nodeKey()), row);
+        }
+        List<NodeSnapshotRow> ordered = List.copyOf(distinct.values());
+        UUID actorId = currentUser.requireId();
+        for (int from = 0; from < ordered.size(); from += NODE_WRITE_CHUNK) {
+            List<NodeSnapshotRow> chunk = ordered.subList(
+                    from, Math.min(ordered.size(), from + NODE_WRITE_CHUNK));
+            Query query = em.createNativeQuery(nodeUpsertSql(chunk.size()))
+                    .setParameter("analysisId", analysisId)
+                    .setParameter("actorId", actorId);
+            for (int index = 0; index < chunk.size(); index++) {
+                NodeSnapshotRow row = chunk.get(index);
+                BomNode node = row.node();
+                String i = Integer.toString(index);
+                query.setParameter("id" + i, UUID.randomUUID())
+                        .setParameter("analysisItemId" + i, node.analysisItemId())
+                        .setParameter("nodeKey" + i, node.nodeKey())
+                        .setParameter("parentNodeKey" + i, node.parentNodeKey())
+                        .setParameter("bomItemId" + i, node.bomItemId())
+                        .setParameter("goodsId" + i, node.goodsId())
+                        .setParameter("colorId" + i, node.colorId())
+                        .setParameter("unitId" + i, node.unitId())
+                        .setParameter("depth" + i, node.depth())
+                        .setParameter("path" + i, node.path())
+                        .setParameter("perProductQty" + i, node.perProductQty())
+                        .setParameter("requiredQty" + i, row.required())
+                        .setParameter("availableQty" + i, row.available())
+                        .setParameter("reservedQty" + i, row.reserved())
+                        .setParameter("safetyStockQty" + i, node.safetyStock())
+                        .setParameter("inboundQty" + i, row.inbound())
+                        .setParameter("shortageQty" + i, row.shortage())
+                        .setParameter("expectedReadyDate" + i, row.expectedReadyDate())
+                        .setParameter("controlStage" + i, node.controlStage())
+                        .setParameter("consumptionBasis" + i, node.consumptionBasis())
+                        .setParameter("basisOutputQty" + i, node.basisOutputQty())
+                        .setParameter("allowPartialPackage" + i, node.allowPartialPackage())
+                        .setParameter("hardGate" + i, node.hardGate())
+                        .setParameter("bomQty" + i, node.bomQty())
+                        .setParameter("parentPerProductQty" + i, node.parentPerProductQty())
+                        .setParameter("suggestion" + i, node.suggestion())
+                        .setParameter("lowerPending" + i, row.lowerPending());
+            }
+            query.executeUpdate();
+        }
+    }
+
 
     /** Reconcile actionable coverage from authoritative downstream lifecycle facts. */
     private void reconcileSupplyActionStatuses(UUID analysisId) {
@@ -2392,6 +2400,8 @@ public class MaterialAnalysisService {
         Map<String, NodeAllocation> hardAllocations = projection.hardAllocations();
         Map<String, NodeAllocation> allocations = projection.allocations();
 
+        // 2026-09-10 性能：逐节点单行 UPDATE 改为 UPDATE … FROM (VALUES …) 分块一条语句。
+        List<NodeAllocationRow> allocationRows = new ArrayList<>(nodes.size());
         for (BomNode node : nodes) {
             NodeAllocation allocation = allocations.getOrDefault(
                     nodeAllocationKey(node), NodeAllocation.ZERO);
@@ -2425,31 +2435,76 @@ public class MaterialAnalysisService {
                     && !delegatedMakeNodes.contains(nodeKey)
                     && !STAGE_REFERENCE.equals(node.controlStage())
                     && nestedDiagnostic.hasUncoveredDirectChild(node);
-            em.createNativeQuery("""
-                    UPDATE production_material_analysis_materials
-                    SET required_qty=:required,
-                        allocated_available_qty=:allocated,
-                        allocated_start_qty=:allocatedStart,
-                        allocated_finish_qty=:allocatedFinish,
-                        allocated_ship_qty=:allocatedShip,
-                        shortage_qty=:shortage,
-                        lower_level_pending=:lowerPending,
-                        updated_at=now(), updated_by=:actorId
-                    WHERE analysis_id=:analysisId AND analysis_item_id=:analysisItemId
-                      AND node_key=:nodeKey AND active=TRUE
+            allocationRows.add(new NodeAllocationRow(
+                    node.analysisItemId(), node.nodeKey(), node.snapshotRequiredQty(),
+                    allocation.allocatedQty(), startAllocated, finishAllocated, shipAllocated,
+                    allocation.shortageQty(), lowerPending));
+        }
+        updateNodeAllocations(analysisId, allocationRows);
+    }
+
+    /** 权威分配快照写回的一行（按 analysis_item_id + node_key 定位活动节点）。 */
+    private record NodeAllocationRow(
+            UUID analysisItemId, String nodeKey, BigDecimal required, BigDecimal allocated,
+            BigDecimal allocatedStart, BigDecimal allocatedFinish, BigDecimal allocatedShip,
+            BigDecimal shortage, boolean lowerPending) {}
+
+    /** 一条 UPDATE … FROM (VALUES …) 写回一块节点的权威分配（VALUES 侧显式 CAST 定型）。 */
+    private void updateNodeAllocations(UUID analysisId, List<NodeAllocationRow> rows) {
+        UUID actorId = currentUser.requireId();
+        for (int from = 0; from < rows.size(); from += NODE_WRITE_CHUNK) {
+            List<NodeAllocationRow> chunk = rows.subList(
+                    from, Math.min(rows.size(), from + NODE_WRITE_CHUNK));
+            StringBuilder values = new StringBuilder();
+            for (int index = 0; index < chunk.size(); index++) {
+                if (index > 0) values.append(",\n");
+                String i = Integer.toString(index);
+                values.append("(CAST(:analysisItemId").append(i).append(" AS uuid)")
+                        .append(", CAST(:nodeKey").append(i).append(" AS varchar)")
+                        .append(", CAST(:required").append(i).append(" AS numeric)")
+                        .append(", CAST(:allocated").append(i).append(" AS numeric)")
+                        .append(", CAST(:allocatedStart").append(i).append(" AS numeric)")
+                        .append(", CAST(:allocatedFinish").append(i).append(" AS numeric)")
+                        .append(", CAST(:allocatedShip").append(i).append(" AS numeric)")
+                        .append(", CAST(:shortage").append(i).append(" AS numeric)")
+                        .append(", CAST(:lowerPending").append(i).append(" AS boolean))");
+            }
+            Query query = em.createNativeQuery("""
+                    UPDATE production_material_analysis_materials AS material
+                    SET required_qty = snapshot.required_qty,
+                        allocated_available_qty = snapshot.allocated_qty,
+                        allocated_start_qty = snapshot.allocated_start_qty,
+                        allocated_finish_qty = snapshot.allocated_finish_qty,
+                        allocated_ship_qty = snapshot.allocated_ship_qty,
+                        shortage_qty = snapshot.shortage_qty,
+                        lower_level_pending = snapshot.lower_level_pending,
+                        updated_at = now(), updated_by = :actorId
+                    FROM (VALUES
+                    """ + values + "\n" + """
+                    ) AS snapshot(analysis_item_id, node_key, required_qty, allocated_qty,
+                        allocated_start_qty, allocated_finish_qty, allocated_ship_qty,
+                        shortage_qty, lower_level_pending)
+                    WHERE material.analysis_id = :analysisId
+                      AND material.analysis_item_id = snapshot.analysis_item_id
+                      AND material.node_key = snapshot.node_key
+                      AND material.active = TRUE
                     """)
-                    .setParameter("required", node.snapshotRequiredQty())
-                    .setParameter("allocated", allocation.allocatedQty())
-                    .setParameter("allocatedStart", startAllocated)
-                    .setParameter("allocatedFinish", finishAllocated)
-                    .setParameter("allocatedShip", shipAllocated)
-                    .setParameter("shortage", allocation.shortageQty())
-                    .setParameter("lowerPending", lowerPending)
-                    .setParameter("actorId", currentUser.requireId())
                     .setParameter("analysisId", analysisId)
-                    .setParameter("analysisItemId", node.analysisItemId())
-                    .setParameter("nodeKey", node.nodeKey())
-                    .executeUpdate();
+                    .setParameter("actorId", actorId);
+            for (int index = 0; index < chunk.size(); index++) {
+                NodeAllocationRow row = chunk.get(index);
+                String i = Integer.toString(index);
+                query.setParameter("analysisItemId" + i, row.analysisItemId())
+                        .setParameter("nodeKey" + i, row.nodeKey())
+                        .setParameter("required" + i, row.required())
+                        .setParameter("allocated" + i, row.allocated())
+                        .setParameter("allocatedStart" + i, row.allocatedStart())
+                        .setParameter("allocatedFinish" + i, row.allocatedFinish())
+                        .setParameter("allocatedShip" + i, row.allocatedShip())
+                        .setParameter("shortage" + i, row.shortage())
+                        .setParameter("lowerPending" + i, row.lowerPending());
+            }
+            query.executeUpdate();
         }
     }
 
@@ -4913,7 +4968,7 @@ public class MaterialAnalysisService {
                     nodeKey, parentNodeKey, decimal(row[8]), decimal(row[9]),
                     decimal(row[10]), snapshotRequired,
                     string(row[11]), string(row[12]), string(row[13]), string(row[14]),
-                    string(row[15]), decimal(row[16]), suggestion(string(row[17])),
+                    string(row[15]), decimal(row[16]), suggestion(string(row[17]), Boolean.TRUE.equals(row[18])),
                     Boolean.TRUE.equals(row[18]), string(row[19]), string(row[20]),
                     decimal(row[21]), Boolean.TRUE.equals(row[22]),
                     Boolean.TRUE.equals(row[23]));
@@ -6744,13 +6799,18 @@ public class MaterialAnalysisService {
                 ? SOURCE_SALES : item.sourceType().strip().toUpperCase(Locale.ROOT);
     }
 
-    private static String suggestion(String rawSourceType) {
+    /**
+     * 主档来源 → 建议路线。空/未知来源：有 BOM 子层的件按自制建议（有维护 BOM 的件默认
+     * 可自制，子层需求随之展开，与主档为「自制」的父件同一行为；ADR-029 §6.1 2026-09-10
+     * 前向批注），叶子件仍为 REVIEW（只影响 UI 默认预填，不展开任何子层）。
+     */
+    static String suggestion(String rawSourceType, boolean hasChildren) {
         String value = rawSourceType == null ? "" : rawSourceType.strip();
         return switch (value) {
             case "采购" -> "BUY";
             case "自制" -> "MAKE";
             case "委外" -> "SUBCONTRACT";
-            default -> "REVIEW";
+            default -> hasChildren ? "MAKE" : "REVIEW";
         };
     }
 

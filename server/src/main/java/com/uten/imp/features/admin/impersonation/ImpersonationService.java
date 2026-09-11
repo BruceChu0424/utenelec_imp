@@ -80,7 +80,7 @@ public class ImpersonationService {
     @Transactional(readOnly = true)
     public List<ImpersonationTargetDto> listTargets(String search) {
         PageResponse<EmployeeListItem> page = employeeQueryService.list(
-                1, 200, search, Set.of("active"), null, false);
+                1, 200, search, Set.of("active"), null, false, null, null);
         return page.getItems().stream()
                 .map(e -> new ImpersonationTargetDto(
                         e.getId(), e.getFullName(),

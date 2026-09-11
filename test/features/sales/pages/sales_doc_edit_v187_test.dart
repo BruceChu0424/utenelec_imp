@@ -160,8 +160,11 @@ void main() {
       expect(_textFieldWithLabel('税率(%)'), findsOneWidget);
       expect(_textFieldWithLabel('汇率'), findsNothing);
       expect(find.text('金额(订单币种)'), findsOneWidget);
-      expect(find.text('总金额(订单币种) 0.00'), findsOneWidget);
-      expect(find.text('合计(订单币种) 0.00'), findsOneWidget);
+      // 表尾合计条（UtenTotalsSummaryBar）：标签与数值分两个 Text 渲染。
+      // 2026-09-11 底部固定操作条改成右下角悬浮「取消/保存」后，原来那条
+      //「合计(订单币种) 0.00」已删除——明细表下方本来就有合计，底部再报一遍是重复。
+      expect(find.text('总金额(订单币种): '), findsOneWidget);
+      expect(find.text('合计(订单币种) 0.00'), findsNothing);
       expect(find.textContaining('¥'), findsNothing);
     },
   );

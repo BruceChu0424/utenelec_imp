@@ -65,7 +65,42 @@ public final class ProductionFqcContracts {
             String status,
             UUID reportMakerId,
             OffsetDateTime createdAt,
-            OffsetDateTime updatedAt) {
+            OffsetDateTime updatedAt,
+            UUID sheetId,
+            String sheetNo,
+            String warehouseName,
+            String place,
+            String registrationRemark,
+            String receiverName) {
+    }
+
+    /** V547 品质检查单头（待检处置队列一行 = 一张检查单）。 */
+    public record InspectionSheetView(
+            UUID id,
+            String sheetNo,
+            UUID warehouseId,
+            String warehouseName,
+            UUID receiverEmployeeId,
+            String receiverName,
+            String remark,
+            String sourceKind,
+            int itemCount,
+            int activeCount,
+            String pendingQtyText,
+            String reportNos,
+            String goodsSummary,
+            String status,
+            OffsetDateTime createdAt) {
+    }
+
+    /** 检查单办理视图：头 + 逐条 inspection（PASS/FAIL 仍按 inspection 决定）。 */
+    public record InspectionSheetDetailView(
+            InspectionSheetView sheet,
+            List<InspectionView> inspections) {
+
+        public InspectionSheetDetailView {
+            inspections = List.copyOf(inspections);
+        }
     }
 
     public record DecisionResult(

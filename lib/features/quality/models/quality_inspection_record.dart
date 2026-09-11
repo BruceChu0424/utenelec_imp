@@ -107,6 +107,7 @@ class QualityInspectionRecord {
     this.reason,
     this.inspectorEmployeeId,
     this.inspectorName,
+    this.sheetNo,
   });
 
   final String recordId;
@@ -143,6 +144,9 @@ class QualityInspectionRecord {
   final DateTime decidedAt;
   final String currentStatus;
   final bool effective;
+
+  /// FQC 所属品质检查单号（V547；历史任务/IQC 为空）。
+  final String? sheetNo;
 
   factory QualityInspectionRecord.fromJson(Map<String, dynamic> json) {
     double number(String key) => (json[key] as num?)?.toDouble() ?? 0;
@@ -189,6 +193,7 @@ class QualityInspectionRecord {
       decidedAt: instant('decidedAt'),
       currentStatus: json['currentStatus'] as String? ?? '',
       effective: json['effective'] == true,
+      sheetNo: json['sheetNo'] as String?,
     );
   }
 
@@ -227,6 +232,7 @@ class QualityInspectionRecord {
     'SCRAP' => '报废',
     'REJECT' => '拒收/退回',
     'SOURCE_REPORT_REVERSED' => '来源报工红冲',
+    'REGISTRATION_REVERSED' => '送检登记撤回',
     'RECEIPT_REVERSED' => '收货红冲',
     null || '' => '—',
     _ => dispositionCode!,

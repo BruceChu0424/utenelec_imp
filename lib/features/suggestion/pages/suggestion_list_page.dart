@@ -1,26 +1,33 @@
-// 建议箱列表页（含广场 + 我的）
+// 建议箱列表页（含广场 + 我的，表格版）
+//
+// 2026-09-09 表格化改版：卡片网格 → MasterDataTableView（列对齐 + 分页）。
+// 列：标题/类别/状态/提交人/提交时间/回复数/点赞数（原卡片字段全部保留）。
+// 顶部 UtenSegmentedFilter 分段（建议广场/我的建议）保留在标题行；无多选
+//（建议的处理动作是「官方回复+推进状态」，逐条语义，不做批量）；
+// 行双击进详情；原卡片点赞能力移入行右键/长按菜单（点赞/取消点赞）。
+// 2026-09-10 表头筛选：「状态」列筛选桶 = 四态（已提交/处理中/已采纳/未采纳），
+// 选中后下推后端 status 参数并回第 1 页（非页内裁剪，与分段正交）。
+// 分页走表格内置翻页条（provider 补 goToPage——同批次一工资条先例）。
+// 空态/FAB 提交入口不变。
 // 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/cards/uten_card.dart';
-import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_list_create_action.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_paged_grid.dart';
-import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
-import '../../../core/theme/uten_colors.dart';
-import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/uten_notify.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../basic_data/models/master_facet.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/suggestion.dart';
 import '../providers/suggestion_providers.dart';
 
@@ -31,6 +38,7 @@ class SuggestionListPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final list = ref.watch(suggestionListProvider);
     final scope = ref.watch(suggestionScopeProvider);
+    final statusFilter = ref.watch(suggestionStatusFilterProvider);
     final createAction = UtenListCreateAction(
       emptyIcon: Icons.lightbulb_outline_rounded,
       emptyMessage: scope == SuggestionScope.mine ? '您还没有提交过建议' : '暂无建议',
@@ -41,79 +49,48 @@ class SuggestionListPage extends ConsumerWidget {
       onPressed: () => context.go(RouteName.suggestionNew),
     );
 
-    Widget body = Column(
-      children: [
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: () =>
-                ref.read(suggestionListProvider.notifier).refresh(),
-            child: list.when(
-              loading: () => const UtenSkeletonList(itemCount: 6),
-              error: (e, _) => UtenEmpty.error(
-                message: '加载失败：$e',
-                onAction: () => ref.invalidate(suggestionListProvider),
-              ),
-              data: (page) {
-                final suggestions = page.items;
-                if (suggestions.isEmpty) {
-                  return createAction.emptyState();
-                }
-                return SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.only(
-                    top: UtenSpacing.s8,
-                    bottom: 80, // 底部悬浮胶囊导航 / FAB 留白
-                  ),
-                  child: Column(
-                    children: [
-                      UtenResponsiveGrid(
-                        itemCount: suggestions.length,
-                        itemBuilder: (context, i, _) => _SuggestionCard(
-                          suggestion: suggestions[i],
-                          onTap: () => context.push(
-                            RoutePath.suggestionDetail(suggestions[i].id),
-                          ),
-                          onLike: () async {
-                            try {
-                              await ref
-                                  .read(suggestionListProvider.notifier)
-                                  .toggleLike(suggestions[i].id);
-                            } catch (error) {
-                              if (context.mounted) {
-                                UtenNotify.apiError(
-                                  context,
-                                  error,
-                                  fallback: '点赞失败，请重试',
-                                );
-                              }
-                            }
-                          },
-                        ),
-                      ),
-                      if (page.totalPages > 1)
-                        UtenGridPager(
-                          currentPage: page.page,
-                          totalPages: page.totalPages,
-                          totalItems: page.total,
-                          onPrev: !list.isLoading && page.page > 1
-                              ? () => ref
-                                    .read(suggestionListProvider.notifier)
-                                    .previousPage()
-                              : null,
-                          onNext: !list.isLoading && page.page < page.totalPages
-                              ? () => ref
-                                    .read(suggestionListProvider.notifier)
-                                    .nextPage()
-                              : null,
-                        ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
+    Widget body = RefreshIndicator(
+      onRefresh: () => ref.read(suggestionListProvider.notifier).refresh(),
+      child: list.when(
+        loading: () => const UtenSkeletonList(itemCount: 6),
+        error: (e, _) => UtenEmpty.error(
+          message: '加载失败：$e',
+          onAction: () => ref.invalidate(suggestionListProvider),
         ),
-      ],
+        data: (page) {
+          final suggestions = page.items;
+          // 空态保持「唯一提交入口」口径（提交按钮在空态里，不出 FAB）。
+          if (suggestions.isEmpty) {
+            return createAction.emptyState();
+          }
+          return MasterDataTableView<Suggestion>(
+            key: const Key('suggestion-list-table'),
+            columns: _columns,
+            items: suggestions,
+            facets: {'status': _statusFacets()},
+            nullCounts: const {},
+            filters: {'status': statusFilter?.name},
+            onFilterChanged: (key, value) => _onFilterChanged(ref, key, value),
+            // 双击行进入建议详情（保留现有路由与 push 语义）。
+            onRowTap: (s) => context.push(RoutePath.suggestionDetail(s.id)),
+            // 行右键/长按菜单：点赞/取消点赞（原卡片点赞按钮能力移入此处）。
+            rowMenuBuilder: (s) => [
+              UtenMenuItem(
+                label: s.likedByMe ? '取消点赞' : '点赞',
+                icon: s.likedByMe
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+                onTap: () => _toggleLike(context, ref, s.id),
+              ),
+            ],
+            emptyMessage: '暂无建议',
+            currentPage: page.page,
+            totalPages: page.totalPages,
+            onPageChange: (p) =>
+                ref.read(suggestionListProvider.notifier).goToPage(p),
+          );
+        },
+      ),
     );
     // compact 下页面自带宽度收敛；medium+ 由 MainShell 的容器统一处理
     if (context.breakpoint.isCompact) {
@@ -143,194 +120,79 @@ class SuggestionListPage extends ConsumerWidget {
   }
 }
 
-class _SuggestionCard extends StatelessWidget {
-  const _SuggestionCard({
-    required this.suggestion,
-    required this.onTap,
-    required this.onLike,
-  });
-  final Suggestion suggestion;
-  final VoidCallback onTap;
-  final VoidCallback onLike;
+/// 「状态」列筛选桶：建议状态四态（value = 枚举名，与后端 status 一致）。
+/// 桶不带计数（列表按页拉取，无全量计数口径）。
+List<MasterFacetBucket> _statusFacets() => [
+  for (final status in SuggestionStatus.values)
+    MasterFacetBucket(value: status.name, count: 0, label: status.label),
+];
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+/// 表头状态筛选 → 下推后端 status（provider 重建即回第 1 页）。
+void _onFilterChanged(WidgetRef ref, String key, String? value) {
+  if (key != 'status') return;
+  ref.read(suggestionStatusFilterProvider.notifier).state = value == null
+      ? null
+      : SuggestionStatus.values.where((s) => s.name == value).firstOrNull;
+}
 
-    return UtenCard(
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 头部：类别 + 状态
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s8,
-                  vertical: UtenSpacing.s4,
-                ),
-                decoration: BoxDecoration(
-                  color: suggestion.category.color.withValues(alpha: 0.12),
-                  borderRadius: UtenRadius.smAll,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      suggestion.category.icon,
-                      size: 12,
-                      color: suggestion.category.color,
-                    ),
-                    const SizedBox(width: UtenSpacing.s4),
-                    Text(
-                      suggestion.category.label,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: suggestion.category.color,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Spacer(),
-              UtenStatusBadge(
-                label: suggestion.status.label,
-                type: _statusBadgeType(suggestion.status),
-                size: UtenStatusBadgeSize.small,
-              ),
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          // 标题
-          Text(
-            suggestion.title,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          // 摘要
-          Text(
-            suggestion.content,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              height: 1.5,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          const Divider(),
-          const SizedBox(height: UtenSpacing.s12),
-          // 底部：提交人 + 点赞
-          Row(
-            children: [
-              Icon(
-                Icons.account_circle_rounded,
-                size: 16,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: UtenSpacing.s4),
-              Flexible(
-                child: Text(
-                  suggestion.displayName,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              Text(
-                _fmt(suggestion.submittedAt),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const Spacer(),
-              if (suggestion.replyCount > 0) ...[
-                Icon(
-                  Icons.chat_bubble_outline_rounded,
-                  size: 14,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: UtenSpacing.s4),
-                Text(
-                  '${suggestion.replyCount}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(width: UtenSpacing.s12),
-              ],
-              Tooltip(
-                message: suggestion.likedByMe ? '取消点赞' : '点赞',
-                child: Semantics(
-                  button: true,
-                  selected: suggestion.likedByMe,
-                  label:
-                      '${suggestion.likedByMe ? '取消点赞' : '点赞'}，当前 ${suggestion.likes} 票',
-                  child: InkWell(
-                    onTap: onLike,
-                    borderRadius: UtenRadius.lgAll,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(
-                        minWidth: 48,
-                        minHeight: 48,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            suggestion.likedByMe
-                                ? Icons.favorite_rounded
-                                : Icons.favorite_border_rounded,
-                            size: 18,
-                            color: suggestion.likedByMe
-                                ? UtenColors.error
-                                : theme.colorScheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: UtenSpacing.s4),
-                          Text(
-                            '${suggestion.likes}',
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              fontWeight: FontWeight.w400,
-                              color: suggestion.likedByMe
-                                  ? UtenColors.error
-                                  : theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
+Future<void> _toggleLike(BuildContext context, WidgetRef ref, String id) async {
+  try {
+    await ref.read(suggestionListProvider.notifier).toggleLike(id);
+  } catch (error) {
+    if (context.mounted) {
+      UtenNotify.apiError(context, error, fallback: '点赞失败，请重试');
+    }
   }
+}
 
-  UtenStatusBadgeType _statusBadgeType(SuggestionStatus s) => switch (s) {
-    SuggestionStatus.submitted => UtenStatusBadgeType.info,
-    SuggestionStatus.reviewing => UtenStatusBadgeType.warning,
-    SuggestionStatus.resolved => UtenStatusBadgeType.success,
-    SuggestionStatus.rejected => UtenStatusBadgeType.danger,
-  };
+final List<MasterColumnDef<Suggestion>> _columns = [
+  MasterColumnDef(key: 'title', label: '标题', width: 260, value: (s) => s.title),
+  MasterColumnDef(
+    key: 'category',
+    label: '类别',
+    width: 110,
+    value: (s) => s.category.label,
+  ),
+  MasterColumnDef(
+    key: 'status',
+    label: '状态',
+    width: 90,
+    info: '表头筛选下推后端 status 参数（与「建议广场/我的建议」分段正交），选中即回第 1 页。',
+    value: (s) => s.status.label,
+  ),
+  MasterColumnDef(
+    key: 'submitter',
+    label: '提交人',
+    width: 130,
+    info: '匿名建议由服务端按查看权限脱敏后展示。',
+    value: (s) => s.displayName,
+  ),
+  MasterColumnDef(
+    key: 'submittedAt',
+    label: '提交时间',
+    width: 110,
+    value: (s) => _fmt(s.submittedAt),
+  ),
+  MasterColumnDef(
+    key: 'replyCount',
+    label: '回复数',
+    width: 80,
+    type: 'number',
+    value: (s) => s.replyCount.toString(),
+  ),
+  MasterColumnDef(
+    key: 'likes',
+    label: '点赞数',
+    width: 80,
+    type: 'number',
+    value: (s) => s.likes.toString(),
+  ),
+];
 
-  String _fmt(DateTime d) {
-    final now = ChinaDateTime.now();
-    final diff = now.difference(d);
-    if (diff.inHours < 24) return '${diff.inHours} 小时前';
-    if (diff.inDays < 7) return '${diff.inDays} 天前';
-    return '${d.month}-${d.day.toString().padLeft(2, '0')}';
-  }
+String _fmt(DateTime d) {
+  final now = ChinaDateTime.now();
+  final diff = now.difference(d);
+  if (diff.inHours < 24) return '${diff.inHours} 小时前';
+  if (diff.inDays < 7) return '${diff.inDays} 天前';
+  return '${d.month}-${d.day.toString().padLeft(2, '0')}';
 }

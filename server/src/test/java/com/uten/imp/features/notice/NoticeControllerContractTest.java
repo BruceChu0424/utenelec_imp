@@ -84,6 +84,28 @@ class NoticeControllerContractTest {
     }
 
     @Test
+    void pendingPopupsRequiresNoticeReadAndReturnsItems() throws Exception {
+        // 2026-09-10（ADR-063 §8）：人工通知登录弹窗端点，与 pending-reviews 同权限同形状。
+        Method endpoint = NoticeController.class.getMethod("pendingPopups");
+        assertArrayEquals(
+                new String[]{"/pending-popups"},
+                endpoint.getAnnotation(GetMapping.class).value());
+        assertEquals(
+                "hasAuthority('notice:read')",
+                endpoint.getAnnotation(PreAuthorize.class).value());
+
+        NoticeService service = mock(NoticeService.class);
+        when(service.pendingPopups()).thenReturn(List.of());
+        NoticeController controller = new NoticeController(
+                service,
+                mock(NoticeAudienceService.class),
+                mock(com.uten.imp.security.SecurityContextCurrentUser.class));
+
+        assertEquals(List.of(), controller.pendingPopups().get("items"));
+        verify(service).pendingPopups();
+    }
+
+    @Test
     void readByRouteRequiresNoticeReadAndReturnsCount() throws Exception {
         Method endpoint = NoticeController.class.getMethod(
                 "markReadByRoute", List.class);

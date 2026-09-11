@@ -236,8 +236,17 @@ flowchart TD
   改走 `dispatchReviewCard`。顶部条**纯显示**——不带操作按钮与动态状态行，停留 20s
   （悬停暂停）；操作入口只在同时弹出的居中审核弹窗（避免同一待办两处重复按钮）。
   弹前先调 `GET /notices/pending-review-status` 真态校验（已办结不弹）。
-  `banner()` 的 `actions`/`statusLine` 参数与返回卡片 id 的能力保留备用。
+  `banner()` 的 `statusLine` 参数与返回卡片 id 的能力保留备用；`actions` 自 2026-09-10
+  起由人工打卡通知使用（下一条）。
   arrivals 服务端排除已办结（resolved_at 非空）与未到期 snooze 的通知。
+- **人工打卡通知内联打卡（2026-09-10，ADR-063 §8）**：人事手动发布（无 `source_event`）
+  且 `interaction_mode=acknowledge`（公告/制度/系统/紧急/福利）、本人未打卡的通知到达时，
+  `dispatchNoticeArrival` 走普通顶部条但带一枚 `actions`【打卡确认】（filled，停留 12s；
+  判定 `manualAckPending`）。点击 → `acknowledgeNoticeInline`：`POST /notices/{id}/acknowledge`
+  （幂等）+ 失效列表/详情缓存；**成功不另弹成功条**（卡片自身收起即反馈——收起动画中再入队
+  新弹条会让折叠态宿主卸载原卡、丢失 onDismissed 送达确认并在新条消失后重新露出）；失败顶部
+  报错，原卡随后重新露出可重试，登录弹窗（[`ReviewPendingDialog`](ReviewPendingDialog.md) §八）
+  兜底直到打卡。打卡不代行已读；整卡点击仍是标已读 + 进详情。
 - **V459 第二轮（居中审核弹窗）**：同一事件三形态并存——通知中心条目 + 顶部条
   （纯显示）+ **居中审核弹窗**（[`ReviewPendingDialog`](ReviewPendingDialog.md)，
   主交互：认领状态实时/**去工作台处理**/稍后再看/办结自关/新到待办并入）。

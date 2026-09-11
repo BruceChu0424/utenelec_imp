@@ -51,12 +51,17 @@ class ProductionExecutionWorkbenchRepository {
     ).items;
   }
 
+  /// 车间任务列表。[dateFrom]/[dateTo]（yyyy-MM-dd）只对「历史任务」段
+  /// （status=COMPLETED，服务端扩为 完工/取消/红冲 终态集）生效——ADR-066 §1.3
+  /// 时间门控；活动段服务端忽略日期参数。
   Future<PagedResult<ProductionExecutionWorkbenchSegment>> workshopTasks({
     int page = 1,
     int size = 50,
     String keyword = '',
     String? status,
     String? workshopDepartmentId,
+    String? dateFrom,
+    String? dateTo,
   }) async {
     final json = await _api.get(
       '/production/workshop-tasks',
@@ -67,6 +72,8 @@ class ProductionExecutionWorkbenchRepository {
         if (status?.isNotEmpty == true) 'status': status,
         if (workshopDepartmentId?.isNotEmpty == true)
           'workshopDepartmentId': workshopDepartmentId,
+        if (dateFrom?.isNotEmpty == true) 'dateFrom': dateFrom,
+        if (dateTo?.isNotEmpty == true) 'dateTo': dateTo,
       },
     );
     return PagedResult.fromJson(
@@ -75,8 +82,8 @@ class ProductionExecutionWorkbenchRepository {
     );
   }
 
-  /// 车间任务分段计数：总数 + 与顶部分类一致的互斥分段（备料中/可报工/
-  /// 已报工跟进）。旧消费者只读 count 不受影响。
+  /// 车间任务分段计数：总数 + 与顶部分类一致的互斥分段（等待物料/生产中，
+  /// 相加=总数）。旧消费者只读 count 不受影响。
   Future<WorkshopTaskCountBreakdown> workshopTaskCount() async {
     final json = await _api.get('/production/workshop-tasks/count');
     return WorkshopTaskCountBreakdown.fromJson(json);
@@ -87,22 +94,33 @@ class WorkshopTaskCountBreakdown {
   const WorkshopTaskCountBreakdown({
     this.count = 0,
     this.preparing = 0,
-    this.readyToReport = 0,
     this.inProgress = 0,
   });
 
   final int count;
   final int preparing;
-  final int readyToReport;
   final int inProgress;
 
   factory WorkshopTaskCountBreakdown.fromJson(Map<String, dynamic> json) =>
       WorkshopTaskCountBreakdown(
         count: (json['count'] as num?)?.toInt() ?? 0,
         preparing: (json['preparing'] as num?)?.toInt() ?? 0,
-        readyToReport: (json['readyToReport'] as num?)?.toInt() ?? 0,
         inProgress: (json['inProgress'] as num?)?.toInt() ?? 0,
       );
+
+  // 2026-09-11 值相等：60s 轮询每次都 new 一个快照，没有 == 时
+  // StateNotifier 每分钟都把「我的车间任务」整页重建一次（计数没变也重建）。
+  // 有了 == 之后 notifier 里的 `if (breakdown != state)` 才能真正拦下来。
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is WorkshopTaskCountBreakdown &&
+          other.count == count &&
+          other.preparing == preparing &&
+          other.inProgress == inProgress;
+
+  @override
+  int get hashCode => Object.hash(count, preparing, inProgress);
 }
 
 final productionExecutionWorkbenchRepositoryProvider =

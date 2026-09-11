@@ -92,13 +92,48 @@ final class _BomFilterProjection {
     required this.directMatchCount,
     required this.visibleNodeCount,
     required this.presentation,
+    this.visibleProductIds = const {},
+    this.contextOnlyProductIds = const {},
+    this.contextOnlyMaterialIds = const {},
+    this.nodeMatchesFilters = const {},
+    this.facets = const {},
   });
 
   final _BomPresentation presentation;
   final Map<String?, List<ProductionMaterialAnalysisMaterial>> nodesByProduct;
   final int directMatchCount;
   final int visibleNodeCount;
+
+  /// 当前视图 + 关键词 + 表头筛选下要渲染的产品（含只作祖先上下文的产品）。
+  final Set<String> visibleProductIds;
+
+  /// 表头筛选未命中、仅因子孙命中而保留的产品行（只读上下文，无勾选/下拉）。
+  final Set<String> contextOnlyProductIds;
+
+  /// 表头筛选未命中、仅因子孙命中而保留的物料节点（只读上下文）。
+  final Set<String> contextOnlyMaterialIds;
+
+  /// 节点是否通过「关键词 + 表头筛选」（不含视图 chip），供 chip 计数复用。
+  final Map<String, bool> nodeMatchesFilters;
+
+  /// 进度/路线列头筛选桶：按当前视图（chip + 关键词）全量节点聚合，稳定键 +
+  /// 中文标签；表头筛选本身不影响桶（否则选了一个值其余值就消失）。
+  final Map<String, List<MasterFacetBucket>> facets;
 }
+
+/// 进度列头筛选的稳定桶键 → 中文标签（表头筛选按键比较，不按格内文案）。
+/// 服务端/词表阶段键（如 BUY_ORDERED）不在此表，其标签取 [ProductionFlowStage.label]。
+const Map<String, String> _materialStatusFacetLabels = {
+  'routePending': '路线待确认',
+  'pendingIssue': '未下达',
+  'inTransit': '处理中',
+  'covered': '已齐套',
+  'blocked': '不可执行',
+  'inactive': '本批无需求',
+  'aggregateCovered': '已覆盖',
+  'aggregatePartial': '部分覆盖',
+  'aggregateUncovered': '未覆盖',
+};
 
 enum _ReadinessState { ready, waitingMake, waitingSupply, waiting }
 
@@ -193,11 +228,25 @@ class _MaterialAggregate {
 }
 
 class _StatusView {
-  const _StatusView(this.label, this.icon, this.color);
+  const _StatusView(
+    this.label,
+    this.icon,
+    this.color, {
+    this.facetKey,
+    this.facetLabel,
+  });
 
   final String label;
   final IconData icon;
   final Color color;
+
+  /// 进度列头筛选的稳定桶键（见 [_materialStatusFacetLabels]；流程阶段用
+  /// [ProductionFlowStage.key]）。文案带数量/百分比时桶仍只按键聚合。
+  final String? facetKey;
+
+  /// 桶展示标签（流程阶段传 [ProductionFlowStage.label]，不带百分比）；
+  /// 为空时按 [_materialStatusFacetLabels] 取，再退回 [label]。
+  final String? facetLabel;
 }
 
 /// 数量确认对话框里的一行：一个提交单元（操作组或单行物料）。

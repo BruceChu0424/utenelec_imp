@@ -6,6 +6,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -240,6 +241,7 @@ class _ProductionFqcInspectionsPageState
         child: UtenButton(
           key: const Key('production-fqc-batch-pass-all'),
           size: UtenButtonSize.large,
+          type: UtenButtonType.danger,
           icon: Icons.rule_rounded,
           isLoading: _batchPassing,
           onPressed: _batchPassing || count == 0
@@ -437,7 +439,13 @@ class _ProductionFqcInspectionsPageState
         segmentsKey: const Key('production-fqc-status-segments'),
         searchKey: const Key('production-fqc-search'),
         segments: [
-          UtenFilterSegment(value: 'ACTIVE', label: '待处理', count: fqcPending),
+          // 「待处理」= 等品质动手的待检队列 → 红徽章；其余状态段不传 count。
+          UtenFilterSegment(
+            value: 'ACTIVE',
+            label: '待处理',
+            count: fqcPending,
+            countForm: UtenSegmentCountForm.actionable,
+          ),
           const UtenFilterSegment(value: 'RESOLVED', label: '已决定'),
           const UtenFilterSegment(value: 'CANCELLED', label: '已取消'),
           const UtenFilterSegment(value: 'ALL', label: '全部'),
@@ -478,6 +486,12 @@ class _ProductionFqcInspectionsPageState
       label: '生产计划',
       width: 170,
       value: (inspection) => inspection.planNo ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'sheetNo',
+      label: '检查单号',
+      width: 170,
+      value: (inspection) => inspection.sheetNo ?? '无检查单',
     ),
     MasterColumnDef(
       key: 'goodsCode',

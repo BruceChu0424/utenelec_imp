@@ -1,6 +1,7 @@
 package com.uten.imp.features.production.execution;
 
 import com.uten.imp.application.port.SubcontractDocumentReadAccessPort;
+import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.stock.allocation.ProductionMaterialSettlementService;
 import com.uten.imp.features.stock.allocation.ProductionMaterialTaskAccessPolicy;
 import com.uten.imp.features.stock.valuation.ProductionInventoryValueService;
@@ -21,12 +22,14 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
+import java.time.LocalDate;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -124,6 +127,8 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         insertSegment(4, "IN_PROGRESS", "READY_TO_REPORT", true, WORKSHOP);
         insertSegment(5, "COMPLETED", "COMPLETE", false, WORKSHOP);
         insertSegment(6, "READY", "PREPARING", false, OTHER_WORKSHOP);
+        insertSegment(7, "CANCELLED", "COMPLETE", false, WORKSHOP);
+        insertSegment(8, "REVERSED", "COMPLETE", false, WORKSHOP);
         for (int number : new int[]{2, 3, 4, 6}) {
             UUID demand = new UUID(1, number);
             jdbc.update("INSERT INTO production_material_demands(id,plan_id,execution_segment_id,goods_id,required_qty) VALUES (?,?,?,?,10)",
@@ -177,7 +182,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
     void materialEntryFlagsUseActualLedgerBalancesInOneScopedBatch() {
         factory.getStatistics().setStatisticsEnabled(true);
         factory.getStatistics().clear();
-        var page = service.workshopTasks(1, 50, null, null, null);
+        var page = service.workshopTasks(1, 50, null, null, null, null, null);
         assertThat(page.getItems()).extracting(ProductionExecutionWorkbenchSegment::segmentId)
                 .containsExactly(new UUID(0, 1), new UUID(0, 2), new UUID(0, 3), new UUID(0, 4));
         var empty = page.getItems().get(0);
@@ -202,7 +207,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         com.uten.imp.security.AuthUser admin = mock(com.uten.imp.security.AuthUser.class);
         when(admin.isSuperAdmin()).thenReturn(true);
         when(currentUser.get()).thenReturn(Optional.of(admin));
-        var page = service.workshopTasks(1, 50, null, null, null);
+        var page = service.workshopTasks(1, 50, null, null, null, null, null);
         // 常规员工口径是 4（OTHER_WORKSHOP 的段被排除）；超管=全部 5 个活跃段。
         assertThat(page.getTotal()).isEqualTo(5);
         assertThat(service.workshopTaskCount()).isEqualTo(5);
@@ -219,8 +224,8 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
 
     @Test
     void defaultListAndBadgeIncludeWaitingWithTheSameAssignmentAndPaginationScope() {
-        var first = service.workshopTasks(1, 2, null, null, null);
-        var last = service.workshopTasks(99, 2, null, null, null);
+        var first = service.workshopTasks(1, 2, null, null, null, null, null);
+        var last = service.workshopTasks(99, 2, null, null, null, null, null);
         assertThat(first.getTotal()).isEqualTo(4);
         assertThat(first.getItems()).extracting(ProductionExecutionWorkbenchSegment::segmentStatus)
                 .containsExactly("WAITING", "READY");
@@ -232,24 +237,49 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
     }
     @Test
     void readyFiltersExecuteWithoutTrueOrderConcatenationAndPreserveReportPermissions() {
-        var reportable = service.workshopTasks(1, 50, "P001", "READY_TO_REPORT", null);
+        // 2026-09-10：READY_TO_REPORT 参数删除（与 breakdown 第三列口径矛盾且无调用方），
+        // 「生产中」= IN_PROGRESS 承担可报工口径。
+        var reportable = service.workshopTasks(1, 50, "P001", "IN_PROGRESS", null, null, null);
         assertThat(reportable.getTotal()).isEqualTo(1);
         assertThat(reportable.getItems()).allMatch(item -> item.canReport()
                 && "IN_PROGRESS".equals(item.segmentStatus()));
-        var startable = service.workshopTasks(1, 50, "P001", "READY_TO_START", null);
+        assertThatThrownBy(() -> service.workshopTasks(1, 50, null, "READY_TO_REPORT", null, null, null))
+                .isInstanceOf(ApiException.class);
+        var startable = service.workshopTasks(1, 50, "P001", "READY_TO_START", null, null, null);
         assertThat(startable.getTotal()).isEqualTo(1);
         assertThat(startable.getItems()).allMatch(item -> !item.canReport()
                 && !item.canBatchReport());
         when(access.hasAuthority("production_daily_report:create")).thenReturn(false);
-        var readonly = service.workshopTasks(1, 50, null, "READY_TO_REPORT", null);
+        var readonly = service.workshopTasks(1, 50, null, "IN_PROGRESS", null, null, null);
         assertThat(readonly.getTotal()).isEqualTo(1);
         assertThat(readonly.getItems()).allMatch(item -> !item.canReport() && !item.canBatchReport());
     }
+
+    /** ADR-066 §1.3：历史任务 = 终态段（完工/取消/红冲）按计划完工日期时间门控。 */
+    @Test
+    void historySegmentIncludesCancelledAndReversedWithinTheDateGate() {
+        var all = service.workshopTasks(1, 50, null, "COMPLETED", null, null, null);
+        assertThat(all.getTotal()).isEqualTo(3);
+        assertThat(all.getItems()).extracting(ProductionExecutionWorkbenchSegment::segmentStatus)
+                .containsExactlyInAnyOrder("COMPLETED", "CANCELLED", "REVERSED");
+        var gated = service.workshopTasks(1, 50, null, "COMPLETED", null,
+                LocalDate.parse("2026-09-06"), LocalDate.parse("2026-09-06"));
+        assertThat(gated.getTotal()).isEqualTo(3);
+        var outside = service.workshopTasks(1, 50, null, "COMPLETED", null,
+                LocalDate.parse("2026-09-07"), null);
+        assertThat(outside.getTotal()).isZero();
+        var upperOnly = service.workshopTasks(1, 50, null, "COMPLETED", null,
+                null, LocalDate.parse("2026-09-05"));
+        assertThat(upperOnly.getTotal()).isZero();
+        // 活动段忽略日期参数（徽章/列表全量口径不变）。
+        assertThat(service.workshopTasks(1, 50, null, "PREPARING", null,
+                LocalDate.parse("2030-01-01"), null).getTotal()).isEqualTo(3);
+    }
     @Test
     void preparingAndInProgressFiltersExecuteWithAndWithoutKeyword() {
-        assertThat(service.workshopTasks(1, 50, null, "PREPARING", null).getTotal()).isEqualTo(3);
-        assertThat(service.workshopTasks(1, 50, "Assembly", "IN_PROGRESS", null).getTotal()).isEqualTo(1);
-        assertThat(service.workshopTasks(1, 50, "missing", null, null).getTotal()).isZero();
+        assertThat(service.workshopTasks(1, 50, null, "PREPARING", null, null, null).getTotal()).isEqualTo(3);
+        assertThat(service.workshopTasks(1, 50, "Assembly", "IN_PROGRESS", null, null, null).getTotal()).isEqualTo(1);
+        assertThat(service.workshopTasks(1, 50, "missing", null, null, null, null).getTotal()).isZero();
     }
     @Test
     void overviewSeparatesOwnerScopeFromAndAndLoadsRootWorkOrders() {

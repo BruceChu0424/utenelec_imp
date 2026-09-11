@@ -3,7 +3,9 @@ package com.uten.imp.features.sales.order;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
+/** 参数顺序：orderQty, producedQty, shippedQty, reservedQty, plannedQty, unplannedQty[, 标志]。 */
 class SalesOrderProgressStageTest {
 
     @Test
@@ -11,7 +13,7 @@ class SalesOrderProgressStageTest {
         assertEquals(
                 "SHIPPABLE",
                 SalesOrderService.progressStageOf(
-                        10, 5, 0, 5, 10));
+                        10, 5, 0, 5, 10, 0));
     }
 
     @Test
@@ -19,19 +21,55 @@ class SalesOrderProgressStageTest {
         assertEquals(
                 "SHIPPABLE",
                 SalesOrderService.progressStageOf(
-                        10, 10, 5, 5, 10));
+                        10, 10, 5, 5, 10, 0));
         assertEquals(
                 "SHIPPED",
                 SalesOrderService.progressStageOf(
-                        10, 10, 10, 0, 10));
+                        10, 10, 10, 0, 10, 0));
     }
 
     @Test
     void producedQuantityWithoutAvailableReservationIsNotCalledShippable() {
+        // 已产 5 但预留已让出：不可发货；且这 5 件已不属于本单，剩余未排 5 → 回到待排产。
+        String stage = SalesOrderService.progressStageOf(10, 5, 0, 0, 10, 5);
+        assertNotEquals("SHIPPABLE", stage);
+        assertEquals("PENDING", stage);
+    }
+
+    @Test
+    void partialPlannedStaysPending() {
+        // V545：订 10 排 4（未排 6）——仍是待排产，不因 planned>0 进生产中。
+        assertEquals(
+                "PENDING",
+                SalesOrderService.progressStageOf(
+                        10, 0, 0, 0, 4, 6));
+        // 报工/部分入库后只要未排量还在，阶段不变（入库预留会先命中 SHIPPABLE，此处预留为 0）。
+        assertEquals(
+                "PENDING",
+                SalesOrderService.progressStageOf(
+                        10, 0, 0, 0, 4, 6, false, false, false));
+        String expression = SalesOrderService.progressStageExpr();
+        org.junit.jupiter.api.Assertions.assertTrue(
+                expression.indexOf("reserved_qty") < expression.indexOf("unplanned_qty"));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                expression.indexOf("unplanned_qty") < expression.indexOf("produced_qty"));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                SalesOrderService.progressGroupedSql(
+                        new com.uten.imp.security.DocumentAccessPolicy.NativeReadScope(
+                                "1=1", null, java.util.Set.of()))
+                        .contains("AS unplanned_qty"));
+    }
+
+    @Test
+    void fullyPlannedIsProducing() {
         assertEquals(
                 "PRODUCING",
                 SalesOrderService.progressStageOf(
-                        10, 5, 0, 0, 10));
+                        10, 0, 0, 0, 10, 0));
+        assertEquals(
+                "PRODUCING",
+                SalesOrderService.progressStageOf(
+                        10, 3, 0, 0, 10, 0));
     }
 
     @Test
@@ -39,11 +77,11 @@ class SalesOrderProgressStageTest {
         assertEquals(
                 "REJECTED",
                 SalesOrderService.progressStageOf(
-                        10, 10, 10, 0, 10, true));
+                        10, 10, 10, 0, 10, 0, true));
         assertEquals(
                 "REJECTED",
                 SalesOrderService.progressStageOf(
-                        0, 0, 0, 0, 0, true));
+                        0, 0, 0, 0, 0, 0, true));
         String expression = SalesOrderService.progressStageExpr();
         org.junit.jupiter.api.Assertions.assertTrue(
                 expression.indexOf("finance_rejected")
@@ -56,17 +94,17 @@ class SalesOrderProgressStageTest {
         assertEquals(
                 "CANCELED",
                 SalesOrderService.progressStageOf(
-                        10, 5, 0, 5, 10, false, true, false));
+                        10, 5, 0, 5, 10, 0, false, true, false));
         // 已结案：即使未发满也不再回到生产阶段。
         assertEquals(
                 "CLOSED",
                 SalesOrderService.progressStageOf(
-                        10, 5, 2, 0, 10, false, false, true));
+                        10, 5, 2, 0, 10, 0, false, false, true));
         // 驳回优先于中止/结案（驳回未解决时仍要先出现在「财务驳回」段提醒销售）。
         assertEquals(
                 "REJECTED",
                 SalesOrderService.progressStageOf(
-                        10, 5, 0, 5, 10, true, true, false));
+                        10, 5, 0, 5, 10, 0, true, true, false));
         String expression = SalesOrderService.progressStageExpr();
         org.junit.jupiter.api.Assertions.assertTrue(
                 expression.indexOf("finance_rejected")

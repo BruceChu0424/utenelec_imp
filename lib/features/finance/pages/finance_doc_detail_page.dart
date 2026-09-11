@@ -3,22 +3,30 @@
 // 状态机：草稿(0)→可编辑/删除/审核；已审(1)→仅红冲；红冲(-1)→只读。
 // 审核后端联动：核销 AR/AP（receipt/payment）/ 账户余额变动 / 写流水 / 登记对账。
 // 名称解析：客户/供应商/账户/币种 用 FinanceNameService。
+//
+// 2026-09-11 折叠头+表内滚改版（对齐采购/货品资料页）：有明细表的单据把整页 ListView
+// 换成 UtenCollapsingHeaderScrollView——上滑先折叠头部（提示条/表头卡/预收汇总/附件），
+// 「明细 (N)」标题顶到页面顶部后再滚明细表内部；客户预收（无明细表）仍走整页滚动。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
@@ -243,7 +251,8 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
           .delete(widget.id);
       if (!mounted) return;
       context.appSuccess('已删除');
-      context.go('/finance/${_cfg.type.pathSegment}');
+      // 返回键契约（路由设计 §十一）：pop 回来源，栈空回钱流 hub。
+      popOrBackTo(context, defaultPath: RouteName.finance);
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {
@@ -274,14 +283,6 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(context, defaultPath: RouteName.finance),
         ),
-        actions: [
-          UtenButton(
-            type: UtenButtonType.tonal,
-            icon: Icons.history_rounded,
-            onPressed: () => context.push('/finance/${_cfg.type.pathSegment}'),
-            child: const Text('查看历史'),
-          ),
-        ],
       ),
       body: SafeArea(
         child: UtenContentContainer.narrow(
@@ -291,55 +292,98 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
               ? Center(child: Text(_error!))
               : _detail == null
               ? const SizedBox.shrink()
-              : ListView(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  children: [
-                    DocumentScopeWriteNotice(
-                      capability: scopeCapability,
-                      ownerEmployeeId: _detail!.makerId,
-                      onRetry: () => ref.invalidate(
-                        documentScopeCapabilityProvider(
-                          DocumentDataScope.finance,
-                        ),
-                      ),
-                    ),
-                    // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
-                    // SelectionArea（准则 §3.4），无需再单独包。
-                    _headerCard(theme, names),
-                    if (_cfg.type == FinanceDocType.receipt &&
-                        _detail!.receiptKind == 'CUSTOMER_PREPAYMENT' &&
-                        _detail!.salesOrderId != null) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      SalesOrderMoneySummaryCard(
-                        salesOrderId: _detail!.salesOrderId!,
-                      ),
-                    ],
-                    if (!(_cfg.type == FinanceDocType.receipt &&
-                        _detail!.receiptKind == 'CUSTOMER_PREPAYMENT')) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      _itemsCard(theme, names),
-                    ],
-                    if (canViewFiles) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      BusinessAttachmentSection(
-                        ownerType: _attachmentOwnerType,
-                        ownerId: _detail!.id,
-                        canView: canViewFiles,
-                        canManage:
-                            !_busy &&
-                            _canEdit &&
-                            _detail!.status == 0 &&
-                            !_detail!.closed,
-                        title: '单据和凭证',
-                        categories: const ['银行回单', '发票', '其他凭证'],
-                      ),
-                    ],
-                  ],
-                ),
+              : _body(theme, names, scopeCapability, canViewFiles),
         ),
       ),
       bottomNavigationBar: _detail == null || _busy ? null : _actions(theme),
     );
+  }
+
+  /// 页面正文：有明细表的单据走折叠头联动（上滑先收头部，再滚明细表内部）；
+  /// 客户预收无明细表（只有表头卡+预收汇总+凭证），没有可内滚的表格，保持整页滚动。
+  Widget _body(
+    ThemeData theme,
+    FinanceNameService names,
+    AsyncValue<DocumentScopeCapability> scopeCapability,
+    bool canViewFiles,
+  ) {
+    final sections = _headerSections(
+      theme,
+      names,
+      scopeCapability,
+      canViewFiles,
+    );
+    if (!_hasItemsTable) {
+      return ListView(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        children: sections,
+      );
+    }
+    return UtenCollapsingHeaderScrollView(
+      collapsingHeader: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          UtenSpacing.s12,
+          UtenSpacing.s12,
+          UtenSpacing.s12,
+          0,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: sections,
+        ),
+      ),
+      // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
+      body: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        child: _itemsCard(theme, names),
+      ),
+    );
+  }
+
+  /// 客户预收收款单没有明细行（金额直接落在表头），故不渲染明细表。
+  bool get _hasItemsTable =>
+      !(_cfg.type == FinanceDocType.receipt &&
+          _detail!.receiptKind == 'CUSTOMER_PREPAYMENT');
+
+  /// 折叠头内容（无明细表时即整页 ListView 的 children）：提示条 / 表头卡 /
+  /// 预收汇总 / 附件——附件属「备注类小卡」，随头部一起收起。
+  List<Widget> _headerSections(
+    ThemeData theme,
+    FinanceNameService names,
+    AsyncValue<DocumentScopeCapability> scopeCapability,
+    bool canViewFiles,
+  ) {
+    return [
+      DocumentScopeWriteNotice(
+        capability: scopeCapability,
+        ownerEmployeeId: _detail!.makerId,
+        onRetry: () => ref.invalidate(
+          documentScopeCapabilityProvider(DocumentDataScope.finance),
+        ),
+      ),
+      // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
+      // SelectionArea（准则 §3.4），无需再单独包。
+      _headerCard(theme, names),
+      if (_cfg.type == FinanceDocType.receipt &&
+          _detail!.receiptKind == 'CUSTOMER_PREPAYMENT' &&
+          _detail!.salesOrderId != null) ...[
+        const SizedBox(height: UtenSpacing.s12),
+        SalesOrderMoneySummaryCard(salesOrderId: _detail!.salesOrderId!),
+      ],
+      if (canViewFiles) ...[
+        const SizedBox(height: UtenSpacing.s12),
+        BusinessAttachmentSection(
+          ownerType: _attachmentOwnerType,
+          ownerId: _detail!.id,
+          canView: canViewFiles,
+          // 详情=审核页：凭证只读（增删回编辑页）。
+          canManage: false,
+          readOnlyNote: BusinessAttachmentSection.kReviewReadOnlyAttachmentNote,
+          title: '单据和凭证',
+          categories: const ['银行回单', '发票', '其他凭证'],
+        ),
+      ],
+    ];
   }
 
   Widget _headerCard(ThemeData theme, FinanceNameService names) {
@@ -597,6 +641,52 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     );
   }
 
+  /// 明细表下的合计条（全站统一口径）：原币合计（标红）+ 本币合计。
+  ///
+  /// 钱流明细无单位口径，故不出「合计数量」。原币只在明细币种唯一时合计——
+  /// 跨币种的原币金额与跨单位数量同理，**绝不相加**；任一行缺精确文本时
+  /// `financeExactSumTexts` 返回 null，该项由合计条整体隐藏（不伪造 0）。
+  Widget _totalsBar(FinanceNameService names, List<FinanceDocItem> items) {
+    final currencyIds = items
+        .map((it) => it.currencyId)
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    final originalCurrencyId = currencyIds.length == 1
+        ? currencyIds.first
+        : (currencyIds.isEmpty ? _detail!.currencyId : null);
+    final originalSum = originalCurrencyId == null
+        ? null
+        : financeExactSumTexts(items.map((it) => it.amountOriginalText));
+    final localSum = financeExactSumTexts(
+      items.map((it) => it.amountLocalText),
+    );
+    final originalText = originalSum == null
+        ? ''
+        : financeExactMoneyDisplay(originalSum);
+    return UtenTotalsSummaryBar(
+      key: const Key('finance-detail-totals'),
+      density: true,
+      entries: [
+        UtenTotalEntry(
+          utenAmountTotalLabel(
+            financeCurrencyDisplayLabel(
+              name: names.currency(originalCurrencyId),
+            ),
+          ),
+          originalText,
+          danger: true,
+        ),
+        UtenTotalEntry(
+          '合计(本币)',
+          localSum == null ? '' : financeExactMoneyDisplay(localSum),
+          // 无原币口径（分摊/转账）时本币即单据主金额，由它承担标红。
+          danger: originalText.isEmpty,
+        ),
+      ],
+    );
+  }
+
   /// 明细区：统一表格样式（MasterDataTableView 嵌入模式，与全站报表/主档同款），
   /// 不再是卡片式拼凑行；核销/分摊/转账三类列口径不变。
   Widget _itemsCard(ThemeData theme, FinanceNameService names) {
@@ -822,16 +912,21 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
           ),
         ),
         const SizedBox(height: UtenSpacing.s8),
-        MasterDataTableView<FinanceDocItem>(
-          embedded: true,
-          columns: columns,
-          items: items,
-          facets: const {},
-          nullCounts: const {},
-          filters: const {},
-          onFilterChanged: (_, _) {},
-          emptyMessage: '(无明细)',
+        // primary:true → 表体占满 body 并参与「头部折叠 → 表格内滚」联动；
+        // 合计条留在表格下方常驻（不随表体内滚）。
+        Expanded(
+          child: MasterDataTableView<FinanceDocItem>(
+            primary: true,
+            columns: columns,
+            items: items,
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+            emptyMessage: '(无明细)',
+          ),
         ),
+        _totalsBar(names, items),
       ],
     );
   }
@@ -847,11 +942,20 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       children.add(action);
     }
 
+    // 「返回列表」只对能进列表页的人渲染（无列表权限的入口 push 进来时按钮
+    // 会落到 /access-denied；2026-09-10 审计）；走返回键契约 pop 回来源。
+    final listPath = '/finance/${_cfg.type.pathSegment}';
+    final canOpenList = locationAllowedFor(
+      ref.read(currentPermissionsProvider),
+      ref.read(isSuperAdminProvider),
+      listPath,
+    );
     void addBack() {
+      if (!canOpenList) return;
       addAction(
         UtenButton(
           type: UtenButtonType.secondary,
-          onPressed: () => context.go('/finance/${_cfg.type.pathSegment}'),
+          onPressed: () => popOrBackTo(context, defaultPath: listPath),
           child: const Text('返回列表'),
         ),
       );
@@ -916,6 +1020,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     } else {
       addBack();
     }
+    if (children.isEmpty) return const SizedBox.shrink();
     return SafeArea(
       child: Container(
         decoration: BoxDecoration(

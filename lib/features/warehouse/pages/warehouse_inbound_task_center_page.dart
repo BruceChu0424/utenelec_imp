@@ -15,6 +15,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -185,17 +186,20 @@ class _PurchaseInboundSegmentState extends State<_PurchaseInboundSegment> {
           child: UtenFilterToolbar<int>(
             segmentsKey: const Key('purchase-inbound-mode'),
             segments: [
+              // 两段都是仓库必须清空的队列（待收货 / 异常）→ 红徽章。
               if (widget.canExpectations)
                 UtenFilterSegment(
                   value: 0,
                   label: '预计到货',
                   count: widget.expectationCount,
+                  countForm: UtenSegmentCountForm.actionable,
                 ),
               if (widget.canExceptions)
                 UtenFilterSegment(
                   value: 1,
                   label: '到货异常',
                   count: widget.exceptionCount,
+                  countForm: UtenSegmentCountForm.actionable,
                 ),
               if (widget.canHistory)
                 const UtenFilterSegment(value: 2, label: '历史单据'),
@@ -287,11 +291,13 @@ class _SubcontractInboundSegmentState
           child: UtenFilterToolbar<int>(
             segmentsKey: const Key('subcontract-inbound-mode'),
             segments: [
+              // 待收货队列 → 红徽章；历史单据无待办语义不传 count。
               if (widget.canExpectations)
                 UtenFilterSegment(
                   value: 0,
                   label: '预计到货',
                   count: widget.expectationCount,
+                  countForm: UtenSegmentCountForm.actionable,
                 ),
               if (widget.canHistory)
                 const UtenFilterSegment(value: 1, label: '历史单据'),
@@ -376,10 +382,12 @@ class _FinishedInSegmentState extends State<_FinishedInSegment> {
           child: UtenFilterToolbar<int>(
             segmentsKey: const Key('finished-in-mode'),
             segments: [
+              // 待点收 = 仓库必须清空的队列 → 红徽章。
               UtenFilterSegment(
                 value: 0,
                 label: '待点收任务',
                 count: widget.taskCount,
+                countForm: UtenSegmentCountForm.actionable,
               ),
               const UtenFilterSegment(value: 1, label: '产成品进仓单'),
             ],

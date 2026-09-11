@@ -218,14 +218,13 @@ class DailyReportExecutionSegmentGuardTest {
                 materialMode,
                 7L
         }));
-        Query workshopEligibility = scalarQuery(workshopEligible);
         Query allocation = query();
         when(allocation.getResultList()).thenReturn(List.of());
         Query cumulative = query();
         when(cumulative.getSingleResult()).thenReturn(new BigDecimal(existing));
         if ("IN_PROGRESS".equals(status)) {
             when(em.createNativeQuery(anyString()))
-                    .thenReturn(lock, workshopEligibility, allocation, cumulative);
+                    .thenReturn(lock, allocation, cumulative);
         } else {
             Query demands = query();
             when(demands.getResultList()).thenReturn(
@@ -244,19 +243,28 @@ class DailyReportExecutionSegmentGuardTest {
             Query clearTwo = scalarQuery("");
             if ("ZERO_MATERIAL".equals(materialMode)) {
                 when(em.createNativeQuery(anyString())).thenReturn(
-                        lock, workshopEligibility,
+                        lock,
                         configOne, configTwo, update, event,
                         clearOne, clearTwo, allocation, cumulative);
             } else {
                 when(em.createNativeQuery(anyString())).thenReturn(
-                        lock, workshopEligibility, demands,
+                        lock, demands,
                         configOne, configTwo, update, event,
                         clearOne, clearTwo, allocation, cumulative);
             }
         }
+        // 车间归属判定已抽到 ProductionWorkshopMembership（2026-09-11，与执行段写侧同一份
+        // 口径：主职 ∪ 兼职 ∪ 车间子树负责人 ∪ 段负责人本人且在职）。守卫自己不再发那条
+        // 递归 CTE 查询，故这里按 fixture 的 workshopEligible 桩住成员判定。
+        var workshopMembership = org.mockito.Mockito.mock(
+                com.uten.imp.features.production.ProductionWorkshopMembership.class);
+        org.mockito.Mockito.when(workshopMembership.isWorkshopMember(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any())).thenReturn(workshopEligible);
         return new Fixture(
                 new DailyReportExecutionSegmentGuard(
-                        em, access, currentUser),
+                        em, access, currentUser, workshopMembership),
                 segmentId,
                 planItemId,
                 goodsId,

@@ -338,8 +338,56 @@ public class StockQueryService {
         }
         long total = ((Number) countQ.getSingleResult()).longValue();
         int totalPages = (int) ((total + safeSize - 1) / safeSize);
-        return new PageResponse<>(items, safePage, safeSize, total, totalPages);
+
+        // 表格下方合计：把 core（= 列表查询本体，已含分类子树/仓库范围/含不良品仓开关/关键字
+        // 全部过滤条件）原样包成派生表再聚合——**和表格显示的是同一批行**，不带 LIMIT/OFFSET，
+        // 所以是整个结果集的合计而不是当前这一页。绑定参数与 dataQ/countQ 逐个对齐，
+        // 任何一个筛选变化都会同时改变列表和合计，不可能对不上。
+        List<com.uten.imp.common.report.ReportTotal> totals =
+                com.uten.imp.common.report.ReportTotalsCalculator.compute(
+                        em, core, "", "",
+                        q -> {
+                            if (warehouseScope != null && warehouseScope.size() == 1) {
+                                q.setParameter("warehouseId", warehouseId);
+                            }
+                            if (warehouseScope != null && warehouseScope.size() > 1) {
+                                q.setParameter("scopeIds", warehouseScope);
+                            }
+                            if (categoryId != null) q.setParameter("categoryId", categoryId);
+                            if (keyword != null && !keyword.isBlank()) {
+                                q.setParameter("kw", "%" + keyword.trim() + "%");
+                            }
+                        },
+                        INSTANT_TOTAL_SPECS);
+        return new com.uten.imp.common.web.TotaledPageResponse<>(
+                new PageResponse<>(items, safePage, safeSize, total, totalPages), totals);
     }
+
+    /**
+     * 即时库存合计声明（列名 = core 派生表里的投影别名）。
+     *
+     * <p><b>为什么只有这三个数量 + 重量</b>：
+     * <ul>
+     *   <li>库存数量 / 待检量 / 合格待入库 都是<b>基本单位</b>量（stock_balances.qty 由单据
+     *       base_qty 累加，procurement_inspection_items 存的就是 *_base_qty），与行上的
+     *       「单位」列（货品主档单位）同一口径，所以按 unit_name 分组相加成立；</li>
+     *   <li>库存重量只有一个口径（kg），不分组；</li>
+     *   <li><b>多排数量不声明</b>：它来自 production_plan_items 的 qty/oqty/iqty，是<b>计划行单位</b>
+     *       的量，与本行「单位」列（货品主档单位）不是同一口径，按 unit_name 分组会贴错单位标签；</li>
+     *   <li><b>库存金额不声明</b>：该列受 goods:cost:view 脱敏（无权限时投影为 NULL），
+     *       合计一旦下发就绕过了列脱敏，等于把成本总额漏给没权限的人。</li>
+     * </ul>
+     */
+    private static final List<com.uten.imp.common.report.ReportTotalsCalculator.Spec> INSTANT_TOTAL_SPECS =
+            List.of(
+                    new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
+                            "weight", "合计库存重量", "number", null),
+                    new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
+                            "qty", "合计库存数量", "number", "unit_name"),
+                    new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
+                            "pending_qty", "合计待检量", "number", "unit_name"),
+                    new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
+                            "pending_stock_in_qty", "合计合格待入库", "number", "unit_name"));
 
     /**
      * 即时库存统一搜索的轻量分类定位。
@@ -388,48 +436,27 @@ public class StockQueryService {
                 .toList();
     }
 
-    // ======================== 货架目视化清单（现场挂牌打印/导出用） ========================
+    // ======================== 货架目视化清单（货架图 + 统一表格 / 打印 / 导出） ========================
 
     /**
-     * 货架清单行：货品主档中已维护库位号（goods.stock_place）的全部货品，
-     * 按「库行（stock_place 首段）→ 层 → 位」自然排序。与库存数量无关——
-     * 货架固定摆放什么就列什么，供打印张贴（目视化管理清单）与 Excel 导出。
+     * 货架清单行：已维护库位号的货品（未软删；默认排除禁用），库位号按「库行-层-位」三段解析
+     * （{@link ShelfPlaceParser}，Java 侧为 DTO 真值，SQL 侧同口径只用于筛选/排序/布局），
+     * 并 LEFT JOIN 余额汇总与单位。SQL 见 {@link ShelfLabelSql#rows}。
      *
-     * @param rack 库行（如 A31）；null=全部库行
-     * @param keyword 名称/编号/库位号模糊；null=不筛
+     * @param rack            库行（如 A31）；null=全部。只对已分层行生效
+     * @param keyword         名称/编号/系列/库位号模糊；null=不筛
+     * @param warehouseId     仓库（含子仓）；非空时库位号取本仓树偏好优先、库存按该仓树汇总；
+     *                        null=库位号只读主档、库存按全部核算仓汇总
+     * @param includeDisabled 是否包含 status='禁用' 的货品（默认 false）
      */
     @Transactional(readOnly = true)
     public List<com.uten.imp.features.stock.dto.ShelfLabelRow> shelfLabelRows(
-            String rack, String keyword) {
-        StringBuilder where = new StringBuilder("""
-                WHERE g.is_deleted = false
-                  AND NULLIF(BTRIM(g.stock_place), '') IS NOT NULL
-                """);
+            String rack, String keyword, UUID warehouseId, boolean includeDisabled) {
         boolean hasRack = rack != null && !rack.isBlank();
         boolean hasKw = keyword != null && !keyword.isBlank();
-        if (hasRack) {
-            where.append(" AND split_part(g.stock_place, '-', 1) = :rack");
-        }
-        if (hasKw) {
-            where.append("""
-                     AND (g.name ILIKE :kw OR g.code ILIKE :kw
-                       OR g.series ILIKE :kw OR g.stock_place ILIKE :kw)
-                    """);
-        }
-        var q = em.createNativeQuery("""
-                SELECT g.id, g.stock_place, g.code, g.series, g.name,
-                       COALESCE(c.name, '') AS color_name
-                  FROM goods g
-                  LEFT JOIN colors c ON c.id = g.color_id
-                """ + where + "\n" + """
-                ORDER BY split_part(g.stock_place, '-', 1),
-                         CASE WHEN split_part(g.stock_place, '-', 2) ~ '^\\d+$'
-                              THEN split_part(g.stock_place, '-', 2)::int ELSE 999999 END,
-                         CASE WHEN split_part(g.stock_place, '-', 3) ~ '^\\d+$'
-                              THEN split_part(g.stock_place, '-', 3)::int ELSE 999999 END,
-                         g.stock_place
-                LIMIT 5000
-                """);
+        var q = em.createNativeQuery(
+                ShelfLabelSql.rows(warehouseId != null, includeDisabled, hasRack, hasKw));
+        if (warehouseId != null) q.setParameter("warehouseId", warehouseId);
         if (hasRack) q.setParameter("rack", rack.trim());
         if (hasKw) q.setParameter("kw", "%" + keyword.trim() + "%");
         @SuppressWarnings("unchecked")
@@ -437,27 +464,48 @@ public class StockQueryService {
         List<com.uten.imp.features.stock.dto.ShelfLabelRow> out = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             String place = (String) r[1];
-            String rackName = place == null ? "" : place.split("-", 2)[0];
+            ShelfPlaceParser.ShelfPlace parsed = ShelfPlaceParser.parse(place);
             out.add(new com.uten.imp.features.stock.dto.ShelfLabelRow(
-                    (UUID) r[0], rackName, place,
-                    (String) r[2], (String) r[3], (String) r[4], (String) r[5]));
+                    (UUID) r[0], parsed.rack(), place,
+                    (String) r[2], (String) r[3], (String) r[4], (String) r[5], (String) r[6],
+                    r[7] == null ? BigDecimal.ZERO : new BigDecimal(r[7].toString()),
+                    Boolean.TRUE.equals(r[8]),
+                    parsed.level(), parsed.slot(), parsed.parsed()));
         }
         return out;
     }
 
-    /** 全部库行（货架编号，去重排序）：货架清单页的筛选下拉数据源。 */
+    /** 已分层库行（去重排序；残值不进下拉）：货架清单页库行下拉数据源。 */
     @Transactional(readOnly = true)
-    public List<String> shelfLabelRacks() {
+    public List<String> shelfLabelRacks(UUID warehouseId, boolean includeDisabled) {
+        var q = em.createNativeQuery(ShelfLabelSql.racks(warehouseId != null, includeDisabled));
+        if (warehouseId != null) q.setParameter("warehouseId", warehouseId);
         @SuppressWarnings("unchecked")
-        List<Object> raw = em.createNativeQuery("""
-                SELECT DISTINCT split_part(g.stock_place, '-', 1) AS rack
-                  FROM goods g
-                 WHERE g.is_deleted = false
-                   AND NULLIF(BTRIM(g.stock_place), '') IS NOT NULL
-                 ORDER BY rack
-                """).getResultList();
+        List<Object> raw = q.getResultList();
         return raw.stream().filter(java.util.Objects::nonNull)
                 .map(Object::toString).toList();
+    }
+
+    /**
+     * 货架图布局：每个已分层库行的 maxLevel/maxSlot/count；残值数 > 0 时末尾追加
+     * rack='' 的未分层桶（{@link com.uten.imp.features.stock.dto.ShelfLayoutRack#unparsedBucket()}）。
+     */
+    @Transactional(readOnly = true)
+    public List<com.uten.imp.features.stock.dto.ShelfLayoutRack> shelfLabelLayout(
+            UUID warehouseId, boolean includeDisabled) {
+        var q = em.createNativeQuery(ShelfLabelSql.layout(warehouseId != null, includeDisabled));
+        if (warehouseId != null) q.setParameter("warehouseId", warehouseId);
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = q.getResultList();
+        List<com.uten.imp.features.stock.dto.ShelfLayoutRack> out = new ArrayList<>(rows.size());
+        for (Object[] r : rows) {
+            out.add(new com.uten.imp.features.stock.dto.ShelfLayoutRack(
+                    r[0] == null ? "" : r[0].toString(),
+                    r[1] == null ? null : ((Number) r[1]).intValue(),
+                    r[2] == null ? null : ((Number) r[2]).intValue(),
+                    r[3] == null ? 0L : ((Number) r[3]).longValue()));
+        }
+        return out;
     }
 
     private BalanceRow toBalanceRow(StockBalance b, boolean canViewCost) {

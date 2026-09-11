@@ -40,7 +40,10 @@ class DepartmentEmployeePickerSecurityContractTest {
                 String.class,
                 Set.class,
                 UUID.class,
-                boolean.class);
+                boolean.class,
+                // 2026-09-10 员工列表加表头排序（sort/order 白名单见 EmployeeListQuery）。
+                String.class,
+                String.class);
         assertThat(method.getAnnotation(GetMapping.class).value())
                 .containsExactly("/employee-picker-tree");
         assertThat(method.getAnnotation(PreAuthorize.class).value())

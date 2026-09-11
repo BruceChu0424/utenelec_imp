@@ -736,6 +736,15 @@ class _UtenDocLinkPickerSheetState<D, I, N>
     );
   }
 
+  /// 表头筛选桶标签：空白与主档未解析的「—」不建桶（返回 null → 计入「未填」）。
+  String? _bucketOrNull(String? value) {
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty || trimmed == '—') return null;
+    return trimmed;
+  }
+
+  // 2026-09-11 全站表头快速筛选补齐：上游单据明细动辄几十上百行，货品/颜色/
+  // 单位给表头快速筛选（视图级过滤，不动勾选与已填本次数量）。
   List<EditableGridColumn<UtenDocLinkItemRow<I>>> _itemColumns(N names) => [
     EditableGridColumn<UtenDocLinkItemRow<I>>(
       key: 'sel',
@@ -751,6 +760,9 @@ class _UtenDocLinkPickerSheetState<D, I, N>
       key: 'goods',
       label: '货品',
       width: 200,
+      filterValueOf: (row) => _bucketOrNull(
+        _cfg.goodsName(names, _cfg.itemFields.goodsId(row.item)),
+      ),
       cellBuilder: (context, row) =>
           Text(_cfg.goodsName(names, _cfg.itemFields.goodsId(row.item))),
     ),
@@ -758,6 +770,9 @@ class _UtenDocLinkPickerSheetState<D, I, N>
       key: 'color',
       label: '颜色',
       width: 90,
+      filterValueOf: (row) => _bucketOrNull(
+        _cfg.colorName(names, _cfg.itemFields.colorId(row.item)),
+      ),
       cellBuilder: (context, row) =>
           Text(_cfg.colorName(names, _cfg.itemFields.colorId(row.item))),
     ),
@@ -765,6 +780,8 @@ class _UtenDocLinkPickerSheetState<D, I, N>
       key: 'unit',
       label: '单位',
       width: 80,
+      filterValueOf: (row) =>
+          _bucketOrNull(_cfg.unitName(names, _cfg.itemFields.unitId(row.item))),
       cellBuilder: (context, row) =>
           Text(_cfg.unitName(names, _cfg.itemFields.unitId(row.item))),
     ),

@@ -51,7 +51,7 @@ void main() {
       'lib/features/dashboard/widgets/module_badge_sum.dart',
     ).readAsStringSync();
     final globalRefresh = File(
-      'lib/features/dashboard/providers/workbench_refresh.dart',
+      'lib/shared/badges/todo_badge_registry.dart',
     ).readAsStringSync();
     final router = File('lib/core/router/app_router.dart').readAsStringSync();
 
@@ -70,7 +70,9 @@ void main() {
       contains('warehouseQualityResultPendingCountProvider'),
     );
     expect(countRefresh, contains('warehouseQualityResultTypeCountsProvider'));
-    expect(moduleBadge, contains('warehouseQualityResultPendingCountProvider'));
+    // 2026-09-11：同上，工作台模块卡按 TodoModule 委托求和；品质结果计数源
+    // 在注册表里（下一条断言）。
+    expect(moduleBadge, contains('TodoModule.warehouse'));
     expect(
       globalRefresh,
       contains('warehouseQualityResultPendingCountProvider'),

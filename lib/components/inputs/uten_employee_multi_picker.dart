@@ -35,6 +35,7 @@ class UtenEmployeeMultiPicker extends StatefulWidget {
     this.confirmLabel = '确定',
     this.validator,
     this.required = false,
+    this.info,
   });
 
   final UtenEmployeePickerLoader loader;
@@ -53,6 +54,10 @@ class UtenEmployeeMultiPicker extends StatefulWidget {
 
   /// 是否必填：标签后显红 *；未选且启用时输入框描红边。
   final bool required;
+
+  /// ⓘ 说明（悬停/点按出 Tooltip）——与 fieldLabel(info:) 同一口径。经
+  /// UtenInputDecoration 适配后渲染在输入框内的后缀区，不在标签旁。
+  final String? info;
 
   @override
   State<UtenEmployeeMultiPicker> createState() =>
@@ -192,10 +197,11 @@ class _UtenEmployeeMultiPickerState extends State<UtenEmployeeMultiPicker> {
                     InputDecoration(
                       label: widget.label == null
                           ? null
-                          : requiredLabel(
+                          : fieldLabel(
                               widget.label!,
                               theme,
                               required: widget.required,
+                              info: widget.info,
                               base: theme.inputDecorationTheme.labelStyle,
                             ),
                       hintText: widget.hint,

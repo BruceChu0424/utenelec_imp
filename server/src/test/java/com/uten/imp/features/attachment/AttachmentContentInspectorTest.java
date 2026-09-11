@@ -92,6 +92,104 @@ class AttachmentContentInspectorTest {
         assertEquals(ErrorCode.VALIDATION_FAILED, failure.getCode());
     }
 
+    // ---- 2026-09-11 扩到办公常见类型：每种新类型都必须有自己的魔数把关 ----
+
+    @Test
+    void officeFamilyMagicBytesArePinnedPerContainer() {
+        // OLE2 复合文档：ppt 与 doc/xls 同一套头
+        accepts(ole2(), "方案.ppt", "application/vnd.ms-powerpoint");
+        // OOXML 与 OpenDocument 都是 ZIP 容器
+        accepts(zip(), "方案.pptx",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+        accepts(zip(), "合同.odt", "application/vnd.oasis.opendocument.text");
+        accepts(zip(), "台账.ods", "application/vnd.oasis.opendocument.spreadsheet");
+        accepts(zip(), "方案.odp", "application/vnd.oasis.opendocument.presentation");
+        accepts("{\\rtf1\\ansi 说明".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                "说明.rtf", "application/rtf");
+
+        // 换了容器就不认：pptx 声明配 OLE2 内容
+        rejects(ole2(), "方案.pptx",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+        // 扩展名与声明类型仍须一致
+        rejects(ole2(), "方案.ppt", "application/msword");
+    }
+
+    @Test
+    void textFamilyAcceptsCsvMarkdownXmlJsonAndStillRejectsHiddenBinary() {
+        byte[] csv = "姓名,部门,金额\n张三,生产部,1200.50\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        accepts(csv, "工资表.csv", "text/csv");
+        accepts("# 说明\n- 第一条\n".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                "说明.md", "text/markdown");
+        accepts("{\"order\":\"XS-1\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                "接口.json", "application/json");
+        accepts("<root><item/></root>".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                "接口.xml", "text/xml");
+        accepts("2026-09-11 启动完成\n".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                "运行.log", "text/plain");
+
+        byte[] sneaky = new byte[128];
+        java.util.Arrays.fill(sneaky, (byte) 'a');
+        sneaky[100] = 0x00;
+        rejects(sneaky, "工资表.csv", "text/csv");
+    }
+
+    @Test
+    void svgMustBeRealXmlAndNotAnyOtherTextFile() {
+        accepts("<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\"/>"
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8), "图标.svg", "image/svg+xml");
+        accepts("<svg viewBox=\"0 0 8 8\"></svg>".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                "图标.svg", "image/svg+xml");
+        // 是文本但不是 SVG：不给过（否则任何脚本文本都能借 image/ 类型进来）
+        rejects("<html><body>hi</body></html>".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                "图标.svg", "image/svg+xml");
+        rejects("just text".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                "图标.svg", "image/svg+xml");
+    }
+
+    @Test
+    void uploadOnlyTypesStillNeedTheirMagicBytes() {
+        // 这些类型只收不预览，但入库校验一视同仁
+        accepts(new byte[] {0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00}, "扫描件.tif", "image/tiff");
+        accepts(new byte[] {0x4d, 0x4d, 0x00, 0x2a, 0x00, 0x00, 0x00, 0x08}, "扫描件.tiff", "image/tiff");
+        accepts(new byte[] {0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'h', 'e', 'i', 'c'}, "照片.heic", "image/heic");
+        accepts(new byte[] {(byte) 0x37, (byte) 0x7a, (byte) 0xbc, (byte) 0xaf, 0x27, 0x1c},
+                "资料.7z", "application/x-7z-compressed");
+        accepts(new byte[] {'R', 'a', 'r', '!', 0x1a, 0x07, 0x01, 0x00}, "资料.rar", "application/vnd.rar");
+
+        rejects(zip(), "资料.rar", "application/vnd.rar");
+        rejects(new byte[] {0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'q', 't', ' ', ' '},
+                "照片.heic", "image/heic");
+    }
+
+    private static byte[] ole2() {
+        byte[] header = new byte[64];
+        byte[] magic = {(byte) 0xd0, (byte) 0xcf, 0x11, (byte) 0xe0,
+                (byte) 0xa1, (byte) 0xb1, 0x1a, (byte) 0xe1};
+        System.arraycopy(magic, 0, header, 0, magic.length);
+        return header;
+    }
+
+    private static byte[] zip() {
+        byte[] header = new byte[64];
+        byte[] magic = {0x50, 0x4b, 0x03, 0x04};
+        System.arraycopy(magic, 0, header, 0, magic.length);
+        return header;
+    }
+
+    private static void accepts(byte[] bytes, String fileName, String contentType) {
+        AttachmentContentInspector.Inspection result = AttachmentContentInspector.inspect(
+                new ByteArrayInputStream(bytes), bytes.length, fileName, contentType);
+        assertEquals(bytes.length, result.size(), fileName + " / " + contentType);
+    }
+
+    private static void rejects(byte[] bytes, String fileName, String contentType) {
+        ApiException failure = assertThrows(ApiException.class, () ->
+                AttachmentContentInspector.inspect(
+                        new ByteArrayInputStream(bytes), bytes.length, fileName, contentType),
+                fileName + " / " + contentType);
+        assertEquals(ErrorCode.VALIDATION_FAILED, failure.getCode());
+    }
+
     @Test
     void plainTextStillPasses() {
         byte[] text = "工资变量说明\n1. 加班费按 1.5 倍计算\r\n2. 奖金次月发放".getBytes(

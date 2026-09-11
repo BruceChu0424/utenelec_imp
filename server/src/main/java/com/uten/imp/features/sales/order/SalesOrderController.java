@@ -47,11 +47,12 @@ public class SalesOrderController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) java.util.List<Short> chain,
             @RequestParam(required = false) UUID sellerId,
+            @RequestParam(required = false) String chainGroup,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.list(new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId), page, size, sort, order);
+        return service.list(new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup), page, size, sort, order);
     }
 
     /** 工作台统计卡：待生产 / 生产中 / 待发货 / 本月完成（同列表数据范围）。 */

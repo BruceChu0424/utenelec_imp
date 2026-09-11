@@ -118,7 +118,8 @@ class ProductionFqcPassAllServiceBehaviorTest {
                         recovery,
                         finishedInbound,
                         outbox,
-                org.mockito.Mockito.mock(com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
+                org.mockito.Mockito.mock(com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
+                org.mockito.Mockito.mock(com.uten.imp.common.docnumber.DocNumberService.class));
         return new Fixture(service, recovery, finishedInbound, outbox,em);
     }
 
@@ -157,7 +158,15 @@ class ProductionFqcPassAllServiceBehaviorTest {
                 "RESOLVED",
                 UUID.randomUUID(),
                 OffsetDateTime.parse("2026-08-30T00:00:00Z"),
-                OffsetDateTime.parse("2026-08-30T00:01:00Z")
+                OffsetDateTime.parse("2026-08-30T00:01:00Z"),
+                // V547 品质检查单聚合列（2026-09-11）：检查单 id/单号、仓库名、库位快照、
+                // 登记备注、收货人——toView 读到 row[31]，缺列会直接数组越界。
+                UUID.randomUUID(),
+                "FQC2609110001",
+                "成品仓",
+                "CP-A-01",
+                "夜班登记",
+                "收货人甲"
         };
     }
 

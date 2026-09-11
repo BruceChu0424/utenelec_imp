@@ -51,6 +51,7 @@ class ProductionExecutionSegmentServiceTest {
     private ProductionAssignmentValidator assignmentValidator;
     private ChainNoticeService chainNotice;
     private ProductionDocumentAccessPolicy access;
+    private com.uten.imp.features.production.ProductionWorkshopMembership workshopMembership;
     private ProductionExecutionSegmentService service;
 
     @BeforeEach
@@ -62,6 +63,10 @@ class ProductionExecutionSegmentServiceTest {
         assignmentValidator = mock(ProductionAssignmentValidator.class);
         chainNotice = mock(ChainNoticeService.class);
         access = mock(ProductionDocumentAccessPolicy.class);
+        // 车间归属判定（2026-09-11 抽出）：本测试覆盖的是版本/状态/幂等分支，
+        // 成员判定按「非本车间」桩住，写侧仍回落到计划归属口径。
+        workshopMembership = mock(
+                com.uten.imp.features.production.ProductionWorkshopMembership.class);
         service = new ProductionExecutionSegmentService(
                 em,
                 workshopPreferences,
@@ -70,7 +75,8 @@ class ProductionExecutionSegmentServiceTest {
                 currentUser,
                 mock(TxSessionVars.class),
                 chainNotice,
-                access);
+                access,
+                workshopMembership);
     }
 
     @Test
@@ -362,6 +368,9 @@ class ProductionExecutionSegmentServiceTest {
                 new SegmentTransitionRequest(5L, "start-key-fulfilled")));
 
         verify(chainNotice).notifyExecutionSegmentTransition(segmentId, true);
+        // 开工 = 车间任务行动卡办结点（2026-09-10）：按段撤回全部收件人弹卡。
+        verify(chainNotice).resolveProductionWorkshopTasks(
+                List.of(segmentId), "STARTED");
     }
 
     @Test
@@ -461,6 +470,8 @@ class ProductionExecutionSegmentServiceTest {
                 new SegmentTransitionRequest(8L, "start-key-zero-material")));
 
         verify(chainNotice).notifyExecutionSegmentTransition(segmentId, true);
+        verify(chainNotice).resolveProductionWorkshopTasks(
+                List.of(segmentId), "STARTED");
     }
 
     @Test
@@ -523,6 +534,10 @@ class ProductionExecutionSegmentServiceTest {
         verify(em, times(12)).createNativeQuery(anyString());
         verify(chainNotice).notifyExecutionSegmentTransition(firstId, true);
         verify(chainNotice).notifyExecutionSegmentTransition(secondId, true);
+        verify(chainNotice).resolveProductionWorkshopTasks(
+                List.of(firstId), "STARTED");
+        verify(chainNotice).resolveProductionWorkshopTasks(
+                List.of(secondId), "STARTED");
     }
 
     @Test

@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
+import com.uten.imp.application.port.HrNoticePort;
 import com.uten.imp.features.notice.NoticeService;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
@@ -31,6 +32,7 @@ public class ProfileChangeReviewService {
     private final EmployeeRepository employeeRepo;
     private final UserAccountRepository userRepo;
     private final NoticeService noticeService;
+    private final HrNoticePort hrNotice;
     private final ProfileFieldApplier applier;
     private final ProfileChangeMapper mapper;
     private final ProfileChangeSnapshotCodec snapshotCodec;
@@ -97,6 +99,9 @@ public class ProfileChangeReviewService {
             r.setReviewComment(comment);
         }
         repo.saveAll(rs);
+        // 办结撤回 HR 待审弹卡（提交时发的 PROFILE_CHANGE_SUBMITTED 行动卡）
+        hrNotice.resolveProfileChangeBatch(
+                batchId, "approve".equals(action) ? "APPROVED" : "REJECTED");
         notifySubmitter(rs, action, comment, reviewerEmployeeId);
         return mapper.toBatchDetail(rs);
     }

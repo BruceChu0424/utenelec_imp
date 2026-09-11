@@ -25,6 +25,8 @@ class ServerStatusSnapshot {
     required this.database,
     required this.backup,
     required this.alerts,
+    this.extras = const [],
+    this.jobs = const [],
   });
 
   final ServerHealthStatus status;
@@ -39,33 +41,44 @@ class ServerStatusSnapshot {
   final ServerBackup backup;
   final List<ServerAlert> alerts;
 
+  /// 附加计数指标（线程 / 最近错误 / 在线会话 / Outbox 积压 / 附件占用）；
+  /// 与 [metrics] 同结构，单位为 COUNT 或 BYTES，慢车道指标可能是 UNKNOWN。
+  final List<ServerMetric> extras;
+
+  /// 定时任务最近一次执行；后端内存注册表，重启后为空列表。
+  final List<ServerJob> jobs;
+
   int get pollSeconds => refreshAfterSeconds.clamp(10, 15);
   bool isStale(DateTime now) =>
       sampledAt == null ||
       now.toUtc().difference(sampledAt!.toUtc()) >
           Duration(seconds: pollSeconds * 2);
 
-  factory ServerStatusSnapshot.fromJson(Map<String, dynamic> json) =>
-      ServerStatusSnapshot(
-        status: ServerHealthStatus.fromWire(json['status']),
-        sampledAt: _date(json['sampledAt']),
-        refreshAfterSeconds:
-            _number(json['refreshAfterSeconds'])?.toInt() ?? 15,
-        environment: _text(json['environment']),
-        applicationVersion: _text(json['applicationVersion']),
-        uptimeSeconds: _number(json['uptimeSeconds']),
-        metrics: _rows(
-          json['metrics'],
-        ).map(ServerMetric.fromJson).toList(growable: false),
-        disks: _rows(
-          json['disks'],
-        ).map(ServerDisk.fromJson).toList(growable: false),
-        database: ServerDatabase.fromJson(_object(json['database'])),
-        backup: ServerBackup.fromJson(_object(json['backup'])),
-        alerts: _rows(
-          json['alerts'],
-        ).map(ServerAlert.fromJson).toList(growable: false),
-      );
+  factory ServerStatusSnapshot.fromJson(
+    Map<String, dynamic> json,
+  ) => ServerStatusSnapshot(
+    status: ServerHealthStatus.fromWire(json['status']),
+    sampledAt: _date(json['sampledAt']),
+    refreshAfterSeconds: _number(json['refreshAfterSeconds'])?.toInt() ?? 15,
+    environment: _text(json['environment']),
+    applicationVersion: _text(json['applicationVersion']),
+    uptimeSeconds: _number(json['uptimeSeconds']),
+    metrics: _rows(
+      json['metrics'],
+    ).map(ServerMetric.fromJson).toList(growable: false),
+    disks: _rows(
+      json['disks'],
+    ).map(ServerDisk.fromJson).toList(growable: false),
+    database: ServerDatabase.fromJson(_object(json['database'])),
+    backup: ServerBackup.fromJson(_object(json['backup'])),
+    alerts: _rows(
+      json['alerts'],
+    ).map(ServerAlert.fromJson).toList(growable: false),
+    extras: _rows(
+      json['extras'],
+    ).map(ServerMetric.fromJson).toList(growable: false),
+    jobs: _rows(json['jobs']).map(ServerJob.fromJson).toList(growable: false),
+  );
 }
 
 class ServerMetric {
@@ -189,6 +202,42 @@ class ServerAlert {
     status: ServerHealthStatus.fromWire(json['status']),
     message: _text(json['message']),
     suggestion: _text(json['suggestion']),
+  );
+}
+
+/// 一个 `@Scheduled` 定时任务的最近一次执行。
+///
+/// [periodSeconds] 为 null 表示按日程（cron）触发，不能据此判断「超期未跑」；
+/// [lastDurationMs] 为 null 表示本次仍在执行中。后端只下发异常类名，不带消息。
+class ServerJob {
+  const ServerJob({
+    required this.key,
+    required this.label,
+    required this.lastStartAt,
+    required this.lastEndAt,
+    required this.lastDurationMs,
+    required this.periodSeconds,
+    required this.lastErrorType,
+    required this.status,
+    required this.detail,
+  });
+  final String key, label, detail;
+  final DateTime? lastStartAt, lastEndAt;
+  final double? lastDurationMs, periodSeconds;
+  final String? lastErrorType;
+  final ServerHealthStatus status;
+  factory ServerJob.fromJson(Map<String, dynamic> json) => ServerJob(
+    key: _text(json['key']),
+    label: _text(json['label']),
+    lastStartAt: _date(json['lastStartAt']),
+    lastEndAt: _date(json['lastEndAt']),
+    lastDurationMs: _number(json['lastDurationMs']),
+    periodSeconds: _number(json['periodSeconds']),
+    lastErrorType: json['lastErrorType'] is String
+        ? json['lastErrorType'] as String
+        : null,
+    status: ServerHealthStatus.fromWire(json['status']),
+    detail: _text(json['detail']),
   );
 }
 

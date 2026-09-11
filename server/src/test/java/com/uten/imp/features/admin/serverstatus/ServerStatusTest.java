@@ -90,6 +90,6 @@ class ServerStatusTest {
     private static ServerStatusView view(Instant at) {
         return new ServerStatusView(at,15,"NORMAL","test","test",10,List.of(),List.of(),
                 new ServerStatusView.Database("NORMAL",1d,2,100,""),
-                new ServerStatusView.Backup("NORMAL",at,0d,30,48,""),List.of());
+                new ServerStatusView.Backup("NORMAL",at,0d,30,48,""),List.of(),List.of(),List.of());
     }
 }

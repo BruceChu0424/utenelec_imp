@@ -28,8 +28,9 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
  *   <li><b>缺口 C · 安全库存进销售 ATP</b>：镜像 {@code StockReservationRepository.globalAvailableBase}
  *       的原生 SQL（每个有货仓分别扣 goods.min_qty + GREATEST 钳位），
  *       验证全局承诺与仓库可拣口径一致。
- *   <li><b>缺口 B · 让单(yield) chain_status 回退</b>：逐字复制 {@code SalesOrderService.yieldReservation}
- *       里那段 chain_status 回退 UPDATE，验证 reserved_qty 回减与行状态机回退（7→1→2）。
+ *   <li><b>缺口 B · 让单(yield) chain_status 回退</b>：用 {@code SalesOrderService.yieldReservation}
+ *       同一个 {@code SalesOrderChainSql.chainStatusCaseSql}（V545 统一派生）拼出回退 UPDATE，
+ *       验证 reserved_qty 回减与行状态机回退（7→1→2）。
  * </ol>
  *
  * <p>不启 Spring，只验 SQL 语义；与 {@link StockReservationSalesCompatibilityPostgresTest} 同款骨架
@@ -145,16 +146,16 @@ class SalesReservationSafetyStockPostgresTest {
                         /*chainStatus*/ (short) 7, /*priority*/ (short) 3);
 
                 // ---- 让单 :q=4 ----
-                // SET 阶段用 OLD reserved(10)：reserved→10-4=6；chain CASE：
-                //   6 >= 20 ? 否；planned-produced=0>0 ? 否；6>0 ? 是 → chain=1（部分预留）
+                // SET 阶段用 OLD reserved(10)：reserved→10-4=6；统一 CASE（V545）：
+                //   未交付 20>0；6 >= 20 ? 否；已发 0；未排 20-6-0=14>0 且 6>0 → chain=1（部分预留）
                 int updated = executeYieldUpdate(connection, itemId, BigDecimal.valueOf(4));
                 assertEquals(1, updated, "reserved(10)>=4，应更新 1 行");
                 assertItem(connection, itemId, 6.0, (short) 1,
                         "让单 4：reserved 10→6(< outstanding 20)，chain 7→1 部分预留");
 
                 // ---- 让单剩余 :q=6 ----
-                // 此时 OLD reserved=6, chain=1(>0 进 CASE)：reserved→6-6=0；chain CASE：
-                //   0 >= 20 ? 否；0>0 ? 否；0>0 ? 否；ELSE → chain=2（待排产）
+                // 此时 OLD reserved=6, chain=1(>0 进 CASE)：reserved→6-6=0；统一 CASE：
+                //   0 >= 20 ? 否；已发 0；未排 20>0 且预留 0 → chain=2（待排产）
                 updated = executeYieldUpdate(connection, itemId, BigDecimal.valueOf(6));
                 assertEquals(1, updated, "reserved(6)>=6，应更新 1 行");
                 assertItem(connection, itemId, 0.0, (short) 2,
@@ -208,32 +209,23 @@ class SalesReservationSafetyStockPostgresTest {
     }
 
     /**
-     * 逐字镜像 {@code SalesOrderService.yieldReservation} 中 chain_status 回退 UPDATE
-     * （:q/:id → 位置占位符，5 个 ?：1=q 2=q 3=q 4=id 5=q）。
-     * 返回受影响行数（service 端断言 ==1）。
+     * 与 {@code SalesOrderService.yieldReservation} 同一构造：预留增量 {@code - :q} 走
+     * {@code SalesOrderChainSql.chainStatusCaseSql}（:q/:id → JDBC 位置占位符；最后两个 ? 为 id、q，
+     * 其余全部是 q）。返回受影响行数（service 端断言 ==1）。
      */
     private static int executeYieldUpdate(Connection c, UUID itemId, BigDecimal q) throws Exception {
-        String sql = """
-                UPDATE sales_order_items
-                SET reserved_qty = COALESCE(reserved_qty,0) - ?,
-                    chain_status = CASE WHEN COALESCE(chain_status,0) > 0 THEN
-                        CASE
-                          WHEN COALESCE(reserved_qty,0) - ?
-                               >= COALESCE(qty,0) - COALESCE(shipped_qty,0)
-                                  + COALESCE(returned_qty,0) - COALESCE(flag_qty,0) THEN 7
-                          WHEN GREATEST(COALESCE(planned_qty,0) - COALESCE(produced_qty,0), 0) > 0 THEN 4
-                          WHEN COALESCE(reserved_qty,0) - ? > 0 THEN 1
-                          ELSE 2
-                        END
-                    ELSE chain_status END
-                WHERE id = ? AND COALESCE(reserved_qty,0) >= ?
-                """;
+        String sql = "UPDATE sales_order_items\n"
+                + "SET reserved_qty = COALESCE(reserved_qty,0) - ?,\n"
+                + "    chain_status = "
+                + com.uten.imp.common.saleschain.SalesOrderChainSql.chainStatusCaseSql(
+                        com.uten.imp.common.saleschain.SalesOrderChainSql.ChainStatusInputs.of("")
+                                .reservedDelta(" - ?"))
+                + "\nWHERE id = ? AND COALESCE(reserved_qty,0) >= ?";
+        int placeholders = (int) sql.chars().filter(ch -> ch == '?').count();
         try (PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setBigDecimal(1, q);
-            ps.setBigDecimal(2, q);
-            ps.setBigDecimal(3, q);
-            ps.setObject(4, itemId);
-            ps.setBigDecimal(5, q);
+            for (int i = 1; i <= placeholders - 2; i++) ps.setBigDecimal(i, q);
+            ps.setObject(placeholders - 1, itemId);
+            ps.setBigDecimal(placeholders, q);
             return ps.executeUpdate();
         }
     }

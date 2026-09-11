@@ -10,7 +10,9 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/paged_list_controller.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -23,6 +25,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/finance_doc_config.dart';
 import '../models/finance_doc.dart';
@@ -31,8 +34,15 @@ import '../repositories/finance_repository.dart';
 import '../widgets/finance_table_facets.dart';
 
 class FinanceDocListPage extends ConsumerStatefulWidget {
-  const FinanceDocListPage({super.key, required this.docType});
+  const FinanceDocListPage({
+    super.key,
+    required this.docType,
+    this.initialStatus,
+  });
   final FinanceDocType docType;
+
+  /// 深链预选（路由 `?status=draft`）：新建页「草稿(N)」按钮进来时直接落在草稿段。
+  final String? initialStatus;
 
   @override
   ConsumerState<FinanceDocListPage> createState() => _FinanceDocListPageState();
@@ -53,6 +63,11 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
   @override
   void initState() {
     super.initState();
+    // 深链 ?status=draft：预选「草稿」段（新建页「草稿(N)」按钮的落点）。
+    if (isDraftStatusQuery(widget.initialStatus)) {
+      _statusFilter = kFinanceStatusDraft;
+      _statusFilterSelected = true;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(financeNameServiceProvider).ensureLoaded();
       _reload(1);
@@ -172,6 +187,12 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
         label: '状态',
         width: 100,
         value: (it) => financeStatusLabel(it.status),
+        // 状态徽章（草稿中性/已审绿/红冲红）；value 仍是纯文本供列宽/排序/筛选。
+        cellBuilder: (_, it) => UtenStatusBadge(
+          label: financeStatusLabel(it.status),
+          type: docStatusBadgeType(it.status),
+          size: UtenStatusBadgeSize.small,
+        ),
       ),
     ];
   }
@@ -250,7 +271,6 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
                   ),
                   // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
                   body: UtenListTwoPane(
-                    splitPersistenceKey: 'finance.docList',
                     filterPane: Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: UtenSpacing.s4,

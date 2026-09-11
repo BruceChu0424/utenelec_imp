@@ -10,6 +10,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/session_epoch_provider.dart';
 import '../repositories/production_repository.dart';
 
 const Duration _kPendingPollInterval = Duration(seconds: 60);
@@ -29,6 +30,9 @@ final productionPendingCountProvider =
       ProductionPendingCountNotifier,
       ProductionPendingCount
     >((ref) {
+      // 登录会话重建门（2026-09-10）：纪元变化时整个 Notifier 从零重建、用新会话权限重拉，
+      // 清空业务数据后重登无需手动刷新（见 workbench_refresh.rehydrateGlobalState）。
+      ref.watch(sessionEpochProvider);
       final notifier = ProductionPendingCountNotifier(ref);
       notifier.start();
       ref.onDispose(notifier.stop);

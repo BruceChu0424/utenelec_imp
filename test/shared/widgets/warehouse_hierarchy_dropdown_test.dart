@@ -318,4 +318,104 @@ void main() {
     final aggregate = warehouseHierarchyItems(_hierarchy, allowParent: true);
     expect(aggregate[0].enabled, isTrue);
   });
+
+  // ---- 查询口径侧滑面板（2026-09-11 即时库存/货架目视化统一入口）------------
+  Future<void> pumpQueryPanel(
+    WidgetTester tester,
+    void Function(WarehousePickerResult?) onPicked, {
+    String? initialWarehouseId,
+  }) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async => onPicked(
+                await showUtenWarehousePickerPanel(
+                  context,
+                  hierarchy: _hierarchy,
+                  initialWarehouseId: initialWarehouseId,
+                  title: '选择仓库',
+                  includeAll: true,
+                  allowParent: true,
+                ),
+              ),
+              child: const Text('选择仓库'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('选择仓库'));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+    'query panel lists the whole hierarchy at once and picks a parent',
+    (tester) async {
+      WarehousePickerResult? result;
+      await pumpQueryPanel(tester, (value) => result = value);
+
+      // 不钻层：主仓与子仓同屏；顶部多一行「全部」。
+      expect(find.byKey(const Key('warehouse-picker-all')), findsOneWidget);
+      expect(
+        find.byKey(const Key('warehouse-picker-entry-main')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('warehouse-picker-entry-finished')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('warehouse-picker-entry-defective')),
+        findsOneWidget,
+      );
+
+      // 主仓可选 = 自身 + 全部子仓聚合（运营口径下主仓只能钻层）。
+      await tester.tap(find.byKey(const Key('warehouse-picker-entry-main')));
+      await tester.pumpAndSettle();
+      expect(result?.id, 'main');
+      expect(result?.isAll, isFalse);
+    },
+  );
+
+  testWidgets('query panel 全部 clears the filter', (tester) async {
+    WarehousePickerResult? result;
+    await pumpQueryPanel(
+      tester,
+      (value) => result = value,
+      initialWarehouseId: 'finished',
+    );
+
+    await tester.tap(find.byKey(const Key('warehouse-picker-all')));
+    await tester.pumpAndSettle();
+    expect(result?.isAll, isTrue);
+    expect(result?.id, isEmpty);
+  });
+
+  testWidgets('query panel search narrows to matches plus ancestors', (
+    tester,
+  ) async {
+    await pumpQueryPanel(tester, (_) {});
+
+    await tester.enterText(
+      find.byKey(const Key('warehouse-picker-search')),
+      '不良',
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('warehouse-picker-entry-defective')),
+      findsOneWidget,
+    );
+    // 祖先留作层级上下文，同级未命中的兄弟收起。
+    expect(
+      find.byKey(const Key('warehouse-picker-entry-main')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('warehouse-picker-entry-finished')),
+      findsNothing,
+    );
+  });
 }

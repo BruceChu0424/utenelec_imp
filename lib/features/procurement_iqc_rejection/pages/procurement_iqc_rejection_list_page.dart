@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -312,6 +313,7 @@ class _ProcurementIqcRejectionListPageState
           value: 'PENDING_RETURN',
           label: '待退回',
           count: counts.pendingReturn,
+          countForm: UtenSegmentCountForm.actionable,
         ),
         const UtenFilterSegment(value: 'RETURN_RECORDED', label: '已退回待财务'),
         const UtenFilterSegment(value: 'FINANCE_EXCEPTION', label: '财务异常'),

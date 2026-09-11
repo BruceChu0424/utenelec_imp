@@ -21,6 +21,8 @@ public class AttachmentObjectOutboxProcessor {
     private final JdbcTemplate jdbc;
     private final StorageProviderRegistry storageProviders;
     private final StorageProperties properties;
+    /** 原件物理删除成功后清掉派生的 Office 预览缓存（缓存不是业务对象，删失败只记日志）。 */
+    private final AttachmentPreviewEvictor previews;
 
     public boolean processNext() {
         OutboxItem item = claimNext();
@@ -82,6 +84,12 @@ public class AttachmentObjectOutboxProcessor {
                     SET lifecycle_state = 'DELETED', delete_failure = NULL, updated_at = now()
                     WHERE id = ? AND lifecycle_state IN ('DELETE_PENDING','DELETE_FAILED')
                     """, item.attachmentId());
+            try {
+                previews.evict(item.attachmentId());
+            } catch (RuntimeException error) {
+                log.warn("Attachment preview cache eviction failed id={} type={}",
+                        item.attachmentId(), error.getClass().getSimpleName());
+            }
         }
         String location = "DELETE_STAGING".equals(item.operation()) ? "STAGING" : "FINAL";
         jdbc.update("""

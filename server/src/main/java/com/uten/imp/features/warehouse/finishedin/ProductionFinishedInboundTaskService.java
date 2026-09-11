@@ -50,22 +50,9 @@ public class ProductionFinishedInboundTaskService {
                 FROM production_daily_reports report
                 JOIN production_daily_report_items report_item
                   ON report_item.report_id = report.id
-                 AND report_item.is_deleted = FALSE
-                 AND report_item.execution_segment_id IS NOT NULL
-                 AND NOT EXISTS (
-                     SELECT 1
-                     FROM production_finished_arrival_registration_items
-                              registered_item
-                     WHERE registered_item.source_report_item_id =
-                           report_item.id)
-                 AND NOT EXISTS (
-                     SELECT 1
-                     FROM production_fqc_inspections inspection
-                     WHERE inspection.source_report_item_id = report_item.id)
-                 AND NOT EXISTS (
-                     SELECT 1
-                     FROM production_fqc_legacy_exemptions exemption
-                     WHERE exemption.source_report_item_id = report_item.id)
+                -- V548：待登记口径统一走视图（含撤回后重新可登记的行）。
+                JOIN v_production_report_items_pending_registration pending
+                  ON pending.report_item_id = report_item.id
                 JOIN goods goods ON goods.id = report_item.goods_id
                 LEFT JOIN LATERAL (
                     SELECT production_plan.id AS plan_id,

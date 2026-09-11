@@ -17,7 +17,6 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -40,6 +39,7 @@ import '../../report/shared/report_data.dart';
 import '../../report/shared/report_date_range.dart';
 import '../../report/shared/report_filter_prefs.dart';
 import '../../report/shared/report_sort.dart';
+import '../../report/shared/report_total.dart';
 import '../config/finance_report_config.dart';
 
 class FinanceReportTablePage extends ConsumerStatefulWidget {
@@ -116,6 +116,16 @@ class _FinanceReportTablePageState
   );
 
   /// 任何筛选变更后调用：标记已动手 + 防抖持久化到服务端。
+  /// 筛选项改动后的统一出口：存偏好 + 回第一页重查。
+  ///
+  /// 2026-09-11 撤掉「查询」按钮后，筛选不再需要用户再点一下确认——改日期/下拉
+  /// 即刻生效，关键词走搜索框自身的防抖与回车（用户要求：搜索回车即查询）。
+  void _persistAndReload() {
+    _persistPrefs();
+    _page = 1;
+    _load();
+  }
+
   void _persistPrefs() {
     if (_isCustomerPrepaymentEvents) return;
     _dirty = true;
@@ -324,7 +334,6 @@ class _FinanceReportTablePageState
                 ),
               ),
               body: UtenListTwoPane(
-                splitPersistenceKey: 'finance.reportTable',
                 filterPane: _buildFilterPane(theme),
                 tablePane: _buildTable(),
               ),
@@ -346,7 +355,9 @@ class _FinanceReportTablePageState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _filterLabel('报表类型'),
-            // 全平台统一筛选工具条：报表变体分段（纯分类无搜索）。
+            // 全平台统一筛选工具条：报表变体分段 + 搜索同一行（宽屏搜索靠右、
+            // 宽度受 searchWidth 封顶），不再让搜索框单独占一整行。
+            // 客户预收流水卡用客户选择器代替关键字检索，故那一卡不渲染搜索框。
             UtenFilterToolbar<int>(
               segments: [
                 for (int i = 0; i < _card.variants.length; i++)
@@ -354,6 +365,17 @@ class _FinanceReportTablePageState
               ],
               selected: {_variantIndex},
               onSelectionChanged: _changeVariant,
+              searchHint: _isCustomerPrepaymentEvents ? null : '搜索单号 / 名称',
+              initialSearchValue: _keyword,
+              // 防抖到点即查；回车立刻查（不等防抖）。
+              onSearchChanged: (v) {
+                _keyword = v;
+                _persistAndReload();
+              },
+              onSearchSubmitted: (v) {
+                _keyword = v;
+                _persistAndReload();
+              },
             ),
             const SizedBox(height: UtenSpacing.s12),
             _filterLabel('日期范围'),
@@ -372,7 +394,7 @@ class _FinanceReportTablePageState
                     );
                     if (p != null) {
                       setState(() => _from = p);
-                      _persistPrefs();
+                      _persistAndReload();
                     }
                   },
                   icon: const Icon(Icons.event_outlined, size: 18),
@@ -388,7 +410,7 @@ class _FinanceReportTablePageState
                     );
                     if (p != null) {
                       setState(() => _to = p);
-                      _persistPrefs();
+                      _persistAndReload();
                     }
                   },
                   icon: const Icon(Icons.event_outlined, size: 18),
@@ -411,26 +433,7 @@ class _FinanceReportTablePageState
                 onChanged: _onClientChanged,
               ),
               const SizedBox(height: UtenSpacing.s12),
-            ] else ...[
-              _filterLabel('搜索'),
-              UtenSearchBar(
-                hint: '搜索单号 / 名称',
-                initialValue: _keyword,
-                onChanged: (v) => _keyword = v,
-              ),
-              const SizedBox(height: UtenSpacing.s12),
             ],
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.tonalIcon(
-                onPressed: () {
-                  _page = 1;
-                  _load();
-                },
-                icon: const Icon(Icons.search_rounded, size: 18),
-                label: const Text('查询'),
-              ),
-            ),
             if (_filters.isNotEmpty) ...[
               const SizedBox(height: UtenSpacing.s12),
               _filterLabel('已选筛选 (${_filters.length})'),
@@ -535,6 +538,9 @@ class _FinanceReportTablePageState
       onRowTap: _onRowTap,
       isLoading: _loading,
       emptyMessage: _isCustomerPrepaymentEvents ? '所选日期和客户暂无客户预收流水' : '暂无报表数据',
+      // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
+      // 不是对当前这一页求和；后端未声明合计列时返回 null，整条不渲染。
+      summaryBar: reportTotalsBar(data.totals),
       currentPage: data.page,
       totalPages: data.totalPages,
       onPageChange: (p) {

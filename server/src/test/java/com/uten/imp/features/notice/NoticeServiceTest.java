@@ -428,6 +428,32 @@ class NoticeServiceTest {
     }
 
     @Test
+    void markReadAfterSnoozeKeepsSnoozedUntilSoTheReminderStillRepops() {
+        // 2026-09-10 口径：「稍后再看」是用户明确要求到期再提醒；随后已读/去工作台
+        // 只置 popup_acknowledged，不得清 snoozed_until（否则登录弹窗永远静默）。
+        UUID noticeId = UUID.randomUUID();
+        Notice notice = new Notice();
+        notice.setId(noticeId);
+        notice.setAudienceUserId(userId);
+        NoticeUserState state = new NoticeUserState();
+        state.setId(new NoticeUserStateId(noticeId, userId));
+        when(noticeRepository.findById(noticeId)).thenReturn(Optional.of(notice));
+        when(stateRepository.findById(new NoticeUserStateId(noticeId, userId)))
+                .thenReturn(Optional.of(state));
+
+        Instant until = service.snoozeNotice(noticeId, 15);
+        service.markRead(noticeId);
+
+        assertEquals(until, state.getSnoozedUntil());
+        assertNotNull(state.getReadAt());
+        assertNotNull(state.getPopupAcknowledgedAt());
+        verify(stateRepository, times(2)).save(state);
+        // 并发落库靠按列 UPDATE：snooze 与 markRead 各写各列，互不覆盖。
+        assertTrue(NoticeUserState.class.isAnnotationPresent(
+                org.hibernate.annotations.DynamicUpdate.class));
+    }
+
+    @Test
     void publishForUserBindsAggregateOnlyForRegisteredReviewEvents() {
         when(noticeRepository.saveAndFlush(any(Notice.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -478,6 +504,57 @@ class NoticeServiceTest {
         org.junit.jupiter.api.Assertions.assertTrue(items.getFirst().interactive());
         org.junit.jupiter.api.Assertions.assertEquals(
                 "SALES_ORDER_PENDING_FINANCE_CONFIRM", items.getFirst().sourceEvent());
+    }
+
+    @Test
+    void pendingPopupsReturnsManualNoticesWithAckStateAndFourteenDayWindow() {
+        // 2026-09-10（ADR-063 §8）：人工通知登录弹窗——打卡类型带 ackCount/myAcked，
+        // 只提醒类型按 14 天窗口查询；人工通知不走审核目录（不查资格、interactive=false）。
+        Notice ack = new Notice();
+        ack.setId(UUID.randomUUID());
+        ack.setTitle("国庆放假安排");
+        ack.setContent("10 月 1 日至 7 日放假");
+        ack.setType("announcement");
+        ack.setInteractionMode("acknowledge");
+        ack.setPublisher("人事部");
+        ack.setPublishedAt(Instant.now());
+        ack.setPriority("important");
+        Notice remind = new Notice();
+        remind.setId(UUID.randomUUID());
+        remind.setTitle("周五提交周报");
+        remind.setContent("请于周五前提交");
+        remind.setType("task");
+        remind.setInteractionMode("none");
+        remind.setPublisher("人事部");
+        remind.setPublishedAt(Instant.now());
+        when(noticeRepository.findVisiblePendingManualNotices(eq(userId), any(), any()))
+                .thenReturn(List.of(ack, remind));
+        when(stateRepository.findByIdUserIdAndIdNoticeIdIn(eq(userId), any()))
+                .thenReturn(List.of());
+        when(ackRepository.countByIdNoticeId(ack.getId())).thenReturn(3L);
+        when(ackRepository.existsByIdNoticeIdAndIdUserId(ack.getId(), userId)).thenReturn(false);
+        when(ackRepository.findRecentAcknowledgers(eq(ack.getId()), anyInt())).thenReturn(List.of());
+
+        List<NoticeDto> items = service.pendingPopups();
+
+        assertEquals(2, items.size());
+        NoticeDto first = items.get(0);
+        assertEquals("acknowledge", first.interactionMode());
+        assertFalse(first.myAcked());
+        assertEquals(3L, first.ackCount());
+        assertFalse(first.interactive());
+        assertEquals("人事部", first.publisher());
+        assertEquals("important", first.priority());
+        assertEquals("none", items.get(1).interactionMode());
+        assertEquals(0L, items.get(1).ackCount());
+
+        ArgumentCaptor<Instant> since = ArgumentCaptor.forClass(Instant.class);
+        verify(noticeRepository).findVisiblePendingManualNotices(
+                eq(userId), since.capture(), argThat(page -> page.getPageSize() == 20));
+        Instant expected = Instant.now().minus(NoticeService.NONE_MODE_POPUP_WINDOW);
+        assertTrue(Math.abs(java.time.Duration.between(expected, since.getValue()).toSeconds()) < 60,
+                "none 模式窗口应为 14 天");
+        verify(reviewAudience, never()).eligibleEvents(any());
     }
 
     @Test

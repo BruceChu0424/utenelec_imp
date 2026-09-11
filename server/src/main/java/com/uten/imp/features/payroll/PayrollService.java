@@ -4,6 +4,8 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.application.port.EmployeeNameLookupPort;
+import com.uten.imp.application.port.HrNoticePort;
 import com.uten.imp.features.payroll.dto.PayrollBatchCreateRequest;
 import com.uten.imp.features.payroll.dto.PayrollBatchDto;
 import com.uten.imp.features.payroll.dto.PayrollItemDto;
@@ -58,6 +60,8 @@ public class PayrollService {
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
     private final PayrollPdfService pdfService;
+    private final HrNoticePort hrNotice;
+    private final EmployeeNameLookupPort employeeNames;
 
     @Transactional(readOnly = true)
     public PageResponse<PayrollSlipDto> listSlips(
@@ -331,6 +335,9 @@ public class PayrollService {
         batch.setSubmittedBy(user.getEmployeeId());
         batch.setSubmittedAt(Instant.now());
         batchRepository.save(batch);
+        // 提交 → 通知审核人（弹卡 + 通知；2026-09-09 人事通知接入）
+        hrNotice.notifyPayrollBatchSubmitted(
+                batch.getId(), periodLabel(batch), generatorName(batch), user.getEmployeeId());
         return mapBatchWithSlips(batch);
     }
 
@@ -345,6 +352,11 @@ public class PayrollService {
         batch.setApprovedBy(user.getEmployeeId());
         batch.setApprovedAt(Instant.now());
         batchRepository.save(batch);
+        // 审毕 → 先办结「待审核」卡，再给 payroll:publish 持有者发「待发布」接棒卡
+        //（同聚合 PAYROLL_BATCH，顺序不能反；审核人本人不收；2026-09-10 补闭环）。
+        hrNotice.resolvePayrollBatch(batch.getId(), "APPROVED");
+        hrNotice.notifyPayrollBatchApproved(
+                batch.getId(), periodLabel(batch), user.getEmployeeId());
         return mapBatchWithSlips(batch);
     }
 
@@ -362,6 +374,10 @@ public class PayrollService {
         batch.setApprovedBy(null);
         batch.setApprovedAt(null);
         batchRepository.save(batch);
+        // 驳回 → 回执制单人 + 办结审核弹卡（2026-09-09 人事通知接入）
+        hrNotice.notifyPayrollBatchRejected(
+                batch.getId(), periodLabel(batch), reason.trim(),
+                userIdOfEmployee(batch.getGeneratedBy()));
         return mapBatchWithSlips(batch);
     }
 
@@ -381,7 +397,31 @@ public class PayrollService {
         batch.setPublishedBy(user.getEmployeeId());
         batch.setPublishedAt(now);
         batchRepository.save(batch);
+        // 发布 → 持条员工逐人「工资条已发布」（普通通知不弹卡）+ 办结审核弹卡
+        hrNotice.notifyPayrollPublished(
+                batch.getId(), periodLabel(batch),
+                slipRepository.findByBatchIdOrderByEmployeeCodeSnapshotAscIdAsc(batch.getId())
+                        .stream().map(PayrollSlip::getEmployeeId).distinct().toList());
+        hrNotice.resolvePayrollBatch(batch.getId(), "PUBLISHED");
         return mapBatchWithSlips(batch);
+    }
+
+    /** 批次期间文案（如「2026-09」）。 */
+    private static String periodLabel(PayrollBatch batch) {
+        return "%d-%02d".formatted(batch.getPayrollYear(), batch.getPayrollMonth());
+    }
+
+    /** 制单人姓名（员工档案缺失时回退「工资员」）。 */
+    private String generatorName(PayrollBatch batch) {
+        if (batch.getGeneratedBy() == null) return "工资员";
+        return employeeNames.findName(batch.getGeneratedBy())
+                .filter(name -> !name.isBlank())
+                .orElse("工资员");
+    }
+
+    /** 员工档案 id → 登录账号 id（经 HrNoticePort 解析；无账号返回 null，通知侧自行跳过）。 */
+    private UUID userIdOfEmployee(UUID employeeId) {
+        return hrNotice.recipientUserIdOf(employeeId);
     }
 
     private List<ItemAmount> buildAmounts(

@@ -161,6 +161,34 @@ class CommercialOrderAttachmentAccessPolicyTest {
         verifyNoInteractions(h.procurementLocks);
     }
 
+    @Test void salesFinanceReviewerReadsOnlyOrdersThatEnteredTheFinanceFlowAndNeverManages() {
+        var h = new Harness(Kind.SALES); h.scope(Set.of(), Set.of());
+        h.permissions.remove("sales_order:view"); h.permissions.add("sales_order_finance:view");
+        // 纯草稿（未提交）：财务页面权限不得提前读取合同原件。
+        denied(ErrorCode.NOT_FOUND, () -> h.policy.requireCanView(h.id, h.user()));
+        // 已提交待确认：可读不可管理，且不要求销售归属/价格权限。
+        h.status((short) 1); h.permissions.remove(h.permission("price:view"));
+        assertDoesNotThrow(() -> h.policy.requireCanView(h.id, h.user()));
+        denied(ErrorCode.FORBIDDEN, () -> h.policy.requireCanManage(h.id, h.user()));
+        // 财务退回（订单回草稿等待修改）与财务已确认：仍可读。
+        h.status((short) 0); h.sales.setFinanceRejected(true);
+        assertDoesNotThrow(() -> h.policy.requireCanView(h.id, h.user()));
+        h.sales.setFinanceRejected(false); h.status((short) 1); h.sales.setFinanceConfirmed(true);
+        assertDoesNotThrow(() -> h.policy.requireCanView(h.id, h.user()));
+        denied(ErrorCode.CONFLICT, () -> { h.permissions.add(h.permission("price:view")); h.permissions.add("sales_order:edit"); h.scope(Set.of(h.owner), Set.of(h.owner)); h.policy.requireCanManage(h.id, h.user()); });
+        // 收回财务查看权：回到销售口径（无销售权限 → 不可见）。
+        h.permissions.remove("sales_order_finance:view"); h.scope(Set.of(), Set.of());
+        denied(ErrorCode.NOT_FOUND, () -> h.policy.requireCanView(h.id, h.user()));
+    }
+
+    @Test void salesDraftStaysInvisibleToFinanceEvenWhenFinanceAlsoHoldsSalesViewOutsideScope() {
+        var h = new Harness(Kind.SALES); h.scope(Set.of(), Set.of());
+        h.permissions.add("sales_order_finance:view");
+        denied(ErrorCode.NOT_FOUND, () -> h.policy.requireCanView(h.id, h.user()));
+        h.status((short) 1);
+        assertDoesNotThrow(() -> h.policy.requireCanView(h.id, h.user()));
+    }
+
     @Test void salesReturnedRevisionMayChangeFilesButEffectiveOrClaimedContractMayNot() {
         var h = new Harness(Kind.SALES); h.status((short) 1); h.sales.setFinanceRejected(true);
         assertDoesNotThrow(() -> h.policy.requireCanManageForUpdate(h.id, h.user()));

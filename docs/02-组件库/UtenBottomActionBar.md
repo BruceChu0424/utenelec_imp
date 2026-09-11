@@ -16,6 +16,10 @@
 **何时用：** 页面有一个或多个主操作按钮（提交 / 保存 / 删除 / 撤回 / 下载…），
 希望它常驻底部、不随内容滚走。
 
+**已接入（2026-09-10 增补）：** 品质批量审批页 `quality_batch_approval_page.dart` 吸底栏
+（`UtenSelectionSummaryPill` 已选计数 + 说明文案 + 提交报告，替换原手写
+`SafeArea + Container + 顶部分隔线` 样板）。
+
 **何时不用：** 纯展示页（如 `notice_detail` / `suggestion_detail` 没有主操作）；
 列表页的新建入口用 `FloatingActionButton`。
 

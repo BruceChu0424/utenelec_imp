@@ -10,13 +10,22 @@
 //   原「库存余额」「出入库流水」两卡下线）+ 货架目视化清单。
 // 仓库报表：明细 / 汇总（不变）。
 //
-// 卡片统一 UtenHubCard（徽章恒在右上角）；显隐仍走 permission_by_path 同一份
-// any/all 契约（canOpen），与路由守卫一致。
+// 卡片统一 UtenHubCard；显隐仍走 permission_by_path 同一份 any/all 契约（canOpen），
+// 与路由守卫一致。计数口径（准则 14-徽章与计数口径）：
+//   · 四张任务中心卡挂右上角红色待办徽章（卡面数字 = 卡内各分段之和）。
+//   · 出入库单据区的调拨 / 盘点挂本人草稿红徽章（2026-09-11 口径反转：草稿是
+//     必须由本人处理完的活，改红徽章并逐级累加）；委外成品退货单 / 委外损耗单
+//     是历史只读专页，不挂任何计数。
+//   · 顶栏右上角 = 本模块累计（任务中心 + 仓库草稿），求和在
+//     shared/badges/todo_badge_registry.dart，与工作台「仓库管理」卡同源。
+//   · 库存查询与报表区是浏览型入口，不挂任何计数。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
+import '../../../components/feedback/uten_draft_badge.dart';
+import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -28,6 +37,8 @@ import '../../../core/router/permission_by_path.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/badges/todo_badge_registry.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
 import '../config/warehouse_report_config.dart';
 import '../models/stock_doc.dart';
 import '../providers/warehouse_count_refresh.dart';
@@ -128,7 +139,7 @@ class WarehouseHubPage extends ConsumerWidget {
       const _StockQueryEntry(
         Icons.view_agenda_outlined,
         '货架目视化清单',
-        '按库位号分组，打印张贴到货架',
+        '按库行/层/位查找，打印张贴到货架',
         RouteName.warehouseShelfLabels,
       ),
     ].where((entry) => canOpen(entry.location)).toList(growable: false);
@@ -142,6 +153,20 @@ class WarehouseHubPage extends ConsumerWidget {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
+        actions: [
+          // 本模块累计：数字由注册表对 TodoModule.warehouse 名下入口求和得出
+          //（四张任务中心 + 仓库草稿），页面里不要再手写加法；0 由徽章自己不渲染。
+          Padding(
+            padding: const EdgeInsets.only(right: UtenSpacing.s8),
+            child: Center(
+              child: UtenNotificationBadge(
+                count: todoModuleCount(TodoModule.warehouse, ref.watch),
+                size: 20,
+                showLabel: true,
+              ),
+            ),
+          ),
+        ],
       ),
       body: SafeArea(
         child: UtenContentContainer(
@@ -192,10 +217,16 @@ class WarehouseHubPage extends ConsumerWidget {
                 itemBuilder: (context, i, _) {
                   if (i < stockDocumentTypes.length) {
                     final t = stockDocumentTypes[i];
+                    final draftKind = _stockDocDraftKind(t);
                     return UtenHubCard(
                       icon: iconFor(t),
                       label: _stockDocTitle(t, l10n),
                       description: _stockDocSubtitle(t, l10n),
+                      // 调拨/盘点卡没有别的待办徽章，草稿徽章独占右上角 badge 槽
+                      // （用户要的就是这个位置）；一个槽塞两个红点会读不懂。
+                      badge: draftKind == null
+                          ? null
+                          : UtenDraftBadge(kind: draftKind),
                       onTap: () =>
                           goFrom(context, RoutePath.stockDocList(t.code)),
                     );
@@ -323,6 +354,17 @@ const _warehouseLinkedDocEntries = <(IconData, String, String, String, String)>[
     Perm.warehouseSubcontractWasteHistoryView,
   ),
 ];
+
+/// 该仓库单据类型在跨模块草稿计数里的切片（无切片返回 null）。
+///
+/// stock_documents 一张表装 8 种单据，整表合计 [DraftDocKind.stockDocument] 只在
+/// 新建页「草稿(N)」按钮里用；hub 上两张卡各用自己的 doc_type 切片，
+/// 避免「调拨卡和盘点卡都显同一个合计数」的双计。
+DraftDocKind? _stockDocDraftKind(StockDocType type) => switch (type) {
+  StockDocType.transfer => DraftDocKind.stockTransfer,
+  StockDocType.check => DraftDocKind.stockCheck,
+  _ => null,
+};
 
 // 出入库单据卡标题/副标题本地化（StockDocType 枚举仍是中文 label，列表/编辑页在用）。
 String _stockDocTitle(StockDocType t, AppLocalizations l10n) => switch (t) {

@@ -2,7 +2,7 @@
 //
 // 与销售/采购编辑页同构（统一模板：UtenFormGrid 表头 + UtenDateField 日期 + UtenEditableGrid 明细）。
 // 生产计划特点：
-//   - 无币种/供应商/金额（数量驱动）：明细排产量→表尾「排产合计」（qtyNotifier 复用 grid.totalListenable）。
+//   - 无币种/供应商/金额（数量驱动）：只报排产量合计，挂在明细表尾（按单位分组，不跨单位相加）。
 //   - 单据号系统自动生成（后端 DocNumberService，PRODUCTION_PLAN "SJ"），本页只读显示。
 //   - 车间=部门选择器（UtenDepartmentPicker，落 department_id；部门名冗余写 workshop_name 供报表 facet）。
 //   - 跟单员/生产工=员工选择器（UtenEmployeePicker，落 seller_id/worker_id，加列；name 留底）。
@@ -14,7 +14,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_edit_floating_actions.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
@@ -22,7 +23,9 @@ import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/buttons/uten_drafts_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_form_grid.dart';
@@ -37,9 +40,12 @@ import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/auth/document_scope_capability.dart';
-import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/attachments/business_attachment_section.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/widgets/editable_grid_totals_bar.dart';
 import '../../../shared/widgets/sales_order_picker.dart';
 import '../providers/production_department_provider.dart';
 import '../models/production_material_analysis.dart';
@@ -615,6 +621,20 @@ class _ProductionPlanEditPageState
     );
   }
 
+  /// 新建态 AppBar 右上角「草稿(N)」入口。
+  ///
+  /// 生产 hub 卡片直达新建页，从 hub 打不开列表；本按钮是用户回到自己草稿的
+  /// 入口（点击进列表并预选草稿段）。编辑既有单据时不显示。
+  List<Widget>? get _draftsAction {
+    if (widget.id != null) return null;
+    return [
+      const UtenDraftsButton(
+        kind: DraftDocKind.productionPlan,
+        listLocation: RouteName.productionPlanList,
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -626,16 +646,7 @@ class _ProductionPlanEditPageState
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(context, defaultPath: '/production'),
         ),
-        actions: _loading || _initializationError != null
-            ? null
-            : [
-                UtenButton(
-                  type: UtenButtonType.tonal,
-                  icon: Icons.history_rounded,
-                  onPressed: () => context.push('/production/plans'),
-                  child: const Text('查看历史'),
-                ),
-              ],
+        actions: _draftsAction,
       ),
       body: SafeArea(
         child: _loading
@@ -655,7 +666,13 @@ class _ProductionPlanEditPageState
                   thumbVisibility: true,
                   child: ListView(
                     controller: _scrollCtl,
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    // 底部多留一段：右下角悬浮的「取消/保存」会盖住最后一行。
+                    padding: const EdgeInsets.fromLTRB(
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenSpacing.s12 + 88,
+                    ),
                     children: [
                       Card(
                         child: Padding(
@@ -796,6 +813,7 @@ class _ProductionPlanEditPageState
                                             theme,
                                             info: '同一需求后续处理必须沿用同一个编号',
                                           ),
+                                          counterText: '',
                                         ),
                                       ),
                                     ),
@@ -832,13 +850,25 @@ class _ProductionPlanEditPageState
                           ),
                         ),
                       ),
-                      const SizedBox(height: UtenSpacing.s12),
-                      Text(
-                        '明细 (${_grid.length})',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
+                      // 生产计划附件（图纸/样品图/排产确认）挂 PRODUCTION_PLAN。
+                      // 新建计划走物料分析生成（本页不直接 create），故只有编辑态有附件区；
+                      // 新计划请在生成后的详情/编辑页添加。
+                      if (widget.id != null) ...[
+                        const SizedBox(height: UtenSpacing.s12),
+                        BusinessAttachmentSection(
+                          ownerType: 'PRODUCTION_PLAN',
+                          ownerId: widget.id!,
+                          canView: ref
+                              .watch(currentPermissionsProvider)
+                              .contains(Perm.attachmentView),
+                          // 进入编辑页即已确认可写；草稿状态与归属由服务端附件策略再校验。
+                          canManage: !_saving,
+                          title: '附件（图纸/样品图/排产确认）',
+                          categories: const ['图纸', '样品图', '确认件', '其他'],
                         ),
-                      ),
+                      ],
+                      // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）。
+                      const SizedBox(height: UtenSpacing.s12),
                       UtenEditableGrid<ProductionGridRow>(
                         controller: _grid,
                         columns: productionGridColumns(
@@ -853,53 +883,52 @@ class _ProductionPlanEditPageState
                           return r;
                         },
                         cloneRow: (r) => r.clone(),
+                        // 排产量合计回到表尾：原先只挂在页面底部操作条里，底部条
+                        // 改右下角悬浮后本页就没有合计了（本页此前从不传 footer）。
+                        // 本页无金额，只报数量，且按 unitId 分组绝不跨单位相加。
+                        footer: EditableGridTotalsBar<ProductionGridRow>(
+                          key: const Key('production-plan-edit-totals'),
+                          controller: _grid,
+                          showDivider: false,
+                          watchOf: (row) => [row.qty],
+                          entriesBuilder: (rows) => [
+                            utenQuantityTotalEntry(
+                              rows
+                                  .where((row) => row.goods != null)
+                                  .map(
+                                    (row) => MeasuredAmount(
+                                      value:
+                                          double.tryParse(
+                                            row.qty.text.trim(),
+                                          ) ??
+                                          0,
+                                      unitId: row.unitId,
+                                      unitName: names.unitEntries[row.unitId],
+                                    ),
+                                  ),
+                              label: '排产量合计',
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
       ),
-      bottomNavigationBar: _loading || _initializationError != null
+      // 加载中/初始化失败时不出按钮（沿用原底部操作条的显隐守卫）。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: _loading || _initializationError != null
           ? null
-          : SafeArea(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
-                  border: Border(
-                    top: BorderSide(color: theme.colorScheme.outlineVariant),
-                  ),
-                ),
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    ValueListenableBuilder<double>(
-                      valueListenable: _grid.totalListenable,
-                      builder: (_, _, _) => Text(
-                        '排产量：${measurementTotalsText(_grid.rows.where((row) => row.goods != null).map((row) => MeasuredAmount(value: double.tryParse(row.qty.text.trim()) ?? 0, unitId: row.unitId, unitName: names.unitEntries[row.unitId])))}',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: UtenSpacing.s16),
-                    UtenButton(
-                      type: UtenButtonType.secondary,
-                      onPressed: () => context.pop(),
-                      child: const Text('取消'),
-                    ),
-                    const SizedBox(width: UtenSpacing.s12),
-                    UtenButton(
-                      isLoading: _saving,
-                      icon: widget.id == null
-                          ? Icons.insights_outlined
-                          : Icons.save_outlined,
-                      onPressed: _saving ? null : _save,
-                      child: Text(widget.id == null ? '进入物料分析' : '保存'),
-                    ),
-                  ],
-                ),
-              ),
+          : UtenEditFloatingActions(
+              onCancel: () => popOrBackTo(context, defaultPath: '/production'),
+              onSave: _save,
+              saving: _saving,
+              // 新建态不直接落库，先去物料分析定料。
+              saveLabel: widget.id == null ? '进入物料分析' : '保存',
+              saveIcon: widget.id == null
+                  ? Icons.insights_outlined
+                  : Icons.save_outlined,
             ),
     );
   }

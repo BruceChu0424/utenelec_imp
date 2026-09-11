@@ -65,6 +65,39 @@ public interface ProductionQualityInspectionPort {
     /** Require an explicit migration-cutover exemption for a pre-V414 line. */
     void requireLegacyExemption(UUID sourceReportItemId);
 
+    /**
+     * V547: group the PENDING inspections created by the given registration
+     * batches of one warehouse into one inspection sheet (display/handling
+     * aggregate only; quantities stay on the inspections). Replays of the
+     * same actor/command key/warehouse return the existing sheet.
+     */
+    InspectionSheetRef openInspectionSheet(InspectionSheetRequest request);
+
+    /**
+     * V548: cancel every untouched PENDING inspection of a reversed arrival
+     * registration inside the reversal transaction (session variable
+     * {@code app.production_finished_arrival_reversal_id} must be bound).
+     */
+    int cancelForReversedRegistration(UUID registrationId, UUID reversalId);
+
+    record InspectionSheetRequest(
+            UUID warehouseId,
+            String warehouseName,
+            UUID receiverEmployeeId,
+            String receiverName,
+            String remark,
+            String sourceKind,
+            String commandKey,
+            List<UUID> registrationIds) {
+
+        public InspectionSheetRequest {
+            registrationIds = List.copyOf(registrationIds);
+        }
+    }
+
+    record InspectionSheetRef(UUID sheetId, String sheetNo, int itemCount) {
+    }
+
     record ReleaseAuthorization(
             UUID releaseCommandId,
             UUID inspectionId,

@@ -202,6 +202,16 @@ uten:
       role-name: ${UTEN_OSS_ROLE_NAME:}
       key-prefix: ${UTEN_OSS_KEY_PREFIX:attachments/}
       require-versioning: ${UTEN_OSS_REQUIRE_VERSIONING:false}
+  attachment:
+    preview:
+      # Office（doc/docx/xls/xlsx/ppt/pptx）附件在线预览：服务端 LibreOffice 转 PDF 后返回，
+      # 缓存在附件存储根目录 preview/ 私有子目录。默认关闭；打开后仍需 soffice 可执行，
+      # 否则接口返回业务错误，客户端自动回落为下载原件。
+      enabled: ${UTEN_ATTACHMENT_PREVIEW_ENABLED:false}
+      soffice-path: ${UTEN_ATTACHMENT_PREVIEW_SOFFICE_PATH:soffice}
+      timeout: ${UTEN_ATTACHMENT_PREVIEW_TIMEOUT_SECONDS:60}
+      max-concurrent: ${UTEN_ATTACHMENT_PREVIEW_MAX_CONCURRENT:2}
+      cache-max-bytes: ${UTEN_ATTACHMENT_PREVIEW_CACHE_MAX_BYTES:1073741824}
   reporting:
     materialized-view-refresh:
       enabled: ${UTEN_REPORT_REFRESH_ENABLED:true}

@@ -91,23 +91,42 @@ public class StockQueryController {
     }
 
     /**
-     * 货架目视化清单（仓库管理 → 货架目视化清单页；现场挂牌打印/导出口径）：
-     * 货品主档中已维护库位号（stock_place）的全部货品，与库存数量无关。
+     * 货架目视化清单（仓库管理 → 货架目视化清单页：货架图 + 统一表格 / 打印张贴 / 导出）：
+     * 货品主档已维护库位号的货品，库位号按「库行-层-位」三段解析并附即时库存参考量。
      *
-     * GET /api/stock/shelf-labels?rack=&keyword= → 行（库行/库位号/物料编码/系列/名称/颜色）
-     * GET /api/stock/shelf-labels/racks           → 全部库行（筛选下拉数据源）
+     * GET /api/stock/shelf-labels?rack=&keyword=&warehouseId=&includeDisabled=
+     *     → 行（库行/层/位/parsed/库位号/物料编码/系列/名称/颜色/单位/即时库存/disabled）
+     * GET /api/stock/shelf-labels/racks?warehouseId=&includeDisabled=
+     *     → 已分层库行（筛选下拉数据源；残值不含）
+     * GET /api/stock/shelf-labels/layout?warehouseId=&includeDisabled=
+     *     → [{rack, maxLevel, maxSlot, count}]（货架图布局；末尾 rack='' 为未分层桶，仅残值 > 0 时出现）
+     *
+     * warehouseId 非空：库位号本仓树偏好优先、库存按该仓及子仓汇总；空：只读主档、库存按全部核算仓汇总。
+     * includeDisabled 默认 false（禁用货品不列）。
      */
     @GetMapping("/shelf-labels")
     @PreAuthorize("hasAuthority('stock:view')")
     public List<com.uten.imp.features.stock.dto.ShelfLabelRow> shelfLabels(
             @RequestParam(required = false) String rack,
-            @RequestParam(required = false) String keyword) {
-        return service.shelfLabelRows(rack, keyword);
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(defaultValue = "false") boolean includeDisabled) {
+        return service.shelfLabelRows(rack, keyword, warehouseId, includeDisabled);
     }
 
     @GetMapping("/shelf-labels/racks")
     @PreAuthorize("hasAuthority('stock:view')")
-    public List<String> shelfLabelRacks() {
-        return service.shelfLabelRacks();
+    public List<String> shelfLabelRacks(
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(defaultValue = "false") boolean includeDisabled) {
+        return service.shelfLabelRacks(warehouseId, includeDisabled);
+    }
+
+    @GetMapping("/shelf-labels/layout")
+    @PreAuthorize("hasAuthority('stock:view')")
+    public List<com.uten.imp.features.stock.dto.ShelfLayoutRack> shelfLabelLayout(
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(defaultValue = "false") boolean includeDisabled) {
+        return service.shelfLabelLayout(warehouseId, includeDisabled);
     }
 }

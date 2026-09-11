@@ -110,6 +110,7 @@ public class ProductionFqcFinishedInboundService
                         LEFT JOIN production_finished_arrival_registration_items
                                   registration_item
                           ON registration_item.source_report_item_id = report_item.id
+                         AND registration_item.reversal_id IS NULL
                         WHERE report.id = :reportId
                           AND report_item.id = :reportItemId
                           AND report.status = 1

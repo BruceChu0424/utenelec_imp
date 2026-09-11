@@ -11,6 +11,9 @@
 // 单据号系统自动生成（后端 DocNumberService），本页只读显示（新增态占位"保存后自动生成"）。
 // 保存组装 body 调 create/update，成功后跳详情。
 // 路由用 SalesRoutePath 字面量（route_names.dart 由上层统一加 sales_*）。
+import '../../../shared/attachments/business_attachment_section.dart';
+import '../../../shared/attachments/pending_attachment_controller.dart';
+import '../../../shared/attachments/pending_attachment_flow.dart';
 import 'package:flutter/material.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
@@ -19,7 +22,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
-import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_edit_floating_actions.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/buttons/uten_drafts_button.dart';
 import '../../../components/buttons/uten_import_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/forms/maker_audit_fields.dart';
@@ -144,6 +149,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
 
   /// 网格底部「总数量」实时汇总（行增删/数量改动时刷新）。
   final _totalQtyNotifier = ValueNotifier<double>(0);
+
+  /// 新建订货单保存前暂存的附件（ADR-074：保存拿到 UUID 后逐个确认上传）。
+  final _pendingFiles = PendingAttachmentController();
+
+  /// 单据已创建但仍有附件上传失败：再次点「保存」只重试附件，不重复建单。
+  String? _createdDocId;
   bool _saving = false;
   bool _loading = true;
   String? _initializationError;
@@ -184,6 +195,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       c.removeListener(_recalcQtyTotal);
     }
     _qtyListened.clear();
+    _pendingFiles.dispose();
     _billNo.dispose();
     _remark.dispose();
     _returnReason.dispose();
@@ -907,6 +919,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   }
 
   Future<void> _save() async {
+    if (_createdDocId case final createdId?) {
+      // 单据已创建、附件未全部上传：只补传附件，成功后进入详情。
+      await _finishCreatedOrder(createdId);
+      return;
+    }
     final err = _validate();
     if (err != null) {
       context.appError(err);
@@ -1070,6 +1087,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
             : (widget.id == null ? '已创建' : '已保存'),
       );
       bumpListRefresh(ref, _cfg.refreshKey);
+      if (widget.id == null &&
+          _hasDraftAttachmentArea &&
+          _pendingFiles.isNotEmpty) {
+        // 新建订货单：先拿到真实 UUID，再把保存前暂存的附件逐个确认上传。
+        setState(() => _createdDocId = d.id);
+        await _finishCreatedOrder(d.id);
+        return;
+      }
       context.replace(SalesRoutePath.docDetail(_cfg.type.pathSegment, d.id));
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
@@ -1080,23 +1105,58 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     }
   }
 
+  /// 只有订货单接了附件对象策略（SALES_ORDER）；其它销售单据没有附件区。
+  bool get _hasDraftAttachmentArea => widget.docType == SalesDocType.order;
+
+  /// 把暂存附件上传到刚创建的订货单；全部成功才跳详情，失败项留在页面供重试。
+  Future<void> _finishCreatedOrder(String createdId) async {
+    setState(() => _saving = true);
+    try {
+      final ok = await flushPendingAttachments(
+        context,
+        ref,
+        _pendingFiles,
+        ownerType: 'SALES_ORDER',
+        ownerIds: [createdId],
+      );
+      if (!mounted || !ok) return;
+      context.replace(
+        SalesRoutePath.docDetail(_cfg.type.pathSegment, createdId),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  String _totalText(
-    SalesMasterNameService names, {
-    required String prefix,
-    required double value,
-  }) {
-    if (_freeCustomerShipment) return '$prefix 不收费（货款 0）';
-    if (widget.docType != SalesDocType.order && !_isCustomerShipment) {
-      return '$prefix ¥${value.toStringAsFixed(2)}';
+  /// 明细表底部合计条的金额项标签：订单/客户出货按单据币种，其余内部出库为本币。
+  String _totalAmountLabel(SalesMasterNameService names) {
+    const base = '总金额';
+    if (_freeCustomerShipment ||
+        (widget.docType != SalesDocType.order && !_isCustomerShipment)) {
+      return base;
     }
     final resolved = names.currency(_currencyId);
-    final currency = resolved == '—'
-        ? (_isCustomerShipment ? '发货币种' : '订单币种')
-        : resolved;
-    return '$prefix($currency) ${value.toStringAsFixed(2)}';
+    return '$base(${resolved == '—' ? (_isCustomerShipment ? '发货币种' : '订单币种') : resolved})';
+  }
+
+  /// 新建态 AppBar 右上角「草稿(N)」入口。
+  ///
+  /// 管理卡 skipListOnCreate 直达新建页，从 hub 打不开列表；本按钮是用户回到自己
+  /// 草稿的唯一入口（点击进列表并预选草稿段）。编辑既有单据时不显示——那时用户
+  /// 已在具体单据里，返回键即可回列表。
+  List<Widget>? get _draftsAction {
+    if (widget.id != null || !_cfg.skipListOnCreate) return null;
+    final kind = _cfg.draftKind;
+    if (kind == null) return null;
+    return [
+      UtenDraftsButton(
+        kind: kind,
+        listLocation: SalesRoutePath.list(_cfg.type.pathSegment),
+      ),
+    ];
   }
 
   @override
@@ -1122,18 +1182,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           onPressed: () =>
               popOrBackTo(context, defaultPath: SalesRoutePath.hub),
         ),
-        actions:
-            !_loading && _initializationError == null && _cfg.skipListOnCreate
-            ? [
-                UtenButton(
-                  type: UtenButtonType.tonal,
-                  icon: Icons.history_rounded,
-                  onPressed: () =>
-                      context.push('/sales/${_cfg.type.pathSegment}'),
-                  child: const Text('查看历史'),
-                ),
-              ]
-            : null,
+        actions: _draftsAction,
       ),
       body: SafeArea(
         child: _loading
@@ -1153,7 +1202,13 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                   thumbVisibility: true,
                   child: ListView(
                     controller: _scrollCtl,
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    // 底部多留一个悬浮动作组的高度，否则明细表最后一行被「取消/保存」压住。
+                    padding: const EdgeInsets.fromLTRB(
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      88,
+                    ),
                     children: [
                       if (_editingApprovedOrder && !_financeRejected) ...[
                         const Card(
@@ -1673,14 +1728,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                         ),
                       ),
                       const SizedBox(height: UtenSpacing.s12),
+                      // 「明细 (N)」标题行 2026-09-11 撤除：行数在表体一目了然、
+                      // 合计在表尾，这行只是多占一条高度。仅保留右对齐的引入入口，
+                      // 无引入能力时整行退化为 0 高（Spacer 不占高度）。
                       Row(
                         children: [
-                          Text(
-                            '明细 (${_grid.length})',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
                           const Spacer(),
                           if (_cfg.hasUpstreamLink)
                             UtenImportButton(
@@ -1721,6 +1773,39 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                             ],
                           ),
                         ),
+                      // 订货单附件（2026-09-09 编辑态就地上传；2026-09-10 新建态保存前暂存）：
+                      // 已有单据直接挂 SALES_ORDER；新建单先在本地暂存，保存拿到 UUID 后
+                      // 逐个确认上传（ADR-074 附件只挂已保存的业务 UUID）。
+                      if (_hasDraftAttachmentArea && widget.id != null) ...[
+                        BusinessAttachmentSection(
+                          ownerType: 'SALES_ORDER',
+                          ownerId: widget.id!,
+                          canView: ref
+                              .watch(currentPermissionsProvider)
+                              .contains(Perm.attachmentView),
+                          // 进入编辑页即已确认可写（非可写在加载时被重定向）；
+                          // 行级权限与对象范围由服务端附件策略再校验。
+                          canManage: true,
+                          title: '附件（合同/客户确认/图片）',
+                          categories: const ['合同', '客户确认', '图片', '其他'],
+                        ),
+                        const SizedBox(height: UtenSpacing.s12),
+                      ] else if (_hasDraftAttachmentArea) ...[
+                        if (_createdDocId != null)
+                          const PendingAttachmentRetryNotice(
+                            documentLabel: '订货单',
+                          ),
+                        BusinessAttachmentSection.draft(
+                          key: const ValueKey('sales-order-draft-attachments'),
+                          controller: _pendingFiles,
+                          canManage: ref
+                              .watch(currentPermissionsProvider)
+                              .contains(Perm.salesOrderCreate),
+                          title: '附件（合同/客户确认/图片）',
+                          categories: const ['合同', '客户确认', '图片', '其他'],
+                        ),
+                        const SizedBox(height: UtenSpacing.s12),
+                      ],
                       // 列显隐/排序按单据模式分桶持久化（账号级，跨设备生效）。
                       Builder(
                         builder: (_) {
@@ -1730,6 +1815,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                           return UtenEditableGrid<SalesGridRow>(
                             controller: _grid,
                             columns: salesGridColumns(
+                              context: context,
                               freeCustomerShipment: _freeCustomerShipment,
                               onPickGoods: _pickGoods,
                               docType: _cfg.type,
@@ -1749,29 +1835,50 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                             onColumnSettingsChanged: (order, hidden) => ref
                                 .read(salesDocGridColumnPrefsProvider.notifier)
                                 .updateFor(widget.docType.name, order, hidden),
-                            // 网格底部：数量严格按单位 UUID 分组；金额仍可在同币种单据内汇总。
-                            footer: Wrap(
-                              alignment: WrapAlignment.end,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              spacing: UtenSpacing.s16,
-                              runSpacing: UtenSpacing.s4,
-                              children: [
-                                ValueListenableBuilder<double>(
-                                  valueListenable: _totalQtyNotifier,
-                                  builder: (_, _, _) => Text(
-                                    '数量 ${measurementTotalsText(_grid.rows.where((row) => row.goods != null).map((row) => MeasuredAmount(value: double.tryParse(row.qty.text.trim()) ?? 0, unitId: row.unitId, unitName: names.unitEntries[row.unitId])))}',
+                            // 网格底部合计条（全站统一 UtenTotalsSummaryBar 口径）：
+                            // 数量严格按单位 UUID 分组，绝不跨单位相加；
+                            // 金额在同币种单据内汇总，币种取表头。
+                            footer: ValueListenableBuilder<double>(
+                              valueListenable: _totalQtyNotifier,
+                              builder: (_, _, _) =>
+                                  ValueListenableBuilder<double>(
+                                    valueListenable: _grid.totalListenable,
+                                    builder: (_, amount, _) =>
+                                        UtenTotalsSummaryBar(
+                                          key: const Key('sales-edit-totals'),
+                                          density: true,
+                                          showDivider: false,
+                                          entries: [
+                                            utenQuantityTotalEntry(
+                                              _grid.rows
+                                                  .where(
+                                                    (row) => row.goods != null,
+                                                  )
+                                                  .map(
+                                                    (row) => MeasuredAmount(
+                                                      value:
+                                                          double.tryParse(
+                                                            row.qty.text.trim(),
+                                                          ) ??
+                                                          0,
+                                                      unitId: row.unitId,
+                                                      unitName:
+                                                          names.unitEntries[row
+                                                              .unitId],
+                                                    ),
+                                                  ),
+                                              label: '数量',
+                                            ),
+                                            UtenTotalEntry(
+                                              _totalAmountLabel(names),
+                                              _freeCustomerShipment
+                                                  ? '不收费（货款 0）'
+                                                  : amount.toStringAsFixed(2),
+                                              danger: true,
+                                            ),
+                                          ],
+                                        ),
                                   ),
-                                ),
-                                ValueListenableBuilder<double>(
-                                  valueListenable: _grid.totalListenable,
-                                  builder: (_, t, _) => Text(
-                                    _totalText(names, prefix: '总金额', value: t),
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ],
                             ),
                           );
                         },
@@ -1781,66 +1888,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                 ),
               ),
       ),
-      bottomNavigationBar: _loading || _initializationError != null
+      // 加载中/初始化失败时不给保存入口（与原底部操作条同一显隐口径）。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: _loading || _initializationError != null
           ? null
-          : SafeArea(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
-                  border: Border(
-                    top: BorderSide(color: theme.colorScheme.outlineVariant),
-                  ),
-                ),
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final total = ValueListenableBuilder<double>(
-                      valueListenable: _grid.totalListenable,
-                      builder: (_, value, _) => Text(
-                        _totalText(names, prefix: '合计', value: value),
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    );
-                    final cancel = UtenButton(
-                      type: UtenButtonType.secondary,
-                      onPressed: () =>
-                          popOrBackTo(context, defaultPath: SalesRoutePath.hub),
-                      child: const Text('取消'),
-                    );
-                    final save = UtenButton(
-                      isLoading: _saving,
-                      icon: Icons.save_outlined,
-                      onPressed: _saving ? null : _save,
-                      child: const Text('保存'),
-                    );
-                    if (constraints.maxWidth < 600) {
-                      return Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          total,
-                          const SizedBox(height: UtenSpacing.s8),
-                          SizedBox(width: double.infinity, child: cancel),
-                          const SizedBox(height: UtenSpacing.s8),
-                          SizedBox(width: double.infinity, child: save),
-                        ],
-                      );
-                    }
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        total,
-                        const SizedBox(width: UtenSpacing.s16),
-                        cancel,
-                        const SizedBox(width: UtenSpacing.s12),
-                        save,
-                      ],
-                    );
-                  },
-                ),
-              ),
+          : UtenEditFloatingActions(
+              onCancel: () =>
+                  popOrBackTo(context, defaultPath: SalesRoutePath.hub),
+              onSave: _save,
+              saving: _saving,
             ),
     );
   }

@@ -1,6 +1,8 @@
 package com.uten.imp.features.warehouse.finishedin;
 
 import com.uten.imp.application.port.ProductionQualityInspectionPort;
+import com.uten.imp.application.port.ProductionQualityInspectionPort.InspectionSheetRef;
+import com.uten.imp.application.port.ProductionQualityInspectionPort.InspectionSheetRequest;
 import com.uten.imp.common.util.CanonicalFingerprint;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.util.NativeValueConverters;
@@ -9,15 +11,18 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationItemRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationItemView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationReversalRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchArrivalRegistrationRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchArrivalRegistrationResult;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchRememberPlacesResult;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchReportRegistrationRequest;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.InspectionSheetSummaryView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.LastWarehouseView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.PlaceSuggestionItemView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.PlaceSuggestionsView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.RegisteredReportView;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.RegistrationBatchView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.RememberPlacesResult;
 import com.uten.imp.security.ProductionStockTaskAccessPolicy;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -42,10 +47,19 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
-/** Warehouse-owned destination/placement registration before production FQC. */
+/**
+ * Warehouse-owned destination/placement registration before production FQC.
+ *
+ * <p>V547：同一登记命令下同一成品仓的 FQC 待检行归入一张品质检查单（展示/办理聚合）。
+ * V548：品质未处理的登记批次可撤回，报工行重新回到待登记；「未登记」谓词统一引用
+ * 数据库视图 {@code v_production_report_items_pending_registration}。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class ProductionFinishedArrivalRegistrationService {
+
+    static final String SOURCE_ARRIVAL_SINGLE = "ARRIVAL_SINGLE";
+    static final String SOURCE_ARRIVAL_BATCH = "ARRIVAL_BATCH";
 
     private final EntityManager em;
     private final SecurityContextCurrentUser currentUser;
@@ -101,8 +115,8 @@ public class ProductionFinishedArrivalRegistrationService {
                                 FROM production_daily_reports report
                                 JOIN production_daily_report_items report_item
                                   ON report_item.report_id = report.id
-                                 AND report_item.is_deleted = FALSE
-                                 AND report_item.execution_segment_id IS NOT NULL
+                                JOIN v_production_report_items_pending_registration pending
+                                  ON pending.report_item_id = report_item.id
                                 JOIN goods goods
                                   ON goods.id = report_item.goods_id
                                  AND goods.is_deleted = FALSE
@@ -131,6 +145,7 @@ public class ProductionFinishedArrivalRegistrationService {
                                                   history_item
                                           ON history_item.registration_id =
                                              history_registration.id
+                                         AND history_item.reversal_id IS NULL
                                         JOIN production_daily_report_items history_report_item
                                           ON history_report_item.id =
                                              history_item.source_report_item_id
@@ -151,22 +166,6 @@ public class ProductionFinishedArrivalRegistrationService {
                                 WHERE report.id IN (:reportIds)
                                   AND report.status = 1
                                   AND report.is_deleted = FALSE
-                                  AND NOT EXISTS (
-                                      SELECT 1
-                                      FROM production_finished_arrival_registration_items
-                                               registered_item
-                                      WHERE registered_item.source_report_item_id =
-                                            report_item.id)
-                                  AND NOT EXISTS (
-                                      SELECT 1
-                                      FROM production_fqc_inspections inspection
-                                      WHERE inspection.source_report_item_id =
-                                            report_item.id)
-                                  AND NOT EXISTS (
-                                      SELECT 1
-                                      FROM production_fqc_legacy_exemptions exemption
-                                      WHERE exemption.source_report_item_id =
-                                            report_item.id)
                                 ORDER BY report_item.line_no NULLS LAST,
                                          report_item.id
                                 """)
@@ -183,6 +182,10 @@ public class ProductionFinishedArrivalRegistrationService {
                 .toList());
     }
 
+    /**
+     * 单张登记：登记头/行 + 逐行 FQC PENDING + 一张品质检查单（V547）同事务提交。
+     * 页面按行仓分组后每个仓调用一次（幂等键 = 页面键 + ':' + 仓库 UUID）。
+     */
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
     public ArrivalRegistrationView register(
@@ -194,13 +197,34 @@ public class ProductionFinishedArrivalRegistrationService {
             throw validation("生产成品送检登记请求不能为空");
         }
         NormalizedRequest normalized = normalize(request);
+        RegistrationOutcome outcome = registerNormalized(reportId, normalized);
+        if (!outcome.replay()) {
+            qualityInspection.openInspectionSheet(new InspectionSheetRequest(
+                    outcome.warehouseId(), outcome.warehouseName(),
+                    outcome.receiver().id(), outcome.receiver().name(),
+                    normalized.remark(), SOURCE_ARRIVAL_SINGLE,
+                    normalized.idempotencyKey(),
+                    List.of(outcome.registrationId())));
+        }
+        return detailInternal(reportId, outcome.registrationId());
+    }
+
+    /**
+     * Shared registration core for the single and batch commands. Same actor +
+     * same key + same request replays the original batch; the caller decides
+     * how the newly created batches are grouped into inspection sheets.
+     */
+    private RegistrationOutcome registerNormalized(
+            UUID reportId,
+            NormalizedRequest normalized) {
         UUID actorId = currentUser.requireId();
         UUID receiverEmployeeId = currentUser.requireEmployeeId();
 
         lockCommand(actorId, normalized.idempotencyKey());
         List<Object[]> replay = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
-                                SELECT id, source_report_id, request_hash
+                                SELECT id, source_report_id, request_hash,
+                                       warehouse_id, warehouse_name_snapshot
                                 FROM production_finished_arrival_registrations
                                 WHERE created_by = :actorId
                                   AND idempotency_key = :idempotencyKey
@@ -215,35 +239,22 @@ public class ProductionFinishedArrivalRegistrationService {
                     || !Objects.equals(existing[2], normalized.requestHash())) {
                 throw conflict("该仓库登记幂等键已用于不同请求");
             }
-            return detailInternal(reportId, (UUID) existing[0]);
+            return new RegistrationOutcome(
+                    (UUID) existing[0], true, (UUID) existing[3],
+                    text(existing[4]), null);
         }
 
         Object[] report = lockApprovedReport(reportId);
+        // V548：待登记口径统一走视图（撤回后的报工行重新可登记）。
         List<UUID> pendingReportItemIds = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
                                 SELECT report_item.id
                                 FROM production_daily_report_items report_item
+                                JOIN v_production_report_items_pending_registration pending
+                                  ON pending.report_item_id = report_item.id
                                 WHERE report_item.report_id = :reportId
-                                  AND report_item.is_deleted = FALSE
-                                  AND report_item.execution_segment_id IS NOT NULL
-                                  AND NOT EXISTS (
-                                      SELECT 1
-                                      FROM production_finished_arrival_registration_items
-                                               registered_item
-                                      WHERE registered_item.source_report_item_id =
-                                            report_item.id)
-                                  AND NOT EXISTS (
-                                      SELECT 1
-                                      FROM production_fqc_inspections inspection
-                                      WHERE inspection.source_report_item_id =
-                                            report_item.id)
-                                  AND NOT EXISTS (
-                                      SELECT 1
-                                      FROM production_fqc_legacy_exemptions exemption
-                                      WHERE exemption.source_report_item_id =
-                                            report_item.id)
                                 ORDER BY report_item.id
-                                FOR UPDATE
+                                FOR UPDATE OF report_item
                                 """)
                         .setParameter("reportId", reportId),
                 UUID.class);
@@ -259,12 +270,12 @@ public class ProductionFinishedArrivalRegistrationService {
                             id, source_report_id, warehouse_id,
                             warehouse_code_snapshot, warehouse_name_snapshot,
                             receiver_employee_id, receiver_name_snapshot,
-                            idempotency_key, request_hash, created_by)
+                            idempotency_key, request_hash, remark, created_by)
                         VALUES (
                             :id, :reportId, :warehouseId,
                             :warehouseCode, :warehouseName,
                             :receiverId, :receiverName,
-                            :idempotencyKey, :requestHash, :actorId)
+                            :idempotencyKey, :requestHash, :remark, :actorId)
                         """)
                 .setParameter("id", registrationId)
                 .setParameter("reportId", reportId)
@@ -275,6 +286,7 @@ public class ProductionFinishedArrivalRegistrationService {
                 .setParameter("receiverName", receiver.name())
                 .setParameter("idempotencyKey", normalized.idempotencyKey())
                 .setParameter("requestHash", normalized.requestHash())
+                .setParameter("remark", normalized.remark())
                 .setParameter("actorId", actorId)
                 .executeUpdate();
 
@@ -300,15 +312,136 @@ public class ProductionFinishedArrivalRegistrationService {
                 (UUID) report[0],
                 normalized.places().keySet().stream().sorted().toList(),
                 registrationId);
+        return new RegistrationOutcome(
+                registrationId, false, normalized.warehouseId(),
+                warehouse.name(), receiver);
+    }
+
+    /**
+     * V548 登记撤回：仅当该批次每条 FQC 仍 PENDING 且无决定/放行/恢复授权。
+     * 追加撤回记录 → 登记行标记 → 逐条 FQC 追加 REGISTRATION_REVERSED 取消事件；
+     * 数据库延迟守卫在提交前核对批次无残留未取消 inspection。
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
+    public ArrivalRegistrationView reverse(
+            UUID registrationId,
+            ArrivalRegistrationReversalRequest request) {
+        tx.bind();
+        access.requireWarehouseTaskAccess("无权撤回生产成品送检登记");
+        if (registrationId == null || request == null) {
+            throw validation("登记撤回请求不能为空");
+        }
+        NormalizedReversal normalized = normalizeReversal(registrationId, request);
+        UUID actorId = currentUser.requireId();
+        lockCommand(actorId, "REVERSAL:" + normalized.idempotencyKey());
+        List<Object[]> replay = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT reversal.id, reversal.registration_id,
+                                       reversal.request_hash,
+                                       registration.source_report_id
+                                FROM production_finished_arrival_registration_reversals reversal
+                                JOIN production_finished_arrival_registrations registration
+                                  ON registration.id = reversal.registration_id
+                                WHERE reversal.created_by = :actorId
+                                  AND reversal.idempotency_key = :idempotencyKey
+                                """)
+                        .setParameter("actorId", actorId)
+                        .setParameter("idempotencyKey", normalized.idempotencyKey()));
+        if (!replay.isEmpty()) {
+            Object[] existing = replay.getFirst();
+            if (!Objects.equals(existing[1], registrationId)
+                    || !Objects.equals(existing[2], normalized.requestHash())) {
+                throw conflict("该登记撤回幂等键已用于不同请求");
+            }
+            return detailInternal((UUID) existing[3], registrationId);
+        }
+
+        List<Object[]> registrations = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT id, source_report_id
+                                FROM production_finished_arrival_registrations
+                                WHERE id = :registrationId
+                                FOR UPDATE
+                                """)
+                        .setParameter("registrationId", registrationId));
+        if (registrations.size() != 1) throw notFound();
+        UUID reportId = (UUID) registrations.getFirst()[1];
+        lockApprovedReport(reportId);
+        Number reversed = (Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM production_finished_arrival_registration_reversals
+                        WHERE registration_id = :registrationId
+                        """)
+                .setParameter("registrationId", registrationId)
+                .getSingleResult();
+        if (reversed != null && reversed.longValue() > 0) {
+            throw conflict("该登记批次已撤回，请刷新页面");
+        }
+        Number blocked = (Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM production_finished_arrival_registration_items registration_item
+                        LEFT JOIN production_fqc_inspections inspection
+                          ON inspection.source_report_item_id =
+                             registration_item.source_report_item_id
+                         AND inspection.status <> 'CANCELLED'
+                        WHERE registration_item.registration_id = :registrationId
+                          AND registration_item.reversal_id IS NULL
+                          AND (inspection.id IS NULL
+                               OR inspection.status <> 'PENDING'
+                               OR inspection.passed_qty <> 0
+                               OR inspection.failed_qty <> 0
+                               OR EXISTS (
+                                   SELECT 1 FROM production_fqc_decision_events decision
+                                   WHERE decision.inspection_id = inspection.id)
+                               OR EXISTS (
+                                   SELECT 1 FROM production_fqc_release_commands command
+                                   WHERE command.inspection_id = inspection.id)
+                               OR EXISTS (
+                                   SELECT 1 FROM production_fqc_recovery_authorizations
+                                                recovery_auth
+                                   WHERE recovery_auth.source_inspection_id =
+                                         inspection.id))
+                        """)
+                .setParameter("registrationId", registrationId)
+                .getSingleResult();
+        if (blocked != null && blocked.longValue() > 0) {
+            throw conflict("该登记批次已有品质处理（已决定、已放行或已进入恢复链），不能撤回登记");
+        }
+
+        UUID reversalId = UUID.randomUUID();
+        em.createNativeQuery("""
+                        SELECT set_config(
+                            'app.production_finished_arrival_reversal_id',
+                            :reversalId, TRUE)
+                        """)
+                .setParameter("reversalId", reversalId.toString())
+                .getSingleResult();
+        em.createNativeQuery("""
+                        INSERT INTO production_finished_arrival_registration_reversals(
+                            id, registration_id, reason, idempotency_key,
+                            request_hash, created_by)
+                        VALUES (
+                            :id, :registrationId, :reason, :idempotencyKey,
+                            :requestHash, :actorId)
+                        """)
+                .setParameter("id", reversalId)
+                .setParameter("registrationId", registrationId)
+                .setParameter("reason", normalized.reason())
+                .setParameter("idempotencyKey", normalized.idempotencyKey())
+                .setParameter("requestHash", normalized.requestHash())
+                .setParameter("actorId", actorId)
+                .executeUpdate();
+        int cancelled = qualityInspection.cancelForReversedRegistration(
+                registrationId, reversalId);
+        if (cancelled == 0) {
+            throw conflict("该登记批次没有可取消的待检任务，撤回已中止");
+        }
         return detailInternal(reportId, registrationId);
     }
 
-    @Transactional
-    @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
-    public RememberPlacesResult rememberPlaces(UUID reportId) {
-        return rememberPlaces(reportId, null);
-    }
-
+    // 2026-09-11 死代码清扫：rememberPlaces(UUID) 单参便捷重载随 rememberPlacesBatch
+    // 一并退役；controller 与批量记忆都走下面的两参版本（registrationId 可为 null）。
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
     public RememberPlacesResult rememberPlaces(
@@ -322,8 +455,12 @@ public class ProductionFinishedArrivalRegistrationService {
         if (exactRegistrationId == null) {
             Number registrationCount = (Number) em.createNativeQuery("""
                             SELECT COUNT(*)
-                            FROM production_finished_arrival_registrations
-                            WHERE source_report_id = :reportId
+                            FROM production_finished_arrival_registrations registration
+                            WHERE registration.source_report_id = :reportId
+                              AND NOT EXISTS (
+                                  SELECT 1
+                                  FROM production_finished_arrival_registration_reversals reversal
+                                  WHERE reversal.registration_id = registration.id)
                             """)
                     .setParameter("reportId", reportId)
                     .getSingleResult();
@@ -338,6 +475,10 @@ public class ProductionFinishedArrivalRegistrationService {
                       SELECT latest.id
                       FROM production_finished_arrival_registrations latest
                       WHERE latest.source_report_id = :reportId
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM production_finished_arrival_registration_reversals reversal
+                            WHERE reversal.registration_id = latest.id)
                       ORDER BY latest.created_at DESC, latest.id DESC
                       LIMIT 1)
                   """
@@ -363,6 +504,7 @@ public class ProductionFinishedArrivalRegistrationService {
                                 JOIN production_finished_arrival_registration_items
                                           registration_item
                                   ON registration_item.registration_id = registration.id
+                                 AND registration_item.reversal_id IS NULL
                                 JOIN production_daily_report_items report_item
                                   ON report_item.id = registration_item.source_report_item_id
                                  AND report_item.report_id = report.id
@@ -505,7 +647,9 @@ public class ProductionFinishedArrivalRegistrationService {
                                        report_item.unit_id, unit.name,
                                        report_item.qty,
                                        registration_item.place_snapshot,
-                                       goods.stock_place
+                                       goods.stock_place,
+                                       NULL::uuid AS last_warehouse_id,
+                                       NULL::text AS last_warehouse_name
                                 FROM production_daily_report_items report_item
                                 JOIN production_plan_items plan_item
                                   ON plan_item.id = report_item.plan_item_id
@@ -534,6 +678,15 @@ public class ProductionFinishedArrivalRegistrationService {
         EmployeeSnapshot currentReceiver = registered
                 ? null
                 : requireReceiver(currentUser.requireEmployeeId());
+        List<RegistrationBatchView> batches = registrationBatches(reportId);
+        RegistrationBatchView current = null;
+        if (registered) {
+            UUID registrationId = (UUID) registration[0];
+            current = batches.stream()
+                    .filter(batch -> registrationId.equals(batch.registrationId()))
+                    .findFirst()
+                    .orElse(null);
+        }
         return new ArrivalRegistrationView(
                 registered ? (UUID) registration[0] : null,
                 registered, (UUID) header[0],
@@ -544,55 +697,145 @@ public class ProductionFinishedArrivalRegistrationService {
                 registered ? text(registration[3]) : null,
                 registered ? (UUID) registration[4] : currentReceiver.id(),
                 registered ? text(registration[5]) : currentReceiver.name(),
+                registered ? text(registration[7]) : null,
                 registered ? offsetDateTime(registration[6]) : null,
-                mapArrivalItems(rows));
+                mapArrivalItems(rows),
+                current == null ? null : current.sheetId(),
+                current == null ? null : current.sheetNo(),
+                current == null ? null : current.reversedAt(),
+                current == null ? null : current.reversalReason(),
+                current != null && current.reversible(),
+                batches);
     }
+
+    /** 同一报工的全部登记批次（含检查单号、撤回态、可撤回判定）；无登记时为空。 */
+    private List<RegistrationBatchView> registrationBatches(UUID reportId) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT registration.id,
+                                       registration.warehouse_id,
+                                       registration.warehouse_name_snapshot,
+                                       registration.receiver_name_snapshot,
+                                       registration.remark,
+                                       registration.created_at,
+                                       (SELECT COUNT(*)
+                                        FROM production_finished_arrival_registration_items item
+                                        WHERE item.registration_id = registration.id),
+                                       sheet.id,
+                                       sheet.sheet_no,
+                                       reversal.created_at,
+                                       reversal.reason,
+                                       reversal.id IS NULL
+                                       AND NOT EXISTS (
+                                           SELECT 1
+                                           FROM production_finished_arrival_registration_items item
+                                           LEFT JOIN production_fqc_inspections inspection
+                                             ON inspection.source_report_item_id =
+                                                item.source_report_item_id
+                                            AND inspection.status <> 'CANCELLED'
+                                           WHERE item.registration_id = registration.id
+                                             AND item.reversal_id IS NULL
+                                             AND (inspection.id IS NULL
+                                                  OR inspection.status <> 'PENDING'
+                                                  OR inspection.passed_qty <> 0
+                                                  OR inspection.failed_qty <> 0
+                                                  OR EXISTS (
+                                                      SELECT 1
+                                                      FROM production_fqc_decision_events decision
+                                                      WHERE decision.inspection_id = inspection.id)
+                                                  OR EXISTS (
+                                                      SELECT 1
+                                                      FROM production_fqc_release_commands command
+                                                      WHERE command.inspection_id = inspection.id)
+                                                  OR EXISTS (
+                                                      SELECT 1
+                                                      FROM production_fqc_recovery_authorizations
+                                                           recovery_auth
+                                                      WHERE recovery_auth.source_inspection_id =
+                                                            inspection.id))) AS reversible
+                                FROM production_finished_arrival_registrations registration
+                                LEFT JOIN production_finished_arrival_registration_reversals reversal
+                                  ON reversal.registration_id = registration.id
+                                LEFT JOIN LATERAL (
+                                    SELECT sheet.id, sheet.sheet_no
+                                    FROM production_fqc_inspection_sheet_items sheet_item
+                                    JOIN production_fqc_inspection_sheets sheet
+                                      ON sheet.id = sheet_item.sheet_id
+                                    WHERE sheet_item.registration_id = registration.id
+                                    ORDER BY sheet.created_at, sheet.id
+                                    LIMIT 1
+                                ) sheet ON TRUE
+                                WHERE registration.source_report_id = :reportId
+                                ORDER BY registration.created_at, registration.id
+                                """)
+                        .setParameter("reportId", reportId));
+        return rows.stream()
+                .map(row -> new RegistrationBatchView(
+                        (UUID) row[0], (UUID) row[1], text(row[2]), text(row[3]),
+                        text(row[4]), offsetDateTime(row[5]),
+                        ((Number) row[6]).intValue(), (UUID) row[7], text(row[8]),
+                        offsetDateTime(row[9]), text(row[10]),
+                        Boolean.TRUE.equals(row[11])))
+                .toList();
+    }
+
+    private static final String PENDING_ITEM_COLUMNS = """
+            SELECT report_item.id, report_item.line_no,
+                   report_item.plan_item_id,
+                   report_item.execution_segment_id,
+                   plan.id, plan.bill_no,
+                   report_item.goods_id,
+                   goods.code, goods.name,
+                   report_item.color_id, color.name,
+                   report_item.unit_id, unit.name,
+                   report_item.qty,
+                   NULL::text AS place_snapshot,
+                   goods.stock_place,
+                   last_warehouse.warehouse_id,
+                   last_warehouse.warehouse_name_snapshot
+            """;
+
+    /**
+     * 待登记行 + 逐行「上次成品仓」只读建议（同货品同颜色最近一次有效登记的仓；
+     * 不含已撤回登记）。仅作页面预填，服务端不据此决定任何事实。
+     */
+    private static final String PENDING_ITEM_JOINS = """
+            FROM production_daily_report_items report_item
+            JOIN v_production_report_items_pending_registration pending
+              ON pending.report_item_id = report_item.id
+            JOIN production_plan_items plan_item
+              ON plan_item.id = report_item.plan_item_id
+             AND plan_item.is_deleted = FALSE
+            JOIN production_plans plan
+              ON plan.id = plan_item.plan_id
+             AND plan.is_deleted = FALSE
+            JOIN goods goods ON goods.id = report_item.goods_id
+            LEFT JOIN colors color
+              ON color.id = report_item.color_id
+            LEFT JOIN units unit
+              ON unit.id = report_item.unit_id
+            LEFT JOIN LATERAL (
+                SELECT history_registration.warehouse_id,
+                       history_registration.warehouse_name_snapshot
+                FROM production_finished_arrival_registration_items history_item
+                JOIN production_finished_arrival_registrations history_registration
+                  ON history_registration.id = history_item.registration_id
+                JOIN production_daily_report_items history_report_item
+                  ON history_report_item.id = history_item.source_report_item_id
+                WHERE history_item.reversal_id IS NULL
+                  AND history_report_item.goods_id = report_item.goods_id
+                  AND history_report_item.color_id
+                      IS NOT DISTINCT FROM report_item.color_id
+                ORDER BY history_registration.created_at DESC,
+                         history_registration.id DESC
+                LIMIT 1
+            ) last_warehouse ON TRUE
+            """;
 
     private List<Object[]> pendingItemRows(UUID reportId) {
         return NativeQueryResults.objectArrayRows(
-                em.createNativeQuery("""
-                                SELECT report_item.id, report_item.line_no,
-                                       report_item.plan_item_id,
-                                       report_item.execution_segment_id,
-                                       plan.id, plan.bill_no,
-                                       report_item.goods_id,
-                                       goods.code, goods.name,
-                                       report_item.color_id, color.name,
-                                       report_item.unit_id, unit.name,
-                                       report_item.qty,
-                                       NULL::text AS place_snapshot,
-                                       goods.stock_place
-                                FROM production_daily_report_items report_item
-                                JOIN production_plan_items plan_item
-                                  ON plan_item.id = report_item.plan_item_id
-                                 AND plan_item.is_deleted = FALSE
-                                JOIN production_plans plan
-                                  ON plan.id = plan_item.plan_id
-                                 AND plan.is_deleted = FALSE
-                                JOIN goods goods ON goods.id = report_item.goods_id
-                                LEFT JOIN colors color
-                                  ON color.id = report_item.color_id
-                                LEFT JOIN units unit
-                                  ON unit.id = report_item.unit_id
+                em.createNativeQuery(PENDING_ITEM_COLUMNS + PENDING_ITEM_JOINS + """
                                 WHERE report_item.report_id = :reportId
-                                  AND report_item.is_deleted = FALSE
-                                  AND report_item.execution_segment_id IS NOT NULL
-                                  AND NOT EXISTS (
-                                      SELECT 1
-                                      FROM production_finished_arrival_registration_items
-                                               registered_item
-                                      WHERE registered_item.source_report_item_id =
-                                            report_item.id)
-                                  AND NOT EXISTS (
-                                      SELECT 1
-                                      FROM production_fqc_inspections inspection
-                                      WHERE inspection.source_report_item_id =
-                                            report_item.id)
-                                  AND NOT EXISTS (
-                                      SELECT 1
-                                      FROM production_fqc_legacy_exemptions exemption
-                                      WHERE exemption.source_report_item_id =
-                                            report_item.id)
                                 ORDER BY report_item.line_no NULLS LAST,
                                          report_item.id
                                 """)
@@ -611,11 +854,16 @@ public class ProductionFinishedArrivalRegistrationService {
                                registration.warehouse_name_snapshot,
                                registration.receiver_employee_id,
                                registration.receiver_name_snapshot,
-                               registration.created_at
+                               registration.created_at,
+                               registration.remark
                         FROM production_finished_arrival_registrations registration
                         WHERE registration.source_report_id = :reportId
                         """ + exact + """
-                        ORDER BY registration.created_at DESC,
+                        ORDER BY EXISTS (
+                                     SELECT 1
+                                     FROM production_finished_arrival_registration_reversals reversal
+                                     WHERE reversal.registration_id = registration.id),
+                                 registration.created_at DESC,
                                  registration.id DESC
                         LIMIT 1
                         """)
@@ -636,7 +884,7 @@ public class ProductionFinishedArrivalRegistrationService {
                         (UUID) row[6], text(row[7]), text(row[8]),
                         (UUID) row[9], text(row[10]), (UUID) row[11],
                         text(row[12]), decimal(row[13]), text(row[14]),
-                        text(row[15])))
+                        text(row[15]), (UUID) row[16], text(row[17])))
                 .toList();
     }
 
@@ -662,50 +910,10 @@ public class ProductionFinishedArrivalRegistrationService {
         }
 
         List<Object[]> itemRows = NativeQueryResults.objectArrayRows(
-                em.createNativeQuery("""
-                                SELECT report_item.report_id,
-                                       report_item.id, report_item.line_no,
-                                       report_item.plan_item_id,
-                                       report_item.execution_segment_id,
-                                       plan.id, plan.bill_no,
-                                       report_item.goods_id,
-                                       goods.code, goods.name,
-                                       report_item.color_id, color.name,
-                                       report_item.unit_id, unit.name,
-                                       report_item.qty,
-                                       NULL::text AS place_snapshot,
-                                       goods.stock_place
-                                FROM production_daily_report_items report_item
-                                JOIN production_plan_items plan_item
-                                  ON plan_item.id = report_item.plan_item_id
-                                 AND plan_item.is_deleted = FALSE
-                                JOIN production_plans plan
-                                  ON plan.id = plan_item.plan_id
-                                 AND plan.is_deleted = FALSE
-                                JOIN goods goods ON goods.id = report_item.goods_id
-                                LEFT JOIN colors color
-                                  ON color.id = report_item.color_id
-                                LEFT JOIN units unit
-                                  ON unit.id = report_item.unit_id
+                em.createNativeQuery(
+                        "SELECT report_item.report_id, " + PENDING_ITEM_COLUMNS.substring(7)
+                                + PENDING_ITEM_JOINS + """
                                 WHERE report_item.report_id IN (:reportIds)
-                                  AND report_item.is_deleted = FALSE
-                                  AND report_item.execution_segment_id IS NOT NULL
-                                  AND NOT EXISTS (
-                                      SELECT 1
-                                      FROM production_finished_arrival_registration_items
-                                               registered_item
-                                      WHERE registered_item.source_report_item_id =
-                                            report_item.id)
-                                  AND NOT EXISTS (
-                                      SELECT 1
-                                      FROM production_fqc_inspections inspection
-                                      WHERE inspection.source_report_item_id =
-                                            report_item.id)
-                                  AND NOT EXISTS (
-                                      SELECT 1
-                                      FROM production_fqc_legacy_exemptions exemption
-                                      WHERE exemption.source_report_item_id =
-                                            report_item.id)
                                 ORDER BY report_item.report_id,
                                          report_item.line_no NULLS LAST,
                                          report_item.id
@@ -736,8 +944,9 @@ public class ProductionFinishedArrivalRegistrationService {
                     null, false, (UUID) header[0],
                     text(header[1]), localDate(header[2]), (UUID) header[3],
                     text(header[4]), null, null, null,
-                    receiver.id(), receiver.name(), null,
-                    mapArrivalItems(items)));
+                    receiver.id(), receiver.name(), null, null,
+                    mapArrivalItems(items),
+                    null, null, null, null, false, List.of()));
         }
         return List.copyOf(result);
     }
@@ -756,9 +965,10 @@ public class ProductionFinishedArrivalRegistrationService {
     }
 
     /**
-     * 多张报工单一次性汇总登记送检：外层一个事务，逐单复用 {@link #register}
-     * 的完整校验与逐行 FQC 创建（每个请求可为待办行的非空子集）；任一单失败整批回滚。
+     * 多张报工单一次性汇总登记送检：外层一个事务，逐单复用单册登记核心的完整校验
+     * 与逐行 FQC 创建（每个请求可为待办行的非空子集）；任一单失败整批回滚。
      * 幂等：批量键 + 报工单 UUID 派生逐单子键，重试时已完成单自动安全重放。
+     * V547：本批新建的登记按成品仓分组，每个仓生成一张品质检查单（同键重放不再建单）。
      */
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
@@ -795,41 +1005,95 @@ public class ProductionFinishedArrivalRegistrationService {
                 .sorted(Comparator.comparing(
                         BatchReportRegistrationRequest::reportId))
                 .toList();
-        List<RegisteredReportView> registered = new ArrayList<>();
+        Map<UUID, RegistrationOutcome> outcomes = new LinkedHashMap<>();
         for (BatchReportRegistrationRequest report : orderedReports) {
             UUID reportId = report.reportId();
             // 子键 = 批量键 + 报工单 UUID（UUID 仅含十六进制与 '-'，落在合法字符集内）。
             String reportKey = batchKey + ":" + reportId;
-            ArrivalRegistrationView view = register(reportId, new ArrivalRegistrationRequest(
-                    reportKey, report.warehouseId(), report.items()));
+            NormalizedRequest normalized = normalize(new ArrivalRegistrationRequest(
+                    reportKey, report.warehouseId(), report.items(), request.remark()));
+            outcomes.put(reportId, registerNormalized(reportId, normalized));
+        }
+
+        // 同仓新建批次 → 一张检查单；备注与收货人来自本批命令（登记头已分别冻结）。
+        String remark = request.remark() == null ? null : request.remark().strip();
+        Map<UUID, List<RegistrationOutcome>> byWarehouse = new LinkedHashMap<>();
+        for (RegistrationOutcome outcome : outcomes.values()) {
+            if (outcome.replay()) continue;
+            byWarehouse.computeIfAbsent(
+                    outcome.warehouseId(), ignored -> new ArrayList<>())
+                    .add(outcome);
+        }
+        for (Map.Entry<UUID, List<RegistrationOutcome>> entry : byWarehouse.entrySet()) {
+            RegistrationOutcome first = entry.getValue().getFirst();
+            qualityInspection.openInspectionSheet(new InspectionSheetRequest(
+                    entry.getKey(), first.warehouseName(),
+                    first.receiver().id(), first.receiver().name(),
+                    remark, SOURCE_ARRIVAL_BATCH, batchKey,
+                    entry.getValue().stream()
+                            .map(RegistrationOutcome::registrationId)
+                            .toList()));
+        }
+
+        List<UUID> registrationIds = outcomes.values().stream()
+                .map(RegistrationOutcome::registrationId)
+                .toList();
+        Map<UUID, Object[]> sheetByRegistration = sheetsByRegistration(registrationIds);
+        List<RegisteredReportView> registered = new ArrayList<>();
+        Map<UUID, InspectionSheetSummaryView> sheets = new LinkedHashMap<>();
+        for (Map.Entry<UUID, RegistrationOutcome> entry : outcomes.entrySet()) {
+            RegistrationOutcome outcome = entry.getValue();
+            Object[] sheet = sheetByRegistration.get(outcome.registrationId());
+            String reportNo = text(sheet == null ? null : sheet[5]);
+            UUID sheetId = sheet == null ? null : (UUID) sheet[0];
             registered.add(new RegisteredReportView(
-                    view.registrationId(), view.reportId(), view.reportNo(),
-                    view.warehouseId(), view.warehouseName()));
+                    outcome.registrationId(), entry.getKey(), reportNo,
+                    outcome.warehouseId(), outcome.warehouseName(),
+                    sheetId, text(sheet == null ? null : sheet[1])));
+            if (sheet != null && !sheets.containsKey(sheetId)) {
+                sheets.put(sheetId, new InspectionSheetSummaryView(
+                        sheetId, text(sheet[1]), (UUID) sheet[2], text(sheet[3]),
+                        ((Number) sheet[4]).intValue()));
+            }
         }
-        return new BatchArrivalRegistrationResult(registered.size(), registered);
+        return new BatchArrivalRegistrationResult(
+                registered.size(), registered, new ArrayList<>(sheets.values()));
     }
 
-    /** 批量登记后的库位记忆：逐单复用 {@link #rememberPlaces} 的偏好 UPSERT 口径并汇总。 */
-    @Transactional
-    @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
-    public BatchRememberPlacesResult rememberPlacesBatch(List<UUID> reportIds) {
-        tx.bind();
-        access.requireWarehouseTaskAccess("无权记忆生产成品库位建议");
-        List<UUID> ids = requireReportIds(reportIds);
-        int remembered = 0;
-        int unchanged = 0;
-        int ambiguous = 0;
-        List<String> warnings = new ArrayList<>();
-        for (UUID reportId : ids) {
-            RememberPlacesResult result = rememberPlaces(reportId);
-            remembered += result.remembered();
-            unchanged += result.unchanged();
-            ambiguous += result.ambiguous();
-            warnings.addAll(result.warnings());
+    /** 登记批次 → 所属检查单（每个批次恰一张）+ 报工单号；一次有界查询。 */
+    private Map<UUID, Object[]> sheetsByRegistration(List<UUID> registrationIds) {
+        if (registrationIds.isEmpty()) return Map.of();
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT DISTINCT ON (registration.id)
+                                       sheet.id, sheet.sheet_no, sheet.warehouse_id,
+                                       sheet.warehouse_name_snapshot,
+                                       (SELECT COUNT(*)
+                                        FROM production_fqc_inspection_sheet_items counted
+                                        WHERE counted.sheet_id = sheet.id),
+                                       report.bill_no,
+                                       registration.id
+                                FROM production_finished_arrival_registrations registration
+                                JOIN production_daily_reports report
+                                  ON report.id = registration.source_report_id
+                                LEFT JOIN production_fqc_inspection_sheet_items sheet_item
+                                  ON sheet_item.registration_id = registration.id
+                                LEFT JOIN production_fqc_inspection_sheets sheet
+                                  ON sheet.id = sheet_item.sheet_id
+                                WHERE registration.id IN (:registrationIds)
+                                ORDER BY registration.id, sheet.created_at, sheet.id
+                                """)
+                        .setParameter("registrationIds", registrationIds));
+        Map<UUID, Object[]> result = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            result.put((UUID) row[6], row);
         }
-        return new BatchRememberPlacesResult(remembered, unchanged, ambiguous, warnings);
+        return result;
     }
 
+    // 2026-09-11 死代码清扫：rememberPlacesBatch(List<UUID> reportIds)（按报工 UUID
+    // 逐单记忆）无调用方——前端批量登记一律走下面的 rememberPlacesForRegistrations，
+    // 按服务端返回的 registration UUID 精确绑定，避免并发批次「猜最新」。
     /**
      * Exact V469 remember path. Registration ids come from the batch-register
      * response, so another partial batch for the same report cannot change the
@@ -1009,6 +1273,12 @@ public class ProductionFinishedArrivalRegistrationService {
                 || !key.matches("[A-Za-z0-9._:-]+")) {
             throw validation("送检登记幂等键格式无效");
         }
+        String remark = request.remark() == null
+                ? null : request.remark().strip();
+        if (remark != null && remark.isEmpty()) remark = null;
+        if (remark != null && remark.length() > 500) {
+            throw validation("备注不能超过 500 个字符");
+        }
         Map<UUID, String> places = new LinkedHashMap<>();
         if (request.items().stream().anyMatch(Objects::isNull)) {
             throw validation("送检登记行不能为空");
@@ -1034,9 +1304,34 @@ public class ProductionFinishedArrivalRegistrationService {
         hashParts.add("PRODUCTION-FINISHED-ARRIVAL-REGISTRATION-V1");
         hashParts.add(request.warehouseId().toString());
         places.forEach((id, place) -> hashParts.add(id + "|" + place));
+        hashParts.add("remark=" + (remark == null ? "" : remark));
         return new NormalizedRequest(
-                key, request.warehouseId(), Map.copyOf(places),
+                key, request.warehouseId(), Map.copyOf(places), remark,
                 CanonicalFingerprint.sha256(hashParts));
+    }
+
+    static NormalizedReversal normalizeReversal(
+            UUID registrationId,
+            ArrivalRegistrationReversalRequest request) {
+        if (registrationId == null || request == null
+                || request.idempotencyKey() == null || request.reason() == null) {
+            throw validation("登记撤回缺少登记批次、幂等键或原因");
+        }
+        String key = request.idempotencyKey().strip();
+        if (key.length() < 8 || key.length() > 128
+                || !key.matches("[A-Za-z0-9._:-]+")) {
+            throw validation("登记撤回幂等键格式无效");
+        }
+        String reason = request.reason().strip();
+        if (reason.length() < 2 || reason.length() > 500) {
+            throw validation("撤回原因必须为 2 到 500 个字符");
+        }
+        return new NormalizedReversal(
+                key, reason,
+                CanonicalFingerprint.sha256(List.of(
+                        "PRODUCTION-FINISHED-ARRIVAL-REVERSAL-V1",
+                        registrationId.toString(),
+                        reason)));
     }
 
     static void requireSelectedPending(
@@ -1137,7 +1432,23 @@ public class ProductionFinishedArrivalRegistrationService {
             String idempotencyKey,
             UUID warehouseId,
             Map<UUID, String> places,
+            String remark,
             String requestHash) {
+    }
+
+    record NormalizedReversal(
+            String idempotencyKey,
+            String reason,
+            String requestHash) {
+    }
+
+    /** One registration command outcome: the exact batch id plus the snapshot a sheet needs. */
+    private record RegistrationOutcome(
+            UUID registrationId,
+            boolean replay,
+            UUID warehouseId,
+            String warehouseName,
+            EmployeeSnapshot receiver) {
     }
 
     record RememberPlaceSource(

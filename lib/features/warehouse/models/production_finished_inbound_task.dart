@@ -80,15 +80,18 @@ class ProductionFinishedRememberPlacesResult {
   );
 }
 
-/// 多报工单汇总登记结果：一次提交逐单登记所选明细并逐行送检。
+/// 多报工单汇总登记结果：一次提交逐单登记所选明细并逐行送检；
+/// V547 起同仓合并成一张品质检查单（sheets 每仓一张）。
 class ProductionFinishedBatchRegistrationResult {
   const ProductionFinishedBatchRegistrationResult({
     required this.registeredCount,
     required this.reports,
+    this.sheets = const [],
   });
 
   final int registeredCount;
   final List<ProductionFinishedRegisteredReport> reports;
+  final List<ProductionFinishedInspectionSheetSummary> sheets;
 
   factory ProductionFinishedBatchRegistrationResult.fromJson(
     Map<String, dynamic> json,
@@ -100,6 +103,39 @@ class ProductionFinishedBatchRegistrationResult {
             .map(ProductionFinishedRegisteredReport.fromJson)
             .toList(growable: false) ??
         const [],
+    sheets:
+        (json['sheets'] as List?)
+            ?.whereType<Map<String, dynamic>>()
+            .map(ProductionFinishedInspectionSheetSummary.fromJson)
+            .toList(growable: false) ??
+        const [],
+  );
+}
+
+/// 本次登记命令生成的品质检查单（每个成品仓一张）。
+class ProductionFinishedInspectionSheetSummary {
+  const ProductionFinishedInspectionSheetSummary({
+    required this.sheetId,
+    required this.sheetNo,
+    this.warehouseId,
+    this.warehouseName,
+    required this.itemCount,
+  });
+
+  final String sheetId;
+  final String sheetNo;
+  final String? warehouseId;
+  final String? warehouseName;
+  final int itemCount;
+
+  factory ProductionFinishedInspectionSheetSummary.fromJson(
+    Map<String, dynamic> json,
+  ) => ProductionFinishedInspectionSheetSummary(
+    sheetId: json['sheetId'] as String? ?? '',
+    sheetNo: json['sheetNo'] as String? ?? '',
+    warehouseId: json['warehouseId'] as String?,
+    warehouseName: json['warehouseName'] as String?,
+    itemCount: (json['itemCount'] as num?)?.toInt() ?? 0,
   );
 }
 
@@ -110,6 +146,8 @@ class ProductionFinishedRegisteredReport {
     this.reportNo,
     this.warehouseId,
     this.warehouseName,
+    this.sheetId,
+    this.sheetNo,
   });
 
   final String? registrationId;
@@ -117,6 +155,8 @@ class ProductionFinishedRegisteredReport {
   final String? reportNo;
   final String? warehouseId;
   final String? warehouseName;
+  final String? sheetId;
+  final String? sheetNo;
 
   factory ProductionFinishedRegisteredReport.fromJson(
     Map<String, dynamic> json,
@@ -126,6 +166,60 @@ class ProductionFinishedRegisteredReport {
     reportNo: json['reportNo'] as String?,
     warehouseId: json['warehouseId'] as String?,
     warehouseName: json['warehouseName'] as String?,
+    sheetId: json['sheetId'] as String?,
+    sheetNo: json['sheetNo'] as String?,
+  );
+}
+
+/// 同一报工的一个登记批次（V469 分批 + V547 检查单 + V548 撤回态）。
+class ProductionFinishedRegistrationBatch {
+  const ProductionFinishedRegistrationBatch({
+    required this.registrationId,
+    this.warehouseId,
+    this.warehouseName,
+    this.receiverName,
+    this.remark,
+    this.registeredAt,
+    required this.itemCount,
+    this.sheetId,
+    this.sheetNo,
+    this.reversedAt,
+    this.reversalReason,
+    this.reversible = false,
+  });
+
+  final String registrationId;
+  final String? warehouseId;
+  final String? warehouseName;
+  final String? receiverName;
+  final String? remark;
+  final DateTime? registeredAt;
+  final int itemCount;
+  final String? sheetId;
+  final String? sheetNo;
+  final DateTime? reversedAt;
+  final String? reversalReason;
+
+  /// 服务端判定：未撤回且本批每条 FQC 仍待检、无决定/放行/恢复授权。
+  final bool reversible;
+
+  bool get reversed => reversedAt != null;
+
+  factory ProductionFinishedRegistrationBatch.fromJson(
+    Map<String, dynamic> json,
+  ) => ProductionFinishedRegistrationBatch(
+    registrationId: json['registrationId'] as String? ?? '',
+    warehouseId: json['warehouseId'] as String?,
+    warehouseName: json['warehouseName'] as String?,
+    receiverName: json['receiverName'] as String?,
+    remark: json['remark'] as String?,
+    registeredAt: DateTime.tryParse(json['registeredAt']?.toString() ?? ''),
+    itemCount: (json['itemCount'] as num?)?.toInt() ?? 0,
+    sheetId: json['sheetId'] as String?,
+    sheetNo: json['sheetNo'] as String?,
+    reversedAt: DateTime.tryParse(json['reversedAt']?.toString() ?? ''),
+    reversalReason: json['reversalReason'] as String?,
+    reversible: json['reversible'] as bool? ?? false,
   );
 }
 
@@ -236,7 +330,14 @@ class ProductionFinishedArrivalRegistration {
     this.warehouseName,
     this.receiverEmployeeId,
     this.receiverName,
+    this.remark,
     this.registeredAt,
+    this.sheetId,
+    this.sheetNo,
+    this.reversedAt,
+    this.reversalReason,
+    this.reversible = false,
+    this.batches = const [],
   });
 
   final String? registrationId;
@@ -251,7 +352,20 @@ class ProductionFinishedArrivalRegistration {
   final String? warehouseName;
   final String? receiverEmployeeId;
   final String? receiverName;
+
+  /// 登记备注（V542：随登记批次留痕，登记详情回显）。
+  final String? remark;
   final DateTime? registeredAt;
+
+  /// V547 本登记批次所属品质检查单；V548 撤回态与可撤回判定（服务端权威）。
+  final String? sheetId;
+  final String? sheetNo;
+  final DateTime? reversedAt;
+  final String? reversalReason;
+  final bool reversible;
+
+  /// 同一报工的全部登记批次（含已撤回）；待登记视图也带回，便于回看历史批次。
+  final List<ProductionFinishedRegistrationBatch> batches;
   final List<ProductionFinishedArrivalRegistrationItem> items;
 
   List<String> get planNos => items
@@ -277,7 +391,19 @@ class ProductionFinishedArrivalRegistration {
     warehouseName: json['warehouseName'] as String?,
     receiverEmployeeId: json['receiverEmployeeId'] as String?,
     receiverName: json['receiverName'] as String?,
+    remark: json['remark'] as String?,
     registeredAt: DateTime.tryParse(json['registeredAt']?.toString() ?? ''),
+    sheetId: json['sheetId'] as String?,
+    sheetNo: json['sheetNo'] as String?,
+    reversedAt: DateTime.tryParse(json['reversedAt']?.toString() ?? ''),
+    reversalReason: json['reversalReason'] as String?,
+    reversible: json['reversible'] as bool? ?? false,
+    batches:
+        (json['batches'] as List?)
+            ?.whereType<Map<String, dynamic>>()
+            .map(ProductionFinishedRegistrationBatch.fromJson)
+            .toList(growable: false) ??
+        const [],
     items:
         (json['items'] as List?)
             ?.whereType<Map<String, dynamic>>()
@@ -308,6 +434,8 @@ class ProductionFinishedArrivalRegistrationItem {
     this.unitName,
     this.place,
     this.placeHint,
+    this.lastWarehouseId,
+    this.lastWarehouseName,
   });
 
   final String reportItemId;
@@ -326,6 +454,10 @@ class ProductionFinishedArrivalRegistrationItem {
   final double reportedQty;
   final String? place;
   final String? placeHint;
+
+  /// 同货品同颜色最近一次有效登记的成品仓（只读建议，页面预填并黄框提示核对）。
+  final String? lastWarehouseId;
+  final String? lastWarehouseName;
 
   factory ProductionFinishedArrivalRegistrationItem.fromJson(
     Map<String, dynamic> json,
@@ -349,5 +481,7 @@ class ProductionFinishedArrivalRegistrationItem {
         0,
     place: json['place'] as String?,
     placeHint: json['placeHint'] as String?,
+    lastWarehouseId: json['lastWarehouseId'] as String?,
+    lastWarehouseName: json['lastWarehouseName'] as String?,
   );
 }

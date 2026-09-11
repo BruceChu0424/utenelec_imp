@@ -3,6 +3,7 @@ package com.uten.imp.features.visitor;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.HostConfirmRequest;
+import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorApprovalFacets;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorApproveRequest;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorDetail;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorListItem;
@@ -22,7 +23,8 @@ import java.util.UUID;
 
 /**
  * 访客审批接口（HR/被访人，staff 主体）。
- * GET  /api/visitor-approval            待审批列表（HR）
+ * GET  /api/visitor-approval            待审批列表（HR，status/hostDepartmentId 可选）
+ * GET  /api/visitor-approval/facets     审批列表表头筛选桶（状态/接待人部门）
  * GET  /api/visitor-approval/as-host    我作为接待人的待确认列表（被访人）
  * GET  /api/visitor-approval/pending-count        HR 待办数（徽章）
  * GET  /api/visitor-approval/host-pending-count   被访人待确认数（徽章）
@@ -38,14 +40,23 @@ public class VisitorApprovalController {
     private final VisitorHrApprovalService hrApprovalService;
     private final VisitorHostConfirmService hostConfirmService;
     private final AuditDetailViewRecorder viewAudit;
+    private final VisitorApprovalFacetQuery facetQuery;
 
     @GetMapping
     @PreAuthorize("hasAuthority('visitor:approve')")
     public PageResponse<VisitorListItem> list(
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) UUID hostDepartmentId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return hrApprovalService.listForApproval(status, page, size);
+        return hrApprovalService.listForApproval(status, hostDepartmentId, page, size);
+    }
+
+    /** HR 审批列表表头筛选桶（状态/接待人部门），status 与列表分段同口径（空=待办）。 */
+    @GetMapping("/facets")
+    @PreAuthorize("hasAuthority('visitor:approve')")
+    public VisitorApprovalFacets facets(@RequestParam(required = false) String status) {
+        return facetQuery.facets(status);
     }
 
     @GetMapping("/as-host")

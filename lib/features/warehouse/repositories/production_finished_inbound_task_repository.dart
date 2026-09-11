@@ -155,6 +155,19 @@ class ProductionFinishedInboundTaskRepository {
     return ProductionFinishedRememberPlacesResult.fromJson(json);
   }
 
+  /// V548 登记撤回（仅品质未处理）：原因必填，幂等键在页面弹窗生命周期内复用。
+  Future<ProductionFinishedArrivalRegistration> reverseArrivalRegistration(
+    String registrationId, {
+    required String reason,
+    required String idempotencyKey,
+  }) async {
+    final json = await api.post(
+      ApiEndpoints.productionFinishedArrivalReverse(registrationId),
+      body: {'idempotencyKey': idempotencyKey, 'reason': reason.trim()},
+    );
+    return ProductionFinishedArrivalRegistration.fromJson(json);
+  }
+
   /// 当前用户最近一次成品送检登记所用成品仓（无历史/空响应返回 null）。
   Future<ProductionFinishedLastWarehouse?> lastArrivalWarehouse() async {
     try {

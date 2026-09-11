@@ -32,6 +32,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/stock_doc.dart';
 import '../repositories/stock_doc_repository.dart';
@@ -54,8 +55,15 @@ class _StockDocSeg {
 }
 
 class StockDocListPage extends ConsumerStatefulWidget {
-  const StockDocListPage({super.key, required this.docType});
+  const StockDocListPage({
+    super.key,
+    required this.docType,
+    this.initialStatus,
+  });
   final StockDocType docType;
+
+  /// 深链预选（路由 `?status=draft`）：新建页「草稿(N)」按钮进来时直接落在草稿段。
+  final String? initialStatus;
 
   @override
   ConsumerState<StockDocListPage> createState() => _StockDocListPageState();
@@ -77,7 +85,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
   /// 历史单据段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
   UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
 
-  /// 「草稿」段徽章计数；null = 加载中（不显示徽章）。
+  /// 「草稿」段计数（中性括号 `(N)`，草稿不是待办）；null = 加载中（不渲染）。
   int? _draftCount;
 
   bool get _isDraw => widget.docType == StockDocType.draw;
@@ -96,9 +104,14 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
   @override
   void initState() {
     super.initState();
+    // 深链 ?status=draft：直接落在「草稿」段（新建页「草稿(N)」按钮的落点）。
+    if (isDraftStatusQuery(widget.initialStatus)) {
+      _seg = const _StockDocSeg.stage(0);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(masterNameServiceProvider).ensureLoaded();
       _loadBadge();
+      if (isDraftStatusQuery(widget.initialStatus)) _reload(1);
     });
   }
 
@@ -157,7 +170,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
     _reload(1);
   }
 
-  /// 「草稿」段计数（list size=1 取 total；失败保持 null 不显示徽章）。
+  /// 「草稿」段计数（list size=1 取 total；失败保持 null 不渲染括号数字）。
   Future<void> _loadBadge() async {
     try {
       final r = await ref
@@ -290,6 +303,8 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                         segmentsKey: Key(
                           'stock-doc-segments-${widget.docType.code}',
                         ),
+                        // 计数形态：草稿是「我自己没写完的东西」，没人在等它
+                        // → 中性括号 `(N)`（组件默认）；其余段不传 count。
                         segments: [
                           UtenFilterSegment(
                             value: const _StockDocSeg.stage(0),

@@ -55,7 +55,8 @@ public class ServerStatusService {
         return new ServerStatusView(null, REFRESH_SECONDS, "UNKNOWN", "", "", 0,
                 List.of(), List.of(), new ServerStatusView.Database("UNKNOWN", null, null, null, message),
                 new ServerStatusView.Backup("UNKNOWN", null, null, 30, 48, "尚未取得备份状态"),
-                List.of(new ServerStatusView.Alert("sampling", "UNKNOWN", message, "稍后刷新；持续无数据时联系维护人员。")));
+                List.of(new ServerStatusView.Alert("sampling", "UNKNOWN", message, "稍后刷新；持续无数据时联系维护人员。")),
+                List.of(), List.of());
     }
 
     @PreDestroy void stop() { if (sampler != null) sampler.shutdownNow(); }

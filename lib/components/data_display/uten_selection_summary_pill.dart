@@ -15,6 +15,7 @@ class UtenSelectionSummaryPill extends StatelessWidget {
     required this.count,
     this.onClear,
     this.clearKey,
+    this.minHeight = UtenTableToolbar.controlHeight,
   });
 
   /// 当前选中行数（可传服务端口径的汇总数，如跨页全选总数）。
@@ -26,23 +27,32 @@ class UtenSelectionSummaryPill extends StatelessWidget {
   /// 清除按钮的 Key（master-table-clear-selection 契约由调用方保留传入）。
   final Key? clearKey;
 
+  /// 最小高度。默认对齐表格工具条（48）；放进
+  /// [UtenFloatingActionGroup] 时由该组统一抬到 52，调用点不用管。
+  final double minHeight;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hasSelection = count > 0;
+    // 未选态 2026-09-11 加浓：原来是半透明浅灰底 + 极淡边框 + slate400 文字，
+    // 在白底上几乎看不见，用户反馈「不选的时候都不知道这里可以点」。
+    // 现在是实底 + 可见描边 + 正常灰字——看得见、但与选中态（主色）仍分得清。
     final accent = hasSelection
         ? theme.colorScheme.primary
-        : theme.colorScheme.outline;
+        : theme.colorScheme.onSurfaceVariant;
     final barBackground = hasSelection
         ? theme.colorScheme.primaryContainer.withValues(alpha: 0.45)
-        : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
+        : theme.colorScheme.surfaceContainerHigh;
     final barBorder = hasSelection
         ? theme.colorScheme.primary
-        : theme.colorScheme.outlineVariant;
+        : theme.colorScheme.outline;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
-      height: UtenTableToolbar.controlHeight,
+      // 固定 height 改 minHeight：悬浮组会统一抬高到 52 与业务按钮对齐，
+      // 超大字号下也还能继续长高（写死 height 会把文字压出去）。
+      constraints: BoxConstraints(minHeight: minHeight),
       decoration: BoxDecoration(
         color: barBackground,
         borderRadius: BorderRadius.circular(8),

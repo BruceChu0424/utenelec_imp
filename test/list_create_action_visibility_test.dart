@@ -47,6 +47,7 @@ class _SuggestionRepository extends Fake implements SuggestionRepository {
   Future<PagedResult<Suggestion>> list({
     bool mine = false,
     SuggestionCategory? category,
+    SuggestionStatus? status,
     int page = 1,
     int size = 20,
   }) async {

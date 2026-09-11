@@ -102,6 +102,68 @@ class ChainNoticeProductionWorkshopScopeTest {
     }
 
     @Test
+    void workshopTaskCardIsResolvedOnStartAndOnFinishedInboundCompletion()
+            throws Exception {
+        // ① 开工办结：applyTransition 在 START 成功后按段 resolve（reason STARTED）。
+        Path segmentDirect = Path.of(
+                "src/main/java/com/uten/imp/features/production/execution/"
+                        + "ProductionExecutionSegmentService.java");
+        Path segmentFallback = Path.of("server").resolve(segmentDirect);
+        String segmentSource = Files.readString(
+                Files.exists(segmentDirect) ? segmentDirect : segmentFallback,
+                StandardCharsets.UTF_8);
+        String applyTransition = slice(
+                segmentSource,
+                "private ExecutionSegmentView applyTransition(",
+                "private void updateStatus(");
+        assertThat(applyTransition)
+                .contains("ACTION_START.equals(transition.action())")
+                .contains("chainNotice.resolveProductionWorkshopTasks(")
+                .contains("\"STARTED\"");
+
+        // ② 完工兜底：完工入库投递先按本单已 COMPLETED 的段 resolve（reason COMPLETED）。
+        Path chainDirect = Path.of(
+                "src/main/java/com/uten/imp/features/notice/"
+                        + "ChainNoticeService.java");
+        Path chainFallback = Path.of("server").resolve(chainDirect);
+        String chain = Files.readString(
+                Files.exists(chainDirect) ? chainDirect : chainFallback,
+                StandardCharsets.UTF_8);
+        String finishedInbound = slice(
+                chain,
+                "private void deliverFinishedInbound(",
+                "private void notifyFullyProducedReadyToShip(");
+        assertThat(finishedInbound)
+                .contains("resolveProductionWorkshopTasks(")
+                .contains("completedSegmentsOfFinishedInbound(stockDocId)")
+                .contains("\"COMPLETED\"");
+
+        // ③ 段查询只认 COMPLETED 且未删的段（红冲回 IN_PROGRESS 的段不误撤）。
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        ChainNoticeService service = service(
+                mock(NoticeService.class),
+                mock(UserAccountRepository.class),
+                mock(PermissionResolver.class),
+                jdbc);
+        UUID stockDocId = UUID.randomUUID();
+        UUID completedId = UUID.randomUUID();
+        doReturn(List.of(completedId))
+                .when(jdbc)
+                .queryForList(anyString(), eq(UUID.class), eq(stockDocId));
+
+        assertThat(service.completedSegmentsOfFinishedInbound(stockDocId))
+                .containsExactly(completedId);
+        assertThat(service.completedSegmentsOfFinishedInbound(null)).isEmpty();
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).queryForList(sql.capture(), eq(UUID.class), eq(stockDocId));
+        assertThat(sql.getValue())
+                .contains("stock_document_items")
+                .contains("segment.status = 'COMPLETED'")
+                .contains("segment.is_deleted = FALSE")
+                .contains("item.execution_segment_id IS NOT NULL");
+    }
+
+    @Test
     void productionPlanReadyAndDrawEventsUseOnlyExactWorkshopDelivery()
             throws Exception {
         Path direct = Path.of(

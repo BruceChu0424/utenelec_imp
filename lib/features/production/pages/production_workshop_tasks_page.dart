@@ -7,8 +7,13 @@
 //    仓库尚未完成备料出库等），双击进计划详情单独办理；
 //  - 生产中 = 正在生产·可报工：进度列只在本分类显示；勾选后「批量报工(N)」
 //    （一次报工=同一车间，服务端同口径校验）；
-//  - 「可报工」分类退役（齐套可开工归等待物料、报工归生产中）；历史任务=已完工。
+//  - 「可报工」分类退役（齐套可开工归等待物料、报工归生产中）；
+//  - 历史任务 = 终态段（已完工/已取消/已红冲），ADR-066 §1.3 时间门控：选中后
+//    先选时间段/全部才加载（按计划完工日期 dateFrom/dateTo）。
 // 报工入口唯一（本页 + 计划详情），调度台不再提供报工。
+// 2026-09-10（V543 车间默认权限收紧二）：车间默认包不再含 production_plan:view，
+// 「查看生产计划」行菜单/双击只对持该码（或超管）的人开放，其余人给明确提示，
+// 用「确认用料/物料使用情况」看本工单（此前直接落到 /access-denied）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -17,15 +22,18 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../providers/production_execution_refresh.dart';
@@ -61,6 +69,18 @@ class _ProductionWorkshopTasksPageState
   bool _loading = false;
   String? _error;
   int _loadGeneration = 0;
+
+  /// 历史任务段的时间门控值（ADR-066 §1.3）：未选不请求、显示引导占位。
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+
+  /// 当前分类是否「历史任务」（终态段：已完工/已取消/已红冲）。
+  bool get _isHistory => _status == 'COMPLETED';
+
+  /// 「查看生产计划」入口：计划详情路由守卫与后端 GET /plans/{id} 均要求
+  /// production_plan:view；车间默认包（V541/V543）不含该码，只对显式加授者开放。
+  bool get _canViewPlan =>
+      ref.read(isSuperAdminProvider) ||
+      ref.read(currentPermissionsProvider).contains(Perm.productionPlanView);
 
   bool get _canStart {
     if (ref.read(isSuperAdminProvider)) return true;
@@ -124,8 +144,9 @@ class _ProductionWorkshopTasksPageState
   Future<void> _load() async {
     final generation = ++_loadGeneration;
     // 分类默认不选（ADR-066 同范式）：未选分类不请求列表、不显示数据，
-    // 只刷新顶部分类徽章计数；点了分类才加载对应内容。
-    if (_status == null) {
+    // 只刷新顶部分类徽章计数；点了分类才加载对应内容。历史任务段同理：
+    // 未选时间段/全部不发请求（时间门控占位）。
+    if (_status == null || (_isHistory && _historyTime.isNone)) {
       setState(() {
         _items = const [];
         _page = 1;
@@ -141,6 +162,7 @@ class _ProductionWorkshopTasksPageState
     final requestedKeyword = _keyword;
     final requestedStatus = _status;
     final requestedWorkshop = _workshopDepartmentId;
+    final range = _isHistory ? _historyTime.range : null;
     setState(() {
       _loading = true;
       _error = null;
@@ -153,6 +175,10 @@ class _ProductionWorkshopTasksPageState
             keyword: requestedKeyword,
             status: requestedStatus,
             workshopDepartmentId: requestedWorkshop,
+            dateFrom: range == null
+                ? null
+                : ChinaDateTime.formatDate(range.start),
+            dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
           );
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -301,6 +327,12 @@ class _ProductionWorkshopTasksPageState
       context.appWarning('当前工单缺少生产计划关联，请刷新后重试');
       return;
     }
+    // 计划详情路由守卫 + 后端 GET /plans/{id} 都要求 production_plan:view；
+    // 没有该码直接 push 只会落到 /access-denied，改为明确提示。
+    if (!_canViewPlan) {
+      context.appWarning('无生产计划查看权限，请用「确认用料/物料使用情况」查看本工单');
+      return;
+    }
     setState(() => _navigating = true);
     try {
       await context.push(RoutePath.productionPlanDetail(task.planId));
@@ -338,6 +370,17 @@ class _ProductionWorkshopTasksPageState
     } finally {
       if (mounted) setState(() => _navigating = false);
     }
+  }
+
+  /// 历史任务时间门控变化：选定时间段/全部才发第一次请求；再次选择回第 1 页。
+  void _onHistoryTime(UtenHistoryTimeValue value) {
+    if (value == _historyTime) return;
+    setState(() {
+      _historyTime = value;
+      _page = 1;
+      _selected.clear();
+    });
+    _load();
   }
 
   /// 状态列：全站统一流程词表（等待物料/物料齐套·可开工/生产中%/已完工）。
@@ -396,17 +439,21 @@ class _ProductionWorkshopTasksPageState
               children: [
                 // 分类（等待物料=等料+齐套可开工｜生产中=正在生产可报工｜历史任务）
                 // 与搜索：全站标准工具条。车间筛选在表格「生产车间」列表头。
+                // 计数形态：两段都是本人要推进的执行段（齐套要开工、生产中要报工），
+                // 挂红徽章；历史任务不传 count。
                 UtenFilterToolbar<String>(
                   segments: [
                     UtenFilterSegment(
                       value: 'PREPARING',
                       label: '等待物料',
                       count: counts.preparing,
+                      countForm: UtenSegmentCountForm.actionable,
                     ),
                     UtenFilterSegment(
                       value: 'IN_PROGRESS',
                       label: '生产中',
                       count: counts.inProgress,
+                      countForm: UtenSegmentCountForm.actionable,
                     ),
                     const UtenFilterSegment(value: 'COMPLETED', label: '历史任务'),
                   ],
@@ -416,6 +463,10 @@ class _ProductionWorkshopTasksPageState
                       _status = value;
                       _page = 1;
                       _selected.clear();
+                      // 离开历史段时清掉时间门控值，下次进入重新选择。
+                      if (!_isHistory) {
+                        _historyTime = const UtenHistoryTimeValue.none();
+                      }
                     });
                     _load();
                   },
@@ -426,6 +477,21 @@ class _ProductionWorkshopTasksPageState
                     _load();
                   },
                 ),
+                if (_isHistory) ...[
+                  // 历史任务时间门控（ADR-066 §1.3）：时间段/全部，未选不加载。
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      top: UtenSpacing.s8,
+                      left: UtenSpacing.s4,
+                      right: UtenSpacing.s4,
+                    ),
+                    child: UtenHistoryTimeFilter(
+                      key: const Key('workshop-history-time'),
+                      value: _historyTime,
+                      onChanged: _onHistoryTime,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: UtenSpacing.s8),
                 Expanded(
                   // 分类默认不选：引导占位不发请求（与调度台大类行同范式）。
@@ -433,6 +499,10 @@ class _ProductionWorkshopTasksPageState
                       ? const UtenFilterPlaceholder(
                           message: '在上方选择分类后查看任务',
                           description: '分类默认不选中；等待物料 / 生产中 / 历史任务',
+                        )
+                      : _isHistory && _historyTime.isNone
+                      ? const UtenHistoryTimePlaceholder(
+                          description: '按计划完工日期加载已完工 / 已取消 / 已红冲工单',
                         )
                       : MasterDataTableView<
                           ProductionExecutionWorkbenchSegment
@@ -502,6 +572,7 @@ class _ProductionWorkshopTasksPageState
                           batchActionsBuilder: (_, ids) => [
                             if (_isPreparing)
                               UtenButton(
+                                type: UtenButtonType.danger,
                                 icon: Icons.play_circle_fill_rounded,
                                 onPressed: ids.isEmpty || _navigating
                                     ? null
@@ -510,6 +581,7 @@ class _ProductionWorkshopTasksPageState
                               )
                             else
                               UtenButton(
+                                type: UtenButtonType.danger,
                                 icon: Icons.fact_check_outlined,
                                 onPressed: ids.isEmpty || _navigating
                                     ? null
@@ -534,26 +606,32 @@ class _ProductionWorkshopTasksPageState
                                 enabled: !_navigating,
                                 onTap: () => _recheckMaterials(task),
                               ),
-                            if (_isPreparing && _canStartTask(task))
+                            // 计划详情入口只对持 production_plan:view（或超管）
+                            // 的人渲染；车间默认包不含该码（V541/V543）。
+                            if (_isPreparing &&
+                                _canStartTask(task) &&
+                                _canViewPlan)
                               UtenMenuItem(
                                 label: '查看生产计划（可单独开工）',
                                 icon: Icons.open_in_new_rounded,
                                 onTap: () => _openPlan(task),
-                              )
-                            else if (_isPreparing)
+                              ),
+                            if (_isPreparing && !_canStartTask(task))
                               UtenMenuItem(
                                 label: '为什么不能开工',
                                 icon: Icons.help_outline_rounded,
                                 onTap: () =>
                                     context.appInfo(_blockedReasonOf(task)),
                               ),
-                            if (_isPreparing && !_canStartTask(task))
+                            if (_isPreparing &&
+                                !_canStartTask(task) &&
+                                _canViewPlan)
                               UtenMenuItem(
                                 label: '查看物料进度',
                                 icon: Icons.open_in_new_rounded,
                                 onTap: () => _openPlan(task),
                               ),
-                            if (!_isPreparing)
+                            if (!_isPreparing && _canViewPlan)
                               UtenMenuItem(
                                 label: '查看生产计划',
                                 icon: Icons.open_in_new_rounded,
@@ -575,7 +653,7 @@ class _ProductionWorkshopTasksPageState
                               ? '当前车间没有等待物料的工单'
                               : _status == 'IN_PROGRESS'
                               ? '当前车间没有生产中的工单'
-                              : '该时间段内没有已完工工单',
+                              : '该时间段内没有已完工 / 已取消 / 已红冲的工单',
                         ),
                 ),
               ],

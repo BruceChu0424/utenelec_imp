@@ -1,5 +1,6 @@
 package com.uten.imp.features.visitor;
 
+import com.uten.imp.application.port.HrNoticePort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -28,6 +29,7 @@ public class VisitorHostConfirmService {
     private final VisitorApplicationService appService;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
+    private final HrNoticePort hrNotice;
 
     @Transactional(readOnly = true)
     public PageResponse<VisitorListItem> myAsHost(
@@ -93,6 +95,14 @@ public class VisitorHostConfirmService {
             appService.addStep(id, "staff", userId, "hostReject", req.comment());
         }
         appRepo.save(app);
+        // 「待你确认接待」卡两个分支都办结（接待人已作答）；拒绝 = 申请终态，
+        // 连 HR 的审批卡一起撤回；确认通过则申请回到 HR 批准，HR 卡保持有效。
+        if (req.confirmed()) {
+            hrNotice.resolveVisitorHostConfirm(id, "HOST_CONFIRMED");
+        } else {
+            hrNotice.resolveVisitorHostConfirm(id, "HOST_REJECTED");
+            hrNotice.resolveVisitorApplication(id, "HOST_REJECTED");
+        }
         return appService.toDetail(app, appService.accountOf(app));
     }
 }

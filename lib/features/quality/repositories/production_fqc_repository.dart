@@ -10,9 +10,11 @@ class ProductionFqcRepository {
 
   final ApiClient api;
 
+  /// [sheet]：`NONE` = 只列无检查单的历史任务；检查单 UUID = 该单任务；空 = 不过滤。
   Future<PagedResult<ProductionFqcInspection>> list({
     String status = 'ACTIVE',
     String keyword = '',
+    String? sheet,
     int page = 1,
     int size = 40,
   }) async {
@@ -23,9 +25,36 @@ class ProductionFqcRepository {
         'page': page,
         'size': size,
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+        if (sheet != null && sheet.isNotEmpty) 'sheet': sheet,
       },
     );
     return PagedResult.fromJson(json, ProductionFqcInspection.fromJson);
+  }
+
+  /// V547 品质检查单队列（ACTIVE = 仍有待检行；CLOSED = 全部决定/取消）。
+  Future<PagedResult<ProductionFqcInspectionSheet>> listSheets({
+    String status = 'ACTIVE',
+    String keyword = '',
+    int page = 1,
+    int size = 40,
+  }) async {
+    final json = await api.get(
+      ApiEndpoints.productionQualityInspectionSheets,
+      query: {
+        'status': status,
+        'page': page,
+        'size': size,
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      },
+    );
+    return PagedResult.fromJson(json, ProductionFqcInspectionSheet.fromJson);
+  }
+
+  Future<ProductionFqcInspectionSheetDetail> sheetDetail(String sheetId) async {
+    final json = await api.get(
+      ApiEndpoints.productionQualityInspectionSheet(sheetId),
+    );
+    return ProductionFqcInspectionSheetDetail.fromJson(json);
   }
 
   Future<ProductionFqcInspection> detail(String id) async {

@@ -16,6 +16,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -336,6 +337,7 @@ class _WarehouseInboundExpectationsViewState
         child: UtenButton(
           key: const Key('inbound-expectation-batch-send-inspection'),
           size: UtenButtonSize.large,
+          type: UtenButtonType.danger,
           icon: Icons.fact_check_outlined,
           isLoading: _batchSending,
           onPressed: _batchSending || count == 0
@@ -650,22 +652,25 @@ class _WarehouseInboundExpectationsViewState
       Semantics(
         header: true,
         label: '共有 ${result.total} 张待到货订货单',
-        // 全平台统一筛选工具条：分段(红圆计数徽章，计数取后端全量口径) + 胶囊搜索框。
+        // 全平台统一筛选工具条：分段 + 胶囊搜索框，计数取后端全量口径。
+        // 计数形态：两个来源段都是「等我收货」的队列 → 红徽章；
+        // 「全部待到货」不传 count（没有总量段与之重复红一次）。
         child: UtenFilterToolbar<String>(
           segmentsKey: const Key('inbound-expectation-type-segments'),
           searchKey: const Key('inbound-expectation-search'),
           segments: [
-            // 「全部待到货」不挂徽章——徽章只挂各来源分段的待到货数量。
             const UtenFilterSegment(value: 'all', label: '全部待到货'),
             UtenFilterSegment(
               value: 'purchase',
               label: '采购订货',
               count: _typeCount(ProcurementInboundOrderType.purchase),
+              countForm: UtenSegmentCountForm.actionable,
             ),
             UtenFilterSegment(
               value: 'subcontract',
               label: '委外订货',
               count: _typeCount(ProcurementInboundOrderType.subcontract),
+              countForm: UtenSegmentCountForm.actionable,
             ),
           ],
           selected: _typeSelected

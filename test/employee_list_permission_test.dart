@@ -17,6 +17,8 @@ class _EmployeeRepository extends Fake implements EmployeeRepository {
     Set<String>? statuses,
     String? departmentId,
     bool includeSubtree = false,
+    String? sort,
+    String? order,
   }) async =>
       const PagedResult(items: [], page: 1, size: 20, total: 0, totalPages: 0);
 }

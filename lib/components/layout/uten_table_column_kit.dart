@@ -6,10 +6,13 @@
 // 1. [UtenColumnChooserButton] ——「表头设置 x/y」深绿实心按钮 + **按钮处锚定的浮层
 //    勾选列表**（CompositedTransform 锚定、点外部/TapRegion 关闭、全选行、可选
 //    「必填列锁定」「拖拽排序」「恢复默认」）。主数据表与编辑明细表同一弹层形态。
-// 2. [UtenColumnDragHideHost] —— 表头「按住纵向拖→隐藏列」手势 mixin：跟手浮层挂
-//    root Overlay **最顶层**（拖出表头范围也始终可见、压在整表之上、不被表体裁切），
-//    累计纵向位移过阈值（10px）arm——浮层红底红×徽标、原格变淡留原位；拖回阈值内
-//    取消，松开不隐藏。单指契约：并发第二指的 start/update/end 因 index 不匹配 no-op。
+// 2. [UtenColumnHeaderDragHost] —— 表头拖拽手势 mixin，**按下即拖、按方向分流**
+//    （2026-09-11 起换位不再需要长按）：
+//    - 横拖 = 换位：跟手浮层 + 插入位指示线，松手落位；
+//    - 竖拖 = 移除：累计纵向位移过阈值（10px）arm——浮层红底红×徽标、原格变淡
+//      留原位；拖回阈值内取消，松开不隐藏。
+//    两种跟手浮层都挂 root Overlay **最顶层**（拖出表头范围也始终可见、压在整表
+//    之上、不被表体裁切）。单指契约：并发第二指的 start/update/end 因 index 不匹配 no-op。
 //
 // 两张表只各自提供：列链接（LayerLink）、列宽/列名取值、「该列可否隐藏」判定
 // （如「至少留一列」「必填列锁定」）与「松手隐藏」回调。
@@ -21,6 +24,147 @@ import 'package:flutter/material.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../buttons/uten_button.dart';
+import '../inputs/uten_field_hint_icon.dart';
+
+/// 列头「标签 + ⓘ 说明」（MasterDataTableView / UtenEditableGrid 共用，2026-09-10）。
+///
+/// 全站列级通用说明（数量/单价/币种/税率等对所有行相同的口径）统一放列头 ⓘ，
+/// 格内只保留行特有的错误/预填图标。此前两张表各自用 Material `Tooltip`
+/// （默认长按触发，触屏与「长按拎起排序列」打架；无点按/键盘入口），输入框
+/// 用的却是 [UtenFieldHintIcon]，三套实现并存——现收敛为同一份：
+/// 悬停/点按/键盘同一行为，并吞掉长按避免 arm 排序。
+class UtenColumnHeaderInfo extends StatelessWidget {
+  const UtenColumnHeaderInfo({
+    super.key,
+    required this.label,
+    required this.message,
+  });
+
+  /// 列头文案控件（调用方已按自己的样式/必填星号构好）。
+  final Widget label;
+
+  /// 说明文案（悬停/点按弹出）。
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(child: label),
+        UtenColumnHintIcon(message: message),
+      ],
+    );
+  }
+}
+
+/// 列头说明图标（只有 ⓘ，不带文案）：列头已自行渲染标签、只想在其后补一个说明
+/// 图标时用它（如 MasterDataTableView 的列头 Row 内）。行为与 [UtenColumnHeaderInfo]
+/// 完全一致：悬停/点按/键盘同一入口。opaque + 吞长按，让 ⓘ 上的按压只开说明、
+/// 不触发列换位/移除拖拽（换位改成按下即拖之后，这层隔离更要紧）。
+class UtenColumnHintIcon extends StatelessWidget {
+  const UtenColumnHintIcon({super.key, required this.message});
+
+  /// 说明文案（悬停/点按弹出）。
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: () {},
+      // 列头走紧凑态（28×28 命中区）：表单的 44×44 会把稠密列头 Row 顶出溢出
+      //（2026-09-11 实测物料分析等 26 个用例报 1px 溢出）。
+      child: UtenFieldHintIcon(info: message, dense: true),
+    );
+  }
+}
+
+/// 行首多选列「横滚时钉在视口左缘」的通用包裹（主数据表 / 编辑明细表共用，2026-09-11）。
+///
+/// 用户诉求：左右拖表格时勾选框列不能被滚走，一直看得见。
+///
+/// 做法：勾选格照常留在 Row 里（列位与行高天然对齐、原交互不变）；同一行的 Stack 上
+/// 常挂一份跟手副本，按横向滚动偏移同向平移贴在视口左缘、盖住底下的数据格。
+///
+/// **未横滚时副本必须 [IgnorePointer] + 不可见**：一个 48×行高的定位子节点即使内容
+/// 为空，也会把落在首列的点击吃掉（2026-09-11 实测把 BOM 树的展开箭头点不动了）；
+/// 而这份挂载又不能靠宿主 setState 去增删——滚动回调里重建整行会让
+/// `ensureVisible` 之后的点击落空（同日实测 4 个用例炸在这上面）。故：**只切
+/// IgnorePointer/Visibility，不动挂载**，重建全部收敛在 AnimatedBuilder 内部。
+///
+/// 为什么不拆成「左固定窗格 + 右滚动窗格」：这两张表的行高由内容决定（备注列会换行、
+/// 多选态用 IntrinsicHeight 拉齐），两个窗格各自布局必然对不齐行高，还要再做一套
+/// 竖向滚动同步——同一个 Row 里做平移是唯一天然对齐的解法。
+class UtenFrozenLeadingColumn extends StatelessWidget {
+  const UtenFrozenLeadingColumn({
+    super.key,
+    required this.horizontal,
+    required this.width,
+    required this.cell,
+    required this.row,
+  });
+
+  /// 该表的横向滚动控制器（表头用表头那只，表体用表体那只；两者本就双向同步）。
+  final ScrollController horizontal;
+
+  /// 冻结列宽（= 行首格的宽度）。
+  final double width;
+
+  /// 冻结列的格子内容（与行首格同一份构建结果）。
+  final Widget cell;
+
+  /// 整行（首格照常在内）。
+  final Widget row;
+
+  /// 当前横向偏移；无 client 或全屏路由双挂导致多个 position 时回落 0
+  /// （`.offset` 在多 position 下会断言失败）。
+  double get _offset =>
+      horizontal.hasClients && horizontal.positions.length == 1
+      ? horizontal.offset
+      : 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        row,
+        // ⚠️ 定位块必须是**整行大小**（Positioned.fill），不能只占左边 48px：
+        // `Transform.translate` 只搬绘制，命中测试仍被父级 RenderBox 的 size 挡住——
+        // 定位块只有 48 宽时，平移到视口左缘的那份副本**画得出来却点不动**
+        // （2026-09-11 用户反馈「拖动后最顶上的多选框就失灵，必须拖回最左边才管用」）。
+        // 整行大小 + 内部 Align(48 宽) 后，命中只落在那 48px 上，其余位置照常穿透到行。
+        Positioned.fill(
+          child: AnimatedBuilder(
+            animation: horizontal,
+            builder: (_, child) {
+              final dx = _offset;
+              final frozen = dx > 0;
+              return IgnorePointer(
+                ignoring: !frozen,
+                child: Visibility(
+                  visible: frozen,
+                  child: Transform.translate(
+                    offset: Offset(dx, 0),
+                    child: Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: SizedBox(
+                        width: width,
+                        height: double.infinity,
+                        child: child,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+            child: cell,
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 /// 一个待选列：[key]（稳定标识）、[label]（展示名）、[required]（必填锁定）。
 class UtenColumnChooserEntry {
@@ -463,7 +607,7 @@ class UtenColumnDragHide {
   final bool armed;
 }
 
-/// 表头「长按拎起→横拖→松手落位」列排序手势态（不可变；经
+/// 表头「按下即拖→横拖换位→松手落位」列排序手势态（不可变；经
 /// [UtenColumnHeaderDragHost.columnReorder] 通知视觉重建）。
 class UtenColumnReorderDrag {
   const UtenColumnReorderDrag({this.fromIndex, this.dx = 0.0, this.slot = 0});
@@ -478,14 +622,22 @@ class UtenColumnReorderDrag {
   final int slot;
 }
 
-/// 表头列手势宿主：**滑出隐藏**（按住纵向拖 → root Overlay 跟手浮层红底红×）+
-/// **长按排序**（按住不动拎起 → 横拖 → 插入位指示线 → 松手落位）。挂在表格 State
-/// 上提供完整手势机械（状态推进/单指契约/浮层挂载/原格变淡/arm 阈值），宿主只需
-/// 实现抽象取值与回调。
+/// 表头列手势宿主：按下即拖，**按方向分流**——
+/// - **横拖 = 换位**（root Overlay 跟手浮层 + 插入位指示线 → 松手落位）；
+/// - **竖拖 = 移除**（同款浮层，过阈值变红底红× → 松手隐藏该列）。
+///
+/// 2026-09-11 改动：排序此前要「长按约 500ms 拎起」，用户反馈等太久，改为与隐藏
+/// 同级的即时拖拽——GestureDetector 同时挂横/竖两个 drag 识别器，用户先往哪个方向
+/// 走就由哪个方向的识别器赢下竞技场，方向判定不用自己写。
+/// **代价**：表头本身不再能横拖滚动表格（该手势被换位吃掉）。表体横拖与底部横滚条
+/// 都还在，滚动能力没丢。
+///
+/// 挂在表格 State 上提供完整手势机械（状态推进/单指契约/浮层挂载/原格变淡/arm 阈值），
+/// 宿主只需实现抽象取值与回调。
 ///
 /// 用法（表头格，一行搞定全部手势）：
 /// ```
-/// columnHeaderGestureArea(          // 竖滑隐藏 + 长按排序的识别器（外层，拖拽中不重建）
+/// columnHeaderGestureArea(          // 横拖换位 + 竖拖移除的识别器（外层，拖拽中不重建）
 ///   i,
 ///   columnHeaderCell(i, headerCell), // 原格变淡 + 浮层锚点（两层手势共用同一 target）
 /// )
@@ -521,18 +673,21 @@ mixin UtenColumnHeaderDragHost<T extends StatefulWidget> on State<T> {
   /// 槽位计算、指示线定位、浮层横移 clamp 全部由此推导。
   List<({int index, double width})> get reorderVisibleColumns;
 
-  /// 长按排序落位：把原始下标 [fromOriginalIndex] 的列插到可见序列的 [slot] 槽
+  /// 横拖换位落位：把原始下标 [fromOriginalIndex] 的列插到可见序列的 [slot] 槽
   /// （宿主负责改自己的列序状态并触发持久化/重建）。
   void onColumnsReordered(int fromOriginalIndex, int slot);
 
-  /// 是否启用「竖滑拖出隐藏」手势（编辑明细表跟随 showColumnSettings；默认开）。
+  /// 是否启用「竖拖移除列」手势（编辑明细表跟随 showColumnSettings；默认开）。
   bool get columnHeaderHideEnabled => true;
 
-  /// 是否启用「长按横拖排序」手势（编辑明细表跟随 showColumnSettings；默认开）。
+  /// 是否启用「横拖换位」手势（编辑明细表跟随 showColumnSettings；默认开）。
   bool get columnHeaderReorderEnabled => true;
 
   final ValueNotifier<UtenColumnReorderDrag> columnReorder =
       ValueNotifier<UtenColumnReorderDrag>(const UtenColumnReorderDrag());
+
+  /// 换位拖拽的累计横向位移（drag 识别器只给逐帧 delta，起点位移要自己攒）。
+  double _reorderAccumDx = 0;
 
   OverlayEntry? _columnDragGhostEntry;
   OverlayEntry? _reorderGhostEntry;
@@ -573,11 +728,12 @@ mixin UtenColumnHeaderDragHost<T extends StatefulWidget> on State<T> {
     columnReorderCancel();
   }
 
-  // —— 长按排序（按住不动拎起 → 横拖 → 松手落位）——
+  // —— 横拖换位（按下即拖 → 横移 → 松手落位）——
 
   void columnReorderStart(int index) {
     if (columnReorder.value.fromIndex != null) return; // 单指契约
     if (reorderVisibleColumns.length < 2) return; // 单列无可排序
+    _reorderAccumDx = 0;
     columnReorder.value = UtenColumnReorderDrag(
       fromIndex: index,
       slot: _reorderVisibleSlotOf(index),
@@ -585,11 +741,18 @@ mixin UtenColumnHeaderDragHost<T extends StatefulWidget> on State<T> {
     _ensureReorderGhost();
   }
 
-  void columnReorderUpdate(Offset offsetFromOrigin) {
+  /// 逐帧横向增量推进（drag 识别器的 `details.delta.dx`）。
+  void columnReorderUpdateDelta(double deltaDx) {
+    if (columnReorder.value.fromIndex == null) return;
+    _reorderAccumDx += deltaDx;
+    _applyReorderOffset(_reorderAccumDx);
+  }
+
+  void _applyReorderOffset(double rawDx) {
     final drag = columnReorder.value;
     if (drag.fromIndex == null) return;
-    final dx = _clampedReorderDx(offsetFromOrigin.dx);
-    final slot = _computeReorderSlot(offsetFromOrigin.dx);
+    final dx = _clampedReorderDx(rawDx);
+    final slot = _computeReorderSlot(rawDx);
     if (dx == drag.dx && slot == drag.slot) return;
     columnReorder.value = UtenColumnReorderDrag(
       fromIndex: drag.fromIndex,
@@ -601,6 +764,7 @@ mixin UtenColumnHeaderDragHost<T extends StatefulWidget> on State<T> {
   void columnReorderEnd() {
     final drag = columnReorder.value;
     columnReorder.value = const UtenColumnReorderDrag(); // 先清态卸浮层
+    _reorderAccumDx = 0;
     _removeReorderGhost();
     final from = drag.fromIndex;
     if (from == null) return;
@@ -610,6 +774,7 @@ mixin UtenColumnHeaderDragHost<T extends StatefulWidget> on State<T> {
   }
 
   void columnReorderCancel() {
+    _reorderAccumDx = 0;
     if (columnReorder.value.fromIndex == null && _reorderGhostEntry == null) {
       return;
     }
@@ -783,13 +948,18 @@ mixin UtenColumnHeaderDragHost<T extends StatefulWidget> on State<T> {
     );
   }
 
-  /// 表头格手势区：竖滑隐藏 + 长按排序的识别器一套挂好。快速竖滑 → 隐藏浮层；
-  /// 按住不动约 500ms 拎起 → 横拖排序；横滑未按住 → 归表头横向滚动（竞技场自然
-  /// 消歧：识别器在视觉包裹外层，拖拽中不重建）。
+  /// 表头格手势区：横拖换位 + 竖拖移除的识别器一套挂好，**都不需要长按**。
   ///
-  /// [DragStartBehavior.down]：长按识别器在指针移动时不提前退出竞技场，竖拖在
-  /// 接受竞技场的那一拍位移默认会被吞掉（拖出去又拖回原位会误判 armed）——
-  /// start=down 让首拍 delta 从按下点起算，往返位移精确归零（2026-09-05 实测）。
+  /// 方向消歧交给竞技场：同一 GestureDetector 上的横/竖两个 drag 识别器，用户
+  /// 先往哪个方向越过 slop，哪个就赢——不用自己算主轴。右边界 8px 的列宽手柄是
+  /// Stack 兄弟且在上层，其横拖优先命中，与换位不打架。
+  ///
+  /// 本识别器嵌在表头横向 Scrollable 内层：手势事件从最深命中项往上派发，子识别器
+  /// 先接受，故表头横拖归换位而不是滚动表格（表体横拖与底部横滚条仍可滚）。
+  ///
+  /// [DragStartBehavior.down]：识别器接受竞技场的那一拍位移默认会被吞掉
+  /// （拖出去又拖回原位会误判 armed）——start=down 让首拍 delta 从按下点起算，
+  /// 往返位移精确归零（2026-09-05 实测）。
   Widget columnHeaderGestureArea(int index, Widget child) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -806,23 +976,23 @@ mixin UtenColumnHeaderDragHost<T extends StatefulWidget> on State<T> {
       onVerticalDragCancel: columnHeaderHideEnabled
           ? () => columnHeaderDragReset()
           : null,
-      onLongPressStart: columnHeaderReorderEnabled
+      onHorizontalDragStart: columnHeaderReorderEnabled
           ? (_) => columnReorderStart(index)
           : null,
-      onLongPressMoveUpdate: columnHeaderReorderEnabled
-          ? (d) => columnReorderUpdate(d.offsetFromOrigin)
+      onHorizontalDragUpdate: columnHeaderReorderEnabled
+          ? (d) => columnReorderUpdateDelta(d.delta.dx)
           : null,
-      onLongPressEnd: columnHeaderReorderEnabled
+      onHorizontalDragEnd: columnHeaderReorderEnabled
           ? (_) => columnReorderEnd()
           : null,
-      onLongPressCancel: columnHeaderReorderEnabled
+      onHorizontalDragCancel: columnHeaderReorderEnabled
           ? columnReorderCancel
           : null,
       child: child,
     );
   }
 
-  /// 表头行外包裹：长按排序拖动中在目标槽位渲染竖向插入指示线。
+  /// 表头行外包裹：换位拖动中在目标槽位渲染竖向插入指示线。
   /// [leadingInset] = 行首选择列等前导宽度（指示线 x 相对列区原点）。
   Widget columnHeaderIndicatorOverlay({
     double leadingInset = 0,

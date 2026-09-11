@@ -4,6 +4,8 @@ import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionRequest;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionResult;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.InspectionSheetDetailView;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.InspectionSheetView;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.InspectionView;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchRequest;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchResult;
@@ -36,9 +38,35 @@ public class ProductionFqcInspectionController {
     public PageResponse<InspectionView> list(
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(required = false) String sheet,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "40") int size) {
-        return service.list(status, keyword, page, size);
+        return service.list(status, keyword, sheet, page, size);
+    }
+
+    /** V547 品质检查单队列（待检处置一行一张单）；须声明在 /{id} 之前。 */
+    @GetMapping("/sheets")
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')")
+    public PageResponse<InspectionSheetView> sheets(
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "40") int size) {
+        return service.listSheets(status, keyword, page, size);
+    }
+
+    @GetMapping("/sheets/{sheetId}")
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')")
+    public InspectionSheetDetailView sheet(@PathVariable UUID sheetId) {
+        InspectionSheetDetailView result = service.sheetDetail(sheetId);
+        auditViews.record(
+                "view_production_fqc_inspection_sheet",
+                "production_fqc_inspection_sheets",
+                sheetId,
+                result.sheet().sheetNo(),
+                null,
+                "生产成品品质检查单");
+        return result;
     }
 
     @GetMapping("/count")

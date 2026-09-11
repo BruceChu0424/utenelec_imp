@@ -72,7 +72,15 @@ void main() {
     expect(salesEdit, contains("'unitRate': r.unitRate"));
     expect(salesEdit, isNot(contains('_computedParcelCount')));
     expect(salesEdit, contains("labelText: '物流件数'"));
-    expect(salesEdit, contains('measurementTotalsText('));
+    // 2026-09-11：底部合计条统一走 UtenTotalsSummaryBar，数量项由 utenQuantityTotalEntry
+    // 构造——它内部就是 measurementTotalsText(groupMeasurementTotals(...))，同样按单位分组、
+    // 绝不跨单位相加。两种写法都满足本契约。
+    expect(
+      salesEdit.contains('measurementTotalsText(') ||
+          salesEdit.contains('utenQuantityTotalEntry('),
+      isTrue,
+      reason: '销售编辑页数量合计必须按单位分组，不得跨单位相加',
+    );
   });
 
   test('arrival, batch shipment and stock ledger expose weight', () {

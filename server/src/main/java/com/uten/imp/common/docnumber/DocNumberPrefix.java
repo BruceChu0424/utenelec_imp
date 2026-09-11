@@ -67,6 +67,8 @@ public enum DocNumberPrefix {
     PRODUCTION_PLAN("SJ"),
     PRODUCTION_SUBPLAN("SZ"),
     PRODUCTION_DAILY_REPORT("SR"),
+    /** V547 生产成品品质检查单（同仓送检行聚合；数量守恒仍在 inspection）。 */
+    PRODUCTION_FQC_SHEET("FQC"),
     // 研发
     RD_TASK("RD");
 

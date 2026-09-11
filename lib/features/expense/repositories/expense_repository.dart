@@ -2,8 +2,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../models/expense_claim.dart';
 import '../models/expense_payment.dart';
+
+/// 审批列表筛选桶所属队列（与后端 /expense-claims/facets?queue= 对齐）。
+enum ApprovalFacetQueue { pending, payable }
 
 abstract interface class ExpenseRepository {
   Future<PagedResult<ExpenseClaim>> listMine({
@@ -28,6 +32,10 @@ abstract interface class ExpenseRepository {
     int? month,
     String? departmentId,
   });
+
+  /// 审批/打款队列表头筛选桶（部门 / 年月），queue = pending | payable。
+  /// 键与列 key 对齐：departmentName（value=部门 id，label=部门名）、yearMonth（yyyy-MM）。
+  Future<Map<String, List<MasterFacetBucket>>> facets(ApprovalFacetQueue queue);
   Future<ExpenseClaim> getById(String id);
   Future<ExpenseClaim> create(ExpenseClaimCreateInput input);
   Future<void> delete(String id);
@@ -119,6 +127,24 @@ class DioExpenseRepository implements ExpenseRepository {
       },
     );
     return PagedResult.fromJson(json, ExpenseClaim.fromJson);
+  }
+
+  @override
+  Future<Map<String, List<MasterFacetBucket>>> facets(
+    ApprovalFacetQueue queue,
+  ) async {
+    final json = await _api.get(
+      '$_claims/facets',
+      query: <String, dynamic>{'queue': queue.name},
+    );
+    List<MasterFacetBucket> parse(Object? raw) => [
+      for (final e in (raw as List<dynamic>? ?? const []))
+        MasterFacetBucket.fromJson(e as Map<String, dynamic>),
+    ];
+    return {
+      'departmentName': parse(json['departments']),
+      'yearMonth': parse(json['months']),
+    };
   }
 
   @override

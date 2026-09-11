@@ -72,6 +72,14 @@ class PayrollListNotifier
     await _goTo(current.page + 1);
   }
 
+  /// 直接拉目标页（2026-09-09 工资条列表表格化：表格内置翻页条含跳页输入）。
+  Future<void> goToPage(int page) async {
+    final current = state.valueOrNull;
+    if (current == null) return;
+    if (page < 1 || page == current.page || page > current.totalPages) return;
+    await _goTo(page);
+  }
+
   Future<void> _goTo(int page) async {
     if (state.isLoading) return;
     await _reloadPage(page);

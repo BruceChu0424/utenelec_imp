@@ -16,6 +16,10 @@ abstract interface class EmployeeRepository {
     Set<String>? statuses,
     String? departmentId,
     bool includeSubtree = false,
+    // sort 白名单由后端 EmployeeListQuery#orderBy 决定：code / hireDate / workYears；
+    // order 取 asc / desc。缺省时后端按「负责人优先 + 工号」排序。
+    String? sort,
+    String? order,
   });
   Future<EmployeeProfile> getById(String id);
   Future<EmployeeOnboardingResult> create(EmployeeOnboardingInput input);
@@ -72,6 +76,8 @@ class DioEmployeeRepository
     Set<String>? statuses,
     String? departmentId,
     bool includeSubtree = false,
+    String? sort,
+    String? order,
   }) async {
     final query = <String, dynamic>{
       'page': page,
@@ -81,6 +87,8 @@ class DioEmployeeRepository
       'includeSubtree': includeSubtree,
       if (statuses != null && statuses.isNotEmpty)
         'statuses': statuses.toList(),
+      'sort': ?sort,
+      'order': ?order,
     };
     final json = await api.get(ApiEndpoints.employees, query: query);
     return PagedResult.fromJson(json, EmployeeSummary.fromJson);

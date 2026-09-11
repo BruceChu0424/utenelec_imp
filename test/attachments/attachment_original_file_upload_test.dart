@@ -115,7 +115,8 @@ void main() {
         for (final upload in service.uploads) {
           expect(upload.ownerType, ownerType);
           expect(upload.ownerId, 'source-owner-id');
-          expect(upload.category, ownerType == 'EMPLOYEE' ? '照片' : null);
+          // 上传从不带分类：分类改成传完之后在文件旁边可选设置。
+          expect(upload.category, isNull);
         }
         expect(refreshes, 1);
         final messages = container.read(appNotificationProvider);

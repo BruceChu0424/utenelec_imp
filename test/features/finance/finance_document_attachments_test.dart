@@ -23,7 +23,7 @@ const _owners = {
 
 void main() {
   for (final entry in _owners.entries) {
-    testWidgets('${entry.key.name} binds files to saved document UUID', (
+    testWidgets('${entry.key.name} binds files to saved document UUID（只读）', (
       tester,
     ) async {
       final api = _FinanceFileApi();
@@ -33,12 +33,17 @@ void main() {
       );
       expect(section.ownerType, entry.value);
       expect(section.ownerId, _FinanceFileApi.documentId);
-      expect(section.canManage, isTrue);
+      // 2026-09-11 口径：详情=审核页，附件一律只读（增删回编辑页做）。
+      expect(section.canManage, isFalse);
+      expect(
+        section.readOnlyNote,
+        BusinessAttachmentSection.kReviewReadOnlyAttachmentNote,
+      );
       final rendered = tester.widget<AttachmentSection>(
         find.byType(AttachmentSection),
       );
-      expect(rendered.ownerCanUpload, isTrue);
-      expect(rendered.ownerCanDelete, isTrue);
+      expect(rendered.ownerCanUpload, isFalse);
+      expect(rendered.ownerCanDelete, isFalse);
       expect(api.fileQueries.single['ownerId'], _FinanceFileApi.documentId);
       expect(api.fileQueries.single['ownerType'], entry.value);
       expect(tester.takeException(), isNull);

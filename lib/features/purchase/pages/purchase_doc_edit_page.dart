@@ -19,7 +19,9 @@ import '../../../shared/widgets/warehouse_selection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/buttons/uten_drafts_button.dart';
+import '../../../components/buttons/uten_edit_floating_actions.dart';
 import '../../../components/buttons/uten_import_button.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
@@ -36,6 +38,9 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../core/utils/currency_display.dart';
+import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/widgets/editable_grid_totals_bar.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
@@ -574,6 +579,17 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+  /// 新建态 AppBar 右上角「草稿(N)」入口。
+  ///
+  /// 管理卡 skipListOnCreate 直达新建页，从 hub 打不开列表；本按钮是用户回到自己
+  /// 草稿的唯一入口（点击进列表并预选草稿段）。编辑既有单据时不显示。
+  List<Widget>? get _draftsAction {
+    if (widget.id != null || !_cfg.skipListOnCreate) return null;
+    final kind = _cfg.draftKind;
+    if (kind == null) return null;
+    return [UtenDraftsButton(kind: kind, listLocation: _cfg.listLocation)];
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -592,17 +608,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
           onPressed: () =>
               popOrBackTo(context, defaultPath: RouteName.purchase),
         ),
-        actions: _cfg.skipListOnCreate
-            ? [
-                UtenButton(
-                  type: UtenButtonType.tonal,
-                  icon: Icons.history_rounded,
-                  onPressed: () =>
-                      context.push('/purchase/${_cfg.type.pathSegment}'),
-                  child: const Text('查看历史'),
-                ),
-              ]
-            : null,
+        actions: _draftsAction,
       ),
       body: SafeArea(
         child: _loading
@@ -613,7 +619,13 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                   thumbVisibility: true,
                   child: ListView(
                     controller: _scrollCtl,
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    // 底部多留一个悬浮动作组的高度，否则明细表最后一行被「取消/保存」压住。
+                    padding: const EdgeInsets.fromLTRB(
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      88,
+                    ),
                     children: [
                       if (widget.docType == PurchaseDocType.receipt) ...[
                         _receiptArrivalBanner(theme),
@@ -821,14 +833,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                         ),
                       ),
                       const SizedBox(height: UtenSpacing.s12),
+                      // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）：只留右对齐引入入口。
                       Row(
                         children: [
-                          Text(
-                            '明细 (${_grid.length})',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
                           const Spacer(),
                           if (_cfg.hasUpstreamLink)
                             UtenImportButton(
@@ -855,6 +862,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                                 .updateFor(widget.docType.name, order, hidden),
                             columns: purchaseGridColumns(
                               _pickGoods,
+                              context: context,
                               unitEntries: names.unitEntries,
                               // 收货/退货是实物出入库单据：显示库位号列（主档带出，上架/拣货指引）。
                               showStockPlace:
@@ -865,6 +873,46 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                             ),
                             createBlankRow: () => PurchaseGridRow(),
                             cloneRow: (r) => r.clone(),
+                            // 合计条挂在明细表下方（原来挂在页面底部操作条里，
+                            // 2026-09-11 底部条改右下角悬浮后合计跟着回到表尾）：
+                            // 数量按单位分组绝不相加，金额币种取表头。
+                            footer: EditableGridTotalsBar<PurchaseGridRow>(
+                              key: const Key('purchase-edit-totals'),
+                              controller: _grid,
+                              showDivider: false,
+                              watchOf: (row) => [row.qty],
+                              entriesBuilder: (rows) => [
+                                utenQuantityTotalEntry(
+                                  rows
+                                      .where((row) => row.goods != null)
+                                      .map(
+                                        (row) => MeasuredAmount(
+                                          value:
+                                              double.tryParse(
+                                                row.qty.text.trim(),
+                                              ) ??
+                                              0,
+                                          unitId: row.unitId,
+                                          unitName:
+                                              names.unitEntries[row.unitId],
+                                        ),
+                                      ),
+                                ),
+                                UtenTotalEntry(
+                                  utenAmountTotalLabel(
+                                    _cfg.hasCurrency
+                                        ? financeCurrencyDisplayLabel(
+                                            name: names.currency(_currencyId),
+                                          )
+                                        : null,
+                                  ),
+                                  _grid.totalListenable.value.toStringAsFixed(
+                                    2,
+                                  ),
+                                  danger: true,
+                                ),
+                              ],
+                            ),
                           );
                         },
                       ),
@@ -873,48 +921,21 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                 ),
               ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border(
-              top: BorderSide(color: theme.colorScheme.outlineVariant),
+      // 加载中不给保存入口（表单还没填回来，此时保存会把空值提交上去）。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: _loading
+          ? null
+          : UtenEditFloatingActions(
+              onCancel: () =>
+                  popOrBackTo(context, defaultPath: RouteName.purchase),
+              onSave: _save,
+              saving: _saving,
+              // 订货已走专属编辑页；本页三类单据统一「保存，下一步审核/保存」文案。
+              saveLabel: purchaseSaveActionLabel(
+                widget.docType,
+                submitFinance: false,
+              ),
             ),
-          ),
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Wrap(
-            alignment: WrapAlignment.center,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: UtenSpacing.s12,
-            runSpacing: UtenSpacing.s8,
-            children: [
-              ValueListenableBuilder<double>(
-                valueListenable: _grid.totalListenable,
-                builder: (_, total, _) => Text(
-                  '合计 ¥${total.toStringAsFixed(2)}',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              UtenButton(
-                type: UtenButtonType.secondary,
-                onPressed: () => context.pop(),
-                child: const Text('取消'),
-              ),
-              UtenButton(
-                isLoading: _saving,
-                icon: Icons.save_outlined,
-                onPressed: _saving ? null : _save,
-                // 订货已走专属编辑页；本页三类单据统一「保存，下一步审核/保存」文案。
-                child: Text(
-                  purchaseSaveActionLabel(widget.docType, submitFinance: false),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 

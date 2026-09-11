@@ -132,8 +132,40 @@ public class FinanceReportService {
         }
 
         // 隐藏元数据列（key 以 "__" 开头，如 __srcId）：不进返回的 columns（前端不渲染、导出不含），但行 Map 已 put 其值。
+        // 表格下方合计：与列表用同一份 full（日期/facet/关键字 + 对象级授权谓词）在**整个结果集**
+        // 上聚合，与翻到第几页无关；派生表不带 LIMIT/OFFSET，所以绝不会出现「只合计当前页」。
+        List<com.uten.imp.common.report.ReportTotal> totals =
+                com.uten.imp.common.report.ReportTotalsCalculator.compute(
+                        em, dataSelect, fromJoin, full.sql(), full.params(),
+                        reportTotalSpecs(columns, columns));
+
         List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
-        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages);
+        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages, totals);
+    }
+
+    /**
+     * 把列定义里 {@code totaled(...)} 声明的合计翻译成聚合规格。
+     *
+     * <p>{@code emitted} = 实际下发给前端的列（脱敏后）——被 priceMasked 拿掉的金额列不在其中，
+     * 合计自然也不会出现，无需另写门控。{@code projected} = dataSelect 真正投影的列，
+     * 用来确认分组列（单位名/币种名）确实在派生表里。
+     *
+     * <p><b>声明了分组列却没投影时整项丢弃</b>，绝不退回「不分组」——那等于跨单位/跨币种相加。
+     */
+    private static List<com.uten.imp.common.report.ReportTotalsCalculator.Spec> reportTotalSpecs(
+            List<ReportColumn> emitted, List<ReportColumn> projected) {
+        java.util.Set<String> present = new java.util.HashSet<>();
+        for (ReportColumn c : projected) present.add(c.key());
+        List<com.uten.imp.common.report.ReportTotalsCalculator.Spec> specs = new ArrayList<>();
+        for (ReportColumn c : emitted) {
+            String label = c.totalLabel();
+            if (label == null || label.isBlank()) continue;
+            String g = c.totalGroupKey();
+            if (g != null && !present.contains(g)) continue;
+            specs.add(new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
+                    c.key(), label, c.type(), g));
+        }
+        return specs;
     }
 
     private static Object norm(Object v) {
@@ -176,8 +208,10 @@ public class FinanceReportService {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("partyName", "往来单位", 220),
                 ReportColumn.text("partyType", "类型", 80),
-                ReportColumn.money("receivable", "应收金额"),
-                ReportColumn.money("payable", "应付金额"),
+                // 一行一往来单位，金额取 ar_ap_ledger.amount_balance（= 立账本币 − 已核销，恒为人民币），
+                // 跨单位相加得到的正是「全部客户应收合计 / 全部供应商应付合计」，无币种维度。
+                ReportColumn.money("receivable", "应收金额").totaled("合计应收金额"),
+                ReportColumn.money("payable", "应付金额").totaled("合计应付金额"),
                 ReportColumn.text("phone", "电话", 130),
                 ReportColumn.text("address", "联系地址", 220));
         // 客户类别/供应商类别按 category_id 下溯（递归 CTE）；categoryType 决定查 clients 还是 suppliers。
@@ -332,7 +366,18 @@ public class FinanceReportService {
         if (catParam != null) countQ.setParameter("catId", catParam);
         long total = ((Number) countQ.getSingleResult()).longValue();
         int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
-        return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages);
+        // 合计：与列表同一段 dataSelect + 同一份 where（日期/显示方式/关键字/分类下溯），
+        // 派生表不带 LIMIT/OFFSET，所以覆盖整个结果集而不是当前这一页。
+        List<com.uten.imp.common.report.ReportTotal> totals = com.uten.imp.common.report.ReportTotalsCalculator.compute(
+                em, dataSelect, fromJoin, full.sql(),
+                q -> {
+                    full.params().forEach(q::setParameter);
+                    q.setParameter("fromDate", dateFrom);
+                    q.setParameter("toDate", dateTo);
+                    if (catParam != null) q.setParameter("catId", catParam);
+                },
+                reportTotalSpecs(cols, cols));
+        return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages, totals);
     }
 
     /** A/C 应收/应付明细（ar_ap_ledger，direction=AR 给 A / AP 给 C）。 */
@@ -361,17 +406,23 @@ public class FinanceReportService {
                 ReportColumn.text("settlementStyle", "结帐方式", 90),
                 ReportColumn.bool("settled", isAR ? "是否已收款" : "是否已付款"),
                 ReportColumn.text("currencyCode", "币别", 80),
+                // 汇率是比率，相加无意义，不声明合计。
                 ReportColumn.number("rate", "汇率"),
-                ReportColumn.money("amountOriginal", isAR ? "应收款金额" : "应付款金额"),
-                ReportColumn.money("receivedOriginal", isAR ? "已收款金额" : "已付款金额"),
-                ReportColumn.money("writeOffOriginal", "费用冲销金额"),
-                ReportColumn.money("offsetOriginal", "往来抵销金额"),
-                ReportColumn.money("balanceOriginal", isAR ? "未收金额" : "未付金额"),
-                ReportColumn.money("amountLocal", "立账人民币"),
-                ReportColumn.money("receivedLocal", isAR ? "到账人民币" : "付款人民币"),
-                ReportColumn.money("writeOffLocal", "费用冲销人民币"),
-                ReportColumn.money("offsetLocal", "往来抵销人民币"),
-                ReportColumn.money("balanceLocal", "未结人民币"),
+                // 一行 = 一条立账台账：原币列按币别分组（绝不跨币种相加），人民币列本就同币不分组。
+                ReportColumn.money("amountOriginal", isAR ? "应收款金额" : "应付款金额")
+                        .totaled(isAR ? "合计应收款金额" : "合计应付款金额", "currencyCode"),
+                ReportColumn.money("receivedOriginal", isAR ? "已收款金额" : "已付款金额")
+                        .totaled(isAR ? "合计已收款金额" : "合计已付款金额", "currencyCode"),
+                ReportColumn.money("writeOffOriginal", "费用冲销金额").totaled("合计费用冲销金额", "currencyCode"),
+                ReportColumn.money("offsetOriginal", "往来抵销金额").totaled("合计往来抵销金额", "currencyCode"),
+                ReportColumn.money("balanceOriginal", isAR ? "未收金额" : "未付金额")
+                        .totaled(isAR ? "合计未收金额" : "合计未付金额", "currencyCode"),
+                ReportColumn.money("amountLocal", "立账人民币").totaled("合计立账人民币"),
+                ReportColumn.money("receivedLocal", isAR ? "到账人民币" : "付款人民币")
+                        .totaled(isAR ? "合计到账人民币" : "合计付款人民币"),
+                ReportColumn.money("writeOffLocal", "费用冲销人民币").totaled("合计费用冲销人民币"),
+                ReportColumn.money("offsetLocal", "往来抵销人民币").totaled("合计往来抵销人民币"),
+                ReportColumn.money("balanceLocal", "未结人民币").totaled("合计未结人民币"),
                 ReportColumn.text("remark", "备注", 160));
         String dataSelect = """
                 SELECT l.bill_no AS "billNo", l.source_doc_no AS "sourceDocNo",
@@ -447,9 +498,12 @@ public class FinanceReportService {
                 ReportColumn.date("expectedDueDate", "预计收款日期"),
                 ReportColumn.text("shippingPolicy", "发运策略", 110),
                 ReportColumn.text("currencyCode", "币别", 80),
-                ReportColumn.money("orderOriginal", "订单原币金额"),
-                ReportColumn.money("recognizedOriginal", "已发运立账原币"),
-                ReportColumn.money("expectedOriginal", "未发运待收原币"),
+                // 一行 = 一张已审销售订单；三列均为该订单自身的原币金额，按币别分组相加。
+                ReportColumn.money("orderOriginal", "订单原币金额").totaled("合计订单原币金额", "currencyCode"),
+                ReportColumn.money("recognizedOriginal", "已发运立账原币")
+                        .totaled("合计已发运立账原币", "currencyCode"),
+                ReportColumn.money("expectedOriginal", "未发运待收原币")
+                        .totaled("合计未发运待收原币", "currencyCode"),
                 ReportColumn.text("planStatus", "待收计划状态", 120),
                 ReportColumn.text("remark", "备注", 160));
         String dataSelect = """
@@ -553,16 +607,23 @@ public class FinanceReportService {
                 ReportColumn.text("district", "所属地区", 110),
                 ReportColumn.text("salesPaymentType", "货款类型", 100),
                 ReportColumn.text("settlement", "结算期限", 130),
+                // 铺底额是客户主档上的授信上限（政策属性，非本期发生额/余额），跨客户求和不是账上的任何一个数，
+                // 不声明合计。
                 ReportColumn.money("creditFloor", "铺底额"),
-                ReportColumn.money("prevBalance", "上月余额"),
-                ReportColumn.money("shippedAmount", "发货金额"),
-                ReportColumn.money("receivedAmount", "回款金额"),
-                ReportColumn.money("returnAmount", "退货金额"),
-                ReportColumn.money("offsetAmount", "货款冲销"),
-                ReportColumn.money("exchangeDiff", "汇兑差额"),
-                ReportColumn.money("arReductionAmount", "本期冲减应收"),
-                ReportColumn.money("balance", "应收余额"),
+                // 一行一客户、全部为人民币口径：期初+发货+退货−回款−冲销+汇兑差额=期末，
+                // 该恒等式在合计行上同样成立，正是财务核对的用法。
+                ReportColumn.money("prevBalance", "上月余额").totaled("合计上月余额"),
+                ReportColumn.money("shippedAmount", "发货金额").totaled("合计发货金额"),
+                ReportColumn.money("receivedAmount", "回款金额").totaled("合计回款金额"),
+                ReportColumn.money("returnAmount", "退货金额").totaled("合计退货金额"),
+                ReportColumn.money("offsetAmount", "货款冲销").totaled("合计货款冲销"),
+                ReportColumn.money("exchangeDiff", "汇兑差额").totaled("合计汇兑差额"),
+                ReportColumn.money("arReductionAmount", "本期冲减应收").totaled("合计本期冲减应收"),
+                ReportColumn.money("balance", "应收余额").totaled("合计应收余额"),
+                // 超出铺底额可正可负（V443 起保留负数）：相加会让超限客户与未用满额度的客户互相抵销，
+                // 得出一个「看着没有风险」的假数，不声明合计。
                 ReportColumn.money("overFloor", "超出铺底额"),
+                // 物料金额当前投影为字面量 NULL（无数据源），不声明合计。
                 ReportColumn.money("materialAmount", "物料金额"));
         // 立帐取 ar_ap_ledger.amount_original_local（按 bill_date 归期）。有引用明细的收款按行拆成：
         // 实际到账、费用冲销、汇兑差额、按开账汇率冲减应收；无明细的历史/预收单保留头表事实。
@@ -705,20 +766,26 @@ public class FinanceReportService {
                 ReportColumn.text("partyName", "供应商简称", 160),
                 ReportColumn.text("partyFull", "供应商全称", 200),
                 ReportColumn.text("settlement", "结算期限", 150),
-                ReportColumn.money("prevBalance", "期初应付"),
-                ReportColumn.money("goodsAmount", "采购入库"),
-                ReportColumn.money("subcontractAmount", "委外加工入库"),
-                ReportColumn.money("purchaseReturnAmount", "采购退货/质检贷项抵减"),
-                ReportColumn.money("subcontractReturnAmount", "委外退货/质检贷项抵减"),
-                ReportColumn.money("wasteDeductionAmount", "历史委外损耗扣款(兼容)"),
-                ReportColumn.money("claimOffsetAmount", "委外索赔贷项立账"),
-                ReportColumn.money("reversedAmount", "立账红冲净额"),
-                ReportColumn.money("paidAmount", "实际付款"),
-                ReportColumn.money("settledAmount", "账面核销"),
-                ReportColumn.money("exchangeDifferenceLocal", "付款汇兑差额"),
-                ReportColumn.money("offsetAmount", "应付被抵销"),
-                ReportColumn.money("creditReleasedAmount", "贷项已使用"),
-                ReportColumn.money("balance", "期末应付"),
+                // 一行一供应商、全部为人民币口径的期间发生额/余额：合计行上恒等式
+                // 期初+货款+退货−核销=期末 同样成立。
+                ReportColumn.money("prevBalance", "期初应付").totaled("合计期初应付"),
+                ReportColumn.money("goodsAmount", "采购入库").totaled("合计采购入库"),
+                ReportColumn.money("subcontractAmount", "委外加工入库").totaled("合计委外加工入库"),
+                ReportColumn.money("purchaseReturnAmount", "采购退货/质检贷项抵减")
+                        .totaled("合计采购退货/质检贷项抵减"),
+                ReportColumn.money("subcontractReturnAmount", "委外退货/质检贷项抵减")
+                        .totaled("合计委外退货/质检贷项抵减"),
+                ReportColumn.money("wasteDeductionAmount", "历史委外损耗扣款(兼容)")
+                        .totaled("合计历史委外损耗扣款"),
+                ReportColumn.money("claimOffsetAmount", "委外索赔贷项立账").totaled("合计委外索赔贷项立账"),
+                ReportColumn.money("reversedAmount", "立账红冲净额").totaled("合计立账红冲净额"),
+                ReportColumn.money("paidAmount", "实际付款").totaled("合计实际付款"),
+                ReportColumn.money("settledAmount", "账面核销").totaled("合计账面核销"),
+                ReportColumn.money("exchangeDifferenceLocal", "付款汇兑差额").totaled("合计付款汇兑差额"),
+                ReportColumn.money("offsetAmount", "应付被抵销").totaled("合计应付被抵销"),
+                ReportColumn.money("creditReleasedAmount", "贷项已使用").totaled("合计贷项已使用"),
+                ReportColumn.money("balance", "期末应付").totaled("合计期末应付"),
+                // 应付合计与期末应付是同一个 SQL 表达式的重复列，再出一项合计只会把同一个数显示两遍。
                 ReportColumn.money("totalBalance", "应付合计"));
         // 立账、付款、往来抵销及各自反向均展开为带日期事件，再截断到 :to。
         // 本期实际付款（现金）、账面核销与汇兑差额分列；未付恒等式只减账面核销，不直接减现金。
@@ -902,7 +969,13 @@ public class FinanceReportService {
         documentScope.bind(cq);
         long total = ((Number) cq.getSingleResult()).longValue();
         int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
-        return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages);
+        // 合计：把整段 CTE 原样包成派生表再聚合（Postgres 允许子查询里带 WITH），
+        // 用的是同一份 where 与同一套绑定（:from/:to/:kw + 对象级授权谓词），覆盖整个结果集。
+        List<com.uten.imp.common.report.ReportTotal> totals = com.uten.imp.common.report.ReportTotalsCalculator.compute(
+                em, coreSql, "", where,
+                q -> { bindRaw(q, keyword, from, to); documentScope.bind(q); },
+                reportTotalSpecs(cols, cols));
+        return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages, totals);
     }
 
     private static void bindRaw(jakarta.persistence.Query q, String keyword, LocalDate from, LocalDate to) {
@@ -936,18 +1009,26 @@ public class FinanceReportService {
                 ReportColumn.text("arBillNo", "应收单号", 150),
                 ReportColumn.text("salesOrderNos", "销售订单号", 190),
                 ReportColumn.text("currencyCode", "币别", 80),
+                // 汇率是比率，不声明合计。
                 ReportColumn.number("receiptRate", "收款汇率"),
+                // 应收款金额取自被引用的立账台账头（ledger.amount_original）：同一张立账被多次收款、
+                // 或一次收款引用多行时会在多行上重复出现，相加即重复计数，不声明合计。
                 ReportColumn.money("receivableOriginal", "应收款金额"),
+                // 收款前/后未收是时点快照，把快照相加没有任何账务含义，不声明合计。
                 ReportColumn.money("balanceBeforeOriginal", "收款前未收"),
-                ReportColumn.money("amountOriginal", "本次收款"),
-                ReportColumn.money("amountLocal", "本次收款人民币"),
-                ReportColumn.money("writeOffOriginal", "本次冲销"),
-                ReportColumn.money("writeOffLocal", "冲销费用人民币"),
-                ReportColumn.money("appliedLocal", "本次冲减应收"),
-                ReportColumn.money("exchangeDiff", "汇兑差额"),
+                // 以下为本行自身的发生额：原币按币别分组，人民币列不分组。
+                ReportColumn.money("amountOriginal", "本次收款").totaled("合计本次收款", "currencyCode"),
+                ReportColumn.money("amountLocal", "本次收款人民币").totaled("合计本次收款人民币"),
+                ReportColumn.money("writeOffOriginal", "本次冲销").totaled("合计本次冲销", "currencyCode"),
+                ReportColumn.money("writeOffLocal", "冲销费用人民币").totaled("合计冲销费用人民币"),
+                ReportColumn.money("appliedLocal", "本次冲减应收").totaled("合计本次冲减应收"),
+                ReportColumn.money("exchangeDiff", "汇兑差额").totaled("合计汇兑差额"),
                 ReportColumn.money("balanceAfterOriginal", "本次后未收"),
-                ReportColumn.money("bankFee", "手续费"),
-                ReportColumn.money("otherFee", "其它费用"),
+                // 手续费/其它费用在单头，投影处已用 ROW_NUMBER() 只挂到每张收款单的首行（其余行给 0），
+                // 所以整集求和恰好等于「每张单计一次」——是可加的，且为人民币口径（见 FinanceReceiptService
+                // 把 bank_fee+other_fee 直接写入对账 amount_local）。
+                ReportColumn.money("bankFee", "手续费").totaled("合计手续费"),
+                ReportColumn.money("otherFee", "其它费用").totaled("合计其它费用"),
                 ReportColumn.text("remark", "备注", 160),
                 ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳收款单编辑页
         String dataSelect = """
@@ -1019,14 +1100,15 @@ public class FinanceReportService {
                 ReportColumn.text("clientCode", "客户编号", 110), ReportColumn.text("clientName", "客户名称", 160),
                 ReportColumn.text("clientFull", "客户全称", 200), ReportColumn.text("address", "客户地址", 200),
                 ReportColumn.text("district", "所属地区", 110), ReportColumn.text("currencyCode", "币别", 80),
-                ReportColumn.number("receiptCount", "收款单数"),
-                ReportColumn.money("amountTotal", "实际到账原币"),
-                ReportColumn.money("amountLocal", "实际到账人民币"),
-                ReportColumn.money("writeOffLocal", "费用冲销人民币"),
-                ReportColumn.money("appliedLocal", "冲减应收人民币"),
-                ReportColumn.money("exchangeDiff", "汇兑差额"),
-                ReportColumn.money("bankFee", "手续费"),
-                ReportColumn.money("otherFee", "其它费用"));
+                // 本表已按 客户×币别 分组：每行是一组的小计，跨组相加即全量合计。
+                ReportColumn.number("receiptCount", "收款单数").totaled("合计收款单数"),
+                ReportColumn.money("amountTotal", "实际到账原币").totaled("合计实际到账原币", "currencyCode"),
+                ReportColumn.money("amountLocal", "实际到账人民币").totaled("合计实际到账人民币"),
+                ReportColumn.money("writeOffLocal", "费用冲销人民币").totaled("合计费用冲销人民币"),
+                ReportColumn.money("appliedLocal", "冲减应收人民币").totaled("合计冲减应收人民币"),
+                ReportColumn.money("exchangeDiff", "汇兑差额").totaled("合计汇兑差额"),
+                ReportColumn.money("bankFee", "手续费").totaled("合计手续费"),
+                ReportColumn.money("otherFee", "其它费用").totaled("合计其它费用"));
         String dataSelect = """
                 SELECT c.code AS "clientCode", c.name AS "clientName", c.full_name AS "clientFull",
                        COALESCE(c.address,'') AS "address", COALESCE(c.place_id,'') AS "district",
@@ -1081,10 +1163,17 @@ public class FinanceReportService {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "供应商", 180), ReportColumn.text("operatorName", "付款人", 100),
-                ReportColumn.text("accountName", "付款帐户", 130), ReportColumn.money("amountOriginal", "实付金额(外)"),
-                ReportColumn.money("amountTotal", "付款总额"), ReportColumn.money("amountLocal", "实付金额"),
+                ReportColumn.text("accountName", "付款帐户", 130),
+                // 一行一付款单：实付原币按币别分组（本表不展示币别列，靠隐藏列 __currencyCode 分组），
+                // 实付人民币不分组。付款总额与实付金额(外)是同一个 SQL 表达式的重复列，只出一项合计。
+                ReportColumn.money("amountOriginal", "实付金额(外)").totaled("合计实付金额(外)", "__currencyCode"),
+                ReportColumn.money("amountTotal", "付款总额"),
+                ReportColumn.money("amountLocal", "实付金额").totaled("合计实付金额"),
                 ReportColumn.text("incomeItem", "收入项目名称", 130), ReportColumn.text("counterpartAccount", "对方账户", 140),
                 ReportColumn.text("handlerName", "经手人", 100), ReportColumn.text("remark", "备注", 160),
+                // 隐藏分组列：本报表不展示币别，但原币合计必须按币别分组（绝不跨币种相加），
+                // 故把币别码投进派生表、不进前端 columns（"__" 前缀由 execute 过滤）。
+                ReportColumn.text("__currencyCode", ""),
                 ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳付款单编辑页
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate", s.name AS "supplierName",
@@ -1093,13 +1182,14 @@ public class FinanceReportService {
                        a.name AS "accountName", t.amount_original AS "amountOriginal", t.amount_original AS "amountTotal",
                        t.amount_local AS "amountLocal", NULL AS "incomeItem", ca.name AS "counterpartAccount",
                        COALESCE(em_op.full_name, t.operator_name, '') AS "handlerName", t.remark AS "remark",
-                       t.id AS "__srcId"
+                       cur.code AS "__currencyCode", t.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM finance_payments t
                 LEFT JOIN suppliers s ON s.id=t.supplier_id
                 LEFT JOIN accounts a ON a.id=t.account_id
                 LEFT JOIN accounts ca ON ca.id=t.counterpart_account_id
+                LEFT JOIN currencies cur ON cur.id=t.currency_id
                 LEFT JOIN employees em_op ON em_op.id=t.operator_id
                     OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
                 """;
@@ -1126,11 +1216,17 @@ public class FinanceReportService {
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "供应商", 180), ReportColumn.text("operatorName", "付款人", 100),
                 ReportColumn.text("payStyle", "付款方式", 100), ReportColumn.text("currencyCode", "币别", 80),
-                ReportColumn.number("rate", "汇率"), ReportColumn.money("amountTotal", "付款总额"),
-                ReportColumn.money("amountLocal", "实付金额"), ReportColumn.text("makerName", "制单员", 100),
+                // 汇率是比率，不声明合计。
+                ReportColumn.number("rate", "汇率"),
+                ReportColumn.money("amountTotal", "付款总额").totaled("合计付款总额", "currencyCode"),
+                ReportColumn.money("amountLocal", "实付金额").totaled("合计实付金额"),
+                ReportColumn.text("makerName", "制单员", 100),
                 ReportColumn.text("approverName", "审核员", 100), ReportColumn.text("remark", "备注", 160),
                 ReportColumn.text("ledgerBillNo", "立帐单号", 150), ReportColumn.date("tradeDate", "交易日期"),
+                // 已付/未付/本次余额取自关联立账台账的累计快照（amount_settled / amount_balance）：
+                // 是「截至目前」的状态而非本单发生额，跨单相加会把同一张立账的累计数重复计入，不声明合计。
                 ReportColumn.money("paid", "已付金额"), ReportColumn.money("unpaid", "未付金额"),
+                // 本次付款与实付金额是同一个 SQL 表达式的重复列，只在实付金额上出一项合计。
                 ReportColumn.money("thisPay", "本次付款"), ReportColumn.money("thisBalance", "本次余额"),
                 ReportColumn.text("summary", "摘要", 160),
                 ReportColumn.text("counterpartAccount", "对方账户", 140), ReportColumn.text("handlerName", "经手人", 100),
@@ -1191,12 +1287,20 @@ public class FinanceReportService {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("operatorName", "付款人", 100), ReportColumn.text("accountName", "付款帐户", 130),
-                ReportColumn.text("currencyCode", "币别", 80), ReportColumn.money("amountTotal", "付款总额"),
+                ReportColumn.text("currencyCode", "币别", 80),
+                // 付款总额/实付金额是费用单<b>单头</b>金额，一张单有几条费用明细就在几行上重复出现，
+                // 相加即重复计数（这正是合计最容易骗人的地方），不声明合计。
+                ReportColumn.money("amountTotal", "付款总额"),
                 ReportColumn.money("amountLocal", "实付金额"), ReportColumn.text("styleName", "费用项目名称", 130),
+                // 费用行数量没有随行的单位列（费用项目单位五花八门），跨行相加会拼出一个无量纲的数；
+                // 单价相加更没有意义。两列都不声明合计。
                 ReportColumn.number("qty", "数量"), ReportColumn.money("price", "单价"),
-                ReportColumn.money("lineAmount", "支出金额"), ReportColumn.text("counterpartName", "对方", 120),
+                // 支出金额是本行自身的人民币金额，可加。
+                ReportColumn.money("lineAmount", "支出金额").totaled("合计支出金额"),
+                ReportColumn.text("counterpartName", "对方", 120),
                 ReportColumn.text("departmentName", "部门", 120), ReportColumn.text("counterpartAccount", "对方账户", 140),
                 ReportColumn.text("remark", "备注", 160), ReportColumn.text("summary", "摘要", 160),
+                // 序号是行号，不是量。
                 ReportColumn.number("lineNo", "序号"),
                 ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳费用单编辑页
         String dataSelect = """
@@ -1242,10 +1346,13 @@ public class FinanceReportService {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("operatorName", "付款人", 100), ReportColumn.text("accountName", "付款帐户", 130),
+                // 实付金额是费用单单头金额，按费用项目展开后在多行重复，不声明合计（同 M 明细）。
                 ReportColumn.money("amountLocal", "实付金额"), ReportColumn.text("makerName", "制单员", 100),
                 ReportColumn.text("approverName", "审核员", 100), ReportColumn.text("remark", "备注", 160),
+                // 数量无随行单位列、单价是比率，均不声明合计。
                 ReportColumn.text("styleName", "费用项目名称", 130), ReportColumn.number("qty", "数量"),
-                ReportColumn.money("price", "单价"), ReportColumn.money("lineAmount", "支出金额"),
+                ReportColumn.money("price", "单价"),
+                ReportColumn.money("lineAmount", "支出金额").totaled("合计支出金额"),
                 ReportColumn.text("counterpartName", "对方", 120), ReportColumn.text("counterpartAccount", "对方账户", 140),
                 ReportColumn.text("summary", "摘要", 160),
                 ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳费用单编辑页
@@ -1295,6 +1402,8 @@ public class FinanceReportService {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("operatorName", "收款人", 100), ReportColumn.text("accountName", "收款帐户", 130),
+                // 收款总额是收入单<b>单头</b>金额，一张单有几条收入明细就在几行上重复出现，相加即重复计数；
+                // 本明细表没有投影行级金额列，所以整张表没有可加的列，不出合计条。
                 ReportColumn.money("amountTotal", "收款总额"), ReportColumn.text("styleName", "收入项目名称", 130),
                 ReportColumn.text("counterpartName", "对方", 120), ReportColumn.text("counterpartAccount", "对方账号", 140),
                 ReportColumn.text("summary", "摘要", 160), ReportColumn.text("remark", "备注", 160),
@@ -1339,10 +1448,13 @@ public class FinanceReportService {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("operatorName", "收款人", 100), ReportColumn.text("accountName", "收款帐户", 130),
+                // 收款总额/实付金额是单头金额，按收入项目展开后在多行重复，不声明合计。
                 ReportColumn.money("amountTotal", "收款总额"), ReportColumn.money("amountLocal", "实付金额"),
                 ReportColumn.text("makerName", "制单员", 100), ReportColumn.text("approverName", "审核员", 100),
                 ReportColumn.text("remark", "备注", 160), ReportColumn.text("styleName", "收入项目名称", 130),
-                ReportColumn.money("incomeAmount", "收入金额"), ReportColumn.text("counterpartName", "对方", 120),
+                // 收入金额是本行自身的人民币金额，可加。
+                ReportColumn.money("incomeAmount", "收入金额").totaled("合计收入金额"),
+                ReportColumn.text("counterpartName", "对方", 120),
                 ReportColumn.text("counterpartAccount", "对方账户", 140), ReportColumn.text("summary", "摘要", 160),
                 ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳收入单编辑页
         String dataSelect = """
@@ -1398,15 +1510,18 @@ public class FinanceReportService {
                 ReportColumn.text("arBillNo", "应收单号", 150),
                 ReportColumn.text("salesOrderNos", "销售订单号", 190),
                 ReportColumn.text("currencyCode", "币别", 80),
+                // 冲销前/后未收是时点快照，相加没有账务含义，不声明合计。
                 ReportColumn.money("balanceBeforeOriginal", "冲销前未收"),
-                ReportColumn.money("thisReceiptOriginal", "本次收款"),
-                ReportColumn.money("thisReceiptLocal", "本次收款人民币"),
-                ReportColumn.money("writeOffOriginal", "本次冲销"),
-                ReportColumn.money("writeOffLocal", "冲销费用人民币"),
-                ReportColumn.money("appliedLocal", "本次冲减应收"),
+                // 以下为本行自身发生额：原币按币别分组，人民币列不分组。
+                ReportColumn.money("thisReceiptOriginal", "本次收款").totaled("合计本次收款", "currencyCode"),
+                ReportColumn.money("thisReceiptLocal", "本次收款人民币").totaled("合计本次收款人民币"),
+                ReportColumn.money("writeOffOriginal", "本次冲销").totaled("合计本次冲销", "currencyCode"),
+                ReportColumn.money("writeOffLocal", "冲销费用人民币").totaled("合计冲销费用人民币"),
+                ReportColumn.money("appliedLocal", "本次冲减应收").totaled("合计本次冲减应收"),
                 ReportColumn.money("balanceAfterOriginal", "冲销后未收"),
-                ReportColumn.money("bankFee", "手续费"),
-                ReportColumn.money("otherFee", "其它费用"),
+                // 单头手续费用 ROW_NUMBER() 只挂到每张收款单的首行，整集求和恰好每单计一次（人民币口径）。
+                ReportColumn.money("bankFee", "手续费").totaled("合计手续费"),
+                ReportColumn.money("otherFee", "其它费用").totaled("合计其它费用"),
                 ReportColumn.text("otherFeeStyle", "其它费用项目", 150),
                 ReportColumn.text("remark", "备注", 160),
                 ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳收款单编辑页（费用冲销源单为收款单）
@@ -1532,12 +1647,19 @@ public class FinanceReportService {
         String pre = isAR ? "销售" : "采购";
         String rec = isAR ? "冲减应收" : "付款";
         String bal = isAR ? "应收" : "应付";
+        // 立账/收付款两侧都是本行自身的发生额，可加（原币按币别分组）；
+        // 余额三列是<b>逐行滚动</b>出来的，把滚动余额一行行加起来毫无意义——只声明发生额的合计。
         return List.of(
                 ReportColumn.date("billDate", "开单日期"), ReportColumn.text("refNo", "关联单号", 150),
                 ReportColumn.text("currencyCode", "币别", 80),
-                ReportColumn.money("salesOriginal", pre + "金额(外)"), ReportColumn.number("salesRate", pre + "汇率"),
-                ReportColumn.money("salesLocal", pre + "金额(本)"), ReportColumn.money("receiptOriginal", rec + "金额(外)"),
-                ReportColumn.number("receiptRate", rec + "汇率"), ReportColumn.money("receiptLocal", rec + "金额(本)"),
+                ReportColumn.money("salesOriginal", pre + "金额(外)")
+                        .totaled("合计" + pre + "金额(外)", "currencyCode"),
+                ReportColumn.number("salesRate", pre + "汇率"),
+                ReportColumn.money("salesLocal", pre + "金额(本)").totaled("合计" + pre + "金额(本)"),
+                ReportColumn.money("receiptOriginal", rec + "金额(外)")
+                        .totaled("合计" + rec + "金额(外)", "currencyCode"),
+                ReportColumn.number("receiptRate", rec + "汇率"),
+                ReportColumn.money("receiptLocal", rec + "金额(本)").totaled("合计" + rec + "金额(本)"),
                 ReportColumn.money("balanceOriginal", bal + "余额(外)"), ReportColumn.number("balanceRate", bal + "汇率"),
                 ReportColumn.money("balanceLocal", bal + "余额(本)"));
     }
@@ -1614,9 +1736,14 @@ public class FinanceReportService {
         boolean isAR = "AR".equalsIgnoreCase(side);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("ym", "月份", 100),
+                // 期初/期末是每个月的滚动余额，12 行相加不是任何一个账上的数，不声明合计。
                 ReportColumn.money("prevBalance", "期初" + (isAR ? "应收" : "应付")),
-                ReportColumn.money("posted", isAR ? "发货金额" : "收货金额"),
-                ReportColumn.money("settled", isAR ? "回款金额" : "付款金额"),
+                // 立账/核销是当月发生额（人民币口径），逐月相加正好是所选年度的全年合计。
+                ReportColumn.money("posted", isAR ? "发货金额" : "收货金额")
+                        .totaled(isAR ? "合计发货金额" : "合计收货金额"),
+                ReportColumn.money("settled", isAR ? "回款金额" : "付款金额")
+                        .totaled(isAR ? "合计回款金额" : "合计付款金额"),
+                // 退货金额当前恒投影为 0（退货已合并进 posted），合计只会显示一个误导性的 0，不声明。
                 ReportColumn.money("returned", "退货金额"),
                 ReportColumn.money("balance", "期末" + (isAR ? "应收" : "应付")));
         if (partyId == null || year <= 0) return empty(cols);
@@ -1816,8 +1943,12 @@ public class FinanceReportService {
                 ReportColumn.date("billDate", "日期"), ReportColumn.text("billNo", "单号", 140),
                 ReportColumn.text("checkNo", "支票号", 120), ReportColumn.text("summary", "摘要", 160),
                 ReportColumn.text("counterpartName", "对方单位", 160), ReportColumn.text("source", "支票来源", 120),
-                ReportColumn.date("settledDate", "核销日期"), ReportColumn.money("inAmount", "收款金额"),
-                ReportColumn.money("outAmount", "支出金额"), ReportColumn.money("balance", "余额"),
+                // 单账户流水：收/支是每笔的发生额，可加（单账户单币种，无需分组）；
+                // 余额是窗口函数滚动出来的，逐行相加无意义，不声明合计。
+                ReportColumn.date("settledDate", "核销日期"),
+                ReportColumn.money("inAmount", "收款金额").totaled("合计收款金额"),
+                ReportColumn.money("outAmount", "支出金额").totaled("合计支出金额"),
+                ReportColumn.money("balance", "余额"),
                 ReportColumn.text("entryKind", "流水类型", 100));
         if (accountId == null) return empty(cols);
         int safePage=Math.max(1,page);
@@ -1882,7 +2013,12 @@ public class FinanceReportService {
                     AND (CAST(:toExclusive AS timestamptz) IS NULL
                          OR flow.bill_date<CAST(:toExclusive AS timestamptz))
                 ), filtered AS (
-                  SELECT windowed.*,COUNT(*) OVER() AS total_count
+                  -- total_in/total_out 与 total_count 同款：窗口聚合覆盖**整个筛选后结果集**
+                  -- （窗口在 WHERE 之后、LIMIT 之前求值），所以表尾合计不是「本页合计」，
+                  -- 而且不用为此多跑一条聚合查询。余额是滚动值，不在这里聚合。
+                  SELECT windowed.*,COUNT(*) OVER() AS total_count,
+                         SUM(in_amount) OVER() AS total_in,
+                         SUM(out_amount) OVER() AS total_out
                   FROM windowed
                   WHERE CAST(:keyword AS text) IS NULL
                      OR searchable LIKE CAST(:keyword AS text)
@@ -1890,7 +2026,7 @@ public class FinanceReportService {
                 SELECT bill_date,bill_no,check_no,summary,counterpart_name,source,
                        settled_date,in_amount,out_amount,balance,
                        source_doc_type,source_doc_id,entry_kind,reversal_of_id,
-                       entry_id,sort_posting_seq,total_count
+                       entry_id,sort_posting_seq,total_count,total_in,total_out
                 FROM filtered
                 ORDER BY sort_bill_date,sort_posting_seq
                 LIMIT :limit OFFSET :offset
@@ -1932,8 +2068,13 @@ public class FinanceReportService {
             items.add(item);
         }
         int totalPages=(int)((total+safeSize-1)/safeSize);
+        List<com.uten.imp.common.report.ReportTotal> totals=new ArrayList<>();
+        if(!rows.isEmpty()){
+            addScalarTotal(totals,cols,"inAmount",rows.getFirst()[17]);
+            addScalarTotal(totals,cols,"outAmount",rows.getFirst()[18]);
+        }
         return new ReportTableResponse(
-                cols,items,new LinkedHashMap<>(),safePage,safeSize,total,totalPages);
+                cols,items,new LinkedHashMap<>(),safePage,safeSize,total,totalPages,totals);
     }
 
     /** Q 银行存取明细 / R 汇总（M_Bank 0 行，返回空结构）。 */
@@ -1974,12 +2115,16 @@ public class FinanceReportService {
                 ReportColumn.text("clientCode", "客户编号", 120),
                 ReportColumn.text("clientName", "客户名称", 180),
                 ReportColumn.text("currencyCode", "币别", 90),
-                ReportColumn.money("prepaymentCashOriginal", "预收现金(原币)"),
-                ReportColumn.money("prepaymentCashLocal", "预收现金(本币)"),
-                ReportColumn.money("appliedOriginal", "转销应收(原币)"),
-                ReportColumn.money("sourceBookLocal", "预收账面本币"),
-                ReportColumn.money("targetBookLocal", "应收账面本币"),
-                ReportColumn.money("exchangeDifferenceLocal", "汇兑差额"),
+                // 一行 = 一个带日期的预收事件（红冲/反转本身就是负数行），全部为事件自身的金额，
+                // 相加即「所选区间内的净额」；原币按币别分组，本币列不分组。
+                ReportColumn.money("prepaymentCashOriginal", "预收现金(原币)")
+                        .totaled("合计预收现金(原币)", "currencyCode"),
+                ReportColumn.money("prepaymentCashLocal", "预收现金(本币)").totaled("合计预收现金(本币)"),
+                ReportColumn.money("appliedOriginal", "转销应收(原币)")
+                        .totaled("合计转销应收(原币)", "currencyCode"),
+                ReportColumn.money("sourceBookLocal", "预收账面本币").totaled("合计预收账面本币"),
+                ReportColumn.money("targetBookLocal", "应收账面本币").totaled("合计应收账面本币"),
+                ReportColumn.money("exchangeDifferenceLocal", "汇兑差额").totaled("合计汇兑差额"),
                 ReportColumn.text("reason", "摘要", 220));
         String filter = (clientId == null ? "" : " AND event.client_id=:clientId")
                 + (dateFrom == null ? "" : " AND event.event_date>=:dateFrom")
@@ -2125,13 +2270,28 @@ public class FinanceReportService {
         return access.nativeReadScope(ownerColumn, FINANCE_REPORT_OWNERS, readScope);
     }
 
+    /**
+     * 默认口径：草稿（status=0）不进报表。
+     *
+     * <p>未审核的钱流单据没有过账，不构成收付事实。调用方显式传 status（含 status=0 查草稿）
+     * 时按其口径走，不叠加本默认值。与 SalesReportService 同款（钱流单头别名为 {@code t}）。
+     */
+    private static void addApprovedByDefault(WhereBuilder w, Short status) {
+        if (status != null) {
+            w.add("t.status=:status", "status", status);
+        } else {
+            // 无具名参数的常量片段：WhereBuilder.build 对 param==null 的 Clause 只拼 SQL 不绑参。
+            w.add("t.status <> 0", null, null);
+        }
+    }
+
     private static void addFinanceDocFilters(WhereBuilder w, String billNo, UUID partyId, UUID accountId,
                                              Short status, LocalDate dateFrom, LocalDate dateTo, String kw,
                                              String partyIdCol, String billNoCol, String dateCol, String partyNameCol) {
         if (billNo != null && !billNo.isBlank()) w.add(billNoCol + " LIKE :billNo", "billNo", "%" + billNo + "%");
         if (partyId != null) w.add(partyIdCol + "=:pid", "pid", partyId);
         if (accountId != null) w.add("t.account_id=:accountId", "accountId", accountId);
-        if (status != null) w.add("t.status=:status", "status", status);
+        addApprovedByDefault(w, status);
         if (dateFrom != null) w.add(dateCol + ">=:dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add(dateCol + "<=:dateTo", "dateTo", dateTo);
         if (kw != null && !kw.isBlank())
@@ -2144,7 +2304,7 @@ public class FinanceReportService {
         if (billNo != null && !billNo.isBlank()) w.add(billNoCol + " LIKE :billNo", "billNo", "%" + billNo + "%");
         if (accountId != null) w.add("t.account_id=:accountId", "accountId", accountId);
         if (departmentId != null) w.add("i.department_id=:departmentId", "departmentId", departmentId);
-        if (status != null) w.add("t.status=:status", "status", status);
+        addApprovedByDefault(w, status);
         if (dateFrom != null) w.add(dateCol + ">=:dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add(dateCol + "<=:dateTo", "dateTo", dateTo);
         if (kw != null && !kw.isBlank())
@@ -2213,6 +2373,23 @@ public class FinanceReportService {
     }
 
     /** 安全 BigDecimal：null→0，BigDecimal/Number→BigDecimal，否则解析字符串。 */
+    /**
+     * 把某列在<b>整个结果集</b>上的合计值，按该列的 {@code totaled(...)} 声明包成一项合计（无分组维度）。
+     *
+     * <p>给那些靠窗口聚合（{@code SUM(...) OVER()}）顺带取出全集合计、不另跑聚合查询的报表用
+     * （目前是 S 帐户流水）。列上没声明 {@code totaled(...)} 或值为 null 时整项不出，
+     * 与 {@code ReportTotalsCalculator} 的「宁可不显示也不伪造 0」一致。
+     */
+    private static void addScalarTotal(List<com.uten.imp.common.report.ReportTotal> out,
+                                       List<ReportColumn> cols, String key, Object value) {
+        if (value == null) return;
+        ReportColumn col = cols.stream().filter(c -> c.key().equals(key)).findFirst().orElse(null);
+        if (col == null || col.totalLabel() == null || col.totalLabel().isBlank()) return;
+        out.add(new com.uten.imp.common.report.ReportTotal(
+                col.key(), col.totalLabel(), col.type(), null,
+                List.of(new com.uten.imp.common.report.ReportTotalGroup(null, num(value)))));
+    }
+
     private static BigDecimal num(Object v) {
         if (v == null) return BigDecimal.ZERO;
         if (v instanceof BigDecimal bd) return bd;
@@ -2299,7 +2476,16 @@ public class FinanceReportService {
         documentScope.bind(countQ);
         long total = ((Number) countQ.getSingleResult()).longValue();
         int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
-        return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages);
+        // 合计：整段按月 CTE 包成派生表再聚合（不带 LIMIT/OFFSET），所以是整年 12 个月的合计，
+        // 而不是当前这一页的几个月。
+        List<com.uten.imp.common.report.ReportTotal> totals = com.uten.imp.common.report.ReportTotalsCalculator.compute(
+                em, sql, "", "",
+                q -> {
+                    q.setParameter("pid", pid).setParameter("ys", yearStart).setParameter("ye", yearEnd);
+                    documentScope.bind(q);
+                },
+                reportTotalSpecs(cols, cols));
+        return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages, totals);
     }
 
     private static ReportTableResponse paginate(List<ReportColumn> cols, List<Map<String, Object>> all, int page, int size) {
@@ -2309,7 +2495,11 @@ public class FinanceReportService {
         int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
         int from = (int) Math.min((long) (safePage - 1) * safeSize, total);
         int to = (int) Math.min((long) from + safeSize, total);
-        return new ReportTableResponse(cols, new ArrayList<>(all.subList(from, to)), new LinkedHashMap<>(), safePage, safeSize, total, totalPages);
+        // 合计在**切页之前**对 all（整个结果集）求和，不是对 subList 求和 ——
+        // 这些报表本就必须先全量取回内存才能算滚动余额/事件序，所以直接复用同一份全量行：
+        // 既不多跑一次查询，也不可能只合计当前页。
+        List<com.uten.imp.common.report.ReportTotal> totals = com.uten.imp.common.report.ReportTotalsCalculator.computeFromRows(all, reportTotalSpecs(cols, cols));
+        return new ReportTableResponse(cols, new ArrayList<>(all.subList(from, to)), new LinkedHashMap<>(), safePage, safeSize, total, totalPages, totals);
     }
 
     /** 按 GROUP BY 的聚合报表（如 F 销售收款汇总按客户）。 */
@@ -2338,7 +2528,12 @@ public class FinanceReportService {
         full.params().forEach(countQ::setParameter);
         long total = ((Number) countQ.getSingleResult()).longValue();
         int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
-        return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages);
+        // 合计：派生表里必须连 GROUP BY 一起包进去（每行是一个分组的小计），
+        // 外层再对全部分组求和 —— 即「全部客户×币别」的总计，与当前页无关。
+        List<com.uten.imp.common.report.ReportTotal> totals = com.uten.imp.common.report.ReportTotalsCalculator.compute(
+                em, dataSelect, fromJoin, full.sql() + groupBy,
+                full.params(), reportTotalSpecs(cols, cols));
+        return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages, totals);
     }
 
     private static String normalizeDirection(String direction) {

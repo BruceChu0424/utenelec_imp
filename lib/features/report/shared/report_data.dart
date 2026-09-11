@@ -6,8 +6,9 @@
 
 import '../../basic_data/models/master_facet.dart';
 import 'report_column.dart';
+import 'report_total.dart';
 
-/// 一次报表查询的结果集：列 + 行 + facet 桶 + 分页。
+/// 一次报表查询的结果集：列 + 行 + facet 桶 + 分页 + 合计。
 class ReportData {
   const ReportData({
     required this.columns,
@@ -17,6 +18,7 @@ class ReportData {
     required this.totalPages,
     required this.total,
     required this.meta,
+    this.totals = const [],
   });
 
   final List<ReportColumn> columns;
@@ -26,6 +28,10 @@ class ReportData {
   final int totalPages;
   final int total;
   final Map<String, dynamic> meta;
+
+  /// 表格下方合计（服务端在**整个结果集**上算出，与当前页无关）。
+  /// 该报表未声明合计列时为空 —— 合计条整体不渲染，绝不退化成「当前页求和」。
+  final List<ReportTotal> totals;
 }
 
 /// 解析后端 ReportTableResponse JSON 为 [ReportData]。
@@ -56,5 +62,8 @@ ReportData parseReportResponse(Map<String, dynamic> json, int fallbackPage) {
     meta: json['meta'] is Map
         ? Map<String, dynamic>.from(json['meta'] as Map)
         : const <String, dynamic>{},
+    totals: (json['totals'] as List? ?? const [])
+        .map((t) => ReportTotal.fromJson(t as Map<String, dynamic>))
+        .toList(),
   );
 }

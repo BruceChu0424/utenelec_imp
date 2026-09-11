@@ -1,7 +1,9 @@
-// 即时库存页（2026-09-01 简化布局后；2026-09-04 顶部统一任务中心范式）：
-// - 分类 = UtenFilterToolbar 大类分段（进页不选 = 不过滤，点段才过滤；
-//   零货品分类不显示为分段）+ 页级搜索框（名称/编号/型号/客户型号）；
-// - 工具栏行尾 = 层级仓库下拉（V476 父仓可选=子树聚合）+ 含不良品仓 + 共 N 项；
+// 即时库存页（2026-09-01 简化布局后；2026-09-04 顶部统一任务中心范式；
+// 2026-09-11 分类/仓库改侧滑面板）：
+// - 分类 = UtenFilterPickerField 字段 + 侧滑分类树面板（进页默认「全部」=
+//   不过滤；零货品分类整支不出现在面板）+ 页级搜索框（名称/编号/型号/客户型号）；
+// - 工具栏行尾 = 分类字段 + 仓库字段（侧滑面板查询口径：全部 / 主仓子树聚合）
+//   + 含不良品仓 + 共 N 项；
 // - 库存台账金额列已从页面移除（无论是否持有 goods:cost:view）。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -63,36 +65,78 @@ void main() {
   });
 
   testWidgets(
-    'category segments filter by category id and 全部 returns to unfiltered',
+    'category field opens the side panel; picking a node re-queries and 全部 clears',
     (tester) async {
       final stock = _RecordingStockRepository();
       await pumpPage(tester, stock: stock);
 
-      final segments = find.byKey(
-        const ValueKey('instant-inventory-category-segments'),
+      final field = find.byKey(const ValueKey('instant-inventory-category'));
+      // 未筛选时字段显示占位「全部」。
+      expect(
+        find.descendant(of: field, matching: find.text('全部')),
+        findsOneWidget,
       );
 
-      // 一级分类（成品）暴露为分段；零货品分类（未分类孤儿 0 件）自动隐藏。
+      // 点字段 = 拉开侧滑面板（不是下拉菜单）。
+      await tester.tap(field);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('category-picker-tree')), findsOneWidget);
+      expect(find.byKey(const Key('category-picker-all')), findsOneWidget);
+      // 根分类默认展开一层，子类「成品」可见；零货品分类（未分类孤儿 0 件）整支隐藏。
+      expect(find.text('成品(FINISHED)'), findsOneWidget);
+      expect(find.textContaining('未分类（历史孤儿）'), findsNothing);
+
+      // 点分类行 = 选中 + 关窗 + 带 categoryId 重查。
+      await tester.tap(find.text('成品(FINISHED)'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('category-picker-tree')), findsNothing);
+      expect(stock.lastCategoryId, 'finished');
       expect(
-        find.descendant(of: segments, matching: find.text('成品')),
+        find.descendant(of: field, matching: find.text('成品')),
+        findsOneWidget,
+      );
+
+      // 「全部」行 = 清空筛选。
+      await tester.tap(field);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('category-picker-all')));
+      await tester.pumpAndSettle();
+      expect(stock.lastCategoryId, isNull);
+    },
+  );
+
+  testWidgets(
+    'warehouse field opens the panel and re-queries with warehouseId',
+    (tester) async {
+      final stock = _RecordingStockRepository();
+      await pumpPage(tester, stock: stock);
+
+      await tester.tap(
+        find.byKey(const ValueKey('instant-inventory-warehouse')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('warehouse-picker-all')), findsOneWidget);
+      // 查询口径不钻层：主仓与子仓同屏，主仓一点即选（= 子树聚合）。
+      expect(
+        find.byKey(const Key('warehouse-picker-entry-w1')),
         findsOneWidget,
       );
       expect(
-        find.descendant(of: segments, matching: find.text('未分类（历史孤儿）')),
-        findsNothing,
+        find.byKey(const Key('warehouse-picker-entry-w1a')),
+        findsOneWidget,
       );
 
-      await tester.tap(
-        find.descendant(of: segments, matching: find.text('成品')),
-      );
+      await tester.tap(find.byKey(const Key('warehouse-picker-entry-w1')));
       await tester.pumpAndSettle();
-      expect(stock.lastCategoryId, 'finished');
+      expect(stock.lastWarehouseId, 'w1');
 
       await tester.tap(
-        find.descendant(of: segments, matching: find.text('全部')),
+        find.byKey(const ValueKey('instant-inventory-warehouse')),
       );
       await tester.pumpAndSettle();
-      expect(stock.lastCategoryId, isNull);
+      await tester.tap(find.byKey(const Key('warehouse-picker-all')));
+      await tester.pumpAndSettle();
+      expect(stock.lastWarehouseId, isNull);
     },
   );
 
@@ -129,27 +173,33 @@ void main() {
     expect(keys, isNot(contains('costAmount')));
   });
 
-  testWidgets(
-    'warehouse dropdown, defective toggle and count share the toolbar',
-    (tester) async {
-      final stock = _RecordingStockRepository();
-      await pumpPage(tester, stock: stock);
+  testWidgets('warehouse field, defective toggle and count share the toolbar', (
+    tester,
+  ) async {
+    final stock = _RecordingStockRepository();
+    await pumpPage(tester, stock: stock);
 
-      expect(find.text('仓库'), findsOneWidget);
-      expect(find.widgetWithText(FilterChip, '含不良品仓'), findsOneWidget);
-      expect(find.textContaining(RegExp(r'^共 \d+ 项$')), findsOneWidget);
-    },
-  );
+    expect(find.text('仓库'), findsOneWidget);
+    expect(find.text('货品分类'), findsOneWidget);
+    expect(find.widgetWithText(FilterChip, '含不良品仓'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^共 \d+ 项$')), findsOneWidget);
+  });
 }
 
 class _InventoryApi extends ApiClient {
   _InventoryApi() : super(Dio());
 
+  /// 仓库字典返一主一子（测仓库侧滑面板的主/子层级与子树聚合），其余字典返空表。
   @override
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
-  }) async => const <Map<String, dynamic>>[];
+  }) async => path.contains('warehouses/dict')
+      ? const <Map<String, dynamic>>[
+          {'id': 'w1', 'name': '成品仓库', 'code': 'C04'},
+          {'id': 'w1a', 'name': '成品不良品仓', 'code': 'C0401', 'parentId': 'w1'},
+        ]
+      : const <Map<String, dynamic>>[];
 }
 
 class _RecordingStockRepository extends StockQueryRepository {
@@ -157,6 +207,7 @@ class _RecordingStockRepository extends StockQueryRepository {
 
   int calls = 0;
   String? lastCategoryId;
+  String? lastWarehouseId;
   String? lastKeyword;
 
   @override
@@ -172,6 +223,7 @@ class _RecordingStockRepository extends StockQueryRepository {
   }) {
     calls++;
     lastCategoryId = categoryId;
+    lastWarehouseId = warehouseId;
     lastKeyword = keyword;
     return Future.value(
       const PagedResult<InstantInventoryRow>(

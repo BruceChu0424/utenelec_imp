@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/router/route_names.dart';
+import '../../../shared/auth/session_epoch_provider.dart';
 import '../models/notice.dart';
 import '../repositories/notice_repository.dart';
 import 'notice_route_read_bridge.dart';
@@ -71,6 +72,8 @@ const Duration _kUnreadPollInterval = Duration(seconds: 60);
 /// 通知人人可见（employee 自带 notice:read），故不按权限短路。
 final unreadNoticeCountProvider =
     StateNotifierProvider<UnreadNoticeCountNotifier, int>((ref) {
+      // 新登录会话从零重建并立即重拉（见 shared/auth/session_epoch_provider.dart）。
+      ref.watch(sessionEpochProvider);
       final notifier = UnreadNoticeCountNotifier(ref);
       notifier.start();
       ref.onDispose(notifier.stop);
@@ -96,7 +99,7 @@ class UnreadNoticeCountNotifier extends StateNotifier<int> {
   Future<void> _tick() async {
     try {
       final count = await ref.read(noticeRepositoryProvider).unreadCount();
-      state = count;
+      if (mounted) state = count; // 会话重建后旧实例已释放，丢弃迟到结果
     } catch (_) {
       // 网络/服务异常时保留旧值，避免徽章闪烁
     }

@@ -27,7 +27,12 @@ class UtenTreeTableCell extends StatelessWidget {
     this.maxVisualDepth = 8,
     this.ancestorContinuations = const [],
     this.isLastChild = false,
+    this.childCount,
   });
+
+  /// 下级数量（可选）：未展开时在展开按钮右下角叠一枚「N」小徽章，让"这行
+  /// 还有子层"一眼可见；展开后不显示。懒加载宿主（展开前不知数量）不传。
+  final int? childCount;
 
   /// Zero-based depth. The visible label is one-based.
   final int depth;
@@ -129,7 +134,9 @@ class UtenTreeTableCell extends StatelessWidget {
                     button: true,
                     expanded: expanded,
                     excludeSemantics: true,
-                    label: '${expanded ? '收起' : '展开'} $title 的下级',
+                    label: childCount != null && !expanded
+                        ? '展开 $title 的 $childCount 个下级'
+                        : '${expanded ? '收起' : '展开'} $title 的下级',
                     child: IconButton(
                       key: toggleKey,
                       constraints: const BoxConstraints.tightFor(
@@ -137,13 +144,29 @@ class UtenTreeTableCell extends StatelessWidget {
                         height: 48,
                       ),
                       padding: EdgeInsets.zero,
-                      tooltip: expanded ? '收起下级' : '展开下级',
+                      tooltip: expanded
+                          ? '收起下级'
+                          : (childCount != null
+                                ? '展开 $childCount 个下级'
+                                : '展开下级'),
                       onPressed: onToggle,
-                      icon: Icon(
-                        expanded
-                            ? Icons.expand_more_rounded
-                            : Icons.chevron_right_rounded,
-                        color: levelColor,
+                      // 2026-09-10 用户口径「展开箭头要一眼看到」：由淡色线性图标
+                      // 改为 28px 层级色实心圆底 + 反相箭头；选中行（foregroundColor
+                      // 白）自动反相为白底主色箭头；未展开且已知子件数时叠「N」徽章。
+                      icon: _ToggleGlyph(
+                        expanded: expanded,
+                        background: foregroundColor ?? levelColor,
+                        foreground: foregroundColor == null
+                            ? (ThemeData.estimateBrightnessForColor(
+                                        levelColor,
+                                      ) ==
+                                      Brightness.dark
+                                  ? Colors.white
+                                  : colors.onSurface)
+                            : colors.primary,
+                        badge: !expanded && (childCount ?? 0) > 0
+                            ? childCount
+                            : null,
                       ),
                     ),
                   )
@@ -153,7 +176,8 @@ class UtenTreeTableCell extends StatelessWidget {
                         width: 8,
                         height: 8,
                         decoration: BoxDecoration(
-                          color: levelColor.withValues(alpha: 0.7),
+                          // 叶子圆点降为 0.45，与实心圆底的展开按钮拉开对比。
+                          color: levelColor.withValues(alpha: 0.45),
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -239,6 +263,79 @@ class UtenTreeTableCell extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 展开/收起按钮的图形：28px 实心圆底 + 反相箭头，未展开且已知子件数时右下角
+/// 叠「N」徽章。命中区仍由外层 IconButton 的 48×48 保证。
+class _ToggleGlyph extends StatelessWidget {
+  const _ToggleGlyph({
+    required this.expanded,
+    required this.background,
+    required this.foreground,
+    this.badge,
+  });
+
+  final bool expanded;
+  final Color background;
+  final Color foreground;
+  final int? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SizedBox(
+      width: 36,
+      height: 36,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: background,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              expanded
+                  ? Icons.expand_more_rounded
+                  : Icons.chevron_right_rounded,
+              size: 20,
+              color: foreground,
+            ),
+          ),
+          if (badge != null)
+            Positioned(
+              right: -2,
+              bottom: -2,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 16),
+                height: 16,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: background, width: 1.5),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  badge! > 99 ? '99+' : '$badge',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: background == Colors.white
+                        ? theme.colorScheme.primary
+                        : background,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

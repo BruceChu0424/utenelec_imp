@@ -111,6 +111,11 @@ public final class ProfileChangeDto {
             String reviewedByName
     ) {}
 
+    /** HR 队列表头筛选桶（2026-09-10）：部门 value=部门 id、label=部门名、count=该状态下批次数。 */
+    public record Facets(List<FacetBucket> departments) {}
+
+    public record FacetBucket(String value, String label, long count) {}
+
     /** 分页响应。 */
     public record Page<T>(
             List<T> items,

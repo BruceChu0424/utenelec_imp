@@ -291,6 +291,11 @@ abstract class _MaterialAnalysisCandidatesState
       setState(() {
         _previewingAnalysis = false;
         _applyAnalysis(view);
+        // 刷新时服务端因主档/BOM 事实变更清空了人工确认路线：明示条数，
+        // 不让「路线待确认」无声出现（F8）。
+        if (view.routeResetCount > 0) {
+          _serverRefreshNotice = '${view.routeResetCount} 条路线因主档变更需重新确认';
+        }
       });
     } catch (error) {
       if (!mounted) return;
@@ -368,6 +373,7 @@ abstract class _MaterialAnalysisCandidatesState
     return UtenButton(
       key: const Key('material-analysis-start'),
       size: UtenButtonSize.large,
+      type: UtenButtonType.danger,
       icon: Icons.insights_outlined,
       isLoading: _previewingAnalysis,
       onPressed: !_canManage || selectedCount == 0 || _previewingAnalysis
@@ -733,6 +739,7 @@ abstract class _MaterialAnalysisCandidatesState
                           info: '同一需求请始终使用同一个编号',
                         ),
                         hintText: '例：RW-20260808-001',
+                        counterText: '',
                       ),
                     ),
                   ),

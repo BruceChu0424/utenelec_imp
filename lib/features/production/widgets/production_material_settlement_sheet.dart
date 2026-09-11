@@ -749,10 +749,25 @@ class _MaterialSettlementSheetState
       ),
     ),
     _numberColumn('uncleared', '待登记', (row) => row.source.unclearedQty),
-    _inputColumn('consume', '本次实耗', (row) => row.consumed),
+    _inputColumn(
+      'consume',
+      '本次实耗',
+      (row) => row.consumed,
+      hint: '填写本次实际用掉的材料。黄色建议量为待登记量减本次损耗、在制，请核对；提交后才记账。',
+    ),
     if (_showLossAndWip) ...[
-      _inputColumn('loss', '本次损耗', (row) => row.loss),
-      _inputColumn('wip', '本次在制', (row) => row.wip),
+      _inputColumn(
+        'loss',
+        '本次损耗',
+        (row) => row.loss,
+        hint: '填写实际损耗的基本数量，并说明原因。系统不会按理论用量自动认定损耗。',
+      ),
+      _inputColumn(
+        'wip',
+        '本次在制',
+        (row) => row.wip,
+        hint: '填写仍在本工单生产过程中的材料基本数量，并说明原因。',
+      ),
     ],
   ];
 
@@ -769,15 +784,20 @@ class _MaterialSettlementSheetState
         Text(_number(value(row)), textAlign: TextAlign.right),
   );
 
+  /// 列级通用说明放列头 ⓘ（[hint]，2026-09-10 全站口径）；格内只保留行特有的
+  /// 「建议量」黄标（consume 列 consumptionSuggested），并把黄标图标计入量宽。
   EditableGridColumn<_SettlementGridRow> _inputColumn(
     String key,
     String label,
-    TextEditingController Function(_SettlementGridRow) controller,
-  ) => EditableGridColumn(
+    TextEditingController Function(_SettlementGridRow) controller, {
+    required String hint,
+  }) => EditableGridColumn(
     key: key,
     label: label,
     width: 138,
     numeric: true,
+    headerInfo: hint,
+    chromeWidth: key == 'consume' ? UtenEditableGridCellSpec.hintIconWidth : 0,
     cellBuilder: (_, row) => TextField(
       key: ValueKey('material-$key-${row.source.demandId}'),
       controller: controller(row),
@@ -790,13 +810,8 @@ class _MaterialSettlementSheetState
         }
       },
       decoration: applyAutofillHint(
-        UtenInputDecoration(
-          const InputDecoration(isDense: true, hintText: '0'),
-          info: key == 'consume'
-              ? '填写本次实际用掉的材料。黄色建议量为待登记量减本次损耗、在制，请核对；提交后才记账。'
-              : key == 'loss'
-              ? '填写实际损耗的基本数量，并说明原因。系统不会按理论用量自动认定损耗。'
-              : '填写仍在本工单生产过程中的材料基本数量，并说明原因。',
+        const UtenInputDecoration(
+          InputDecoration(isDense: true, hintText: '0'),
         ),
         Theme.of(context),
         autofilled: key == 'consume' && row.consumptionSuggested,

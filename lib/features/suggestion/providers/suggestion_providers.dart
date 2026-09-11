@@ -25,6 +25,12 @@ final suggestionScopeProvider = StateProvider<SuggestionScope>((ref) {
   return SuggestionScope.square;
 });
 
+/// 列表「状态」表头筛选（2026-09-10）：下推后端 status 参数（非页内裁剪），
+/// null = 不筛。与分段（广场/我的）正交；换筛选由 provider 重建回第 1 页。
+final suggestionStatusFilterProvider = StateProvider<SuggestionStatus?>(
+  (ref) => null,
+);
+
 final suggestionListProvider =
     AsyncNotifierProvider.autoDispose<
       SuggestionListNotifier,
@@ -37,7 +43,9 @@ class SuggestionListNotifier
 
   @override
   Future<PagedResult<Suggestion>> build() {
+    // 换分段 / 换表头状态筛选 → 重建即回第 1 页。
     ref.watch(suggestionScopeProvider);
+    ref.watch(suggestionStatusFilterProvider);
     return _fetch(1);
   }
 
@@ -55,6 +63,14 @@ class SuggestionListNotifier
     final current = state.valueOrNull;
     if (current == null || current.page >= current.totalPages) return;
     await _goTo(current.page + 1);
+  }
+
+  /// 直接拉目标页（2026-09-09 建议箱列表表格化：表格内置翻页条含跳页输入）。
+  Future<void> goToPage(int page) async {
+    final current = state.valueOrNull;
+    if (current == null) return;
+    if (page < 1 || page == current.page || page > current.totalPages) return;
+    await _goTo(page);
   }
 
   /// 点赞期间按建议 id 防重入；成功后只替换当前页对应行，不跳回第 1 页。
@@ -105,7 +121,11 @@ class SuggestionListNotifier
     final scope = ref.read(suggestionScopeProvider);
     return ref
         .read(suggestionRepositoryProvider)
-        .list(mine: scope == SuggestionScope.mine, page: page);
+        .list(
+          mine: scope == SuggestionScope.mine,
+          status: ref.read(suggestionStatusFilterProvider),
+          page: page,
+        );
   }
 }
 

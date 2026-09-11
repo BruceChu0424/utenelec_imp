@@ -125,7 +125,9 @@ class AppLocalizationsKo extends AppLocalizations {
       '서버 선택을 복원하지 못했습니다. 다시 시도하거나 관리자에게 문의하세요.';
 
   @override
-  String get loginFooter => '© 2026 우텅 통합 관리 플랫폼';
+  String loginFooter(int year) {
+    return '© $year 우텅 통합 관리 플랫폼';
+  }
 
   @override
   String get navDashboard => '워크벤치';
@@ -273,9 +275,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get profilePosition => '직책';
-
-  @override
-  String get entrySubtitle => '로그인 방법을 선택하세요';
 
   @override
   String get entryStaff => '임직원 로그인';

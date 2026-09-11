@@ -2,27 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_notification_badge.dart';
-import '../../../shared/auth/pending_review_provider.dart';
-import '../../finance/providers/finance_procurement_approval_count_provider.dart';
-import '../../finance/providers/sales_order_finance_confirmation_count_provider.dart';
-import '../../../shared/providers/sales_shipment_finance_count_provider.dart';
-import '../../hr_task/providers/hr_task_count_provider.dart';
-import '../../production/providers/production_pending_provider.dart';
-import '../../production/providers/production_workshop_task_count_provider.dart';
-import '../../purchase/providers/purchase_task_count_provider.dart';
-import '../../rd_task/providers/rd_task_count_provider.dart';
-import '../../subcontract/providers/subcontract_task_count_provider.dart';
-import '../../visitor_approval/providers/visitor_pending_count_provider.dart';
-import '../../warehouse/providers/procurement_inbound_count_providers.dart';
-import '../../warehouse/providers/production_finished_inbound_task_count_provider.dart';
-import '../../warehouse/providers/production_draw_count_provider.dart';
-import '../../warehouse/providers/warehouse_sales_outbound_count_provider.dart';
-import '../../warehouse/providers/warehouse_quality_result_count_provider.dart';
-import '../../warehouse/repositories/warehouse_subcontract_outbound_repository.dart'
-    show warehouseSubcontractOutboundCountProvider;
-import '../../../shared/providers/production_fqc_pending_count_provider.dart';
+import '../../../shared/badges/todo_badge_registry.dart';
 import 'quality_inspection_pending_badge.dart';
-import '../../sales/providers/sales_completion_count_provider.dart';
 
 /// 工作台卡片通过枚举声明数据源，由共享组件统一取数和渲染。
 enum WorkbenchBadgeKind {
@@ -48,14 +29,12 @@ enum WorkbenchBadgeKind {
 /// 与通知 Tab 的未读角标同款红圆数字）。常驻 provider 被外壳导航 watch 后，
 /// autoDispose 计数源随之保持存活，由 refreshGlobalBadges（返回工作台 /
 /// 新通知到达）与各 60s 轮询 notifier 驱动更新。
-final workbenchTotalTodoCountProvider = Provider<int>((ref) {
-  var total = 0;
-  for (final kind in WorkbenchBadgeKind.values) {
-    if (kind == WorkbenchBadgeKind.none) continue;
-    total += _resolveCount(kind, ref.watch);
-  }
-  return total;
-});
+final workbenchTotalTodoCountProvider = Provider<int>(
+  // 2026-09-11：Tab 总数与各模块卡走同一张待办注册表（lib/shared/badges/
+  // todo_badge_registry.dart），杜绝「外层写 1、内层合计 5」。浏览型计数
+  //（草稿/历史/报表）按口径不进累加。
+  (ref) => ref.watch(todoTotalCountProvider),
+);
 
 /// 工作台卡片角标；应放在 [UtenLazyMount] 内，避免首帧启动计数请求。
 class WorkbenchCardBadge extends ConsumerWidget {
@@ -119,67 +98,38 @@ int _resolveCount(
   WorkbenchBadgeKind kind,
   T Function<T>(ProviderListenable<T> listenable) watch,
 ) {
+  // 计数源与累加口径统一登记在 todo_badge_registry；本函数只做
+  // WorkbenchBadgeKind → 注册表入口/模块的映射。
   switch (kind) {
     case WorkbenchBadgeKind.visitorHost:
-      return watch(visitorHostPendingCountProvider);
+      return todoEntryCount(TodoEntry.visitorHostConfirm, watch);
     case WorkbenchBadgeKind.visitorApproval:
-      return watch(visitorPendingCountProvider);
+      return todoEntryCount(TodoEntry.visitorApproval, watch);
     case WorkbenchBadgeKind.hrReview:
-      return watch(pendingReviewCountProvider);
+      return todoEntryCount(TodoEntry.hrProfileReview, watch);
     case WorkbenchBadgeKind.hrTask:
-      return watch(hrTaskCountProvider);
+      return todoEntryCount(TodoEntry.hrTaskCenter, watch);
     case WorkbenchBadgeKind.production:
-      return watch(productionPendingCountProvider).count;
+      return todoEntryCount(TodoEntry.productionSchedule, watch);
     case WorkbenchBadgeKind.productionWorkshop:
-      return watch(productionWorkshopTaskCountProvider).count;
+      return todoEntryCount(TodoEntry.productionWorkshop, watch);
     case WorkbenchBadgeKind.rdTask:
-      return watch(rdTaskCountProvider);
-    case WorkbenchBadgeKind.purchase:
-      return watch(purchaseTaskCountProvider);
-    case WorkbenchBadgeKind.warehouse:
-      // 仓库管理角标 = 三张任务中心卡角标之和（与 hub 任务中心同口径；
-      // 草稿不计入待办数）：出库（销售待出库 + 委外出仓）+ 入库（预计到货 +
-      // 到货异常 + 产成品待点收）+ 领料（待领任务）+ 品质部检查结果未完结任务数。
-      return _sum(watch, [
-        warehouseSalesOutboundPendingCountProvider,
-        warehouseSubcontractOutboundCountProvider,
-        warehouseInboundExpectationCountProvider,
-        warehouseArrivalExceptionCountProvider,
-        warehouseProductionDrawPendingCountProvider,
-        warehouseProductionFinishedInboundPendingCountProvider,
-        warehouseQualityResultPendingCountProvider,
-      ]);
-    case WorkbenchBadgeKind.finance:
-      return _sum(watch, [
-        financeProcurementApprovalCountProvider,
-        salesOrderFinanceConfirmationCountProvider,
-        salesShipmentFinanceCountProvider,
-        financeArrivalExceptionCountProvider,
-      ]);
-    case WorkbenchBadgeKind.subcontract:
-      // 委外对齐采购：卡片徽标 = 委外任务台待办数（非到货退回数）。
-      return watch(subcontractTaskCountProvider);
+      return todoEntryCount(TodoEntry.rdTaskCenter, watch);
     case WorkbenchBadgeKind.sales:
-      return watch(salesAttentionCountProvider).valueOrNull ?? 0;
+      return todoEntryCount(TodoEntry.salesAttention, watch);
+    // 模块卡 = 该模块全部待办入口之和（采购/委外新含「待退回供应商」，
+    // 钱流新含 IQC 驳回——此前这些入口在 hub 里有徽章却不进模块卡）。
+    case WorkbenchBadgeKind.warehouse:
+      return todoModuleCount(TodoModule.warehouse, watch);
+    case WorkbenchBadgeKind.finance:
+      return todoModuleCount(TodoModule.finance, watch);
+    case WorkbenchBadgeKind.purchase:
+      return todoModuleCount(TodoModule.purchase, watch);
+    case WorkbenchBadgeKind.subcontract:
+      return todoModuleCount(TodoModule.subcontract, watch);
     case WorkbenchBadgeKind.qualityInspection:
-      return _sum(watch, [
-        procurementInspectionPendingCountProvider,
-        productionFqcPendingCountProvider,
-      ]);
+      return todoModuleCount(TodoModule.quality, watch);
     case WorkbenchBadgeKind.none:
       return 0;
   }
-}
-
-int _sum(
-  T Function<T>(ProviderListenable<T> listenable) watch,
-  List<ProviderListenable<AsyncValue<int>>> providers,
-) {
-  var total = 0;
-  for (final provider in providers) {
-    total += watch(
-      provider,
-    ).when(data: (value) => value, error: (_, _) => 0, loading: () => 0);
-  }
-  return total;
 }

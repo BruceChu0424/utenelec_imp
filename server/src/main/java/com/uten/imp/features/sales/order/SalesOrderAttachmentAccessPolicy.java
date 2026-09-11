@@ -59,9 +59,27 @@ public class SalesOrderAttachmentAccessPolicy implements AttachmentOwnerAccessPo
     }
 
     private void readable(SalesOrder order, AuthUser user) {
-        if (order.isDeleted() || !has(user, "sales_order:view")) throw missing();
-        access.requireReadable(order.getOwnerEmployeeId(), "销售订货单不存在");
-        if (!prices.canView()) throw new ApiException(ErrorCode.FORBIDDEN, "销售合同原件包含商业金额，需要订货价格查看权限");
+        // 财务确认视角（2026-09-09，2026-09-10 收紧）：持 sales_order_finance:view 的财务
+        // 只对「已进入财务流程」的订单（已提交待确认 / 已退回 / 已确认）读附件，不要求
+        // 销售文档权限与对象归属——财务确认队列本身即全量可读口径，审核页已展示同等的
+        // 金额事实。销售草稿尚未提交，财务不得借页面权限提前读取。
+        boolean financeView = has(user, "sales_order_finance:view") && enteredFinanceFlow(order);
+        if (order.isDeleted()
+                || (!financeView && !has(user, "sales_order:view"))) {
+            throw missing();
+        }
+        if (!financeView) {
+            access.requireReadable(order.getOwnerEmployeeId(), "销售订货单不存在");
+            if (!prices.canView()) {
+                throw new ApiException(ErrorCode.FORBIDDEN, "销售合同原件包含商业金额，需要订货价格查看权限");
+            }
+        }
+    }
+
+    /** 已提交待财务确认、财务已退回或财务已确认——三者之外（纯草稿）财务不可读。 */
+    static boolean enteredFinanceFlow(SalesOrder order) {
+        boolean pending = order.getStatus() != null && order.getStatus() == 1 && !order.isFinanceConfirmed();
+        return pending || order.isFinanceRejected() || order.isFinanceConfirmed();
     }
 
     private void editable(SalesOrder order, AuthUser user) {

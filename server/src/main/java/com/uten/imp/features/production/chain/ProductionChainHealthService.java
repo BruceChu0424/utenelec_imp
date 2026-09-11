@@ -658,10 +658,12 @@ public class ProductionChainHealthService {
                           SELECT 1
                           FROM production_finished_arrival_registration_items
                                arrival_item
-                          WHERE arrival_item.source_report_item_id = report_item.id)
+                          WHERE arrival_item.source_report_item_id = report_item.id
+                            AND arrival_item.reversal_id IS NULL)
                       AND NOT EXISTS (
                           SELECT 1 FROM production_fqc_inspections inspection
-                          WHERE inspection.source_report_item_id = report_item.id)
+                          WHERE inspection.source_report_item_id = report_item.id
+                            AND inspection.status <> 'CANCELLED')
                       AND NOT EXISTS (
                           SELECT 1 FROM production_fqc_legacy_exemptions exemption
                           WHERE exemption.source_report_item_id = report_item.id)

@@ -151,6 +151,17 @@ public class StockDocController {
         return service.issue(id, req);
     }
 
+    /**
+     * 领料任务中心批量全额出库：选中多张领料单按剩余量逐单出库（2026-09-09）。
+     * 草稿单在服务内走「审核并出库」，须同时持 stock_doc:approve（服务内校验并列出单号）。
+     */
+    @PostMapping("/issue-batch")
+    @PreAuthorize("hasAuthority('stock_doc:issue')")
+    public com.uten.imp.features.stock.dto.StockDocIssueBatchResponse issueBatch(
+            @Valid @RequestBody com.uten.imp.features.stock.dto.StockDocIssueBatchRequest req) {
+        return service.issueFullBatch(req);
+    }
+
     /** DRAW 取消出库：兼容路径下对称回退已出库量（红冲前须全部取消）。 */
     @PostMapping("/{id}/issue/reverse")
     @PreAuthorize("hasAuthority('stock_doc:reverse_issue')")

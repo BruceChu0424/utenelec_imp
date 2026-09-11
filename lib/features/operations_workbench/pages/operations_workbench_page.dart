@@ -13,6 +13,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -103,6 +104,19 @@ class _OperationsWorkbenchPageState
       ],
     };
   }
+
+  /// 阶段计数的呈现形态（docs/00-项目准则/14-徽章与计数口径.md）。
+  ///
+  /// 红徽章只给「等本部门动手」的阶段：申请待分解（采购/委外任务中心角标同源）、
+  /// 财务驳回（要改单重报）、仓库的待备料/部分领取（要去出库）。
+  /// 等待财务审核 / 财务已通过下一步是别人在办，是监控数 → 中性括号。
+  UtenSegmentCountForm _stageCountForm(String code) => switch (code) {
+    'WAITING_ORDER' ||
+    'FINANCE_REJECTED' ||
+    'READY_TO_PICK' ||
+    'PARTIAL' => UtenSegmentCountForm.actionable,
+    _ => UtenSegmentCountForm.browsing,
+  };
 
   bool get _shouldLoad {
     final seg = _seg;
@@ -302,6 +316,7 @@ class _OperationsWorkbenchPageState
       child: UtenButton(
         key: action.buttonKey,
         size: UtenButtonSize.large,
+        type: UtenButtonType.danger,
         icon: action.icon,
         onPressed: action.enabled ? () => goFrom(context, action.route!) : null,
         onDisabledTap: action.enabled
@@ -397,6 +412,7 @@ class _OperationsWorkbenchPageState
                 value: _WorkbenchSeg.stage(stage.code),
                 label: stage.label,
                 count: statusCounts[stage.code],
+                countForm: _stageCountForm(stage.code),
               ),
             const UtenFilterSegment(
               value: _WorkbenchSeg.history(),
@@ -411,6 +427,9 @@ class _OperationsWorkbenchPageState
           onSearchChanged: _applyKeyword,
         );
         // 异常小类行：选中阶段后出现；无「全部异常」，默认不选=不附加过滤。
+        // 每一项都是「不处理会出事」（逾期/缺料/延期/待挂接）→ 一律红徽章。
+        // 注意 OVERDUE_ANY 是其余逾期项的并集，同一张单会在两段各红一次，
+        // 这是筛选面（facet）的固有重叠，不是双计（分段计数不进累加注册表）。
         final exceptionRow =
             (seg != null && !seg.history && exceptionOptions.isNotEmpty)
             ? UtenFilterToolbar<String>(
@@ -423,6 +442,7 @@ class _OperationsWorkbenchPageState
                       value: option.value,
                       label: option.label,
                       count: exceptionCounts[option.value],
+                      countForm: UtenSegmentCountForm.actionable,
                     ),
                 ],
                 selected: _exception == null ? const {} : {_exception!},

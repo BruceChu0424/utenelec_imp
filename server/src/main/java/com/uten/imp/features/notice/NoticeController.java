@@ -46,6 +46,10 @@ import java.util.UUID;
  *   GET  /api/notices/unread-count                           未读数
  *   GET  /api/notices/unread-count-by-source?events=         按事件来源未读数
  *   GET  /api/notices/todos?limit=                           当前用户待办
+ *   GET  /api/notices/pending-reviews                        登录检查：我名下未办结待审（居中弹窗）
+ *   GET  /api/notices/pending-popups                         登录检查：人工通知待打卡/未读（居中弹窗）
+ *   GET  /api/notices/pending-review-status?ids=             弹卡真态心跳（办结/认领）
+ *   POST /api/notices/{id}/snooze?minutes=                   稍后再看
  *   GET  /api/notices/{id}                                   详情
  *   POST /api/notices                                        发布（notice:publish）
  *   POST /api/notices/{id}/read                              标记已读
@@ -193,6 +197,17 @@ public class NoticeController {
     @PreAuthorize("hasAuthority('notice:read')")
     public java.util.Map<String, Object> pendingReviews() {
         return java.util.Map.of("items", service.pendingReviews());
+    }
+
+    /**
+     * 人工通知登录弹窗（2026-09-10，ADR-063 §8）：人事手动发布、对我可见且仍待处理的通知
+     * （打卡类型未打卡恒弹；只提醒类型 14 天内未读未确认），上限 20。登录门与
+     * pending-reviews 并行拉取，同一居中弹窗内分组展示。
+     */
+    @GetMapping("/pending-popups")
+    @PreAuthorize("hasAuthority('notice:read')")
+    public java.util.Map<String, Object> pendingPopups() {
+        return java.util.Map.of("items", service.pendingPopups());
     }
 
     @PostMapping("/read-all")

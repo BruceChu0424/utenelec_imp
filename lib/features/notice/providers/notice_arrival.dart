@@ -683,6 +683,9 @@ void dispatchNoticeArrival(
       : notice.type.isWork
       ? '${notice.type.label} · ${notice.publisher}'
       : notice.publisher;
+  // 人工打卡类通知（人事手动发布 + acknowledge 模式）在线到达时顶部条内联
+  // 【打卡确认】：点击即回执（幂等），不必进详情；失败顶部报错，登录弹窗兜底。
+  final requiresManualAck = manualAckPending(notice);
   UtenNotify.banner(
     context,
     title: priorityPrefix == null
@@ -691,12 +694,51 @@ void dispatchNoticeArrival(
     message: notice.title,
     kind: kind,
     icon: notice.type.icon,
-    duration: duration,
+    // 待打卡的条目多留几秒，给用户点按钮的时间。
+    duration: requiresManualAck ? const Duration(seconds: 12) : duration,
     onTap: open,
     onDismissed: onDelivered,
+    actions: requiresManualAck
+        ? [
+            AppNotificationAction(
+              label: '打卡确认',
+              filled: true,
+              onPressed: () => acknowledgeNoticeInline(container, notice.id),
+            ),
+          ]
+        : null,
     // 两条不同 Notice 即使标题相同，也必须各自显示；ID 去重由协调器负责。
     force: true,
   );
+}
+
+/// 是否为「待打卡的人工通知」：人事手动发布（无 source_event）、acknowledge 模式、
+/// 本人尚未打卡。系统链路的 system/urgent 通知不在此列（无打卡义务）。
+bool manualAckPending(Notice notice) =>
+    notice.sourceEvent == null &&
+    notice.interactionMode == NoticeInteractionMode.acknowledge &&
+    !notice.myAcked;
+
+/// 顶部到达条内联打卡（与登录弹窗共用同一 acknowledge 端点）。取
+/// [ProviderContainer] 而非 WidgetRef：按钮回调可能在来源页销毁后触发。
+/// 成功刷新列表/详情缓存，**不另弹成功条**——按钮动作后卡片自身收起即反馈；
+/// 收起动画期间若再入队一条新弹条，宿主折叠态只挂载最上层一张，原卡会被
+/// 中途卸载而丢失 onDismissed（送达确认），并在新条消失后重新露出。
+/// 失败顶部报错（不抛出——弹条动作回调无 await 语义），原卡随后重新露出可重试，
+/// 登录弹窗也会兜底。
+Future<void> acknowledgeNoticeInline(
+  ProviderContainer container,
+  String noticeId,
+) async {
+  try {
+    await container.read(noticeRepositoryProvider).acknowledge(noticeId);
+    container.invalidate(noticeListProvider);
+    container.invalidate(noticeDetailProvider(noticeId));
+  } catch (_) {
+    container
+        .read(appNotificationProvider.notifier)
+        .showError('打卡失败，请稍后在通知中心或登录提醒中重试', force: true);
+  }
 }
 
 /// V459 审核待办弹卡分派（见 ADR-063 / 方案 D2/D5/D6）。

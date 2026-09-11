@@ -1,5 +1,6 @@
 package com.uten.imp.features.visitor;
 
+import com.uten.imp.features.notice.HrNoticeService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -111,7 +112,8 @@ class VisitorAdmissionPolicyTest {
         when(applications.findAndLockById(app.getId())).thenReturn(Optional.of(app));
         var service = new VisitorApplicationService(applications, mock(VisitorApprovalStepRepository.class),
                 accounts, mock(EmployeeRepository.class), mock(VisitorApplicationMapper.class),
-                mock(TxSessionVars.class), mock(SecurityContextCurrentUser.class));
+                mock(TxSessionVars.class), mock(HrNoticeService.class),
+                mock(SecurityContextCurrentUser.class));
         assertThat(service.loadForUpdate(app.getId())).isSameAs(app);
         var ordered = inOrder(applications, accounts);
         ordered.verify(applications).findIdentityById(app.getId());

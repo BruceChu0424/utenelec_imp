@@ -133,8 +133,40 @@ public class ProductionReportService {
 
         // 隐藏元数据列（key 以 "__" 开头，如行跳源头用的 __srcId）：不进返回的 columns（前端不渲染、
         // 导出 Excel 不含），但行 Map 已 put 其值（前端 onRowTap 可读 row['__srcId'] 跳对应单据编辑页）。
+        // 表格下方合计：与列表用同一份 full（日期/facet/关键字 + 对象级授权谓词）在**整个结果集**
+        // 上聚合，与翻到第几页无关；派生表不带 LIMIT/OFFSET，所以绝不会出现「只合计当前页」。
+        List<com.uten.imp.common.report.ReportTotal> totals =
+                com.uten.imp.common.report.ReportTotalsCalculator.compute(
+                        em, dataSelect, fromJoin, full.sql(), full.params(),
+                        reportTotalSpecs(columns, columns));
+
         List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
-        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages);
+        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages, Map.of(), totals);
+    }
+
+    /**
+     * 把列定义里 {@code totaled(...)} 声明的合计翻译成聚合规格。
+     *
+     * <p>{@code emitted} = 实际下发给前端的列（脱敏后）——被 priceMasked 拿掉的金额列不在其中，
+     * 合计自然也不会出现，无需另写门控。{@code projected} = dataSelect 真正投影的列，
+     * 用来确认分组列（单位名/币种名）确实在派生表里。
+     *
+     * <p><b>声明了分组列却没投影时整项丢弃</b>，绝不退回「不分组」——那等于跨单位/跨币种相加。
+     */
+    private static List<com.uten.imp.common.report.ReportTotalsCalculator.Spec> reportTotalSpecs(
+            List<ReportColumn> emitted, List<ReportColumn> projected) {
+        java.util.Set<String> present = new java.util.HashSet<>();
+        for (ReportColumn c : projected) present.add(c.key());
+        List<com.uten.imp.common.report.ReportTotalsCalculator.Spec> specs = new ArrayList<>();
+        for (ReportColumn c : emitted) {
+            String label = c.totalLabel();
+            if (label == null || label.isBlank()) continue;
+            String g = c.totalGroupKey();
+            if (g != null && !present.contains(g)) continue;
+            specs.add(new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
+                    c.key(), label, c.type(), g));
+        }
+        return specs;
     }
 
     private static Object norm(Object v) {
@@ -214,13 +246,18 @@ public class ProductionReportService {
                 ReportColumn.text("goodsName", "货品名称", 180),
                 ReportColumn.text("spec", "规格", 140),
                 ReportColumn.text("colorName", "颜色", 80),
+                // 订货数量 = 来源销售订单行的数量快照：一张销售订单行被拆成父计划 + 多张子计划时
+                // 同一个 oqty 会重复落在多行上（明细报表全量含子计划），相加会重复计数，故不声明合计。
                 ReportColumn.number("oqty", "订货数量"),
-                ReportColumn.number("qty", "排产数量"),
+                ReportColumn.number("qty", "排产数量").totaled("合计排产数量", "__unitName"),
                 ReportColumn.date("planBeginDate", "计划开工日期"),
                 ReportColumn.date("planEndDate", "计划完工日期"),
-                ReportColumn.number("iqty", "完工数量"),
+                ReportColumn.number("iqty", "完工数量").totaled("合计完工数量", "__unitName"),
                 ReportColumn.text("requestNote", "特殊要求", 140),
                 ReportColumn.text("summary", "摘要", 140),
+                // 隐藏分组列：本报表不展示单位，但合计必须按单位分组（绝不跨单位相加），
+                // 故把行单位名投进派生表、不进前端 columns（"__" 前缀由 execute 过滤）。
+                ReportColumn.text("__unitName", ""),
                 ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳生产计划编辑页
         String dataSelect = """
                 SELECT i.bill_no AS "billNo", i.bill_date AS "billDate",
@@ -234,7 +271,7 @@ public class ProductionReportService {
                        i.oqty AS "oqty", i.qty AS "qty",
                        i.plan_begin_date AS "planBeginDate", i.plan_end_date AS "planEndDate",
                        i.iqty AS "iqty", i.request_note AS "requestNote", i.remark AS "summary",
-                       p.id AS "__srcId"
+                       un.name AS "__unitName", p.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM production_plan_items i
@@ -242,6 +279,7 @@ public class ProductionReportService {
                 LEFT JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN material_categories mc ON mc.id = g.category_id
                 LEFT JOIN colors col ON col.id = i.color_id
+                LEFT JOIN units un ON un.id = i.unit_id
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(p.is_deleted,false)=false");
         addCommonDocFilters(w, billNo, goodsId, status, dateFrom, dateTo, kw, "i.bill_no", "i.bill_date");

@@ -98,12 +98,9 @@ void main() {
         await _open(tester, route == 'BUY' ? 'buy' : 'subcontract');
         await _filter(tester, '已下达 (1)');
 
+        // 2026-09-09 起缺口说明挂列头 ⓘ、格内无 Tooltip；用格子 key 锚定。
         Finder shortageCell(String qty) => find.descendant(
-          of: find.byWidgetPredicate(
-            (widget) =>
-                widget is Tooltip &&
-                (widget.message?.startsWith('本批需求扣除') ?? false),
-          ),
+          of: find.byKey(const Key('bucket-shortage-qty-cell')),
           matching: find.text(qty),
         );
         expect(shortageCell('10'), findsOneWidget);
@@ -126,11 +123,7 @@ void main() {
       await _open(tester, route == 'BUY' ? 'buy' : 'subcontract');
       await _filter(tester, '已下达 (1)');
       final physicalShortage = find.descendant(
-        of: find.byWidgetPredicate(
-          (widget) =>
-              widget is Tooltip &&
-              (widget.message?.startsWith('本批需求扣除') ?? false),
-        ),
+        of: find.byKey(const Key('bucket-shortage-qty-cell')),
         matching: find.text('7'),
       );
       expect(physicalShortage, findsOneWidget);

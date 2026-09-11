@@ -9,6 +9,9 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const baselineEdges = <String>{
     'admin->auth',
+    // 2026-09-10：服务器状态页「定时任务最近执行」按「全站统一表格」要求接入主档
+    // 表格壳（同 quality->basic_data，组件升位到 lib/components 后一并删除）。
+    'admin->basic_data',
     'admin->department',
     // 2026-08-18：权限页「开通账号」弹窗选员工+展示员工凭据（V297 临时密码配套），
     // 账号天然挂员工，与后端 admin 枢纽同构。
@@ -16,13 +19,14 @@ void main() {
     'basic_data->department',
     'basic_data->employee',
     'dashboard->admin',
-    'dashboard->finance',
     'dashboard->hr_task',
     'dashboard->notice',
+    // 2026-09-11：dashboard->finance / dashboard->sales 随徽章累加收敛到
+    // lib/shared/badges/todo_badge_registry.dart 而消失（工作台不再直接 import
+    // 各业务计数 provider）。新增此类依赖前先问：能不能进注册表？
     'dashboard->production',
     'dashboard->purchase',
     'dashboard->rd_task',
-    'dashboard->sales',
     'dashboard->subcontract',
     'dashboard->visitor_approval',
     'dashboard->warehouse',
@@ -73,6 +77,11 @@ void main() {
     'shell->profile',
     'shell->settings',
     'stock->basic_data',
+    // 2026-09-11：即时库存接入「服务端合计条」——与 finance/production/purchase/sales
+    // ->report 完全同型的那条边：页面只消费 features/report/shared 里的 ReportTotal 契约
+    // （服务端下发的分组合计 + reportTotalsBar），自己一个加法都不做。合计必须由服务端在
+    // 整个结果集上算，把契约复制一份到 stock 下反而会出现两套「能不能相加」的判断口径。
+    'stock->report',
     'subcontract->basic_data',
     'subcontract->department',
     'subcontract->employee',
@@ -108,6 +117,19 @@ void main() {
     // 2026-09-01：品质记录/待处置/FQC 队列复用主档表格壳与 facet 模型（同上，
     // 组件升位后删除）。
     'quality->basic_data',
+    // 2026-09-10：人事域列表页（员工/信息变更/工资/我的/建议箱/访客/访客审批）按
+    // 「全站统一表格 + 表头筛选 + 多选批量」要求接入主档表格壳（同上，组件升位后
+    // 与 quality->basic_data 一并删除）。
+    'employee->basic_data',
+    // 2026-09-10：HR 任务中心子页（转正/生日/周年/新入职）按同一要求改主档表格壳 +
+    // 多选批量（批量登记转正/批量送祝福），同上，组件升位后一并删除。
+    'hr_task->basic_data',
+    'hr_profile->basic_data',
+    'payroll->basic_data',
+    'profile->basic_data',
+    'suggestion->basic_data',
+    'visitor->basic_data',
+    'visitor_approval->basic_data',
     // 2026-09-01：委外前置准备页（V447）读取生产物料分析模型与仓储——前置准备
     // 本质是生产分析的一个视图，与后端 SubcontractPreparation 依赖同构。
     'subcontract->production',

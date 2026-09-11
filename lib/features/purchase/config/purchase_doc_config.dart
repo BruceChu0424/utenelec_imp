@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../../shared/auth/document_permission_set.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
 import '../models/purchase_doc.dart';
 
 class PurchaseDocConfig {
@@ -60,6 +61,20 @@ class PurchaseDocConfig {
         (granted.contains(pagePermission) ||
             granted.contains(Perm.financeViewAll));
   }
+
+  /// 该单据的列表路径（「草稿(N)」按钮的落点）。
+  String get listLocation => '/purchase/${type.pathSegment}';
+
+  /// 草稿计数类型（新建页「草稿(N)」按钮 / hub 卡徽章）。
+  ///
+  /// 申请单是计划系统生成的只读需求单（不接对象级隔离、无人工草稿），返回 null。
+  /// 2026-09-11 补齐：收货 / 退货接入跨模块草稿计数（此前两张 hub 卡没有任何数字）。
+  DraftDocKind? get draftKind => switch (type) {
+    PurchaseDocType.order => DraftDocKind.purchaseOrder,
+    PurchaseDocType.receipt => DraftDocKind.purchaseReceipt,
+    PurchaseDocType.returnDoc => DraftDocKind.purchaseReturn,
+    PurchaseDocType.request => null,
+  };
 
   String get listPerm => permissions.view;
   String? get createPerm => permissions.create;

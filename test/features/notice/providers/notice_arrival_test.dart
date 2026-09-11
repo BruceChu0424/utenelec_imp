@@ -1352,6 +1352,166 @@ void main() {
     expect(await store.read(identity), isNull);
     expect(await store.readDeliveredIds(identity), isEmpty);
   });
+
+  // ---------------- 人工打卡通知在线到达（2026-09-10，ADR-063 §8）----------------
+
+  test(
+    'manualAckPending only matches unacknowledged manual acknowledge notices',
+    () {
+      Notice notice({
+        String? sourceEvent,
+        NoticeInteractionMode mode = NoticeInteractionMode.acknowledge,
+        bool myAcked = false,
+      }) => Notice(
+        id: 'x',
+        title: 't',
+        content: 'c',
+        type: NoticeType.announcement,
+        publisher: '人事部',
+        publishedAt: DateTime.utc(2026, 9, 10),
+        isRead: false,
+        sourceEvent: sourceEvent,
+        interactionMode: mode,
+        myAcked: myAcked,
+      );
+      expect(manualAckPending(notice()), isTrue);
+      expect(manualAckPending(notice(myAcked: true)), isFalse);
+      expect(
+        manualAckPending(notice(mode: NoticeInteractionMode.none)),
+        isFalse,
+      );
+      expect(
+        manualAckPending(notice(sourceEvent: 'SALES_ORDER_FINANCE_REJECTED')),
+        isFalse,
+        reason: '系统链路通知无打卡义务',
+      );
+    },
+  );
+
+  testWidgets(
+    'manual acknowledge arrival offers inline 打卡确认 that posts acknowledge',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final preferences = await SharedPreferences.getInstance();
+      final requests = <RequestOptions>[];
+      final notices = <String, Notice>{};
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (request, handler) {
+            requests.add(request);
+            Object data = <String, dynamic>{};
+            if (request.method == 'POST' &&
+                request.path.endsWith('/acknowledge')) {
+              data = <String, dynamic>{'ackCount': 1, 'myAcked': true};
+            } else if (request.method == 'GET' &&
+                request.path.startsWith('/notices/') &&
+                !request.path.endsWith('/unread-count')) {
+              final id = request.path.split('/').last;
+              final notice = notices[id];
+              if (notice != null) {
+                data = <String, dynamic>{
+                  ..._noticeJson(notice),
+                  'interactionMode': 'acknowledge',
+                  'myAcked': true,
+                };
+              }
+            } else if (request.path == '/notices/unread-count') {
+              data = <String, dynamic>{'count': 0};
+            }
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: request,
+                statusCode: 200,
+                data: data,
+              ),
+            );
+          },
+        ),
+      );
+      final repository = DioNoticeRepository(ApiClient(dio));
+      final container = ProviderContainer(
+        overrides: [
+          noticeRepositoryProvider.overrideWithValue(repository),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+      );
+      late BuildContext dispatchContext;
+      var delivered = 0;
+      var opens = 0;
+      final holiday = Notice(
+        id: '00000000-0000-0000-0000-000000000601',
+        title: '国庆放假安排',
+        content: '10 月 1 日至 7 日放假，10 月 8 日正常上班。',
+        type: NoticeType.announcement,
+        publisher: '人事部',
+        publishedAt: DateTime.utc(2026, 9, 10, 1),
+        isRead: false,
+        interactionMode: NoticeInteractionMode.acknowledge,
+      );
+      notices[holiday.id] = holiday;
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Stack(
+              children: [
+                Builder(
+                  builder: (context) {
+                    dispatchContext = context;
+                    return const Scaffold(body: Text('首页'));
+                  },
+                ),
+                const Align(
+                  alignment: Alignment.topCenter,
+                  child: AppNotificationHost(),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      dispatchNoticeArrival(
+        dispatchContext,
+        holiday,
+        onOpenDetail: () => opens++,
+        onDelivered: () => delivered++,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.byType(UtenTopBannerCard), findsOneWidget);
+      expect(find.text(holiday.title), findsOneWidget);
+      expect(find.text('打卡确认'), findsOneWidget);
+      expect(find.byType(Dialog), findsNothing);
+
+      await tester.tap(find.text('打卡确认'));
+      await tester.pumpAndSettle();
+
+      expect(
+        requests.any(
+          (request) =>
+              request.method == 'POST' &&
+              request.path == '/notices/${holiday.id}/acknowledge',
+        ),
+        isTrue,
+      );
+      expect(delivered, 1, reason: '按钮动作后卡片关闭即确认送达');
+      expect(opens, 0, reason: '打卡不打开详情');
+      expect(find.text('打卡确认'), findsNothing);
+      expect(
+        requests.any(
+          (request) =>
+              request.method == 'POST' &&
+              request.path == '/notices/${holiday.id}/read',
+        ),
+        isFalse,
+        reason: '打卡不代行已读',
+      );
+    },
+  );
 }
 
 class _MemoryCursorStore implements NoticeArrivalCursorStore {

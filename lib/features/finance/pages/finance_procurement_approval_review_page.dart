@@ -16,6 +16,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart' show utenFmtIsoTime;
 import '../../../components/inputs/uten_field_message.dart';
@@ -29,8 +30,10 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/currency_display.dart';
+import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
+import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -461,6 +464,25 @@ class _FinanceProcurementApprovalReviewPageState
                     ],
                     const SizedBox(height: UtenSpacing.s12),
                     _itemsSection(theme, review),
+                    // 财务审核只读查看采购/委外合同原件；后端按「待审可见」口径终审，
+                    // 审核页不提供上传/删除（原件不能在审批时被悄悄替换）。
+                    if (review.orderId.isNotEmpty &&
+                        review.orderType !=
+                            FinanceProcurementOrderType.unknown) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      BusinessAttachmentSection(
+                        key: const ValueKey('finance-order-review-attachments'),
+                        ownerType:
+                            review.orderType ==
+                                FinanceProcurementOrderType.purchase
+                            ? 'PURCHASE_ORDER'
+                            : 'SUBCONTRACT_ORDER',
+                        ownerId: review.orderId,
+                        canView: true,
+                        canManage: false,
+                        title: '合同与确认文件（只读）',
+                      ),
+                    ],
                     const SizedBox(height: UtenSpacing.s12),
                     _historyCard(theme, review),
                   ],
@@ -647,6 +669,8 @@ class _FinanceProcurementApprovalReviewPageState
                   theme,
                   '本单金额(${_currencyLabel(r)})',
                   _money(r.totalOriginal),
+                  emphasis: true,
+                  danger: true,
                 ),
                 _metric(theme, '折合本币', _money(r.totalLocal)),
                 _metric(theme, '税率', _trimNum(r.taxRate) ?? '—'),
@@ -670,6 +694,7 @@ class _FinanceProcurementApprovalReviewPageState
     String label,
     String value, {
     bool emphasis = false,
+    bool danger = false,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -685,6 +710,7 @@ class _FinanceProcurementApprovalReviewPageState
           value,
           style: theme.textTheme.titleMedium?.copyWith(
             fontWeight: emphasis ? FontWeight.w800 : FontWeight.w600,
+            color: danger ? theme.colorScheme.error : null,
           ),
         ),
       ],
@@ -927,6 +953,31 @@ class _FinanceProcurementApprovalReviewPageState
           onFilterChanged: (_, _) {},
           emptyMessage: '(无明细)',
         ),
+        if (r.items.isNotEmpty)
+          UtenTotalsSummaryBar(
+            density: true,
+            entries: [
+              // 合计数量按单位分组（不同单位绝不相加）：多单位显示「12 个 · 3 箱」。
+              UtenTotalEntry(
+                '合计数量',
+                measurementTotalsText(
+                  r.items.map(
+                    (it) => MeasuredAmount(
+                      value: double.tryParse(it.qty ?? '') ?? 0,
+                      unitId: it.unitId,
+                      unitName: it.unitName,
+                    ),
+                  ),
+                ),
+              ),
+              UtenTotalEntry(
+                '合计金额(${_currencyLabel(r)})',
+                _money(r.totalOriginal),
+                danger: true,
+              ),
+              UtenTotalEntry('折合本币', _money(r.totalLocal)),
+            ],
+          ),
       ],
     );
   }

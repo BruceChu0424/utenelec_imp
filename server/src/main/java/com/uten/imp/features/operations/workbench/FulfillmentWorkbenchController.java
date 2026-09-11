@@ -37,6 +37,13 @@ public class FulfillmentWorkbenchController {
         return Map.of("count", queryService.countPending("WAREHOUSE"));
     }
 
+    /** 领料任务分状态计数（任务中心子分类徽章；待完成=READY+PARTIAL）。 */
+    @GetMapping("/warehouse/status-breakdown")
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public Map<String, Long> warehouseStatusBreakdown() {
+        return queryService.warehouseStatusBreakdown();
+    }
+
     @GetMapping("/purchase")
     @PreAuthorize("hasAnyAuthority('purchase_request:view','purchase_order:view','purchase_receipt:view','purchase_return:view')")
     public FulfillmentWorkbenchPage purchase(

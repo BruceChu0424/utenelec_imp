@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -431,6 +432,7 @@ class _WarehouseQualityResultsPageState
       UtenButton(
         key: const Key('warehouse-quality-result-batch-stock-in'),
         size: UtenButtonSize.large,
+        type: UtenButtonType.danger,
         icon: Icons.move_to_inbox_rounded,
         onPressed: _loading ? null : () => _openBatchStockIn(),
         child: Text(stockInCount > 0 ? '批量入库($stockInCount 单)' : '批量入库'),
@@ -481,6 +483,8 @@ class _WarehouseQualityResultsPageState
                 value: type,
                 label: type.label,
                 count: typeCounts?[type],
+                // 来源段计数 = 该来源未完结任务数（仓库待办）→ 红徽章。
+                countForm: UtenSegmentCountForm.actionable,
               ),
           ],
           selected: _receiptType == null ? const {} : {_receiptType!},
@@ -503,8 +507,10 @@ class _WarehouseQualityResultsPageState
         const SizedBox(height: UtenSpacing.s8),
         // 第二条（小类）：作业状态分段（计数为后端全量），选中来源后解锁；
         // 无「全部」段，末尾是「历史记录」段；进页面不预选。
-        // 徽章口径：只挂在需要仓库下一步操作的分段——「等待结果」由品质部
-        // 推进但仓库需预判工作量，保留数量；「已完结」「历史记录」不挂徽章。
+        // 计数形态：红徽章只挂需要仓库下一步操作的状态（全部合格/部分合格/
+        // 不合格退回，见 WarehouseQualityWorkStatus.actionable）；「等待结果」
+        // 由品质部推进、仓库只是预判工作量 → 中性括号；
+        // 「已完结」「历史记录」不传 count。
         UtenFilterToolbar<_QStatusSeg>(
           segmentsKey: const Key('warehouse-quality-result-status'),
           enabled: _receiptType != null,
@@ -514,6 +520,9 @@ class _WarehouseQualityResultsPageState
                 value: _QStatusSeg.stage(status),
                 label: status.shortLabel,
                 count: status.isCompleted ? null : _statusCount(status),
+                countForm: status.actionable
+                    ? UtenSegmentCountForm.actionable
+                    : UtenSegmentCountForm.browsing,
               ),
             const UtenFilterSegment(
               value: _QStatusSeg.history(),

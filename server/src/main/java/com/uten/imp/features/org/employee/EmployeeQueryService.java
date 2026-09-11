@@ -54,7 +54,8 @@ public class EmployeeQueryService {
     // ===== 列表（摘要，无敏感） =====
     @Transactional(readOnly = true)
     public PageResponse<EmployeeListItem> list(int page, int size, String search,
-                                                Set<String> statuses, UUID departmentId, boolean includeSubtree) {
+                                                Set<String> statuses, UUID departmentId, boolean includeSubtree,
+                                                String sort, String order) {
         Collection<UUID> deptIds = resolveDeptIds(departmentId, includeSubtree);
         EmployeeListQuery.Result result = employeeListQuery.query(
                 page,
@@ -62,7 +63,9 @@ public class EmployeeQueryService {
                 search,
                 statuses,
                 deptIds,
-                departmentId != null);
+                departmentId != null,
+                sort,
+                order);
         return new PageResponse<>(
                 result.items(),
                 result.page(),

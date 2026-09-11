@@ -12,12 +12,18 @@ import 'package:uten_imp/features/notice/widgets/review_pending_dialog.dart';
 class _Repository implements NoticeRepository {
   final requests = <Completer<List<Notice>>>[];
 
+  /// 人工通知登录弹窗数据（GET /notices/pending-popups），默认空。
+  List<Notice> manual = const [];
+
   @override
   Future<List<Notice>> pendingReviews() {
     final request = Completer<List<Notice>>();
     requests.add(request);
     return request.future;
   }
+
+  @override
+  Future<List<Notice>> pendingPopups() async => manual;
 
   @override
   Future<List<PendingReviewStatus>> pendingReviewStatus(
@@ -139,4 +145,49 @@ void main() {
       expect(find.byType(ReviewPendingDialog), findsNothing);
     },
   );
+
+  testWidgets('manual notices alone open the login dialog as 登录提醒', (
+    tester,
+  ) async {
+    // 2026-09-10（ADR-063 §8）：登录门并行拉 pending-popups；无审核待办、
+    // 只有人事手动发布的打卡通知时也要弹窗，标题「登录提醒」+ 打卡按钮。
+    final repository = _Repository()
+      ..manual = [
+        Notice(
+          id: 'm1',
+          title: '国庆放假安排',
+          content: '10 月 1 日至 7 日放假',
+          type: NoticeType.announcement,
+          publisher: '人事部',
+          publishedAt: DateTime.now(),
+          isRead: false,
+          interactionMode: NoticeInteractionMode.acknowledge,
+        ),
+      ];
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [noticeRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => ReviewPendingLoginGate(
+              enabled: true,
+              identityKey: 'hr-staff',
+              dialogContext: () => context,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(repository.requests, hasLength(1));
+    repository.requests.single.complete([]);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ReviewPendingDialog), findsOneWidget);
+    expect(find.text('登录提醒'), findsOneWidget);
+    expect(find.text('国庆放假安排'), findsOneWidget);
+    expect(find.text('打卡确认'), findsOneWidget);
+    expect(find.text('去工作台处理'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }

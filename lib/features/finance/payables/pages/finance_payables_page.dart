@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../components/buttons/uten_back_button.dart';
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../../components/inputs/uten_search_bar.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
 import '../../../../components/layout/uten_app_bar.dart';
@@ -748,6 +749,8 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
                           value: _PayablesWorkspaceView.lossClaims,
                           label: '委外超耗责任',
                           count: _result?.summary.pendingLossCases,
+                          // 未判定的超耗案件在等财务定责，是待办不是浏览数。
+                          countForm: UtenSegmentCountForm.actionable,
                         ),
                       if (_canViewSupplierSettlements)
                         const UtenFilterSegment(
@@ -784,8 +787,6 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
                       ),
                       body: isExpanded
                           ? UtenListTwoPane(
-                              splitPersistenceKey: 'finance.payables',
-                              siderWidth: 280,
                               filterPane: _buildFilters(),
                               tablePane: _buildPayablesTablePane(
                                 theme: theme,

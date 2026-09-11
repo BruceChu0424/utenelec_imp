@@ -14,6 +14,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
+import '../../core/theme/uten_tokens.dart';
 import 'uten_field_label.dart';
 import 'uten_input_decoration.dart';
 
@@ -25,7 +26,7 @@ OutlineInputBorder requiredEmptyBorder(
   bool focused = false,
 }) {
   return OutlineInputBorder(
-    borderRadius: const BorderRadius.all(Radius.circular(10)),
+    borderRadius: const BorderRadius.all(Radius.circular(UtenRadius.control)),
     borderSide: BorderSide(
       color: theme.colorScheme.error,
       width: focused ? 2 : 1.5,
@@ -51,7 +52,7 @@ InputDecoration applyRequiredEmpty(
 /// 「预填默认值」黄色提醒描边（值来自学习/主档带入，语义 warning 色；宽度 1.5，聚焦 2）。
 OutlineInputBorder autofillHintBorder(ThemeData theme, {bool focused = false}) {
   return OutlineInputBorder(
-    borderRadius: const BorderRadius.all(Radius.circular(10)),
+    borderRadius: const BorderRadius.all(Radius.circular(UtenRadius.control)),
     borderSide: BorderSide(color: UtenColors.warning, width: focused ? 2 : 1.5),
   );
 }

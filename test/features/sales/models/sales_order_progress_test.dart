@@ -20,6 +20,53 @@ void main() {
     expect(salesProgressStageLabel(row.stage), '可分批发货');
   });
 
+  test(
+    'partially planned order stays pending and says how much is planned',
+    () {
+      // V545：订 10 排 4 → 阶段仍 PENDING（服务端按剩余未排量派生），文案标明已排 4/10。
+      final row = SalesOrderProgressRow.fromJson(const {
+        'orderId': 'order-partial',
+        'billNo': 'SO-PARTIAL',
+        'orderQty': 10,
+        'producedQty': 0,
+        'shippedQty': 0,
+        'reservedQty': 0,
+        'plannedQty': 4,
+        'unplannedQty': 6,
+        'productionPct': 0,
+        'stage': 'PENDING',
+      });
+
+      expect(row.unplannedQty, 6);
+      expect(salesProgressStageText(row), '待排产·部分已排 4/10');
+      expect(
+        salesProgressStageText(
+          SalesOrderProgressRow.fromJson(const {
+            'orderId': 'order-none',
+            'billNo': 'SO-NONE',
+            'orderQty': 10,
+            'plannedQty': 0,
+            'stage': 'PENDING',
+          }),
+        ),
+        '待排产',
+      );
+      expect(
+        salesProgressStageText(
+          SalesOrderProgressRow.fromJson(const {
+            'orderId': 'order-full',
+            'billNo': 'SO-FULL',
+            'orderQty': 10,
+            'plannedQty': 10,
+            'unplannedQty': 0,
+            'stage': 'PRODUCING',
+          }),
+        ),
+        '生产中',
+      );
+    },
+  );
+
   test('remaining quantity decreases only by actual shipped quantity', () {
     final row = SalesOrderProgressRow.fromJson(const {
       'orderId': 'order-1',

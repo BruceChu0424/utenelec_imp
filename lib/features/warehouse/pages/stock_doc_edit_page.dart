@@ -13,26 +13,32 @@ import '../../../shared/widgets/warehouse_selection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_edit_floating_actions.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/buttons/uten_drafts_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_form_grid.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/attachments/business_attachment_section.dart';
+import '../../../shared/attachments/pending_attachment_controller.dart';
+import '../../../shared/attachments/pending_attachment_flow.dart';
 import '../../../shared/auth/document_scope_capability.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/task_claim_badge.dart';
 import '../../../shared/widgets/task_claim_handle.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../stock/repositories/stock_query_repository.dart';
-import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
@@ -61,6 +67,12 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
 
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
+
+  /// 领料单保存前暂存的出库凭证/照片（ADR-074：保存拿到真实 UUID 后逐个确认上传）。
+  final _pendingFiles = PendingAttachmentController();
+
+  /// 单据已创建但附件未全部上传：再点「保存」只重试附件，不重复建单。
+  String? _createdDocId;
   final _assTeam = TextEditingController();
   DateTime _billDate = ChinaDateTime.today();
   String? _warehouseId;
@@ -88,6 +100,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
   void dispose() {
     _billNo.dispose();
     _remark.dispose();
+    _pendingFiles.dispose();
     _assTeam.dispose();
     _grid.dispose(); // 自动 dispose 各行控制器
     _scrollCtl.dispose();
@@ -359,7 +372,41 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
     return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
   }
 
+  /// 只有领料单接了 STOCK_DOCUMENT 附件策略的可见入口（详情页「出库凭证/照片」常驻区）；
+  /// 其它仓库单据详情没有附件区，编辑页不提供上传以免文件无处回看。
+  bool get _hasAttachmentArea => widget.docType == StockDocType.draw;
+
+  /// 可管口径与服务端 StockDocumentAttachmentAccessPolicy 草稿态一致：审核∩出库
+  ///（出库即审核）；组件内再叠加 attachment:upload。
+  bool get _canManageAttachments {
+    final perms = ref.read(currentPermissionsProvider);
+    return perms.contains(Perm.stockDocApprove) &&
+        perms.contains(Perm.stockDocIssue);
+  }
+
+  /// 把暂存附件上传到刚创建的领料单；全部成功才跳详情，失败项留在页面供重试。
+  Future<void> _finishCreatedDoc(String createdId) async {
+    setState(() => _saving = true);
+    try {
+      final ok = await flushPendingAttachments(
+        context,
+        ref,
+        _pendingFiles,
+        ownerType: 'STOCK_DOCUMENT',
+        ownerIds: [createdId],
+      );
+      if (!mounted || !ok) return;
+      context.replace(RoutePath.stockDocDetail(widget.docType.code, createdId));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<void> _save() async {
+    if (_createdDocId case final createdId?) {
+      await _finishCreatedDoc(createdId);
+      return;
+    }
     if (widget.id != null && !_loadedCanEdit) {
       return context.appError(_editRestrictionReason ?? '该单据不可通过仓库通用页面编辑');
     }
@@ -463,6 +510,12 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
       if (!mounted) return;
       context.appSuccess(widget.id == null ? '已创建' : '已保存');
       bumpListRefresh(ref, widget.docType.refreshKey);
+      if (widget.id == null && _hasAttachmentArea && _pendingFiles.isNotEmpty) {
+        // 新建领料单：先拿到真实 UUID，再把保存前暂存的凭证逐个确认上传。
+        setState(() => _createdDocId = d.id);
+        await _finishCreatedDoc(d.id);
+        return;
+      }
       context.replace(RoutePath.stockDocDetail(widget.docType.code, d.id));
     } catch (error) {
       if (mounted) context.appApiError(error, fallback: '保存失败');
@@ -474,6 +527,22 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+  /// 新建态 AppBar 右上角「草稿(N)」入口。
+  ///
+  /// 仓库单据 8 种类型共用一张 stock_documents，跨模块草稿计数只有一个
+  /// stockDocument 桶，因此数字是整模块合计、而落点列表只列当前类型；
+  /// 用 countScopeNote 在 tooltip 里说明，避免用户以为列表漏单。
+  List<Widget>? get _draftsAction {
+    if (widget.id != null) return null;
+    return [
+      UtenDraftsButton(
+        kind: DraftDocKind.stockDocument,
+        listLocation: '/warehouse/${widget.docType.code}',
+        countScopeNote: '全部仓库单据合计',
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -484,15 +553,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
             ? '新建${widget.docType.label}'
             : '编辑${widget.docType.label}',
         showBackButton: true,
-        actions: [
-          UtenButton(
-            type: UtenButtonType.tonal,
-            icon: Icons.history_rounded,
-            onPressed: () =>
-                context.push(RoutePath.stockDocList(widget.docType.code)),
-            child: const Text('查看历史'),
-          ),
-        ],
+        actions: _draftsAction,
       ),
       body: SafeArea(
         child: _loading
@@ -503,7 +564,13 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                   thumbVisibility: true,
                   child: ListView(
                     controller: _scrollCtl,
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    // 底部多留一屏悬浮按钮的高度，最后一行明细不被「取消/保存」压住。
+                    padding: const EdgeInsets.fromLTRB(
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenSpacing.s12 + 88,
+                    ),
                     children: [
                       Card(
                         child: Padding(
@@ -607,6 +674,36 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                         ),
                       ),
                       const SizedBox(height: UtenSpacing.s12),
+                      // 出库凭证/照片（2026-09-10 G4「其他有上传处同样」）：编辑态直接挂
+                      // 已保存 UUID；新建态先暂存，保存成功后逐个确认上传。
+                      if (_hasAttachmentArea) ...[
+                        if (widget.id != null)
+                          BusinessAttachmentSection(
+                            key: const Key('stock-doc-edit-attachments'),
+                            ownerType: 'STOCK_DOCUMENT',
+                            ownerId: widget.id!,
+                            canView: ref
+                                .watch(currentPermissionsProvider)
+                                .contains(Perm.stockDocView),
+                            canManage: _canManageAttachments,
+                            title: '出库凭证/照片',
+                            categories: const ['出库凭证', '照片', '其他'],
+                          )
+                        else ...[
+                          if (_createdDocId != null)
+                            const PendingAttachmentRetryNotice(
+                              documentLabel: '领料单',
+                            ),
+                          BusinessAttachmentSection.draft(
+                            key: const ValueKey('stock-doc-draft-attachments'),
+                            controller: _pendingFiles,
+                            canManage: _canManageAttachments,
+                            title: '出库凭证/照片',
+                            categories: const ['出库凭证', '照片', '其他'],
+                          ),
+                        ],
+                        const SizedBox(height: UtenSpacing.s12),
+                      ],
                       if (_isCheck) ...[
                         Text(
                           '账面数量由系统按所选仓库读取，保存后形成盘点快照。'
@@ -618,17 +715,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                         ),
                         const SizedBox(height: UtenSpacing.s8),
                       ],
-                      Row(
-                        children: [
-                          Text(
-                            '明细 (${_grid.length})',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const Spacer(),
-                        ],
-                      ),
+                      // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）：本页无右侧入口，整行删除。
                       UtenEditableGrid<StockGridRow>(
                         controller: _grid,
                         columns: stockGridColumns(
@@ -648,96 +735,68 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                 ),
               ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border(
-              top: BorderSide(color: theme.colorScheme.outlineVariant),
-            ),
-          ),
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // 盘点模式显示盘盈亏合计（非盘点无金额概念，不显示）。
-              if (_isCheck)
-                ValueListenableBuilder<double>(
-                  valueListenable: _grid.totalListenable,
-                  builder: (_, _, _) => Text(
-                    '盘盈亏：${measurementTotalsText(
-                      _grid.rows.map((row) => MeasuredAmount(value: row.amountNotifier.value, unitId: row.unitId, unitName: row.unitName)),
-                      emptyLabel: '0',
-                    )}',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+      // 底部固定操作条 2026-09-11 收口为右下角悬浮；合计不再重复（明细表下方已有）。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: _loading ? null : _floatingActions(theme),
+    );
+  }
+
+  /// 右下角悬浮「取消 / 保存」。
+  ///
+  /// 编辑态外面仍套 TaskClaimHandle：他人正在编辑同一单据时禁用保存，
+  /// 「XX 处理中」提示改排在取消左侧（原来挂在保存按钮上方，悬浮组里没有上下位）。
+  /// 账面库存读取中沿用「保存中」的转圈态，让用户知道现在点不动是在等数据。
+  Widget _floatingActions(ThemeData theme) {
+    final busy = _saving || _loadingCheckBooks;
+    void cancel() => popOrBackTo(
+      context,
+      defaultPath: RoutePath.stockDocList(widget.docType.code),
+    );
+    if (widget.id == null) {
+      return UtenEditFloatingActions(
+        onCancel: cancel,
+        onSave: _save,
+        saving: busy,
+      );
+    }
+    return TaskClaimHandle(
+      key: ValueKey('fulfillment_claim_${widget.id}'),
+      targetType: 'FULFILLMENT_TASK_EDIT',
+      targetKey: widget.id!,
+      builder: (heldByMe, claim) {
+        // 他人正编辑同一仓库单据 → 显示「XX 处理中」并禁用保存（UX 层；后端守卫兜底）。
+        final blocked = !heldByMe && claim != null;
+        return UtenEditFloatingActions(
+          onCancel: cancel,
+          onSave: (blocked || !_loadedCanEdit) ? null : _save,
+          saving: busy,
+          extraLeading: [
+            if (blocked)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UtenSpacing.s12,
                 ),
-              if (_isCheck) const SizedBox(width: UtenSpacing.s16),
-              UtenButton(
-                type: UtenButtonType.secondary,
-                onPressed: () => context.pop(),
-                child: const Text('取消'),
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              widget.id == null
-                  ? UtenButton(
-                      isLoading: _saving || _loadingCheckBooks,
-                      icon: Icons.save_outlined,
-                      onPressed: (_saving || _loadingCheckBooks) ? null : _save,
-                      child: const Text('保存'),
-                    )
-                  : TaskClaimHandle(
-                      key: ValueKey('fulfillment_claim_${widget.id}'),
-                      targetType: 'FULFILLMENT_TASK_EDIT',
-                      targetKey: widget.id!,
-                      builder: (heldByMe, claim) {
-                        // 他人正编辑同一仓库单据 → 显示「XX 处理中」并禁用保存（UX 层；后端守卫兜底）。
-                        final blocked = !heldByMe && claim != null;
-                        return Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (blocked)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 6),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    TaskClaimBadge(claim: claim),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      '他人正在编辑，保存已禁用',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .labelMedium
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w400,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            UtenButton(
-                              isLoading: _saving || _loadingCheckBooks,
-                              icon: Icons.save_outlined,
-                              onPressed:
-                                  (_saving ||
-                                      _loadingCheckBooks ||
-                                      blocked ||
-                                      !_loadedCanEdit)
-                                  ? null
-                                  : _save,
-                              child: const Text('保存'),
-                            ),
-                          ],
-                        );
-                      },
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(UtenRadius.control),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TaskClaimBadge(claim: claim),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Text(
+                      '他人正在编辑，保存已禁用',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.w400,
+                      ),
                     ),
-            ],
-          ),
-        ),
-      ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 

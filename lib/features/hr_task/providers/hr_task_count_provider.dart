@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/session_epoch_provider.dart';
 import '../repositories/hr_task_repository.dart';
 
 const Duration _kHrTaskPollInterval = Duration(seconds: 60);
@@ -14,6 +15,8 @@ const Duration _kHrTaskPollInterval = Duration(seconds: 60);
 final hrTaskCountProvider = StateNotifierProvider<HrTaskCountNotifier, int>((
   ref,
 ) {
+  // 新登录会话从零重建并立即重拉（见 shared/auth/session_epoch_provider.dart）。
+  ref.watch(sessionEpochProvider);
   final notifier = HrTaskCountNotifier(ref);
   notifier.start();
   ref.onDispose(notifier.stop);
@@ -45,7 +48,8 @@ class HrTaskCountNotifier extends StateNotifier<int> {
       return;
     }
     try {
-      state = await ref.read(hrTaskRepositoryProvider).count();
+      final count = await ref.read(hrTaskRepositoryProvider).count();
+      if (mounted) state = count; // 会话重建后旧实例已释放，丢弃迟到结果
     } catch (_) {
       // 网络/服务异常时保留旧值，避免徽章闪烁
     }

@@ -172,12 +172,14 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.onSortChange,
     this.isLoading = false,
     this.loadingMore = false,
+    this.onLoadMore,
     this.error,
     this.onRetry,
     this.emptyMessage = '暂无数据', // TODO(l10n): 补 arb
     this.currentPage = 1,
     this.totalPages = 1,
     this.onPageChange,
+    this.summaryBar,
     this.toolbarActions,
     this.toolbarLeadingActions,
     this.embedded = false,
@@ -374,6 +376,12 @@ class MasterDataTableView<T> extends StatefulWidget {
 
   final bool isLoading;
   final bool loadingMore;
+
+  /// 滚动触发式自动加载：表体竖向滚动临近底部（距底 [_loadMoreEdge] 内）时回调，
+  /// 与 [loadingMore]（末尾转圈行 + 本组件防重入）配合实现「滑到底自动加载下一页」。
+  /// 组件不感知是否还有更多页——增量加载式页面不传 currentPage/totalPages（避免
+  /// 渲染翻页条），由调用方在回调里自行判断 [_loadMore] 类守卫后 no-op。
+  final VoidCallback? onLoadMore;
   final String? error;
   final VoidCallback? onRetry;
   final String emptyMessage;
@@ -381,6 +389,15 @@ class MasterDataTableView<T> extends StatefulWidget {
   final int currentPage;
   final int totalPages;
   final void Function(int page)? onPageChange;
+
+  /// 表格下方的合计条（通常是 `UtenTotalsSummaryBar`）。
+  ///
+  /// 全站统一挂在**表体与翻页条之间**：表体内部滚动，合计条在滚动区之外，
+  /// 因此滚到哪一行它都在；全屏表格与嵌入式明细表同样跟随，位置/间距/字号一处定义处处一致。
+  ///
+  /// **服务端分页的表格必须传服务端合计**——对当前页求和会得出一个看着像总计、
+  /// 其实只覆盖一页的数；拿不到服务端合计时要么不传，要么把标签写成「本页合计」。
+  final Widget? summaryBar;
 
   @override
   State<MasterDataTableView<T>> createState() => _MasterDataTableViewState<T>();
@@ -458,7 +475,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 列集合变化（如报表切 docType）时清空（默认全部显示）。
   final Set<String> _hiddenKeys = {};
 
-  /// 当前列显示顺序（含隐藏列）。默认 = widget.columns 原序；表头长按拖拽/
+  /// 当前列显示顺序（含隐藏列）。默认 = widget.columns 原序；表头横拖换位/
   /// 表头设置弹窗拖拽排序修改（会话内有效，与 _hiddenKeys 同生命周期——主数据页
   /// 无账号级列偏好持久化）。列集合变化时重置。
   List<String> _columnOrder = const [];
@@ -505,7 +522,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       (index: i, width: i < _widths.length ? _widths[i] : _minColWidth),
   ];
 
-  /// 长按排序/弹窗排序落位：可见序列内搬移，隐藏列保持原锚位；会话内生效
+  /// 横拖换位/弹窗排序落位：可见序列内搬移，隐藏列保持原锚位；会话内生效
   /// （与 _hiddenKeys 同生命周期），全屏内容经 _fsTick 同步重建。
   @override
   void onColumnsReordered(int fromOriginalIndex, int slot) {
@@ -557,6 +574,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   static const double _cellPadX = UtenSpacing.s12; // 单元格左右内边距（表头/表体一致）
   static const double _headerIconAllowance = 24; // 表头筛选下拉箭头 + 富余
   static const double _sortIconAllowance = 20; // 可排序列表头排序图标 + 间距
+
+  /// 列头 ⓘ 说明图标命中区（UtenColumnHintIcon → UtenFieldHintIcon dense = 28）。
+  /// 不计入就会挤掉标签：声明宽偏窄又带说明的列（下达采购的「缺口」）一进页面
+  /// 只剩一个 ⓘ，标签被省略号吃光（2026-09-11 用户反馈）。
+  static const double _headerInfoIconAllowance = 28;
   static const double _autoFitBuffer = 6; // 防贴边 ellipsis 富余
 
   /// 多选前导勾选列宽（合成单元格，不计入 widget.columns / 列宽自动适配 / 列显隐）。
@@ -760,6 +782,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                   child: Column(
                     children: [
                       Expanded(child: _buildTableStage(ctx2)),
+                      if (widget.summaryBar != null) _buildSummaryBar(ctx2),
                       if (!widget.embedded && widget.totalPages > 1)
                         _buildPager(ctx2),
                     ],
@@ -834,6 +857,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                   _cellPadX * 2 +
                   _headerIconAllowance +
                   (def.sortable ? _sortIconAllowance : 0) +
+                  (def.info != null ? _headerInfoIconAllowance : 0) +
                   _autoFitBuffer)
               .clamp(_minColWidth, _maxColWidth);
       final declared = def.width.clamp(_minColWidth, _maxColWidth);
@@ -925,7 +949,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   // 竖滑拖出隐藏（单指契约、过阈值 arm、末列永不 arm）+ 长按拎起横拖排序：
   // 全部由 mixin 提供；本类只补列链接/列宽/列名/可隐判定与落位回调。
 
-  /// 单列表头：竖滑隐藏 + 长按排序的手势区（识别器在外层，拖拽中不重建）；
+  /// 单列表头：横拖换位 + 竖拖移除的手势区（识别器在外层，拖拽中不重建）；
   /// 内层 columnHeaderCell 负责原格变淡与两类跟手浮层的锚点。
   /// 作为外层 Stack 的**非定位**子节点（由内层 _FilterCell 的 minHeight:44 撑高）；
   /// resize 手柄是其 Stack 兄弟且在最上层，右 8px 命中区优先吃横向拖拽，与长按
@@ -1075,6 +1099,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildTable(context),
+          if (widget.summaryBar != null) _buildSummaryBar(context),
           if (_hasFloatingBatchActions)
             Padding(
               padding: const EdgeInsets.only(top: UtenSpacing.s8),
@@ -1089,13 +1114,32 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     return Column(
       children: [
         Expanded(child: _buildTableStage(context)),
+        // 合计条在表体（内部滚动）之外、翻页条之上：滚到哪一行它都在。
+        if (widget.summaryBar != null) _buildSummaryBar(context),
         if (widget.totalPages > 1) _buildPager(context),
       ],
     );
   }
 
+  /// 合计条容器：与表体同宽、左右对齐表格内容边距。
+  /// 只在这一处定义间距，所有接入页的合计条位置与留白因此完全一致。
+  Widget _buildSummaryBar(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+    child: widget.summaryBar,
+  );
+
   bool get _hasFloatingBatchActions =>
       widget.selectable && widget.batchActionsBuilder != null;
+
+  /// 自动加载触发距底阈值（约 4~5 行高）：滚到末尾前预取下一页，体感「到底即有」。
+  static const double _loadMoreEdge = 200;
+
+  /// 竖向滚动临近底部时触发 [MasterDataTableView.onLoadMore]。
+  /// loadingMore 为 true 期间不重复触发；更多页判断在调用方（见参数文档）。
+  void _maybeTriggerLoadMore(ScrollMetrics metrics) {
+    if (widget.onLoadMore == null || widget.loadingMore) return;
+    if (metrics.extentAfter < _loadMoreEdge) widget.onLoadMore!();
+  }
 
   /// 表格批量动作与采购任务工作台一致：选择摘要仍在表头上方，真正业务动作
   /// 悬浮在右下角。动作层属于表格自身，因此普通视图和全屏路由使用同一实现。
@@ -1107,7 +1151,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       },
       child: NotificationListener<ScrollNotification>(
         onNotification: (notification) {
-          if (notification.metrics.axis == Axis.vertical) _scheduleHBarUpdate();
+          if (notification.metrics.axis == Axis.vertical) {
+            _scheduleHBarUpdate();
+            _maybeTriggerLoadMore(notification.metrics);
+          }
           return false;
         },
         child: Stack(
@@ -1148,12 +1195,55 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     );
   }
 
+  /// 当前有值的表头筛选列（含「筛空值」哨兵）。
+  List<String> get _activeFilterKeys => [
+    for (final entry in widget.filters.entries)
+      if (entry.value != null && entry.value!.isNotEmpty) entry.key,
+  ];
+
+  /// 全屏切换按钮：工具条与空态共用一份（全屏里 0 行时也必须能退出，否则
+  /// 表头筛选把表过滤成空后会被困在全屏路由——2026-09-10 物料分析反馈）。
+  /// 高度对齐工具条统一口径 48；按钮态靠 `_fsTick` 重建时读 `_fullscreen`。
+  Widget _fullscreenToggleButton() => UtenButton(
+    key: const ValueKey('master-table-fullscreen-toggle'),
+    size: UtenButtonSize.large,
+    height: UtenTableToolbar.controlHeight,
+    icon: _fullscreen
+        ? Icons.fullscreen_exit_rounded
+        : Icons.fullscreen_rounded,
+    onPressed: _toggleFullscreen,
+    child: Text(_fullscreen ? '退出全屏' : '全屏'),
+  );
+
   /// 成功空态仍保留调用方业务工具条(例如 BOM 的“添加组件”)。加载中/错误态不走
   /// 本壳，避免基础数据尚未确认时开放依赖现状的写动作。
   Widget _emptyStateWithToolbarActions(Widget child) {
+    final activeFilterKeys = _activeFilterKeys;
     final actions = <Widget>[
+      // 空表不给「进全屏」：一张没有行的表放大到整屏毫无意义，用户反而会以为
+      // 数据被按钮挡住了（2026-09-11 销售订单财务确认「待确认」空态反馈）。
+      // 已在全屏中时保留按钮——那是唯一的退出口。
+      if (_fullscreen) _fullscreenToggleButton(),
+      // 有激活表头筛选却 0 行：列头筛选控件随表头一起不渲染，用户没有入口
+      // 把「看不见的筛选」撤掉——这里给一键清除（逐列回调 onFilterChanged(key,null)）。
+      if (activeFilterKeys.isNotEmpty)
+        UtenButton(
+          key: const ValueKey('master-table-clear-filters'),
+          height: UtenTableToolbar.controlHeight,
+          icon: Icons.filter_alt_off_rounded,
+          onPressed: () {
+            for (final key in activeFilterKeys) {
+              widget.onFilterChanged(key, null);
+            }
+          },
+          child: const Text('清除筛选'), // TODO(l10n): 补 arb
+        ),
       if (widget.selectable && !_hasFloatingBatchActions)
         _buildBatchBar(Theme.of(context)),
+      // 空态也保留左簇前缀按钮（视图切换 chips 等）：筛选出 0 行时用户才有得
+      // 切回其他视图——否则整个工具条随表格一起消失，页面“不知道点哪里”
+      // （2026-09-09 物料分析「待确认路线=0」反馈的根因）。
+      ...?widget.toolbarLeadingActions,
       ...?widget.toolbarActions,
     ];
     if (actions.isEmpty) return _stateShell(child);
@@ -1220,10 +1310,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     );
     // 主数据为空且无任何前导分组 → 空态占位（有分组时仍渲染表头 + 分组行）。
     if (widget.items.isEmpty && !hasGroupRows) {
+      final activeFilters = _activeFilterKeys.length;
       return _emptyStateWithToolbarActions(
         UtenEmpty(
           icon: Icons.table_rows_outlined,
           message: widget.emptyMessage,
+          // 空态说明补一行筛选生效数，配合上方「清除筛选」按钮。
+          description: activeFilters > 0
+              ? '当前有 $activeFilters 个表头筛选生效' // TODO(l10n): 补 arb
+              : null,
         ),
       );
     }
@@ -1279,18 +1374,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                     onReorder: (oldIndex, newIndex) =>
                         _reorderColumnByKeys(oldIndex, newIndex),
                   ),
-                if (showFullscreen)
-                  // 全屏切换：表格放大到整屏显示（行列多时能看更多内容），
-                  // 再点退出。高度对齐工具条统一口径 48。
-                  UtenButton(
-                    size: UtenButtonSize.large,
-                    height: UtenTableToolbar.controlHeight,
-                    icon: _fullscreen
-                        ? Icons.fullscreen_exit_rounded
-                        : Icons.fullscreen_rounded,
-                    onPressed: _toggleFullscreen,
-                    child: Text(_fullscreen ? '退出全屏' : '全屏'),
-                  ),
+                // 全屏切换：表格放大到整屏显示（行列多时能看更多内容），
+                // 再点退出（与空态共用 _fullscreenToggleButton）。
+                if (showFullscreen) _fullscreenToggleButton(),
                 // 前缀按钮：视图切换类 chip 紧挨全屏按钮（左簇内，Wrap s8 间距）。
                 ...?widget.toolbarLeadingActions,
                 // 选择摘要：有悬浮批量动作时随动作进右下悬浮组（见
@@ -1335,7 +1421,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           ),
         ),
         // 表头：横向跟随表体同步（无可见滚动条），竖向固定（sticky）。
-        // 表头整体 SelectionContainer.disabled：表头有「按住拖拽隐藏列」「拖拽调宽」
+        // 表头整体 SelectionContainer.disabled：表头有「拖拽换位/移除列」「拖拽调宽」
         // 手势，与文字拖选打架（准则 §3.4：表头不进选择区）；disabled 同时挡住外层
         // 页面级 SelectionArea（UtenContentContainer）渗入，保证手势稳定。
         SelectionContainer.disabled(
@@ -1559,13 +1645,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 已选摘要与业务动作同框（悬浮组首位），选择数与按钮零距离——
     // 全站统一口径：有悬浮批量动作的表格，已选胶囊不再驻表头工具条。
     final children = [if (widget.selectable) _buildBatchBar(theme), ...actions];
-    Widget group = UtenFloatingActionGroup(children: children);
-    if ((widget.selectionSummaryCount ?? ids.length) == 0) {
-      // 0 选中只做视觉降级（半透明）；悬浮组动作自身以 onPressed=null 置灰，
-      // 不加 AbsorbPointer，避免吞掉仍应可点的非选择类动作。
-      group = Opacity(opacity: 0.4, child: group);
-    }
-    return group;
+    // 2026-09-11 去掉 0 选中时的 Opacity(0.4)：叠在本就发灰的禁用按钮上会整组
+    // 淡到「看不出这里能点」（物料分析、下达采购/委外/自制的用户反馈）。
+    // 未选态的可辨识度改由控件自身承担——UtenButton 禁用态是实底+描边+可读灰字，
+    // UtenSelectionSummaryPill 未选态是实底+描边，两者都清楚可见且明显不可用。
+    return UtenFloatingActionGroup(children: children);
   }
 
   /// 前导分组标题行：跨满表宽（_totalWidth），与表头/数据行同处一个横向 ScrollView，
@@ -1709,91 +1793,106 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   Widget _buildHeaderRow(ThemeData theme) {
+    // 多选表头三态全选格（合成单元格）：false=本页全未选 / true=全选 / 空=部分。
+    // 横滚时钉在视口左缘（[UtenFrozenLeadingColumn]），行内留等宽占位保持列对齐。
+    final headerSelectionCell = DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHigh,
+        border: Border(right: BorderSide(color: theme.colorScheme.outline)),
+      ),
+      child: Center(
+        child: Checkbox(
+          tristate: true,
+          value: _headerCheckValue,
+          onChanged: _pageSelectableIds().isEmpty ? null : _onToggleAllPage,
+        ),
+      ),
+    );
     return _boundStretchRow(
-      // 长按排序拖动中在表头行上渲染插入位指示线（前导选择列让位）。
+      // 换位拖动中在表头行上渲染插入位指示线（前导选择列让位）。
       columnHeaderIndicatorOverlay(
         leadingInset: widget.selectable ? _selectionColWidth : 0,
-        child: Row(
-          crossAxisAlignment: _selectableCross,
-          children: [
-            // 多选表头三态全选格（合成单元格）：false=本页全未选 / true=全选 / 空=部分。
-            if (widget.selectable)
-              SizedBox(
-                width: _selectionColWidth,
-                child: DecoratedBox(
+        child: _withFrozenSelection(
+          controller: _headerH,
+          cell: headerSelectionCell,
+          row: Row(
+            crossAxisAlignment: _selectableCross,
+            children: [
+              if (widget.selectable)
+                SizedBox(width: _selectionColWidth, child: headerSelectionCell),
+              for (final i in _visibleIndices)
+                Container(
+                  width: _widths[i],
+                  // 表头竖线分隔（与 UtenEditableGrid 表头一致：outline/width1）。
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHigh,
                     border: Border(
                       right: BorderSide(color: theme.colorScheme.outline),
                     ),
                   ),
-                  child: Center(
-                    child: Checkbox(
-                      tristate: true,
-                      value: _headerCheckValue,
-                      onChanged: _pageSelectableIds().isEmpty
-                          ? null
-                          : _onToggleAllPage,
-                    ),
-                  ),
-                ),
-              ),
-            for (final i in _visibleIndices)
-              Container(
-                width: _widths[i],
-                // 表头竖线分隔（与 UtenEditableGrid 表头一致：outline/width1）。
-                decoration: BoxDecoration(
-                  border: Border(
-                    right: BorderSide(color: theme.colorScheme.outline),
-                  ),
-                ),
-                child: Stack(
-                  children: [
-                    _buildDraggableHeaderCell(
-                      theme,
-                      i,
-                      _FilterCell(
-                        label: widget.columns[i].label,
-                        sortKey: widget.columns[i].key,
-                        type: widget.columns[i].type,
-                        sortable: widget.columns[i].sortable,
-                        sortActive: widget.sortColumn == widget.columns[i].key,
-                        sortAscending: widget.sortAscending,
-                        onSort: widget.onSortChange,
-                        info: widget.columns[i].info,
-                        buckets:
-                            widget.facets[widget.columns[i].key] ?? const [],
-                        nullCount:
-                            widget.nullCounts[widget.columns[i].key] ?? 0,
-                        selected: widget.filters[widget.columns[i].key],
-                        onChanged: (v) =>
-                            widget.onFilterChanged(widget.columns[i].key, v),
-                      ),
-                    ),
-                    // 列宽拖拽手柄：贴列右边界、半溢出到相邻列的 8px 命中区。
-                    // opaque 截获该区点击（避免误开筛选下拉）；横向拖拽改本列宽，
-                    // 桌面端悬停显示 resize 光标作为可调提示。
-                    Positioned(
-                      right: -_gripHalf,
-                      top: 0,
-                      bottom: 0,
-                      width: _gripHalf * 2,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onHorizontalDragUpdate: (d) =>
-                            _resizeColumn(i, d.delta.dx),
-                        child: const MouseRegion(
-                          cursor: SystemMouseCursors.resizeColumn,
-                          child: SizedBox.expand(),
+                  child: Stack(
+                    children: [
+                      _buildDraggableHeaderCell(
+                        theme,
+                        i,
+                        _FilterCell(
+                          label: widget.columns[i].label,
+                          sortKey: widget.columns[i].key,
+                          type: widget.columns[i].type,
+                          sortable: widget.columns[i].sortable,
+                          sortActive:
+                              widget.sortColumn == widget.columns[i].key,
+                          sortAscending: widget.sortAscending,
+                          onSort: widget.onSortChange,
+                          info: widget.columns[i].info,
+                          buckets:
+                              widget.facets[widget.columns[i].key] ?? const [],
+                          nullCount:
+                              widget.nullCounts[widget.columns[i].key] ?? 0,
+                          selected: widget.filters[widget.columns[i].key],
+                          onChanged: (v) =>
+                              widget.onFilterChanged(widget.columns[i].key, v),
                         ),
                       ),
-                    ),
-                  ],
+                      // 列宽拖拽手柄：贴列右边界、半溢出到相邻列的 8px 命中区。
+                      // opaque 截获该区点击（避免误开筛选下拉）；横向拖拽改本列宽，
+                      // 桌面端悬停显示 resize 光标作为可调提示。
+                      Positioned(
+                        right: -_gripHalf,
+                        top: 0,
+                        bottom: 0,
+                        width: _gripHalf * 2,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onHorizontalDragUpdate: (d) =>
+                              _resizeColumn(i, d.delta.dx),
+                          child: const MouseRegion(
+                            cursor: SystemMouseCursors.resizeColumn,
+                            child: SizedBox.expand(),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  /// 行首多选格的冻结包裹：非多选表原样返回（零开销）。
+  Widget _withFrozenSelection({
+    required ScrollController controller,
+    required Widget cell,
+    required Widget row,
+  }) {
+    if (!widget.selectable) return row;
+    return UtenFrozenLeadingColumn(
+      horizontal: controller,
+      width: _selectionColWidth,
+      cell: cell,
+      row: row,
     );
   }
 
@@ -1873,6 +1972,44 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final textStyle = (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
       color: selected ? Colors.white : null,
     );
+    // 多选前导勾选格（合成单元格，不进列宽机制）。
+    // **行内这一份不能自带底色**：它要跟整行同底（斑马纹/选中深绿/行语义色都由外层
+    // ColoredBox 统一给），而且 DecoratedBox 的边框画在子节点之前——自带不透明底会把
+    // 行底那条分隔线在这 48px 里盖掉（2026-09-11 用户截图：首列底色不一样、行线断了）。
+    final selectionCheckbox = Center(
+      child:
+          (multiId == null || multiId.isEmpty) &&
+              widget.unselectableLeadingBuilder != null
+          ? widget.unselectableLeadingBuilder!(context, item)
+          : Checkbox(
+              value: selected,
+              // 无业务 id 的行禁用勾选（不计入全选）。
+              onChanged: (multiId == null || multiId.isEmpty)
+                  ? null
+                  : (v) => _toggleRow(item, v ?? false),
+            ),
+    );
+    final selectionCell = DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(right: BorderSide(color: lineColor, width: 0.5)),
+      ),
+      child: selectionCheckbox,
+    );
+    // 横滚时钉在视口左缘的那一份副本（[UtenFrozenLeadingColumn]）：它浮在数据格之上，
+    // **必须**自带与本行一致的不透明底 + 右线 + 行底线，否则下面的数据格会透上来、
+    // 行线也会在这一段断开。
+    final frozenSelectionCell = ColoredBox(
+      color: rowBg == Colors.transparent ? theme.colorScheme.surface : rowBg,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(
+            right: BorderSide(color: lineColor, width: 0.5),
+            bottom: BorderSide(color: lineColor, width: 0.5),
+          ),
+        ),
+        child: selectionCheckbox,
+      ),
+    );
     final row = DecoratedBox(
       // 行间横线：逐行分隔；选中行用白色横线与深绿底搭配。
       decoration: BoxDecoration(
@@ -1881,37 +2018,18 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       child: ColoredBox(
         color: rowBg,
         child: _boundStretchRow(
-          Row(
-            crossAxisAlignment: _selectableCross,
-            children: [
-              // 多选前导勾选格（合成单元格，不进列宽机制）。
-              if (widget.selectable)
-                SizedBox(
-                  width: _selectionColWidth,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      border: Border(
-                        right: BorderSide(color: lineColor, width: 0.5),
-                      ),
-                    ),
-                    child: Center(
-                      child:
-                          (multiId == null || multiId.isEmpty) &&
-                              widget.unselectableLeadingBuilder != null
-                          ? widget.unselectableLeadingBuilder!(context, item)
-                          : Checkbox(
-                              value: selected,
-                              // 无业务 id 的行禁用勾选（不计入全选）。
-                              onChanged: (multiId == null || multiId.isEmpty)
-                                  ? null
-                                  : (v) => _toggleRow(item, v ?? false),
-                            ),
-                    ),
-                  ),
-                ),
-              for (final i in _visibleIndices)
-                _buildDataCell(theme, i, item, selected, textStyle),
-            ],
+          _withFrozenSelection(
+            controller: _bodyH,
+            cell: frozenSelectionCell,
+            row: Row(
+              crossAxisAlignment: _selectableCross,
+              children: [
+                if (widget.selectable)
+                  SizedBox(width: _selectionColWidth, child: selectionCell),
+                for (final i in _visibleIndices)
+                  _buildDataCell(theme, i, item, selected, textStyle),
+              ],
+            ),
           ),
         ),
       ),
@@ -2069,75 +2187,103 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final theme = Theme.of(context);
     final canPrev = widget.currentPage > 1;
     final canNext = widget.currentPage < widget.totalPages;
+    // 「上一页/下一页」带文案时的固有宽度随字号一起放大：窄屏（375px）叠大字号（1.5×）
+    // 就超出可用宽。按可用宽 × 当前字号判断，放不下就收成纯图标按钮——
+    // 翻页条**恒为一行**（改折行会把表体挤到纵向溢出，得不偿失）。
+    final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          TextButton.icon(
-            onPressed: (canPrev && widget.onPageChange != null)
-                ? () => widget.onPageChange!(widget.currentPage - 1)
-                : null,
-            icon: const Icon(Icons.chevron_left_rounded, size: 20),
-            label: const Text('上一页'), // TODO(l10n): 补 arb
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 54,
-                  child: TextFormField(
-                    errorBuilder: utenTextFieldErrorBuilder,
-                    controller: _pageCtrl,
-                    keyboardType: TextInputType.number,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodySmall,
-                    decoration: UtenInputDecoration(
-                      InputDecoration(
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 8,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 250 * textScale + 54;
+          void goto(int page) => widget.onPageChange?.call(page);
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (compact)
+                IconButton(
+                  onPressed: (canPrev && widget.onPageChange != null)
+                      ? () => goto(widget.currentPage - 1)
+                      : null,
+                  icon: const Icon(Icons.chevron_left_rounded, size: 20),
+                  tooltip: '上一页', // TODO(l10n): 补 arb
+                )
+              else
+                TextButton.icon(
+                  onPressed: (canPrev && widget.onPageChange != null)
+                      ? () => goto(widget.currentPage - 1)
+                      : null,
+                  icon: const Icon(Icons.chevron_left_rounded, size: 20),
+                  label: const Text('上一页'), // TODO(l10n): 补 arb
+                ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 54,
+                      child: TextFormField(
+                        errorBuilder: utenTextFieldErrorBuilder,
+                        controller: _pageCtrl,
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodySmall,
+                        decoration: UtenInputDecoration(
+                          InputDecoration(
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 8,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
                         ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
+                        // 填数字回车跳页：非法→回当前页；越界→钳制到 [1,totalPages] 并回填。
+                        onFieldSubmitted: (v) {
+                          final p = int.tryParse(v.trim());
+                          final target = p == null
+                              ? widget.currentPage
+                              : p.clamp(1, widget.totalPages);
+                          if (target != widget.currentPage) {
+                            goto(target);
+                          } else {
+                            _pageCtrl.text = '$target';
+                          }
+                        },
                       ),
                     ),
-                    // 填数字回车跳页：非法→回当前页；越界→钳制到 [1,totalPages] 并回填。
-                    onFieldSubmitted: (v) {
-                      final p = int.tryParse(v.trim());
-                      final target = p == null
-                          ? widget.currentPage
-                          : p.clamp(1, widget.totalPages);
-                      if (target != widget.currentPage) {
-                        widget.onPageChange?.call(target);
-                      } else {
-                        _pageCtrl.text = '$target';
-                      }
-                    },
-                  ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Text(
+                      '/ ${widget.totalPages}', // TODO(l10n): 补 arb
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: UtenSpacing.s8),
-                Text(
-                  '/ ${widget.totalPages}', // TODO(l10n): 补 arb
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+              ),
+              if (compact)
+                IconButton(
+                  onPressed: (canNext && widget.onPageChange != null)
+                      ? () => goto(widget.currentPage + 1)
+                      : null,
+                  icon: const Icon(Icons.chevron_right_rounded, size: 20),
+                  tooltip: '下一页', // TODO(l10n): 补 arb
+                )
+              else
+                TextButton.icon(
+                  onPressed: (canNext && widget.onPageChange != null)
+                      ? () => goto(widget.currentPage + 1)
+                      : null,
+                  icon: const Text('下一页'), // TODO(l10n): 补 arb
+                  label: const Icon(Icons.chevron_right_rounded, size: 20),
                 ),
-              ],
-            ),
-          ),
-          TextButton.icon(
-            onPressed: (canNext && widget.onPageChange != null)
-                ? () => widget.onPageChange!(widget.currentPage + 1)
-                : null,
-            icon: const Text('下一页'), // TODO(l10n): 补 arb
-            label: const Icon(Icons.chevron_right_rounded, size: 20),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -2145,47 +2291,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
 /// 单个列头的 autofilter 下拉：紧凑「标签 ▼」，选中显示值并高亮。
 /// 点击在列头下方原位展开一个限高、可竖向滚动的菜单（不全屏）；点外部关闭。
-/// 列头 ⓘ 说明（2026-09-06）：桌面悬停出 Tooltip；点击（含手机/触屏）弹出
-/// 说明小窗。自吞点击手势，不会触发列头的排序/筛选菜单。
-class _ColumnHeaderInfo extends StatelessWidget {
-  const _ColumnHeaderInfo({required this.label, required this.message});
-
-  final String label;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Tooltip(
-      message: message,
-      waitDuration: const Duration(milliseconds: 300),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => showDialog<void>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: Text('「$label」是什么'),
-            content: SingleChildScrollView(
-              child: Text(message, style: theme.textTheme.bodyMedium),
-            ),
-            actionsAlignment: MainAxisAlignment.center,
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('知道了'),
-              ),
-            ],
-          ),
-        ),
-        child: Icon(
-          Icons.info_outline_rounded,
-          size: 16,
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      ),
-    );
-  }
-}
 
 class _FilterCell extends StatefulWidget {
   const _FilterCell({
@@ -2340,7 +2445,7 @@ class _FilterCellState extends State<_FilterCell> {
               // 自吞点击，不触发排序/筛选菜单。
               if (widget.info != null) ...[
                 const SizedBox(width: UtenSpacing.s4),
-                _ColumnHeaderInfo(label: widget.label, message: widget.info!),
+                UtenColumnHintIcon(message: widget.info!),
               ],
               // 排序指示：当前排序列显 ▲/▼（主色）；可排序但非当前显淡 sort 图标提示可点。
               if (widget.sortable)

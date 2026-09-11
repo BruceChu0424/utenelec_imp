@@ -171,7 +171,9 @@ void main() {
 
     // 顶栏与返回键
     expect(find.text('委外订货单详情'), findsOneWidget);
-    expect(find.text('查看历史'), findsOneWidget);
+    // 2026-09-10 返回键契约：详情页不再有「查看历史」跳列表按钮（返回键 popOrBackTo
+    // 回来源；「返回列表」只在无动作且持列表权限时出现在底栏）。
+    expect(find.text('查看历史'), findsNothing);
 
     // 表头信息
     expect(find.text('WO-2026-001'), findsOneWidget);

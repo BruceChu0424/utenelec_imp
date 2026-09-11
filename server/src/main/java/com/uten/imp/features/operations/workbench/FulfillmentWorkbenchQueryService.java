@@ -36,6 +36,76 @@ public class FulfillmentWorkbenchQueryService {
     private static final String PENDING_MAKE =
             "task.status = 'ACTIVE' AND task.notified_qty < task.required_qty";
 
+    /**
+     * 仓库待领任务的单据归组行（一行=一张 DRAW 领料单；未挂单的行退回行级）。
+     * 列表 {@link #query}、状态卡片与 {@link #warehouseStatusBreakdown} 子分类徽章
+     * 都从这同一段 SQL 取 task_status，保证三处口径永不分叉：整单状态按全部行
+     *（含已出完的 DONE 行）判定——无 open 行=DONE、任一行≠READY_TO_PICK=PARTIAL、
+     * 否则 READY_TO_PICK。
+     */
+    static final String WAREHOUSE_DOCUMENT_ROWS = """
+            (SELECT v.department,
+                    COALESCE(MIN(v.action_doc_id::text), MIN(v.task_id::text))::uuid
+                        AS task_id,
+                    MIN(v.package_id::text)::uuid AS package_id,
+                    MIN(v.plan_id::text)::uuid AS plan_id,
+                    MAX(v.plan_no) AS plan_no,
+                    MIN(v.warehouse_id::text)::uuid AS warehouse_id,
+                    MAX(v.warehouse_name) AS warehouse_name,
+                    CASE WHEN COUNT(DISTINCT v.goods_id) = 1
+                         THEN MIN(v.goods_id::text)::uuid END AS goods_id,
+                    CASE WHEN COUNT(DISTINCT v.goods_id) = 1
+                         THEN MAX(v.goods_code) END AS goods_code,
+                    CASE WHEN COUNT(DISTINCT v.goods_id) = 1
+                         THEN MAX(v.goods_name) END AS goods_name,
+                    CASE WHEN COUNT(DISTINCT v.goods_id) = 1
+                         THEN MAX(v.spec) END AS spec,
+                    CASE WHEN COUNT(DISTINCT v.goods_id) = 1
+                         THEN MIN(v.color_id::text)::uuid END AS color_id,
+                    CASE WHEN COUNT(DISTINCT v.goods_id) = 1
+                         THEN MAX(v.color_name) END AS color_name,
+                    CASE WHEN COUNT(DISTINCT v.goods_id) = 1
+                         THEN MIN(v.unit_id::text)::uuid END AS unit_id,
+                    CASE WHEN COUNT(DISTINCT v.goods_id) = 1
+                         THEN MAX(v.unit_name) END AS unit_name,
+                    MAX(v.supply_route) AS supply_route,
+                    CASE WHEN COUNT(DISTINCT v.goods_id) = 1
+                         THEN SUM(v.required_qty) END AS required_qty,
+                    CASE WHEN COUNT(DISTINCT v.goods_id) = 1
+                         THEN SUM(v.allocated_qty) END AS allocated_qty,
+                    CASE WHEN COUNT(DISTINCT v.goods_id) = 1
+                         THEN SUM(v.fulfilled_qty) END AS fulfilled_qty,
+                    CASE WHEN COUNT(DISTINCT v.goods_id) = 1
+                         THEN SUM(v.supply_pegged_qty) END AS supply_pegged_qty,
+                    CASE WHEN COUNT(DISTINCT v.goods_id) = 1
+                         THEN SUM(v.open_qty) END AS open_qty,
+                    CASE WHEN COUNT(*) FILTER (WHERE v.open_qty > 0) = 0
+                         THEN 'DONE'
+                         WHEN COUNT(*) FILTER (
+                                  WHERE v.task_status <> 'READY_TO_PICK') > 0
+                         THEN 'PARTIAL'
+                         ELSE 'READY_TO_PICK' END::text AS task_status,
+                    MIN(v.need_date) AS need_date,
+                    MIN(v.expected_date) AS expected_date,
+                    MAX(v.exception_code) AS exception_code,
+                    MAX(v.updated_at) AS updated_at,
+                    MAX(v.action_doc_type) AS action_doc_type,
+                    MIN(v.action_doc_id::text)::uuid AS action_doc_id,
+                    MAX(v.action_doc_no) AS action_doc_no,
+                    NULL::UUID AS action_item_id,
+                    MAX(v.action_doc_status) AS action_doc_status,
+                    COUNT(DISTINCT v.goods_id) AS goods_count,
+                    COUNT(*) FILTER (WHERE v.open_qty > 0) AS open_line_count,
+                    COALESCE(
+                        ARRAY_AGG(v.action_item_id::TEXT ORDER BY v.action_item_id)
+                            FILTER (WHERE v.action_item_id IS NOT NULL),
+                        ARRAY[]::TEXT[]
+                    ) AS action_item_ids
+             FROM v_fulfillment_workbench_actions v
+             WHERE v.department = 'WAREHOUSE'
+             GROUP BY v.department, COALESCE(v.action_doc_id, v.task_id))
+            """;
+
     private final EntityManager em;
     private final FulfillmentWorkbenchAccessPolicy accessPolicy;
 
@@ -84,68 +154,7 @@ public class FulfillmentWorkbenchQueryService {
         // （全部行未出库=READY_TO_PICK、出过一部分=PARTIAL、全部出完=DONE）。
         // 尚未挂接领料单的行（action_doc_id 为 NULL）退回行级，不并入同一组。
         String sourceView = "WAREHOUSE".equals(department)
-                ? """
-                  (SELECT v.department,
-                          COALESCE(MIN(v.action_doc_id::text), MIN(v.task_id::text))::uuid
-                              AS task_id,
-                          MIN(v.package_id::text)::uuid AS package_id,
-                          MIN(v.plan_id::text)::uuid AS plan_id,
-                          MAX(v.plan_no) AS plan_no,
-                          MIN(v.warehouse_id::text)::uuid AS warehouse_id,
-                          MAX(v.warehouse_name) AS warehouse_name,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN MIN(v.goods_id::text)::uuid END AS goods_id,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN MAX(v.goods_code) END AS goods_code,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN MAX(v.goods_name) END AS goods_name,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN MAX(v.spec) END AS spec,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN MIN(v.color_id::text)::uuid END AS color_id,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN MAX(v.color_name) END AS color_name,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN MIN(v.unit_id::text)::uuid END AS unit_id,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN MAX(v.unit_name) END AS unit_name,
-                          MAX(v.supply_route) AS supply_route,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN SUM(v.required_qty) END AS required_qty,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN SUM(v.allocated_qty) END AS allocated_qty,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN SUM(v.fulfilled_qty) END AS fulfilled_qty,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN SUM(v.supply_pegged_qty) END AS supply_pegged_qty,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN SUM(v.open_qty) END AS open_qty,
-                          CASE WHEN COUNT(*) FILTER (WHERE v.open_qty > 0) = 0
-                               THEN 'DONE'
-                               WHEN COUNT(*) FILTER (
-                                        WHERE v.task_status <> 'READY_TO_PICK') > 0
-                               THEN 'PARTIAL'
-                               ELSE 'READY_TO_PICK' END::text AS task_status,
-                          MIN(v.need_date) AS need_date,
-                          MIN(v.expected_date) AS expected_date,
-                          MAX(v.exception_code) AS exception_code,
-                          MAX(v.updated_at) AS updated_at,
-                          MAX(v.action_doc_type) AS action_doc_type,
-                          MIN(v.action_doc_id::text)::uuid AS action_doc_id,
-                          MAX(v.action_doc_no) AS action_doc_no,
-                          NULL::UUID AS action_item_id,
-                          MAX(v.action_doc_status) AS action_doc_status,
-                          COUNT(DISTINCT v.goods_id) AS goods_count,
-                          COUNT(*) FILTER (WHERE v.open_qty > 0) AS open_line_count,
-                          COALESCE(
-                              ARRAY_AGG(v.action_item_id::TEXT ORDER BY v.action_item_id)
-                                  FILTER (WHERE v.action_item_id IS NOT NULL),
-                              ARRAY[]::TEXT[]
-                          ) AS action_item_ids
-                   FROM v_fulfillment_workbench_actions v
-                   WHERE v.department = 'WAREHOUSE'
-                   GROUP BY v.department, COALESCE(v.action_doc_id, v.task_id))
-                  """
+                ? WAREHOUSE_DOCUMENT_ROWS
                 : """
                   (SELECT v.department,
                           v.action_doc_id AS task_id,
@@ -403,6 +412,40 @@ public class FulfillmentWorkbenchQueryService {
                     """);
         query.setParameter("department", department);
         return ((Number) query.getSingleResult()).longValue();
+    }
+
+    /**
+     * 仓库领料任务分状态计数（2026-09-09 子分类徽章；2026-09-10 改为与列表同源）：
+     * 直接复用列表的单据归组行 {@link #WAREHOUSE_DOCUMENT_ROWS} 取 task_status——
+     * 一张 DRAW=一个待办（未挂单行退回行级），整单状态按全部行判定（含已出完的
+     * DONE 行：任一行≠READY_TO_PICK 即 PARTIAL），与列表分段「待备料/部分领取」
+     * 及列表返回的 summary.statusCounts 逐条相等；OPEN_ANY = READY_TO_PICK + PARTIAL；
+     * DONE 为终态不计数。此前独立写的一段 SQL 只看 open_qty>0 的行，与列表口径
+     * 分叉（部分领取单会被记成待备料），故删除。
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Long> warehouseStatusBreakdown() {
+        if (!accessPolicy.canAccessWarehouseTasks()) {
+            return Map.of("READY_TO_PICK", 0L, "PARTIAL", 0L, "OPEN_ANY", 0L);
+        }
+        Query query = em.createNativeQuery("""
+                SELECT task_status, COUNT(*)
+                FROM %s document_rows
+                WHERE task_status IN ('READY_TO_PICK', 'PARTIAL')
+                GROUP BY task_status
+                """.formatted(WAREHOUSE_DOCUMENT_ROWS));
+        long ready = 0;
+        long partial = 0;
+        for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
+            String status = String.valueOf(row[0]);
+            long count = ((Number) row[1]).longValue();
+            if ("READY_TO_PICK".equals(status)) ready = count;
+            else if ("PARTIAL".equals(status)) partial = count;
+        }
+        return Map.of(
+                "READY_TO_PICK", ready,
+                "PARTIAL", partial,
+                "OPEN_ANY", ready + partial);
     }
 
     /** Pending preparation is a server-paged read-only task, never a client-side extra row. */

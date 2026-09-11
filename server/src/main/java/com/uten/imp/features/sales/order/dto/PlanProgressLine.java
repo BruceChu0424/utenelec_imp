@@ -24,6 +24,8 @@ public record PlanProgressLine(
         BigDecimal producedQty,
         BigDecimal shippedQty,
         Short chainStatus,
+        /** 剩余未排量（V545：未交付 − 预留 − 未完工计划量，服务端派生；>0 即该行仍待排产）。 */
+        BigDecimal unplannedQty,
         List<MaterialAnalysisProgress> materialAnalyses,
         List<PlanLink> links) {
 

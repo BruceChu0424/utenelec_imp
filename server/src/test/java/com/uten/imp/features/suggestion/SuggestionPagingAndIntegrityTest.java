@@ -1,6 +1,7 @@
 package com.uten.imp.features.suggestion;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.features.notice.HrNoticeService;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.suggestion.dto.SuggestionReplyRequest;
 import com.uten.imp.security.AuthUser;
@@ -64,7 +65,8 @@ class SuggestionPagingAndIntegrityTest {
                 likeRepository,
                 mock(EmployeeRepository.class),
                 currentUser,
-                mock(TxSessionVars.class));
+                mock(TxSessionVars.class),
+                mock(HrNoticeService.class));
     }
 
     @Test
@@ -90,7 +92,7 @@ class SuggestionPagingAndIntegrityTest {
         when(replyCount.getTotal()).thenReturn(3L);
         when(replyRepository.countBySuggestionIds(anyList())).thenReturn(List.of(replyCount));
 
-        var result = service.list("mine", "process", 2, 20);
+        var result = service.list("mine", "process", null, 2, 20);
 
         assertEquals(2, result.getPage());
         assertEquals(20, result.getSize());
@@ -115,12 +117,38 @@ class SuggestionPagingAndIntegrityTest {
     }
 
     @Test
+    void listStatusFilterIsPushedToTheServerQueryPerScope() {
+        when(suggestionRepository.findByStatus(eq("resolved"), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        when(suggestionRepository.findBySubmitterIdAndStatus(
+                eq(user.getId()), eq("reviewing"), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        when(suggestionRepository.findByCategoryAndStatus(
+                eq("process"), eq("submitted"), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.list(null, null, "resolved", 1, 20);
+        service.list("mine", null, "reviewing", 1, 20);
+        service.list(null, "process", "submitted", 1, 20);
+
+        verify(suggestionRepository).findByStatus(eq("resolved"), any(Pageable.class));
+        verify(suggestionRepository).findBySubmitterIdAndStatus(
+                eq(user.getId()), eq("reviewing"), any(Pageable.class));
+        verify(suggestionRepository).findByCategoryAndStatus(
+                eq("process"), eq("submitted"), any(Pageable.class));
+        // 状态筛选必须服务端命中未加载页，不能退化成全量拉取后前端裁剪
+        verify(suggestionRepository, never()).findAll(any(Pageable.class));
+        verify(suggestionRepository, never()).findBySubmitterId(any(), any(Pageable.class));
+    }
+
+    @Test
     void listRejectsInvalidScopeCategoryAndPageBounds() {
-        assertThrows(ApiException.class, () -> service.list("other", null, 1, 20));
-        assertThrows(ApiException.class, () -> service.list(null, "unknown", 1, 20));
-        assertThrows(ApiException.class, () -> service.list(null, null, 0, 20));
-        assertThrows(ApiException.class, () -> service.list(null, null, 1, 0));
-        assertThrows(ApiException.class, () -> service.list(null, null, 1, 101));
+        assertThrows(ApiException.class, () -> service.list("other", null, null, 1, 20));
+        assertThrows(ApiException.class, () -> service.list(null, "unknown", null, 1, 20));
+        assertThrows(ApiException.class, () -> service.list(null, null, "unknown", 1, 20));
+        assertThrows(ApiException.class, () -> service.list(null, null, null, 0, 20));
+        assertThrows(ApiException.class, () -> service.list(null, null, null, 1, 0));
+        assertThrows(ApiException.class, () -> service.list(null, null, null, 1, 101));
     }
 
     @Test

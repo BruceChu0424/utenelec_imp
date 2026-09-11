@@ -5,6 +5,7 @@ import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
 import '../../basic_data/models/account_node.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/models/payment_style_node.dart';
 import '../../basic_data/repositories/account_repository.dart';
 import '../../basic_data/repositories/payment_style_repository.dart';
@@ -42,6 +43,21 @@ final expenseFilterProvider = StateProvider<ExpenseFilter>(
   (ref) => ExpenseFilter.all,
 );
 
+/// 我的报销「状态」列表头筛选（2026-09-10）：在当前分段状态集内再精确到单一状态，
+/// 下推后端 status 参数（非页内裁剪）。换分段时页面负责清空。
+final expenseStatusFilterProvider = StateProvider<ExpenseClaimStatus?>(
+  (ref) => null,
+);
+
+/// 某状态所属的分段（表头筛选选中状态时同步切换顶部分段）。
+ExpenseFilter expenseFilterOfStatus(ExpenseClaimStatus status) {
+  for (final filter in ExpenseFilter.values) {
+    if (filter == ExpenseFilter.all) continue;
+    if (filter.apiStatuses?.contains(status) ?? false) return filter;
+  }
+  return ExpenseFilter.all;
+}
+
 final expenseListProvider =
     AsyncNotifierProvider.autoDispose<
       ExpenseListNotifier,
@@ -52,6 +68,7 @@ class ExpenseListNotifier
     extends AutoDisposeAsyncNotifier<PagedResult<ExpenseClaim>> {
   int _page = 1;
   ExpenseFilter? _lastFilter;
+  ExpenseClaimStatus? _lastStatus;
 
   @override
   Future<PagedResult<ExpenseClaim>> build() async {
@@ -62,11 +79,17 @@ class ExpenseListNotifier
       ref.invalidateSelf();
     });
     final filter = ref.watch(expenseFilterProvider);
-    if (_lastFilter != filter) _page = 1;
+    final status = ref.watch(expenseStatusFilterProvider);
+    // 换分段 / 换表头状态筛选都回第 1 页。
+    if (_lastFilter != filter || _lastStatus != status) _page = 1;
     _lastFilter = filter;
+    _lastStatus = status;
     return ref
         .watch(expenseRepositoryProvider)
-        .listMine(statuses: filter.apiStatuses, page: _page);
+        .listMine(
+          statuses: status != null ? [status] : filter.apiStatuses,
+          page: _page,
+        );
   }
 
   Future<void> refresh() => _reloadPage(1);
@@ -81,6 +104,14 @@ class ExpenseListNotifier
     final current = state.valueOrNull;
     if (current == null || current.page >= current.totalPages) return;
     await _goTo(current.page + 1);
+  }
+
+  /// 直接拉目标页（2026-09-09 我的报销列表表格化：表格内置翻页条含跳页输入）。
+  Future<void> goToPage(int page) async {
+    final current = state.valueOrNull;
+    if (current == null) return;
+    if (page < 1 || page == current.page || page > current.totalPages) return;
+    await _goTo(page);
   }
 
   Future<void> _goTo(int page) async {
@@ -153,6 +184,68 @@ final approvalQueueProvider = StateProvider.autoDispose<ApprovalQueue>((ref) {
       : ApprovalQueue.payable;
 });
 
+/// 审批列表表头筛选（2026-09-10）：部门 id + 年月（yyyy-MM），下推后端
+/// departmentId / year / month 参数（非页内裁剪）。
+class ExpenseApprovalFilters {
+  const ExpenseApprovalFilters({this.departmentId, this.yearMonth});
+
+  final String? departmentId;
+
+  /// yyyy-MM（业务时区），拆成后端 year/month。
+  final String? yearMonth;
+
+  int? get year => _split()?.$1;
+  int? get month => _split()?.$2;
+
+  (int, int)? _split() {
+    final raw = yearMonth;
+    if (raw == null) return null;
+    final parts = raw.split('-');
+    if (parts.length != 2) return null;
+    final y = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (y == null || m == null) return null;
+    return (y, m);
+  }
+
+  /// 表头筛选 map（列 key → 值），供 MasterDataTableView.filters。
+  Map<String, String?> get asTableFilters => {
+    if (departmentId != null) 'departmentName': departmentId,
+    if (yearMonth != null) 'yearMonth': yearMonth,
+  };
+
+  ExpenseApprovalFilters withColumn(String key, String? value) {
+    return switch (key) {
+      'departmentName' => ExpenseApprovalFilters(
+        departmentId: value,
+        yearMonth: yearMonth,
+      ),
+      'yearMonth' => ExpenseApprovalFilters(
+        departmentId: departmentId,
+        yearMonth: value,
+      ),
+      _ => this,
+    };
+  }
+}
+
+/// 审批列表当前表头筛选；换分段（approvalQueueProvider）时自动重置为空。
+final expenseApprovalFiltersProvider =
+    StateProvider.autoDispose<ExpenseApprovalFilters>((ref) {
+      ref.watch(approvalQueueProvider);
+      return const ExpenseApprovalFilters();
+    });
+
+/// 审批列表表头筛选桶（部门 / 年月），按分段取后端聚合。
+final expenseApprovalFacetsProvider = FutureProvider.autoDispose
+    .family<Map<String, List<MasterFacetBucket>>, ApprovalQueue>((ref, queue) {
+      ref.watch(masterDataSessionKeyProvider);
+      return ref.watch(expenseRepositoryProvider).facets(switch (queue) {
+        ApprovalQueue.pending => ApprovalFacetQueue.pending,
+        ApprovalQueue.payable => ApprovalFacetQueue.payable,
+      });
+    });
+
 final expenseApprovalListProvider =
     AsyncNotifierProvider.autoDispose<
       ExpenseApprovalListNotifier,
@@ -163,12 +256,10 @@ class ExpenseApprovalListNotifier
     extends AutoDisposeAsyncNotifier<PagedResult<ExpenseClaim>> {
   @override
   Future<PagedResult<ExpenseClaim>> build() {
-    final queue = ref.watch(approvalQueueProvider);
-    final repository = ref.watch(expenseRepositoryProvider);
-    return switch (queue) {
-      ApprovalQueue.pending => repository.listPending(),
-      ApprovalQueue.payable => repository.listPayable(),
-    };
+    // 换分段 / 换表头筛选 → 重建即回第 1 页。
+    ref.watch(approvalQueueProvider);
+    ref.watch(expenseApprovalFiltersProvider);
+    return _fetch(1);
   }
 
   Future<void> previousPage() async {
@@ -183,6 +274,14 @@ class ExpenseApprovalListNotifier
     await _goTo(current.page + 1);
   }
 
+  /// 直接拉目标页（2026-09-09 报销审批列表表格化：表格内置翻页条含跳页输入）。
+  Future<void> goToPage(int page) async {
+    final current = state.valueOrNull;
+    if (current == null) return;
+    if (page < 1 || page == current.page || page > current.totalPages) return;
+    await _goTo(page);
+  }
+
   Future<void> _goTo(int page) async {
     if (state.isLoading) return;
     state = const AsyncLoading<PagedResult<ExpenseClaim>>().copyWithPrevious(
@@ -193,10 +292,21 @@ class ExpenseApprovalListNotifier
 
   Future<PagedResult<ExpenseClaim>> _fetch(int page) {
     final queue = ref.read(approvalQueueProvider);
+    final filters = ref.read(expenseApprovalFiltersProvider);
     final repository = ref.read(expenseRepositoryProvider);
     return switch (queue) {
-      ApprovalQueue.pending => repository.listPending(page: page),
-      ApprovalQueue.payable => repository.listPayable(page: page),
+      ApprovalQueue.pending => repository.listPending(
+        page: page,
+        year: filters.year,
+        month: filters.month,
+        departmentId: filters.departmentId,
+      ),
+      ApprovalQueue.payable => repository.listPayable(
+        page: page,
+        year: filters.year,
+        month: filters.month,
+        departmentId: filters.departmentId,
+      ),
     };
   }
 }

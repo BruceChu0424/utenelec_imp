@@ -163,6 +163,7 @@ class PurchaseGridRow extends EditableGridRow
 /// 字段保留供既有单回填/保存透传）。
 List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
   Future<void> Function(PurchaseGridRow row) onPickGoods, {
+  required BuildContext context,
   bool showStockPlace = false,
   bool showSource = false,
   Map<String, String> unitEntries = const {},
@@ -179,6 +180,8 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
   bool showRemark = false,
 }) {
   final showSupplier = supplierEntries.isNotEmpty;
+  // 列说明统一挂表头 ⓘ（2026-09-09 口径）：每行重复的 ⓘ 既冗余又挤占格宽。
+  final l10n = workflowFieldText(context);
   return [
     EditableGridColumn<PurchaseGridRow>(
       key: 'goods',
@@ -300,8 +303,12 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
       EditableGridColumn<PurchaseGridRow>(
         key: 'supplier',
         label: '供应商',
-        width: 150,
+        width: 170,
         required: supplierRequired,
+        // 展开箭头(20) + 学习预填黄标 ⓘ(44) 都计入自动加宽量宽（2026-09-10）。
+        chromeWidth:
+            UtenEditableGridCellSpec.dropdownChevronWidth +
+            UtenEditableGridCellSpec.hintIconWidth,
         textOf: (r) => supplierEntries[r.supplierId] ?? '',
         listenableOf: (r) => r.supplierIdNotifier,
         cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
@@ -325,6 +332,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
       width: 128,
       numeric: true,
       required: true,
+      headerInfo: l10n.workflowQuantityHint,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.qty,
         isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
@@ -332,9 +340,8 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
           controller: row.qty,
           textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: UtenInputDecoration(
-            const InputDecoration(isDense: true, hintText: '0'),
-            info: workflowFieldText(context).workflowQuantityHint,
+          decoration: const UtenInputDecoration(
+            InputDecoration(isDense: true, hintText: '0'),
           ),
         ),
       ),
@@ -360,6 +367,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
       width: 128,
       numeric: true,
       required: true,
+      headerInfo: l10n.workflowPriceHint,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.price,
         isEmpty: () =>
@@ -369,9 +377,8 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
           controller: row.price,
           textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: UtenInputDecoration(
-            const InputDecoration(isDense: true, hintText: '0'),
-            info: workflowFieldText(context).workflowPriceHint,
+          decoration: const UtenInputDecoration(
+            InputDecoration(isDense: true, hintText: '0'),
           ),
         ),
       ),
@@ -389,6 +396,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
     // 订货单行级商业条款（2026-09）：单头不再录，逐行选择/填写，保存按组合拆单。
     if (showCommercial)
       ...procurementCommercialColumns<PurchaseGridRow>(
+        context: context,
         currencyEntries: currencyEntries,
         settlementEntries: settlementEntries,
         onPickCurrency: onPickCurrency ?? (row) => (value) {},

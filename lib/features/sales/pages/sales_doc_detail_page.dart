@@ -7,17 +7,23 @@
 //  - 出货财务审核→只放行仓库；仓库交接出库才扣库存、回写已发并立应收
 //  - 退货审核→后端自动库存入库+双挂回写+立红字应收+结案
 //  - 其它出货审核→仅库存出库
+//
+// 2026-09-11 折叠头+表内滚改版（对齐采购/货品资料页）：整页 ListView 改
+// UtenCollapsingHeaderScrollView——上滑先折叠头部（表头卡/预收汇总/出货卡/附件/退货质检），
+// 「明细 (N)」标题顶到页面顶部后再滚明细表内部；合计条常驻表格下方。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
@@ -25,7 +31,9 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../../shared/providers/sales_shipment_finance_count_provider.dart';
@@ -142,7 +150,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   bool get _canChangeAnyOrderQty =>
       // 2026-09-05 用户口径（反转）：财务确认后允许改量——改完自动回到
       // 「待财务确认」，财务按修改清单（以前→现在）复核；驳回单仍走受控修订。
+      // 2026-09-09 用户口径：财务确认前改量走「修改订单」入口，不再并列显示
+      // 「改量」按钮——两入口只在已确认后并存（改量提供重回待确认的受控通道）。
       _canChangeQty &&
+      (_detail?.financeConfirmed ?? false) &&
       (_canChangePlanned ||
           (_detail?.items.any((item) => !_touchesPlanned(item)) ?? false));
 
@@ -837,9 +848,12 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           if (!paymentTypeClassified && canEditClientMaster)
             TextButton(
               key: const Key('finance-audit-open-client-master'),
-              onPressed: () {
+              onPressed: () async {
+                // 返回键契约：客户资料页被 push 进来，返回即 pop 回本单（财务审核继续）；
+                // 付款类型分类可能已在客户资料页改过，回来必须重拉详情（2026-09-10）。
                 Navigator.pop(dialogContext);
-                context.push(RouteName.financeCustomers);
+                await context.push(RouteName.financeCustomers);
+                if (mounted) await _load();
               },
               child: const Text('去客户资料'),
             ),
@@ -1237,7 +1251,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       await ref.read(salesRepositoryProvider(widget.docType)).delete(widget.id);
       if (!mounted) return;
       context.appSuccess('已删除');
-      context.go(SalesRoutePath.list(_cfg.type.pathSegment));
+      backTo(context, defaultPath: SalesRoutePath.list(_cfg.type.pathSegment));
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {
@@ -1269,12 +1283,6 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
             onPressed: _loading ? null : _load,
             icon: const Icon(Icons.refresh_rounded, size: 20),
           ),
-          UtenButton(
-            type: UtenButtonType.tonal,
-            icon: Icons.history_rounded,
-            onPressed: () => context.push('/sales/${_cfg.type.pathSegment}'),
-            child: const Text('查看历史'),
-          ),
         ],
       ),
       body: SafeArea(
@@ -1285,57 +1293,70 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               ? Center(child: Text(_error!))
               : _detail == null
               ? const SizedBox.shrink()
-              : ListView(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  children: [
-                    // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
-                    // SelectionArea（准则 §3.4），无需再单独包。
-                    _headerCard(theme, names),
-                    if (_cfg.type == SalesDocType.order &&
-                        canViewMoneySummary) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      SalesOrderMoneySummaryCard(salesOrderId: widget.id),
-                    ],
-                    if (_cfg.type == SalesDocType.order &&
-                        _detail!.shipments.isNotEmpty) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      _shipmentsCard(theme),
-                    ],
-                    const SizedBox(height: UtenSpacing.s12),
-                    _itemsCard(theme, names),
-                    if (_cfg.type == SalesDocType.order) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      BusinessAttachmentSection(
-                        ownerType: 'SALES_ORDER',
-                        ownerId: _detail!.id,
-                        canView:
-                            !_detail!.priceMasked &&
-                            permissions.contains(Perm.salesOrderView),
-                        canManage:
-                            _canEdit &&
-                            !_detail!.closed &&
-                            !_detail!.stopped &&
-                            (_detail!.status == kSalesStatusDraft ||
-                                (_detail!.status == kSalesStatusApproved &&
-                                    _detail!.financeRejected &&
-                                    !_detail!.financeConfirmed)),
-                        categories: const ['合同', '客户确认', '图片', '其他'],
-                      ),
-                    ],
-                    if (_cfg.type == SalesDocType.returnDoc &&
-                        _detail!.status == kSalesStatusApproved &&
-                        _canViewReturnQuality) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      SalesReturnQualityCard(
-                        key: ValueKey('return-quality-${widget.id}'),
-                        returnId: widget.id,
-                        canCorrect: _canCorrectReturnQuality,
-                        canDispose: _canDisposeReturnQuality,
-                        onSnapshotChanged: _onReturnQualitySnapshot,
-                        onSnapshotInvalidated: _invalidateReturnQualitySnapshot,
-                      ),
-                    ],
-                  ],
+              // 2026-09-11 折叠头+表内滚：头部（表头卡/预收汇总/出货卡/附件/
+              // 退货质检）随上滚收起，明细标题吸顶后表格内部继续滚。
+              : UtenCollapsingHeaderScrollView(
+                  collapsingHeader: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      0,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
+                        // SelectionArea（准则 §3.4），无需再单独包。
+                        _headerCard(theme, names),
+                        if (_cfg.type == SalesDocType.order &&
+                            canViewMoneySummary) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          SalesOrderMoneySummaryCard(salesOrderId: widget.id),
+                        ],
+                        if (_cfg.type == SalesDocType.order &&
+                            _detail!.shipments.isNotEmpty) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          _shipmentsCard(theme),
+                        ],
+                        if (_cfg.type == SalesDocType.order) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          BusinessAttachmentSection(
+                            ownerType: 'SALES_ORDER',
+                            ownerId: _detail!.id,
+                            canView:
+                                !_detail!.priceMasked &&
+                                permissions.contains(Perm.salesOrderView),
+                            // 详情=审核页：文件一律只读（2026-09-11 用户要求）。
+                            // 增删回编辑页做——审核者看到的永远是提交时那一份。
+                            canManage: false,
+                            readOnlyNote: BusinessAttachmentSection
+                                .kReviewReadOnlyAttachmentNote,
+                            categories: const ['合同', '客户确认', '图片', '其他'],
+                          ),
+                        ],
+                        if (_cfg.type == SalesDocType.returnDoc &&
+                            _detail!.status == kSalesStatusApproved &&
+                            _canViewReturnQuality) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          SalesReturnQualityCard(
+                            key: ValueKey('return-quality-${widget.id}'),
+                            returnId: widget.id,
+                            canCorrect: _canCorrectReturnQuality,
+                            canDispose: _canDisposeReturnQuality,
+                            onSnapshotChanged: _onReturnQualitySnapshot,
+                            onSnapshotInvalidated:
+                                _invalidateReturnQualitySnapshot,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
+                  body: Padding(
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    child: _itemsCard(theme, names),
+                  ),
                 ),
         ),
       ),
@@ -1702,6 +1723,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 
   /// 口径保留：价格脱敏（无权限订单单价/金额 = ***）；报价来源行「单价（报价 X）」对比；
   /// 订单行含可发/已排/已产；链路状态并入货品列文本。
+  /// 2026-09-11 起是折叠容器的 body：标题行钉住、表格 primary:true 内滚、合计条常驻底部。
   Widget _itemsCard(ThemeData theme, SalesMasterNameService names) {
     final items = _detail!.items;
     final isOrder = _cfg.type == SalesDocType.order;
@@ -1717,146 +1739,194 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           ),
         ),
         const SizedBox(height: UtenSpacing.s8),
-        MasterDataTableView<SalesDocItem>(
-          embedded: true,
-          columns: [
-            MasterColumnDef(
-              key: 'goods',
-              label: '货品',
-              width: 240,
-              value: (it) {
-                final goodsIdentity = salesGoodsIdentityLabel(
-                  it,
-                  names.goods(it.goodsId),
-                );
-                final base =
-                    '$goodsIdentity(${names.color(it.colorId)} · ${names.unit(it.unitId)})';
-                return (isOrder &&
-                        it.chainStatus != null &&
-                        it.chainStatus != 0)
-                    ? '$base · ${chainStatusLabel(it.chainStatus)}'
-                    : base;
-              },
-            ),
-            MasterColumnDef(
-              key: 'qty',
-              label: '数量',
-              width: 90,
-              type: 'number',
-              value: (it) => it.qty?.toStringAsFixed(2),
-            ),
-            // 实际重量列已下线（2026-09-04：单位已表达重量，编辑页不再录入）。
-            // 实物出入库单据（出货/其它出货/退货）：库位号（主档带出，拣货/上架指引）。
-            if (_cfg.hasWarehouse)
+        Expanded(
+          child: MasterDataTableView<SalesDocItem>(
+            primary: true,
+            columns: [
               MasterColumnDef(
-                key: 'stockPlace',
-                label: '库位号',
-                width: 90,
-                value: (it) => names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
+                key: 'goods',
+                label: '货品',
+                width: 240,
+                value: (it) {
+                  final goodsIdentity = salesGoodsIdentityLabel(
+                    it,
+                    names.goods(it.goodsId),
+                  );
+                  final base =
+                      '$goodsIdentity(${names.color(it.colorId)} · ${names.unit(it.unitId)})';
+                  return (isOrder &&
+                          it.chainStatus != null &&
+                          it.chainStatus != 0)
+                      ? '$base · ${chainStatusLabel(it.chainStatus, plannedQty: it.plannedQty, qty: it.qty)}'
+                      : base;
+                },
               ),
-            MasterColumnDef(
-              key: 'price',
-              label: '单价',
-              width: 120,
-              type: 'money',
-              value: (it) {
-                if (masked) return '***';
-                final p = it.price?.toStringAsFixed(2);
-                return (isOrder && it.quotePrice != null)
-                    ? '$p(报价 ${it.quotePrice!.toStringAsFixed(2)})'
-                    : p;
-              },
-            ),
-            MasterColumnDef(
-              key: 'amount',
-              label: isOrder ? '金额(订单币种)' : '金额',
-              width: 100,
-              type: 'money',
-              value: (it) => masked
-                  ? '***'
-                  : (isOrder
-                            ? it.amountOriginal
-                            : (it.qty ?? 0) * (it.price ?? 0))
-                        ?.toStringAsFixed(2),
-            ),
-            if (_cfg.showShipped)
               MasterColumnDef(
-                key: 'shipped',
-                label: '已发',
+                key: 'qty',
+                label: '数量',
                 width: 90,
                 type: 'number',
-                value: (it) => it.shippedQty?.toStringAsFixed(2),
+                value: (it) => it.qty?.toStringAsFixed(2),
               ),
-            if (_cfg.showReturned)
+              // 实际重量列已下线（2026-09-04：单位已表达重量，编辑页不再录入）。
+              // 实物出入库单据（出货/其它出货/退货）：库位号（主档带出，拣货/上架指引）。
+              if (_cfg.hasWarehouse)
+                MasterColumnDef(
+                  key: 'stockPlace',
+                  label: '库位号',
+                  width: 90,
+                  value: (it) => names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
+                ),
               MasterColumnDef(
-                key: 'returned',
-                label: '已退',
-                width: 90,
-                type: 'number',
-                value: (it) => it.returnedQty?.toStringAsFixed(2),
-              ),
-            if (isOrder) ...[
-              MasterColumnDef(
-                key: 'reserved',
-                label: '可发',
-                width: 90,
-                type: 'number',
-                value: (it) => it.reservedQty?.toStringAsFixed(2),
-              ),
-              MasterColumnDef(
-                key: 'planned',
-                label: '已排',
-                width: 90,
-                type: 'number',
-                value: (it) => it.plannedQty?.toStringAsFixed(2),
-              ),
-              MasterColumnDef(
-                key: 'produced',
-                label: '已产',
-                width: 90,
-                type: 'number',
-                value: (it) => it.producedQty?.toStringAsFixed(2),
+                key: 'price',
+                label: '单价',
+                width: 120,
+                type: 'money',
+                value: (it) {
+                  if (masked) return '***';
+                  final p = it.price?.toStringAsFixed(2);
+                  return (isOrder && it.quotePrice != null)
+                      ? '$p(报价 ${it.quotePrice!.toStringAsFixed(2)})'
+                      : p;
+                },
               ),
               MasterColumnDef(
-                key: 'priority',
-                label: '优先级',
-                width: 80,
-                value: (it) => priorityLabel(it.priority),
-              ),
-            ],
-            if (_cfg.type == SalesDocType.returnDoc) ...[
-              MasterColumnDef(
-                key: 'solution',
-                label: '处理方案',
-                width: 110,
-                value: (it) =>
-                    (it.solution?.isNotEmpty ?? false) ? it.solution : null,
-              ),
-              MasterColumnDef(
-                key: 'responsible',
-                label: '责任单位',
+                key: 'amount',
+                label: isOrder ? '金额(订单币种)' : '金额',
                 width: 100,
-                value: (it) => (it.responsible?.isNotEmpty ?? false)
-                    ? it.responsible
-                    : null,
+                type: 'money',
+                value: (it) => masked
+                    ? '***'
+                    : (isOrder
+                              ? it.amountOriginal
+                              : (it.qty ?? 0) * (it.price ?? 0))
+                          ?.toStringAsFixed(2),
+              ),
+              if (_cfg.showShipped)
+                MasterColumnDef(
+                  key: 'shipped',
+                  label: '已发',
+                  width: 90,
+                  type: 'number',
+                  value: (it) => it.shippedQty?.toStringAsFixed(2),
+                ),
+              if (_cfg.showReturned)
+                MasterColumnDef(
+                  key: 'returned',
+                  label: '已退',
+                  width: 90,
+                  type: 'number',
+                  value: (it) => it.returnedQty?.toStringAsFixed(2),
+                ),
+              if (isOrder) ...[
+                MasterColumnDef(
+                  key: 'reserved',
+                  label: '可发',
+                  width: 90,
+                  type: 'number',
+                  value: (it) => it.reservedQty?.toStringAsFixed(2),
+                ),
+                MasterColumnDef(
+                  key: 'planned',
+                  label: '已排',
+                  width: 90,
+                  type: 'number',
+                  value: (it) => it.plannedQty?.toStringAsFixed(2),
+                ),
+                MasterColumnDef(
+                  key: 'produced',
+                  label: '已产',
+                  width: 90,
+                  type: 'number',
+                  value: (it) => it.producedQty?.toStringAsFixed(2),
+                ),
+                MasterColumnDef(
+                  key: 'priority',
+                  label: '优先级',
+                  width: 80,
+                  value: (it) => priorityLabel(it.priority),
+                ),
+              ],
+              if (_cfg.type == SalesDocType.returnDoc) ...[
+                MasterColumnDef(
+                  key: 'solution',
+                  label: '处理方案',
+                  width: 110,
+                  value: (it) =>
+                      (it.solution?.isNotEmpty ?? false) ? it.solution : null,
+                ),
+                MasterColumnDef(
+                  key: 'responsible',
+                  label: '责任单位',
+                  width: 100,
+                  value: (it) => (it.responsible?.isNotEmpty ?? false)
+                      ? it.responsible
+                      : null,
+                ),
+              ],
+              MasterColumnDef(
+                key: 'remark',
+                label: '备注',
+                width: 160,
+                value: (it) =>
+                    (it.remark?.isNotEmpty ?? false) ? it.remark : null,
               ),
             ],
-            MasterColumnDef(
-              key: 'remark',
-              label: '备注',
-              width: 160,
-              value: (it) =>
-                  (it.remark?.isNotEmpty ?? false) ? it.remark : null,
-            ),
-          ],
-          items: items,
-          facets: const {},
-          nullCounts: const {},
-          filters: const {},
-          onFilterChanged: (_, _) {},
-          onRowTap: (it) => _showLineActions(it),
-          emptyMessage: '(无明细)',
+            items: items,
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+            onRowTap: (it) => _showLineActions(it),
+            emptyMessage: '(无明细)',
+          ),
         ),
+        // 明细下合计条（全站统一口径）：数量按单位分组；价格脱敏时不出金额项。
+        if (items.isNotEmpty)
+          UtenTotalsSummaryBar(
+            key: const Key('sales-detail-totals'),
+            density: true,
+            entries: [
+              utenQuantityTotalEntry(
+                items.map(
+                  (it) => MeasuredAmount(
+                    value: it.qty ?? 0,
+                    unitId: it.unitId,
+                    unitName: names.unit(it.unitId),
+                  ),
+                ),
+              ),
+              if (!masked) ...[
+                UtenTotalEntry(
+                  utenAmountTotalLabel(
+                    _cfg.hasCurrency
+                        ? financeCurrencyDisplayLabel(
+                            name: names.currency(_detail!.currencyId),
+                          )
+                        : null,
+                  ),
+                  (_detail!.totalOriginal ??
+                          items.fold<double>(
+                            0,
+                            (sum, it) =>
+                                sum +
+                                (it.amountOriginal ?? it.amountLocal ?? 0),
+                          ))
+                      .toStringAsFixed(2),
+                  danger: true,
+                ),
+                // 销售订单阶段本币事实按设计为空（不落 totalLocal）；订单表头卡
+                // 也只出「订单金额(订单币种)」。2026-09-11 折叠头改版后合计条常驻
+                // 可见，历史脏数据带 totalLocal 的订单会把本币合计漏出来，故显式
+                // 按单据类型门控（非订单单据照常出本币合计）。
+                if (!isOrder)
+                  UtenTotalEntry(
+                    '合计(本币)',
+                    _detail!.totalLocal?.toStringAsFixed(2) ?? '',
+                  ),
+              ],
+            ],
+          ),
       ],
     );
   }
@@ -1991,8 +2061,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         children.add(
           UtenButton(
             type: UtenButtonType.secondary,
-            onPressed: () =>
-                context.go(SalesRoutePath.list(_cfg.type.pathSegment)),
+            onPressed: () => backTo(
+              context,
+              defaultPath: SalesRoutePath.list(_cfg.type.pathSegment),
+            ),
             child: const Text('返回列表'),
           ),
         );
@@ -2014,8 +2086,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       children.add(
         UtenButton(
           type: UtenButtonType.secondary,
-          onPressed: () =>
-              context.go(SalesRoutePath.list(_cfg.type.pathSegment)),
+          onPressed: () => backTo(
+            context,
+            defaultPath: SalesRoutePath.list(_cfg.type.pathSegment),
+          ),
           child: const Text('返回列表'),
         ),
       );
@@ -2116,8 +2190,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       children.add(
         UtenButton(
           type: UtenButtonType.secondary,
-          onPressed: () =>
-              context.go(SalesRoutePath.list(_cfg.type.pathSegment)),
+          onPressed: () => backTo(
+            context,
+            defaultPath: SalesRoutePath.list(_cfg.type.pathSegment),
+          ),
           child: const Text('返回列表'),
         ),
       );
@@ -2126,8 +2202,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       children.add(
         UtenButton(
           type: UtenButtonType.secondary,
-          onPressed: () =>
-              context.go(SalesRoutePath.list(_cfg.type.pathSegment)),
+          onPressed: () => backTo(
+            context,
+            defaultPath: SalesRoutePath.list(_cfg.type.pathSegment),
+          ),
           child: const Text('返回列表'),
         ),
       );

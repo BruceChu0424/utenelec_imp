@@ -170,7 +170,11 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
                               firstDate: DateTime(2010),
                               lastDate: DateTime(2100),
                             );
-                            if (p != null) setState(() => _from = p);
+                            // 撤掉「查询」按钮后，选完日期即刻重查。
+                            if (p != null) {
+                              setState(() => _from = p);
+                              _load();
+                            }
                           },
                           icon: const Icon(Icons.event_outlined, size: 18),
                           label: Text('起 ${_fmt(_from)}'),
@@ -183,15 +187,13 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
                               firstDate: DateTime(2010),
                               lastDate: DateTime(2100),
                             );
-                            if (p != null) setState(() => _to = p);
+                            if (p != null) {
+                              setState(() => _to = p);
+                              _load();
+                            }
                           },
                           icon: const Icon(Icons.event_outlined, size: 18),
                           label: Text('止 ${_fmt(_to)}'),
-                        ),
-                        FilledButton.tonalIcon(
-                          onPressed: _load,
-                          icon: const Icon(Icons.search_rounded, size: 18),
-                          label: const Text('查询'),
                         ),
                       ],
                     ),

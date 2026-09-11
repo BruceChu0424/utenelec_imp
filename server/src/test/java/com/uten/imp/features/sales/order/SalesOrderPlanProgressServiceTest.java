@@ -49,7 +49,9 @@ class SalesOrderPlanProgressServiceTest {
                 orderItemId, 1, "FG-001", "Finished product", "Spec", null, "pcs",
                 new BigDecimal("20.0000"), BigDecimal.ZERO,
                 new BigDecimal("7.0000"), new BigDecimal("2.0000"), BigDecimal.ZERO,
-                (short) 4
+                (short) 4,
+                // V545 剩余未排量列：20 − 0 − max(7−2,0) = 15
+                new BigDecimal("15.0000")
         }));
         Query executionSegments = queryReturning(List.of());
         Query formalPlans = queryReturning(List.of(
@@ -129,6 +131,7 @@ class SalesOrderPlanProgressServiceTest {
         PlanProgressLine line = service.planProgress(orderId).getFirst();
 
         assertThat(line.plannedQty()).isEqualByComparingTo("7");
+        assertThat(line.unplannedQty()).isEqualByComparingTo("15");
         assertThat(line.materialAnalyses()).containsExactly(analysis);
         assertThat(line.materialAnalyses().getFirst().submittedQty())
                 .isEqualByComparingTo("2");

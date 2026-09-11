@@ -70,7 +70,7 @@ class ProductionWorkshopTaskCountNotifier
             .contains(Perm.productionExecutionView) ||
         ref.read(isSuperAdminProvider);
     if (!allowed) {
-      state = const WorkshopTaskCountBreakdown();
+      _publish(const WorkshopTaskCountBreakdown());
       return;
     }
     try {
@@ -78,10 +78,18 @@ class ProductionWorkshopTaskCountNotifier
           .read(productionExecutionWorkbenchRepositoryProvider)
           .workshopTaskCount();
       if (_stopped || !mounted || generation != _requestGeneration) return;
-      state = breakdown;
+      _publish(breakdown);
     } catch (_) {
       // Keep only this identity's last confirmed count on a transient failure.
       // A new identity/permission scope owns a new notifier initialized at zero.
     }
+  }
+
+  /// 2026-09-11 重建风暴收口：StateNotifier 默认 `updateShouldNotify` 用
+  /// `!identical`，而 60s 轮询每次都 new 一个快照——计数一个都没变也会把
+  /// 「我的车间任务」整页重建。这里按值比较，只有真变了才写 state。
+  void _publish(WorkshopTaskCountBreakdown next) {
+    if (next == state) return;
+    state = next;
   }
 }

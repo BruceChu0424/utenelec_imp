@@ -12,6 +12,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
 import 'package:uten_imp/features/dashboard/widgets/module_badge_sum.dart';
 import 'package:uten_imp/features/quality/pages/quality_task_center_page.dart';
 import 'package:uten_imp/features/quality/pages/quality_pending_disposal_page.dart';
@@ -499,7 +500,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('测试物料B(G0002)'));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('iqc-report-selected-count')), findsOneWidget);
+    expect(find.byType(UtenSelectionSummaryPill), findsOneWidget);
     expect(find.text('已选 2 项'), findsWidgets);
     await _submitReport(tester);
 
@@ -612,8 +613,10 @@ void main() {
   });
 
   test('global badge refresh includes the quality pending provider', () {
+    // 2026-09-11：登录/返回工作台的角标刷新由待办徽章注册表统一负责
+    // （工作台只剩一行 invalidateTodoBadgeCaches(ref)），契约目标随之搬家。
     final source = File(
-      'lib/features/dashboard/providers/workbench_refresh.dart',
+      'lib/shared/badges/todo_badge_registry.dart',
     ).readAsStringSync();
 
     expect(

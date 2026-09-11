@@ -5,6 +5,7 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.profilechange.dto.ProfileChangeDto;
+import com.uten.imp.application.port.HrNoticePort;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,7 @@ public class ProfileChangeSubmitService {
     private final ProfileChangeSnapshotCodec snapshotCodec;
     private final ProfileChangeAccess access;
     private final TxSessionVars tx;
+    private final HrNoticePort hrNotice;
 
     /**
      * 提交修改申请。一次请求里 direct 字段立即生效，review 字段进 pending 批次。
@@ -68,6 +70,7 @@ public class ProfileChangeSubmitService {
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime recentSince = now.minusHours(RECENT_WINDOW_HOURS);
         List<UUID> createdIds = new ArrayList<>();
+        List<String> pendingFieldLabels = new ArrayList<>();
         int directApplied = 0;
 
         for (ProfileChangeDto.FieldChange ch : req.changes()) {
@@ -109,12 +112,21 @@ public class ProfileChangeSubmitService {
                 row.setIdemKey(req.idemKey() + ":" + ch.fieldCode());   // 同批次多字段不冲突
                 repo.save(row);
                 createdIds.add(row.getId());
+                pendingFieldLabels.add(row.getFieldLabel());
             }
         }
 
         if (directApplied > 0) {
             emp.setVersion(emp.getVersion() + 1);
             employeeRepo.save(emp);
+        }
+        if (!createdIds.isEmpty()) {
+            // 需审核字段进批次 → 通知 HR（弹卡 + 通知；2026-09-09 人事通知接入）
+            hrNotice.notifyProfileChangeSubmitted(
+                    batchId,
+                    emp.getFullName(),
+                    pendingFieldLabels,
+                    employeeId);
         }
         return new ProfileChangeDto.SubmitResponse(batchId, createdIds, createdIds.size());
     }

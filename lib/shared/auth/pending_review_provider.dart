@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/profile/repositories/profile_change_repository.dart';
 import 'permissions.dart';
+import 'session_epoch_provider.dart';
 
 const Duration _kPendingPollInterval = Duration(seconds: 60);
 
@@ -15,6 +16,8 @@ const Duration _kPendingPollInterval = Duration(seconds: 60);
 /// 返回 0 时不渲染徽章。
 final pendingReviewCountProvider =
     StateNotifierProvider<PendingReviewCountNotifier, int>((ref) {
+      // 新登录会话从零重建并立即重拉（见 shared/auth/session_epoch_provider.dart）。
+      ref.watch(sessionEpochProvider);
       final notifier = PendingReviewCountNotifier(ref);
       notifier.start();
       ref.onDispose(notifier.stop);
@@ -50,7 +53,7 @@ class PendingReviewCountNotifier extends StateNotifier<int> {
       final count = await ref
           .read(profileChangeRepositoryProvider)
           .hrPendingCount();
-      state = count;
+      if (mounted) state = count; // 会话重建后旧实例已释放，丢弃迟到结果
     } catch (_) {
       // 网络/服务异常时保留旧值，避免徽章闪烁
     }

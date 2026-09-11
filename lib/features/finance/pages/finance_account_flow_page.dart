@@ -34,6 +34,7 @@ import '../../report/shared/report_data.dart';
 import '../../report/shared/report_date_range.dart';
 import '../../report/shared/report_filter_prefs.dart';
 import '../../report/shared/report_sort.dart';
+import '../../report/shared/report_total.dart';
 import '../providers/finance_name_provider.dart';
 
 enum _FlowView { statement, bankDetail, bankSummary }
@@ -114,6 +115,16 @@ class _FinanceAccountFlowPageState
   );
 
   /// 任何筛选变更后调用：标记已动手 + 防抖持久化到服务端。
+  /// 筛选项改动后的统一出口：存偏好 + 回第一页重查。
+  ///
+  /// 2026-09-11 撤掉「查询」按钮后，筛选不再需要用户再点一下确认——改日期/下拉
+  /// 即刻生效，关键词走搜索框自身的防抖与回车（用户要求：搜索回车即查询）。
+  void _persistAndReload() {
+    _persistPrefs();
+    _page = 1;
+    _load();
+  }
+
   void _persistPrefs() {
     _dirty = true;
     ref
@@ -264,7 +275,6 @@ class _FinanceAccountFlowPageState
                 ),
               ),
               body: UtenListTwoPane(
-                splitPersistenceKey: 'finance.accountFlow',
                 filterPane: _buildFilterPane(theme),
                 tablePane: _buildTable(),
               ),
@@ -328,7 +338,7 @@ class _FinanceAccountFlowPageState
                       _accountId = v;
                       _page = 1;
                     });
-                    _persistPrefs();
+                    _persistAndReload();
                     _load();
                   },
                 ),
@@ -350,7 +360,7 @@ class _FinanceAccountFlowPageState
                       );
                       if (p != null) {
                         setState(() => _from = p);
-                        _persistPrefs();
+                        _persistAndReload();
                       }
                     },
                     icon: const Icon(Icons.event_outlined, size: 18),
@@ -366,7 +376,7 @@ class _FinanceAccountFlowPageState
                       );
                       if (p != null) {
                         setState(() => _to = p);
-                        _persistPrefs();
+                        _persistAndReload();
                       }
                     },
                     icon: const Icon(Icons.event_outlined, size: 18),
@@ -377,21 +387,19 @@ class _FinanceAccountFlowPageState
               const SizedBox(height: UtenSpacing.s12),
               _filterLabel('搜索'),
               UtenSearchBar(
+                // 筛选面板里的一格：紧凑态（用户要求搜索框小一点）。
+                dense: true,
                 hint: '搜索单号/对方',
                 initialValue: _keyword,
-                onChanged: (v) => _keyword = v,
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.tonalIcon(
-                  onPressed: () {
-                    _page = 1;
-                    _load();
-                  },
-                  icon: const Icon(Icons.search_rounded, size: 18),
-                  label: const Text('查询'),
-                ),
+                // 防抖到点即查；回车立刻查（不等防抖）。
+                onChanged: (v) {
+                  _keyword = v;
+                  _persistAndReload();
+                },
+                onSubmitted: (v) {
+                  _keyword = v;
+                  _persistAndReload();
+                },
               ),
             ],
             if (_view != _FlowView.statement) ...[
@@ -483,6 +491,9 @@ class _FinanceAccountFlowPageState
       onSortChange: _onSortChange,
       isLoading: _loading,
       emptyMessage: _view == _FlowView.statement ? '暂无流水数据' : '银行存取款未启用(空表)',
+      // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
+      // 不是对当前这一页求和；后端未声明合计列时返回 null，整条不渲染。
+      summaryBar: reportTotalsBar(data.totals),
       currentPage: data.page,
       totalPages: data.totalPages,
       onPageChange: (p) {

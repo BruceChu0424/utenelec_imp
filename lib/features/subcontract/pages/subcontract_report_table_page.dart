@@ -9,7 +9,8 @@
 //     facets:{colKey:[{value,label,count}]}, page, size, total, totalPages }
 // 名称（委外商/仓库/货品/颜色/单位/人员/结帐方式）服务端 JOIN 出；前端按 columns 动态建列。
 //
-// UI：左筛选侧栏（单据类型 + 日期范围 + 搜索 + 查询）+ 右 Excel 风格表格（表头每列可筛 + 横滚 + 翻页）。
+// UI：顶部筛选区（单据类型分段与搜索同处一条 UtenFilterToolbar + 日期范围）
+// + 下方 Excel 风格表格（表头每列可筛 + 横滚 + 翻页）。
 // 默认日期范围 = 上月今日..今日（defaultReportFrom()，收紧默认避免一进拉全量；firstDate 仍 2010 可手选更早）。
 //
 // 筛选口径（单据类型/日期范围/facet/排序）按账号服务端持久化
@@ -21,7 +22,6 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -42,6 +42,7 @@ import '../../report/shared/report_data.dart';
 import '../../report/shared/report_date_range.dart';
 import '../../report/shared/report_filter_prefs.dart';
 import '../../report/shared/report_sort.dart';
+import '../../report/shared/report_total.dart';
 import '../config/subcontract_doc_config.dart';
 import '../config/subcontract_report_config.dart';
 
@@ -120,6 +121,16 @@ class _SubcontractReportTablePageState
   );
 
   /// 任何筛选变更后调用：标记已动手 + 防抖持久化到服务端。
+  /// 筛选项改动后的统一出口：存偏好 + 回第一页重查。
+  ///
+  /// 2026-09-11 撤掉「查询」按钮后，筛选不再需要用户再点一下确认——改日期/下拉
+  /// 即刻生效，关键词走搜索框自身的防抖与回车（用户要求：搜索回车即查询）。
+  void _persistAndReload() {
+    _persistPrefs();
+    _page = 1;
+    _load();
+  }
+
   void _persistPrefs() {
     _dirty = true;
     ref.read(_prefsProvider.notifier).update(_snapshot());
@@ -304,7 +315,6 @@ class _SubcontractReportTablePageState
                 ),
               ),
               body: UtenListTwoPane(
-                splitPersistenceKey: 'subcontract.reportTable',
                 filterPane: _buildFilterPane(theme),
                 tablePane: _buildTable(),
               ),
@@ -326,20 +336,33 @@ class _SubcontractReportTablePageState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 明细/汇总卡内切单据类型；出入状况表无此切换。
-          if (!_kind.isInOut) ...[
-            _filterLabel('单据类型'),
-            // 全平台统一筛选工具条：单据类型分段（纯分类无搜索）。
-            UtenFilterToolbar<SubcontractReportDocType>(
-              segments: [
-                for (final t in SubcontractReportDocType.values)
-                  UtenFilterSegment(value: t, label: t.label),
-              ],
-              selected: {_docType},
-              onSelectionChanged: _changeDocType,
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-          ],
+          _filterLabel(_kind.isInOut ? '搜索' : '单据类型'),
+          // 全平台统一筛选工具条：单据类型分段 + 同一行右侧的搜索框
+          //（2026-09-11 用户要求搜索不再单独占一行，宽度由 searchWidth 封顶；
+          // 窄屏工具条自己换行）。出入状况表无单据类型切换，segments 传空 =
+          // 纯搜索条。
+          UtenFilterToolbar<SubcontractReportDocType>(
+            segments: _kind.isInOut
+                ? const []
+                : [
+                    for (final t in SubcontractReportDocType.values)
+                      UtenFilterSegment(value: t, label: t.label),
+                  ],
+            selected: _kind.isInOut ? const {} : {_docType},
+            onSelectionChanged: _changeDocType,
+            searchHint: _kind.isInOut ? '搜索货品' : '搜索单号 / 货品',
+            initialSearchValue: _keyword,
+            // 防抖到点即查；回车立刻查（不等防抖）。
+            onSearchChanged: (v) {
+              _keyword = v;
+              _persistAndReload();
+            },
+            onSearchSubmitted: (v) {
+              _keyword = v;
+              _persistAndReload();
+            },
+          ),
+          const SizedBox(height: UtenSpacing.s12),
           _filterLabel('日期范围'),
           Wrap(
             spacing: 8,
@@ -356,7 +379,7 @@ class _SubcontractReportTablePageState
                   );
                   if (p != null) {
                     setState(() => _from = p);
-                    _persistPrefs();
+                    _persistAndReload();
                   }
                 },
                 icon: const Icon(Icons.event_outlined, size: 18),
@@ -372,32 +395,13 @@ class _SubcontractReportTablePageState
                   );
                   if (p != null) {
                     setState(() => _to = p);
-                    _persistPrefs();
+                    _persistAndReload();
                   }
                 },
                 icon: const Icon(Icons.event_outlined, size: 18),
                 label: Text('止 ${_fmt(_to)}'),
               ),
             ],
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          _filterLabel('搜索'),
-          UtenSearchBar(
-            hint: _kind.isInOut ? '搜索货品' : '搜索单号 / 货品',
-            initialValue: _keyword,
-            onChanged: (v) => _keyword = v,
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.tonalIcon(
-              onPressed: () {
-                _page = 1;
-                _load();
-              },
-              icon: const Icon(Icons.search_rounded, size: 18),
-              label: const Text('查询'),
-            ),
           ),
           if (_filters.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s12),
@@ -483,6 +487,9 @@ class _SubcontractReportTablePageState
       emptyMessage: _kind.isInOut
           ? '暂无出入状况数据'
           : (_kind.isDetail ? '暂无明细数据' : '暂无汇总数据'),
+      // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
+      // 不是对当前这一页求和；后端未声明合计列时返回 null，整条不渲染。
+      summaryBar: reportTotalsBar(data.totals),
       currentPage: data.page,
       totalPages: data.totalPages,
       onPageChange: (p) {

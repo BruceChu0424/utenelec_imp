@@ -93,88 +93,101 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
           // 强制改密模式不可返回（无返回按钮）
           showBackButton: !widget.forced,
         ),
-        // 独立路由：全断点套容器（maxWidth 480 居中，gutter 自适应）
+        // 独立路由：全断点套容器（maxWidth 480 居中，gutter 自适应）。
+        // 卡片垂直居中：滚动内容 minHeight 撑满视口 + 内层 Center；
+        // 小屏内容超高时 minHeight 不再起效，自动退化为可滚动（上下留 s24）。
         body: Center(
           child: UtenContentContainer(
             maxWidth: 480,
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s24),
-            child: SingleChildScrollView(
-              child: UtenCard(
-                padding: const EdgeInsets.all(UtenSpacing.s24),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Icon(
-                        widget.forced
-                            ? Icons.lock_reset_rounded
-                            : Icons.password_rounded,
-                        size: 40,
-                        color: theme.colorScheme.primary,
+            child: LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: UtenSpacing.s24,
                       ),
-                      const SizedBox(height: UtenSpacing.s12),
-                      Text(
-                        widget.forced ? '首次登录，请修改默认密码' : '修改密码',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: UtenSpacing.s4),
-                      Text(
-                        '密码至少 8 位，需同时包含字母和数字',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: UtenSpacing.s20),
-                      UtenInput(
-                        controller: _old,
-                        label: '原密码',
-                        isPassword: true,
-                        textInputAction: TextInputAction.next,
-                        validator: (v) =>
-                            InputValidators.required(v, label: '原密码'),
-                      ),
-                      const SizedBox(height: UtenSpacing.s12),
-                      UtenInput(
-                        controller: _new,
-                        label: '新密码',
-                        isPassword: true,
-                        textInputAction: TextInputAction.next,
-                        validator: InputValidators.password,
-                      ),
-                      const SizedBox(height: UtenSpacing.s12),
-                      UtenInput(
-                        controller: _confirm,
-                        label: '确认新密码',
-                        isPassword: true,
-                        textInputAction: TextInputAction.go,
-                        onFieldSubmitted: (_) => _submit(),
-                        validator: (v) =>
-                            InputValidators.required(v, label: '确认密码'),
-                      ),
-                      if (_error != null) ...[
-                        const SizedBox(height: UtenSpacing.s12),
-                        Text(
-                          _error!,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: UtenColors.error,
+                      child: UtenCard(
+                        padding: const EdgeInsets.all(UtenSpacing.s24),
+                        child: Form(
+                          key: _formKey,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Icon(
+                                widget.forced
+                                    ? Icons.lock_reset_rounded
+                                    : Icons.password_rounded,
+                                size: 40,
+                                color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(height: UtenSpacing.s12),
+                              Text(
+                                widget.forced ? '首次登录，请修改默认密码' : '修改密码',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: UtenSpacing.s4),
+                              Text(
+                                '密码至少 8 位，需同时包含字母和数字',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: UtenSpacing.s20),
+                              UtenInput(
+                                controller: _old,
+                                label: '原密码',
+                                isPassword: true,
+                                textInputAction: TextInputAction.next,
+                                validator: (v) =>
+                                    InputValidators.required(v, label: '原密码'),
+                              ),
+                              const SizedBox(height: UtenSpacing.s12),
+                              UtenInput(
+                                controller: _new,
+                                label: '新密码',
+                                isPassword: true,
+                                textInputAction: TextInputAction.next,
+                                validator: InputValidators.password,
+                              ),
+                              const SizedBox(height: UtenSpacing.s12),
+                              UtenInput(
+                                controller: _confirm,
+                                label: '确认新密码',
+                                isPassword: true,
+                                textInputAction: TextInputAction.go,
+                                onFieldSubmitted: (_) => _submit(),
+                                validator: (v) =>
+                                    InputValidators.required(v, label: '确认密码'),
+                              ),
+                              if (_error != null) ...[
+                                const SizedBox(height: UtenSpacing.s12),
+                                Text(
+                                  _error!,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: UtenColors.error,
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: UtenSpacing.s20),
+                              UtenButton(
+                                onPressed: _loading ? null : _submit,
+                                isLoading: _loading,
+                                isExpanded: true,
+                                size: UtenButtonSize.large,
+                                child: Text(l10n.commonConfirm),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
-                      const SizedBox(height: UtenSpacing.s20),
-                      UtenButton(
-                        onPressed: _loading ? null : _submit,
-                        isLoading: _loading,
-                        isExpanded: true,
-                        size: UtenButtonSize.large,
-                        child: Text(l10n.commonConfirm),
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),

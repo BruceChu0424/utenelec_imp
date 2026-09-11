@@ -1,5 +1,6 @@
 package com.uten.imp.features.attachment;
 
+import com.uten.imp.features.attachment.dto.AttachmentCategoryRequest;
 import com.uten.imp.features.attachment.dto.AttachmentConfirmRequest;
 import com.uten.imp.features.attachment.dto.AttachmentDownloadResponse;
 import com.uten.imp.features.attachment.dto.AttachmentDto;
@@ -48,6 +49,7 @@ public class AttachmentController {
 
     private final AttachmentService service;
     private final AttachmentReconciliationService reconciliationService;
+    private final AttachmentPreviewService previewService;
 
     @PostMapping("/presign")
     @PreAuthorize("hasAuthority('attachment:upload')")
@@ -72,6 +74,38 @@ public class AttachmentController {
     @PreAuthorize("hasAuthority('attachment:download')")
     public AttachmentDownloadResponse downloadGrant(@PathVariable UUID id) {
         return service.downloadGrant(id);
+    }
+
+    /**
+     * Office 文档在线预览：服务端 LibreOffice 转 PDF 后以私有、不落缓存的响应返回。
+     * 门槛与下载授权相同（attachment:download + owner 策略）；服务器未装转换组件、
+     * 超时或转换失败返回业务错误，客户端回落为下载原件。
+     */
+    @GetMapping("/{id}/preview")
+    @PreAuthorize("hasAuthority('attachment:download')")
+    public ResponseEntity<Resource> preview(@PathVariable UUID id) throws java.io.IOException {
+        AttachmentPreviewService.RenderedPreview rendered = previewService.render(id);
+        String encoded = URLEncoder.encode(rendered.fileName(), StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .contentLength(rendered.sizeBytes())
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename*=UTF-8''" + encoded)
+                .header("X-Content-Type-Options", "nosniff")
+                .header(HttpHeaders.CACHE_CONTROL, "private, no-store")
+                .body(new InputStreamResource(java.nio.file.Files.newInputStream(rendered.file())));
+    }
+
+    /**
+     * 上传完成后设置/清除分类：分类是可选标注，不在上传前询问，也不改变文件与访问范围。
+     * 对象授权与删除同一条路径（{@code requireCanManageForUpdate}），
+     * 因此单据被审核锁定/红冲后分类同样只读；空值 = 清除分类。
+     */
+    @PutMapping("/{id}/category")
+    @PreAuthorize("hasAuthority('attachment:upload')")
+    public AttachmentDto setCategory(@PathVariable UUID id,
+                                     @Valid @RequestBody AttachmentCategoryRequest request) {
+        return service.setCategory(id, request.category());
     }
 
     @DeleteMapping("/{id}")

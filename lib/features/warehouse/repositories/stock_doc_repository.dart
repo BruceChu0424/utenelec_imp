@@ -113,23 +113,35 @@ class StockDocRepository {
   Future<StockDocDetail> issue(
     String id,
     List<Map<String, dynamic>> lines,
-    String idempotencyKey,
-  ) async => StockDocDetail.fromJson(
+    String idempotencyKey, {
+    String? remark,
+  }) async => StockDocDetail.fromJson(
     await api.post(
       ApiEndpoints.stockDocIssue(id),
-      body: {'lines': lines, 'idempotencyKey': idempotencyKey},
+      body: {
+        'lines': lines,
+        'idempotencyKey': idempotencyKey,
+        // 出库备注（2026-09-09）：非空时服务端追加到单据 remark 留痕。
+        if (remark != null && remark.trim().isNotEmpty) 'reason': remark.trim(),
+      },
     ),
   );
 
   /// 草稿 DRAW 一键审核并完成首轮实际出库；任一步失败整笔回滚。
+  /// [remark] 与 [issue] 同义（2026-09-10：此前首轮出库的备注被静默丢弃）。
   Future<StockDocDetail> approveAndIssue(
     String id,
     List<Map<String, dynamic>> lines,
-    String idempotencyKey,
-  ) async => StockDocDetail.fromJson(
+    String idempotencyKey, {
+    String? remark,
+  }) async => StockDocDetail.fromJson(
     await api.post(
       ApiEndpoints.stockDocApproveAndIssue(id),
-      body: {'lines': lines, 'idempotencyKey': idempotencyKey},
+      body: {
+        'lines': lines,
+        'idempotencyKey': idempotencyKey,
+        if (remark != null && remark.trim().isNotEmpty) 'reason': remark.trim(),
+      },
     ),
   );
 

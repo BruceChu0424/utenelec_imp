@@ -538,7 +538,7 @@ void main() {
       find.byKey(const Key('sales-order-finance-review-order-1')),
       findsOneWidget,
     );
-    expect(find.text('已选 0 笔'), findsOneWidget);
+    expect(find.text('已选 0 项'), findsOneWidget);
   });
 
   testWidgets('搜索走服务端关键词，只有查看权限时表格保持只读', (tester) async {

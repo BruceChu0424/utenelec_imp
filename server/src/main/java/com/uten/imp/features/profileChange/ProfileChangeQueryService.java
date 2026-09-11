@@ -3,6 +3,7 @@ package com.uten.imp.features.profilechange;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.application.port.HrNoticePort;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.profilechange.dto.ProfileChangeDto;
 import com.uten.imp.security.TxSessionVars;
@@ -29,6 +30,7 @@ public class ProfileChangeQueryService {
     private final ProfileChangeSnapshotCodec snapshotCodec;
     private final ProfileChangeAccess access;
     private final TxSessionVars tx;
+    private final HrNoticePort hrNotice;
 
     /** 当前登录人绑定的员工档案 id。submitted_by 的 FK 指向 employees(id)，不能用 users.id 查。 */
     private UUID requireEmployeeId() {
@@ -92,24 +94,27 @@ public class ProfileChangeQueryService {
         }
         tx.bind();
         repo.saveAll(rs);
+        // 员工撤销 = 批次终态：HR 的「信息变更待审核」弹卡随之办结（2026-09-10 补闭环）。
+        hrNotice.resolveProfileChangeBatch(batchId, "CANCELLED");
     }
 
-    /** HR 队列。 */
+    /** HR 队列（departmentId 可选：按员工当前所属部门筛选，2026-09-10 表头筛选接后端）。 */
     @Transactional(readOnly = true)
-    public ProfileChangeDto.Page<ProfileChangeDto.HrListItem> hrList(int page, int size, String status, UUID employeeId) {
+    public ProfileChangeDto.Page<ProfileChangeDto.HrListItem> hrList(
+            int page, int size, String status, UUID employeeId, UUID departmentId) {
         access.requireHr();
         Pageable pageable = Pageables.of(page, size);
+        // 默认待审队列；指定状态筛选（applied/rejected/cancelled）——之前误用 findAll 导致筛选失效
+        String effectiveStatus = (status == null || status.isBlank()) ? "pending" : status;
         Page<ProfileChangeRequest> p;
         if (employeeId != null) {
             p = (status == null || status.isBlank())
                     ? repo.findByEmployeeIdOrderBySubmittedAtDesc(employeeId, pageable)
                     : repo.findByEmployeeIdAndStatusOrderBySubmittedAtDesc(employeeId, status, pageable);
-        } else if (status == null || status.isBlank()) {
-            // 默认待审队列
-            p = repo.findByStatusOrderBySubmittedAtDesc("pending", pageable);
+        } else if (departmentId != null) {
+            p = repo.findByStatusAndDepartmentOrderBySubmittedAtDesc(effectiveStatus, departmentId, pageable);
         } else {
-            // 指定状态筛选（applied/rejected/cancelled）——之前误用 findAll 导致筛选失效（混合全部状态）
-            p = repo.findByStatusOrderBySubmittedAtDesc(status, pageable);
+            p = repo.findByStatusOrderBySubmittedAtDesc(effectiveStatus, pageable);
         }
         Map<UUID, List<ProfileChangeRequest>> byBatch = foldByBatch(p.getContent());
         // 员工姓名/部门批量回填（避免逐批 findById 的 N+1）
@@ -135,6 +140,22 @@ public class ProfileChangeQueryService {
             ));
         }
         return new ProfileChangeDto.Page<>(items, p.getNumber() + 1, p.getSize(), p.getTotalElements(), p.getTotalPages());
+    }
+
+    /** HR 队列表头筛选桶：按状态（默认 pending）聚合员工所属部门的批次数。 */
+    @Transactional(readOnly = true)
+    public ProfileChangeDto.Facets hrFacets(String status) {
+        access.requireHr();
+        String effectiveStatus = (status == null || status.isBlank()) ? "pending" : status;
+        List<ProfileChangeDto.FacetBucket> departments = new ArrayList<>();
+        for (Object[] row : repo.countBatchesByDepartment(effectiveStatus)) {
+            if (row[0] == null) continue;
+            departments.add(new ProfileChangeDto.FacetBucket(
+                    row[0].toString(),
+                    row[1] == null ? row[0].toString() : row[1].toString(),
+                    ((Number) row[2]).longValue()));
+        }
+        return new ProfileChangeDto.Facets(departments);
     }
 
     /** HR 单批详情（含完整 diff）。 */

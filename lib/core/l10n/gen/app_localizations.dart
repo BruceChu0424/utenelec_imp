@@ -331,8 +331,8 @@ abstract class AppLocalizations {
   /// No description provided for @loginFooter.
   ///
   /// In zh, this message translates to:
-  /// **'© 2026 优腾 · 综合管理平台'**
-  String get loginFooter;
+  /// **'© {year} 优腾 · 综合管理平台'**
+  String loginFooter(int year);
 
   /// No description provided for @navDashboard.
   ///
@@ -615,12 +615,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'岗位'**
   String get profilePosition;
-
-  /// No description provided for @entrySubtitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'请选择登录方式'**
-  String get entrySubtitle;
 
   /// No description provided for @entryStaff.
   ///

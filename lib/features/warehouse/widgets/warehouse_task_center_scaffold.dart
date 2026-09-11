@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -31,7 +32,8 @@ class WarehouseTaskSegmentSpec {
   final String value;
   final String label;
 
-  /// 该分段的待办计数；null = 不显示徽章（无待办语义或加载中）。
+  /// 该分段的**待办**计数（红色徽章口径：0/null 不渲染）；无待办语义的分段
+  /// （如「其它入库」这类只有草稿与历史的通用单据段）传 null，不要塞浏览数。
   final int? count;
 }
 
@@ -142,6 +144,10 @@ class _WarehouseTaskCenterScaffoldState
                         value: segment.value,
                         label: segment.label,
                         count: segment.count,
+                        // 任务中心大类计数**只有待办语义**（见
+                        // [WarehouseTaskSegmentSpec.count]）：卡面角标就是这些
+                        // 分段之和，浏览型分段在这里传 null 而不是换形态。
+                        countForm: UtenSegmentCountForm.actionable,
                       ),
                   ],
                   selected: _segment == null ? const <String>{} : {_segment!},

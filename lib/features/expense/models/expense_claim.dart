@@ -63,6 +63,8 @@ class ExpenseClaim {
     required this.totalAmount,
     required this.status,
     required this.createdAt,
+    this.departmentId,
+    this.departmentName,
     this.submittedAt,
     this.approvedAt,
     this.paidAt,
@@ -74,6 +76,10 @@ class ExpenseClaim {
   final String id;
   final String applicantId;
   final String applicantName;
+
+  /// 申请人部门（提交时快照 id / 部门名，2026-09-10 审批列表「部门」列与表头筛选）
+  final String? departmentId;
+  final String? departmentName;
 
   /// 报销单标题
   final String title;
@@ -114,6 +120,8 @@ class ExpenseClaim {
       id: json['id'] as String,
       applicantId: json['applicantId'] as String,
       applicantName: json['applicantName'] as String,
+      departmentId: json['departmentId'] as String?,
+      departmentName: json['departmentName'] as String?,
       title: json['title'] as String,
       items: rawItems
           .map((item) => ExpenseItem.fromJson(item as Map<String, dynamic>))
@@ -143,6 +151,8 @@ class ExpenseClaim {
       id: id,
       applicantId: applicantId,
       applicantName: applicantName,
+      departmentId: departmentId,
+      departmentName: departmentName,
       title: title,
       items: items,
       totalAmount: totalAmount,

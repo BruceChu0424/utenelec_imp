@@ -7,12 +7,27 @@
 // CROSS 可按部门或逐条个人显式配置，但不得被个人「全部授权」顺带授予。
 // 批量授予会破坏职责分离，故「全部授权」按钮把它们排除在外。
 //
+// 2026-09-10（V543）：`*:view:all` 是显式全量对象范围（ADR-050），不是普通功能
+// 权限——一旦随「全部授权」发放，任何持 `xxx:view` 的人立即看到全公司单据。
+// 后端同步置 bulk_assignable=false；仍可按部门或逐人显式授予。
+//
 // 与后端 INDIVIDUAL_ONLY_PERMISSION_CODES（audit_log:* + account:balance:adjust，见
 // DepartmentPermissionAdminService）对齐并扩展到更广的高危面。
 import '../../shared/auth/permissions.dart';
 
 /// 「一键全部授权」排除的权限码。见文件头说明。
 const Set<String> kAuthorizeAllExcluded = {
+  // 对象范围码（V543 起 bulk_assignable=false）
+  Perm.clientViewAll,
+  Perm.financeViewAll,
+  Perm.goodsViewAll,
+  Perm.payrollViewAll,
+  Perm.productionPlanViewAll,
+  Perm.purchaseViewAll,
+  Perm.salesViewAll,
+  Perm.stockDocViewAll,
+  Perm.subcontractViewAll,
+  // 高危个人-only / 职责分离
   Perm.auditLogView,
   Perm.auditLogExport,
   Perm.authorizationManage,

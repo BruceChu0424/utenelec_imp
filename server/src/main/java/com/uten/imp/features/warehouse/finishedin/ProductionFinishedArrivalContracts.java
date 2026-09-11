@@ -29,7 +29,9 @@ public final class ProductionFinishedArrivalContracts {
             @Valid
             @NotNull
             @Size(min = 1, max = RequestLimits.DOCUMENT_LINES)
-            List<ArrivalRegistrationItemRequest> items) {
+            List<ArrivalRegistrationItemRequest> items,
+            @Size(max = 500, message = "备注不能超过 500 个字符")
+            String remark) {
     }
 
     public record ArrivalRegistrationItemRequest(
@@ -50,8 +52,60 @@ public final class ProductionFinishedArrivalContracts {
             String warehouseName,
             UUID receiverEmployeeId,
             String receiverName,
+            String remark,
             OffsetDateTime registeredAt,
-            List<ArrivalRegistrationItemView> items) {
+            List<ArrivalRegistrationItemView> items,
+            UUID sheetId,
+            String sheetNo,
+            OffsetDateTime reversedAt,
+            String reversalReason,
+            boolean reversible,
+            List<RegistrationBatchView> batches) {
+
+        public ArrivalRegistrationView {
+            items = List.copyOf(items);
+            batches = batches == null ? List.of() : List.copyOf(batches);
+        }
+    }
+
+    /**
+     * 同一报工的每个登记批次（V469 分批 + V548 撤回态）：已登记视图列出全部批次，
+     * 供页面按批次显示检查单号与「撤回登记（仅品质未处理）」。
+     */
+    public record RegistrationBatchView(
+            UUID registrationId,
+            UUID warehouseId,
+            String warehouseName,
+            String receiverName,
+            String remark,
+            OffsetDateTime registeredAt,
+            int itemCount,
+            UUID sheetId,
+            String sheetNo,
+            OffsetDateTime reversedAt,
+            String reversalReason,
+            boolean reversible) {
+    }
+
+    /** V548 登记撤回请求：原因必填（2–500 字）+ 稳定幂等键。 */
+    public record ArrivalRegistrationReversalRequest(
+            @NotBlank
+            @Size(min = 8, max = 128)
+            @Pattern(regexp = "[A-Za-z0-9._:-]+",
+                    message = "幂等键只能包含字母、数字或 ._:-")
+            String idempotencyKey,
+            @NotBlank
+            @Size(min = 2, max = 500, message = "撤回原因必须为 2 到 500 个字符")
+            String reason) {
+    }
+
+    /** V547 本次登记命令生成的品质检查单（每个成品仓一张）。 */
+    public record InspectionSheetSummaryView(
+            UUID sheetId,
+            String sheetNo,
+            UUID warehouseId,
+            String warehouseName,
+            int itemCount) {
     }
 
     /** Warehouse-scoped suggestions for every immutable report line. */
@@ -91,7 +145,9 @@ public final class ProductionFinishedArrivalContracts {
             @Valid
             @NotNull
             @Size(min = 1, max = 50)
-            List<BatchReportRegistrationRequest> reports) {
+            List<BatchReportRegistrationRequest> reports,
+            @Size(max = 500, message = "备注不能超过 500 个字符")
+            String remark) {
     }
 
     public record BatchReportRegistrationRequest(
@@ -105,10 +161,12 @@ public final class ProductionFinishedArrivalContracts {
 
     public record BatchArrivalRegistrationResult(
             int registeredCount,
-            List<RegisteredReportView> reports) {
+            List<RegisteredReportView> reports,
+            List<InspectionSheetSummaryView> sheets) {
 
         public BatchArrivalRegistrationResult {
             reports = List.copyOf(reports);
+            sheets = sheets == null ? List.of() : List.copyOf(sheets);
         }
     }
 
@@ -117,7 +175,9 @@ public final class ProductionFinishedArrivalContracts {
             UUID reportId,
             String reportNo,
             UUID warehouseId,
-            String warehouseName) {
+            String warehouseName,
+            UUID sheetId,
+            String sheetNo) {
     }
 
     /** 批量登记后的库位记忆汇总（逐单聚合 remembered/unchanged/ambiguous 与告警）。 */
@@ -156,6 +216,8 @@ public final class ProductionFinishedArrivalContracts {
             String unitName,
             BigDecimal reportedQty,
             String place,
-            String placeHint) {
+            String placeHint,
+            UUID lastWarehouseId,
+            String lastWarehouseName) {
     }
 }

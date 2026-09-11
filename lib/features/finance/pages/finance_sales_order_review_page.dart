@@ -6,6 +6,7 @@
 //  - 产品明细保持全局统一表格（MasterDataTableView 嵌入模式）；
 //  - 底栏双决策：驳回（必填原因，通知归属销售修正）/ 确认通过（选填备注，放行计划部）。
 // 本页不出现销售端运营操作（改量/排产进度/取消订单/红冲），职责分离。
+import '../../../shared/attachments/business_attachment_section.dart';
 import 'package:flutter/material.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +14,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -26,6 +28,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
+import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
@@ -480,6 +483,19 @@ class _FinanceSalesOrderReviewPageState
                       const SizedBox(height: UtenSpacing.s12),
                     ],
                     _itemsCard(theme, _review!),
+                    // 销售在订单上上传的合同/确认件（2026-09-09）：财务确认前
+                    // 可直接查看（图片/PDF/文本内嵌预览），不再切回销售详情页。
+                    const SizedBox(height: UtenSpacing.s12),
+                    BusinessAttachmentSection(
+                      ownerType: 'SALES_ORDER',
+                      ownerId: _review!.orderId,
+                      // 前端展示门=attachment:view；行级可读性由服务端策略复核。
+                      canView: ref
+                          .watch(currentPermissionsProvider)
+                          .contains(Perm.attachmentView),
+                      canManage: false,
+                      title: '销售附件（合同/客户确认/图片）',
+                    ),
                     if (_review!.financeRejected) ...[
                       const SizedBox(height: UtenSpacing.s12),
                       _rejectRecordCard(theme, _review!),
@@ -638,7 +654,13 @@ class _FinanceSalesOrderReviewPageState
                 ),
                 _metric(theme, '信用额度', _money(r.clientCredit)),
                 _metric(theme, '铺底额', _money(r.clientCreditFloor)),
-                _metric(theme, '本单金额', _money(r.totalOriginal)),
+                _metric(
+                  theme,
+                  '本单金额',
+                  _money(r.totalOriginal),
+                  emphasis: true,
+                  danger: true,
+                ),
               ],
             ),
             if (over) ...[
@@ -960,6 +982,30 @@ class _FinanceSalesOrderReviewPageState
           onFilterChanged: (_, _) {},
           emptyMessage: '(无明细)',
         ),
+        if (r.items.isNotEmpty)
+          UtenTotalsSummaryBar(
+            density: true,
+            entries: [
+              // 合计数量按单位分组（不同单位绝不相加）：多单位显示「12 个 · 3 箱」。
+              UtenTotalEntry(
+                '合计数量',
+                measurementTotalsText(
+                  r.items.map(
+                    (it) => MeasuredAmount(
+                      value: double.tryParse(it.qty ?? '') ?? 0,
+                      unitId: it.unitId,
+                      unitName: it.unitName,
+                    ),
+                  ),
+                ),
+              ),
+              UtenTotalEntry(
+                '合计金额(${_currencyLabel(r)})',
+                _money(r.totalOriginal),
+                danger: true,
+              ),
+            ],
+          ),
       ],
     );
   }

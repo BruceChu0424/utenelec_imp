@@ -1,5 +1,8 @@
 package com.uten.imp.features.finance.procurement;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
@@ -156,11 +159,16 @@ public final class ProcurementApprovalContracts {
             OffsetDateTime changedAt) {
     }
 
+    /**
+     * 审核明细行。{@code unitId} 供前端「合计数量」按单位分组用（不同单位的数量
+     * 绝不相加），{@code unitName} 只作显示标签。
+     */
     public record ReviewLine(
             int lineNo,
             String goodsCode,
             String goodsName,
             String colorName,
+            @JsonSerialize(using = ToStringSerializer.class) UUID unitId,
             String unitName,
             BigDecimal unitRate,
             BigDecimal qty,

@@ -13,12 +13,18 @@ class UtenFieldHintIcon extends StatefulWidget {
     this.errorMessage,
     this.autofillMessage,
     this.autofilled = false,
+    this.dense = false,
   });
 
   final String? info;
   final String? errorMessage;
   final String? autofillMessage;
   final bool autofilled;
+
+  /// 紧凑态（表格列头用）：命中区 28×28、图标 16。表单里的 44×44 命中区在
+  /// 稠密表头里会把列头 Row 顶出 1~2px 溢出（2026-09-11 实测 material_analysis
+  /// 等 26 个用例），而列头本身已是 44 高的可点区域，图标只需落在其中。
+  final bool dense;
 
   @override
   State<UtenFieldHintIcon> createState() => _UtenFieldHintIconState();
@@ -99,8 +105,13 @@ class _UtenFieldHintIconState extends State<UtenFieldHintIcon> {
             child: IconButton(
               focusNode: _focusNode,
               onPressed: _show,
-              padding: const EdgeInsets.all(UtenSpacing.s12),
-              constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+              padding: EdgeInsets.all(
+                widget.dense ? UtenSpacing.s4 : UtenSpacing.s12,
+              ),
+              constraints: BoxConstraints.tightFor(
+                width: widget.dense ? 28 : 44,
+                height: widget.dense ? 28 : 44,
+              ),
               style: const ButtonStyle(
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 visualDensity: VisualDensity.standard,
@@ -111,7 +122,7 @@ class _UtenFieldHintIconState extends State<UtenFieldHintIcon> {
                     : isWarning
                     ? Icons.warning_amber_rounded
                     : Icons.info_outline,
-                size: 18,
+                size: widget.dense ? 16 : 18,
                 color: color,
               ),
             ),

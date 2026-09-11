@@ -5,9 +5,9 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.features.production.mrp.MrpService;
 import com.uten.imp.features.production.schedule.dto.PendingPlanRow;
 import com.uten.imp.features.production.schedule.dto.ScheduleOrderLine;
+import com.uten.imp.common.saleschain.SalesOrderChainSql;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -37,18 +37,11 @@ import java.util.UUID;
 public class ProductionScheduleService {
 
     private final EntityManager em;
-    /** 新增排产缺口：订单净未交 - 当前可发预留 - 尚未入库的计划量（均为行单位）。 */
-    static final String SCHEDULING_NEED_SQL = """
-            GREATEST(
-                COALESCE(i.qty,0) - COALESCE(i.shipped_qty,0)
-                + COALESCE(i.returned_qty,0) - COALESCE(i.flag_qty,0)
-                - COALESCE(i.reserved_qty,0)
-                - GREATEST(COALESCE(i.planned_qty,0) - COALESCE(i.produced_qty,0), 0),
-                0)
-            """.strip();
+    /** 新增排产缺口 = 剩余未排量（订单净未交 − 当前可发预留 − 尚未入库的计划量，行单位）；
+     *  与 chain_status 派生、销售进度 PENDING、待生产大类同一口径（V545，SalesOrderChainSql）。 */
+    static final String SCHEDULING_NEED_SQL = SalesOrderChainSql.unplannedQtySql("i");
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
-    private final MrpService mrpService;
 
     /** 待排产订单行（服务端分页；交货升序，urgent=距交货 ≤3 天或已逾期）。
      *  keyword 模糊 订单号/客户/货品名/货品编码；dateFrom/dateTo 交货日期范围（行级优先、缺省取单头）。
@@ -236,25 +229,6 @@ public class ProductionScheduleService {
 
 
     // ======================== 工作台徽标：待排产计数 ========================
-
-    /** 缺料待备料计数（PMC 采购管理徽标）：链路行状态=3 待物料（计划已审但 BOM 净需求不足）的行数。 */
-    @Transactional(readOnly = true)
-    public Map<String, Long> shortageCount() {
-        if (!mrpService.isPlanningWriteReady()) {
-            return Map.of("count", 0L);
-        }
-        // 单列原生查询返回标量（Long），不能当 Object[] 强转（多列才返回 Object[]）。
-        Number n = (Number) em.createNativeQuery("""
-                SELECT COUNT(*)
-                FROM sales_order_items i
-                JOIN sales_orders o ON o.id = i.order_id
-                WHERE o.is_deleted = false AND o.status = 1
-                  AND o.finance_confirmed = true
-                  AND o.is_closed = false AND o.is_stopped = false
-                  AND i.is_deleted = false AND i.chain_status = 3
-                """).getSingleResult();
-        return Map.of("count", n.longValue());
-    }
 
     /** 待排产计数（生产部工作台徽标）：待排产行数 + 其中紧急（交货 ≤3 天/含逾期）+ 已逾期（交货 < 今天）行数。口径同 PENDING_SQL。 */
     @Transactional(readOnly = true)
@@ -454,32 +428,6 @@ public class ProductionScheduleService {
                 SELECT COALESCE(MAX(depth), 1) FROM bom
                 """).setParameter("g", goodsId).getSingleResult();
         return d == null ? 1 : ((Number) d).intValue();
-    }
-
-    /** Java 镜像口径，供边界测试与非 SQL 调用复用。 */
-    static BigDecimal schedulingNeed(
-            BigDecimal qty,
-            BigDecimal shippedQty,
-            BigDecimal returnedQty,
-            BigDecimal flagQty,
-            BigDecimal reservedQty,
-            BigDecimal plannedQty,
-            BigDecimal producedQty) {
-        BigDecimal outstanding = zero(qty)
-                .subtract(zero(shippedQty))
-                .add(zero(returnedQty))
-                .subtract(zero(flagQty));
-        BigDecimal unfinishedPlan = zero(plannedQty)
-                .subtract(zero(producedQty))
-                .max(BigDecimal.ZERO);
-        return outstanding
-                .subtract(zero(reservedQty))
-                .subtract(unfinishedPlan)
-                .max(BigDecimal.ZERO);
-    }
-
-    private static BigDecimal zero(BigDecimal value) {
-        return value == null ? BigDecimal.ZERO : value;
     }
 
     private static BigDecimal bd(Object v) {

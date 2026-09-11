@@ -56,7 +56,10 @@ class ProductionFqcRecordContractTest {
                         "inspectedQty", "currentPassedQty", "currentFailedQty",
                         "currentRemainingQty", "decision", "passQty", "failQty",
                         "dispositionCode", "reason", "inspectorEmployeeId",
-                        "inspectorName", "decidedAt", "currentStatus", "effective");
+                        "inspectorName", "decidedAt", "currentStatus", "effective",
+                        // V547 品质检查单：记录行回带检查单号（同仓一次送检合并的单号），
+                        // 品质检测记录页作为一列展示（2026-09-11）。
+                        "sheetNo");
         assertThat(componentNames(InspectionDecisionRecordPage.class))
                 .containsExactly(
                         "items", "page", "size", "total", "totalPages", "metrics");

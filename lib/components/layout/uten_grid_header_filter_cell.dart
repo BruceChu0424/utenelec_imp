@@ -84,6 +84,12 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final s = _sanitized;
+    // 无任何可选值（该列在当前行集上全空）→ 退回纯标签，不画「点开只有『所有』」
+    // 的死箭头。与 MasterDataTableView._FilterCell 的 interactive 口径一致
+    // （2026-09-11 表头快速筛选补齐批次统一）。
+    if (widget.buckets.isEmpty && s == null) {
+      return _plainHeader(theme);
+    }
     final highlighted = s != null;
     String display;
     if (s == null) {
@@ -145,6 +151,34 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// 无可选值时的纯标签表头（与可筛选态同高同内边距，只是不可点、无箭头）。
+  Widget _plainHeader(ThemeData theme) {
+    final style = (theme.textTheme.labelMedium ?? const TextStyle()).copyWith(
+      fontWeight: FontWeight.w700,
+    );
+    return Container(
+      constraints: const BoxConstraints(minHeight: 44),
+      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
+      alignment: Alignment.centerLeft,
+      child: Text.rich(
+        TextSpan(
+          text: widget.label,
+          style: style,
+          children: widget.requiredStar
+              ? [
+                  TextSpan(
+                    text: ' *',
+                    style: style.copyWith(color: theme.colorScheme.error),
+                  ),
+                ]
+              : null,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }

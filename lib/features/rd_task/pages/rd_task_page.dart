@@ -4,6 +4,11 @@
 //               且 allowedActions 含 RESOLVE）。
 //  Tab2 已完成：DONE/CANCELED 任务（只读）。
 //
+// 2026-09-09 表格化收尾：宽屏 MasterDataTableView 的「状态」「类别」两列接入
+// 真实 autofilter——bucket 从当前页行前端聚合（参照 material_analysis_material_table），
+// 行集在前端裁剪（服务端仍按 keyword/category/页码分页）；关键词/类别下拉等
+// 服务端口径变化时列筛选随之清空。窄屏卡片布局不动。
+//
 // 结构克隆：
 //  - operations_workbench_page.dart —— race-guard _load / LayoutBuilder 宽窄分栏
 //    （expanded → MasterDataTableView，否则卡片列表）/ connectionRecovery 重载 /
@@ -32,6 +37,7 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/rd_task.dart';
 import '../providers/rd_task_count_provider.dart';
@@ -134,6 +140,11 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
   bool _hasLoaded = false;
   bool _resolving = false;
 
+  /// 宽屏表格「状态/类别」列的表头筛选状态（key=列 key，value=选中值；
+  /// null/移除=清除）。bucket 从当前页行前端聚合、行集前端裁剪；服务端
+  /// 关键词/类别口径变化时随之清空（同批次一分段切换清列筛选的口径）。
+  final Map<String, String?> _tableFilters = {};
+
   /// 桌面表格当前选中任务 id（点行触发：既打开 BOM 维护，也据此显示「标记完成」上下文条）。
   String? _selectedTaskId;
 
@@ -234,7 +245,11 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
     setState(() {
       if (keyword != null) _keyword = keyword;
       if (category != null) _category = category;
-      if (needsReload) _page = 1;
+      if (needsReload) {
+        _page = 1;
+        // 服务端筛选口径变了，表头列筛选（针对旧行集聚合）随之失效。
+        _tableFilters.clear();
+      }
     });
     if (needsReload) _load();
   }
@@ -371,6 +386,14 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
                   data: data,
                   items: data.items,
                   loading: _loading,
+                  filters: _tableFilters,
+                  onFilterChanged: (key, value) => setState(() {
+                    if (value == null) {
+                      _tableFilters.remove(key); // 选「所有」= 不筛
+                    } else {
+                      _tableFilters[key] = value;
+                    }
+                  }),
                   onOpenGoods: _openGoodsBom,
                   onSelectionChanged: (row) =>
                       setState(() => _selectedTaskId = row.id),
@@ -573,6 +596,8 @@ class _DesktopTaskTable extends StatelessWidget {
     required this.data,
     required this.items,
     required this.loading,
+    required this.filters,
+    required this.onFilterChanged,
     required this.onOpenGoods,
     required this.onSelectionChanged,
     required this.onPageChanged,
@@ -582,12 +607,58 @@ class _DesktopTaskTable extends StatelessWidget {
   final List<RdTaskRow> items;
   final bool loading;
 
+  /// 「状态/类别」列的表头筛选状态（页面持有；null/移除=清除）。
+  final Map<String, String?> filters;
+  final void Function(String key, String? value) onFilterChanged;
+
   /// 点行 = 打开关联货品的 BOM 维护弹窗（不是确认完成）。
   final ValueChanged<RdTaskRow> onOpenGoods;
 
   /// 行被点选时回调（驱动上方「标记完成」上下文条）。
   final ValueChanged<RdTaskRow> onSelectionChanged;
   final ValueChanged<int> onPageChanged;
+
+  /// 按表头筛选裁剪当前页行集（空值行在选了任何值时被滤掉，与物料分析表一致）。
+  List<RdTaskRow> _applyFilters(List<RdTaskRow> rows) {
+    if (filters.values.every((v) => v == null || v.isEmpty)) return rows;
+    final status = filters['status'];
+    final category = filters['category'];
+    return rows.where((row) {
+      final statusOk =
+          status == null ||
+          status.isEmpty ||
+          rdTaskStatusLabel(row.status) == status;
+      final categoryOk =
+          category == null ||
+          category.isEmpty ||
+          rdTaskCategoryLabel(row.category) == category;
+      return statusOk && categoryOk;
+    }).toList();
+  }
+
+  /// 状态/类别两列的筛选桶：当前页全量行聚合（筛选前），空值行不进桶。
+  Map<String, List<MasterFacetBucket>> _facetsOf(List<RdTaskRow> rows) {
+    List<MasterFacetBucket> bucketsOf(Iterable<String> texts) {
+      final counts = <String, int>{};
+      for (final text in texts) {
+        if (text.isEmpty) continue;
+        counts[text] = (counts[text] ?? 0) + 1;
+      }
+      final entries = counts.entries.toList()
+        ..sort((a, b) => a.key.compareTo(b.key));
+      return [
+        for (final entry in entries)
+          MasterFacetBucket(value: entry.key, count: entry.value),
+      ];
+    }
+
+    return {
+      'status': bucketsOf(rows.map((row) => rdTaskStatusLabel(row.status))),
+      'category': bucketsOf(
+        rows.map((row) => rdTaskCategoryLabel(row.category)),
+      ),
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -651,11 +722,13 @@ class _DesktopTaskTable extends StatelessWidget {
           value: (item) => item.createdAt ?? '—',
         ),
       ],
-      items: items,
-      facets: const {},
+      items: _applyFilters(items),
+      // 表头筛选（2026-09-09）：bucket 从当前页全量行聚合，行集在前端裁剪，
+      // 与服务端 keyword/类别下拉分页叠加。
+      facets: _facetsOf(items),
       nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
+      filters: filters,
+      onFilterChanged: onFilterChanged,
       // 行点击 = 打开关联货品的 BOM 维护弹窗；同时回调选中（驱动上方「标记完成」上下文条）。
       onRowTap: onOpenGoods,
       onSelectionChanged: onSelectionChanged,

@@ -174,6 +174,10 @@ class ProductionFlowStage {
         progress: _ratio(reportedQty, plannedQty),
       ),
       'COMPLETED' => _make(5, '已完工', ProductionFlowTone.done),
+      // 终态非完工段只在车间任务「历史任务」时间门控视图出现（ADR-066 §1.3），
+      // 不能再落到「等待下达车间」误导。
+      'CANCELLED' => _make(0, '已取消', ProductionFlowTone.pending),
+      'REVERSED' => _make(0, '已红冲', ProductionFlowTone.pending),
       _ => _make(0, '等待下达车间', ProductionFlowTone.pending),
     };
   }

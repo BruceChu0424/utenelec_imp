@@ -9,9 +9,11 @@ import '../models/suggestion.dart';
 
 abstract interface class SuggestionRepository {
   /// 建议广场 / 我的建议（真实服务端分页），category 可空。
+  /// [status] = 列表「状态」表头筛选（下推后端 status 参数，空 = 不筛）。
   Future<PagedResult<Suggestion>> list({
     bool mine = false,
     SuggestionCategory? category,
+    SuggestionStatus? status,
     int page = 1,
     int size = 20,
   });
@@ -46,6 +48,7 @@ class DioSuggestionRepository implements SuggestionRepository {
   Future<PagedResult<Suggestion>> list({
     bool mine = false,
     SuggestionCategory? category,
+    SuggestionStatus? status,
     int page = 1,
     int size = 20,
   }) async {
@@ -54,6 +57,7 @@ class DioSuggestionRepository implements SuggestionRepository {
       query: {
         if (mine) 'scope': 'mine',
         if (category != null) 'category': category.name,
+        if (status != null) 'status': status.name,
         'page': page,
         'size': size,
       },

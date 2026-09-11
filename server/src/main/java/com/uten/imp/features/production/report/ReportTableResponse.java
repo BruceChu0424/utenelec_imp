@@ -1,5 +1,7 @@
 package com.uten.imp.features.production.report;
 
+import com.uten.imp.common.report.ReportTotal;
+
 import java.util.List;
 import java.util.Map;
 
@@ -24,12 +26,24 @@ public record ReportTableResponse(
         int size,
         long total,
         int totalPages,
-        Map<String, Object> meta) {
+        Map<String, Object> meta,
+        List<ReportTotal> totals) {
 
     public ReportTableResponse(List<ReportColumn> columns, List<Map<String, Object>> rows,
                                Map<String, List<ReportFacet>> facets, int page, int size,
                                long total, int totalPages) {
-        this(columns, rows, facets, page, size, total, totalPages, Map.of());
+        this(columns, rows, facets, page, size, total, totalPages, Map.of(), List.of());
+    }
+
+    /**
+     * 兼容构造：带 meta、不带合计（{@code totals} 置空，前端整条合计条不渲染）。
+     * 报表表格一律服务端分页，合计只能由服务端在整个结果集上算；没算就别显示，
+     * 绝不让前端对当前页求和冒充总计。
+     */
+    public ReportTableResponse(List<ReportColumn> columns, List<Map<String, Object>> rows,
+                               Map<String, List<ReportFacet>> facets, int page, int size,
+                               long total, int totalPages, Map<String, Object> meta) {
+        this(columns, rows, facets, page, size, total, totalPages, meta, List.of());
     }
 
     /** facet 空值档 sentinel（与前端 kMasterFilterNullValue 对齐）。 */

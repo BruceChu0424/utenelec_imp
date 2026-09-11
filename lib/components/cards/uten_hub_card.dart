@@ -4,8 +4,15 @@
 // _WarehouseTaskCenterTile，统一：40×40 图标盒、卡片描边/圆角/内边距，
 // 以及右上角徽章浮层（UtenNotificationBadge 系）。
 //
-// 徽章通过 [badge] 槽位以 Stack Positioned(top/right) 渲染，恒在卡片右上角，
-// 不再随标题文字或图标行漂移——这正是各 hub 之前不一致的根因。
+// 两个计数槽位（docs/00-项目准则/14-徽章与计数口径.md）：
+//   · [badge]（右上角 Stack Positioned）= 红色通知徽章，给「需要我处理」的待办数
+//     （**2026-09-11 起草稿也算**，见该文档 §草稿），恒在卡片右上角、不随标题文字
+//     或图标行漂移——这正是各 hub 之前不一致的根因；并且会被上层容器
+//     （工作台模块卡 / 导航 Tab）逐级累加。
+//   · [labelSuffix]（标题文字右侧行内）= 次要计数位。一张卡同时有「别人给我的待办」
+//     和「我自己的草稿」时，待办占 [badge]，草稿退到这里（仍是红色 UtenDraftBadge）
+//     ——一个 badge 槽塞两个红圆点读不懂。浏览型计数（历史/记录）也走这里，
+//     用中性 [UtenCountSuffix]。
 //
 // 未启用单据（enabled=false）：图标与标题置灰，右上角显「未启用」chip（占用徽章位）。
 
@@ -23,6 +30,7 @@ class UtenHubCard extends StatelessWidget {
     this.description,
     this.color,
     this.badge,
+    this.labelSuffix,
     this.enabled = true,
     this.onDisabledTap,
     this.labelStyle,
@@ -39,8 +47,18 @@ class UtenHubCard extends StatelessWidget {
   /// 图标底色与图标色；默认 theme.colorScheme.primary（基础资料按条目传绿/青）。
   final Color? color;
 
-  /// 右上角浮层徽章（如 PurchaseTaskBadge / UtenNotificationBadge）。
+  /// 右上角浮层「待办」徽章（如 PurchaseTaskBadge / UtenNotificationBadge）。
+  ///
+  /// 只放「需要我处理」的数字（含本人草稿）；次要计数请用 [labelSuffix]。
   final Widget? badge;
+
+  /// 标题右侧的次要计数位：卡片已用 [badge] 放待办时，草稿徽章
+  /// （`UtenDraftBadge`）退到这里；浏览型计数用 `UtenCountSuffix`。
+  ///
+  /// 与标题同一行；标题过长时先压标题（Flexible 换行），后缀始终完整可见。
+  /// 2026-09-11 起全部 hub 的草稿都占得到 [badge]（那几张卡本就没有别的待办徽章），
+  /// 所以本槽位当前无调用点——保留是给「同时有待办与草稿」的卡用的。
+  final Widget? labelSuffix;
 
   /// false → 图标/标题置灰 + 右上角「未启用」chip；点击走 [onDisabledTap]。
   final bool enabled;
@@ -86,14 +104,31 @@ class UtenHubCard extends StatelessWidget {
                     child: Icon(icon, color: iconColor, size: 22),
                   ),
                   const SizedBox(height: UtenSpacing.s12),
-                  Text(
-                    label,
-                    style: (labelStyle ?? theme.textTheme.titleSmall)?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: enabled
-                          ? null
-                          : theme.colorScheme.onSurfaceVariant,
-                    ),
+                  // 标题与括号数字同一行：标题仍是独立的 Text（不换成 Text.rich——
+                  // 那会让 data 变 null，`find.text('仓库调拨')` 之类的既有断言与
+                  // 读屏的整段朗读一起失效），Flexible 保证字号放大/窄屏时照常换行。
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          label,
+                          style: (labelStyle ?? theme.textTheme.titleSmall)
+                              ?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: enabled
+                                    ? null
+                                    : theme.colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ),
+                      if (labelSuffix != null) ...[
+                        const SizedBox(width: UtenSpacing.s4),
+                        labelSuffix!,
+                      ],
+                    ],
                   ),
                   if (description != null) ...[
                     const SizedBox(height: 2),

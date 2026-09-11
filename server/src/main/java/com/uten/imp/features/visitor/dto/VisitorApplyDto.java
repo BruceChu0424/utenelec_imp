@@ -70,6 +70,12 @@ public final class VisitorApplyDto {
             String status, OffsetDateTime appliedAt, OffsetDateTime approvedAt,
             boolean hasVehicle, String plateNo) {}
 
+    /** HR 审批列表表头筛选桶（2026-09-10）：状态 + 接待人部门（value=部门 id，label=部门名）。 */
+    public record VisitorApprovalFacets(
+            List<VisitorFacetBucket> statuses, List<VisitorFacetBucket> departments) {}
+
+    public record VisitorFacetBucket(String value, String label, long count) {}
+
     public record VisitorDetail(
             UUID id, String visitorName, String phone, String idCardLast4,
             String company, String visitPurpose, boolean hasVehicle, String plateNo,

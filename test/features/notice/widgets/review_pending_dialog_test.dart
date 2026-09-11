@@ -1,6 +1,7 @@
 // ReviewPendingDialog（V459 居中审核弹窗）契约测试：
 // - 渲染：标题/条数副标题/条目标题/认领状态 chip（待处理 vs XX 正在审核）；
-// - 「稍后再看」：全部条目 snooze（15 分钟）+ 已读 + 关闭弹窗；
+// - 「稍后再看」：全部条目只调 snooze（15 分钟，服务端顺带置已读；前端不再另调
+//   markRead）+ 关闭弹窗；
 // - 「去工作台处理」（第四轮口径）：单条也去域工作台（不直达详情）；跨域
 //   混合去待审收件台；点列表行去该行所属域工作台（仅该条已读）；
 // - 新到待办并入已开弹窗（不叠第二层）；高度自适应 + 多条封顶滚动。
@@ -19,13 +20,25 @@ import 'package:uten_imp/features/notice/widgets/review_pending_dialog.dart';
 class _FakeNoticeRepository implements NoticeRepository {
   final List<String> snoozedIds = [];
   final List<String> readIds = [];
+  final List<String> acknowledgedIds = [];
   final Map<String, Notice> noticesById = {};
   List<PendingReviewStatus>? statusResult;
+  Object? acknowledgeError;
 
   @override
   Future<void> snooze(String id, {int minutes = 15}) async {
     snoozedIds.add(id);
   }
+
+  @override
+  Future<Notice> acknowledge(String id) async {
+    if (acknowledgeError != null) throw acknowledgeError!;
+    acknowledgedIds.add(id);
+    return noticesById[id]!.copyWith(myAcked: true);
+  }
+
+  @override
+  Future<List<Notice>> pendingPopups() async => const [];
 
   @override
   Future<List<PendingReviewStatus>> pendingReviewStatus(
@@ -98,6 +111,28 @@ void main() {
     },
   );
 
+  test('hr events land on their approval queues, not the dashboard', () {
+    // 2026-09-09/10 人事域弹卡（HrNoticeService）：6 个既有事件 + 工资待发布 + 建议待回复。
+    expect(
+      workbenchRouteFor('PROFILE_CHANGE_SUBMITTED'),
+      '/hr/profile-changes',
+    );
+    expect(workbenchRouteFor('VISITOR_APPLY_SUBMITTED'), '/visitor-approval');
+    expect(workbenchRouteFor('VISITOR_HOST_CONFIRM_REQUIRED'), '/my-visitors');
+    expect(workbenchRouteFor('EXPENSE_CLAIM_SUBMITTED'), '/expense/approval');
+    expect(
+      workbenchRouteFor('EXPENSE_CLAIM_PENDING_PAYMENT'),
+      '/expense/approval',
+    );
+    expect(workbenchRouteFor('PAYROLL_BATCH_SUBMITTED'), '/payroll/review');
+    expect(
+      workbenchRouteFor('PAYROLL_BATCH_PENDING_PUBLISH'),
+      '/payroll/review',
+    );
+    expect(workbenchRouteFor('SUGGESTION_SUBMITTED'), RouteName.suggestion);
+    expect(RouteName.suggestion, '/suggestion');
+  });
+
   Notice noticeOf(
     String id, {
     String title = '待财务确认：SO-001',
@@ -118,10 +153,31 @@ void main() {
     );
   }
 
+  /// 人工通知（人事手动发布）：公告类默认 acknowledge（打卡）；task 类 none（只提醒）。
+  Notice manualOf(
+    String id, {
+    String title = '国庆放假安排',
+    NoticeType type = NoticeType.announcement,
+    NoticePriority priority = NoticePriority.normal,
+  }) {
+    return Notice(
+      id: id,
+      title: title,
+      content: '10 月 1 日至 7 日放假，10 月 8 日正常上班。',
+      type: type,
+      publisher: '人事部',
+      publishedAt: DateTime.now().subtract(const Duration(hours: 1)),
+      isRead: false,
+      priority: priority,
+      interactionMode: type.interactionMode,
+    );
+  }
+
   Future<void> pumpDialog(
     WidgetTester tester, {
     required _FakeNoticeRepository repo,
     required List<Notice> pending,
+    List<Notice> manual = const [],
     List<GoRoute> routes = const [],
   }) async {
     final router = GoRouter(
@@ -139,13 +195,156 @@ void main() {
         ),
       ),
     );
-    for (final n in pending) {
+    for (final n in [...pending, ...manual]) {
       repo.noticesById[n.id] = n;
     }
     final context = tester.element(find.text('home'));
-    unawaited(showReviewPendingDialog(context, pending: pending));
+    unawaited(
+      showReviewPendingDialog(context, pending: pending, manual: manual),
+    );
     await tester.pumpAndSettle();
   }
+
+  // ---------------- 人工通知（人事/公司通知）分组（2026-09-10，ADR-063 §8）----------------
+
+  testWidgets(
+    'manual acknowledge card shows 打卡确认 and disappears after acknowledging',
+    (tester) async {
+      final repo = _FakeNoticeRepository();
+      await pumpDialog(
+        tester,
+        repo: repo,
+        pending: [],
+        manual: [manualOf('m1')],
+      );
+
+      // 只有人工通知：标题「登录提醒」、无「去工作台处理」、条目带打卡按钮。
+      expect(find.text('登录提醒'), findsOneWidget);
+      expect(find.text('待办提醒'), findsNothing);
+      expect(find.text('有 1 条通知需要你确认'), findsOneWidget);
+      expect(find.text('人事/公司通知 · 1'), findsOneWidget);
+      expect(find.text('国庆放假安排'), findsOneWidget);
+      expect(find.text('打卡确认'), findsOneWidget);
+      expect(find.text('查看详情'), findsOneWidget);
+      expect(find.text('知道了'), findsNothing);
+      expect(find.text('去工作台处理'), findsNothing);
+      expect(find.text('全部稍后再看'), findsOneWidget);
+
+      await tester.tap(find.text('打卡确认'));
+      await tester.pump();
+
+      expect(repo.acknowledgedIds, ['m1']);
+      expect(find.text('已打卡'), findsOneWidget);
+      expect(find.text('打卡确认'), findsNothing);
+
+      // 短暂展示「已打卡」后移除条目；全部处理完弹窗自关。
+      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pumpAndSettle();
+      expect(find.byType(ReviewPendingDialog), findsNothing);
+      expect(repo.readIds, isEmpty, reason: '打卡不代行已读');
+    },
+  );
+
+  testWidgets('manual none-mode card shows 知道了 which marks read and removes', (
+    tester,
+  ) async {
+    final repo = _FakeNoticeRepository();
+    await pumpDialog(
+      tester,
+      repo: repo,
+      pending: [],
+      manual: [manualOf('m2', type: NoticeType.task, title: '周五提交周报')],
+    );
+
+    expect(find.text('周五提交周报'), findsOneWidget);
+    expect(find.text('知道了'), findsOneWidget);
+    expect(find.text('打卡确认'), findsNothing);
+
+    await tester.tap(find.text('知道了'));
+    await tester.pumpAndSettle();
+
+    expect(repo.readIds, ['m2']);
+    expect(repo.acknowledgedIds, isEmpty);
+    expect(find.byType(ReviewPendingDialog), findsNothing);
+  });
+
+  testWidgets('acknowledge failure keeps the manual card for retry', (
+    tester,
+  ) async {
+    final repo = _FakeNoticeRepository()
+      ..acknowledgeError = Exception('network down');
+    await pumpDialog(tester, repo: repo, pending: [], manual: [manualOf('m1')]);
+
+    await tester.tap(find.text('打卡确认'));
+    await tester.pumpAndSettle();
+
+    expect(repo.acknowledgedIds, isEmpty);
+    expect(find.text('打卡确认'), findsOneWidget);
+    expect(find.text('已打卡'), findsNothing);
+    expect(find.byType(ReviewPendingDialog), findsOneWidget);
+  });
+
+  testWidgets(
+    'reviews plus manual notices share one dialog: 待办提醒 title, grouped, snooze all',
+    (tester) async {
+      // 列表分组标题在弹窗封顶高度内（ListView 惰性构建，默认 600 高屏
+      // 只剩 ~160px 给列表）；用 1080p 视口让两组全部在树内可断言。
+      tester.view.physicalSize = const Size(1920, 1080);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repo = _FakeNoticeRepository();
+      await pumpDialog(
+        tester,
+        repo: repo,
+        pending: [noticeOf('n1')],
+        manual: [
+          manualOf('m3', priority: NoticePriority.urgent, title: '今日停电'),
+        ],
+      );
+
+      // 有审核待办时保留原标题与主按钮；两组各有分组标题。
+      expect(find.text('待办提醒'), findsOneWidget);
+      expect(find.text('登录提醒'), findsNothing);
+      expect(find.text('有 2 项事务等待你处理'), findsOneWidget);
+      expect(find.text('人事/公司通知 · 1'), findsOneWidget);
+      expect(find.text('待办审核 · 1'), findsOneWidget);
+      expect(find.text('今日停电'), findsOneWidget);
+      expect(find.text('待财务确认：SO-001'), findsOneWidget);
+      expect(find.text('去工作台处理'), findsOneWidget);
+      expect(find.text('打卡确认'), findsOneWidget);
+      // 紧急人工通知带重要度徽章。
+      expect(find.text('紧急'), findsOneWidget);
+
+      await tester.tap(find.text('全部稍后再看'));
+      await tester.pumpAndSettle();
+
+      expect(repo.snoozedIds, containsAll(['n1', 'm3']));
+      expect(repo.readIds, isEmpty);
+      expect(find.byType(ReviewPendingDialog), findsNothing);
+    },
+  );
+
+  testWidgets('manual notices render within a 375px-wide viewport', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repo = _FakeNoticeRepository();
+    await pumpDialog(
+      tester,
+      repo: repo,
+      pending: [],
+      manual: [manualOf('m1', priority: NoticePriority.important)],
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('打卡确认'), findsOneWidget);
+    expect(find.text('查看详情'), findsOneWidget);
+    expect(find.text('重要'), findsOneWidget);
+  });
 
   testWidgets('renders single pending item with claim chip', (tester) async {
     final repo = _FakeNoticeRepository();
@@ -189,9 +388,11 @@ void main() {
     expect(find.text('全部稍后再看'), findsOneWidget);
   });
 
-  testWidgets('snooze all marks read, snoozes every item and closes', (
+  testWidgets('snooze all only snoozes every item (no markRead) and closes', (
     tester,
   ) async {
+    // 2026-09-10：稍后再看只调 snooze（服务端顺带置已读）；并发再调 markRead
+    // 会把刚写的 snoozed_until 冲掉，「稍后」就永远不会再弹。
     final repo = _FakeNoticeRepository();
     await pumpDialog(
       tester,
@@ -206,6 +407,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repo.snoozedIds, containsAll(['n1', 'n2']));
+    expect(repo.readIds, isEmpty);
     expect(find.text('待办提醒'), findsNothing);
   });
 

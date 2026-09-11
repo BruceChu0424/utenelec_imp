@@ -3,6 +3,7 @@ package com.uten.imp.features.production.analysis;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.saleschain.SalesOrderChainSql;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.InventoryMutationLock;
 import com.uten.imp.features.stock.StockReservation;
@@ -469,13 +470,13 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
 
     private void updateSalesReserved(Root root, BigDecimal delta) {
         if (root.salesOrderItemId() == null || delta.signum()==0) return;
-        int updated = em.createNativeQuery("""
-                UPDATE sales_order_items item SET reserved_qty=reserved_qty+:delta,
-                  chain_status=CASE
-                    WHEN reserved_qty+:delta>=qty-COALESCE(shipped_qty,0)+COALESCE(returned_qty,0)-COALESCE(flag_qty,0) THEN 7
-                    WHEN reserved_qty+:delta>0 THEN 1
-                    WHEN COALESCE(planned_qty,0)>COALESCE(produced_qty,0) THEN 4 ELSE 2 END,
-                  updated_at=now()
+        // V545：chain_status 走统一派生（剩余未排量优先）；CAS 守卫（预留 ≤ 未交付 − 未完工计划 − 草稿计划量）不变。
+        int updated = em.createNativeQuery("UPDATE sales_order_items item SET reserved_qty=reserved_qty+:delta,\n"
+                + "  chain_status="
+                + SalesOrderChainSql.chainStatusCaseSql(
+                        SalesOrderChainSql.ChainStatusInputs.of("item").reservedDelta("+:delta"))
+                + ",\n  updated_at=now()\n"
+                + """
                 WHERE item.id=:id AND item.is_deleted=FALSE AND reserved_qty+:delta>=0
                   AND (:delta<=0 OR reserved_qty+:delta<=
                     qty-COALESCE(shipped_qty,0)+COALESCE(returned_qty,0)-COALESCE(flag_qty,0)

@@ -3,10 +3,9 @@
 //  待排产：已审订单行缺口列表（交货升序 ≤3天标红）→ 勾选/全选 → 合并排产（原调度页能力）。
 //  2026-09-05 起简化：交货日期范围筛选与「建议联合分析」下线（排序/状态筛选仍在表头），
 //  刷新按钮统一放表格右上角（toolbarActions；窄屏卡片列表顶部右上角兜底）。
-//  大类行计数（2026-09-06 起改标准徽章口径）：「待排产」挂 UtenFilterSegment.count
-//  通知徽章（调度员需下一步操作的分段才挂，计数与列表同源的分页 total）；
-//  「进行中」保持纯数字计数——计划部统筹视角的监控数（按最外层分析/根计划聚合），
-//  不是待办，按徽章口径不挂徽章。2026-09-05 起本页不再提供报工入口
+//  大类行计数（2026-09-11 起两形态口径）：「待排产」挂红色通知徽章
+//  （调度员必须清空的队列，计数与列表同源的分页 total）；「进行中」是计划部
+//  统筹视角的监控数（按最外层分析/根计划聚合），不是待办，走中性括号 `(N)`。2026-09-05 起本页不再提供报工入口
 //  （车间报工统一在 /production/workshop-tasks），双击批次直达物料分析页
 //  （ANALYSIS 根）或生产计划详情（PLAN 根），不再弹滑窗。
 //  历史记录：已结案计划（原「已完成」Tab，2026-09-03 起并入历史）——时间门控
@@ -19,7 +18,10 @@
 //（待排产：表头排序/状态值筛选；进行中：车间/排序）。
 //
 // 进度 = 完工入库量 ÷ 排产量（成品入库审核后即时反映）。
-// 路由：/production/schedule → 预选待排产；/production/progress → 预选进行中（旧两页合并，Hub 两卡片进不同分段）。
+// 路由：/production/schedule → 预选待排产；/production/progress → 预选进行中（旧两页合并；
+// 生产 Hub 只剩一张「生产调度与进度」卡进 /production/schedule，进行中靠 progress 深链预选）。
+// 待排产表 2026-09-10（V545）起加「已排」列：部分排产的行按剩余未排量继续留在本段，
+// 状态列标「部分已排 已排/订货」，不再因 planned>0 从待排产消失。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -29,6 +31,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -91,7 +94,7 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
   Widget build(BuildContext context) {
     final segment = _segment;
     final historyReady = _historyTime.range != null || _historyTime.all;
-    // 大类行计数：待排产=标准通知徽章（调度员待办）；进行中=纯数字（监控口径，
+    // 大类行计数：待排产=红色通知徽章（调度员待办）；进行中=中性括号（监控口径，
     // 不挂徽章）。无权限或请求失败时不显示；provider 内部做了权限门控，
     // 未授权不会发请求。
     final pendingCount = ref
@@ -126,18 +129,19 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
                     UtenFilterToolbar<String>(
                       segmentsKey: const Key('production-board-segments'),
                       segments: [
-                        // 待排产挂徽章（用户需下一步操作的分段）；进行中是监控数，
-                        // 不挂徽章只跟纯数字（见组件头部徽章口径）。
+                        // 待排产挂红徽章（调度员必须清空的队列）；进行中是计划部
+                        // 统筹的监控数，走中性括号 `(N)`（2026-09-11 前是拼进
+                        // label 的裸数字，现统一用 UtenCountSuffix 的括号形态）。
                         UtenFilterSegment(
                           value: 'pending',
                           label: '待排产',
                           count: pendingCount,
+                          countForm: UtenSegmentCountForm.actionable,
                         ),
                         UtenFilterSegment(
                           value: 'progress',
-                          label: ongoingCount == null
-                              ? '进行中'
-                              : '进行中 $ongoingCount',
+                          label: '进行中',
+                          count: ongoingCount,
                         ),
                         const UtenFilterSegment(
                           value: 'history',
@@ -838,6 +842,10 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                       Text(
                         '待排 ${_qtyText(row.needQty)} ${row.unitName ?? '单位未维护'}',
                       ),
+                      if ((row.plannedQty ?? 0) > 0)
+                        Text(
+                          '已排 ${_qtyText(row.plannedQty)} ${row.unitName ?? '单位未维护'}',
+                        ),
                       Text('交货 ${_shortDate(row.deliverDate)}'),
                     ],
                   ),
@@ -964,6 +972,13 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       value: (r) => r.needQty?.toStringAsFixed(2) ?? '—',
     ),
     MasterColumnDef(
+      key: 'plannedQty',
+      label: '已排',
+      width: 90,
+      type: 'number',
+      value: (r) => r.plannedQty?.toStringAsFixed(2) ?? '—',
+    ),
+    MasterColumnDef(
       key: 'readyNowQty',
       label: '可生产量',
       width: 150,
@@ -991,10 +1006,14 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     MasterColumnDef(
       key: 'status',
       label: '状态',
-      width: 110,
+      width: 150,
       value: (r) {
         if ((r.submittedPlanQty ?? 0) > (r.approvedPlannedQty ?? 0)) {
           return '已提交·待审批';
+        }
+        // V545：已排一部分的行仍待排产，状态直接标明已排/订货。
+        if ((r.plannedQty ?? 0) > 0) {
+          return '部分已排 ${_qtyText(r.plannedQty)}/${_qtyText(r.qty)}';
         }
         if (r.readyNowQty == null && r.materialAnalysisId == null) {
           return '未分析';
@@ -1082,6 +1101,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
               child: UtenButton(
                 key: const Key('pending-enter-analysis-to-generate'),
                 size: UtenButtonSize.large,
+                type: UtenButtonType.danger,
                 icon: _selected.isEmpty ? Icons.insights_rounded : null,
                 isLoading: _submitting,
                 onPressed: canRun

@@ -20,6 +20,8 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 const _inspectionId = '10000000-0000-0000-0000-000000000001';
 const _reportNo = 'RB202608280001';
+const _sheetId = '20000000-0000-0000-0000-000000000001';
+const _sheetNo = 'FQC20260828000001';
 
 Future<void> _pumpPage(
   WidgetTester tester, {
@@ -199,6 +201,43 @@ void main() {
     );
   });
 
+  testWidgets('V547 检查单行：一行一张单，双击进检查单办理并全部合格', (tester) async {
+    final api = _FqcApi(withSheet: true);
+    await _pumpPage(
+      tester,
+      api: api,
+      iqc: _FakeIqcRepository(),
+      permissions: _bothViewPerms,
+    );
+
+    // 队列显示检查单号而不是逐条报工任务；徽章按单计数。
+    expect(find.text(_sheetNo), findsOneWidget);
+    expect(find.text(_reportNo), findsNothing);
+    expect(find.text('10 件'), findsOneWidget);
+    expect(_segmentBadge('1'), findsNWidgets(3));
+
+    await _doubleTapRow(tester, _sheetNo);
+    expect(
+      find.byKey(const Key('production-fqc-sheet-$_sheetId')),
+      findsOneWidget,
+    );
+    expect(api.sheetDetailCalls, 1);
+    expect(find.textContaining('登记备注：整托入库'), findsOneWidget);
+    expect(find.textContaining('库位 CP-A-01'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('production-fqc-sheet-pass-all')));
+    await tester.pumpAndSettle();
+    expect(api.batchBody?['inspectionIds'], [_inspectionId]);
+    expect(
+      api.batchBody?['idempotencyKey'] as String?,
+      startsWith('fqc-sheet-pass-all-'),
+    );
+    // 单内已无待检行：关闭后队列刷新，检查单行消失。
+    await tester.tap(find.text('关闭'));
+    await tester.pumpAndSettle();
+    expect(find.text(_sheetNo), findsNothing);
+    expect(find.text('CJ20260822000001'), findsOneWidget);
+  });
+
   testWidgets('FQC-only account skips IQC fetch and segments', (tester) async {
     final api = _FqcApi();
     final iqc = _FakeIqcRepository();
@@ -333,7 +372,11 @@ class _FakeIqcRepository implements ProcurementInspectionRepository {
 }
 
 class _FqcApi extends ApiClient {
-  _FqcApi() : super(Dio());
+  _FqcApi({this.withSheet = false}) : super(Dio());
+
+  /// true = 待检任务归属一张品质检查单（V547），队列显示检查单行而非任务行。
+  final bool withSheet;
+  int sheetDetailCalls = 0;
 
   Map<String, dynamic>? decisionBody;
   Map<String, dynamic>? batchBody;
@@ -369,6 +412,33 @@ class _FqcApi extends ApiClient {
     'status': 'RESOLVED',
   };
 
+  Map<String, dynamic> get _sheetInspection => {
+    ..._inspection,
+    'sheetId': _sheetId,
+    'sheetNo': _sheetNo,
+    'warehouseName': '成品仓',
+    'place': 'CP-A-01',
+    'registrationRemark': '整托入库',
+    'receiverName': '仓库管理员',
+  };
+
+  Map<String, dynamic> get _sheet => {
+    'id': _sheetId,
+    'sheetNo': _sheetNo,
+    'warehouseId': 'warehouse-1',
+    'warehouseName': '成品仓',
+    'receiverName': '仓库管理员',
+    'remark': '整托入库',
+    'sourceKind': 'ARRIVAL_SINGLE',
+    'itemCount': 1,
+    'activeCount': decided ? 0 : 1,
+    'pendingQtyText': decided ? null : '10 件',
+    'reportNos': _reportNo,
+    'goodsSummary': 'V5多功能三极插座E极插套(酸洗)',
+    'status': decided ? 'CLOSED' : 'ACTIVE',
+    'createdAt': '2026-08-28T05:00:00Z',
+  };
+
   @override
   Future<Map<String, dynamic>> get(
     String path, {
@@ -380,15 +450,37 @@ class _FqcApi extends ApiClient {
     }
     if (path.endsWith('/count')) return {'count': decided ? 0 : 1};
     const listPath = '/production/quality-inspections';
+    if (path == '$listPath/sheets') {
+      // V547 检查单队列：无检查单的历史任务不在这里；有检查单时一行一张单。
+      final items = withSheet && !decided ? [_sheet] : <Map<String, dynamic>>[];
+      return {
+        'items': items,
+        'page': 1,
+        'size': 500,
+        'total': items.length,
+        'totalPages': items.isEmpty ? 0 : 1,
+      };
+    }
+    if (path == '$listPath/sheets/$_sheetId') {
+      sheetDetailCalls++;
+      return {
+        'sheet': _sheet,
+        'inspections': [decided ? _decidedInspection : _sheetInspection],
+      };
+    }
     if (path.startsWith('$listPath/') && !path.endsWith('/decisions')) {
-      return _inspection;
+      return withSheet ? _sheetInspection : _inspection;
     }
     listCalls++;
+    // sheet=NONE：只列无检查单的任务；归属检查单的任务不在这里出现。
+    final items = decided || withSheet
+        ? <Map<String, dynamic>>[]
+        : [_inspection];
     return {
-      'items': decided ? <Map<String, dynamic>>[] : [_inspection],
+      'items': items,
       'page': 1,
       'size': 500,
-      'total': decided ? 0 : 1,
+      'total': items.length,
       'totalPages': 1,
     };
   }

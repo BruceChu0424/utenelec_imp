@@ -60,5 +60,5 @@ UtenSplitView(
 - 各页面已使用的 persistenceKey：`basicData.goods`、`basicData.client`、
   `basicData.supplier`、`basicData.mould`、`department.manage`、
   `department.mine`、`finance.arAp`、`admin.permissions`。新页面接入请起新 key。
-- 与 `UtenListTwoPane`（筛选 + 表格）的区别：UtenListTwoPane 是断点驱动的
+- 与 `UtenListTwoPane`（筛选 + 表格）的区别：UtenListTwoPane 自 2026-09-10 起**所有断点都是「筛选在上 / 表格在下」**（列表页表格要横向空间，筛选窄栏会压表格），本组件只服务分类树主档页的「树 + 详情」左右分栏。以下旧描述保留作背景：UtenListTwoPane 曾是断点驱动的
   筛选侧栏布局；UtenSplitView 是「树 + 详情」的可拖分栏。需要拖宽的用本组件。

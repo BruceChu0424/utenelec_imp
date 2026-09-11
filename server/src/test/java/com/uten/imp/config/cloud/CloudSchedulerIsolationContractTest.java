@@ -35,9 +35,20 @@ class CloudSchedulerIsolationContractTest {
         }
     }
 
+    /** 去掉块注释与行注释后再找注解，避免 javadoc 里的 {@code @Scheduled} 误伤。 */
+    private static String stripComments(String source) {
+        return source
+                .replaceAll("(?s)/\\*.*?\\*/", " ")
+                .replaceAll("(?m)//.*$", " ");
+    }
+
     private boolean containsScheduledMethod(Path source) {
         try {
-            return Files.readString(source, StandardCharsets.UTF_8).contains("@Scheduled");
+            // 只认真正的注解使用：javadoc / 注释里提到 @Scheduled 的类（如
+            // ScheduledTaskRunRegistry 这种「记录别人执行情况」的组件）不是调度组件，
+            // 不该被要求挂 @Profile("!cloud")（2026-09-11）。
+            return stripComments(Files.readString(source, StandardCharsets.UTF_8))
+                    .contains("@Scheduled");
         } catch (IOException ex) {
             throw new IllegalStateException("Cannot read " + source, ex);
         }

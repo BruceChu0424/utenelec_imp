@@ -7,6 +7,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -652,7 +653,9 @@ class _FinanceProcurementApprovalTasksPageState
   }
 
   Widget _buildToolbar(FinanceProcurementApprovalPage result) {
-    // 全平台统一筛选工具条：分段(红圆计数徽章，计数取后端全量口径) + 胶囊搜索框。
+    // 全平台统一筛选工具条：分段 + 胶囊搜索框，计数取后端全量口径。
+    // 计数形态：本页整条工具条就是财务的待审队列，两个类型段都是「等我审」，
+    // 挂红徽章（「全部待审」不传 count，故没有总量段与之重复）。
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -666,11 +669,13 @@ class _FinanceProcurementApprovalTasksPageState
               value: 'purchase',
               label: '采购订货',
               count: _typeCount(FinanceProcurementOrderType.purchase),
+              countForm: UtenSegmentCountForm.actionable,
             ),
             UtenFilterSegment(
               value: 'subcontract',
               label: '委外订货',
               count: _typeCount(FinanceProcurementOrderType.subcontract),
+              countForm: UtenSegmentCountForm.actionable,
             ),
           ],
           selected: _typeSelected

@@ -37,6 +37,7 @@ class BusinessIdentifierRegistryMigrationContractTest {
         assertEquals("V", namespaces.get("VISITOR_ACCOUNT"));
         assertEquals("ZX", namespaces.get("PRODUCTION_EXECUTION_SEGMENT"));
         assertEquals(37, namespaceFamilyCount(sql(), "DOCUMENT"));
+        assertEquals("FQC", namespaces.get("PRODUCTION_FQC_SHEET"));
         assertEquals(2, namespaceFamilyCount(sql(), "SYSTEM"));
     }
 

@@ -5,6 +5,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../models/visitor_application.dart';
 import 'visitor_repository.dart';
 
@@ -59,15 +60,40 @@ class VisitorStaffRepository {
   final ApiClient _api;
 
   // —— HR 审批 ——
+  /// [hostDepartmentId]：接待人所属部门（申请时快照），表头「接待人部门」筛选下推。
   Future<PagedResult<VisitorApplication>> approvalList({
     String? status,
+    String? hostDepartmentId,
     int page = 1,
     int size = 20,
   }) async {
     final query = <String, dynamic>{'page': page, 'size': size};
     if (status != null) query['status'] = status;
+    if (hostDepartmentId != null && hostDepartmentId.isNotEmpty) {
+      query['hostDepartmentId'] = hostDepartmentId;
+    }
     final response = await _api.get(ApiEndpoints.visitorApproval, query: query);
     return PagedResult.fromJson(response, VisitorApplication.fromJson);
+  }
+
+  /// HR 审批列表表头筛选桶（2026-09-10）：键与列 key 对齐——
+  /// status（value=后端状态码，页面按 l10n 重贴标签）、hostDepartment（value=部门 id、
+  /// label=部门名）。[status] 与列表分段同口径（空 = 待办状态集）。
+  Future<Map<String, List<MasterFacetBucket>>> approvalFacets({
+    String? status,
+  }) async {
+    final response = await _api.get(
+      ApiEndpoints.visitorApprovalFacets,
+      query: <String, dynamic>{'status': ?status},
+    );
+    List<MasterFacetBucket> parse(Object? raw) => [
+      for (final e in (raw as List<dynamic>? ?? const []))
+        MasterFacetBucket.fromJson(e as Map<String, dynamic>),
+    ];
+    return {
+      'status': parse(response['statuses']),
+      'hostDepartment': parse(response['departments']),
+    };
   }
 
   /// HR 访客待办数（工作台/导航徽章）。

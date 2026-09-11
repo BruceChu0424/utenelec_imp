@@ -54,6 +54,9 @@ dependencies:
 
   # A4 预览与打印（货品配件清单等打印件：pdf 生成 + printing 系统打印对话框）
   pdf: ^3.11.3
+
+  # PDF 内嵌预览（PDFium 内核；Windows/Android/iOS/macOS/Web 全支持）
+  pdfrx: ^1.0.107
   printing: ^5.14.2
 
   # 扫码 / 二维码（访客系统：保安扫码 + 访客凭证）

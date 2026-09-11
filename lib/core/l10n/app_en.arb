@@ -38,7 +38,14 @@
   "loginServerRecoveryHint": "Use this after changing networks or if sign-in fails. Only the trusted office and cloud addresses built into this app are used.",
   "loginServerRecoverySuccess": "Automatic server selection restored. Please sign in again.",
   "loginServerRecoveryFailed": "Could not restore server selection. Try again or contact an administrator.",
-  "loginFooter": "© 2026 Uten Integrated Management Platform",
+  "loginFooter": "© {year} Uten Integrated Management Platform",
+  "@loginFooter": {
+    "placeholders": {
+      "year": {
+        "type": "int"
+      }
+    }
+  },
   "navDashboard": "Dashboard",
   "navNotice": "Notices",
   "navProfile": "Me",
@@ -89,7 +96,6 @@
   "profileEmployeeCode": "Employee code",
   "profileDepartment": "Department",
   "profilePosition": "Position",
-  "entrySubtitle": "Choose how to sign in",
   "entryStaff": "Staff Sign In",
   "entryVisitor": "Visitor Sign In",
   "visitorLoginTitle": "Visitor Sign In",

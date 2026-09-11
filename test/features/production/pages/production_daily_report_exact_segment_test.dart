@@ -209,6 +209,8 @@ class _FakeEmployeeRepository implements EmployeeRepository {
     Set<String>? statuses,
     String? departmentId,
     bool includeSubtree = false,
+    String? sort,
+    String? order,
   }) async {
     lastDepartmentId = departmentId;
     lastStatuses = statuses;

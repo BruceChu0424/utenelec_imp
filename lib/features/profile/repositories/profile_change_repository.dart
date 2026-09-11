@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../models/profile_change_request.dart';
 
 abstract interface class ProfileChangeRepository {
@@ -24,13 +25,18 @@ abstract interface class ProfileChangeRepository {
   /// 员工撤销未审次。
   Future<void> cancel(String batchId);
 
-  /// HR 队列列表。
+  /// HR 队列列表（[departmentId] = 员工当前所属部门，表头「部门」筛选下推）。
   Future<ProfileChangePage<HrProfileChangeListItem>> hrList({
     int page = 1,
     int size = 20,
     String? status,
     String? employeeId,
+    String? departmentId,
   });
+
+  /// HR 队列表头筛选桶：键与列 key 对齐（departmentName：value=部门 id、label=部门名）。
+  /// [status] 与列表分段同口径（空 = 待审）。
+  Future<Map<String, List<MasterFacetBucket>>> hrFacets({String? status});
 
   /// HR 单批详情。
   Future<ProfileChangeBatch> hrBatchDetail(String batchId);
@@ -150,15 +156,36 @@ class DioProfileChangeRepository implements ProfileChangeRepository {
     int size = 20,
     String? status,
     String? employeeId,
+    String? departmentId,
   }) async {
     final query = <String, dynamic>{
       'page': page,
       'size': size,
       if (status != null && status.isNotEmpty) 'status': status,
       if (employeeId != null && employeeId.isNotEmpty) 'employeeId': employeeId,
+      if (departmentId != null && departmentId.isNotEmpty)
+        'departmentId': departmentId,
     };
     final json = await api.get(ApiEndpoints.hrProfileChanges, query: query);
     return ProfileChangePage.fromJson(json, HrProfileChangeListItem.fromJson);
+  }
+
+  @override
+  Future<Map<String, List<MasterFacetBucket>>> hrFacets({
+    String? status,
+  }) async {
+    final json = await api.get(
+      ApiEndpoints.hrProfileChangesFacets,
+      query: <String, dynamic>{
+        if (status != null && status.isNotEmpty) 'status': status,
+      },
+    );
+    return {
+      'departmentName': [
+        for (final e in (json['departments'] as List<dynamic>? ?? const []))
+          MasterFacetBucket.fromJson(e as Map<String, dynamic>),
+      ],
+    };
   }
 
   @override

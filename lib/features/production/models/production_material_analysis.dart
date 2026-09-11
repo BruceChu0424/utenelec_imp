@@ -584,6 +584,7 @@ class ProductionMaterialAnalysisView {
     this.fqcReplenishmentOnly = false,
     this.fqcRecoveryAuthorizationId,
     this.planningBlockedReasons = const {},
+    this.routeResetCount = 0,
   });
 
   final String analysisId;
@@ -601,6 +602,11 @@ class ProductionMaterialAnalysisView {
   final bool fqcReplenishmentOnly;
   final String? fqcRecoveryAuthorizationId;
   final Map<String, String> planningBlockedReasons;
+
+  /// 本次刷新（POST /preview）因主档/BOM 事实变更而被服务端清空的人工确认
+  /// 路线条数；只在刷新响应上非零，详情/命令响应恒为 0。页面据此提示
+  /// 「N 条路线因主档变更需重新确认」，让静默清空可见（2026-09-10 F8）。
+  final int routeResetCount;
 
   String? planningBlockedReason(String? analysisLineId) =>
       analysisLineId == null ? null : planningBlockedReasons[analysisLineId];
@@ -639,6 +645,7 @@ class ProductionMaterialAnalysisView {
         allowedActions: _stringList(json['allowedActions']).toSet(),
         fqcReplenishmentOnly: json['fqcReplenishmentOnly'] == true,
         fqcRecoveryAuthorizationId: _string(json['fqcRecoveryAuthorizationId']),
+        routeResetCount: _int(json['routeResetCount']) ?? 0,
         planningBlockedReasons: {
           if (json['planningBlockedReasons']
               case final Map<Object?, Object?> reasons)

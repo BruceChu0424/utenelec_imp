@@ -331,6 +331,7 @@ public class AuditEventInterpreter {
         if ("impersonation_exit".equals(action)) return "结束模拟身份";
         if ("attachment_download_grant".equals(action)) return "签发附件下载授权";
         if ("attachment_download_raw".equals(action)) return "下载附件";
+        if ("attachment_category_set".equals(action)) return "设置附件分类";
         if ("update_system_setting".equals(action)) return "修改系统设置";
         if ("webinquiry_status".equals(action)) return "处理官网询价";
         if ("webinquiry_convert".equals(action)) return "转化官网询价";

@@ -7,8 +7,8 @@
 // - 视觉与 IconButtonTheme 对齐：圆角 8、前景 textSecondary
 
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
+import '../../core/router/nav_helpers.dart';
 import '../../core/router/route_names.dart';
 
 /// Uten 全局返回键
@@ -41,19 +41,9 @@ class UtenBackButton extends StatelessWidget {
     );
   }
 
-  /// 默认返回：优先 pop；栈空（深链/context.go 直达）时先读 returnTo 来源页
-  /// （hub 卡片经 goFrom 写入，如 /sales、/purchase），没有才回工作台兜底。
-  static void _defaultBack(BuildContext context) {
-    if (context.canPop()) {
-      try {
-        context.pop();
-        return;
-      } catch (_) {
-        // canPop 为真但当前 navigator 取不到（页面过渡/加载未就绪、嵌套 navigator
-        // 场景下 go_router 的 _findCurrentNavigator 会 null 崩）：不抛，落到来源感知 go 兜底。
-      }
-    }
-    final returnTo = GoRouterState.of(context).uri.queryParameters['returnTo'];
-    context.go(returnTo ?? RouteName.dashboard);
-  }
+  /// 默认返回 = 全站唯一返回契约 [backTo]：优先 pop；栈空（深链/context.go 直达）
+  /// 时先读 returnTo 来源页（hub 卡片经 goFrom 写入，如 /sales、/purchase），
+  /// 没有才回工作台兜底。实现只在 nav_helpers 维护一份。
+  static void _defaultBack(BuildContext context) =>
+      backTo(context, defaultPath: RouteName.dashboard);
 }

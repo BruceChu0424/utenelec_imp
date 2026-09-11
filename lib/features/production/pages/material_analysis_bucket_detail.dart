@@ -576,11 +576,10 @@ class _MaterialAnalysisBucketPageState
   /// 防止批量进度期间重复点提交。
   Future<void> _run(_BucketActionRequest request) async {
     if (_running) return;
-    if (request.type == _BucketActionType.createProductionPlans) {
-      Navigator.of(context).pop();
-      await _host._executeBucketAction(request);
-      return;
-    }
+    // 2026-09-11：下达车间**不再先 pop 回物料分析再加载**。原来是「关掉本页 →
+    // 宿主页转圈 → 弹结果」，用户看到的是「点了下达，页面自己退回去，然后在那边
+    // 转半天」。现在与下达采购/委外同一条路径：本页显示进度、原地刷新行集，
+    // 结果弹层（root Navigator）照常叠在本页之上。
     final previousProductIds = {
       for (final product
           in _host._analysis?.products ??
@@ -614,6 +613,12 @@ class _MaterialAnalysisBucketPageState
           _disposeSubmitQtyControllers();
           _running = false;
         });
+        // 下达车间是终态动作（本批行已变成计划）：结果弹层看完后回物料分析。
+        // 与从前唯一的差别是**先办完再退**，而不是先退回去再让宿主页转圈。
+        if (request.type == _BucketActionType.createProductionPlans &&
+            mounted) {
+          Navigator.of(context).pop();
+        }
       }
     }
   }
@@ -774,7 +779,38 @@ class _MaterialAnalysisBucketPageState
     final total = controller.selectedRows.length;
     // 未选任何行不占位（0 计数不渲染动作按钮）。
     if (total == 0) return const [];
+    final editable = !_actionsLocked && _host._canGenerate;
     return [
+      // 批量赋值（2026-09-11，对齐「新建采购」的多选统一设置条款）：选中一批行后
+      // 只选一次车间/负责人/数量就写进全部选中行——几十行逐行点开选择器是纯体力活。
+      // 批量写入视同「已核对」，清掉学习预填的黄标（与单行手选同口径）。
+      UtenButton(
+        key: const Key('material-analysis-bucket-batch-workshop'),
+        type: UtenButtonType.tonal,
+        size: UtenButtonSize.large,
+        icon: Icons.factory_rounded,
+        onPressed: editable ? () => _batchPickWorkshop(controller) : null,
+        onDisabledTap: !_host._canGenerate
+            ? () => context.appWarning('没有生成生产计划权限')
+            : null,
+        child: Text('批量设车间($total)'),
+      ),
+      UtenButton(
+        key: const Key('material-analysis-bucket-batch-worker'),
+        type: UtenButtonType.tonal,
+        size: UtenButtonSize.large,
+        icon: Icons.person_outline_rounded,
+        onPressed: editable ? () => _batchPickWorker(controller) : null,
+        child: Text('批量设负责人($total)'),
+      ),
+      UtenButton(
+        key: const Key('material-analysis-bucket-batch-qty'),
+        type: UtenButtonType.tonal,
+        size: UtenButtonSize.large,
+        icon: Icons.numbers_rounded,
+        onPressed: editable ? () => _batchSetPlanQty(controller) : null,
+        child: Text('批量设数量($total)'),
+      ),
       UtenButton(
         key: const Key('material-analysis-bucket-action-ready'),
         type: UtenButtonType.danger,
@@ -789,6 +825,229 @@ class _MaterialAnalysisBucketPageState
         child: Text('创建生产计划($total)'),
       ),
     ];
+  }
+
+  /// 该计划行的默认数量文案（= 剩余需求；与建行时的 defaultQtyText 同源）。
+  String _planRowDefaultQty(_BucketPlanRow row) {
+    final product = row.origin.product;
+    if (product != null) return _host._qty(product.remainingQty);
+    final candidate = row.origin.candidate;
+    final group = candidate?.group;
+    if (candidate == null || group == null) return '';
+    return _host._qty(_host._residualSubmitQty(group, candidate.route));
+  }
+
+  /// 计划表行右键菜单：整组清空可填内容 + 一键填满剩余数量。
+  /// 作用对象是**当前选择集**（组件弹菜单前已完成选中归位）。
+  List<UtenContextMenuEntry> _planRowMenu(
+    BuildContext context,
+    List<_BucketPlanRow> selected,
+  ) {
+    final n = selected.length;
+    final editable = !_actionsLocked && _host._canGenerate && n > 0;
+    return [
+      UtenMenuItem(
+        label: '填满剩余数量 ($n)',
+        icon: Icons.playlist_add_check_rounded,
+        enabled: editable,
+        onTap: () => setState(() {
+          for (final row in selected) {
+            row.qty.text = _planRowDefaultQty(row);
+          }
+        }),
+      ),
+      const UtenMenuDivider(),
+      UtenMenuItem(
+        label: '清空本批数量 ($n)',
+        icon: Icons.backspace_outlined,
+        enabled: editable,
+        onTap: () => setState(() {
+          for (final row in selected) {
+            row.qty.clear();
+          }
+        }),
+      ),
+      UtenMenuItem(
+        label: '清空车间和负责人 ($n)',
+        icon: Icons.layers_clear_outlined,
+        enabled: editable,
+        onTap: () => setState(() {
+          for (final row in selected) {
+            _clearPlanRowAssignment(row);
+          }
+        }),
+      ),
+      UtenMenuItem(
+        label: '清空全部可填内容 ($n)',
+        icon: Icons.cleaning_services_outlined,
+        enabled: editable,
+        destructive: true,
+        onTap: () => setState(() {
+          for (final row in selected) {
+            row.qty.clear();
+            _clearPlanRowAssignment(row);
+          }
+        }),
+      ),
+    ];
+  }
+
+  void _clearPlanRowAssignment(_BucketPlanRow row) {
+    row.departmentId.value = null;
+    row.departmentName = null;
+    row.workshopAutofilled = false;
+    row.workerId.value = null;
+    row.workerName = null;
+    row.workerAutofilled = false;
+  }
+
+  /// 选一次车间写进所有选中行。换车间时的负责人联动与单行 [_pickWorkshop] 同口径
+  /// （学习记忆优先，其次组织树车间负责人），不让批量与单行长出两套行为。
+  Future<void> _batchPickWorkshop(
+    UtenEditableGridController<_BucketPlanRow> controller,
+  ) async {
+    final rows = controller.selectedRows;
+    if (rows.isEmpty) return;
+    final workshopTree = await _workshopTreeOrNull();
+    if (!mounted) return;
+    final workshopIds = {for (final node in workshopTree) node.id};
+    final picked = await showUtenDepartmentPickerPanel(
+      context,
+      tree: workshopTree,
+      selectablePredicate: (node) => workshopIds.contains(node.id),
+    );
+    final selection = picked == null || picked.isEmpty ? null : picked.first;
+    if (selection == null || !mounted) return;
+    setState(() {
+      for (final row in rows) {
+        if (row.departmentId.value != selection.id) {
+          final goodsId =
+              row.origin.product?.goodsId ??
+              row.origin.candidate?.material.goodsId;
+          final learned = goodsId == null ? null : _workshopDefaults[goodsId];
+          final rememberedWorker =
+              learned != null &&
+                  learned.departmentId == selection.id &&
+                  learned.workerId != null
+              ? (id: learned.workerId, name: learned.workerName)
+              : null;
+          final manager =
+              rememberedWorker ??
+              _workshopManagerOf(workshopTree, selection.id);
+          row.workerId.value = manager?.id;
+          row.workerName = manager?.name;
+          row.workerAutofilled = manager != null;
+        }
+        row.departmentId.value = selection.id;
+        row.departmentName = selection.name;
+        row.workshopAutofilled = false; // 批量显式设置 = 已核对
+      }
+    });
+  }
+
+  /// 选一次负责人写进所有选中行。候选默认按**第一行的车间**收敛（整批通常同车间）；
+  /// 输入关键词后转全员检索，与单行选择器同口径。
+  Future<void> _batchPickWorker(
+    UtenEditableGridController<_BucketPlanRow> controller,
+  ) async {
+    final rows = controller.selectedRows;
+    if (rows.isEmpty) return;
+    final scopeDepartmentId = rows.first.departmentId.value;
+    final picked = await showUtenEmployeePickerPanel(
+      context,
+      title: '选择生产负责人',
+      departmentName: rows.first.departmentName,
+      loader: (keyword) async {
+        final result = await _host.ref
+            .read(employeeRepositoryProvider)
+            .list(
+              size: 30,
+              search: keyword,
+              departmentId: (keyword?.trim().isEmpty ?? true)
+                  ? scopeDepartmentId
+                  : null,
+              includeSubtree: true,
+            );
+        return [
+          for (final employee in result.items)
+            UtenEmployeePickerItem(
+              id: employee.id,
+              name: employee.fullName,
+              employeeCode: employee.code,
+              departmentName: employee.departmentName,
+            ),
+        ];
+      },
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      for (final row in rows) {
+        row.workerId.value = picked.id;
+        row.workerName = picked.name;
+        row.workerAutofilled = false; // 批量显式设置 = 已核对
+      }
+    });
+  }
+
+  /// 一次输入数量写进所有选中行。留空 = 各行按自己的剩余需求填满——整批数量
+  /// 各不相同是常态，硬写同一个数往往还要逐行改回去。
+  Future<void> _batchSetPlanQty(
+    UtenEditableGridController<_BucketPlanRow> controller,
+  ) async {
+    final rows = controller.selectedRows;
+    if (rows.isEmpty) return;
+    final input = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('批量设置本批数量（${rows.length} 行）'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('留空并确认 = 每行各自填满剩余需求；填数字 = 每行都用这个数量。'),
+            const SizedBox(height: UtenSpacing.s12),
+            TextField(
+              key: const Key('material-analysis-bucket-batch-qty-input'),
+              controller: input,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const UtenInputDecoration(
+                InputDecoration(isDense: true, hintText: '留空=各自填满剩余'),
+              ),
+            ),
+          ],
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('写入'),
+          ),
+        ],
+      ),
+    );
+    final text = input.text.trim();
+    input.dispose();
+    if (confirmed != true || !mounted) return;
+    final value = text.isEmpty ? null : double.tryParse(text);
+    if (text.isNotEmpty && (value == null || !value.isFinite || value <= 0)) {
+      context.appWarning('本批数量必须是大于 0 的数字');
+      return;
+    }
+    setState(() {
+      for (final row in rows) {
+        row.qty.text = value == null
+            ? _planRowDefaultQty(row)
+            : _host._qty(value);
+      }
+    });
   }
 
   // ===== 可安排桶：车间 / 负责人编辑 =====
@@ -903,177 +1162,197 @@ class _MaterialAnalysisBucketPageState
         showPagePermissionAction: false,
         leading: UtenBackButton(onPressed: () => Navigator.of(context).pop()),
       ),
-      body: SafeArea(
-        // 宽度收敛用外壳容器；selectable:false 退出文字框选——表格页框选
-        // 低价值，且 SelectionArea × 可滚动表格（含横向同步/行手势）为
-        // 全站未测组合，转场期间有选择区重算开销（准则：外壳容器遇
-        // 重交互表格一律退出）。
-        child: UtenContentContainer.wide(
-          selectable: false,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: UtenSpacing.s12,
-              vertical: UtenSpacing.s8,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(UtenSpacing.s8),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerLow,
-                    borderRadius: UtenRadius.mdAll,
-                    border: Border.all(color: theme.colorScheme.outlineVariant),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.info_outline_rounded,
-                        size: 18,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      Expanded(
-                        child: Text(
-                          _bucket.semanticHint(_host._l10n),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                            height: 1.4,
-                          ),
+      // 下达进行中的遮罩画在**本页**（2026-09-11）：此前是「先 pop 回物料分析
+      // → 在宿主页转圈」，用户看到的是「点了下达，页面自己退回去了」。复用宿主页
+      // 那一份 `_planSubmissionOverlay`（同一个 key，文案/语义/不可关闭都一致），
+      // 不另写一份会漂移的。
+      body: Stack(
+        children: [
+          _bucketBody(theme, analysis, allRows, rows),
+          // 进度遮罩跟随宿主的**网络调用本身**（planSubmissionProgress），不跟
+          // `_running`：后者要到结果弹层看完才落下，遮罩会一直转在弹层背后。
+          ValueListenableBuilder<bool>(
+            valueListenable: _host.planSubmissionProgress,
+            builder: (context, submitting, _) => submitting
+                ? Positioned.fill(child: _host._planSubmissionOverlay(theme))
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bucketBody(
+    ThemeData theme,
+    ProductionMaterialAnalysisView analysis,
+    List<_BucketRow> allRows,
+    List<_BucketRow> rows,
+  ) {
+    return SafeArea(
+      // 宽度收敛用外壳容器；selectable:false 退出文字框选——表格页框选
+      // 低价值，且 SelectionArea × 可滚动表格（含横向同步/行手势）为
+      // 全站未测组合，转场期间有选择区重算开销（准则：外壳容器遇
+      // 重交互表格一律退出）。
+      child: UtenContentContainer.wide(
+        selectable: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: UtenSpacing.s12,
+            vertical: UtenSpacing.s8,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(UtenSpacing.s8),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerLow,
+                  borderRadius: UtenRadius.mdAll,
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Expanded(
+                      child: Text(
+                        _bucket.semanticHint(_host._l10n),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          height: 1.4,
                         ),
                       ),
-                      // 2026-09-05 用户口径：不再给「全选全部 N 条」——表头
-                      // 复选框已覆盖当页，跨页批量从宿主页分桶入口按桶执行。
-                    ],
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                if (_preparedChildCount > 0) ...[
-                  Text(
-                    _host._l10n.materialPreparedChildCreated(
-                      _preparedChildCount,
                     ),
-                    key: const Key('material-analysis-prepared-child-next'),
-                    style: theme.textTheme.titleSmall,
-                  ),
-                  Text(
-                    _host._canGenerate
-                        ? _host._l10n.materialPreparedChildNext
-                        : _host._l10n.materialPreparedChildNeedPlanner,
-                  ),
-                  // 2026-09-06 用户口径：不再放「下达车间」跳转按钮——备料子
-                  // 任务的计划下达统一在「下达车间」入口办理，本横幅只提示。
-                  const SizedBox(height: UtenSpacing.s8),
-                ],
-                UtenSegmentedFilter<_PreparationTaskFilter>(
-                  key: const Key('material-analysis-task-state'),
-                  selected: _taskFilter,
-                  segments: [
-                    UtenSegment(
-                      value: _PreparationTaskFilter.pending,
-                      label: _pendingIssueFilterLabel,
-                      count: allRows
-                          .where(
-                            (row) => _host._bucketRowHasPending(row, _bucket),
-                          )
-                          .length,
-                    ),
-                    UtenSegment(
-                      value: _PreparationTaskFilter.issued,
-                      label: _host._l10n.materialTaskIssued,
-                      count: allRows
-                          .where(
-                            (row) => _host._bucketRowHasIssued(row, _bucket),
-                          )
-                          .length,
-                    ),
-                    UtenSegment(
-                      value: _PreparationTaskFilter.blocked,
-                      label: _host._l10n.materialTaskBlocked,
-                      count: allRows
-                          .where(
-                            (row) =>
-                                _host._bucketRowNeedsAttention(row, _bucket),
-                          )
-                          .length,
-                    ),
+                    // 2026-09-05 用户口径：不再给「全选全部 N 条」——表头
+                    // 复选框已覆盖当页，跨页批量从宿主页分桶入口按桶执行。
                   ],
-                  onChanged: (value) {
-                    if (_actionsLocked || value == _taskFilter) return;
-                    setState(() {
-                      _taskFilter = value;
-                      _pageNo = 1;
-                      _selectedIds.clear();
-                      _tableFilters.clear();
-                      _planGrid?.clearSelection();
-                    });
-                  },
                 ),
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              if (_preparedChildCount > 0) ...[
+                Text(
+                  _host._l10n.materialPreparedChildCreated(_preparedChildCount),
+                  key: const Key('material-analysis-prepared-child-next'),
+                  style: theme.textTheme.titleSmall,
+                ),
+                Text(
+                  _host._canGenerate
+                      ? _host._l10n.materialPreparedChildNext
+                      : _host._l10n.materialPreparedChildNeedPlanner,
+                ),
+                // 2026-09-06 用户口径：不再放「下达车间」跳转按钮——备料子
+                // 任务的计划下达统一在「下达车间」入口办理，本横幅只提示。
                 const SizedBox(height: UtenSpacing.s8),
-                Expanded(
-                  // 可安排桶：网格按内容收缩 + 外层滚动（网格表体本身
-                  // NeverScrollable，编辑页同款结构）；首屏 100 行增量装载。
-                  child: _usesPlanGrid
-                      ? SingleChildScrollView(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              _readyPlanGrid(theme),
-                              if (_allPlanOrigins.length > _planVisibleLimit)
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                    top: UtenSpacing.s8,
-                                    bottom: UtenSpacing.s16,
-                                  ),
-                                  child: Center(
-                                    child: UtenButton(
-                                      key: const Key(
-                                        'material-analysis-bucket-show-more',
-                                      ),
-                                      type: UtenButtonType.tonal,
-                                      icon: Icons.expand_more_rounded,
-                                      onPressed: _showMorePlanRows,
-                                      child: Text(
-                                        '继续显示(还有 '
-                                        '${_allPlanOrigins.length - _planVisibleLimit} 行)',
-                                      ),
+              ],
+              UtenSegmentedFilter<_PreparationTaskFilter>(
+                key: const Key('material-analysis-task-state'),
+                selected: _taskFilter,
+                segments: [
+                  UtenSegment(
+                    value: _PreparationTaskFilter.pending,
+                    label: _pendingIssueFilterLabel,
+                    count: allRows
+                        .where(
+                          (row) => _host._bucketRowHasPending(row, _bucket),
+                        )
+                        .length,
+                  ),
+                  UtenSegment(
+                    value: _PreparationTaskFilter.issued,
+                    label: _host._l10n.materialTaskIssued,
+                    count: allRows
+                        .where((row) => _host._bucketRowHasIssued(row, _bucket))
+                        .length,
+                  ),
+                  UtenSegment(
+                    value: _PreparationTaskFilter.blocked,
+                    label: _host._l10n.materialTaskBlocked,
+                    count: allRows
+                        .where(
+                          (row) => _host._bucketRowNeedsAttention(row, _bucket),
+                        )
+                        .length,
+                  ),
+                ],
+                onChanged: (value) {
+                  if (_actionsLocked || value == _taskFilter) return;
+                  setState(() {
+                    _taskFilter = value;
+                    _pageNo = 1;
+                    _selectedIds.clear();
+                    _tableFilters.clear();
+                    _planGrid?.clearSelection();
+                  });
+                },
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              Expanded(
+                // 可安排桶：网格按内容收缩 + 外层滚动（网格表体本身
+                // NeverScrollable，编辑页同款结构）；首屏 100 行增量装载。
+                child: _usesPlanGrid
+                    ? SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _readyPlanGrid(theme),
+                            if (_allPlanOrigins.length > _planVisibleLimit)
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  top: UtenSpacing.s8,
+                                  bottom: UtenSpacing.s16,
+                                ),
+                                child: Center(
+                                  child: UtenButton(
+                                    key: const Key(
+                                      'material-analysis-bucket-show-more',
+                                    ),
+                                    type: UtenButtonType.tonal,
+                                    icon: Icons.expand_more_rounded,
+                                    onPressed: _showMorePlanRows,
+                                    child: Text(
+                                      '继续显示(还有 '
+                                      '${_allPlanOrigins.length - _planVisibleLimit} 行)',
                                     ),
                                   ),
                                 ),
-                            ],
-                          ),
-                        )
-                      : _bucketReadOnlyTable(rows),
-                ),
-                // 可安排桶的批量动作条：常驻钉底（UtenEditableGrid 的
-                // batchActionsBuilder 只随编辑模式操作条渲染，select-only 模式
-                // 不出现——故由本页自管，订阅控制器按选中数即时刷新）。
-                // 2026-09-05 与全站对齐：「已选 N 项 + ✕」用标准胶囊
-                // （UtenSelectionSummaryPill），与按钮同框进右对齐悬浮组
-                // （UtenFloatingActionGroup）——与 MasterDataTableView 悬浮组同款。
-                if (_usesPlanGrid) ...[
-                  const SizedBox(height: UtenSpacing.s8),
-                  AnimatedBuilder(
-                    animation: _planGrid!,
-                    builder: (context, _) => UtenFloatingActionGroup(
-                      children: [
-                        UtenSelectionSummaryPill(
-                          count: _planGrid!.selectedRows.length,
-                          clearKey: const Key(
-                            'material-analysis-bucket-selected-count',
-                          ),
-                          onClear: _planGrid!.selectedRows.isEmpty
-                              ? null
-                              : () => _planGrid!.clearSelection(),
+                              ),
+                          ],
                         ),
-                        ..._planBatchActions(context),
-                      ],
-                    ),
+                      )
+                    : _bucketReadOnlyTable(rows),
+              ),
+              // 可安排桶的批量动作条：常驻钉底（UtenEditableGrid 的
+              // batchActionsBuilder 只随编辑模式操作条渲染，select-only 模式
+              // 不出现——故由本页自管，订阅控制器按选中数即时刷新）。
+              // 2026-09-05 与全站对齐：「已选 N 项 + ✕」用标准胶囊
+              // （UtenSelectionSummaryPill），与按钮同框进右对齐悬浮组
+              // （UtenFloatingActionGroup）——与 MasterDataTableView 悬浮组同款。
+              if (_usesPlanGrid) ...[
+                const SizedBox(height: UtenSpacing.s8),
+                AnimatedBuilder(
+                  animation: _planGrid!,
+                  builder: (context, _) => UtenFloatingActionGroup(
+                    children: [
+                      UtenSelectionSummaryPill(
+                        count: _planGrid!.selectedRows.length,
+                        clearKey: const Key(
+                          'material-analysis-bucket-selected-count',
+                        ),
+                        onClear: _planGrid!.selectedRows.isEmpty
+                            ? null
+                            : () => _planGrid!.clearSelection(),
+                      ),
+                      ..._planBatchActions(context),
+                    ],
                   ),
-                ],
+                ),
               ],
-            ),
+            ],
           ),
         ),
       ),
@@ -1157,6 +1436,8 @@ class _MaterialAnalysisBucketPageState
           ..addAll(next);
       }),
       batchActionsBuilder: _canAct ? _readOnlyBatchActions : null,
+      // 行右键/长按 = 对当前选择集整组恢复默认下达数量（2026-09-11 用户要求）。
+      rowMenuBuilder: _canAct ? _readOnlyRowMenu : null,
       // 勿传 virtualized（它强制表体撑满剩余高度 → 横滚条恒钉屏底）：保持默认
       // content-tall——与车间计划网格/货品资料同款，内容少横滚条贴末行、超高才钉底。
       onRowTap: _onRowTap,
@@ -1207,6 +1488,18 @@ class _MaterialAnalysisBucketPageState
                 }),
           child: Text('全选全部 $selectableCount 条'),
         ),
+      // 批量设下达数量（2026-09-11，与下达车间同款批量赋值）：选中一批行只输一次
+      // 数量就写进全部可编辑行；留空 = 各行恢复默认全量（缺口 − 已在途）。
+      UtenButton(
+        key: const Key('material-analysis-bucket-batch-submit-qty'),
+        type: UtenButtonType.tonal,
+        size: UtenButtonSize.large,
+        icon: Icons.numbers_rounded,
+        onPressed: _canAct && !_actionsLocked && count > 0
+            ? () => _batchSetSubmitQty(selectedIds)
+            : null,
+        child: Text('批量设下达数量($count)'),
+      ),
       UtenButton(
         key: Key('material-analysis-bucket-action-${_bucket.name}'),
         type: UtenButtonType.danger,
@@ -1221,6 +1514,105 @@ class _MaterialAnalysisBucketPageState
         child: Text(label),
       ),
     ];
+  }
+
+  /// 当前选择集中「下达数量可编辑」的行（未下达段 + actionGroupKey 提交单元）。
+  List<_BucketRow> _editableSelectedRows(Set<String> selectedIds) => [
+    for (final row in _filterRows(_host._bucketRows(_bucket)))
+      if (selectedIds.contains(row.id) && _rowQtyEditable(row)) row,
+  ];
+
+  /// 采购/委外桶的行右键菜单：整组恢复默认下达数量。
+  /// 选中归位由 MasterDataTableView 负责（未选中的行右键 = 只选它）。
+  List<UtenContextMenuEntry> _readOnlyRowMenu(_BucketRow row) {
+    final targets = _editableSelectedRows(_selectedIds);
+    final n = targets.length;
+    return [
+      UtenMenuItem(
+        label: '恢复默认下达数量 ($n)',
+        icon: Icons.restart_alt_rounded,
+        enabled: !_actionsLocked && n > 0,
+        onTap: () => setState(() {
+          for (final target in targets) {
+            _resetSubmitQty(target);
+          }
+        }),
+      ),
+    ];
+  }
+
+  void _resetSubmitQty(_BucketRow row) {
+    final group = row.group;
+    if (group == null) return;
+    _submitQtyControllerOf(group).text = _bucketQtyText(
+      _host._residualSubmitQty(group, _bucket.supplyRoute!),
+    );
+  }
+
+  /// 一次输入下达数量写进所有选中的可编辑行；留空 = 各行恢复默认全量。
+  Future<void> _batchSetSubmitQty(Set<String> selectedIds) async {
+    final targets = _editableSelectedRows(selectedIds);
+    if (targets.isEmpty) {
+      context.appWarning('选中的行都不能改下达数量（只有未下达且按组提交的行可改）');
+      return;
+    }
+    final input = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('批量设置下达数量（${targets.length} 行）'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('留空并确认 = 每行恢复默认全量（缺口 − 已在途）；填数字 = 每行都用这个数量。'),
+            const SizedBox(height: UtenSpacing.s12),
+            TextField(
+              key: const Key('material-analysis-bucket-batch-submit-qty-input'),
+              controller: input,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const UtenInputDecoration(
+                InputDecoration(isDense: true, hintText: '留空=恢复默认全量'),
+              ),
+            ),
+          ],
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('写入'),
+          ),
+        ],
+      ),
+    );
+    final text = input.text.trim();
+    input.dispose();
+    if (confirmed != true || !mounted) return;
+    final value = text.isEmpty ? null : double.tryParse(text);
+    if (text.isNotEmpty && (value == null || !value.isFinite || value <= 0)) {
+      context.appWarning('下达数量必须是大于 0 的数字');
+      return;
+    }
+    setState(() {
+      for (final row in targets) {
+        if (value == null) {
+          _resetSubmitQty(row);
+          continue;
+        }
+        final group = row.group;
+        if (group != null) {
+          _submitQtyControllerOf(group).text = _bucketQtyText(value);
+        }
+      }
+    });
   }
 
   /// 分页切片：只构建当页行（大分析数千行一次性构建在网页端是分钟级卡死）。
@@ -1256,9 +1648,9 @@ class _MaterialAnalysisBucketPageState
 
   /// 可安排桶：可编辑计划表（数量 / 车间 / 负责人）。表头设置与只读桶的
   /// MasterDataTableView 对齐——支持列显隐、拖拽排序与恢复默认（列多时
-  /// 计划员可自行收敛视野）。车间/负责人/状态表头可点筛选（自研锚定下拉，
-  /// 视图级过滤不动数据与勾选）；「全选/取消全选」按钮不渲染（表头复选框
-  /// 已覆盖当页选择）。
+  /// 计划员可自行收敛视野）。类型/货品/车间/负责人/状态表头均可点筛选
+  /// （2026-09-11 补齐前两列，自研锚定下拉，视图级过滤不动数据与勾选）；
+  /// 「全选/取消全选」按钮不渲染（表头复选框已覆盖当页选择）。
   Widget _readyPlanGrid(ThemeData theme) {
     return UtenEditableGrid<_BucketPlanRow>(
       controller: _planGrid!,
@@ -1268,22 +1660,19 @@ class _MaterialAnalysisBucketPageState
       showRowDelete: false,
       showColumnSettings: true,
       showSelectAllToggle: false,
+      // 行右键/长按 = 对当前选择集做整组清空/填满（2026-09-11 用户要求）。
+      rowMenuExtraBuilder: _canAct ? _planRowMenu : null,
       emptyMessage: _host._l10n.materialTaskEmpty,
       columns: [
         EditableGridColumn<_BucketPlanRow>(
           key: 'kind',
           label: '类型',
           width: 92,
+          // 2026-09-11：与「生产车间/负责人/状态」一致，类型列也给表头快速筛选
+          // （用户截图反馈：同一张表有的列有下拉箭头有的没有）。
+          filterValueOf: _planRowKindLabel,
           cellBuilder: (context, row) => Text(
-            row.isProduct
-                ? switch (row.origin.product!.sourceType) {
-                    'MAKE_COMPONENT' => '自制子件',
-                    'SUBCONTRACT_MAKE' => '委外子件',
-                    // 2026-09-05 用户口径：顶层与子层自制同构——顶层产品行
-                    // 的类型也是「自制候选」，不再有专属「产品」形态。
-                    _ => '自制候选',
-                  }
-                : '自制候选',
+            _planRowKindLabel(row),
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -1293,6 +1682,8 @@ class _MaterialAnalysisBucketPageState
           key: 'goods',
           label: '货品',
           width: 200,
+          // 2026-09-11：货品列表头快速筛选，桶标签=货品名（无名用物料编码）。
+          filterValueOf: _planRowGoodsLabel,
           textOf: (row) {
             final product = row.origin.product;
             if (product != null) {
@@ -1341,9 +1732,14 @@ class _MaterialAnalysisBucketPageState
         EditableGridColumn<_BucketPlanRow>(
           key: 'qty',
           label: '本批数量',
-          width: 110,
+          // 与销售/采购数量列同宽(128)；通用说明放列头 ⓘ（2026-09-10 全站口径），
+          // 格内不再塞图标挤占「可分批下达」占位。
+          width: 128,
           numeric: true,
           required: true,
+          headerInfo: _host._l10n.workflowWorkshopQuantityHint,
+          textOf: (row) => row.qty.text,
+          listenableOf: (row) => row.qty,
           cellBuilder: (context, row) => RequiredCellFrame(
             listenable: row.qty,
             isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
@@ -1354,9 +1750,8 @@ class _MaterialAnalysisBucketPageState
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              decoration: UtenInputDecoration(
-                const InputDecoration(isDense: true, hintText: '可分批下达'),
-                info: workflowFieldText(context).workflowWorkshopQuantityHint,
+              decoration: const UtenInputDecoration(
+                InputDecoration(isDense: true, hintText: '可分批下达'),
               ),
             ),
           ),
@@ -1366,24 +1761,20 @@ class _MaterialAnalysisBucketPageState
           label: '生产车间',
           width: 150,
           required: true,
-          filterValueOf: (row) =>
-              row.departmentName ?? row.departmentId.value ?? '',
+          // 空值返回 null（不建桶，计入「未填」），不要空串桶。
+          filterValueOf: (row) => row.departmentName ?? row.departmentId.value,
           cellBuilder: (context, row) => ValueListenableBuilder<String?>(
             valueListenable: row.departmentId,
             builder: (context, departmentId, _) => InkWell(
               key: ValueKey('material-analysis-bucket-workshop-${row.id}'),
               onTap: _host._canGenerate ? () => _pickWorkshop(row) : null,
+              // 2026-09-10 单元规格统一：不自带 border/contentPadding（吃
+              // UtenEditableGrid 行级主题：圆角 10、内边距 14/12）、正文字号，
+              // 与同行数量输入格等高同圆角。
               child: InputDecorator(
                 decoration: applyAutofillHint(
                   InputDecoration(
                     isDense: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
                     suffixIcon: Icon(
                       departmentId == null
                           ? Icons.search_rounded
@@ -1403,7 +1794,7 @@ class _MaterialAnalysisBucketPageState
                       : (row.departmentName ?? departmentId),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: departmentId == null
                         ? Theme.of(context).colorScheme.onSurfaceVariant
                         : Theme.of(context).colorScheme.onSurface,
@@ -1418,7 +1809,7 @@ class _MaterialAnalysisBucketPageState
           label: '负责人',
           width: 130,
           required: true,
-          filterValueOf: (row) => row.workerName ?? row.workerId.value ?? '',
+          filterValueOf: (row) => row.workerName ?? row.workerId.value,
           cellBuilder: (context, row) => ValueListenableBuilder<String?>(
             valueListenable: row.workerId,
             builder: (context, workerId, _) => InkWell(
@@ -1428,13 +1819,6 @@ class _MaterialAnalysisBucketPageState
                 decoration: applyAutofillHint(
                   InputDecoration(
                     isDense: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
                     suffixIcon: Icon(
                       workerId == null
                           ? Icons.search_rounded
@@ -1451,7 +1835,7 @@ class _MaterialAnalysisBucketPageState
                   workerId == null ? '点击选择' : (row.workerName ?? workerId),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: workerId == null
                         ? Theme.of(context).colorScheme.onSurfaceVariant
                         : Theme.of(context).colorScheme.onSurface,
@@ -1501,6 +1885,32 @@ class _MaterialAnalysisBucketPageState
         : (_host._canArrangePendingMakeCandidate(row.origin.candidate!)
               ? '等待下达车间'
               : '当前状态不可创建');
+  }
+
+  /// 计划行的类型文案（自制候选 / 自制子件 / 委外子件）。单元格与表头筛选共用
+  /// 同一口径——取值稳定（不随重建变动），空值不可能出现，故不返回 null。
+  String _planRowKindLabel(_BucketPlanRow row) {
+    if (!row.isProduct) return '自制候选';
+    return switch (row.origin.product!.sourceType) {
+      'MAKE_COMPONENT' => '自制子件',
+      'SUBCONTRACT_MAKE' => '委外子件',
+      // 2026-09-05 用户口径：顶层与子层自制同构——顶层产品行的类型也是
+      // 「自制候选」，不再有专属「产品」形态。
+      _ => '自制候选',
+    };
+  }
+
+  /// 计划行的货品名（表头筛选的桶标签）：优先货品名称，其次物料编码；两者都
+  /// 没有 → null（不建桶，计入「未填」计数），绝不用行唯一的 analysisLineId
+  /// 兜底——那会让每行各成一桶。
+  String? _planRowGoodsLabel(_BucketPlanRow row) {
+    final product = row.origin.product;
+    final name = product != null
+        ? (product.goodsName ?? product.goodsCode)
+        : (row.origin.candidate!.material.goodsName ??
+              row.origin.candidate!.material.goodsCode);
+    final trimmed = name?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 
   /// 「未下达」筛选段的路线化标签（与流程词表第一步同名）。
@@ -1597,12 +2007,17 @@ class _MaterialAnalysisBucketPageState
         info:
             '仓库里该物料当前还可用的现货量（不含在途订单）。够需求=绿、不够=红；'
             '即使够货也不跳过流程，仍可按富余量下单（富余走公共备货，不绑定本需求）。',
+        // 颜色走语义 token（准则：不用硬编码 Material 色）：够=绿实底（浅色
+        // successText 深绿/深色 successOnDark），不够=colorScheme.error。
         cellColor: (context, row) {
           final material = row.group?.representative;
           if (material == null || material.requiredQty <= 0) return null;
+          final theme = Theme.of(context);
           return material.availableQty >= material.requiredQty
-              ? Colors.green.shade700
-              : Theme.of(context).colorScheme.error;
+              ? (theme.brightness == Brightness.dark
+                    ? UtenColors.successOnDark
+                    : UtenColors.successText)
+              : theme.colorScheme.error;
         },
       ),
       MasterColumnDef<_BucketRow>(
@@ -1620,19 +2035,28 @@ class _MaterialAnalysisBucketPageState
           final cellScope = MasterDataTableCellScope.maybeOf(context);
           final selected = cellScope?.selected ?? false;
           final shortage = group.representative.shortageQty;
-          return Tooltip(
-            message: host._l10n.materialPhysicalShortageHint,
+          // 说明挂列头 ⓘ（info 字段），格内不再逐行 Tooltip（2026-09-09 口径）；
+          // key 供测试/语义锚定「物理缺口」单元格。
+          // 缺口颜色与主表同一口径（>0 红 / =0 绿 token 明暗配对，F2e）。
+          return KeyedSubtree(
+            key: const Key('bucket-shortage-qty-cell'),
             child: Text(
               host._qty(shortage),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: selected
                     ? cellScope?.foregroundColor
-                    : shortage > 0
-                    ? theme.colorScheme.error
-                    : theme.colorScheme.onSurface,
+                    : host._shortageTextColor(theme, shortage),
                 fontWeight: FontWeight.w700,
               ),
             ),
+          );
+        },
+        cellColor: (context, row) {
+          final group = row.group;
+          if (group == null) return null;
+          return host._shortageCellColor(
+            Theme.of(context),
+            group.representative.shortageQty,
           );
         },
       ),
@@ -1766,7 +2190,7 @@ class _MaterialAnalysisBucketPageState
             hintText: '默认 ${_host._qty(defaultValue)}',
             suffixText: unit?.isEmpty == true ? null : unit,
           ),
-          info: workflowFieldText(context).workflowPlanningQuantityHint,
+          // 说明挂列头 ⓘ（submitQty 列的 info），格内不再逐行渲染重复 ⓘ。
         ),
       ),
     );

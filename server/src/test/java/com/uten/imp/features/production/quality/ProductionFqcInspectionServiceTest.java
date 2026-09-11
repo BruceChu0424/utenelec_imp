@@ -289,7 +289,8 @@ class ProductionFqcInspectionServiceTest {
                 mock(ProductionFqcRecoveryPort.class),
                 mock(ProductionFinishedInboundReleasePort.class),
                 mock(BusinessEventPublisher.class),
-                org.mockito.Mockito.mock(com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
+                org.mockito.Mockito.mock(com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
+                org.mockito.Mockito.mock(com.uten.imp.common.docnumber.DocNumberService.class));
     }
 
     private static DecisionRequest request(

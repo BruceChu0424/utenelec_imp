@@ -1,13 +1,19 @@
 // 采购管理入口页（hub）—— 两个分组卡片：
 //  ① 采购管理：4 单据卡片（申请/订货/收货/退货）
 //  ② 采购报表：报表卡片（明细/汇总/待交货）
-// 点卡片进对应列表/报表页。卡片统一用 UtenHubCard（徽章恒在右上角）。
+// 点卡片进对应列表/报表页。卡片统一用 UtenHubCard；计数一律红色徽章
+//（准则 14-徽章与计数口径）：任务中心 / 待退回供应商 / 订货·收货·退货草稿
+// 都是「必须我处理完的活」，全部登记进本模块累加
+//（见 shared/badges/todo_badge_registry.dart，2026-09-11 起草稿也算待办）；
+// 「采购申请」不挂徽章——它的待处理量已由任务中心「待分解」计入，重复挂会双计。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
+import '../../../components/feedback/uten_draft_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -19,6 +25,7 @@ import '../../../core/router/permission_by_path.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/badges/todo_badge_registry.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../warehouse/pages/procurement_return_task_pages.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
@@ -100,6 +107,21 @@ class PurchaseHubPage extends ConsumerWidget {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
+        actions: [
+          // 顶栏「本模块累计」：数字由注册表对采购下全部登记入口求和得出
+          //（任务中心 + 待退回供应商 + 三张单据草稿），页面里不要手写加法，
+          // 否则与工作台「采购管理」卡的口径会各算各的。0 时组件自身不渲染。
+          Padding(
+            padding: const EdgeInsets.only(right: UtenSpacing.s12),
+            child: Center(
+              child: UtenNotificationBadge(
+                count: todoModuleCount(TodoModule.purchase, ref.watch),
+                size: 20,
+                showLabel: true,
+              ),
+            ),
+          ),
+        ],
       ),
       body: SafeArea(
         child: UtenContentContainer(
@@ -201,6 +223,7 @@ class _Entry {
     this.badge,
   });
 
+  /// 单据卡；有草稿计数口径的类型在右上角挂红色草稿徽章（本人未提交的活）。
   _Entry.fromCfg(PurchaseDocConfig cfg, AppLocalizations l10n)
     : icon = cfg.icon,
       label = _purchaseDocTitle(cfg.type, l10n),
@@ -208,12 +231,19 @@ class _Entry {
       location = cfg.skipListOnCreate
           ? RoutePath.purchaseDocNew(cfg.type.pathSegment)
           : '/purchase/${cfg.type.pathSegment}',
-      badge = null;
+      // 草稿徽章占 badge（卡右上角浮层）：4 张单据卡都没有别的待办徽章，
+      // 这个空槽正是用户要的位置。将来哪张卡挂上待办徽章（如「待收货」），
+      // 待办留 badge、草稿改传 UtenHubCard.labelSuffix——一个槽两个红点读不懂。
+      badge = cfg.draftKind == null
+          ? null
+          : UtenDraftBadge(kind: cfg.draftKind!);
 
   final IconData icon;
   final String label;
   final String description;
   final String location;
+
+  /// 右上角红色徽章；待办数与草稿数都放这里，都会进上层累加。
   final Widget? badge;
 }
 

@@ -131,6 +131,8 @@ class _Repository extends ProductionExecutionWorkbenchRepository {
     String keyword = '',
     String? status,
     String? workshopDepartmentId,
+    String? dateFrom,
+    String? dateTo,
   }) async {
     statuses.add(status);
     taskLoads++;

@@ -826,7 +826,7 @@ abstract class _MaterialAnalysisProductTasksState
     );
     final approveNow = _permissions.contains(Perm.productionPlanApprove);
     setState(() {
-      _generating = true;
+      _setGenerating(true);
       _planSubmissionApproveNow = approveNow;
     });
     try {
@@ -843,7 +843,7 @@ abstract class _MaterialAnalysisProductTasksState
           );
       if (!mounted) return;
       setState(() {
-        _generating = false;
+        _setGenerating(false);
         _applyAnalysis(result.analysis);
         _selectedPlanLineIds.clear();
         for (final line in lines) {
@@ -868,11 +868,11 @@ abstract class _MaterialAnalysisProductTasksState
         error,
         operation: '创建生产计划',
       )) {
-        if (mounted) setState(() => _generating = false);
+        if (mounted) setState(() => _setGenerating(false));
         return;
       }
       if (!mounted) return;
-      setState(() => _generating = false);
+      setState(() => _setGenerating(false));
       context.appError(
         productionErrorMessage(error, fallback: '创建生产计划失败，请刷新后重试'),
         force: true,
@@ -1187,6 +1187,9 @@ abstract class _MaterialAnalysisProductTasksState
     ],
   );
 
+  /// 进度文案 + 稳定桶键（`facetKey`）：表头筛选只按键比较，带数量/百分比的
+  /// 文案（在途/待补/保障 N%）统一落 inTransit/pendingIssue 等有限枚举，
+  /// 流程阶段落 [ProductionFlowStage.key]（见 [_materialStatusFacetLabels]）。
   _StatusView _materialStatus(ThemeData theme, _MaterialGroup group) {
     final planningBlock = _planningBlockForGroup(group);
     if (planningBlock != null) {
@@ -1194,6 +1197,7 @@ abstract class _MaterialAnalysisProductTasksState
         planningBlock,
         Icons.info_outline_rounded,
         theme.colorScheme.tertiary,
+        facetKey: 'blocked',
       );
     }
     final material = group.representative;
@@ -1205,6 +1209,7 @@ abstract class _MaterialAnalysisProductTasksState
         _l10n.materialIssuedPlanSyncPending,
         Icons.sync_rounded,
         theme.colorScheme.tertiary,
+        facetKey: 'inTransit',
       );
     }
     final serverStage = _serverFlowStageOf(group);
@@ -1213,6 +1218,8 @@ abstract class _MaterialAnalysisProductTasksState
         serverStage.displayLabel,
         serverStage.icon,
         _productExecutionColor(theme, serverStage),
+        facetKey: serverStage.key,
+        facetLabel: serverStage.label,
       );
     }
     // 自制/有子层委外的锚点子件执行（服务端无键时回退同款词表推导）。
@@ -1229,12 +1236,19 @@ abstract class _MaterialAnalysisProductTasksState
           label,
           anchorStage.icon,
           _productExecutionColor(theme, anchorStage),
+          facetKey: anchorStage.key,
+          facetLabel: anchorStage.label,
         );
       }
     }
     if (material.requiredQty <= 0) {
       final view = _requirementStateView(theme, material);
-      return _StatusView(view.title, view.icon, view.color);
+      return _StatusView(
+        view.title,
+        view.icon,
+        view.color,
+        facetKey: 'inactive',
+      );
     }
     if (!group.actionable) {
       if (material.shortageQty <= 0) {
@@ -1242,12 +1256,14 @@ abstract class _MaterialAnalysisProductTasksState
           '本层库存已齐',
           Icons.check_circle_outline_rounded,
           theme.colorScheme.primary,
+          facetKey: 'covered',
         );
       }
       return _StatusView(
         '当前节点只读',
         Icons.lock_outline_rounded,
         theme.colorScheme.tertiary,
+        facetKey: 'blocked',
       );
     }
     final notified = _notifiedTargetOf(material);
@@ -1265,6 +1281,7 @@ abstract class _MaterialAnalysisProductTasksState
           ' · 本版本仅采购路线支持公共安全补库',
           Icons.policy_outlined,
           theme.colorScheme.error,
+          facetKey: 'blocked',
         );
       }
       // MAKE 与有子层 SUBCONTRACT 的子件任务同构：内联真实子件执行状态；
@@ -1284,6 +1301,8 @@ abstract class _MaterialAnalysisProductTasksState
             label,
             executionStage.icon,
             _productExecutionColor(theme, executionStage),
+            facetKey: executionStage.key,
+            facetLabel: executionStage.label,
           );
         }
         if (covered) {
@@ -1291,6 +1310,7 @@ abstract class _MaterialAnalysisProductTasksState
             '本批库存已覆盖 · 自制任务状态待回传',
             Icons.inventory_2_outlined,
             theme.colorScheme.primary,
+            facetKey: 'covered',
           );
         }
         // 2026-09-05 状态统一：未下达的自制任务一律「未下达」+ 同款颜色/
@@ -1299,6 +1319,7 @@ abstract class _MaterialAnalysisProductTasksState
           _pendingIssueLabelOf(material),
           Icons.hourglass_bottom_rounded,
           theme.colorScheme.tertiary,
+          facetKey: 'pendingIssue',
         );
       }
       if (covered) {
@@ -1306,6 +1327,7 @@ abstract class _MaterialAnalysisProductTasksState
           '已齐套(库存已覆盖)',
           Icons.check_circle_outline_rounded,
           theme.colorScheme.primary,
+          facetKey: 'covered',
         );
       }
       // 分批提交：上一批仍在途且剩余缺口未闭合时，明说「当前在途 / 还差」，
@@ -1326,6 +1348,7 @@ abstract class _MaterialAnalysisProductTasksState
           route == MaterialSupplyRoute.subcontract
               ? theme.colorScheme.secondary
               : theme.colorScheme.tertiary,
+          facetKey: 'inTransit',
         );
       }
       if (route == MaterialSupplyRoute.buy && safetyGap > 0) {
@@ -1334,6 +1357,7 @@ abstract class _MaterialAnalysisProductTasksState
           '待补 ${_qty(safetyGap)}',
           Icons.shield_outlined,
           theme.colorScheme.tertiary,
+          facetKey: 'inTransit',
         );
       }
       return _StatusView(
@@ -1342,6 +1366,7 @@ abstract class _MaterialAnalysisProductTasksState
         route == MaterialSupplyRoute.subcontract
             ? theme.colorScheme.secondary
             : theme.colorScheme.tertiary,
+        facetKey: 'inTransit',
       );
     }
     // 未通知：先看路线是否确认（ADR-029 §6.1 硬门槛）。
@@ -1350,6 +1375,7 @@ abstract class _MaterialAnalysisProductTasksState
         '路线待确认',
         Icons.help_outline_rounded,
         theme.colorScheme.error,
+        facetKey: 'routePending',
       );
     }
     if (material.lowerLevelPending) {
@@ -1359,6 +1385,7 @@ abstract class _MaterialAnalysisProductTasksState
         _pendingIssueLabelOf(material),
         Icons.hourglass_bottom_rounded,
         theme.colorScheme.tertiary,
+        facetKey: 'pendingIssue',
       );
     }
     final confirmedRoute = material.confirmedRoute;
@@ -1368,6 +1395,7 @@ abstract class _MaterialAnalysisProductTasksState
         '本版本仅采购路线支持公共安全补库',
         Icons.policy_outlined,
         theme.colorScheme.error,
+        facetKey: 'blocked',
       );
     }
     if (demandGap > 0) {
@@ -1375,6 +1403,7 @@ abstract class _MaterialAnalysisProductTasksState
         '本批需求待通知 ${_qty(demandGap)}',
         Icons.notifications_active_outlined,
         theme.colorScheme.tertiary,
+        facetKey: 'pendingIssue',
       );
     }
     if (confirmedRoute == MaterialSupplyRoute.buy && safetyGap > 0) {
@@ -1382,6 +1411,7 @@ abstract class _MaterialAnalysisProductTasksState
         '本批需求已覆盖 · 待提交公共安全补库 ${_qty(safetyGap)}',
         Icons.shield_outlined,
         theme.colorScheme.tertiary,
+        facetKey: 'pendingIssue',
       );
     }
     if (material.shortageQty > 0) {
@@ -1389,12 +1419,14 @@ abstract class _MaterialAnalysisProductTasksState
         '本批需求已覆盖 · 安全保护处理中',
         Icons.shield_outlined,
         theme.colorScheme.tertiary,
+        facetKey: 'inTransit',
       );
     }
     return _StatusView(
       '已齐套',
       Icons.check_circle_outline_rounded,
       theme.colorScheme.primary,
+      facetKey: 'covered',
     );
   }
 

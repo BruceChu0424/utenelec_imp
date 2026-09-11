@@ -7,12 +7,14 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
+import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/features/department/models/workforce_overview.dart';
 import 'package:uten_imp/features/department/repositories/department_repository.dart';
@@ -2306,11 +2308,40 @@ void main() {
         hasLength(1),
       );
       buyRow = await _materialTableRowVisible(tester, 'material-path-1');
-      // 2026-09-04：主表无勾选列；路线确认后的批量入口在「可采购」桶里。
+      // 2026-09-10 F2d：已确认且未改动的行没有勾选框（勾了也不计数）；改下拉
+      // 成另一路线后勾选框出现并自动勾上，改回已确认值再次消失。
       expect(
         find.descendant(of: buyRow, matching: find.byType(Checkbox)),
-        findsOneWidget,
+        findsNothing,
       );
+      await _chooseMaterialRoute(
+        tester,
+        'material-path-1',
+        '委外',
+        confirm: false,
+      );
+      buyRow = await _materialTableRowVisible(tester, 'material-path-1');
+      expect(
+        tester
+            .widget<Checkbox>(
+              find.descendant(of: buyRow, matching: find.byType(Checkbox)),
+            )
+            .value,
+        isTrue,
+      );
+      expect(find.text('确认路线(1)'), findsOneWidget);
+      await _chooseMaterialRoute(
+        tester,
+        'material-path-1',
+        '采购',
+        confirm: false,
+      );
+      buyRow = await _materialTableRowVisible(tester, 'material-path-1');
+      expect(
+        find.descendant(of: buyRow, matching: find.byType(Checkbox)),
+        findsNothing,
+      );
+      expect(find.text('确认路线(0)'), findsOneWidget);
       await _openBucketDetail(tester, 'buy');
       await _tapBucketRowCheckbox(tester, '共享紧固件');
       expect(find.text('提交采购需求(1)'), findsOneWidget);
@@ -2773,6 +2804,19 @@ void main() {
         find.descendant(of: completedRow, matching: find.text('已齐套')),
         findsOneWidget,
       );
+      // 2026-09-10 F2e：缺口=0 走语义 token（浅色 successText），不是 Material 绿。
+      expect(
+        tester
+            .widgetList<Text>(
+              find.descendant(of: completedRow, matching: find.byType(Text)),
+            )
+            .where(
+              (text) =>
+                  text.data == '0' &&
+                  text.style?.color == UtenColors.successText,
+            ),
+        isNotEmpty,
+      );
 
       await tester.tap(viewShortage);
       await tester.pumpAndSettle();
@@ -2835,6 +2879,195 @@ void main() {
         find.byKey(const ValueKey('material-table-row-make-path-2')),
         findsNothing,
       );
+    },
+  );
+
+  // ===== 2026-09-10 表头筛选（F2a/F2a-flow）：稳定桶键、祖先只读上下文、chip 同步、
+  // 空态清除筛选 =====
+
+  Map<String, dynamic> unconfirmedBuyChildTree() {
+    final json = _makeTreeAnalysisJson();
+    (json['flatMaterials'] as List<dynamic>)
+        .cast<Map<String, dynamic>>()
+        .firstWhere((material) => material['materialLineId'] == 'buy-child')
+      ..['sourceConfirmed'] = null
+      ..['routeConfirmed'] = false;
+    return json;
+  }
+
+  testWidgets(
+    'header status filter keeps ancestors as read-only context, syncs chip '
+    'counts and clears from the empty state',
+    (tester) async {
+      final json = unconfirmedBuyChildTree()
+        ..['allowedActions'] = const ['VIEW'];
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
+        allowedActions: const ['VIEW'],
+        analysisJson: json,
+      );
+      await _materialTableRowVisible(tester, 'buy-child');
+      expect(find.text('全部 BOM 3'), findsOneWidget);
+
+      await _selectMaterialHeaderFilter(tester, '进度 / 待办', '路线待确认 (1)');
+      // 命中行 + 祖先（产品行 / 自制组件 A）保留为只读上下文；无关行隐藏；
+      // chip 计数与表同口径。
+      expect(
+        find.byKey(const ValueKey('material-table-row-buy-child')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('material-table-row-make-path-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('material-bom-product-product-line-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('material-table-row-make-path-2')),
+        findsNothing,
+      );
+      expect(find.text('上级路径上下文（只读）'), findsWidgets);
+      expect(find.text('全部 BOM 1'), findsOneWidget);
+
+      // 关键词只命中被筛掉的行 → 0 行空态：组件层给「清除筛选」出口。
+      // 查找框在联动折叠头区里，表格滚动后已收起（offstage）：先回顶再输入。
+      await _resetPageScrolls(tester);
+      final search = find.byKey(const Key('material-bom-search'));
+      await tester.ensureVisible(search);
+      await tester.enterText(search, 'MAKE-B');
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(find.text('当前有 1 个表头筛选生效'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('master-table-clear-filters')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('当前有 1 个表头筛选生效'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('material-table-row-make-path-2')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'switching to the material aggregate view prunes a product-view status filter',
+    (tester) async {
+      final json = unconfirmedBuyChildTree()
+        ..['allowedActions'] = const ['VIEW'];
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
+        allowedActions: const ['VIEW'],
+        analysisJson: json,
+      );
+      await _materialTableRowVisible(tester, 'buy-child');
+      await _selectMaterialHeaderFilter(tester, '进度 / 待办', '路线待确认 (1)');
+      expect(
+        find.byKey(const ValueKey('material-table-row-make-path-2')),
+        findsNothing,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-material')),
+      );
+      await tester.pumpAndSettle();
+      // 汇总视图的进度桶是三档覆盖率，产品视图的「路线待确认」失效被移除：
+      // 三个物料的汇总行全部可见，空态提示不出现。
+      expect(find.text('自制组件 A(另一 BOM 路径)'), findsOneWidget);
+      expect(find.text('外箱依赖'), findsOneWidget);
+      expect(find.text('当前有 1 个表头筛选生效'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'confirmed rows have no checkbox, header select-all only picks unconfirmed '
+    'rows and a blank master source shows a review hint',
+    (tester) async {
+      final json = unconfirmedBuyChildTree();
+      (json['flatMaterials'] as List<dynamic>)
+              .cast<Map<String, dynamic>>()
+              .firstWhere(
+                (material) => material['materialLineId'] == 'buy-child',
+              )['sourceSuggestion'] =
+          null;
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisRoute,
+        },
+        allowedActions: const ['CONFIRM_ROUTES', 'NOTIFY_SUPPLY'],
+        analysisJson: json,
+      );
+      final buyChild = await _materialTableRowVisible(tester, 'buy-child');
+      expect(
+        find.descendant(of: buyChild, matching: find.byType(Checkbox)),
+        findsOneWidget,
+      );
+      // F8：主档来源为空（服务端 REVIEW → 前端 null）时默认委外只是缺省值，
+      // 路线格旁给黄标提醒核对。
+      expect(
+        find.byKey(const ValueKey('material-route-blank-source-buy-child')),
+        findsOneWidget,
+      );
+      final makeRow = await _materialTableRowVisible(tester, 'make-path-1');
+      expect(
+        find.descendant(of: makeRow, matching: find.byType(Checkbox)),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('material-route-blank-source-make-path-1')),
+        findsNothing,
+      );
+      // 已确认行的下拉仍可改（§3.4 手动草稿优先）。
+      expect(
+        find.byKey(const ValueKey('material-route-dropdown-make-path-1')),
+        findsOneWidget,
+      );
+      // 表头全选只勾未确认行。
+      final header = find.descendant(
+        of: find.byKey(const Key('material-analysis-material-table-region')),
+        matching: find.byWidgetPredicate((w) => w is Checkbox && w.tristate),
+      );
+      await tester.ensureVisible(header);
+      await tester.pumpAndSettle();
+      await tester.tap(header);
+      await tester.pumpAndSettle();
+      expect(find.text('确认路线(1)'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a refresh response carrying routeResetCount shows a re-confirm notice',
+    (tester) async {
+      final json = _makeTreeAnalysisJson()
+        ..['allowedActions'] = const ['VIEW', 'REFRESH']
+        ..['routeResetCount'] = 2;
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
+        allowedActions: const ['VIEW', 'REFRESH'],
+        analysisId: 'analysis-1',
+        analysisJson: json,
+      );
+      expect(find.text('2 条路线因主档变更需重新确认'), findsOneWidget);
     },
   );
 
@@ -2915,12 +3148,14 @@ void main() {
       expect(buyChild, findsOneWidget);
 
       await tester.ensureVisible(productToggle);
+      await _resetTableHScroll(tester);
       await tester.tap(productToggle);
       await tester.pumpAndSettle();
       expect(makeNode, findsNothing);
       expect(buyChild, findsNothing);
 
       await tester.ensureVisible(productToggle);
+      await _resetTableHScroll(tester);
       await tester.tap(productToggle);
       await tester.pumpAndSettle();
       await _materialTableRowVisible(tester, 'make-path-1');
@@ -3186,9 +3421,10 @@ void main() {
         find.descendant(of: row, matching: find.text('本版本仅采购路线支持公共安全补库')),
         findsOneWidget,
       );
+      // 2026-09-10 F2d：已确认且未改动的行没有勾选框（主表勾选只服务「确认路线」）。
       expect(
         find.descendant(of: row, matching: find.byType(Checkbox)),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         harness.requests.where((request) => request.path.endsWith('/notify')),
@@ -3264,11 +3500,11 @@ void main() {
         const ValueKey('material-table-row-buy-child'),
       );
       expect(depNode, findsOneWidget);
-      // 2026-09-04：主表不再有勾选列与批量按钮（收口分桶详情页）——
-      // 行级动作与右键菜单仍在；批量提交从「可采购」桶内发起。
+      // 2026-09-10 F2d：已确认（BUY）且未改动的行没有勾选框；行级动作与右键菜单
+      // 仍在，批量提交从「可采购」桶内发起。
       expect(
         find.descendant(of: depNode, matching: find.byType(Checkbox)),
-        findsOneWidget,
+        findsNothing,
       );
       expect(find.textContaining('新建采购需求'), findsNothing);
 
@@ -5712,6 +5948,14 @@ void main() {
   testWidgets(
     'material-table-right-click keeps route selection after viewing details',
     (tester) async {
+      // 2026-09-10 F2d：已确认且未改动的行没有勾选框，本用例的勾选主体改为
+      // 未确认的 buy-child（建议路线仍为 BUY，右键菜单同样带「提交采购需求」）。
+      final json = _makeTreeAnalysisJson();
+      (json['flatMaterials'] as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .firstWhere((material) => material['materialLineId'] == 'buy-child')
+        ..['sourceConfirmed'] = null
+        ..['routeConfirmed'] = false;
       await _pumpPage(
         tester,
         size: const Size(1440, 1000),
@@ -5721,17 +5965,18 @@ void main() {
           Perm.productionMaterialAnalysisRoute,
           Perm.productionMaterialAnalysisNotify,
         },
-        analysisJson: _makeTreeAnalysisJson(),
+        analysisJson: json,
       );
 
       await _scrollToMaterialTable(tester);
       final row = find.byKey(const ValueKey('material-table-row-buy-child'));
       expect(row, findsOneWidget);
 
-      final selection = find.descendant(
-        of: row,
-        matching: find.byType(Checkbox),
-      );
+      // 横滚后行内会多出一份「冻结列」跟手副本（UtenFrozenLeadingColumn：
+      // 勾选框钉在视口左缘），故按 .first 取行内原位那一个。
+      final selection = find
+          .descendant(of: row, matching: find.byType(Checkbox))
+          .first;
       await tester.tap(selection);
       await tester.pumpAndSettle();
       expect(tester.widget<Checkbox>(selection).value, isTrue);
@@ -5740,10 +5985,11 @@ void main() {
       expect(find.text('更换供料路线'), findsNothing);
       expect(find.text('采用公共在途'), findsOneWidget);
       expect(find.text('提交采购需求'), findsOneWidget);
-      // 2026-09-04：主表无勾选列——右键菜单直接对行生效，不再有勾选框上下文。
+      // 右键菜单直接对行生效；未确认行的勾选框与勾选态保留
+      //（行内原位 + 冻结副本，至少一个在）。
       expect(
         find.descendant(of: row, matching: find.byType(Checkbox)),
-        findsOneWidget,
+        findsWidgets,
       );
 
       await tester.tap(find.text('查看物料详情'));
@@ -5789,10 +6035,11 @@ void main() {
         ),
         isEmpty,
       );
-      // 2026-09-04：主表无勾选列——右键菜单不依赖、也不产生任何勾选态。
+      // 2026-09-10 F2d：已确认（MAKE）且未改动的行没有勾选框；右键菜单不依赖、
+      // 也不产生任何勾选态。
       expect(
         find.descendant(of: row, matching: find.byType(Checkbox)),
-        findsOneWidget,
+        findsNothing,
       );
     },
   );
@@ -6240,6 +6487,25 @@ Future<void> _chooseMaterialRoute(
 Future<void> _chooseRoute(WidgetTester tester, String label) =>
     _chooseMaterialRoute(tester, 'material-path-1', label);
 
+/// 点主表列头（进度 / 供应方式）打开筛选下拉，选一个桶（文案「标签 (计数)」）。
+Future<void> _selectMaterialHeaderFilter(
+  WidgetTester tester,
+  String columnLabel,
+  String bucketText,
+) async {
+  // 宽屏联动模式下列头随表体滚动：ensureVisible(row) 会把列头顶出视口（offstage，
+  // 默认 finder 跳过），所以不跳过 offstage、先把列头滚回来再点。
+  final header = find.text(columnLabel, skipOffstage: false).first;
+  await tester.ensureVisible(header);
+  await tester.pumpAndSettle();
+  await tester.tap(header, warnIfMissed: false);
+  await tester.pumpAndSettle();
+  final bucket = find.text(bucketText).last;
+  await tester.ensureVisible(bucket);
+  await tester.tap(bucket);
+  await tester.pumpAndSettle();
+}
+
 Future<void> _selectAllMaterialRoutes(WidgetTester tester) async {
   await _resetPageScrolls(tester);
   // 「全选筛选结果」已下线：改为逐页勾选表头复选框（选择全局累计）。
@@ -6353,9 +6619,7 @@ Future<void> _tapBucketRowCheckbox(
   String goodsName,
 ) async {
   await _scrollBucketRowVisible(tester, goodsName);
-  final row = find
-      .ancestor(of: find.text(goodsName).first, matching: find.byType(Row))
-      .first;
+  final row = _frozenRowOf(goodsName);
   final checkbox = find
       .descendant(of: row, matching: find.byType(Checkbox))
       .first;
@@ -6367,9 +6631,7 @@ Future<void> _tapBucketRowCheckbox(
 
 /// 读取某行行首勾选框的当前值（先按货品名定位行）。
 bool _bucketRowCheckboxValue(WidgetTester tester, String goodsName) {
-  final row = find
-      .ancestor(of: find.text(goodsName).first, matching: find.byType(Row))
-      .first;
+  final row = _frozenRowOf(goodsName);
   return tester
       .widget<Checkbox>(
         find.descendant(of: row, matching: find.byType(Checkbox)).first,
@@ -7991,4 +8253,38 @@ Future<void> _confirmSupplyQuantityDialog(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(confirm);
   await tester.pumpAndSettle();
+}
+
+/// 行首勾选格 2026-09-11 起被「冻结」成整行 Stack 的 Positioned 兄弟
+/// （横滚时钉在视口左缘，见 UtenFrozenLeadingColumn），不再是数据 Row 的后代。
+/// 定位整行时必须取冻结包裹层；没有选择列的表（无冻结层）回落到 Row。
+Finder _frozenRowOf(String text) {
+  final frozen = find.ancestor(
+    of: find.text(text).first,
+    matching: find.byType(UtenFrozenLeadingColumn),
+  );
+  if (frozen.evaluate().isNotEmpty) return frozen.first;
+  return find
+      .ancestor(of: find.text(text).first, matching: find.byType(Row))
+      .first;
+}
+
+/// 把表格的横向滚动归零。
+///
+/// `tester.ensureVisible` 会把目标对齐到视口**左缘**，而首列勾选框是冻结列
+/// （UtenFrozenLeadingColumn：横滚后钉在视口左缘），对齐过去的内容正好躲进它底下
+/// ——这是 sticky 列的固有行为（内容从冻结列下面滚过），真机上用户往左拖一点就看见了。
+/// 测试里点这类首列控件前先把横滚归零。
+Future<void> _resetTableHScroll(WidgetTester tester) async {
+  for (final state in tester.stateList<ScrollableState>(
+    find.byType(Scrollable),
+  )) {
+    final position = state.position;
+    if (position.axis == Axis.horizontal &&
+        position.hasPixels &&
+        position.pixels != 0) {
+      position.jumpTo(0);
+    }
+  }
+  await tester.pump();
 }

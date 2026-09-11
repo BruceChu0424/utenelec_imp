@@ -2,10 +2,12 @@
 //
 // 产品口径：「每次登录检查是否有新的待审，有就弹居中弹窗」。
 // - 登录会话（authenticated + notice:read）从无到有时触发一次（登出再登入会重新触发）；
-// - 首屏短暂稳定后拉 GET /notices/pending-reviews（未办结+未稍后），不固定等 3s；
+// - 首屏短暂稳定后并行拉 GET /notices/pending-reviews（未办结+未稍后）与
+//   GET /notices/pending-popups（人事手动发布：待打卡 / 14 天内未读），不固定等 3s；
+//   任一失败视为本次检查失败（有界退避重试），两者都空才算「登录检查完成」；
 // - 弹窗单例（review_pending_dialog 内部守卫）：在线到达链已弹时不重复；
 // - 「稍后再看」是唯一静默途径（snooze 15 分钟）；右上 X 仅本次关闭，
-//   下次登录仍会提醒（未办结就还该提醒）。
+//   下次登录仍会提醒（未办结就还该提醒；打卡类型未打卡就还该提醒）。
 // 不渲染任何 UI（SizedBox.shrink），挂 app.dart 外壳 Column（与路由桥同位）。
 
 import 'dart:async';
@@ -13,6 +15,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/notice.dart';
 import '../providers/notice_providers.dart';
 import '../widgets/review_pending_dialog.dart';
 
@@ -94,11 +97,19 @@ class _ReviewPendingLoginGateState
       return;
     }
     try {
-      final pending = await ref.read(noticeRepositoryProvider).pendingReviews();
+      final repository = ref.read(noticeRepositoryProvider);
+      // 审核待办与人工通知并行拉取；任一失败整体重试（不能让打卡提醒因一次
+      // 抖动被静默吞掉）。
+      final results = await Future.wait<List<Notice>>([
+        repository.pendingReviews(),
+        repository.pendingPopups(),
+      ]);
+      final pending = results[0];
+      final manual = results[1];
       if (!mounted ||
           generation != _generation ||
           !widget.enabled ||
-          pending.isEmpty) {
+          (pending.isEmpty && manual.isEmpty)) {
         return;
       }
       final dialogContext = widget.dialogContext();
@@ -106,7 +117,11 @@ class _ReviewPendingLoginGateState
         _retry(generation);
         return;
       }
-      await showReviewPendingDialog(dialogContext, pending: pending);
+      await showReviewPendingDialog(
+        dialogContext,
+        pending: pending,
+        manual: manual,
+      );
     } catch (_) {
       // A temporary failure is not a successful login check. Retry with a
       // bounded delay, while identity/disposal guards cancel obsolete work.

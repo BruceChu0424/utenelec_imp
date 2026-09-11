@@ -1,5 +1,6 @@
 package com.uten.imp.features.expenseclaim;
 
+import com.uten.imp.features.notice.HrNoticeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.finance.EmployeeClaimPostingPort;
@@ -84,7 +85,8 @@ class ExpenseClaimServiceTest {
                 em,
                 taskClaim,
                 attachmentRepository,
-                attachmentService);
+                attachmentService,
+                mock(HrNoticeService.class));
     }
 
     @Test
@@ -228,6 +230,61 @@ class ExpenseClaimServiceTest {
         service.detail(claim.getId());
 
         verify(attachmentService).list("EXPENSE_CLAIM", claim.getId());
+    }
+
+    @Test
+    void detailResolvesApplicantDepartmentNameFromSnapshotId() {
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:apply"));
+        ExpenseClaim claim = claim(actorId, "DRAFT");
+        when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
+        when(itemRepository.findByClaimIdInOrderByClaimIdAscLineNoAsc(any()))
+                .thenReturn(List.of());
+        when(applicantQuery.departmentNames(List.of(claim.getApplicantDepartmentId())))
+                .thenReturn(java.util.Map.of(claim.getApplicantDepartmentId(), "研发部"));
+
+        var detail = service.detail(claim.getId());
+
+        assertEquals(claim.getApplicantDepartmentId(), detail.departmentId());
+        assertEquals("研发部", detail.departmentName());
+    }
+
+    @Test
+    void pendingFacetsAggregateDepartmentsAndMonthsForApprovalStatuses() {
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        UUID departmentId = UUID.randomUUID();
+        when(applicantQuery.departmentFacets(Set.of("SUBMITTED", "REVIEWING")))
+                .thenReturn(List.of(new ExpenseApplicantQuery.FacetRow(
+                        departmentId.toString(), "研发部", 3)));
+        when(applicantQuery.monthFacets(Set.of("SUBMITTED", "REVIEWING")))
+                .thenReturn(List.of(new ExpenseApplicantQuery.FacetRow("2026-09", "2026-09", 3)));
+
+        var facets = service.facets("pending");
+
+        assertEquals(1, facets.departments().size());
+        assertEquals(departmentId.toString(), facets.departments().get(0).value());
+        assertEquals("研发部", facets.departments().get(0).label());
+        assertEquals(3L, facets.departments().get(0).count());
+        assertEquals("2026-09", facets.months().get(0).value());
+        assertEquals(3L, facets.months().get(0).count());
+    }
+
+    @Test
+    void payableFacetsRequirePayPermission() {
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+
+        ApiException error = assertThrows(ApiException.class, () -> service.facets("payable"));
+
+        assertEquals(ErrorCode.FORBIDDEN, error.getCode());
+        verifyNoInteractions(applicantQuery);
+    }
+
+    @Test
+    void facetsRejectUnknownQueue() {
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve", "expense:pay"));
+
+        ApiException error = assertThrows(ApiException.class, () -> service.facets("mine"));
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
     }
 
     private static ExpenseClaim claim(UUID applicantId, String status) {

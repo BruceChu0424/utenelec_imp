@@ -36,6 +36,37 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets(
+    'childCount badge is announced while collapsed and dropped once expanded',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      Widget cell(bool expanded) => MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 420,
+            child: UtenTreeTableCell(
+              depth: 1,
+              sequence: 'P1.2',
+              title: '壳体',
+              hasChildren: true,
+              childCount: 3,
+              expanded: expanded,
+              onToggle: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpWidget(cell(false));
+      expect(find.byTooltip('展开 3 个下级'), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp('展开 壳体 的 3 个下级')), findsOneWidget);
+      await tester.pumpWidget(cell(true));
+      expect(find.byTooltip('收起下级'), findsOneWidget);
+      expect(find.byTooltip('展开 3 个下级'), findsNothing);
+      expect(tester.takeException(), isNull);
+      semantics.dispose();
+    },
+  );
+
   testWidgets('uses a dedicated 48dp toggle with expanded semantics', (
     tester,
   ) async {

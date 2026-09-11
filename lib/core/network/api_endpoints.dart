@@ -114,12 +114,16 @@ abstract final class ApiEndpoints {
       '/warehouse/production-finished-in/arrival-registrations/batch';
   static const productionFinishedArrivalBatchPlaceSuggestions =
       '$productionFinishedArrivalBatchBase/place-suggestions';
-  static const productionFinishedArrivalBatchRememberPlaces =
-      '$productionFinishedArrivalBatchBase/remember-places';
+  // 2026-09-11 死代码清扫：batch/remember-places（按报工 UUID）无调用方，
+  // 批量记忆一律走 remember-registration-batches（按登记批次 UUID 精确绑定）。
   static const productionFinishedArrivalBatchRememberRegistrationBatches =
       '$productionFinishedArrivalBatchBase/remember-registration-batches';
   static const productionFinishedArrivalLastWarehouse =
       '/warehouse/production-finished-in/arrival-registrations/last-warehouse';
+
+  /// V548 登记撤回（仅品质未处理）：路径参数是登记批次 UUID，不是报工单 UUID。
+  static String productionFinishedArrivalReverse(String registrationId) =>
+      '/warehouse/production-finished-in/arrival-registrations/$registrationId/reverse';
   static const productionQualityInspections = '/production/quality-inspections';
   static const productionQualityInspectionCount =
       '/production/quality-inspections/count';
@@ -127,6 +131,12 @@ abstract final class ApiEndpoints {
       '/production/quality-inspections/capability';
   static const productionQualityInspectionPassAll =
       '/production/quality-inspections/decisions/pass-all';
+
+  /// V547 品质检查单（待检处置一行一张单）。
+  static const productionQualityInspectionSheets =
+      '/production/quality-inspections/sheets';
+  static String productionQualityInspectionSheet(String sheetId) =>
+      '$productionQualityInspectionSheets/$sheetId';
   static const productionQualityInspectionRecords =
       '/production/quality-inspections/records';
   static String productionQualityInspectionRecord(String recordId) =>
@@ -318,6 +328,9 @@ abstract final class ApiEndpoints {
   static String client(String id) => '/master/clients/$id';
   static String clientAccess(String id) => '${client(id)}/access';
 
+  /// 多选客户批量设负责人/可见人（字面段 access 与 UUID 路径参数不冲突）。
+  static const clientsAccessBatch = '$clients/access/batch';
+
   // 供应商资料分类（基础资料 / master-data）—— 与货品/模具分类同构，独立端点
   static const supplierCategories = '/master/supplier-categories';
   static const supplierCategoryTree = '$supplierCategories/tree';
@@ -398,6 +411,7 @@ abstract final class ApiEndpoints {
   // 货架目视化清单（货品主档库位号驱动，打印张贴/导出口径，与库存数量无关）。
   static const stockShelfLabels = '/stock/shelf-labels';
   static const stockShelfLabelRacks = '/stock/shelf-labels/racks';
+  static const stockShelfLabelLayout = '/stock/shelf-labels/layout';
 
   // 仓库管理单据（8 类统一，端点 /api/stock/docs，docType 区分）：CRUD + 审核 + 红冲。
   static const stockDocsBase = '/stock/docs';
@@ -538,6 +552,9 @@ abstract final class ApiEndpoints {
   static const visitorApplications = '/visitor/applications';
   static String visitorApplication(String id) => '/visitor/applications/$id';
   static const visitorApproval = '/visitor-approval';
+
+  /// HR 审批列表表头筛选桶（状态/接待人部门，2026-09-10）。
+  static const visitorApprovalFacets = '/visitor-approval/facets';
   static const visitorApprovalAsHost = '/visitor-approval/as-host';
   static const visitorApprovalPendingCount = '/visitor-approval/pending-count';
   static const visitorApprovalHostPendingCount =
@@ -554,6 +571,9 @@ abstract final class ApiEndpoints {
   static const authVerifyPassword = '/auth/verify-password';
   static const profileMyChanges = '/profile/me/changes';
   static const hrProfileChanges = '/hr/profile-changes';
+
+  /// HR 队列表头筛选桶（部门），status 与列表分段同口径（2026-09-10）。
+  static const hrProfileChangesFacets = '/hr/profile-changes/facets';
   static const hrProfileChangesPendingCount =
       '/hr/profile-changes/pending-count';
   static String hrProfileChangeDetail(String id) => '/hr/profile-changes/$id';
@@ -584,12 +604,15 @@ abstract final class ApiEndpoints {
 
   /// V459 居中审核弹窗（登录检查）：我名下未办结且未稍后的待审通知。
   static const noticesPendingReviews = '/notices/pending-reviews';
+
+  /// 人工通知登录弹窗（2026-09-10，ADR-063 §8）：人事手动发布、对我可见且仍待
+  /// 打卡（acknowledge）/ 未读未确认（none，14 天内）的通知。
+  static const noticesPendingPopups = '/notices/pending-popups';
   static const noticesBatchDelete = '/notices/batch-delete';
   static const noticesAudiencePreview = '/notices/audience/preview';
   static const noticesAudienceEmployees = '/notices/audience/employees';
   static const noticesTodos = '/notices/todos';
   static String noticeRead(String id) => '/notices/$id/read';
-  static String noticePopupAck(String id) => '/notices/$id/popup-ack';
   static String noticeComplete(String id) => '/notices/$id/complete';
   static String noticeAcknowledge(String id) => '/notices/$id/acknowledge';
   static String noticeBlessing(String id) => '/notices/$id/blessing';
@@ -621,7 +644,13 @@ abstract final class ApiEndpoints {
   // 单据号预览（新建页占位显示；不消耗序列，并发时可能差1以保存后为准）
   static const docNumberPeek = '/doc-number/peek';
 
+  // 跨模块草稿计数（hub 单据卡徽章 + 新建页「草稿(N)」入口按钮；
+  // 后端 features/documents/DocumentDraftCountController，按 *:view + 对象范围收敛）
+  static const documentDraftCounts = '/documents/drafts/count';
+
   // 系统测试（工作台「系统测试」区，仅超管+本地/内网测试环境可用；
   // 后端 features/admin/systemtest/SystemTestController）
   static const systemTestBusinessDataReset = '/system-test/business-data/reset';
+  static const systemTestBusinessDataLastResult =
+      '/system-test/business-data/last-result';
 }

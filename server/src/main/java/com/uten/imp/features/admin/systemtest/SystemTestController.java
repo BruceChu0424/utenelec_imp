@@ -61,6 +61,18 @@ public class SystemTestController {
                         request.database(), request.fingerprint()));
     }
 
+    /**
+     * 上次清空结果（audit_log 最近一条 business_data_reset 显式事件）。
+     *
+     * <p>清空是同步长请求：客户端/网关超时后服务端仍会执行完并把全员踢下线，发起人
+     * 重登后工作台系统测试区用本端点回显「上次清空」结果，区分「失败」与「已成功但断连」。
+     * 只读、不进排水豁免（重登本身发生在清空完成之后）；门禁同预览端点（运行开关 + 超管）。</p>
+     */
+    @GetMapping("/business-data/last-result")
+    public BusinessDataResetService.LastResult lastBusinessDataResult() {
+        return businessDataResetService.lastResult();
+    }
+
     public record ResetBusinessDataRequest(@NotBlank String confirm) {
     }
 

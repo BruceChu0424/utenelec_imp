@@ -14,6 +14,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -161,11 +162,13 @@ class _SubcontractOutboundSegmentState
           child: UtenFilterToolbar<int>(
             segmentsKey: const Key('subcontract-outbound-mode'),
             segments: [
+              // 待出仓 = 仓库必须清空的队列 → 红徽章；历史单据不传 count。
               if (widget.canTasks)
                 UtenFilterSegment(
                   value: _tasksMode,
                   label: '待出仓任务',
                   count: widget.taskCount,
+                  countForm: UtenSegmentCountForm.actionable,
                 ),
               if (widget.canHistory)
                 const UtenFilterSegment(value: _historyMode, label: '历史单据'),

@@ -11,6 +11,8 @@ public record ExpenseClaimDto(
         UUID id,
         UUID applicantId,
         String applicantName,
+        UUID departmentId,
+        String departmentName,
         String title,
         List<ExpenseClaimItemDto> items,
         BigDecimal totalAmount,

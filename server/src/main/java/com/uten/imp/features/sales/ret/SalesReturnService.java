@@ -2,6 +2,7 @@ package com.uten.imp.features.sales.ret;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.saleschain.SalesChainStatus;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
@@ -645,19 +646,12 @@ public class SalesReturnService {
                 .executeUpdate();
     }
 
+    /** V545：退货/退货红冲后的行状态走统一派生（剩余未排量优先），见 {@link SalesChainStatus#derive}。 */
     static short chainAfterReturn(
             short current, BigDecimal qty, BigDecimal shipped, BigDecimal returned,
             BigDecimal flagged, BigDecimal reserved, BigDecimal planned, BigDecimal produced) {
-        if (current <= 0) return current;
-        BigDecimal outstanding = qty.subtract(shipped).add(returned).subtract(flagged);
-        if (outstanding.signum() <= 0) return 9;
-        if (reserved.compareTo(outstanding) >= 0) return 7;
-        BigDecimal unfinishedPlan = planned.subtract(produced).max(BigDecimal.ZERO);
-        if (unfinishedPlan.signum() > 0) {
-            return current >= 3 && current <= 6 ? current : (short) 4;
-        }
-        if (reserved.signum() > 0) return 1;
-        return 2;
+        return SalesChainStatus.derive(
+                current, qty, shipped, returned, flagged, reserved, planned, produced);
     }
 
     private static BigDecimal bd(Object value) {

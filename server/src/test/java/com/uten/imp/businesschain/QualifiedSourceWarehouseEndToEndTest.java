@@ -31,6 +31,10 @@ import static org.junit.jupiter.api.Assertions.*;
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789","uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 class QualifiedSourceWarehouseEndToEndTest {
+
+    private static final String SYSTEM_RECHECK_AUDIT_SQL =
+            "SELECT count(*) FROM audit_log WHERE actor_id IS NULL"
+                    + " AND actor_account='系统自动核对备料'";
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
@@ -73,10 +77,13 @@ class QualifiedSourceWarehouseEndToEndTest {
                     AND event.created_by IS NULL AND event.system_reason='AUTOMATIC_READINESS_RECHECK'
                 """,BigDecimal.class,c.packageId()));
         assertTrue(db.queryForObject("SELECT count(*) FROM audit_log WHERE actor_id IS NULL AND actor_account='系统自动核对备料'",Long.class)>0);
-        long audit=db.queryForObject("SELECT count(*) FROM audit_log",Long.class);
+        // 只比「系统自动核对备料」自己的审计行：全库 audit_log 计数会被同一容器里
+        // 其它用例与后台调度（通知 outbox 投递等）异步写入干扰，单跑绿、全量红
+        //（2026-09-11 实测）。本用例要锁的是「重跑一轮不产生重复系统动作」。
+        long audit=db.queryForObject(SYSTEM_RECHECK_AUDIT_SQL,Long.class);
         long notices=db.queryForObject("SELECT count(*) FROM notices",Long.class);
         readinessReconciler.runBatch();
-        assertEquals(audit,db.queryForObject("SELECT count(*) FROM audit_log",Long.class));
+        assertEquals(audit,db.queryForObject(SYSTEM_RECHECK_AUDIT_SQL,Long.class));
         assertEquals(notices,db.queryForObject("SELECT count(*) FROM notices",Long.class));
         assertEquals(purchases,db.queryForObject("SELECT count(*) FROM purchase_receipts",Long.class));
         assertEquals(1,drawCount(c));

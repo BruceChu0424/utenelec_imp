@@ -173,19 +173,14 @@ class _ReportablePlanLineSheetState
               padding: const EdgeInsets.all(UtenSpacing.s12),
               child: Row(
                 children: [
+                  // 2026-09-11 撤掉「查询」按钮（全站同改）：防抖到点即查，回车立刻查。
                   Expanded(
                     child: UtenSearchBar(
                       controller: _search,
                       hint: '计划号 / 产品 / 订单号 / 客户',
+                      onChanged: (_) => _load(),
                       onSubmitted: (_) => _load(),
                     ),
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  UtenButton(
-                    type: UtenButtonType.tonal,
-                    icon: Icons.search_rounded,
-                    onPressed: _load,
-                    child: const Text('查询'),
                   ),
                 ],
               ),

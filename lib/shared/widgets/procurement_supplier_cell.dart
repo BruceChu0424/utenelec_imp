@@ -5,9 +5,14 @@
 // [value] 行级供应商 id；[entries] id→名称（显示用，通常含「已禁用」补显项）；
 // [fallback] 表头默认供应商（行未覆盖时显示它）；[requiredEmpty] 必填未选时提示标红；
 // [autofilled] 学习预填值（黄框提醒核对；用户改选由页面清除标记）。
+//
+// 规格（2026-09-09 统一口径）：不自带 border/contentPadding——isDense 吃全局
+// 主题（圆角/内边距与数量、单价等文本格一致），正文字号——此前 bodySmall+
+// (10,8) 矮于同行其他格，整行高低不齐。
 import 'package:flutter/material.dart';
 
 import '../../components/inputs/required_field_decoration.dart';
+import '../../core/theme/uten_tokens.dart';
 
 class ProcurementSupplierCell extends StatelessWidget {
   const ProcurementSupplierCell({
@@ -45,19 +50,12 @@ class ProcurementSupplierCell extends StatelessWidget {
     final hasValue = displayId != null && displayId.isNotEmpty;
     return InkWell(
       onTap: onPick,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(UtenRadius.control),
       child: InputDecorator(
         decoration: applyAutofillHint(
           applyRequiredEmpty(
             InputDecoration(
               isDense: true,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 8,
-              ),
               suffixIcon: Icon(
                 hasValue ? Icons.unfold_more_rounded : Icons.search_rounded,
                 size: 16,
@@ -75,7 +73,7 @@ class ProcurementSupplierCell extends StatelessWidget {
           hasName ? entries[displayId]! : (requiredEmpty ? '必选供应商' : '点击选择供应商'),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodySmall?.copyWith(
+          style: theme.textTheme.bodyMedium?.copyWith(
             color: hasName
                 ? theme.colorScheme.onSurface
                 : (requiredEmpty

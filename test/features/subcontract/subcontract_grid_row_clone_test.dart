@@ -1,6 +1,7 @@
 // SubcontractGridRow.clone（明细复制/粘贴，2026-09-03）：
 // 语义同 PurchaseGridRow.clone——拷用户录入（含损耗单四列）与主档透传 + 行委外商；
 // 不拷上游 id / planItemId / 来源谱系 / 到货门控 / sourceLocked。
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/subcontract/config/subcontract_doc_config.dart';
 import 'package:uten_imp/features/subcontract/widgets/subcontract_grid_columns.dart';
@@ -83,12 +84,22 @@ void main() {
     expect(c.sourceLocked, isFalse);
   });
 
-  test('列序契约：数量之后紧跟单位，实际重量列已下线（2026-09-04）', () {
-    final columns = subcontractGridColumns(
-      (_) async {},
-      SubcontractDocConfig.inquiry, // 任一配置都不再渲染 weight 列
+  testWidgets('列序契约：数量之后紧跟单位，实际重量列已下线（2026-09-04）', (tester) async {
+    late final List<String> keys;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            keys = subcontractGridColumns(
+              (_) async {},
+              SubcontractDocConfig.inquiry, // 任一配置都不再渲染 weight 列
+              context: context,
+            ).map((column) => column.key).toList();
+            return const SizedBox();
+          },
+        ),
+      ),
     );
-    final keys = columns.map((column) => column.key).toList();
     expect(keys, isNot(contains('weight')));
     expect(keys.indexOf('unit'), keys.indexOf('qty') + 1);
   });

@@ -1,3 +1,16 @@
+// 工资批次审核页。
+//
+// 2026-09-09 表格化改版：批次 Chip 列表与摘要卡保留；_SlipRow ListView 员工明细
+// → MasterDataTableView（列：工号/姓名/应发/扣减/实发，PayrollSlip 无部门字段故
+// 不设部门列）。
+// 2026-09-10 明细多选下线（审计 A2-payroll-review）：明细表曾开多选 +「批量通过(N)」，
+// 但工资审核只有整批语义（后端仅 POST /batches/{id}/approve，无逐条审核 API），
+// 勾选 1 条点「批量通过」实际整批通过 —— 语义误导，已删除 selectable/batchActionsBuilder。
+// 审核入口唯一：底部 UtenBottomActionBar 的整批「审核通过 / 驳回」
+//（均带 UtenReviewerResponsibilityNotice）；明细表退回只读浏览。
+//
+// 响应式：compact 由页面自套 UtenContentContainer；明细表为定高内滚（沿用旧版
+// 高度钳制），窄屏横向滚动即可。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -16,10 +29,10 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/responsive/breakpoint.dart';
-import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/payroll_batch.dart';
 import '../models/payroll_slip.dart';
 import '../providers/payroll_providers.dart';
@@ -65,8 +78,10 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
         }
         return Column(
           children: [
+            // 72：两行文案（期间·范围 + 状态·人数）在默认字号下约 36px，
+            // 加行内边距后 64 会溢出 6px（2026-09-09 表格化改版时实测），放宽到 72。
             SizedBox(
-              height: 64,
+              height: 72,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
@@ -463,19 +478,20 @@ class _BatchDetail extends StatelessWidget {
         if (batch.slips.isEmpty)
           const UtenEmpty(message: '服务器未返回该批次的员工明细')
         else
-          UtenCard(
-            padding: EdgeInsets.zero,
-            child: SizedBox(
-              height: (batch.slips.length * 64.0)
-                  .clamp(128.0, 480.0)
-                  .toDouble(),
-              child: ListView.separated(
-                itemCount: batch.slips.length,
-                separatorBuilder: (_, _) =>
-                    Divider(height: 1, color: theme.colorScheme.outlineVariant),
-                itemBuilder: (context, index) =>
-                    _SlipRow(slip: batch.slips[index]),
-              ),
+          // 明细表：定高内滚（沿用旧版高度钳制，多行时不与摘要卡争屏）。
+          SizedBox(
+            height: (batch.slips.length * 56.0).clamp(240.0, 480.0).toDouble(),
+            child: MasterDataTableView<PayrollSlip>(
+              key: const Key('payroll-review-slip-table'),
+              columns: _slipColumns,
+              items: batch.slips,
+              facets: const {},
+              nullCounts: const {},
+              filters: const {},
+              onFilterChanged: (_, _) {},
+              // 明细无独立详情页，不接 onRowTap；审核只有整批语义（底部操作条），
+              // 故明细表不开多选——勾选几条却整批生效是语义误导（2026-09-10 下线）。
+              emptyMessage: '服务器未返回该批次的员工明细',
             ),
           ),
       ],
@@ -483,39 +499,43 @@ class _BatchDetail extends StatelessWidget {
   }
 }
 
-class _SlipRow extends StatelessWidget {
-  const _SlipRow({required this.slip});
-
-  final PayrollSlip slip;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final initial = slip.employeeName.trim().isEmpty
-        ? '?'
-        : slip.employeeName.characters.first;
-    return ListTile(
-      leading: CircleAvatar(
-        radius: 16,
-        backgroundColor: UtenColors.teal500,
-        child: Text(initial, style: const TextStyle(color: Colors.white)),
-      ),
-      title: Text('${slip.employeeName}(${slip.employeeCode})'),
-      subtitle: Text(
-        '应发 ¥${slip.grossIncome.toStringAsFixed(2)} · '
-        '扣除 ¥${slip.totalDeduction.toStringAsFixed(2)}',
-      ),
-      trailing: Text(
-        '¥ ${slip.netIncome.toStringAsFixed(2)}',
-        style: theme.textTheme.bodyMedium?.copyWith(
-          fontWeight: FontWeight.w700,
-          color: theme.colorScheme.primary,
-          fontFeatures: const [FontFeature.tabularFigures()],
-        ),
-      ),
-    );
-  }
-}
+/// 员工工资明细列（以原 _SlipRow 字段为准：工号/姓名/应发/扣减/实发；
+/// PayrollSlip 无部门字段，不设部门列）。
+final List<MasterColumnDef<PayrollSlip>> _slipColumns = [
+  MasterColumnDef(
+    key: 'employeeCode',
+    label: '工号',
+    width: 100,
+    value: (s) => s.employeeCode,
+  ),
+  MasterColumnDef(
+    key: 'employeeName',
+    label: '姓名',
+    width: 120,
+    value: (s) => s.employeeName,
+  ),
+  MasterColumnDef(
+    key: 'grossIncome',
+    label: '应发',
+    width: 120,
+    type: 'money',
+    value: (s) => s.grossIncome.toStringAsFixed(2),
+  ),
+  MasterColumnDef(
+    key: 'totalDeduction',
+    label: '扣减',
+    width: 120,
+    type: 'money',
+    value: (s) => s.totalDeduction.toStringAsFixed(2),
+  ),
+  MasterColumnDef(
+    key: 'netIncome',
+    label: '实发',
+    width: 130,
+    type: 'money',
+    value: (s) => s.netIncome.toStringAsFixed(2),
+  ),
+];
 
 UtenStatusBadgeType _batchBadge(PayrollBatchStatus status) => switch (status) {
   PayrollBatchStatus.draft => UtenStatusBadgeType.neutral,

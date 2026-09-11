@@ -21,7 +21,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_drafts_button.dart';
+import '../../../components/buttons/uten_edit_floating_actions.dart';
 import '../../../components/buttons/uten_import_button.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -38,6 +41,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../basic_data/models/reference_method_option.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
@@ -45,7 +49,11 @@ import '../../basic_data/widgets/uten_supplier_picker.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/auth/document_scope_capability.dart';
+import '../../../shared/attachments/business_attachment_section.dart';
+import '../../../shared/attachments/pending_attachment_controller.dart';
+import '../../../shared/attachments/pending_attachment_flow.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/models/procurement_commercial_terms.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
@@ -53,6 +61,7 @@ import '../../../shared/providers/editable_grid_column_prefs.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/commercial_terms_batch_sheet.dart';
+import '../../../shared/widgets/editable_grid_totals_bar.dart';
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
@@ -85,6 +94,12 @@ class _SubcontractOrderEditPageState
       .contains(Perm.subcontractOrderSubmitFinance);
   bool get _isCreate => widget.id == null;
 
+  /// 新建委外订货单保存前暂存的附件（ADR-074：保存拿到 UUID 后逐个确认上传）。
+  final _pendingFiles = PendingAttachmentController();
+
+  /// 订货单已生成但仍有附件上传失败：再点「保存」只重试附件，不重复建单。
+  List<SubcontractDocDetail>? _createdOrders;
+
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
   DateTime _billDate = ChinaDateTime.today();
@@ -116,6 +131,7 @@ class _SubcontractOrderEditPageState
   void dispose() {
     _billNo.dispose();
     _remark.dispose();
+    _pendingFiles.dispose();
     _grid.dispose(); // 自动 dispose 各行控制器
     _scrollCtl.dispose();
     super.dispose();
@@ -719,6 +735,16 @@ class _SubcontractOrderEditPageState
   }
 
   Future<void> _save() async {
+    if (_createdOrders case final created?) {
+      // 订货单已生成、附件未全部上传：只补传附件，成功后再提交财务/进入详情。
+      setState(() => _saving = true);
+      try {
+        await _finishCreatedOrders(created);
+      } finally {
+        if (mounted) setState(() => _saving = false);
+      }
+      return;
+    }
     final rows = _grid.rows.where((r) => r.goods != null).toList();
     if (rows.isEmpty) {
       context.appError('请至少添加一条明细');
@@ -832,42 +858,7 @@ class _SubcontractOrderEditPageState
       if (_isCreate) {
         final created = await repo.createBatch(body);
         if (!mounted) return;
-        String? financeError;
-        if (_canSubmitFinance) {
-          for (final createdDoc in created) {
-            try {
-              await repo.submitFinance(createdDoc.id);
-            } on ApiException catch (e) {
-              financeError ??= e.message;
-            }
-          }
-        }
-        if (!mounted) return;
-        bumpListRefresh(ref, _cfg.refreshKey);
-        if (financeError != null) {
-          context.appWarning(
-            '已生成 ${created.length} 张委外订货单，部分未提交财务：$financeError',
-          );
-        } else if (_canSubmitFinance) {
-          context.appSuccess(
-            comboCount > 1
-                ? '已按「委外商+条款组合」拆分为 $comboCount 组共 ${created.length} 张委外订货单并提交财务'
-                : '委外订货单已提交财务审核',
-          );
-        } else {
-          context.appSuccess(
-            comboCount > 1
-                ? '已按「委外商+条款组合」拆分并保存 ${created.length} 张委外订货单草稿'
-                : '委外订货单草稿已保存',
-          );
-        }
-        if (created.length == 1) {
-          context.replace(
-            SubcontractRoute.detail(_cfg.pathSegment, created.first.id),
-          );
-        } else {
-          context.go('/subcontract/${_cfg.type.pathSegment}');
-        }
+        await _finishCreatedOrders(created, comboCount: comboCount);
         return;
       }
       // 编辑既有单：单头条款 = 全行一致的条款（行值即单头值）。
@@ -905,8 +896,85 @@ class _SubcontractOrderEditPageState
     }
   }
 
+  /// 新建拆单收尾：先把暂存附件挂到每张新委外订货单（提交财务后对象策略不再允许改附件），
+  /// 全部成功再提交财务并跳转；任一附件失败则留在本页，保留失败项供重试。
+  Future<void> _finishCreatedOrders(
+    List<SubcontractDocDetail> created, {
+    int? comboCount,
+  }) async {
+    final repo = ref.read(
+      subcontractRepositoryProvider(SubcontractDocType.order),
+    );
+    final groups = comboCount ?? created.length;
+    try {
+      if (_pendingFiles.isNotEmpty) {
+        if (_createdOrders == null) setState(() => _createdOrders = created);
+        final ok = await flushPendingAttachments(
+          context,
+          ref,
+          _pendingFiles,
+          ownerType: 'SUBCONTRACT_ORDER',
+          ownerIds: [for (final createdDoc in created) createdDoc.id],
+        );
+        if (!mounted || !ok) return;
+      }
+      if (_createdOrders != null) setState(() => _createdOrders = null);
+      String? financeError;
+      if (_canSubmitFinance) {
+        for (final createdDoc in created) {
+          try {
+            await repo.submitFinance(createdDoc.id);
+          } on ApiException catch (e) {
+            financeError ??= e.message;
+          }
+        }
+      }
+      if (!mounted) return;
+      bumpListRefresh(ref, _cfg.refreshKey);
+      if (financeError != null) {
+        context.appWarning(
+          '已生成 ${created.length} 张委外订货单，部分未提交财务：$financeError',
+        );
+      } else if (_canSubmitFinance) {
+        context.appSuccess(
+          groups > 1
+              ? '已按「委外商+条款组合」拆分为 $groups 组共 ${created.length} 张委外订货单并提交财务'
+              : '委外订货单已提交财务审核',
+        );
+      } else {
+        context.appSuccess(
+          groups > 1
+              ? '已按「委外商+条款组合」拆分并保存 ${created.length} 张委外订货单草稿'
+              : '委外订货单草稿已保存',
+        );
+      }
+      if (created.length == 1) {
+        context.replace(
+          SubcontractRoute.detail(_cfg.pathSegment, created.first.id),
+        );
+      } else {
+        context.go('/subcontract/${_cfg.type.pathSegment}');
+      }
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError('保存失败，请稍后重试');
+    }
+  }
+
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// 新建态 AppBar 右上角「草稿(N)」入口。
+  ///
+  /// 管理卡 skipListOnCreate 直达新建页，从 hub 打不开列表；本按钮是用户回到自己
+  /// 草稿的唯一入口（点击进列表并预选草稿段）。编辑既有单据时不显示。
+  List<Widget>? get _draftsAction {
+    if (!_isCreate || !_cfg.skipListOnCreate) return null;
+    final kind = _cfg.draftKind;
+    if (kind == null) return null;
+    return [UtenDraftsButton(kind: kind, listLocation: _cfg.listLocation)];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -918,16 +986,22 @@ class _SubcontractOrderEditPageState
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(context, defaultPath: '/subcontract'),
         ),
-        actions: [
-          UtenButton(
-            type: UtenButtonType.tonal,
-            icon: Icons.history_rounded,
-            onPressed: () =>
-                context.push('/subcontract/${_cfg.type.pathSegment}'),
-            child: const Text('查看历史'),
-          ),
-        ],
+        actions: _draftsAction,
       ),
+      // 底部固定操作条 2026-09-11 撤除（全站同改）：改右下角悬浮「取消 / 保存」；
+      // 加载中不出按钮，避免数据没就位就能点保存。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: _loading
+          ? null
+          : UtenEditFloatingActions(
+              onCancel: () => popOrBackTo(context, defaultPath: '/subcontract'),
+              onSave: _save,
+              saving: _saving,
+              saveLabel: _canSubmitFinance ? '保存并提交财务审核' : '保存订货单草稿',
+              saveIcon: _canSubmitFinance
+                  ? Icons.send_outlined
+                  : Icons.save_outlined,
+            ),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
@@ -937,7 +1011,13 @@ class _SubcontractOrderEditPageState
                   thumbVisibility: true,
                   child: ListView(
                     controller: _scrollCtl,
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    // 底部多留一个悬浮组的高度，最后一行明细不被「取消/保存」压住。
+                    padding: const EdgeInsets.fromLTRB(
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenSpacing.s12 + 88,
+                    ),
                     children: [
                       if (_isCreate) ...[
                         _orderSourceBanner(theme),
@@ -1035,14 +1115,41 @@ class _SubcontractOrderEditPageState
                         ),
                       ),
                       const SizedBox(height: UtenSpacing.s12),
+                      // 委外订货单附件：已有单直接挂 SUBCONTRACT_ORDER；新建单先本地暂存，
+                      // 拆单生成后逐张确认上传，再提交财务（ADR-074）。
+                      if (!_isCreate)
+                        BusinessAttachmentSection(
+                          ownerType: 'SUBCONTRACT_ORDER',
+                          ownerId: widget.id!,
+                          canView: ref
+                              .watch(currentPermissionsProvider)
+                              .contains(Perm.attachmentView),
+                          // 进入编辑页即已确认可写；对象范围与状态由服务端附件策略再校验。
+                          canManage: true,
+                          title: '附件（合同/加工要求/图片）',
+                          categories: const ['合同', '加工要求', '图片', '其他'],
+                        )
+                      else ...[
+                        if (_createdOrders != null)
+                          const PendingAttachmentRetryNotice(
+                            documentLabel: '委外订货单',
+                          ),
+                        BusinessAttachmentSection.draft(
+                          key: const ValueKey(
+                            'subcontract-order-draft-attachments',
+                          ),
+                          controller: _pendingFiles,
+                          canManage: ref
+                              .watch(currentPermissionsProvider)
+                              .contains(Perm.subcontractOrderCreate),
+                          title: '附件（合同/加工要求/图片）',
+                          categories: const ['合同', '加工要求', '图片', '其他'],
+                        ),
+                      ],
+                      const SizedBox(height: UtenSpacing.s12),
+                      // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）：只留右对齐引入入口。
                       Row(
                         children: [
-                          Text(
-                            '明细 (${_grid.length})',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
                           const Spacer(),
                           UtenImportButton(
                             label: '从上游引入',
@@ -1092,6 +1199,7 @@ class _SubcontractOrderEditPageState
                             columns: subcontractGridColumns(
                               _pickGoods,
                               _cfg,
+                              context: context,
                               unitEntries: names.unitEntries,
                               supplierEntries: _supplierDropdownEntries(),
                               supplierRequired: true,
@@ -1118,6 +1226,55 @@ class _SubcontractOrderEditPageState
                               // 每行末尾备注列。
                               showRemark: true,
                             ),
+                            // 合计条（全站统一口径）：底部固定操作条 2026-09-11 改
+                            // 右下角悬浮后合计回到表尾。数量按单位分组绝不相加；
+                            // 订货条款行级，只有全单币种唯一时才标注币种。
+                            footer: EditableGridTotalsBar<SubcontractGridRow>(
+                              key: const Key('subcontract-order-edit-totals'),
+                              controller: _grid,
+                              showDivider: false,
+                              watchOf: (row) => [row.qty],
+                              entriesBuilder: (rows) {
+                                final currencyIds = rows
+                                    .map((row) => row.currencyId)
+                                    .whereType<String>()
+                                    .where((id) => id.isNotEmpty)
+                                    .toSet();
+                                return [
+                                  utenQuantityTotalEntry(
+                                    rows
+                                        .where((row) => row.goods != null)
+                                        .map(
+                                          (row) => MeasuredAmount(
+                                            value:
+                                                double.tryParse(
+                                                  row.qty.text.trim(),
+                                                ) ??
+                                                0,
+                                            unitId: row.unitId,
+                                            unitName:
+                                                names.unitEntries[row.unitId],
+                                          ),
+                                        ),
+                                  ),
+                                  UtenTotalEntry(
+                                    utenAmountTotalLabel(
+                                      currencyIds.length == 1
+                                          ? financeCurrencyDisplayLabel(
+                                              name: names.currency(
+                                                currencyIds.first,
+                                              ),
+                                            )
+                                          : null,
+                                    ),
+                                    _grid.totalListenable.value.toStringAsFixed(
+                                      2,
+                                    ),
+                                    danger: true,
+                                  ),
+                                ];
+                              },
+                            ),
                             createBlankRow: _blankRow,
                             cloneRow: (r) => r.clone(),
                             // V304：订货单放开手工行（委外自建订货单，无申请来源）。
@@ -1128,47 +1285,6 @@ class _SubcontractOrderEditPageState
                   ),
                 ),
               ),
-      ),
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border(
-              top: BorderSide(color: theme.colorScheme.outlineVariant),
-            ),
-          ),
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Wrap(
-            alignment: WrapAlignment.center,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: UtenSpacing.s12,
-            runSpacing: UtenSpacing.s8,
-            children: [
-              ValueListenableBuilder<double>(
-                valueListenable: _grid.totalListenable,
-                builder: (_, total, _) => Text(
-                  '合计 ¥${total.toStringAsFixed(2)}',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              UtenButton(
-                type: UtenButtonType.secondary,
-                onPressed: () => context.pop(),
-                child: const Text('取消'),
-              ),
-              UtenButton(
-                isLoading: _saving,
-                icon: _canSubmitFinance
-                    ? Icons.send_outlined
-                    : Icons.save_outlined,
-                onPressed: _saving ? null : _save,
-                child: Text(_canSubmitFinance ? '保存并提交财务审核' : '保存订货单草稿'),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

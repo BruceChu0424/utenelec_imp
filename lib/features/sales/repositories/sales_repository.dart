@@ -25,6 +25,7 @@ class SalesDocFilter {
     this.dateTo,
     this.closed,
     this.chain,
+    this.chainGroup,
     this.sellerId,
     this.financeAudit,
     this.warehouseWorkStatus,
@@ -37,6 +38,7 @@ class SalesDocFilter {
   final String? dateTo;
   final bool? closed; // 结案筛选（订货工作台「本月完成」卡用）
   final List<int>? chain; // 订单行链路状态组（统计卡钻取，逗号拼接多值）
+  final String? chainGroup; // 数量派生大类 pending/production（V545，与 stats 同口径）
   final String? sellerId; // 按销售员筛选（生产计划选来源单按跟单员收敛）
   final int? financeAudit; // 出货财务审核：0 待审 / 1 已审
   final String? warehouseWorkStatus; // 出货仓库作业状态
@@ -78,6 +80,7 @@ class SalesRepository {
         'warehouseWorkStatus': filter.warehouseWorkStatus!.trim(),
       if (filter.chain != null && filter.chain!.isNotEmpty)
         'chain': filter.chain!.join(','),
+      if (filter.chainGroup != null) 'chainGroup': filter.chainGroup,
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
     };

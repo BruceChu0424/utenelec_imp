@@ -8,6 +8,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../shared/auth/document_permission_set.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
 import '../models/finance_doc.dart';
 
 /// 5 单据的往来方模式。
@@ -41,6 +42,18 @@ class FinanceDocConfig {
   final String shortLabel; // 收款
   final IconData icon;
   final DocumentPermissionSet permissions;
+
+  /// 该单据的列表路径（「草稿(N)」按钮的落点）。
+  String get listLocation => '/finance/${type.pathSegment}';
+
+  /// 草稿计数类型（新建页「草稿(N)」按钮 / hub 卡徽章）。
+  DraftDocKind get draftKind => switch (type) {
+    FinanceDocType.receipt => DraftDocKind.financeReceipt,
+    FinanceDocType.payment => DraftDocKind.financePayment,
+    FinanceDocType.expense => DraftDocKind.financeExpense,
+    FinanceDocType.otherIncome => DraftDocKind.financeOtherIncome,
+    FinanceDocType.bankTransfer => DraftDocKind.financeBankTransfer,
+  };
 
   String get listPerm => permissions.view;
   String? get createPerm => permissions.create;

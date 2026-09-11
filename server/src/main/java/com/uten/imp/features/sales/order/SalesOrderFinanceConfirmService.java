@@ -280,7 +280,7 @@ public class SalesOrderFinanceConfirmService {
                 SELECT i.id, i.line_no,
                        COALESCE(i.goods_code_snapshot, g.code, ''),
                        COALESCE(i.goods_name_snapshot, g.name, ''),
-                       COALESCE(col.name, ''), COALESCE(u.name, ''),
+                       COALESCE(col.name, ''), i.unit_id, COALESCE(u.name, ''),
                        COALESCE(i.client_model, ''),
                        i.qty, i.weight, i.price, i.discount, i.amount_original,
                        COALESCE(i.remark, '')
@@ -298,14 +298,15 @@ public class SalesOrderFinanceConfirmService {
             lines.add(new SalesOrderFinanceReviewDto.Line(
                     (UUID) r[0],
                     r[1] == null ? null : ((Number) r[1]).intValue(),
-                    (String) r[2], (String) r[3], (String) r[4], (String) r[5],
-                    (String) r[6],
-                    r[7] == null ? null : (BigDecimal) r[7],
+                    (String) r[2], (String) r[3], (String) r[4],
+                    (UUID) r[5], (String) r[6],
+                    (String) r[7],
                     r[8] == null ? null : (BigDecimal) r[8],
                     r[9] == null ? null : (BigDecimal) r[9],
                     r[10] == null ? null : (BigDecimal) r[10],
                     r[11] == null ? null : (BigDecimal) r[11],
-                    (String) r[12]));
+                    r[12] == null ? null : (BigDecimal) r[12],
+                    (String) r[13]));
         }
         @SuppressWarnings("unchecked")
         List<Object[]> changeRows = em.createNativeQuery("""

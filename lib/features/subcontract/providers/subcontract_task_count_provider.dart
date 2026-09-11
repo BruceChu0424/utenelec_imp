@@ -10,6 +10,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/session_epoch_provider.dart';
 import '../../operations_workbench/repositories/operations_workbench_repository.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
@@ -21,6 +22,8 @@ const Duration _kSubcontractTaskPollInterval = Duration(seconds: 60);
 /// 有委外申请/订单查看权限时 60s 轮询；其它角色返回 0。count 为 0 时徽章不渲染。
 final subcontractTaskCountProvider =
     StateNotifierProvider<SubcontractTaskCountNotifier, int>((ref) {
+      // 新登录会话从零重建并立即重拉（见 shared/auth/session_epoch_provider.dart）。
+      ref.watch(sessionEpochProvider);
       ref.watch(masterDataSessionKeyProvider);
       ref.watch(currentPermissionsProvider);
       ref.watch(isSuperAdminProvider);

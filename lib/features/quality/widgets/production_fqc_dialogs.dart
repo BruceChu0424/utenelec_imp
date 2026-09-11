@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -23,7 +25,7 @@ String fqcStatusLabel(ProductionFqcInspection inspection) =>
       'PENDING' => '待检',
       'PARTIAL' => '部分已决定',
       'RESOLVED' => '已全部决定',
-      'CANCELLED' => '来源报工已红冲',
+      'CANCELLED' => '已取消（来源报工红冲或登记撤回）',
       _ => inspection.status,
     };
 
@@ -138,7 +140,7 @@ class _ProductionFqcDetailDialogState
     final readOnlyReason = inspection.active
         ? '当前为只读查看；登记决定需要生产质检审批权限，且账号必须属于品质任务组织。'
         : inspection.status == 'CANCELLED'
-        ? '来源报工已红冲，本任务只读且不能再登记检验决定。'
+        ? '来源报工已红冲或仓库登记已撤回，本任务只读且不能再登记检验决定。'
         : '该任务已完成决定，当前详情只读。';
     return SelectionArea(
       child: Column(
@@ -171,6 +173,13 @@ class _ProductionFqcDetailDialogState
           ),
           _detailLine('颜色', inspection.colorName ?? '—'),
           _detailLine('单位', inspection.unitName ?? '—'),
+          const Divider(height: UtenSpacing.s24),
+          // V547/V542：来自仓库送检登记的只读事实（检查单、仓、库位、收货人、备注）。
+          _detailLine('检查单号', inspection.sheetNo ?? '无检查单'),
+          _detailLine('实际成品仓', inspection.warehouseName ?? '—'),
+          _detailLine('库位', inspection.place ?? '—'),
+          _detailLine('收货人', inspection.receiverName ?? '—'),
+          _detailLine('登记备注', inspection.registrationRemark ?? '—'),
           const Divider(height: UtenSpacing.s24),
           _detailLine('报工数量', fqcQtyText(inspection.reportedQty)),
           _detailLine('合格数量', fqcQtyText(inspection.passedQty)),
@@ -485,6 +494,282 @@ class _ProductionFqcDecisionDialogState
           label: Text(_saving ? '保存中…' : '确认决定'),
         ),
       ],
+    );
+  }
+}
+
+/// V547 品质检查单办理弹窗：同一成品仓一次送检的全部 FQC 行在一张单里办理。
+///
+/// 数量与决定仍按 inspection 逐条登记（PASS/PARTIAL/FAIL 复用既有弹窗）；
+/// 「全部合格」= 对本单仍待检的行原子 pass-all。返回 true 表示本单发生过决定，
+/// 调用方据此刷新队列与角标。
+class ProductionFqcSheetDialog extends ConsumerStatefulWidget {
+  const ProductionFqcSheetDialog({
+    super.key,
+    required this.sheetId,
+    required this.canApprove,
+  });
+
+  final String sheetId;
+  final bool canApprove;
+
+  @override
+  ConsumerState<ProductionFqcSheetDialog> createState() =>
+      _ProductionFqcSheetDialogState();
+}
+
+class _ProductionFqcSheetDialogState
+    extends ConsumerState<ProductionFqcSheetDialog> {
+  ProductionFqcInspectionSheetDetail? _detail;
+  bool _loading = true;
+  bool _passingAll = false;
+  bool _changed = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    Future<void>.microtask(_load);
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final detail = await ref
+          .read(productionFqcRepositoryProvider)
+          .sheetDetail(widget.sheetId);
+      if (!mounted) return;
+      setState(() {
+        _detail = detail;
+        _loading = false;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.message;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = '品质检查单加载失败，请检查网络后重试';
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _openInspection(ProductionFqcInspection inspection) async {
+    final target = await showDialog<ProductionFqcInspection>(
+      context: context,
+      builder: (_) => ProductionFqcDetailDialog(
+        key: ValueKey('production-fqc-detail-${inspection.id}'),
+        inspectionId: inspection.id,
+        canApprove: widget.canApprove,
+      ),
+    );
+    if (target == null || !mounted) return;
+    await _decide(target);
+  }
+
+  Future<void> _decide(ProductionFqcInspection inspection) async {
+    final result = await showDialog<ProductionFqcDecisionResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ProductionFqcDecisionDialog(inspection: inspection),
+    );
+    if (result == null || !mounted) return;
+    _changed = true;
+    await _load();
+  }
+
+  Future<void> _passAll() async {
+    final detail = _detail;
+    if (detail == null || _passingAll) return;
+    final ids = detail.activeInspections.map((item) => item.id).toList();
+    if (ids.isEmpty) return;
+    setState(() => _passingAll = true);
+    try {
+      await ref
+          .read(productionFqcRepositoryProvider)
+          .passAll(
+            inspectionIds: ids,
+            idempotencyKey: 'fqc-sheet-pass-all-${const Uuid().v4()}',
+          );
+      if (!mounted) return;
+      _changed = true;
+      setState(() => _passingAll = false);
+      await _load();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _passingAll = false;
+        _error = error.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _passingAll = false;
+        _error = '批量全部合格失败，请稍后重试';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final detail = _detail;
+    final activeCount = detail?.activeInspections.length ?? 0;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) Navigator.of(context).pop(_changed);
+      },
+      child: AlertDialog(
+        title: Text(detail == null ? '品质检查单' : '品质检查单 ${detail.sheet.sheetNo}'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760, maxHeight: 560),
+          child: _loading && detail == null
+              ? const SizedBox(
+                  height: 280,
+                  child: Center(
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  ),
+                )
+              : _error != null && detail == null
+              ? SizedBox(
+                  height: 320,
+                  child: UtenEmpty.error(
+                    message: _error,
+                    actionLabel: '重新加载',
+                    onAction: _load,
+                  ),
+                )
+              : _buildBody(theme, detail!),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(_changed),
+            child: const Text('关闭'),
+          ),
+          if (widget.canApprove && activeCount > 0)
+            UtenButton(
+              key: const Key('production-fqc-sheet-pass-all'),
+              icon: Icons.done_all_rounded,
+              isLoading: _passingAll,
+              onPressed: _passingAll ? null : _passAll,
+              child: Text('全部合格($activeCount)'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBody(
+    ThemeData theme,
+    ProductionFqcInspectionSheetDetail detail,
+  ) {
+    final sheet = detail.sheet;
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.secondaryContainer.withValues(
+                alpha: 0.42,
+              ),
+              borderRadius: UtenRadius.mdAll,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    UtenStatusBadge(
+                      label: sheet.active ? '待检' : '已办结',
+                      type: sheet.active
+                          ? UtenStatusBadgeType.info
+                          : UtenStatusBadgeType.neutral,
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Expanded(
+                      child: Text(
+                        '${sheet.warehouseName ?? '—'} · 收货人 ${sheet.receiverName ?? '—'}'
+                        ' · ${sheet.itemCount} 行（待检 ${sheet.activeCount}）'
+                        '${sheet.pendingQtyText == null ? '' : ' · 待检 ${sheet.pendingQtyText}'}',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (sheet.remark?.isNotEmpty == true) ...[
+                  const SizedBox(height: UtenSpacing.s4),
+                  Text(
+                    '登记备注：${sheet.remark}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+                const SizedBox(height: UtenSpacing.s4),
+                Text(
+                  '进入质检 ${ChinaDateTime.formatInstant(sheet.createdAt)}'
+                  '${sheet.reportNos == null ? '' : ' · 报工 ${sheet.reportNos}'}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                _error!,
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+            ),
+          ],
+          const SizedBox(height: UtenSpacing.s8),
+          for (final inspection in detail.inspections)
+            ListTile(
+              key: ValueKey('production-fqc-sheet-line-${inspection.id}'),
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              onTap: () => _openInspection(inspection),
+              title: Text(
+                '${inspection.goodsName ?? ''}'
+                '${inspection.colorName?.isNotEmpty == true ? '(${inspection.colorName})' : ''}'
+                ' · 报工 ${inspection.reportNo ?? '—'}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                '${fqcStatusLabel(inspection)} · 报工 ${fqcQtyText(inspection.reportedQty)}'
+                ' · 待检 ${fqcQtyText(inspection.remainingQty)}${inspection.unitName ?? ''}'
+                '${inspection.place == null ? '' : ' · 库位 ${inspection.place}'}',
+              ),
+              trailing: inspection.active && widget.canApprove
+                  ? TextButton.icon(
+                      key: ValueKey(
+                        'production-fqc-sheet-decide-${inspection.id}',
+                      ),
+                      onPressed: () => _decide(inspection),
+                      icon: const Icon(Icons.rule_rounded, size: 18),
+                      label: const Text('登记决定'),
+                    )
+                  : const Icon(Icons.chevron_right_rounded),
+            ),
+        ],
+      ),
     );
   }
 }

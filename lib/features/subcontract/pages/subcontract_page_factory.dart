@@ -21,24 +21,29 @@ import 'subcontract_order_edit_page.dart';
 /// 2026-09-06：计划委外申请列表并入「委外任务中心」、委外回厂跟踪页退役
 /// （列表路由在 app_router 重定向，二者不会再走到 list 分派；详情/编辑深链保留）。
 abstract final class SubcontractPageFactory {
-  static Widget list(SubcontractDocType type) => switch (type) {
-    SubcontractDocType.order => const SubcontractOrderWorkspacePage(),
-    SubcontractDocType.materialIssue =>
-      const SubcontractLegacyMaterialIssueHistoryPage(),
-    SubcontractDocType.returnDoc =>
-      const SubcontractFinishedReturnHistoryPage(),
-    SubcontractDocType.materialReturn =>
-      const SubcontractMaterialReturnHistoryPage(),
-    SubcontractDocType.waste => const SubcontractWasteResponsibilityPage(),
-    SubcontractDocType.inquiry => const SubcontractInquiryArchivePage(),
-    // 申请列表=任务中心；回厂列表=订货页（路由层已重定向，防御兜底）。
-    SubcontractDocType.application => throw UnsupportedError(
-      '计划委外申请列表已并入委外任务中心',
-    ),
-    SubcontractDocType.receipt => throw UnsupportedError(
-      '委外回厂跟踪页已下线，进度在订货单详情查看',
-    ),
-  };
+  /// [initialStatus] 为路由 query `?status=draft` 时，委外订货列表预选「草稿」段
+  /// （新建页「草稿(N)」按钮的落点）。
+  static Widget list(SubcontractDocType type, {String? initialStatus}) =>
+      switch (type) {
+        SubcontractDocType.order => SubcontractOrderWorkspacePage(
+          initialStatus: initialStatus,
+        ),
+        SubcontractDocType.materialIssue =>
+          const SubcontractLegacyMaterialIssueHistoryPage(),
+        SubcontractDocType.returnDoc =>
+          const SubcontractFinishedReturnHistoryPage(),
+        SubcontractDocType.materialReturn =>
+          const SubcontractMaterialReturnHistoryPage(),
+        SubcontractDocType.waste => const SubcontractWasteResponsibilityPage(),
+        SubcontractDocType.inquiry => const SubcontractInquiryArchivePage(),
+        // 申请列表=任务中心；回厂列表=订货页（路由层已重定向，防御兜底）。
+        SubcontractDocType.application => throw UnsupportedError(
+          '计划委外申请列表已并入委外任务中心',
+        ),
+        SubcontractDocType.receipt => throw UnsupportedError(
+          '委外回厂跟踪页已下线，进度在订货单详情查看',
+        ),
+      };
 
   static Widget detail(SubcontractDocType type, String id) => switch (type) {
     SubcontractDocType.application => SubcontractApplicationReadOnlyDetailPage(

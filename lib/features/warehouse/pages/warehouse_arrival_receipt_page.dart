@@ -7,7 +7,8 @@
 //   - 入库仓库（2026-09-06 行级必填）：表头不再设默认仓——每行必选入库仓库，走
 //     右侧主/子仓级联滑窗（先选主仓再选子仓，显示「主仓名-子仓名」）；预计到货带
 //     建议仓（物料分析目标仓）时逐行预填，改离建议仓时提示（合格库存将入所选仓，
-//     分析进度按所选仓刷新）；多行同仓可点首行后用「统一设置入库仓库」批量落仓；
+//     分析进度按所选仓刷新）；多行同仓勾选后用表格批量动作「批量设置入库仓库」
+//     一次落仓（同款「批量填写库位」一次写库位号），未勾选时作用于全部明细行；
 //   - 提交时按行级仓库分组，每仓一张收货单顺序登记（幂等键按「仓库+行+数量」内容
 //     派生：响应丢失重试复用同键安全重放，部分失败时已成功仓不会重复登记）；
 //   - 单位紧跟「本次实收」列展示；不设「实际重量」列——2026-09-05 起重量统计走
@@ -27,6 +28,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
@@ -40,7 +42,6 @@ import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
-import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -62,6 +63,7 @@ import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/procurement_inbound_repository.dart';
+import '../widgets/batch_place_fill_dialog.dart';
 import '../widgets/warehouse_inbound_allocation_view.dart';
 import '../widgets/warehouse_autofill_text_field.dart';
 import '../widgets/warehouse_arrival_source_field.dart';
@@ -265,20 +267,81 @@ class _WarehouseArrivalReceiptPageState
     );
   }
 
-  /// 表头默认仓已删（2026-09-06）：多行统一入同一仓时用「统一设置入库仓库」
-  /// 一次落到全部明细行，行内仍可单独改仓。
-  Future<void> _applyWarehouseToAllLines() async {
-    if (_saving || _lines.isEmpty) return;
+  /// 表格批量动作：勾选若干行后一次设仓 / 一次填库位。
+  /// 表格上方的「统一设置入库仓库」按钮 2026-09-11 撤除，能力搬到这里；未勾选
+  /// 任何行时沿用它的旧口径作用于全部明细行（计数即作用行数，按钮上可见）。
+  List<Widget> _buildBatchActions(
+    BuildContext context,
+    UtenEditableGridController<_ArrivalReceiptLine> controller,
+  ) {
+    final selected = controller.selectedRows;
+    final targets = selected.isEmpty ? _lines : selected;
+    final count = targets.length;
+    return [
+      Tooltip(
+        message: '把选中行的入库仓库一次设成同一个仓；未勾选时作用于全部明细行，行内仍可单独改仓',
+        child: UtenButton(
+          key: const Key('warehouse-arrival-apply-warehouse-all'),
+          size: UtenButtonSize.large,
+          icon: Icons.warehouse_outlined,
+          onPressed: _saving || count == 0
+              ? null
+              : () => _applyWarehouseToLines(targets),
+          child: Text('批量设置入库仓库($count)'),
+        ),
+      ),
+      Tooltip(
+        message: '一次输入库位号应用到选中行（整托同架场景）；未勾选时作用于全部明细行',
+        child: UtenButton(
+          key: const Key('warehouse-arrival-batch-place'),
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
+          icon: Icons.edit_note_outlined,
+          onPressed: _saving || count == 0
+              ? null
+              : () => _batchFillPlace(targets),
+          child: Text('批量填写库位($count)'),
+        ),
+      ),
+    ];
+  }
+
+  /// 批量落仓：一次写入全部目标行（行内仍可单独改仓）。
+  /// 批量写入视同已核对，清掉学习预填的黄标。
+  Future<void> _applyWarehouseToLines(List<_ArrivalReceiptLine> rows) async {
+    if (_saving || rows.isEmpty) return;
+    final whole = rows.length == _lines.length;
     final picked = await showUtenWarehousePickerPanel(
       context,
       hierarchy: ref.read(masterNameServiceProvider).warehouseHierarchy,
-      title: '统一设置入库仓库（全部 ${_lines.length} 行）',
+      title: '批量设置入库仓库（${whole ? '全部' : '选中'} ${rows.length} 行）',
     );
     if (picked == null || !mounted) return;
     setState(() {
-      for (final line in _lines) {
+      for (final line in rows) {
         line.warehouseId = picked.id;
         line.warehouseAutofilled = false;
+      }
+    });
+  }
+
+  /// 批量填库位：复用产成品登记页同一个弹窗（不另写校验），一次输入写入全部目标行。
+  Future<void> _batchFillPlace(List<_ArrivalReceiptLine> rows) async {
+    if (_saving || rows.isEmpty) return;
+    final place = await showBatchPlaceFillDialog(
+      context,
+      rowCount: rows.length,
+      inputKey: const Key('warehouse-arrival-batch-place-input'),
+      applyKey: const Key('warehouse-arrival-batch-place-apply'),
+    );
+    if (place == null || !mounted) return;
+    if (place.isEmpty) {
+      context.appWarning('库位号不能为空');
+      return;
+    }
+    setState(() {
+      for (final line in rows) {
+        line.setCheckedStockPlace(place);
       }
     });
   }
@@ -611,28 +674,9 @@ class _WarehouseArrivalReceiptPageState
             ),
             const SizedBox(height: UtenSpacing.s12),
             ..._warehouseNotices(theme),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '明细(${_lines.length} 行)',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                // 表头默认仓已删（行级必填）：多行同仓时一键统一落仓。
-                UtenButton(
-                  key: const Key('warehouse-arrival-apply-warehouse-all'),
-                  type: UtenButtonType.tonal,
-                  icon: Icons.warehouse_outlined,
-                  onPressed: _saving || _lines.isEmpty
-                      ? null
-                      : _applyWarehouseToAllLines,
-                  child: const Text('统一设置入库仓库'),
-                ),
-              ],
-            ),
+            // 「明细(N 行)」标题与表格上方的「统一设置入库仓库」按钮 2026-09-11
+            // 一并撤除：落仓/填库位改由表格操作条的批量动作承载（勾选若干行后
+            // 作用于选中行，未勾选时沿用旧口径作用于全部明细行）。
             const SizedBox(height: UtenSpacing.s8),
             LayoutBuilder(
               builder: (context, constraints) => constraints.maxWidth < 840
@@ -676,22 +720,23 @@ class _WarehouseArrivalReceiptPageState
               removeRowsMessageBuilder: (count) =>
                   '确认从本次登记移出选中的 $count 行？'
                   '该操作不删除订货明细、不改变库存或历史；返回任务中心后仍保持待登记送检。',
+              batchActionsBuilder: canRegister ? _buildBatchActions : null,
               emptyMessage: '该任务没有可登记明细，请返回任务中心刷新',
-              footer: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  UtenSpacing.s12,
-                  UtenSpacing.s8,
-                  UtenSpacing.s12,
-                  UtenSpacing.s12,
-                ),
-                child: Text(
-                  _removedLineCount == 0
-                      ? '库位、系列、编码由货品资料带出，可直接修改；送检后会学习回写，下次自动带出。'
-                      : '已移出 $_removedLineCount 行（仅本页临时选择）；这些来源行未写收货、未写库存，仍在待登记送检。',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+              footer: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _lineTotalsBar(),
+                  const SizedBox(height: UtenSpacing.s4),
+                  Text(
+                    _removedLineCount == 0
+                        ? '库位、系列、编码由货品资料带出，可直接修改；送检后会学习回写，下次自动带出。'
+                        : '已移出 $_removedLineCount 行（仅本页临时选择）；这些来源行未写收货、未写库存，仍在待登记送检。',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
             const SizedBox(height: UtenSpacing.s24),
@@ -906,6 +951,9 @@ class _WarehouseArrivalReceiptPageState
       key: 'arrivalSource',
       label: workflowFieldText(context).warehouseArrivalSourceLabel,
       width: 165,
+      // 每行相同的通用说明放列头 ⓘ（2026-09-10 全站口径）：格内只留行特有的
+      // 错误/预填图标，来源下拉不再自带 44px 说明图标挤占选项文案。
+      headerInfo: workflowFieldText(context).warehouseArrivalSourceHint,
       textOf: (line) => line.source.label(context),
       cellBuilder: (context, line) => WarehouseArrivalSourceField(
         key: ValueKey('warehouse-arrival-source-${line.item.orderItemId}'),
@@ -920,6 +968,9 @@ class _WarehouseArrivalReceiptPageState
       width: 130,
       numeric: true,
       required: true,
+      // 每行相同的通用说明放列头 ⓘ（2026-09-10 全站口径），格内不再塞 44px 图标
+      // 挤占「大于 0」占位与输入值。
+      headerInfo: workflowFieldText(context).workflowArrivalQuantityHint,
       textOf: (line) => line.qty.text,
       listenableOf: (line) => line.qty,
       cellBuilder: (context, line) => RequiredCellFrame(
@@ -933,9 +984,8 @@ class _WarehouseArrivalReceiptPageState
             controller: line.qty,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             textAlign: TextAlign.right,
-            decoration: UtenInputDecoration(
-              const InputDecoration(hintText: '大于 0', isDense: true),
-              info: workflowFieldText(context).workflowArrivalQuantityHint,
+            decoration: const UtenInputDecoration(
+              InputDecoration(hintText: '大于 0', isDense: true),
             ),
           ),
         ),
@@ -975,32 +1025,21 @@ class _WarehouseArrivalReceiptPageState
           child: InkWell(
             key: ValueKey('warehouse-arrival-wh-${line.item.orderItemId}'),
             onTap: _saving ? null : () => _pickLineWarehouse(line),
-            borderRadius: UtenRadius.smAll,
+            borderRadius: BorderRadius.circular(UtenRadius.control),
             child: InputDecorator(
               // 行级必填：未选仓描红边提示；改离建议仓描橙边提醒（合格库存
               // 不再计入原物料分析目标仓）。选仓走整页 setState 重建本格。
+              // 2026-09-10 单元规格统一：不自带 border/contentPadding/小字/双行，
+              // 圆角、内边距、字号吃 UtenEditableGrid 行级主题（与数量格等高）。
               decoration: applyAutofillHint(
                 UtenInputDecoration(
                   InputDecoration(
                     isDense: true,
-                    border: const OutlineInputBorder(
-                      borderRadius: UtenRadius.smAll,
-                    ),
-                    enabledBorder: label == null || changedAway
-                        ? OutlineInputBorder(
-                            borderRadius: UtenRadius.smAll,
-                            borderSide: BorderSide(
-                              color: label == null
-                                  ? theme.colorScheme.error
-                                  : UtenColors.warning,
-                              width: 1.2,
-                            ),
-                          )
+                    enabledBorder: label == null
+                        ? requiredEmptyBorder(theme)
+                        : changedAway
+                        ? autofillHintBorder(theme)
                         : null,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: UtenSpacing.s4,
-                      vertical: UtenSpacing.s8,
-                    ),
                   ),
                   info: line.warehouseAutofilled
                       ? '已带入上次收货仓或来源建议仓，请核对本次实物仓库'
@@ -1014,10 +1053,10 @@ class _WarehouseArrivalReceiptPageState
                   Expanded(
                     child: Text(
                       label ?? '必选 · 点击选择',
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: label == null
-                          ? theme.textTheme.bodySmall?.copyWith(
+                          ? theme.textTheme.bodyMedium?.copyWith(
                               color: theme.colorScheme.error,
                               fontWeight: FontWeight.w600,
                             )
@@ -1112,16 +1151,30 @@ class _WarehouseArrivalReceiptPageState
     ),
   ];
 
-  Widget _buildBottomBar(ThemeData theme, bool canRegister) {
-    final totals = measurementTotalsText(
-      _lines.map(
-        (line) => MeasuredAmount(
-          value: double.tryParse(line.qty.text.trim()) ?? 0,
-          unitId: line.item.unitId,
-          unitName: line.item.unitName,
+  /// 明细表下方的合计条（全站统一 UtenTotalsSummaryBar 口径）：数量严格按单位
+  /// UUID 分组，不同单位绝不相加；本页对仓库不可见价格，故没有金额项。
+  Widget _lineTotalsBar() => UtenTotalsSummaryBar(
+    key: const Key('warehouse-arrival-totals'),
+    density: true,
+    showDivider: false,
+    entries: [
+      UtenTotalEntry('明细', '${_lines.length} 行'),
+      utenQuantityTotalEntry(
+        _lines.map(
+          (line) => MeasuredAmount(
+            value: double.tryParse(line.qty.text.trim()) ?? 0,
+            unitId: line.item.unitId,
+            unitName: line.item.unitName,
+          ),
         ),
+        label: '本次实收',
       ),
-    );
+    ],
+  );
+
+  Widget _buildBottomBar(ThemeData theme, bool canRegister) {
+    // 合计不再挂底部操作条（2026-09-11 用户口径：明细表下方已有合计条，
+    // 底部再报一遍是重复），这里只剩取消 / 登记并送检。
     return SafeArea(
       child: Container(
         decoration: BoxDecoration(
@@ -1131,52 +1184,28 @@ class _WarehouseArrivalReceiptPageState
           ),
         ),
         padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final summary = Text(
-              '明细 ${_lines.length} 行 · 实收 $totals',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            );
-            final actions = Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                UtenButton(
-                  type: UtenButtonType.secondary,
-                  onPressed: _saving ? null : () => context.pop(),
-                  child: const Text('取消'),
-                ),
-                const SizedBox(width: UtenSpacing.s12),
-                UtenButton(
-                  isLoading: _saving,
-                  icon: Icons.fact_check_outlined,
-                  onPressed: !canRegister || _saving || _lines.isEmpty
-                      ? null
-                      : _save,
-                  child: const Text('登记并送检'),
-                ),
-              ],
-            );
-            if (constraints.maxWidth < 680) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  summary,
-                  const SizedBox(height: UtenSpacing.s8),
-                  Align(alignment: Alignment.centerRight, child: actions),
-                ],
-              );
-            }
-            return Row(
-              children: [
-                Expanded(child: summary),
-                const SizedBox(width: UtenSpacing.s16),
-                actions,
-              ],
-            );
-          },
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            UtenButton(
+              type: UtenButtonType.secondary,
+              size: UtenButtonSize.large,
+              onPressed: _saving ? null : () => context.pop(),
+              child: const Text('取消'),
+            ),
+            const SizedBox(width: UtenSpacing.s12),
+            UtenButton(
+              // 「点了就往下走一步」的主动作统一红底白字（全站口径）。
+              type: UtenButtonType.danger,
+              size: UtenButtonSize.large,
+              isLoading: _saving,
+              icon: Icons.fact_check_outlined,
+              onPressed: !canRegister || _saving || _lines.isEmpty
+                  ? null
+                  : _save,
+              child: const Text('登记并送检'),
+            ),
+          ],
         ),
       ),
     );
@@ -1253,6 +1282,17 @@ class _ArrivalReceiptLine extends EditableGridRow {
   final UtenAutofillTextController stockPlace;
   final UtenAutofillTextController series;
   final UtenAutofillTextController goodsCode;
+
+  /// 批量写入库位：视同已核对，写完不留预填黄标。
+  /// 同值写入时 UtenAutofillTextController 不会自行清标（它只在文本变化时清），
+  /// 故先置空再写回，逼它翻成手工值。
+  void setCheckedStockPlace(String value) {
+    if (stockPlace.text == value) stockPlace.value = TextEditingValue.empty;
+    stockPlace.value = TextEditingValue(
+      text: value,
+      selection: TextSelection.collapsed(offset: value.length),
+    );
+  }
 
   @override
   void dispose() {

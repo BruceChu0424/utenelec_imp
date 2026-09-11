@@ -9,12 +9,26 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 
 String _identity(String v) => v;
 
+/// harness 视口高：须 ≥ UtenCollapsingHeaderScrollView 的矮视口回退阈值（600）
+/// 且给 body 留够 compactBodyMinHeight(360)，否则组件走「整页滚 + body 定高」
+/// 回退（2026-09-11 矮视口/挤扁回退），本文件要验的正是联动模式下的横滚条与
+/// 折叠手势。
+const double _pageHeight = 700;
+
+/// 默认测试窗口只有 800x600，装不下 [_pageHeight] 的 harness：显式放大到 800x1000。
+void _setView(WidgetTester tester) {
+  tester.view.physicalSize = const Size(800, 1000);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
 Widget _page(List<String> items, {bool withBatch = false}) {
   return MaterialApp(
     home: Scaffold(
       body: SizedBox(
         width: 640,
-        height: 400,
+        height: _pageHeight,
         child: UtenCollapsingHeaderScrollView(
           collapsingHeader: const SizedBox(
             height: 60,
@@ -82,6 +96,7 @@ RenderBox _lastRowBox(WidgetTester tester, String lastText) {
 
 void main() {
   testWidgets('内容少：横滚条贴最后一行下方（隔 16），不钉屏幕底', (tester) async {
+    _setView(tester);
     await tester.pumpWidget(_page(['ROW-0', 'ROW-1', 'ROW-2']));
     await tester.pump(); // post-frame 量内容高并定位覆盖层。
 
@@ -93,21 +108,23 @@ void main() {
       '内容少：横滚条 top=$barTop，最后一行底=$rowBottom（条 box 占位 [行底, 行底+11]，滑块上缘距行底约 1px）',
     );
     expect(barTop, closeTo(rowBottom, 1.5));
-    // 不在屏幕底（400-16=384）。
-    expect(barTop, lessThan(384 - 20));
+    // 不在屏幕底（_pageHeight-16）。
+    expect(barTop, lessThan(_pageHeight - 16 - 20));
   });
 
   testWidgets('内容多：横滚条钉在表体区底（视口底）', (tester) async {
+    _setView(tester);
     await tester.pumpWidget(_page([for (var i = 0; i < 60; i++) 'ROW-$i']));
     await tester.pump();
 
     final bar = _overlayBarBox(tester);
     final barTop = bar.localToGlobal(Offset.zero).dy;
-    debugPrint('内容多：横滚条 top=$barTop，期望 ${400 - 11}');
-    expect(barTop, closeTo(400 - 11, 1));
+    debugPrint('内容多：横滚条 top=$barTop，期望 ${_pageHeight - 11}');
+    expect(barTop, closeTo(_pageHeight - 11, 1));
   });
 
   testWidgets('折叠手势不受影响：表格上上滑仍收起顶部卡片', (tester) async {
+    _setView(tester);
     await tester.pumpWidget(_page(['ROW-0', 'ROW-1', 'ROW-2']));
     await tester.pump();
 
@@ -129,6 +146,7 @@ void main() {
   });
 
   testWidgets('带悬浮批量按钮（货品资料同款）：内容少时横滚条仍贴末行', (tester) async {
+    _setView(tester);
     await tester.pumpWidget(
       _page(['ROW-0', 'ROW-1', 'ROW-2'], withBatch: true),
     );

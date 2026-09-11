@@ -16,7 +16,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/paged_list_controller.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -31,12 +33,16 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
 import '../widgets/sales_batch_ship_panel.dart';
+
+/// 订货单大类的「草稿」段值（链路阶段之外的第 5 段）。
+const String _kDraftStage = 'draft';
 
 /// 小类分段值：真实单据状态（status 非空）或历史记录哨兵。
 class _SalesDocSeg {
@@ -57,8 +63,16 @@ class _SalesDocSeg {
 }
 
 class SalesDocListPage extends ConsumerStatefulWidget {
-  const SalesDocListPage({super.key, required this.docType});
+  const SalesDocListPage({
+    super.key,
+    required this.docType,
+    this.initialStatus,
+  });
   final SalesDocType docType;
+
+  /// 深链预选（路由 `?status=draft`）：新建页「草稿(N)」按钮进来时直接落在草稿段。
+  /// 订货单落第 5 段「草稿」，其他单据落小类「草稿」。
+  final String? initialStatus;
 
   @override
   ConsumerState<SalesDocListPage> createState() => _SalesDocListPageState();
@@ -94,6 +108,9 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
 
   bool get _isHistory => _statusSeg?.history == true;
 
+  /// 草稿段（仅订货单第 5 段）：不是链路阶段，按 status=0 直查。
+  bool get _isDraftStage => _isOrder && _stage == _kDraftStage;
+
   bool get _shouldLoad {
     if (_isOrder) {
       if (_stage == null) return false;
@@ -107,9 +124,19 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   @override
   void initState() {
     super.initState();
+    // 深链 ?status=draft：订货单选第 5 段「草稿」，其他单据选小类「草稿」。
+    if (isDraftStatusQuery(widget.initialStatus)) {
+      if (_isOrder) {
+        _stage = _kDraftStage;
+      } else {
+        _statusSeg = const _SalesDocSeg.stage(kSalesStatusDraft);
+      }
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(salesMasterNameServiceProvider).ensureLoaded();
       if (_isOrder) _loadStats();
+      // 预选段已在 initState 落定，首帧后补一次加载（_shouldLoad 已为真）。
+      if (isDraftStatusQuery(widget.initialStatus)) _reload(1);
     });
   }
 
@@ -134,6 +161,11 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
       _isOrder &&
       _hasPermission(Perm.salesQuoteConvert) &&
       _hasPermission(Perm.salesOrderCreate);
+
+  /// 「草稿」段计数：走跨模块 drafts/count（与新建页「草稿(N)」按钮、hub 卡徽章同源，
+  /// 保证同口径——本人待自审草稿，不含财务驳回单）。stats 无草稿桶，故不从那里取。
+  int? get _draftCount =>
+      ref.watch(draftCountsProvider).valueOrNull?.salesOrder;
 
   /// 大类段徽章计数（后端 stats 全量口径；失败保持旧值不显示变化）。
   Future<void> _loadStats() async {
@@ -239,8 +271,13 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
           page: _list.pageNum,
           filter: SalesDocFilter(
             keyword: _list.normalizedKeyword,
-            status: _isHistory ? null : _statusSeg?.status,
+            // 草稿段强制 status=0：草稿的 chain_status 恒为 0，落不进任何链路大类，
+            // 只能按单据状态直查（closed 也一并不带，草稿不可能结案）。
+            status: _isDraftStage
+                ? kSalesStatusDraft
+                : (_isHistory ? null : _statusSeg?.status),
             chain: _isOrder && !_isHistory ? _cardChain() : null,
+            chainGroup: _isOrder && !_isHistory ? _cardChainGroup() : null,
             closed: _isOrder && _stage == 'monthDone' && !_isHistory
                 ? true
                 : null,
@@ -267,19 +304,18 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
     return _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
   }
 
-  /// 大类段 → 链路状态组映射（与后端 stats 口径一致）。
-  List<int>? _cardChain() {
-    switch (_stage) {
-      case 'pending':
-        return const [2, 3, 4]; // 待排产/待物料/已排产
-      case 'production':
-        return const [5, 6]; // 生产中/部分完工
-      case 'shippable':
-        return const [1, 7, 8]; // 部分预留/可发货/部分发货
-      default:
-        return null;
-    }
-  }
+  /// 大类段 → 后端筛选（与 stats 口径一致）。待生产/生产中自 V545 起按数量派生
+  /// （chainGroup：存在剩余未排量>0 / 未完工计划量>0 的行；部分排产的单两段同时命中），
+  /// 待发货仍按链路状态组精确匹配（部分预留/可发货/部分发货）。
+  /// 草稿段返回 null：草稿不是链路阶段，不能再叠加链路过滤（叠了就查不出任何单）。
+  List<int>? _cardChain() =>
+      _stage == 'shippable' && !_isDraftStage ? const [1, 7, 8] : null;
+
+  String? _cardChainGroup() => switch (_stage) {
+    'pending' => 'pending',
+    'production' => 'production',
+    _ => null,
+  };
 
   void _selectStage(String stage) {
     if (_stage == stage) return;
@@ -311,6 +347,37 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   void _onSortChange(String? column, bool ascending) {
     _list.onSortChange(column, ascending);
     _reload(1);
+  }
+
+  /// 已审待财务确认的订单（V294）：确认后计划部才可见。ADR-052：财务驳回
+  /// 优先显示；销售须受控修订并重新审核，系统再提交财务。
+  bool _financeGated(SalesDocListItem it) =>
+      _isOrder &&
+      it.status == kSalesStatusApproved &&
+      !it.financeConfirmed &&
+      !it.closed &&
+      !it.stopped;
+
+  String _statusText(SalesDocListItem it) {
+    final status = it.rejected ? '已驳回' : salesStatusLabel(it.status);
+    final gated = _financeGated(it);
+    final financeRejected = gated && it.financeRejected;
+    final withGate = financeRejected
+        ? '$status · 财务已驳回'
+        : gated
+        ? '$status · 待财务确认'
+        : status;
+    return it.writable ? withGate : '$withGate · 只读';
+  }
+
+  /// 状态徽章语义（与 [_statusText] 同一分支）：审核驳回/财务驳回=危险红，
+  /// 待财务确认=警告黄，其余按单据 0/1/-1（草稿中性/已审绿/红冲红）。
+  UtenStatusBadgeType _statusBadgeType(SalesDocListItem it) {
+    if (it.rejected) return UtenStatusBadgeType.danger;
+    final gated = _financeGated(it);
+    if (gated && it.financeRejected) return UtenStatusBadgeType.danger;
+    if (gated) return UtenStatusBadgeType.warning;
+    return docStatusBadgeType(it.status);
   }
 
   List<MasterColumnDef<SalesDocListItem>> _columns(
@@ -389,24 +456,13 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
         key: 'status',
         label: '状态',
         width: 130,
-        value: (it) {
-          final status = it.rejected ? '已驳回' : salesStatusLabel(it.status);
-          // V294：已审待财务确认的订单标注提示（确认后计划部才可见）。
-          // ADR-052：财务驳回优先显示；销售须受控修订并重新审核，系统再提交财务。
-          final gated =
-              _isOrder &&
-              it.status == kSalesStatusApproved &&
-              !it.financeConfirmed &&
-              !it.closed &&
-              !it.stopped;
-          final financeRejected = gated && it.financeRejected;
-          final withGate = financeRejected
-              ? '$status · 财务已驳回'
-              : gated
-              ? '$status · 待财务确认'
-              : status;
-          return it.writable ? withGate : '$withGate · 只读';
-        },
+        value: _statusText,
+        // 状态徽章；value 仍是纯文本供列宽/排序/筛选。
+        cellBuilder: (_, it) => UtenStatusBadge(
+          label: _statusText(it),
+          type: _statusBadgeType(it),
+          size: UtenStatusBadgeSize.small,
+        ),
       ),
       if (_isOrder)
         MasterColumnDef(
@@ -496,6 +552,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                         if (_isOrder) ...[
                           // 大类行（仅订货单）：待生产/生产中/待发货/本月完成 + 搜索。
                           // 原统计卡钻取口径不变（chain/closed/本月月初）。
+                          // 计数形态：五段全是中性括号 `(N)`（组件默认）——链路
+                          // 大类是订单进度的监控数（下一步在生产/仓库手里）、
+                          // 草稿没人在等；销售真正的待办（财务驳回/未读完工）
+                          // 由「订单进度查询」的红徽章承担，本页不重复告警。
                           UtenFilterToolbar<String>(
                             segmentsKey: const Key('sales-doc-order-stages'),
                             segments: [
@@ -519,6 +579,14 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                                 label: '本月完成',
                                 count: _stats?.monthDone,
                               ),
+                              // 第 5 段「草稿」：草稿的 chain_status 恒为 0，落不进
+                              // 任何链路大类，此前在订货单列表里根本看不到。计数与
+                              // 新建页「草稿(N)」按钮同源（drafts/count）。
+                              UtenFilterSegment(
+                                value: _kDraftStage,
+                                label: '草稿',
+                                count: _draftCount,
+                              ),
                             ],
                             selected: _stage == null ? const {} : {_stage!},
                             onSelectionChanged: _selectStage,
@@ -530,7 +598,8 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                             },
                           ),
                           // 小类行：选中大类后出现（无「全部」段）。
-                          if (_stage != null) ...[
+                          // 草稿段本身就是状态口径，再叠状态小类没有意义，隐藏。
+                          if (_stage != null && !_isDraftStage) ...[
                             const SizedBox(height: UtenSpacing.s8),
                             statusRow,
                           ],
@@ -683,6 +752,8 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                                 onFilterChanged: (key, value) {
                                   // 表头筛选桶与分类行联动：清桶（null）不改分段
                                   //（分段单选无法回退，清桶视为保持当前选择）。
+                                  // 草稿段的状态口径由分段固定，表头改状态不生效。
+                                  if (_isDraftStage) return;
                                   if (key != 'status' || value == null) return;
                                   final status = int.tryParse(value);
                                   if (status != null) {
@@ -724,7 +795,11 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   }
 
   /// 当前表头「状态」列筛选值（历史段/未选时不过滤）。
+  /// 草稿段固定回显「草稿」，与该段强制的 status=0 口径一致。
   Map<String, String?> get _statusFilterMap {
+    if (_isDraftStage) {
+      return const <String, String?>{'status': '$kSalesStatusDraft'};
+    }
     final seg = _statusSeg;
     if (seg == null || seg.history) return const <String, String?>{};
     return <String, String?>{'status': '${seg.status}'};

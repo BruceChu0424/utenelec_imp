@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
@@ -471,6 +472,12 @@ class _QualityInspectionRecordsPageState
       value: (record) => _text(record.referenceNo),
     ),
     MasterColumnDef(
+      key: 'sheetNo',
+      label: '检查单号',
+      width: 170,
+      value: (record) => _text(record.sheetNo),
+    ),
+    MasterColumnDef(
       key: 'partnerName',
       label: '供应商',
       width: 180,
@@ -725,11 +732,14 @@ class _QualityInspectionRecordDetailDialogState
         vertical: UtenSpacing.s24,
       ),
       title: const Text('检测记录详情'),
-      content: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 760,
-          maxHeight: size.height * 0.72,
-        ),
+      // 内容盒子给死宽高（不是 maxWidth/maxHeight）：AlertDialog 会给 content 套
+      // IntrinsicWidth 向下求固有尺寸，而表格内部有 LayoutBuilder——它不支持被求
+      // 固有尺寸，会直接抛异常。定尺寸盒子在这一层就能答出固有尺寸，求值链不会再
+      // 钻进表格。两个尺寸都会被弹窗可用空间夹住，故这里只需给出上限值；本弹层四段
+      // 明细恒高于一屏，固定高度不会留白。
+      content: SizedBox(
+        width: size.width < 760 ? size.width : 760,
+        height: size.height * 0.72,
         child: _loading
             ? const SizedBox(
                 height: 360,
@@ -759,7 +769,6 @@ class _QualityInspectionRecordDetailDialogState
 
   Widget _buildDetail(QualityInspectionRecord record) {
     final theme = Theme.of(context);
-    final unit = record.unitName ?? '';
     return SelectionArea(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -811,85 +820,150 @@ class _QualityInspectionRecordDetailDialogState
           const SizedBox(height: UtenSpacing.s16),
           _DetailSection(
             title: '来源与货品',
-            children: [
-              _DetailLine(label: '来源单号', value: _text(record.sourceNo)),
-              _DetailLine(label: '来源日期', value: _date(record.sourceDate)),
-              _DetailLine(label: '关联单号', value: _text(record.referenceNo)),
-              _DetailLine(label: '供应商', value: _text(record.partnerName)),
-              _DetailLine(label: '仓库', value: _text(record.warehouseName)),
-              _DetailLine(
-                label: '货品',
-                value: [
-                  record.goodsCode,
-                  record.goodsName,
-                ].whereType<String>().join(' '),
-              ),
-              _DetailLine(label: '颜色', value: _text(record.colorName)),
-              _DetailLine(label: '单位', value: _text(record.unitName)),
-            ],
+            child: _DetailFieldTable(
+              tableKey: const Key('quality-inspection-record-detail-source'),
+              fields: [
+                _DetailField('来源单号', _text(record.sourceNo)),
+                _DetailField('来源日期', _date(record.sourceDate)),
+                _DetailField('关联单号', _text(record.referenceNo)),
+                _DetailField('供应商', _text(record.partnerName)),
+                _DetailField('仓库', _text(record.warehouseName)),
+                _DetailField(
+                  '货品',
+                  [
+                    record.goodsCode,
+                    record.goodsName,
+                  ].whereType<String>().join(' '),
+                ),
+                _DetailField('颜色', _text(record.colorName)),
+                _DetailField('单位', _text(record.unitName)),
+              ],
+            ),
           ),
           const SizedBox(height: UtenSpacing.s16),
           _DetailSection(
-            title: '本次不可变决定',
-            children: [
-              _DetailLine(label: '检验结果', value: record.decisionLabel),
-              _DetailLine(
-                label: '本次合格',
-                value: '${_qty(record.passQty)} $unit',
-              ),
-              _DetailLine(
-                label: '本次不合格',
-                value: '${_qty(record.failQty)} $unit',
-              ),
-              _DetailLine(label: '不良处置', value: record.dispositionLabel),
-              _DetailLine(label: '原因', value: _text(record.reason)),
-              _DetailLine(
-                label: '检验员',
-                value: _text(record.inspectorName, fallback: '系统'),
-              ),
-              _DetailLine(
-                label: '决定时间',
-                value: ChinaDateTime.formatInstant(record.decidedAt),
-              ),
-            ],
+            title: '本次决定与当前状态',
+            child: _DetailFieldTable(
+              tableKey: const Key('quality-inspection-record-detail-decision'),
+              fields: [
+                _DetailField('检验结果', record.decisionLabel),
+                _DetailField('不良处置', record.dispositionLabel),
+                _DetailField('原因', _text(record.reason)),
+                _DetailField(
+                  '检验员',
+                  _text(record.inspectorName, fallback: '系统'),
+                ),
+                _DetailField(
+                  '决定时间',
+                  ChinaDateTime.formatInstant(record.decidedAt),
+                ),
+                _DetailField('当前状态', record.currentStatusLabel),
+              ],
+            ),
           ),
           const SizedBox(height: UtenSpacing.s16),
-          _DetailSection(
-            title: '当前累计状态',
-            children: [
-              _DetailLine(
-                label: '送检数量',
-                value: '${_qty(record.inspectedQty)} $unit',
-              ),
-              _DetailLine(
-                label: '累计合格',
-                value: '${_qty(record.currentPassedQty)} $unit',
-              ),
-              _DetailLine(
-                label: '累计不合格',
-                value: '${_qty(record.currentFailedQty)} $unit',
-              ),
-              _DetailLine(
-                label: '剩余待检',
-                value: '${_qty(record.currentRemainingQty)} $unit',
-              ),
-              _DetailLine(label: '当前状态', value: record.currentStatusLabel),
-            ],
-          ),
+          _DetailSection(title: '检验数量', child: _buildQuantityTable(record)),
           const SizedBox(height: UtenSpacing.s16),
           _DetailSection(
             title: '追溯标识',
-            children: [
-              _DetailLine(label: '记录 UUID', value: record.recordId),
-              _DetailLine(label: '检验 UUID', value: record.inspectionId),
-              _DetailLine(label: '来源 UUID', value: _text(record.sourceId)),
-              _DetailLine(label: '来源行 UUID', value: _text(record.sourceItemId)),
-              _DetailLine(label: '供应商 UUID', value: _text(record.partnerId)),
-              _DetailLine(label: '仓库 UUID', value: _text(record.warehouseId)),
-              _DetailLine(label: '货品 UUID', value: _text(record.goodsId)),
-              _DetailLine(label: '颜色 UUID', value: _text(record.colorId)),
-              _DetailLine(label: '单位 UUID', value: _text(record.unitId)),
-            ],
+            child: _DetailFieldTable(
+              tableKey: const Key('quality-inspection-record-detail-trace'),
+              fields: [
+                _DetailField('记录 UUID', record.recordId),
+                _DetailField('检验 UUID', record.inspectionId),
+                _DetailField('来源 UUID', _text(record.sourceId)),
+                _DetailField('来源行 UUID', _text(record.sourceItemId)),
+                _DetailField('供应商 UUID', _text(record.partnerId)),
+                _DetailField('仓库 UUID', _text(record.warehouseId)),
+                _DetailField('货品 UUID', _text(record.goodsId)),
+                _DetailField('颜色 UUID', _text(record.colorId)),
+                _DetailField('单位 UUID', _text(record.unitId)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 检验数量表：一行一个口径，「本次决定」与「当前累计」分列对照。
+  ///
+  /// 合计条只加「本次合格 + 本次不合格」——同一单位、同一笔决定，相加才是这次
+  /// 判定掉的总量；当前累计列是同一批量的口径快照（送检 = 累计合格 + 累计不合格
+  /// + 剩余待检），纵向求和等于把同一批货重复计数，故不做列合计。
+  Widget _buildQuantityTable(QualityInspectionRecord record) {
+    final unit = _text(record.unitName);
+    final decidedQty = _qty(record.passQty + record.failQty);
+    return MasterDataTableView<_DetailQuantityRow>(
+      key: const Key('quality-inspection-record-detail-quantity'),
+      embedded: true,
+      showColumnChooser: false,
+      columns: [
+        MasterColumnDef(
+          key: 'item',
+          label: '检测项',
+          width: 110,
+          value: (row) => row.item,
+        ),
+        MasterColumnDef(
+          key: 'current',
+          label: '本次决定',
+          width: 110,
+          type: 'number',
+          value: (row) => row.current,
+        ),
+        MasterColumnDef(
+          key: 'cumulative',
+          label: '当前累计',
+          width: 110,
+          type: 'number',
+          value: (row) => row.cumulative,
+        ),
+        MasterColumnDef(
+          key: 'unit',
+          label: '单位',
+          width: 80,
+          value: (row) => row.unit,
+        ),
+      ],
+      items: [
+        _DetailQuantityRow(
+          item: '合格',
+          current: _qty(record.passQty),
+          cumulative: _qty(record.currentPassedQty),
+          unit: unit,
+        ),
+        _DetailQuantityRow(
+          item: '不合格',
+          current: _qty(record.failQty),
+          cumulative: _qty(record.currentFailedQty),
+          unit: unit,
+        ),
+        // 送检量与剩余待检是批量级事实，不随单笔决定变化，故本次列留空占位。
+        _DetailQuantityRow(
+          item: '送检',
+          current: '—',
+          cumulative: _qty(record.inspectedQty),
+          unit: unit,
+        ),
+        _DetailQuantityRow(
+          item: '剩余待检',
+          current: '—',
+          cumulative: _qty(record.currentRemainingQty),
+          unit: unit,
+        ),
+      ],
+      facets: const {},
+      nullCounts: const {},
+      filters: const {},
+      onFilterChanged: (_, _) {},
+      summaryBar: UtenTotalsSummaryBar(
+        density: true,
+        compact: true,
+        entries: [
+          UtenTotalEntry(
+            '本次判定合计',
+            unit == '—' ? decidedQty : '$decidedQty $unit',
           ),
         ],
       ),
@@ -897,11 +971,13 @@ class _QualityInspectionRecordDetailDialogState
   }
 }
 
+/// 详情分区外壳：标题 + 一张内嵌表格。弹层里的明细一律走全站同款
+/// MasterDataTableView，不再用 Row 逐项罗列。
 class _DetailSection extends StatelessWidget {
-  const _DetailSection({required this.title, required this.children});
+  const _DetailSection({required this.title, required this.child});
 
   final String title;
-  final List<Widget> children;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -921,37 +997,70 @@ class _DetailSection extends StatelessWidget {
           ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: UtenSpacing.s8),
-        ...children,
+        child,
       ],
     ),
   );
 }
 
-class _DetailLine extends StatelessWidget {
-  const _DetailLine({required this.label, required this.value});
+/// 详情里的一条「项目 / 内容」事实（表格的一行）。
+class _DetailField {
+  const _DetailField(this.label, this.value);
 
   final String label;
   final String value;
+}
+
+/// 「项目 / 内容」两列内嵌表。
+///
+/// 弹层是无界高度场景，故 embedded（按内容收缩、无翻页条、默认不出全屏按钮）；
+/// 只读展示不传 selectable，表格自带的文字框选保留复制能力（UUID 要能选中复制）。
+class _DetailFieldTable extends StatelessWidget {
+  const _DetailFieldTable({required this.tableKey, required this.fields});
+
+  final Key tableKey;
+  final List<_DetailField> fields;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 112,
-          child: Text(
-            '$label：',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-        Expanded(child: Text(value.isEmpty ? '—' : value)),
-      ],
-    ),
+  Widget build(BuildContext context) => MasterDataTableView<_DetailField>(
+    key: tableKey,
+    embedded: true,
+    showColumnChooser: false,
+    columns: [
+      MasterColumnDef(
+        key: 'label',
+        label: '项目',
+        width: 120,
+        value: (field) => field.label,
+      ),
+      MasterColumnDef(
+        key: 'value',
+        label: '内容',
+        width: 320,
+        value: (field) => field.value.isEmpty ? '—' : field.value,
+      ),
+    ],
+    items: fields,
+    facets: const {},
+    nullCounts: const {},
+    filters: const {},
+    onFilterChanged: (_, _) {},
   );
+}
+
+/// 检验数量表的一行：同一口径的「本次决定」与「当前累计」两个数并排。
+class _DetailQuantityRow {
+  const _DetailQuantityRow({
+    required this.item,
+    required this.current,
+    required this.cumulative,
+    required this.unit,
+  });
+
+  final String item;
+  final String current;
+  final String cumulative;
+  final String unit;
 }
 
 class _InlineRecordError extends StatelessWidget {

@@ -315,7 +315,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
           ],
           const SizedBox(height: UtenSpacing.s24),
           Text(
-            l10n.loginFooter,
+            l10n.loginFooter(DateTime.now().year),
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),

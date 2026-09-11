@@ -4,6 +4,7 @@ import com.uten.imp.common.finance.EmployeeClaimPostingPort;
 import com.uten.imp.common.finance.EmployeeClaimPostingPort.EmployeeClaimPosting;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.application.port.HrNoticePort;
 import com.uten.imp.features.common.taskclaim.TaskClaimService;
 import com.uten.imp.features.attachment.AttachmentRepository;
 import com.uten.imp.features.attachment.AttachmentService;
@@ -13,6 +14,7 @@ import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.expenseclaim.dto.ExpenseClaimCreateRequest;
 import com.uten.imp.features.expenseclaim.dto.ExpenseClaimDto;
+import com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto;
 import com.uten.imp.features.expenseclaim.dto.ExpenseClaimItemDto;
 import com.uten.imp.features.expenseclaim.dto.ExpenseClaimItemInput;
 import com.uten.imp.features.expenseclaim.dto.ExpenseClaimPaymentRequest;
@@ -73,6 +75,7 @@ public class ExpenseClaimService {
     private final TaskClaimService taskClaim;
     private final AttachmentRepository attachmentRepository;
     private final AttachmentService attachmentService;
+    private final HrNoticePort hrNotice;
 
     @Transactional(readOnly = true)
     public PageResponse<ExpenseClaimDto> listMine(
@@ -187,7 +190,39 @@ public class ExpenseClaimService {
         return mapClaim(
                 claim,
                 itemsFor(List.of(claim)).getOrDefault(id, List.of()),
-                attachments);
+                attachments,
+                departmentNamesFor(List.of(claim)));
+    }
+
+    /**
+     * 审批/打款队列表头筛选桶（2026-09-10 表头筛选接后端）：按队列状态集聚合部门与年月。
+     * 权限口径与对应列表一致：pending=expense:approve，payable=expense:pay。
+     */
+    @Transactional(readOnly = true)
+    public ExpenseClaimFacetsDto facets(String queue) {
+        AuthUser user = requireStaff();
+        Set<String> statuses;
+        switch (queue == null ? "" : queue.trim().toLowerCase(Locale.ROOT)) {
+            case "pending" -> {
+                require(user, "expense:approve");
+                statuses = Set.of("SUBMITTED", "REVIEWING");
+            }
+            case "payable" -> {
+                require(user, "expense:pay");
+                statuses = Set.of("APPROVED");
+            }
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报销队列");
+        }
+        return new ExpenseClaimFacetsDto(
+                toBuckets(applicantQuery.departmentFacets(statuses)),
+                toBuckets(applicantQuery.monthFacets(statuses)));
+    }
+
+    private static List<ExpenseClaimFacetsDto.Bucket> toBuckets(
+            List<ExpenseApplicantQuery.FacetRow> rows) {
+        return rows.stream()
+                .map(row -> new ExpenseClaimFacetsDto.Bucket(row.value(), row.label(), row.count()))
+                .toList();
     }
 
     @Transactional
@@ -232,7 +267,7 @@ public class ExpenseClaimService {
             items.add(item);
         }
         itemRepository.saveAll(items);
-        return mapClaim(claim, items);
+        return mapClaim(claim, items, List.of(), departmentNamesFor(List.of(claim)));
     }
 
     @Transactional
@@ -271,6 +306,11 @@ public class ExpenseClaimService {
         claim.setRejectedBy(null);
         claim.setRejectedAt(null);
         claimRepository.save(claim);
+        // 提交 → 通知审批人（弹卡 + 通知；2026-09-09 人事通知接入）
+        hrNotice.notifyExpenseClaimSubmitted(
+                claim.getId(), claim.getApplicantNameSnapshot(),
+                claim.getTotalAmount().toPlainString() + " 元",
+                claim.getApplicantId());
         return mapClaimWithItems(claim);
     }
 
@@ -288,6 +328,8 @@ public class ExpenseClaimService {
         claim.setSubmittedBy(null);
         claim.setSubmittedAt(null);
         claimRepository.save(claim);
+        // 撤回 → 办结审批人弹卡
+        hrNotice.resolveExpenseClaim(claim.getId(), "WITHDRAWN");
         return mapClaimWithItems(claim);
     }
 
@@ -310,6 +352,15 @@ public class ExpenseClaimService {
         claim.setApprovedBy(user.getEmployeeId());
         claim.setApprovedAt(Instant.now());
         claimRepository.save(claim);
+        // 审批通过 → 打款人弹卡接棒 + 申请人回执；办结「待审批」卡
+        // 先办结「待审批」卡再发「待打款」卡：两卡同聚合 (EXPENSE_CLAIM, claimId)，
+        // 顺序反了会把新卡一起撤掉。
+        hrNotice.resolveExpenseClaim(claim.getId(), "APPROVED_TO_PAY");
+        hrNotice.notifyExpenseClaimApproved(
+                claim.getId(), claim.getApplicantNameSnapshot(),
+                claim.getTotalAmount().toPlainString() + " 元",
+                userIdOfEmployee(claim.getApplicantId()),
+                claim.getApplicantId());
         return mapClaimWithItems(claim);
     }
 
@@ -333,6 +384,10 @@ public class ExpenseClaimService {
         claim.setApprovedBy(null);
         claim.setApprovedAt(null);
         claimRepository.save(claim);
+        hrNotice.notifyExpenseClaimRejected(
+                claim.getId(), claim.getApplicantNameSnapshot(), reason.trim(),
+                userIdOfEmployee(claim.getApplicantId()));
+        hrNotice.resolveExpenseClaim(claim.getId(), "REJECTED");
         return mapClaimWithItems(claim);
     }
 
@@ -374,7 +429,17 @@ public class ExpenseClaimService {
         claim.setPaymentExpenseStyleId(request.expenseStyleId());
         claim.setFinanceExpenseId(financeExpenseId);
         claimRepository.save(claim);
+        // 打款完成 → 申请人回执 + 办结全部报销弹卡（2026-09-09 人事通知接入）
+        hrNotice.notifyExpenseClaimPaid(
+                claim.getId(), claim.getApplicantNameSnapshot(),
+                claim.getTotalAmount().toPlainString() + " 元",
+                userIdOfEmployee(claim.getApplicantId()));
         return mapClaimWithItems(claim);
+    }
+
+    /** 员工档案 id → 登录账号 id（经 HrNoticePort 解析；无账号返回 null，通知侧自行跳过）。 */
+    private UUID userIdOfEmployee(UUID employeeId) {
+        return hrNotice.recipientUserIdOf(employeeId);
     }
 
     private ValidatedItem validateItem(ExpenseClaimItemInput input) {
@@ -430,15 +495,36 @@ public class ExpenseClaimService {
 
     private ExpenseClaimDto mapClaimWithItems(ExpenseClaim claim) {
         return mapClaim(
-                claim, itemsFor(List.of(claim)).getOrDefault(claim.getId(), List.of()));
+                claim,
+                itemsFor(List.of(claim)).getOrDefault(claim.getId(), List.of()),
+                List.of(),
+                departmentNamesFor(List.of(claim)));
     }
 
     private List<ExpenseClaimDto> mapClaims(List<ExpenseClaim> claims) {
         Map<UUID, List<ExpenseClaimItem>> items = itemsFor(claims);
+        Map<UUID, String> departmentNames = departmentNamesFor(claims);
         return claims.stream()
                 .map(claim -> mapClaim(
-                        claim, items.getOrDefault(claim.getId(), List.of())))
+                        claim,
+                        items.getOrDefault(claim.getId(), List.of()),
+                        List.of(),
+                        departmentNames))
                 .toList();
+    }
+
+    /** 一页报销单的申请人部门名一次查齐（列表「部门」列，避免逐单查部门）。 */
+    private Map<UUID, String> departmentNamesFor(List<ExpenseClaim> claims) {
+        List<UUID> ids = claims.stream()
+                .map(ExpenseClaim::getApplicantDepartmentId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, String> names = applicantQuery.departmentNames(ids);
+        return names == null ? Map.of() : names;
     }
 
     private Map<UUID, List<ExpenseClaimItem>> itemsFor(List<ExpenseClaim> claims) {
@@ -455,16 +541,17 @@ public class ExpenseClaimService {
     }
 
     private static ExpenseClaimDto mapClaim(
-            ExpenseClaim claim, List<ExpenseClaimItem> items) {
-        return mapClaim(claim, items, List.of());
-    }
-
-    private static ExpenseClaimDto mapClaim(
-            ExpenseClaim claim, List<ExpenseClaimItem> items, List<AttachmentDto> attachments) {
+            ExpenseClaim claim,
+            List<ExpenseClaimItem> items,
+            List<AttachmentDto> attachments,
+            Map<UUID, String> departmentNames) {
+        UUID departmentId = claim.getApplicantDepartmentId();
         return new ExpenseClaimDto(
                 claim.getId(),
                 claim.getApplicantId(),
                 claim.getApplicantNameSnapshot(),
+                departmentId,
+                departmentId == null ? null : departmentNames.get(departmentId),
                 claim.getTitle(),
                 items.stream().map(item -> new ExpenseClaimItemDto(
                         item.getId(),

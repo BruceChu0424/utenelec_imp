@@ -7,7 +7,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../repositories/system_test_repository.dart';
 
-/// Explicit test maintenance; queue completion is required before the business reset can proceed.
+/// 可选的测试维护入口：提前分批把业务附件提交删除队列。未在此清理的文件将在
+/// 「清空业务数据」时由服务端自动标删并物理删除（ADR-067 §7），不再是清空前置条件。
 class BusinessAttachmentResetDialog extends ConsumerStatefulWidget {
   const BusinessAttachmentResetDialog({super.key});
   @override
@@ -107,7 +108,10 @@ class _State extends ConsumerState<BusinessAttachmentResetDialog> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text('仅用于重置测试数据。以下非人事文件将提交删除任务；员工档案和劳动合同保留。请先确认备份。'),
+                const Text(
+                  '仅用于重置测试数据。可选：提前分批清理；未清理的文件将在清空时自动删除。'
+                  '以下业务文件将提交删除任务；员工档案、劳动合同和货品图片/图纸保留。请先确认备份。',
+                ),
                 const SizedBox(height: UtenSpacing.s12),
                 if (_busy) const LinearProgressIndicator(),
                 if (_error != null)
@@ -159,7 +163,9 @@ class _State extends ConsumerState<BusinessAttachmentResetDialog> {
                     ),
                   if (preview.blockingCount > 0) ...[
                     const Text(
-                      '上传凭证仍有效时请等待到期后刷新。未知原件或删除失败请先由维护人员通过附件对账核对，再刷新重试；此处不会跳过检查。',
+                      '可选：提前分批清理；未清理的文件将在清空时自动删除。'
+                      '上传凭证仍有效时请等待到期后刷新；未知原件或删除失败请先由维护人员通过附件对账核对'
+                      '（这类阻塞在清空时会被拒绝并列出原因）。',
                     ),
                     const SizedBox(height: UtenSpacing.s12),
                     TextField(
@@ -169,7 +175,7 @@ class _State extends ConsumerState<BusinessAttachmentResetDialog> {
                       onChanged: (_) => setState(() {}),
                       decoration: const UtenInputDecoration(
                         InputDecoration(labelText: '请输入「清理测试业务附件」'),
-                        info: '只对当前预览中的数据库和文件提交删除任务，完成前不能清空业务数据。',
+                        info: '只对当前预览中的数据库和文件提交删除任务。可选：提前分批清理；未清理的文件将在清空时自动删除。',
                       ),
                     ),
                   ],

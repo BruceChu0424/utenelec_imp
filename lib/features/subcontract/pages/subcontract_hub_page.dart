@@ -3,11 +3,17 @@
 // 委外部才在任务中心看到申请；本页不放流程教学区。
 //
 // V53 仅是历史默认授权；现行入口按每个页面权限与个人/部门显式配置逐卡显隐。
+//
+// 计数口径（准则 14-徽章与计数口径）：任务中心 / 待退回供应商 / 各单据草稿都是
+// 「必须由我处理」的待办，一律挂红色徽章并逐级累加（见
+// shared/badges/todo_badge_registry.dart，草稿于 2026-09-11 由中性括号改为徽章）；
+// 报表与历史兼容卡无计数。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
+import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -22,6 +28,9 @@ import '../../../shared/models/procurement_inbound.dart';
 import '../../warehouse/pages/procurement_return_task_pages.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/widgets/procurement_inbound_badges.dart';
+import '../../../components/feedback/uten_draft_badge.dart';
+import '../../../shared/badges/todo_badge_registry.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
 import '../config/subcontract_doc_config.dart';
 import '../config/subcontract_report_config.dart';
 import '../widgets/subcontract_task_badge.dart';
@@ -80,6 +89,9 @@ class SubcontractHubPage extends ConsumerWidget {
           location: SubcontractRoute.list(
             SubcontractDocConfig.order.pathSegment,
           ),
+          // 本人待自审草稿数（与新建页「草稿」按钮同源）。本卡没有别的待办
+          // 徽章，草稿就占右上角 badge 槽——用户要的正是这个位置。
+          badge: const UtenDraftBadge(kind: DraftDocKind.subcontractOrder),
         ),
       if (can(Perm.subcontractReturnView))
         _Entry(
@@ -89,6 +101,8 @@ class SubcontractHubPage extends ConsumerWidget {
           location: SubcontractRoute.list(
             SubcontractDocConfig.returnDoc.pathSegment,
           ),
+          // 同上：无其它待办徽章，草稿独占 badge 槽。
+          badge: const UtenDraftBadge(kind: DraftDocKind.subcontractReturn),
         ),
       if (can(Perm.subcontractMaterialReturnView))
         _Entry(
@@ -97,6 +111,9 @@ class SubcontractHubPage extends ConsumerWidget {
           description: '委外商处余料登记入库',
           location: SubcontractRoute.list(
             SubcontractDocConfig.materialReturn.pathSegment,
+          ),
+          badge: const UtenDraftBadge(
+            kind: DraftDocKind.subcontractMaterialReturn,
           ),
         ),
       if (can(Perm.subcontractWasteView))
@@ -107,6 +124,7 @@ class SubcontractHubPage extends ConsumerWidget {
           location: SubcontractRoute.list(
             SubcontractDocConfig.waste.pathSegment,
           ),
+          badge: const UtenDraftBadge(kind: DraftDocKind.subcontractWaste),
         ),
     ];
     final legacyEntries = <_Entry>[
@@ -136,6 +154,22 @@ class SubcontractHubPage extends ConsumerWidget {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
+        actions: [
+          // 本模块累计：任务中心 + 待退回供应商 + 本模块四类草稿。数字由
+          // todo_badge_registry 按 TodoModule.subcontract 求和得出（唯一实现），
+          // 页面里不要再手写加法。AppBar 的 actions 行是 stretch 对齐，
+          // 故包一层 Center 让徽章垂直居中；0 时组件自身不渲染。
+          Padding(
+            padding: const EdgeInsets.only(right: UtenSpacing.s8),
+            child: Center(
+              child: UtenNotificationBadge(
+                count: todoModuleCount(TodoModule.subcontract, ref.watch),
+                size: 20,
+                showLabel: true,
+              ),
+            ),
+          ),
+        ],
       ),
       body: SafeArea(
         child: UtenContentContainer(
@@ -222,6 +256,10 @@ class _Entry {
   final String label;
   final String description;
   final String location;
+
+  /// 右上角红色待办徽章；本页每张卡最多一个待办来源，草稿卡也用这个槽。
+  /// 若某卡将来同时有待办与草稿，再把草稿挪到 [UtenHubCard.labelSuffix]
+  /// 行内显示——一个 badge 槽塞两个红圆点读不懂。
   final Widget? badge;
 }
 

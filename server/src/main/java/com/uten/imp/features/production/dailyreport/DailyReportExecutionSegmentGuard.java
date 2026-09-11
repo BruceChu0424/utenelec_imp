@@ -34,6 +34,7 @@ public class DailyReportExecutionSegmentGuard {
     private final EntityManager em;
     private final ProductionDocumentAccessPolicy access;
     private final SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.features.production.ProductionWorkshopMembership workshopMembership;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void validateDraft(
@@ -293,52 +294,12 @@ public class DailyReportExecutionSegmentGuard {
             throw new ApiException(
                     ErrorCode.FORBIDDEN, "缺少车间生产任务查看权限");
         }
-        UUID employeeId = currentUser.requireEmployeeId();
-        Boolean eligible = (Boolean) em.createNativeQuery("""
-                        WITH RECURSIVE workshop_tree(id) AS (
-                            SELECT :workshopId
-                            UNION ALL
-                            SELECT child.id
-                            FROM departments child
-                            JOIN workshop_tree parent
-                              ON child.parent_id = parent.id
-                            WHERE child.is_deleted = FALSE
-                        )
-                        SELECT EXISTS (
-                            SELECT 1
-                            FROM employees employee
-                            WHERE employee.id = :employeeId
-                              AND employee.is_deleted = FALSE
-                              AND employee.status IN (
-                                  'active','probation','onLeave')
-                              AND (
-                                  employee.id = :responsibleEmployeeId
-                                  OR employee.department_id IN (
-                                      SELECT id FROM workshop_tree)
-                                  OR EXISTS (
-                                      SELECT 1
-                                      FROM employee_secondary_departments secondary
-                                      WHERE secondary.employee_id = employee.id
-                                        AND secondary.department_id IN (
-                                            SELECT id FROM workshop_tree))
-                                  OR EXISTS (
-                                      SELECT 1
-                                      FROM departments managed
-                                      WHERE managed.id IN (
-                                          SELECT id FROM workshop_tree)
-                                        AND managed.manager_id = employee.id
-                                        AND managed.is_deleted = FALSE)
-                              )
-                        )
-                        """)
-                .setParameter(
-                        "workshopId", segment.workshopDepartmentId())
-                .setParameter("employeeId", employeeId)
-                .setParameter(
-                        "responsibleEmployeeId",
-                        segment.responsibleEmployeeId())
-                .getSingleResult();
-        if (!Boolean.TRUE.equals(eligible)) {
+        // 车间归属判定（主职 ∪ 兼职 ∪ 车间子树部门负责人 ∪ 段负责人本人）收敛到
+        // ProductionWorkshopMembership，与执行段写侧共用一份口径（2026-09-11）。
+        if (!workshopMembership.isWorkshopMember(
+                segment.workshopDepartmentId(),
+                segment.responsibleEmployeeId(),
+                currentUser.requireEmployeeId())) {
             throw new ApiException(
                     ErrorCode.FORBIDDEN, "只能办理本人所属、兼职、负责或管理车间的生产任务");
         }

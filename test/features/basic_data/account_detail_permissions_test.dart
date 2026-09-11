@@ -53,7 +53,8 @@ void main() {
 
       expect(repository.statementCalls, 1);
       expect(find.text('搜索单号、对方单位或摘要'), findsOneWidget);
-      expect(find.text('查询'), findsOneWidget);
+      // 2026-09-11 撤掉「查询」按钮（全站同改）：改日期即查、搜索防抖/回车即查。
+      expect(find.text('查询'), findsNothing);
       expect(find.text('清除'), findsOneWidget);
       expect(find.textContaining('起 20'), findsOneWidget);
       expect(find.textContaining('止 20'), findsOneWidget);

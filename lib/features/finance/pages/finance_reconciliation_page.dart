@@ -253,7 +253,6 @@ class _FinanceReconciliationPageState
               ),
               // 桌面：左筛选侧栏（搜索 + 账户）+ 右表格；手机：垂直堆叠
               body: UtenListTwoPane(
-                splitPersistenceKey: 'finance.reconciliation',
                 filterPane: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: UtenSpacing.s4,

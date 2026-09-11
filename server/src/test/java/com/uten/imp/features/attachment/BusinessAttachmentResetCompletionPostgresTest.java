@@ -6,9 +6,16 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import java.nio.charset.StandardCharsets;
 import java.sql.DriverManager;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Exercises the forward correction without changing the already-applied V537 migration. */
+/**
+ * Exercises the forward corrections (V539, V549) without changing the already-applied V537 migration.
+ * V549 widens the protected owner set to GOODS; the Java constant must name the same set.
+ */
 @Testcontainers(disabledWithoutDocker=true)
 class BusinessAttachmentResetCompletionPostgresTest {
     @Container static final PostgreSQLContainer<?> POSTGRES=new PostgreSQLContainer<>("postgres:16-alpine");
@@ -31,12 +38,29 @@ class BusinessAttachmentResetCompletionPostgresTest {
                 assertThat(input).isNotNull();
                 st.execute(new String(input.readAllBytes(),StandardCharsets.UTF_8));
             }
+            String masterOwnerGuard;
+            try(var input=getClass().getResourceAsStream("/db/migration/V549__attachment_reset_master_owner_guard.sql")){
+                assertThat(input).isNotNull();
+                masterOwnerGuard=new String(input.readAllBytes(),StandardCharsets.UTF_8);
+                st.execute(masterOwnerGuard);
+            }
+            assertThat(protectedOwnerTypesIn(masterOwnerGuard))
+                    .as("V549 protected owner set must equal BusinessAttachmentResetPreparation.PROTECTED_OWNER_TYPES")
+                    .isEqualTo(new TreeSet<>(BusinessAttachmentResetPreparation.PROTECTED_OWNER_TYPES));
             st.execute("""
                     INSERT INTO attachments VALUES
                       ('00000000-0000-0000-0000-000000000001','SALES_ORDER','00000000-0000-0000-0000-000000000010','CLEAN','internal','contract','v1'),
-                      ('00000000-0000-0000-0000-000000000002','EMPLOYEE','00000000-0000-0000-0000-000000000020','CLEAN','internal','human','h1');
+                      ('00000000-0000-0000-0000-000000000002','EMPLOYEE','00000000-0000-0000-0000-000000000020','CLEAN','internal','human','h1'),
+                      ('00000000-0000-0000-0000-00000000000a','GOODS','00000000-0000-0000-0000-0000000000a0','CLEAN','local','drawing','g1'),
+                      ('00000000-0000-0000-0000-00000000000b',' goods ','00000000-0000-0000-0000-0000000000b0','CLEAN','oss','photo',NULL);
                     """);
-            assertThat(blockers(st)).isEqualTo(1);
+            assertThat(blockers(st)).as("GOODS (any case/whitespace, any provider) is a preserved master owner").isEqualTo(1);
+            st.execute("""
+                    INSERT INTO attachment_upload_sessions VALUES('00000000-0000-0000-0000-00000000000c','GOODS',
+                      '00000000-0000-0000-0000-0000000000a0','PENDING',now()+interval '1 hour','internal','drawing-upload','s1',NULL,NULL)
+                    """);
+            assertThat(blockers(st)).as("GOODS upload sessions are protected too").isEqualTo(1);
+            st.execute("DELETE FROM attachment_upload_sessions WHERE owner_type='GOODS'");
             st.execute("UPDATE attachments SET lifecycle_state='DELETED' WHERE owner_type='SALES_ORDER'");
             assertThat(blockers(st)).as("DELETED without any deletion intention").isEqualTo(1);
             st.execute("""
@@ -89,7 +113,23 @@ class BusinessAttachmentResetCompletionPostgresTest {
             try(var result=st.executeQuery("SELECT lifecycle_state FROM attachments WHERE owner_type='EMPLOYEE'")){
                 result.next();assertThat(result.getString(1)).isEqualTo("CLEAN");
             }
+            try(var result=st.executeQuery("SELECT count(*) FROM attachments WHERE upper(btrim(owner_type))='GOODS' AND lifecycle_state='CLEAN'")){
+                result.next();assertThat(result.getLong(1)).as("goods master attachments untouched").isEqualTo(2);
+            }
         }
+    }
+    /** Every {@code upper(btrim(owner_type)) NOT IN (...)} list in the migration, as one normalized set. */
+    private static Set<String> protectedOwnerTypesIn(String migration) {
+        Matcher lists=Pattern.compile("upper\\(btrim\\(owner_type\\)\\) NOT IN \\(([^)]*)\\)").matcher(migration);
+        Set<String> owners=null;
+        while(lists.find()){
+            Set<String> current=new TreeSet<>();
+            Matcher names=Pattern.compile("'([^']+)'").matcher(lists.group(1));
+            while(names.find()) current.add(names.group(1));
+            if(owners==null) owners=current; else assertThat(current).as("both CTE guards share one set").isEqualTo(owners);
+        }
+        assertThat(owners).as("migration must declare the protected owner set").isNotNull();
+        return owners;
     }
     private static long blockers(java.sql.Statement statement)throws Exception {
         try(var result=statement.executeQuery("SELECT count(*) FROM fn_business_attachment_reset_blockers()")){result.next();return result.getLong(1);}

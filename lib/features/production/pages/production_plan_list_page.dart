@@ -14,7 +14,10 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
+import '../../../components/data_display/doc_status_badge.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../components/data_display/paged_list_controller.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -42,7 +45,10 @@ class ProductionPerm {
 }
 
 class ProductionPlanListPage extends ConsumerStatefulWidget {
-  const ProductionPlanListPage({super.key});
+  const ProductionPlanListPage({super.key, this.initialStatus});
+
+  /// 深链预选（路由 `?status=draft`）：新建页「草稿(N)」按钮进来时直接落在草稿段。
+  final String? initialStatus;
 
   @override
   ConsumerState<ProductionPlanListPage> createState() =>
@@ -62,6 +68,11 @@ class _ProductionPlanListPageState
   @override
   void initState() {
     super.initState();
+    // 深链 ?status=draft：预选「草稿」段（新建页「草稿(N)」按钮的落点）。
+    if (isDraftStatusQuery(widget.initialStatus)) {
+      _statusFilter = 0;
+      _statusFilterSelected = true;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) => _reload(1));
   }
 
@@ -261,6 +272,12 @@ class _ProductionPlanListPageState
       label: '状态',
       width: 100,
       value: (it) => productionStatusLabel(it.status),
+      // 状态徽章（草稿中性/已审绿/红冲红）；value 仍是纯文本供列宽/排序/筛选。
+      cellBuilder: (_, it) => UtenStatusBadge(
+        label: productionStatusLabel(it.status),
+        type: docStatusBadgeType(it.status),
+        size: UtenStatusBadgeSize.small,
+      ),
     ),
   ];
 
@@ -334,7 +351,6 @@ class _ProductionPlanListPageState
                   // （常驻、未选灰色禁用，与货品资料等主档页一致），见 _planBatchActions。
                   // 桌面：左筛选侧栏（统一筛选工具条）+ 右表格；手机：垂直堆叠
                   body: UtenListTwoPane(
-                    splitPersistenceKey: 'production.planList',
                     // 全平台统一筛选工具条：状态分段 + 胶囊搜索框。
                     filterPane: Padding(
                       padding: const EdgeInsets.symmetric(

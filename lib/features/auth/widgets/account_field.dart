@@ -36,6 +36,8 @@ class _AccountFieldState extends ConsumerState<AccountField> {
   OverlayEntry? _overlay;
   List<String> _history = const [];
   bool _open = false;
+  // 输入框实际渲染宽度（build 时由 LayoutBuilder 采集），下拉浮层与它同宽
+  double _fieldWidth = 320;
 
   @override
   void initState() {
@@ -83,6 +85,7 @@ class _AccountFieldState extends ConsumerState<AccountField> {
     final entry = OverlayEntry(
       builder: (_) => _Dropdown(
         layerLink: _layerLink,
+        width: _fieldWidth,
         accounts: _history,
         onPick: (a) {
           widget.controller.text = a;
@@ -117,44 +120,52 @@ class _AccountFieldState extends ConsumerState<AccountField> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return CompositedTransformTarget(
-      link: _layerLink,
-      child: TextFormField(
-        controller: widget.controller,
-        focusNode: _focus,
-        textInputAction: widget.textInputAction,
-        autocorrect: false,
-        validator: widget.validator,
-        errorBuilder: utenTextFieldErrorBuilder,
-        autofillHints: const ['username'],
-        decoration: UtenInputDecoration(
-          InputDecoration(
-            hintText: widget.hint,
-            prefixIcon: const Icon(Icons.person_outline_rounded),
-            suffixIcon: IconButton(
-              icon: Icon(_open ? Icons.arrow_drop_up : Icons.arrow_drop_down),
-              tooltip: '历史账号',
-              onPressed: _toggleDropdown,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _fieldWidth = constraints.maxWidth;
+        return CompositedTransformTarget(
+          link: _layerLink,
+          child: TextFormField(
+            controller: widget.controller,
+            focusNode: _focus,
+            textInputAction: widget.textInputAction,
+            autocorrect: false,
+            validator: widget.validator,
+            errorBuilder: utenTextFieldErrorBuilder,
+            autofillHints: const ['username'],
+            decoration: UtenInputDecoration(
+              InputDecoration(
+                hintText: widget.hint,
+                prefixIcon: const Icon(Icons.person_outline_rounded),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _open ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                  ),
+                  tooltip: '历史账号',
+                  onPressed: _toggleDropdown,
+                ),
+                border: const OutlineInputBorder(),
+              ),
             ),
-            border: const OutlineInputBorder(),
+            onFieldSubmitted: widget.onSubmitted == null
+                ? null
+                : (_) {
+                    _focus.unfocus();
+                    widget.onSubmitted!();
+                  },
+            style: theme.textTheme.bodyLarge,
           ),
-        ),
-        onFieldSubmitted: widget.onSubmitted == null
-            ? null
-            : (_) {
-                _focus.unfocus();
-                widget.onSubmitted!();
-              },
-        style: theme.textTheme.bodyLarge,
-      ),
+        );
+      },
     );
   }
 }
 
-/// 下拉浮层：账号列表 + 单项删除 + 清除全部。
+/// 下拉浮层：账号列表 + 单项删除 + 清除全部；宽度与输入框一致。
 class _Dropdown extends StatelessWidget {
   const _Dropdown({
     required this.layerLink,
+    required this.width,
     required this.accounts,
     required this.onPick,
     required this.onDelete,
@@ -162,6 +173,7 @@ class _Dropdown extends StatelessWidget {
     required this.onClose,
   });
   final LayerLink layerLink;
+  final double width;
   final List<String> accounts;
   final void Function(String) onPick;
   final void Function(String) onDelete;
@@ -192,58 +204,65 @@ class _Dropdown extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
                 color: theme.colorScheme.surface,
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxWidth: 320,
-                    maxHeight: 280,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Flexible(
-                        child: ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: accounts.length,
-                          itemBuilder: (_, i) {
-                            final a = accounts[i];
-                            return InkWell(
-                              onTap: () => onPick(a),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.person_outline, size: 18),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        a,
-                                        style: theme.textTheme.bodyMedium,
+                  constraints: const BoxConstraints(maxHeight: 280),
+                  child: SizedBox(
+                    // 与输入框同宽（不再按内容收缩）
+                    width: width,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Flexible(
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: accounts.length,
+                            itemBuilder: (_, i) {
+                              final a = accounts[i];
+                              return InkWell(
+                                onTap: () => onPick(a),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.person_outline,
+                                        size: 18,
                                       ),
-                                    ),
-                                    IconButton(
-                                      tooltip: '删除',
-                                      iconSize: 18,
-                                      visualDensity: VisualDensity.compact,
-                                      icon: const Icon(Icons.close, size: 16),
-                                      onPressed: () => onDelete(a),
-                                    ),
-                                  ],
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          a,
+                                          style: theme.textTheme.bodyMedium,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        tooltip: '删除',
+                                        iconSize: 18,
+                                        visualDensity: VisualDensity.compact,
+                                        icon: const Icon(Icons.close, size: 16),
+                                        onPressed: () => onDelete(a),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
+                              );
+                            },
+                          ),
                         ),
-                      ),
-                      const Divider(height: 1),
-                      TextButton.icon(
-                        onPressed: onClear,
-                        icon: const Icon(Icons.delete_sweep_outlined, size: 18),
-                        label: const Text('清除全部'),
-                      ),
-                    ],
+                        const Divider(height: 1),
+                        TextButton.icon(
+                          onPressed: onClear,
+                          icon: const Icon(
+                            Icons.delete_sweep_outlined,
+                            size: 18,
+                          ),
+                          label: const Text('清除全部'),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),

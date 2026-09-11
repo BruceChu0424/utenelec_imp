@@ -10,7 +10,8 @@
 
 | 场景 | 用什么 |
 |---|---|
-| 入口选择页 / 登录页顶部 | `UtenWordmarkLogo()`（默认 240×44） |
+| 入口选择页顶部 | `UtenWordmarkLogo(width: 280/360 按断点)`（窄屏 280×~51 / 大屏 360×~66，2026-09-10 放大为主视觉） |
+| 登录页顶部 | `UtenWordmarkLogo(width: 220, height: 220/(405/74))`（220×~40） |
 | 启动屏 | `UtenWordmarkLogo.splash()`（320×~58） |
 | 卡片内 / 行内 / Avatar 旁 | `UtenWordmarkLogo.compact()`（120×~22） |
 | 大屏 hero banner | `UtenWordmarkLogo(width: 360, height: 66)` |

@@ -1,5 +1,7 @@
 package com.uten.imp.features.payroll;
 
+import com.uten.imp.features.notice.HrNoticeService;
+import com.uten.imp.application.port.EmployeeNameLookupPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.payroll.dto.PayrollBatchCreateRequest;
@@ -69,7 +71,9 @@ class PayrollServiceTest {
                 employeeQuery,
                 currentUser,
                 tx,
-                new PayrollPdfService());
+                new PayrollPdfService(),
+                mock(HrNoticeService.class),
+                mock(EmployeeNameLookupPort.class));
     }
 
     @Test

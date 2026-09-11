@@ -1,23 +1,25 @@
 // 访客首页：我的预约列表(按状态筛选)+ 新建预约入口。
 //
+// 2026-09-09 表格化改版：卡片网格 → MasterDataTableView（列对齐 + 分页）。
+// 列：姓名/事由/接待人/计划到访/状态（原卡片字段全部保留，公司并入接待人
+// 留空的回退展示）。访客端多为手机（375px 级窄屏）：表格窄屏横向滚动，
+// 列宽自适应不溢出；无多选；行双击进预约详情。
+//
 // 响应式：访客流程不经主外壳，全断点自套 UtenContentContainer 收敛
 //（列表页 maxWidth 1600，宽屏居中不拉宽，水平 gutter 由容器提供）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/cards/uten_card.dart';
-import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_paged_grid.dart';
-import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/visitor_application.dart';
 import '../providers/visitor_providers.dart';
 import '../providers/visitor_session_provider.dart';
@@ -116,65 +118,34 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
               ),
             ),
             Expanded(
-              child: RefreshIndicator(
-                onRefresh: () async =>
-                    ref.invalidate(visitorApplicationsProvider(_query)),
-                child: apps.when(
-                  loading: () => const UtenSkeletonList(itemCount: 6),
-                  error: (e, _) => UtenEmpty.error(
-                    message: '$e',
-                    actionLabel: l10n.commonRetry,
-                    onAction: () =>
-                        ref.invalidate(visitorApplicationsProvider(_query)),
+              child: apps.when(
+                loading: () => const UtenSkeletonList(itemCount: 6),
+                error: (e, _) => UtenEmpty.error(
+                  message: '$e',
+                  actionLabel: l10n.commonRetry,
+                  onAction: () =>
+                      ref.invalidate(visitorApplicationsProvider(_query)),
+                ),
+                data: (page) => RefreshIndicator(
+                  onRefresh: () async =>
+                      ref.invalidate(visitorApplicationsProvider(_query)),
+                  child: MasterDataTableView<VisitorApplication>(
+                    key: const Key('visitor-home-table'),
+                    columns: _columns(l10n),
+                    items: page.items,
+                    facets: const {},
+                    nullCounts: const {},
+                    filters: const {},
+                    onFilterChanged: (_, _) {},
+                    // 双击行进入预约详情（保留现有路由与 go 语义）。
+                    onRowTap: (app) => context.go('/visitor/apply/${app.id}'),
+                    emptyMessage: l10n.commonNoData,
+                    // 个人视角（仅当前访客自己的预约），天然几十以内，仍保留
+                    // 后端分页的翻页条（页多时可用）。
+                    currentPage: page.page,
+                    totalPages: page.totalPages,
+                    onPageChange: (p) => setState(() => _page = p),
                   ),
-                  data: (page) {
-                    final list = page.items;
-                    if (list.isEmpty) {
-                      return ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        children: [
-                          const SizedBox(height: 80),
-                          UtenEmpty(
-                            icon: Icons.event_available_outlined,
-                            message: l10n.commonNoData,
-                            description: l10n.visitorApplyNew,
-                          ),
-                        ],
-                      );
-                    }
-                    return SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(
-                        vertical: UtenSpacing.s16,
-                      ),
-                      // 个人视角（仅当前访客自己的预约），天然几十以内，无需分页。
-                      child: Column(
-                        children: [
-                          UtenResponsiveGrid(
-                            itemCount: list.length,
-                            itemBuilder: (context, i, _) => _VisitorAppCard(
-                              key: ValueKey(list[i].id),
-                              app: list[i],
-                              onTap: () =>
-                                  context.go('/visitor/apply/${list[i].id}'),
-                            ),
-                          ),
-                          if (page.totalPages > 1)
-                            UtenGridPager(
-                              currentPage: page.page,
-                              totalPages: page.totalPages,
-                              totalItems: page.total,
-                              onPrev: _page > 1
-                                  ? () => setState(() => _page -= 1)
-                                  : null,
-                              onNext: _page < page.totalPages
-                                  ? () => setState(() => _page += 1)
-                                  : null,
-                            ),
-                        ],
-                      ),
-                    );
-                  },
                 ),
               ),
             ),
@@ -185,73 +156,39 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
   }
 }
 
-class _VisitorAppCard extends StatelessWidget {
-  const _VisitorAppCard({super.key, required this.app, required this.onTap});
-  final VisitorApplication app;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    return UtenCard(
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: visitorStatusColor(app.status).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  visitorStatusIcon(app.status),
-                  color: visitorStatusColor(app.status),
-                  size: 20,
-                ),
-              ),
-              UtenStatusBadge(
-                label: visitorStatusLabel(app.status, l10n),
-                type: visitorBadgeType(app.status),
-                size: UtenStatusBadgeSize.small,
-              ),
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          Text(
-            app.visitPurpose,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            app.hostName != null
-                ? '${l10n.visitorDetailHost}: ${app.hostName}'
-                : app.company ?? '',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            fmtDateTime(app.plannedVisitAt),
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+List<MasterColumnDef<VisitorApplication>> _columns(AppLocalizations l10n) => [
+  MasterColumnDef(
+    key: 'visitorName',
+    label: '姓名',
+    width: 110,
+    value: (app) => app.visitorName,
+  ),
+  MasterColumnDef(
+    key: 'visitPurpose',
+    label: '事由',
+    width: 200,
+    value: (app) => app.visitPurpose,
+  ),
+  MasterColumnDef(
+    key: 'hostName',
+    label: '接待人',
+    width: 110,
+    // 接待人缺省时回退公司名（原卡片口径），两者皆空留白。
+    value: (app) => (app.hostName != null && app.hostName!.isNotEmpty)
+        ? app.hostName
+        : app.company,
+  ),
+  MasterColumnDef(
+    key: 'plannedVisitAt',
+    label: '计划到访',
+    width: 150,
+    type: 'date',
+    value: (app) => fmtDateTime(app.plannedVisitAt),
+  ),
+  MasterColumnDef(
+    key: 'status',
+    label: '状态',
+    width: 90,
+    value: (app) => visitorStatusLabel(app.status, l10n),
+  ),
+];

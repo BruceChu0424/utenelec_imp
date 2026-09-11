@@ -39,6 +39,22 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class MaterialAnalysisServiceBehaviorTest {
+    /**
+     * 2026-09-10 F8：主档来源为空/未知时，有 BOM 子层按自制建议（子层需求随之展开），
+     * 叶子仍 REVIEW（只影响 UI 预填）；显式来源不受 hasChildren 影响。
+     */
+    @Test
+    void blankSourceSuggestionDependsOnBomChildren() {
+        org.junit.jupiter.api.Assertions.assertEquals("MAKE", MaterialAnalysisService.suggestion("", true));
+        org.junit.jupiter.api.Assertions.assertEquals("MAKE", MaterialAnalysisService.suggestion(null, true));
+        org.junit.jupiter.api.Assertions.assertEquals("MAKE", MaterialAnalysisService.suggestion("外购件", true));
+        org.junit.jupiter.api.Assertions.assertEquals("REVIEW", MaterialAnalysisService.suggestion("", false));
+        org.junit.jupiter.api.Assertions.assertEquals("REVIEW", MaterialAnalysisService.suggestion(null, false));
+        org.junit.jupiter.api.Assertions.assertEquals("BUY", MaterialAnalysisService.suggestion("采购", true));
+        org.junit.jupiter.api.Assertions.assertEquals("MAKE", MaterialAnalysisService.suggestion(" 自制 ", false));
+        org.junit.jupiter.api.Assertions.assertEquals("SUBCONTRACT", MaterialAnalysisService.suggestion("委外", false));
+    }
+
 
     @Test
     void partiallyPlannedBatchKeepsOneQuantityScopeAcrossAllReadyStages() {

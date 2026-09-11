@@ -22,6 +22,27 @@ public interface SuggestionRepository extends JpaRepository<Suggestion, UUID> {
             String category,
             Pageable pageable);
 
+    // 2026-09-10 列表「状态」表头筛选：status 与 scope/category 的四种组合派生查询
+    //（派生方法而非 :param IS NULL OR ... 拼接，避免 null 参数类型不定）。
+
+    Page<Suggestion> findByStatus(String status, Pageable pageable);
+
+    Page<Suggestion> findBySubmitterIdAndStatus(
+            UUID submitterId,
+            String status,
+            Pageable pageable);
+
+    Page<Suggestion> findByCategoryAndStatus(
+            String category,
+            String status,
+            Pageable pageable);
+
+    Page<Suggestion> findBySubmitterIdAndCategoryAndStatus(
+            UUID submitterId,
+            String category,
+            String status,
+            Pageable pageable);
+
     /**
      * Serializes mutations of one suggestion.
      *

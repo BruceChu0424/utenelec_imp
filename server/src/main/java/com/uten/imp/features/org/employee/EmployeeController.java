@@ -43,8 +43,11 @@ public class EmployeeController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Set<String> statuses,
             @RequestParam(required = false) UUID departmentId,
-            @RequestParam(defaultValue = "false") boolean includeSubtree) {
-        return queryService.list(page, size, search, statuses, departmentId, includeSubtree);
+            @RequestParam(defaultValue = "false") boolean includeSubtree,
+            // sort 白名单见 EmployeeListQuery#orderBy：code / hireDate / workYears
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order) {
+        return queryService.list(page, size, search, statuses, departmentId, includeSubtree, sort, order);
     }
 
     @GetMapping("/{id}")

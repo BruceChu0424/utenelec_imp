@@ -117,12 +117,15 @@ class DailyGridRow extends EditableGridRow {
 /// 生产日报明细列：货品（点选）/ 颜色（只读）/ 单位（只读）/ 完工申报量 / 实际重量 /
 /// 关联计划号 / 备注。[onPickGoods] 由编辑页提供；[colorEntries]/[unitEntries] 由编辑页注入。
 List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
+  required BuildContext context,
   required Future<void> Function(DailyGridRow row) onPickGoods,
   required Future<void> Function(DailyGridRow row) onPickSource,
   required void Function(DailyGridRow row) onClearSource,
   required Map<String, String> colorEntries,
   required Map<String, String> unitEntries,
 }) {
+  // 列说明统一挂表头 ⓘ（2026-09-09 口径）：每行重复的 ⓘ 既冗余又挤占格宽。
+  final l10n = workflowFieldText(context);
   return [
     EditableGridColumn<DailyGridRow>(
       key: 'goods',
@@ -184,6 +187,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       width: 118,
       numeric: true,
       required: true,
+      headerInfo: l10n.workflowReportQuantityHint,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.qty,
         isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
@@ -191,9 +195,8 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
           controller: row.qty,
           textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: UtenInputDecoration(
-            const InputDecoration(isDense: true, hintText: '0'),
-            info: workflowFieldText(context).workflowReportQuantityHint,
+          decoration: const UtenInputDecoration(
+            InputDecoration(isDense: true, hintText: '0'),
           ),
         ),
       ),

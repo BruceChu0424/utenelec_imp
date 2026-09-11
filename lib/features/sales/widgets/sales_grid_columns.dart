@@ -218,6 +218,7 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
 /// [docType] 条件追加）。[onPickGoods] 由编辑页提供（弹货品选择器并写回 row.goods）。
 /// [colorEntries]/[unitEntries] 由编辑页从 SalesMasterNameService 注入（单元格下拉用）。
 List<EditableGridColumn<SalesGridRow>> salesGridColumns({
+  required BuildContext context,
   required Future<void> Function(SalesGridRow row) onPickGoods,
   required SalesDocType docType,
   required Map<String, String> colorEntries,
@@ -226,6 +227,19 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
 }) {
   final priceRequired =
       docType != SalesDocType.otherShipment && !freeCustomerShipment;
+  // 列说明统一挂表头 ⓘ（2026-09-09 口径）：每行重复的 ⓘ 既冗余又挤占格宽。
+  final l10n = workflowFieldText(context);
+  final qtyHint = switch (docType) {
+    SalesDocType.order => l10n.workflowOrderQuantityHint,
+    SalesDocType.returnDoc => l10n.workflowReturnQuantityHint,
+    _ => l10n.workflowQuantityHint,
+  };
+  final priceHint =
+      (docType == SalesDocType.order || docType == SalesDocType.shipment)
+      ? _lockedPriceHint
+      : docType == SalesDocType.returnDoc
+      ? l10n.workflowReturnPriceHint
+      : l10n.workflowPriceHint;
   return [
     EditableGridColumn<SalesGridRow>(
       key: 'goods',
@@ -303,6 +317,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       width: 128,
       numeric: true,
       required: true,
+      headerInfo: qtyHint,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.qty,
         isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
@@ -310,13 +325,8 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
           controller: row.qty,
           textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: UtenInputDecoration(
-            const InputDecoration(isDense: true, hintText: '0'),
-            info: docType == SalesDocType.order
-                ? workflowFieldText(context).workflowOrderQuantityHint
-                : docType == SalesDocType.returnDoc
-                ? workflowFieldText(context).workflowReturnQuantityHint
-                : workflowFieldText(context).workflowQuantityHint,
+          decoration: const UtenInputDecoration(
+            InputDecoration(isDense: true, hintText: '0'),
           ),
         ),
       ),
@@ -339,6 +349,8 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         width: 128,
         numeric: true,
         required: priceRequired,
+        // 锁定/可编辑两种分支共用表头说明（锁定口径 + 录入口径按 docType 择一）。
+        headerInfo: priceHint,
         cellBuilder: (context, row) => RequiredCellFrame(
           listenable: row.price,
           isEmpty: () =>
@@ -350,24 +362,15 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
           child:
               (docType == SalesDocType.order ||
                   docType == SalesDocType.shipment)
-              ? _lockedCell(
-                  context,
-                  row.price,
-                  message:
-                      '单价由货品资料或来源单据带入，并由服务端锁定，不可在订货单修改。'
-                      '复制的新行如单价为空，请重新选择货品取得当前价格',
-                )
+              ? _lockedCell(context, row.price)
               : TextField(
                   controller: row.price,
                   textAlign: TextAlign.right,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  decoration: UtenInputDecoration(
-                    const InputDecoration(isDense: true, hintText: '0'),
-                    info: docType == SalesDocType.returnDoc
-                        ? workflowFieldText(context).workflowReturnPriceHint
-                        : workflowFieldText(context).workflowPriceHint,
+                  decoration: const UtenInputDecoration(
+                    InputDecoration(isDense: true, hintText: '0'),
                   ),
                 ),
         ),
@@ -382,8 +385,8 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         width: 128,
         numeric: true,
         required: true,
-        // 表头 ⓘ 悬停说明折扣口径（2026-09-04 用户口径）。
-        headerInfo: '折扣按小数填写：1 = 保持原价；0.9 = 9折；0.8 = 8折，以此类推',
+        // 表头 ⓘ 悬停说明折扣口径（2026-09-04 用户口径）；格内不再重复 ⓘ。
+        headerInfo: l10n.workflowDiscountHint,
         cellBuilder: (context, row) => RequiredCellFrame(
           listenable: row.discount,
           isEmpty: () => !isValidSalesOrderDiscountText(row.discount.text),
@@ -391,9 +394,8 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
             controller: row.discount,
             textAlign: TextAlign.right,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: UtenInputDecoration(
-              const InputDecoration(isDense: true, hintText: '1=原价'),
-              info: workflowFieldText(context).workflowDiscountHint,
+            decoration: const UtenInputDecoration(
+              InputDecoration(isDense: true, hintText: '1=原价'),
             ),
           ),
         ),
@@ -501,23 +503,25 @@ Widget _readOnlyMasterCell(
 }
 
 /// 锁定单元格(订单/出货单价)：readOnly 保持正文字色，不用 enabled:false 的禁用浅灰；
-/// 点击说明权威来源。控制器值可用于客户端预览，但服务端不信任请求体中的单价/金额。
-Widget _lockedCell(
-  BuildContext context,
-  TextEditingController ctl, {
-  required String message,
-}) {
+/// 点击弹说明权威来源（格内 ⓘ 已上移表头，见 salesGridColumns 的 priceHint）。
+/// 控制器值可用于客户端预览，但服务端不信任请求体中的单价/金额。
+/// 锁定单价说明：表头 ⓘ 与只读格点按提示同一份口径（2026-09-11 去重，
+/// 此前两处各硬编码一份易改漏；暂无 l10n key，待补 arb 后统一换成 l10n）。
+const String _lockedPriceHint =
+    '单价由货品资料或来源单据带入，并由服务端锁定，不可在订货单修改。'
+    '复制的新行如单价为空，请重新选择货品取得当前价格';
+
+Widget _lockedCell(BuildContext context, TextEditingController ctl) {
   final theme = Theme.of(context);
   return TextField(
     controller: ctl,
     readOnly: true,
     textAlign: TextAlign.right,
     style: TextStyle(color: theme.colorScheme.onSurface),
-    decoration: UtenInputDecoration(
-      const InputDecoration(isDense: true, hintText: '重新选货取价'),
-      info: message,
+    decoration: const UtenInputDecoration(
+      InputDecoration(isDense: true, hintText: '重新选货取价'),
     ),
-    onTap: () => context.appInfo(message),
+    onTap: () => context.appInfo(_lockedPriceHint),
   );
 }
 

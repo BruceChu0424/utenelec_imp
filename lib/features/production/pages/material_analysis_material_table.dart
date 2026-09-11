@@ -30,6 +30,7 @@ final class _MaterialTableRow {
     this.contextOnly = false,
     this.rootAnalysisLineId,
     this.parentMaterialLineId,
+    this.childCount,
   });
 
   final _MaterialTableRowKind kind;
@@ -43,9 +44,19 @@ final class _MaterialTableRow {
   final bool hasChildren;
   final List<bool> ancestorContinuations;
   final bool isLastChild;
+
+  /// 只读上下文：分页补的祖先（`PAGE_CONTEXT|` 键）或表头筛选未命中、仅因子孙
+  /// 命中而保留的祖先。无勾选/下拉/行菜单，不计入业务数量。
   final bool contextOnly;
   final String? rootAnalysisLineId;
   final String? parentMaterialLineId;
+
+  /// 当前投影下的可见直接子件数（树形格「N」徽章）；「只看缺料」等视图下是
+  /// 可见子件数而非 BOM 全量。
+  final int? childCount;
+
+  /// 分页补祖先行（与表头筛选保留的上下文行区分：后者保留原 widget key）。
+  bool get isPageContext => key.startsWith('PAGE_CONTEXT|');
 
   _MaterialTableRow asPageContext(int page) => _MaterialTableRow(
     kind: kind,
@@ -73,6 +84,10 @@ abstract class _MaterialAnalysisMaterialTableState
   ProductionMaterialAnalysisView? _materialRowsCacheAnalysis;
   String? _materialRowsCacheKey;
   List<_MaterialTableRow>? _materialRowsCache;
+
+  /// 与 [_materialRowsCache] 同生命周期的表头筛选桶（产品视图取自投影，汇总
+  /// 视图按聚合行聚合）；始终从「未套表头筛选」的行集算出。
+  Map<String, List<MasterFacetBucket>> _materialRowsFacetsCache = const {};
   List<_MaterialTableRow>? _materialPageCacheSource;
   int? _materialPageCachePage;
   int? _materialPageCacheStart;
@@ -89,6 +104,7 @@ abstract class _MaterialAnalysisMaterialTableState
       (_collapsedBomProducts.toList()..sort()).join(','),
       (_collapsedBomBranches.toList()..sort()).join(','),
       (_expandedMaterialAggregates.toList()..sort()).join(','),
+      _materialTableProjectionSignature(),
     ].join('|');
     if (identical(_materialRowsCacheAnalysis, analysis) &&
         _materialRowsCacheKey == projectionKey &&
@@ -104,6 +120,22 @@ abstract class _MaterialAnalysisMaterialTableState
     return rows;
   }
 
+  /// 可见子件计数：父键不在本层节点集内（根供料/产品直挂）的记 null 桶，
+  /// 供产品行/孤儿区头行使用。
+  Map<String?, int> _childCountByParent(
+    List<ProductionMaterialAnalysisMaterial> nodes,
+    Map<String, String?> parentIds,
+  ) {
+    final nodeIds = {for (final node in nodes) node.materialLineId};
+    final counts = <String?, int>{};
+    for (final node in nodes) {
+      final parent = parentIds[node.materialLineId];
+      final key = parent != null && nodeIds.contains(parent) ? parent : null;
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return counts;
+  }
+
   List<_MaterialTableRow> _computeMaterialTableRows(
     ProductionMaterialAnalysisView analysis,
   ) {
@@ -112,12 +144,12 @@ abstract class _MaterialAnalysisMaterialTableState
     }
     final indexes = _analysisIndexes(analysis);
     final projection = _bomFilterProjection(analysis);
+    _materialRowsFacetsCache = projection.facets;
     final presentation = projection.presentation;
     final matchingProducts = [
       for (final product in analysis.products)
         if (!_isEmbeddedMakeChildProduct(product) &&
-            projection.nodesByProduct[product.analysisLineId]?.isNotEmpty ==
-                true)
+            projection.visibleProductIds.contains(product.analysisLineId))
           product,
     ];
     // A single table pager replaces the legacy "first 30 products + continue"
@@ -130,11 +162,17 @@ abstract class _MaterialAnalysisMaterialTableState
       productIndex++
     ) {
       final product = visibleProducts[productIndex];
-      final visibleNodes = projection.nodesByProduct[product.analysisLineId]!;
+      final visibleNodes =
+          projection.nodesByProduct[product.analysisLineId] ??
+          const <ProductionMaterialAnalysisMaterial>[];
       final rootMaterial = _rootSupplyMaterialOf(product);
       final nodes = visibleNodes
           .where((node) => node.materialLineId != rootMaterial?.materialLineId)
           .toList(growable: false);
+      final childCounts = _childCountByParent(
+        nodes,
+        presentation.parentIdsByMaterial,
+      );
       result.add(
         _MaterialTableRow(
           kind: _MaterialTableRowKind.product,
@@ -148,6 +186,10 @@ abstract class _MaterialAnalysisMaterialTableState
               : indexes.groupsByLine[rootMaterial.materialLineId],
           rootAnalysisLineId: product.analysisLineId,
           hasChildren: nodes.isNotEmpty,
+          childCount: childCounts[null],
+          contextOnly: projection.contextOnlyProductIds.contains(
+            product.analysisLineId,
+          ),
         ),
       );
       if (_collapsedBomProducts.contains(product.analysisLineId)) continue;
@@ -155,10 +197,6 @@ abstract class _MaterialAnalysisMaterialTableState
         nodes,
         parentIds: presentation.parentIdsByMaterial,
       );
-      final parentKeys = {
-        for (final node in nodes)
-          presentation.parentIdsByMaterial[node.materialLineId],
-      };
       for (final material in _orderedBomNodes(
         nodes,
         parentIds: presentation.parentIdsByMaterial,
@@ -166,6 +204,7 @@ abstract class _MaterialAnalysisMaterialTableState
         final group = indexes.groupsByLine[material.materialLineId];
         if (group == null) continue;
         final position = positions[material.materialLineId];
+        final childCount = childCounts[material.materialLineId];
         result.add(
           _MaterialTableRow(
             kind: _MaterialTableRowKind.material,
@@ -183,7 +222,11 @@ abstract class _MaterialAnalysisMaterialTableState
                 presentation.rootIdsByMaterial[material.materialLineId],
             parentMaterialLineId:
                 presentation.parentIdsByMaterial[material.materialLineId],
-            hasChildren: parentKeys.contains(material.materialLineId),
+            hasChildren: childCount != null,
+            childCount: childCount,
+            contextOnly: projection.contextOnlyMaterialIds.contains(
+              material.materialLineId,
+            ),
             ancestorContinuations: position?.ancestorContinuations ?? const [],
             isLastChild: position?.isLastChild ?? false,
           ),
@@ -213,10 +256,10 @@ abstract class _MaterialAnalysisMaterialTableState
         unassigned,
         parentIds: presentation.parentIdsByMaterial,
       );
-      final parentKeys = {
-        for (final node in unassigned)
-          presentation.parentIdsByMaterial[node.materialLineId],
-      };
+      final childCounts = _childCountByParent(
+        unassigned,
+        presentation.parentIdsByMaterial,
+      );
       for (final material in _orderedBomNodes(
         unassigned,
         parentIds: presentation.parentIdsByMaterial,
@@ -224,6 +267,7 @@ abstract class _MaterialAnalysisMaterialTableState
         final group = indexes.groupsByLine[material.materialLineId];
         if (group == null) continue;
         final position = positions[material.materialLineId];
+        final childCount = childCounts[material.materialLineId];
         result.add(
           _MaterialTableRow(
             kind: _MaterialTableRowKind.material,
@@ -239,7 +283,11 @@ abstract class _MaterialAnalysisMaterialTableState
                 presentation.rootIdsByMaterial[material.materialLineId],
             parentMaterialLineId:
                 presentation.parentIdsByMaterial[material.materialLineId],
-            hasChildren: parentKeys.contains(material.materialLineId),
+            hasChildren: childCount != null,
+            childCount: childCount,
+            contextOnly: projection.contextOnlyMaterialIds.contains(
+              material.materialLineId,
+            ),
             ancestorContinuations: position?.ancestorContinuations ?? const [],
             isLastChild: position?.isLastChild ?? false,
           ),
@@ -249,29 +297,32 @@ abstract class _MaterialAnalysisMaterialTableState
     return result;
   }
 
+  /// 汇总视图：桶按全部聚合行聚合（不含路径行）；表头筛选作用于聚合行，
+  /// 命中的聚合行连同其展开的路径行一起保留（路径行不单独过滤）。
   List<_MaterialTableRow> _aggregateTableRows(
     ProductionMaterialAnalysisView analysis,
   ) {
     final indexes = _analysisIndexes(analysis);
     final aggregates = _materialAggregates(analysis, indexes);
-    final result = <_MaterialTableRow>[];
-    for (
-      var aggregateIndex = 0;
-      aggregateIndex < aggregates.length;
-      aggregateIndex++
-    ) {
-      final aggregate = aggregates[aggregateIndex];
-      final prefix = 'M${aggregateIndex + 1}';
-      result.add(
+    final aggregateRows = <_MaterialTableRow>[
+      for (var index = 0; index < aggregates.length; index++)
         _MaterialTableRow(
           kind: _MaterialTableRowKind.aggregate,
-          key: 'AGGREGATE|${aggregate.key}',
-          sequence: prefix,
+          key: 'AGGREGATE|${aggregates[index].key}',
+          sequence: 'M${index + 1}',
           depth: 0,
-          aggregate: aggregate,
-          hasChildren: aggregate.paths.isNotEmpty,
+          aggregate: aggregates[index],
+          hasChildren: aggregates[index].paths.isNotEmpty,
         ),
-      );
+    ];
+    _materialRowsFacetsCache = _materialTableFacetsOf(aggregateRows);
+    final filterActive = _hasActiveMaterialTableFilters;
+    final result = <_MaterialTableRow>[];
+    for (final aggregateRow in aggregateRows) {
+      if (filterActive && !_headerFilterMatchesRow(aggregateRow)) continue;
+      final aggregate = aggregateRow.aggregate!;
+      final prefix = aggregateRow.sequence;
+      result.add(aggregateRow);
       if (!_expandedMaterialAggregates.contains(aggregate.key)) continue;
       for (var pathIndex = 0; pathIndex < aggregate.paths.length; pathIndex++) {
         final material = aggregate.paths[pathIndex];
@@ -499,9 +550,16 @@ abstract class _MaterialAnalysisMaterialTableState
     return groups.values.toList(growable: false);
   }
 
+  /// 可勾选的操作组 = 可改路线 ∩ 有可提交决定（未确认或已改下拉）；已确认且未
+  /// 改动的行不给勾选框，与「确认路线(N)」计数/提交门同一谓词（2026-09-10 F2d）。
+  List<_MaterialGroup> _materialRowSelectableGroups(_MaterialTableRow row) =>
+      _materialRowGroups(
+        row,
+      ).where(_routeGroupSelectable).toList(growable: false);
+
   bool _materialRowSelected(_MaterialTableRow row) {
     if (!_canRoute) return false;
-    final groups = _materialRowGroups(row);
+    final groups = _materialRowSelectableGroups(row);
     return groups.isNotEmpty &&
         groups.every((group) => _selectedMaterialGroupKeys.contains(group.key));
   }
@@ -518,7 +576,9 @@ abstract class _MaterialAnalysisMaterialTableState
       final nowSelected = selected.contains(row.key);
       if (wasSelected == nowSelected) continue;
       final target = nowSelected ? additions : removals;
-      target.addAll(_materialRowGroups(row).map((group) => group.key));
+      target.addAll(
+        _materialRowSelectableGroups(row).map((group) => group.key),
+      );
     }
     setState(() {
       _selectedMaterialGroupKeys.removeAll(removals);
@@ -538,6 +598,8 @@ abstract class _MaterialAnalysisMaterialTableState
     ProductionMaterialAnalysisView analysis, {
     bool primary = true,
   }) {
+    // 表头筛选已在投影层生效（祖先保留为只读上下文），行集即最终行；桶随
+    // 行缓存一起算出（未套表头筛选的全量行）。
     final rows = _materialTableRows(analysis);
     final totalPages = rows.isEmpty
         ? 1
@@ -561,8 +623,17 @@ abstract class _MaterialAnalysisMaterialTableState
         toolbarLeadingActions: [..._bomToolbarActions(theme, analysis)],
         selectable: true,
         preserveSelectionOnContextMenu: true,
-        idOf: (row) =>
-            _canRoute && _materialRowGroups(row).isNotEmpty ? row.key : null,
+        // 已确认且未改动的行无勾选框（F2d）；改下拉后（脏组）勾选框出现并自动勾上。
+        idOf: (row) => _canRoute && _materialRowSelectableGroups(row).isNotEmpty
+            ? row.key
+            : null,
+        // idOf 为 null 的行组件默认渲染灰勾选框：已确认未改动的行明确「无勾选框」
+        // （勾了也不计数），其余不可勾选行（产品行/只读上下文/不可改路线）保持既有灰框。
+        unselectableLeadingBuilder: (_, row) =>
+            _materialRowGroups(row).isNotEmpty &&
+                _materialRowSelectableGroups(row).isEmpty
+            ? const SizedBox.shrink()
+            : const Checkbox(value: false, onChanged: null),
         selectionSummaryCount: _selectedMaterialGroupKeys.length,
         onClearSelection: () {
           if (!_busy) setState(_selectedMaterialGroupKeys.clear);
@@ -576,10 +647,17 @@ abstract class _MaterialAnalysisMaterialTableState
             _changeMaterialTableSelection(rows, selected),
         batchActionsBuilder: (_, _) => _bottomActionButtons(),
         items: pageRows,
-        facets: const {},
+        // 表头筛选（2026-09-09 用户口径：进度/路线列下拉筛选，UtenTableColumnKit
+        // 同款锚定弹窗；2026-09-10 F2a 改稳定键 + 投影级过滤）：bucket 从当前
+        // BOM 视图全量行聚合（非当前页、不含表头筛选本身），过滤在节点投影层
+        // 生效（保留祖先为只读上下文、箭头/子件数/chip 计数同步），与视图 chip 叠加。
+        facets: _materialRowsFacetsCache,
         nullCounts: const {},
-        filters: const {},
-        onFilterChanged: (_, _) {},
+        filters: _materialTableFilters,
+        onFilterChanged: (key, value) => setState(() {
+          _materialTableFilters[key] = value;
+          _bomTablePageNo = 1;
+        }),
         // 宽屏联动滚动：整页先滚、表格列头顶到页面顶部后表体内滚；横向滚动
         // 条按内容高度定位（行少贴末行下、超高钉在联动区底），与货品资料页
         // 同一套交互。窄屏单滚动区回退为有界高度 + 虚拟滚动。
@@ -588,9 +666,8 @@ abstract class _MaterialAnalysisMaterialTableState
         rowKeyOf: (row) => row.key,
         rowWidgetKeyOf: _materialTableRowWidgetKey,
         enableTextSelection: false,
-        emptyMessage: _bomAggregateByMaterial
-            ? '当前筛选下没有物料，可切换“全部 BOM”或清除查找'
-            : '当前条件下没有物料任务，可切换“全部 BOM”或清除查找',
+        // 空态：组件层在有激活表头筛选时补「清除筛选」按钮与生效数提示（F2a-flow）。
+        emptyMessage: '当前视图/筛选下没有物料任务，可切换“全部 BOM”、清除查找或清除表头筛选',
         currentPage: page,
         totalPages: totalPages,
         onPageChange: (next) => setState(() => _bomTablePageNo = next),
@@ -618,6 +695,239 @@ abstract class _MaterialAnalysisMaterialTableState
         canShowRowMenu: (row) => !row.contextOnly && row.group != null,
       ),
     );
+  }
+
+  // ===== 表头筛选（2026-09-10 F2a：稳定桶键 + 投影级过滤）=====
+  //
+  // 桶键：路线 = BUY/SUBCONTRACT/MAKE/MIXED（当前显示路线：草稿优先，其次已确认、
+  // 已下达目标、学习/主档默认）；进度 = routePending/pendingIssue/inTransit/
+  // covered/blocked/inactive 或流程阶段键（[ProductionFlowStage.key]），汇总行
+  // aggregateCovered/aggregatePartial/aggregateUncovered。文案带数量/百分比的
+  // 行只按键进桶，桶标签是中文短标签（[MasterFacetBucket.label]）。
+
+  /// 表头筛选状态（key=列 key，value=稳定桶键；null/移除=清除）。
+  final Map<String, String?> _materialTableFilters = {};
+
+  String? _materialTableFilterValue(String key) {
+    final value = _materialTableFilters[key];
+    return value == null || value.isEmpty ? null : value;
+  }
+
+  @override
+  bool get _hasActiveMaterialTableFilters =>
+      _materialTableFilterValue('route') != null ||
+      _materialTableFilterValue('status') != null;
+
+  /// 投影/行缓存键：表头筛选值 + 路线草稿/脏组/学习记忆代际（路线桶与路线
+  /// 筛选随下拉草稿变化）+ 视图排布。
+  @override
+  String _materialTableProjectionSignature() {
+    final filters = [
+      for (final entry in _materialTableFilters.entries)
+        if (entry.value != null && entry.value!.isNotEmpty)
+          '${entry.key}=${entry.value}',
+    ]..sort();
+    final drafts = [
+      for (final entry in _routeDraft.entries)
+        '${entry.key}:${entry.value.wireName}',
+    ]..sort();
+    final dirty = _dirtyRouteGroups.toList()..sort();
+    return [
+      _bomAggregateByMaterial.toString(),
+      filters.join(','),
+      drafts.join(','),
+      dirty.join(','),
+      '$_routeMemoryGeneration',
+      '${_rememberedRouteDimensions.length}',
+    ].join('|');
+  }
+
+  @override
+  _MaterialTableRow _probeProductRow(
+    ProductionMaterialAnalysisProduct product,
+    _MaterialAnalysisIndexes indexes,
+  ) {
+    final rootMaterial = _rootSupplyMaterialOf(product);
+    return _MaterialTableRow(
+      kind: _MaterialTableRowKind.product,
+      key: 'PRODUCT|${product.analysisLineId}',
+      sequence: '',
+      depth: 0,
+      product: product,
+      material: rootMaterial,
+      group: rootMaterial == null
+          ? null
+          : indexes.groupsByLine[rootMaterial.materialLineId],
+      rootAnalysisLineId: product.analysisLineId,
+    );
+  }
+
+  @override
+  _MaterialTableRow _probeMaterialRow(
+    ProductionMaterialAnalysisMaterial material,
+    _MaterialAnalysisIndexes indexes,
+  ) => _MaterialTableRow(
+    kind: _MaterialTableRowKind.material,
+    key: 'MATERIAL|${material.materialLineId}',
+    sequence: '',
+    depth: 1,
+    material: material,
+    group: indexes.groupsByLine[material.materialLineId],
+    rootAnalysisLineId: material.analysisLineId,
+  );
+
+  /// 路线列桶键：产品行（无根供料）/孤儿头行/上下文行不进桶。
+  String? _materialTableRouteFacetKey(_MaterialTableRow row) {
+    if (row.contextOnly || (row.aggregate == null && row.group == null)) {
+      return null;
+    }
+    return _materialTableRoute(row)?.wireName ?? 'MIXED';
+  }
+
+  String _materialTableRouteFacetLabel(String key) =>
+      MaterialSupplyRoute.fromWire(key)?.label ?? _l10n.materialMixedRoutes;
+
+  /// 进度列桶键与标签（与 [_materialTableStatusText]/[_materialTableStatusCell]
+  /// 同一分支顺序，只是把文案换成有限枚举键）。
+  ({String key, String label})? _materialTableStatusFacet(
+    _MaterialTableRow row,
+  ) {
+    ({String key, String label}) fixed(String key) =>
+        (key: key, label: _materialStatusFacetLabels[key] ?? key);
+    if (row.contextOnly) return null;
+    final block = row.group == null
+        ? _analysis?.planningBlockedReason(
+            row.product?.analysisLineId ?? row.material?.analysisLineId ?? '',
+          )
+        : _planningBlockForGroup(row.group!);
+    if (block != null) return fixed('blocked');
+    if (_rootExternalSupplyRow(row) && (row.product?.remainingQty ?? 1) <= 0) {
+      return fixed('covered');
+    }
+    final product = row.product;
+    if (product != null && !_rootExternalSupplyRow(row)) {
+      final stage = _productExecutionStage(product);
+      if (stage != null) return (key: stage.key, label: stage.label);
+      if (_canSelectProduct(product)) return fixed('pendingIssue');
+      if (_rootRoutePending(product)) return fixed('routePending');
+      return fixed('blocked');
+    }
+    final aggregate = row.aggregate;
+    if (aggregate != null) {
+      if (aggregate.totalDemandSupplyGap <= 0) return fixed('aggregateCovered');
+      if (aggregate.coverageRatio <= 0) return fixed('aggregateUncovered');
+      return fixed('aggregatePartial');
+    }
+    final group = row.group;
+    if (group == null) return null;
+    final status = _materialStatus(Theme.of(context), group);
+    final key = status.facetKey;
+    if (key == null) return null;
+    return (
+      key: key,
+      label:
+          status.facetLabel ?? _materialStatusFacetLabels[key] ?? status.label,
+    );
+  }
+
+  bool _rowHasDirtyRoute(_MaterialTableRow row) => _materialRowGroups(
+    row,
+  ).any((group) => _dirtyRouteGroups.contains(group.key));
+
+  /// 路线筛选对正在编辑（脏组）的行豁免：改了下拉的行保持可见直到确认，
+  /// 否则「确认路线(N)」里计着一条看不见的行。
+  @override
+  bool _headerFilterMatchesRow(_MaterialTableRow row) {
+    final routeFilter = _materialTableFilterValue('route');
+    if (routeFilter != null &&
+        _materialTableRouteFacetKey(row) != routeFilter &&
+        !_rowHasDirtyRoute(row)) {
+      return false;
+    }
+    final statusFilter = _materialTableFilterValue('status');
+    if (statusFilter != null &&
+        _materialTableStatusFacet(row)?.key != statusFilter) {
+      return false;
+    }
+    return true;
+  }
+
+  /// 进度/路线列的筛选桶：稳定键 + 中文标签 + 计数；空值行不进桶。
+  /// 排序：路线按 自制/采购/委外/路线不一；进度按枚举表顺序，流程阶段键在后
+  /// 按标签排。
+  @override
+  Map<String, List<MasterFacetBucket>> _materialTableFacetsOf(
+    Iterable<_MaterialTableRow> rows,
+  ) {
+    final routeCounts = <String, int>{};
+    final statusCounts = <String, ({int count, String label})>{};
+    for (final row in rows) {
+      final routeKey = _materialTableRouteFacetKey(row);
+      if (routeKey != null) {
+        routeCounts[routeKey] = (routeCounts[routeKey] ?? 0) + 1;
+      }
+      final status = _materialTableStatusFacet(row);
+      if (status != null) {
+        statusCounts.update(
+          status.key,
+          (current) => (count: current.count + 1, label: current.label),
+          ifAbsent: () => (count: 1, label: status.label),
+        );
+      }
+    }
+    const routeOrder = ['MAKE', 'BUY', 'SUBCONTRACT', 'MIXED'];
+    final statusOrder = _materialStatusFacetLabels.keys.toList();
+    int rank(List<String> order, String key) {
+      final index = order.indexOf(key);
+      return index < 0 ? order.length : index;
+    }
+
+    final routeKeys = routeCounts.keys.toList()
+      ..sort((a, b) => rank(routeOrder, a).compareTo(rank(routeOrder, b)));
+    final statusKeys = statusCounts.keys.toList()
+      ..sort((a, b) {
+        final byRank = rank(statusOrder, a).compareTo(rank(statusOrder, b));
+        if (byRank != 0) return byRank;
+        return statusCounts[a]!.label.compareTo(statusCounts[b]!.label);
+      });
+    return {
+      'route': [
+        for (final key in routeKeys)
+          MasterFacetBucket(
+            value: key,
+            count: routeCounts[key]!,
+            label: _materialTableRouteFacetLabel(key),
+          ),
+      ],
+      'status': [
+        for (final key in statusKeys)
+          MasterFacetBucket(
+            value: key,
+            count: statusCounts[key]!.count,
+            label: statusCounts[key]!.label,
+          ),
+      ],
+    };
+  }
+
+  /// 只移除当前桶里已不存在的筛选值（刷新/轮询/切视图后失效值），仍有效的
+  /// 用户筛选保留；无激活筛选时零成本。
+  @override
+  void _pruneMaterialTableFilters() {
+    if (!_hasActiveMaterialTableFilters) return;
+    final analysis = _analysis;
+    if (analysis == null) {
+      _materialTableFilters.clear();
+      return;
+    }
+    _materialTableRows(analysis);
+    final facets = _materialRowsFacetsCache;
+    _materialTableFilters.removeWhere((key, value) {
+      if (value == null || value.isEmpty) return true;
+      return !(facets[key] ?? const <MasterFacetBucket>[]).any(
+        (bucket) => bucket.value == value,
+      );
+    });
   }
 
   List<MasterColumnDef<_MaterialTableRow>> _materialTableColumns(
@@ -666,22 +976,26 @@ abstract class _MaterialAnalysisMaterialTableState
       type: 'number',
       info: _l10n.materialPhysicalShortageHint,
       value: (row) => _qty(_materialTableShortageQty(row)),
-      cellBuilder: (_, row) => Text(
+      cellBuilder: (_, row) {
         // 2026-09-05 顶层同构：缺口列与物料行一致，只显示数字
         //（不再「待生产 X」特例；列头「缺口」已说明含义）。
-        _qty(_materialTableShortageQty(row)),
-        style: theme.textTheme.bodyMedium?.copyWith(
-          color: _materialRowSelected(row)
-              ? Colors.white
-              : (_materialTableShortageQty(row) ?? 0) > 0
-              ? theme.colorScheme.error
-              : theme.colorScheme.onSurface,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-      cellColor: (_, row) => (_materialTableShortageQty(row) ?? 0) > 0
-          ? theme.colorScheme.errorContainer.withValues(alpha: 0.3)
-          : null,
+        // 2026-09-10 用户口径：缺口=0 的行用绿色（与红色缺口对称），
+        // 一眼看出「这里已经不缺了」；无缺口数据（产品行/参考行）保持中性。
+        // 颜色走语义 token 明暗配对（_shortageTextColor），桶详情缺口列同口径。
+        final shortage = _materialTableShortageQty(row);
+        final color = _materialRowSelected(row)
+            ? Colors.white
+            : _shortageTextColor(theme, shortage);
+        return Text(
+          _qty(shortage),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w800,
+          ),
+        );
+      },
+      cellColor: (_, row) =>
+          _shortageCellColor(theme, _materialTableShortageQty(row)),
     ),
     MasterColumnDef(
       key: 'additionalSupplyRecommendedQty',
@@ -736,7 +1050,8 @@ abstract class _MaterialAnalysisMaterialTableState
   ];
 
   Key _materialTableRowWidgetKey(_MaterialTableRow row) {
-    if (row.contextOnly) return ValueKey(row.key);
+    // 分页补的祖先行用带页号的键；表头筛选保留的上下文行保持原 widget key。
+    if (row.isPageContext) return ValueKey(row.key);
     if (row.product != null) {
       return ValueKey('material-bom-product-${row.product!.analysisLineId}');
     }
@@ -856,6 +1171,9 @@ abstract class _MaterialAnalysisMaterialTableState
       ].join(' · '),
       foregroundColor: _materialTableForeground(theme, row),
       hasChildren: row.hasChildren,
+      // 未展开时圆底右下角叠「N」徽章（当前投影可见子件数）；汇总行副标题
+      // 已有「N 来源」，不再叠徽章。
+      childCount: aggregate == null ? row.childCount : null,
       expanded: expanded,
       onToggle: toggle,
       ancestorContinuations: row.ancestorContinuations,
@@ -891,11 +1209,38 @@ abstract class _MaterialAnalysisMaterialTableState
     return routes.length == 1 ? routes.single : null;
   }
 
-  String? _materialTableRouteText(_MaterialTableRow row) =>
-      _materialTableRoute(row)?.label ??
-      (row.aggregate == null && row.group == null
-          ? '—'
-          : _l10n.materialMixedRoutes);
+  String? _materialTableRouteText(_MaterialTableRow row) => row.contextOnly
+      ? '—'
+      : _materialTableRoute(row)?.label ??
+            (row.aggregate == null && row.group == null
+                ? '—'
+                : _l10n.materialMixedRoutes);
+
+  /// 该组当前显示的路线是否只是「主档来源为空」时的硬回退（委外）：没有草稿、
+  /// 没有已确认路线、没有学习记忆、主档也没给建议（服务端 REVIEW → 前端 null）。
+  /// 这种行看起来像已决定，实际只是缺省值——路线格旁给黄标提示核对（F8）。
+  bool _routeIsBlankSourceFallback(_MaterialGroup group) {
+    final material = group.representative;
+    if (material.sourceSuggestion != null ||
+        material.confirmedRoute != null ||
+        _routeDraft.containsKey(group.key)) {
+      return false;
+    }
+    final product = _analysis == null
+        ? null
+        : _analysisIndexes(_analysis!).productsById[material.analysisLineId];
+    if (material.isRootSupply &&
+        product != null &&
+        _hasExistingRootPlan(product)) {
+      return false;
+    }
+    return _rememberedRouteForGoods(
+          material.goodsId,
+          material.colorId,
+          material.unitId,
+        ) ==
+        null;
+  }
 
   Widget _materialTableRouteCell(ThemeData theme, _MaterialTableRow row) {
     final route = _materialTableRoute(row);
@@ -908,7 +1253,8 @@ abstract class _MaterialAnalysisMaterialTableState
         style: theme.textTheme.bodyMedium?.copyWith(color: foreground),
       );
     }
-    return DropdownButtonHideUnderline(
+    final blankSourceFallback = groups.any(_routeIsBlankSourceFallback);
+    final dropdown = DropdownButtonHideUnderline(
       child: DropdownButton<MaterialSupplyRoute>(
         key: ValueKey(
           'material-route-dropdown-${row.material?.materialLineId ?? row.key}',
@@ -952,16 +1298,32 @@ abstract class _MaterialAnalysisMaterialTableState
             for (final group in groups) {
               _routeDraft[group.key] = chosen;
               if (group.representative.confirmedRoute == chosen) {
+                // 改回已确认值 = 没有可提交的决定：脱脏并脱选（否则「已选 N 项」
+                // 计着一条既无勾选框也不计数的行）。
                 _dirtyRouteGroups.remove(group.key);
+                _selectedMaterialGroupKeys.remove(group.key);
               } else {
                 _dirtyRouteGroups.add(group.key);
+                _selectedMaterialGroupKeys.add(group.key);
               }
-              _selectedMaterialGroupKeys.add(group.key);
             }
             _invalidateBucketRowsCache();
           });
         },
       ),
+    );
+    if (!blankSourceFallback) return dropdown;
+    // 主档来源为空的行：下拉预填的「委外」只是缺省值，黄标提醒核对（F8）。
+    return Row(
+      children: [
+        Expanded(child: dropdown),
+        UtenFieldHintIcon(
+          key: ValueKey(
+            'material-route-blank-source-${row.material?.materialLineId ?? row.key}',
+          ),
+          autofillMessage: '主档来源为空，请核对',
+        ),
+      ],
     );
   }
 

@@ -123,8 +123,8 @@ public class StockReportService {
                     c("spec", "规格", "text", 140, "g.spec"),
                     c("colorName", "颜色", "text", 80, "col.name"),
                     c("unitName", "单位", "text", 70, "un.name"),
-                    c("weight", "重量", "number", null, "i.weight"),
-                    c("qty", "数量", "number", null, "i.qty"));
+                    ct("weight", "重量", "number", null, "i.weight", "合计重量", null),
+                    ct("qty", "数量", "number", null, "i.qty", "合计数量", "unitName"));
             case DOC_OTHER_IN -> List.of(
                     c("billNo", "单号", "text", 140, "o.bill_no"),
                     c("billDate", "开单日期", "date", null, "o.bill_date"),
@@ -140,8 +140,8 @@ public class StockReportService {
                     c("spec", "规格", "text", 140, "g.spec"),
                     c("colorName", "颜色", "text", 80, "col.name"),
                     c("unitName", "单位", "text", 70, "un.name"),
-                    c("weight", "重量", "number", null, "i.weight"),
-                    c("qty", "数量", "number", null, "i.qty"));
+                    ct("weight", "重量", "number", null, "i.weight", "合计重量", null),
+                    ct("qty", "数量", "number", null, "i.qty", "合计数量", "unitName"));
             case DOC_DRAW -> List.of(
                     c("billNo", "单号", "text", 140, "o.bill_no"),
                     c("billDate", "开单日期", "date", null, "o.bill_date"),
@@ -160,9 +160,11 @@ public class StockReportService {
                     c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("colorName", "颜色", "text", 80, "col.name"),
                     c("unitName", "单位", "text", 70, "un.name"),
-                    c("weight", "重量", "number", null, "i.weight"),
-                    c("drawQty", "领料数量", "number", null, "i.qty"),
-                    c("issuedQty", "已出库", "number", null, "i.issued_qty"),
+                    ct("weight", "重量", "number", null, "i.weight", "合计重量", null),
+                    ct("drawQty", "领料数量", "number", null, "i.qty", "合计领料数量", "unitName"),
+                    ct("issuedQty", "已出库", "number", null, "i.issued_qty", "合计已出库", "unitName"),
+                    // 实发数量 = base_qty = qty x unit_rate，是**库存基本单位**量，与本行 unitName
+                    // 不是同一口径；本报表没有基本单位名列，按 unitName 分组会贴错单位标签，故不声明合计。
                     c("actualQty", "实发数量", "number", null, "i.base_qty"));
             case DOC_WDRAW -> List.of(
                     c("billNo", "单号", "text", 140, "o.bill_no"),
@@ -179,8 +181,8 @@ public class StockReportService {
                     c("spec", "规格", "text", 140, "g.spec"),
                     c("colorName", "颜色", "text", 80, "col.name"),
                     c("unitName", "单位", "text", 70, "un.name"),
-                    c("weight", "重量", "number", null, "i.weight"),
-                    c("returnQty", "清退数量", "number", null, "i.qty"));
+                    ct("weight", "重量", "number", null, "i.weight", "合计重量", null),
+                    ct("returnQty", "清退数量", "number", null, "i.qty", "合计清退数量", "unitName"));
             case DOC_FINISHED_IN -> List.of(
                     c("billNo", "单号", "text", 140, "o.bill_no"),
                     c("billDate", "开单日期", "date", null, "o.bill_date"),
@@ -198,8 +200,8 @@ public class StockReportService {
                     c("colorName", "颜色", "text", 80, "col.name"),
                     c("unitName", "单位", "text", 70, "un.name"),
                     c("material", "材质", "text", 90, "g.material"),
-                    c("netWeight", "净重", "number", null, "i.weight"),
-                    c("qty", "数量", "number", null, "i.qty"));
+                    ct("netWeight", "净重", "number", null, "i.weight", "合计净重", null),
+                    ct("qty", "数量", "number", null, "i.qty", "合计数量", "unitName"));
             case DOC_FINISHED_OUT -> List.of(
                     c("billNo", "单号", "text", 140, "o.bill_no"),
                     c("billDate", "开单日期", "date", null, "o.bill_date"),
@@ -214,8 +216,8 @@ public class StockReportService {
                     c("spec", "规格", "text", 140, "g.spec"),
                     c("colorName", "颜色", "text", 80, "col.name"),
                     c("unitName", "单位", "text", 70, "un.name"),
-                    c("weight", "重量", "number", null, "i.weight"),
-                    c("qty", "数量", "number", null, "i.qty"));
+                    ct("weight", "重量", "number", null, "i.weight", "合计重量", null),
+                    ct("qty", "数量", "number", null, "i.qty", "合计数量", "unitName"));
             case DOC_CHECK -> List.of(
                     c("billNo", "单号", "text", 140, "o.bill_no"),
                     c("billDate", "开单日期", "date", null, "o.bill_date"),
@@ -230,10 +232,12 @@ public class StockReportService {
                     c("spec", "规格", "text", 140, "g.spec"),
                     c("colorName", "颜色", "text", 80, "col.name"),
                     c("unitName", "单位", "text", 70, "un.name"),
-                    c("bookQty", "帐面数量", "number", null, "COALESCE(i.count_qty,0) - COALESCE(i.surplus_qty,0)"),
+                    ct("bookQty", "帐面数量", "number", null, "COALESCE(i.count_qty,0) - COALESCE(i.surplus_qty,0)",
+                            "合计帐面数量", "unitName"),
+                    // 帐面重量投影是字面量 NULL（老库无此列）：SUM 恒 NULL，声明了也只会被整项丢弃，故不声明。
                     c("bookWeight", "帐面重量", "number", null, "NULL"),
-                    c("actualQty", "实际数量", "number", null, "i.count_qty"),
-                    c("actualWeight", "实际重量", "number", null, "i.weight"));
+                    ct("actualQty", "实际数量", "number", null, "i.count_qty", "合计实际数量", "unitName"),
+                    ct("actualWeight", "实际重量", "number", null, "i.weight", "合计实际重量", null));
             default -> throw new ApiException(ErrorCode.BUSINESS, "未知 docType：" + dt);
         };
     }
@@ -313,13 +317,28 @@ public class StockReportService {
 
     // ======================== 主过滤（公共） ========================
 
+    /**
+     * 默认口径：草稿（status=0）不进报表。
+     *
+     * <p>未审核的库存单据没有过账，不构成库存事实。调用方显式传 status（含 status=0 查草稿、
+     * 或「是否审核」facet）时按其口径走，不叠加本默认值。与 SalesReportService 同款。
+     */
+    private static void addApprovedByDefault(WhereBuilder w, Short status) {
+        if (status != null) {
+            w.add("o.status = :status", "status", status);
+        } else {
+            // 无具名参数的常量片段：WhereBuilder.build 对 param==null 的 Clause 只拼 SQL 不绑参。
+            w.add("o.status <> 0", null, null);
+        }
+    }
+
     private static void addCommonFilters(WhereBuilder w, String billNo, UUID warehouseId, UUID clientId, Short status,
                                          UUID departmentId,
                                          LocalDate dateFrom, LocalDate dateTo, String kw, boolean hasItems) {
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
         if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
         if (clientId != null) w.add("o.client_id = :clientId", "clientId", clientId);
-        if (status != null) w.add("o.status = :status", "status", status);
+        addApprovedByDefault(w, status);
         if (departmentId != null) w.add("o.department_id = :departmentId", "departmentId", departmentId);
         if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
@@ -461,29 +480,47 @@ public class StockReportService {
 
     /**
      * 货架目视化清单导出（report='shelf-labels'）：货品主档已维护库位号的全部货品，
-     * 列 = 库行/库位号/物料编码/物料系列/物料名称/颜色（与现场挂牌一致 + 库行便于分组打印）。
-     * 参数：rack（库行，如 A31）/keyword；与库存数量无关。
+     * 列 = 库行/层/位/库位号/物料编码/物料系列/物料名称/颜色/单位/即时库存（+ 状态，仅含禁用时）。
+     * 参数：rack / keyword / warehouseId（选仓=本仓偏好优先 + 仓树库存）/ includeDisabled，
+     * 与页面 GET /api/stock/shelf-labels 同口径；未分层行的层/位为空。
      */
     private ExportPayload exportShelfLabels(Map<String, String> p) {
         String rack = p == null ? null : p.get("rack");
         String kw = p == null ? null : p.get("keyword");
-        var items = stockQueryService.shelfLabelRows(rack, kw);
-        List<ExportColumn> cols = List.of(
+        UUID warehouseId = parseUuid(p == null ? null : p.get("warehouseId"));
+        boolean includeDisabled = p != null && "true".equalsIgnoreCase(p.get("includeDisabled"));
+        var items = stockQueryService.shelfLabelRows(rack, kw, warehouseId, includeDisabled);
+        List<ExportColumn> cols = new ArrayList<>(List.of(
                 new ExportColumn("rack", "库行", "text"),
+                new ExportColumn("level", "层", "number"),
+                new ExportColumn("slot", "位", "number"),
                 new ExportColumn("place", "库位号", "text"),
                 new ExportColumn("goodsCode", "物料编码", "text"),
                 new ExportColumn("series", "物料系列", "text"),
                 new ExportColumn("goodsName", "物料名称", "text"),
-                new ExportColumn("colorName", "颜色", "text"));
+                new ExportColumn("colorName", "颜色", "text"),
+                new ExportColumn("unitName", "单位", "text"),
+                new ExportColumn("qty", "即时库存", "number")));
+        if (includeDisabled) {
+            cols.add(new ExportColumn("status", "状态", "text"));
+        }
         List<Map<String, Object>> rows = new ArrayList<>(items.size());
         for (var it : items) {
             Map<String, Object> m = new LinkedHashMap<>();
-            m.put("rack", it.getRack());
+            m.put("rack", it.isParsed() ? it.getRack() : "未分层");
+            m.put("level", it.getLevel());
+            m.put("slot", it.getSlot());
             m.put("place", it.getPlace());
             m.put("goodsCode", it.getGoodsCode());
             m.put("series", it.getSeries());
             m.put("goodsName", it.getGoodsName());
             m.put("colorName", it.getColorName());
+            m.put("unitName", it.getUnitName());
+            m.put("qty", it.getQty());
+            if (includeDisabled) {
+                // 与页面状态列同一套文案（启用 / 已禁用），导出与屏上对得上。
+                m.put("status", it.isDisabled() ? "已禁用" : "启用");
+            }
             rows.add(m);
         }
         return new ExportPayload(cols, rows, rows.size());
@@ -596,8 +633,40 @@ public class StockReportService {
 
         // 隐藏元数据列（key 以 "__" 开头，如行跳源头用的 __srcId）：不进返回的 columns（前端不渲染、
         // 导出 Excel 不含），但行 Map 已 put 其值（前端 onRowTap 可读 row['__srcId'] 跳对应单据编辑页）。
+        // 表格下方合计：与列表用同一份 full（日期/facet/关键字 + 对象级授权谓词）在**整个结果集**
+        // 上聚合，与翻到第几页无关；派生表不带 LIMIT/OFFSET，所以绝不会出现「只合计当前页」。
+        List<com.uten.imp.common.report.ReportTotal> totals =
+                com.uten.imp.common.report.ReportTotalsCalculator.compute(
+                        em, dataSelect, fromJoin, full.sql(), full.params(),
+                        reportTotalSpecs(columns, columns));
+
         List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
-        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages);
+        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages, totals);
+    }
+
+    /**
+     * 把列定义里 {@code totaled(...)} 声明的合计翻译成聚合规格。
+     *
+     * <p>{@code emitted} = 实际下发给前端的列（脱敏后）——被 priceMasked 拿掉的金额列不在其中，
+     * 合计自然也不会出现，无需另写门控。{@code projected} = dataSelect 真正投影的列，
+     * 用来确认分组列（单位名/币种名）确实在派生表里。
+     *
+     * <p><b>声明了分组列却没投影时整项丢弃</b>，绝不退回「不分组」——那等于跨单位/跨币种相加。
+     */
+    private static List<com.uten.imp.common.report.ReportTotalsCalculator.Spec> reportTotalSpecs(
+            List<ReportColumn> emitted, List<ReportColumn> projected) {
+        java.util.Set<String> present = new java.util.HashSet<>();
+        for (ReportColumn c : projected) present.add(c.key());
+        List<com.uten.imp.common.report.ReportTotalsCalculator.Spec> specs = new ArrayList<>();
+        for (ReportColumn c : emitted) {
+            String label = c.totalLabel();
+            if (label == null || label.isBlank()) continue;
+            String g = c.totalGroupKey();
+            if (g != null && !present.contains(g)) continue;
+            specs.add(new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
+                    c.key(), label, c.type(), g));
+        }
+        return specs;
     }
 
     private static Object norm(Object v) {
@@ -637,6 +706,17 @@ public class StockReportService {
 
     private static Col c(String key, String label, String type, Integer width, String expr) {
         return new Col(new ReportColumn(key, label, type, width), expr);
+    }
+
+    /**
+     * 声明本列参与「表格下方合计」的列构造（见 ReportTotalsCalculator）。
+     *
+     * <p>{@code totalGroupKey} 指向同一行里的单位名列（本报表恒为 {@code unitName}）——
+     * 数量按单位分组，<b>不同单位绝不相加</b>；重量传 null（重量只有一个口径，不分组）。
+     */
+    private static Col ct(String key, String label, String type, Integer width, String expr,
+                          String totalLabel, String totalGroupKey) {
+        return new Col(new ReportColumn(key, label, type, width).totaled(totalLabel, totalGroupKey), expr);
     }
 
     /** 列 facet 规格。selectExpr 投影 v+lbl；groupExpr 分组；filterExpr 过滤表达式；filterType 值类型。 */

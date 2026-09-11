@@ -49,6 +49,11 @@ abstract interface class ClientRepository {
     String id,
     ClientAccessUpdate update,
   );
+
+  /// 多选客户批量设负责人/可见人（服务端单事务，任一客户被拒则整批回滚）。
+  Future<List<ClientAccessSettings>> updateAccessBatch(
+    ClientAccessBatchUpdate update,
+  );
   Future<PagedResult<ClientAccessCandidate>> accessCandidates({
     String? search,
     int page = 1,
@@ -158,6 +163,17 @@ class DioClientRepository implements ClientRepository {
     );
     if (json.isNotEmpty) return ClientAccessSettings.fromJson(json);
     return access(id);
+  }
+
+  @override
+  Future<List<ClientAccessSettings>> updateAccessBatch(
+    ClientAccessBatchUpdate update,
+  ) async {
+    final rows = await api.putList(
+      ApiEndpoints.clientsAccessBatch,
+      body: update.toJson(),
+    );
+    return rows.map(ClientAccessSettings.fromJson).toList(growable: false);
   }
 
   @override

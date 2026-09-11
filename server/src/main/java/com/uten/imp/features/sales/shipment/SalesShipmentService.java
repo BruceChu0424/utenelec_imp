@@ -2,6 +2,7 @@ package com.uten.imp.features.sales.shipment;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.saleschain.SalesOrderChainSql;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
@@ -1722,23 +1723,14 @@ public class SalesShipmentService {
             BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
             // 释放该行对应预留（货损/丢失/找不到 → 这批货不再属于该订单）
             reservationService.releaseForOrderItem(it.getOrderItemId(), it.getQty().multiply(rate));
-            // reserved_qty 回减 + 行状态回退：可发→7 / 已排产→4 / 否则→2 待排产（重走生产）
-            int reservedUpdated = em.createNativeQuery("""
-                    UPDATE sales_order_items
-                    SET reserved_qty = COALESCE(reserved_qty,0) - :q,
-                        chain_status = CASE WHEN COALESCE(chain_status,0) > 0 THEN
-                            CASE
-                              WHEN COALESCE(reserved_qty,0) - :q
-                                   >= COALESCE(qty,0) - COALESCE(shipped_qty,0)
-                                      + COALESCE(returned_qty,0) - COALESCE(flag_qty,0) THEN 7
-                              WHEN GREATEST(COALESCE(planned_qty,0)
-                                            - COALESCE(produced_qty,0), 0) > 0 THEN 4
-                              WHEN COALESCE(reserved_qty,0) - :q > 0 THEN 1
-                              ELSE 2
-                            END
-                        ELSE chain_status END
-                    WHERE id = :id AND COALESCE(reserved_qty,0) >= :q
-                    """).setParameter("q", it.getQty()).setParameter("id", it.getOrderItemId())
+            // reserved_qty 回减 + 行状态回退（V545 统一派生：剩余未排量 > 0 即回 1/2 待排产重走生产）
+            int reservedUpdated = em.createNativeQuery("UPDATE sales_order_items\n"
+                    + "SET reserved_qty = COALESCE(reserved_qty,0) - :q,\n"
+                    + "    chain_status = "
+                    + SalesOrderChainSql.chainStatusCaseSql(
+                            SalesOrderChainSql.ChainStatusInputs.of("").reservedDelta(" - :q"))
+                    + "\nWHERE id = :id AND COALESCE(reserved_qty,0) >= :q")
+                    .setParameter("q", it.getQty()).setParameter("id", it.getOrderItemId())
                     .executeUpdate();
             if (reservedUpdated != 1) {
                 throw new ApiException(ErrorCode.CONFLICT,
@@ -1938,6 +1930,8 @@ public class SalesShipmentService {
     /**
      * 出货审核后：reserved_qty 扣减（delta 为负）+ 行状态推进（8部分发货 / 9已发货）。
      * 须在 addShippedQty 之后执行（状态判定读最新 shipped_qty）。链上行才推进。
+     * 这是唯一不走 {@link SalesOrderChainSql#chainStatusCaseSql} 的写点：部分发货事实只由出货
+     * 交接产生，后续任何数量回写再按统一顺序（9/7/8/未排…）收敛。
      */
     private void applyReservedAndChainOnShip(UUID orderItemId, BigDecimal delta) {
         int updated = em.createNativeQuery("""
@@ -1957,21 +1951,18 @@ public class SalesShipmentService {
     }
 
     /**
-     * 出货红冲后：reserved_qty 回补（货已回库并重新挂预留）+ 行状态回退（7可发货 / 1部分预留）。
+     * 出货红冲后：reserved_qty 回补（货已回库并重新挂预留）+ 行状态回退（V545 统一派生：
+     * 预留够→7 可发货，否则按剩余未排量 1/2 或既有排产 3-6）。
      * 须在 addShippedQty(-qty) 之后执行。仅链上行调用。
      */
     private void restoreReservedAndChainOnReverse(UUID orderItemId, BigDecimal qtyBack) {
-        em.createNativeQuery("""
-                UPDATE sales_order_items
-                SET reserved_qty = COALESCE(reserved_qty,0) + :d,
-                    chain_status = CASE
-                        WHEN COALESCE(reserved_qty,0) + :d
-                                 >= COALESCE(qty,0) - COALESCE(shipped_qty,0)
-                                    + COALESCE(returned_qty,0) - COALESCE(flag_qty,0)
-                        THEN 7
-                        ELSE 1 END
-                WHERE id = :id
-                """).setParameter("d", qtyBack).setParameter("id", orderItemId).executeUpdate();
+        em.createNativeQuery("UPDATE sales_order_items\n"
+                + "SET reserved_qty = COALESCE(reserved_qty,0) + :d,\n"
+                + "    chain_status = "
+                + SalesOrderChainSql.chainStatusCaseSql(
+                        SalesOrderChainSql.ChainStatusInputs.of("").reservedDelta(" + :d"))
+                + "\nWHERE id = :id")
+                .setParameter("d", qtyBack).setParameter("id", orderItemId).executeUpdate();
     }
 
     private static BigDecimal toBd(Object v) {

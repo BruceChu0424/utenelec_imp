@@ -6,6 +6,7 @@ import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.master.client.dto.ClientAccessCandidate;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.master.client.dto.ClientAccessBatchUpdateRequest;
 import com.uten.imp.features.master.client.dto.ClientAccessDetail;
 import com.uten.imp.features.master.client.dto.ClientAccessUpdateRequest;
 import com.uten.imp.features.master.client.dto.ClientAccessViewer;
@@ -116,7 +117,69 @@ public class ClientAccessService {
     @Transactional
     public ClientAccessDetail update(UUID clientId, ClientAccessUpdateRequest request) {
         tx.bind();
-        ValidatedRequest validated = validateRequest(request);
+        return applyValidated(clientId, validateRequest(request));
+    }
+
+    /**
+     * Batch owner/viewer maintenance for a multi-selected customer list.
+     *
+     * <p>Client ids are applied in sorted order so two concurrent batches take
+     * the per-customer write locks in the same sequence and cannot deadlock.
+     * Each customer contributes its own current access version (the operator
+     * picked rows, not revisions) and its own untouched dimension: a null
+     * owner keeps that customer's owner, a null viewer list keeps its viewers.
+     * One transaction: a rejected customer (missing owner,离职 assignee,
+     * 越权) rolls the whole batch back rather than leaving half of it applied.
+     */
+    @Transactional
+    public List<ClientAccessDetail> updateBatch(ClientAccessBatchUpdateRequest request) {
+        tx.bind();
+        if (request == null || request.clientIds() == null || request.clientIds().isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先选择要设置的客户");
+        }
+        if (request.ownerEmployeeId() == null && request.viewerEmployeeIds() == null) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, "请至少设置负责人或可见人其中一项");
+        }
+        if (request.clientIds().size() > RequestLimits.BATCH_IDS) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次最多设置 "
+                    + RequestLimits.BATCH_IDS + " 个客户");
+        }
+        List<UUID> clientIds = new LinkedHashSet<>(request.clientIds()).stream()
+                .sorted()
+                .toList();
+        List<ClientAccessDetail> results = new ArrayList<>(clientIds.size());
+        for (UUID clientId : clientIds) {
+            Client snapshot = requireClient(clientId);
+            requireAccessAdministration(snapshot);
+            UUID ownerEmployeeId = request.ownerEmployeeId() != null
+                    ? request.ownerEmployeeId()
+                    : snapshot.getOwnerEmployeeId();
+            if (ownerEmployeeId == null) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "客户「" + clientLabel(snapshot) + "」还没有负责人，本次批量必须同时指定负责人");
+            }
+            List<UUID> viewerIds = request.viewerEmployeeIds() != null
+                    ? request.viewerEmployeeIds()
+                    : activeViewerIds(clientId);
+            results.add(applyValidated(clientId, validateRequest(new ClientAccessUpdateRequest(
+                    ownerEmployeeId,
+                    viewerIds,
+                    snapshot.getAccessVersion(),
+                    request.reason()))));
+        }
+        return List.copyOf(results);
+    }
+
+    private static String clientLabel(Client client) {
+        String name = client.getName();
+        if (name != null && !name.isBlank()) return name;
+        String code = client.getCode();
+        return code == null || code.isBlank() ? client.getId().toString() : code;
+    }
+
+    private ClientAccessDetail applyValidated(UUID clientId, ValidatedRequest validated) {
         Client snapshot = requireClient(clientId);
         requireAccessAdministration(snapshot);
         if (snapshot.getAccessVersion() != validated.expectedAccessVersion()) {

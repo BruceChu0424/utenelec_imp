@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
+import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_iqc_stock_in.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_quality_result.dart';
@@ -139,6 +141,73 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('999999.99'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  // 分段计数两形态（docs/00-项目准则/14-徽章与计数口径.md）：红徽章只给仓库
+  // 要动手的状态（全部合格/部分合格/不合格退回 = WarehouseQualityWorkStatus
+  // .actionable）；「等待结果」由品质部推进、仓库只是预判工作量 → 中性括号，
+  // 且 0 也保留 `(0)` 保持整行队形。
+  testWidgets(
+    'waiting-for-result segment browses in brackets, actionable keeps the badge',
+    (tester) async {
+      _viewport(tester, const Size(1200, 900));
+      final gateway = _QualityGateway([
+        WarehouseQualityResultTask.fromJson(
+          _summaryJson('ALL_PASSED', pendingSliceCount: 1, passedLineCount: 2),
+        ),
+      ]);
+      final preferences = await SharedPreferences.getInstance();
+      await tester.pumpWidget(
+        _app(const WarehouseQualityResultsPage(), gateway, preferences),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('采购收货'));
+      await tester.pumpAndSettle();
+
+      Finder segment(String label) => find.byWidgetPredicate(
+        (widget) => widget is UtenSegmentBadgeLabel && widget.label == label,
+      );
+
+      // 等待结果：计数 0 → 中性 `(0)`，没有红徽章。
+      expect(
+        tester.widget<UtenSegmentBadgeLabel>(segment('等待结果')).countForm,
+        UtenSegmentCountForm.browsing,
+      );
+      expect(
+        find.descendant(of: segment('等待结果'), matching: find.text('(0)')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: segment('等待结果'),
+          matching: find.byType(UtenNotificationBadge),
+        ),
+        findsNothing,
+      );
+
+      // 全部合格：仓库待入库 → 红徽章 1，不是 `(1)`。
+      expect(
+        tester.widget<UtenSegmentBadgeLabel>(segment('全部合格')).countForm,
+        UtenSegmentCountForm.actionable,
+      );
+      expect(
+        find.descendant(
+          of: segment('全部合格'),
+          matching: find.byType(UtenNotificationBadge),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: segment('全部合格'), matching: find.text('(1)')),
+        findsNothing,
+      );
+      // 待办型 0（部分合格/不合格退回）整个不渲染，不留红色的 0，也不退化成 `(0)`。
+      expect(
+        find.descendant(of: segment('部分合格'), matching: find.text('(0)')),
+        findsNothing,
+      );
       expect(tester.takeException(), isNull);
     },
   );

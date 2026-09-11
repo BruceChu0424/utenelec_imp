@@ -1,13 +1,17 @@
 // 即时库存页（仓库管理 hub 入口，stock:view）。
 //
 // 对标老系统「即时库存」窗口（View_IOStockGoods）的看盘视角（2026-09-01 简化；
-// 2026-09-04 顶部统一任务中心范式 + 仓库主/子层级）：
-// - 全宽单栏：分类不再用左侧树，改为 UtenFilterToolbar 大类分段（「全部」+
-//   各一级分类；无子级的根如「未分类（历史孤儿）」自成一段），父类分段=子树汇总；
-//   分段带货品计数——零货品分类自动隐藏（空分段只是噪音）；
-// - 工具栏：分类分段 + 页级搜索框（名称/编号/型号/客户型号，300ms 防抖）+
-//   行尾仓库下拉（V476 主/子层级：选父仓=自身+全部子仓聚合）+「含不良品仓」
-//   开关（全部/父仓聚合口径下生效）+ 共 N 项；
+// 2026-09-04 顶部统一任务中心范式 + 仓库主/子层级；2026-09-11 分类/仓库改侧滑面板）：
+// - 全宽单栏：分类与仓库两个筛选都是 UtenFilterPickerField（标签 + 当前值 +
+//   chevron 的紧凑单行字段，与搜索框等高），点开侧滑面板选——分类面板就是货品
+//   资料那棵树（UtenCategoryTreeView：可展开折叠 + 搜索 + 选中高亮 + 货品数），
+//   仓库面板是层级缩进一次铺开的 showUtenWarehousePickerPanel 查询口径；
+//   2026-09-09 的层级下拉（DropdownButtonFormField）已下线——树摊平成下拉长条
+//   在分类一多时不可用，且与全站「点开侧滑窗选」的范式割裂；
+// - 口径不变：分类「全部」= 不过滤，选任意层级 = 该分类子树聚合，零货品分类
+//   自动隐藏；仓库「全部」= 参与核算仓库聚合，选主仓 = 自身 + 全部子仓聚合；
+// - 工具栏：页级搜索框（名称/编号/型号/客户型号，300ms 防抖）+ 行尾分类字段 +
+//   仓库字段 +「含不良品仓」开关（全部/父仓聚合口径下生效）+ 共 N 项；
 // - 表格 = 统一 MasterDataTableView：所属类型 / 物料编码 / 物料系列 / 库位号 /
 //   型号 / 客户型号 / 货品名称 / 规格 / 颜色 / 单位 / 备注 / 库存重量 / 库存数量 /
 //   待检量 / 合格待入库 / 多排数量。库存台账金额列已从页面与预览打印移除
@@ -25,6 +29,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
+import '../../../components/inputs/uten_filter_picker_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -37,10 +42,12 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/master_name_provider.dart';
-import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
+import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../../basic_data/models/product_category_node.dart';
 import '../../basic_data/repositories/product_category_repository.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/product_category_picker_panel.dart';
+import '../../report/shared/report_total.dart';
 import '../models/stock_query.dart';
 import '../providers/instant_inventory_prefs_provider.dart';
 import '../repositories/stock_query_repository.dart';
@@ -54,13 +61,12 @@ class InstantInventoryPage extends ConsumerStatefulWidget {
 }
 
 class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
-  // 分类分段数据源（同一 tree 端点带货品计数；零货品分类不显示为分段）。
+  // 分类面板数据源（同一 tree 端点带货品计数；零货品分类在面板里整支隐藏）。
   List<ProductCategoryNode>? _tree;
   String? _treeError;
 
-  // 分类分段选中态：进页面不选（数据等价于不过滤）；点任何分段（含「全部」）才视为已选。
+  // 分类筛选选中态：null = 全部（不过滤）。
   String? _categoryId;
-  bool _categorySelected = false;
 
   // 页级搜索关键词（名称/编号/型号/客户型号；UtenSearchBar 300ms 防抖后回调查询）。
   String _keyword = '';
@@ -137,14 +143,6 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
         setState(() => _loading = false);
       }
     }
-  }
-
-  void _onSelectCategory(String? id) {
-    setState(() {
-      _categoryId = id;
-      _categorySelected = true;
-    });
-    _load(1);
   }
 
   void _onSortChange(String? column, bool ascending) {
@@ -309,33 +307,40 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
         ),
       ];
 
-  /// 分类分段：「全部」+ 各根节点的一级分类；无子级的根（如「未分类（历史孤儿）」）
-  /// 自成一段——与原左树可选范围一致，父类分段 = 子树汇总（后端同口径）。
-  /// 零货品分类不显示（goodsCount 计数来自 tree?withGoodsCounts；后端未给计数时不隐藏）。
-  static bool _hasGoods(ProductCategoryNode node) =>
-      node.goodsCount == null || node.goodsCount! > 0;
-
-  List<UtenFilterSegment<String?>> _categorySegments() {
-    final segments = <UtenFilterSegment<String?>>[
-      const UtenFilterSegment(value: null, label: '全部'),
-    ];
-    for (final root in _tree ?? const <ProductCategoryNode>[]) {
-      if (root.children.isEmpty) {
-        if (_hasGoods(root)) {
-          segments.add(UtenFilterSegment(value: root.id, label: root.name));
-        }
-      } else {
-        for (final child in root.children) {
-          if (_hasGoods(child)) {
-            segments.add(UtenFilterSegment(value: child.id, label: child.name));
-          }
-        }
-      }
-    }
-    return segments;
+  /// 分类筛选 = 侧滑面板（2026-09-11，用户口径「跟货品资料里面的一样」）：
+  /// 面板内就是货品资料那棵分类树，任何层级一点即选即关（后端 categoryId 过滤
+  /// 即子树聚合口径）；零货品分类沿用 goodsCount 隐藏规则（null=后端未给计数，
+  /// 不隐藏）。选「全部」= 清空筛选；面板取消（返回 null）不动现有筛选。
+  Future<void> _pickCategory() async {
+    final result = await showUtenProductCategoryPickerPanel(
+      context,
+      tree: _tree ?? const <ProductCategoryNode>[],
+      selectedId: _categoryId,
+    );
+    if (!mounted || result == null || result.id == _categoryId) return;
+    setState(() => _categoryId = result.id);
+    _load(1);
   }
 
-  // ---- 工具栏（分类分段 + 仓库下拉 + 含不良品仓 + 计数）+ 库存表格 --------------
+  /// 仓库筛选 = 同一侧滑面板的查询口径（includeAll + allowParent）：
+  /// 「全部」= 参与核算仓库聚合（_warehouseId=null）；选主仓 = 自身 + 全部子仓聚合。
+  Future<void> _pickWarehouse() async {
+    final result = await showUtenWarehousePickerPanel(
+      context,
+      hierarchy: ref.read(masterNameServiceProvider).warehouseHierarchy,
+      initialWarehouseId: _warehouseId,
+      title: '选择仓库', // TODO(l10n): 补 arb
+      includeAll: true,
+      allowParent: true,
+    );
+    if (!mounted || result == null) return;
+    final next = result.isAll ? null : result.id;
+    if (next == _warehouseId) return;
+    setState(() => _warehouseId = next);
+    _load(1);
+  }
+
+  // ---- 工具栏（搜索 + 分类字段 + 仓库字段 + 含不良品仓 + 计数）+ 库存表格 ------
 
   Widget _buildTablePane() {
     final theme = Theme.of(context);
@@ -354,37 +359,40 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             right: UtenSpacing.s4,
             bottom: UtenSpacing.s8,
           ),
+          // 纯「搜索 + 行尾」工具条（分类已下沉为层级下拉，不再传分段）。
           child: UtenFilterToolbar<String?>(
-            segmentsKey: const Key('instant-inventory-category-segments'),
-            segments: _categorySegments(),
-            selected: _categorySelected ? {_categoryId} : const {},
-            onSelectionChanged: _onSelectCategory,
             searchKey: const Key('instant-inventory-search'),
             searchHint: '搜索货品名称 / 编号 / 型号 / 客户型号',
             onSearchChanged: (value) {
               setState(() => _keyword = value.trim());
               _load(1);
             },
-            // 行尾：仓库（层级下拉，父仓=子树聚合）+ 含不良品仓 + 计数；
-            // Wrap 保证超窄屏自动换行不断溢出。
+            // 行尾：分类字段 + 仓库字段（都是点开侧滑面板选，父级=子树聚合）
+            // + 含不良品仓 + 计数；Wrap 保证超窄屏自动换行不断溢出。
             trailing: Wrap(
               spacing: UtenSpacing.s12,
               runSpacing: UtenSpacing.s8,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                SizedBox(
-                  width: 220,
-                  child: WarehouseHierarchyDropdown(
-                    key: const Key('instant-inventory-warehouse'),
-                    entries: names.warehouseHierarchy,
-                    value: _warehouseId,
-                    includeAll: true,
-                    allowParent: true,
-                    onChanged: (v) {
-                      setState(() => _warehouseId = v);
-                      _load(1);
-                    },
+                UtenFilterPickerField(
+                  key: const Key('instant-inventory-category'),
+                  label: '货品分类', // TODO(l10n): 补 arb
+                  icon: Icons.category_outlined,
+                  value: findCategoryName(
+                    _tree ?? const <ProductCategoryNode>[],
+                    _categoryId,
                   ),
+                  onTap: _pickCategory,
+                ),
+                UtenFilterPickerField(
+                  key: const Key('instant-inventory-warehouse'),
+                  label: '仓库', // TODO(l10n): 补 arb
+                  icon: Icons.warehouse_outlined,
+                  width: 220,
+                  value: _warehouseId == null
+                      ? null
+                      : names.warehouseEntries[_warehouseId],
+                  onTap: _pickWarehouse,
                 ),
                 FilterChip(
                   label: const Text('含不良品仓'), // TODO(l10n): 补 arb
@@ -422,7 +430,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
                 const SizedBox(width: UtenSpacing.s8),
                 Expanded(
                   child: Text(
-                    '$_treeError（仅影响分类分段，可刷新重试）', // TODO(l10n): 补 arb
+                    '$_treeError（仅影响分类筛选，可刷新重试）', // TODO(l10n): 补 arb
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.error,
                     ),
@@ -479,6 +487,10 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             error: _error,
             onRetry: () => _load(_pageNum),
             emptyMessage: '暂无库存', // TODO(l10n): 补 arb
+            // 合计条：值全部来自服务端（/stock/instant-inventory 的 totals），口径与本页
+            // 当前的分类/仓库/含不良品仓/关键字筛选完全一致，且覆盖整个结果集而不是当前这一页；
+            // 前端一个加法都不做，数量按单位分组显示「12 个 · 3 箱」。
+            summaryBar: reportTotalsBar(_page?.totals ?? const []),
             currentPage: _page?.page ?? 1,
             totalPages: _page?.totalPages ?? 1,
             onPageChange: (p) => _load(p),

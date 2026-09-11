@@ -18,8 +18,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Shared, fail-closed reconciliation rules for synthetic and real-clone migration rehearsals. */
 final class MigrationRehearsalSupport {
 
-    static final String CURRENT_HEAD_VERSION = "540";
-    static final int CURRENT_MIGRATION_COUNT = 499;
+    // 2026-09-11：V541–V551（V544 跳号）→ 509 个成功迁移。
+    static final String CURRENT_HEAD_VERSION = "551";
+    static final int CURRENT_MIGRATION_COUNT = 509;
 
     /** Reviewed post-V238 system/evidence row-count mutations on pre-existing tables. */
     private static final Set<String> EXPECTED_ROW_COUNT_MUTATIONS = Set.of(
@@ -34,6 +35,8 @@ final class MigrationRehearsalSupport {
             // V373/V376/V379 有意播种的 GL 科目（索赔应收/委外异常损耗/客户预收），已复核。
             "payment_styles",
             "permissions",
+            // V543 下架 production.* 面上的停用码并补齐我的车间任务面三码（有意的增删）。
+            "permission_surface_permissions",
             "role_permissions",
             "supplier_categories",
             "user_permission_overrides");

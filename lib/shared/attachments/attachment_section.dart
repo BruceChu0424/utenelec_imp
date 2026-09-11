@@ -1,4 +1,4 @@
-// 通用附件区段：列出 + 上传 + 预览/下载 + 删除。
+// 通用附件区段：列出 + 上传 + 预览/下载 + 删除 + 逐个文件的可选分类。
 // 可复用于任意 ownerType/ownerId；接入方：员工详情「档案文件」（EMPLOYEE）、
 // 合同附件弹窗（EMPLOYEE_CONTRACT）、报销详情（EXPENSE_CLAIM）、我的文件（EMPLOYEE 只读）。
 // 调用方只表达 owner/state 是否允许上传或删除；组件统一叠加 attachment:upload/delete。
@@ -20,6 +20,9 @@ import '../../core/ui/app_notification.dart';
 import '../../core/utils/china_datetime.dart';
 import '../auth/permissions.dart';
 import 'attachment.dart';
+import 'attachment_category_control.dart';
+import 'attachment_file_rules.dart';
+import 'attachment_preview_dialog.dart';
 import 'attachment_service.dart';
 
 class AttachmentSection extends ConsumerStatefulWidget {
@@ -50,8 +53,9 @@ class AttachmentSection extends ConsumerStatefulWidget {
   /// 空态提示文案（默认「暂无附件」）。
   final String? emptyHint;
 
-  /// 文档分类（员工档案：合同/身份证件/学历证书/照片/其他）。为 null 时不显示分类筛选。
-  /// 筛选芯片同时决定上传默认归入的分类（选「全部」时归第一个分类）。
+  /// 文档分类词表（员工档案：合同/身份证件/学历证书/照片/其他）。为 null 时整块分类功能关闭。
+  /// 分类是「传完之后在文件旁边可选设置」的标注，上传前不询问、也不是必填；
+  /// 只有文件多到看不过来（≥4 个且用了 ≥2 种分类）才另外出一行筛选。
   final List<String>? categories;
 
   /// 把图片附件设为头像（仅员工档案用；为 null 时不显示该按钮）。
@@ -64,7 +68,25 @@ class AttachmentSection extends ConsumerStatefulWidget {
 class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
   bool _busy = false;
   String? _progressLabel; // 上传进度文案（多文件时显示「正在上传 2/3」）
-  String? _filterCategory; // 分类筛选（仅 categories 非 null 时使用；null = 全部）
+  String? _filterCategory; // 纯查看筛选（null = 全部），与上传无关
+
+  /// 刚改过分类的本地值：服务端已落库，先就地生效，避免为一个标注整块重新加载。
+  final Map<String, String?> _categoryOverride = {};
+
+  /// 正在保存分类的附件 id（该行控件暂时不接受新点击）。
+  final Set<String> _savingCategory = {};
+
+  @override
+  void didUpdateWidget(covariant AttachmentSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(oldWidget.attachments, widget.attachments)) return;
+    // 服务端已回读到同一分类（或文件已不在列表）时丢弃本地值，
+    // 以免长期遮住别人改过的分类。
+    _categoryOverride.removeWhere(
+      (id, value) =>
+          !widget.attachments.any((a) => a.id == id && a.category != value),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,7 +97,12 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
         widget.ownerCanUpload && permissions.contains(Perm.attachmentUpload);
     final canDelete =
         widget.ownerCanDelete && permissions.contains(Perm.attachmentDelete);
-    final visible = _filtered;
+    final usedCategories = _usedCategories;
+    // 只有真正找不过来时才出筛选行；两三个文件时它只是噪音。
+    final showFilter =
+        widget.attachments.length >= 4 && usedCategories.length >= 2;
+    final filter = showFilter ? _filterCategory : null;
+    final visible = _filteredBy(filter);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -126,22 +153,9 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
               ],
             ),
           ),
-        if (widget.categories != null && widget.attachments.isNotEmpty) ...[
+        if (showFilter) ...[
           const SizedBox(height: UtenSpacing.s8),
-          Wrap(
-            spacing: UtenSpacing.s8,
-            runSpacing: UtenSpacing.s4,
-            children: [
-              _filterChip(theme, null, '全部', widget.attachments.length),
-              for (final c in widget.categories!)
-                _filterChip(
-                  theme,
-                  c,
-                  c,
-                  widget.attachments.where((a) => a.category == c).length,
-                ),
-            ],
-          ),
+          _filterRow(theme, usedCategories, filter),
         ],
         const SizedBox(height: UtenSpacing.s8),
         if (widget.attachments.isEmpty)
@@ -159,6 +173,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
                     visible[i],
                     canDownload: canDownload,
                     canDelete: canDelete,
+                    canCategorize: canUpload,
                   ),
                   if (i < visible.length - 1)
                     const Divider(height: 1, indent: 56),
@@ -188,11 +203,50 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
     );
   }
 
-  Widget _filterChip(ThemeData theme, String? value, String label, int count) {
-    final selected = _filterCategory == value;
+  /// 只筛选、不改任何东西：前置漏斗图标 + 「只看」二字把它和「设置分类」分清楚。
+  Widget _filterRow(
+    ThemeData theme,
+    List<String> usedCategories,
+    String? active,
+  ) {
+    return Wrap(
+      spacing: UtenSpacing.s8,
+      runSpacing: UtenSpacing.s4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.filter_alt_outlined,
+              size: 16,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: UtenSpacing.s4),
+            Text(
+              '只看',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        _filterChip(null, '全部', widget.attachments.length, active),
+        for (final c in usedCategories)
+          _filterChip(
+            c,
+            c,
+            widget.attachments.where((a) => _categoryOf(a) == c).length,
+            active,
+          ),
+      ],
+    );
+  }
+
+  Widget _filterChip(String? value, String label, int count, String? active) {
     return ChoiceChip(
       label: Text(count > 0 ? '$label $count' : label),
-      selected: selected,
+      selected: active == value,
       onSelected: (_) => setState(() => _filterCategory = value),
       visualDensity: VisualDensity.compact,
     );
@@ -264,10 +318,15 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
               color: theme.colorScheme.onSurfaceVariant,
             ),
             const SizedBox(width: UtenSpacing.s8),
-            Text(
-              hint ?? widget.emptyHint ?? '暂无附件',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+            // 空态文案可能较长（「无权限查看」等），窄屏叠大字号会横向溢出：
+            // 2026-09-11 钱流详情 390 宽 + 字号 1.5 复现 → Flexible 换行兜底。
+            Flexible(
+              child: Text(
+                hint ?? widget.emptyHint ?? '暂无附件',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           ],
@@ -281,12 +340,18 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
     Attachment a, {
     required bool canDownload,
     required bool canDelete,
+    required bool canCategorize,
   }) {
-    final type = _FileType.of(a);
+    final kind = AttachmentFileKind.of(a.originalName, a.contentType);
+    final categories = widget.categories;
+    final previewable = AttachmentPreviewDialog.canPreview(
+      a.originalName,
+      a.contentType,
+    );
     return ListTile(
       dense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      leading: _typeIcon(theme, type),
+      leading: AttachmentKindIcon(kind: kind),
       title: Row(
         children: [
           Flexible(
@@ -297,19 +362,26 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
               style: theme.textTheme.bodyMedium,
             ),
           ),
-          if (a.category != null) ...[
+          if (categories != null) ...[
             const SizedBox(width: UtenSpacing.s8),
-            _categoryTag(theme, a.category!),
+            AttachmentCategoryControl(
+              categories: categories,
+              value: _categoryOf(a),
+              enabled: !_savingCategory.contains(a.id),
+              onChanged: canCategorize
+                  ? (value) => _setCategory(a, value)
+                  : null,
+            ),
           ],
           if (a.avatar) ...[
             const SizedBox(width: UtenSpacing.s4),
-            _categoryTag(theme, '头像', highlighted: true),
+            const AttachmentCategoryTag(label: '头像', highlighted: true),
           ],
         ],
       ),
       subtitle: Text(
         [
-          _fmtSize(a.sizeBytes),
+          formatAttachmentSize(a.sizeBytes),
           if (a.uploadedAt != null) ChinaDateTime.formatDate(a.uploadedAt!),
         ].join(' · '),
         style: theme.textTheme.bodySmall?.copyWith(
@@ -321,9 +393,11 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
         children: [
           if (canDownload)
             IconButton(
-              tooltip: a.isImage ? '预览' : '下载',
+              tooltip: previewable ? '预览' : '下载',
               icon: Icon(
-                a.isImage ? Icons.visibility_outlined : Icons.download_outlined,
+                previewable
+                    ? Icons.visibility_outlined
+                    : Icons.download_outlined,
                 size: 20,
               ),
               onPressed: () => _view(a),
@@ -350,48 +424,46 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
     );
   }
 
-  /// 分类/头像小标签：胶囊形，浅底深字，不打断文件名阅读。
-  Widget _categoryTag(
-    ThemeData theme,
-    String label, {
-    bool highlighted = false,
-  }) {
-    final color = highlighted ? theme.colorScheme.primary : null;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      decoration: BoxDecoration(
-        color: (color ?? theme.colorScheme.onSurfaceVariant).withValues(
-          alpha: 0.1,
-        ),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: color ?? theme.colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
+  /// 当前生效的分类：本地刚改过的值优先于列表里的服务端值。
+  String? _categoryOf(Attachment a) => _categoryOverride.containsKey(a.id)
+      ? _categoryOverride[a.id]
+      : a.category;
+
+  /// 已经被用上的分类，按本页词表顺序排列（没用到的不进筛选行）。
+  List<String> get _usedCategories {
+    final categories = widget.categories;
+    if (categories == null) return const [];
+    final used = widget.attachments
+        .map(_categoryOf)
+        .whereType<String>()
+        .toSet();
+    return categories.where(used.contains).toList();
   }
 
-  /// 文件类型图标：彩色圆角方块 + 白色图标，一眼区分图片/文档/表格/压缩包。
-  Widget _typeIcon(ThemeData theme, _FileType type) {
-    return Container(
-      width: 36,
-      height: 36,
-      decoration: BoxDecoration(
-        color: type.color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Icon(type.icon, size: 19, color: type.color),
-    );
+  List<Attachment> _filteredBy(String? category) {
+    if (category == null) return widget.attachments;
+    return widget.attachments.where((a) => _categoryOf(a) == category).toList();
   }
 
-  List<Attachment> get _filtered {
-    final c = _filterCategory;
-    if (c == null || widget.categories == null) return widget.attachments;
-    return widget.attachments.where((a) => a.category == c).toList();
+  /// 设置/清除单个文件的分类。分类只是标注：先就地生效再落库，失败原样退回并提示。
+  Future<void> _setCategory(Attachment a, String? value) async {
+    if (_savingCategory.contains(a.id)) return;
+    final previous = _categoryOf(a);
+    if (previous == value) return;
+    setState(() {
+      _savingCategory.add(a.id);
+      _categoryOverride[a.id] = value;
+    });
+    try {
+      await ref.read(attachmentServiceProvider).setCategory(a.id, value);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _categoryOverride[a.id] = previous);
+        context.appError('分类未能保存：$e');
+      }
+    } finally {
+      if (mounted) setState(() => _savingCategory.remove(a.id));
+    }
   }
 
   Future<void> _pickAndUpload() async {
@@ -406,9 +478,6 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
       if (!mounted) return;
       final files = result?.files ?? const <PlatformFile>[];
       if (files.isEmpty) return;
-      final category = widget.categories == null
-          ? null
-          : (_filterCategory ?? widget.categories!.first);
       var attempted = 0;
       var succeeded = 0;
       String? uploadedFileName;
@@ -427,12 +496,13 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
         final contentType = guessContentType(f.name);
         if (contentType == null) {
           if (mounted) {
-            context.appError('「${f.name}」类型不支持(仅图片/PDF/Office/zip/txt)');
+            context.appError('「${f.name}」类型不支持（$kAttachmentUploadTypesHint）');
           }
           continue;
         }
         // File identity and original bytes are authoritative. Storage may use
         // lossless compression without changing the uploaded/downloaded file.
+        // 上传不带分类：分类改成传完之后在文件旁边可选设置（2026-09-11）。
         try {
           await ref
               .read(attachmentServiceProvider)
@@ -442,7 +512,6 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
                 fileName: f.name,
                 contentType: contentType,
                 bytes: bytes,
-                category: category,
               );
           succeeded++;
           uploadedFileName = f.name;
@@ -471,15 +540,32 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
 
   Future<void> _view(Attachment a) async {
     if (!_canUse(Perm.attachmentDownload, true)) return;
+    final service = ref.read(attachmentServiceProvider);
     try {
-      final bytes = await ref.read(attachmentServiceProvider).downloadBytes(a);
+      // 2026-09-10 Office 文档：服务端 LibreOffice 转 PDF 后内嵌查看；
+      // 服务器未装转换组件/转换失败 → 提示并回落为下载原件。
+      if (AttachmentPreviewDialog.isOffice(a.originalName, a.contentType)) {
+        Uint8List? pdf;
+        try {
+          pdf = await service.previewBytes(a);
+        } catch (_) {
+          pdf = null;
+        }
+        if (!mounted) return;
+        if (pdf != null && pdf.isNotEmpty) {
+          await _showPreview(pdf, a.originalName, 'application/pdf');
+          return;
+        }
+        context.appWarning('该文件暂不支持在线预览，已改为下载原件');
+      }
+      final bytes = await service.downloadBytes(a);
       if (!mounted) return;
-      if (a.isImage) {
-        await showDialog<void>(
-          context: context,
-          builder: (_) =>
-              _ImagePreviewDialog(bytes: bytes, name: a.originalName),
-        );
+      // 图片/PDF/文本点开即看；其余（zip 等）保存落盘。
+      final inline =
+          !AttachmentPreviewDialog.isOffice(a.originalName, a.contentType) &&
+          AttachmentPreviewDialog.canPreview(a.originalName, a.contentType);
+      if (inline) {
+        await _showPreview(bytes, a.originalName, a.contentType);
       } else {
         final saved = await saveBytes(bytes, a.originalName);
         if (mounted) context.appSuccess('已保存到 $saved');
@@ -487,6 +573,17 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
     } catch (e) {
       if (mounted) context.appError('打开失败：$e');
     }
+  }
+
+  Future<void> _showPreview(Uint8List bytes, String name, String? contentType) {
+    return showDialog<void>(
+      context: context,
+      builder: (_) => AttachmentPreviewDialog(
+        bytes: bytes,
+        name: name,
+        contentType: contentType,
+      ),
+    );
   }
 
   Future<void> _delete(Attachment a) async {
@@ -525,109 +622,10 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
         ref.read(currentPermissionsProvider).contains(permission);
   }
 
-  static String _fmtSize(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    return '${(bytes / 1024 / 1024).toStringAsFixed(2)} MB';
-  }
-
-  /// 按扩展名猜测后端允许的 Content-Type；不在白名单返回 null。
-  static String? guessContentType(String name) {
-    final ext = name.contains('.')
-        ? name.substring(name.lastIndexOf('.') + 1).toLowerCase()
-        : '';
-    return switch (ext) {
-      'jpg' || 'jpeg' => 'image/jpeg',
-      'png' => 'image/png',
-      'webp' => 'image/webp',
-      'gif' => 'image/gif',
-      'bmp' => 'image/bmp',
-      'pdf' => 'application/pdf',
-      'doc' => 'application/msword',
-      'docx' =>
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'xls' => 'application/vnd.ms-excel',
-      'xlsx' =>
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'zip' => 'application/zip',
-      'txt' => 'text/plain',
-      _ => null,
-    };
-  }
-}
-
-/// 图片预览弹窗：可缩放拖动，附文件名与「保存到本机」。
-class _ImagePreviewDialog extends StatelessWidget {
-  const _ImagePreviewDialog({required this.bytes, required this.name});
-
-  final Uint8List bytes;
-  final String name;
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      insetPadding: const EdgeInsets.all(16),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 8, 6),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: '关闭',
-                    icon: const Icon(Icons.close_rounded, size: 20),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ),
-            Flexible(
-              child: InteractiveViewer(
-                maxScale: 5,
-                // cacheWidth 限制解码目标宽度：防高分辨率证件扫描图在预览时整图解码吃满内存
-                //（服务端已限 40MP，这里再压一档；放大到 5x 时略微变软属可接受权衡）。
-                child: Image.memory(
-                  bytes,
-                  fit: BoxFit.contain,
-                  cacheWidth: 2048,
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 6, 20, 14),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  FilledButton.tonalIcon(
-                    icon: const Icon(Icons.download_outlined, size: 18),
-                    label: const Text('保存到本机'),
-                    onPressed: () async {
-                      final saved = await saveBytes(bytes, name);
-                      if (context.mounted) {
-                        context.appSuccess('已保存到 $saved');
-                        Navigator.pop(context);
-                      }
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  /// 按扩展名猜测后端允许的 Content-Type；不在白名单返回 null
+  /// （规则集中在 attachment_file_rules.dart，与保存前暂存共用）。
+  static String? guessContentType(String name) =>
+      guessAttachmentContentType(name);
 }
 
 /// 虚线边框容器（上传空态）：轻量 CustomPainter 画圆角虚线框。
@@ -694,42 +692,4 @@ class _DashedBorderPainter extends CustomPainter {
   @override
   bool shouldRepaint(_DashedBorderPainter oldDelegate) =>
       oldDelegate.color != color || oldDelegate.radius != radius;
-}
-
-/// 文件类型 → 图标与主色。颜色固定取品牌外的功能色，深浅色模式均以 14% 透明度做底。
-enum _FileType {
-  image(Icons.image_rounded, Color(0xFF8B5CF6)),
-  pdf(Icons.picture_as_pdf_rounded, Color(0xFFEF4444)),
-  word(Icons.description_rounded, Color(0xFF3B82F6)),
-  excel(Icons.table_view_rounded, Color(0xFF22C55E)),
-  zip(Icons.folder_zip_rounded, Color(0xFFF59E0B)),
-  text(Icons.article_rounded, Color(0xFF64748B)),
-  other(Icons.insert_drive_file_outlined, Color(0xFF64748B));
-
-  const _FileType(this.icon, this.color);
-
-  final IconData icon;
-  final Color color;
-
-  static _FileType of(Attachment a) {
-    final ct = a.contentType?.toLowerCase() ?? '';
-    final name = a.originalName.toLowerCase();
-    if (ct.startsWith('image/')) return image;
-    if (ct.contains('pdf') || name.endsWith('.pdf')) return pdf;
-    if (ct.contains('word') ||
-        ct.contains('msword') ||
-        name.endsWith('.doc') ||
-        name.endsWith('.docx')) {
-      return word;
-    }
-    if (ct.contains('excel') ||
-        ct.contains('spreadsheet') ||
-        name.endsWith('.xls') ||
-        name.endsWith('.xlsx')) {
-      return excel;
-    }
-    if (ct.contains('zip') || name.endsWith('.zip')) return zip;
-    if (ct.startsWith('text/')) return text;
-    return other;
-  }
 }

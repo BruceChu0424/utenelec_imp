@@ -23,6 +23,7 @@ import '../../../core/responsive/dialog_size.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
@@ -41,6 +42,7 @@ import '../widgets/progress_ring.dart';
 import '../widgets/production_material_settlement_sheet.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_access_policy.dart';
 
 class ProductionPlanDetailPage extends ConsumerStatefulWidget {
   const ProductionPlanDetailPage({
@@ -1028,7 +1030,9 @@ class _ProductionPlanDetailPageState
       await ref.read(productionPlanRepositoryProvider).delete(widget.id);
       if (!mounted) return;
       context.appSuccess('已删除');
-      context.go('/production/plans');
+      // 返回键契约（路由设计 §十一）：pop 回来源（列表/任务中心/车间任务），
+      // 栈空回 hub；不再硬编码列表路径（无列表权限的入口会落到 /access-denied）。
+      popOrBackTo(context, defaultPath: RouteName.production);
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {
@@ -1057,18 +1061,6 @@ class _ProductionPlanDetailPageState
             popOrBackTo(context, defaultPath: RouteName.production);
           },
         ),
-        actions: [
-          UtenButton(
-            type: UtenButtonType.tonal,
-            icon: Icons.history_rounded,
-            onPressed: _commandBusy
-                ? null
-                : () => context.push('/production/plans'),
-            onDisabledTap: () =>
-                context.appWarning('生产计划操作正在处理，请完成后再离开', force: true),
-            child: const Text('查看历史'),
-          ),
-        ],
       ),
       body: SafeArea(
         child: UtenContentContainer(
@@ -1099,6 +1091,21 @@ class _ProductionPlanDetailPageState
                       const SizedBox(height: UtenSpacing.s12),
                       _traceabilityCard(theme),
                     ],
+                    // 生产计划附件（图纸/样品图/排产确认）：详情=审核页，一律只读，
+                    // 增删回编辑页做（2026-09-11 用户要求，全站同改）。
+                    const SizedBox(height: UtenSpacing.s12),
+                    BusinessAttachmentSection(
+                      ownerType: 'PRODUCTION_PLAN',
+                      ownerId: _detail!.id,
+                      canView: ref
+                          .watch(currentPermissionsProvider)
+                          .contains(Perm.productionPlanView),
+                      canManage: false,
+                      readOnlyNote: BusinessAttachmentSection
+                          .kReviewReadOnlyAttachmentNote,
+                      title: '附件（图纸/样品图/排产确认）',
+                      categories: const ['图纸', '样品图', '确认件', '其他'],
+                    ),
                     const SizedBox(height: UtenSpacing.s12),
                     ProductionExecutionSegmentsCard(
                       key: ValueKey('${widget.id}|$_executionSegmentsRevision'),
@@ -1724,12 +1731,21 @@ class _ProductionPlanDetailPageState
       }
     }
     if (children.isEmpty) {
+      // 「返回列表」只对能进 /production/plans 的人渲染（车间任务/财务审批等
+      // 入口 push 进来的人没有列表权限，按钮会把他们带到 /access-denied）；
+      // 走返回键契约：pop 回来源，栈空回 hub。
+      final canOpenList = locationAllowedFor(
+        ref.watch(currentPermissionsProvider),
+        ref.watch(isSuperAdminProvider),
+        RouteName.productionPlanList,
+      );
+      if (!canOpenList) return const SizedBox.shrink();
       children.add(
         UtenButton(
           type: UtenButtonType.secondary,
           onPressed: _commandBusy
               ? null
-              : () => context.go('/production/plans'),
+              : () => popOrBackTo(context, defaultPath: RouteName.production),
           onDisabledTap: () =>
               context.appWarning('生产计划操作正在处理，请完成后再离开', force: true),
           child: const Text('返回列表'),

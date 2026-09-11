@@ -67,21 +67,49 @@
   多选模式下**单击行 = 切换勾选（与点勾选框等价），双击行 = 打开详情**。有 `batchActionsBuilder`
   时，「已选 N 项 + 清除选择」摘要与业务动作（批量审核/禁用/删除等）**同框悬浮在表格右下角**
   （2026-09-05 全站统一口径：选择数与按钮零距离；无悬浮动作的表格摘要仍驻表头上方）。
-  未选中时动作组降为半透明但**不加 AbsorbPointer**——悬浮组里的「全选全部/全选筛选结果」类
-  动作必须在 0 选中时可点（业务按钮自身 onPressed=null 已不可提交）；表体同时预留底部滚动
-  空间，末行不会被遮挡。
+  **未选中时不再整组降透明**（2026-09-11 去掉 `Opacity(0.4)`）：叠在本就发灰的禁用按钮上会
+  淡到「看不出这里能点」（物料分析、下达采购/委外/自制的用户反馈）。未选态的可辨识度改由
+  控件自身承担——`UtenButton` 禁用态是实底 + 描边 + 可读灰字，`UtenSelectionSummaryPill`
+  未选态是实底 + 描边。悬浮组里的「全选全部/全选筛选结果」类动作本来就必须在 0 选中时可点
+  （业务按钮自身 `onPressed=null` 已不可提交），所以也从不加 `AbsorbPointer`；表体同时预留
+  底部滚动空间，末行不会被遮挡。
+- **行首勾选列横滚冻结**（2026-09-11）：`selectable` 表的勾选列在左右拖动表格时钉在视口左缘，
+  始终可见。实现与两条踩坑见
+  [UtenTableColumnKit §四之二 `UtenFrozenLeadingColumn`](UtenTableColumnKit.md)。
+  **测试注意**：横滚后同一行有两个 `Checkbox`（行内原位 + 冻结副本），按行定位要用 `.first`。
   多选表体整体 `SelectionContainer.disabled`——勾选场景不需要文本复制，也挡住页面级
   SelectionArea（UtenContentContainer 默认包裹）渗入（2026-09-03，准则 §3.4）。
 - **成功空态保留业务工具条**：主数据与前导分组都为空时仍渲染调用方的 `toolbarActions`
-  (例如空 BOM 的“添加组件”)，再显示空态说明；初始加载和错误态不开放这组写动作，先完成
-  数据确认或重试。
+  (例如空 BOM 的“添加组件”)与 `toolbarLeadingActions`（视图切换 chip），再显示空态说明；初始加载
+  和错误态不开放这组写动作，先完成数据确认或重试。**2026-09-11 起空态不再提供「进全屏」**
+  ——放大一张没有行的表毫无意义，用户反而以为数据被按钮挡住了（销售订单财务确认「待确认」
+  空态反馈）；**已在全屏中时按钮保留**（`退出全屏`，与工具条共用 `_fullscreenToggleButton`，
+  key `master-table-fullscreen-toggle`）——0 行时不能被困在全屏路由。且当 `filters` 里有任何激活值
+  （非 null/非空串，含「筛空值」哨兵）时在动作首位追加 **「清除筛选」**（key
+  `master-table-clear-filters`，逐列回调 `onFilterChanged(key, null)`），空态说明补一行
+  「当前有 N 个表头筛选生效」——列头筛选控件随表头一起不渲染，这是撤掉「看不见的筛选」的唯一出口
+  （物料分析「路线待确认」筛选后确认路线 → 0 行 → 表头消失的死锁根因）。测试：
+  `test/features/basic_data/widgets/master_data_table_view_empty_state_test.dart`。
 - **文字框选(2026-09-03 全站口径，准则 §3.4)**：只读表体默认自带局部
   `SelectionArea`(跨格框选 + 复制，页面 region 嵌套时各管各的)；**表头整体
   `SelectionContainer.disabled`**——表头有「按住拖拽隐藏列/拖拽调宽」手势，与拖选隔离，
   且挡住页面级 SelectionArea 渗入。自动刷新或同时具有横向同步、纵向滚动、分页、行手势的
   重交互大表应传 `enableTextSelection:false`，显式隔离整个表格；这不改变行多选语义。
-- **分页**：上一页/下一页 + 跳页输入框；翻页后表体竖向回顶。
-- **空/错/加载态**：内置 `UtenEmpty` / loading / 重试。
+- **分页**：上一页/下一页 + 跳页输入框；翻页后表体竖向回顶。窄屏叠大字号（375px × 1.5×）
+  放不下文案时翻页按钮自动收成纯图标，**恒为一行**（改折行会把表体挤到纵向溢出）。
+- **`summaryBar`（2026-09-11 新增，表格下方合计条）**：挂在**表体（内部滚动）与翻页条之间**，
+  所以表体滚到哪一行它都在；全屏表格与嵌入式明细表同样跟随。位置/间距只在组件里定义一处，
+  接入页不自己摆位，全站因此一致。通常传 `UtenTotalsSummaryBar(compact: true, ...)`。
+  **服务端分页的表格必须传服务端合计**——对当前页求和会得出一个看着像总计、其实只覆盖
+  一页的数；拿不到服务端合计就别传，或把标签明写成「本页合计」。
+  详见 [UtenTotalsSummaryBar](UtenTotalsSummaryBar.md) §五。
+- **`onLoadMore`（2026-09-10 新增，滚动自动加载）**：表体竖向滚动临近底部（距底约 200px
+  预取窗）时回调，配合 `loadingMore:true`（末尾追加转圈行，组件内同时防重入）实现
+  「滑到底自动加载下一页」。组件不判断是否还有更多页——增量加载式页面不传
+  `currentPage/totalPages`（传了会渲染翻页条），由调用方在回调里守卫（`page >= totalPages`
+  即 no-op）；典型接入见员工列表页。
+- **空/错/加载态**：内置 `UtenEmpty` / loading / 重试。`isLoading` 仅在 `items` 为空时显示
+  整表转圈——刷新时仍持旧数据的页面表格原地保留（工具条/搜索框不卸载、焦点不丢）。
 - **`toolbarActions`、`toolbarLeadingActions`、批量悬浮动作与全屏**：`toolbarActions` 的按钮排在工具条
   **右侧贴边**（全站口径：刷新等页面动作放表格右上角，多个动作间 s8 间距、宽度不足自动换行——
   2026-09-06 起），**全屏路由里同位置同样渲染**（全屏由 `showGeneralDialog` 整屏路由 +
@@ -131,7 +159,10 @@ MasterDataTableView<T>(
                                         // null=透明。单击选中自动加深加亮（提高不透明度），
                                         // 无底色行维持 primary 0.10 高亮
   isLoading / error / onRetry / emptyMessage,
+  loadingMore: false,        // true 时表体末尾追加转圈行（配合 onLoadMore 自动加载）
+  onLoadMore: () {},         // 竖向滚动临近底部回调；更多页判断在调用方
   currentPage / totalPages / onPageChange,
+  summaryBar: UtenTotalsSummaryBar(compact: true, entries: [...]),  // 表体与翻页条之间的合计条
   primary: false,            // 联动折叠：包在 UtenCollapsingHeaderScrollView 的 body 里时传 true，
                              // 表体拾取注入的 PrimaryScrollController 参与「顶部折叠 → 表格内滚」联动；
                              // 不能与 embedded 同用。详见 UtenCollapsingHeaderScrollView.md
@@ -195,6 +226,7 @@ return MasterDataTableView<Map<String, dynamic>>(
   sortAscending: _sortAsc,
   onSortChange: _onSortChange,
   onRowTap: _onRowTap,       // 行点击跳源头单据编辑页（见 §八）
+  summaryBar: reportTotalsBar(data.totals),  // 服务端合计（整个结果集），不是当前页求和
   currentPage: data.page, totalPages: data.totalPages, onPageChange: (p) {_page=p; _load();},
 );
 ```
@@ -242,6 +274,7 @@ return MasterDataTableView<Map<String, dynamic>>(
 
 - 物料分析**历史页**是普通行列列表，宽屏复用本组件完成列宽、分页、加载/错误和行打开；当前历史页不做批量写，双击行只进入同一持久化分析（单击只选中）。
 - 物料分析**详情页**使用统一 BOM 树，不再把 BUY/SUBCONTRACT/MAKE 拆成三块平铺。首屏默认“只看缺料”，搜索或筛选命中子件时保留祖先路径，并允许切换“待确认路线/全部 BOM”；不要为了“统一表格”丢失父子依赖和物料路径。
+- 物料分析主表的**表头筛选**（进度 / 供应方式列）走本组件的 `facets / filters / onFilterChanged`：桶是**稳定键 + `MasterFacetBucket.label` 中文标签**（`_FilterCell` 渲染 `display`，回传 `value`），过滤在页面的节点投影层完成（命中行的祖先保留为只读上下文、`hasChildren`/子件徽章/视图 chip 计数同步），组件不参与业务过滤；0 行空态依赖上文「清除筛选」出口（2026-09-10）。列表页状态列徽章口径见 [DocStatusBadge](DocStatusBadge.md)。
 - 只有路线已确认且满足业务门槛的可执行节点显示真实 48×48 复选框；“先确认路线/下层未齐/仅查看”等节点显示等高文字状态，不能伪装成可点击框。可执行节点仍遵守表头三态、单行复选、选中数量、整行/整卡高亮等可访问性语义，状态不能只靠颜色。
 - 多选本身只改变客户端选择；生产详情中“提交采购/委外/自制需求”和“确认并提交审批”才是业务写按钮。组件选择状态不得被误写成已经通知、已经采购或已经生成计划。
 
@@ -249,7 +282,16 @@ return MasterDataTableView<Map<String, dynamic>>(
 
 ---
 
-**最后更新**：2026-09-04 · 行菜单动作完成后统一清选，纯取消保留选择；成功空态保留业务工具条；`MasterColumnDef.cellBuilder` 支持行内按钮等自定义内容，同时保留 `value` 的数据与无障碍语义。前序 2026-08-17：`primary` 联动折叠模式接入范围扩大。
+- **客户端分桶（facets）的适用边界（2026-09-11 全站表头筛选清扫）**：调用方自算 facet 桶时，
+  只有「整表一次装完、分页也在前端切」的页面可以这么做（如待检处置页把三域任务全装进
+  `_rows` 再前端切页），此时桶计数与过滤都必须作用于**全集**、筛选后页码回第 1 页。
+  **服务端分页的列表页不得用当页行自算桶**——那只会筛出当页的一小撮、计数还是错的；
+  这类页面要么走后端已有的 facet/筛选参数，要么保持列头不可筛。调用方还须在刷新 / 切段 /
+  换关键字后剪掉已失效的筛选值（`_pruneMaterialTableFilters` 同款），否则列头 sanitize 回
+  列名、表体仍在过滤，用户会面对一张没有出口的空表（空态「清除筛选」是最后兜底）。
+
+**最后更新**：2026-09-11 · 补记客户端 facet 的适用边界（只限整表装完的页面；服务端分页页面
+不得按当页自算桶）与失效筛选值的剪除义务。前序 2026-09-10 · 成功空态保留「全屏/退出全屏」与 `toolbarLeadingActions`，有激活 `filters` 时给「清除筛选」出口并在空态说明标注筛选生效数（新增 `master_data_table_view_empty_state_test.dart`）；物料分析表头筛选改稳定键 + 中文标签接入。前序 2026-09-04 · 行菜单动作完成后统一清选，纯取消保留选择；成功空态保留业务工具条；`MasterColumnDef.cellBuilder` 支持行内按钮等自定义内容，同时保留 `value` 的数据与无障碍语义。2026-08-17：`primary` 联动折叠模式接入范围扩大。
 此前：2026-08-14 · 新增 `primary` 联动折叠模式（配合 [`UtenCollapsingHeaderScrollView`](UtenCollapsingHeaderScrollView.md)：大屏列表页顶部卡上滑收起、表格内滚；联动模式下 `shrinkWrap` 为 false，默认 / `embedded` 路径仍 true）。货品 / 模具 / 客户 / 供应商 四个分类详情页接入。
 
 **2026-08-13**：批量操作条改为**常驻**（selectable 且配置 `batchActionsBuilder` 时固定显示，不再"选中才出现"），未选中任何行时整条灰色禁用（`AbsorbPointer` 拦截 + Opacity 变淡 + 边框/文字降级中性灰）；生产计划列表页自绘批量条废弃，统一接入 `batchActionsBuilder`，与货品资料等主档页一致。生产物料分析当前仅完成本地/隔离克隆验证，目标库与真实岗位 UAT 仍为 NO-GO。
@@ -263,3 +305,5 @@ return MasterDataTableView<Map<String, dynamic>>(
 - 搜索无匹配但存在全局选择时，空态工具条仍显示真实计数与清除入口。业务写入仍由调用方按精确任务身份、权限和当前快照校验。
 
 - 联动模式横向滚动条同时监听竖向滚动与内容尺寸变化，每帧合并测量；表头收起、详情返回或行高改变后不能把旧滚动条位置留在数据行中部。
+
+> **2026-09-11 列头 ⓘ 收敛**：列头说明图标改用 [`UtenColumnHintIcon`](UtenTableColumnKit.md)（与 UtenEditableGrid 同一份实现：悬停/点按/键盘同入口、长按被吞掉不触发排序或拖拽隐藏），原私有 `_ColumnHeaderInfo`（Material Tooltip + showDialog）已删除。

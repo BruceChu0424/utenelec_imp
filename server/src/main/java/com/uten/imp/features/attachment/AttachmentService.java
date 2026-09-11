@@ -44,6 +44,13 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AttachmentService implements AttachmentAccessPort {
 
+    /**
+     * 可当头像的图片类型：客户端（Flutter/dart:ui）能直接解码的五种位图。
+     * 上传白名单里的 tiff/heic/svg 虽然也是 {@code image/*}，但解码不了，不许选为头像。
+     */
+    private static final java.util.Set<String> RENDERABLE_AVATAR_TYPES = java.util.Set.of(
+            "image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp");
+
     private final StorageService storage;
     private final AttachmentRepository repository;
     private final StorageProperties properties;
@@ -72,8 +79,7 @@ public class AttachmentService implements AttachmentAccessPort {
         if (selected.size() != 1) throw new ApiException(ErrorCode.CONFLICT, "Selected avatar identity is not unique");
         Attachment image = selected.getFirst();
         String contentType=normalizeContentType(image.getContentType());
-        if (contentType==null || !java.util.Set.of("image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp")
-                .contains(contentType)) return java.util.Optional.empty();
+        if (contentType==null || !RENDERABLE_AVATAR_TYPES.contains(contentType)) return java.util.Optional.empty();
         InputStream input = downloadVerifier.open(image);
         auditDownloadOrClose(input,user,"attachment_avatar_download",image.getId());
         return java.util.Optional.of(new AttachmentAccessPort.AvatarContent(input, image.getContentType(),
@@ -247,8 +253,11 @@ public class AttachmentService implements AttachmentAccessPort {
             throw new ApiException(ErrorCode.NOT_FOUND, "Attachment not found");
         }
         requireClean(selected);
+        // 2026-09-11：不能只看 image/ 前缀。tiff/heic/svg 也是 image/*，但客户端解码不了，
+        // 选成头像就是一个永远加载失败的空头像（读取侧本就只放行下面五种）。
         if (!StringUtils.hasText(selected.getContentType())
-                || !selected.getContentType().toLowerCase(Locale.ROOT).startsWith("image/")) {
+                || !RENDERABLE_AVATAR_TYPES.contains(
+                        selected.getContentType().toLowerCase(Locale.ROOT))) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "Only image attachments can be selected as an avatar");
         }
@@ -281,6 +290,69 @@ public class AttachmentService implements AttachmentAccessPort {
                 "attachment_download_grant", "attachments",
                 id.toString(), "success");
         return new AttachmentDownloadResponse(grant.url(), grant.expiresAt());
+    }
+
+    /**
+     * 在线预览的授权入口（与 download-grant 同门槛：attachment:download + owner 策略可读），
+     * 返回可延迟打开的原件流；转换与缓存由 {@link AttachmentPreviewService} 负责。
+     */
+    @Transactional(readOnly = true)
+    public PreviewSource openPreviewSource(UUID id) {
+        requireStorageEnabled();
+        AuthUser user = requireStaff();
+        require(user, "attachment:download");
+        Attachment attachment = repository.findById(id)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Attachment not found"));
+        requireClean(attachment);
+        policy(attachment.getOwnerType()).requireCanView(attachment.getOwnerId(), user);
+        audit.logExplicit(user.getId(), user.getLoginAccount(),
+                "attachment_preview", "attachments", id.toString(), "success");
+        return new PreviewSource(attachment.getId(), attachment.getOriginalName(),
+                normalizeContentType(attachment.getContentType()), attachment.getSizeBytes(),
+                attachment.getSha256(), () -> downloadVerifier.open(attachment));
+    }
+
+    /** 已授权原件的元数据 + 受限打开器（打开时才占用下载槽位并校验字节）。 */
+    public record PreviewSource(UUID id, String originalName, String contentType, long sizeBytes,
+                                String sha256, java.util.function.Supplier<InputStream> opener) {
+        public InputStream open() {
+            return opener.get();
+        }
+    }
+
+    /**
+     * 上传完成后设置/清除分类。分类只是可选标注：不影响对象字节、访问范围或生命周期，
+     * 因此不占用删除权限，但走与删除同一条对象授权路径 —— 单据被审核锁定后附件只读，
+     * 分类同样改不动。空白值 = 清除分类；服务端只限长度，取值词表由各页面决定。
+     */
+    @Transactional
+    public AttachmentDto setCategory(UUID id, String rawCategory) {
+        AuthUser user = requireStaff();
+        require(user, "attachment:upload");
+        Attachment attachment = repository.findById(id)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Attachment not found"));
+        requireClean(attachment);
+        policy(attachment.getOwnerType()).requireCanManageForUpdate(attachment.getOwnerId(), user);
+
+        String category = normalizeCategory(rawCategory);
+        attachment.setCategory(category);
+        repository.saveAndFlush(attachment);
+        audit.logCommitted(user.getId(), user.getLoginAccount(),
+                "attachment_category_set", "attachments", id.toString(),
+                category == null ? "cleared" : "success");
+        return toDto(attachment);
+    }
+
+    private static String normalizeCategory(String category) {
+        if (!StringUtils.hasText(category)) {
+            return null;
+        }
+        String trimmed = category.trim();
+        if (trimmed.length() > 48) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "Attachment category exceeds 48 characters");
+        }
+        return trimmed;
     }
 
     /** Commits deletion intent and returns without coupling the DB transaction to OSS. */

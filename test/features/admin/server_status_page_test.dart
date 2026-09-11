@@ -11,7 +11,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/data_display/uten_gauge_ring.dart';
 import 'package:uten_imp/components/data_display/uten_status_badge.dart';
+import 'package:uten_imp/components/feedback/uten_live_pulse_dot.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -21,6 +23,7 @@ import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/features/admin/models/server_status.dart';
 import 'package:uten_imp/features/admin/pages/server_status_page.dart';
 import 'package:uten_imp/features/admin/repositories/server_status_repository.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/dashboard/providers/workbench_layout_provider.dart';
 import 'package:uten_imp/features/dashboard/widgets/workbench_module_area.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -352,6 +355,103 @@ void main() {
       });
     },
   );
+
+  testWidgets(
+    'extra counters pick ring or number by unit and scheduled jobs list their last run',
+    (tester) async {
+      await withClock(Clock.fixed(sampledAt), () async {
+        await _pump(tester, _Repository(() async => _withExtras(sampledAt)));
+        await tester.pumpAndSettle();
+        final threads = find.byKey(const ValueKey('server-extra-threads'));
+        final sessions = find.byKey(const ValueKey('server-extra-sessions'));
+        final volume = find.byKey(const ValueKey('server-extra-attachments'));
+        expect(
+          find.descendant(of: threads, matching: find.byType(UtenGaugeRing)),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: threads, matching: find.text('120')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: sessions, matching: find.byType(UtenGaugeRing)),
+          findsNothing,
+          reason: '没有告警阈值的计数不画环，避免编造上限',
+        );
+        expect(
+          find.descendant(of: sessions, matching: find.text('9')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: volume, matching: find.byType(UtenGaugeRing)),
+          findsNothing,
+        );
+        expect(
+          find.descendant(of: volume, matching: find.text('5 GiB')),
+          findsOneWidget,
+        );
+        expect(find.byType(MasterDataTableView<ServerJob>), findsOneWidget);
+        expect(find.text('OutboxScheduler.drain'), findsOneWidget);
+        expect(find.text('CelebrationScheduler.publishDaily'), findsOneWidget);
+        expect(find.text('IllegalStateException'), findsOneWidget);
+        expect(find.text('已超过 2 个周期未执行'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+    },
+  );
+
+  testWidgets('stale samples grey every ring and the live pulse dot', (
+    tester,
+  ) async {
+    var now = sampledAt;
+    await withClock(Clock(() => now), () async {
+      final delayed = Completer<ServerStatusSnapshot>();
+      final repository = _Repository(() async => _withExtras(sampledAt));
+      await _pump(tester, repository);
+      expect(
+        tester
+            .widget<UtenLivePulseDot>(
+              find.byKey(const Key('server-status-pulse')),
+            )
+            .stale,
+        isFalse,
+      );
+      expect(
+        tester
+            .widget<UtenGaugeRing>(find.byKey(const Key('server-status-ring')))
+            .value,
+        95,
+        reason: '总览环取最差的百分比指标（应用内存 95% > 磁盘 91%）',
+      );
+      repository.handler = () => delayed.future;
+      now = now.add(const Duration(seconds: 31));
+      await tester.pump(const Duration(seconds: 31));
+      await tester.pump();
+      expect(
+        tester
+            .widgetList<UtenGaugeRing>(find.byType(UtenGaugeRing))
+            .every(
+              (ring) =>
+                  ring.status == UtenGaugeStatus.unknown && ring.value == null,
+            ),
+        isTrue,
+        reason: '过期后不保留旧的绿色环',
+      );
+      expect(
+        tester
+            .widget<UtenLivePulseDot>(
+              find.byKey(const Key('server-status-pulse')),
+            )
+            .stale,
+        isTrue,
+      );
+      expect(find.text('数据已过期，正在等待新的采集结果。'), findsWidgets);
+      delayed.complete(_withExtras(now));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  });
 }
 
 Future<void> _pump(
@@ -406,7 +506,9 @@ Future<void> _pump(
   }
 }
 
+/// 只在显式要求时落盘（`UTEN_UI_FIXTURES=1 flutter test ...`）：默认跑测试不写文件。
 Future<void> _capture(WidgetTester tester, String name) async {
+  if (Platform.environment['UTEN_UI_FIXTURES'] != '1') return;
   final boundary = tester.renderObject<RenderRepaintBoundary>(
     find.byKey(const Key('server-status-capture')),
   );
@@ -445,7 +547,67 @@ class _Layout extends WorkbenchLayoutNotifier {
       const WorkbenchLayoutState(order: ['system'], collapsed: {});
 }
 
-ServerStatusSnapshot _sample(DateTime at) => ServerStatusSnapshot.fromJson({
+/// 带新增探针（附加计数 + 定时任务）的采样，用于验证环/数字卡的分流与任务表。
+ServerStatusSnapshot _withExtras(DateTime at) => ServerStatusSnapshot.fromJson({
+  ..._json(at),
+  'extras': [
+    {
+      'key': 'threads',
+      'label': '平台线程数',
+      'value': 120,
+      'unit': 'COUNT',
+      'warningThreshold': 400,
+      'criticalThreshold': 800,
+      'status': 'NORMAL',
+      'detail': '平台 Java 进程当前线程数',
+    },
+    {
+      'key': 'sessions',
+      'label': '在线会话',
+      'value': 9,
+      'unit': 'COUNT',
+      'status': 'NORMAL',
+      'detail': '员工 7 · 访客 2',
+    },
+    {
+      'key': 'attachments',
+      'label': '附件占用',
+      'value': 5368709120,
+      'unit': 'BYTES',
+      'status': 'NORMAL',
+      'detail': '共 1200 个附件',
+      'usedBytes': 5368709120,
+    },
+  ],
+  'jobs': [
+    {
+      'key': 'CelebrationScheduler.publishDaily',
+      'label': 'CelebrationScheduler.publishDaily',
+      'lastStartAt': at.subtract(const Duration(minutes: 10)).toIso8601String(),
+      'lastEndAt': at.subtract(const Duration(minutes: 9)).toIso8601String(),
+      'lastDurationMs': 60000,
+      'periodSeconds': 60,
+      'status': 'WARNING',
+      'detail': '已超过 2 个周期未执行',
+    },
+    {
+      'key': 'OutboxScheduler.drain',
+      'label': 'OutboxScheduler.drain',
+      'lastStartAt': at.subtract(const Duration(seconds: 5)).toIso8601String(),
+      'lastEndAt': at.subtract(const Duration(seconds: 4)).toIso8601String(),
+      'lastDurationMs': 1000,
+      'periodSeconds': 5,
+      'lastErrorType': 'IllegalStateException',
+      'status': 'CRITICAL',
+      'detail': '最近连续 3 次执行失败',
+    },
+  ],
+});
+
+ServerStatusSnapshot _sample(DateTime at) =>
+    ServerStatusSnapshot.fromJson(_json(at));
+
+Map<String, dynamic> _json(DateTime at) => {
   'sampledAt': at.toIso8601String(),
   'refreshAfterSeconds': 15,
   'status': 'CRITICAL',
@@ -535,4 +697,4 @@ ServerStatusSnapshot _sample(DateTime at) => ServerStatusSnapshot.fromJson({
       'suggestion': '请联系管理员检查存储空间。',
     },
   ],
-});
+};

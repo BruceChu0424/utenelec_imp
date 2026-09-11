@@ -44,7 +44,14 @@
   "loginServerRecoveryHint": "登录异常或更换网络时使用；只会在此安装包内置的公司与云端地址之间自动选择。",
   "loginServerRecoverySuccess": "已恢复自动选择，请重新登录",
   "loginServerRecoveryFailed": "服务器选择恢复失败，请稍后重试或联系管理员",
-  "loginFooter": "© 2026 优腾 · 综合管理平台",
+  "loginFooter": "© {year} 优腾 · 综合管理平台",
+  "@loginFooter": {
+    "placeholders": {
+      "year": {
+        "type": "int"
+      }
+    }
+  },
   "navDashboard": "工作台",
   "navNotice": "通知",
   "navProfile": "我的",
@@ -110,7 +117,6 @@
   "profileEmployeeCode": "工号",
   "profileDepartment": "部门",
   "profilePosition": "岗位",
-  "entrySubtitle": "请选择登录方式",
   "entryStaff": "内部人员登录",
   "entryVisitor": "访客登录",
   "visitorLoginTitle": "访客登录",

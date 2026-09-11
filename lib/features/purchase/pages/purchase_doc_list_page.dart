@@ -3,8 +3,9 @@
 // 2026-09-03 起统一「分类分段」范式（原 DocKpiBar 状态卡条退役）：
 // UtenFilterToolbar 状态分段（草稿/已审/红冲，无「全部」段）+ 末尾「历史记录」段——
 // - 默认不选：进页面不预选、不发请求，内容区显示引导占位（UtenFilterPlaceholder）；
-// - 徽章只挂待处理段（申请页=计划已下达待分解；订货/收货/退货页=草稿），
-//   计数取后端 list(size:1) 全量口径；
+// - 计数只挂待处理段（申请页=计划已下达待分解；订货/收货/退货页=草稿），
+//   取后端 list(size:1) 全量口径，形态是中性括号 `(N)` 而非红徽章——
+//   草稿没人在等，申请的待处理量已由采购任务中心「待分解」徽章承担；
 // - 历史记录段：内容区顶部渲染 UtenHistoryTimeFilter（时间段/全部），
 //   未选时间不发请求显示引导占位；选中后按 dateFrom/dateTo 加载（不限状态）。
 // 其余（折叠头+表格吸顶内滚、列表刷新 tick、返回即刷新、PagedListController
@@ -15,7 +16,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/paged_list_controller.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -29,6 +32,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/purchase_doc_config.dart';
 import '../models/purchase_doc.dart';
@@ -53,8 +57,15 @@ class _PurchaseDocSeg {
 }
 
 class PurchaseDocListPage extends ConsumerStatefulWidget {
-  const PurchaseDocListPage({super.key, required this.docType});
+  const PurchaseDocListPage({
+    super.key,
+    required this.docType,
+    this.initialStatus,
+  });
   final PurchaseDocType docType;
+
+  /// 深链预选（路由 `?status=draft`）：新建页「草稿(N)」按钮进来时直接落在草稿段。
+  final String? initialStatus;
 
   @override
   ConsumerState<PurchaseDocListPage> createState() =>
@@ -75,7 +86,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
   /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
   UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
 
-  /// 待处理段徽章计数；null = 加载中（不显示徽章，不把未知伪装成 0）。
+  /// 待处理段计数（中性括号 `(N)`）；null = 加载中（不渲染，不把未知伪装成 0）。
   int? _actionableCount;
 
   /// 待处理段对应的状态：申请页=计划已下达（待分解）；其余=草稿（待提交/待审）。
@@ -93,9 +104,14 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
   @override
   void initState() {
     super.initState();
+    // 深链 ?status=draft：直接落在「草稿」段（新建页「草稿(N)」按钮的落点）。
+    if (isDraftStatusQuery(widget.initialStatus)) {
+      _seg = const _PurchaseDocSeg.stage(kPurchaseStatusDraft);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(masterNameServiceProvider).ensureLoaded();
       _loadBadge();
+      if (isDraftStatusQuery(widget.initialStatus)) _reload(1);
     });
   }
 
@@ -153,7 +169,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
     _reload(1);
   }
 
-  /// 待处理段计数（list size=1 取 total；失败保持 null 不显示徽章）。
+  /// 待处理段计数（list size=1 取 total；失败保持 null 不渲染括号数字）。
   Future<void> _loadBadge() async {
     try {
       final r = await ref
@@ -180,6 +196,21 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
       };
     }
     return purchaseStatusLabel(item.status);
+  }
+
+  /// 状态徽章语义（与 [_statusLabel] 同一分支）：订货单财务态 等待财务审核=警告黄 /
+  /// 财务退回=危险红 / 财务已通过=成功绿 / 待提交财务=中性；其余按单据 0/1/-1。
+  UtenStatusBadgeType _statusBadgeType(PurchaseDocListItem item) {
+    if (widget.docType == PurchaseDocType.order) {
+      return switch (item.financeApproval?.status) {
+        'PENDING' => UtenStatusBadgeType.warning,
+        'REJECTED' => UtenStatusBadgeType.danger,
+        'APPROVED' => UtenStatusBadgeType.success,
+        'DRAFT' => UtenStatusBadgeType.neutral,
+        _ => docStatusBadgeType(item.status),
+      };
+    }
+    return docStatusBadgeType(item.status);
   }
 
   List<MasterColumnDef<PurchaseDocListItem>> _columns(
@@ -229,6 +260,12 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
         label: '状态',
         width: widget.docType == PurchaseDocType.order ? 140 : 100,
         value: _statusLabel,
+        // 状态徽章；value 仍是纯文本供列宽/排序/筛选。
+        cellBuilder: (_, it) => UtenStatusBadge(
+          label: _statusLabel(it),
+          type: _statusBadgeType(it),
+          size: UtenStatusBadgeSize.small,
+        ),
       ),
     ];
   }
@@ -288,6 +325,10 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                     segmentsKey: Key(
                       'purchase-doc-segments-${_cfg.type.pathSegment}',
                     ),
+                    // 计数形态：两段都是中性括号 `(N)`（组件默认）——草稿是
+                    // 「我自己没写完的东西」，没人在等它；申请页「计划已下达」的
+                    // 待处理量已由采购任务中心「待分解」徽章承担
+                    //（docs/00-项目准则/14-徽章与计数口径.md §三），本页不重复告警。
                     segments: [
                       UtenFilterSegment(
                         value: const _PurchaseDocSeg.stage(

@@ -149,6 +149,16 @@ class _FinanceArApOverviewPageState
   );
 
   /// 任何筛选变更后调用：标记已动手 + 防抖持久化到服务端。
+  /// 筛选项改动后的统一出口：存偏好 + 回第一页重查。
+  ///
+  /// 2026-09-11 撤掉「查询」按钮后，筛选不再需要用户再点一下确认——改日期/下拉
+  /// 即刻生效，关键词走搜索框自身的防抖与回车（用户要求：搜索回车即查询）。
+  void _persistAndReload() {
+    _persistPrefs();
+    _page = 1;
+    _load();
+  }
+
   void _persistPrefs() {
     _dirty = true;
     ref
@@ -711,7 +721,7 @@ class _FinanceArApOverviewPageState
                       );
                       if (p != null) {
                         setState(() => _from = p);
-                        _persistPrefs();
+                        _persistAndReload();
                       }
                     },
                     icon: const Icon(Icons.event_outlined, size: 18),
@@ -727,7 +737,7 @@ class _FinanceArApOverviewPageState
                       );
                       if (p != null) {
                         setState(() => _to = p);
-                        _persistPrefs();
+                        _persistAndReload();
                       }
                     },
                     icon: const Icon(Icons.event_outlined, size: 18),
@@ -745,16 +755,8 @@ class _FinanceArApOverviewPageState
                     onChanged: (v) {
                       if (v == null) return;
                       setState(() => _displayMode = v);
-                      _persistPrefs();
+                      _persistAndReload();
                     },
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: () {
-                      _page = 1;
-                      _load();
-                    },
-                    icon: const Icon(Icons.search_rounded, size: 18),
-                    label: const Text('查询'),
                   ),
                 ],
               ),

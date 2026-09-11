@@ -61,9 +61,15 @@ class ResetBusinessDataScriptContractTest {
         // V492 adds one commercial revision ledger, preserving order history.
         // V496 adds one notification reversal ledger.
         // V500 adds eight value tables; V503 adds three source revision tables.
-        assertThat(policy).hasSize(362);
+        // V547 adds two FQC inspection-sheet tables; V548 adds the arrival
+        // registration reversal ledger (CLEAR 266→269, 362→365).
+        assertThat(policy).hasSize(365);
         assertThat(policy.values().stream().filter("CLEAR"::equals).count())
-                .isEqualTo(266);
+                .isEqualTo(269);
+        assertThat(policy).containsEntry("production_fqc_inspection_sheets", "CLEAR");
+        assertThat(policy).containsEntry("production_fqc_inspection_sheet_items", "CLEAR");
+        assertThat(policy).containsEntry(
+                "production_finished_arrival_registration_reversals", "CLEAR");
         assertThat(policy.values().stream().filter("PRESERVE"::equals).count())
                 .isEqualTo(96);
 
@@ -269,7 +275,17 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(538, 497)")
                 .contains("(539, 498)")
                 .contains("(540, 499)")
-                .contains("V507/469、V508/470及V511至V540完整目录")
+                .contains("(541, 500)")
+                .contains("(542, 501)")
+                .contains("(543, 502)")
+                .contains("(545, 503)")
+                .contains("(546, 504)")
+                .contains("(547, 505)")
+                .contains("(548, 506)")
+                .contains("(549, 507)")
+                .contains("(550, 508)")
+                .contains("(551, 509)")
+                .contains("V507/469、V508/470及V511至V551完整目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")

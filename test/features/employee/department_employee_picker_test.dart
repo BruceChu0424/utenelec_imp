@@ -163,6 +163,8 @@ class _FakeEmployeeRepository implements EmployeeRepository {
     Set<String>? statuses,
     String? departmentId,
     bool includeSubtree = false,
+    String? sort,
+    String? order,
   }) async {
     searches.add(search);
     departmentIds.add(departmentId);
@@ -201,6 +203,8 @@ class _PagedEmployeeRepository implements EmployeeRepository {
     Set<String>? statuses,
     String? departmentId,
     bool includeSubtree = false,
+    String? sort,
+    String? order,
   }) async {
     requestedPages.add(page);
     final employee = page == 1
@@ -261,6 +265,8 @@ class _DeferredEmployeeRepository implements EmployeeRepository {
     Set<String>? statuses,
     String? departmentId,
     bool includeSubtree = false,
+    String? sort,
+    String? order,
   }) {
     if (search == 'OLD') {
       oldRequested = true;

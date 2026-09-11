@@ -593,6 +593,17 @@ public class MaterialAnalysisCommandService {
         Map<UUID, String> candidateRoutes = candidateRoutesByMaterialLine(preArrange);
         List<UUID> makeLines = new ArrayList<>();
         List<UUID> subcontractLines = new ArrayList<>();
+        // 2026-09-09 性能（保守优化）：flatMaterials 逐行线性扫描 + 每行一次
+        // BOM 父检查查询 → 预建索引一次 + 候选货品集合一次批量父检查。
+        Map<UUID, UUID> goodsByMaterialLine = new java.util.HashMap<>();
+        for (MaterialView material : preArrange.flatMaterials()) {
+            goodsByMaterialLine.putIfAbsent(material.materialLineId(), material.goodsId());
+        }
+        java.util.Set<UUID> goodsWithMakeChildren = new java.util.HashSet<>(
+                activeBomParentIds(
+                        goodsByMaterialLine.values().stream()
+                                .filter(java.util.Objects::nonNull)
+                                .distinct().toList()));
         for (IssueWorkshopPlansRequest.IssuePlanLine line : request.lines()) {
             if (line.materialLineId() == null) continue;
             String route = candidateRoutes.get(line.materialLineId());
@@ -606,35 +617,46 @@ public class MaterialAnalysisCommandService {
             if (!"SUBCONTRACT".equals(route)) {
                 throw validation("只有自制路线的物料才能直接下达车间");
             }
-            UUID goodsId = preArrange.flatMaterials().stream()
-                    .filter(material -> material.materialLineId()
-                            .equals(line.materialLineId()))
-                    .map(MaterialView::goodsId)
-                    .findFirst().orElse(null);
-            if (!activeBomParentIds(List.of(goodsId)).contains(goodsId)) {
+            UUID goodsId = goodsByMaterialLine.get(line.materialLineId());
+            if (goodsId == null || !goodsWithMakeChildren.contains(goodsId)) {
                 throw validation("无自制子层的委外件请走委外下达，不能直接建生产计划");
             }
             subcontractLines.add(line.materialLineId());
         }
+        // 2026-09-10 性能：refresh 次数收敛——先建 MAKE 锚点，再走委外通知（notifySupply
+        // 自带「先刷新算增量、写入后再刷新」，已覆盖刚建的 MAKE 锚点）；只有 MAKE 锚点
+        // 实际新建/增量且没有走委外通知时，才补一次刷新。ADR-071「锚点建立后以最新快照
+        // 逐行生成」不变量不变：纯自制下达每次最多 2 次 refreshLocked（锚点后 + 建计划后），
+        // 既有锚点复用/纯产品行下达只剩建计划后的 1 次。
+        boolean anchorsChanged = !makeLines.isEmpty()
+                && ensureWorkshopChildAnchors(analysisId, preArrange, makeLines);
         if (!subcontractLines.isEmpty()) {
             notifySupply(analysisId, new NotifyRequest(
                     request.version(), request.fingerprint(),
                     request.idempotencyKey() + "-ARRANGE", "SUBCONTRACT",
                     subcontractLines, null, null));
-        }
-        if (!makeLines.isEmpty()) {
-            ensureWorkshopChildAnchors(analysisId, preArrange, makeLines);
+            anchorsChanged = false;
         }
         // 2) 以最新快照逐行生成计划：产品行直接用行 id，候选行解析到刚建/既有子件行。
-        analysisService.refreshLocked(analysisId);
+        if (anchorsChanged) {
+            analysisService.refreshLocked(analysisId);
+        }
         AnalysisView view = analysisService.detailInternal(analysisId, false);
         Map<UUID, ProductView> products = view.products().stream()
                 .collect(Collectors.toMap(ProductView::analysisLineId, value -> value));
         Map<UUID, IssueWorkshopPlansRequest.IssuePlanLine> lineByAnalysisLine =
                 new LinkedHashMap<>();
+        // 2026-09-09 性能（保守优化）：子件行解析由逐行查询（N+1）改为一次
+        // 批量预取——几十行候选时省下几十条同构 SQL，事务持锁时间同步缩短。
+        Map<UUID, UUID> childLineByMaterialLine = batchChildLineIds(analysisId,
+                request.lines().stream()
+                        .map(IssueWorkshopPlansRequest.IssuePlanLine::materialLineId)
+                        .filter(java.util.Objects::nonNull)
+                        .collect(java.util.stream.Collectors.toSet()));
         for (IssueWorkshopPlansRequest.IssuePlanLine line : request.lines()) {
             UUID lineId = line.analysisLineId() != null
-                    ? line.analysisLineId() : makeChildLineId(analysisId, line.materialLineId());
+                    ? line.analysisLineId()
+                    : childLineByMaterialLine.get(line.materialLineId());
             if (lineId == null || lineByAnalysisLine.put(lineId, line) != null) {
                 throw validation("计划行为空、重复或子件任务未生成，请刷新后重试");
             }
@@ -700,13 +722,16 @@ public class MaterialAnalysisCommandService {
      * remainingQty，不从仍存在的物理缺口再次增加来源需求；数量变化由明确
      * 的来源变更处理。新锚点才按当前缺口建立需求。
      */
-    private void ensureWorkshopChildAnchors(
+    private boolean ensureWorkshopChildAnchors(
             UUID analysisId, AnalysisView view, List<UUID> makeLineIds) {
         List<ActionGroup> groups = selectedGroups(view, new NotifyRequest(
                 null, null, "issue-anchor-" + analysisId, "MAKE",
                 makeLineIds, null, null));
         Map<UUID, ProductView> products = view.products().stream()
                 .collect(Collectors.toMap(ProductView::analysisLineId, product -> product));
+        // 返回是否真的新建/增量了锚点行：调用方据此决定要不要补一次 refreshLocked
+        // （既有锚点全部复用时快照未变，不必重算）。
+        boolean changed = false;
         for (ActionGroup group : groups) {
             UUID anchorId = group.materials().getFirst().planAnchorAnalysisLineId();
             if (anchorId != null) {
@@ -723,7 +748,9 @@ public class MaterialAnalysisCommandService {
                     .setScale(4, RoundingMode.CEILING);
             if (delta.signum() <= 0) continue;
             createOrIncrementMakeDemand(analysisId, group, delta);
+            changed = true;
         }
+        return changed;
     }
 
     /** 候选行的已确认路线（仅 actionable 物料节点；根产品现货行不在其列）。 */
@@ -736,20 +763,35 @@ public class MaterialAnalysisCommandService {
                         MaterialView::sourceConfirmed, (left, right) -> left));
     }
 
-    /** 候选物料对应的分析子件行（MAKE_COMPONENT / SUBCONTRACT_MAKE，按父锚点）。 */
-    private UUID makeChildLineId(UUID analysisId, UUID materialLineId) {
-        // 单列原生查询返回标量（UUID）而非 Object[]，不能走 objectArrayRows（CCE）。
-        List<?> rows = em.createNativeQuery("""
-                SELECT item.id
-                FROM production_material_analysis_items item
-                WHERE item.analysis_id = :analysisId
-                  AND item.parent_analysis_material_id = :materialLineId
-                  AND item.source_type IN ('MAKE_COMPONENT', 'SUBCONTRACT_MAKE')
-                  AND item.is_deleted = FALSE
-                """).setParameter("analysisId", analysisId)
-                .setParameter("materialLineId", materialLineId)
-                .getResultList();
-        return rows.isEmpty() ? null : (UUID) rows.getFirst();
+    /**
+     * 批量解析候选物料对应的分析子件行 id（MAKE_COMPONENT / SUBCONTRACT_MAKE，按父锚点）：
+     * parent_analysis_material_id → 子件 item id，一次 IN 查询替代逐行查询。
+     * 唯一部分索引 uq_production_material_analysis_make_component_parent 保证每个父行
+     * 至多一条未删除子件，故不需要 GROUP BY/聚合（也绕开 PostgreSQL 没有 min(uuid) 的坑）；
+     * 同父多子件属数据异常，直接 409 而不是静默取一条。
+     */
+    private Map<UUID, UUID> batchChildLineIds(UUID analysisId, Set<UUID> materialLineIds) {
+        if (materialLineIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT item.parent_analysis_material_id, item.id
+                        FROM production_material_analysis_items item
+                        WHERE item.analysis_id = :analysisId
+                          AND item.parent_analysis_material_id IN (:materialLineIds)
+                          AND item.source_type IN ('MAKE_COMPONENT', 'SUBCONTRACT_MAKE')
+                          AND item.is_deleted = FALSE
+                        """)
+                        .setParameter("analysisId", analysisId)
+                        .setParameter("materialLineIds", materialLineIds));
+        Map<UUID, UUID> result = new HashMap<>();
+        for (Object[] row : rows) {
+            if (result.putIfAbsent((UUID) row[0], (UUID) row[1]) != null) {
+                throw conflict("物料节点存在多条子件任务行，请刷新物料分析后核对");
+            }
+        }
+        return result;
     }
 
     /** 计划级日期缺省（行内日期优先，缺省回退到本次下达的请求级日期）。 */

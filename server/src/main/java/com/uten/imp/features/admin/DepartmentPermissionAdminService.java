@@ -52,7 +52,9 @@ public class DepartmentPermissionAdminService {
      */
     private static final List<String> MODULE_ORDER = List.of(
             "基础资料", "销售管理", "采购管理", "委外管理", "生产管理",
-            "仓库管理", "财税管理", "工程研发", "人事行政", "品质检测", "系统管理");
+            "仓库管理", "财税管理", "工程研发", "人事行政", "品质检测", "系统管理",
+            // V546：跨模块共用的附件权限（attachment:*）归「通用 → 附件」，排在业务模块之后。
+            "通用");
 
     private final PermissionRepository permissionRepo;
     private final DepartmentRepository departmentRepo;

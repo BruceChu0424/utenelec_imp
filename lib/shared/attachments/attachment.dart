@@ -2,6 +2,7 @@
 // owner_type + owner_id 软关联业务单据，如 EXPENSE_CLAIM = 报销单。
 
 import '../../core/utils/china_datetime.dart';
+import 'attachment_file_rules.dart';
 
 class Attachment {
   const Attachment({
@@ -34,7 +35,10 @@ class Attachment {
   /// 是否员工头像。
   final bool avatar;
 
-  bool get isImage => contentType != null && contentType!.startsWith('image/');
+  /// 是否「客户端能显示的图片」——用于头像选择与图片分支。
+  /// 2026-09-11 起以能力矩阵为准而非 `image/` 前缀：tiff/heic/svg 也是 image/*，
+  /// 但 Flutter 解码不了，选成头像就是一个永远加载失败的空头像。
+  bool get isImage => isRenderableImageAttachment(originalName, contentType);
 
   factory Attachment.fromJson(Map<String, dynamic> json) {
     return Attachment(

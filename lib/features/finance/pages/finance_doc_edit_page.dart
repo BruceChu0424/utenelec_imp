@@ -15,8 +15,11 @@ import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_edit_floating_actions.dart';
 import '../../../components/buttons/uten_import_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/buttons/uten_drafts_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/required_field_decoration.dart';
@@ -37,6 +40,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
@@ -46,6 +50,9 @@ import '../../basic_data/models/reference_method_option.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/widgets/uten_client_picker.dart';
 import '../../../shared/auth/document_scope_capability.dart';
+import '../../../shared/attachments/business_attachment_section.dart';
+import '../../../shared/attachments/pending_attachment_controller.dart';
+import '../../../shared/attachments/pending_attachment_flow.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
@@ -119,6 +126,12 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
   final Map<String, UtenEmployeePickerItem> _empCache = {};
 
   final _grid = UtenEditableGridController<FinanceGridRow>();
+
+  /// 新建单据保存前暂存的凭证（ADR-074：保存拿到 UUID 后逐个确认上传）。
+  final _pendingFiles = PendingAttachmentController();
+
+  /// 单据已创建但仍有凭证上传失败：再点「保存」只重试附件，不重复建单。
+  String? _createdDocId;
   final _scrollCtl = ScrollController();
   bool _saving = false;
   bool _loading = true;
@@ -145,6 +158,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
 
   @override
   void dispose() {
+    _pendingFiles.dispose();
     _billNo.dispose();
     _remark.dispose();
     _rate.dispose();
@@ -567,7 +581,39 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
     _alignReceiptChannelWithAccount();
   }
 
+  /// 与详情页 finance_doc_detail_page 同一映射：五类财务单据各自的附件 ownerType。
+  String get _attachmentOwnerType => switch (widget.docType) {
+    FinanceDocType.receipt => 'FINANCE_RECEIPT',
+    FinanceDocType.payment => 'FINANCE_PAYMENT',
+    FinanceDocType.expense => 'FINANCE_EXPENSE',
+    FinanceDocType.otherIncome => 'FINANCE_OTHER_INCOME',
+    FinanceDocType.bankTransfer => 'FINANCE_BANK_TRANSFER',
+  };
+
+  /// 把暂存凭证上传到刚创建的单据；全部成功才跳详情，失败项留在页面供重试。
+  Future<void> _finishCreatedDocument(String createdId) async {
+    setState(() => _saving = true);
+    try {
+      final ok = await flushPendingAttachments(
+        context,
+        ref,
+        _pendingFiles,
+        ownerType: _attachmentOwnerType,
+        ownerIds: [createdId],
+      );
+      if (!mounted || !ok) return;
+      context.replace('/finance/${_cfg.type.pathSegment}/$createdId');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<void> _save() async {
+    if (_createdDocId case final createdId?) {
+      // 单据已创建、凭证未全部上传：只补传附件，成功后进入详情。
+      await _finishCreatedDocument(createdId);
+      return;
+    }
     if (_accountId == null) {
       context.appError('请选择${_cfg.accountLabel}');
       return;
@@ -825,6 +871,11 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
       if (!mounted) return;
       context.appSuccess(widget.id == null ? '已创建' : '已保存');
       bumpListRefresh(ref, _cfg.refreshKey);
+      if (widget.id == null && _pendingFiles.isNotEmpty) {
+        setState(() => _createdDocId = d.id);
+        await _finishCreatedDocument(d.id);
+        return;
+      }
       context.replace('/finance/${_cfg.type.pathSegment}/${d.id}');
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
@@ -1438,6 +1489,19 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
     );
   }
 
+  /// 新建态 AppBar 右上角「草稿(N)」入口（占原「查看历史」位置）。
+  ///
+  /// 钱流管理卡直达新建页（skipListOnCreate），从 hub 打不开列表；本按钮是用户
+  /// 回到自己草稿的唯一入口（点击进列表并预选草稿段）。编辑既有单据时不显示。
+  List<Widget> get _draftsAction {
+    if (widget.id != null || !_cfg.skipListOnCreate || _loading) {
+      return const [];
+    }
+    return [
+      UtenDraftsButton(kind: _cfg.draftKind, listLocation: _cfg.listLocation),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1479,67 +1543,61 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(context, defaultPath: RouteName.finance),
         ),
-        actions:
-            !_loading && _initializationError == null && _cfg.skipListOnCreate
-            ? compact && isReceipt && !_isCustomerPrepayment
-                  ? [
-                      PopupMenuButton<String>(
-                        key: const ValueKey('receipt-fund-reference-menu'),
-                        tooltip: '资金引用',
-                        icon: const Icon(Icons.account_balance_wallet_outlined),
-                        onSelected: (value) {
-                          if (value == 'AR') _importFromArAp();
-                          if (value == 'PREPAYMENT') {
-                            _applyCustomerPrepayment();
-                          }
-                        },
-                        itemBuilder: (_) => [
-                          const PopupMenuItem(
-                            value: 'AR',
-                            child: ListTile(
-                              leading: Icon(Icons.receipt_long_outlined),
-                              title: Text('引用应收'),
-                            ),
+        actions: [
+          ...?(!_loading &&
+                  _initializationError == null &&
+                  _cfg.skipListOnCreate
+              ? compact && isReceipt && !_isCustomerPrepayment
+                    ? [
+                        PopupMenuButton<String>(
+                          key: const ValueKey('receipt-fund-reference-menu'),
+                          tooltip: '资金引用',
+                          icon: const Icon(
+                            Icons.account_balance_wallet_outlined,
                           ),
-                          if (canApplyCustomerPrepayment)
+                          onSelected: (value) {
+                            if (value == 'AR') _importFromArAp();
+                            if (value == 'PREPAYMENT') {
+                              _applyCustomerPrepayment();
+                            }
+                          },
+                          itemBuilder: (_) => [
                             const PopupMenuItem(
-                              value: 'PREPAYMENT',
+                              value: 'AR',
                               child: ListTile(
-                                leading: Icon(Icons.savings_outlined),
-                                title: Text('应用预收'),
+                                leading: Icon(Icons.receipt_long_outlined),
+                                title: Text('引用应收'),
                               ),
                             ),
-                        ],
-                      ),
-                      IconButton(
-                        tooltip: '查看历史',
-                        icon: const Icon(Icons.history_rounded),
-                        onPressed: () =>
-                            context.push('/finance/${_cfg.type.pathSegment}'),
-                      ),
-                    ]
-                  : [
-                      if (isReceipt && !_isCustomerPrepayment)
-                        UtenImportButton(
-                          label: '引用应收',
-                          onPressed: _importFromArAp,
+                            if (canApplyCustomerPrepayment)
+                              const PopupMenuItem(
+                                value: 'PREPAYMENT',
+                                child: ListTile(
+                                  leading: Icon(Icons.savings_outlined),
+                                  title: Text('应用预收'),
+                                ),
+                              ),
+                          ],
                         ),
-                      if (canApplyCustomerPrepayment && !_isCustomerPrepayment)
-                        UtenButton(
-                          type: UtenButtonType.tonal,
-                          icon: Icons.savings_outlined,
-                          onPressed: _applyCustomerPrepayment,
-                          child: const Text('应用预收'),
-                        ),
-                      UtenButton(
-                        type: UtenButtonType.tonal,
-                        icon: Icons.history_rounded,
-                        onPressed: () =>
-                            context.push('/finance/${_cfg.type.pathSegment}'),
-                        child: const Text('查看历史'),
-                      ),
-                    ]
-            : null,
+                      ]
+                    : [
+                        if (isReceipt && !_isCustomerPrepayment)
+                          UtenImportButton(
+                            label: '引用应收',
+                            onPressed: _importFromArAp,
+                          ),
+                        if (canApplyCustomerPrepayment &&
+                            !_isCustomerPrepayment)
+                          UtenButton(
+                            type: UtenButtonType.tonal,
+                            icon: Icons.savings_outlined,
+                            onPressed: _applyCustomerPrepayment,
+                            child: const Text('应用预收'),
+                          ),
+                      ]
+              : null),
+          ..._draftsAction,
+        ],
       ),
       body: SafeArea(
         child: _loading
@@ -1559,7 +1617,13 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                   thumbVisibility: true,
                   child: ListView(
                     controller: _scrollCtl,
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    // 底部多留一截：右下角悬浮的「取消/保存」会盖住最后一行内容。
+                    padding: const EdgeInsets.fromLTRB(
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      88,
+                    ),
                     children: [
                       Card(
                         child: Padding(
@@ -1831,6 +1895,26 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                                 _receiptAuthoritySections(theme, names),
                               if (_cfg.type == FinanceDocType.payment)
                                 _paymentAuthoritySection(theme, names),
+                              // 到账/扣款小结：原先挂在底部固定条里，现在就近跟着
+                              // 银行与费用字段——它汇总的是这些输入，不是明细合计。
+                              if (isReceipt ||
+                                  _cfg.type == FinanceDocType.payment) ...[
+                                const SizedBox(height: UtenSpacing.s8),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: isReceipt
+                                      ? (_isCustomerPrepayment
+                                            ? _customerPrepaymentHeaderSummary(
+                                                theme,
+                                              )
+                                            : _receiptSummary(
+                                                theme,
+                                                names,
+                                                compact: compact,
+                                              ))
+                                      : _paymentSummary(theme),
+                                ),
+                              ],
                               if (isReceipt &&
                                   (_accountId != null ||
                                       names.accountLoadError != null)) ...[
@@ -1869,22 +1953,58 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                           ),
                         ),
                       ),
+                      // 单据与凭证（银行回单/发票）：已有单直接挂对应财务 ownerType；
+                      // 新建单先本地暂存，保存拿到 UUID 后逐个确认上传（ADR-074）。
+                      const SizedBox(height: UtenSpacing.s12),
+                      if (widget.id != null)
+                        BusinessAttachmentSection(
+                          ownerType: _attachmentOwnerType,
+                          ownerId: widget.id!,
+                          canView: ref
+                              .watch(currentPermissionsProvider)
+                              .contains(Perm.attachmentView),
+                          // 进入编辑页即已确认可写；草稿状态与范围由服务端附件策略再校验。
+                          canManage: !_saving,
+                          title: '单据和凭证',
+                          categories: const ['银行回单', '发票', '其他凭证'],
+                        )
+                      else ...[
+                        if (_createdDocId != null)
+                          PendingAttachmentRetryNotice(
+                            documentLabel: _cfg.label,
+                          ),
+                        BusinessAttachmentSection.draft(
+                          key: const ValueKey('finance-doc-draft-attachments'),
+                          controller: _pendingFiles,
+                          canManage: switch (_cfg.createPerm) {
+                            final perm? =>
+                              ref
+                                  .watch(currentPermissionsProvider)
+                                  .contains(perm),
+                            null => false,
+                          },
+                          title: '单据和凭证',
+                          categories: const ['银行回单', '发票', '其他凭证'],
+                        ),
+                      ],
                       if (!_isCustomerPrepayment) ...[
                         const SizedBox(height: UtenSpacing.s12),
                         Row(
                           children: [
-                            Expanded(
-                              child: _sectionHeading(
-                                theme,
-                                title: isReceipt
-                                    ? '本次收款分配 (${_grid.length})'
-                                    : '明细 (${_grid.length})',
-                                icon: Icons.account_tree_outlined,
-                                description: isReceipt
-                                    ? '把本次收款对应到应收单，手续费另填。'
-                                    : null,
-                              ),
-                            ),
+                            // 「明细 (N)」标题 2026-09-11 撤除（全站同改）：收款侧保留
+                            // 「本次收款分配」——它带操作说明，不是单纯的行数复述；
+                            // 付款/其它侧只留右对齐入口，标题整体让位（Spacer 撑开）。
+                            if (isReceipt)
+                              Expanded(
+                                child: _sectionHeading(
+                                  theme,
+                                  title: '本次收款分配',
+                                  icon: Icons.account_tree_outlined,
+                                  description: '把本次收款对应到应收单，手续费另填。',
+                                ),
+                              )
+                            else
+                              const Spacer(),
                             if (_cfg.hasArApLink && !isReceipt)
                               UtenImportButton(
                                 label: _cfg.type == FinanceDocType.payment
@@ -1920,6 +2040,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                           controller: _grid,
                           columns: financeGridColumns(
                             _cfg.itemMode,
+                            context: context,
                             names: names,
                             type: _cfg.type,
                             accountBaseCurrency: names.accountIsBaseCurrency(
@@ -1931,6 +2052,9 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                           createBlankRow: () =>
                               FinanceGridRow(mode: _cfg.itemMode),
                           cloneRow: (r) => r.clone(),
+                          // 合计挂在明细表下方（全站统一口径），页面底部不再另起
+                          // 一条固定条复述；核销类单据的小结跟着银行字段走。
+                          footer: _cfg.isSettle ? null : _oldTotal(names),
                           showAddRow: !_cfg.isSettle,
                           emptyMessage: isReceipt
                               ? '暂无明细，请点击顶部“引用应收”添加'
@@ -1944,92 +2068,36 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                 ),
               ),
       ),
-      bottomNavigationBar: _loading || _initializationError != null
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      // 加载中/初始化失败时不给保存入口，口径与原底部操作条一致。
+      floatingActionButton: _loading || _initializationError != null
           ? null
-          : _bottomBar(theme, isReceipt: isReceipt),
+          : UtenEditFloatingActions(
+              onCancel: () =>
+                  popOrBackTo(context, defaultPath: RouteName.finance),
+              onSave: _save,
+              saving: _saving,
+            ),
     );
   }
 
-  Widget _bottomBar(ThemeData theme, {required bool isReceipt}) {
-    final compact = context.breakpoint.isCompact;
-    final names = ref.watch(financeNameServiceProvider);
-    final cancel = UtenButton(
-      type: UtenButtonType.secondary,
-      onPressed: () => context.pop(),
-      child: const Text('取消'),
-    );
-    final save = UtenButton(
-      isLoading: _saving,
-      icon: Icons.save_outlined,
-      onPressed: _saving ? null : _save,
-      child: const Text('保存'),
-    );
-
-    final Widget content;
-    if (compact) {
-      content = Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (isReceipt)
-            _isCustomerPrepayment
-                ? _customerPrepaymentHeaderSummary(theme)
-                : _receiptSummary(theme, names, compact: true)
-          else if (_cfg.type == FinanceDocType.payment)
-            _paymentSummary(theme)
-          else
-            _oldTotal(theme),
-          const SizedBox(height: UtenSpacing.s8),
-          Row(
-            children: [
-              Expanded(child: cancel),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(child: save),
-            ],
-          ),
-        ],
-      );
-    } else {
-      content = Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Flexible(
-            child: isReceipt
-                ? _isCustomerPrepayment
-                      ? _customerPrepaymentHeaderSummary(theme)
-                      : _receiptSummary(theme, names, compact: false)
-                : _cfg.type == FinanceDocType.payment
-                ? _paymentSummary(theme)
-                : _oldTotal(theme),
-          ),
-          const SizedBox(width: UtenSpacing.s16),
-          cancel,
-          const SizedBox(width: UtenSpacing.s12),
-          save,
-        ],
-      );
-    }
-
-    return SafeArea(
-      child: Container(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          border: Border(
-            top: BorderSide(color: theme.colorScheme.outlineVariant),
-          ),
-        ),
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: content,
-      ),
-    );
-  }
-
-  Widget _oldTotal(ThemeData theme) => ValueListenableBuilder<double>(
+  /// 费用/收入/转账/分摊单据挂在明细表下方的合计（全站统一合计条口径）：金额标红，
+  /// 币种取表头（不硬编码 ¥）；钱流明细无单位口径，故不出「合计数量」。
+  Widget _oldTotal(FinanceNameService names) => ValueListenableBuilder<double>(
     valueListenable: _grid.totalListenable,
-    builder: (_, total, _) => Text(
-      '合计 ¥${total.toStringAsFixed(2)}',
-      textAlign: TextAlign.center,
-      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+    builder: (_, total, _) => UtenTotalsSummaryBar(
+      key: const Key('finance-edit-totals'),
+      density: true,
+      showDivider: false,
+      entries: [
+        UtenTotalEntry(
+          utenAmountTotalLabel(
+            financeCurrencyDisplayLabel(name: names.currency(_currencyId)),
+          ),
+          total.toStringAsFixed(2),
+          danger: true,
+        ),
+      ],
     ),
   );
 

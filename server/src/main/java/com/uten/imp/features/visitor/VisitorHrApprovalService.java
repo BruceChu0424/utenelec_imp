@@ -1,5 +1,6 @@
 package com.uten.imp.features.visitor;
 
+import com.uten.imp.application.port.HrNoticePort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -31,10 +32,24 @@ public class VisitorHrApprovalService {
     private final VisitorGateService gateService;
     private final VisitorGuard guard;
     private final TxSessionVars tx;
+    private final HrNoticePort hrNotice;
 
     @Transactional(readOnly = true)
     public PageResponse<VisitorListItem> listForApproval(
             String status,
+            int page,
+            int size) {
+        return listForApproval(status, null, page, size);
+    }
+
+    /**
+     * HR 待审列表（2026-09-10 表头筛选接后端）：status 空=待办状态集（pending+hostReviewing），
+     * hostDepartmentId 非空时按接待人所属部门（申请时快照 host_department_id）筛选。
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<VisitorListItem> listForApproval(
+            String status,
+            UUID hostDepartmentId,
             int page,
             int size) {
         guard.requireStaff();
@@ -44,6 +59,9 @@ public class VisitorHrApprovalService {
                 p = cb.and(p, root.get("status").in("pending", "hostReviewing"));
             } else {
                 p = cb.and(p, cb.equal(root.get("status"), status));
+            }
+            if (hostDepartmentId != null) {
+                p = cb.and(p, cb.equal(root.get("hostDepartmentId"), hostDepartmentId));
             }
             return p;
         };
@@ -108,6 +126,20 @@ public class VisitorHrApprovalService {
         }
         appRepo.save(app);
         appService.addStep(id, "staff", approverId, action, req.comment());
+        // 2026-09-09 人事通知接入：转接待人确认（弹卡）；终态（批准/拒绝）办结撤卡。
+        // 终态同时撤 HR 审批卡与可能仍悬挂的「待你确认接待」卡（HR 可越过接待人直接批/驳）。
+        switch (action) {
+            case "forward" -> appService.notifyHostReview(app);
+            case "approve" -> {
+                hrNotice.resolveVisitorApplication(id, "APPROVED");
+                hrNotice.resolveVisitorHostConfirm(id, "APPROVED");
+            }
+            case "reject" -> {
+                hrNotice.resolveVisitorApplication(id, "REJECTED");
+                hrNotice.resolveVisitorHostConfirm(id, "REJECTED");
+            }
+            default -> { }
+        }
         return appService.toDetail(app, appService.accountOf(app));
     }
 

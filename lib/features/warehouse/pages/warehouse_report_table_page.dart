@@ -8,9 +8,10 @@
 //     page, size, total, totalPages }
 // 名称（仓库/货品/颜色/单位/人员）服务端 JOIN 出；前端按 columns 动态建列。
 //
-// UI：左筛选侧栏（单据类型 + 日期范围 + 搜索 + 查询）+ 右 Excel 风格表格（标题行每列可筛 + 横滚 + 翻页）。
+// UI：顶部筛选区（单据类型分段与搜索同处一条 UtenFilterToolbar + 日期范围）
+// + 下方 Excel 风格表格（标题行每列可筛 + 横滚 + 翻页）。
 // 默认日期范围 = 上月今日..今日（defaultReportFrom()，收紧默认避免一进拉全量；firstDate 仍 2010 可手选更早）。
-// 列筛选（仓库/是否审核…）走表头 autofilter（facets），左栏只放公共过滤。
+// 列筛选（仓库/是否审核…）走表头 autofilter（facets），筛选区只放公共过滤。
 //
 // 筛选口径（单据类型/日期范围/facet/排序）按账号服务端持久化（report.warehouse.detail|summary，
 // ReportFilterPrefs，见 lib/features/report/shared/report_filter_prefs.dart）：
@@ -23,7 +24,6 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -45,6 +45,7 @@ import '../../report/shared/report_data.dart';
 import '../../report/shared/report_date_range.dart';
 import '../../report/shared/report_filter_prefs.dart';
 import '../../report/shared/report_sort.dart';
+import '../../report/shared/report_total.dart';
 import '../config/warehouse_report_config.dart';
 
 class WarehouseReportTablePage extends ConsumerStatefulWidget {
@@ -120,6 +121,16 @@ class _WarehouseReportTablePageState
   );
 
   /// 任何筛选变更后调用：标记已动手 + 防抖持久化到服务端。
+  /// 筛选项改动后的统一出口：存偏好 + 回第一页重查。
+  ///
+  /// 2026-09-11 撤掉「查询」按钮后，筛选不再需要用户再点一下确认——改日期/下拉
+  /// 即刻生效，关键词走搜索框自身的防抖与回车（用户要求：搜索回车即查询）。
+  void _persistAndReload() {
+    _persistPrefs();
+    _page = 1;
+    _load();
+  }
+
   void _persistPrefs() {
     _dirty = true;
     ref.read(_prefsProvider.notifier).update(_snapshot());
@@ -292,7 +303,6 @@ class _WarehouseReportTablePageState
                 ),
               ),
               body: UtenListTwoPane(
-                splitPersistenceKey: 'warehouse.reportTable',
                 filterPane: _buildFilterPane(theme),
                 tablePane: _buildTable(),
               ),
@@ -310,7 +320,9 @@ class _WarehouseReportTablePageState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _filterLabel('单据类型'),
-          // 全平台统一筛选工具条：7 类单据分段（纯分类无搜索）。
+          // 全平台统一筛选工具条：7 类单据分段 + 同一行右侧的搜索框
+          //（2026-09-11 用户要求搜索不再单独占一行，宽度由 searchWidth 封顶；
+          // 窄屏工具条自己换行）。
           UtenFilterToolbar<WarehouseReportDocType>(
             segments: [
               for (final t in WarehouseReportDocType.values)
@@ -318,6 +330,17 @@ class _WarehouseReportTablePageState
             ],
             selected: {_docType},
             onSelectionChanged: _changeDocType,
+            searchHint: '搜索单号 / 货品',
+            initialSearchValue: _keyword,
+            // 防抖到点即查；回车立刻查（不等防抖）。
+            onSearchChanged: (v) {
+              _keyword = v;
+              _persistAndReload();
+            },
+            onSearchSubmitted: (v) {
+              _keyword = v;
+              _persistAndReload();
+            },
           ),
           const SizedBox(height: UtenSpacing.s12),
           _filterLabel('日期范围'),
@@ -336,7 +359,7 @@ class _WarehouseReportTablePageState
                   );
                   if (p != null) {
                     setState(() => _from = p);
-                    _persistPrefs();
+                    _persistAndReload();
                   }
                 },
                 icon: const Icon(Icons.event_outlined, size: 18),
@@ -352,7 +375,7 @@ class _WarehouseReportTablePageState
                   );
                   if (p != null) {
                     setState(() => _to = p);
-                    _persistPrefs();
+                    _persistAndReload();
                   }
                 },
                 icon: const Icon(Icons.event_outlined, size: 18),
@@ -360,9 +383,11 @@ class _WarehouseReportTablePageState
               ),
             ],
           ),
-          const SizedBox(height: UtenSpacing.s12),
           // DRAW：领料车间筛选（各车间领料单独统计）
+          // 间距放在各选填区块的开头：搜索并入工具条后，尾随间距会在区块缺席时
+          // 变成悬空留白。
           if (_docType == WarehouseReportDocType.draw) ...[
+            const SizedBox(height: UtenSpacing.s12),
             _filterLabel('领料车间'),
             UtenDropdownField(
               value: _departmentId,
@@ -377,29 +402,10 @@ class _WarehouseReportTablePageState
               ],
               onChanged: (v) {
                 setState(() => _departmentId = v);
-                _persistPrefs();
+                _persistAndReload();
               },
             ),
-            const SizedBox(height: UtenSpacing.s12),
           ],
-          _filterLabel('搜索'),
-          UtenSearchBar(
-            hint: '搜索单号 / 货品',
-            initialValue: _keyword,
-            onChanged: (v) => _keyword = v,
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.tonalIcon(
-              onPressed: () {
-                _page = 1;
-                _load();
-              },
-              icon: const Icon(Icons.search_rounded, size: 18),
-              label: const Text('查询'),
-            ),
-          ),
           if (_filters.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s12),
             _filterLabel('已选筛选 (${_filters.length})'),
@@ -482,6 +488,9 @@ class _WarehouseReportTablePageState
       onRowTap: _onRowTap,
       isLoading: _loading,
       emptyMessage: _kind.isDetail ? '暂无明细数据' : '暂无汇总数据',
+      // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
+      // 不是对当前这一页求和；后端未声明合计列时返回 null，整条不渲染。
+      summaryBar: reportTotalsBar(data.totals),
       currentPage: data.page,
       totalPages: data.totalPages,
       onPageChange: (p) {

@@ -26,21 +26,52 @@ final class AttachmentContentInspector {
     /** 单边像素上限：与主流解码器（libpng/Skia）的安全阈值一致。 */
     private static final int MAX_DIMENSION = 30000;
 
+    /**
+     * 声明类型 → 允许的扩展名。改这张表必须同步改 {@code StorageProperties.allowedContentTypes}、
+     * {@link AttachmentPreviewService} 的可转换集合与客户端的能力矩阵，否则上传会被这里拦死。
+     */
     private static final Map<String, Set<String>> EXTENSIONS = Map.ofEntries(
             Map.entry("image/jpeg", Set.of("jpg", "jpeg")),
             Map.entry("image/png", Set.of("png")),
             Map.entry("image/webp", Set.of("webp")),
             Map.entry("image/gif", Set.of("gif")),
             Map.entry("image/bmp", Set.of("bmp")),
+            Map.entry("image/tiff", Set.of("tif", "tiff")),
+            Map.entry("image/heic", Set.of("heic")),
+            Map.entry("image/heif", Set.of("heif")),
+            Map.entry("image/svg+xml", Set.of("svg")),
             Map.entry("application/pdf", Set.of("pdf")),
             Map.entry("application/msword", Set.of("doc")),
             Map.entry("application/vnd.ms-excel", Set.of("xls")),
+            Map.entry("application/vnd.ms-powerpoint", Set.of("ppt")),
+            Map.entry("application/rtf", Set.of("rtf")),
             Map.entry("application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     Set.of("docx")),
             Map.entry("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     Set.of("xlsx")),
+            Map.entry("application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    Set.of("pptx")),
+            Map.entry("application/vnd.oasis.opendocument.text", Set.of("odt")),
+            Map.entry("application/vnd.oasis.opendocument.spreadsheet", Set.of("ods")),
+            Map.entry("application/vnd.oasis.opendocument.presentation", Set.of("odp")),
             Map.entry("application/zip", Set.of("zip")),
-            Map.entry("text/plain", Set.of("txt")));
+            Map.entry("application/x-7z-compressed", Set.of("7z")),
+            Map.entry("application/vnd.rar", Set.of("rar")),
+            Map.entry("text/plain", Set.of("txt", "log")),
+            Map.entry("text/csv", Set.of("csv")),
+            Map.entry("text/markdown", Set.of("md")),
+            Map.entry("text/xml", Set.of("xml")),
+            Map.entry("application/json", Set.of("json")));
+
+    /** 需要全量「可打印字节」扫描的类型（二进制可能藏在头部之后）。 */
+    private static final Set<String> TEXT_CONTENT_TYPES = Set.of(
+            "text/plain", "text/csv", "text/markdown", "text/xml",
+            "application/json", "image/svg+xml");
+
+    /** ISO-BMFF 的 HEIF 家族 brand（位于 ftyp 之后）。 */
+    private static final Set<String> HEIF_BRANDS = Set.of(
+            "heic", "heix", "heim", "heis", "hevc", "hevx", "hevm", "hevs",
+            "mif1", "msf1", "heif");
 
     private AttachmentContentInspector() {
     }
@@ -49,7 +80,7 @@ final class AttachmentContentInspector {
                               String fileName, String contentType) {
         try (InputStream in = input) {
             requireExtension(fileName, contentType);
-            boolean textOnly = "text/plain".equals(contentType);
+            boolean textOnly = TEXT_CONTENT_TYPES.contains(contentType);
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] prefix = new byte[PREFIX_LIMIT];
             int prefixLength = 0;
@@ -68,7 +99,7 @@ final class AttachmentContentInspector {
                 if (count > expectedSize) {
                     throw invalid("附件对象在校验期间发生变化，请重新上传");
                 }
-                // text/plain 需全量检测（二进制可能藏在 512 字节之后），反正流已全量读取。
+                // 文本族（txt/csv/md/xml/json/svg）需全量检测（二进制可能藏在头部之后），反正流已全量读取。
                 if (textOnly && allText) {
                     allText = isTextBytes(buffer, read);
                 }
@@ -109,13 +140,31 @@ final class AttachmentContentInspector {
             case "image/gif" -> startsAscii(value, length, "GIF87a")
                     || startsAscii(value, length, "GIF89a");
             case "image/bmp" -> startsAscii(value, length, "BM");
+            // TIFF 两种字节序：II*\0（小端）与 MM\0*（大端）。
+            case "image/tiff" -> starts(value, length, 0x49, 0x49, 0x2a, 0x00)
+                    || starts(value, length, 0x4d, 0x4d, 0x00, 0x2a);
+            case "image/heic", "image/heif" -> isHeif(value, length);
+            case "image/svg+xml" -> allText && isSvg(value, length);
             case "application/pdf" -> startsAscii(value, length, "%PDF-");
-            case "application/msword", "application/vnd.ms-excel" ->
+            case "application/msword", "application/vnd.ms-excel",
+                 "application/vnd.ms-powerpoint" ->
                     starts(value, length, 0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1);
+            case "application/rtf" -> startsAscii(value, length, "{\\rt");
+            // OOXML 与 OpenDocument 都是 ZIP 容器，和 zip 走同一条魔数判断。
             case "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                 "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                 "application/vnd.oasis.opendocument.text",
+                 "application/vnd.oasis.opendocument.spreadsheet",
+                 "application/vnd.oasis.opendocument.presentation",
                  "application/zip" -> isZip(value, length);
-            case "text/plain" -> allText && length > 0;
+            case "application/x-7z-compressed" ->
+                    starts(value, length, 0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c);
+            // RAR4 是 ...07 00，RAR5 是 ...07 01 00。
+            case "application/vnd.rar" -> startsAscii(value, length, "Rar!")
+                    && atBytes(value, length, 4, 0x1a, 0x07);
+            case "text/plain", "text/csv", "text/markdown", "text/xml", "application/json" ->
+                    allText && length > 0;
             default -> false;
         };
         if (!valid) {
@@ -234,6 +283,52 @@ final class AttachmentContentInspector {
         }
         return (p[offset] & 0xff) | ((p[offset + 1] & 0xff) << 8)
                 | ((p[offset + 2] & 0xff) << 16) | ((p[offset + 3] & 0xff) << 24);
+    }
+
+    /** HEIF/HEIC：ISO-BMFF 容器，偏移 4 是 "ftyp"，紧接着 4 字节 brand。 */
+    private static boolean isHeif(byte[] value, int length) {
+        if (!atAscii(value, length, 4, "ftyp") || length < 12) {
+            return false;
+        }
+        return HEIF_BRANDS.contains(new String(value, 8, 4, java.nio.charset.StandardCharsets.US_ASCII)
+                .toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * SVG：XML 文本，跳过 BOM 与前导空白后必须以 &lt; 开头，且头部内出现 &lt;svg。
+     * 只在已确认「全是可打印字节」之后调用，故不可能是伪装的二进制。
+     */
+    private static boolean isSvg(byte[] value, int length) {
+        int index = 0;
+        if (length >= 3 && (value[0] & 0xff) == 0xef && (value[1] & 0xff) == 0xbb
+                && (value[2] & 0xff) == 0xbf) {
+            index = 3;
+        }
+        while (index < length && Character.isWhitespace(value[index] & 0xff)) {
+            index++;
+        }
+        if (index >= length || (value[index] & 0xff) != '<') {
+            return false;
+        }
+        int limit = Math.min(length, 8192);
+        for (int offset = index; offset + 4 <= limit; offset++) {
+            if (atAscii(value, length, offset, "<svg")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean atBytes(byte[] value, int length, int offset, int... expected) {
+        if (length < offset + expected.length) {
+            return false;
+        }
+        for (int index = 0; index < expected.length; index++) {
+            if ((value[offset + index] & 0xff) != expected[index]) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean isZip(byte[] value, int length) {

@@ -28,7 +28,7 @@ class ProductionFinishedArrivalRegistrationServiceTest {
                                 new ArrivalRegistrationItemRequest(
                                         second, " B02-2-1 "),
                                 new ArrivalRegistrationItemRequest(
-                                        first, "A31-3-1"))));
+                                        first, "A31-3-1")), null));
         var right = ProductionFinishedArrivalRegistrationService.normalize(
                 new ArrivalRegistrationRequest(
                         "arrival-key-001", warehouseId,
@@ -36,10 +36,75 @@ class ProductionFinishedArrivalRegistrationServiceTest {
                                 new ArrivalRegistrationItemRequest(
                                         first, "A31-3-1"),
                                 new ArrivalRegistrationItemRequest(
-                                        second, "B02-2-1"))));
+                                        second, "B02-2-1")), null));
 
         assertThat(left.requestHash()).isEqualTo(right.requestHash());
         assertThat(left.places()).containsEntry(second, "B02-2-1");
+    }
+
+    @Test
+    void remarkIsTrimmedEmptyBecomesNullAndEntersTheRequestHash() {
+        UUID warehouseId = UUID.randomUUID();
+        UUID reportItemId = UUID.randomUUID();
+        var trimmed = ProductionFinishedArrivalRegistrationService.normalize(
+                new ArrivalRegistrationRequest(
+                        "arrival-key-remark", warehouseId,
+                        List.of(new ArrivalRegistrationItemRequest(
+                                reportItemId, "A31-3-1")), "  x  "));
+        var empty = ProductionFinishedArrivalRegistrationService.normalize(
+                new ArrivalRegistrationRequest(
+                        "arrival-key-remark", warehouseId,
+                        List.of(new ArrivalRegistrationItemRequest(
+                                reportItemId, "A31-3-1")), ""));
+        var absent = ProductionFinishedArrivalRegistrationService.normalize(
+                new ArrivalRegistrationRequest(
+                        "arrival-key-remark", warehouseId,
+                        List.of(new ArrivalRegistrationItemRequest(
+                                reportItemId, "A31-3-1")), null));
+        var different = ProductionFinishedArrivalRegistrationService.normalize(
+                new ArrivalRegistrationRequest(
+                        "arrival-key-remark", warehouseId,
+                        List.of(new ArrivalRegistrationItemRequest(
+                                reportItemId, "A31-3-1")), "y"));
+
+        assertThat(trimmed.remark()).isEqualTo("x");
+        assertThat(empty.remark()).isNull();
+        assertThat(absent.remark()).isNull();
+        assertThat(empty.requestHash()).isEqualTo(absent.requestHash());
+        assertThat(trimmed.requestHash()).isNotEqualTo(absent.requestHash());
+        assertThat(different.requestHash()).isNotEqualTo(trimmed.requestHash());
+
+        ArrivalRegistrationRequest tooLong = new ArrivalRegistrationRequest(
+                "arrival-key-remark", warehouseId,
+                List.of(new ArrivalRegistrationItemRequest(
+                        reportItemId, "A31-3-1")), "r".repeat(501));
+        assertThatThrownBy(() ->
+                ProductionFinishedArrivalRegistrationService.normalize(tooLong))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> assertThat(((ApiException) error).getCode())
+                        .isEqualTo(ErrorCode.VALIDATION_FAILED));
+    }
+
+    @Test
+    void reversalReasonIsTrimmedAndBoundedAndHashesRegistrationIdentity() {
+        UUID registrationId = UUID.randomUUID();
+        var normalized = ProductionFinishedArrivalRegistrationService.normalizeReversal(
+                registrationId,
+                new ProductionFinishedArrivalContracts.ArrivalRegistrationReversalRequest(
+                        "reverse-key-001", "  仓库选错  "));
+        var other = ProductionFinishedArrivalRegistrationService.normalizeReversal(
+                UUID.randomUUID(),
+                new ProductionFinishedArrivalContracts.ArrivalRegistrationReversalRequest(
+                        "reverse-key-001", "仓库选错"));
+
+        assertThat(normalized.reason()).isEqualTo("仓库选错");
+        assertThat(normalized.requestHash()).isNotEqualTo(other.requestHash());
+        assertThatThrownBy(() ->
+                ProductionFinishedArrivalRegistrationService.normalizeReversal(
+                        registrationId,
+                        new ProductionFinishedArrivalContracts.ArrivalRegistrationReversalRequest(
+                                "reverse-key-001", " x ")))
+                .isInstanceOf(ApiException.class);
     }
 
     @Test
@@ -51,7 +116,7 @@ class ProductionFinishedArrivalRegistrationServiceTest {
                         new ArrivalRegistrationItemRequest(
                                 reportItemId, "A31-3-1"),
                         new ArrivalRegistrationItemRequest(
-                                reportItemId, "A31-3-2")));
+                                reportItemId, "A31-3-2")), null);
         assertThatThrownBy(() ->
                 ProductionFinishedArrivalRegistrationService.normalize(duplicate))
                 .isInstanceOf(ApiException.class)
@@ -61,7 +126,7 @@ class ProductionFinishedArrivalRegistrationServiceTest {
         ArrivalRegistrationRequest blank = new ArrivalRegistrationRequest(
                 "arrival-key-003", UUID.randomUUID(),
                 List.of(new ArrivalRegistrationItemRequest(
-                        UUID.randomUUID(), "  ")));
+                        UUID.randomUUID(), "  ")), null);
         assertThatThrownBy(() ->
                 ProductionFinishedArrivalRegistrationService.normalize(blank))
                 .isInstanceOf(ApiException.class);
@@ -156,6 +221,7 @@ class ProductionFinishedArrivalRegistrationServiceTest {
                 .contains("LEFT JOIN LATERAL (")
                 .contains("history_registration.warehouse_id =")
                 .contains("selected_warehouse.id")
+                .contains("history_item.reversal_id IS NULL")
                 .contains("history_report_item.goods_id =")
                 .contains("report_item.goods_id")
                 .contains("history_report_item.color_id")
@@ -187,6 +253,7 @@ class ProductionFinishedArrivalRegistrationServiceTest {
                 .contains("/arrival-registrations/{reportId}")
                 .contains("/arrival-registrations/{reportId}/place-suggestions")
                 .contains("/arrival-registrations/{reportId}/remember-places")
+                .contains("/arrival-registrations/{registrationId}/reverse")
                 .contains("/arrival-registrations/batch/remember-registration-batches")
                 .contains("@RequestParam(required = false) UUID registrationId")
                 .contains("hasAuthority('stock_doc:view')")
@@ -207,9 +274,13 @@ class ProductionFinishedArrivalRegistrationServiceTest {
                 .contains("request_hash")
                 .contains("warehouse_goods_place_preferences")
                 .contains("source_registered_at")
-                .contains("registered_item.source_report_item_id")
-                .contains("production_fqc_inspections inspection")
-                .contains("production_fqc_legacy_exemptions exemption")
+                // V548：「未登记」谓词统一引用数据库视图，不再各自拼三个 NOT EXISTS。
+                .contains("v_production_report_items_pending_registration")
+                .doesNotContain("registered_item.source_report_item_id")
+                .doesNotContain("production_fqc_legacy_exemptions exemption")
+                .contains("openInspectionSheet(")
+                .contains("cancelForReversedRegistration(")
+                .contains("app.production_finished_arrival_reversal_id")
                 .contains("ON CONFLICT ON CONSTRAINT")
                 .contains("warehouse_goods_place_preference_dimension_uk")
                 .contains("buildRememberPlan")
@@ -228,7 +299,8 @@ class ProductionFinishedArrivalRegistrationServiceTest {
                 .contains("containsAll(")
                 .contains("normalized.places().keySet()")
                 .contains("Unselected report lines remain pending")
-                .contains("detailInternal(reportId, (UUID) existing[0])")
+                .contains("(UUID) existing[0], true")
+                .contains("detailInternal(reportId, outcome.registrationId())")
                 .contains("detailInternal(reportId, registrationId)")
                 .contains("pendingItemRows(reportId)")
                 .contains("registration_item.registration_id = :registrationId")

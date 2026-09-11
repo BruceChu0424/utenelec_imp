@@ -20,6 +20,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/doc_status_badge.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -31,6 +33,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart' as mn;
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -41,11 +44,15 @@ import '../repositories/subcontract_repository.dart';
 
 /// 委外订货与全链路工作页：两种来源汇合后，从财务审批跟到 IQC 与结案。
 class SubcontractOrderWorkspacePage extends StatelessWidget {
-  const SubcontractOrderWorkspacePage({super.key});
+  const SubcontractOrderWorkspacePage({super.key, this.initialStatus});
+
+  /// 深链预选（路由 `?status=draft`）：新建页「草稿(N)」按钮的落点。
+  final String? initialStatus;
 
   @override
-  Widget build(BuildContext context) => const _SubcontractBusinessListPage(
-    presentation: _ListPresentation(
+  Widget build(BuildContext context) => _SubcontractBusinessListPage(
+    initialStatus: initialStatus,
+    presentation: const _ListPresentation(
       type: SubcontractDocType.order,
       title: '委外订货与全链路',
       subtitle: '直接委外 / 任务中心下单 · 财务批准 · 目标件出仓 · 回厂 IQC · 结算',
@@ -221,9 +228,15 @@ class _PageAction {
 }
 
 class _SubcontractBusinessListPage extends ConsumerStatefulWidget {
-  const _SubcontractBusinessListPage({required this.presentation});
+  const _SubcontractBusinessListPage({
+    required this.presentation,
+    this.initialStatus,
+  });
 
   final _ListPresentation presentation;
+
+  /// 深链预选（路由 `?status=draft`）：新建页「草稿(N)」按钮进来时直接落在草稿段。
+  final String? initialStatus;
 
   @override
   ConsumerState<_SubcontractBusinessListPage> createState() =>
@@ -258,7 +271,7 @@ class _SubcontractBusinessListPageState
   /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
   UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
 
-  /// 待处理段徽章计数；null = 加载中（不显示徽章）。
+  /// 待处理段计数（中性括号 `(N)`）；null = 加载中（不渲染）。
   int? _actionableCount;
 
   String? _location;
@@ -283,6 +296,10 @@ class _SubcontractBusinessListPageState
   @override
   void initState() {
     super.initState();
+    // 深链 ?status=draft：直接落在「草稿」段（新建页「草稿(N)」按钮的落点）。
+    if (isDraftStatusQuery(widget.initialStatus)) {
+      _seg = const _BizSeg.stage(0);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(mn.masterNameServiceProvider).ensureLoaded();
       if (_shouldLoad) _reload();
@@ -340,7 +357,7 @@ class _SubcontractBusinessListPageState
     _reload(1);
   }
 
-  /// 待处理段计数（list size=1 取 total；失败保持 null 不显示徽章）。
+  /// 待处理段计数（list size=1 取 total；失败保持 null 不渲染括号数字）。
   Future<void> _loadBadge() async {
     final status = _actionableStatus;
     if (status == null) return;
@@ -418,6 +435,8 @@ class _SubcontractBusinessListPageState
                 // 主分类行：阶段分段（无「全部」）+ 末尾「历史记录」+ 动作按钮同行。
                 UtenFilterToolbar<_BizSeg>(
                   segmentsKey: Key('subcontract-biz-segments-${_p.type.name}'),
+                  // 计数形态：草稿是「我自己没写完的东西」，没人在等它
+                  // → 中性括号 `(N)`（组件默认）；其余段不传 count。
                   segments: [
                     UtenFilterSegment(
                       value: const _BizSeg.stage(0),
@@ -626,6 +645,12 @@ List<MasterColumnDef<SubcontractDocListItem>> _baseColumns({
     label: statusLabel,
     width: 170,
     value: (row) => row.statusOverride ?? subcontractStatusLabel(row.status),
+    // 状态徽章（草稿中性/已审绿/红冲红）；value 仍是纯文本供列宽/排序/筛选。
+    cellBuilder: (_, row) => UtenStatusBadge(
+      label: row.statusOverride ?? subcontractStatusLabel(row.status),
+      type: docStatusBadgeType(row.status),
+      size: UtenStatusBadgeSize.small,
+    ),
   ),
   if (closed)
     MasterColumnDef(
@@ -651,16 +676,36 @@ List<MasterColumnDef<SubcontractDocListItem>> _orderColumns(
     key: 'status',
     label: '财务 / 执行状态',
     width: 190,
-    value: (row) {
-      final approval = row.financeApproval;
-      if (approval?.isPending == true) return '等待财务审核';
-      if (approval?.isRejected == true) return '财务退回待修改';
-      if (row.status == 1 || approval?.isApproved == true) return '财务已通过 / 执行中';
-      if (row.status == -1) return '已红冲';
-      return '草稿 / 待提交财务';
-    },
+    value: _orderStatusText,
+    // 财务态徽章：等待财务审核=警告黄 / 财务退回=危险红 / 财务已通过=成功绿 /
+    // 待提交财务=中性 / 已红冲=危险红；value 仍是纯文本供列宽/排序/筛选。
+    cellBuilder: (_, row) => UtenStatusBadge(
+      label: _orderStatusText(row),
+      type: _orderStatusBadgeType(row),
+      size: UtenStatusBadgeSize.small,
+    ),
   );
   return columns;
+}
+
+String _orderStatusText(SubcontractDocListItem row) {
+  final approval = row.financeApproval;
+  if (approval?.isPending == true) return '等待财务审核';
+  if (approval?.isRejected == true) return '财务退回待修改';
+  if (row.status == 1 || approval?.isApproved == true) return '财务已通过 / 执行中';
+  if (row.status == -1) return '已红冲';
+  return '草稿 / 待提交财务';
+}
+
+UtenStatusBadgeType _orderStatusBadgeType(SubcontractDocListItem row) {
+  final approval = row.financeApproval;
+  if (approval?.isPending == true) return UtenStatusBadgeType.warning;
+  if (approval?.isRejected == true) return UtenStatusBadgeType.danger;
+  if (row.status == 1 || approval?.isApproved == true) {
+    return UtenStatusBadgeType.success;
+  }
+  if (row.status == -1) return UtenStatusBadgeType.danger;
+  return UtenStatusBadgeType.neutral;
 }
 
 List<MasterColumnDef<SubcontractDocListItem>> _legacyIssueColumns(

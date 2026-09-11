@@ -70,7 +70,9 @@ public class EmployeeListQuery {
             String search,
             Set<String> statuses,
             Collection<UUID> departmentIds,
-            boolean filterDepartments) {
+            boolean filterDepartments,
+            String sort,
+            String order) {
         int safePage = Math.max(1, page);
         int size = Math.min(Math.max(1, requestedSize), 100);
         boolean hasSearch = search != null && !search.isBlank();
@@ -97,7 +99,7 @@ public class EmployeeListQuery {
         List<EmployeeListItem> items = jdbc.query(
                 // 文本块 ORDER_BY 开头的换行会被 Java 吃掉，where 结尾是 "false"，
                 // 必须在此显式补换行，否则拼成 "falseORDER BY" 触发 PG 语法错误。
-                select + where + "\n" + ORDER_BY + " LIMIT ? OFFSET ?",
+                select + where + "\n" + orderBy(sort, order) + " LIMIT ? OFFSET ?",
                 (rs, rowNum) -> new EmployeeListItem(
                         rs.getObject("id", UUID.class),
                         rs.getString("code"),
@@ -116,6 +118,25 @@ public class EmployeeListQuery {
                 pageParameters.toArray());
         int totalPages = total == 0 ? 0 : (int) Math.ceil((double) total / size);
         return new Result(items, safePage, size, total, totalPages);
+    }
+
+    /**
+     * 排序子句：sort 白名单映射（拼 SQL，禁止透传任意输入）——
+     * code=工号、hireDate=入职日期、workYears=工龄（不落库，映射到 hire_date 且方向翻转：
+     * 工龄从小到大 ⇔ 入职日期从新到远）。其余值（含 null）回落默认「负责人优先 + 工号」。
+     * 显式排序时不再叠加负责人优先，工号作稳定并列序；hire_date 两个方向都 NULLS LAST。
+     * 包级可见：白名单契约由 EmployeeListQueryOrderByTest 直接锁定。
+     */
+    String orderBy(String sort, String order) {
+        boolean desc = "desc".equalsIgnoreCase(order == null ? "" : order.trim());
+        return switch (sort == null ? "" : sort.trim()) {
+            case "code" -> "ORDER BY e.code " + (desc ? "DESC" : "ASC") + ", e.code";
+            case "hireDate" -> "ORDER BY e.hire_date " + (desc ? "DESC" : "ASC")
+                    + " NULLS LAST, e.code";
+            case "workYears" -> "ORDER BY e.hire_date " + (desc ? "ASC" : "DESC")
+                    + " NULLS LAST, e.code";
+            default -> ORDER_BY;
+        };
     }
 
     private String where(

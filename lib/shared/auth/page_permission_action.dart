@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../components/buttons/uten_app_bar_action_button.dart';
 import '../../core/responsive/breakpoint.dart';
 import '../../core/router/route_names.dart';
 import 'page_permission_delegation_repository.dart';
@@ -44,23 +45,15 @@ class _PagePermissionButton extends StatelessWidget {
     final tooltip = '设置「${scope.title}」本页权限';
     void open() => context.push(RouteName.pagePermissionsFor(scope.surfaceKey));
 
-    if (context.breakpoint.isExpanded) {
-      return TextButton.icon(
-        key: const ValueKey('page-permission-action'),
-        onPressed: open,
-        icon: const Icon(Icons.admin_panel_settings_outlined, size: 20),
-        label: const Text('权限设置'),
-        style: TextButton.styleFrom(
-          minimumSize: const Size(48, 48),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-        ),
-      );
-    }
-    return IconButton(
+    // 顶栏动作统一形态（深绿实心白字、固定 36 高），与「草稿(N)」同款；
+    // 窄屏只收文案不改形态（此前宽屏 TextButton、窄屏 IconButton 是两种长相）。
+    return UtenAppBarActionButton(
       key: const ValueKey('page-permission-action'),
-      onPressed: open,
+      icon: Icons.admin_panel_settings_outlined,
+      label: '权限设置',
       tooltip: tooltip,
-      icon: const Icon(Icons.admin_panel_settings_outlined),
+      compact: !context.breakpoint.isExpanded,
+      onPressed: open,
     );
   }
 }

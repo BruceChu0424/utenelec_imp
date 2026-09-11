@@ -53,6 +53,7 @@ public class ProductionExecutionSegmentService {
     private final TxSessionVars tx;
     private final ChainNoticeService chainNotice;
     private final ProductionDocumentAccessPolicy access;
+    private final com.uten.imp.features.production.ProductionWorkshopMembership workshopMembership;
 
     @Transactional(readOnly = true)
     public List<ExecutionSegmentView> list(UUID planId) {
@@ -462,6 +463,13 @@ public class ProductionExecutionSegmentService {
                     || ACTION_START.equals(transition.action())) {
                 chainNotice.notifyExecutionSegmentTransition(
                         segment.id(), ACTION_START.equals(transition.action()));
+            }
+            if (ACTION_START.equals(transition.action())) {
+                // 车间开工 = 「车间任务」行动卡的办结点（2026-09-10）：同段全部
+                // 收件人的弹卡按聚合 (PRODUCTION_EXECUTION_SEGMENT, id) 撤回。
+                // 报工不办结；完工入库由 ChainNoticeService 完工投递兜底办结。
+                chainNotice.resolveProductionWorkshopTasks(
+                        List.of(segment.id()), "STARTED");
             }
             return one(segment.planId(), segment.id());
         } catch (RuntimeException failure) {
@@ -939,6 +947,17 @@ public class ProductionExecutionSegmentService {
 
     private void requireSegmentOperationAccess(
             LockedSegment segment, String operationAuthority) {
+        // 车间口径（2026-09-11）：属于本段车间（或就是段负责人）且持动作权限的人可以操作
+        // 自己的工单，不再要求能读计划制单人——V543 收回 production_plan:view:all 后，
+        // 车间账号读不到计划归属，旧口径会把「开工 / 确认用料」一并锁死。
+        // 读侧（我的车间任务）本就按车间归属收敛，写侧与之同口径。
+        if (access.hasAuthority(operationAuthority)
+                && workshopMembership.isWorkshopMember(
+                        segment.workshopDepartmentId(),
+                        segment.responsibleEmployeeId(),
+                        currentUser.employeeId().orElse(null))) {
+            return;
+        }
         access.requireScopedOperationWritable(
                 segment.planMakerId(),
                 "无权操作此生产计划的执行任务",

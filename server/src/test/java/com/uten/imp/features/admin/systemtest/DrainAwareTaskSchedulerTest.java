@@ -1,5 +1,6 @@
 package com.uten.imp.features.admin.systemtest;
 
+import com.uten.imp.features.admin.serverstatus.ScheduledTaskRunRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -11,6 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
@@ -57,5 +59,50 @@ class DrainAwareTaskSchedulerTest {
             release.countDown();task.get(5,TimeUnit.SECONDS);
             assertTrue(drained.get(5,TimeUnit.SECONDS));
         } finally {release.countDown();}
+    }
+
+    /** 服务器状态页「定时任务最近执行」的数据来源：同一包装点记录每次执行。 */
+    @Test void scheduledRunsAreRecordedAndDrainSkippedRoundsAreNotCountedAsRuns() throws Exception {
+        var registry = new ScheduledTaskRunRegistry();
+        var recording = new DrainAwareTaskScheduler(gate, registry);
+        try {
+            Runnable healthy = named("com.uten.imp.jobs.OutboxScheduler.drain", () -> {});
+            recording.scheduleWithFixedDelay(healthy, Instant.now(), Duration.ofSeconds(600));
+            org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(5))
+                    .until(() -> run(registry, "OutboxScheduler.drain").runs() == 1);
+            var first = run(registry, "OutboxScheduler.drain");
+            assertEquals(Duration.ofSeconds(600), first.period(), "周期随注册一并记录，供「超期未跑」判定");
+            assertTrue(first.lastStart() != null && first.lastEnd() != null);
+            assertNull(first.lastErrorType());
+
+            assertTrue(gate.beginDrain(1_000));
+            recording.schedule(healthy, Instant.now()).get(5, TimeUnit.SECONDS);
+            assertEquals(1, run(registry, "OutboxScheduler.drain").runs(), "被排水闸跳过的一轮不算执行");
+            gate.endReset();
+
+            Runnable failing = named("com.uten.imp.jobs.BackupScheduler.check",
+                    () -> { throw new IllegalStateException("select secret from vault"); });
+            recording.schedule(failing, Instant.now());
+            org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(5))
+                    .until(() -> run(registry, "BackupScheduler.check").lastErrorType() != null);
+            var failed = run(registry, "BackupScheduler.check");
+            assertEquals("IllegalStateException", failed.lastErrorType(), "只留异常类名");
+            assertEquals(1, failed.consecutiveFailures());
+            assertFalse(failed.toString().contains("secret"), "异常消息不得进入状态页");
+        } finally {
+            recording.destroy();
+        }
+    }
+
+    private static ScheduledTaskRunRegistry.Run run(ScheduledTaskRunRegistry registry, String name) {
+        return registry.snapshot().stream().filter(run -> run.name().equals(name)).findFirst().orElseThrow();
+    }
+
+    /** Spring 交给调度器的包装器 toString() 即「全限定类名.方法名」，这里照样模拟。 */
+    private static Runnable named(String name, Runnable body) {
+        return new Runnable() {
+            @Override public void run() { body.run(); }
+            @Override public String toString() { return name; }
+        };
     }
 }

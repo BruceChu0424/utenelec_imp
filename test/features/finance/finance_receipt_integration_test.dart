@@ -51,13 +51,10 @@ void main() {
       final api = await _pumpEditor(tester, detail: _receiptDetail());
 
       final importAction = find.text('引用应收');
-      final historyAction = find.text('查看历史');
       expect(importAction, findsOneWidget);
-      expect(historyAction, findsOneWidget);
-      expect(
-        tester.getCenter(importAction).dx,
-        lessThan(tester.getCenter(historyAction).dx),
-      );
+      // 2026-09-10 返回键契约：编辑页不再提供「查看历史」跳列表入口（列表从 hub 进入，
+      // 返回键 popOrBackTo 回来源页），顶栏只剩业务动作。
+      expect(find.text('查看历史'), findsNothing);
       expect(find.byType(ClientPickerField), findsOneWidget);
       expect(_dropdownWithLabel('币种'), findsNothing);
       expect(_textFieldWithLabel('汇率'), findsNothing);
@@ -493,7 +490,7 @@ void main() {
     );
 
     expect(find.byTooltip('资金引用').hitTestable(), findsOneWidget);
-    expect(find.byTooltip('查看历史').hitTestable(), findsOneWidget);
+    expect(find.byTooltip('查看历史'), findsNothing);
     expect(find.text('保存').hitTestable(), findsOneWidget);
     expect(find.text('本批客户已付(人民币) ¥360.00'), findsOneWidget);
     expect(find.text('真实账户实际入账 人民币 324.00'), findsOneWidget);

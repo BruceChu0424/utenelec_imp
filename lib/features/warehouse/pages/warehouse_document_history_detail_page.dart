@@ -7,6 +7,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -114,50 +115,63 @@ class _WarehouseDocumentHistoryDetailPageState
               )
             : detail == null
             ? UtenEmpty.error(message: '记录不存在或您无权查看')
+            // 2026-09-11 折叠头+表内滚（对齐采购/货品资料页）：上滑先收头部
+            // （实物视图横幅/错误提示/事实卡），明细标题吸顶后表格内部继续滚。
             : UtenContentContainer.wide(
-                child: ListView(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: UtenSpacing.s16,
-                  ),
-                  children: [
-                    _DetailPhysicalBanner(type: widget.type),
-                    if (_error != null) ...[
-                      const SizedBox(height: UtenSpacing.s8),
-                      Semantics(
-                        liveRegion: true,
-                        child: Text(
-                          _error!,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
+                child: UtenCollapsingHeaderScrollView(
+                  collapsingHeader: Padding(
+                    padding: const EdgeInsets.only(top: UtenSpacing.s16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _DetailPhysicalBanner(type: widget.type),
+                        if (_error != null) ...[
+                          const SizedBox(height: UtenSpacing.s8),
+                          Semantics(
+                            liveRegion: true,
+                            child: Text(
+                              _error!,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                            ),
                           ),
+                        ],
+                        const SizedBox(height: UtenSpacing.s12),
+                        _factsCard(detail),
+                        const SizedBox(height: UtenSpacing.s16),
+                      ],
+                    ),
+                  ),
+                  // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
+                  body: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '实物明细 (${detail.items.length})',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
+                      const SizedBox(height: UtenSpacing.s8),
+                      Expanded(
+                        child: MasterDataTableView<WarehouseDocumentPhysicalItem>(
+                          key: Key(
+                            'warehouse-history-detail-table-${widget.type.segment}',
+                          ),
+                          primary: true,
+                          columns: _physicalColumns(detail.items),
+                          items: detail.items,
+                          facets: const {},
+                          nullCounts: const {},
+                          filters: const {},
+                          onFilterChanged: (_, _) {},
+                          emptyMessage: '该记录暂无实物明细',
+                        ),
+                      ),
+                      const SizedBox(height: UtenSpacing.s16),
                     ],
-                    const SizedBox(height: UtenSpacing.s12),
-                    _factsCard(detail),
-                    const SizedBox(height: UtenSpacing.s16),
-                    Text(
-                      '实物明细 (${detail.items.length})',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s8),
-                    MasterDataTableView<WarehouseDocumentPhysicalItem>(
-                      key: Key(
-                        'warehouse-history-detail-table-${widget.type.segment}',
-                      ),
-                      embedded: true,
-                      columns: _physicalColumns(detail.items),
-                      items: detail.items,
-                      facets: const {},
-                      nullCounts: const {},
-                      filters: const {},
-                      onFilterChanged: (_, _) {},
-                      emptyMessage: '该记录暂无实物明细',
-                    ),
-                    const SizedBox(height: UtenSpacing.s24),
-                  ],
+                  ),
                 ),
               ),
       ),

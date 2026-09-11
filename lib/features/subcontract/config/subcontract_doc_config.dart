@@ -24,6 +24,7 @@ import 'package:flutter/material.dart';
 
 import '../../../shared/auth/document_permission_set.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
 import '../models/subcontract_doc.dart';
 
 const kSubcontractMaterialIssueHistoricalCompatibilityNote =
@@ -101,6 +102,25 @@ class SubcontractDocConfig {
         (granted.contains(pagePermission) ||
             granted.contains(Perm.financeViewAll));
   }
+
+  /// 该单据的列表路径（「草稿(N)」按钮的落点）。
+  String get listLocation => '/subcontract/${type.pathSegment}';
+
+  /// 草稿计数类型（新建页「草稿(N)」按钮 / hub 卡徽章）。
+  ///
+  /// 申请/询价是计划系统生成的只读需求单，回厂收货由仓储任务中心办理，
+  /// 历史 BOM 子件发料已退役——三者无人工草稿，故返回 null（不显示草稿入口）。
+  /// 2026-09-11 补齐：成品退回 / 余料退回 / 损耗与责任接入跨模块草稿计数。
+  DraftDocKind? get draftKind => switch (type) {
+    SubcontractDocType.order => DraftDocKind.subcontractOrder,
+    SubcontractDocType.returnDoc => DraftDocKind.subcontractReturn,
+    SubcontractDocType.materialReturn => DraftDocKind.subcontractMaterialReturn,
+    SubcontractDocType.waste => DraftDocKind.subcontractWaste,
+    SubcontractDocType.inquiry ||
+    SubcontractDocType.application ||
+    SubcontractDocType.receipt ||
+    SubcontractDocType.materialIssue => null,
+  };
 
   String get listPerm => permissions.view;
   String? get createPerm => permissions.create;

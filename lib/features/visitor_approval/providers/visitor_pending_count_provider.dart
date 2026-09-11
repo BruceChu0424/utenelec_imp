@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/session_epoch_provider.dart';
 import '../../visitor/repositories/visitor_staff_repository.dart';
 
 const Duration _kPendingPollInterval = Duration(seconds: 60);
@@ -13,6 +14,8 @@ const Duration _kPendingPollInterval = Duration(seconds: 60);
 /// 返回 0 时不渲染徽章。
 final visitorPendingCountProvider =
     StateNotifierProvider<VisitorPendingCountNotifier, int>((ref) {
+      // 新登录会话从零重建并立即重拉（见 shared/auth/session_epoch_provider.dart）。
+      ref.watch(sessionEpochProvider);
       final notifier = VisitorPendingCountNotifier(ref);
       notifier.start();
       ref.onDispose(notifier.stop);
@@ -48,7 +51,7 @@ class VisitorPendingCountNotifier extends StateNotifier<int> {
       final count = await ref
           .read(visitorStaffRepositoryProvider)
           .pendingCount();
-      state = count;
+      if (mounted) state = count; // 会话重建后旧实例已释放，丢弃迟到结果
     } catch (_) {
       // 网络/服务异常时保留旧值，避免徽章闪烁
     }
@@ -61,6 +64,8 @@ class VisitorPendingCountNotifier extends StateNotifier<int> {
 /// 被访人待确认数（visitor:host-confirm）：60s 轮询；无权限返回 0。
 final visitorHostPendingCountProvider =
     StateNotifierProvider<VisitorHostPendingCountNotifier, int>((ref) {
+      // 新登录会话从零重建并立即重拉（见 shared/auth/session_epoch_provider.dart）。
+      ref.watch(sessionEpochProvider);
       final notifier = VisitorHostPendingCountNotifier(ref);
       notifier.start();
       ref.onDispose(notifier.stop);
@@ -97,7 +102,7 @@ class VisitorHostPendingCountNotifier extends StateNotifier<int> {
       final count = await ref
           .read(visitorStaffRepositoryProvider)
           .hostPendingCount();
-      state = count;
+      if (mounted) state = count; // 会话重建后旧实例已释放，丢弃迟到结果
     } catch (_) {
       // 网络/服务异常时保留旧值，避免徽章闪烁
     }

@@ -28,6 +28,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../models/client_access_models.dart';
 import '../models/client_node.dart';
 import '../models/master_facet.dart';
 import '../models/product_category_node.dart';
@@ -39,6 +40,7 @@ import '../repositories/reference_method_repository.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/category_page_shell.dart';
 import '../widgets/category_tree_search.dart';
+import '../widgets/client_access_batch_dialog.dart';
 import '../widgets/client_access_panel.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/master_detail_sheet.dart';
@@ -431,7 +433,29 @@ class _DetailPaneState extends State<_DetailPane> {
     Map<String, String> iv,
     List<ReferenceMethodOption> settlementMethods, {
     bool legacyCreditSnapshot = false,
+    bool showAccess = false,
   }) => [
+    // 归属（负责人/可见人）在编辑页只**展示**不编辑：它走独立的 access 接口
+    //（变更原因 + 版本 CAS + 审计事件），混进普通字段提交会绕开那套守卫。
+    // 要改点行菜单「负责人和可见人」（2026-09-11 用户要求编辑页也看得到）。
+    if (showAccess) ...const <MasterFieldDef>[
+      MasterFieldDef(
+        key: 'ownerEmployeeName',
+        label: '负责人',
+        group: '归属',
+        readOnly: true,
+        hint: '未设置',
+        info: '负责人决定这个客户的单据归谁。修改请用列表行右键「负责人和可见人」。',
+      ),
+      MasterFieldDef(
+        key: 'accessViewerNames',
+        label: '可见人',
+        group: '归属',
+        readOnly: true,
+        hint: '未设置',
+        info: '可见人只能查看该客户及其单据，不能修改。修改请用列表行右键「负责人和可见人」。',
+      ),
+    ],
     ...const <MasterFieldDef>[
       MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
       MasterFieldDef(
@@ -537,6 +561,8 @@ class _DetailPaneState extends State<_DetailPane> {
       widget.ref.read(currentPermissionsProvider).contains(Perm.clientDelete);
   bool get _canStatusMaster =>
       widget.ref.read(currentPermissionsProvider).contains(Perm.clientStatus);
+  bool get _canAssignClientAccess =>
+      widget.ref.read(currentPermissionsProvider).contains(Perm.clientAssign);
 
   bool _settlementOptionsLoading = false;
 
@@ -602,6 +628,17 @@ class _DetailPaneState extends State<_DetailPane> {
   Future<void> _showClientEdit(ClientDetail d) async {
     final settlementMethods = await _loadSettlementMethods();
     if (!mounted || settlementMethods == null) return;
+    // 可见人不在 ClientDetail 里，只能问 access 接口；无 client:assign 的人问了会
+    // 被拒，所以按权限判定后再取，取不到就只显示负责人（失败不挡编辑）。
+    ClientAccessSettings? access;
+    if (_canAssignClientAccess && d.accessManageable) {
+      try {
+        access = await widget.ref.read(clientRepositoryProvider).access(d.id);
+      } catch (_) {
+        access = null;
+      }
+      if (!mounted) return;
+    }
     if (d.defaultSettlementMethodId != null &&
         !settlementMethods.any(
           (method) => method.id == d.defaultSettlementMethodId,
@@ -639,6 +676,11 @@ class _DetailPaneState extends State<_DetailPane> {
       'defaultSettlementMethodId': d.defaultSettlementMethodId ?? '',
       'status': d.status ?? '',
       'remark': d.remark ?? '',
+      'ownerEmployeeName':
+          access?.ownerEmployeeName ?? d.ownerEmployeeName ?? d.empId ?? '',
+      'accessViewerNames': access == null
+          ? ''
+          : access.viewers.map((viewer) => viewer.name).join('、'),
     };
     final readOnlyKeys = <String>{
       if (!_canStatusMaster) 'status',
@@ -651,6 +693,7 @@ class _DetailPaneState extends State<_DetailPane> {
         iv,
         settlementMethods,
         legacyCreditSnapshot: d.legacyId != null,
+        showAccess: true,
       ),
       initialValues: iv,
       fixedValues: {
@@ -1123,6 +1166,12 @@ class _DetailPaneState extends State<_DetailPane> {
         onTap: () => _withClientDetail(c.id, (d) async => _showClientEdit(d)),
       ),
       UtenMenuItem(
+        label: '负责人和可见人',
+        icon: Icons.manage_accounts_outlined,
+        enabled: _canAssignClientAccess && c.accessManageable,
+        onTap: () => _withClientDetail(c.id, _showClientAccess),
+      ),
+      UtenMenuItem(
         label: '删除客户',
         icon: Icons.delete_outline_rounded,
         destructive: true,
@@ -1133,16 +1182,29 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   List<Widget> _clientBatchActions(BuildContext context, Set<String> ids) {
-    if (!_canStatusMaster && !_canDeleteMaster) return const [];
+    if (!_canStatusMaster && !_canDeleteMaster && !_canAssignClientAccess) {
+      return const [];
+    }
     final byId = {
       for (final item in _clientPage?.items ?? const <ClientListItem>[])
         item.id: item,
     };
+    // 归属批量的可操作性看 accessManageable（服务端已合并 client:assign 与对象范围），
+    // 与「只读数据」是两条独立的门：只读客户照样可以换负责人。
+    final assignable = ids
+        .where((id) => byId[id]?.accessManageable == true)
+        .toSet();
     final includesReadOnly = ids.any((id) => byId[id]?.writable != true);
     if (includesReadOnly) {
-      return const [Text('所选客户包含只读数据，请取消只读客户后再批量操作')];
+      return [
+        if (_canAssignClientAccess && assignable.isNotEmpty)
+          ..._accessBatchButtons(assignable),
+        const Text('所选客户包含只读数据，请取消只读客户后再批量改资料'),
+      ];
     }
     return [
+      if (_canAssignClientAccess && assignable.isNotEmpty)
+        ..._accessBatchButtons(assignable),
       if (_canStatusMaster)
         UtenButton(
           size: UtenButtonSize.small,
@@ -1160,6 +1222,67 @@ class _DetailPaneState extends State<_DetailPane> {
           child: const Text('批量删除'), // TODO(l10n): 补 arb
         ),
     ];
+  }
+
+  /// 归属批量按钮（批量设负责人 / 批量设可见人）。两者分开是因为语义不同：
+  /// 负责人是「归谁」，可见人是「额外给谁看」，混在一个弹窗里容易误把可见人清空。
+  List<Widget> _accessBatchButtons(Set<String> ids) => [
+    UtenButton(
+      key: const ValueKey('client-batch-set-owner'),
+      size: UtenButtonSize.small,
+      type: UtenButtonType.tonal,
+      icon: Icons.person_outline_rounded,
+      onPressed: _rowOpBusy
+          ? null
+          : () => _batchSetClientAccess(ids, owner: true),
+      child: Text('批量设负责人 (${ids.length})'), // TODO(l10n): 补 arb
+    ),
+    UtenButton(
+      key: const ValueKey('client-batch-set-viewers'),
+      size: UtenButtonSize.small,
+      type: UtenButtonType.tonal,
+      icon: Icons.visibility_outlined,
+      onPressed: _rowOpBusy
+          ? null
+          : () => _batchSetClientAccess(ids, owner: false),
+      child: Text('批量设可见人 (${ids.length})'), // TODO(l10n): 补 arb
+    ),
+  ];
+
+  /// 多选客户批量设负责人/可见人：一个端点一个事务，任一客户被拒则整批不生效
+  /// （半批生效比不生效更难收拾）。未设置的那一维服务端保持各客户原值。
+  Future<void> _batchSetClientAccess(
+    Set<String> ids, {
+    required bool owner,
+  }) async {
+    if (_rowOpBusy || ids.isEmpty) return;
+    final result = await showClientAccessBatchDialog(
+      context: context,
+      ref: widget.ref,
+      clientCount: ids.length,
+      assignOwner: owner,
+    );
+    if (result == null || !mounted) return;
+    _rowOpBusy = true;
+    final ok = await context.guardRun(
+      () async {
+        await widget.ref
+            .read(clientRepositoryProvider)
+            .updateAccessBatch(
+              ClientAccessBatchUpdate(
+                clientIds: ids.toList(growable: false),
+                ownerEmployeeId: owner ? result.employeeIds.first : null,
+                viewerEmployeeIds: owner ? null : result.employeeIds,
+                reason: result.reason,
+              ),
+            );
+      },
+      success: owner ? '已批量设置负责人' : '已批量设置可见人', // TODO(l10n): 补 arb
+      errorFallback: '批量设置失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    _rowOpBusy = false;
+    if (!ok || !mounted) return;
+    await _loadClients(_clientPageNum);
   }
 
   /// 批量启停：逐条拉详情全量回传、仅改状态（无专用批量接口，复用单条更新）。

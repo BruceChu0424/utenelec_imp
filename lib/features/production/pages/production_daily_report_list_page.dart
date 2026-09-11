@@ -9,7 +9,10 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/data_display/doc_status_badge.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../components/data_display/paged_list_controller.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -26,7 +29,10 @@ import '../models/production_daily_report.dart';
 import '../repositories/production_repository.dart';
 
 class ProductionDailyReportListPage extends ConsumerStatefulWidget {
-  const ProductionDailyReportListPage({super.key});
+  const ProductionDailyReportListPage({super.key, this.initialStatus});
+
+  /// 深链预选（路由 `?status=draft`）：新建页「草稿(N)」按钮进来时直接落在草稿段。
+  final String? initialStatus;
 
   @override
   ConsumerState<ProductionDailyReportListPage> createState() =>
@@ -46,6 +52,11 @@ class _ProductionDailyReportListPageState
   @override
   void initState() {
     super.initState();
+    // 深链 ?status=draft：预选「草稿」段（新建页「草稿(N)」按钮的落点）。
+    if (isDraftStatusQuery(widget.initialStatus)) {
+      _statusFilter = 0;
+      _statusFilterSelected = true;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(masterNameServiceProvider).ensureLoaded();
       _reload(1);
@@ -121,6 +132,12 @@ class _ProductionDailyReportListPageState
       label: '状态',
       width: 100,
       value: (it) => productionStatusLabel(it.status),
+      // 状态徽章（草稿中性/已审绿/红冲红）；value 仍是纯文本供列宽/排序/筛选。
+      cellBuilder: (_, it) => UtenStatusBadge(
+        label: productionStatusLabel(it.status),
+        type: docStatusBadgeType(it.status),
+        size: UtenStatusBadgeSize.small,
+      ),
     ),
   ];
 

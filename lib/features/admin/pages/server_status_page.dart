@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/cards/uten_card.dart';
+import '../../../components/data_display/uten_animated_number.dart';
+import '../../../components/data_display/uten_gauge_ring.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_live_pulse_dot.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -18,6 +21,7 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/server_status.dart';
 import '../repositories/server_status_repository.dart';
 
@@ -39,6 +43,9 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
   bool _foreground = true;
   bool? _routeVisible;
   int _generation = 0;
+
+  /// 采样成功次数；只驱动总览的脉冲点，不参与任何数据判断。
+  int _pulse = 0;
 
   bool get _hasPermission =>
       ref.read(currentPermissionsProvider).contains(Perm.serverStatusView);
@@ -98,6 +105,7 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
       setState(() {
         _snapshot = next;
         _failed = false;
+        _pulse++;
       });
       _scheduleStaleState();
     } catch (error) {
@@ -170,6 +178,8 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
       }
     });
     final l10n = _l10n;
+    final extras = _snapshot?.extras ?? const <ServerMetric>[];
+    final jobs = _snapshot?.jobs ?? const <ServerJob>[];
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.serverStatusTitle,
@@ -232,6 +242,20 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
                         _sectionTitle(l10n.serverStatusDataProtection),
                         const SizedBox(height: UtenSpacing.s12),
                         _grid([_database(), _backup()]),
+                        if (extras.isNotEmpty) ...[
+                          const SizedBox(height: UtenSpacing.s24),
+                          // TODO(l10n): 补 arb
+                          _sectionTitle('平台运行指标'),
+                          const SizedBox(height: UtenSpacing.s12),
+                          _grid([for (final extra in extras) _extra(extra)]),
+                        ],
+                        if (jobs.isNotEmpty) ...[
+                          const SizedBox(height: UtenSpacing.s24),
+                          // TODO(l10n): 补 arb
+                          _sectionTitle('定时任务'),
+                          const SizedBox(height: UtenSpacing.s12),
+                          _jobs(jobs),
+                        ],
                       ],
                     ),
                   ),
@@ -252,85 +276,115 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
         : !_fresh
         ? _l10n.serverStatusStale
         : _l10n.serverStatusOverviewHint;
-    return UtenCard(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final ring = UtenGaugeRing(
+      key: const Key('server-status-ring'),
+      value: _fresh ? _worstPercent() : null,
+      status: _gauge(status),
+      label: _l10n.serverStatusOverview,
+      statusText: _statusLabel(status),
+      caption: _overviewCaption(),
+      size: 168,
+    );
+    final details = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: UtenRadius.lgAll,
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
-                    child: Icon(Icons.dns_outlined, color: color, size: 32),
-                  ),
+            Flexible(
+              child: Text(
+                _l10n.serverStatusOverview,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
-                const SizedBox(width: UtenSpacing.s16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _l10n.serverStatusOverview,
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s8),
-                      _StatusBadge(
-                        status: status,
-                        key: const Key('server-status-overall'),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s16),
-            Text(
-              message,
-              key: const Key('server-status-freshness'),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: _fresh ? theme.colorScheme.onSurfaceVariant : color,
               ),
             ),
-            const SizedBox(height: UtenSpacing.s16),
-            Wrap(
-              spacing: UtenSpacing.s24,
-              runSpacing: UtenSpacing.s12,
-              children: [
-                _meta(_l10n.serverStatusUpdatedAt, _date(_snapshot?.sampledAt)),
-                _meta(
-                  _l10n.serverStatusEnvironment,
-                  _available(_snapshot?.environment),
-                ),
-                _meta(
-                  _l10n.serverStatusVersion,
-                  _available(_snapshot?.applicationVersion),
-                ),
-                _meta(
-                  _l10n.serverStatusUptime,
-                  _uptime(_snapshot?.uptimeSeconds),
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            Text(
-              _l10n.serverStatusPolling(_snapshot?.pollSeconds ?? 15),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+            const SizedBox(width: UtenSpacing.s8),
+            UtenLivePulseDot(
+              key: const Key('server-status-pulse'),
+              pulse: _pulse,
+              stale: !_fresh,
+              color: color,
             ),
           ],
         ),
+        const SizedBox(height: UtenSpacing.s8),
+        _StatusBadge(status: status, key: const Key('server-status-overall')),
+        const SizedBox(height: UtenSpacing.s16),
+        Text(
+          message,
+          key: const Key('server-status-freshness'),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: _fresh ? theme.colorScheme.onSurfaceVariant : color,
+          ),
+        ),
+        const SizedBox(height: UtenSpacing.s16),
+        Wrap(
+          spacing: UtenSpacing.s24,
+          runSpacing: UtenSpacing.s12,
+          children: [
+            _meta(_l10n.serverStatusUpdatedAt, _date(_snapshot?.sampledAt)),
+            _meta(
+              _l10n.serverStatusEnvironment,
+              _available(_snapshot?.environment),
+            ),
+            _meta(
+              _l10n.serverStatusVersion,
+              _available(_snapshot?.applicationVersion),
+            ),
+            _meta(_l10n.serverStatusUptime, _uptime(_snapshot?.uptimeSeconds)),
+          ],
+        ),
+        const SizedBox(height: UtenSpacing.s12),
+        Text(
+          _l10n.serverStatusPolling(_snapshot?.pollSeconds ?? 15),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+    return UtenCard(
+      child: LayoutBuilder(
+        builder: (context, constraints) => constraints.maxWidth >= 560
+            ? Row(
+                children: [
+                  ring,
+                  const SizedBox(width: UtenSpacing.s24),
+                  Expanded(child: details),
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Align(child: ring),
+                  const SizedBox(height: UtenSpacing.s16),
+                  details,
+                ],
+              ),
       ),
     );
+  }
+
+  /// 总览环的值：最差的百分比指标（含磁盘），没有可用百分比时为空环。
+  double? _worstPercent() {
+    double? worst;
+    for (final metric in _snapshot!.metrics) {
+      if (metric.unit != 'PERCENT' || metric.value == null) continue;
+      if (worst == null || metric.value! > worst) worst = metric.value;
+    }
+    for (final disk in _snapshot!.disks) {
+      final value = disk.usedPercent;
+      if (value == null) continue;
+      if (worst == null || value > worst) worst = value;
+    }
+    return worst;
+  }
+
+  String _overviewCaption() {
+    if (!_fresh) return _l10n.serverStatusUnknown;
+    final count = _snapshot!.alerts.length;
+    // TODO(l10n): 补 arb
+    return count == 0 ? '暂无预警项' : '需要留意 $count 项';
   }
 
   Widget _meta(String label, String value) => Column(
@@ -412,20 +466,16 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
 
   Widget _metric(String key, ServerMetric? metric) {
     final status = _effective(metric?.status, missing: metric?.value == null);
-    final unit = metric?.unit == 'MILLISECONDS'
-        ? 'ms'
-        : metric?.unit == 'PERCENT'
-        ? '%'
-        : '';
+    final title = switch (key) {
+      'cpu' => _l10n.serverStatusCpu,
+      'memory' => _l10n.serverStatusMemory,
+      'jvm_memory' => _l10n.serverStatusAppMemory,
+      'db_pool' => _l10n.serverStatusDbPool,
+      _ => metric?.label ?? key,
+    };
     return _MetricCard(
       key: ValueKey('server-metric-$key'),
-      title: switch (key) {
-        'cpu' => _l10n.serverStatusCpu,
-        'memory' => _l10n.serverStatusMemory,
-        'jvm_memory' => _l10n.serverStatusAppMemory,
-        'db_pool' => _l10n.serverStatusDbPool,
-        _ => metric?.label ?? key,
-      },
+      title: title,
       icon: switch (key) {
         'cpu' => Icons.memory_rounded,
         'memory' => Icons.storage_rounded,
@@ -433,14 +483,19 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
         _ => Icons.hub_outlined,
       },
       status: status,
-      value: _number(metric?.value),
-      unit: unit,
-      percent: metric?.unit == 'PERCENT' ? metric?.value : null,
       detail: _detail(metric?.detail),
       tooltip: _threshold(
         metric?.warningThreshold,
         metric?.criticalThreshold,
-        unit,
+        '%',
+      ),
+      ring: UtenGaugeRing(
+        value: _fresh ? metric?.value : null,
+        status: _gauge(status),
+        label: title,
+        statusText: _statusLabel(status),
+        warning: metric?.warningThreshold,
+        critical: metric?.criticalThreshold,
       ),
       facts: [
         if (metric?.usedBytes != null)
@@ -453,64 +508,225 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
     );
   }
 
-  Widget _disk(ServerDisk? disk) => _MetricCard(
-    key: ValueKey('server-disk-${disk?.key ?? 'unknown'}'),
-    title: disk?.label.isNotEmpty == true
+  /// 附加指标：带告警阈值的计数走圆环，其余（会话数、附件容量）走数字卡。
+  Widget _extra(ServerMetric metric) {
+    final status = _effective(metric.status, missing: metric.value == null);
+    final bytes = metric.unit == 'BYTES';
+    final ringed = !bytes && metric.criticalThreshold != null;
+    return _MetricCard(
+      key: ValueKey('server-extra-${metric.key}'),
+      title: metric.label,
+      icon: switch (metric.key) {
+        'threads' => Icons.timeline_rounded,
+        'errors' => Icons.report_gmailerrorred_rounded,
+        'sessions' => Icons.people_alt_outlined,
+        'outbox' => Icons.outbox_outlined,
+        'attachments' => Icons.folder_copy_outlined,
+        _ => Icons.insights_outlined,
+      },
+      status: status,
+      detail: _detail(metric.detail),
+      tooltip: _threshold(
+        metric.warningThreshold,
+        metric.criticalThreshold,
+        '',
+      ),
+      ring: ringed
+          ? UtenGaugeRing(
+              value: _fresh ? metric.value : null,
+              status: _gauge(status),
+              label: metric.label,
+              statusText: _statusLabel(status),
+              unit: '',
+              max: metric.criticalThreshold!,
+              warning: metric.warningThreshold,
+              critical: metric.criticalThreshold,
+            )
+          : null,
+      headline: ringed
+          ? null
+          : _BigNumber(
+              value: _fresh ? metric.value : null,
+              text: bytes ? _bytes(_fresh ? metric.value : null) : null,
+              color: _statusColor(context, status),
+            ),
+      facts: [
+        if (metric.criticalThreshold != null)
+          // TODO(l10n): 补 arb
+          ('告警值', _number(metric.criticalThreshold)),
+      ],
+    );
+  }
+
+  Widget _disk(ServerDisk? disk) {
+    final status = _effective(disk?.status, missing: disk?.usedPercent == null);
+    final title = disk?.label.isNotEmpty == true
         ? disk!.label
-        : _l10n.serverStatusDisk,
-    icon: Icons.storage_outlined,
-    status: _effective(disk?.status, missing: disk?.usedPercent == null),
-    value: _number(disk?.usedPercent),
-    unit: '%',
-    percent: disk?.usedPercent,
-    detail: _detail(disk?.detail),
-    tooltip: _threshold(disk?.warningThreshold, disk?.criticalThreshold, '%'),
-    facts: [
-      (_l10n.serverStatusUsed, _bytes(disk?.usedBytes)),
-      (_l10n.serverStatusFree, _bytes(disk?.freeBytes)),
-      (_l10n.serverStatusCapacity, _bytes(disk?.totalBytes)),
-    ],
-  );
+        : _l10n.serverStatusDisk;
+    return _MetricCard(
+      key: ValueKey('server-disk-${disk?.key ?? 'unknown'}'),
+      title: title,
+      icon: Icons.storage_outlined,
+      status: status,
+      detail: _detail(disk?.detail),
+      tooltip: _threshold(disk?.warningThreshold, disk?.criticalThreshold, '%'),
+      ring: UtenGaugeRing(
+        value: _fresh ? disk?.usedPercent : null,
+        status: _gauge(status),
+        label: title,
+        statusText: _statusLabel(status),
+        warning: disk?.warningThreshold,
+        critical: disk?.criticalThreshold,
+      ),
+      facts: [
+        (_l10n.serverStatusUsed, _bytes(disk?.usedBytes)),
+        (_l10n.serverStatusFree, _bytes(disk?.freeBytes)),
+        (_l10n.serverStatusCapacity, _bytes(disk?.totalBytes)),
+      ],
+    );
+  }
 
   Widget _database() {
     final database = _snapshot?.database;
+    final status = _effective(database?.status);
+    final maximum = database?.maxConnections;
+    // 响应耗时单独按 200ms / 1000ms 着色，不跟随连接数的整体状态。
+    final response = database?.responseMs;
+    final responseStatus = _effective(
+      response == null
+          ? ServerHealthStatus.unknown
+          : response >= 1000
+          ? ServerHealthStatus.critical
+          : response >= 200
+          ? ServerHealthStatus.warning
+          : ServerHealthStatus.normal,
+      missing: response == null,
+    );
     return _MetricCard(
       key: const Key('server-database'),
       title: _l10n.serverStatusDatabase,
       icon: Icons.dns_outlined,
-      status: _effective(database?.status),
-      value: _number(database?.responseMs),
-      unit: 'ms',
+      status: status,
       detail: _detail(database?.detail),
       tooltip: _l10n.serverStatusDatabaseHint,
+      ring: UtenGaugeRing(
+        value: _fresh ? database?.connections : null,
+        status: _gauge(status),
+        label: _l10n.serverStatusConnections,
+        statusText: _statusLabel(status),
+        unit: '',
+        max: maximum == null || maximum <= 0 ? 100 : maximum,
+        warning: maximum == null ? null : maximum * 0.8,
+        critical: maximum == null ? null : maximum * 0.95,
+        caption:
+            '${_number(_fresh ? database?.connections : null)} / ${_number(_fresh ? maximum : null)}',
+      ),
+      headline: _BigNumber(
+        value: _fresh ? response : null,
+        unit: 'ms',
+        color: _statusColor(context, responseStatus),
+      ),
       facts: [
-        (_l10n.serverStatusResponse, '${_number(database?.responseMs)} ms'),
-        (
-          _l10n.serverStatusConnections,
-          '${_number(database?.connections)} / ${_number(database?.maxConnections)}',
-        ),
+        (_l10n.serverStatusResponse, '${_number(_fresh ? response : null)} ms'),
       ],
     );
   }
 
   Widget _backup() {
     final backup = _snapshot?.backup;
+    final status = _effective(backup?.status);
+    final critical = backup?.criticalAfterHours;
     return _MetricCard(
       key: const Key('server-backup'),
       title: _l10n.serverStatusBackup,
       icon: Icons.cloud_done_outlined,
-      status: _effective(backup?.status),
-      value: _number(backup?.ageHours),
-      unit: _l10n.serverStatusHours,
+      status: status,
       detail: _detail(backup?.detail),
       tooltip: _threshold(
         backup?.warningAfterHours,
         backup?.criticalAfterHours,
         _l10n.serverStatusHours,
       ),
+      ring: UtenGaugeRing(
+        value: _fresh ? backup?.ageHours : null,
+        status: _gauge(status),
+        label: _l10n.serverStatusBackup,
+        statusText: _statusLabel(status),
+        unit: _l10n.serverStatusHours,
+        max: critical == null || critical <= 0 ? 48 : critical,
+        warning: backup?.warningAfterHours,
+        critical: critical,
+      ),
       facts: [(_l10n.serverStatusLastBackup, _date(backup?.lastSuccessAt))],
     );
   }
+
+  Widget _jobs(List<ServerJob> jobs) => UtenCard(
+    child: MasterDataTableView<ServerJob>(
+      embedded: true,
+      columns: [
+        MasterColumnDef(
+          key: 'label',
+          // TODO(l10n): 补 arb
+          label: '任务',
+          width: 240,
+          value: (job) => job.label,
+        ),
+        MasterColumnDef(
+          key: 'status',
+          // TODO(l10n): 补 arb
+          label: '状态',
+          width: 120,
+          value: (job) => _statusLabel(_effective(job.status)),
+          cellBuilder: (context, job) =>
+              _StatusBadge(status: _effective(job.status), small: true),
+        ),
+        MasterColumnDef(
+          key: 'lastStartAt',
+          // TODO(l10n): 补 arb
+          label: '上次开始',
+          width: 170,
+          value: (job) => _date(job.lastStartAt),
+        ),
+        MasterColumnDef(
+          key: 'lastEndAt',
+          // TODO(l10n): 补 arb
+          label: '上次结束',
+          width: 170,
+          value: (job) => _date(job.lastEndAt),
+        ),
+        MasterColumnDef(
+          key: 'lastErrorType',
+          // TODO(l10n): 补 arb
+          label: '上次错误',
+          width: 170,
+          value: (job) => job.lastErrorType ?? '—',
+        ),
+        MasterColumnDef(
+          key: 'detail',
+          // TODO(l10n): 补 arb
+          label: '说明',
+          width: 320,
+          value: (job) => job.detail,
+        ),
+      ],
+      items: jobs,
+      facets: const {},
+      nullCounts: const {},
+      filters: const {},
+      onFilterChanged: (_, _) {},
+      // 超过 2 个周期未执行由后端判定为 WARNING，这里按状态染底色。
+      rowColor: (job) {
+        final status = _effective(job.status);
+        return status == ServerHealthStatus.warning ||
+                status == ServerHealthStatus.critical
+            ? _statusColor(context, status).withValues(alpha: 0.08)
+            : null;
+      },
+      // TODO(l10n): 补 arb
+      emptyMessage: '本次启动后尚未记录到定时任务',
+    ),
+  );
 
   Widget _alerts() => UtenCard(
     child: Column(
@@ -579,6 +795,13 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
     return '${ChinaDateTime.formatDateTime(wallTime)}:${wallTime.second.toString().padLeft(2, '0')}';
   }
 
+  String _statusLabel(ServerHealthStatus status) => switch (status) {
+    ServerHealthStatus.normal => _l10n.serverStatusNormal,
+    ServerHealthStatus.warning => _l10n.serverStatusWarning,
+    ServerHealthStatus.critical => _l10n.serverStatusCritical,
+    ServerHealthStatus.unknown => _l10n.serverStatusUnknown,
+  };
+
   String _number(double? value) => value == null
       ? '—'
       : value == value.truncateToDouble()
@@ -612,29 +835,33 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
         );
 }
 
+/// 圆环/数字 + 状态徽章 + 事实行 + 口径说明的统一指标卡。
 class _MetricCard extends StatelessWidget {
   const _MetricCard({
     super.key,
     required this.title,
     required this.icon,
     required this.status,
-    required this.value,
-    required this.unit,
     required this.detail,
     required this.tooltip,
-    this.percent,
+    this.ring,
+    this.headline,
     this.facts = const [],
   });
-  final String title, value, unit, detail, tooltip;
+  final String title, detail, tooltip;
   final IconData icon;
   final ServerHealthStatus status;
-  final double? percent;
+
+  /// 圆环；为空时只显示 [headline]。
+  final Widget? ring;
+
+  /// 圆环下方（或替代圆环）的大数字，例如数据库响应耗时。
+  final Widget? headline;
   final List<(String, String)> facts;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = _statusColor(context, status);
     return UtenCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -654,41 +881,14 @@ class _MetricCard extends StatelessWidget {
               UtenFieldHintIcon(info: tooltip),
             ],
           ),
-          const SizedBox(height: UtenSpacing.s8),
-          Wrap(
-            spacing: UtenSpacing.s8,
-            runSpacing: UtenSpacing.s4,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text(
-                value,
-                style: theme.textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: color,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-              if (unit.isNotEmpty)
-                Text(
-                  unit,
-                  style: theme.textTheme.bodyMedium?.copyWith(color: color),
-                ),
-            ],
-          ),
           const SizedBox(height: UtenSpacing.s12),
-          _StatusBadge(status: status),
-          if (percent != null) ...[
-            const SizedBox(height: UtenSpacing.s16),
-            ExcludeSemantics(
-              child: LinearProgressIndicator(
-                value: (percent! / 100).clamp(0, 1),
-                minHeight: 6,
-                borderRadius: BorderRadius.circular(UtenRadius.pill),
-                color: color,
-                backgroundColor: color.withValues(alpha: 0.12),
-              ),
-            ),
+          if (ring != null) Align(child: ring),
+          if (headline != null) ...[
+            if (ring != null) const SizedBox(height: UtenSpacing.s8),
+            Align(child: headline),
           ],
+          const SizedBox(height: UtenSpacing.s12),
+          Align(child: _StatusBadge(status: status)),
           if (facts.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s16),
             for (final fact in facts)
@@ -728,9 +928,52 @@ class _MetricCard extends StatelessWidget {
   }
 }
 
+/// 非百分比指标的大数字（响应耗时、附件容量等）。
+class _BigNumber extends StatelessWidget {
+  const _BigNumber({
+    required this.value,
+    required this.color,
+    this.unit = '',
+    this.text,
+  });
+  final double? value;
+  final Color color;
+  final String unit;
+
+  /// 已格式化的文本（例如字节），给定后不做数字滚动。
+  final String? text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final style = theme.textTheme.headlineMedium?.copyWith(
+      fontWeight: FontWeight.w700,
+      color: color,
+    );
+    return Wrap(
+      spacing: UtenSpacing.s8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        if (text != null)
+          Text(
+            text!,
+            style: style?.copyWith(
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          )
+        else
+          UtenAnimatedNumber(value: value, style: style),
+        if (unit.isNotEmpty)
+          Text(unit, style: theme.textTheme.bodyMedium?.copyWith(color: color)),
+      ],
+    );
+  }
+}
+
 class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({super.key, required this.status});
+  const _StatusBadge({super.key, required this.status, this.small = false});
   final ServerHealthStatus status;
+  final bool small;
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -742,6 +985,7 @@ class _StatusBadge extends StatelessWidget {
         ServerHealthStatus.unknown => l10n.serverStatusUnknown,
       },
       icon: _statusIcon(status),
+      size: small ? UtenStatusBadgeSize.small : UtenStatusBadgeSize.medium,
       type: switch (status) {
         ServerHealthStatus.normal => UtenStatusBadgeType.success,
         ServerHealthStatus.warning => UtenStatusBadgeType.warning,
@@ -757,6 +1001,13 @@ IconData _statusIcon(ServerHealthStatus status) => switch (status) {
   ServerHealthStatus.warning => Icons.warning_amber_rounded,
   ServerHealthStatus.critical => Icons.error_outline_rounded,
   ServerHealthStatus.unknown => Icons.help_outline_rounded,
+};
+
+UtenGaugeStatus _gauge(ServerHealthStatus status) => switch (status) {
+  ServerHealthStatus.normal => UtenGaugeStatus.normal,
+  ServerHealthStatus.warning => UtenGaugeStatus.warning,
+  ServerHealthStatus.critical => UtenGaugeStatus.critical,
+  ServerHealthStatus.unknown => UtenGaugeStatus.unknown,
 };
 
 Color _statusColor(BuildContext context, ServerHealthStatus status) {

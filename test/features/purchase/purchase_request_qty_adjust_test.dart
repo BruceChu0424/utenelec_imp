@@ -32,7 +32,9 @@ void main() {
       find.byKey(const ValueKey('purchase-request-qty-item-1')),
       '12.5',
     );
-    await tester.pump();
+    // 折叠头+表内滚（UtenCollapsingHeaderScrollView）下，输入聚焦会触发外层
+    // ensureVisible 滚动动画；须等动画结束再点按钮（动画中帧的命中几何与绘制不同步）。
+    await tester.pumpAndSettle();
     expect(find.text('1 行待保存'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('purchase-request-qty-save')));

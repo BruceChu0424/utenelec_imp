@@ -59,6 +59,16 @@ class AttachmentService {
     return rows.map(Attachment.fromJson).toList();
   }
 
+  /// 上传完成后设置/清除文件分类（`PUT /attachments/{id}/category`）。
+  /// [category] 传 null = 清除；后端与删除同一条对象授权路径，单据锁定后会拒绝。
+  Future<Attachment> setCategory(String id, String? category) async {
+    final r = await _api.put(
+      '$_base/$id/category',
+      body: {'category': category},
+    );
+    return Attachment.fromJson(r);
+  }
+
   Future<void> delete(String id) => _api.delete('$_base/$id');
 
   /// Reads only the employee's selected avatar through its dedicated gate.
@@ -115,6 +125,11 @@ class AttachmentService {
     }
     return _api.getBytes(downloadUrl);
   }
+
+  /// Office 文档服务端转 PDF 后的字节（`GET /attachments/{id}/preview`）。
+  /// 服务器未装转换组件或转换失败时后端返回业务错误，由调用方回落为下载。
+  Future<Uint8List> previewBytes(Attachment attachment) =>
+      _api.getBytes('$_base/${attachment.id}/preview');
 
   Future<PresignResult> presign({
     required String ownerType,

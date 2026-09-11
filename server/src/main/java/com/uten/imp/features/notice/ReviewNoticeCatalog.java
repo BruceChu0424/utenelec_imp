@@ -47,7 +47,9 @@ public final class ReviewNoticeCatalog {
                     "SALES_ORDER_APPROVED",
                     new Entry("SALES_ORDER", null)),
             // 生产计划下达、待料转齐套和仓库实发共用同一执行段任务。
-            // 无排他认领：同一车间可协作办理；首次报工后按聚合办结。
+            // 无排他认领：同一车间可协作办理。办结点（2026-09-10 修正）：
+            // 车间开工（START）即按段办结；完工入库（段 COMPLETED）兜底办结；
+            // 取消/红冲、清空车间、换车间重投时也按段办结。报工本身不办结。
             Map.entry(
                     "PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED",
                     new Entry("PRODUCTION_EXECUTION_SEGMENT", null)),
@@ -86,7 +88,45 @@ public final class ReviewNoticeCatalog {
             // 财务批准后改量 → 重回财务复核队列（case 级；复核通过/驳回时撤卡）
             Map.entry(
                     "PROCUREMENT_FINANCE_CHANGE_SUBMITTED",
-                    new Entry("PROCUREMENT_APPROVAL_CASE", "PROCUREMENT_FINANCE_APPROVE")));
+                    new Entry("PROCUREMENT_APPROVAL_CASE", "PROCUREMENT_FINANCE_APPROVE")),
+            // ===== 2026-09-09 人事域弹卡接入（HrNoticeService；接收人=职能权限池，
+            // 不限部门——ADR-063 明示例外）=====
+            // 员工提交信息变更 → HR 审核（批次级；批准/驳回/员工撤销时撤卡）
+            Map.entry(
+                    "PROFILE_CHANGE_SUBMITTED",
+                    new Entry("PROFILE_CHANGE", null)),
+            // 访客申请 → HR 审批（申请级；终态时撤卡）
+            Map.entry(
+                    "VISITOR_APPLY_SUBMITTED",
+                    new Entry("VISITOR_APPLICATION", null)),
+            // HR 转接待人 → 被访人确认接待。独立聚合（2026-09-10）：接待人确认后申请
+            // 回到 HR 批准，HR 卡须继续有效，故不能与 VISITOR_APPLICATION 同 kind；
+            // 接待人确认/拒绝、HR 批准/驳回均撤本卡。
+            Map.entry(
+                    "VISITOR_HOST_CONFIRM_REQUIRED",
+                    new Entry("VISITOR_HOST_CONFIRM", null)),
+            // 报销提交 → 审批人（单级；终态/撤回时撤卡）。claim 与
+            // ExpenseClaimService 的 EXPENSE_APPROVE/targetKey=claimId 对齐，
+            // 弹窗显示「XX 正在审核」。
+            Map.entry(
+                    "EXPENSE_CLAIM_SUBMITTED",
+                    new Entry("EXPENSE_CLAIM", "EXPENSE_APPROVE")),
+            // 报销审批通过 → 打款人接棒（单级；打款/撤回时撤卡）
+            Map.entry(
+                    "EXPENSE_CLAIM_PENDING_PAYMENT",
+                    new Entry("EXPENSE_CLAIM", null)),
+            // 工资批次提交 → 审核人（批次级；审毕时撤卡）
+            Map.entry(
+                    "PAYROLL_BATCH_SUBMITTED",
+                    new Entry("PAYROLL_BATCH", null)),
+            // 工资批次审核通过 → 发布人接棒（批次级；发布时撤卡；2026-09-10）
+            Map.entry(
+                    "PAYROLL_BATCH_PENDING_PUBLISH",
+                    new Entry("PAYROLL_BATCH", null)),
+            // 建议箱提交 → 回复人（建议级；回复推进到 resolved/rejected 时撤卡；2026-09-10）
+            Map.entry(
+                    "SUGGESTION_SUBMITTED",
+                    new Entry("SUGGESTION", null)));
 
     private ReviewNoticeCatalog() {
     }

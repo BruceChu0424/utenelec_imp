@@ -347,6 +347,7 @@ abstract class _MaterialAnalysisPlanActionsState
       UtenButton(
         key: const Key('material-analysis-create-routes'),
         size: UtenButtonSize.large,
+        type: UtenButtonType.danger,
         icon: Icons.alt_route_rounded,
         isLoading: _savingRoutes,
         onPressed: _busy || _loadingRouteMemory || _selectedRouteCount == 0

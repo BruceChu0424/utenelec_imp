@@ -21,6 +21,7 @@ class WarehouseDrawTask {
     required this.actionDocId,
     required this.actionDocType,
     this.actionDocNo = '',
+    this.actionDocStatus,
     this.goodsCount = 0,
     this.openLineCount = 0,
   });
@@ -41,11 +42,21 @@ class WarehouseDrawTask {
   final String? actionDocId;
   final String? actionDocType;
   final String actionDocNo;
+
+  /// 领料单状态（服务端投影 action_doc_status：'0' 草稿 / '1' 已审 / '-1' 红冲）。
+  final String? actionDocStatus;
   final int goodsCount;
   final int openLineCount;
 
   /// 归组行（一张领料单多行物料）：货品身份列改显示规模摘要。
   bool get isDocumentGrouped => goodsCount > 1 || openLineCount > 1;
+
+  /// 草稿领料单：批量出库时走「出库即审核」，需要同时具备审核权限。
+  bool get isDraftDoc => actionDocStatus?.trim() == '0';
+
+  /// 本行可批量出库：挂有可见的 DRAW 领料单且尚未领完。
+  bool get canBatchIssue =>
+      drawDocPath != null && taskStatus.toUpperCase() != 'DONE';
 
   /// 领料单深链：服务端投影 actionDocCanView=true 时才有（对象范围裁剪）。
   String? get drawDocPath {
@@ -116,8 +127,44 @@ class WarehouseDrawTask {
       actionDocId: json['actionDocId'] as String?,
       actionDocType: json['actionDocType'] as String?,
       actionDocNo: (json['actionDocNo'] ?? '') as String,
+      actionDocStatus: json['actionDocStatus']?.toString(),
       goodsCount: (json['goodsCount'] as num?)?.toInt() ?? 0,
       openLineCount: (json['openLineCount'] as num?)?.toInt() ?? 0,
     );
   }
+}
+
+/// 批量出库结果（POST /stock/docs/issue-batch，对应后端 StockDocIssueBatchResponse）。
+class WarehouseDrawBatchIssueResult {
+  const WarehouseDrawBatchIssueResult({
+    required this.issuedCount,
+    required this.skippedCount,
+    required this.replayedCount,
+    required this.replayed,
+    required this.issuedDocNos,
+  });
+
+  /// 本次新出库张数。
+  final int issuedCount;
+
+  /// 提交前已出完、不属于本批幂等键的单（自动跳过）。
+  final int skippedCount;
+
+  /// 已在本批（同操作人同幂等键）此前完成、按子幂等键识别为重放的单。
+  final int replayedCount;
+
+  /// 本批此前已全部完成：没有新增出库且至少一张按本批子键重放。
+  final bool replayed;
+  final List<String> issuedDocNos;
+
+  factory WarehouseDrawBatchIssueResult.fromJson(Map<String, dynamic> json) =>
+      WarehouseDrawBatchIssueResult(
+        issuedCount: (json['issuedCount'] as num?)?.toInt() ?? 0,
+        skippedCount: (json['skippedCount'] as num?)?.toInt() ?? 0,
+        replayedCount: (json['replayedCount'] as num?)?.toInt() ?? 0,
+        replayed: json['replayed'] == true,
+        issuedDocNos: (json['issuedDocNos'] as List<dynamic>? ?? const [])
+            .map((e) => e.toString())
+            .toList(),
+      );
 }

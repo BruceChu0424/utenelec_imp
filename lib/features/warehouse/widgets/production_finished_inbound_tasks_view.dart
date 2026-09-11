@@ -325,6 +325,7 @@ class _ProductionFinishedInboundTasksViewState
         child: UtenButton(
           key: const Key('production-finished-inbound-batch-register'),
           size: UtenButtonSize.large,
+          type: UtenButtonType.danger,
           icon: Icons.edit_location_alt_outlined,
           onPressed: _batchConfirming || registerCount == 0
               ? null
@@ -344,6 +345,7 @@ class _ProductionFinishedInboundTasksViewState
         child: UtenButton(
           key: const Key('production-finished-inbound-batch-confirm'),
           size: UtenButtonSize.large,
+          type: UtenButtonType.danger,
           icon: Icons.inventory_rounded,
           isLoading: _batchConfirming,
           onPressed: _batchConfirming || count == 0

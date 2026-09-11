@@ -366,6 +366,7 @@ class SalesOrderFinanceReviewLine {
     this.goodsCode,
     this.goodsName,
     this.colorName,
+    this.unitId,
     this.unitName,
     this.clientModel,
     this.qty,
@@ -381,6 +382,9 @@ class SalesOrderFinanceReviewLine {
   final String? goodsCode;
   final String? goodsName;
   final String? colorName;
+
+  /// 单位主键：「合计数量」按它分组，不同单位的数量绝不相加。
+  final String? unitId;
   final String? unitName;
   final String? clientModel;
   final String? qty;
@@ -397,6 +401,7 @@ class SalesOrderFinanceReviewLine {
       goodsCode: _string(json['goodsCode']),
       goodsName: _string(json['goodsName']),
       colorName: _string(json['colorName']),
+      unitId: _string(json['unitId']),
       unitName: _string(json['unitName']),
       clientModel: _string(json['clientModel']),
       qty: _string(json['qty']),

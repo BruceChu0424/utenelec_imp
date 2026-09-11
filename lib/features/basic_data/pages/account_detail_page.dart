@@ -797,11 +797,20 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 760;
+          // 2026-09-11 撤掉「查询」按钮：防抖到点即查，回车立刻查。
           final search = UtenSearchBar(
             key: ValueKey('account-flow-search-$_searchEpoch'),
+            dense: true,
             hint: '搜索单号、对方单位或摘要',
             initialValue: _flowKeyword,
-            onChanged: (value) => _flowKeyword = value,
+            onChanged: (value) {
+              _flowKeyword = value;
+              if (!_flowLoading) _loadFlow(1);
+            },
+            onSubmitted: (value) {
+              _flowKeyword = value;
+              if (!_flowLoading) _loadFlow(1);
+            },
           );
           final datesAndActions = Wrap(
             spacing: UtenSpacing.s8,
@@ -810,11 +819,6 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
             children: [
               _dateButton(label: '起', value: _from, start: true),
               _dateButton(label: '止', value: _to, start: false),
-              UtenButton(
-                icon: Icons.search_rounded,
-                onPressed: _flowLoading ? null : () => _loadFlow(1),
-                child: const Text('查询'),
-              ),
               UtenButton(
                 type: UtenButtonType.secondary,
                 icon: Icons.filter_alt_off_outlined,
@@ -898,6 +902,8 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
                     _to = picked;
                   }
                 });
+                // 撤掉「查询」按钮后，选完日期即刻重查（2026-09-11）。
+                _loadFlow(1);
               },
       ),
     );

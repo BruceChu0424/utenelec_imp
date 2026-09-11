@@ -4,6 +4,7 @@ import com.uten.imp.application.port.ProductionFqcRecoveryPort;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.saleschain.SalesOrderChainSql;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -163,12 +164,12 @@ public class ProductionFqcRecoveryService implements ProductionFqcRecoveryPort {
             if (linkUpdated != 1) {
                 throw conflict("销售分摊有效报工累计不足，FQC 失败未回退");
             }
-            em.createNativeQuery("""
-                            UPDATE sales_order_items order_item
-                            SET chain_status = 4
-                            WHERE order_item.id = :orderItemId
-                              AND COALESCE(order_item.chain_status, 0) = 5
-                            """)
+            // V545 统一派生：仍有有效报工量则留在 5，否则退回已排产；其余分支按数量收敛。
+            em.createNativeQuery("UPDATE sales_order_items order_item SET chain_status = "
+                            + SalesOrderChainSql.chainStatusCaseSql(
+                                    SalesOrderChainSql.ChainStatusInputs.of("order_item")
+                                            .producing(SalesOrderChainSql.hasReportedQtySql("order_item")))
+                            + " WHERE order_item.id = :orderItemId")
                     .setParameter("orderItemId", links.getFirst()[1])
                     .executeUpdate();
         }

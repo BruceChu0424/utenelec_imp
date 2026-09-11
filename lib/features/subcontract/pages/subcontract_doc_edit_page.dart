@@ -25,6 +25,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/buttons/uten_drafts_button.dart';
+import '../../../components/buttons/uten_edit_floating_actions.dart';
 import '../../../components/buttons/uten_import_button.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
@@ -41,6 +44,9 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../core/utils/currency_display.dart';
+import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/widgets/editable_grid_totals_bar.dart';
 import '../../../shared/providers/master_name_provider.dart' show GoodsOption;
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../basic_data/widgets/uten_supplier_picker.dart';
@@ -648,6 +654,17 @@ class _SubcontractDocEditPageState
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+  /// 新建态 AppBar 右上角「草稿(N)」入口。
+  ///
+  /// 管理卡 skipListOnCreate 直达新建页，从 hub 打不开列表；本按钮是用户回到自己
+  /// 草稿的唯一入口（点击进列表并预选草稿段）。编辑既有单据时不显示。
+  List<Widget>? get _draftsAction {
+    if (widget.id != null || !_cfg.skipListOnCreate) return null;
+    final kind = _cfg.draftKind;
+    if (kind == null) return null;
+    return [UtenDraftsButton(kind: kind, listLocation: _cfg.listLocation)];
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -657,17 +674,7 @@ class _SubcontractDocEditPageState
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(context, defaultPath: '/subcontract'),
         ),
-        actions: _cfg.skipListOnCreate
-            ? [
-                UtenButton(
-                  type: UtenButtonType.tonal,
-                  icon: Icons.history_rounded,
-                  onPressed: () =>
-                      context.push('/subcontract/${_cfg.type.pathSegment}'),
-                  child: const Text('查看历史'),
-                ),
-              ]
-            : null,
+        actions: _draftsAction,
       ),
       body: SafeArea(
         child: _loading
@@ -678,7 +685,13 @@ class _SubcontractDocEditPageState
                   thumbVisibility: true,
                   child: ListView(
                     controller: _scrollCtl,
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    // 底部多留一个悬浮动作组的高度，否则明细表最后一行被「取消/保存」压住。
+                    padding: const EdgeInsets.fromLTRB(
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      88,
+                    ),
                     children: [
                       if (_cfg.approvalBlockedReason != null) ...[
                         _materialIssueSafetyBanner(theme),
@@ -686,14 +699,9 @@ class _SubcontractDocEditPageState
                       ],
                       _headerCard(theme),
                       const SizedBox(height: UtenSpacing.s12),
+                      // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）：只留右对齐引入入口。
                       Row(
                         children: [
-                          Text(
-                            '明细 (${_grid.length})',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
                           const Spacer(),
                           if (_cfg.hasUpstreamLink)
                             UtenImportButton(
@@ -722,6 +730,7 @@ class _SubcontractDocEditPageState
                             columns: subcontractGridColumns(
                               _pickGoods,
                               _cfg,
+                              context: context,
                               unitEntries: ref
                                   .watch(mn.masterNameServiceProvider)
                                   .unitEntries,
@@ -730,6 +739,7 @@ class _SubcontractDocEditPageState
                             ),
                             createBlankRow: () => SubcontractGridRow(),
                             cloneRow: (r) => r.clone(),
+                            footer: _gridFooter(theme),
                           );
                         },
                       ),
@@ -738,63 +748,81 @@ class _SubcontractDocEditPageState
                 ),
               ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border(
-              top: BorderSide(color: theme.colorScheme.outlineVariant),
-            ),
-          ),
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Wrap(
-            alignment: WrapAlignment.center,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: UtenSpacing.s12,
-            runSpacing: UtenSpacing.s8,
-            children: [
-              if (_cfg.hasAmount)
-                ValueListenableBuilder<double>(
-                  valueListenable: _grid.totalListenable,
-                  builder: (_, total, _) => Text(
-                    '合计 ¥${total.toStringAsFixed(2)}',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                )
-              else if (_cfg.hasTotalWeight)
-                Text(
-                  '总重 ${_totalWeight.text.isEmpty ? "0.00" : _totalWeight.text}',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                )
-              else
-                ListenableBuilder(
-                  listenable: _grid,
-                  builder: (_, _) => Text(
-                    '${_grid.rows.where((r) => r.goods != null).length} 行',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              UtenButton(
-                type: UtenButtonType.secondary,
-                onPressed: () => context.pop(),
-                child: const Text('取消'),
-              ),
-              SubcontractSaveActionButton(
-                docType: widget.docType,
-                isLoading: _saving,
-                enabled: true,
-                // 订货已走专属编辑页（含提交财务）；本页各类型统一普通保存。
+      // 加载中不给保存入口（表单还没填回来，此时保存会把空值提交上去）。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: _loading
+          ? null
+          : UtenEditFloatingActions(
+              onCancel: () => popOrBackTo(context, defaultPath: '/subcontract'),
+              onSave: _save,
+              saving: _saving,
+              // 订货已走专属编辑页（含提交财务）；本页各类型统一普通保存文案。
+              saveLabel: subcontractSaveActionLabel(
+                widget.docType,
                 submitFinance: false,
-                onPressed: _save,
               ),
-            ],
-          ),
+            ),
+    );
+  }
+
+  /// 明细表尾（原来挂在页面底部固定操作条里，2026-09-11 底部条改右下角悬浮后
+  /// 合计跟着回到表尾）：有金额的单据报「数量+金额」，数量按单位分组绝不相加、
+  /// 金额币种取表头；损耗单只有总重，其余单据报行数。
+  Widget _gridFooter(ThemeData theme) {
+    if (_cfg.hasAmount) {
+      return EditableGridTotalsBar<SubcontractGridRow>(
+        key: const Key('subcontract-edit-totals'),
+        controller: _grid,
+        showDivider: false,
+        watchOf: (row) => [row.qty],
+        entriesBuilder: (rows) {
+          final names = ref.read(mn.masterNameServiceProvider);
+          return [
+            utenQuantityTotalEntry(
+              rows
+                  .where((row) => row.goods != null)
+                  .map(
+                    (row) => MeasuredAmount(
+                      value: double.tryParse(row.qty.text.trim()) ?? 0,
+                      unitId: row.unitId,
+                      unitName: names.unitEntries[row.unitId],
+                    ),
+                  ),
+            ),
+            UtenTotalEntry(
+              utenAmountTotalLabel(
+                _cfg.hasCurrency
+                    ? financeCurrencyDisplayLabel(
+                        name: names.currency(_currencyId),
+                      )
+                    : null,
+              ),
+              _grid.totalListenable.value.toStringAsFixed(2),
+              danger: true,
+            ),
+          ];
+        },
+      );
+    }
+    final style = theme.textTheme.titleMedium?.copyWith(
+      fontWeight: FontWeight.w700,
+    );
+    if (_cfg.hasTotalWeight) {
+      return Align(
+        alignment: Alignment.centerRight,
+        child: Text(
+          '总重 ${_totalWeight.text.isEmpty ? "0.00" : _totalWeight.text}',
+          style: style,
+        ),
+      );
+    }
+    return ListenableBuilder(
+      listenable: _grid,
+      builder: (_, _) => Align(
+        alignment: Alignment.centerRight,
+        child: Text(
+          '${_grid.rows.where((r) => r.goods != null).length} 行',
+          style: style,
         ),
       ),
     );
@@ -1133,6 +1161,19 @@ class _SubcontractDocEditPageState
   }
 }
 
+/// 保存动作文案（与采购订货单编辑页 purchaseSaveActionLabel 同款口径）：
+/// 底部固定操作条改右下角悬浮后，页面与 [SubcontractSaveActionButton] 共用这里，
+/// 避免两处文案各改各的。
+String subcontractSaveActionLabel(
+  SubcontractDocType docType, {
+  required bool submitFinance,
+}) => switch (docType) {
+  SubcontractDocType.order when submitFinance => '保存并提交财务审核',
+  SubcontractDocType.order => '保存订货单草稿',
+  SubcontractDocType.receipt || SubcontractDocType.returnDoc => '保存，下一步审核',
+  _ => '保存',
+};
+
 class SubcontractSaveActionButton extends StatelessWidget {
   const SubcontractSaveActionButton({
     super.key,
@@ -1157,14 +1198,7 @@ class SubcontractSaveActionButton extends StatelessWidget {
       icon: submitsFinance ? Icons.send_outlined : Icons.save_outlined,
       onPressed: enabled && !isLoading ? onPressed : null,
       child: Text(
-        // 文案与采购订货单编辑页（purchaseSaveActionLabel）同款。
-        switch (docType) {
-          SubcontractDocType.order when submitFinance => '保存并提交财务审核',
-          SubcontractDocType.order => '保存订货单草稿',
-          SubcontractDocType.receipt ||
-          SubcontractDocType.returnDoc => '保存，下一步审核',
-          _ => '保存',
-        },
+        subcontractSaveActionLabel(docType, submitFinance: submitFinance),
       ),
     );
   }

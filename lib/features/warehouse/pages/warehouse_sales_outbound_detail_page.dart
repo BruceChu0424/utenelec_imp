@@ -8,6 +8,7 @@ import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -210,48 +211,63 @@ class _WarehouseSalesOutboundDetailPageState
               )
             : detail == null
             ? UtenEmpty.error(message: '任务不存在或已不在仓库作业范围')
+            // 2026-09-11 折叠头+表内滚（对齐采购/货品资料页）：上滑先收头部
+            // （作业状态横幅/错误提示/事实卡），明细标题吸顶后表格内部继续滚。
             : UtenContentContainer.wide(
-                child: ListView(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: UtenSpacing.s16,
-                  ),
-                  children: [
-                    _OutboundStatusBanner(detail: detail),
-                    if (_error != null) ...[
-                      const SizedBox(height: UtenSpacing.s8),
-                      Semantics(
-                        liveRegion: true,
-                        child: Text(
-                          _error!,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
+                child: UtenCollapsingHeaderScrollView(
+                  collapsingHeader: Padding(
+                    padding: const EdgeInsets.only(top: UtenSpacing.s16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _OutboundStatusBanner(detail: detail),
+                        if (_error != null) ...[
+                          const SizedBox(height: UtenSpacing.s8),
+                          Semantics(
+                            liveRegion: true,
+                            child: Text(
+                              _error!,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                            ),
                           ),
+                        ],
+                        const SizedBox(height: UtenSpacing.s12),
+                        _factsCard(detail),
+                        const SizedBox(height: UtenSpacing.s16),
+                      ],
+                    ),
+                  ),
+                  // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
+                  body: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '拣货明细 (${detail.lines.length})',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                    ],
-                    const SizedBox(height: UtenSpacing.s12),
-                    _factsCard(detail),
-                    const SizedBox(height: UtenSpacing.s16),
-                    Text(
-                      '拣货明细 (${detail.lines.length})',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
+                      const SizedBox(height: UtenSpacing.s8),
+                      Expanded(
+                        child: MasterDataTableView<WarehouseSalesOutboundLine>(
+                          key: const Key(
+                            'warehouse-sales-outbound-detail-table',
+                          ),
+                          primary: true,
+                          columns: _lineColumns(detail.lines),
+                          items: detail.lines,
+                          facets: const {},
+                          nullCounts: const {},
+                          filters: const {},
+                          onFilterChanged: (_, _) {},
+                          emptyMessage: '该任务暂无拣货明细',
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s8),
-                    MasterDataTableView<WarehouseSalesOutboundLine>(
-                      key: const Key('warehouse-sales-outbound-detail-table'),
-                      embedded: true,
-                      columns: _lineColumns(detail.lines),
-                      items: detail.lines,
-                      facets: const {},
-                      nullCounts: const {},
-                      filters: const {},
-                      onFilterChanged: (_, _) {},
-                      emptyMessage: '该任务暂无拣货明细',
-                    ),
-                    const SizedBox(height: UtenSpacing.s24),
-                  ],
+                      const SizedBox(height: UtenSpacing.s16),
+                    ],
+                  ),
                 ),
               ),
       ),

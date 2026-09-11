@@ -115,7 +115,11 @@ class _ProgressList extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    chainStatusLabel(l.chainStatus),
+                    chainStatusLabel(
+                      l.chainStatus,
+                      plannedQty: l.plannedQty,
+                      qty: l.qty,
+                    ),
                     style: theme.textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.w600,
                       color: chainColor,
@@ -131,6 +135,8 @@ class _ProgressList extends ConsumerWidget {
                 // 问题 #18：审核后销售端不再看"可发"（内部预留口径，容易和客户承诺量混淆），
                 // 改在最后展示"剩余"（订货 − 已发，还欠客户多少）。
                 _num(theme, '已排', l.plannedQty, highlight: true),
+                // V545：剩余未排量（服务端派生）——部分排产时销售一眼看到还差多少没排。
+                _num(theme, '未排', l.unplannedQty),
                 _num(theme, '已产', l.producedQty, highlight: true),
                 _num(theme, '已发', l.shippedQty),
                 _num(theme, '剩余', _remaining(l.qty, l.shippedQty)),

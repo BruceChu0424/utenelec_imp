@@ -190,13 +190,16 @@ void main() {
       await tester.tap(_action('出库'));
       await tester.pumpAndSettle();
       expect(find.text('领料仓库：主仓库 - 五金仓库'), findsOneWidget);
+      // 出库弹窗现在含备注框（2026-09-09）：数量输入是弹窗里的第一个输入框。
       expect(
         tester
             .widget<TextField>(
-              find.descendant(
-                of: find.byType(AlertDialog),
-                matching: find.byType(TextField),
-              ),
+              find
+                  .descendant(
+                    of: find.byType(AlertDialog),
+                    matching: find.byType(TextField),
+                  )
+                  .first,
             )
             .controller
             ?.text,

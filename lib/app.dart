@@ -21,6 +21,7 @@ import 'shared/auth/permissions.dart';
 import 'shared/providers/font_scale_provider.dart';
 import 'shared/providers/locale_provider.dart';
 import 'shared/providers/session_provider.dart';
+import 'shared/providers/session_rehydrate_gate.dart';
 import 'shared/providers/theme_provider.dart';
 
 String _notificationSessionKey(SessionState session) =>
@@ -103,6 +104,9 @@ class UtenApp extends ConsumerWidget {
             children: [
               // 通知目标路由桥（不渲染）：导航到有通知指向的路由时自动已读。
               const NoticeRouteReadBridge(),
+              // 登录会话重建门（不渲染）：重新登录时立即重拉全局角标，
+              // 不再等 60s 轮询/手动刷新（清空业务数据后的重进即新数据）。
+              const SessionRehydrateGate(),
               // V459 登录检查门（不渲染）：登录后拉待审，有则弹居中审核弹窗。
               ReviewPendingLoginGate(
                 enabled: noticeArrivalEnabled,

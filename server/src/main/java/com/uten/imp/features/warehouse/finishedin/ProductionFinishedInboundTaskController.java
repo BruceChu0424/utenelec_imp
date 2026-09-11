@@ -2,6 +2,7 @@ package com.uten.imp.features.warehouse.finishedin;
 
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationReversalRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchArrivalRegistrationRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchArrivalRegistrationResult;
@@ -73,14 +74,9 @@ public class ProductionFinishedInboundTaskController {
         return arrivalRegistrations.batchRegister(request);
     }
 
-    @PostMapping("/arrival-registrations/batch/remember-places")
-    @PreAuthorize("hasAuthority('stock_doc:view')"
-            + " and hasAuthority('stock_doc:approve')")
-    public BatchRememberPlacesResult rememberPlacesBatch(
-            @RequestBody List<UUID> reportIds) {
-        return arrivalRegistrations.rememberPlacesBatch(reportIds);
-    }
-
+    // 2026-09-11 死代码清扫：POST /arrival-registrations/batch/remember-places
+    // （按报工 UUID 记忆）已随批量登记改走 registration UUID 而无任何调用方，
+    // 且并发多批次下只能「猜最新批次」，一并删除避免留错误入口。
     @PostMapping("/arrival-registrations/batch/remember-registration-batches")
     @PreAuthorize("hasAuthority('stock_doc:view')"
             + " and hasAuthority('stock_doc:approve')")
@@ -94,6 +90,16 @@ public class ProductionFinishedInboundTaskController {
     @PreAuthorize("hasAuthority('stock_doc:view')")
     public LastWarehouseView lastArrivalWarehouse() {
         return arrivalRegistrations.lastWarehouse();
+    }
+
+    /** V548 登记撤回（仅品质未处理）：与登记同权限 + 仓储对象范围；registrationId 是登记批次 UUID。 */
+    @PostMapping("/arrival-registrations/{registrationId}/reverse")
+    @PreAuthorize("hasAuthority('stock_doc:view')"
+            + " and hasAuthority('stock_doc:approve')")
+    public ArrivalRegistrationView reverseArrivalRegistration(
+            @PathVariable UUID registrationId,
+            @Valid @RequestBody ArrivalRegistrationReversalRequest request) {
+        return arrivalRegistrations.reverse(registrationId, request);
     }
 
     @GetMapping("/arrival-registrations/{reportId}")

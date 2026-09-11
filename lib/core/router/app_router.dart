@@ -736,20 +736,27 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.purchaseOrderList,
             name: 'purchase-order-list',
-            builder: (_, _) =>
-                const PurchaseDocListPage(docType: PurchaseDocType.order),
+            // ?status=draft：新建页「草稿(N)」按钮深链，直接落在草稿段。
+            builder: (_, s) => PurchaseDocListPage(
+              docType: PurchaseDocType.order,
+              initialStatus: s.uri.queryParameters['status'],
+            ),
           ),
           GoRoute(
             path: RouteName.purchaseReceiptList,
             name: 'purchase-receipt-list',
-            builder: (_, _) =>
-                const PurchaseDocListPage(docType: PurchaseDocType.receipt),
+            builder: (_, s) => PurchaseDocListPage(
+              docType: PurchaseDocType.receipt,
+              initialStatus: s.uri.queryParameters['status'],
+            ),
           ),
           GoRoute(
             path: RouteName.purchaseReturnList,
             name: 'purchase-return-list',
-            builder: (_, _) =>
-                const PurchaseDocListPage(docType: PurchaseDocType.returnDoc),
+            builder: (_, s) => PurchaseDocListPage(
+              docType: PurchaseDocType.returnDoc,
+              initialStatus: s.uri.queryParameters['status'],
+            ),
           ),
           // 采购报表（9 张，参数化）：必须在 /purchase/:doc/:id 之前，literal "report" 段优先。
           GoRoute(
@@ -1122,8 +1129,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/warehouse/:code',
             name: 'stock-doc-list',
             redirect: _rejectUnknownStockDoc,
+            // ?status=draft：新建页「草稿(N)」按钮深链，直接落在草稿段。
             builder: (_, s) => StockDocListPage(
               docType: StockDocType.byCode(s.pathParameters['code']!),
+              initialStatus: s.uri.queryParameters['status'],
             ),
           ),
 
@@ -1206,8 +1215,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/sales/:seg',
             name: 'sales-doc-list',
             redirect: _rejectUnknownSalesDoc,
+            // ?status=draft：新建页「草稿(N)」按钮深链，直接落在草稿段。
             builder: (_, s) => SalesDocListPage(
               docType: SalesDocType.byPath(s.pathParameters['seg']!),
+              initialStatus: s.uri.queryParameters['status'],
             ),
           ),
 
@@ -1289,8 +1300,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/subcontract/:seg',
             name: 'subcontract-doc-list',
             redirect: _rejectUnknownSubcontractDoc,
+            // ?status=draft：新建页「草稿(N)」按钮深链，直接落在草稿段。
             builder: (_, s) => SubcontractPageFactory.list(
               SubcontractDocType.byPath(s.pathParameters['seg']!),
+              initialStatus: s.uri.queryParameters['status'],
             ),
           ),
 
@@ -1459,8 +1472,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/finance/:seg',
             name: 'finance-doc-list',
             redirect: _rejectUnknownFinanceDoc,
+            // ?status=draft：新建页「草稿(N)」按钮深链，直接落在草稿段。
             builder: (_, s) => FinanceDocListPage(
               docType: FinanceDocType.byPath(s.pathParameters['seg']!),
+              initialStatus: s.uri.queryParameters['status'],
             ),
           ),
 

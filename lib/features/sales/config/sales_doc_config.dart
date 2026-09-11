@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 
 import '../../../shared/auth/document_permission_set.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
 import '../models/sales_doc.dart';
 
 /// 销售权限点常量（与后端 V51__sales_documents.sql 的 seed 对齐）。
@@ -123,6 +124,18 @@ class SalesDocConfig {
   /// 列表刷新信号 key：列表页与其详情/编辑页共享，详情/编辑页操作成功后
   /// bump 此 key，列表页（即便被遮在栈下）收到即重拉，返回不再看到老数据。
   String get refreshKey => 'sales:${type.name}';
+
+  /// 草稿计数类型（新建页「草稿(N)」按钮 / hub 卡徽章）。
+  ///
+  /// 历史其它出货与客户零星发货落 `sales_other_shipments`，不在跨模块草稿计数
+  /// 契约的 14 类里，故返回 null（不显示草稿入口）。
+  DraftDocKind? get draftKind => switch (type) {
+    SalesDocType.order => DraftDocKind.salesOrder,
+    SalesDocType.shipment => DraftDocKind.salesShipment,
+    SalesDocType.returnDoc => DraftDocKind.salesReturn,
+    SalesDocType.quote => DraftDocKind.salesQuote,
+    SalesDocType.otherShipment || SalesDocType.customerShipment => null,
+  };
 
   static const quote = SalesDocConfig(
     type: SalesDocType.quote,

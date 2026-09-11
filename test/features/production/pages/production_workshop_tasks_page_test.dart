@@ -7,6 +7,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
@@ -36,6 +37,9 @@ void main() {
             currentPermissionsProvider.overrideWithValue(const {
               Perm.productionExecutionView,
               Perm.productionExecutionStart,
+              // 计划详情入口（查看物料进度/查看生产计划）2026-09-10 起按
+              // production_plan:view 门控；无码用例见下方专项测试。
+              Perm.productionPlanView,
             }),
             productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
               _repository(withWaitingRow: true),
@@ -206,6 +210,7 @@ void main() {
               Perm.productionExecutionView,
               Perm.productionDailyReportView,
               Perm.productionDailyReportCreate,
+              Perm.productionPlanView,
             }),
             productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
               _repository(),
@@ -348,6 +353,129 @@ void main() {
     await tester.pump();
     expect(find.text('新筛选结果'), findsOneWidget);
     expect(find.text('迟到旧结果'), findsNothing);
+  });
+
+  testWidgets(
+    'without production_plan:view the plan entry is hidden and double-click warns',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final router = _router();
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            isSuperAdminProvider.overrideWithValue(false),
+            // V541/V543 车间默认包：有车间任务 + 报工三码，没有 production_plan:view。
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.productionExecutionView,
+              Perm.productionExecutionStart,
+              Perm.productionDailyReportView,
+              Perm.productionDailyReportCreate,
+            }),
+            productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+              _repository(withWaitingRow: true),
+            ),
+            productionPlanRepositoryProvider.overrideWithValue(
+              _FakePlanRepository(),
+            ),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('zh'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('生产中'));
+      await tester.pumpAndSettle();
+
+      // 行菜单不再提供计划详情入口（菜单为空时不弹）。
+      await _rightClick(tester, find.text('产品 A'));
+      expect(find.text('查看生产计划'), findsNothing);
+      expect(find.text('查看生产计划（可单独开工）'), findsNothing);
+
+      // 双击不落到 /access-denied：留在本页并给出明确提示。
+      await tester.tap(find.text('产品 A'));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('产品 A'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('计划 plan-'), findsNothing);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ProductionWorkshopTasksPage)),
+      );
+      expect(
+        container.read(appNotificationProvider).last.message,
+        contains('无生产计划查看权限'),
+      );
+
+      // 等待物料分类：未齐行仍能问「为什么不能开工」，但没有「查看物料进度」。
+      await tester.tap(find.text('等待物料'));
+      await tester.pumpAndSettle();
+      await _rightClick(tester, find.text('产品 C'));
+      expect(find.text('为什么不能开工'), findsOneWidget);
+      expect(find.text('查看物料进度'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('history segment loads only after the time gate is chosen', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final router = _router();
+    addTearDown(router.dispose);
+    final repository = _RecordingWorkshopRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.productionExecutionView,
+          }),
+          productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+            repository,
+          ),
+        ],
+        child: MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.calls, isEmpty);
+
+    // ADR-066 §1.3：点历史任务只渲染时间门控 + 占位，不发请求。
+    await tester.tap(find.text('历史任务'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('workshop-history-time')), findsOneWidget);
+    expect(find.text('历史数据可能较多，请先在上方选择时间段或「全部」'), findsOneWidget);
+    expect(repository.calls, isEmpty);
+
+    // 选「全部」→ 发一次 COMPLETED 请求，不带日期。
+    await tester.tap(find.text('全部'));
+    await tester.pumpAndSettle();
+    expect(repository.calls, hasLength(1));
+    expect(repository.calls.single.status, 'COMPLETED');
+    expect(repository.calls.single.dateFrom, isNull);
+    expect(repository.calls.single.dateTo, isNull);
+    expect(find.text('已取消'), findsOneWidget);
+    expect(find.text('已红冲'), findsOneWidget);
+
+    // 切回活动分类：时间门控行消失，请求不带日期。
+    await tester.tap(find.text('生产中'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('workshop-history-time')), findsNothing);
+    expect(repository.calls.last.status, 'IN_PROGRESS');
+    expect(repository.calls.last.dateFrom, isNull);
+    expect(tester.takeException(), isNull);
   });
 }
 
@@ -729,9 +857,7 @@ class _FakePlanRepository extends ProductionPlanRepository {
 }
 
 Future<void> _selectRow(WidgetTester tester, String product) async {
-  final row = find
-      .ancestor(of: find.text(product), matching: find.byType(Row))
-      .first;
+  final row = _frozenRowOf(product);
   final checkbox = find
       .descendant(of: row, matching: find.byType(Checkbox))
       .first;
@@ -781,6 +907,8 @@ class _DelayedWorkshopRepository
     String keyword = '',
     String? status,
     String? workshopDepartmentId,
+    String? dateFrom,
+    String? dateTo,
   }) {
     calls++;
     return calls == 1 ? first.future : second.future;
@@ -789,4 +917,65 @@ class _DelayedWorkshopRepository
   @override
   Future<WorkshopTaskCountBreakdown> workshopTaskCount() async =>
       const WorkshopTaskCountBreakdown();
+}
+
+/// 记录每次列表请求的分类与时间门控参数；历史段返回一条已取消 + 一条已红冲。
+class _RecordingWorkshopRepository
+    extends ProductionExecutionWorkbenchRepository {
+  _RecordingWorkshopRepository()
+    : super(ApiClient(Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'))));
+
+  final List<({String? status, String? dateFrom, String? dateTo})> calls = [];
+
+  @override
+  Future<PagedResult<ProductionExecutionWorkbenchSegment>> workshopTasks({
+    int page = 1,
+    int size = 50,
+    String keyword = '',
+    String? status,
+    String? workshopDepartmentId,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    calls.add((status: status, dateFrom: dateFrom, dateTo: dateTo));
+    final items = status == 'COMPLETED'
+        ? [
+            ProductionExecutionWorkbenchSegment.fromJson(
+              _task('segment-x', '产品 X', 'CANCELLED', canReport: false),
+            ),
+            ProductionExecutionWorkbenchSegment.fromJson(
+              _task('segment-y', '产品 Y', 'REVERSED', canReport: false),
+            ),
+          ]
+        : [
+            ProductionExecutionWorkbenchSegment.fromJson(
+              _task('segment-a', '产品 A', 'IN_PROGRESS'),
+            ),
+          ];
+    return PagedResult(
+      items: items,
+      page: 1,
+      size: 50,
+      total: items.length,
+      totalPages: 1,
+    );
+  }
+
+  @override
+  Future<WorkshopTaskCountBreakdown> workshopTaskCount() async =>
+      const WorkshopTaskCountBreakdown();
+}
+
+/// 行首勾选格 2026-09-11 起被「冻结」成整行 Stack 的 Positioned 兄弟
+/// （横滚时钉在视口左缘，见 UtenFrozenLeadingColumn），不再是数据 Row 的后代。
+/// 定位整行时必须取冻结包裹层；没有选择列的表（无冻结层）回落到 Row。
+Finder _frozenRowOf(String text) {
+  final frozen = find.ancestor(
+    of: find.text(text).first,
+    matching: find.byType(UtenFrozenLeadingColumn),
+  );
+  if (frozen.evaluate().isNotEmpty) return frozen.first;
+  return find
+      .ancestor(of: find.text(text).first, matching: find.byType(Row))
+      .first;
 }

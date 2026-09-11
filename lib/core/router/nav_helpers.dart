@@ -4,13 +4,15 @@
 // 账户/收付款类别等从多个入口（基础资料 hub / 财税部 dashboard）进，
 // 写死回哪都不对。
 //
-// 方案：跳转时带 ?returnTo=<当前路径>；返回时读 returnTo，没有则用默认。
-// 配合工作台/ShellRoute 主 Tab 的 KeepAlive，context.go 回来源 Tab
-// 复用同一实例，滚动位置随之保留。
+// 方案：跳转时带 ?returnTo=<当前路径>；返回时先 pop（被 push 进来的页面回上一页），
+// 栈空才读 returnTo，没有则用默认。配合工作台/ShellRoute 主 Tab 的 KeepAlive，
+// context.go 回来源 Tab 复用同一实例，滚动位置随之保留。
 //
 // 用法：
 //   卡片入口：onTap: () => goFrom(context, item.location)
 //   页面返回：UtenBackButton(onPressed: () => backTo(context, defaultPath: RouteName.basicinfo))
+//   保存后：context.replace(详情)；删除/「返回列表」：backTo(context, defaultPath: 列表路径)，
+//   不要 context.go 硬编码列表（会抹掉栈下的来源页）。
 
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
@@ -26,22 +28,17 @@ void goFrom(BuildContext context, String path) {
   context.go(uri.replace(queryParameters: params).toString());
 }
 
-/// 来源感知返回：读 returnTo 跳回来源页；没有则跳 [defaultPath]。
+/// 全站唯一返回契约（2026-09-10 收敛，docs/05-架构/路由设计.md「返回键契约」）：
+/// 1. 能 pop 就 pop——被 push 进来的页面（任务中心→列表→详情、详情→关联页）
+///    返回到上一页，栈下页面保留筛选/页码/未保存状态；
+/// 2. 栈空（深链、hub 卡片 goFrom/context.go 直达）读 ?returnTo 回来源页；
+/// 3. 再没有则回 [defaultPath]（模块 hub / 工作台）。
 ///
-/// 主 Tab（dashboard 等）由 ShellRoute PageView KeepAlive 保活，
-/// context.go 回主 Tab 复用原实例，滚动位置保留。
+/// 此前 backTo 永远 context.go（整栈替换），约 70 个页面的返回键因此从三四层
+/// 深处直接跳回 hub/工作台——这是用户反馈「点返回直接回到最外面」的统一根因。
+/// 主 Tab（dashboard 等）由 ShellRoute PageView KeepAlive 保活，pop 回主 Tab
+/// 路径只是取消 Offstage；context.go 回主 Tab 也复用原实例，滚动位置保留。
 void backTo(BuildContext context, {required String defaultPath}) {
-  final returnTo = GoRouterState.of(context).uri.queryParameters['returnTo'];
-  context.go(returnTo ?? defaultPath);
-}
-
-/// 优先 pop 回上一页；栈空（深链 / context.go 直达）则来源感知回 [defaultPath]。
-///
-/// 用于「既可能 push 进（列表行点击→新建/详情），又可能 go 进（hub 卡片直达
-/// 新建）」的编辑/详情页：从列表 push 进来时 pop 回列表；从 hub go 直达时栈空，
-/// 读 returnTo（goFrom 写入的来源 hub）回模块 hub，没有则回 [defaultPath]。
-/// 比 backTo 多了 pop 分支，避免把 push 进来的页面也强行 go 跳走。
-void popOrBackTo(BuildContext context, {required String defaultPath}) {
   if (context.canPop()) {
     try {
       context.pop();
@@ -51,8 +48,14 @@ void popOrBackTo(BuildContext context, {required String defaultPath}) {
       // go_router 的 _findCurrentNavigator 会 null 崩；不抛，落到来源感知 go 兜底。
     }
   }
-  backTo(context, defaultPath: defaultPath);
+  final returnTo = GoRouterState.of(context).uri.queryParameters['returnTo'];
+  context.go(returnTo ?? defaultPath);
 }
+
+/// 与 [backTo] 同义（历史名称保留给既有 39 处调用方，语义已合并：pop 优先，
+/// 栈空读 returnTo，再无则 [defaultPath]）。新代码一律用 [backTo]。
+void popOrBackTo(BuildContext context, {required String defaultPath}) =>
+    backTo(context, defaultPath: defaultPath);
 
 /// 当前匹配路径；无 GoRouter 上下文（widget 测试直接 pump）时回退 [fallback]。
 ///

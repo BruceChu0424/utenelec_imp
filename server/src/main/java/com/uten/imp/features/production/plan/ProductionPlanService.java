@@ -23,6 +23,7 @@ import com.uten.imp.features.production.mrp.MrpRow;
 import com.uten.imp.features.production.mrp.MrpService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.features.production.mrp.ProductionPlanningDraftService;
+import com.uten.imp.common.saleschain.SalesOrderChainSql;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -72,7 +73,7 @@ public class ProductionPlanService {
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
 
-    /** 订单行链路状态（chain_status）：排产落点两态。 */
+    /** 订单行链路状态（chain_status）：排产落点两态（未排量归零时才落，见 SalesOrderChainSql）。 */
     private static final short CHAIN_WAIT_MATERIAL = 3;  // 待物料/待分配核验
     private static final short CHAIN_PLANNED = 4;        // 已排产
 
@@ -313,7 +314,8 @@ public class ProductionPlanService {
      * ① 合并排产（调度工作台）：links 已在创建时预建（一行可挂多订单行），审核只做校验+回写；
      * ② 手工计划单：明细行带 salesOrderItemId（1:1），审核时按 qty 建行。
      * 每笔分摊按未交付量扣已预留与未完工计划量做防超排硬校验；
-     * 行状态推进：未核验或真实短缺→3待物料 / 已分配且及时齐套→4已排产。
+     * 行状态推进（V545 剩余未排量优先）：分摊后仍有未排量→停在 1/2 待排产（部分排产）；
+     * 未排量归零才落 未核验或真实短缺→3待物料 / 已分配且及时齐套→4已排产。
      * @return 是否为已核验的真实及时缺口；未核验返回 false，避免误发采购通知
      */
     private boolean linkOrderItems(UUID planId) {
@@ -556,13 +558,17 @@ public class ProductionPlanService {
         if (orderItem == null) {
             throw new ApiException(ErrorCode.CONFLICT, "排产关联的销售订单行不存在");
         }
-        em.createNativeQuery("""
-                UPDATE sales_order_items
-                SET planned_qty = COALESCE(planned_qty,0) + :a,
-                    chain_status = CASE WHEN COALESCE(chain_status,0) IN (1,2) THEN :st
-                                   ELSE chain_status END
-                WHERE id = :id
-                """).setParameter("a", allocation.allocatedQty()).setParameter("st", chain)
+        // V545 统一派生：剩余未排量优先——本次分摊后仍有未排量的行停在 1/2（待排产），
+        // 只有未排量归零才按物料判定落 :st（3 待物料 / 4 已排产）。
+        em.createNativeQuery("UPDATE sales_order_items\n"
+                + "SET planned_qty = COALESCE(planned_qty,0) + :a,\n"
+                + "    chain_status = "
+                + SalesOrderChainSql.chainStatusCaseSql(
+                        SalesOrderChainSql.ChainStatusInputs.of("")
+                                .plannedDelta(" + :a")
+                                .plannedStatus(":st"))
+                + "\nWHERE id = :id")
+                .setParameter("a", allocation.allocatedQty()).setParameter("st", chain)
                 .setParameter("id", allocation.orderItemId()).executeUpdate();
     }
 
@@ -802,16 +808,14 @@ public class ProductionPlanService {
             linkRepo.save(link);
         }
         for (Map.Entry<UUID, BigDecimal> entry : releaseByOrderItem.entrySet()) {
-            int updated = em.createNativeQuery("""
-                            UPDATE sales_order_items
-                            SET planned_qty = COALESCE(planned_qty,0) - :a,
-                                chain_status = CASE WHEN COALESCE(chain_status,0) IN (3,4) THEN
-                                    CASE WHEN COALESCE(reserved_qty,0) >= COALESCE(qty,0) - COALESCE(shipped_qty,0)
-                                         + COALESCE(returned_qty,0) - COALESCE(flag_qty,0)
-                                         THEN 7 ELSE 2 END
-                                ELSE chain_status END
-                            WHERE id = :id
-                            """)
+            // V545 统一派生：回退后剩余未排量 > 0 即回待排产（1/2）；其余按数量收敛。
+            int updated = em.createNativeQuery("UPDATE sales_order_items\n"
+                            + "SET planned_qty = COALESCE(planned_qty,0) - :a,\n"
+                            + "    chain_status = "
+                            + SalesOrderChainSql.chainStatusCaseSql(
+                                    SalesOrderChainSql.ChainStatusInputs.of("")
+                                            .plannedDelta(" - :a"))
+                            + "\nWHERE id = :id")
                     .setParameter("a", entry.getValue())
                     .setParameter("id", entry.getKey())
                     .executeUpdate();

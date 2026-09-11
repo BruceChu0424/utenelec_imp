@@ -32,10 +32,15 @@ class ProductionExecutionWorkbenchSecurityContractTest {
     void replacementQueryNeverExposesManualDispatchOrStart() throws Exception {
         String service = source("ProductionExecutionWorkbenchService.java");
 
+        // 2026-09-10：READY_TO_REPORT 兼容参数与 breakdown.readyToReport 端到端删除
+        //（无客户端调用方，且与分段计数第三列口径互相矛盾）。
         assertThat(service)
-                .contains("READY_TO_REPORT")
+                .doesNotContain("READY_TO_REPORT")
+                .doesNotContain("readyToReport")
                 .contains("READY_TO_START")
-                .contains("task.reportable = TRUE")
+                .contains("('COMPLETED','CANCELLED','REVERSED')")
+                .contains("CAST(:dateFrom AS date) IS NULL")
+                .contains("CAST(:dateTo AS date) IS NULL")
                 .contains("FALSE,\n                       FALSE,")
                 .contains("production_daily_report:view")
                 .contains("production_daily_report:create")

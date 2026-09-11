@@ -123,7 +123,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get loginServerRecoveryFailed => '服务器选择恢复失败，请稍后重试或联系管理员';
 
   @override
-  String get loginFooter => '© 2026 优腾 · 综合管理平台';
+  String loginFooter(int year) {
+    return '© $year 优腾 · 综合管理平台';
+  }
 
   @override
   String get navDashboard => '工作台';
@@ -271,9 +273,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get profilePosition => '岗位';
-
-  @override
-  String get entrySubtitle => '请选择登录方式';
 
   @override
   String get entryStaff => '内部人员登录';

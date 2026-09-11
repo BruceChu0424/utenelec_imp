@@ -19,6 +19,7 @@ import com.uten.imp.features.org.employee.EmployeeOnboardingService;
 import com.uten.imp.features.org.employee.EmployeeQueryService;
 import com.uten.imp.features.org.employee.dto.EmployeeDetail;
 import com.uten.imp.features.visitor.VisitorApprovalController;
+import com.uten.imp.features.visitor.VisitorApprovalFacetQuery;
 import com.uten.imp.features.visitor.VisitorHostConfirmService;
 import com.uten.imp.features.visitor.VisitorHrApprovalService;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorDetail;
@@ -69,7 +70,8 @@ class SensitiveDetailViewAuditControllerTest {
         when(visitor.visitorName()).thenReturn("来访人员甲");
         when(visitors.getDetailForStaff(visitorId)).thenReturn(visitor);
         VisitorApprovalController visitorController = new VisitorApprovalController(
-                visitors, mock(VisitorHostConfirmService.class), audit);
+                visitors, mock(VisitorHostConfirmService.class), audit,
+                mock(VisitorApprovalFacetQuery.class));
         assertSame(visitor, visitorController.detail(visitorId));
         verify(audit).record(
                 "view_visitor_application_detail", "visitor_applications", visitorId,

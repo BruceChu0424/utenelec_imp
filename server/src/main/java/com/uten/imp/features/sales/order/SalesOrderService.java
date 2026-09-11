@@ -4,6 +4,8 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.saleschain.SalesChainStatus;
+import com.uten.imp.common.saleschain.SalesOrderChainSql;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
@@ -82,12 +84,7 @@ public class SalesOrderService {
     /** 并发认领目标类型（与 TaskClaimPolicy 登记的 SALES_ORDER_APPROVE 对齐）。 */
     private static final String TASK_TYPE_APPROVE = "SALES_ORDER_APPROVE";
 
-    /** 链路行状态（chain_status；本类只用审核/改量落点，其余由下游 Service 推进）。 */
-    private static final short CHAIN_PARTIAL_RESERVED = 1;  // 部分预留
-    private static final short CHAIN_PENDING_PLAN = 2;      // 待排产
-    private static final short CHAIN_PLANNED = 4;           // 已排产
-    private static final short CHAIN_SHIPPABLE = 7;         // 可发货
-    private static final short CHAIN_SHIPPED = 9;           // 已发货
+    /** 链路行状态（chain_status）：派生口径统一在 {@link SalesOrderChainSql}/{@link SalesChainStatus}；本类只直写取消态。 */
     private static final short CHAIN_CANCELED = -1;         // 已取消
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
@@ -151,6 +148,15 @@ public class SalesOrderService {
                 sub.select(i.get("orderId")).where(
                         cb.isFalse(i.get("deleted")),
                         i.get("chainStatus").in(f.chain()));
+                ps.add(root.get("id").in(sub));
+            }
+            // V545 数量派生大类（待生产/生产中）：与 stats() 同口径，存在任一命中行即返回。
+            if (f.chainGroup() != null && !f.chainGroup().isBlank()) {
+                jakarta.persistence.criteria.Subquery<UUID> sub = q.subquery(UUID.class);
+                Root<SalesOrderItem> i = sub.from(SalesOrderItem.class);
+                sub.select(i.get("orderId")).where(
+                        cb.isFalse(i.get("deleted")),
+                        chainGroupPredicate(cb, i, f.chainGroup()));
                 ps.add(root.get("id").in(sub));
             }
             if (shippableFirst) {
@@ -244,12 +250,13 @@ public class SalesOrderService {
     @PreAuthorize("hasAuthority('sales_order:view')")
     public com.uten.imp.features.sales.order.dto.OrderStats stats() {
         var ownerScope = accessPolicy.nativeReadScope("o.owner_employee_id", "salesOwners");
+        // V545：待生产/生产中按数量派生（SalesOrderChainSql），部分排产的单同时落两卡。
         String sql = """
                 SELECT
                   COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM sales_order_items i
-                      WHERE i.order_id = o.id AND i.is_deleted = false AND i.chain_status IN (2,3,4))),
+                      WHERE i.order_id = o.id AND i.is_deleted = false AND %s)),
                   COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM sales_order_items i
-                      WHERE i.order_id = o.id AND i.is_deleted = false AND i.chain_status IN (5,6))),
+                      WHERE i.order_id = o.id AND i.is_deleted = false AND %s)),
                   COUNT(*) FILTER (WHERE o.finance_confirmed = true
                       AND EXISTS (SELECT 1 FROM sales_order_items i
                       WHERE i.order_id = o.id AND i.is_deleted = false
@@ -258,7 +265,9 @@ public class SalesOrderService {
                         AND o.bill_date >= CAST(:monthStart AS date))
                 FROM sales_orders o
                 WHERE o.is_deleted = false AND o.status = 1
-                """ + " AND " + ownerScope.predicate();
+                """.formatted(SalesOrderChainSql.pendingPlanLinePredicate("i"),
+                        SalesOrderChainSql.inProductionLinePredicate("i"))
+                + " AND " + ownerScope.predicate();
         var q = em.createNativeQuery(sql);
         ownerScope.bind(q);
         q.setParameter("monthStart", BusinessTime.today().withDayOfMonth(1));
@@ -316,6 +325,7 @@ public class SalesOrderService {
             double shippedQty = pgNum(row, 7);
             double reservedQty = pgNum(row, 8);
             double plannedQty = pgNum(row, 9);
+            double unplannedQty = pgNum(row, 17);
             boolean financeConfirmed = Boolean.TRUE.equals(row[10]);
             boolean financeRejected = Boolean.TRUE.equals(row[11]);
             boolean stopped = Boolean.TRUE.equals(row[15]);
@@ -323,10 +333,11 @@ public class SalesOrderService {
             double pct = orderQty > 0 ? Math.min(1.0, producedQty / orderQty) : 0.0;
             return new OrderProgressRow(
                     pgStr(row, 0), pgStr(row, 1), pgStr(row, 2), pgStr(row, 3), pgStr(row, 4),
-                    orderQty, producedQty, shippedQty, reservedQty, plannedQty,
+                    orderQty, producedQty, shippedQty, reservedQty, plannedQty, unplannedQty,
                     pct, progressStageOf(
                             orderQty, producedQty, shippedQty,
-                            reservedQty, plannedQty, financeRejected, stopped, closed),
+                            reservedQty, plannedQty, unplannedQty,
+                            financeRejected, stopped, closed),
                     financeConfirmed,
                     financeRejected,
                     pgStr(row, 12),
@@ -373,6 +384,37 @@ public class SalesOrderService {
         return counts;
     }
 
+    /**
+     * 列表大类筛选的 Criteria 镜像（V545）：pending = 剩余未排量 > 0；production = 未完工计划量 > 0
+     * 或行已在 5/6。公式与 {@link SalesOrderChainSql#pendingPlanLinePredicate} /
+     * {@link SalesOrderChainSql#inProductionLinePredicate} 逐项对应（Criteria 无法内嵌原生片段），
+     * 由 FullChainEndToEndTest 用同一单据校验 list 与 stats 计数一致。
+     */
+    static Predicate chainGroupPredicate(CriteriaBuilder cb, Root<SalesOrderItem> i, String group) {
+        jakarta.persistence.criteria.Expression<BigDecimal> zero = cb.literal(BigDecimal.ZERO);
+        jakarta.persistence.criteria.Expression<BigDecimal> outstanding = cb.diff(
+                cb.sum(cb.diff(cb.coalesce(i.<BigDecimal>get("qty"), zero),
+                                cb.coalesce(i.<BigDecimal>get("shippedQty"), zero)),
+                        cb.coalesce(i.<BigDecimal>get("returnedQty"), zero)),
+                cb.coalesce(i.<BigDecimal>get("flagQty"), zero));
+        jakarta.persistence.criteria.Expression<BigDecimal> unfinished = cb.function(
+                "greatest", BigDecimal.class,
+                cb.diff(cb.coalesce(i.<BigDecimal>get("plannedQty"), zero),
+                        cb.coalesce(i.<BigDecimal>get("producedQty"), zero)),
+                zero);
+        Predicate activeChain = cb.between(i.<Short>get("chainStatus"), (short) 1, (short) 8);
+        return switch (group) {
+            case "pending" -> cb.and(activeChain, cb.gt(
+                    cb.diff(cb.diff(outstanding, cb.coalesce(i.<BigDecimal>get("reservedQty"), zero)),
+                            unfinished),
+                    zero));
+            case "production" -> cb.and(activeChain, cb.or(
+                    cb.gt(unfinished, zero),
+                    i.get("chainStatus").in((short) 5, (short) 6)));
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "chainGroup 只支持 pending/production");
+        };
+    }
+
     /** 订单进度按单聚合子查询（progress 列表/计数与阶段计数共用，避免口径漂移）。 */
     static String progressGroupedSql(NativeReadScope ownerScope) {
         String base = """
@@ -400,8 +442,9 @@ public class SalesOrderService {
                        o.finance_rejected_reason,
                        COALESCE(finance_reviewer.full_name, ''),
                        o.finance_rejected_at,
-                       o.is_stopped, o.is_closed
-                """ + base + "\n" + """
+                       o.is_stopped, o.is_closed,
+                       COALESCE(SUM(%s),0) AS unplanned_qty
+                """.formatted(SalesOrderChainSql.unplannedQtySql("i")) + base + "\n" + """
                 GROUP BY o.id, o.bill_no, o.bill_date, o.deliver_date, c.name,
                          o.finance_confirmed, o.finance_rejected,
                          o.finance_rejected_reason, finance_reviewer.full_name,
@@ -413,6 +456,8 @@ public class SalesOrderService {
      * 阶段派生 SQL（作用于聚合子查询别名 t）：口径必须与 {@link #progressStageOf} 保持一致。
      * CANCELED（整单取消/中止）与 CLOSED（已结案）是终态：不占活跃阶段段（待排产/生产中/
      * 可发货）与阶段计数徽章，只在历史记录（stage='' 全量口径）中可见。
+     * V545：剩余未排量（Σ行 {@link SalesOrderChainSql#unplannedQtySql}）> 0 即 PENDING——
+     * 部分排产（订 10 排 4）的单留在待排产，不因已排/已产 > 0 提前进生产中。
      */
     static String progressStageExpr() {
         return """
@@ -423,6 +468,7 @@ public class SalesOrderService {
                   WHEN t.order_qty <= 0 THEN 'PENDING'
                   WHEN t.shipped_qty >= t.order_qty - 0.000001 THEN 'SHIPPED'
                   WHEN t.reserved_qty > 0.000001 THEN 'SHIPPABLE'
+                  WHEN t.unplanned_qty > 0.000001 THEN 'PENDING'
                   WHEN t.produced_qty > 0 OR t.planned_qty > 0 THEN 'PRODUCING'
                   ELSE 'PENDING'
                 END
@@ -462,9 +508,10 @@ public class SalesOrderService {
             double producedQty,
             double shippedQty,
             double reservedQty,
-            double plannedQty) {
+            double plannedQty,
+            double unplannedQty) {
         return progressStageOf(
-                orderQty, producedQty, shippedQty, reservedQty, plannedQty, false);
+                orderQty, producedQty, shippedQty, reservedQty, plannedQty, unplannedQty, false);
     }
 
     static String progressStageOf(
@@ -473,18 +520,21 @@ public class SalesOrderService {
             double shippedQty,
             double reservedQty,
             double plannedQty,
+            double unplannedQty,
             boolean financeRejected) {
         return progressStageOf(
-                orderQty, producedQty, shippedQty, reservedQty, plannedQty,
+                orderQty, producedQty, shippedQty, reservedQty, plannedQty, unplannedQty,
                 financeRejected, false, false);
     }
 
+    /** Java 镜像：unplannedQty = Σ行剩余未排量（与 {@link #progressStageExpr} 同序）。 */
     static String progressStageOf(
             double orderQty,
             double producedQty,
             double shippedQty,
             double reservedQty,
             double plannedQty,
+            double unplannedQty,
             boolean financeRejected,
             boolean stopped,
             boolean closed) {
@@ -494,6 +544,7 @@ public class SalesOrderService {
         if (orderQty <= 0) return "PENDING";
         if (shippedQty + 1e-6 >= orderQty) return "SHIPPED";
         if (reservedQty > 1e-6) return "SHIPPABLE";
+        if (unplannedQty > 1e-6) return "PENDING";
         if (producedQty > 0 || plannedQty > 0) return "PRODUCING";
         return "PENDING";
     }
@@ -528,14 +579,16 @@ public class SalesOrderService {
         List<Object[]> rows = em.createNativeQuery("""
                 SELECT i.id, i.line_no, g.code, g.name, g.spec, col.name, u.name,
                        i.qty, COALESCE(i.reserved_qty,0), COALESCE(i.planned_qty,0),
-                       COALESCE(i.produced_qty,0), COALESCE(i.shipped_qty,0), i.chain_status
+                       COALESCE(i.produced_qty,0), COALESCE(i.shipped_qty,0), i.chain_status,
+                       %s AS unplanned_qty
                 FROM sales_order_items i
                 JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
                 LEFT JOIN units u ON u.id = i.unit_id
                 WHERE i.order_id = :oid AND i.is_deleted = false
                 ORDER BY i.line_no NULLS LAST, i.id
-                """).setParameter("oid", id).getResultList();
+                """.formatted(SalesOrderChainSql.unplannedQtySql("i")))
+                .setParameter("oid", id).getResultList();
         List<UUID> itemIds = rows.stream().map(r -> (UUID) r[0]).toList();
         Map<UUID, List<com.uten.imp.features.sales.order.dto.PlanProgressLine.MaterialAnalysisProgress>>
                 analysesByItem = planProgressQuery.load(itemIds);
@@ -699,6 +752,7 @@ public class SalesOrderService {
                     nz((BigDecimal) r[7]), nz((BigDecimal) r[8]), nz((BigDecimal) r[9]),
                     nz((BigDecimal) r[10]), nz((BigDecimal) r[11]),
                     r[12] == null ? null : ((Number) r[12]).shortValue(),
+                    nz((BigDecimal) r[13]),
                     analysesByItem.getOrDefault((UUID) r[0], List.of()),
                     byItem.getOrDefault((UUID) r[0], List.of())));
         }
@@ -1253,9 +1307,10 @@ public class SalesOrderService {
                 pool.put(key, avail.subtract(take));
             }
             it.setReservedQty(take.divide(rate, 4, RoundingMode.HALF_UP));
-            it.setChainStatus(needQty.signum() == 0 ? CHAIN_SHIPPED
-                    : take.compareTo(needBase) >= 0 ? CHAIN_SHIPPABLE
-                    : take.signum() > 0 ? CHAIN_PARTIAL_RESERVED : CHAIN_PENDING_PLAN);
+            // V545：上链落点走统一派生（未交付=0→9；预留够→7；否则按剩余未排量落 1/2）。
+            it.setChainStatus(SalesChainStatus.deriveOnChain((short) 0,
+                    it.getQty(), it.getShippedQty(), it.getReturnedQty(), it.getFlagQty(),
+                    it.getReservedQty(), it.getPlannedQty(), it.getProducedQty()));
             itemRepo.save(it);
         }
     }
@@ -1396,13 +1451,11 @@ public class SalesOrderService {
                 reservationService.releaseForOrderItem(it.getId(), reserved.multiply(rate));
                 reserved = BigDecimal.ZERO;
             }
-            BigDecimal unfinishedPlan = planned.subtract(nz(it.getProducedQty()))
-                    .max(BigDecimal.ZERO);
+            // V545 统一派生（剩余未排量优先：改量后仍有未排量的行回 1/2；原值 3/5 粘性同 SQL 口径）。
             short chain = !chained ? 0
-                    : open.signum() <= 0 ? CHAIN_SHIPPED
-                    : reserved.compareTo(open) >= 0 ? CHAIN_SHIPPABLE
-                    : unfinishedPlan.signum() > 0 ? CHAIN_PLANNED
-                    : reserved.signum() > 0 ? CHAIN_PARTIAL_RESERVED : CHAIN_PENDING_PLAN;
+                    : SalesChainStatus.derive(it.getChainStatus(), newQty, it.getShippedQty(),
+                            it.getReturnedQty(), it.getFlagQty(), reserved, planned,
+                            it.getProducedQty());
             BigDecimal amountOriginal = it.getPrice() == null
                     ? it.getAmountOriginal()
                     : authoritativeOrderAmount(newQty, it.getPrice(), it.getDiscount());
@@ -1653,7 +1706,8 @@ public class SalesOrderService {
      * 并通知其归属销售。不自动给急单预留——急单销售随后经改量/新建审核走正常预留链占用释放出的库存。
      *
      * <p>数据安全：复用 {@code releaseForOrderItem}（FIFO + 行锁 + advisory lock），
-     * chain_status 回退 SQL 逐字镜像出货驳回 {@code SalesShipmentService.reject}，
+     * chain_status 回退与出货驳回 {@code SalesShipmentService.reject} 共用
+     * {@link SalesOrderChainSql#chainStatusCaseSql} 统一派生（V545），
      * {@code updated!=1} 抛错防吞并错账。已发货订单行无生效预留，自然拦在 reserved 校验。
      */
     @Transactional
@@ -1694,22 +1748,14 @@ public class SalesOrderService {
                 ? it.getUnitRate() : BigDecimal.ONE;
         // 1) 释放预留（基本单位；FIFO + 行锁 + advisory lock，已有原语）
         reservationService.releaseForOrderItem(orderItemId, yieldRow.multiply(rate));
-        // 2) 回减 reserved_qty + 行状态回退（行单位；逐字镜像 SalesShipmentService.reject）
-        int updated = em.createNativeQuery("""
-                UPDATE sales_order_items
-                SET reserved_qty = COALESCE(reserved_qty,0) - :q,
-                    chain_status = CASE WHEN COALESCE(chain_status,0) > 0 THEN
-                        CASE
-                          WHEN COALESCE(reserved_qty,0) - :q
-                               >= COALESCE(qty,0) - COALESCE(shipped_qty,0)
-                                  + COALESCE(returned_qty,0) - COALESCE(flag_qty,0) THEN 7
-                          WHEN GREATEST(COALESCE(planned_qty,0) - COALESCE(produced_qty,0), 0) > 0 THEN 4
-                          WHEN COALESCE(reserved_qty,0) - :q > 0 THEN 1
-                          ELSE 2
-                        END
-                    ELSE chain_status END
-                WHERE id = :id AND COALESCE(reserved_qty,0) >= :q
-                """).setParameter("q", yieldRow).setParameter("id", orderItemId).executeUpdate();
+        // 2) 回减 reserved_qty + 行状态回退（行单位；V545 统一派生，剩余未排量优先）
+        int updated = em.createNativeQuery("UPDATE sales_order_items\n"
+                + "SET reserved_qty = COALESCE(reserved_qty,0) - :q,\n"
+                + "    chain_status = "
+                + SalesOrderChainSql.chainStatusCaseSql(
+                        SalesOrderChainSql.ChainStatusInputs.of("").reservedDelta(" - :q"))
+                + "\nWHERE id = :id AND COALESCE(reserved_qty,0) >= :q")
+                .setParameter("q", yieldRow).setParameter("id", orderItemId).executeUpdate();
         if (updated != 1) {
             throw new ApiException(ErrorCode.CONFLICT, "订单预留累计小于让单量，禁止自动吞并错账");
         }

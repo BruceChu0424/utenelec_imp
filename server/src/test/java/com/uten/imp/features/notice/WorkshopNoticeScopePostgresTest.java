@@ -67,7 +67,10 @@ class WorkshopNoticeScopePostgresTest {
     static void start() {
         DB.start();
         jdbc=new JdbcTemplate(new DriverManagerDataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword()));
+        // NoticeAcknowledgment：findVisiblePendingManualNotices（人工通知登录弹窗）的 JPQL 引用，
+        // 仓库创建时整体校验所有 @Query，故须一并注册。
         factory=new Configuration().addAnnotatedClass(Notice.class).addAnnotatedClass(NoticeUserState.class)
+                .addAnnotatedClass(NoticeAcknowledgment.class)
                 .addAnnotatedClass(ProductionExecutionSegment.class).addAnnotatedClass(Department.class)
                 .addAnnotatedClass(Employee.class).addAnnotatedClass(Position.class)
                 .setProperty("hibernate.connection.driver_class","org.postgresql.Driver")
@@ -221,13 +224,17 @@ class WorkshopNoticeScopePostgresTest {
     }
 
     @Test
-    void waitingProgressHasAnExactVisibleObjectButDoesNotBecomeAnActionPopup() {
+    void waitingProgressIsAnActionPopupUntilResolved() {
+        // 2026-09-09 用户口径（ADR-063 修订）：车间任务 normal（等料/等待中）也进登录弹窗，
+        //「收到几个车间任务」按全部未办结计；办结点=开工/完工（resolveProductionWorkshopTasks）。
         Actor actor=ACTORS.get(0);
         Notice progress=persist(actor.user(),TASK_A,"normal");
         NoticeService service=service(actor.auth());
-        assertThat(service.list(false)).singleElement().satisfies(dto -> assertThat(dto.interactive()).isFalse());
-        assertThat(service.pendingReviews()).isEmpty();
-        assertThat(service.pendingReviewStatus(List.of(progress.getId()))).isEmpty();
+        assertThat(service.list(false)).singleElement().satisfies(dto -> assertThat(dto.interactive()).isTrue());
+        assertThat(service.pendingReviews()).singleElement()
+                .satisfies(dto -> assertThat(dto.id()).isEqualTo(progress.getId().toString()));
+        assertThat(service.pendingReviewStatus(List.of(progress.getId()))).singleElement()
+                .satisfies(status -> assertThat(status.resolved()).isFalse());
     }
 
     @Test

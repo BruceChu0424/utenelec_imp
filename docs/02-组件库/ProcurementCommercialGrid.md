@@ -51,3 +51,9 @@
   （专属页行级联动）
 - [`subcontract_order_settlement_method_test.dart`](../../test/features/subcontract/subcontract_order_settlement_method_test.dart)
   （行级结算必填/阻断）
+
+### 2.4 列宽、说明位置与单元规格（2026-09-10）
+
+- 四列均用 `headerInfo` 列头 ⓘ 承载通用说明（`workflowFieldText(context)`，函数签名因此带 `required BuildContext context`），格内不再放 ⓘ。
+- 默认宽：币种 150 / 汇率 140 / 税率 140 / 结账 180；`chromeWidth` = 下拉箭头 20 + 预填黄标图标 44（`UtenEditableGridCellSpec.dropdownChevronWidth + hintIconWidth`），汇率/税率提供 `textOf/listenableOf` 随值自动加宽——新单每行默认就是学习/回退预填态（黄框 + 格内图标），此前 110/120 只按箭头计宽，「人民币」「月结30天」被裁成省略号。
+- 备注列单行（与销售订货单一致，长文本横向滚动）；下拉格/供应商格不自带 border/contentPadding/小字，吃 `UtenEditableGrid` 行级主题（圆角 10、内边距 14·12、正文字号），同一行所有格等高同圆角。

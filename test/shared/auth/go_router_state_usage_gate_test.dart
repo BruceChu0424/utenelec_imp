@@ -23,7 +23,8 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('GoRouterState.of call sites stay on the reviewed allowlist', () {
     const allowlist = <String, int>{
-      'lib/components/buttons/uten_back_button.dart': 1, // A: 点击回调
+      // 2026-09-10 UtenBackButton 默认返回改为委托 nav_helpers.backTo，本文件不再
+      // 直接调用 GoRouterState.of（全站返回契约只在 nav_helpers 维护一份）。
       'lib/core/router/nav_helpers.dart': 3, // A+C: 回调期 + fail-closed 封装
       // page_resume_provider.dart 的两处命中都在文档注释里（无代码调用）。
       'lib/core/router/page_resume_provider.dart': 2, // DOC: 注释示例

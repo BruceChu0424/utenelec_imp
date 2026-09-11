@@ -197,7 +197,10 @@ void main() {
       await _pumpPage(tester, prefs: prefs, api: api);
 
       api.holdNextReport();
-      await tester.tap(find.widgetWithText(FilledButton, '查询'));
+      // 2026-09-11 撤掉「查询」按钮：筛选项一改即查，这里用显示模式下拉发起请求。
+      await tester.tap(find.byType(DropdownButton<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('只应收≠0').last);
       await tester.pump();
       expect(api.heldReport, isNotNull);
       expect(

@@ -4,8 +4,10 @@
 // 「提交报告」一次办结：
 //   - IQC 收货单区：按单分组，逐行勾选 + 行内编辑合格数量/不合格数量
 //     （默认合格 = 剩余待检、不合格 = 0），提交走 decide-batch（每单一事务）；
-//   - FQC 自制产成品区：勾选任务 = 全部合格（既有 pass-all 语义）；
-//   - 底部「已选 X 项 + 提交报告」，总结确认弹窗（仿计划部下达采购）后执行。
+//   - FQC 自制产成品区：V547 按品质检查单分组（组头三态复选，镜像 IQC 收货单组），
+//     无检查单的历史任务单列；勾选任务 = 全部合格（既有 pass-all 语义）；
+//   - 底部 UtenBottomActionBar：UtenSelectionSummaryPill（已选计数唯一出处，✕ 一键清空）
+//     + 说明文案 + 提交报告；总结确认弹窗（仿计划部下达采购）后执行。
 import 'package:flutter/material.dart';
 import '../presentation/procurement_inspection_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,9 +16,11 @@ import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -35,15 +39,26 @@ import '../widgets/production_fqc_dialogs.dart' show fqcQtyText;
 import '../repositories/production_fqc_repository.dart';
 import '../widgets/inspection_report_confirm_dialog.dart';
 
-/// 列表页多选结果（extra 传入）：IQC 收货单 + FQC 任务。
+/// 列表页多选结果（extra 传入）：IQC 收货单 + FQC 检查单 + 无检查单 FQC 任务。
 class QualityBatchApprovalSelection {
   const QualityBatchApprovalSelection({
     this.receipts = const [],
     this.inspections = const [],
+    this.sheets = const [],
   });
 
   final List<PendingInspectionReceipt> receipts;
   final List<ProductionFqcInspection> inspections;
+  final List<ProductionFqcInspectionSheet> sheets;
+}
+
+/// 一张 FQC 品质检查单的分组（V547）：组头三态复选，行 = 仍待检的 inspection。
+class _FqcSheetGroup {
+  _FqcSheetGroup(this.sheet, this.inspections, this.loadError);
+
+  final ProductionFqcInspectionSheet sheet;
+  final List<ProductionFqcInspection> inspections;
+  final String? loadError;
 }
 
 /// 一行可编辑的 IQC 检验明细（合格默认=剩余待检，不合格默认=0）。
@@ -102,6 +117,7 @@ class QualityBatchApprovalPage extends ConsumerStatefulWidget {
 class _QualityBatchApprovalPageState
     extends ConsumerState<QualityBatchApprovalPage> {
   List<_IqcReceiptGroup>? _groups;
+  List<_FqcSheetGroup>? _sheetGroups;
   List<_EditableIqcRow>? _flatRows;
   bool _loading = true;
   bool _submitting = false;
@@ -171,11 +187,31 @@ class _QualityBatchApprovalPageState
       }
       return;
     }
+    // FQC 检查单：逐单拉办理视图（仍待检行进入本页并默认勾选）。
+    final sheetGroups = <_FqcSheetGroup>[];
+    final fqcRepo = ref.read(productionFqcRepositoryProvider);
+    for (final sheet in widget.selection.sheets) {
+      try {
+        final detail = await fqcRepo.sheetDetail(sheet.id);
+        sheetGroups.add(
+          _FqcSheetGroup(detail.sheet, detail.activeInspections, null),
+        );
+      } on ApiException catch (error) {
+        sheetGroups.add(_FqcSheetGroup(sheet, const [], error.message));
+      } catch (_) {
+        sheetGroups.add(_FqcSheetGroup(sheet, const [], '检查单加载失败'));
+      }
+    }
     if (!mounted) return;
     final flat = [for (final group in groups) ...group.rows];
     setState(() {
       _groups = groups;
+      _sheetGroups = sheetGroups;
       _flatRows = flat;
+      _selectedFqcIds.addAll([
+        for (final group in sheetGroups)
+          for (final inspection in group.inspections) inspection.id,
+      ]);
       _loading = false;
     });
   }
@@ -183,7 +219,12 @@ class _QualityBatchApprovalPageState
   List<_EditableIqcRow> get _selectedIqcRows =>
       (_flatRows ?? const []).where((row) => row.selected).toList();
 
-  List<ProductionFqcInspection> get _allFqc => widget.selection.inspections;
+  /// 全部 FQC 行：检查单内仍待检行 + 无检查单的历史任务。
+  List<ProductionFqcInspection> get _allFqc => [
+    for (final group in _sheetGroups ?? const <_FqcSheetGroup>[])
+      ...group.inspections,
+    ...widget.selection.inspections,
+  ];
 
   /// 列表里已勾选的任务进入本页默认保持选中（可再取消）；IQC 行同理
   ///（_EditableIqcRow 构造即 selected = true）。
@@ -194,6 +235,17 @@ class _QualityBatchApprovalPageState
   int get _selectedCount =>
       _selectedIqcRows.length +
       _selectedFqcIds.intersection(_allFqc.map((e) => e.id).toSet()).length;
+
+  /// 胶囊 ✕：一键取消全部勾选（IQC 行 + FQC 任务），提交按钮随之进入空选提示态。
+  void _clearSelection() {
+    if (_submitting) return;
+    setState(() {
+      for (final row in _flatRows ?? const <_EditableIqcRow>[]) {
+        row.selected = false;
+      }
+      _selectedFqcIds.clear();
+    });
+  }
 
   Future<void> _submitReport() async {
     if (_submitting) return;
@@ -329,6 +381,7 @@ class _QualityBatchApprovalPageState
       appBar: UtenAppBar(
         title:
             '批量审批 · ${widget.selection.receipts.length} 单 IQC'
+            '${widget.selection.sheets.isNotEmpty ? ' + ${widget.selection.sheets.length} 张产成品检查单' : ''}'
             '${widget.selection.inspections.isNotEmpty ? ' + ${widget.selection.inspections.length} 项产成品' : ''}',
         leading: UtenBackButton(
           onPressed: () =>
@@ -362,7 +415,9 @@ class _QualityBatchApprovalPageState
 
   Widget _buildBody(ThemeData theme) {
     final groups = _groups ?? const <_IqcReceiptGroup>[];
-    if (groups.isEmpty && _allFqc.isEmpty) {
+    final sheetGroups = _sheetGroups ?? const <_FqcSheetGroup>[];
+    final looseFqc = widget.selection.inspections;
+    if (groups.isEmpty && sheetGroups.isEmpty && looseFqc.isEmpty) {
       return UtenEmpty(
         icon: Icons.fact_check_outlined,
         message: '所选任务都已处理',
@@ -391,17 +446,92 @@ class _QualityBatchApprovalPageState
             for (final row in group.rows) _iqcRowTile(theme, row),
           const SizedBox(height: UtenSpacing.s12),
         ],
-        if (_allFqc.isNotEmpty) ...[
+        for (final group in sheetGroups) ...[
+          _sheetHeader(theme, group),
+          if (group.loadError != null)
+            Padding(
+              padding: const EdgeInsets.all(UtenSpacing.s8),
+              child: Text(
+                '本单明细加载失败：${group.loadError}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+            )
+          else if (group.inspections.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(UtenSpacing.s8),
+              child: Text(
+                '本单已无待检行',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            )
+          else
+            for (final inspection in group.inspections)
+              _fqcRowTile(theme, inspection),
+          const SizedBox(height: UtenSpacing.s12),
+        ],
+        if (looseFqc.isNotEmpty) ...[
           Text(
-            '自制产成品（勾选 = 全部合格）',
+            '自制产成品 · 无检查单（勾选 = 全部合格）',
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: UtenSpacing.s4),
-          for (final inspection in _allFqc) _fqcRowTile(theme, inspection),
+          for (final inspection in looseFqc) _fqcRowTile(theme, inspection),
         ],
       ],
+    );
+  }
+
+  /// 检查单组头：三态复选（全选/部分/未选）镜像 IQC 收货单组头。
+  Widget _sheetHeader(ThemeData theme, _FqcSheetGroup group) {
+    final ids = group.inspections.map((item) => item.id).toList();
+    final selected = ids.where(_selectedFqcIds.contains).length;
+    final bool? value = ids.isEmpty || selected == 0
+        ? false
+        : selected == ids.length
+        ? true
+        : null;
+    return Container(
+      key: ValueKey('batch-approval-sheet-${group.sheet.id}'),
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s8,
+        vertical: UtenSpacing.s4,
+      ),
+      color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.5),
+      child: Row(
+        children: [
+          Checkbox(
+            key: ValueKey('batch-approval-sheet-check-${group.sheet.id}'),
+            value: value,
+            tristate: true,
+            onChanged: ids.isEmpty
+                ? null
+                : (next) => setState(() {
+                    if (next != false) {
+                      _selectedFqcIds.addAll(ids);
+                    } else {
+                      _selectedFqcIds.removeAll(ids);
+                    }
+                  }),
+          ),
+          Expanded(
+            child: Text(
+              '品质检查单 ${group.sheet.sheetNo}'
+              ' · ${group.sheet.warehouseName ?? '—'}'
+              '${group.sheet.receiverName == null ? '' : ' · 收货 ${group.sheet.receiverName}'}'
+              '（${group.inspections.length} 行待检，勾选 = 全部合格）',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -526,42 +656,46 @@ class _QualityBatchApprovalPageState
         '${inspection.goodsName ?? ''}'
         '${inspection.colorName?.isNotEmpty == true ? '(${inspection.colorName})' : ''}'
         ' · 待检 ${fqcQtyText(inspection.remainingQty)}'
-        '${inspection.unitName ?? ''} · 勾选即全部合格',
+        '${inspection.unitName ?? ''}'
+        '${inspection.place == null ? '' : ' · 库位 ${inspection.place}'}'
+        ' · 勾选即全部合格',
       ),
     );
   }
 
+  /// 吸底操作栏：已选计数只由 [UtenSelectionSummaryPill] 呈现（全站口径，
+  /// 页面不再自摆「已选 N 项」纯文字），说明文案降级为 bodySmall。
   Widget _buildBottomBar(ThemeData theme) {
-    return SafeArea(
-      child: Container(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          border: Border(
-            top: BorderSide(color: theme.colorScheme.outlineVariant),
+    final selectedCount = _selectedCount;
+    return UtenBottomActionBar(
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      child: Row(
+        children: [
+          UtenSelectionSummaryPill(
+            key: const Key('batch-approval-selected-count'),
+            count: selectedCount,
+            onClear: selectedCount == 0 ? null : _clearSelection,
           ),
-        ),
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                '已选 $_selectedCount 项 · 提交后合格部分转仓库待入库',
-                key: const Key('batch-approval-selected-count'),
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+          const SizedBox(width: UtenSpacing.s12),
+          Expanded(
+            child: Text(
+              '提交后合格部分转仓库待入库',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(width: UtenSpacing.s12),
-            UtenButton(
-              key: const Key('batch-approval-submit-report'),
-              isLoading: _submitting,
-              icon: Icons.fact_check_outlined,
-              onPressed: _submitting ? null : _submitReport,
-              child: const Text('提交报告'),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(width: UtenSpacing.s12),
+          UtenButton(
+            key: const Key('batch-approval-submit-report'),
+            isLoading: _submitting,
+            icon: Icons.fact_check_outlined,
+            onPressed: _submitting ? null : _submitReport,
+            child: const Text('提交报告'),
+          ),
+        ],
       ),
     );
   }

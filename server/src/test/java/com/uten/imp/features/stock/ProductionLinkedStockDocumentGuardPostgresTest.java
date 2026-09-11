@@ -53,9 +53,17 @@ class ProductionLinkedStockDocumentGuardPostgresTest {
         try (Connection connection = connection()) {
             Fixture fixture = createFixture(connection, "DRAW");
 
+            // V550（2026-09-11）：remark 移出「身份不可变」集合——出库备注按「；」追加是
+            // 正常业务写入（StockDocService.appendIssueRemark），此前生产链领料单一带备注
+            // 出库就被 23514 拒绝。改为断言备注可写、而单据身份列仍然锁死。
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "update stock_documents set remark = '夜班发料' where id = ?")) {
+                statement.setObject(1, fixture.documentId());
+                assertEquals(1, statement.executeUpdate(), "出库备注必须可追加");
+            }
             assertConstraint(
                     connection,
-                    "update stock_documents set remark = 'tampered' where id = ?",
+                    "update stock_documents set bill_date = current_date - 1 where id = ?",
                     fixture.documentId(),
                     "production_linked_stock_document_update_guard");
             assertConstraint(

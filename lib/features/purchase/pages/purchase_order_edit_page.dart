@@ -17,7 +17,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/buttons/uten_drafts_button.dart';
+import '../../../components/buttons/uten_edit_floating_actions.dart';
 import '../../../components/buttons/uten_import_button.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
@@ -33,6 +35,9 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../core/utils/currency_display.dart';
+import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/widgets/editable_grid_totals_bar.dart';
 import '../../basic_data/models/reference_method_option.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
@@ -42,6 +47,9 @@ import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../notice/providers/notice_providers.dart';
 import '../../../shared/auth/document_scope_capability.dart';
+import '../../../shared/attachments/business_attachment_section.dart';
+import '../../../shared/attachments/pending_attachment_controller.dart';
+import '../../../shared/attachments/pending_attachment_flow.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/models/procurement_commercial_terms.dart';
@@ -84,6 +92,12 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
       .contains(Perm.purchaseOrderSubmitFinance);
   bool get _isCreate => widget.id == null;
 
+  /// 新建订货单保存前暂存的附件（ADR-074：保存拿到 UUID 后逐个确认上传）。
+  final _pendingFiles = PendingAttachmentController();
+
+  /// 订货单已生成但仍有附件上传失败：再点「保存」只重试附件，不重复建单。
+  List<PurchaseDocDetail>? _createdOrders;
+
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
   DateTime _billDate = ChinaDateTime.today();
@@ -115,6 +129,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
   void dispose() {
     _billNo.dispose();
     _remark.dispose();
+    _pendingFiles.dispose();
     _grid.dispose(); // 自动 dispose 各行控制器
     _scrollCtl.dispose();
     _decomposeClaim?.releaseAll(); // 离开编辑页释放分解认领
@@ -785,6 +800,16 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
   }
 
   Future<void> _save() async {
+    if (_createdOrders case final created?) {
+      // 订货单已生成、附件未全部上传：只补传附件，成功后再提交财务/进入详情。
+      setState(() => _saving = true);
+      try {
+        await _finishCreatedOrders(created);
+      } finally {
+        if (mounted) setState(() => _saving = false);
+      }
+      return;
+    }
     final rows = _grid.rows.where((r) => r.goods != null).toList();
     if (rows.isEmpty) {
       context.appError('请至少添加一条明细');
@@ -891,65 +916,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
       if (_isCreate) {
         final created = await repo.createBatch(body);
         if (!mounted) return;
-        String? financeError;
-        if (_canSubmitFinance) {
-          for (final createdDoc in created) {
-            try {
-              await repo.submitFinance(createdDoc.id);
-            } on ApiException catch (e) {
-              financeError ??= e.message;
-            }
-          }
-        }
-        if (!mounted) return;
-        bumpListRefresh(ref, _cfg.refreshKey);
-        // 业务动作完成 → 对应通知自动已读（指向来源申请或本次新建订货单）。
-        unawaited(
-          markNoticesReadByRoute(
-            ProviderScope.containerOf(context, listen: false),
-            [
-              for (final row in _grid.rows)
-                if (row.sourceRequestId != null)
-                  RoutePath.purchaseDocDetail(
-                    PurchaseDocType.request.pathSegment,
-                    row.sourceRequestId!,
-                  ),
-              for (final createdDoc in created)
-                RoutePath.purchaseDocDetail(
-                  _cfg.type.pathSegment,
-                  createdDoc.id,
-                ),
-            ],
-          ),
-        );
-        if (financeError != null) {
-          context.appWarning(
-            '已生成 ${created.length} 张订货单，部分未提交财务审核组：$financeError。'
-            '请进入对应订货详情重新提交。',
-          );
-        } else if (_canSubmitFinance) {
-          context.appSuccess(
-            comboCount > 1
-                ? '已按「供应商+条款组合」拆分为 $comboCount 组共 ${created.length} 张订货单并提交财务审核组'
-                : '订货单已保存并提交财务审核组；下一步由财务在「订货审批任务中心」审核',
-          );
-        } else {
-          context.appSuccess(
-            comboCount > 1
-                ? '已按「供应商+条款组合」拆分并保存 ${created.length} 张订货单草稿；下一步请由有权限的人员提交财务审核'
-                : '订货单草稿已保存；下一步请由有权限的人员提交财务审核',
-          );
-        }
-        if (created.length == 1) {
-          context.replace(
-            RoutePath.purchaseDocDetail(
-              _cfg.type.pathSegment,
-              created.first.id,
-            ),
-          );
-        } else {
-          context.go('/purchase/${_cfg.type.pathSegment}');
-        }
+        await _finishCreatedOrders(created, comboCount: comboCount);
         return;
       }
       // 编辑既有单：单头条款 = 全行一致的条款（行值即单头值）。
@@ -997,8 +964,100 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
     }
   }
 
+  /// 新建拆单收尾：先把暂存附件挂到每张新订货单（提交财务后对象策略不再允许改附件），
+  /// 全部成功再提交财务审核组并跳转；任一附件失败则留在本页，保留失败项供重试。
+  Future<void> _finishCreatedOrders(
+    List<PurchaseDocDetail> created, {
+    int? comboCount,
+  }) async {
+    final repo = ref.read(purchaseRepositoryProvider(PurchaseDocType.order));
+    final groups = comboCount ?? created.length;
+    try {
+      if (_pendingFiles.isNotEmpty) {
+        if (_createdOrders == null) setState(() => _createdOrders = created);
+        final ok = await flushPendingAttachments(
+          context,
+          ref,
+          _pendingFiles,
+          ownerType: 'PURCHASE_ORDER',
+          ownerIds: [for (final createdDoc in created) createdDoc.id],
+        );
+        if (!mounted || !ok) return;
+      }
+      if (_createdOrders != null) setState(() => _createdOrders = null);
+      String? financeError;
+      if (_canSubmitFinance) {
+        for (final createdDoc in created) {
+          try {
+            await repo.submitFinance(createdDoc.id);
+          } on ApiException catch (e) {
+            financeError ??= e.message;
+          }
+        }
+      }
+      if (!mounted) return;
+      bumpListRefresh(ref, _cfg.refreshKey);
+      // 业务动作完成 → 对应通知自动已读（指向来源申请或本次新建订货单）。
+      unawaited(
+        markNoticesReadByRoute(
+          ProviderScope.containerOf(context, listen: false),
+          [
+            for (final row in _grid.rows)
+              if (row.sourceRequestId != null)
+                RoutePath.purchaseDocDetail(
+                  PurchaseDocType.request.pathSegment,
+                  row.sourceRequestId!,
+                ),
+            for (final createdDoc in created)
+              RoutePath.purchaseDocDetail(_cfg.type.pathSegment, createdDoc.id),
+          ],
+        ),
+      );
+      if (financeError != null) {
+        context.appWarning(
+          '已生成 ${created.length} 张订货单，部分未提交财务审核组：$financeError。'
+          '请进入对应订货详情重新提交。',
+        );
+      } else if (_canSubmitFinance) {
+        context.appSuccess(
+          groups > 1
+              ? '已按「供应商+条款组合」拆分为 $groups 组共 ${created.length} 张订货单并提交财务审核组'
+              : '订货单已保存并提交财务审核组；下一步由财务在「订货审批任务中心」审核',
+        );
+      } else {
+        context.appSuccess(
+          groups > 1
+              ? '已按「供应商+条款组合」拆分并保存 ${created.length} 张订货单草稿；下一步请由有权限的人员提交财务审核'
+              : '订货单草稿已保存；下一步请由有权限的人员提交财务审核',
+        );
+      }
+      if (created.length == 1) {
+        context.replace(
+          RoutePath.purchaseDocDetail(_cfg.type.pathSegment, created.first.id),
+        );
+      } else {
+        context.go('/purchase/${_cfg.type.pathSegment}');
+      }
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError('保存失败，请稍后重试');
+    }
+  }
+
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// 新建态 AppBar 右上角「草稿(N)」入口。
+  ///
+  /// 管理卡 skipListOnCreate 直达新建页，从 hub 打不开列表；本按钮是用户回到自己
+  /// 草稿的唯一入口（点击进列表并预选草稿段）。编辑既有单据时不显示。
+  List<Widget>? get _draftsAction {
+    if (!_isCreate || !_cfg.skipListOnCreate) return null;
+    final kind = _cfg.draftKind;
+    if (kind == null) return null;
+    return [UtenDraftsButton(kind: kind, listLocation: _cfg.listLocation)];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1011,14 +1070,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
           onPressed: () =>
               popOrBackTo(context, defaultPath: RouteName.purchase),
         ),
-        actions: [
-          UtenButton(
-            type: UtenButtonType.tonal,
-            icon: Icons.history_rounded,
-            onPressed: () => context.push('/purchase/${_cfg.type.pathSegment}'),
-            child: const Text('查看历史'),
-          ),
-        ],
+        actions: _draftsAction,
       ),
       body: SafeArea(
         child: _loading
@@ -1029,7 +1081,13 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
                   thumbVisibility: true,
                   child: ListView(
                     controller: _scrollCtl,
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    // 底部多留一个悬浮动作组的高度，否则明细表最后一行被「取消/保存」压住。
+                    padding: const EdgeInsets.fromLTRB(
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      88,
+                    ),
                     children: [
                       _termsBanner(theme),
                       const SizedBox(height: UtenSpacing.s12),
@@ -1130,14 +1188,41 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
                           ),
                         ),
                       const SizedBox(height: UtenSpacing.s12),
+                      // 订货单附件：已有单直接挂 PURCHASE_ORDER；新建单先本地暂存，
+                      // 拆单生成后逐张确认上传，再提交财务（ADR-074）。
+                      if (!_isCreate)
+                        BusinessAttachmentSection(
+                          ownerType: 'PURCHASE_ORDER',
+                          ownerId: widget.id!,
+                          canView: ref
+                              .watch(currentPermissionsProvider)
+                              .contains(Perm.attachmentView),
+                          // 进入编辑页即已确认可写；对象范围与状态由服务端附件策略再校验。
+                          canManage: true,
+                          title: '附件（合同/供应商确认/图片）',
+                          categories: const ['合同', '供应商确认', '图片', '其他'],
+                        )
+                      else ...[
+                        if (_createdOrders != null)
+                          const PendingAttachmentRetryNotice(
+                            documentLabel: '订货单',
+                          ),
+                        BusinessAttachmentSection.draft(
+                          key: const ValueKey(
+                            'purchase-order-draft-attachments',
+                          ),
+                          controller: _pendingFiles,
+                          canManage: ref
+                              .watch(currentPermissionsProvider)
+                              .contains(Perm.purchaseOrderCreate),
+                          title: '附件（合同/供应商确认/图片）',
+                          categories: const ['合同', '供应商确认', '图片', '其他'],
+                        ),
+                      ],
+                      const SizedBox(height: UtenSpacing.s12),
+                      // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）：只留右对齐引入入口。
                       Row(
                         children: [
-                          Text(
-                            '明细 (${_grid.length})',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
                           const Spacer(),
                           UtenImportButton(
                             label: '从上游引入',
@@ -1185,6 +1270,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
                             ],
                             columns: purchaseGridColumns(
                               _pickGoods,
+                              context: context,
                               unitEntries: names.unitEntries,
                               supplierEntries: _supplierDropdownEntries(),
                               supplierRequired: true,
@@ -1213,6 +1299,56 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
                               // 每行末尾备注列。
                               showRemark: true,
                             ),
+                            // 合计条（全站统一口径）：数量按单位分组绝不相加；订货
+                            // 行级条款允许逐行币种，只有全单币种唯一时才在金额标签
+                            // 上标注币种。2026-09-11 从底部操作条移进表尾——底部只
+                            // 留右下角悬浮的「取消/保存」。
+                            footer: EditableGridTotalsBar<PurchaseGridRow>(
+                              key: const Key('purchase-order-edit-totals'),
+                              controller: _grid,
+                              showDivider: false,
+                              watchOf: (row) => [row.qty],
+                              entriesBuilder: (rows) {
+                                final currencyIds = rows
+                                    .map((row) => row.currencyId)
+                                    .whereType<String>()
+                                    .where((id) => id.isNotEmpty)
+                                    .toSet();
+                                return [
+                                  utenQuantityTotalEntry(
+                                    rows
+                                        .where((row) => row.goods != null)
+                                        .map(
+                                          (row) => MeasuredAmount(
+                                            value:
+                                                double.tryParse(
+                                                  row.qty.text.trim(),
+                                                ) ??
+                                                0,
+                                            unitId: row.unitId,
+                                            unitName:
+                                                names.unitEntries[row.unitId],
+                                          ),
+                                        ),
+                                  ),
+                                  UtenTotalEntry(
+                                    utenAmountTotalLabel(
+                                      currencyIds.length == 1
+                                          ? financeCurrencyDisplayLabel(
+                                              name: names.currency(
+                                                currencyIds.first,
+                                              ),
+                                            )
+                                          : null,
+                                    ),
+                                    _grid.totalListenable.value.toStringAsFixed(
+                                      2,
+                                    ),
+                                    danger: true,
+                                  ),
+                                ];
+                              },
+                            ),
                             createBlankRow: () => PurchaseGridRow()
                               ..currencyId = _defaultCurrencyId
                               ..exchangeRate.text = '1'
@@ -1226,49 +1362,21 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
                 ),
               ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border(
-              top: BorderSide(color: theme.colorScheme.outlineVariant),
+      // 加载中不给保存入口；他人正在分解此申请时（认领被占）保存禁用，
+      // 与原底部操作条同一显隐/禁用口径。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: _loading
+          ? null
+          : UtenEditFloatingActions(
+              onCancel: () =>
+                  popOrBackTo(context, defaultPath: RouteName.purchase),
+              onSave: (_decomposeClaim?.blocked ?? false) ? null : _save,
+              saving: _saving,
+              saveLabel: _canSubmitFinance ? '保存并提交财务审核' : '保存订货单草稿',
+              saveIcon: _canSubmitFinance
+                  ? Icons.send_outlined
+                  : Icons.save_outlined,
             ),
-          ),
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Wrap(
-            alignment: WrapAlignment.center,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: UtenSpacing.s12,
-            runSpacing: UtenSpacing.s8,
-            children: [
-              ValueListenableBuilder<double>(
-                valueListenable: _grid.totalListenable,
-                builder: (_, total, _) => Text(
-                  '合计 ¥${total.toStringAsFixed(2)}',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              UtenButton(
-                type: UtenButtonType.secondary,
-                onPressed: () => context.pop(),
-                child: const Text('取消'),
-              ),
-              UtenButton(
-                isLoading: _saving,
-                icon: _canSubmitFinance
-                    ? Icons.send_outlined
-                    : Icons.save_outlined,
-                onPressed: (_saving || (_decomposeClaim?.blocked ?? false))
-                    ? null
-                    : _save,
-                child: Text(_canSubmitFinance ? '保存并提交财务审核' : '保存订货单草稿'),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 

@@ -81,13 +81,19 @@ public record SalesOrderFinanceReviewDto(
             OffsetDateTime changedAt) {
     }
 
-    /** 审核明细行（货品快照优先，颜色/单位按主档解析名称）。 */
+    /**
+     * 审核明细行（货品快照优先，颜色/单位按主档解析名称）。
+     *
+     * <p>{@code unitId} 供前端「合计数量」按单位分组用（不同单位的数量绝不相加），
+     * {@code unitName} 只作显示标签。
+     */
     public record Line(
             @JsonSerialize(using = ToStringSerializer.class) UUID itemId,
             Integer lineNo,
             String goodsCode,
             String goodsName,
             String colorName,
+            @JsonSerialize(using = ToStringSerializer.class) UUID unitId,
             String unitName,
             String clientModel,
             BigDecimal qty,

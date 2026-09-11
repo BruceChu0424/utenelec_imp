@@ -1,13 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import '../../../shared/presentation/workflow_field_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -27,6 +27,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -115,6 +116,18 @@ abstract class _MaterialAnalysisPageBase
   bool _claimingSharedFuture = false;
   bool _borrowing = false;
   bool _generating = false;
+
+  /// 「下达进行中」的对外广播：分桶详情页是独立 widget，宿主 setState 通知不到它，
+  /// 但它要在**自己页面上**盖同一张进度遮罩（2026-09-11 起不再先 pop 回宿主页）。
+  /// 只跟随网络调用本身——结果弹层展示期间必须为 false，否则弹层背后还在转圈，
+  /// 且 widget test 的 pumpAndSettle 永远settle 不了。
+  final ValueNotifier<bool> planSubmissionProgress = ValueNotifier<bool>(false);
+
+  void _setGenerating(bool value) {
+    _generating = value;
+    planSubmissionProgress.value = value;
+  }
+
   bool _planSubmissionApproveNow = false;
   MaterialSupplyRoute? _notifyingRoute;
   int _candidatePageNo = 1;
@@ -258,8 +271,10 @@ abstract class _MaterialAnalysisPageBase
   ProductionMaterialAnalysisView? _indexCacheAnalysis;
   _MaterialAnalysisIndexes? _indexCache;
   ProductionMaterialAnalysisView? _bomProjectionAnalysis;
-  _BomViewMode? _bomProjectionMode;
-  String? _bomProjectionKeyword;
+
+  /// 投影缓存键：视图 chip + 关键词 + 表头筛选 + 路线草稿/脏组签名（路线列桶与
+  /// 路线筛选跟着下拉草稿变，缓存键漏掉它们会出现「改了不刷新」）。
+  String? _bomProjectionKey;
   _BomFilterProjection? _bomProjectionCache;
   ProductionMaterialAnalysisView? _bucketRowsCacheAnalysis;
   Map<_AnalysisBucket, List<_BucketRow>>? _bucketRowsCache;
@@ -335,6 +350,121 @@ abstract class _MaterialAnalysisPageBase
 
   bool get _planSubmissionInProgress => _generating;
 
+  /// 下达进行中的遮罩（不可关闭）。放在基类是因为**分桶详情页也要用同一份**——
+  /// 2026-09-11 起下达车间不再先 pop 回宿主页，进度画在分桶页自己身上。
+  Widget _planSubmissionOverlay(ThemeData theme) {
+    // ADR-71：下达车间是一次原子调用（建子件任务+出计划+可选审核同一事务），
+    // 不再有「校验→生成」两阶段，遮罩只描述这一个不可中断的步骤。
+    final title = _planSubmissionApproveNow ? '正在生成并审核下达' : '正在生成生产计划';
+    final description = _planSubmissionApproveNow
+        ? '系统正在同一事务内创建子件任务、生成计划、审核下达并按需生成提货单。'
+        : '系统正在创建计划草稿并提交审批。';
+
+    return BlockSemantics(
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          ModalBarrier(
+            dismissible: false,
+            color: theme.colorScheme.scrim.withValues(alpha: 0.42),
+            semanticsLabel: '生产计划提交处理中',
+          ),
+          Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s24),
+            child: SingleChildScrollView(
+              child: Semantics(
+                key: const Key('material-analysis-plan-submission-progress'),
+                container: true,
+                liveRegion: true,
+                label: '$title。$description。请勿重复提交或关闭页面。',
+                child: ExcludeSemantics(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 440),
+                    child: Material(
+                      color: theme.colorScheme.surface,
+                      elevation: 12,
+                      borderRadius: UtenRadius.lgAll,
+                      child: Padding(
+                        padding: const EdgeInsets.all(UtenSpacing.s24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(
+                                  width: 32,
+                                  height: 32,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 3,
+                                  ),
+                                ),
+                                const SizedBox(width: UtenSpacing.s16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        title,
+                                        style: theme.textTheme.titleMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                      ),
+                                      const SizedBox(height: UtenSpacing.s8),
+                                      Text(
+                                        description,
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                              color: theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                              height: 1.45,
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: UtenSpacing.s20),
+                            const LinearProgressIndicator(minHeight: 4),
+                            const SizedBox(height: UtenSpacing.s12),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.hourglass_top_rounded,
+                                  size: 18,
+                                  color: theme.colorScheme.primary,
+                                ),
+                                const SizedBox(width: UtenSpacing.s8),
+                                Expanded(
+                                  child: Text(
+                                    '请勿重复提交或关闭页面',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   bool get _canAdjustPriorities =>
       _canReallocate &&
       (_analysis?.allowedActions.contains('REALLOCATE') ?? false);
@@ -350,6 +480,14 @@ abstract class _MaterialAnalysisPageBase
               target.status != 'CANCELLED' && !target.isReversedRootOutput,
         ),
       );
+
+  /// 首列复选框的勾选门（2026-09-10 F2d）：与「确认路线(N)」计数/提交门同一谓词——
+  /// 已确认且未改动的行没有可提交的决定，不给勾选框；改了下拉（脏组）才恢复。
+  /// 下拉本身仍按 [_canEditMaterialRoute] 可改（§3.4 手动草稿优先）。撤回下达 /
+  /// 根产出红冲后服务端不清 confirmed_route，这类行同样要先改下拉才可勾选。
+  bool _routeGroupSelectable(_MaterialGroup group) =>
+      group.representative.confirmedRoute == null ||
+      _dirtyRouteGroups.contains(group.key);
 
   String? _planningBlockForGroup(_MaterialGroup group) {
     for (final path in group.paths) {
@@ -436,14 +574,17 @@ abstract class _MaterialAnalysisPageBase
           (group) =>
               _selectedMaterialGroupKeys.contains(group.key) &&
               _canEditMaterialRoute(group) &&
-              (group.representative.confirmedRoute == null ||
-                  _dirtyRouteGroups.contains(group.key)),
+              _routeGroupSelectable(group),
         )
         .length;
   }
 
   // ===== 继承链协作契约：实现在后段 part，基类生命周期按虚调用分发 =====
   Future<void> _previewAnalysis();
+
+  /// 表头筛选值只在当前桶里仍存在时保留（刷新/轮询/切视图后失效值自动移除，
+  /// 仍有效的用户筛选不清）；实现见 material_analysis_material_table.dart。
+  void _pruneMaterialTableFilters();
   bool _normalizeNewWarehouseScope();
   ProductionMaterialAnalysisMaterial? _rootSupplyMaterialOf(
     ProductionMaterialAnalysisProduct product,
@@ -704,8 +845,10 @@ abstract class _MaterialAnalysisPageBase
     _dirtyRouteGroups.clear();
     _selectedPlanLineIds.clear();
     final groups = _materialGroups(view);
+    // 刷新后草稿已清空，只有仍未确认的组才可勾选：轮询期间被同事确认的行
+    // 自动脱选（否则「勾着但不计数」）。
     final selectableKeys = groups
-        .where(_canEditMaterialRoute)
+        .where((g) => _canEditMaterialRoute(g) && _routeGroupSelectable(g))
         .map((g) => g.key)
         .toSet();
     _selectedMaterialGroupKeys.removeWhere(
@@ -747,6 +890,9 @@ abstract class _MaterialAnalysisPageBase
       // supply refresh may change the suggestion/cap, but must not silently
       // replace that draft; final validation still checks the latest cap.
     }
+    // 新快照的进度/路线桶可能不再含旧筛选值（确认路线后「路线待确认」桶消失
+    // 即典型）：只移除失效值，避免不可见的激活筛选把表过滤成空。
+    _pruneMaterialTableFilters();
   }
 
   /// 服务端刷新会重建节点视图；只把相对最新快照仍合法的未保存路线覆盖回去。
@@ -1211,6 +1357,30 @@ abstract class _MaterialAnalysisPageBase
     );
   }
 
+  // ===== 缺口颜色（2026-09-10 F2e：语义 token 明暗配对，主表与桶详情共用）=====
+
+  /// 缺口文字色：>0 红（colorScheme.error 随主题）、=0 绿（successText /
+  /// successOnDark，白底对比达 AA）、无数据中性。
+  Color _shortageTextColor(ThemeData theme, double? shortage) {
+    if (shortage == null) return theme.colorScheme.onSurface;
+    if (shortage > 0) return theme.colorScheme.error;
+    return theme.brightness == Brightness.dark
+        ? UtenColors.successOnDark
+        : UtenColors.successText;
+  }
+
+  /// 缺口格底色：>0 errorContainer 30%、=0 success 14%（深色取亮档）。
+  Color? _shortageCellColor(ThemeData theme, double? shortage) {
+    if (shortage == null) return null;
+    if (shortage > 0) {
+      return theme.colorScheme.errorContainer.withValues(alpha: 0.3);
+    }
+    return (theme.brightness == Brightness.dark
+            ? UtenColors.successOnDark
+            : UtenColors.success)
+        .withValues(alpha: 0.14);
+  }
+
   Widget _statusLabel(ThemeData theme, _StatusView status) => Semantics(
     container: true,
     label: status.label,
@@ -1563,119 +1733,6 @@ class _ProductionMaterialAnalysisPageState
           : _floatingActions(),
     );
     return PopScope(canPop: !_planSubmissionInProgress, child: page);
-  }
-
-  Widget _planSubmissionOverlay(ThemeData theme) {
-    // ADR-71：下达车间是一次原子调用（建子件任务+出计划+可选审核同一事务），
-    // 不再有「校验→生成」两阶段，遮罩只描述这一个不可中断的步骤。
-    final title = _planSubmissionApproveNow ? '正在生成并审核下达' : '正在生成生产计划';
-    final description = _planSubmissionApproveNow
-        ? '系统正在同一事务内创建子件任务、生成计划、审核下达并按需生成提货单。'
-        : '系统正在创建计划草稿并提交审批。';
-
-    return BlockSemantics(
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          ModalBarrier(
-            dismissible: false,
-            color: theme.colorScheme.scrim.withValues(alpha: 0.42),
-            semanticsLabel: '生产计划提交处理中',
-          ),
-          Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s24),
-            child: SingleChildScrollView(
-              child: Semantics(
-                key: const Key('material-analysis-plan-submission-progress'),
-                container: true,
-                liveRegion: true,
-                label: '$title。$description。请勿重复提交或关闭页面。',
-                child: ExcludeSemantics(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 440),
-                    child: Material(
-                      color: theme.colorScheme.surface,
-                      elevation: 12,
-                      borderRadius: UtenRadius.lgAll,
-                      child: Padding(
-                        padding: const EdgeInsets.all(UtenSpacing.s24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(
-                                  width: 32,
-                                  height: 32,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 3,
-                                  ),
-                                ),
-                                const SizedBox(width: UtenSpacing.s16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        title,
-                                        style: theme.textTheme.titleMedium
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w800,
-                                            ),
-                                      ),
-                                      const SizedBox(height: UtenSpacing.s8),
-                                      Text(
-                                        description,
-                                        style: theme.textTheme.bodyMedium
-                                            ?.copyWith(
-                                              color: theme
-                                                  .colorScheme
-                                                  .onSurfaceVariant,
-                                              height: 1.45,
-                                            ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: UtenSpacing.s20),
-                            const LinearProgressIndicator(minHeight: 4),
-                            const SizedBox(height: UtenSpacing.s12),
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.hourglass_top_rounded,
-                                  size: 18,
-                                  color: theme.colorScheme.primary,
-                                ),
-                                const SizedBox(width: UtenSpacing.s8),
-                                Expanded(
-                                  child: Text(
-                                    '请勿重复提交或关闭页面',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _analysisBody(ThemeData theme) {

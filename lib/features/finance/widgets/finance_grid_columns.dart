@@ -184,6 +184,7 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
 /// [type] 当前单据类型（区分费用/收入项目标签）。
 List<EditableGridColumn<FinanceGridRow>> financeGridColumns(
   ItemMode mode, {
+  required BuildContext context,
   required FinanceNameService names,
   required FinanceDocType type,
   bool? accountBaseCurrency,
@@ -193,13 +194,14 @@ List<EditableGridColumn<FinanceGridRow>> financeGridColumns(
     case ItemMode.settle:
       return type == FinanceDocType.receipt
           ? _receiptSettleColumns(
+              context,
               names,
               accountBaseCurrency: accountBaseCurrency,
               showReconciliation: showReceiptReconciliation,
             )
           : _settleColumns();
     case ItemMode.allocate:
-      return _allocateColumns(names, type);
+      return _allocateColumns(context, names, type);
     case ItemMode.transfer:
       return _transferColumns(names);
   }
@@ -207,6 +209,7 @@ List<EditableGridColumn<FinanceGridRow>> financeGridColumns(
 
 // ===== settle：核销单据号（只读）+ 本次金额（录入）=====
 List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
+  BuildContext context,
   FinanceNameService names, {
   bool? accountBaseCurrency,
   required bool showReconciliation,
@@ -297,6 +300,8 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       width: 180,
       numeric: true,
       required: true,
+      // 列说明挂表头 ⓘ（2026-09-09 口径）：不再逐格渲染重复 ⓘ。
+      headerInfo: workflowFieldText(context).workflowReceiptAllocationHint,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.amount,
         isEmpty: () {
@@ -307,9 +312,8 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
           controller: row.amount,
           textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: UtenInputDecoration(
-            const InputDecoration(isDense: true, hintText: '0'),
-            info: workflowFieldText(context).workflowReceiptAllocationHint,
+          decoration: const UtenInputDecoration(
+            InputDecoration(isDense: true, hintText: '0'),
           ),
         ),
       ),
@@ -450,6 +454,7 @@ List<EditableGridColumn<FinanceGridRow>> _settleColumns() {
 
 // ===== allocate：项目 + 部门 + 数量 + 单价 + 金额(自动) =====
 List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
+  BuildContext context,
   FinanceNameService names,
   FinanceDocType type,
 ) {

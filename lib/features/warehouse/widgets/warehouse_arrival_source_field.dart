@@ -35,13 +35,14 @@ class WarehouseArrivalSourceField extends StatelessWidget {
   final ValueChanged<WarehouseArrivalSource> onChanged;
   final bool enabled;
 
+  // 列级通用说明（warehouseArrivalSourceHint）挂在表头 ⓘ 上（2026-09-10 全站
+  // 口径：格内只留行特有的错误/预填图标），故这里不传 info。
   @override
   Widget build(BuildContext context) => UtenDropdownField(
     value: value.name,
     enabled: enabled,
     allowClear: false,
     searchable: false,
-    info: workflowFieldText(context).warehouseArrivalSourceHint,
     items: [
       for (final source in WarehouseArrivalSource.values)
         UtenDropdownItem(value: source.name, label: source.label(context)),

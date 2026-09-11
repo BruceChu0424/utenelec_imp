@@ -158,8 +158,40 @@ public class PurchaseReportService {
 
         // 隐藏元数据列（key 以 "__" 开头，如行跳源头用的 __srcId）：不进返回的 columns（前端不渲染、
         // 导出 Excel 不含），但行 Map 已 put 其值（前端 onRowTap 可读 row['__srcId'] 跳对应单据编辑页）。
+        // 表格下方合计：与列表用同一份 full（日期/facet/关键字 + 对象级授权谓词）在**整个结果集**
+        // 上聚合，与翻到第几页无关；派生表不带 LIMIT/OFFSET，所以绝不会出现「只合计当前页」。
+        List<com.uten.imp.common.report.ReportTotal> totals =
+                com.uten.imp.common.report.ReportTotalsCalculator.compute(
+                        em, dataSelect, fromJoin, full.sql(), full.params(),
+                        reportTotalSpecs(safeColumns, columns));
+
         List<ReportColumn> visible = safeColumns.stream().filter(c -> !c.key().startsWith("__")).toList();
-        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages);
+        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages, totals);
+    }
+
+    /**
+     * 把列定义里 {@code totaled(...)} 声明的合计翻译成聚合规格。
+     *
+     * <p>{@code emitted} = 实际下发给前端的列（脱敏后）——被 priceMasked 拿掉的金额列不在其中，
+     * 合计自然也不会出现，无需另写门控。{@code projected} = dataSelect 真正投影的列，
+     * 用来确认分组列（单位名/币种名）确实在派生表里。
+     *
+     * <p><b>声明了分组列却没投影时整项丢弃</b>，绝不退回「不分组」——那等于跨单位/跨币种相加。
+     */
+    private static List<com.uten.imp.common.report.ReportTotalsCalculator.Spec> reportTotalSpecs(
+            List<ReportColumn> emitted, List<ReportColumn> projected) {
+        java.util.Set<String> present = new java.util.HashSet<>();
+        for (ReportColumn c : projected) present.add(c.key());
+        List<com.uten.imp.common.report.ReportTotalsCalculator.Spec> specs = new ArrayList<>();
+        for (ReportColumn c : emitted) {
+            String label = c.totalLabel();
+            if (label == null || label.isBlank()) continue;
+            String g = c.totalGroupKey();
+            if (g != null && !present.contains(g)) continue;
+            specs.add(new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
+                    c.key(), label, c.type(), g));
+        }
+        return specs;
     }
 
     private boolean purchasePriceMasked() {
@@ -206,6 +238,21 @@ public class PurchaseReportService {
 
     // ======================== 主过滤构造（公共） ========================
 
+    /**
+     * 默认口径：草稿（status=0）不进报表。
+     *
+     * <p>未审核单据不是经营事实。调用方显式传 status（含 status=0 查草稿、或「未审」facet）
+     * 时按其口径走，不叠加本默认值。与 SalesReportService 同款。
+     */
+    private static void addApprovedByDefault(WhereBuilder w, Short status) {
+        if (status != null) {
+            w.add("o.status = :status", "status", status);
+        } else {
+            // 无具名参数的常量片段：WhereBuilder.build 对 param==null 的 Clause 只拼 SQL 不绑参。
+            w.add("o.status <> 0", null, null);
+        }
+    }
+
     private static void addCommonDocFilters(WhereBuilder w, String billNo, UUID supplierId, UUID warehouseId,
                                             Short status, LocalDate dateFrom, LocalDate dateTo, String kw,
                                             String billNoCol, String dateCol) {
@@ -214,7 +261,7 @@ public class PurchaseReportService {
         }
         if (supplierId != null) w.add("o.supplier_id = :supplierId", "supplierId", supplierId);
         if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
-        if (status != null) w.add("o.status = :status", "status", status);
+        addApprovedByDefault(w, status);
         if (dateFrom != null) w.add(dateCol + " >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add(dateCol + " <= :dateTo", "dateTo", dateTo);
         if (kw != null && !kw.isBlank()) {
@@ -295,7 +342,8 @@ public class PurchaseReportService {
                 ReportColumn.text("customerModel", "客户型号", 100), ReportColumn.text("categoryName", "类别", 100),
                 ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.text("material", "材质", 90),
                 ReportColumn.text("spec", "规格", 140), ReportColumn.text("colorName", "颜色", 80),
-                ReportColumn.number("qty", "数量"), ReportColumn.text("unitName", "单位", 70),
+                ReportColumn.number("qty", "数量").totaled("合计数量", "unitName"),
+                ReportColumn.text("unitName", "单位", 70),
                 ReportColumn.money("price", "单价"), ReportColumn.money("amount", "金额"),
                 ReportColumn.number("orderedQty", "采订数量"), ReportColumn.text("purchaseOrderNo", "采购订货单号", 130),
                 ReportColumn.text("salesOrderNo", "销售订货单号", 130), ReportColumn.text("productionPlanNo", "生产计划单号", 130),
@@ -372,7 +420,7 @@ public class PurchaseReportService {
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
-        if (status != null) w.add("o.status = :status", "status", status);
+        addApprovedByDefault(w, status);
         if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
         addSummaryKw(w, kw, "o.bill_no");
@@ -461,7 +509,7 @@ public class PurchaseReportService {
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
         if (supplierId != null) w.add("o.supplier_id = :supplierId", "supplierId", supplierId);
-        if (status != null) w.add("o.status = :status", "status", status);
+        addApprovedByDefault(w, status);
         if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
         addSummaryKw(w, kw, "o.bill_no");
@@ -562,7 +610,7 @@ public class PurchaseReportService {
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
         if (supplierId != null) w.add("o.supplier_id = :supplierId", "supplierId", supplierId);
         if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
-        if (status != null) w.add("o.status = :status", "status", status);
+        addApprovedByDefault(w, status);
         if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
         addSummaryKw(w, kw, "o.bill_no");
@@ -651,7 +699,7 @@ public class PurchaseReportService {
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
         if (supplierId != null) w.add("o.supplier_id = :supplierId", "supplierId", supplierId);
         if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
-        if (status != null) w.add("o.status = :status", "status", status);
+        addApprovedByDefault(w, status);
         if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
         addSummaryKw(w, kw, "o.bill_no");

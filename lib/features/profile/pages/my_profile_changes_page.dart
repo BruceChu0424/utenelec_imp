@@ -1,8 +1,14 @@
 // MyProfileChangesPage - 员工自查：我的修改申请
 // 文档：docs/03-页面/我的页.md（§我的修改申请）
 //
-// 顶部 UtenSegmentedFilter（全部 / 待审 / 已通过 / 已驳回 / 已生效）
-// 主区 UtenResponsiveGrid 卡片列表（每张 = 一批）
+// 2026-09-09 表格化改版：卡片网格 → MasterDataTableView（列对齐 + 分页）。
+// 列：变更字段/项数/状态/提交时间/审核信息（原卡片字段全部保留；列表接口不含
+// 逐字段旧→新值，旧→新对比在双击行打开的差异弹窗里）。顶部 UtenSegmentedFilter
+// 分段（全部/待审/已通过/已驳回）保留；无多选（本人只能撤销自己的待审批次，
+// 逐条语义，不做批量）。行双击开差异弹窗；行右键/长按菜单提供「撤销申请」
+//（仅待审段）与「查看差异」。
+// 2026-09-10 表头筛选：「状态」列筛选桶 = 分段可选状态集（待审/已生效/已驳回），
+// 选中即切到对应分段并回第 1 页（下推后端 status 参数，非页内裁剪）。
 // 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
 
 import 'package:flutter/material.dart';
@@ -10,13 +16,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/cards/uten_card.dart';
-import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_paged_grid.dart';
-import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
@@ -25,6 +28,8 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../basic_data/models/master_facet.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/profile_change_request.dart';
 import '../providers/profile_change_providers.dart';
 import '../repositories/profile_change_repository.dart';
@@ -49,6 +54,59 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.invalidate(myProfileChangesProvider);
     });
+  }
+
+  /// 「状态」列筛选桶：与顶部分段同一状态集（value = 后端状态码）。
+  /// 桶不带计数（按页拉取，无全量计数口径）。
+  List<MasterFacetBucket> _statusFacets(AppLocalizations l10n) => [
+    MasterFacetBucket(
+      value: 'pending',
+      count: 0,
+      label: l10n.profileChangeFilterPending,
+    ),
+    MasterFacetBucket(
+      value: 'applied',
+      count: 0,
+      label: l10n.profileChangeFilterApplied,
+    ),
+    MasterFacetBucket(
+      value: 'rejected',
+      count: 0,
+      label: l10n.profileChangeFilterRejected,
+    ),
+  ];
+
+  /// 表头状态筛选 → 切到对应分段（下推后端 status）并回第 1 页；选「所有」= 全部段。
+  void _onFilterChanged(String key, String? value) {
+    if (key != 'status') return;
+    setState(() {
+      _status = value;
+      _page = 1;
+    });
+  }
+
+  Future<void> _openDetail(String batchId) {
+    return showDialog<void>(
+      context: context,
+      builder: (_) => _MyBatchDetailDialog(batchId: batchId),
+    );
+  }
+
+  /// 撤销待审批次（原卡片「撤销」按钮能力移入行菜单）。
+  Future<void> _cancel(String batchId) async {
+    final l10n = AppLocalizations.of(context);
+    try {
+      await ref.read(profileChangeRepositoryProvider).cancel(batchId);
+      if (!mounted) return;
+      ref.invalidate(myProfileChangesProvider);
+      context.appSuccess(l10n.profileChangeCancelledByMe);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      context.appError(e.message);
+    } catch (_) {
+      if (!mounted) return;
+      context.appError(l10n.profileChangeSubmitFailed);
+    }
   }
 
   @override
@@ -81,7 +139,7 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
             }),
           ),
         ),
-        Expanded(child: _buildBody(context, l10n, async)),
+        Expanded(child: _buildBody(l10n, async)),
       ],
     );
     // compact 下页面自带宽度收敛；medium+ 由 MainShell 的容器统一处理
@@ -102,60 +160,50 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
   }
 
   Widget _buildBody(
-    BuildContext context,
     AppLocalizations l10n,
     AsyncValue<ProfileChangePage<MyProfileChangeListItem>> async,
   ) {
     return async.when(
-      data: (page) {
-        if (page.items.isEmpty) {
-          return UtenEmpty(
-            icon: Icons.assignment_outlined,
-            message: l10n.profileChangeListEmpty,
+      data: (page) => RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(myProfileChangesProvider);
+          await ref.read(
+            myProfileChangesProvider((status: _status, page: _page)).future,
           );
-        }
-        return Column(
-          children: [
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: () async {
-                  ref.invalidate(myProfileChangesProvider);
-                  await ref.read(
-                    myProfileChangesProvider((
-                      status: _status,
-                      page: _page,
-                    )).future,
-                  );
-                },
-                // 服务端按页拉取：当页 items 铺进网格，外层 SingleChildScrollView
-                // 让当页可竖向滚动（修原先 Wrap 不可滚、卡片多会溢出的问题）。
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  child: UtenResponsiveGrid(
-                    itemCount: page.items.length,
-                    itemBuilder: (context, index, width) {
-                      final item = page.items[index];
-                      return _MyBatchCard(item: item);
-                    },
-                  ),
-                ),
-              ),
+        },
+        child: MasterDataTableView<MyProfileChangeListItem>(
+          key: const Key('my-profile-changes-table'),
+          columns: _columns(l10n),
+          items: page.items,
+          facets: {'status': _statusFacets(l10n)},
+          nullCounts: const {},
+          filters: {'status': _status},
+          onFilterChanged: _onFilterChanged,
+          // 双击行打开本批旧→新差异弹窗（保留原卡片「查看差异」能力）。
+          onRowTap: (item) => _openDetail(item.batchId),
+          // 行右键/长按菜单：撤销申请（仅待审批）+ 查看差异。
+          rowMenuBuilder: (item) => [
+            UtenMenuItem(
+              label: l10n.profileChangeDiffTitle,
+              icon: Icons.difference_outlined,
+              onTap: () => _openDetail(item.batchId),
             ),
-            if (page.totalPages > 1)
-              UtenGridPager(
-                currentPage: page.page,
-                totalPages: page.totalPages,
-                totalItems: page.total,
-                onPrev: page.page > 1
-                    ? () => setState(() => _page = page.page - 1)
-                    : null,
-                onNext: page.page < page.totalPages
-                    ? () => setState(() => _page = page.page + 1)
-                    : null,
+            if (item.status == ProfileChangeStatus.pending) ...[
+              const UtenMenuDivider(),
+              UtenMenuItem(
+                label: l10n.profileChangeCancel,
+                icon: Icons.undo_rounded,
+                destructive: true,
+                onTap: () => _cancel(item.batchId),
               ),
+            ],
           ],
-        );
-      },
+          emptyMessage: l10n.profileChangeListEmpty,
+          currentPage: page.page,
+          totalPages: page.totalPages,
+          onPageChange: (p) => setState(() => _page = p),
+        ),
+      ),
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => UtenEmpty.error(
         message: e is ApiException ? e.message : l10n.commonError,
@@ -164,125 +212,49 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
       ),
     );
   }
-}
 
-class _MyBatchCard extends ConsumerWidget {
-  const _MyBatchCard({required this.item});
-  final MyProfileChangeListItem item;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    final (statusText, statusType) = _statusStyle(l10n, item.status);
-    return UtenCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  l10n.profileChangeBatchItems(item.itemCount),
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              UtenStatusBadge(
-                label: statusText,
-                type: statusType,
-                size: UtenStatusBadgeSize.small,
-              ),
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-          Text(
-            item.fieldLabels.take(3).join('、') +
-                (item.fieldLabels.length > 3 ? '…' : ''),
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            _formatTime(item.submittedAt),
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          if (item.reviewComment != null && item.reviewComment!.isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Container(
-              padding: const EdgeInsets.all(UtenSpacing.s8),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainer,
-                borderRadius: UtenRadius.smAll,
-              ),
-              child: Text(
-                item.reviewComment!,
-                style: theme.textTheme.bodySmall,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-          const SizedBox(height: UtenSpacing.s12),
-          Row(
-            children: [
-              if (item.status == ProfileChangeStatus.pending)
-                Expanded(
-                  child: UtenButton(
-                    type: UtenButtonType.ghost,
-                    size: UtenButtonSize.small,
-                    onPressed: () => _cancel(context, ref, item.batchId),
-                    child: Text(l10n.profileChangeCancel),
-                  ),
-                ),
-              if (item.status == ProfileChangeStatus.pending)
-                const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: UtenButton(
-                  size: UtenButtonSize.small,
-                  onPressed: () => _openDetail(context, item.batchId),
-                  child: Text(l10n.profileChangeDiffTitle),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _openDetail(BuildContext context, String batchId) {
-    showDialog<void>(
-      context: context,
-      builder: (_) => _MyBatchDetailDialog(batchId: batchId),
-    );
-  }
-
-  Future<void> _cancel(
-    BuildContext context,
-    WidgetRef ref,
-    String batchId,
-  ) async {
-    final l10n = AppLocalizations.of(context);
-    try {
-      await ref.read(profileChangeRepositoryProvider).cancel(batchId);
-      if (!context.mounted) return;
-      ref.invalidate(myProfileChangesProvider);
-      context.appSuccess(l10n.profileChangeCancelledByMe);
-    } on ApiException catch (e) {
-      if (!context.mounted) return;
-      context.appError(e.message);
-    } catch (_) {
-      if (!context.mounted) return;
-      context.appError(l10n.profileChangeSubmitFailed);
-    }
-  }
+  List<MasterColumnDef<MyProfileChangeListItem>> _columns(
+    AppLocalizations l10n,
+  ) => [
+    MasterColumnDef(
+      key: 'fields',
+      label: '变更字段',
+      width: 320,
+      info: '本批修改涉及的档案字段（顿号连接）；双击行可查看逐字段旧→新值对比。',
+      value: (item) => item.fieldLabels.join('、'),
+    ),
+    MasterColumnDef(
+      key: 'itemCount',
+      label: '项数',
+      width: 80,
+      type: 'number',
+      value: (item) => item.itemCount.toString(),
+    ),
+    MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 90,
+      info: '表头筛选与顶部分段同一口径：选中状态即切到对应分段并回第 1 页。',
+      value: (item) => _statusLabel(l10n, item.status),
+    ),
+    MasterColumnDef(
+      key: 'submittedAt',
+      label: '提交时间',
+      width: 150,
+      type: 'date',
+      value: (item) => _formatTime(item.submittedAt),
+    ),
+    MasterColumnDef(
+      key: 'reviewComment',
+      label: '审核信息',
+      width: 260,
+      info: 'HR 审核意见（驳回原因等）；未审核或无意见时留空。',
+      value: (item) =>
+          (item.reviewComment == null || item.reviewComment!.isEmpty)
+          ? null
+          : item.reviewComment,
+    ),
+  ];
 }
 
 /// 详情弹窗（按 batchId 拉一次）。
@@ -349,21 +321,18 @@ class _MyBatchDetailDialog extends ConsumerWidget {
   }
 }
 
-(String, UtenStatusBadgeType) _statusStyle(
-  AppLocalizations l10n,
-  ProfileChangeStatus s,
-) {
+String _statusLabel(AppLocalizations l10n, ProfileChangeStatus s) {
   switch (s) {
     case ProfileChangeStatus.pending:
-      return (l10n.profileChangeStatusPending, UtenStatusBadgeType.warning);
+      return l10n.profileChangeStatusPending;
     case ProfileChangeStatus.applied:
-      return (l10n.profileChangeStatusApplied, UtenStatusBadgeType.success);
+      return l10n.profileChangeStatusApplied;
     case ProfileChangeStatus.approved:
-      return (l10n.profileChangeStatusApproved, UtenStatusBadgeType.success);
+      return l10n.profileChangeStatusApproved;
     case ProfileChangeStatus.rejected:
-      return (l10n.profileChangeStatusRejected, UtenStatusBadgeType.danger);
+      return l10n.profileChangeStatusRejected;
     case ProfileChangeStatus.cancelled:
-      return (l10n.profileChangeStatusCancelled, UtenStatusBadgeType.neutral);
+      return l10n.profileChangeStatusCancelled;
   }
 }
 

@@ -129,6 +129,16 @@ public class ReviewNoticeAudience {
             case "PROCUREMENT_IQC_REJECTION_RETURNED" -> departments.contains("DEPT_FIN")
                     && permissions.contains("procurement_iqc_rejection:view")
                     && any(permissions, "procurement_iqc_rejection:confirm_credit", "procurement_iqc_rejection:close_no_credit");
+            // ===== 2026-09-09 人事域（HrNoticeService）：职能权限判定，不限定部门子树
+            // （ADR-063 2026-09-10 修订明示的例外：HR/财务/回复职能可跨部门）=====
+            case "PROFILE_CHANGE_SUBMITTED" -> permissions.contains("profile:review");
+            case "VISITOR_APPLY_SUBMITTED" -> permissions.contains("visitor:approve");
+            case "VISITOR_HOST_CONFIRM_REQUIRED" -> permissions.contains("visitor:host-confirm");
+            case "EXPENSE_CLAIM_SUBMITTED" -> permissions.contains("expense:approve");
+            case "EXPENSE_CLAIM_PENDING_PAYMENT" -> permissions.contains("expense:pay");
+            case "PAYROLL_BATCH_SUBMITTED" -> permissions.contains("payroll:review");
+            case "PAYROLL_BATCH_PENDING_PUBLISH" -> permissions.contains("payroll:publish");
+            case "SUGGESTION_SUBMITTED" -> permissions.contains("suggestion:reply");
             default -> false;
         };
     }

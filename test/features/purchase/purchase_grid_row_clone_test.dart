@@ -1,6 +1,7 @@
 // PurchaseGridRow.clone（明细复制/粘贴，2026-09-03）：
 // 拷用户录入 + 货品主档透传 + 行供应商 + 行级商业条款 + 备注；不拷上游明细 id /
 // 来源谱系 / 到货门控 / sourceLocked——粘贴行是自由新明细，不得双引用上游行。
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/purchase/widgets/purchase_grid_columns.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
@@ -72,9 +73,21 @@ void main() {
     expect(c.sourceLocked, isFalse);
   });
 
-  test('列序契约：数量之后紧跟单位，实际重量列已下线（2026-09-04）', () {
-    final columns = purchaseGridColumns((_) async {});
-    final keys = columns.map((column) => column.key).toList();
+  testWidgets('列序契约：数量之后紧跟单位，实际重量列已下线（2026-09-04）', (tester) async {
+    late final List<String> keys;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            keys = purchaseGridColumns(
+              (_) async {},
+              context: context,
+            ).map((column) => column.key).toList();
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
     expect(keys, isNot(contains('weight')));
     expect(keys.indexOf('unit'), keys.indexOf('qty') + 1);
   });

@@ -76,7 +76,10 @@ class BusinessDataResetSqlContractTest {
             Map.entry("procurement_iqc_quality_consideration_parts", 518),
             Map.entry("procurement_iqc_stock_consideration_parts", 518),
             Map.entry("procurement_receipt_consideration_parts", 518),
-            Map.entry("subcontract_receipt_material_consumptions", 522));
+            Map.entry("subcontract_receipt_material_consumptions", 522),
+            Map.entry("production_fqc_inspection_sheets", 547),
+            Map.entry("production_fqc_inspection_sheet_items", 547),
+            Map.entry("production_finished_arrival_registration_reversals", 548));
 
     private String opsScript;
     private String migrationSql;
@@ -152,6 +155,16 @@ class BusinessDataResetSqlContractTest {
                         "V506__inventory_value_openings_and_legacy_cases.sql"),
                 Path.of("server", "src", "main", "resources", "db", "migration",
                         "V506__inventory_value_openings_and_legacy_cases.sql"));
+        extensionSql += read(
+                Path.of("src", "main", "resources", "db", "migration",
+                        "V547__production_fqc_inspection_sheets.sql"),
+                Path.of("server", "src", "main", "resources", "db", "migration",
+                        "V547__production_fqc_inspection_sheets.sql"));
+        extensionSql += read(
+                Path.of("src", "main", "resources", "db", "migration",
+                        "V548__production_finished_arrival_registration_reversal.sql"),
+                Path.of("server", "src", "main", "resources", "db", "migration",
+                        "V548__production_finished_arrival_registration_reversal.sql"));
     }
 
     @Test
@@ -228,7 +241,14 @@ class BusinessDataResetSqlContractTest {
                 .contains("(538, 497)")
                 .contains("(539, 498)")
                 .contains("(540, 499)")
-                .contains("V507/469、V508/470及V511至V540完整目录");
+                .contains("(541, 500)")
+                .contains("(545, 503)")
+                .contains("(547, 505)")
+                .contains("(548, 506)")
+                .contains("(549, 507)")
+                .contains("(550, 508)")
+                .contains("(551, 509)")
+                .contains("V507/469、V508/470及V511至V551完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);

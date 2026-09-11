@@ -1,5 +1,6 @@
 package com.uten.imp.features.visitor;
 
+import com.uten.imp.features.notice.HrNoticeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.org.department.Department;
@@ -63,6 +64,7 @@ class VisitorRequestValidationTest {
                 employeeRepo,
                 mapper,
                 tx,
+                mock(HrNoticeService.class),
                 currentUser);
 
         visitorId = UUID.randomUUID();

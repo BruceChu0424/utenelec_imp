@@ -3,6 +3,7 @@ package com.uten.imp.ops;
 import com.uten.imp.audit.AuditDeviceContext;
 import com.uten.imp.audit.AuditLogRepository;
 import com.uten.imp.audit.AuditService;
+import com.uten.imp.application.port.BusinessAttachmentResetPreparationPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.systemtest.BusinessDataResetDrainGate;
@@ -21,11 +22,18 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * 工作台「清空业务数据」的真实库执行证明（V462 函数 + 服务编排全链路）：
@@ -73,11 +81,19 @@ class BusinessDataResetServicePostgresTest {
         insertSeedRefreshToken(dataSource);
         long epochBefore = readEpoch(dataSource);
 
+        // 2026-09-09 起清空前置「业务附件彻底清理」：本测试没有业务附件，预览恒 0 阻塞
+        // → purge 直接返回；drainNextDeletion 不会被调用（mock 默认 false）。
+        BusinessAttachmentResetPreparationPort attachmentReset =
+                mock(BusinessAttachmentResetPreparationPort.class);
+        when(attachmentReset.preview(any())).thenReturn(
+                new BusinessAttachmentResetPreparationPort.Preview(
+                        "uten_imp", "fp-empty", 0L, List.of(), false));
         BusinessDataResetService service = new BusinessDataResetService(
                 dataSource,
                 new BusinessDataResetFeatureGate(true),
                 new BusinessDataResetDrainGate(),
-                new AuditService(mock(AuditLogRepository.class), mock(AuditDeviceContext.class)));
+                new AuditService(mock(AuditLogRepository.class), mock(AuditDeviceContext.class)),
+                attachmentReset);
 
         // —— 阶段一：outbox 有待处理事件 → UT900 拒绝（409）——
         insertSeedBusinessOutboxRow(dataSource, (short) 0);
@@ -106,7 +122,8 @@ class BusinessDataResetServicePostgresTest {
         // V492 adds sales_order_revision_logs to the runtime reset policy.
         // V496 adds the append-only notification reversal ledger.
         // V504 adds all eight V500 value tables and three V503 source revision tables.
-        assertThat(result.clearedTableCount()).isEqualTo(266);
+        // V547 +2（品质检查单头/明细）、V548 +1（登记撤回记录）：266→269。
+        assertThat(result.clearedTableCount()).isEqualTo(269);
         assertThat(result.preservedTableCount()).isEqualTo(96);
         // cleared_rows 只统计 CLEAR 表：2 条 outbox、1 条库存余额、1 条待核历史价值池。
         // refresh_tokens 属 PRESERVE，
@@ -159,6 +176,96 @@ class BusinessDataResetServicePostgresTest {
         assertThat(countBusinessOutbox(dataSource)).isZero();
         assertThat(countUsers(dataSource)).isEqualTo(usersBefore);
         assertThat(countAccounts(dataSource)).isEqualTo(1);
+    }
+
+    /**
+     * 2026-09-09 附件自动清理循环：预览阻塞 2→1→0 时 prepare 被调两次、排水删除队列后循环退出，
+     * 物理删除文件数 = 前后 SUCCEEDED 删除任务差值并回显在结果里；库本身照常清空。
+     */
+    @Test
+    void purgesBusinessAttachmentsUntilPreviewReportsNoBlockers() throws Exception {
+        SimpleDriverDataSource dataSource = migratedDataSource();
+        BusinessAttachmentResetPreparationPort attachmentReset =
+                mock(BusinessAttachmentResetPreparationPort.class);
+        when(attachmentReset.unpurgeableBlockers(any())).thenReturn(List.of());
+        when(attachmentReset.preview(any())).thenReturn(
+                new BusinessAttachmentResetPreparationPort.Preview("uten_imp", "fp-2", 2L, List.of(), false),
+                new BusinessAttachmentResetPreparationPort.Preview("uten_imp", "fp-1", 1L, List.of(), false),
+                new BusinessAttachmentResetPreparationPort.Preview("uten_imp", "fp-0", 0L, List.of(), false));
+        when(attachmentReset.prepare(any(), anyString(), any())).thenReturn(
+                new BusinessAttachmentResetPreparationPort.Preview("uten_imp", "fp-after", 1L, List.of(), false));
+        // 第一轮排水 1 项后队列空；第二轮直接空（Mockito 连续桩最后一个值重复）。
+        when(attachmentReset.drainNextDeletion()).thenReturn(true, false);
+        when(attachmentReset.succeededDeletionCount()).thenReturn(10L, 13L);
+        BusinessDataResetService service = newService(dataSource, attachmentReset);
+
+        var result = service.reset(UUID.randomUUID(), "superadmin");
+
+        assertThat(result.deletedAttachmentFiles()).isEqualTo(3);
+        assertThat(result.clearedTableCount()).isPositive();
+        verify(attachmentReset, times(3)).preview(any());
+        verify(attachmentReset, times(2)).prepare(any(), anyString(), any());
+        verify(attachmentReset, times(1)).cleanupAbandonedScratch();
+    }
+
+    /**
+     * 自动清理消化不了的阻塞（LEGACY_UNVERIFIED / oss / 凭证未到期 / 删除失败达阈值）
+     * 在排水之前直接 409：按原因分组计数 + 文件名 + 处置指引；不预览、不 prepare、不清库，
+     * 且排水闸保持 IDLE（随后正常清空仍可执行）。
+     */
+    @Test
+    void refusesBeforeDrainWhenAttachmentsCannotBePurgedAutomatically() throws Exception {
+        SimpleDriverDataSource dataSource = migratedDataSource();
+        BusinessAttachmentResetPreparationPort attachmentReset =
+                mock(BusinessAttachmentResetPreparationPort.class);
+        when(attachmentReset.unpurgeableBlockers(any())).thenReturn(List.of(
+                new BusinessAttachmentResetPreparationPort.UnpurgeableGroup(
+                        "原件状态为 LEGACY_UNVERIFIED，需先附件对账", 2L, List.of("合同A.pdf", "合同B.pdf")),
+                new BusinessAttachmentResetPreparationPort.UnpurgeableGroup(
+                        "上传凭证仍有效，需等待到期后重试", 1L, List.of("图纸.dwg"))));
+        BusinessDataResetService service = newService(dataSource, attachmentReset);
+        long epochBefore = readEpoch(dataSource);
+
+        ApiException refused = assertThrows(ApiException.class,
+                () -> service.reset(UUID.randomUUID(), "superadmin"));
+
+        assertThat(refused.getCode()).isEqualTo(ErrorCode.CONFLICT);
+        assertThat(refused.getMessage())
+                .contains("3 项无法自动清理")
+                .contains("原件状态为 LEGACY_UNVERIFIED，需先附件对账 ×2")
+                .contains("合同A.pdf")
+                .contains("上传凭证仍有效，需等待到期后重试 ×1")
+                .contains("处置指引");
+        verify(attachmentReset, never()).preview(any());
+        verify(attachmentReset, never()).prepare(any(), anyString(), any());
+        assertThat(readEpoch(dataSource)).isEqualTo(epochBefore);
+
+        // 排水闸未被占用：阻塞处置后同一服务可正常清空。
+        when(attachmentReset.unpurgeableBlockers(any())).thenReturn(List.of());
+        when(attachmentReset.preview(any())).thenReturn(
+                new BusinessAttachmentResetPreparationPort.Preview("uten_imp", "fp-empty", 0L, List.of(), false));
+        assertThat(service.reset(UUID.randomUUID(), "superadmin").authorizationEpochAfter())
+                .isEqualTo(epochBefore + 1);
+    }
+
+    private static SimpleDriverDataSource migratedDataSource() {
+        Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+        return new SimpleDriverDataSource(
+                new Driver(), POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+    }
+
+    private static BusinessDataResetService newService(
+            SimpleDriverDataSource dataSource, BusinessAttachmentResetPreparationPort attachmentReset) {
+        return new BusinessDataResetService(
+                dataSource,
+                new BusinessDataResetFeatureGate(true),
+                new BusinessDataResetDrainGate(),
+                new AuditService(mock(AuditLogRepository.class), mock(AuditDeviceContext.class)),
+                attachmentReset);
     }
 
     private void insertSeedDepartment(SimpleDriverDataSource dataSource) throws SQLException {

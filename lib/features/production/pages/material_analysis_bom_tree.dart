@@ -249,9 +249,12 @@ abstract class _MaterialAnalysisBomTreeState
         theme,
         key: ValueKey('material-bom-view-${mode.name}'),
         selected: _bomViewMode == mode,
+        // 切视图后桶集合会变（如「待确认路线」视图里没有「已齐套」桶）：
+        // 只移除失效的表头筛选值，仍有效的保留。
         onSelected: () => setState(() {
           _bomViewMode = mode;
           _bomTablePageNo = 1;
+          _pruneMaterialTableFilters();
         }),
         label: '${mode.label} ${_bomModeCount(analysis, mode)}',
       ),
@@ -262,6 +265,7 @@ abstract class _MaterialAnalysisBomTreeState
       onSelected: () => setState(() {
         _bomAggregateByMaterial = false;
         _bomTablePageNo = 1;
+        _pruneMaterialTableFilters();
       }),
       label: _l10n.materialByProduct,
     ),
@@ -269,27 +273,36 @@ abstract class _MaterialAnalysisBomTreeState
       theme,
       key: const ValueKey('material-bom-layout-material'),
       selected: _bomAggregateByMaterial,
+      // 汇总视图的进度桶是「已覆盖/部分覆盖/未覆盖」三档，与产品视图不同；
+      // 路线桶两边同键（BUY/SUBCONTRACT/MAKE/MIXED）可跨视图保留。
       onSelected: () => setState(() {
         _bomAggregateByMaterial = true;
         _bomTablePageNo = 1;
+        _pruneMaterialTableFilters();
       }),
       label: _l10n.materialByMaterial,
     ),
   ];
 
+  /// chip 计数与表格同口径：视图条件 × 关键词 × 表头筛选（产品视图）。
+  /// 汇总视图的表头筛选作用于聚合行，chip 仍按节点计数（不含表头筛选）。
   int _bomModeCount(
     ProductionMaterialAnalysisView analysis,
     _BomViewMode mode,
   ) {
+    final projection = _bomFilterProjection(analysis);
     var count = 0;
-    for (final entry in _bomPresentation(analysis).nodesByProduct.entries) {
+    for (final entry in projection.presentation.nodesByProduct.entries) {
       count += entry.value.where((material) {
-        return switch (mode) {
-          _BomViewMode.shortage => material.shortageQty > 0,
-          _BomViewMode.unconfirmed =>
-            material.shortageQty > 0 && material.confirmedRoute == null,
-          _BomViewMode.all => true,
-        };
+        final passesFilters =
+            projection.nodeMatchesFilters[material.materialLineId] ?? true;
+        return passesFilters &&
+            switch (mode) {
+              _BomViewMode.shortage => material.shortageQty > 0,
+              _BomViewMode.unconfirmed =>
+                material.shortageQty > 0 && material.confirmedRoute == null,
+              _BomViewMode.all => true,
+            };
       }).length;
     }
     return count;
@@ -505,23 +518,75 @@ abstract class _MaterialAnalysisBomTreeState
     });
   }
 
+  // ===== 表头筛选协作契约：实现在 material_analysis_material_table.dart =====
+  //
+  // 投影层只认「行」的桶键（路线/进度都是行级语义，产品行与根供料节点合一），
+  // 所以这里用探针行调用表格部分的桶键/命中判断，不重复实现状态推导。
+
+  /// 节点的探针行（只用于算桶键与筛选命中，不进渲染）。
+  _MaterialTableRow _probeMaterialRow(
+    ProductionMaterialAnalysisMaterial material,
+    _MaterialAnalysisIndexes indexes,
+  );
+
+  /// 产品行的探针行（承载根供料节点，与 P1 行同一路线/进度口径）。
+  _MaterialTableRow _probeProductRow(
+    ProductionMaterialAnalysisProduct product,
+    _MaterialAnalysisIndexes indexes,
+  );
+
+  /// 行是否通过当前表头筛选（无激活筛选恒 true；脏路线组豁免路线筛选）。
+  bool _headerFilterMatchesRow(_MaterialTableRow row);
+
+  bool get _hasActiveMaterialTableFilters;
+
+  /// 表头筛选值 + 路线草稿/脏组签名（投影缓存键的一部分）。
+  String _materialTableProjectionSignature();
+
+  Map<String, List<MasterFacetBucket>> _materialTableFacetsOf(
+    Iterable<_MaterialTableRow> rows,
+  );
+
+  /// 视图 chip + 关键词 + 表头筛选的节点级投影（2026-09-10 F2a 起表头筛选
+  /// 也在这里生效，而不是拍平成行之后再裁）：
+  ///
+  /// 1. 基础可见层 = 视图条件 × 关键词，命中节点的祖先保留为普通行（原口径）；
+  /// 2. 表头筛选在基础可见层内按行级桶键命中，未命中但有子孙命中的祖先
+  ///    （含产品行）保留为**只读上下文**（`contextOnly*`，无勾选/下拉，不计数）；
+  ///    `hasChildren`/箭头/子件数与 chip 计数都以本投影为准；
+  /// 3. 桶按基础可见层（不含表头筛选）聚合，选了一个值其余值仍在下拉里。
+  ///
+  /// 汇总视图的表头筛选作用于聚合行（见 `_aggregateTableRows`），本投影不处理。
   _BomFilterProjection _bomFilterProjection(
     ProductionMaterialAnalysisView analysis,
   ) {
+    final cacheKey = [
+      _bomViewMode.name,
+      _bomKeyword,
+      _materialTableProjectionSignature(),
+    ].join('\u0000');
     if (identical(_bomProjectionAnalysis, analysis) &&
-        _bomProjectionMode == _bomViewMode &&
-        _bomProjectionKeyword == _bomKeyword &&
+        _bomProjectionKey == cacheKey &&
         _bomProjectionCache != null) {
       return _bomProjectionCache!;
     }
     final indexes = _analysisIndexes(analysis);
+    final presentation = _bomPresentation(analysis);
+    final headerFilterActive =
+        _hasActiveMaterialTableFilters && !_bomAggregateByMaterial;
     final nodesByProduct =
         <String?, List<ProductionMaterialAnalysisMaterial>>{};
+    final visibleProductIds = <String>{};
+    final contextOnlyProductIds = <String>{};
+    final contextOnlyMaterialIds = <String>{};
+    final nodeMatchesFilters = <String, bool>{};
+    final facetRows = <_MaterialTableRow>[];
     var directMatches = 0;
     var visibleNodes = 0;
-    final presentation = _bomPresentation(analysis);
     for (final entry in presentation.nodesByProduct.entries) {
       final product = indexes.productsById[entry.key];
+      final ownsProductRow =
+          product != null && !_isEmbeddedMakeChildProduct(product);
       bool textMatches(ProductionMaterialAnalysisMaterial material) =>
           _bomTextMatches(material, product) ||
           _bomTextMatches(
@@ -531,24 +596,103 @@ abstract class _MaterialAnalysisBomTreeState
       directMatches += entry.value.where((material) {
         return _bomModeMatches(material) && textMatches(material);
       }).length;
-      final visible = _visibleBomNodes(
+      final base = _visibleBomNodes(
         entry.value,
         product,
         parentIds: presentation.parentIdsByMaterial,
         textMatches: textMatches,
       );
-      if (visible.isNotEmpty) nodesByProduct[entry.key] = visible;
-      visibleNodes += visible.length;
+      // 探针行：产品行承载根供料节点；其余节点各自一行。全量节点都建探针，
+      // chip 计数（其它视图）才能与表头筛选同口径。
+      final productRow = ownsProductRow
+          ? _probeProductRow(product, indexes)
+          : null;
+      final rootId = productRow?.material?.materialLineId;
+      final probeByNode = <String, _MaterialTableRow>{
+        for (final node in entry.value)
+          if (node.materialLineId != rootId)
+            node.materialLineId: _probeMaterialRow(node, indexes),
+      };
+      bool headerMatches(ProductionMaterialAnalysisMaterial node) {
+        if (!headerFilterActive) return true;
+        if (node.materialLineId == rootId) {
+          return productRow == null || _headerFilterMatchesRow(productRow);
+        }
+        final probe = probeByNode[node.materialLineId];
+        return probe == null || _headerFilterMatchesRow(probe);
+      }
+
+      for (final node in entry.value) {
+        nodeMatchesFilters[node.materialLineId] =
+            textMatches(node) && headerMatches(node);
+      }
+      if (base.isEmpty) continue;
+      // 桶：当前视图基础可见层（产品行 + 非根节点），不含表头筛选本身。
+      if (productRow != null) facetRows.add(productRow);
+      for (final node in base) {
+        final probe = probeByNode[node.materialLineId];
+        if (probe != null) facetRows.add(probe);
+      }
+      if (!headerFilterActive) {
+        nodesByProduct[entry.key] = base;
+        visibleNodes += base.length;
+        if (ownsProductRow) visibleProductIds.add(product.analysisLineId);
+        continue;
+      }
+      final productMatches = productRow == null
+          ? true
+          : _headerFilterMatchesRow(productRow);
+      final byId = {for (final node in base) node.materialLineId: node};
+      final matched = <String>{
+        for (final node in base)
+          if (node.materialLineId != rootId && headerMatches(node))
+            node.materialLineId,
+      };
+      // 命中节点的祖先（基础可见层内）保留为只读上下文。
+      final keep = <String>{};
+      for (final id in matched) {
+        ProductionMaterialAnalysisMaterial? current = byId[id];
+        while (current != null && keep.add(current.materialLineId)) {
+          current =
+              byId[presentation.parentIdsByMaterial[current.materialLineId]];
+        }
+      }
+      for (final id in keep) {
+        if (!matched.contains(id) && id != rootId) {
+          contextOnlyMaterialIds.add(id);
+        }
+      }
+      final productVisible = productMatches || matched.isNotEmpty;
+      if (rootId != null && byId.containsKey(rootId) && productVisible) {
+        keep.add(rootId);
+      }
+      final visible = base
+          .where((node) => keep.contains(node.materialLineId))
+          .toList(growable: false);
+      if (ownsProductRow) {
+        if (!productVisible) continue;
+        visibleProductIds.add(product.analysisLineId);
+        if (!productMatches) contextOnlyProductIds.add(product.analysisLineId);
+        nodesByProduct[entry.key] = visible;
+        visibleNodes += visible.length;
+      } else if (visible.isNotEmpty) {
+        nodesByProduct[entry.key] = visible;
+        visibleNodes += visible.length;
+      }
     }
     final projection = _BomFilterProjection(
       nodesByProduct: nodesByProduct,
       directMatchCount: directMatches,
       visibleNodeCount: visibleNodes,
       presentation: presentation,
+      visibleProductIds: visibleProductIds,
+      contextOnlyProductIds: contextOnlyProductIds,
+      contextOnlyMaterialIds: contextOnlyMaterialIds,
+      nodeMatchesFilters: nodeMatchesFilters,
+      facets: _materialTableFacetsOf(facetRows),
     );
     _bomProjectionAnalysis = analysis;
-    _bomProjectionMode = _bomViewMode;
-    _bomProjectionKeyword = _bomKeyword;
+    _bomProjectionKey = cacheKey;
     _bomProjectionCache = projection;
     return projection;
   }

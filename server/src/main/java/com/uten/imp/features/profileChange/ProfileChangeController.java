@@ -20,7 +20,8 @@ import java.util.UUID;
  *   DELETE /api/profile/me/changes/{batchId}       撤销未审次
  *
  * HR 侧：
- *   GET    /api/hr/profile-changes                 HR 队列
+ *   GET    /api/hr/profile-changes                 HR 队列（status/employeeId/departmentId 可选）
+ *   GET    /api/hr/profile-changes/facets          HR 队列表头筛选桶（部门）
  *   GET    /api/hr/profile-changes/{batchId}       单批 diff
  *   POST   /api/hr/profile-changes/{batchId}/review 批准 / 驳回
  *   GET    /api/hr/profile-changes/pending-count   全局待办数（导航徽章）
@@ -73,8 +74,16 @@ public class ProfileChangeController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) UUID employeeId) {
-        return queryService.hrList(page, size, status, employeeId);
+            @RequestParam(required = false) UUID employeeId,
+            @RequestParam(required = false) UUID departmentId) {
+        return queryService.hrList(page, size, status, employeeId, departmentId);
+    }
+
+    /** HR 队列表头筛选桶（部门），status 与列表分段同口径（空=待审）。 */
+    @GetMapping("/api/hr/profile-changes/facets")
+    @PreAuthorize("hasAuthority('profile:review')")
+    public ProfileChangeDto.Facets hrFacets(@RequestParam(required = false) String status) {
+        return queryService.hrFacets(status);
     }
 
     @GetMapping("/api/hr/profile-changes/{batchId}")

@@ -57,6 +57,9 @@ class SensitiveActionPermissionContractTest {
         assertGate(AttachmentController.class, "list", "attachment:view");
         assertGate(AttachmentController.class, "downloadGrant", "attachment:download");
         assertGate(AttachmentController.class, "downloadRaw", "attachment:download");
+        assertGate(AttachmentController.class, "preview", "attachment:download");
+        // 上传后标注分类：属于「整理自己传的文件」，不借用删除权限，也不额外新增权限码。
+        assertGate(AttachmentController.class, "setCategory", "attachment:upload");
         assertGate(AttachmentController.class, "delete", "attachment:delete");
         assertGate(AttachmentController.class, "reconciliationFindings",
                 "attachment:reconcile:view");

@@ -5,7 +5,7 @@ import 'package:uten_imp/features/production/repositories/production_execution_w
 
 void main() {
   test(
-    'workshop defaults to all active tasks and reportable filtering is explicit',
+    'workshop defaults to all active tasks; history segment sends the date gate',
     () async {
       final requests = <RequestOptions>[];
       final repository = ProductionExecutionWorkbenchRepository(
@@ -21,12 +21,19 @@ void main() {
         }),
       );
       await repository.workshopTasks();
-      await repository.workshopTasks(status: 'READY_TO_REPORT');
+      await repository.workshopTasks(
+        status: 'COMPLETED',
+        dateFrom: '2026-09-01',
+        dateTo: '2026-09-10',
+      );
       expect(requests.first.queryParameters, {'page': 1, 'size': 50});
+      // ADR-066 §1.3：历史任务段按 dateFrom/dateTo 时间门控加载。
       expect(requests.last.queryParameters, {
         'page': 1,
         'size': 50,
-        'status': 'READY_TO_REPORT',
+        'status': 'COMPLETED',
+        'dateFrom': '2026-09-01',
+        'dateTo': '2026-09-10',
       });
     },
   );
@@ -79,24 +86,16 @@ void main() {
     final repository = ProductionExecutionWorkbenchRepository(
       _api((request) {
         captured = request;
-        return {
-          'count': 6,
-          'preparing': 3,
-          'readyToReport': 2,
-          'inProgress': 1,
-        };
+        return {'count': 4, 'preparing': 3, 'inProgress': 1};
       }),
     );
     final breakdown = await repository.workshopTaskCount();
     expect(captured.path, '/production/workshop-tasks/count');
-    expect(breakdown.count, 6);
+    expect(breakdown.count, 4);
     expect(breakdown.preparing, 3);
-    expect(breakdown.readyToReport, 2);
     expect(breakdown.inProgress, 1);
-    expect(
-      breakdown.preparing + breakdown.readyToReport + breakdown.inProgress,
-      breakdown.count,
-    );
+    // 「可报工」分段 2026-09-06 退役、2026-09-10 删字段：两段相加=总数。
+    expect(breakdown.preparing + breakdown.inProgress, breakdown.count);
   });
 }
 

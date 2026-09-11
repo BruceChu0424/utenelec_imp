@@ -19,6 +19,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -98,6 +99,16 @@ class _SubcontractDecompositionPageState
     (code: 'FINANCE_APPROVED', label: '财务已通过'),
     (code: 'FINANCE_REJECTED', label: '财务驳回'),
   ];
+
+  /// 阶段计数的呈现形态（docs/00-项目准则/14-徽章与计数口径.md）。
+  ///
+  /// 红徽章只给「等委外部门动手」的阶段：待处理（= 委外任务中心角标同源）与
+  /// 财务驳回（要改单重报）；等待财务审核 / 财务已通过下一步是别人在办，
+  /// 是监控数 → 中性括号。
+  static UtenSegmentCountForm _stageCountForm(String code) => switch (code) {
+    'WAITING_ORDER' || 'FINANCE_REJECTED' => UtenSegmentCountForm.actionable,
+    _ => UtenSegmentCountForm.browsing,
+  };
 
   OperationsWorkbenchGateway get _repository =>
       widget.repository ?? ref.read(operationsWorkbenchRepositoryProvider);
@@ -389,6 +400,7 @@ class _SubcontractDecompositionPageState
         child: UtenButton(
           key: const Key('subcontract-decomposition-create-order'),
           size: UtenButtonSize.large,
+          type: UtenButtonType.danger,
           icon: Icons.precision_manufacturing_outlined,
           onPressed: issue == null ? _createOrder : null,
           onDisabledTap: issue == null ? null : () => context.appWarning(issue),
@@ -508,6 +520,7 @@ class _SubcontractDecompositionPageState
                     value: _DecompositionSeg.stage(stage.code),
                     label: stage.label,
                     count: statusCounts[stage.code],
+                    countForm: _stageCountForm(stage.code),
                   ),
                 const UtenFilterSegment(
                   value: _DecompositionSeg.history(),
@@ -522,6 +535,7 @@ class _SubcontractDecompositionPageState
               onSearchChanged: _applyKeyword,
             ),
             // 异常小类行：选中阶段后出现；无「全部异常」，默认不选=不附加过滤。
+            // 每一项都是「不处理会出事」（逾期/缺料/延期/待挂接）→ 一律红徽章。
             if (seg != null && !seg.history && exceptionOptions.isNotEmpty) ...[
               const SizedBox(height: UtenSpacing.s8),
               UtenFilterToolbar<String>(
@@ -532,6 +546,7 @@ class _SubcontractDecompositionPageState
                       value: option.value,
                       label: option.label,
                       count: exceptionCounts[option.value],
+                      countForm: UtenSegmentCountForm.actionable,
                     ),
                 ],
                 selected: _exception == null ? const {} : {_exception!},

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
@@ -541,6 +543,7 @@ class _FinanceSalesOrderConfirmationPageState
           child: UtenButton(
             key: const Key('sales-order-finance-batch-confirm'),
             size: UtenButtonSize.large,
+            type: UtenButtonType.danger,
             icon: Icons.fact_check_outlined,
             isLoading: _batchBusy,
             onPressed: canConfirmNow ? _confirmSelected : null,
@@ -827,7 +830,13 @@ class _FinanceSalesOrderConfirmationPageState
       searchKey: const Key('sales-order-finance-search'),
       compactBreakpoint: UtenBreakpoints.mediumStart,
       segments: [
-        UtenFilterSegment(value: false, label: '待确认', count: pendingCount),
+        // 「待确认」= 等我放行的队列 → 红徽章；「已驳回」无计数。
+        UtenFilterSegment(
+          value: false,
+          label: '待确认',
+          count: pendingCount,
+          countForm: UtenSegmentCountForm.actionable,
+        ),
         const UtenFilterSegment(value: true, label: '已驳回'),
       ],
       selected: {_showRejected},
@@ -848,54 +857,33 @@ class _FinanceSalesOrderConfirmationPageState
     );
   }
 
+  /// 紧凑端选择条：已选计数只由 [UtenSelectionSummaryPill] 呈现（与桌面表格
+  /// 悬浮批量组同一口径，✕ 即清空），旁边只保留「全选本页」。
   Widget _mobileSelectionBar(SalesOrderFinancePendingPage result) {
-    final theme = Theme.of(context);
     final selectedCount = _selectedIds.length;
     return Semantics(
       container: true,
       liveRegion: true,
       label: '已选择 $selectedCount 笔订单',
-      child: Container(
-        padding: const EdgeInsets.all(UtenSpacing.s8),
-        decoration: BoxDecoration(
-          color: selectedCount == 0
-              ? theme.colorScheme.surfaceContainerHighest
-              : theme.colorScheme.primaryContainer.withValues(alpha: 0.42),
-          borderRadius: UtenRadius.mdAll,
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: Wrap(
-          spacing: UtenSpacing.s8,
-          runSpacing: UtenSpacing.s8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
-              child: Text(
-                '已选 $selectedCount 笔',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            UtenButton(
-              size: UtenButtonSize.small,
-              type: UtenButtonType.secondary,
-              onPressed: _batchBusy || result.items.isEmpty
-                  ? null
-                  : _selectCurrentPage,
-              child: const Text('全选本页'),
-            ),
-            UtenButton(
-              size: UtenButtonSize.small,
-              type: UtenButtonType.ghost,
-              onPressed: _batchBusy || selectedCount == 0
-                  ? null
-                  : _clearSelection,
-              child: const Text('清空'),
-            ),
-          ],
-        ),
+      child: Wrap(
+        spacing: UtenSpacing.s8,
+        runSpacing: UtenSpacing.s8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          UtenSelectionSummaryPill(
+            key: const Key('sales-order-finance-mobile-selected-count'),
+            count: selectedCount,
+            onClear: _batchBusy || selectedCount == 0 ? null : _clearSelection,
+          ),
+          UtenButton(
+            size: UtenButtonSize.small,
+            type: UtenButtonType.secondary,
+            onPressed: _batchBusy || result.items.isEmpty
+                ? null
+                : _selectCurrentPage,
+            child: const Text('全选本页'),
+          ),
+        ],
       ),
     );
   }

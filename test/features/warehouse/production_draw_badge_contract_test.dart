@@ -10,7 +10,7 @@ void main() {
         'lib/features/warehouse/providers/production_draw_count_provider.dart',
       ).readAsStringSync();
       final globalRefresh = File(
-        'lib/features/dashboard/providers/workbench_refresh.dart',
+        'lib/shared/badges/todo_badge_registry.dart',
       ).readAsStringSync();
       final warehouseHub = File(
         'lib/features/warehouse/pages/warehouse_hub_page.dart',

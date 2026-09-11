@@ -42,9 +42,6 @@ abstract interface class NoticeRepository {
 
   Future<Notice> markRead(String id);
 
-  /// 当前用户已显式关闭/处理过强提醒弹窗；不改变通知已读状态。
-  Future<void> acknowledgePopup(String id);
-
   Future<void> completeTodo(String id);
 
   /// 全部标记已读
@@ -72,6 +69,11 @@ abstract interface class NoticeRepository {
 
   /// V459 居中审核弹窗（登录检查）：我名下未办结且未稍后的待审通知。
   Future<List<Notice>> pendingReviews();
+
+  /// 人工通知登录弹窗（2026-09-10，ADR-063 §8）：人事手动发布、对我可见且仍待处理的
+  /// 通知——打卡类型（acknowledge）未打卡恒弹；只提醒类型（none）14 天内未读未确认。
+  /// 与 [pendingReviews] 并行拉取，在同一居中弹窗内分组展示。
+  Future<List<Notice>> pendingPopups();
 
   /// 发布新通知（需 notice:publish 权限），返回入库后的实体
   Future<Notice> publish({
@@ -198,11 +200,6 @@ class DioNoticeRepository implements NoticeRepository {
   }
 
   @override
-  Future<void> acknowledgePopup(String id) async {
-    await _api.post(ApiEndpoints.noticePopupAck(id));
-  }
-
-  @override
   Future<void> completeTodo(String id) async {
     await _api.post(ApiEndpoints.noticeComplete(id));
   }
@@ -257,6 +254,14 @@ class DioNoticeRepository implements NoticeRepository {
   @override
   Future<List<Notice>> pendingReviews() async {
     final json = await _api.get(ApiEndpoints.noticesPendingReviews);
+    final rows = json['items'];
+    if (rows is! List) return const [];
+    return rows.whereType<Map<String, dynamic>>().map(_fromJson).toList();
+  }
+
+  @override
+  Future<List<Notice>> pendingPopups() async {
+    final json = await _api.get(ApiEndpoints.noticesPendingPopups);
     final rows = json['items'];
     if (rows is! List) return const [];
     return rows.whereType<Map<String, dynamic>>().map(_fromJson).toList();

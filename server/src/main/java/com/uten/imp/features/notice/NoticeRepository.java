@@ -152,8 +152,12 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
 
     /**
      * V459 居中审核弹窗的登录检查：当前用户名下**未办结**的待审通知——
-     * 审核目录注册事件、未撤回、未删除、稍后提醒已到期（或从未稍后）；
-     * 已读与否不影响（读没读不重要，办没办才重要；「稍后再看」是唯一静默途径）。
+     * 审核目录注册事件、未撤回、未删除、稍后提醒已到期（或从未稍后）。
+     * 2026-09-10 生效口径（ADR-063 修订）：弹 = 未办结 且（未确认弹窗 或 稍后已到期）。
+     *  - 车间任务 normal（等料/等待中）也进弹窗——「收到几个车间任务」按全部未办结计；
+     *  - 「处理过不再重复弹」：popup_acknowledged 过的静默（markRead / 去工作台处理即置）；
+     *  - 「稍后再看」(snooze) 到期后恒弹（snoozedUntil 非空且已到期），即使已读/已确认——
+     *    markRead 不再清 snooze，用户明确要求的再提醒不被已读吞掉。
      */
     @Query("""
             SELECT n
@@ -163,11 +167,14 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
             WHERE n.audienceUserId = :userId
               AND n.sourceEvent IN :events
               AND n.aggregateId IS NOT NULL AND n.aggregateKind IS NOT NULL
-              AND (n.sourceEvent <> 'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED' OR n.priority <> 'normal')
               AND n.resolvedAt IS NULL
               AND (s IS NULL OR (
                     s.deletedAt IS NULL
-                    AND (s.snoozedUntil IS NULL OR s.snoozedUntil <= CURRENT_TIMESTAMP)
+                    AND (
+                      (s.snoozedUntil IS NOT NULL AND s.snoozedUntil <= CURRENT_TIMESTAMP)
+                      OR (s.popupAcknowledgedAt IS NULL
+                          AND (s.snoozedUntil IS NULL OR s.snoozedUntil <= CURRENT_TIMESTAMP))
+                    )
                   ))
             """ + WORKSHOP_VISIBILITY + """
             ORDER BY
@@ -181,6 +188,67 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
             @Param("userId") UUID userId,
             @Param("events") List<String> events,
             @Param("workshopScope") ReviewNoticeAudience.WorkshopScope workshopScope,
+            Pageable pageable);
+
+    /**
+     * 人工通知登录弹窗（2026-09-10，ADR-063 §8）：人事手动发布（{@code source_event IS NULL}）、
+     * 非庆典（庆典有自己的每日登录弹窗）、对当前用户可见且未删除的通知中，仍待处理的：
+     * <ul>
+     *   <li><b>acknowledge（打卡）模式</b>：本人尚无 {@code notice_acknowledgments} 行，
+     *       且（未稍后 或 稍后已到期）。<b>无时间上限</b>——打卡是强制动作，不打卡每次登录都弹。</li>
+     *   <li><b>none（只提醒）模式</b>：未确认过弹窗（{@code popup_acknowledged_at} 为空）且
+     *       （从未读且未稍后 或 稍后已到期），并且发布时间在 {@code noneModeSince} 之后
+     *       （服务层给 14 天窗口，避免旧提醒永久打扰）。</li>
+     * </ul>
+     * 可见性谓词与 {@link #findVisible} 一致（全员 / 定向本人 / selected 预建状态行）。
+     * 人工通知无 source_event，故无需车间对象范围子句。排序：打卡优先 → 紧急/重要 → 置顶 → 发布时间倒序。
+     */
+    @Query("""
+            SELECT n
+            FROM Notice n
+            LEFT JOIN NoticeUserState s
+              ON s.id.noticeId = n.id AND s.id.userId = :userId
+            WHERE n.sourceEvent IS NULL
+              AND n.interactionMode <> 'bless'
+              AND (
+                    (n.audienceUserId IS NULL AND n.audienceScope = 'all')
+                    OR n.audienceUserId = :userId
+                    OR (n.audienceScope = 'selected' AND s IS NOT NULL)
+                  )
+              AND (s IS NULL OR s.deletedAt IS NULL)
+              AND (
+                    (
+                      n.interactionMode = 'acknowledge'
+                      AND NOT EXISTS (
+                        SELECT a.id.noticeId FROM NoticeAcknowledgment a
+                        WHERE a.id.noticeId = n.id AND a.id.userId = :userId
+                      )
+                      AND (s IS NULL OR s.snoozedUntil IS NULL OR s.snoozedUntil <= CURRENT_TIMESTAMP)
+                    )
+                    OR (
+                      n.interactionMode <> 'acknowledge'
+                      AND n.publishedAt >= :noneModeSince
+                      AND (s IS NULL OR (
+                            s.popupAcknowledgedAt IS NULL
+                            AND (
+                              (s.readAt IS NULL AND s.snoozedUntil IS NULL)
+                              OR (s.snoozedUntil IS NOT NULL AND s.snoozedUntil <= CURRENT_TIMESTAMP)
+                            )
+                          ))
+                    )
+                  )
+            ORDER BY
+                CASE WHEN n.interactionMode = 'acknowledge' THEN 0 ELSE 1 END,
+                CASE n.priority
+                    WHEN 'urgent' THEN 0
+                    WHEN 'important' THEN 1
+                    ELSE 2 END,
+                n.topPriority DESC,
+                n.publishedAt DESC
+            """)
+    List<Notice> findVisiblePendingManualNotices(
+            @Param("userId") UUID userId,
+            @Param("noneModeSince") Instant noneModeSince,
             Pageable pageable);
 
     @Query("""

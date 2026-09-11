@@ -642,6 +642,15 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
     );
   }
 
+  /// 表头筛选桶标签：空白与「—」不建桶（返回 null → 计入「未填」）。
+  String? _bucketOrNull(String? value) {
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty || trimmed == '—') return null;
+    return trimmed;
+  }
+
+  // 2026-09-11 全站表头快速筛选补齐：来源类型与币别给表头快速筛选
+  // （视图级过滤，不动勾选与已填本次金额）。单号/金额列不做筛选。
   List<EditableGridColumn<_LedgerRow>> _columns() => [
     EditableGridColumn<_LedgerRow>(
       key: 'sel',
@@ -712,6 +721,9 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
       key: 'source',
       label: '来源类型 / 单号',
       width: 200,
+      // 桶按「来源类型」聚合（单号逐行唯一，带上就没有收敛意义）。
+      filterValueOf: (row) =>
+          _bucketOrNull(financeArApSourceTypeLabel(row.item.sourceDocType)),
       cellBuilder: (context, row) => Text(
         '${financeArApSourceTypeLabel(row.item.sourceDocType)}'
         '${row.item.sourceDocNo?.trim().isNotEmpty == true ? ' · ${row.item.sourceDocNo}' : ''}',
@@ -723,6 +735,12 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
       key: 'currency',
       label: '币别',
       width: 80,
+      filterValueOf: (row) => _bucketOrNull(
+        financeCurrencyDisplayLabel(
+          name: row.item.currencyName,
+          code: row.item.currencyCode,
+        ),
+      ),
       cellBuilder: (context, row) => Text(
         financeCurrencyDisplayLabel(
               name: row.item.currencyName,

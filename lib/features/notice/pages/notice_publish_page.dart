@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/router/nav_helpers.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/inputs/required_field_decoration.dart';
@@ -268,7 +269,8 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
       } else {
         context.appSuccess(l10n.noticePublishPublishedTo(recipientCount));
       }
-      context.go('/notice');
+      // 返回键契约：从 HR 工作台 push 进来时发布成功应 pop 回来源，栈空才落通知列表。
+      backTo(context, defaultPath: '/notice');
     } catch (error) {
       if (mounted) context.appApiError(error);
     }
@@ -438,6 +440,31 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
                   available: _publishableTypes,
                   onChanged: _onTypeChanged,
                 ),
+                if (!_type.isCelebratory) ...[
+                  const SizedBox(height: UtenSpacing.s8),
+                  // 2026-09-10（ADR-063 §8）：告知 HR 哪些类型要求接收人打卡——
+                  // 打卡类型接收人登录即弹窗，不打卡每次登录都弹。
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.how_to_reg_outlined,
+                        size: 16,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: UtenSpacing.s4),
+                      Expanded(
+                        child: Text(
+                          '公告/制度/系统/紧急/福利 类型要求接收人登录打卡确认'
+                          '（未打卡每次登录都会弹窗提醒）；任务/审批/流程类只提醒。',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 if (_type.isCelebratory) ...[
                   const SizedBox(height: UtenSpacing.s12),
                   UtenEmployeePicker(

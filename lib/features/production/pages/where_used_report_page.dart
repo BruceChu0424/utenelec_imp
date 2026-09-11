@@ -305,7 +305,6 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
                 builder: (context, constraints) {
                   final filterPane = _buildFilterPane(theme);
                   return UtenListTwoPane(
-                    splitPersistenceKey: 'production.whereUsed',
                     filterPane: context.breakpoint.isExpanded
                         ? filterPane
                         : ConstrainedBox(

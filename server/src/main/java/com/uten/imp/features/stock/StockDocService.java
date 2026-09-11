@@ -7,6 +7,7 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.saleschain.SalesOrderChainSql;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
@@ -18,6 +19,8 @@ import com.uten.imp.features.stock.dto.FinishedInboundBatchConfirmRequest;
 import com.uten.imp.features.stock.dto.FinishedInboundBatchConfirmResponse;
 import com.uten.imp.features.stock.dto.FinishedInboundConfirmRequest;
 import com.uten.imp.features.stock.dto.StockDocDetail;
+import com.uten.imp.features.stock.dto.StockDocIssueBatchRequest;
+import com.uten.imp.features.stock.dto.StockDocIssueBatchResponse;
 import com.uten.imp.features.stock.dto.StockDocIssueRequest;
 import com.uten.imp.features.stock.dto.StockDocItemDto;
 import com.uten.imp.features.stock.dto.StockDocItemLine;
@@ -790,6 +793,188 @@ public class StockDocService {
         return issueAfterPrelock(id,req,lockProductionDocuments(List.of(id)));
     }
 
+    /**
+     * 领料任务中心批量全额出库（2026-09-09；2026-09-10 修订）：选中多张领料单按各自
+     * 剩余量（qty−issuedQty）逐单出库，任一单失败整批回滚（与界面承诺一致）。
+     *
+     * <ul>
+     * <li>草稿单（生产链 DRAW 全部以草稿生成）走与 {@link #approveAndIssue} 相同的
+     *     「审核并出库」路径：要求当前账号同时持 stock_doc:approve，否则 FORBIDDEN
+     *     并列出草稿单号；已审单直接出库。</li>
+     * <li>逐单独立锁定（共享 Guard 会在第二单 verifyUnchanged 撞上第一单刚写的出库
+     *     事实）；剩余量在拿到单据行锁之后再计算，不用提交前的快照。</li>
+     * <li>子幂等键 = SHA-256(操作人 + 批量键 + 单据 UUID)（见
+     *     {@link #batchChildIdempotencyKey}），不同操作人复用同一批量键不会撞
+     *     「相同幂等键对应不同领退料请求」；同人同键重放时，已出完的单按子键识别为
+     *     replayed，整批无新增出库即 {@code replayed=true}。</li>
+     * <li>逐单 ApiException 统一包成「领料单 {单号}：{原因}」，错误码不变；
+     *     不存在的单据 NOT_FOUND「仓库单据不存在」。</li>
+     * <li>统一备注（reason）随每张单的出库追加到单据备注（{@link #appendIssueRemark}）。</li>
+     * </ul>
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:issue')")
+    public StockDocIssueBatchResponse issueFullBatch(StockDocIssueBatchRequest request) {
+        tx.bind();
+        if (request == null || request.getIdempotencyKey() == null
+                || request.getIdempotencyKey().isBlank()
+                || request.getDocIds() == null || request.getDocIds().isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量出库请求缺少幂等键或单据清单");
+        }
+        String batchKey = request.getIdempotencyKey().strip();
+        if (batchKey.length() < 8 || batchKey.length() > 128
+                || !batchKey.matches("[A-Za-z0-9._:-]+")) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量出库幂等键格式无效");
+        }
+        java.util.LinkedHashSet<UUID> ids = new java.util.LinkedHashSet<>(request.getDocIds());
+        if (ids.contains(null)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量出库单据清单含空值");
+        }
+        if (ids.size() > StockDocIssueBatchRequest.MAX_DOCUMENTS) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "一次最多批量出库 " + StockDocIssueBatchRequest.MAX_DOCUMENTS + " 张领料单");
+        }
+        String reason = request.getReason() == null || request.getReason().isBlank()
+                ? null : request.getReason().strip();
+        UUID actorUserId = currentUser.requireId();
+        boolean canApprove = access.hasAuthority("stock_doc:approve");
+        // 固定锁序（UUID 文本升序，与 lockProductionDocuments 同序）防死锁。
+        List<UUID> orderedIds = ids.stream()
+                .sorted(java.util.Comparator.comparing(UUID::toString)).toList();
+
+        // 预检（不加锁、不装载实体）：存在性 / 类型 / 草稿审核权限一次性报清；
+        // 权威状态在逐单锁定后再读一次。
+        List<String> draftBillNos = new ArrayList<>();
+        for (UUID id : orderedIds) {
+            Object[] header = batchDocumentHeader(id);
+            String billNo = (String) header[0];
+            if (!"DRAW".equals(header[1])) {
+                throw new ApiException(ErrorCode.BUSINESS,
+                        "领料单 " + billNo + "：仅生产领料单支持出库操作");
+            }
+            Short status = header[2] == null ? null : ((Number) header[2]).shortValue();
+            if (status != null && status == STATUS_DRAFT) draftBillNos.add(billNo);
+        }
+        if (!draftBillNos.isEmpty() && !canApprove) {
+            throw new ApiException(ErrorCode.FORBIDDEN,
+                    "草稿领料单须由同时具备审核权限的账号出库（出库即审核）："
+                            + String.join("、", draftBillNos));
+        }
+
+        // FulfillmentMutationLocks 同事务语义：首次 acquire 冻结本事务的完整预锁集合，
+        // 之后的 acquire 只能是其子集（requireCovered）。批量必须先按固定锁序一次性
+        // 预锁全部单据，再逐单取子集 Guard；逐单首次 acquire 会让第二张单越界报冲突。
+        lockProductionDocuments(orderedIds);
+
+        int issued = 0;
+        int skipped = 0;
+        int replayed = 0;
+        List<String> issuedDocNos = new ArrayList<>();
+        for (UUID id : orderedIds) {
+            var mutationGuard = lockProductionDocuments(List.of(id));
+            StockDocument document = requireDocForUpdate(id);
+            String billNo = document.getBillNo();
+            try {
+                // 剩余量在行锁之后计算：并发的单张出库/取消出库已被串行化。
+                List<StockDocIssueRequest.Line> lines =
+                        remainingIssueLines(itemRepo.findByDocIdOrderByLineNoAsc(id));
+                String childKey = batchChildIdempotencyKey(actorUserId, batchKey, id);
+                if (lines.isEmpty()) {
+                    if (issueEventExists(id, childKey)) replayed++;
+                    else skipped++;   // 提交前已出完的单：跳过不报错
+                    continue;
+                }
+                if (document.getStatus() == null || document.getStatus() == STATUS_REVERSED) {
+                    throw new ApiException(ErrorCode.CONFLICT, "已红冲的领料单不能出库");
+                }
+                if (document.getStatus() == STATUS_DRAFT) {
+                    if (!canApprove) {
+                        throw new ApiException(ErrorCode.FORBIDDEN,
+                                "草稿领料单须由同时具备审核权限的账号出库（出库即审核）");
+                    }
+                    // 与 approveAndIssue 同序：审核写入后重新取 Guard，再进入出库。
+                    mutationGuard.verifyUnchanged();
+                    approveInternal(id, false, true);
+                    mutationGuard = lockProductionDocuments(List.of(id));
+                }
+                var req = new StockDocIssueRequest();
+                req.setIdempotencyKey(childKey);
+                req.setLines(lines);
+                req.setReason(reason);
+                StockDocDetail detail = issueAfterPrelock(id, req, mutationGuard);
+                issued++;
+                issuedDocNos.add(detail.getBillNo());
+            } catch (ApiException failure) {
+                throw batchDocumentFailure(billNo, failure);
+            }
+        }
+        return new StockDocIssueBatchResponse(
+                issued, skipped, replayed, issued == 0 && replayed > 0, issuedDocNos);
+    }
+
+    /** 批量出库子幂等键：SHA-256(操作人 + 批量键 + 单据 UUID)，64 位十六进制，不同操作人互不干扰。 */
+    static String batchChildIdempotencyKey(UUID actorUserId, String batchKey, UUID documentId) {
+        return CanonicalFingerprint.sha256(List.of(
+                "STOCK-DRAW-ISSUE-BATCH-V1",
+                "actor:" + actorUserId,
+                "batch:" + batchKey,
+                "document:" + documentId));
+    }
+
+    /** 逐单失败统一带上单号（错误码不变），前端只展示 message 也能定位到哪张单。 */
+    static ApiException batchDocumentFailure(String billNo, ApiException failure) {
+        String prefix = "领料单 " + billNo + "：";
+        String message = failure.getMessage() == null
+                ? failure.getCode().getDefaultMessage() : failure.getMessage();
+        if (message.startsWith(prefix)) return failure;
+        return new ApiException(failure.getCode(), prefix + message);
+    }
+
+    static List<StockDocIssueRequest.Line> remainingIssueLines(List<StockDocumentItem> items) {
+        List<StockDocIssueRequest.Line> lines = new ArrayList<>();
+        for (StockDocumentItem item : items) {
+            BigDecimal remaining = item.getQty()
+                    .subtract(item.getIssuedQty() == null ? BigDecimal.ZERO : item.getIssuedQty());
+            if (remaining.signum() > 0) {
+                var line = new StockDocIssueRequest.Line();
+                line.setItemId(item.getId());
+                line.setQty(remaining);
+                lines.add(line);
+            }
+        }
+        return lines;
+    }
+
+    /** 不装载实体的单据头读取（bill_no, doc_type, status）；不存在/已删 → NOT_FOUND。 */
+    private Object[] batchDocumentHeader(UUID id) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT bill_no, doc_type, status
+                                FROM stock_documents
+                                WHERE id = :id AND is_deleted = FALSE
+                                """)
+                        .setParameter("id", id));
+        if (rows.size() != 1) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "仓库单据不存在");
+        }
+        return rows.getFirst();
+    }
+
+    /** 本批子键是否已在领料台账留下 ISSUE 事件（已出完的单据据此区分 replayed 与 skipped）。 */
+    private boolean issueEventExists(UUID documentId, String idempotencyKey) {
+        Number count = (Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM production_material_stock_events
+                        WHERE stock_document_id = :documentId
+                          AND event_type = 'ISSUE'
+                          AND idempotency_key = :key
+                        """)
+                .setParameter("documentId", documentId)
+                .setParameter("key", idempotencyKey)
+                .getSingleResult();
+        return count != null && count.longValue() > 0;
+    }
+
     private StockDocDetail issueAfterPrelock(UUID id,StockDocIssueRequest req,
                                             FulfillmentMutationLocks.Guard mutationGuard) {
         tx.bind();
@@ -829,12 +1014,51 @@ public class StockDocService {
         productionMaterialLedger.bindMovements(posted.eventId(),materialMovements);
         stockService.bindProductionMovements(posted.eventId(),materialMovements);
         recomputeIssueStatus(d, itemRepo.findByDocIdOrderByLineNoAsc(id));
+        // 出库备注（2026-09-09 出库弹窗备注框）：正向出库的非空 reason 追加到
+        // 单据 remark 留痕（分批出库的多次备注用「；」连接，总量截断 500）；
+        // 取消出库的 reason 仍走取消原因审计，不落 remark。
+        appendIssueRemark(d, req.getReason());
         // Notify by exact execution segment after every issue slice. A DRAW may
         // contain several segments; one fully-issued segment must not wait for
         // unrelated rows on the same document.
         chainNotice.notifyProductionDrawIssued(
                 d.getId(), req.getIdempotencyKey());
         return detail(id);
+    }
+
+    /** 追加出库备注到单据 remark（幂等：整条相同才视为重复，见 {@link #mergeIssueRemark}）。 */
+    private void appendIssueRemark(StockDocument doc, String reason) {
+        String next = mergeIssueRemark(doc.getRemark(), reason);
+        if (Objects.equals(next, doc.getRemark())) return;
+        doc.setRemark(next);
+        docRepo.save(doc);
+    }
+
+    /** 单条出库备注上限（前端输入框 maxLength 同值）；单据备注总长上限。 */
+    static final int ISSUE_REMARK_NOTE_LIMIT = 200;
+    static final int ISSUE_REMARK_TOTAL_LIMIT = 500;
+
+    /**
+     * 出库备注合并：既有备注按「；」拆成条目，只有整条相同才算重复（此前用
+     * contains 判重，先记「AB」再记「A」会丢掉「A」）；单条截断 200、总长截断 500。
+     */
+    static String mergeIssueRemark(String current, String reason) {
+        if (reason == null || reason.isBlank()) return current;
+        String note = reason.strip();
+        if (note.length() > ISSUE_REMARK_NOTE_LIMIT) {
+            note = note.substring(0, ISSUE_REMARK_NOTE_LIMIT);
+        }
+        boolean empty = current == null || current.isBlank();
+        if (!empty) {
+            for (String entry : current.split("；")) {
+                if (entry.strip().equals(note)) return current;
+            }
+        }
+        String next = empty ? note : current + "；" + note;
+        if (next.length() > ISSUE_REMARK_TOTAL_LIMIT) {
+            next = next.substring(0, ISSUE_REMARK_TOTAL_LIMIT);
+        }
+        return next;
     }
 
     /**
@@ -2431,41 +2655,32 @@ public class StockDocService {
                     reservationService.reserve(orderItemId, it.getGoodsId(), it.getColorId(),
                             d.getWarehouseId(), reservationBaseQty, StockReservation.SOURCE_PRODUCTION_IN,
                             "PRODUCTION_INBOUND", d.getId());
-                    int orderUpdated = em.createNativeQuery("""
-                            UPDATE sales_order_items
-                            SET produced_qty = COALESCE(produced_qty,0) + :c,
-                                reserved_qty = COALESCE(reserved_qty,0) + :c,
-                                chain_status = CASE WHEN COALESCE(chain_status,0) BETWEEN 1 AND 6 THEN
-                                    CASE WHEN COALESCE(reserved_qty,0) + :c
-                                              >= COALESCE(qty,0) - COALESCE(shipped_qty,0)
-                                                 + COALESCE(returned_qty,0)
-                                                 - COALESCE(flag_qty,0)
-                                         THEN 7 ELSE 6 END
-                                ELSE chain_status END
-                            WHERE id = :id
-                            """).setParameter("c", chunk).setParameter("id", orderItemId).executeUpdate();
+                    // V545 统一派生：入库后仍有未排量的行留在 1（部分预留），未排量归零才 6/7。
+                    int orderUpdated = em.createNativeQuery("UPDATE sales_order_items\n"
+                            + "SET produced_qty = COALESCE(produced_qty,0) + :c,\n"
+                            + "    reserved_qty = COALESCE(reserved_qty,0) + :c,\n"
+                            + "    chain_status = "
+                            + SalesOrderChainSql.chainStatusCaseSql(
+                                    SalesOrderChainSql.ChainStatusInputs.of("")
+                                            .reservedDelta(" + :c").producedDelta(" + :c"))
+                            + "\nWHERE id = :id")
+                            .setParameter("c", chunk).setParameter("id", orderItemId).executeUpdate();
                     if (orderUpdated != 1) {
                         throw new ApiException(ErrorCode.CONFLICT, "成品入库关联订单行不存在");
                     }
                 } else {
-                    int orderUpdated = em.createNativeQuery("""
-                            UPDATE sales_order_items
-                            SET produced_qty = COALESCE(produced_qty,0) - :c,
-                                reserved_qty = COALESCE(reserved_qty,0) - :c,
-                                chain_status = CASE WHEN COALESCE(chain_status,0) IN (6,7) THEN
-                                    CASE
-                                      WHEN COALESCE(reserved_qty,0) - :c
-                                           >= COALESCE(qty,0) - COALESCE(shipped_qty,0)
-                                              + COALESCE(returned_qty,0)
-                                              - COALESCE(flag_qty,0) THEN 7
-                                      WHEN GREATEST(COALESCE(planned_qty,0)
-                                            - (COALESCE(produced_qty,0) - :c), 0) > 0 THEN 4
-                                      ELSE 2 END
-                                ELSE chain_status END
-                            WHERE id = :id
-                              AND COALESCE(produced_qty,0) >= :c
-                              AND COALESCE(reserved_qty,0) >= :c
-                            """).setParameter("c", chunk).setParameter("id", orderItemId).executeUpdate();
+                    // V545 统一派生：红冲后按剩余未排量/未完工计划量收敛（7/1-2/6/3-4）。
+                    int orderUpdated = em.createNativeQuery("UPDATE sales_order_items\n"
+                            + "SET produced_qty = COALESCE(produced_qty,0) - :c,\n"
+                            + "    reserved_qty = COALESCE(reserved_qty,0) - :c,\n"
+                            + "    chain_status = "
+                            + SalesOrderChainSql.chainStatusCaseSql(
+                                    SalesOrderChainSql.ChainStatusInputs.of("")
+                                            .reservedDelta(" - :c").producedDelta(" - :c"))
+                            + "\nWHERE id = :id\n"
+                            + "  AND COALESCE(produced_qty,0) >= :c\n"
+                            + "  AND COALESCE(reserved_qty,0) >= :c")
+                            .setParameter("c", chunk).setParameter("id", orderItemId).executeUpdate();
                     if (orderUpdated != 1) {
                         throw new ApiException(ErrorCode.CONFLICT,
                                 "订单完工/预留累计小于成品入库红冲量，禁止自动吞并错账");

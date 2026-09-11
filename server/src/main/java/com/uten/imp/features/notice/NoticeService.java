@@ -788,7 +788,11 @@ public class NoticeService {
 
     // =========================== 标记已读 / 待办完成 / 删除（保留原行为） ===========================
 
-    /** 标记已读（幂等：重复调用不刷新 read_at）。 */
+    /**
+     * 标记已读（幂等：重复调用不刷新 read_at）。同时置 popup_acknowledged_at
+     * （登录待办弹窗静默依据）；**不清 snoozed_until**——「稍后再看」是用户明确要求
+     * 到期再提醒，已读不得取消它（2026-09-10 口径；并发写靠实体 @DynamicUpdate 按列落库）。
+     */
     @Transactional
     public void markRead(UUID id) {
         UUID userId = requireStaffId();
@@ -1107,6 +1111,7 @@ public class NoticeService {
     /**
      * 「稍后再看」：置 snoozed_until（弹卡流到期前不再弹出，通知中心仍可见），
      * 同时按产品口径置已读——去审核与稍后再看都算「已处理过这条提醒」。
+     * 到期后只要未办结就重弹，不看 popup_acknowledged_at（2026-09-10 口径）。
      * 已办结的审核通知无重弹意义，拒绝再 snooze。
      */
     @Transactional
@@ -1223,7 +1228,7 @@ public class NoticeService {
     /**
      * V459 居中审核弹窗（登录检查）：当前用户名下未办结的待审通知，按
      * 重要度+时间倒序，上限 20 条。口径=审核目录注册事件、未撤回、稍后已到期；
-     * 已读不排除（办结撤回与「稍后再看」是仅有的两种静默途径）。
+     * 2026-09-09 起 popup_acknowledged（处理过）即静默，仅「稍后再看」到期重弹。
      */
     @Transactional(readOnly = true)
     public List<NoticeDto> pendingReviews() {
@@ -1243,6 +1248,32 @@ public class NoticeService {
                 .filter(NoticeService::isActionableReview)
                 .filter(notice->shipmentReviewPending(notice,shipmentStates))
                 .map(n -> toDto(n, states.get(n.getId()), userId, false, null, reviewEvents))
+                .toList();
+    }
+
+    /** none 模式人工通知的登录弹窗窗口：发布超过 14 天的旧提醒不再弹（打卡模式无窗口）。 */
+    static final java.time.Duration NONE_MODE_POPUP_WINDOW = java.time.Duration.ofDays(14);
+    private static final int MAX_PENDING_POPUP_ITEMS = 20;
+
+    /**
+     * 人工通知登录弹窗（2026-09-10，ADR-063 §8）：人事手动发布、对当前用户可见且仍待处理的通知，
+     * 上限 20 条。口径见 {@link NoticeRepository#findVisiblePendingManualNotices}：
+     * 打卡（acknowledge）类型未打卡就一直弹（无时间上限，「稍后再看」到期后重弹）；
+     * 只提醒（none）类型未读且未确认弹窗、且 14 天内发布的才弹。庆典与系统链路通知不在此列。
+     * 出参带 interactionMode / myAcked / ackCount（前端据此渲染「打卡确认」或「知道了」）。
+     */
+    @Transactional(readOnly = true)
+    public List<NoticeDto> pendingPopups() {
+        UUID userId = requireStaffId();
+        Instant noneModeSince = Instant.now().minus(NONE_MODE_POPUP_WINDOW);
+        List<Notice> notices = noticeRepo.findVisiblePendingManualNotices(
+                userId, noneModeSince, PageRequest.of(0, MAX_PENDING_POPUP_ITEMS));
+        Map<UUID, NoticeUserState> states = stateMap(
+                userId,
+                notices.stream().map(Notice::getId).toList());
+        // 人工通知无 source_event，不参与审核目录；非庆典故主角名单恒空。
+        return notices.stream()
+                .map(n -> toDto(n, states.get(n.getId()), userId, true, List.of(), Set.of()))
                 .toList();
     }
 
@@ -1439,10 +1470,10 @@ public class NoticeService {
     }
 
     private static boolean isActionableReview(Notice notice) {
+        // 2026-09-09 用户口径：车间任务 normal（等料/等待中）也是「收到的任务」，
+        // 与可开工（important）同样作为行动卡弹出——收到的车间任务全量可感知。
         return notice.getAggregateId() != null && notice.getAggregateKind() != null
-                && ReviewNoticeCatalog.isReviewEvent(notice.getSourceEvent())
-                && (!ReviewNoticeAudience.WORKSHOP_EVENT.equals(notice.getSourceEvent())
-                    || !"normal".equals(notice.getPriority()));
+                && ReviewNoticeCatalog.isReviewEvent(notice.getSourceEvent());
     }
 
     private NoticeDto toDto(

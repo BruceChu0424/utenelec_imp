@@ -102,23 +102,6 @@ void main() {
     });
 
     test(
-      'popup acknowledgement uses dedicated endpoint without marking read',
-      () async {
-        late RequestOptions captured;
-        final repo = DioNoticeRepository(
-          _api((request) {
-            captured = request;
-            return <String, dynamic>{};
-          }),
-        );
-
-        await repo.acknowledgePopup('notice-1');
-        expect(captured.method, 'POST');
-        expect(captured.path, '/notices/notice-1/popup-ack');
-      },
-    );
-
-    test(
       'publish sends subjectEmployeeId + blessingTemplates for celebration',
       () async {
         late RequestOptions captured;
@@ -173,6 +156,45 @@ void main() {
         );
       },
     );
+
+    test(
+      'pendingPopups GETs /notices/pending-popups and parses items',
+      () async {
+        // 2026-09-10（ADR-063 §8）：人工通知登录弹窗数据源，形状同 pending-reviews。
+        late RequestOptions captured;
+        final repo = DioNoticeRepository(
+          _api((r) {
+            captured = r;
+            return {
+              'items': [
+                {..._announcementAckJson(), 'isRead': false, 'myAcked': false},
+                {
+                  ..._announcementAckJson(),
+                  'id': 'notice-2',
+                  'type': 'task',
+                  'interactionMode': 'none',
+                  'title': '周五提交周报',
+                },
+              ],
+            };
+          }),
+        );
+        final items = await repo.pendingPopups();
+        expect(captured.method, 'GET');
+        expect(captured.path, '/notices/pending-popups');
+        expect(items, hasLength(2));
+        expect(items.first.interactionMode, NoticeInteractionMode.acknowledge);
+        expect(items.first.myAcked, isFalse);
+        expect(items.first.publisher, '人事部');
+        expect(items.last.id, 'notice-2');
+        expect(items.last.interactionMode, NoticeInteractionMode.none);
+      },
+    );
+
+    test('pendingPopups tolerates a missing items list', () async {
+      final repo = DioNoticeRepository(_api((_) => <String, dynamic>{}));
+      expect(await repo.pendingPopups(), isEmpty);
+    });
 
     test('acknowledge POSTs /{id}/acknowledge and re-fetches', () async {
       final calls = <String>[];

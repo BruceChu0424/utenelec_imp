@@ -127,7 +127,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Could not restore server selection. Try again or contact an administrator.';
 
   @override
-  String get loginFooter => '© 2026 Uten Integrated Management Platform';
+  String loginFooter(int year) {
+    return '© $year Uten Integrated Management Platform';
+  }
 
   @override
   String get navDashboard => 'Dashboard';
@@ -275,9 +277,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profilePosition => 'Position';
-
-  @override
-  String get entrySubtitle => 'Choose how to sign in';
 
   @override
   String get entryStaff => 'Staff Sign In';

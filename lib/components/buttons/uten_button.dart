@@ -76,17 +76,17 @@ class UtenButton extends StatelessWidget {
     final (enabledBackground, enabledForeground, enabledBorder) =
         _resolveColors(colorScheme);
 
+    // 禁用态刻意比 M3 默认（12% 底 + 38% 字）浓：默认那套在浅色底上几乎透明，
+    // 用户在物料分析/下达采购等页反馈「不选的时候根本不知道这里可以点」。
+    // 现在是「实底 + 描边 + 可读灰字」——看得见是个按钮，也看得出现在不可用。
+    // 描边对所有类型都给（含本来无边的实心型），禁用态才有清晰边界。
     final background = enabled
         ? enabledBackground
-        : colorScheme.onSurface.withValues(alpha: 0.12);
+        : colorScheme.surfaceContainerHigh;
     final foreground = enabled
         ? enabledForeground
-        : colorScheme.onSurface.withValues(alpha: 0.38);
-    final border = enabled
-        ? enabledBorder
-        : enabledBorder == null
-        ? null
-        : colorScheme.outlineVariant;
+        : colorScheme.onSurfaceVariant.withValues(alpha: 0.75);
+    final border = enabled ? enabledBorder : colorScheme.outline;
     final radius = BorderRadius.circular(UtenRadius.control);
     final shape = RoundedRectangleBorder(
       borderRadius: radius,

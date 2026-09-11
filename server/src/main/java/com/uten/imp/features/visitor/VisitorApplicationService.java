@@ -1,5 +1,6 @@
 package com.uten.imp.features.visitor;
 
+import com.uten.imp.application.port.HrNoticePort;
 import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -45,6 +46,7 @@ public class VisitorApplicationService {
     private final EmployeeRepository employeeRepo;
     private final VisitorApplicationMapper mapper;
     private final TxSessionVars tx;
+    private final HrNoticePort hrNotice;
     private final SecurityContextCurrentUser currentUser;
 
     /** 访客来访登记：校验必填项与时间合法性，接待人必须在岗状态(active/probation/onLeave)且与接待部门一致；手机号取自短信登录账号、绝不采信请求体（防顶替），18 位身份证 normalize+校验。 */
@@ -119,7 +121,20 @@ public class VisitorApplicationService {
         app = appRepo.save(app);
 
         addStep(app.getId(), "visitor", visitorId, "submit", null);
+        // 提交 → 通知 HR 审批（弹卡 + 通知；2026-09-09 人事通知接入）
+        hrNotice.notifyVisitorApplySubmitted(
+                app.getId(), app.getVisitorName(), host.getFullName(),
+                app.getVisitPurpose());
         return toDetail(app, acc);
+    }
+
+    /** HR 批准转接待人确认 → 定向通知接待人（弹卡；2026-09-09 人事通知接入）。 */
+    public void notifyHostReview(VisitorApplication app) {
+        String hostName = app.getHostEmployeeId() == null ? ""
+                : employeeRepo.findById(app.getHostEmployeeId())
+                        .map(Employee::getFullName).orElse("");
+        hrNotice.notifyVisitorHostReviewRequired(
+                app.getId(), app.getVisitorName(), app.getHostEmployeeId(), hostName);
     }
 
     @Transactional(readOnly = true)

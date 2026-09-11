@@ -1,12 +1,14 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空（支持至 V540；保留主档、人事、权限与治理证据）
+-- 本地/测试库业务数据一键清空（支持至 V551；保留主档、人事、权限与治理证据）
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
 --       干净测试起点。只允许在可丢弃的本地/测试库停写后运行。
 --
 -- 唯一范围事实：
---   · V540 当前目录：CLEAR 266 张、PRESERVE 96 张；下列历史说明用于旧版本兼容。
+--   · V551 当前目录：CLEAR 269 张、PRESERVE 96 张（V547/V548 三张新表已计入；V549–V551 只改函数/视图）；下列历史说明用于旧版本兼容。
+--   · V547 新增品质检查单头/明细两张（CLEAR 266→268），V548 新增送检登记撤回记录
+--     一张（CLEAR 268→269）；均随 FQC/登记事实清空，目录版本对由发布时统一登记。
 --   · CLEAR 212/214/219/220 张：V443 为212张，V446新增两张 IQC 仓库入库事实表后为214张，V447新增五张交接事实表后为219张；V448–V450不新增父表；
 --     V448 只增合并页读路径索引、不新增业务表，CLEAR 维持 219 张；
 --     V449 只替换 V446 的 IQC 入库校验触发器函数（放开同人放行+确认限制），
@@ -277,12 +279,15 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('production_execution_segment_events', 'CLEAR'),
 ('production_execution_segments', 'CLEAR'),
 ('production_finished_arrival_registration_items', 'CLEAR'),
+('production_finished_arrival_registration_reversals', 'CLEAR'),
 ('production_finished_arrival_registrations', 'CLEAR'),
 ('production_finished_in_confirm_batch_items', 'CLEAR'),
 ('production_finished_in_confirm_batches', 'CLEAR'),
 ('production_fqc_cancellation_events', 'CLEAR'),
 ('production_fqc_contribution_adjustments', 'CLEAR'),
 ('production_fqc_decision_events', 'CLEAR'),
+('production_fqc_inspection_sheet_items', 'CLEAR'),
+('production_fqc_inspection_sheets', 'CLEAR'),
 ('production_fqc_inspections', 'CLEAR'),
 ('production_fqc_pass_all_batch_items', 'CLEAR'),
 ('production_fqc_pass_all_batches', 'CLEAR'),
@@ -912,10 +917,24 @@ BEGIN
         (537, 496),
         (538, 497),
         (539, 498),
-        (540, 499)
+        (540, 499),
+        -- V541/V543 只调整权限矩阵，V542 只加备注列，V545 只回填 chain_status，
+        -- V546 只扩授附件权限，V549/V550 只替换函数；V547 +2 张 FQC 检查单表、
+        -- V548 +1 张登记撤回表（CLEAR 266→269）。V544 未发布，目录跳号。
+        (541, 500),
+        (542, 501),
+        (543, 502),
+        (545, 503),
+        (546, 504),
+        (547, 505),
+        (548, 506),
+        (549, 507),
+        (550, 508),
+        -- V551 只替换待交货视图（排除草稿），不新增表。
+        (551, 509)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V540完整目录，当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V551完整目录（V544 跳号），当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 
@@ -1046,7 +1065,10 @@ BEGIN
             ('procurement_iqc_quality_consideration_parts', 518),
             ('procurement_iqc_stock_consideration_parts', 518),
             ('procurement_receipt_consideration_parts', 518),
-            ('subcontract_receipt_material_consumptions', 522)
+            ('subcontract_receipt_material_consumptions', 522),
+            ('production_fqc_inspection_sheets', 547),
+            ('production_fqc_inspection_sheet_items', 547),
+            ('production_finished_arrival_registration_reversals', 548)
     ) AS required(table_name, introduced_version)
     WHERE (to_regclass(format('public.%I', required.table_name)) IS NOT NULL)
         IS DISTINCT FROM (applied_max_version >= required.introduced_version);
@@ -1055,7 +1077,7 @@ BEGIN
     END IF;
     SELECT count(*) INTO current_operational_table_count
     FROM reset_business_table_policy
-    WHERE table_name IN ('sales_shipment_submission_events','production_material_movement_links','stock_value_acquisition_sources','stock_value_position_transfers','stock_value_production_cost_dirty','stock_value_production_cost_inputs','stock_value_production_cost_objects','stock_value_production_cost_outputs','stock_value_production_cost_revisions','stock_value_production_cost_shares','stock_value_production_cost_tasks','procurement_iqc_consideration_reversals','procurement_iqc_consideration_review_approvals','procurement_iqc_credit_case_allocations','procurement_iqc_credit_documents','procurement_iqc_credit_slices','procurement_iqc_funding_settlements','procurement_iqc_funding_slices','procurement_iqc_quality_consideration_parts','procurement_iqc_stock_consideration_parts','procurement_receipt_consideration_parts','subcontract_receipt_material_consumptions');
+    WHERE table_name IN ('sales_shipment_submission_events','production_material_movement_links','stock_value_acquisition_sources','stock_value_position_transfers','stock_value_production_cost_dirty','stock_value_production_cost_inputs','stock_value_production_cost_objects','stock_value_production_cost_outputs','stock_value_production_cost_revisions','stock_value_production_cost_shares','stock_value_production_cost_tasks','procurement_iqc_consideration_reversals','procurement_iqc_consideration_review_approvals','procurement_iqc_credit_case_allocations','procurement_iqc_credit_documents','procurement_iqc_credit_slices','procurement_iqc_funding_settlements','procurement_iqc_funding_slices','procurement_iqc_quality_consideration_parts','procurement_iqc_stock_consideration_parts','procurement_receipt_consideration_parts','subcontract_receipt_material_consumptions','production_fqc_inspection_sheets','production_fqc_inspection_sheet_items','production_finished_arrival_registration_reversals');
 
     -- V459 新增兼职部门表（PRESERVE 95→96，组织与权限治理数据）。
     IF (applied_max_version <= 458 AND preserve_count <> 95)

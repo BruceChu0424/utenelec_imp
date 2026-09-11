@@ -8,7 +8,8 @@
 //     page, size, total, totalPages }
 // 名称（货品/颜色/类别/制单员/审核员）服务端 JOIN 出；前端按 columns 动态建列。
 //
-// UI：左筛选侧栏（状态 + 日期范围 + 搜索 + 查询）+ 右 Excel 风格表格（标题行每列可筛 + 横滚 + 翻页）。
+// UI：左筛选侧栏（状态分段与搜索同处一条 UtenFilterToolbar + 日期范围）
+//   + 右 Excel 风格表格（标题行每列可筛 + 横滚 + 翻页）。
 // 默认日期范围 = 上月今日..今日（defaultReportFrom()，收紧默认避免一进拉全量；firstDate 仍 2010 可手选更早）。
 // 列筛选（是否审核/是否完成/车间/类别…）走表头 autofilter（facets），左栏只放公共过滤。
 //
@@ -21,7 +22,6 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -42,6 +42,7 @@ import '../../report/shared/report_data.dart';
 import '../../report/shared/report_date_range.dart';
 import '../../report/shared/report_filter_prefs.dart';
 import '../../report/shared/report_sort.dart';
+import '../../report/shared/report_total.dart';
 import '../config/production_report_config.dart';
 
 class ProductionReportPage extends ConsumerStatefulWidget {
@@ -110,6 +111,16 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
       ReportFilterPrefs(status: _status, sortKey: _sortKey, sortAsc: _sortAsc);
 
   /// 任何筛选变更后调用：标记已动手 + 防抖持久化到服务端。
+  /// 筛选项改动后的统一出口：存偏好 + 回第一页重查。
+  ///
+  /// 2026-09-11 撤掉「查询」按钮后，筛选不再需要用户再点一下确认——改日期/下拉
+  /// 即刻生效，关键词走搜索框自身的防抖与回车（用户要求：搜索回车即查询）。
+  void _persistAndReload() {
+    _persistPrefs();
+    _page = 1;
+    _load();
+  }
+
   void _persistPrefs() {
     _dirty = true;
     ref.read(_prefsProvider.notifier).update(_snapshot());
@@ -281,7 +292,6 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
                 ),
               ),
               body: UtenListTwoPane(
-                splitPersistenceKey: 'production.report',
                 filterPane: _buildFilterPane(theme),
                 tablePane: _buildTable(),
               ),
@@ -299,7 +309,9 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _filterLabel('单据状态'),
-          // 全平台统一筛选工具条：单据状态分段（纯分类无搜索）。
+          // 全平台统一筛选工具条：单据状态分段 + 同一行右侧的搜索框
+          //（2026-09-11 用户要求搜索不再单独占一行，宽度由 searchWidth 封顶；
+          // 窄屏工具条自己换行）。
           UtenFilterToolbar<int?>(
             segments: const [
               UtenFilterSegment<int?>(value: null, label: '全部'),
@@ -309,6 +321,17 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
             ],
             selected: _statusSelected ? {_status} : const {},
             onSelectionChanged: _changeStatus,
+            searchHint: '搜索单号 / 货品',
+            initialSearchValue: _keyword,
+            // 防抖到点即查；回车立刻查（不等防抖）。
+            onSearchChanged: (v) {
+              _keyword = v;
+              _persistAndReload();
+            },
+            onSearchSubmitted: (v) {
+              _keyword = v;
+              _persistAndReload();
+            },
           ),
           const SizedBox(height: UtenSpacing.s12),
           _filterLabel('日期范围'),
@@ -327,7 +350,7 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
                   );
                   if (p != null) {
                     setState(() => _from = p);
-                    _persistPrefs();
+                    _persistAndReload();
                   }
                 },
                 icon: const Icon(Icons.event_outlined, size: 18),
@@ -343,32 +366,13 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
                   );
                   if (p != null) {
                     setState(() => _to = p);
-                    _persistPrefs();
+                    _persistAndReload();
                   }
                 },
                 icon: const Icon(Icons.event_outlined, size: 18),
                 label: Text('止 ${_fmt(_to)}'),
               ),
             ],
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          _filterLabel('搜索'),
-          UtenSearchBar(
-            hint: '搜索单号 / 货品',
-            initialValue: _keyword,
-            onChanged: (v) => _keyword = v,
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.tonalIcon(
-              onPressed: () {
-                _page = 1;
-                _load();
-              },
-              icon: const Icon(Icons.search_rounded, size: 18),
-              label: const Text('查询'),
-            ),
           ),
           if (_filters.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s12),
@@ -452,6 +456,9 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
       onRowTap: _onRowTap,
       isLoading: _loading,
       emptyMessage: _kind.isDetail ? '暂无明细数据' : '暂无汇总数据',
+      // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
+      // 不是对当前这一页求和；后端未声明合计列时返回 null，整条不渲染。
+      summaryBar: reportTotalsBar(data.totals),
       currentPage: data.page,
       totalPages: data.totalPages,
       onPageChange: (p) {

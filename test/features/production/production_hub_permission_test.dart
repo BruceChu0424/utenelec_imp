@@ -2,14 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/production/pages/production_hub_page.dart';
 import 'package:uten_imp/features/production/production_routes.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
+  // 2026-09-11 起 hub 顶栏挂了「本模块待办累计」徽章，会 watch 生产的计数源，
+  // 而那些 provider 走 sharedPreferencesProvider（页面偏好/上次筛选）。
+  // 本文件只测权限显隐，给个空的桩即可，不然整页 build 直接抛
+  // 「sharedPreferencesProvider must be overridden in main.dart」。
+  late SharedPreferences preferences;
+
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    preferences = await SharedPreferences.getInstance();
+  });
   test('production hub accepts the where-used-only permission', () {
     expect(
       requiredAnyPermFor(RouteName.production),
@@ -66,6 +78,7 @@ void main() {
           currentPermissionsProvider.overrideWithValue(const {
             Perm.productionWhereUsedView,
           }),
+          sharedPreferencesProvider.overrideWithValue(preferences),
         ],
         child: const MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -88,7 +101,7 @@ void main() {
 
   testWidgets('view-only user keeps a visible history entry', (tester) async {
     await _setDesktopSize(tester);
-    await tester.pumpWidget(_hubApp(const {Perm.productionPlanView}));
+    await tester.pumpWidget(_hubApp(const {Perm.productionPlanView}, preferences));
     await tester.pumpAndSettle();
 
     expect(find.text('生产计划历史'), findsOneWidget);
@@ -101,7 +114,7 @@ void main() {
   ) async {
     await _setDesktopSize(tester);
     await tester.pumpWidget(
-      _hubApp(const {Perm.productionPlanView, Perm.productionPlanEdit}),
+      _hubApp(const {Perm.productionPlanView, Perm.productionPlanEdit}, preferences),
     );
     await tester.pumpAndSettle();
 
@@ -117,7 +130,7 @@ void main() {
       _hubApp(const {
         Perm.productionPlanView,
         Perm.productionMaterialAnalysisCreate,
-      }),
+      }, preferences),
     );
     await tester.pumpAndSettle();
 
@@ -148,6 +161,7 @@ void main() {
             Perm.productionMaterialAnalysisCreate,
             Perm.productionMaterialAnalysisView,
           }),
+          sharedPreferencesProvider.overrideWithValue(preferences),
         ],
         child: MaterialApp.router(
           routerConfig: router,
@@ -166,8 +180,12 @@ void main() {
   });
 }
 
-Widget _hubApp(Set<String> permissions) => ProviderScope(
-  overrides: [currentPermissionsProvider.overrideWithValue(permissions)],
+Widget _hubApp(Set<String> permissions, SharedPreferences preferences) =>
+    ProviderScope(
+  overrides: [
+    currentPermissionsProvider.overrideWithValue(permissions),
+    sharedPreferencesProvider.overrideWithValue(preferences),
+  ],
   child: const MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,

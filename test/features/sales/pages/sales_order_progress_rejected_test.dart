@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
+import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/sales/pages/sales_order_progress_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -58,6 +60,75 @@ void main() {
       expect(events, contains('PRODUCTION_FINISHED_INBOUND'));
       expect(events, contains('PRODUCTION_REPORTED'));
       expect(events, isNot(contains('SALES_ORDER_FINANCE_REJECTED')));
+    },
+  );
+
+  // 分段计数两形态（docs/00-项目准则/14-徽章与计数口径.md）：本页只有「财务驳回」
+  // 是销售自己要改单重报的待办（与 salesAttentionCountProvider 同源）→ 红徽章；
+  // 待排产/生产中/可分批发货下一步在生产与仓库手里，是进度监控数 → 中性括号。
+  testWidgets(
+    'only the rejected stage keeps a red badge, other stages browse in brackets',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _ProgressApi();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.salesOrderView,
+            }),
+          ],
+          child: _host(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      Finder segment(String label) => find.byWidgetPredicate(
+        (widget) => widget is UtenSegmentBadgeLabel && widget.label == label,
+      );
+
+      // 财务驳回：待办 → 红徽章 1（不带括号）。
+      expect(
+        tester.widget<UtenSegmentBadgeLabel>(segment('财务驳回')).countForm,
+        UtenSegmentCountForm.actionable,
+      );
+      expect(
+        find.descendant(
+          of: segment('财务驳回'),
+          matching: find.byType(UtenNotificationBadge),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: segment('财务驳回'), matching: find.text('(1)')),
+        findsNothing,
+      );
+
+      // 其余阶段：监控数 → 中性括号，0 也显示 `(0)` 保持队形，且没有红徽章。
+      for (final label in ['待排产', '生产中', '可分批发货']) {
+        expect(
+          tester.widget<UtenSegmentBadgeLabel>(segment(label)).countForm,
+          UtenSegmentCountForm.browsing,
+          reason: label,
+        );
+        expect(
+          find.descendant(of: segment(label), matching: find.text('(0)')),
+          findsOneWidget,
+          reason: label,
+        );
+        expect(
+          find.descendant(
+            of: segment(label),
+            matching: find.byType(UtenNotificationBadge),
+          ),
+          findsNothing,
+          reason: label,
+        );
+      }
+      expect(tester.takeException(), isNull);
     },
   );
 

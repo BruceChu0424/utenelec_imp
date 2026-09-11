@@ -133,7 +133,9 @@ public class ProductionExecutionWorkbenchService {
             int requestedSize,
             String keyword,
             String rawStatus,
-            UUID workshopDepartmentId) {
+            UUID workshopDepartmentId,
+            LocalDate dateFrom,
+            LocalDate dateTo) {
         UUID employeeId = currentUser.employeeId().orElse(null);
         // V477 读侧放行：超管在本页看全部车间任务（前端徽章本就放行超管，
         // 两端口径必须一致）；写侧（报工）仍要求车间归属——FullChainEndToEndTest
@@ -145,14 +147,22 @@ public class ProductionExecutionWorkbenchService {
             return new PageResponse<>(List.of(), 1, size, 0, 0);
         }
         String status = normalizeTaskStatus(rawStatus);
-        // 「历史任务」= 已完工段（终态）：只在显式筛选时返回，默认列表与徽章
-        // 仍只看四个活动状态（终态不挂徽章——与全站计数口径一致）。
+        // 「历史任务」= 终态段（已完工 / 已取消 / 已红冲），ADR-066 §1.3 时间门控：
+        // 只在显式筛选时返回，并按计划完工日期 dateFrom/dateTo 收窄（视图没有
+        // 完工时间戳列，退回 plan_end_date；CAST 判空口径与全站一致）。默认列表
+        // 与徽章仍只看四个活动状态（终态不挂徽章——与全站计数口径一致）。
         boolean history = "COMPLETED".equals(status);
         String statuses = history
-                ? "('COMPLETED')"
+                ? "('COMPLETED','CANCELLED','REVERSED')"
                 : "('WAITING','READY','DISPATCHED','IN_PROGRESS')";
         String predicate = (seeAll ? "1=1" : assignmentPredicate("task"))
                 + " AND task.segment_status IN " + statuses;
+        if (history) {
+            predicate += " AND (CAST(:dateFrom AS date) IS NULL"
+                    + " OR task.plan_end_date >= CAST(:dateFrom AS date))"
+                    + " AND (CAST(:dateTo AS date) IS NULL"
+                    + " OR task.plan_end_date <= CAST(:dateTo AS date))";
+        }
         if (workshopDepartmentId != null) {
             predicate += " AND task.workshop_department_id = :workshopId";
         }
@@ -173,12 +183,10 @@ public class ProductionExecutionWorkbenchService {
             predicate += switch (status) {
                 // 2026-09-06 车间任务页改版：「等待物料」= 全部未开工段
                 //（WAITING 等料 + READY/DISPATCHED 物料齐套·可开工）；
-                //「可报工」段退役（READY_TO_REPORT 仅作兼容参数保留）。
+                //「可报工」兼容状态参数 2026-09-10 退役（无客户端调用方，且与分段计数口径矛盾）
+                //（无客户端调用方；它与分段计数第三列口径本就互相矛盾）。
                 case "PREPARING" ->
                     " AND task.segment_status <> 'IN_PROGRESS'";
-                case "READY_TO_REPORT" ->
-                    " AND task.reportable = TRUE"
-                    + " AND task.segment_status = 'IN_PROGRESS'";
                 case "READY_TO_START" ->
                     " AND task.segment_status IN ('READY', 'DISPATCHED')"
                     + " AND (task.issued OR task.zero_material)";
@@ -202,6 +210,10 @@ public class ProductionExecutionWorkbenchService {
                                 "keyword",
                                 "%" + keyword.strip().toLowerCase(Locale.ROOT) + "%");
                     }
+                    if (history) {
+                        query.setParameter("dateFrom", dateFrom);
+                        query.setParameter("dateTo", dateTo);
+                    }
                 },
                 requestedPage,
                 requestedSize);
@@ -218,16 +230,13 @@ public class ProductionExecutionWorkbenchService {
         UUID employeeId = currentUser.employeeId().orElse(null);
         boolean seeAll = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
         if (employeeId == null && !seeAll) {
-            return new WorkshopTaskCountBreakdown(0, 0, 0, 0);
+            return new WorkshopTaskCountBreakdown(0, 0, 0);
         }
         String predicate = seeAll ? "TRUE" : assignmentPredicate("task");
         Query query = em.createNativeQuery("""
                         SELECT COUNT(*),
                                COUNT(*) FILTER (
                                    WHERE task.segment_status <> 'IN_PROGRESS'),
-                               COUNT(*) FILTER (
-                                   WHERE task.reportable
-                                     AND task.segment_status <> 'IN_PROGRESS'),
                                COUNT(*) FILTER (
                                    WHERE task.segment_status = 'IN_PROGRESS')
                         FROM v_production_execution_workbench_segments task
@@ -242,13 +251,12 @@ public class ProductionExecutionWorkbenchService {
         return new WorkshopTaskCountBreakdown(
                 ((Number) row[0]).longValue(),
                 ((Number) row[1]).longValue(),
-                ((Number) row[2]).longValue(),
-                ((Number) row[3]).longValue());
+                ((Number) row[2]).longValue());
     }
 
-    /** 车间任务分段计数（与列表筛选口径一一对应）。 */
+    /** 车间任务分段计数（与列表筛选口径一一对应：等待物料 + 生产中 = 总数）。 */
     public record WorkshopTaskCountBreakdown(
-            long total, long preparing, long readyToReport, long inProgress) {
+            long total, long preparing, long inProgress) {
     }
 
     private PageResponse<ProductionExecutionWorkbenchSegment> segmentPage(
@@ -730,8 +738,7 @@ public class ProductionExecutionWorkbenchService {
         if (value == null || value.isBlank()) return null;
         String normalized = value.strip().toUpperCase(Locale.ROOT);
         if (!Set.of(
-                        "PREPARING", "READY_TO_REPORT",
-                        "READY_TO_START", "IN_PROGRESS", "COMPLETED")
+                        "PREPARING", "READY_TO_START", "IN_PROGRESS", "COMPLETED")
                 .contains(normalized)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知车间任务状态");
         }

@@ -12,6 +12,14 @@ class UtenFloatingActionGroup extends StatelessWidget {
   final List<Widget> children;
   final double maxWidth;
 
+  /// 悬浮组内控件的统一高度。
+  ///
+  /// 取值 = [UtenButtonSize.large] 的最小高度：组里的业务动作一律用 large，
+  /// 而「已选 N 项」胶囊默认按表格工具条的 48 走——两者并排时矮 4px，用户一眼
+  /// 就看出来了（2026-09-11 反馈）。这里对每个孩子统一下 minHeight，谁也不用
+  /// 记得在调用点传高度；用 min 而非 tight，超大字号下按钮文案换行仍能长高。
+  static const double controlHeight = 52;
+
   @override
   Widget build(BuildContext context) {
     if (children.isEmpty) return const SizedBox.shrink();
@@ -39,7 +47,10 @@ class UtenFloatingActionGroup extends StatelessWidget {
                     isDark: theme.brightness == Brightness.dark,
                   ),
                 ),
-                child: child,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: controlHeight),
+                  child: child,
+                ),
               ),
           ],
         ),

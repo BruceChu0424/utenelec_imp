@@ -157,6 +157,7 @@ class SubcontractGridRow extends EditableGridRow
 List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
   Future<void> Function(SubcontractGridRow row) onPickGoods,
   SubcontractDocConfig cfg, {
+  required BuildContext context,
   Map<String, String> unitEntries = const {},
   Map<String, String> supplierEntries = const {},
   bool supplierRequired = false,
@@ -170,6 +171,8 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
   bool showRemark = false,
 }) {
   final showSupplier = supplierEntries.isNotEmpty && cfg.hasSupplier;
+  // 列说明统一挂表头 ⓘ（2026-09-09 口径）：每行重复的 ⓘ 既冗余又挤占格宽。
+  final l10n = workflowFieldText(context);
   return [
     EditableGridColumn<SubcontractGridRow>(
       key: 'goods',
@@ -234,8 +237,12 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
       EditableGridColumn<SubcontractGridRow>(
         key: 'supplier',
         label: '委外商',
-        width: 150,
+        width: 170,
         required: supplierRequired,
+        // 展开箭头(20) + 学习预填黄标 ⓘ(44) 都计入自动加宽量宽（2026-09-10）。
+        chromeWidth:
+            UtenEditableGridCellSpec.dropdownChevronWidth +
+            UtenEditableGridCellSpec.hintIconWidth,
         textOf: (r) => supplierEntries[r.supplierId] ?? '',
         listenableOf: (r) => r.supplierIdNotifier,
         cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
@@ -259,6 +266,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
       width: 128,
       numeric: true,
       required: true,
+      headerInfo: l10n.workflowQuantityHint,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.qty,
         isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
@@ -266,9 +274,8 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           controller: row.qty,
           textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: UtenInputDecoration(
-            const InputDecoration(isDense: true, hintText: '0'),
-            info: workflowFieldText(context).workflowQuantityHint,
+          decoration: const UtenInputDecoration(
+            InputDecoration(isDense: true, hintText: '0'),
           ),
         ),
       ),
@@ -295,6 +302,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         width: 128,
         numeric: true,
         required: true,
+        headerInfo: l10n.workflowPriceHint,
         cellBuilder: (context, row) => RequiredCellFrame(
           listenable: row.price,
           isEmpty: () =>
@@ -304,9 +312,8 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
             controller: row.price,
             textAlign: TextAlign.right,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: UtenInputDecoration(
-              const InputDecoration(isDense: true, hintText: '0'),
-              info: workflowFieldText(context).workflowPriceHint,
+            decoration: const UtenInputDecoration(
+              InputDecoration(isDense: true, hintText: '0'),
             ),
           ),
         ),
@@ -391,7 +398,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         width: 200,
         cellBuilder: (context, row) => TextField(
           controller: row.cause,
-          maxLines: 2,
+          // 单行（2026-09-09 统一口径）：双行把整行撑高，与数量/单价格不同高。
           decoration: const InputDecoration(isDense: true, hintText: '选填'),
         ),
       ),
@@ -399,6 +406,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
     // 订货单行级商业条款（2026-09）：单头不再录，逐行选择/填写，保存按组合拆单。
     if (showCommercial)
       ...procurementCommercialColumns<SubcontractGridRow>(
+        context: context,
         currencyEntries: currencyEntries,
         settlementEntries: settlementEntries,
         settlementLabel: '结算方式',

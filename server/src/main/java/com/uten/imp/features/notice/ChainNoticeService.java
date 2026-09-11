@@ -575,6 +575,11 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
 
     private void deliverFinishedInbound(UUID stockDocId, JsonNode payload) {
         deliverAtomically(() -> {
+            // 完工入库审核时 DB 触发器 fn_reconcile_execution_segment_completion 已把
+            // 满足条件的执行段置 COMPLETED；此处按本单关联段兜底办结「车间任务」卡
+            //（开工已办结的段幂等无事；未经 START 直接完工的段靠这里收卡）。
+            resolveProductionWorkshopTasks(
+                    completedSegmentsOfFinishedInbound(stockDocId), "COMPLETED");
             List<FinishedInboundSnapshot> allocations =
                     finishedInboundPayload(payload);
             if (allocations.isEmpty()
@@ -834,26 +839,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                   AND report.is_deleted = FALSE
                   AND EXISTS (
                       SELECT 1
-                      FROM production_daily_report_items report_item
-                      WHERE report_item.report_id = report.id
-                        AND report_item.is_deleted = FALSE
-                        AND report_item.execution_segment_id IS NOT NULL
-                        AND NOT EXISTS (
-                            SELECT 1
-                            FROM production_finished_arrival_registration_items
-                                     registered_item
-                            WHERE registered_item.source_report_item_id =
-                                  report_item.id)
-                        AND NOT EXISTS (
-                            SELECT 1
-                            FROM production_fqc_inspections inspection
-                            WHERE inspection.source_report_item_id =
-                                  report_item.id)
-                        AND NOT EXISTS (
-                            SELECT 1
-                            FROM production_fqc_legacy_exemptions exemption
-                            WHERE exemption.source_report_item_id =
-                                  report_item.id))
+                      FROM v_production_report_items_pending_registration pending
+                      WHERE pending.report_id = report.id)
                 """, reportId);
     }
 
@@ -3106,7 +3093,13 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         }
     }
 
-    /** First report creation resolves every current popup for the exact task. */
+    /**
+     * Resolves every current workshop-task popup for the exact segments. Called at
+     * every point where the task stops being actionable for the workshop: START
+     * (ProductionExecutionSegmentService.applyTransition, reason STARTED), completion
+     * (finished-inbound delivery, COMPLETED), cancel/reverse, and workshop
+     * unassignment/reassignment. Daily reports do not resolve the card.
+     */
     public int resolveProductionWorkshopTasks(
             Collection<UUID> segmentIds, String reason) {
         if (segmentIds == null || segmentIds.isEmpty()) return 0;
@@ -3123,6 +3116,28 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                             ? "COMPLETED" : reason.strip());
         }
         return resolved;
+    }
+
+    /**
+     * Segments referenced by a FINISHED_IN document whose status is already
+     * COMPLETED (the V156 reconciliation trigger runs in the approval transaction,
+     * before this outbox delivery). Segments reopened by a completion reverse are
+     * IN_PROGRESS again and therefore not returned.
+     */
+    List<UUID> completedSegmentsOfFinishedInbound(UUID stockDocId) {
+        if (stockDocId == null) return List.of();
+        return jdbc.queryForList("""
+                SELECT DISTINCT item.execution_segment_id
+                FROM stock_document_items item
+                JOIN production_execution_segments segment
+                  ON segment.id = item.execution_segment_id
+                 AND segment.is_deleted = FALSE
+                 AND segment.status = 'COMPLETED'
+                WHERE item.doc_id = ?
+                  AND item.is_deleted = FALSE
+                  AND item.execution_segment_id IS NOT NULL
+                ORDER BY item.execution_segment_id
+                """, UUID.class, stockDocId);
     }
 
     /** ⑤ 发货通知销售：出货单审核后，按订单聚合本次出货量。（出货单暂无物流单号字段，内容含单号/数量/仓库。） */

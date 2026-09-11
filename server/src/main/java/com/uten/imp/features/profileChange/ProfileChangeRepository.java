@@ -24,6 +24,40 @@ public interface ProfileChangeRepository extends JpaRepository<ProfileChangeRequ
     /** HR 队列全部（混合状态），按提交时间倒序。 */
     Page<ProfileChangeRequest> findAllByOrderBySubmittedAtDesc(Pageable pageable);
 
+    /**
+     * HR 队列：按状态 + 员工所属部门（Employee.department）分页（2026-09-10 表头「部门」筛选接后端，
+     * 替代此前只裁剪当前页的前端过滤）。部门取员工当前所属部门，非提交时快照。
+     */
+    @Query(value = """
+        SELECT p FROM ProfileChangeRequest p
+        WHERE p.status = :status
+          AND p.employeeId IN (SELECT e.id FROM Employee e WHERE e.department.id = :departmentId)
+        ORDER BY p.submittedAt DESC
+        """,
+        countQuery = """
+        SELECT COUNT(p) FROM ProfileChangeRequest p
+        WHERE p.status = :status
+          AND p.employeeId IN (SELECT e.id FROM Employee e WHERE e.department.id = :departmentId)
+        """)
+    Page<ProfileChangeRequest> findByStatusAndDepartmentOrderBySubmittedAtDesc(
+            @Param("status") String status,
+            @Param("departmentId") UUID departmentId,
+            Pageable pageable);
+
+    /**
+     * 某状态下按员工所属部门聚合的批次数（表头「部门」筛选桶）：
+     * 返回 [department_id, department_name, batch_count]，按部门名排序。
+     */
+    @Query("""
+        SELECT e.department.id, e.department.name, COUNT(DISTINCT p.batchId)
+        FROM ProfileChangeRequest p, Employee e
+        WHERE e.id = p.employeeId
+          AND p.status = :status
+        GROUP BY e.department.id, e.department.name
+        ORDER BY e.department.name
+        """)
+    List<Object[]> countBatchesByDepartment(@Param("status") String status);
+
     /** 员工自查：分页按状态过滤。 */
     Page<ProfileChangeRequest> findByEmployeeIdAndStatusOrderBySubmittedAtDesc(
             UUID employeeId, String status, Pageable pageable);

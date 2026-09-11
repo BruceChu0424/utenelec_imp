@@ -1,5 +1,6 @@
 package com.uten.imp.features.visitor;
 
+import com.uten.imp.features.notice.HrNoticeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorListItem;
@@ -30,7 +31,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -54,6 +57,7 @@ class VisitorApplicationPaginationTest {
                 mock(EmployeeRepository.class),
                 mapper,
                 mock(TxSessionVars.class),
+                mock(HrNoticeService.class),
                 currentUser);
     }
 
@@ -105,7 +109,8 @@ class VisitorApplicationPaginationTest {
                 applicationService,
                 mock(VisitorGateService.class),
                 new VisitorGuard(currentUser),
-                mock(TxSessionVars.class));
+                mock(TxSessionVars.class),
+                mock(HrNoticeService.class));
 
         var response = service.listForApproval(null, 2, 20);
 
@@ -131,7 +136,8 @@ class VisitorApplicationPaginationTest {
                 repository,
                 applicationService,
                 currentUser,
-                mock(TxSessionVars.class));
+                mock(TxSessionVars.class),
+                mock(HrNoticeService.class));
 
         service.myAsHost("approved", 1, 20);
 
@@ -162,7 +168,8 @@ class VisitorApplicationPaginationTest {
                 appService,
                 mock(VisitorGateService.class),
                 new VisitorGuard(currentUser),
-                mock(TxSessionVars.class));
+                mock(TxSessionVars.class),
+                mock(HrNoticeService.class));
 
         ApiException error = assertThrows(
                 ApiException.class,
@@ -186,7 +193,8 @@ class VisitorApplicationPaginationTest {
                 appService,
                 mock(VisitorGateService.class),
                 new VisitorGuard(currentUser),
-                mock(TxSessionVars.class));
+                mock(TxSessionVars.class),
+                mock(HrNoticeService.class));
 
         service.getDetailForStaff(application.getId());
 
@@ -236,18 +244,70 @@ class VisitorApplicationPaginationTest {
                 null);
     }
 
+    @Test
+    void approvalWithHostDepartmentAddsDepartmentPredicateAndKeepsDefaultStates() {
+        AuthUser staff = mock(AuthUser.class);
+        when(staff.isVisitor()).thenReturn(false);
+        when(staff.getId()).thenReturn(UUID.randomUUID());
+        when(currentUser.get()).thenReturn(Optional.of(staff));
+        stubPage(3);
+        VisitorHrApprovalService service = new VisitorHrApprovalService(
+                repository,
+                applicationService,
+                mock(VisitorGateService.class),
+                new VisitorGuard(currentUser),
+                mock(TxSessionVars.class),
+                mock(HrNoticeService.class));
+        UUID departmentId = UUID.randomUUID();
+
+        service.listForApproval(null, departmentId, 1, 20);
+
+        Specification<VisitorApplication> specification = capturedSpecification();
+        CriteriaFixture criteria = new CriteriaFixture();
+        specification.toPredicate(criteria.root, criteria.query, criteria.builder);
+        verify(criteria.status).in("pending", "hostReviewing");
+        verify(criteria.builder).equal(criteria.hostDepartmentId, departmentId);
+        verify(criteria.builder).equal(criteria.deleted, false);
+    }
+
+    @Test
+    void approvalWithoutHostDepartmentNeverTouchesDepartmentPath() {
+        AuthUser staff = mock(AuthUser.class);
+        when(staff.isVisitor()).thenReturn(false);
+        when(staff.getId()).thenReturn(UUID.randomUUID());
+        when(currentUser.get()).thenReturn(Optional.of(staff));
+        stubPage(0);
+        VisitorHrApprovalService service = new VisitorHrApprovalService(
+                repository,
+                applicationService,
+                mock(VisitorGateService.class),
+                new VisitorGuard(currentUser),
+                mock(TxSessionVars.class),
+                mock(HrNoticeService.class));
+
+        service.listForApproval("approved", 1, 20);
+
+        Specification<VisitorApplication> specification = capturedSpecification();
+        CriteriaFixture criteria = new CriteriaFixture();
+        specification.toPredicate(criteria.root, criteria.query, criteria.builder);
+        verify(criteria.builder).equal(criteria.status, "approved");
+        verify(criteria.builder, never()).equal(eq(criteria.hostDepartmentId), any());
+    }
+
     private static final class CriteriaFixture {
         private final Root<VisitorApplication> root = mock(Root.class);
         private final CriteriaQuery<?> query = mock(CriteriaQuery.class);
         private final CriteriaBuilder builder = mock(CriteriaBuilder.class);
         private final Path<UUID> visitorAccountId = mock(Path.class);
         private final Path<UUID> hostEmployeeId = mock(Path.class);
+        private final Path<UUID> hostDepartmentId = mock(Path.class);
         private final Path<Boolean> deleted = mock(Path.class);
         private final Path<String> status = mock(Path.class);
 
         private CriteriaFixture() {
             when(root.<UUID>get("visitorAccountId")).thenReturn(visitorAccountId);
             when(root.<UUID>get("hostEmployeeId")).thenReturn(hostEmployeeId);
+            when(root.<UUID>get("hostDepartmentId")).thenReturn(hostDepartmentId);
             when(root.<Boolean>get("deleted")).thenReturn(deleted);
             when(root.<String>get("status")).thenReturn(status);
             when(builder.equal(any(), any())).thenReturn(mock(Predicate.class));

@@ -3,15 +3,21 @@
 // 计划下达的采购申请始终只读；订货走财务审批；收货/退货才沿用各自的草稿/审核/红冲动作。
 // 财务决定只存在于财务任务中心；本页仅消费业务动作能力与 SUBMIT_FINANCE。
 // 名称解析：供应商/仓库/币种/颜色/单位用 MasterNameService；货品按明细 id 批量 lookup。
+//
+// 2026-09-09 折叠头+表内滚改版（与货品资料页统一）：整页 ListView 改
+// UtenCollapsingHeaderScrollView——上滑先折叠头部（表头卡/横幅/附件），表头顶到
+// 页面顶部后再滚明细表内部；附件等小卡并入折叠头尾部（随头部一起收起）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -23,6 +29,8 @@ import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
+import '../../../core/utils/currency_display.dart';
+import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/widgets/source_doc_link.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
@@ -32,6 +40,7 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../repositories/purchase_repository.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../widgets/purchase_status_badge.dart';
 
 class PurchaseDocDetailPage extends ConsumerStatefulWidget {
@@ -249,6 +258,16 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       _financeReviewOnly ? _financeApprovalTasksPath : RouteName.purchase;
 
   String get _returnLabel => _financeReviewOnly ? '返回订货审批任务中心' : '返回列表';
+
+  String get _listPath => '/purchase/${_cfg.type.pathSegment}';
+
+  /// 「返回列表」显隐：与列表路由守卫同源（财务核单等无列表权限的入口 push
+  /// 进来时不渲染，否则按钮会把人带到 /access-denied；2026-09-10 审计）。
+  bool get _canOpenList => locationAllowedFor(
+    ref.read(currentPermissionsProvider),
+    ref.read(isSuperAdminProvider),
+    _listPath,
+  );
 
   Future<void> _load() async {
     if (widget.docType != PurchaseDocType.request) {
@@ -564,14 +583,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           .delete(widget.id);
       if (!mounted) return;
       context.appSuccess('已删除');
-      context.go(
-        RoutePath.purchaseDocDetail(
-          _cfg.type.pathSegment,
-          widget.id,
-        ).replaceFirst('/${widget.id}', ''),
-      );
-      // 回列表
-      context.go('/purchase/${_cfg.type.pathSegment}');
+      // 返回键契约（路由设计 §十一）：pop 回来源，栈空回 hub/任务中心。
+      popOrBackTo(context, defaultPath: _defaultBackPath);
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {
@@ -596,16 +609,6 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(context, defaultPath: _defaultBackPath),
         ),
-        actions: [
-          if (_hasPermission(_cfg.listPerm))
-            UtenButton(
-              type: UtenButtonType.tonal,
-              icon: Icons.history_rounded,
-              onPressed: () =>
-                  context.push('/purchase/${_cfg.type.pathSegment}'),
-              child: const Text('查看历史'),
-            ),
-        ],
       ),
       body: SafeArea(
         // 2026-09-05 用户口径：明细表是本页主体，用全宽容器（与单据列表页
@@ -617,57 +620,72 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
               ? Center(child: Text(_error!))
               : _detail == null
               ? const SizedBox.shrink()
-              : ListView(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  children: [
-                    if (scopeCapability != null)
-                      DocumentScopeWriteNotice(
-                        capability: scopeCapability,
-                        ownerEmployeeId: _detail!.makerId,
-                        onRetry: () => ref.invalidate(
-                          documentScopeCapabilityProvider(
-                            DocumentDataScope.purchase,
+              // 2026-09-09 折叠头+表内滚（与货品资料页统一）：上滑先收头部
+              // （表头卡/横幅/附件），表头顶到页面顶部后再滚明细表内部。
+              : UtenCollapsingHeaderScrollView(
+                  collapsingHeader: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      0,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (scopeCapability != null)
+                          DocumentScopeWriteNotice(
+                            capability: scopeCapability,
+                            ownerEmployeeId: _detail!.makerId,
+                            onRetry: () => ref.invalidate(
+                              documentScopeCapabilityProvider(
+                                DocumentDataScope.purchase,
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                    // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
-                    // SelectionArea（准则 §3.4），无需再单独包。
-                    _headerCard(theme, names),
-                    if (widget.docType == PurchaseDocType.order &&
-                        (_detail!.financeApproval?.isPending == true ||
-                            _detail!.financeApproval?.isRejected == true)) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      _financeApprovalBanner(theme),
-                    ],
-                    if (_detail!.productionLinked) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      _productionSourceBanner(theme),
-                    ],
-                    const SizedBox(height: UtenSpacing.s12),
-                    _itemsCard(theme, names),
-                    if (widget.docType == PurchaseDocType.order) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      BusinessAttachmentSection(
-                        ownerType: 'PURCHASE_ORDER',
-                        ownerId: _detail!.id,
-                        canView:
-                            _canViewCommercialAmounts &&
-                            (_hasPermission(Perm.purchaseOrderView) ||
-                                (_hasPermission(
-                                      Perm.financeOrderApprovalView,
-                                    ) &&
-                                    _detail!.financeApproval?.isPending ==
-                                        true)),
-                        canManage:
-                            _canEdit &&
-                            _detail!.canEdit &&
-                            _detail!.status == kPurchaseStatusDraft &&
-                            !_detail!.closed &&
-                            _detail!.financeApproval?.isPending != true,
-                        categories: const ['合同', '供应商确认', '图片', '其他'],
-                      ),
-                    ],
-                  ],
+                        // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
+                        // SelectionArea（准则 §3.4），无需再单独包。
+                        _headerCard(theme, names),
+                        if (widget.docType == PurchaseDocType.order &&
+                            (_detail!.financeApproval?.isPending == true ||
+                                _detail!.financeApproval?.isRejected ==
+                                    true)) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          _financeApprovalBanner(theme),
+                        ],
+                        if (_detail!.productionLinked) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          _productionSourceBanner(theme),
+                        ],
+                        // 附件属「备注类小卡」：并入折叠头尾部，随头部一起收起。
+                        if (widget.docType == PurchaseDocType.order) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          BusinessAttachmentSection(
+                            ownerType: 'PURCHASE_ORDER',
+                            ownerId: _detail!.id,
+                            canView:
+                                _canViewCommercialAmounts &&
+                                (_hasPermission(Perm.purchaseOrderView) ||
+                                    (_hasPermission(
+                                          Perm.financeOrderApprovalView,
+                                        ) &&
+                                        _detail!.financeApproval?.isPending ==
+                                            true)),
+                            // 详情=审核页：文件只读（增删回编辑页）。
+                            canManage: false,
+                            readOnlyNote: BusinessAttachmentSection
+                                .kReviewReadOnlyAttachmentNote,
+                            categories: const ['合同', '供应商确认', '图片', '其他'],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  // body：明细标题行（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
+                  body: Padding(
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    child: _itemsCard(theme, names),
+                  ),
                 ),
         ),
       ),
@@ -839,168 +857,219 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           ],
         ),
         const SizedBox(height: UtenSpacing.s8),
-        MasterDataTableView<PurchaseDocItem>(
-          embedded: true,
-          selectable: _canGenerateRequestOrder,
-          idOf: (item) => _canSelectRequestItem(item) ? item.id : null,
-          rowKeyOf: (item) => item.id,
-          rowWidgetKeyOf: (item) => ValueKey('purchase-request-row-${item.id}'),
-          selectedIds: _selectedRequestItemIds,
-          onSelectedIdsChanged: (next) => setState(() {
-            _selectedRequestItemIds
-              ..clear()
-              ..addAll(next);
-          }),
-          columns: [
-            MasterColumnDef(
-              key: 'goods',
-              label: '货品',
-              width: 220,
-              value: (it) =>
-                  '${names.goods(it.goodsId)}(${names.color(it.colorId)} · ${names.unit(it.unitId)})',
-            ),
-            // 收货/退货实物单据：库位号（主档带出，上架/拣货指引）。
-            if (widget.docType == PurchaseDocType.receipt ||
-                widget.docType == PurchaseDocType.returnDoc)
+        // primary:true → 表体占满 body 并参与「头部折叠 → 表格内滚」联动。
+        Expanded(
+          child: MasterDataTableView<PurchaseDocItem>(
+            primary: true,
+            selectable: _canGenerateRequestOrder,
+            idOf: (item) => _canSelectRequestItem(item) ? item.id : null,
+            rowKeyOf: (item) => item.id,
+            rowWidgetKeyOf: (item) =>
+                ValueKey('purchase-request-row-${item.id}'),
+            selectedIds: _selectedRequestItemIds,
+            onSelectedIdsChanged: (next) => setState(() {
+              _selectedRequestItemIds
+                ..clear()
+                ..addAll(next);
+            }),
+            columns: [
               MasterColumnDef(
-                key: 'stockPlace',
-                label: '库位号',
-                width: 90,
-                value: (it) => names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
+                key: 'goods',
+                label: '货品',
+                width: 220,
+                value: (it) =>
+                    '${names.goods(it.goodsId)}(${names.color(it.colorId)} · ${names.unit(it.unitId)})',
               ),
-            // 收货单逐行来源订货单编号（编号非 id；表头来源链可点跳详情）。
-            if (widget.docType == PurchaseDocType.receipt)
+              // 收货/退货实物单据：库位号（主档带出，上架/拣货指引）。
+              if (widget.docType == PurchaseDocType.receipt ||
+                  widget.docType == PurchaseDocType.returnDoc)
+                MasterColumnDef(
+                  key: 'stockPlace',
+                  label: '库位号',
+                  width: 90,
+                  value: (it) => names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
+                ),
+              // 收货单逐行来源订货单编号（编号非 id；表头来源链可点跳详情）。
+              if (widget.docType == PurchaseDocType.receipt)
+                MasterColumnDef(
+                  key: 'orderBillNo',
+                  label: '来源订货单',
+                  width: 150,
+                  value: (it) => it.orderBillNo ?? '',
+                ),
               MasterColumnDef(
-                key: 'orderBillNo',
-                label: '来源订货单',
-                width: 150,
-                value: (it) => it.orderBillNo ?? '',
-              ),
-            MasterColumnDef(
-              key: 'qty',
-              label: '数量',
-              width: _canAdjustRequestQty ? 130 : 90,
-              type: 'number',
-              value: (it) => _requestQtyText(it.qty),
-              cellBuilderHandlesSemantics: true,
-              // V477：申请明细在分解前可直接改量（已订货/待审占用的行只读）。
-              cellBuilder: (context, it) => _itemQtyEditable(it)
-                  ? SizedBox(
-                      width: 110,
-                      child: TextField(
-                        key: ValueKey('purchase-request-qty-${it.id}'),
-                        controller: _qtyControllerOf(it),
-                        enabled: !_busy,
-                        textAlign: TextAlign.right,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
+                key: 'qty',
+                label: '数量',
+                width: _canAdjustRequestQty ? 130 : 90,
+                type: 'number',
+                value: (it) => _requestQtyText(it.qty),
+                cellBuilderHandlesSemantics: true,
+                // V477：申请明细在分解前可直接改量（已订货/待审占用的行只读）。
+                cellBuilder: (context, it) => _itemQtyEditable(it)
+                    ? SizedBox(
+                        width: 110,
+                        child: TextField(
+                          key: ValueKey('purchase-request-qty-${it.id}'),
+                          controller: _qtyControllerOf(it),
+                          enabled: !_busy,
+                          textAlign: TextAlign.right,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            hintText: '数量',
+                          ),
                         ),
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          hintText: '数量',
-                        ),
+                      )
+                    : Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(_requestQtyText(it.qty)),
                       ),
-                    )
-                  : Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(_requestQtyText(it.qty)),
-                    ),
-            ),
-            // 实际重量列已下线（2026-09-04：单位已表达重量，编辑页不再录入）。
-            if (widget.docType != PurchaseDocType.request &&
-                canViewCommercialAmounts) ...[
-              MasterColumnDef(
-                key: 'price',
-                label: '单价',
-                width: 90,
-                type: 'money',
-                value: (it) => it.price?.toStringAsFixed(2),
               ),
-              MasterColumnDef(
-                key: 'amount',
-                label: '金额',
-                width: 100,
-                type: 'money',
-                // 优先服务端权威金额（含舍入口径）；仅历史缺失时才本地乘算兜底。
-                value: (it) => (it.amountOriginal ?? it.amountLocal) != null
-                    ? (it.amountOriginal ?? it.amountLocal)!.toStringAsFixed(2)
-                    : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
-              ),
-            ],
-            if (widget.docType == PurchaseDocType.request ||
-                widget.docType == PurchaseDocType.order) ...[
-              if (widget.docType == PurchaseDocType.request) ...[
+              // 实际重量列已下线（2026-09-04：单位已表达重量，编辑页不再录入）。
+              if (widget.docType != PurchaseDocType.request &&
+                  canViewCommercialAmounts) ...[
                 MasterColumnDef(
-                  key: 'approvedOrderQty',
-                  label: '已批准订货',
-                  width: 115,
-                  type: 'number',
-                  value: (it) => _requestQtyText(it.orderedQty ?? 0),
+                  key: 'price',
+                  label: '单价',
+                  width: 90,
+                  type: 'money',
+                  value: (it) => it.price?.toStringAsFixed(2),
                 ),
                 MasterColumnDef(
-                  key: 'pendingOrderQty',
-                  label: '待财务确认',
-                  width: 115,
-                  type: 'number',
-                  value: (it) => _requestQtyText(it.pendingQty ?? 0),
-                ),
-                MasterColumnDef(
-                  key: 'remainingOrderQty',
-                  label: '可继续采购',
-                  width: 115,
-                  type: 'number',
-                  value: (it) => _requestQtyText(_remainingRequestQty(it)),
+                  key: 'amount',
+                  label: '金额',
+                  width: 100,
+                  type: 'money',
+                  // 优先服务端权威金额（含舍入口径）；仅历史缺失时才本地乘算兜底。
+                  value: (it) => (it.amountOriginal ?? it.amountLocal) != null
+                      ? (it.amountOriginal ?? it.amountLocal)!.toStringAsFixed(
+                          2,
+                        )
+                      : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
                 ),
               ],
-              MasterColumnDef(
-                key: 'planNo',
-                label: '生产计划',
-                width: 130,
-                value: (it) => it.productionPlanNo ?? '',
-              ),
-              MasterColumnDef(
-                key: 'salesOrderNo',
-                label: '销售订单',
-                width: 150,
-                value: (it) => it.salesOrderNo ?? '',
-              ),
-              // V463：合并订货行的来源申请单号（多来源顿号连接，单来源一条）。
-              if (widget.docType == PurchaseDocType.order)
+              if (widget.docType == PurchaseDocType.request ||
+                  widget.docType == PurchaseDocType.order) ...[
+                if (widget.docType == PurchaseDocType.request) ...[
+                  MasterColumnDef(
+                    key: 'approvedOrderQty',
+                    label: '已批准订货',
+                    width: 115,
+                    type: 'number',
+                    value: (it) => _requestQtyText(it.orderedQty ?? 0),
+                  ),
+                  MasterColumnDef(
+                    key: 'pendingOrderQty',
+                    label: '待财务确认',
+                    width: 115,
+                    type: 'number',
+                    value: (it) => _requestQtyText(it.pendingQty ?? 0),
+                  ),
+                  MasterColumnDef(
+                    key: 'remainingOrderQty',
+                    label: '可继续采购',
+                    width: 115,
+                    type: 'number',
+                    value: (it) => _requestQtyText(_remainingRequestQty(it)),
+                  ),
+                ],
                 MasterColumnDef(
-                  key: 'sourceRequests',
-                  label: '来源申请',
-                  width: 170,
-                  value: (it) => it.sourceRequests
-                      .map((source) => source.billNo)
-                      .whereType<String>()
-                      .where((no) => no.isNotEmpty)
-                      .join('、'),
+                  key: 'planNo',
+                  label: '生产计划',
+                  width: 130,
+                  value: (it) => it.productionPlanNo ?? '',
+                ),
+                MasterColumnDef(
+                  key: 'salesOrderNo',
+                  label: '销售订单',
+                  width: 150,
+                  value: (it) => it.salesOrderNo ?? '',
+                ),
+                // V463：合并订货行的来源申请单号（多来源顿号连接，单来源一条）。
+                if (widget.docType == PurchaseDocType.order)
+                  MasterColumnDef(
+                    key: 'sourceRequests',
+                    label: '来源申请',
+                    width: 170,
+                    value: (it) => it.sourceRequests
+                        .map((source) => source.billNo)
+                        .whereType<String>()
+                        .where((no) => no.isNotEmpty)
+                        .join('、'),
+                  ),
+              ],
+              if (_cfg.showReceived)
+                MasterColumnDef(
+                  key: 'received',
+                  label: '已收',
+                  width: 90,
+                  type: 'number',
+                  value: (it) => it.receivedQty?.toStringAsFixed(2),
+                ),
+              if (_cfg.showReturned)
+                MasterColumnDef(
+                  key: 'returned',
+                  label: '已退',
+                  width: 90,
+                  type: 'number',
+                  value: (it) => it.returnedQty?.toStringAsFixed(2),
                 ),
             ],
-            if (_cfg.showReceived)
-              MasterColumnDef(
-                key: 'received',
-                label: '已收',
-                width: 90,
-                type: 'number',
-                value: (it) => it.receivedQty?.toStringAsFixed(2),
-              ),
-            if (_cfg.showReturned)
-              MasterColumnDef(
-                key: 'returned',
-                label: '已退',
-                width: 90,
-                type: 'number',
-                value: (it) => it.returnedQty?.toStringAsFixed(2),
-              ),
-          ],
-          items: items,
-          facets: const {},
-          nullCounts: const {},
-          filters: const {},
-          onFilterChanged: (_, _) {},
-          emptyMessage: '暂无明细',
+            items: items,
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+            emptyMessage: '暂无明细',
+          ),
         ),
+        // 明细下合计条（全站统一口径）：数量按单位分组，金额受商务金额门控。
+        if (items.isNotEmpty) _totalsBar(names, items),
+      ],
+    );
+  }
+
+  /// 明细表下的合计条：合计数量（按单位分组，绝不跨单位相加）+
+  /// 合计金额（原币，标红）+ 合计（本币）。申请单无金额口径，仅出数量。
+  Widget _totalsBar(MasterNameService names, List<PurchaseDocItem> items) {
+    final d = _detail!;
+    final showAmounts =
+        _canViewCommercialAmounts && widget.docType != PurchaseDocType.request;
+    final totalOriginal =
+        d.totalOriginal ??
+        items.fold<double>(
+          0,
+          (sum, it) => sum + (it.amountOriginal ?? it.amountLocal ?? 0),
+        );
+    return UtenTotalsSummaryBar(
+      key: const Key('purchase-detail-totals'),
+      density: true,
+      entries: [
+        utenQuantityTotalEntry(
+          items.map(
+            (it) => MeasuredAmount(
+              value: it.qty ?? 0,
+              unitId: it.unitId,
+              unitName: names.unit(it.unitId),
+            ),
+          ),
+        ),
+        if (showAmounts) ...[
+          UtenTotalEntry(
+            utenAmountTotalLabel(
+              _cfg.hasCurrency
+                  ? financeCurrencyDisplayLabel(
+                      name: names.currency(d.currencyId),
+                    )
+                  : null,
+            ),
+            totalOriginal.toStringAsFixed(2),
+            danger: true,
+          ),
+          UtenTotalEntry('合计(本币)', d.totalLocal?.toStringAsFixed(2) ?? ''),
+        ],
       ],
     );
   }
@@ -1111,6 +1180,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
   }
 
   Widget _actions(ThemeData theme) {
+    // 「返回列表」显隐随权限快照即时刷新（_canOpenList 用 read，这里挂 watch）。
+    ref.watch(currentPermissionsProvider);
     final d = _detail!;
     final s = d.status;
     final children = <Widget>[];
@@ -1143,13 +1214,15 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           ),
         );
       }
-      addAction(
-        UtenButton(
-          type: UtenButtonType.secondary,
-          onPressed: () => context.go('/purchase/${_cfg.type.pathSegment}'),
-          child: const Text('返回列表'),
-        ),
-      );
+      if (_canOpenList) {
+        addAction(
+          UtenButton(
+            type: UtenButtonType.secondary,
+            onPressed: () => popOrBackTo(context, defaultPath: _listPath),
+            child: const Text('返回列表'),
+          ),
+        );
+      }
     } else if (widget.docType == PurchaseDocType.order) {
       final approval = d.financeApproval;
       final pending = approval?.isPending == true;
@@ -1273,11 +1346,11 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           ),
         );
       }
-      if (children.isEmpty) {
+      if (children.isEmpty && _canOpenList) {
         children.add(
           UtenButton(
             type: UtenButtonType.secondary,
-            onPressed: () => context.go('/purchase/${_cfg.type.pathSegment}'),
+            onPressed: () => popOrBackTo(context, defaultPath: _listPath),
             child: const Text('返回列表'),
           ),
         );
@@ -1291,15 +1364,16 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           child: const Text('红冲'),
         ),
       );
-    } else {
+    } else if (_canOpenList) {
       children.add(
         UtenButton(
           type: UtenButtonType.secondary,
-          onPressed: () => context.go('/purchase/${_cfg.type.pathSegment}'),
+          onPressed: () => popOrBackTo(context, defaultPath: _listPath),
           child: const Text('返回列表'),
         ),
       );
     }
+    if (children.isEmpty) return const SizedBox.shrink();
     return SafeArea(
       child: Container(
         decoration: BoxDecoration(

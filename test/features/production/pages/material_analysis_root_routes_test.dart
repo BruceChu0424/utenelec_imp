@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
@@ -160,9 +161,7 @@ void main() {
       );
       await tester.tap(find.text('等待下达车间 (1)'));
       await tester.pumpAndSettle();
-      final pendingRow = find
-          .ancestor(of: find.text('自制组件 2'), matching: find.byType(Row))
-          .first;
+      final pendingRow = _frozenRowOf('自制组件 2');
       final check = find.descendant(
         of: pendingRow,
         matching: find.byType(Checkbox),
@@ -1103,3 +1102,17 @@ Map<String, dynamic> _analysis({
     ],
   ],
 };
+
+/// 行首勾选格 2026-09-11 起被「冻结」成整行 Stack 的 Positioned 兄弟
+/// （横滚时钉在视口左缘，见 UtenFrozenLeadingColumn），不再是数据 Row 的后代。
+/// 定位整行时必须取冻结包裹层；没有选择列的表（无冻结层）回落到 Row。
+Finder _frozenRowOf(String text) {
+  final frozen = find.ancestor(
+    of: find.text(text).first,
+    matching: find.byType(UtenFrozenLeadingColumn),
+  );
+  if (frozen.evaluate().isNotEmpty) return frozen.first;
+  return find
+      .ancestor(of: find.text(text).first, matching: find.byType(Row))
+      .first;
+}

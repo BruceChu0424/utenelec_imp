@@ -1,25 +1,25 @@
 package com.uten.imp.features.production.schedule;
 
-import com.uten.imp.features.production.mrp.MrpService;
-import com.uten.imp.security.SecurityContextCurrentUser;
-import com.uten.imp.security.TxSessionVars;
-import jakarta.persistence.EntityManager;
+import com.uten.imp.common.saleschain.SalesChainStatus;
+import com.uten.imp.common.saleschain.SalesOrderChainSql;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
+/** 待排产缺口 = 剩余未排量（V545 起与 chain_status 派生同源，SalesOrderChainSql）。 */
 class ProductionScheduleNeedTest {
 
     @Test
+    void schedulingNeedIsTheSharedUnplannedQtyExpression() {
+        assertThat(ProductionScheduleService.SCHEDULING_NEED_SQL)
+                .isEqualTo(SalesOrderChainSql.unplannedQtySql("i"));
+    }
+
+    @Test
     void partialShipmentAndPartialInboundLeaveOnlyUncoveredOutstanding() {
-        assertThat(ProductionScheduleService.schedulingNeed(
+        assertThat(SalesChainStatus.unplannedQty(
                 bd("100"), bd("20"), bd("0"), bd("0"),
                 bd("30"), bd("70"), bd("30")))
                 .isEqualByComparingTo("10");
@@ -27,13 +27,13 @@ class ProductionScheduleNeedTest {
 
     @Test
     void returnIncreasesNeedAndFlagDecreasesNeed() {
-        BigDecimal baseline = ProductionScheduleService.schedulingNeed(
+        BigDecimal baseline = SalesChainStatus.unplannedQty(
                 bd("100"), bd("20"), bd("0"), bd("0"),
                 bd("30"), bd("70"), bd("30"));
-        BigDecimal afterReturn = ProductionScheduleService.schedulingNeed(
+        BigDecimal afterReturn = SalesChainStatus.unplannedQty(
                 bd("100"), bd("20"), bd("8"), bd("0"),
                 bd("30"), bd("70"), bd("30"));
-        BigDecimal afterFlag = ProductionScheduleService.schedulingNeed(
+        BigDecimal afterFlag = SalesChainStatus.unplannedQty(
                 bd("100"), bd("20"), bd("0"), bd("6"),
                 bd("30"), bd("70"), bd("30"));
 
@@ -43,25 +43,23 @@ class ProductionScheduleNeedTest {
 
     @Test
     void producedQuantityIsNotDoubleCountedWhenFinishedStockIsReserved() {
-        assertThat(ProductionScheduleService.schedulingNeed(
+        assertThat(SalesChainStatus.unplannedQty(
                 bd("100"), bd("0"), bd("0"), bd("0"),
                 bd("20"), bd("50"), bd("20")))
                 .isEqualByComparingTo("50");
     }
 
     @Test
-    void shortageBadgeIsZeroUntilAllocationBackedMrpIsAvailable() {
-        EntityManager em = mock(EntityManager.class);
-        MrpService mrp = mock(MrpService.class);
-        when(mrp.isPlanningWriteReady()).thenReturn(false);
-        ProductionScheduleService service = new ProductionScheduleService(
-                em,
-                mock(SecurityContextCurrentUser.class),
-                mock(TxSessionVars.class),
-                mrp);
-
-        assertThat(service.shortageCount()).isEqualTo(Map.of("count", 0L));
-        verify(em, never()).createNativeQuery(org.mockito.ArgumentMatchers.anyString());
+    void partiallyScheduledLineKeepsItsRemainingNeed() {
+        // 订 10 排 4：缺口 6，行仍在待排产列表（chain_status 2 与 need>0 同源）。
+        assertThat(SalesChainStatus.unplannedQty(
+                bd("10"), bd("0"), bd("0"), bd("0"),
+                bd("0"), bd("4"), bd("0")))
+                .isEqualByComparingTo("6");
+        assertThat(SalesChainStatus.derive((short) 4,
+                bd("10"), bd("0"), bd("0"), bd("0"),
+                bd("0"), bd("4"), bd("0")))
+                .isEqualTo((short) 2);
     }
 
     private static BigDecimal bd(String value) {

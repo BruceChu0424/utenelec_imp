@@ -6,6 +6,7 @@ import com.uten.imp.common.util.NativeValueConverters;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.saleschain.SalesOrderChainSql;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
@@ -641,14 +642,14 @@ public class ProductionDailyReportService {
                 if (c.signum() <= 0) continue;
                 l.setProducedQty(l.getProducedQty().add(c));
                 linkRepo.save(l);
-                advanceChain(l.getOrderItemId(), "5", "3,4");
+                advanceChainToProducing(l.getOrderItemId());
                 remaining = remaining.subtract(c);
             } else {
                 BigDecimal c = l.getProducedQty().min(remaining);
                 if (c.signum() <= 0) continue;
                 l.setProducedQty(l.getProducedQty().subtract(c));
                 linkRepo.save(l);
-                advanceChain(l.getOrderItemId(), "4", "5");
+                recomputeChainAfterReportReversal(l.getOrderItemId());
                 remaining = remaining.subtract(c);
             }
         }
@@ -794,10 +795,28 @@ public class ProductionDailyReportService {
         }
     }
 
-    /** 订单行状态迁移：chain_status ∈ fromSet → to。 */
-    private void advanceChain(UUID orderItemId, String to, String fromSet) {
-        em.createNativeQuery("UPDATE sales_order_items SET chain_status = " + to
-                        + " WHERE id = :id AND COALESCE(chain_status,0) IN (" + fromSet + ")")
+    /**
+     * 报工审核推进订单行 3/4 → 5 生产中。V545：只有剩余未排量归零（整行已排满）才推进；
+     * 部分排产的行（订 10 排 4）留在 1/2 待排产，报工事实仍写在 links.produced_qty。
+     */
+    private void advanceChainToProducing(UUID orderItemId) {
+        em.createNativeQuery("UPDATE sales_order_items SET chain_status = 5"
+                        + " WHERE id = :id AND COALESCE(chain_status,0) IN (3,4)"
+                        + " AND " + SalesOrderChainSql.unplannedQtySql("") + " <= 0")
+                .setParameter("id", orderItemId).executeUpdate();
+    }
+
+    /**
+     * 报工红冲后重算订单行状态（V545 统一派生）：仍有有效报工量则留在 5，
+     * 报工全部冲回才退到已排产（原值 3 保留 3，否则 4）；其余分支按数量收敛。
+     */
+    private void recomputeChainAfterReportReversal(UUID orderItemId) {
+        // 必须带表别名：EXISTS 子查询里裸写 id 会绑到 plan_order_item_links.id（内层作用域优先）。
+        em.createNativeQuery("UPDATE sales_order_items order_item SET chain_status = "
+                        + SalesOrderChainSql.chainStatusCaseSql(
+                                SalesOrderChainSql.ChainStatusInputs.of("order_item")
+                                        .producing(SalesOrderChainSql.hasReportedQtySql("order_item")))
+                        + " WHERE order_item.id = :id")
                 .setParameter("id", orderItemId).executeUpdate();
     }
 

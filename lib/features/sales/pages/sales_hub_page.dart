@@ -4,13 +4,21 @@
 // 点卡片进对应列表/报表页。卡片按权限显隐（无 view 权限不渲染对应入口）；
 // 销售管理卡 / 销售报表卡 若整组无可显项则整卡隐藏。
 //
-// 卡片统一用 UtenHubCard（徽章恒在右上角；销售入口暂无角标）。
+// 卡片统一用 UtenHubCard，右上角徽章槽恒放红色待办数（准则 14-徽章与计数口径）：
+//   · 任务中心卡：SalesProgressBadge（财务驳回 + 完工提醒，TodoEntry.salesAttention）。
+//   · 报价/订货/出货/退货单据卡：UtenDraftBadge（本人待自审草稿数）——2026-09-11 起
+//     草稿由中性括号改红徽章并逐级累加（TodoEntry.salesDrafts）。
+// 顶栏右上角另有一枚红徽章 = 本模块累计（全部登记入口之和）。
+// 「客户零星发货」故意不显草稿数——与「销售出货」同属 sales_shipments，
+// /sales/shipments 列表本就含这批单，两处各显一次会双计（见 todo_badge_registry 末注）。
 // 权限来自 currentPermissionsProvider；路由用 SalesRoutePath 字面量。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
+import '../../../components/feedback/uten_draft_badge.dart';
+import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -20,6 +28,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/badges/todo_badge_registry.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../widgets/sales_progress_badge.dart';
@@ -88,6 +97,20 @@ class SalesHubPage extends ConsumerWidget {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
+        actions: [
+          // 本模块累计：数字由 todo_badge_registry 对 TodoModule.sales 下全部登记入口
+          // 求和得出（已含各单据卡草稿），**页面里不要手写加法**——新增入口只改注册表。
+          Padding(
+            padding: const EdgeInsets.only(right: UtenSpacing.s8),
+            child: Center(
+              child: UtenNotificationBadge(
+                count: todoModuleCount(TodoModule.sales, ref.watch),
+                size: 20,
+                showLabel: true,
+              ),
+            ),
+          ),
+        ],
       ),
       body: SafeArea(
         child: UtenContentContainer(
@@ -186,6 +209,11 @@ class _Entry {
     this.badge,
   });
 
+  /// 单据卡；有草稿计数口径的类型挂草稿红徽章（本人待自审草稿数）。
+  ///
+  /// 草稿占的是 [badge]（卡片右上角浮层）而不是标题右侧的 labelSuffix：销售这几张
+  /// 单据卡本身没有别的待办徽章，右上角空着——用户要的就是这个位置。只有像采购收货
+  /// 那样已被「待收货」占掉 badge 的卡，草稿才退到标题行内（一个槽塞两个红点读不懂）。
   _Entry.fromCfg(SalesDocConfig cfg, AppLocalizations l10n)
     : icon = cfg.icon,
       label = _salesDocTitle(cfg.type, l10n),
@@ -194,7 +222,9 @@ class _Entry {
           ? SalesRoutePath.docNew(cfg.type.pathSegment)
           : SalesRoutePath.list(cfg.type.pathSegment),
       listPerm = cfg.listPerm,
-      badge = null;
+      badge = cfg.draftKind == null
+          ? null
+          : UtenDraftBadge(kind: cfg.draftKind!);
 
   final IconData icon;
   final String label;
@@ -202,7 +232,7 @@ class _Entry {
   final String location;
   final String listPerm;
 
-  /// 右上角徽章（如订单进度完工提醒；null=无）。
+  /// 右上角红色徽章（订单进度关注数 / 单据草稿数；null=无）。只放「需要我处理」的数。
   final Widget? badge;
 }
 

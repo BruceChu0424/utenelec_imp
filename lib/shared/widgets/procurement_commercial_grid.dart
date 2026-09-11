@@ -142,6 +142,11 @@ mixin RemarkRowMixin on EditableGridRow implements RemarkGridRow {
 /// outlined 只读格 + 右侧展开箭头，点击弹菜单选值（与供应商单元格同款视觉）。
 /// [value] 当前值；[entries] id→名称；[onChanged] 选中回写（页面按多选范围落值）；
 /// [requiredEmpty] 必填未选时提示标红。
+///
+/// 规格（2026-09-09 统一口径）：不自带 border/contentPadding——isDense 吃全局
+/// 主题（圆角 UtenRadius.control、内边距 14/12），与数量/单价等文本格等高等宽；
+/// 字号正文（bodyMedium），不再用 bodySmall 小字。列说明统一走表头 ⓘ
+/// （EditableGridColumn.headerInfo），格内不再逐行渲染 ⓘ。
 class ProcurementTermDropdownCell extends StatelessWidget {
   const ProcurementTermDropdownCell({
     super.key,
@@ -151,7 +156,6 @@ class ProcurementTermDropdownCell extends StatelessWidget {
     this.requiredEmpty = false,
     this.autofilled = false,
     this.hint = '点击选择',
-    this.info,
   });
 
   final String? value;
@@ -162,7 +166,6 @@ class ProcurementTermDropdownCell extends StatelessWidget {
   /// 学习预填值（黄框提醒核对；与 requiredEmpty 红优先级：红在前）。
   final bool autofilled;
   final String hint;
-  final String? info;
 
   @override
   Widget build(BuildContext context) {
@@ -194,13 +197,6 @@ class ProcurementTermDropdownCell extends StatelessWidget {
             UtenInputDecoration(
               InputDecoration(
                 isDense: true,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
                 suffixIcon: Icon(
                   hasValue ? Icons.unfold_more_rounded : Icons.search_rounded,
                   size: 16,
@@ -208,7 +204,6 @@ class ProcurementTermDropdownCell extends StatelessWidget {
                 ),
                 suffixIconConstraints: const BoxConstraints(minWidth: 20),
               ),
-              info: info,
             ),
             theme,
             requiredEmpty: requiredEmpty,
@@ -220,7 +215,7 @@ class ProcurementTermDropdownCell extends StatelessWidget {
           label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodySmall?.copyWith(
+          style: theme.textTheme.bodyMedium?.copyWith(
             color: hasValue
                 ? theme.colorScheme.onSurface
                 : (requiredEmpty
@@ -237,20 +232,31 @@ class ProcurementTermDropdownCell extends StatelessWidget {
 /// [onPickCurrency]/[onPickSettlement] 由页面提供（按多选范围落值联动）；
 /// [settlementLabel] 采购叫「结账方式」、委外叫「结算方式」。
 /// 币种与结账方式必填（列头红 * + 空值红字提示）；汇率>0、税率 0-100 由保存校验兜底。
+/// 列说明统一挂表头 ⓘ（headerInfo，2026-09-09 口径）——逐格 ⓘ 既重复又挤占
+/// 单元格宽度（110px 币种列曾被 44px ⓘ 挤到看不见默认值）。
 List<EditableGridColumn<R>>
 procurementCommercialColumns<R extends CommercialTermsGridRow>({
+  required BuildContext context,
   required Map<String, String> currencyEntries,
   required Map<String, String> settlementEntries,
   required ValueChanged<String?> Function(R row) onPickCurrency,
   required ValueChanged<String?> Function(R row) onPickSettlement,
   String settlementLabel = '结账方式',
 }) {
+  final l10n = workflowFieldText(context);
   return [
     EditableGridColumn<R>(
       key: 'currency',
       label: '币种',
-      width: 110,
+      // 2026-09-10：默认宽与 chromeWidth 都要装下「文本 + 预填黄标 ⓘ(44) +
+      // 展开箭头(20)」——新单每行默认就是学习/回退预填态（黄框 + 格内 ⓘ），
+      // 此前 110 宽只按箭头计，「人民币」被裁成省略号、用户得手动拖宽。
+      width: 150,
       required: true,
+      headerInfo: l10n.workflowCurrencyHint,
+      chromeWidth:
+          UtenEditableGridCellSpec.dropdownChevronWidth +
+          UtenEditableGridCellSpec.hintIconWidth,
       textOf: (r) =>
           r.currencyId == null ? '' : (currencyEntries[r.currencyId] ?? ''),
       listenableOf: (r) => r.currencyIdNotifier,
@@ -261,7 +267,6 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
           builder: (_, v, _) => ProcurementTermDropdownCell(
             value: v,
             entries: currencyEntries,
-            info: workflowFieldText(context).workflowCurrencyHint,
             requiredEmpty: v == null,
             autofilled: marks.contains('currency'),
             onChanged: (next) {
@@ -275,8 +280,13 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
     EditableGridColumn<R>(
       key: 'exchangeRate',
       label: '汇率',
-      width: 120,
+      width: 140,
       numeric: true,
+      headerInfo: l10n.workflowExchangeRateHint,
+      // 预填态格内有 44px 黄标图标：随值自动加宽并把图标计入量宽。
+      chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
+      textOf: (r) => r.exchangeRate.text,
+      listenableOf: (r) => r.exchangeRate,
       cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
         valueListenable: row.termsAutofilledNotifier,
         builder: (context, marks, _) => RequiredCellFrame(
@@ -288,9 +298,8 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
             textAlign: TextAlign.right,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: applyAutofillHint(
-              UtenInputDecoration(
-                const InputDecoration(isDense: true, hintText: '1'),
-                info: workflowFieldText(context).workflowExchangeRateHint,
+              const UtenInputDecoration(
+                InputDecoration(isDense: true, hintText: '1'),
               ),
               Theme.of(context),
               autofilled: marks.contains('rate'),
@@ -302,8 +311,12 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
     EditableGridColumn<R>(
       key: 'taxRate',
       label: '税率(%)',
-      width: 120,
+      width: 140,
       numeric: true,
+      headerInfo: l10n.workflowTaxRateHint,
+      chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
+      textOf: (r) => r.taxRate.text,
+      listenableOf: (r) => r.taxRate,
       cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
         valueListenable: row.termsAutofilledNotifier,
         builder: (context, marks, _) => TextField(
@@ -311,9 +324,8 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
           textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: applyAutofillHint(
-            UtenInputDecoration(
-              const InputDecoration(isDense: true, hintText: '0'),
-              info: workflowFieldText(context).workflowTaxRateHint,
+            const UtenInputDecoration(
+              InputDecoration(isDense: true, hintText: '0'),
             ),
             Theme.of(context),
             autofilled: marks.contains('tax'),
@@ -324,8 +336,12 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
     EditableGridColumn<R>(
       key: 'settlement',
       label: settlementLabel,
-      width: 140,
+      width: 180,
       required: true,
+      headerInfo: l10n.workflowSettlementHint,
+      chromeWidth:
+          UtenEditableGridCellSpec.dropdownChevronWidth +
+          UtenEditableGridCellSpec.hintIconWidth,
       textOf: (r) => r.settlementMethodId == null
           ? ''
           : (settlementEntries[r.settlementMethodId] ?? ''),
@@ -337,7 +353,6 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
           builder: (_, v, _) => ProcurementTermDropdownCell(
             value: v,
             entries: settlementEntries,
-            info: workflowFieldText(context).workflowSettlementHint,
             requiredEmpty: v == null,
             autofilled: marks.contains('settlement'),
             onChanged: (next) {
@@ -352,6 +367,8 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
 }
 
 /// 明细末尾的备注列（自动随内容加宽，封顶由表格组件控制）。
+/// 单行输入（2026-09-09 统一口径）：双行备注把整行撑高，与数量/单价等
+/// 单行格不再同高；长文本横向滚动查看，与销售订货单备注列一致。
 EditableGridColumn<R> procurementRemarkColumn<R extends RemarkGridRow>({
   double width = 220,
 }) {
@@ -363,7 +380,6 @@ EditableGridColumn<R> procurementRemarkColumn<R extends RemarkGridRow>({
     listenableOf: (r) => r.remark,
     cellBuilder: (context, row) => TextField(
       controller: row.remark,
-      maxLines: 2,
       decoration: const InputDecoration(isDense: true, hintText: '选填'),
     ),
   );

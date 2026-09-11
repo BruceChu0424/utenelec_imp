@@ -151,8 +151,40 @@ public class SalesReportService {
 
         // 隐藏元数据列（key 以 "__" 开头，如行跳源头用的 __srcId）：不进返回的 columns（前端不渲染、
         // 导出 Excel 不含），但行 Map 已 put 其值（前端 onRowTap 可读 row['__srcId'] 跳对应单据编辑页）。
+        // 表格下方合计：与列表用同一份 full（日期/facet/关键字 + 对象级授权谓词）在**整个结果集**
+        // 上聚合，与翻到第几页无关；派生表不带 LIMIT/OFFSET，所以绝不会出现「只合计当前页」。
+        List<com.uten.imp.common.report.ReportTotal> totals =
+                com.uten.imp.common.report.ReportTotalsCalculator.compute(
+                        em, dataSelect, fromJoin, full.sql(), full.params(),
+                        reportTotalSpecs(columns, columns));
+
         List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
-        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages);
+        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages, totals);
+    }
+
+    /**
+     * 把列定义里 {@code totaled(...)} 声明的合计翻译成聚合规格。
+     *
+     * <p>{@code emitted} = 实际下发给前端的列（脱敏后）——被 priceMasked 拿掉的金额列不在其中，
+     * 合计自然也不会出现，无需另写门控。{@code projected} = dataSelect 真正投影的列，
+     * 用来确认分组列（单位名/币种名）确实在派生表里。
+     *
+     * <p><b>声明了分组列却没投影时整项丢弃</b>，绝不退回「不分组」——那等于跨单位/跨币种相加。
+     */
+    private static List<com.uten.imp.common.report.ReportTotalsCalculator.Spec> reportTotalSpecs(
+            List<ReportColumn> emitted, List<ReportColumn> projected) {
+        java.util.Set<String> present = new java.util.HashSet<>();
+        for (ReportColumn c : projected) present.add(c.key());
+        List<com.uten.imp.common.report.ReportTotalsCalculator.Spec> specs = new ArrayList<>();
+        for (ReportColumn c : emitted) {
+            String label = c.totalLabel();
+            if (label == null || label.isBlank()) continue;
+            String g = c.totalGroupKey();
+            if (g != null && !present.contains(g)) continue;
+            specs.add(new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
+                    c.key(), label, c.type(), g));
+        }
+        return specs;
     }
 
     private static int toInt(Object v) {
@@ -185,13 +217,28 @@ public class SalesReportService {
 
     // ======================== 主过滤（公共） ========================
 
+    /**
+     * 默认口径：草稿（status=0）不进报表。
+     *
+     * <p>未审核单据不是经营事实，混进明细/汇总会把未承诺的量算成业绩。调用方显式传
+     * status（含 status=0 查草稿、或「未审」facet）时按其口径走，不叠加本默认值。
+     */
+    private static void addApprovedByDefault(WhereBuilder w, Short status) {
+        if (status != null) {
+            w.add("o.status = :status", "status", status);
+        } else {
+            // 无具名参数的常量片段：WhereBuilder.build 对 param==null 的 Clause 只拼 SQL 不绑参。
+            w.add("o.status <> 0", null, null);
+        }
+    }
+
     private static void addCommonDocFilters(WhereBuilder w, String billNo, UUID clientId, UUID warehouseId,
                                             Short status, LocalDate dateFrom, LocalDate dateTo, String kw,
                                             String billNoCol, String dateCol) {
         if (billNo != null && !billNo.isBlank()) w.add(billNoCol + " LIKE :billNo", "billNo", "%" + billNo + "%");
         if (clientId != null) w.add("o.client_id = :clientId", "clientId", clientId);
         if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
-        if (status != null) w.add("o.status = :status", "status", status);
+        addApprovedByDefault(w, status);
         if (dateFrom != null) w.add(dateCol + " >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add(dateCol + " <= :dateTo", "dateTo", dateTo);
         if (kw != null && !kw.isBlank()) {
@@ -266,7 +313,8 @@ public class SalesReportService {
                 ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.text("spec", "规格", 140),
                 ReportColumn.number("circumference", "围数"), ReportColumn.money("machiningPrice", "机加价"),
                 ReportColumn.money("price", "单价"), ReportColumn.number("discount", "折扣"),
-                ReportColumn.money("amount", "金额"), ReportColumn.number("inboundQty", "进仓数量"),
+                ReportColumn.money("amount", "金额").totaled("合计金额", "currencyCode"),
+                ReportColumn.number("inboundQty", "进仓数量"),
                 ReportColumn.number("shippedQty", "发货数量"), ReportColumn.number("pendingQty", "未发数量"),
                 ReportColumn.number("stockQty", "库存数量"), ReportColumn.text("inNo", "成品进仓单号", 140),
                 ReportColumn.text("outNo", "销售出货单号", 140),
@@ -484,7 +532,7 @@ public class SalesReportService {
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
         if (clientId != null) w.add("o.client_id = :clientId", "clientId", clientId);
         if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
-        if (status != null) w.add("o.status = :status", "status", status);
+        addApprovedByDefault(w, status);
         if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
         addSummaryKw(w, kw, "o.bill_no");
@@ -505,8 +553,10 @@ public class SalesReportService {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("clientName", "客户", 200), ReportColumn.text("region", "区域", 100),
                 ReportColumn.text("currencyCode", "币别", 80),
-                ReportColumn.text("categoryName", "单类", 110), ReportColumn.number("docCount", "单据数"),
-                ReportColumn.number("totalQty", "数量合计"), ReportColumn.money("totalAmount", "订货总额"),
+                ReportColumn.text("categoryName", "单类", 110),
+                ReportColumn.number("docCount", "单据数").totaled("合计单据数"),
+                ReportColumn.number("totalQty", "数量合计"),
+                ReportColumn.money("totalAmount", "订货总额").totaled("合计订货总额", "currencyCode"),
                 ReportColumn.text("__clientId", ""),
                 ReportColumn.text("__currencyId", ""));  // 隐藏：下钻必须同时限定客户与币种
         String dataSelect = """

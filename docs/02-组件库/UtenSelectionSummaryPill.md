@@ -2,7 +2,10 @@
 
 - 文件：`lib/components/data_display/uten_selection_summary_pill.dart`
 - 接入日期：2026-09-05（自 `MasterDataTableView._buildBatchBar` 私有实现升位为公共组件）。
-- 契约已接入表：MasterDataTableView（悬浮批量组首位）、物料分析「下达车间」可安排桶（钉底动作组）。
+- 契约已接入表：MasterDataTableView（悬浮批量组首位，含经其 `batchActionsBuilder` 接入的
+  待检处置详情等 30+ 表格页）、物料分析「下达车间」可安排桶（钉底动作组）、
+  销售订单财务确认紧凑端选择条（2026-09-10）、品质批量审批页吸底栏（2026-09-10，
+  `UtenBottomActionBar` 首位）。
 
 ## 功能
 
@@ -37,3 +40,6 @@ UtenFloatingActionGroup(children: [
 
 - 不给内部 Container 设 alignment（无 width 会撑满父级）；高度固定、宽度随内容收紧。
 - 与业务按钮同框时放进 `UtenFloatingActionGroup`（右对齐 + 逐子件投影）。
+- **页面不得再自摆纯文字「已选 N 项/笔」计数**（2026-09-10 全站约束）：无论悬浮组、
+  吸底栏还是紧凑端选择条，已选计数只由本胶囊呈现且放首位；「清空」动作即胶囊 ✕，
+  不再另摆「清空」按钮，避免同页出现两个计数/两个清空。

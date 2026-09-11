@@ -16,15 +16,30 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
+import org.springframework.security.core.context.SecurityContextHolder;
+
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Real node-to-anchor projection and source-quota protection for workshop batch commands. */
+/**
+ * Real node-to-anchor projection and source-quota protection for workshop batch commands.
+ *
+ * <p>2026-09-10（C05 F1-flow）追加：混合候选一次下达、二次下达复用锚点、两线程不同候选行、
+ * 超量行整批回滚——覆盖 batchChildLineIds 的 IN 批量映射与 refresh 收敛后的不变量。
+ *
+ * <p><b>CI 必须显式设置 {@code UTEN_RUN_DB_TESTS=true}</b>：本类（与 FullChain/Scale 同款门控）
+ * 未设置时全部 SKIP，surefire 仍 exit 0，会出现「全绿但没跑」的假象（09-09 的 min(uuid)
+ * 回归正是这样漏到运行态的）。
+ */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
@@ -170,6 +185,152 @@ class MaterialWorkshopAnchorEndToEndTest {
         oldPlans.forEach((key,value)->assertEquals(value,after.get(key),"原计划及包未改写: "+key));
         assertEquals(before,nonPlanningFacts(c));
     }
+
+    /**
+     * 混合候选一次下达（2 个自制 + 1 个有自制子层的委外）：每行各一张计划、各一条子件锚点
+     * （MAKE_COMPONENT / SUBCONTRACT_MAKE）、委外台账一条；batchChildLineIds 一次 IN 按父行映射，
+     * 唯一部分索引保证每父至多一子（无重复子件）；同请求重放不重复建行。
+     */
+    @Test void mixedMakeAndSubcontractCandidatesIssueInOneBatchWithOneAnchorEach(){
+        MixedCase c=createMixed("anchor-mixed");
+        AnalysisView view=analyses.detail(c.analysis());
+        var request=issueRequest(c.analysis(),view,c.world(),"mixed",
+                line(c.makeLines().get(0),"6000"),line(c.makeLines().get(1),"6000"),line(c.subcontractLine(),"6000"));
+        GenerateResult result=commands.issueWorkshopPlans(c.analysis(),request);
+        assertFalse(result.replayed());assertEquals(3,result.plans().size());
+        AnalysisView after=analyses.detail(c.analysis());
+        for(UUID make:c.makeLines()){
+            UUID anchor=material(after,make).planAnchorAnalysisLineId();
+            assertNotNull(anchor,"每个自制候选各有一条锚点");
+            assertEquals("MAKE_COMPONENT",product(after,anchor).sourceType());
+            qty("10000",product(after,anchor).requestedQty());qty("6000",product(after,anchor).approvedQty());
+        }
+        assertEquals(2,count("SELECT count(*) FROM production_material_analysis_items WHERE analysis_id=? AND source_type='MAKE_COMPONENT' AND is_deleted=FALSE",c.analysis()));
+        assertEquals(1,count("SELECT count(*) FROM production_material_analysis_items WHERE analysis_id=? AND source_type='SUBCONTRACT_MAKE' AND is_deleted=FALSE",c.analysis()));
+        assertEquals(1,count("SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=? AND route='SUBCONTRACT'",c.analysis()));
+        assertEquals(3,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
+        assertEquals(0,count("SELECT count(*) FROM (SELECT parent_analysis_material_id FROM production_material_analysis_items WHERE analysis_id=? AND source_type IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE') AND is_deleted=FALSE GROUP BY 1 HAVING count(*)>1) dup",c.analysis()));
+        var replay=commands.issueWorkshopPlans(c.analysis(),request);
+        assertTrue(replay.replayed());
+        assertEquals(3,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
+    }
+
+    /** 同一批自制候选二次下达：走既有锚点（不新建子件行），只消费剩余配额，计划数累加。 */
+    @Test void secondIssueOnTheSameCandidatesReusesExistingAnchorsWithoutNewChildRows(){
+        MixedCase c=createMixed("anchor-reuse");
+        UUID a=c.makeLines().get(0),b=c.makeLines().get(1);
+        commands.issueWorkshopPlans(c.analysis(),issueRequest(c.analysis(),analyses.detail(c.analysis()),c.world(),"first",line(a,"6000"),line(b,"6000")));
+        AnalysisView first=analyses.detail(c.analysis());
+        // Arrays.asList 允许 null 元素：锚点缺失时走断言失败而不是 List.of 的 NPE。
+        List<UUID> anchors=java.util.Arrays.asList(material(first,a).planAnchorAnalysisLineId(),material(first,b).planAnchorAnalysisLineId());
+        anchors.forEach(anchor->assertNotNull(anchor,"二次下达前每个自制候选都已有锚点"));
+        commands.issueWorkshopPlans(c.analysis(),issueRequest(c.analysis(),first,c.world(),"second",line(a,"4000"),line(b,"4000")));
+        AnalysisView second=analyses.detail(c.analysis());
+        assertEquals(anchors,List.of(material(second,a).planAnchorAnalysisLineId(),material(second,b).planAnchorAnalysisLineId()));
+        assertEquals(2,count("SELECT count(*) FROM production_material_analysis_items WHERE analysis_id=? AND source_type='MAKE_COMPONENT' AND is_deleted=FALSE",c.analysis()));
+        assertEquals(4,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
+        for(UUID anchor:anchors){qty("10000",product(second,anchor).requestedQty());qty("0",product(second,anchor).remainingQty());}
+        assertThrows(ApiException.class,()->commands.issueWorkshopPlans(c.analysis(),issueRequest(c.analysis(),second,c.world(),"third",line(a,"1"))));
+        assertEquals(4,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
+    }
+
+    /**
+     * 两线程分别下达不同候选行（同一版本/指纹）：advisory 锁串行，先到者成功，后到者按 CAS
+     * 得 409（不会死锁、不留半截锚点）；失败方用新版本重试成功。最终两条锚点、两张计划、
+     * line_priority 互不冲突。
+     */
+    @Test void twoThreadsIssuingDifferentCandidateLinesSerializeWithoutResidueAndKeepDistinctPriorities() throws Exception{
+        Case c=create("anchor-threads",true);UUID first=c.materials().get(0),second=c.materials().get(1);
+        AnalysisView view=analyses.detail(c.analysis());
+        List<IssueWorkshopPlansRequest> requests=List.of(
+                request(c,view,first,"6000","thread-a",true),request(c,view,second,"6000","thread-b",true));
+        var workers=Executors.newFixedThreadPool(2);CountDownLatch start=new CountDownLatch(1);
+        List<Object> outcomes=new ArrayList<>();
+        try{
+            var jobs=requests.stream().map(r->workers.submit(()->{
+                fixture.loginAs(c.planner());
+                try{assertTrue(start.await(30,TimeUnit.SECONDS));return commands.issueWorkshopPlans(c.analysis(),r);}
+                finally{SecurityContextHolder.clearContext();}
+            })).toList();
+            start.countDown();
+            for(var job:jobs){
+                try{outcomes.add(job.get(120,TimeUnit.SECONDS));}
+                catch(java.util.concurrent.ExecutionException e){outcomes.add(e.getCause());}
+            }
+        }finally{workers.shutdownNow();}
+        long successes=outcomes.stream().filter(o->o instanceof GenerateResult).count();
+        assertTrue(successes>=1,"至少一个线程成功: "+outcomes);
+        outcomes.stream().filter(o->!(o instanceof GenerateResult))
+                .forEach(o->assertInstanceOf(ApiException.class,o,"落后线程只能是 CAS/锁冲突，不是其它异常"));
+        assertEquals(successes,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
+        assertEquals(successes,count("SELECT count(*) FROM production_material_analysis_items WHERE analysis_id=? AND source_type='MAKE_COMPONENT' AND is_deleted=FALSE",c.analysis()));
+        for(UUID material:List.of(first,second)){
+            if(material(analyses.detail(c.analysis()),material).planAnchorAnalysisLineId()==null){
+                issue(c,material,"6000","retry-"+material,true);
+            }
+        }
+        AnalysisView done=analyses.detail(c.analysis());
+        assertNotEquals(material(done,first).planAnchorAnalysisLineId(),material(done,second).planAnchorAnalysisLineId());
+        assertEquals(2,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
+        assertEquals(2,count("SELECT count(DISTINCT line_priority) FROM production_material_analysis_items WHERE analysis_id=? AND source_type='MAKE_COMPONENT' AND is_deleted=FALSE",c.analysis()));
+    }
+
+    /** 一行超过剩余需求：整批回滚——无 MAKE_COMPONENT 残留、无计划、版本不变；回滚后同候选可正常下达。 */
+    @Test void overQuantityLineRollsBackTheWholeBatchWithoutAnchorResidue(){
+        Case c=create("anchor-rollback",true);UUID first=c.materials().get(0),second=c.materials().get(1);
+        AnalysisView view=analyses.detail(c.analysis());
+        var request=issueRequest(c.analysis(),view,c.world(),"over",line(first,"6000"),line(second,"20000"));
+        assertThrows(ApiException.class,()->commands.issueWorkshopPlans(c.analysis(),request));
+        assertEquals(0,count("SELECT count(*) FROM production_material_analysis_items WHERE analysis_id=? AND source_type='MAKE_COMPONENT' AND is_deleted=FALSE",c.analysis()));
+        assertEquals(0,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
+        AnalysisView after=analyses.detail(c.analysis());
+        assertNull(material(after,first).planAnchorAnalysisLineId());assertNull(material(after,second).planAnchorAnalysisLineId());
+        assertEquals(view.version(),after.version());
+        issue(c,first,"6000","after-rollback",true);
+        assertEquals(1,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
+        assertNotNull(material(analyses.detail(c.analysis()),first).planAnchorAnalysisLineId());
+    }
+
+    private static IssueWorkshopPlansRequest.IssuePlanLine line(UUID material,String qty){
+        return new IssueWorkshopPlansRequest.IssuePlanLine(material,null,new BigDecimal(qty),null,null,null,null,null,null,null);
+    }
+    private static IssueWorkshopPlansRequest issueRequest(UUID analysis,AnalysisView view,FullChainEndToEndTest.World w,String key,
+                                                          IssueWorkshopPlansRequest.IssuePlanLine...lines){
+        return new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),"issue-"+analysis+"-"+key,w.warehouseId(),
+                BusinessTime.today(),BusinessTime.today().plusDays(10),true,List.of(lines));
+    }
+
+    /** 根 → {P0(自制)→C, P1(自制)→C, S(委外)→C, D(采购)}：两条自制候选 + 一条有自制子层的委外候选。 */
+    private MixedCase createMixed(String tag){
+        var w=fixture.seedWorld(tag);UUID root=UUID.randomUUID();
+        fixture.insertGoods(root,"ROOT-"+tag,"混合候选成品","自制",w.unitId(),w.unitLegacy());
+        List<UUID> makeParents=new ArrayList<>();
+        for(int i=0;i<2;i++){
+            UUID parent=UUID.randomUUID();fixture.insertGoods(parent,"P"+i+"-"+tag,"自制父件"+i,"自制",w.unitId(),w.unitLegacy());
+            fixture.insertBom(root,parent,"1");fixture.insertBom(parent,w.goodsC(),"1");makeParents.add(parent);
+        }
+        UUID sub=UUID.randomUUID();fixture.insertGoods(sub,"S-"+tag,"有自制子层的委外件","委外",w.unitId(),w.unitLegacy());
+        fixture.insertBom(root,sub,"1");fixture.insertBom(sub,w.goodsC(),"1");
+        fixture.insertBom(root,w.goodsD(),"1");
+        UUID planner=fixture.createUserWithPerms(w,"planner-"+tag,
+                "production_material_analysis:view","production_material_analysis:manage","production_material_analysis:route",
+                "production_material_analysis:notify","production_material_analysis:generate","production_plan:view",
+                "production_plan:approve","production_plan:delete");
+        fixture.loginAs(planner);
+        AnalysisView view=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"preview-"+tag,List.of(
+                new PreviewItem("OTHER",null,root,null,w.unitId(),"manual-"+tag,"混合候选原始需求",BusinessTime.today().plusDays(10),new BigDecimal("10000")))));
+        var routes=view.flatMaterials().stream().map(m->new RouteDecision(m.materialLineId(),m.actionGroupKey(),
+                m.goodsId().equals(w.goodsD())?"BUY":m.goodsId().equals(sub)?"SUBCONTRACT":"MAKE",null)).toList();
+        analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"routes-"+tag,routes));
+        view=analyses.detail(view.analysisId());
+        List<UUID> makeLines=view.flatMaterials().stream().filter(m->makeParents.contains(m.goodsId()))
+                .map(MaterialView::materialLineId).sorted().toList();
+        UUID subLine=view.flatMaterials().stream().filter(m->m.goodsId().equals(sub))
+                .map(MaterialView::materialLineId).findFirst().orElseThrow();
+        assertEquals(2,makeLines.size());
+        return new MixedCase(w,view.analysisId(),makeLines,subLine,planner);
+    }
+    private record MixedCase(FullChainEndToEndTest.World world,UUID analysis,List<UUID> makeLines,UUID subcontractLine,UUID planner){}
 
     private GenerateResult issueProduct(Case c,UUID product,String qty,String key){
         AnalysisView view=analyses.detail(c.analysis());

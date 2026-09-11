@@ -1,5 +1,6 @@
 package com.uten.imp.features.visitor;
 
+import com.uten.imp.features.notice.HrNoticeService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.org.employee.EmployeeRepository;
@@ -93,12 +94,15 @@ class VisitorAdmissionConcurrencyPostgresTest {
                 Set.of(), Set.of("visitor:approve", "visitor:host-confirm", "visitor:check-in"), false, true, false)));
         var mapper = mock(VisitorApplicationMapper.class);
         when(mapper.hostInfo(any())).thenReturn(new String[]{"Host", "Department"});
+        // 2026-09-10：HrNoticeService 与业务同事务且不再吞异常，裸 null 依赖会让
+        // 申请/审批因 NPE 回滚；本测试只验证准入并发，通知用 mock 隔离。
+        var hrNotice = mock(HrNoticeService.class);
         var service = new VisitorApplicationService(applications, steps, accounts,
-                mock(EmployeeRepository.class), mapper, tx, current);
+                mock(EmployeeRepository.class), mapper, tx, hrNotice, current);
         var guard = new VisitorGuard(current);
         gate = new VisitorGateService(applications, accounts, service, mapper, guard, tx, current, new ObjectMapper());
-        approvals = new VisitorHrApprovalService(applications, service, gate, guard, tx);
-        host = new VisitorHostConfirmService(applications, service, current, tx);
+        approvals = new VisitorHrApprovalService(applications, service, gate, guard, tx, hrNotice);
+        host = new VisitorHostConfirmService(applications, service, current, tx, hrNotice);
         transactions.executeWithoutResult(status -> {
             var account = new VisitorAccount();
             account.setPhoneEnc("test-phone"); account.setPhoneHash(UUID.randomUUID().toString());

@@ -37,16 +37,38 @@ public class StorageProperties {
     private long maxPendingBytesPerUser = 104857600L;
     private long maxPendingBytesPerOwner = 262144000L;
 
-    /** 允许的 Content-Type 白名单（大小写不敏感匹配）。 */
+    /**
+     * 允许的 Content-Type 白名单（大小写不敏感匹配）。
+     *
+     * <p>2026-09-11 扩到办公常见类型。改这份清单必须同步改三处，否则上传或预览会对不上：
+     * {@link com.uten.imp.features.attachment.AttachmentContentInspector} 的扩展名/魔数表、
+     * {@link com.uten.imp.features.attachment.AttachmentPreviewService} 的可转换集合、
+     * 以及客户端 {@code lib/shared/attachments/attachment_file_rules.dart} 的能力矩阵。
+     * tiff/heic/7z/rar 只收不预览（渲染不了也转不了），是有意为之。</p>
+     */
     private List<String> allowedContentTypes = List.of(
+            // 图片
             "image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp",
+            "image/tiff", "image/heic", "image/heif", "image/svg+xml",
+            // PDF
             "application/pdf",
+            // 文字处理
             "application/msword",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/rtf",
+            "application/vnd.oasis.opendocument.text",
+            // 表格
             "application/vnd.ms-excel",
-            "application/zip",
-            "text/plain");
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.oasis.opendocument.spreadsheet",
+            // 演示
+            "application/vnd.ms-powerpoint",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "application/vnd.oasis.opendocument.presentation",
+            // 压缩包
+            "application/zip", "application/x-7z-compressed", "application/vnd.rar",
+            // 文本
+            "text/plain", "text/csv", "text/markdown", "text/xml", "application/json");
 
     /** 预签名 URL 有效期（秒）。 */
     private int presignedExpirySeconds = 300;

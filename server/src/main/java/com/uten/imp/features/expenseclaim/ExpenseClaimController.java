@@ -4,6 +4,7 @@ import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.expenseclaim.dto.ExpenseClaimCreateRequest;
 import com.uten.imp.features.expenseclaim.dto.ExpenseClaimDto;
+import com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto;
 import com.uten.imp.features.expenseclaim.dto.ExpenseClaimPaymentRequest;
 import com.uten.imp.features.expenseclaim.dto.ExpenseClaimRejectRequest;
 import jakarta.validation.Valid;
@@ -61,6 +62,16 @@ public class ExpenseClaimController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         return service.listPayable(year, month, departmentId, page, size);
+    }
+
+    /**
+     * 审批/打款队列表头筛选桶（部门/年月）。queue=pending|payable，权限与对应列表一致
+     *（服务层按队列再校验 expense:approve / expense:pay）。
+     */
+    @GetMapping("/facets")
+    @PreAuthorize("hasAnyAuthority('expense:approve','expense:pay')")
+    public ExpenseClaimFacetsDto facets(@RequestParam String queue) {
+        return service.facets(queue);
     }
 
     @GetMapping("/{id}")

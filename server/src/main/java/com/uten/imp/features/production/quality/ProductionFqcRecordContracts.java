@@ -48,7 +48,8 @@ public final class ProductionFqcRecordContracts {
             String inspectorName,
             OffsetDateTime decidedAt,
             String currentStatus,
-            boolean effective) {
+            boolean effective,
+            String sheetNo) {
     }
 
     public record InspectionDecisionRecordPage(

@@ -1,6 +1,8 @@
 package com.uten.imp.features.admin.systemtest;
 
+import com.uten.imp.features.admin.serverstatus.ScheduledTaskRunRegistry;
 import org.springframework.beans.factory.DisposableBean;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.Trigger;
@@ -25,16 +27,27 @@ import java.util.concurrent.ScheduledFuture;
  * （DRAINING/RESETTING）内跳过本轮任务执行，只推迟到下一周期，不改变周期
  * 语义。HTTP 请求线程不经此处，仍由
  * {@link BusinessDataResetDrainFilter} 负责。</p>
+ *
+ * <p>2026-09-10 起同一包装点把每次执行的开始/结束/异常类型记入
+ * {@link ScheduledTaskRunRegistry}，供服务器状态页展示「定时任务最近执行」；
+ * 被排水闸跳过的一轮不计为执行。</p>
  */
 @Component
 @Profile("!cloud")
 public class DrainAwareTaskScheduler implements TaskScheduler, DisposableBean {
 
     private final BusinessDataResetDrainGate drainGate;
+    private final ScheduledTaskRunRegistry runRegistry;
     private final ThreadPoolTaskScheduler delegate;
 
     public DrainAwareTaskScheduler(BusinessDataResetDrainGate drainGate) {
+        this(drainGate, new ScheduledTaskRunRegistry());
+    }
+
+    @Autowired
+    public DrainAwareTaskScheduler(BusinessDataResetDrainGate drainGate, ScheduledTaskRunRegistry runRegistry) {
         this.drainGate = drainGate;
+        this.runRegistry = runRegistry;
         this.delegate = new ThreadPoolTaskScheduler();
         this.delegate.setPoolSize(1);
         this.delegate.setThreadNamePrefix("scheduling-");
@@ -42,47 +55,56 @@ public class DrainAwareTaskScheduler implements TaskScheduler, DisposableBean {
         this.delegate.initialize();
     }
 
-    /** 清空窗口内静默跳过本轮执行（下一周期照常），否则原样执行。 */
-    private Runnable gated(Runnable task) {
+    /** 清空窗口内静默跳过本轮执行（下一周期照常），否则原样执行并记录本次运行。 */
+    private Runnable gated(Runnable task, Duration period) {
+        String name = runRegistry.register(task, period);
         return () -> {
             if (!drainGate.tryEnter()) {
                 return;
             }
-            try { task.run(); }
-            finally { drainGate.leave(); }
+            runRegistry.started(name, Instant.now());
+            try {
+                task.run();
+                runRegistry.finished(name, Instant.now(), null);
+            } catch (RuntimeException | Error failure) {
+                runRegistry.finished(name, Instant.now(), failure);
+                throw failure;
+            } finally {
+                drainGate.leave();
+            }
         };
     }
 
     @Override
     public ScheduledFuture<?> schedule(Runnable task, Trigger trigger) {
-        return delegate.schedule(gated(task), trigger);
+        return delegate.schedule(gated(task, null), trigger);
     }
 
     @Override
     public ScheduledFuture<?> schedule(Runnable task, Instant startTime) {
-        return delegate.schedule(gated(task), startTime);
+        return delegate.schedule(gated(task, null), startTime);
     }
 
     @Override
     public ScheduledFuture<?> scheduleAtFixedRate(
             Runnable task, Instant startTime, Duration period) {
-        return delegate.scheduleAtFixedRate(gated(task), startTime, period);
+        return delegate.scheduleAtFixedRate(gated(task, period), startTime, period);
     }
 
     @Override
     public ScheduledFuture<?> scheduleAtFixedRate(Runnable task, Duration period) {
-        return delegate.scheduleAtFixedRate(gated(task), period);
+        return delegate.scheduleAtFixedRate(gated(task, period), period);
     }
 
     @Override
     public ScheduledFuture<?> scheduleWithFixedDelay(
             Runnable task, Instant startTime, Duration delay) {
-        return delegate.scheduleWithFixedDelay(gated(task), startTime, delay);
+        return delegate.scheduleWithFixedDelay(gated(task, delay), startTime, delay);
     }
 
     @Override
     public ScheduledFuture<?> scheduleWithFixedDelay(Runnable task, Duration delay) {
-        return delegate.scheduleWithFixedDelay(gated(task), delay);
+        return delegate.scheduleWithFixedDelay(gated(task, delay), delay);
     }
 
     @Override

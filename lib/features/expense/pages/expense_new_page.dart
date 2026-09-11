@@ -81,8 +81,10 @@ class _ExpenseNewPageState extends ConsumerState<ExpenseNewPage> {
                   const SizedBox(height: UtenSpacing.s16),
 
                   // 明细
+                  // 计数括号 2026-09-11 去除（明细区不再重复报行数）；本页是卡片堆叠，
+                  // 标题是唯一的区块分隔，故保留标题本身。
                   UtenSectionHeader(
-                    title: '报销明细 (${_items.length})',
+                    title: '报销明细',
                     trailing: TextButton.icon(
                       onPressed: _addItem,
                       icon: const Icon(Icons.add_rounded, size: 18),

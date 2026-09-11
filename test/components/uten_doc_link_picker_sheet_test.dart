@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_doc_link_picker_sheet.dart';
+import 'package:uten_imp/components/layout/uten_grid_header_filter_cell.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -156,6 +157,41 @@ void main() {
     expect(find.text('货品-g2'), findsNothing);
     final qtyField = tester.widget<TextField>(find.byType(TextField).last);
     expect(qtyField.controller?.text, '4.0');
+  });
+
+  // 2026-09-11 表头快速筛选补齐：Step2 明细表的「货品/颜色/单位」接表头下拉，
+  // 同名货品合并成一个桶（视图级过滤，不动勾选与已填本次数量）。
+  testWidgets('Step2 货品表头筛选收敛明细行', (tester) async {
+    await _openPanel(
+      tester,
+      _config(
+        docs: const [_Doc('d1', 'CG-001', 's1')],
+        details: {
+          'd1': const [
+            _Item('i1', 'g1', 10, 4),
+            _Item('i2', 'g2', 5, 2),
+            _Item('i3', 'g1', 8, 3),
+          ],
+        },
+      ),
+    );
+
+    await _doubleTapRow(tester, find.text('CG-001'));
+    await tester.pump();
+    expect(find.text('货品-g1'), findsNWidgets(2));
+
+    final header = find.widgetWithText(GridHeaderFilterCell, '货品');
+    expect(header, findsOneWidget);
+    await tester.tap(header);
+    await tester.pump();
+    expect(find.text('货品-g1（2）'), findsOneWidget);
+    expect(find.text('货品-g2（1）'), findsOneWidget);
+
+    await tester.tap(find.text('货品-g1（2）'));
+    await tester.pump();
+    expect(find.text('货品-g2'), findsNothing);
+    // 两行数据 + 表头显示的当前筛选值。
+    expect(find.text('货品-g1'), findsNWidgets(3));
   });
 
   testWidgets('全部明细无剩余时显示定向空态', (tester) async {

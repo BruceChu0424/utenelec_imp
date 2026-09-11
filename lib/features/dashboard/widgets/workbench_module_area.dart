@@ -18,8 +18,9 @@
 //   方便超管预先排列布局。
 //
 // 布局持久化：
-//   分组顺序 + 折叠状态由 providers/workbench_layout_provider.dart 驱动，
+//   分组顺序 + 折叠状态 + 组内卡片顺序由 providers/workbench_layout_provider.dart 驱动，
 //   本地 shared_preferences 缓存 + 服务端 /user/preferences 防抖同步。
+//   组内卡片长按可拖到另一张卡片上换位（_ReorderableModuleGrid），顺序同样持久化。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -67,6 +68,27 @@ class WorkbenchModuleArea extends ConsumerWidget {
         ],
     };
 
+    // 组内卡片顺序：按已存 itemOrders 重排可见卡片，未排过的按代码默认顺序补尾
+    // （新卡片/权限变化后新可见的卡片不会丢，只是排到已排过的后面）
+    List<_ModuleItem> orderedItems(String groupKey) {
+      final visibleItems = itemsOf[groupKey]!;
+      final saved = layout.itemOrders[groupKey];
+      if (saved == null || saved.isEmpty) return visibleItems;
+      final byLocation = {for (final it in visibleItems) it.location: it};
+      final ordered = <_ModuleItem>[];
+      final placed = <String>{};
+      for (final loc in saved) {
+        final it = byLocation[loc];
+        if (it != null && placed.add(loc)) ordered.add(it);
+      }
+      if (ordered.length != visibleItems.length) {
+        ordered.addAll(
+          visibleItems.where((it) => !placed.contains(it.location)),
+        );
+      }
+      return ordered;
+    }
+
     // 分组可见性：超管全量（含空分组，便于预排布局）；普通用户只显示有可见卡片的分组
     bool groupVisible(_ModuleGroup g) =>
         isSuper || (itemsOf[g.key]?.isNotEmpty ?? false);
@@ -99,10 +121,16 @@ class WorkbenchModuleArea extends ConsumerWidget {
             key: ValueKey(orderedKeys[i]),
             index: i,
             group: byKey[orderedKeys[i]]!,
-            items: itemsOf[orderedKeys[i]]!,
+            items: orderedItems(orderedKeys[i]),
             expanded: !layout.collapsed.contains(orderedKeys[i]),
             onExpandedChanged: (_) =>
                 layoutNotifier.toggleCollapsed(orderedKeys[i]),
+            onItemReorder: (dragged, target) => layoutNotifier.reorderItem(
+              orderedKeys[i],
+              [for (final it in orderedItems(orderedKeys[i])) it.location],
+              dragged,
+              target,
+            ),
           ),
       ],
     );
@@ -116,6 +144,7 @@ class WorkbenchModuleArea extends ConsumerWidget {
     required List<_ModuleItem> items,
     required bool expanded,
     required ValueChanged<bool> onExpandedChanged,
+    required void Function(String dragged, String target) onItemReorder,
   }) {
     // 分组综合徽标 = 组内可见卡片的角标之和（无角标的卡片不计入；count<=0 不显示）。
     // 延迟挂载：首帧不 watch 计数 provider，与卡片角标一致（首帧后并行拉取）。
@@ -143,12 +172,11 @@ class WorkbenchModuleArea extends ConsumerWidget {
         child: items.isEmpty
             // 空分组（仅超管可见）：占位文案，功能规划接入中
             ? const _EmptyGroupPlaceholder()
-            : UtenResponsiveGrid(
-                itemCount: items.length,
-                spacing: UtenSpacing.s12,
-                columns: const UtenResponsiveColumns(compact: 2, medium: 3),
-                itemBuilder: (context, i, itemWidth) =>
-                    _ModuleTile(item: items[i], color: group.color),
+            // 组内卡片网格：长按卡片可拖到另一张卡片上换位（顺序持久化）
+            : _ReorderableModuleGrid(
+                items: items,
+                color: group.color,
+                onReorder: onItemReorder,
               ),
       ),
     );
@@ -499,6 +527,115 @@ const _allGroups = <_ModuleGroup>[
     ],
   ),
 ];
+
+/// 组内卡片可拖动网格：长按卡片拖到另一张卡片上即换位。
+///
+/// 布局与原直排网格完全一致（UtenResponsiveGrid round-robin 分栏，
+/// compact 2 列 / medium+ 3 列，间距 s12），拖动层叠在外面：
+/// LongPressDraggable（长按起拖）+ DragTarget（悬停到目标卡即换位）。
+/// 被拖卡片原位显示半透明残影，跟随指针的浮层卡同宽、带浮起投影；
+/// 每次换位即时写入布局 Provider（防抖 800ms 持久化），松手即生效，
+/// 下次进页面保持已排顺序。
+class _ReorderableModuleGrid extends StatefulWidget {
+  const _ReorderableModuleGrid({
+    required this.items,
+    required this.color,
+    required this.onReorder,
+  });
+
+  /// 该组当前可见卡片（已按持久化顺序排好）
+  final List<_ModuleItem> items;
+
+  final Color color;
+
+  /// (被拖卡片 location, 悬停目标卡片 location) → 交布局 Provider 重排
+  final void Function(String dragged, String target) onReorder;
+
+  @override
+  State<_ReorderableModuleGrid> createState() => _ReorderableModuleGridState();
+}
+
+class _ReorderableModuleGridState extends State<_ReorderableModuleGrid> {
+  /// 每张卡片一个稳定 GlobalKey：换位后卡片可能换列（换父节点），
+  /// LocalKey 会让 Element 随位置销毁重建、活动中的拖拽手势被打断；
+  /// GlobalKey 跨父重挂载保留 State 与手势连续。location 组内唯一，作 key 足够。
+  final _tileKeys = <String, GlobalKey>{};
+
+  /// 正在拖动的卡片 location；null = 无拖动
+  String? _dragging;
+
+  /// 本手势最近一次已处理的 (被拖卡, 目标卡) 配对。
+  /// 落点时 up() 会先触发一次 updateDrag(onMove)、紧接着 didDrop(onAccept)，
+  /// 同一配对连续处理两次会把刚换好的位置又换回去——同配对幂等跳过。
+  String? _lastDragged;
+  String? _lastTarget;
+
+  void _handleReorder(String dragged, String target) {
+    if (dragged == target) return;
+    if (dragged == _lastDragged && target == _lastTarget) return;
+    _lastDragged = dragged;
+    _lastTarget = target;
+    widget.onReorder(dragged, target);
+  }
+
+  GlobalKey _keyFor(String location) =>
+      _tileKeys.putIfAbsent(location, () => GlobalKey());
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return UtenResponsiveGrid(
+      itemCount: widget.items.length,
+      spacing: UtenSpacing.s12,
+      columns: const UtenResponsiveColumns(compact: 2, medium: 3),
+      itemBuilder: (context, i, itemWidth) {
+        final item = widget.items[i];
+        final tile = _ModuleTile(item: item, color: widget.color);
+        return KeyedSubtree(
+          key: _keyFor(item.location),
+          // 卡片是长按拖动交互区：退出外层 SelectionArea 的长按框选（手势不冲突）
+          child: SelectionContainer.disabled(
+            child: LongPressDraggable<String>(
+              data: item.location,
+              // 已有一张在拖时其余卡片不再起拖（多指误触）
+              maxSimultaneousDrags: _dragging == null ? 1 : 0,
+              onDragStarted: () => setState(() => _dragging = item.location),
+              onDragEnd: (_) {
+                if (_dragging != null) {
+                  setState(() {
+                    _dragging = null;
+                    _lastDragged = null;
+                    _lastTarget = null;
+                  });
+                }
+              },
+              // 跟随指针的浮层卡：与原卡同宽 + 浮起投影
+              feedback: Material(
+                elevation: 6,
+                borderRadius: UtenRadius.lgAll,
+                color: theme.colorScheme.surface,
+                child: SizedBox(width: itemWidth, child: tile),
+              ),
+              // 原位半透明残影（拖动期间该槽位不再是落点目标）
+              childWhenDragging: Opacity(opacity: 0.3, child: tile),
+              child: DragTarget<String>(
+                onWillAcceptWithDetails: (details) =>
+                    details.data != item.location,
+                // 悬停换位：真实拖动中指针连续移动，onMove 持续触发
+                onMove: (details) =>
+                    _handleReorder(details.data, item.location),
+                // 落点兜底：进入目标后未再移动就松手（首帧只走 didEnter 不走 onMove）
+                onAcceptWithDetails: (details) =>
+                    _handleReorder(details.data, item.location),
+                builder: (context, _, _) => tile,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
 
 class _ModuleItem {
   const _ModuleItem({

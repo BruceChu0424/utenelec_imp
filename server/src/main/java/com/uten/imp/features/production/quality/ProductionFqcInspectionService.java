@@ -4,6 +4,8 @@ import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.ProductionFinishedInboundReleasePort;
 import com.uten.imp.application.port.ProductionFqcRecoveryPort;
 import com.uten.imp.application.port.ProductionQualityInspectionPort;
+import com.uten.imp.common.docnumber.DocNumberPrefix;
+import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
@@ -13,6 +15,8 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionRequest;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionResult;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.InspectionSheetDetailView;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.InspectionSheetView;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.InspectionView;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchItem;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchRequest;
@@ -76,6 +80,7 @@ public class ProductionFqcInspectionService
     private final ProductionFinishedInboundReleasePort finishedInbound;
     private final BusinessEventPublisher outbox;
     private final ProductionQualityMutationFootprintService mutationFootprint;
+    private final DocNumberService docNumbers;
 
     /**
      * Called by the warehouse-arrival registration transaction after the
@@ -191,11 +196,13 @@ public class ProductionFqcInspectionService
     public PageResponse<InspectionView> list(
             String rawStatus,
             String rawKeyword,
+            String rawSheetScope,
             int requestedPage,
             int requestedSize) {
         String status = normalizeStatusFilter(rawStatus);
         String keyword = rawKeyword == null
                 ? "" : rawKeyword.strip().toLowerCase(Locale.ROOT);
+        SheetScope sheetScope = normalizeSheetScope(rawSheetScope);
         PageRequest pageable = Pageables.of(requestedPage, requestedSize);
         int page = pageable.getPageNumber() + 1;
         int size = pageable.getPageSize();
@@ -216,22 +223,31 @@ public class ProductionFqcInspectionService
                     COALESCE(plan.bill_no, '') || ' ' ||
                     COALESCE(goods.code, '') || ' ' ||
                     COALESCE(goods.name, '') || ' ' ||
-                    COALESCE(color.name, '')
+                    COALESCE(color.name, '') || ' ' ||
+                    COALESCE(sheet.sheet_no, '')
                 ) LIKE :keywordLike)
                 """;
+        // V547：sheet=NONE 只列无检查单的历史任务（待检处置「无检查单」行）；
+        // sheet=<uuid> 列该检查单的任务；缺省不按检查单过滤。
+        String sheetPredicate = switch (sheetScope.kind()) {
+            case NONE -> "sheet_item.sheet_id IS NULL";
+            case EXACT -> "sheet_item.sheet_id = :sheetId";
+            default -> "1=1";
+        };
         String pageSql = viewSql(
                 ownerPredicate + " AND " + statusPredicate
-                        + " AND " + keywordPredicate);
+                        + " AND " + keywordPredicate
+                        + " AND " + sheetPredicate);
         Query countQuery = em.createNativeQuery(
                 "SELECT COUNT(*) FROM (" + pageSql + ") fqc_page");
         bindInspectionPage(
-                countQuery, ownerScope, status, keyword);
+                countQuery, ownerScope, status, keyword, sheetScope);
         long total = ((Number) countQuery.getSingleResult()).longValue();
 
         Query query = em.createNativeQuery(pageSql
                 + " ORDER BY inspection.created_at, inspection.id"
                 + " OFFSET :offset LIMIT :limit");
-        bindInspectionPage(query, ownerScope, status, keyword);
+        bindInspectionPage(query, ownerScope, status, keyword, sheetScope);
         query.setParameter("offset", pageable.getOffset());
         query.setParameter("limit", size);
         List<InspectionView> items =
@@ -248,13 +264,212 @@ public class ProductionFqcInspectionService
             Query query,
             NativeReadScope ownerScope,
             String status,
-            String keyword) {
+            String keyword,
+            SheetScope sheetScope) {
         if (ownerScope != null) ownerScope.bind(query);
         if (!"ALL".equals(status) && !"ACTIVE".equals(status)) {
             query.setParameter("status", status);
         }
         query.setParameter("keyword", keyword);
         query.setParameter("keywordLike", "%" + keyword + "%");
+        if (sheetScope.kind() == SheetScopeKind.EXACT) {
+            query.setParameter("sheetId", sheetScope.sheetId());
+        }
+    }
+
+    /**
+     * V547 品质检查单队列：一行一张检查单（ACTIVE = 仍有 PENDING/PARTIAL 行；
+     * CLOSED = 全部 RESOLVED/CANCELLED）。数量文本按单位分组汇总，不跨单位相加。
+     */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')")
+    public PageResponse<InspectionSheetView> listSheets(
+            String rawStatus,
+            String rawKeyword,
+            int requestedPage,
+            int requestedSize) {
+        String status = normalizeSheetStatusFilter(rawStatus);
+        String keyword = rawKeyword == null
+                ? "" : rawKeyword.strip().toLowerCase(Locale.ROOT);
+        PageRequest pageable = Pageables.of(requestedPage, requestedSize);
+        int page = pageable.getPageNumber() + 1;
+        int size = pageable.getPageSize();
+        boolean qualityPool = taskAccess.canAccessQualityPool();
+        NativeReadScope ownerScope = qualityPool
+                ? null
+                : productionAccess.nativeReadScope(
+                        "owner_report.maker_id", "fqcSheetOwners");
+        String statusPredicate = switch (status) {
+            case "ALL" -> "1=1";
+            case "CLOSED" -> "sheet_row.active_count = 0";
+            default -> "sheet_row.active_count > 0";
+        };
+        String keywordPredicate = """
+                (:keyword = '' OR LOWER(
+                    COALESCE(sheet_row.sheet_no, '') || ' ' ||
+                    COALESCE(sheet_row.warehouse_name, '') || ' ' ||
+                    COALESCE(sheet_row.receiver_name, '') || ' ' ||
+                    COALESCE(sheet_row.report_nos, '') || ' ' ||
+                    COALESCE(sheet_row.goods_summary, '')
+                ) LIKE :keywordLike)
+                """;
+        String pageSql = sheetSql(sheetOwnerPredicate(ownerScope))
+                + " WHERE " + statusPredicate + " AND " + keywordPredicate;
+        Query countQuery = em.createNativeQuery(
+                "SELECT COUNT(*) FROM (" + pageSql + ") fqc_sheet_page");
+        bindSheetPage(countQuery, ownerScope, keyword);
+        long total = ((Number) countQuery.getSingleResult()).longValue();
+
+        Query query = em.createNativeQuery(pageSql
+                + " ORDER BY sheet_row.created_at, sheet_row.id"
+                + " OFFSET :offset LIMIT :limit");
+        bindSheetPage(query, ownerScope, keyword);
+        query.setParameter("offset", pageable.getOffset());
+        query.setParameter("limit", size);
+        List<InspectionSheetView> items =
+                NativeQueryResults.objectArrayRows(query).stream()
+                        .map(ProductionFqcInspectionService::toSheetView)
+                        .toList();
+        int totalPages = total == 0
+                ? 0 : (int) ((total + size - 1) / size);
+        return new PageResponse<>(items, page, size, total, totalPages);
+    }
+
+    /** 检查单办理视图：头 + 该单逐条 inspection（对象范围内不可见的行不返回）。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')")
+    public InspectionSheetDetailView sheetDetail(UUID sheetId) {
+        if (sheetId == null) throw notFound("品质检查单不存在");
+        boolean qualityPool = taskAccess.canAccessQualityPool();
+        NativeReadScope ownerScope = qualityPool
+                ? null
+                : productionAccess.nativeReadScope(
+                        "owner_report.maker_id", "fqcSheetOwners");
+        Query headQuery = em.createNativeQuery(
+                sheetSql(sheetOwnerPredicate(ownerScope))
+                        + " WHERE sheet_row.id = :sheetId");
+        if (ownerScope != null) ownerScope.bind(headQuery);
+        headQuery.setParameter("sheetId", sheetId);
+        List<Object[]> heads = NativeQueryResults.objectArrayRows(headQuery);
+        if (heads.size() != 1) throw notFound("品质检查单不存在");
+
+        NativeReadScope lineScope = qualityPool
+                ? null
+                : productionAccess.nativeReadScope(
+                        "report.maker_id", "fqcOwners");
+        Query lineQuery = em.createNativeQuery(viewSql(
+                (lineScope == null ? "1=1" : lineScope.predicate())
+                        + " AND sheet_item.sheet_id = :sheetId")
+                + " ORDER BY sheet_item.line_no, inspection.id");
+        if (lineScope != null) lineScope.bind(lineQuery);
+        lineQuery.setParameter("sheetId", sheetId);
+        List<InspectionView> inspections =
+                NativeQueryResults.objectArrayRows(lineQuery).stream()
+                        .map(ProductionFqcInspectionService::toView)
+                        .toList();
+        if (inspections.isEmpty()) throw notFound("品质检查单不存在");
+        return new InspectionSheetDetailView(
+                toSheetView(heads.getFirst()), inspections);
+    }
+
+    private static String sheetOwnerPredicate(NativeReadScope ownerScope) {
+        if (ownerScope == null) return "1=1";
+        return """
+                EXISTS (
+                    SELECT 1
+                    FROM production_fqc_inspection_sheet_items owner_item
+                    JOIN production_fqc_inspections owner_inspection
+                      ON owner_inspection.id = owner_item.inspection_id
+                    JOIN production_daily_reports owner_report
+                      ON owner_report.id = owner_inspection.source_report_id
+                    WHERE owner_item.sheet_id = sheet.id
+                      AND %s)
+                """.formatted(ownerScope.predicate());
+    }
+
+    private static void bindSheetPage(
+            Query query,
+            NativeReadScope ownerScope,
+            String keyword) {
+        if (ownerScope != null) ownerScope.bind(query);
+        query.setParameter("keyword", keyword);
+        query.setParameter("keywordLike", "%" + keyword + "%");
+    }
+
+    /** 检查单头投影；调用方在其后追加 WHERE（列名以 sheet_row.* 引用）。 */
+    private static String sheetSql(String ownerPredicate) {
+        return """
+                SELECT sheet_row.*
+                FROM (
+                    SELECT sheet.id,
+                           sheet.sheet_no,
+                           sheet.warehouse_id,
+                           sheet.warehouse_name_snapshot AS warehouse_name,
+                           sheet.receiver_employee_id,
+                           sheet.receiver_name_snapshot AS receiver_name,
+                           sheet.remark,
+                           sheet.source_kind,
+                           sheet.created_at,
+                           COUNT(sheet_item.id)::integer AS item_count,
+                           COUNT(sheet_item.id) FILTER (
+                               WHERE inspection.status IN ('PENDING', 'PARTIAL')
+                           )::integer AS active_count,
+                           string_agg(DISTINCT report.bill_no, '、') AS report_nos,
+                           string_agg(
+                               DISTINCT COALESCE(
+                                   NULLIF(goods.name, ''),
+                                   NULLIF(goods.code, ''),
+                                   '未命名货品'),
+                               '、') AS goods_summary,
+                           pending.text AS pending_qty_text
+                    FROM production_fqc_inspection_sheets sheet
+                    JOIN production_fqc_inspection_sheet_items sheet_item
+                      ON sheet_item.sheet_id = sheet.id
+                    JOIN production_fqc_inspections inspection
+                      ON inspection.id = sheet_item.inspection_id
+                    JOIN production_daily_reports report
+                      ON report.id = inspection.source_report_id
+                    JOIN goods goods ON goods.id = inspection.goods_id
+                    LEFT JOIN LATERAL (
+                        SELECT string_agg(
+                                   unit_total.qty_text || ' ' || unit_total.unit_name,
+                                   ' · ' ORDER BY unit_total.unit_name) AS text
+                        FROM (
+                            SELECT COALESCE(unit.name, '') AS unit_name,
+                                   rtrim(rtrim(SUM(
+                                       pending_inspection.reported_qty
+                                       - pending_inspection.passed_qty
+                                       - pending_inspection.failed_qty)::text,
+                                       '0'), '.') AS qty_text
+                            FROM production_fqc_inspection_sheet_items pending_item
+                            JOIN production_fqc_inspections pending_inspection
+                              ON pending_inspection.id = pending_item.inspection_id
+                             AND pending_inspection.status IN ('PENDING', 'PARTIAL')
+                            LEFT JOIN units unit
+                              ON unit.id = pending_inspection.unit_id
+                            WHERE pending_item.sheet_id = sheet.id
+                            GROUP BY COALESCE(unit.name, '')
+                        ) unit_total
+                    ) pending ON TRUE
+                    WHERE %s
+                    GROUP BY sheet.id, sheet.sheet_no, sheet.warehouse_id,
+                             sheet.warehouse_name_snapshot,
+                             sheet.receiver_employee_id,
+                             sheet.receiver_name_snapshot, sheet.remark,
+                             sheet.source_kind, sheet.created_at, pending.text
+                ) sheet_row
+                """.formatted(ownerPredicate);
+    }
+
+    private static InspectionSheetView toSheetView(Object[] row) {
+        int activeCount = ((Number) row[10]).intValue();
+        return new InspectionSheetView(
+                (UUID) row[0], string(row[1]), (UUID) row[2], string(row[3]),
+                (UUID) row[4], string(row[5]), string(row[6]), string(row[7]),
+                ((Number) row[9]).intValue(), activeCount,
+                string(row[13]), string(row[11]), string(row[12]),
+                activeCount > 0 ? "ACTIVE" : "CLOSED",
+                NativeValueConverters.toOffsetDateTime(row[8]));
     }
 
     @Transactional(readOnly = true)
@@ -268,12 +483,15 @@ public class ProductionFqcInspectionService
         String ownerPredicate = qualityPool
                 ? "1=1"
                 : ownerScope.predicate();
+        // V547 角标口径 = 待检处置队列行数：一张检查单计 1，无检查单的历史任务逐条计 1。
         Query query = em.createNativeQuery("""
-                        SELECT COUNT(*)
+                        SELECT COUNT(DISTINCT COALESCE(sheet_item.sheet_id, inspection.id))
                         FROM production_fqc_inspections inspection
                         JOIN production_daily_reports report
                           ON report.id = inspection.source_report_id
                          AND report.is_deleted = FALSE
+                        LEFT JOIN production_fqc_inspection_sheet_items sheet_item
+                          ON sheet_item.inspection_id = inspection.id
                         WHERE inspection.status IN ('PENDING','PARTIAL')
                           AND %s
                         """.formatted(ownerPredicate));
@@ -500,11 +718,14 @@ public class ProductionFqcInspectionService
                 stockDocumentItemId.toString(),
                 canonicalQty(requested)));
 
+        // V548 后同一报工行可有多条 CANCELLED（登记撤回）历史 inspection，
+        // 只有未取消的那条（部分唯一索引保证至多一条）可以放行。
         List<Object[]> inspections = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT id, status
                                 FROM production_fqc_inspections
                                 WHERE source_report_item_id = :reportItemId
+                                ORDER BY (status = 'CANCELLED'), created_at DESC, id
                                 FOR UPDATE
                                 """)
                         .setParameter("reportItemId", sourceReportItemId));
@@ -513,7 +734,7 @@ public class ProductionFqcInspectionService
         }
         UUID inspectionId = (UUID) inspections.getFirst()[0];
         if ("CANCELLED".equals(inspections.getFirst()[1])) {
-            throw conflict("该生产质检已随来源报工红冲取消，禁止生成入库");
+            throw conflict("该生产质检已随来源报工红冲或登记撤回取消，禁止生成入库");
         }
         List<Object[]> replay = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
@@ -623,7 +844,7 @@ public class ProductionFqcInspectionService
                         """)
                 .setParameter("reportItemId", sourceReportItemId)
                 .getSingleResult();
-        return count != null && count.longValue() == 1;
+        return count != null && count.longValue() >= 1;
     }
 
     @Override
@@ -682,6 +903,181 @@ public class ProductionFqcInspectionService
                     .setParameter("actorId", actorId)
                     .executeUpdate();
         }
+    }
+
+    /**
+     * V547：把本次登记命令下同一成品仓新建的 PENDING inspection 归入一张品质检查单。
+     * 检查单只是展示/办理聚合；replay 按 (actor, 命令键, 仓库) 返回既有单。
+     */
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public InspectionSheetRef openInspectionSheet(InspectionSheetRequest request) {
+        tx.bind();
+        if (request == null || request.warehouseId() == null
+                || request.receiverEmployeeId() == null
+                || request.registrationIds().isEmpty()
+                || request.registrationIds().stream().anyMatch(Objects::isNull)
+                || request.warehouseName() == null
+                || request.warehouseName().isBlank()
+                || request.receiverName() == null
+                || request.receiverName().isBlank()) {
+            throw validation("品质检查单缺少仓库、收货人或登记批次");
+        }
+        if (!List.of("ARRIVAL_SINGLE", "ARRIVAL_BATCH")
+                .contains(request.sourceKind())) {
+            throw validation("品质检查单来源类型无效");
+        }
+        String commandKey = normalizeDecisionKey(request.commandKey());
+        String remark = request.remark() == null ? null : request.remark().strip();
+        if (remark != null && remark.isEmpty()) remark = null;
+        if (remark != null && remark.length() > 500) {
+            throw validation("备注不能超过 500 个字符");
+        }
+        UUID actorId = currentUser.requireId();
+        List<Object[]> existing = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT sheet.id, sheet.sheet_no,
+                                       (SELECT COUNT(*)
+                                        FROM production_fqc_inspection_sheet_items sheet_item
+                                        WHERE sheet_item.sheet_id = sheet.id)
+                                FROM production_fqc_inspection_sheets sheet
+                                WHERE sheet.created_by = :actorId
+                                  AND sheet.batch_idempotency_key = :commandKey
+                                  AND sheet.warehouse_id = :warehouseId
+                                """)
+                        .setParameter("actorId", actorId)
+                        .setParameter("commandKey", commandKey)
+                        .setParameter("warehouseId", request.warehouseId()));
+        if (!existing.isEmpty()) {
+            Object[] row = existing.getFirst();
+            return new InspectionSheetRef(
+                    (UUID) row[0], string(row[1]), ((Number) row[2]).intValue());
+        }
+        List<Object[]> lines = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT inspection.id,
+                                       registration_item.registration_id,
+                                       registration_item.id
+                                FROM production_finished_arrival_registration_items
+                                         registration_item
+                                JOIN production_finished_arrival_registrations registration
+                                  ON registration.id = registration_item.registration_id
+                                JOIN production_daily_report_items report_item
+                                  ON report_item.id = registration_item.source_report_item_id
+                                JOIN production_fqc_inspections inspection
+                                  ON inspection.source_report_item_id =
+                                     registration_item.source_report_item_id
+                                 AND inspection.status = 'PENDING'
+                                WHERE registration_item.registration_id IN (:registrationIds)
+                                  AND registration_item.reversal_id IS NULL
+                                  AND registration.warehouse_id = :warehouseId
+                                  AND NOT EXISTS (
+                                      SELECT 1
+                                      FROM production_fqc_inspection_sheet_items existing_item
+                                      WHERE existing_item.inspection_id = inspection.id)
+                                ORDER BY registration.created_at, registration.id,
+                                         report_item.line_no NULLS LAST, report_item.id
+                                """)
+                        .setParameter("registrationIds", request.registrationIds())
+                        .setParameter("warehouseId", request.warehouseId()));
+        if (lines.isEmpty()) {
+            throw conflict("所选登记批次没有可归入品质检查单的待检行");
+        }
+        UUID sheetId = UUID.randomUUID();
+        String sheetNo = docNumbers.nextNumber(DocNumberPrefix.PRODUCTION_FQC_SHEET);
+        em.createNativeQuery("""
+                        INSERT INTO production_fqc_inspection_sheets(
+                            id, sheet_no, warehouse_id, warehouse_name_snapshot,
+                            receiver_employee_id, receiver_name_snapshot, remark,
+                            source_kind, batch_idempotency_key, created_by)
+                        VALUES (
+                            :id, :sheetNo, :warehouseId, :warehouseName,
+                            :receiverId, :receiverName, :remark,
+                            :sourceKind, :commandKey, :actorId)
+                        """)
+                .setParameter("id", sheetId)
+                .setParameter("sheetNo", sheetNo)
+                .setParameter("warehouseId", request.warehouseId())
+                .setParameter("warehouseName", request.warehouseName().strip())
+                .setParameter("receiverId", request.receiverEmployeeId())
+                .setParameter("receiverName", request.receiverName().strip())
+                .setParameter("remark", remark)
+                .setParameter("sourceKind", request.sourceKind())
+                .setParameter("commandKey", commandKey)
+                .setParameter("actorId", actorId)
+                .executeUpdate();
+        int lineNo = 0;
+        for (Object[] line : lines) {
+            em.createNativeQuery("""
+                            INSERT INTO production_fqc_inspection_sheet_items(
+                                id, sheet_id, inspection_id, registration_id,
+                                registration_item_id, line_no)
+                            VALUES (
+                                gen_random_uuid(), :sheetId, :inspectionId,
+                                :registrationId, :registrationItemId, :lineNo)
+                            """)
+                    .setParameter("sheetId", sheetId)
+                    .setParameter("inspectionId", line[0])
+                    .setParameter("registrationId", line[1])
+                    .setParameter("registrationItemId", line[2])
+                    .setParameter("lineNo", ++lineNo)
+                    .executeUpdate();
+        }
+        return new InspectionSheetRef(sheetId, sheetNo, lines.size());
+    }
+
+    /**
+     * V548：登记撤回事务内逐条追加 REGISTRATION_REVERSED 取消事件；数据库守卫要求
+     * 该 inspection 仍 PENDING、无决定/放行/恢复授权，且撤回记录已标记其登记行。
+     */
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public int cancelForReversedRegistration(UUID registrationId, UUID reversalId) {
+        tx.bind();
+        if (registrationId == null || reversalId == null) {
+            throw validation("登记撤回缺少登记批次或撤回记录 UUID");
+        }
+        List<Object[]> inspections = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT inspection.id, inspection.source_report_id,
+                                       inspection.status
+                                FROM production_finished_arrival_registration_items
+                                         registration_item
+                                JOIN production_fqc_inspections inspection
+                                  ON inspection.source_report_item_id =
+                                     registration_item.source_report_item_id
+                                 AND inspection.status <> 'CANCELLED'
+                                WHERE registration_item.registration_id = :registrationId
+                                  AND registration_item.reversal_id = :reversalId
+                                ORDER BY inspection.id
+                                FOR UPDATE OF inspection
+                                """)
+                        .setParameter("registrationId", registrationId)
+                        .setParameter("reversalId", reversalId));
+        UUID actorId = currentUser.requireId();
+        for (Object[] row : inspections) {
+            if (!"PENDING".equals(row[2])) {
+                throw conflict("该登记批次已有品质处理，不能撤回登记");
+            }
+            UUID inspectionId = (UUID) row[0];
+            em.createNativeQuery("""
+                            INSERT INTO production_fqc_cancellation_events(
+                                id, inspection_id, source_report_id,
+                                reason_code, idempotency_key, created_by)
+                            VALUES (
+                                :id, :inspectionId, :reportId,
+                                'REGISTRATION_REVERSED', :key, :actorId)
+                            """)
+                    .setParameter("id", UUID.randomUUID())
+                    .setParameter("inspectionId", inspectionId)
+                    .setParameter("reportId", row[1])
+                    .setParameter(
+                            "key",
+                            "REGISTRATION-REVERSED:" + reversalId + ':' + inspectionId)
+                    .setParameter("actorId", actorId)
+                    .executeUpdate();
+        }
+        return inspections.size();
     }
 
     @Override
@@ -996,7 +1392,10 @@ public class ProductionFqcInspectionService
                        inspection.passed_qty, inspection.failed_qty,
                        COALESCE(release.authorized_qty, 0),
                        inspection.status, inspection.report_maker_id,
-                       inspection.created_at, inspection.updated_at
+                       inspection.created_at, inspection.updated_at,
+                       sheet.id, sheet.sheet_no, warehouse.name,
+                       registration.place_snapshot, registration.remark,
+                       registration.receiver_name_snapshot
                 FROM production_fqc_inspections inspection
                 JOIN production_daily_reports report
                   ON report.id = inspection.source_report_id
@@ -1006,6 +1405,34 @@ public class ProductionFqcInspectionService
                 JOIN goods goods ON goods.id = inspection.goods_id
                 LEFT JOIN colors color ON color.id = inspection.color_id
                 JOIN units unit ON unit.id = inspection.unit_id
+                LEFT JOIN warehouses warehouse
+                  ON warehouse.id = inspection.warehouse_id
+                LEFT JOIN production_fqc_inspection_sheet_items sheet_item
+                  ON sheet_item.inspection_id = inspection.id
+                LEFT JOIN production_fqc_inspection_sheets sheet
+                  ON sheet.id = sheet_item.sheet_id
+                LEFT JOIN LATERAL (
+                    SELECT registration_item.place_snapshot,
+                           registration_header.remark,
+                           registration_header.receiver_name_snapshot
+                    FROM production_finished_arrival_registration_items
+                             registration_item
+                    JOIN production_finished_arrival_registrations
+                             registration_header
+                      ON registration_header.id = registration_item.registration_id
+                    WHERE registration_item.source_report_item_id =
+                          inspection.source_report_item_id
+                      AND CASE
+                              WHEN sheet_item.registration_item_id IS NOT NULL
+                                  THEN registration_item.id =
+                                       sheet_item.registration_item_id
+                              ELSE registration_header.created_at
+                                       <= inspection.created_at
+                          END
+                    ORDER BY registration_header.created_at DESC,
+                             registration_header.id DESC
+                    LIMIT 1
+                ) registration ON TRUE
                 LEFT JOIN LATERAL (
                     SELECT SUM(command.requested_qty) AS authorized_qty
                     FROM production_fqc_release_commands command
@@ -1029,7 +1456,9 @@ public class ProductionFqcInspectionService
                 reported.subtract(passed).subtract(failed), dec(row[21]),
                 string(row[22]), (UUID) row[23],
                 NativeValueConverters.toOffsetDateTime(row[24]),
-                NativeValueConverters.toOffsetDateTime(row[25]));
+                NativeValueConverters.toOffsetDateTime(row[25]),
+                (UUID) row[26], string(row[27]), string(row[28]),
+                string(row[29]), string(row[30]), string(row[31]));
     }
 
     private static void requireEligibleReportLine(Object[] row) {
@@ -1133,6 +1562,28 @@ public class ProductionFqcInspectionService
             throw validation("生产质检状态筛选无效");
         }
         return value;
+    }
+
+    static String normalizeSheetStatusFilter(String raw) {
+        String value = raw == null || raw.isBlank()
+                ? "ACTIVE" : raw.strip().toUpperCase(Locale.ROOT);
+        if (!List.of("ACTIVE", "CLOSED", "ALL").contains(value)) {
+            throw validation("品质检查单状态筛选无效");
+        }
+        return value;
+    }
+
+    static SheetScope normalizeSheetScope(String raw) {
+        String value = raw == null ? "" : raw.strip();
+        if (value.isEmpty()) return new SheetScope(SheetScopeKind.ANY, null);
+        if ("NONE".equalsIgnoreCase(value)) {
+            return new SheetScope(SheetScopeKind.NONE, null);
+        }
+        try {
+            return new SheetScope(SheetScopeKind.EXACT, UUID.fromString(value));
+        } catch (IllegalArgumentException ex) {
+            throw validation("检查单筛选必须是 NONE 或检查单 UUID");
+        }
     }
 
     static BigDecimal normalizeQty(BigDecimal value, String label) {
@@ -1247,6 +1698,11 @@ public class ProductionFqcInspectionService
     }
 
     record BatchCommand(UUID id, boolean replay) {
+    }
+
+    enum SheetScopeKind { ANY, NONE, EXACT }
+
+    record SheetScope(SheetScopeKind kind, UUID sheetId) {
     }
 
     record NormalizedRequest(

@@ -222,7 +222,6 @@ class _FinanceAssetLedgerPanelState
           return _compactList();
         }
         return UtenListTwoPane(
-          splitPersistenceKey: 'finance.assetLedger',
           filterPaneTitle: '${widget.ledger.label}筛选',
           filterPane: _filterFields(),
           filterPaneFooter: widget.capabilities.canEdit

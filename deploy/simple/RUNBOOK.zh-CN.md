@@ -63,6 +63,10 @@ Nginx：web 静态 + /api 反代 127.0.0.1:8080（deploy/nginx/uten-imp-http-lan
 ```bash
 # 1. 系统包与账号
 apt update && apt install -y openjdk-21-jre-headless postgresql-16 nginx curl python3
+# 1b. 附件办公文档在线预览（可选）：LibreOffice 无头转换 + 中日韩字体，缺失时预览接口回落为下载原件
+#     writer=doc/docx/rtf/odt，calc=xls/xlsx/ods，impress=ppt/pptx/odp，draw=svg（2026-09-11 起需要）
+apt install -y --no-install-recommends libreoffice-core libreoffice-writer libreoffice-calc \
+  libreoffice-impress libreoffice-draw fonts-noto-cjk
 useradd --system --home /opt/uten-imp --shell /usr/sbin/nologin uten-imp
 
 # 2. 目录布局
@@ -103,6 +107,8 @@ systemctl enable --now uten-imp.service uten-imp-updater.timer
 ```
 
 验证：浏览器开内网域名登录；`uten-imp-updater status` 全绿。
+
+附件办公文档预览（装了 1b 才需要，覆盖 doc/docx/rtf/odt、xls/xlsx/ods、ppt/pptx/odp、svg 共 11 种；图片/PDF/文本/CSV/zip 由客户端自己渲染，不经服务器）：`server.env` 加 `UTEN_ATTACHMENT_PREVIEW_ENABLED=true`（可选 `UTEN_ATTACHMENT_PREVIEW_SOFFICE_PATH=/usr/bin/soffice`、`UTEN_ATTACHMENT_PREVIEW_TIMEOUT_SECONDS=60`、`UTEN_ATTACHMENT_PREVIEW_MAX_CONCURRENT=2`、`UTEN_ATTACHMENT_PREVIEW_CACHE_MAX_BYTES=1073741824`）。转换缓存与 LibreOffice 用户配置目录都落在附件根目录 `/data/uten-imp/attachments/{preview,scratch}` 下，`uten-imp.service` 的 `ReadWritePaths=/data/uten-imp/attachments` 已覆盖，无需再放开其它目录（`PrivateTmp=true` 保持）。验收：上传一个 docx 和一个 pptx，点「预览」都应弹出 PDF；`journalctl -u uten-imp | grep -i preview` 无 "soffice is not executable" 告警。没装 `libreoffice-draw` 时 svg 预览会失败并回落为下载，其余类型不受影响。
 
 ## 四、日常发版（全自动）
 

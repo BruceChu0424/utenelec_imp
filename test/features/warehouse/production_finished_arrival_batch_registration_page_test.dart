@@ -206,6 +206,63 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('批量登记备注 trim 后随批提交；统一填写库位(n) 应用到全部选中行', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _BatchArrivalApi();
+    await _openBatchPage(tester, api: api);
+
+    await tester.enterText(
+      find.byKey(const Key('production-finished-arrival-batch-remark')),
+      '  整托入库  ',
+    );
+    UtenButton fillButton() => tester.widget<UtenButton>(
+      find.byKey(const Key('production-finished-arrival-batch-place')),
+    );
+    expect(find.text('统一填写库位(0)'), findsOneWidget);
+    expect(fillButton().onPressed, isNull);
+    await tester.tap(find.text('全选'));
+    await tester.pump();
+    expect(find.text('统一填写库位(2)'), findsOneWidget);
+    fillButton().onPressed!();
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('production-finished-arrival-batch-place-input')),
+      'RACK-9',
+    );
+    await tester.tap(
+      find.byKey(const Key('production-finished-arrival-batch-place-apply')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(_placeField(_itemA)).controller?.text,
+      'RACK-9',
+    );
+    expect(
+      tester.widget<TextField>(_placeField(_itemB)).controller?.text,
+      'RACK-9',
+    );
+    expect(
+      (tester.widget<TextField>(_placeField(_itemB)).decoration!
+              as UtenInputDecoration)
+          .info,
+      '手工输入',
+    );
+
+    _pressSubmit(tester);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认登记并送检'));
+    await tester.pumpAndSettle();
+    final body = api.lastPostBody!;
+    expect(body['remark'], '整托入库');
+    final reports = (body['reports'] as List).cast<Map<String, dynamic>>();
+    for (final report in reports) {
+      final items = (report['items'] as List).cast<Map<String, dynamic>>();
+      expect(items.single['place'], 'RACK-9');
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('同一报工单的行选了不同仓会被拦下', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));

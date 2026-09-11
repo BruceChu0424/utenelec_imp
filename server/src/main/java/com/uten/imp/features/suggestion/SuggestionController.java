@@ -22,7 +22,7 @@ import java.util.UUID;
  * 建议箱接口（当前登录员工；认证由 SecurityConfig 全局 authenticated 保证）。
  *
  * <pre>
- *   GET  /api/suggestions?scope=&category=   广场（默认）/ 我的建议
+ *   GET  /api/suggestions?scope=&category=&status=  广场（默认）/ 我的建议（status=列表表头筛选）
  *   GET  /api/suggestions/{id}               详情（含回复）
  *   POST /api/suggestions                    提交建议（suggestion:submit）
  *   POST /api/suggestions/{id}/like          点赞切换
@@ -42,9 +42,10 @@ public class SuggestionController {
     public PageResponse<SuggestionDto> list(
             @RequestParam(required = false) String scope,
             @RequestParam(required = false) String category,
+            @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.list(scope, category, page, size);
+        return service.list(scope, category, status, page, size);
     }
 
     @GetMapping("/{id}")

@@ -229,6 +229,7 @@ class _WarehouseArrivalExceptionsViewState
         child: UtenButton(
           key: const Key('warehouse-arrival-exception-batch-stock-in'),
           size: UtenButtonSize.large,
+          type: UtenButtonType.danger,
           icon: Icons.fact_check_outlined,
           isLoading: _batchStocking,
           onPressed: _batchStocking || count == 0

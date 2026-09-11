@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.management.OperatingSystemMXBean;
 import com.uten.imp.config.props.StorageProperties;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -14,35 +15,81 @@ import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.sql.ResultSet;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.DoubleSupplier;
+import java.util.function.IntSupplier;
 
 import static com.uten.imp.features.admin.serverstatus.ServerStatusView.*;
 
-/** Small, read-only samples. No shell execution, filesystem scans, or privileged host commands. */
+/**
+ * Small, read-only samples. No shell execution, filesystem scans, or privileged host commands.
+ *
+ * <p>Fast lane (every 15-second sample): CPU, memory, heap, pool, disks, database ping,
+ * backup file, thread count, recent error-log count, scheduled-task registry. Slow lane
+ * (every {@value #SLOW_LANE_EVERY}th sample = 60 s): online sessions and outbox backlog;
+ * attachment volume additionally keeps a {@value #ATTACHMENTS_CACHE_MINUTES}-minute cache.
+ * Slow-lane results are reused between refreshes; a failed or timed-out probe is reported
+ * as UNKNOWN, never as zero.</p>
+ */
 @Component
 public class ServerStatusProbe {
+    static final int SLOW_LANE_EVERY = 4;
+    static final int ATTACHMENTS_CACHE_MINUTES = 5;
+    static final int ERROR_WINDOW_SAMPLES = 60;
+    static final double ERRORS_WARNING = 10, ERRORS_CRITICAL = 100;
+    static final int OUTBOX_WARNING_COUNT = 50, OUTBOX_CRITICAL_COUNT = 500;
+    static final int OUTBOX_WARNING_MINUTES = 5, OUTBOX_CRITICAL_MINUTES = 30;
+
     private final DataSource dataSource;
     private final StorageProperties storage;
     private final MeterRegistry meters;
     private final ObjectMapper mapper;
+    private final ScheduledTaskRunRegistry taskRuns;
+    private final DoubleSupplier errorEvents;
+    private final IntSupplier liveThreads;
     private final String dataPath;
     private final String backupPath;
     private final String backupStatusFile;
     private final String applicationVersion;
+    private final int threadsWarning;
+    private final int threadsCritical;
+    private final RecentCounterWindow errorWindow = new RecentCounterWindow(ERROR_WINDOW_SAMPLES);
+    private long sampleCount;
+    private Metric cachedSessions;
+    private Metric cachedOutbox;
+    private Metric cachedAttachments;
+    private Instant attachmentsSampledAt;
 
+    @Autowired
     public ServerStatusProbe(DataSource dataSource, StorageProperties storage, MeterRegistry meters,
-            ObjectMapper mapper, @Value("${uten.server-status.data-path:/data}") String dataPath,
+            ObjectMapper mapper, ScheduledTaskRunRegistry taskRuns,
+            @Value("${uten.server-status.data-path:/data}") String dataPath,
             @Value("${uten.server-status.backup-path:}") String backupPath,
             @Value("${uten.server-status.backup-status-file:}") String backupStatusFile,
-            @Value("${uten.server-status.application-version:未提供版本标识}") String applicationVersion) {
+            @Value("${uten.server-status.application-version:未提供版本标识}") String applicationVersion,
+            @Value("${uten.server-status.threads-warning:400}") int threadsWarning,
+            @Value("${uten.server-status.threads-critical:800}") int threadsCritical) {
+        this(dataSource, storage, meters, mapper, taskRuns, new ErrorLogEventCounter(meters),
+                () -> ManagementFactory.getThreadMXBean().getThreadCount(),
+                dataPath, backupPath, backupStatusFile, applicationVersion, threadsWarning, threadsCritical);
+    }
+
+    ServerStatusProbe(DataSource dataSource, StorageProperties storage, MeterRegistry meters,
+            ObjectMapper mapper, ScheduledTaskRunRegistry taskRuns, DoubleSupplier errorEvents,
+            IntSupplier liveThreads, String dataPath, String backupPath, String backupStatusFile,
+            String applicationVersion, int threadsWarning, int threadsCritical) {
         this.dataSource=dataSource; this.storage=storage; this.meters=meters; this.mapper=mapper;
+        this.taskRuns=taskRuns; this.errorEvents=errorEvents; this.liveThreads=liveThreads;
         this.dataPath=dataPath; this.backupPath=backupPath; this.backupStatusFile=backupStatusFile;
         this.applicationVersion=applicationVersion;
+        this.threadsWarning=threadsWarning; this.threadsCritical=threadsCritical;
     }
 
     ServerStatusView sample(Instant now) {
@@ -86,6 +133,8 @@ public class ServerStatusProbe {
         List<Disk> disks=disks();
         Database database=database();
         Backup backup=backup(now);
+        List<Metric> extras=extras(now);
+        List<Job> jobs=jobs(now);
         List<Alert> alerts=new ArrayList<>();
         for (Metric metric:metrics) if (!"NORMAL".equals(metric.status()))
             alerts.add(new Alert(metric.key(),metric.status(),metric.label()+statusText(metric.status()),metric.detail()));
@@ -96,11 +145,16 @@ public class ServerStatusProbe {
                 "数据库"+statusText(database.status()),database.detail()));
         if (!"NORMAL".equals(backup.status())) alerts.add(new Alert("backup",backup.status(),
                 "备份"+statusText(backup.status()),backup.detail()));
+        for (Metric metric:extras) if (!"NORMAL".equals(metric.status()))
+            alerts.add(new Alert(metric.key(),metric.status(),metric.label()+statusText(metric.status()),metric.detail()));
+        // A task that has simply not run yet (daily cron after a restart) is grey, not an alert.
+        for (Job job:jobs) if ("WARNING".equals(job.status())||"CRITICAL".equals(job.status()))
+            alerts.add(new Alert("job:"+job.key(),job.status(),"定时任务 "+job.label()+statusText(job.status()),job.detail()));
         String overall=alerts.stream().map(Alert::status).reduce("NORMAL",ServerStatusProbe::moreSevere);
         return new ServerStatusView(now,15,overall,
                 os.getName()+" · "+os.getAvailableProcessors()+" 个逻辑处理器",applicationVersion,
                 ManagementFactory.getRuntimeMXBean().getUptime()/1000,List.copyOf(metrics),disks,
-                database,backup,List.copyOf(alerts));
+                database,backup,List.copyOf(alerts),extras,jobs);
     }
 
     static Double percent(double used,double total) {
@@ -120,6 +174,9 @@ public class ServerStatusProbe {
     }
     private static Metric metric(String key,String label,Double value,double warning,double critical,String detail) {
         return new Metric(key,label,value,"PERCENT",warning,critical,severity(value,warning,critical),detail,null,null,null);
+    }
+    private static Metric count(String key,String label,Double value,Double warning,Double critical,String status,String detail) {
+        return new Metric(key,label,value,"COUNT",warning,critical,status,detail,null,null,null);
     }
     static Double linuxMemoryPercent(String meminfo) {
         Long[] amounts=linuxMemory(meminfo);
@@ -183,6 +240,161 @@ public class ServerStatusProbe {
         }catch(Exception unavailable) {
             return new Database("CRITICAL",null,null,null,"数据库探测失败；请检查数据库服务、连接额度与网络。");
         }
+    }
+
+    /** Fast-lane counters plus the cached slow-lane ones; order is the display order. */
+    List<Metric> extras(Instant now) {
+        boolean slowLane=sampleCount++%SLOW_LANE_EVERY==0;
+        if(slowLane) {
+            cachedSessions=sessions();
+            cachedOutbox=outbox(now);
+            if(attachmentsSampledAt==null||Duration.between(attachmentsSampledAt,now).toMinutes()>=ATTACHMENTS_CACHE_MINUTES) {
+                cachedAttachments=attachments();
+                attachmentsSampledAt=now;
+            }
+        }
+        List<Metric> extras=new ArrayList<>();
+        extras.add(threads());
+        extras.add(recentErrors());
+        extras.add(cachedSessions==null?pending("sessions","在线会话"):cachedSessions);
+        extras.add(cachedOutbox==null?pending("outbox","待处理事件积压"):cachedOutbox);
+        extras.add(cachedAttachments==null?pending("attachments","附件占用"):cachedAttachments);
+        return List.copyOf(extras);
+    }
+
+    private static Metric pending(String key,String label) {
+        return count(key,label,null,null,null,"UNKNOWN","尚未完成首次统计。");
+    }
+
+    Metric threads() {
+        Double live;
+        try { int value=liveThreads.getAsInt(); live=value<0?null:(double)value; }
+        catch(RuntimeException unavailable) { live=null; }
+        return count("threads","平台线程数",live,(double)threadsWarning,(double)threadsCritical,
+                severity(live,threadsWarning,threadsCritical),
+                "平台 Java 进程当前线程数；持续增长通常意味着连接或后台任务没有释放。");
+    }
+
+    Metric recentErrors() {
+        double total;
+        try { total=errorEvents.getAsDouble(); } catch(RuntimeException unavailable) { total=Double.NaN; }
+        Double recent=errorWindow.record(total);
+        if(recent==null) return count("errors","最近错误日志",null,ERRORS_WARNING,ERRORS_CRITICAL,"UNKNOWN",
+                "暂时读不到错误日志计数，不能据此判断应用无错误。");
+        String detail="最近 15 分钟（按 60 次采样滚动）新增的错误日志条数；自本次启动以来累计 "
+                +(long)total+" 条，重启后重新计数。";
+        return count("errors","最近错误日志",recent,ERRORS_WARNING,ERRORS_CRITICAL,
+                severity(recent,ERRORS_WARNING,ERRORS_CRITICAL),detail);
+    }
+
+    Metric sessions() {
+        try(var connection=dataSource.getConnection();
+            var statement=connection.prepareStatement(
+                "SELECT (SELECT count(DISTINCT session_id) FROM refresh_tokens WHERE revoked_at IS NULL AND expires_at>now()),"
+                +"(SELECT count(DISTINCT session_id) FROM visitor_refresh_tokens WHERE revoked_at IS NULL AND expires_at>now())")) {
+            statement.setQueryTimeout(2);
+            try(ResultSet result=statement.executeQuery()) {
+                if(!result.next())throw new IllegalStateException();
+                long employees=result.getLong(1),visitors=result.getLong(2);
+                return count("sessions","在线会话",(double)(employees+visitors),null,null,"NORMAL",
+                        "员工 "+employees+" · 访客 "+visitors+"；按未撤销且未过期的登录会话统计，每 60 秒更新。");
+            }
+        }catch(Exception unavailable) {
+            return count("sessions","在线会话",null,null,null,"UNKNOWN","会话统计暂时不可用，不能按无人在线处理。");
+        }
+    }
+
+    Metric outbox(Instant now) {
+        try(var connection=dataSource.getConnection();
+            var statement=connection.prepareStatement(
+                "SELECT (SELECT count(*) FROM business_outbox WHERE status=0),"
+                +"(SELECT min(available_at) FROM business_outbox WHERE status=0),"
+                +"(SELECT count(*) FROM attachment_object_outbox WHERE status IN ('PENDING','FAILED')),"
+                +"(SELECT min(available_at) FROM attachment_object_outbox WHERE status IN ('PENDING','FAILED'))")) {
+            statement.setQueryTimeout(2);
+            try(ResultSet result=statement.executeQuery()) {
+                if(!result.next())throw new IllegalStateException();
+                long business=result.getLong(1),attachments=result.getLong(3);
+                Instant oldest=earliest(result.getObject(2,OffsetDateTime.class),result.getObject(4,OffsetDateTime.class));
+                long backlog=business+attachments;
+                long oldestMinutes=oldest==null?0:Math.max(0,Duration.between(oldest,now).toMinutes());
+                return outboxMetric(backlog,business,attachments,oldestMinutes);
+            }
+        }catch(Exception unavailable) {
+            return count("outbox","待处理事件积压",null,(double)OUTBOX_WARNING_COUNT,(double)OUTBOX_CRITICAL_COUNT,"UNKNOWN",
+                    "积压统计暂时不可用，不能按无积压处理。");
+        }
+    }
+
+    static Metric outboxMetric(long backlog,long business,long attachments,long oldestMinutes) {
+        String status=backlog>OUTBOX_CRITICAL_COUNT||oldestMinutes>OUTBOX_CRITICAL_MINUTES?"CRITICAL"
+                :backlog>OUTBOX_WARNING_COUNT||oldestMinutes>OUTBOX_WARNING_MINUTES?"WARNING":"NORMAL";
+        String detail="业务通知 "+business+" · 附件清理 "+attachments+"；最早一条已等待 "+oldestMinutes
+                +" 分钟。超过 50 条或等待超过 5 分钟提醒，超过 500 条或 30 分钟告警；每 60 秒更新。";
+        return count("outbox","待处理事件积压",(double)backlog,(double)OUTBOX_WARNING_COUNT,(double)OUTBOX_CRITICAL_COUNT,status,detail);
+    }
+
+    private static Instant earliest(OffsetDateTime left,OffsetDateTime right) {
+        Instant a=left==null?null:left.toInstant(),b=right==null?null:right.toInstant();
+        if(a==null)return b; if(b==null)return a; return a.isBefore(b)?a:b;
+    }
+
+    Metric attachments() {
+        try(var connection=dataSource.getConnection();
+            var statement=connection.prepareStatement(
+                "SELECT count(*), COALESCE(SUM(COALESCE(stored_size_bytes,size_bytes)),0) FROM attachments")) {
+            statement.setQueryTimeout(2);
+            try(ResultSet result=statement.executeQuery()) {
+                if(!result.next())throw new IllegalStateException();
+                long files=result.getLong(1),bytes=result.getLong(2);
+                return new Metric("attachments","附件占用",(double)bytes,"BYTES",null,null,"NORMAL",
+                        "共 "+files+" 个附件，按实际存储大小汇总；每 5 分钟统计一次。",null,bytes,null);
+            }
+        }catch(Exception unavailable) {
+            return new Metric("attachments","附件占用",null,"BYTES",null,null,"UNKNOWN",
+                    "附件统计超时或不可用，不能按零占用处理。",null,null,null);
+        }
+    }
+
+    List<Job> jobs(Instant now) {
+        List<Job> result=new ArrayList<>();
+        for (var run:taskRuns.snapshot()) result.add(job(run,now));
+        return List.copyOf(result);
+    }
+
+    static Job job(ScheduledTaskRunRegistry.Run run,Instant now) {
+        Long period=run.period()==null?null:run.period().getSeconds();
+        String cadence=period==null?"按日程触发":"每 "+humanDuration(run.period());
+        if(run.lastStart()==null) return new Job(run.name(),run.name(),null,null,null,period,null,"UNKNOWN",
+                "启动后尚未执行；"+cadence+"。");
+        if(run.running()) {
+            long runningSeconds=Math.max(0,Duration.between(run.lastStart(),now).getSeconds());
+            long limit=Math.max(600,period==null?600:period*2);
+            String status=runningSeconds>limit?"WARNING":"NORMAL";
+            return new Job(run.name(),run.name(),run.lastStart(),run.lastEnd(),null,period,null,status,
+                    (status.equals("WARNING")?"本次执行已超过 ":"正在执行，已用 ")+humanDuration(Duration.ofSeconds(runningSeconds))+"；"+cadence+"。");
+        }
+        String took=run.lastDurationMs()==null?"":"，耗时 "+humanDuration(Duration.ofMillis(run.lastDurationMs()));
+        if(run.lastErrorType()!=null) {
+            String status=run.consecutiveFailures()>=3?"CRITICAL":"WARNING";
+            return new Job(run.name(),run.name(),run.lastStart(),run.lastEnd(),run.lastDurationMs(),period,run.lastErrorType(),status,
+                    "最近连续 "+run.consecutiveFailures()+" 次执行失败（"+run.lastErrorType()+"）"+took+"；"+cadence+"。");
+        }
+        if(period!=null&&Duration.between(run.lastEnd(),now).getSeconds()>period*2) {
+            return new Job(run.name(),run.name(),run.lastStart(),run.lastEnd(),run.lastDurationMs(),period,null,"WARNING",
+                    "已超过 2 个周期未执行，上次结束于 "+humanDuration(Duration.between(run.lastEnd(),now))+" 前；"+cadence+"。");
+        }
+        return new Job(run.name(),run.name(),run.lastStart(),run.lastEnd(),run.lastDurationMs(),period,null,"NORMAL",
+                "上次执行正常"+took+"；"+cadence+"。");
+    }
+
+    static String humanDuration(Duration duration) {
+        long seconds=Math.max(0,duration.getSeconds());
+        if(seconds<1) return Math.max(0,duration.toMillis())+" 毫秒";
+        if(seconds<60) return seconds+" 秒";
+        if(seconds<3600) return (seconds/60)+" 分钟";
+        if(seconds<86400) return (seconds/3600)+" 小时";
+        return (seconds/86400)+" 天";
     }
 
     private Backup backup(Instant now) {

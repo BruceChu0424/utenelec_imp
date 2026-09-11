@@ -28,3 +28,24 @@ String? employeePermissionRedirect(AppUser? user, String location) {
   }
   return null;
 }
+
+/// 页内入口显隐（详情页「返回列表」等）：给定权限快照能否进入 [location]。
+///
+/// 与 [employeePermissionRedirect] 同源：any/all 双契约都要满足；无守卫映射的
+/// 路由（登录即可）放行；已知前缀但无授权码的单据段（`const []`）fail-closed。
+/// 详情页可由任务中心/财务审批/车间任务等无列表权限的入口 push 进来，
+/// 「返回列表」若不按此门控会把用户带到 /access-denied（2026-09-10 审计）。
+bool locationAllowedFor(
+  Set<String> permissions,
+  bool superAdmin,
+  String location,
+) {
+  if (superAdmin) return true;
+  final requiredAny = requiredAnyPermFor(location);
+  if (requiredAny != null) {
+    if (requiredAny.isEmpty) return false;
+    if (!requiredAny.any(permissions.contains)) return false;
+  }
+  final requiredAll = requiredAllPermsFor(location);
+  return requiredAll.every(permissions.contains);
+}

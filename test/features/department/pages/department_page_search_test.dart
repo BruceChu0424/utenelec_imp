@@ -187,6 +187,8 @@ class _RecordingEmployeeRepository implements EmployeeRepository {
     Set<String>? statuses,
     String? departmentId,
     bool includeSubtree = false,
+    String? sort,
+    String? order,
   }) async {
     calls.add(_EmployeeCall(search, statuses, departmentId));
     final items = search == 'E-100'
@@ -243,6 +245,8 @@ class _DeferredEmployeeRepository implements EmployeeRepository {
     Set<String>? statuses,
     String? departmentId,
     bool includeSubtree = false,
+    String? sort,
+    String? order,
   }) {
     if (search == 'OLD' && departmentId == null) {
       oldRequested = true;

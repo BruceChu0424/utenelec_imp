@@ -107,7 +107,10 @@ final List<RouteBase> productionRoutes = [
   GoRoute(
     path: RouteName.productionPlanList,
     name: 'production-plan-list',
-    builder: (_, _) => const ProductionPlanListPage(),
+    // ?status=draft：新建页「草稿(N)」按钮深链，直接落在草稿段。
+    builder: (_, state) => ProductionPlanListPage(
+      initialStatus: state.uri.queryParameters['status'],
+    ),
   ),
   GoRoute(
     path: '/production/daily-reports/new',
@@ -141,7 +144,9 @@ final List<RouteBase> productionRoutes = [
   GoRoute(
     path: RouteName.productionDailyReportList,
     name: 'production-daily-report-list',
-    builder: (_, _) => const ProductionDailyReportListPage(),
+    builder: (_, state) => ProductionDailyReportListPage(
+      initialStatus: state.uri.queryParameters['status'],
+    ),
   ),
   GoRoute(
     path: RoutePath.productionReport('plan-detail'),

@@ -24,8 +24,14 @@ class ProductionFqcInspectionControllerContractTest {
 
         Method list = ProductionFqcInspectionController.class
                 .getDeclaredMethod(
-                        "list", String.class, String.class,
+                        "list", String.class, String.class, String.class,
                         int.class, int.class);
+        Method sheets = ProductionFqcInspectionController.class
+                .getDeclaredMethod(
+                        "sheets", String.class, String.class,
+                        int.class, int.class);
+        Method sheet = ProductionFqcInspectionController.class
+                .getDeclaredMethod("sheet", UUID.class);
         Method capability = ProductionFqcInspectionController.class
                 .getDeclaredMethod("capability");
         Method detail = ProductionFqcInspectionController.class
@@ -36,6 +42,14 @@ class ProductionFqcInspectionControllerContractTest {
                 .getDeclaredMethod("passAll", PassAllBatchRequest.class);
 
         assertThat(list.getAnnotation(GetMapping.class)).isNotNull();
+        assertThat(sheets.getAnnotation(GetMapping.class).value())
+                .containsExactly("/sheets");
+        assertThat(sheet.getAnnotation(GetMapping.class).value())
+                .containsExactly("/sheets/{sheetId}");
+        assertThat(sheets.getAnnotation(PreAuthorize.class).value())
+                .isEqualTo("hasAuthority('production_quality_inspection:view')");
+        assertThat(sheet.getAnnotation(PreAuthorize.class).value())
+                .isEqualTo("hasAuthority('production_quality_inspection:view')");
         assertThat(detail.getAnnotation(GetMapping.class)).isNotNull();
         assertThat(capability.getAnnotation(GetMapping.class).value())
                 .containsExactly("/capability");

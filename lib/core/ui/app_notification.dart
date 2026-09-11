@@ -491,6 +491,10 @@ class _AppNotificationBanner extends ConsumerStatefulWidget {
 class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final AnimationController _ctrl;
+
+  /// 悬停暂停的硬上限：再久也要收（见 [_scheduleAutoDismiss]）。
+  static const int _hoverHoldCapMs = 8000;
+
   Timer? _autoDismissTimer;
   bool _dismissing = false;
   bool _actionTriggered = false;
@@ -556,9 +560,19 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
     _autoDismissTimer?.cancel();
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     if (!widget.autoDismissEnabled ||
-        _hovering ||
         _dismissing ||
         (lifecycle != null && lifecycle != AppLifecycleState.resumed)) {
+      return;
+    }
+    if (_hovering) {
+      // 悬停暂停必须有上限：横幅就出现在顶部中央，桌面端指针正好停在那一带
+      // 又不再移动时，永远收不到 onExit，无上限的暂停 = 横幅一直挂着
+      //（2026-09-11 用户反馈「待办审批的顶部通知半天不消失」）。
+      // 上限内指针一动（onExit）仍按剩余时间正常收，阅读体验不受影响。
+      _autoDismissTimer = Timer(
+        const Duration(milliseconds: _hoverHoldCapMs),
+        _dismiss,
+      );
       return;
     }
     final n = widget.notification;

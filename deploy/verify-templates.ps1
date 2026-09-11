@@ -211,7 +211,11 @@ if ($internalAttachmentLocations.Count -ne 2) {
 if (([regex]::Matches($text.WebsiteInquiryController, '@(?:Get|Post|Put|Patch|Delete)Mapping')).Count -ne 6) {
     throw 'Forbidden deployment contract: website inquiry Controller route inventory changed without gateway review'
 }
-if (([regex]::Matches($text.AttachmentController, '@(?:Get|Post|Put|Patch|Delete)Mapping')).Count -ne 9) {
+# 9 -> 11（2026-09-11）：GET /{id}/preview 与 PUT /{id}/category。已按本闸门的用意
+# 复核网关策略——两条都落在通用 location /api/（不限方法、同一限流区），
+# 不需要像 presign/confirm（内网部署一律 404）或 raw（只放行 GET/HEAD）那样单开 location；
+# 因此上面「恰好两个已评审的 attachment location」的计数保持 2 不变。
+if (([regex]::Matches($text.AttachmentController, '@(?:Get|Post|Put|Patch|Delete)Mapping')).Count -ne 11) {
     throw 'Forbidden deployment contract: attachment Controller route inventory changed without gateway review'
 }
 Assert-Contains $text.InternalTestGuide '<!-- INTERNAL-TEST-SINGLE-NVME-NOT-PRODUCTION -->' 'internal-test production boundary'

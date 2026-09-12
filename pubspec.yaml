@@ -35,7 +35,7 @@ dependencies:
   flutter_secure_storage: ^9.2.2
 
   # 设备检测（性能分级用）
-  device_info_plus: ^11.2.0
+  device_info_plus: ^12.4.0
 
   # 网络
   dio: ^5.7.0

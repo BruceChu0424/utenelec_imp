@@ -508,6 +508,9 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.monitor_heart_outlined,
         label: '',
         location: RouteName.adminServerStatus,
+        // 2026-09-11：告警此前只活在状态页内部，不点开就无人知晓。
+        // 角标 = 当前 warning/critical 的指标条数（磁盘/内存/数据库/备份/定时任务）。
+        badge: WorkbenchBadgeKind.serverStatus,
       ),
       _ModuleItem(
         icon: Icons.admin_panel_settings_outlined,

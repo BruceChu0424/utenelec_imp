@@ -43,6 +43,7 @@ import '../../features/hr_task/providers/hr_task_count_provider.dart';
 import '../../features/procurement_iqc_rejection/repositories/procurement_iqc_rejection_repository.dart';
 import '../../features/production/providers/production_pending_provider.dart';
 import '../../features/production/providers/production_workshop_task_count_provider.dart';
+import '../../features/admin/providers/server_status_alert_count_provider.dart';
 import '../../features/purchase/providers/purchase_task_count_provider.dart';
 import '../../features/rd_task/providers/rd_task_count_provider.dart';
 import '../../features/sales/providers/sales_completion_count_provider.dart';
@@ -90,6 +91,9 @@ enum TodoModule {
 
   /// 销售管理 hub。
   sales,
+
+  /// 系统管理（服务器状态告警）。
+  system,
 }
 
 /// 一个「待办入口」——用户能点进去干活的一个页面/分段集合。
@@ -200,7 +204,12 @@ enum TodoEntry {
   warehouseDrafts(TodoModule.warehouse),
 
   /// 生产模块草稿（生产计划 / 生产日报）。
-  productionDrafts(TodoModule.production);
+  productionDrafts(TodoModule.production),
+
+  // —— 系统管理 ——
+  /// 服务器状态告警（磁盘/内存/数据库/备份越过警告或危急阈值的条数）。
+  /// 2026-09-11 补：此前这些告警只活在状态页里，不点开就无人知晓。
+  serverStatusAlert(TodoModule.system);
 
   const TodoEntry(this.module);
 
@@ -327,6 +336,8 @@ int todoEntryCount(TodoEntry entry, TodoWatch watch) => switch (entry) {
     DraftDocKind.productionPlan,
     DraftDocKind.productionDailyReport,
   ]),
+  // 计数源自身已做权限自卫（无 server_status:view 固定 0 且不发请求）。
+  TodoEntry.serverStatusAlert => _async(watch, serverStatusAlertCountProvider),
 };
 
 /// 草稿切片求和；加载中/失败按 0（与其它入口同款降级）。
@@ -402,6 +413,7 @@ void invalidateTodoBadgeCaches(WidgetRef ref) {
   ref.invalidate(productionFqcPendingCountProvider);
   ref.invalidate(salesCompletionCountProvider);
   ref.invalidate(salesAttentionCountProvider);
+  ref.invalidate(serverStatusAlertCountProvider);
 }
 
 /// 异步计数取值：**刷新期间保留上一次的数**，只有从没成功过才按 0。

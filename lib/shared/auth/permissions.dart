@@ -25,6 +25,10 @@ abstract final class Perm {
   /// Read-only server health and capacity overview.
   static const serverStatusView = 'server_status:view';
 
+  /// 接收服务器状态告警（V552）：磁盘/内存/数据库/备份越线时收站内通知。
+  /// 与 [serverStatusView] 分开授——「能看」和「该被吵醒」不是一回事。
+  static const serverStatusAlertReceive = 'server_status:alert:receive';
+
   /// 查看审计中心及核查本机操作回执。
   static const auditLogView = 'audit_log:view';
 

@@ -236,8 +236,16 @@ prune_old() {
   active=$(current_version)
   dirs=$(ls -1d "$RELEASES_DIR"/v*/ 2>/dev/null | sed 's:.*/::;s:/$::' | sort -V) || true
   [ -n "$dirs" ] || return 0
-  # sort -V 升序，保留最新 $keep 个，其余删除（active 永远在最新之列）
+  # sort -V 升序，保留最新 $keep 个，其余删除。
+  # 「active 永远在最新之列」只在版本号方案单一时成立——一旦混用两种方案
+  #（如日期号 v2026.09.09-1 与语义化号 v1.0.0），sort -V 会把语义化号排在前面，
+  # 正在跑的那一版就可能被当成旧版删掉，服务器当场失去 current 指向的目录。
+  # 所以这里加一条硬保护：**永不删除 active**。与版本号方案无关，属独立健壮性底线。
   echo "$dirs" | head -n -"$keep" | while read -r old; do
+    if [ "$old" = "$active" ]; then
+      log "跳过清理：$old 正在使用中"
+      continue
+    fi
     rm -rf "$RELEASES_DIR/$old"
     log "清理旧版本：$old"
   done

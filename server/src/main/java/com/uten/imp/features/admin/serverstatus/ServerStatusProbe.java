@@ -202,7 +202,25 @@ public class ServerStatusProbe {
         if(attachment!=null&&!attachment.isBlank())paths.merge(attachment,"附件存储",(a,b)->a+" / "+b);
         if(dataPath!=null&&!dataPath.isBlank())paths.merge(dataPath,"数据库与业务数据",(a,b)->a+" / "+b);
         if(backupPath!=null&&!backupPath.isBlank())paths.merge(backupPath,"本地备份",(a,b)->a+" / "+b);
-        Map<String,Disk> byStore=new LinkedHashMap<>();
+        // 2026-09-11 用户要求「把盘分别展示」：此前同一文件系统的多个用途会被合并成
+        // 一行（/data 既放数据库又放备份，只显示一条「数据库与业务数据 / 本地备份」），
+        // 看不出各自是什么。现在**一个用途一行**；两行落在同一个文件系统时，在说明里
+        // 互相点名并标出挂载设备，免得有人把同一份剩余空间当成两份来花。
+        Map<String,List<String>> storeUsage=new LinkedHashMap<>();
+        Map<String,String> storeIdentity=new LinkedHashMap<>();
+        for(var path:paths.entrySet()) {
+            try {
+                var directory=Path.of(path.getKey());
+                if(!directory.isAbsolute()||!Files.isDirectory(directory))continue;
+                var store=Files.getFileStore(directory);
+                String identity=store.name()+"|"+store.type()+"|"+store.getTotalSpace();
+                storeIdentity.put(path.getKey(),identity);
+                storeUsage.computeIfAbsent(identity,ignored->new ArrayList<>()).add(path.getValue());
+            }catch(Exception ignored) {
+                // 读不到的目录下面会走 UNKNOWN 分支，这里不预登记。
+            }
+        }
+        List<Disk> result=new ArrayList<>();
         int index=0;
         for(var path:paths.entrySet()) {
             String key="disk-"+(index++);
@@ -212,17 +230,24 @@ public class ServerStatusProbe {
                 var store=Files.getFileStore(directory);
                 long total=store.getTotalSpace(),free=store.getUsableSpace(),used=total-free;
                 Double value=percent(used,total);
-                String identity=store.name()+"|"+store.type()+"|"+total;
-                Disk previous=byStore.get(identity);
-                String label=previous==null?path.getValue():previous.label()+" / "+path.getValue();
-                byStore.put(identity,new Disk(previous==null?key:previous.key(),label,total,used,free,value,80,90,
-                        severity(value,80,90),"按当前服务可用空间统计，同一文件系统合并显示；磁盘空间不等于内存。"));
+                List<String> shared=storeUsage.getOrDefault(storeIdentity.get(path.getKey()),List.of());
+                StringBuilder detail=new StringBuilder("路径 ").append(path.getKey())
+                        .append("，设备 ").append(store.name())
+                        .append("。按当前服务可用空间统计；磁盘空间不等于内存。");
+                if(shared.size()>1) {
+                    detail.append("注意：与「")
+                            .append(String.join("、",shared.stream()
+                                    .filter(other->!other.equals(path.getValue())).toList()))
+                            .append("」同在这一个文件系统上，剩余空间是共用的，不能重复计算。");
+                }
+                result.add(new Disk(key,path.getValue(),total,used,free,value,80,90,
+                        severity(value,80,90),detail.toString()));
             }catch(Exception unavailable) {
-                byStore.put(key,new Disk(key,path.getValue(),null,null,null,null,80,90,"UNKNOWN",
-                        "目录尚未配置、未挂载或当前服务无法读取，不能按零占用处理。"));
+                result.add(new Disk(key,path.getValue(),null,null,null,null,80,90,"UNKNOWN",
+                        "目录（"+path.getKey()+"）尚未配置、未挂载或当前服务无法读取，不能按零占用处理。"));
             }
         }
-        return List.copyOf(byStore.values());
+        return List.copyOf(result);
     }
 
     private Database database() {

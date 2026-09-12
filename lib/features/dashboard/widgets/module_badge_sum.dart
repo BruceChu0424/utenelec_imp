@@ -20,6 +20,7 @@ enum WorkbenchBadgeKind {
   subcontract, // 委外管理（待退回供应商）
   sales, // 销售管理（财务驳回待修正 + 订单完工提醒）
   qualityInspection, // 品质任务中心（IQC 待检收货单 + FQC 待检行）
+  serverStatus, // 服务器状态（磁盘/内存/数据库/备份越过警告或危急阈值的条数）
   none, // 暂无角标数据源（预留：以后接入时新增枚举值）
 }
 
@@ -137,6 +138,9 @@ int _resolveCount(
       return todoModuleCount(TodoModule.subcontract, watch);
     case WorkbenchBadgeKind.qualityInspection:
       return todoModuleCount(TodoModule.quality, watch);
+    // 系统管理「服务器状态」卡：当前告警条数（磁盘/内存/数据库/备份越线）。
+    case WorkbenchBadgeKind.serverStatus:
+      return todoEntryCount(TodoEntry.serverStatusAlert, watch);
     case WorkbenchBadgeKind.none:
       return 0;
   }

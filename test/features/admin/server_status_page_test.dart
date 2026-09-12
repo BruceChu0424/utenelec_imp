@@ -253,7 +253,10 @@ void main() {
         RouteName.adminServerStatus,
       );
       expect(find.byType(ServerStatusPage), findsOneWidget);
-      expect(repository.calls, 1);
+      // 2 次 = 页面自己拉一次 + 工作台那张卡的告警徽章拉一次（2026-09-11 新增）。
+      // 两者共用同一个只读端点，服务端有 15s 采样缓存，多这一次是 HTTP 往返而已；
+      // 数字钉死在 2，多出第三次（比如谁又加了一个轮询源）会立刻被这里拦下。
+      expect(repository.calls, 2);
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );

@@ -330,6 +330,62 @@ class BusinessDataResetSqlContractTest {
                 .contains("drainGate.endReset()");
     }
 
+    /**
+     * <b>迁移头一动，清库脚本的 fail-closed 白名单就必须跟着动。</b>
+     *
+     * <p>这条耦合被踩过不止一次（2026-09-11 加 V552 时 CI 后端整条挂掉：
+     * {@code 仅允许 ...及V511至V551完整目录，当前 V552/510}）。上面那串
+     * {@code .contains("(NNN, MMM)")} 断言只能证明「写了什么」，证明不了
+     * 「有没有漏写最新那条」——所以这里**从迁移目录算出真实的迁移头**再比对，
+     * 漏了就当场报出该补哪一行，不用等跑到真实库才发现。
+     *
+     * <p>注意版本对是 (Flyway 版本号, 已应用迁移条数)，两者因跳号（如 V544 未发布）
+     * 并不相等；条数只能由目录里实际存在的 .sql 个数数出来。
+     */
+    @Test
+    void resetScriptAllowlistCoversTheCurrentMigrationHead() throws IOException {
+        Path migrations = resolve(
+                Path.of("src", "main", "resources", "db", "migration"),
+                Path.of("server", "src", "main", "resources", "db", "migration"));
+        int head = 0;
+        int count = 0;
+        try (var files = Files.list(migrations)) {
+            for (Path file : files.toList()) {
+                Matcher matcher = MIGRATION_FILE.matcher(file.getFileName().toString());
+                if (!matcher.matches()) continue;
+                count++;
+                head = Math.max(head, Integer.parseInt(matcher.group(1)));
+            }
+        }
+        assertThat(head).as("迁移目录里没找到任何 V*.sql").isGreaterThan(0);
+
+        String expected = "(" + head + ", " + count + ")";
+        assertThat(opsScript)
+                .as("""
+                        ops/reset_business_data.sql 的迁移头白名单没有覆盖当前迁移头。
+                        请在版本对列表末尾补上 %s，并把异常文案里的上界改成 V%d。
+                        （新增迁移就必须同步这张表，否则整个清库脚本 fail-closed 拒跑。）"""
+                        .formatted(expected, head))
+                .contains(expected);
+        assertThat(opsScript)
+                .as("异常文案里的上界也要同步到 V%d".formatted(head))
+                .contains("及V511至V" + head + "完整目录");
+
+        // 同一条耦合的第三处：迁移演练 / 引导兼容性用例把迁移头钉成两个常量。
+        // 2026-09-11 就是漏了它，CI 后端又挂一轮（expected 509 but was 510）。
+        String rehearsal = read(
+                Path.of("src", "test", "java", "com", "uten", "imp", "migration",
+                        "MigrationRehearsalSupport.java"),
+                Path.of("server", "src", "test", "java", "com", "uten", "imp", "migration",
+                        "MigrationRehearsalSupport.java"));
+        assertThat(rehearsal)
+                .as("MigrationRehearsalSupport 的迁移头常量没跟上："
+                        + "请改成 CURRENT_HEAD_VERSION = \"%d\"; CURRENT_MIGRATION_COUNT = %d;"
+                                .formatted(head, count))
+                .contains("CURRENT_HEAD_VERSION = \"" + head + "\"")
+                .contains("CURRENT_MIGRATION_COUNT = " + count);
+    }
+
     private static Path resolve(Path direct, Path fallback) {
         return Files.exists(direct) ? direct : fallback;
     }
@@ -337,6 +393,10 @@ class BusinessDataResetSqlContractTest {
     private static String read(Path direct, Path fallback) throws IOException {
         return Files.readString(resolve(direct, fallback), StandardCharsets.UTF_8);
     }
+
+    /** {@code V552__xxx.sql} → 捕获版本号；R__/U__ 等非版本迁移不计。 */
+    private static final Pattern MIGRATION_FILE =
+            Pattern.compile("^V([0-9]+)__.*\\.sql$");
 
     static Map<String, String> policy(String sql) {
         Map<String, String> result = new LinkedHashMap<>();

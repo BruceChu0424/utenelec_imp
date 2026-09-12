@@ -23,6 +23,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/server_status.dart';
+import '../providers/server_status_snapshot_cache.dart';
 import '../repositories/server_status_repository.dart';
 
 class ServerStatusPage extends ConsumerStatefulWidget {
@@ -65,6 +66,12 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
     WidgetsBinding.instance.addObserver(this);
     final state = WidgetsBinding.instance.lifecycleState;
     _foreground = state == null || state == AppLifecycleState.resumed;
+    // 第一帧就用共享缓存把总览画出来，不等自己那趟请求回来（用户反馈「运行总览
+    // 要等好一会才出现」就是在等这趟往返）。过期的缓存不用——宁可显示占位，
+    // 也不摆一个下一帧就被标成「已过期」的旧读数。详见
+    // providers/server_status_snapshot_cache.dart。
+    final cached = ref.read(serverStatusSnapshotCacheProvider);
+    if (cached != null && !cached.isStale(clock.now())) _snapshot = cached;
   }
 
   @override
@@ -102,6 +109,8 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
     try {
       final next = await ref.read(serverStatusRepositoryProvider).load();
       if (!mounted || generation != _generation || !_hasPermission) return;
+      // 回写共享缓存：下次进页面（以及工作台徽章）直接用，不必再等一趟。
+      ref.read(serverStatusSnapshotCacheProvider.notifier).state = next;
       setState(() {
         _snapshot = next;
         _failed = false;

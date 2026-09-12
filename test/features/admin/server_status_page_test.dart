@@ -22,6 +22,7 @@ import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/features/admin/models/server_status.dart';
 import 'package:uten_imp/features/admin/pages/server_status_page.dart';
+import 'package:uten_imp/features/admin/providers/server_status_snapshot_cache.dart';
 import 'package:uten_imp/features/admin/repositories/server_status_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/dashboard/providers/workbench_layout_provider.dart';
@@ -455,14 +456,76 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     });
   });
+
+  // 2026-09-12 用户反馈：「运行总览的动画要等好一会才出现」。根因是快照只存在页面
+  // State 里，每次进页面都从 null 起步，总览环必须等一整趟请求回来才有读数。
+  // 现在页面与工作台徽章共用 serverStatusSnapshotCacheProvider。
+  testWidgets('进页面第一帧就用共享缓存画出总览，不等自己那趟请求回来', (tester) async {
+    await withClock(Clock.fixed(sampledAt), () async {
+      final pending = Completer<ServerStatusSnapshot>();
+      final repository = _Repository(() => pending.future);
+      await _pump(
+        tester,
+        repository,
+        settle: false,
+        cached: _withExtras(sampledAt),
+      );
+      expect(
+        tester
+            .widget<UtenGaugeRing>(find.byKey(const Key('server-status-ring')))
+            .value,
+        95,
+        reason: '请求还挂着，读数必须已经来自缓存，而不是停在虚线占位',
+      );
+      expect(repository.active, 1, reason: '缓存只是先画一帧，后台照样去拉新的');
+      pending.complete(_withExtras(sampledAt));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  });
+
+  testWidgets('过期的缓存不入画：宁可占位，也不摆一个下一帧就被标成已过期的读数', (tester) async {
+    await withClock(Clock.fixed(sampledAt), () async {
+      final pending = Completer<ServerStatusSnapshot>();
+      final repository = _Repository(() => pending.future);
+      await _pump(
+        tester,
+        repository,
+        settle: false,
+        // 过期窗口是 sampledAt + pollSeconds×2 = 30s，31s 前的采样已经作废。
+        cached: _withExtras(sampledAt.subtract(const Duration(seconds: 31))),
+      );
+      final ring = tester.widget<UtenGaugeRing>(
+        find.byKey(const Key('server-status-ring')),
+      );
+      expect(ring.value, isNull);
+      expect(ring.status, UtenGaugeStatus.unknown);
+      pending.complete(_withExtras(sampledAt));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  });
+
+  testWidgets('页面自己拉到的快照会回写共享缓存，供下次进页面与工作台徽章复用', (tester) async {
+    await withClock(Clock.fixed(sampledAt), () async {
+      final repository = _Repository(() async => _withExtras(sampledAt));
+      final container = await _pump(tester, repository);
+      expect(
+        container.read(serverStatusSnapshotCacheProvider)?.sampledAt,
+        sampledAt,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  });
 }
 
-Future<void> _pump(
+Future<ProviderContainer> _pump(
   WidgetTester tester,
   _Repository repository, {
   bool compact = false,
   bool settle = true,
   Set<String> permissions = const {Perm.serverStatusView},
+  ServerStatusSnapshot? cached,
 }) async {
   tester.view.physicalSize = compact
       ? const Size(390, 1000)
@@ -478,6 +541,9 @@ Future<void> _pump(
         currentPermissionsProvider.overrideWithValue(permissions),
         sharedPreferencesProvider.overrideWithValue(preferences),
         serverStatusRepositoryProvider.overrideWithValue(repository),
+        // 模拟「工作台那张卡的告警徽章刚刚拉过一次」——共享缓存里已有读数。
+        if (cached != null)
+          serverStatusSnapshotCacheProvider.overrideWith((ref) => cached),
       ],
       child: MaterialApp(
         locale: const Locale('zh'),
@@ -507,6 +573,10 @@ Future<void> _pump(
   } else {
     await tester.pump();
   }
+  return ProviderScope.containerOf(
+    tester.element(find.byType(MaterialApp)),
+    listen: false,
+  );
 }
 
 /// 只在显式要求时落盘（`UTEN_UI_FIXTURES=1 flutter test ...`）：默认跑测试不写文件。

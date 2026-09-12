@@ -73,6 +73,9 @@ class _DashboardOverviewBody extends ConsumerWidget {
           DashboardMetricStrip(
             metrics: data.metrics,
             departmentName: data.departmentName,
+            // generatedAt 每次取数都变：数据到达（含手动刷新）时面板重扫一次光。
+            // provider 不轮询，这里不会变成循环动画。
+            sweepTrigger: data.generatedAt.millisecondsSinceEpoch,
           ),
           const SizedBox(height: UtenSpacing.s24),
           UtenConsoleHeader(
@@ -92,6 +95,7 @@ class _DashboardOverviewBody extends ConsumerWidget {
           DashboardTodoLane(
             todos: data.todos,
             departmentName: data.departmentName,
+            sweepTrigger: data.generatedAt.millisecondsSinceEpoch,
           ),
           if (data.intelligence.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s24),

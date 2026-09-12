@@ -3,11 +3,12 @@
 // 改版前这两块**零 widget 测试**——调研时确认过。既然把卡片堆换成了指标带 + 待办泳道，
 // 就得把新形态的行为契约钉住，否则下一个人改回去或改坏都没人拦。
 //
-// 锁住的四件事：
+// 锁住的五件事：
 // 1. 数值与标题真的渲染出来了（不是只剩装饰）；
 // 2. 空态说的是「本部门」而不是旧的「当前权限下」——这正是本次改口径的用户可见面；
 // 3. reduced-motion 下不崩、内容照常完整（动效不承载信息）；
-// 4. 375px 窄屏不溢出（车间用的机器屏幕都不大）。
+// 4. 375px 窄屏不溢出（车间用的机器屏幕都不大）；
+// 5. 截止倒计时芯片只在有 dueAt 的待办上出现，逾期/未逾期两种措辞都对（2026-09-11 补）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -51,6 +52,7 @@ void main() {
     int count = 3,
     int urgentCount = 0,
     String tone = 'warning',
+    DateTime? dueAt,
   }) => DashboardTodo(
     id: id,
     title: title,
@@ -61,7 +63,7 @@ void main() {
     route: '/expense/approval',
     sourceType: 'FINANCE',
     sourceId: null,
-    dueAt: null,
+    dueAt: dueAt,
     completable: false,
   );
 
@@ -161,6 +163,42 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('财税部当前没有待办'), findsOneWidget);
+  });
+
+  // 服务端一直在下发 dueAt，改版前模型解析完就扔了——倒计时芯片是它的第一个
+  // 用户可见面，逾期/未逾期两种措辞都得对，且不能波及没有截止时间的行。
+  testWidgets('有截止时间的待办渲染倒计时芯片，逾期与未逾期措辞各就各位', (tester) async {
+    await tester.pumpWidget(
+      host(
+        DashboardTodoLane(
+          todos: [
+            // 3.5 天而不是整 3 天：构建比夹具晚几毫秒，整天数边界会被 inDays 截断。
+            todo(dueAt: DateTime.now().add(const Duration(days: 3, hours: 12))),
+            todo(
+              id: 'notice-overdue',
+              title: '逾期通知',
+              dueAt: DateTime.now().subtract(const Duration(hours: 2)),
+            ),
+          ],
+          departmentName: '财税部',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('剩 3 天'), findsOneWidget);
+    expect(find.textContaining('已逾期 2 小时'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('无截止时间的待办不渲染倒计时芯片', (tester) async {
+    await tester.pumpWidget(
+      host(DashboardTodoLane(todos: [todo()], departmentName: '财税部')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('剩 '), findsNothing);
+    expect(find.textContaining('已逾期'), findsNothing);
   });
 
   // 第一版这里是个 repeat() 的呼吸环：保活的工作台 Tab 上会一直烧帧，也让任何

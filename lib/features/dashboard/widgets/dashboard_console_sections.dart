@@ -11,6 +11,11 @@
 //   转移到"数据本身"。
 // - **待办任务**：折叠列表 → **优先级泳道**。左侧一条竖轴，每条待办是轴上的节点；
 //   紧急项节点更大，并在计数变化时脉冲一次（复用 [UtenLivePulseDot]，一次性不循环）。
+// - **任务计时器**（2026-09-11 补）：服务端一直在下发 dueAt，模型解析完却没展示。
+//   现在每条有截止的待办带一枚倒计时芯片（逾期红 / 临期 6 小时内黄 / 其余中性），
+//   等宽数字。紧急待办底部加一条紧急占比负荷条（urgentCount/count 的真实比例）。
+// - **数据到达扫光**（2026-09-11 补）：[UtenConsolePanel.sweepTrigger] 之前定义了
+//   却没人传——现在两块都接 data.generatedAt，数据每次到达（含手动刷新）扫一次。
 //
 // ## 刻意没做的
 //
@@ -33,6 +38,7 @@ import '../../../components/data_display/uten_animated_number.dart';
 import '../../../components/feedback/uten_live_pulse_dot.dart';
 import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/dashboard_overview.dart';
 import 'dashboard_overview_sections.dart'
@@ -45,10 +51,14 @@ class DashboardMetricStrip extends StatefulWidget {
     super.key,
     required this.metrics,
     required this.departmentName,
+    this.sweepTrigger = 0,
   });
 
   final List<DashboardMetric> metrics;
   final String departmentName;
+
+  /// 传给 [UtenConsolePanel.sweepTrigger]：数据每次到达（含手动刷新）扫一次光。
+  final int sweepTrigger;
 
   @override
   State<DashboardMetricStrip> createState() => _DashboardMetricStripState();
@@ -62,6 +72,7 @@ class _DashboardMetricStripState extends State<DashboardMetricStrip> {
     final theme = Theme.of(context);
     if (widget.metrics.isEmpty) {
       return UtenConsolePanel(
+        sweepTrigger: widget.sweepTrigger,
         child: Row(
           children: [
             Icon(
@@ -102,6 +113,7 @@ class _DashboardMetricStripState extends State<DashboardMetricStrip> {
 
         return UtenConsolePanel(
           padding: EdgeInsets.zero,
+          sweepTrigger: widget.sweepTrigger,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -331,16 +343,21 @@ class DashboardTodoLane extends StatelessWidget {
     super.key,
     required this.todos,
     required this.departmentName,
+    this.sweepTrigger = 0,
   });
 
   final List<DashboardTodo> todos;
   final String departmentName;
+
+  /// 同 [DashboardMetricStrip.sweepTrigger]。
+  final int sweepTrigger;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     if (todos.isEmpty) {
       return UtenConsolePanel(
+        sweepTrigger: sweepTrigger,
         child: Row(
           children: [
             Icon(
@@ -365,6 +382,7 @@ class DashboardTodoLane extends StatelessWidget {
         horizontal: UtenSpacing.s16,
         vertical: UtenSpacing.s8,
       ),
+      sweepTrigger: sweepTrigger,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -401,7 +419,8 @@ class _TodoNode extends StatelessWidget {
     return Semantics(
       button: todo.route != null,
       label:
-          '${todo.title}，${todo.count} 项${urgent ? '，紧急' : ''}，${todo.summary}',
+          '${todo.title}，${todo.count} 项${urgent ? '，紧急' : ''}'
+          '${_DueCountdownChip.describe(todo.dueAt)}，${todo.summary}',
       child: ExcludeSemantics(
         child: InkWell(
           onTap: todo.route == null ? null : () => goFrom(context, todo.route!),
@@ -470,15 +489,42 @@ class _TodoNode extends StatelessWidget {
                             UtenNotificationBadge(count: todo.count, size: 18),
                           ],
                         ),
-                        if (todo.summary.isNotEmpty) ...[
+                        if (todo.summary.isNotEmpty || todo.dueAt != null) ...[
                           const SizedBox(height: 2),
-                          Text(
-                            todo.summary,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: todo.summary.isEmpty
+                                    ? const SizedBox.shrink()
+                                    : Text(
+                                        todo.summary,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                            ),
+                                      ),
+                              ),
+                              // 截止倒计时芯片：任务控制台的「任务计时器」。
+                              // 服务端早就给了 dueAt，此前模型解析完就扔了。
+                              if (todo.dueAt != null) ...[
+                                const SizedBox(width: UtenSpacing.s8),
+                                _DueCountdownChip(dueAt: todo.dueAt!),
+                              ],
+                            ],
+                          ),
+                        ],
+                        // 紧急占比负荷条：urgentCount/count 的真实比例，不是装饰。
+                        // 没有紧急项时不画——干净比满装饰重要。
+                        if (todo.urgentCount > 0) ...[
+                          const SizedBox(height: 6),
+                          _UrgencyMeter(
+                            count: todo.count,
+                            urgentCount: todo.urgentCount,
+                            color: color,
                           ),
                         ],
                       ],
@@ -496,6 +542,106 @@ class _TodoNode extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 截止倒计时芯片：逾期红、临期黄、其余中性；等宽数字，读起来像仪器计时。
+class _DueCountdownChip extends StatelessWidget {
+  const _DueCountdownChip({required this.dueAt});
+
+  final DateTime dueAt;
+
+  /// 读屏用的一句话描述（Semantics label 拼接用）；无截止时间返回空串。
+  static String describe(DateTime? dueAt) {
+    if (dueAt == null) return '';
+    final remaining = dueAt.difference(DateTime.now());
+    if (remaining.isNegative) return '，已逾期 ${_format(-remaining)}';
+    return '，剩余 ${_format(remaining)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final remaining = dueAt.difference(DateTime.now());
+    final overdue = remaining.isNegative;
+    final imminent = !overdue && remaining <= const Duration(hours: 6);
+    final color = overdue
+        ? theme.colorScheme.error
+        : imminent
+        ? UtenColors.warningText
+        : theme.colorScheme.onSurfaceVariant;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: UtenRadius.pillAll,
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            overdue ? Icons.event_busy_rounded : Icons.schedule_rounded,
+            size: 12,
+            color: color,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            overdue ? '已逾期 ${_format(-remaining)}' : '剩 ${_format(remaining)}',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w600,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _format(Duration value) {
+    if (value.inMinutes < 60) return '${value.inMinutes} 分钟';
+    if (value.inHours < 48) return '${value.inHours} 小时';
+    return '${value.inDays} 天';
+  }
+}
+
+/// 紧急占比负荷条：urgent 段着色、其余走中性底，一眼看出这条队列有多「烫」。
+class _UrgencyMeter extends StatelessWidget {
+  const _UrgencyMeter({
+    required this.count,
+    required this.urgentCount,
+    required this.color,
+  });
+
+  final int count;
+  final int urgentCount;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final fraction = count <= 0
+        ? 0.0
+        : (urgentCount / count).clamp(0.0, 1.0).toDouble();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(2),
+      child: SizedBox(
+        height: 3,
+        child: Stack(
+          children: [
+            ColoredBox(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+            FractionallySizedBox(
+              widthFactor: fraction,
+              child: ColoredBox(color: color),
+            ),
+          ],
         ),
       ),
     );

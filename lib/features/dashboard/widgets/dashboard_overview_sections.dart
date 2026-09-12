@@ -5,17 +5,16 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/feedback/uten_skeleton.dart';
-import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../components/layout/uten_lazy_mount.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/responsive/breakpoint.dart';
-import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../notice/widgets/celebration_today_card.dart';
-import '../../notice/widgets/notice_detail_dialog.dart';
 import '../models/dashboard_overview.dart';
+import 'dashboard_console_sections.dart';
+import 'uten_console_panel.dart';
 import '../providers/dashboard_overview_provider.dart';
 
 class DashboardOverviewSections extends StatelessWidget {
@@ -49,29 +48,50 @@ class _DashboardOverviewBody extends ConsumerWidget {
       data: (data) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          UtenSectionHeader(
-            title: data.departmentName.isEmpty
-                ? '今日概览'
-                : '今日概览 · ${data.departmentName}',
+          // 2026-09-12 改版：这两块从「卡片堆 + 折叠列表」换成控制台形态
+          // （指标带 / 待办泳道），见 dashboard_console_sections.dart 的设计说明。
+          UtenConsoleHeader(
+            title: '今日概览',
+            // 口径文案同步改正：范围本来就该是「本部门」，此前写「按本人权限展示」
+            // 与实际口径不符，也正是用户指出的问题。
+            subtitle: data.departmentName.isEmpty
+                ? '按本部门范围展示'
+                : '${data.departmentName} · 按本部门范围展示',
             accentColor: theme.colorScheme.primary,
-            trailing: const Text('按本人权限展示'),
+            trailing: Text(
+              _sampledAt(data.generatedAt),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
           ),
           const SizedBox(height: UtenSpacing.s12),
           // 今日庆典卡片（当前用户本人生日/周年/新婚/新生儿；无则不渲染）置顶，
-          // 位于指标卡之前。数据来自 myCelebrationTodayProvider（PII 安全）。
+          // 位于指标带之前。数据来自 myCelebrationTodayProvider（PII 安全）。
           const CelebrationTodayCard(),
-          _MetricGrid(metrics: data.metrics),
+          DashboardMetricStrip(
+            metrics: data.metrics,
+            departmentName: data.departmentName,
+          ),
           const SizedBox(height: UtenSpacing.s24),
-          UtenCollapsibleSection(
+          UtenConsoleHeader(
             title: '待办任务',
+            subtitle: data.departmentName.isEmpty
+                ? '本部门待办，按紧急度排布'
+                : '${data.departmentName} · 按紧急度排布',
             accentColor: theme.colorScheme.primary,
-            // 标题文字紧贴右侧的总数徽章 = 各待办 count 之和（无待办时徽章自身不渲染）
-            titleTrailing: UtenNotificationBadge(
+            // 总数徽章 = 各待办 count 之和（无待办时徽章自身不渲染）。
+            trailing: UtenNotificationBadge(
               count: data.todos.fold<int>(0, (sum, t) => sum + t.count),
               size: 20,
               showLabel: true,
             ),
-            child: _TodoList(todos: data.todos),
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          DashboardTodoLane(
+            todos: data.todos,
+            departmentName: data.departmentName,
           ),
           if (data.intelligence.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s24),
@@ -89,285 +109,11 @@ class _DashboardOverviewBody extends ConsumerWidget {
   }
 }
 
-class _MetricGrid extends StatefulWidget {
-  const _MetricGrid({required this.metrics});
-
-  final List<DashboardMetric> metrics;
-
-  @override
-  State<_MetricGrid> createState() => _MetricGridState();
-}
-
-class _MetricGridState extends State<_MetricGrid> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final metrics = widget.metrics;
-    if (metrics.isEmpty) {
-      return const _EmptyCard(text: '当前权限下暂无概览指标');
-    }
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // 列数随容器宽度实时变化，收起时只展示一行；
-        // 超出一行的指标通过末尾「加载更多」展开。
-        final columns = constraints.maxWidth >= 1050
-            ? 4
-            : constraints.maxWidth >= 680
-            ? 3
-            : constraints.maxWidth >= 420
-            ? 2
-            : 1;
-        final overflow = metrics.length > columns;
-        final visible = _expanded ? metrics : metrics.take(columns).toList();
-        final hiddenCount = metrics.length - visible.length;
-        final width =
-            (constraints.maxWidth - (columns - 1) * UtenSpacing.s12) / columns;
-        // crossAxisAlignment.start：卡片不足整行时贴左，避免窄 Wrap 被默认 center 居中，
-        // 造成"右侧一大片空白、一行放不下还居中"的观感（数据稀疏时才暴露）。
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Wrap(
-              spacing: UtenSpacing.s12,
-              runSpacing: UtenSpacing.s12,
-              children: [
-                for (final metric in visible)
-                  SizedBox(
-                    width: width,
-                    child: Semantics(
-                      button: metric.route != null,
-                      label:
-                          '${metric.title}，${metric.value}，${metric.subtitle}',
-                      child: UtenCard(
-                        onTap: metric.route == null
-                            ? null
-                            : () => goFrom(context, metric.route!),
-                        child: _MetricContent(metric: metric),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            if (overflow) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              SizedBox(
-                width: double.infinity,
-                child: TextButton.icon(
-                  onPressed: () => setState(() => _expanded = !_expanded),
-                  icon: Icon(
-                    _expanded
-                        ? Icons.expand_less_rounded
-                        : Icons.expand_more_rounded,
-                  ),
-                  label: Text(_expanded ? '收起' : '加载更多(还有 $hiddenCount 项)'),
-                ),
-              ),
-            ],
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _MetricContent extends StatelessWidget {
-  const _MetricContent({required this.metric});
-
-  final DashboardMetric metric;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color = _toneColor(theme, metric.tone);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(
-              metric.sensitive
-                  ? Icons.lock_outline_rounded
-                  : _metricIcon(metric.id),
-              size: 18,
-              color: color,
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: Text(
-                metric.title,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: UtenSpacing.s12),
-        Text(
-          metric.value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: theme.colorScheme.onSurface,
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s4),
-        Text(
-          metric.subtitle,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _TodoList extends StatefulWidget {
-  const _TodoList({required this.todos});
-
-  final List<DashboardTodo> todos;
-
-  @override
-  State<_TodoList> createState() => _TodoListState();
-}
-
-class _TodoListState extends State<_TodoList> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final todos = widget.todos;
-    if (todos.isEmpty) {
-      return const _EmptyCard(text: '当前没有待办任务', icon: Icons.task_alt_rounded);
-    }
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // 与「今日概览」同款响应式网格：列数随容器宽度变化；默认只展示一行，
-        // 超出一行通过末尾「加载更多」展开（可收起）。
-        final columns = constraints.maxWidth >= 960
-            ? 3
-            : constraints.maxWidth >= 520
-            ? 2
-            : 1;
-        final overflow = todos.length > columns;
-        final visible = _expanded ? todos : todos.take(columns).toList();
-        final hiddenCount = todos.length - visible.length;
-        final width =
-            (constraints.maxWidth - (columns - 1) * UtenSpacing.s12) / columns;
-        // 同「今日概览」：卡片不足整行时贴左，避免窄 Wrap 被默认 center 居中。
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Wrap(
-              spacing: UtenSpacing.s12,
-              runSpacing: UtenSpacing.s12,
-              children: [
-                for (final todo in visible)
-                  SizedBox(
-                    width: width,
-                    child: _TodoCard(todo: todo),
-                  ),
-              ],
-            ),
-            if (overflow) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              SizedBox(
-                width: double.infinity,
-                child: TextButton.icon(
-                  onPressed: () => setState(() => _expanded = !_expanded),
-                  icon: Icon(
-                    _expanded
-                        ? Icons.expand_less_rounded
-                        : Icons.expand_more_rounded,
-                  ),
-                  label: Text(_expanded ? '收起' : '加载更多(还有 $hiddenCount 项)'),
-                ),
-              ),
-            ],
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _TodoCard extends StatelessWidget {
-  const _TodoCard({required this.todo});
-
-  final DashboardTodo todo;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color = _toneColor(theme, todo.tone);
-    return Semantics(
-      button: true,
-      label: '${todo.title}，${todo.count} 项，${todo.summary}',
-      child: UtenCard(
-        onTap: () => _open(context),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  todo.sourceType == 'NOTICE'
-                      ? Icons.notification_important_outlined
-                      : Icons.assignment_outlined,
-                  size: 18,
-                  color: color,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Text(
-                    todo.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            Text(
-              '${todo.count}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: color,
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              todo.summary,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _open(BuildContext context) {
-    if (todo.sourceType == 'NOTICE' && todo.sourceId != null) {
-      showNoticeDetailDialog(context, noticeId: todo.sourceId!);
-      return;
-    }
-    if (todo.route != null) goFrom(context, todo.route!);
-  }
-}
+// 旧的卡片堆实现（_MetricGrid / _MetricContent / _TodoList / _TodoCard）已于
+// 2026-09-12 随控制台改版删除，不留死代码：新形态在
+// dashboard_console_sections.dart（DashboardMetricStrip / DashboardTodoLane）。
+// 骨架屏与错误态仍留在本文件，两种形态共用；空态已由控制台形态各自承担
+//（指标带/待办泳道的空态要说清「本部门」，与旧的通用空卡文案不同）。
 
 class _PolicyList extends StatefulWidget {
   const _PolicyList({required this.items});
@@ -638,33 +384,6 @@ class _ErrorCard extends StatelessWidget {
   }
 }
 
-class _EmptyCard extends StatelessWidget {
-  const _EmptyCard({required this.text, this.icon = Icons.inbox_outlined});
-
-  final String text;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return UtenCard(
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: theme.colorScheme.onSurfaceVariant),
-          const SizedBox(width: UtenSpacing.s8),
-          Text(
-            text,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 Future<void> _showPolicyDetail(BuildContext context, PolicyBrief item) async {
   // 弹窗/底部弹层文字可框选复制（准则 §3.4：独立路由自带局部 region，
   // 与工作台页面的轮询徽章互不影响）。此处包一处，紧凑 sheet 与 Dialog 两分支共用。
@@ -747,7 +466,9 @@ Future<void> _openOfficialSource(BuildContext context, String sourceUrl) async {
   }
 }
 
-Color _toneColor(ThemeData theme, String tone) => switch (tone) {
+/// 指标/待办的语气色。控制台形态（dashboard_console_sections.dart）与旧卡片形态
+/// 共用这一份，避免两套口径各自漂移。
+Color dashboardToneColor(ThemeData theme, String tone) => switch (tone) {
   'danger' => theme.colorScheme.error,
   'warning' => UtenColors.warningText,
   'success' => UtenColors.successText,
@@ -755,7 +476,8 @@ Color _toneColor(ThemeData theme, String tone) => switch (tone) {
   _ => theme.colorScheme.onSurfaceVariant,
 };
 
-IconData _metricIcon(String id) {
+/// 指标图标。同上：两种形态共用一份。
+IconData dashboardMetricIcon(String id) {
   if (id.contains('production')) return Icons.precision_manufacturing_outlined;
   if (id.contains('sales')) return Icons.receipt_long_outlined;
   if (id.contains('notice')) return Icons.notifications_none_rounded;
@@ -778,4 +500,11 @@ String _date(DateTime? value) {
   if (value == null) return '日期见原文';
   return '${value.year}-${value.month.toString().padLeft(2, '0')}-'
       '${value.day.toString().padLeft(2, '0')}';
+}
+
+/// 面板右上角的采样时刻（HH:mm），给「这是实时仪表」一个锚点。
+String _sampledAt(DateTime value) {
+  final local = value.toLocal();
+  return '${local.hour.toString().padLeft(2, '0')}:'
+      '${local.minute.toString().padLeft(2, '0')} 采样';
 }

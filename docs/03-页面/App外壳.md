@@ -15,7 +15,7 @@
 
 ## 二、主导航与页面保活
 
-四个主 Tab 为工作台、通知、我的、设置。`UtenSlidingTabView` 让四页常驻并用 `Offstage` 隐藏非当前页，因此滚动位置和页面状态在切换及进入业务子页后仍保留。
+四个主 Tab 为工作台、通知、我的、设置。`UtenSlidingTabView` 在首次访问时才初始化各页，之后用 `Offstage` 隐藏并保留滚动位置和页面状态。直接打开业务深链不初始化背后的四个主页；进入工作台也不同时触发通知、个人资料和设置的首次请求。稳定的页面槽位避免后续首次访问其它Tab时重建已访问页。对应回归为 `test/shell_ticker_lifecycle_test.dart`。
 
 导航角标（`badgeCounts`，红圆数字，compact 胶囊与 medium+ Rail 同款渲染）：
 **工作台** Tab 挂总待办角标 = 工作台各模块卡角标之和（`workbenchTotalTodoCountProvider`，

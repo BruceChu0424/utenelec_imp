@@ -100,18 +100,18 @@ class MaterialAnalysisSupplyWakeupServiceTest {
                 "PURCHASE", receiptId, UUID.randomUUID(), List.of(inspectionItemId));
 
         verify(analysis, times(2)).refreshLocked(analysisId);
-        assertThat(statements).hasSize(4);
+        assertThat(statements).hasSize(2);
         assertThat(statements.getFirst())
                 .contains("inspection.id IN (:inspectionItemIds)")
-                .contains("inspection.receipt_type = :sourceType")
-                .contains("inspection.status IN ('PARTIAL', 'RESOLVED')")
+                .contains("inspection.receipt_type = 'PURCHASE'")
+                .contains("inspection.status = 'PARTIAL'")
                 .contains("inspection.warehouse_stocked_base_qty > 0")
                 .contains("receipt.status = 1")
                 .contains("ORDER BY analysis.id")
                 .doesNotContain("FOR UPDATE");
         verify(candidates, times(2)).setParameter(
                 "inspectionItemIds", List.of(inspectionItemId));
-        verify(candidates, times(2)).setParameter("sourceType", "PURCHASE");
+        verify(candidates, times(2)).setParameter("purchaseReceiptIds", receiptId.toString());
     }
 
     @Test
@@ -133,11 +133,46 @@ class MaterialAnalysisSupplyWakeupServiceTest {
                 List.of(inspectionItemId));
 
         assertThat(statements.getFirst())
-                .contains(":sourceType = 'SUBCONTRACT'")
+                .contains("inspection.receipt_type = 'SUBCONTRACT'")
                 .contains("FROM subcontract_receipts receipt")
                 .contains("receipt.status = 1");
-        verify(candidates).setParameter("sourceType", "SUBCONTRACT");
+        verify(candidates).setParameter("subcontractReceiptIds", receiptId.toString());
+        verify(candidates).setParameter("purchaseReceiptIds", "");
         verifyNoInteractions(analysis);
+    }
+
+    @Test
+    void mixedReceiptsResolveDimensionsOnceAndRefreshEachAnalysisOnce() {
+        EntityManager em = mock(EntityManager.class);
+        MaterialAnalysisService analysis = mock(MaterialAnalysisService.class);
+        UUID first = new UUID(0, 1);
+        UUID second = new UUID(0, 2);
+        UUID purchase = UUID.randomUUID();
+        UUID subcontract = UUID.randomUUID();
+        Query candidates = query(List.<Object[]>of(
+                new Object[]{second, UUID.randomUUID()},
+                new Object[]{first, UUID.randomUUID()},
+                new Object[]{second, UUID.randomUUID()}));
+        List<String> statements = routeQueries(em, candidates);
+        var service = new MaterialAnalysisSupplyWakeupService(em, analysis,
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
+                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+        var batches = new ArrayList<com.uten.imp.application.port.ProductionInspectionStockInPort.ReceiptStockIn>();
+        for (int i = 0; i < 100; i++) {
+            batches.add(new com.uten.imp.application.port.ProductionInspectionStockInPort.ReceiptStockIn(
+                    i % 2 == 0 ? "PURCHASE" : "SUBCONTRACT",
+                    i % 2 == 0 ? purchase : subcontract, UUID.randomUUID(), List.of(UUID.randomUUID())));
+        }
+
+        service.afterInspectionStockInConfirmed(batches);
+
+        assertThat(statements).hasSize(1);
+        verify(candidates).setParameter("purchaseReceiptIds", purchase.toString());
+        verify(candidates).setParameter("subcontractReceiptIds", subcontract.toString());
+        var order = org.mockito.Mockito.inOrder(analysis);
+        order.verify(analysis).refreshLocked(first);
+        order.verify(analysis).refreshLocked(second);
+        order.verifyNoMoreInteractions();
     }
 
     @Test
@@ -232,6 +267,25 @@ class MaterialAnalysisSupplyWakeupServiceTest {
 
         verify(candidates).setParameter("requiredStatus", -1);
         verifyNoInteractions(analysis);
+    }
+
+    @Test
+    void finishedInboundBatchResolvesItsWholeDocumentSetOnce() {
+        EntityManager em = mock(EntityManager.class);
+        MaterialAnalysisService analysis = mock(MaterialAnalysisService.class);
+        UUID analysisId = UUID.randomUUID();
+        UUID document = UUID.randomUUID();
+        Query candidates = query(List.<Object[]>of(new Object[]{analysisId, UUID.randomUUID()}));
+        List<String> statements = routeQueries(em, candidates);
+        var service = new MaterialAnalysisSupplyWakeupService(em, analysis,
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
+                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+
+        service.afterFinishedInboundApproved(java.util.Collections.nCopies(100, document));
+
+        assertThat(statements).hasSize(1);
+        verify(candidates).setParameter("sourceDocumentIds", List.of(document));
+        verify(analysis).refreshLocked(analysisId);
     }
 
     @Test

@@ -3585,4 +3585,59 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get productionMaterialViewUsage => 'View usage records';
+
+  @override
+  String get systemSettingInvalidInteger =>
+      'Enter a valid non-negative integer';
+
+  @override
+  String get systemSettingInvalidValue =>
+      'The setting is outside its allowed range';
+
+  @override
+  String get systemSettingEnabled => 'Enabled';
+
+  @override
+  String get systemSettingDisabled => 'Disabled';
+
+  @override
+  String get systemSettingFixFields => 'Check the highlighted settings first';
+
+  @override
+  String get systemSettingUnsavedRefresh =>
+      'Save or revert your changes before refreshing';
+
+  @override
+  String get systemSettingEffectTiming =>
+      'Security limits apply to subsequent actions and token lifetimes to newly issued tokens. Celebrations and audit retention apply on their scheduled runs. Changes are audited and require password confirmation.';
+
+  @override
+  String get auditSummaryUnavailable =>
+      'Summary unavailable; event records remain available';
+
+  @override
+  String get auditSummaryRetry => 'Retry summary';
+
+  @override
+  String get auditWorkspaceDescription =>
+      'Review sessions by person and time, then follow events to business changes.';
+
+  @override
+  String get materialReasonLabel => 'Reason';
+
+  @override
+  String get materialReasonRequired => 'Enter a reason';
+
+  @override
+  String materialReasonTooLong(int max) {
+    return 'Use no more than $max characters for the reason';
+  }
+
+  @override
+  String materialReasonTooShort(int min) {
+    return 'Enter at least $min characters for the reason';
+  }
+
+  @override
+  String get auditFiltersTitle => 'Operation, business object and event type';
 }

@@ -3,6 +3,7 @@ package com.uten.imp.config.cloud;
 import com.uten.imp.config.PostgresJdbcTlsPolicy;
 import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,6 +21,9 @@ import javax.sql.DataSource;
 @Configuration
 @Profile("cloud")
 public class CloudDataSourceConfig {
+
+    @Value("${uten.database.jit-enabled:false}")
+    private boolean jitEnabled;
 
     @Bean("primaryDataSource")
     public DataSource primaryDataSource(CloudDbProperties props) {
@@ -56,6 +60,8 @@ public class CloudDataSourceConfig {
         ds.setMinimumIdle(2);
         ds.setConnectionTimeout(5_000);
         ds.setValidationTimeout(5_000);
+        // Match the ordinary application pool; no cluster-wide setting changes.
+        ds.setConnectionInitSql("SET jit = " + jitEnabled);
         ds.addDataSourceProperty("connectTimeout", "5");
         ds.addDataSourceProperty("socketTimeout", "5");
         ds.addDataSourceProperty("tcpKeepAlive", "true");

@@ -22,7 +22,6 @@ import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
-import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
@@ -330,38 +329,6 @@ class _QualityPendingDisposalPageState
     return pages < 1 ? 1 : pages;
   }
 
-  /// 一行的待检行数（与「待检行数」列同一口径：整单待检明细数，FQC 单次报工记 1）。
-  int _itemCountOf(_DisposalRow row) => row.isSheet
-      ? row.sheet!.activeCount
-      : row.isFqc
-      ? 1
-      : row.receipt!.itemCount;
-
-  /// 表格下方合计。
-  ///
-  /// 本页是**客户端分页**（[_rows] 一次拉全，[_filtered] 客户端过滤、[_pageItems] 客户端切页），
-  /// 所以这里合计的是 [_filtered] ——当前筛选下的**全部**行，不是当前这一页，
-  /// 与服务端分页页面「必须用服务端合计」的规矩同一个目的：合计数必须覆盖用户以为的范围。
-  ///
-  /// 「待检数量」列是各行自带单位的预格式化文本（可能是「12 个」也可能是多单位汇总串），
-  /// 没有可靠的数值+单位结构可用，跨单位相加是错的，故**不做数量合计**，只出行数与单数。
-  Widget? _summaryBar() {
-    final rows = _filtered;
-    if (rows.isEmpty) return null;
-    var items = 0;
-    for (final row in rows) {
-      items += _itemCountOf(row);
-    }
-    return UtenTotalsSummaryBar(
-      density: true,
-      compact: true,
-      entries: [
-        UtenTotalEntry('共', '${rows.length} 单'),
-        UtenTotalEntry('合计待检行数', '$items'),
-      ],
-    );
-  }
-
   List<_DisposalRow> get _pageItems {
     final start = (_page - 1) * _pageSize;
     if (start >= _filtered.length) return const [];
@@ -384,70 +351,30 @@ class _QualityPendingDisposalPageState
     await _load();
   }
 
-  /// 双击检查单行：检查单办理弹窗（逐条 PASS/FAIL 或全部合格）；办理过即刷新队列。
+  /// 双击检查单行：进入 FQC 检查单办理页（2026-09-12 弹窗改页，对齐采购 IQC
+  /// 处置页范式——摘要卡 + 行级合格/不合格数量 + 提交报告）；返回后重拉队列。
   Future<void> _openSheet(ProductionFqcInspectionSheet sheet) async {
-    final changed = await showDialog<bool>(
-      context: context,
-      builder: (_) => ProductionFqcSheetDialog(
-        key: ValueKey('production-fqc-sheet-${sheet.id}'),
-        sheetId: sheet.id,
-        canApprove: _canDecideFqc,
-      ),
+    await context.push(
+      RouteName.productionFqcSheetHandling(sheet.id),
+      extra: sheet,
     );
     if (!mounted) return;
-    if (changed == true) {
-      ref.invalidate(productionFqcPendingCountProvider);
-      ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
-      await _load();
-    }
-  }
-
-  /// 双击 FQC 行：详情弹窗 →（可决定账号）登记检验决定。
-  Future<void> _openFqcDetail(_DisposalRow row) async {
-    final inspection = row.inspection!;
-    final decisionTarget = await showDialog<ProductionFqcInspection>(
-      context: context,
-      builder: (_) => ProductionFqcDetailDialog(
-        key: ValueKey('production-fqc-detail-${inspection.id}'),
-        inspectionId: inspection.id,
-        canApprove: _canDecideFqc,
-      ),
-    );
-    if (decisionTarget == null || !mounted) return;
-    await _openFqcDecision(decisionTarget);
-  }
-
-  Future<void> _openFqcDecision(ProductionFqcInspection inspection) async {
-    final result = await showDialog<ProductionFqcDecisionResult>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => ProductionFqcDecisionDialog(inspection: inspection),
-    );
-    if (result == null || !mounted) return;
-    _applyFqcDecisionResult(result.inspection);
     ref.invalidate(productionFqcPendingCountProvider);
     ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
-    if (mounted) {
-      context.appSuccess(result.replay ? '该质检决定已安全重放' : '质检决定已保存');
-    }
     await _load();
   }
 
-  /// 决定成功先本地落位（决定行保留为 PARTIAL 或移除 RESOLVED），刷新失败也不回滚。
-  void _applyFqcDecisionResult(ProductionFqcInspection updated) {
-    final list = _fqcInspections;
-    if (list == null) return;
-    final index = list.indexWhere((item) => item.id == updated.id);
-    if (index < 0) return;
-    final next = [...list];
-    if (updated.active) {
-      next[index] = updated;
-    } else {
-      next.removeAt(index);
-      _fqcTotal = _fqcTotal > 0 ? _fqcTotal - 1 : 0;
-      _selectedIds.remove(updated.id);
-    }
-    setState(() => _fqcInspections = next);
+  /// 双击 FQC 行 / 右键「办理质检」：进入单任务办理页（详情 + 决定 + 检验证据）。
+  Future<void> _openFqcDetail(_DisposalRow row) async {
+    final inspection = row.inspection!;
+    await context.push(
+      RouteName.productionFqcInspectionHandling(inspection.id),
+      extra: inspection,
+    );
+    if (!mounted) return;
+    ref.invalidate(productionFqcPendingCountProvider);
+    ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
+    await _load();
   }
 
   /// 「批量审批」（2026-09-05 用户口径）：多选的 IQC 收货单与 FQC 任务汇总到
@@ -660,16 +587,12 @@ class _QualityPendingDisposalPageState
                     : row.isFqc
                     ? [
                         UtenMenuItem(
-                          label: '查看质检详情',
-                          icon: Icons.visibility_outlined,
+                          label: _canDecideFqc ? '办理质检' : '查看质检详情',
+                          icon: _canDecideFqc
+                              ? Icons.rule_rounded
+                              : Icons.visibility_outlined,
                           onTap: () => _openFqcDetail(row),
                         ),
-                        if (row.inspection!.active && _canDecideFqc)
-                          UtenMenuItem(
-                            label: '登记检验决定',
-                            icon: Icons.rule_rounded,
-                            onTap: () => _openFqcDecision(row.inspection!),
-                          ),
                       ]
                     : [
                         UtenMenuItem(
@@ -684,7 +607,6 @@ class _QualityPendingDisposalPageState
                 error: pageItems.isEmpty ? _error : null,
                 onRetry: _load,
                 emptyMessage: _emptyMessage,
-                summaryBar: _summaryBar(),
                 currentPage: _page,
                 totalPages: _totalPages,
                 onPageChange: (next) => setState(() => _page = next),

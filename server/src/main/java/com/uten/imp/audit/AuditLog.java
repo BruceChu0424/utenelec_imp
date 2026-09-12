@@ -135,9 +135,11 @@ public class AuditLog {
     @Column(name = "device_profile_hash")
     private String deviceProfileHash;
 
+    /** Database-enforced classification; the API never supplies or updates it. */
     @Column(name = "risk_level", insertable = false, updatable = false)
     private String riskLevel;
 
+    /** Recomputed together with riskLevel for every database INSERT/UPDATE. */
     @Column(name = "event_category", insertable = false, updatable = false)
     private String eventCategory;
 

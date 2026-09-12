@@ -3,6 +3,8 @@ package com.uten.imp.features.warehouse.inbound;
 import com.uten.imp.application.port.PreplanAnalysisPegPort;
 import com.uten.imp.application.port.PreplanInboundAllocationReadPort;
 import com.uten.imp.application.port.ProcurementInspectionPort;
+import com.uten.imp.application.port.ProductionInspectionStockInPort;
+import com.uten.imp.application.port.ProductionInspectionStockInPort.ReceiptStockIn;
 import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
 import com.uten.imp.common.finance.ProcurementOrderClosurePolicy;
@@ -68,6 +70,7 @@ public class ProcurementIqcStockInService {
     private final TxSessionVars tx;
     private final ProductionSupplyTransitionPort purchaseSupply;
     private final ProductionSubcontractSupplyTransitionPort subcontractSupply;
+    private final ProductionInspectionStockInPort stockInProduction;
     private final PreplanAnalysisPegPort preplanAnalysisPeg;
     private final ChainNoticeService chainNotice;
     private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
@@ -120,7 +123,8 @@ public class ProcurementIqcStockInService {
         tx.bind();
         String type = normalizeReceiptType(receiptType);
         NormalizedCommand command = normalize(type, receiptId, request);
-        return confirmOne(type, receiptId, command);
+        return confirmCommands(List.of(new NormalizedBatch(type, receiptId, command)))
+                .getFirst();
     }
 
     /**
@@ -136,6 +140,9 @@ public class ProcurementIqcStockInService {
         if (request == null || request.batches() == null
                 || request.batches().isEmpty() || request.batches().size() > 20) {
             throw validation("批量入库必须包含 1 至 20 张收货单");
+        }
+        if (request.batches().stream().anyMatch(entry -> entry == null || entry.receiptId() == null)) {
+            throw validation("批量入库缺少有效的收货单 UUID");
         }
         int totalItems = request.batches().stream()
                 .mapToInt(entry -> entry.items() == null ? 0 : entry.items().size())
@@ -155,27 +162,24 @@ public class ProcurementIqcStockInService {
         List<NormalizedBatch> commands = new ArrayList<>();
         for (BatchConfirmEntry entry : ordered) {
             String type = normalizeReceiptType(entry.receiptType());
-            if (!seenKeys.add(entry.idempotencyKey())) {
-                throw validation("批量入库中存在重复幂等键");
-            }
             if (!seenReceipts.add(type + '|' + entry.receiptId())) {
                 throw validation("批量入库中同一收货单只能出现一次");
             }
             ConfirmRequest single = new ConfirmRequest(
                     entry.idempotencyKey(), entry.items());
+            NormalizedCommand command = normalize(type, entry.receiptId(), single);
+            if (!seenKeys.add(command.idempotencyKey())) {
+                throw validation("批量入库中存在重复幂等键");
+            }
             commands.add(new NormalizedBatch(
-                    type, entry.receiptId(), normalize(type, entry.receiptId(), single)));
+                    type, entry.receiptId(), command));
         }
-        var mutationGuard=mutationLocks.stockIn(commands.stream().map(batch -> lockRef(batch.type(),batch.receiptId(),batch.command())).toList());
-        for(String key:commands.stream().map(batch->batch.command().idempotencyKey()).sorted().toList())
-            lockCommand(currentUser.requireId(),key);
-        for(NormalizedBatch batch:commands)passSlices(batch.type(),batch.receiptId(),true);
-        mutationGuard.verifyUnchanged();
+        List<ConfirmResult> confirmed = confirmCommands(commands);
         List<BatchConfirmEntryResult> results = new ArrayList<>();
         int confirmedItemCount = 0;
-        for (NormalizedBatch batch : commands) {
-            ConfirmResult result = confirmOne(
-                    batch.type(), batch.receiptId(), batch.command());
+        for (int index = 0; index < commands.size(); index++) {
+            NormalizedBatch batch = commands.get(index);
+            ConfirmResult result = confirmed.get(index);
             results.add(new BatchConfirmEntryResult(
                     batch.type(), batch.receiptId(), result.batchId(),
                     result.replayed(), result.confirmedCount(), result.confirmedAt(),
@@ -185,22 +189,101 @@ public class ProcurementIqcStockInService {
         return new BatchConfirmResult(results, results.size(), confirmedItemCount);
     }
 
-    private ConfirmResult confirmOne(
-            String type, UUID receiptId, NormalizedCommand command) {
-        var mutationGuard=mutationLocks.stockIn(List.of(lockRef(type,receiptId,command)));
+    /**
+     * Freeze the complete command before the first stock write. The mutation guard
+     * is verified once under all source/inspection locks; callbacks still enforce
+     * their own coverage instead of silently taking additional upstream locks.
+     */
+    private List<ConfirmResult> confirmCommands(List<NormalizedBatch> commands) {
+        var mutationGuard = mutationLocks.stockIn(commands.stream()
+                .map(batch -> lockRef(batch.type(), batch.receiptId(), batch.command())).toList());
         UUID actorUserId = currentUser.requireId();
-        UUID actorEmployeeId = currentUser.requireEmployeeId();
+        for (String key : commands.stream().map(batch -> batch.command().idempotencyKey()).sorted().toList()) {
+            lockCommand(actorUserId, key);
+        }
+        List<PreparedConfirmation> prepared = new ArrayList<>();
+        for (NormalizedBatch batch : commands) {
+            prepared.add(prepareConfirmation(batch, actorUserId));
+        }
+        // Same physical leaf can appear on every receipt in the command. Resolve
+        // its current ancestor/active rules once before writing, never cache it
+        // across transactions. Historical idempotent replays remain readable.
+        Set<UUID> actualWarehouses = new LinkedHashSet<>();
+        for (PreparedConfirmation item : prepared) {
+            if (item.existing() != null) continue;
+            for (NormalizedItem line : item.batch().command().items()) {
+                actualWarehouses.add(item.locked().get(line.passEventId()).warehouseId());
+            }
+        }
+        for (UUID warehouseId : actualWarehouses) {
+            warehouseScopes.requireActiveLeafWarehouse(warehouseId, "入库仓库");
+        }
+        mutationGuard.verifyUnchanged();
+        List<ConfirmResult> results = new ArrayList<>();
+        List<ReceiptStockIn> newStockIns = new ArrayList<>();
+        for (PreparedConfirmation item : prepared) {
+            NormalizedBatch batch = item.batch();
+            ExistingBatch existing = item.existing();
+            if (existing != null) {
+                results.add(new ConfirmResult(existing.id(), true, existing.confirmedCount(),
+                        existing.confirmedAt(), List.of()));
+                continue;
+            }
+            ConfirmResult result = confirmOne(
+                    batch.type(), batch.receiptId(), batch.command(), item.locked());
+            results.add(result);
+            newStockIns.add(new ReceiptStockIn(batch.type(), batch.receiptId(), result.batchId(),
+                    batch.command().items().stream()
+                            .map(line -> item.locked().get(line.passEventId()).inspectionItemId())
+                            .distinct().toList()));
+        }
+        if (!newStockIns.isEmpty()) {
+            stockInProduction.afterInspectionStockInConfirmed(newStockIns);
+        }
+        // Actual allocations include any reservations/DRAW formed by the callback.
+        // Reading them before all production follow-up would return an incomplete result.
+        Map<UUID, List<InboundAllocation>> allocations = actualAllocationsByBatch(results);
+        List<ConfirmResult> completed = new ArrayList<>();
+        for (int index = 0; index < results.size(); index++) {
+            ConfirmResult result = results.get(index);
+            completed.add(new ConfirmResult(result.batchId(), result.replayed(), result.confirmedCount(),
+                    result.confirmedAt(), allocations.getOrDefault(result.batchId(), List.of())));
+        }
+        return List.copyOf(completed);
+    }
 
-        lockCommand(actorUserId, command.idempotencyKey());
+    private Map<UUID, List<InboundAllocation>> actualAllocationsByBatch(List<ConfirmResult> results) {
+        List<UUID> batchIds = results.stream().map(ConfirmResult::batchId).toList();
+        if (batchIds.size() == 1) {
+            return Map.of(batchIds.getFirst(),
+                    inboundAllocations(inboundAllocationRead.actualForBatch(batchIds.getFirst())));
+        }
+        @SuppressWarnings("unchecked")
+        List<Object[]> itemRows = em.createNativeQuery("""
+                SELECT id, batch_id FROM procurement_iqc_stock_in_batch_items
+                WHERE batch_id IN (:batchIds)
+                """).setParameter("batchIds", batchIds).getResultList();
+        Map<UUID, UUID> batchByItem = new LinkedHashMap<>();
+        itemRows.forEach(row -> batchByItem.put(uuid(row[0]), uuid(row[1])));
+        Map<UUID, List<InboundAllocation>> result = new LinkedHashMap<>();
+        for (InboundAllocation allocation : inboundAllocations(inboundAllocationRead.actualForBatches(batchIds))) {
+            UUID batchId = batchByItem.get(allocation.stockInBatchItemId());
+            if (batchId == null) throw conflict("入库实际去向缺少本次入库来源，请刷新后重试");
+            result.computeIfAbsent(batchId, ignored -> new ArrayList<>()).add(allocation);
+        }
+        return result;
+    }
+
+    private PreparedConfirmation prepareConfirmation(NormalizedBatch batch, UUID actorUserId) {
+        String type = batch.type();
+        UUID receiptId = batch.receiptId();
+        NormalizedCommand command = batch.command();
         ExistingBatch existing = existingBatch(actorUserId, command.idempotencyKey());
         if (existing != null) {
             if (!existing.requestHash().equals(command.requestHash())) {
                 throw conflict("该入库幂等键已用于不同的数量、库位或任务，请更换后重试");
             }
-            mutationGuard.verifyUnchanged();
-            return new ConfirmResult(
-                    existing.id(), true, existing.confirmedCount(), existing.confirmedAt(),
-                    inboundAllocations(inboundAllocationRead.actualForBatch(existing.id())));
+            return new PreparedConfirmation(batch, existing, Map.of());
         }
 
         receiptHeader(type, receiptId);
@@ -209,7 +292,6 @@ public class ProcurementIqcStockInService {
         for (PassSlice slice : passSlices(type, receiptId, true)) {
             locked.put(slice.passEventId(), slice);
         }
-        mutationGuard.verifyUnchanged();
         for (NormalizedItem item : command.items()) {
             PassSlice slice = locked.get(item.passEventId());
             if (slice == null || slice.remainingBaseQty().signum() <= 0) {
@@ -222,14 +304,14 @@ public class ProcurementIqcStockInService {
                 throw conflict("本次入库数量不得超过品质放行待入库余量");
             }
         }
-        // Replay above remains valid for old stock. Every newly posted receipt
-        // must recheck the actual warehouse, including its current ancestors.
-        for (UUID warehouseId : command.items().stream()
-                .map(item -> locked.get(item.passEventId()).warehouseId())
-                .distinct().toList()) {
-            warehouseScopes.requireActiveLeafWarehouse(warehouseId, "入库仓库");
-        }
-        command=splitSubcontractMaterialBatches(type,command);
+        return new PreparedConfirmation(new NormalizedBatch(type, receiptId,
+                splitSubcontractMaterialBatches(type, command)), null, locked);
+    }
+
+    private ConfirmResult confirmOne(
+            String type, UUID receiptId, NormalizedCommand command, Map<UUID, PassSlice> locked) {
+        UUID actorUserId = currentUser.requireId();
+        UUID actorEmployeeId = currentUser.requireEmployeeId();
         stockService.lockInventory(command.items().stream()
                 .map(item -> locked.get(item.passEventId()))
                 .map(slice -> new InventoryKey(slice.goodsId(), slice.colorId()))
@@ -258,7 +340,6 @@ public class ProcurementIqcStockInService {
                 .setParameter("at", now)
                 .executeUpdate();
         int position = 0;
-        Set<UUID> inspectionItemIds = new LinkedHashSet<>();
         for (NormalizedItem item : command.items()) {
             position++;
             PassSlice slice = locked.get(item.passEventId());
@@ -295,20 +376,14 @@ public class ProcurementIqcStockInService {
                     type, receiptId, slice.inspectionItemId(),
                     slice.passEventId(), stockInItemId,
                     item.baseQty(), slice.warehouseId());
-            inspectionItemIds.add(slice.inspectionItemId());
         }
-        // 生产联动整批一次：明细全部落账后再唤醒/推进（每条一次时同一分析
-        // 被整棵重建 O(明细数) 遍、领料单按条裂开，最终数据与一次推进完全
-        // 一致——分析刷新是当前库态的全量重算，事件按批聚合）。
-        advanceProductionAfterStockIn(type, receiptId, batchId, inspectionItemIds);
         recalculateOrderClosure(type, receiptId);
         // 已全部入库的品质放行切片：撤回「待仓库入库」居中行动卡（仍有余量
         // 的切片保留）。幂等，重放路径在方法开头提前返回不会重复执行。
         chainNotice.resolveIqcStockInPendingForWarehouse(type, receiptId);
         rememberConfirmedPlaces(locked, command, batchId, now, actorUserId, actorEmployeeId);
         return new ConfirmResult(
-                batchId, false, command.items().size(), now,
-                inboundAllocations(inboundAllocationRead.actualForBatch(batchId)));
+                batchId, false, command.items().size(), now, List.of());
     }
 
     /** One warehouse confirmation may contain several original company-material batches. */
@@ -354,7 +429,7 @@ public class ProcurementIqcStockInService {
      * - 同一维度本次出现多个不同库位时不学习（与产成品到货登记同口径，防误记）；
      * - 货品主档 {@code stock_place} 与本次不同才回写，让货架目视化清单、即时库存
      *   等按主档展示库位的页面同步最新建议库位；
-     * - 幂等重放在 {@link #confirmOne} 开头已提前返回，不会重复学习或计数。
+     * - 幂等重放在整批准备阶段识别，不会执行入账、学习或计数。
      */
     private void rememberConfirmedPlaces(
             Map<UUID, PassSlice> locked, NormalizedCommand command,
@@ -431,7 +506,7 @@ public class ProcurementIqcStockInService {
                 .executeUpdate();
     }
 
-    /** 主档库位回写：与到货登记 applyGoodsProfileHints 同口径——不同才更新，失败不阻断入库。 */
+    /** 主档建议库位只有实际改变才更新，始终与本次确认同事务提交。 */
     private void learnGoodsMasterPlace(UUID goodsId, String place, UUID actorUserId) {
         em.createNativeQuery("""
                         UPDATE goods
@@ -850,18 +925,6 @@ public class ProcurementIqcStockInService {
         }
     }
 
-    private void advanceProductionAfterStockIn(
-            String type, UUID receiptId, UUID batchId,
-            Set<UUID> inspectionItemIds) {
-        if (PURCHASE.equals(type)) {
-            purchaseSupply.afterPurchaseInspectionStockInConfirmed(
-                    receiptId, batchId, inspectionItemIds);
-        } else {
-            subcontractSupply.afterSubcontractInspectionStockInConfirmed(
-                    receiptId, batchId, inspectionItemIds);
-        }
-    }
-
     private void recalculateOrderClosure(String type, UUID receiptId) {
         String receiptItemTable = PURCHASE.equals(type)
                 ? "purchase_receipt_items"
@@ -997,6 +1060,10 @@ public class ProcurementIqcStockInService {
     }
 
     private record Allocation(BigDecimal amount, BigDecimal weight) {
+    }
+
+    private record PreparedConfirmation(
+            NormalizedBatch batch, ExistingBatch existing, Map<UUID, PassSlice> locked) {
     }
 
     private record PassSlice(

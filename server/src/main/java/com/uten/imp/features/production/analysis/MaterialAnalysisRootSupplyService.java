@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Collection;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -113,6 +114,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
     @Transactional(propagation = Propagation.MANDATORY)
     public void refreshRootNodes(UUID analysisId, Map<UUID,BigDecimal> futureCoverage) {
         Map<InventoryKey, BigDecimal> publicPools = new HashMap<>();
+        List<RootQuantityRow> quantities = new ArrayList<>();
         for (Object[] row : rows("""
                 SELECT item.id,item.root_material_id,item.goods_id,item.color_id,
                   root.per_product_qty,COALESCE(root.confirmed_route,'MAKE'),
@@ -193,22 +195,10 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                     ? fulfilled.add(ownQualified).add(publicAllocated)
                     : decimal(row[14]).min(required);
             if (external) publicPools.put(dimension, publicAvailable.subtract(publicAllocated));
-            em.createNativeQuery("""
-                    UPDATE production_material_analysis_materials SET active=TRUE,
-                      required_qty=:required,available_qty=:stock,reserved_qty=:reserved,
-                      safety_stock_qty=:safety,allocated_available_qty=:allocated,
-                      allocated_start_qty=:allocated,allocated_finish_qty=:allocated,
-                      allocated_ship_qty=:allocated,shortage_qty=:shortage,
-                      inbound_qty=:inbound,updated_at=now()
-                    WHERE id=:id
-                    """).setParameter("required", required).setParameter("stock", stock)
-                    .setParameter("reserved", decimal(row[10])).setParameter("safety", decimal(row[8]))
-                    .setParameter("allocated", allocated).setParameter("shortage", required.subtract(allocated))
-                    .setParameter("inbound", external
-                            ? futureCoverage.getOrDefault(materialId,BigDecimal.ZERO)
-                            : decimal(row[15]))
-                    .setParameter("id", materialId).executeUpdate();
+            quantities.add(new RootQuantityRow(materialId,required,stock,decimal(row[10]),decimal(row[8]),allocated,
+                    required.subtract(allocated),external?futureCoverage.getOrDefault(materialId,BigDecimal.ZERO):decimal(row[15])));
         }
+        updateRootQuantities(quantities);
         em.createNativeQuery("""
                 UPDATE production_material_analysis_items item
                 SET ready_now_qty=0,ready_by_date_qty=0,ready_start_qty=0,ready_finish_qty=0,ready_ship_qty=0
@@ -287,6 +277,43 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                 .orElseThrow(() -> conflict("根产品合格权益不存在或已被使用"));
         transferQualifiedLot(root, lot, (String) origin[2], (UUID) origin[3], key);
         return true;
+    }
+
+    private record RootQuantityRow(UUID id,BigDecimal required,BigDecimal stock,BigDecimal reserved,BigDecimal safety,
+            BigDecimal allocated,BigDecimal shortage,BigDecimal inbound) {}
+
+    /** Preserve the ordered public-pool calculation and every row's original UPDATE guards. */
+    private void updateRootQuantities(List<RootQuantityRow> rows) {
+        for (int from=0;from<rows.size();from+=500) {
+            List<RootQuantityRow> chunk=rows.subList(from,Math.min(rows.size(),from+500));
+            StringBuilder values=new StringBuilder();
+            for(int index=0;index<chunk.size();index++) {
+                if(index>0) values.append(",");
+                values.append("(CAST(:id").append(index).append(" AS uuid),CAST(:required").append(index)
+                        .append(" AS numeric),CAST(:stock").append(index).append(" AS numeric),CAST(:reserved").append(index)
+                        .append(" AS numeric),CAST(:safety").append(index).append(" AS numeric),CAST(:allocated").append(index)
+                        .append(" AS numeric),CAST(:shortage").append(index).append(" AS numeric),CAST(:inbound").append(index).append(" AS numeric))");
+            }
+            var query=em.createNativeQuery("""
+                    UPDATE production_material_analysis_materials root SET active=TRUE,
+                      required_qty=snapshot.required,available_qty=snapshot.stock,reserved_qty=snapshot.reserved,
+                      safety_stock_qty=snapshot.safety,allocated_available_qty=snapshot.allocated,
+                      allocated_start_qty=snapshot.allocated,allocated_finish_qty=snapshot.allocated,
+                      allocated_ship_qty=snapshot.allocated,shortage_qty=snapshot.shortage,
+                      inbound_qty=snapshot.inbound,updated_at=now()
+                    FROM (VALUES
+                    """+values+"""
+                    ) snapshot(id,required,stock,reserved,safety,allocated,shortage,inbound)
+                    WHERE root.id=snapshot.id
+                    """);
+            for(int index=0;index<chunk.size();index++) {
+                RootQuantityRow row=chunk.get(index);
+                query.setParameter("id"+index,row.id()).setParameter("required"+index,row.required()).setParameter("stock"+index,row.stock())
+                        .setParameter("reserved"+index,row.reserved()).setParameter("safety"+index,row.safety()).setParameter("allocated"+index,row.allocated())
+                        .setParameter("shortage"+index,row.shortage()).setParameter("inbound"+index,row.inbound());
+            }
+            query.executeUpdate();
+        }
     }
 
     private boolean fulfillWaitingOrigins(Root initial) {

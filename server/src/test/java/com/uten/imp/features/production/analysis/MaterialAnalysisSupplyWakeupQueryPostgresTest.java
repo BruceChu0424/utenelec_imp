@@ -45,9 +45,7 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
     // Frozen pre-change dimension bodies: whitespace only is normalized. All UNION/legacy conditions stay intact.
     private static final Map<String,String> DIMENSION_HASHES=Map.of(
             "purchaseTargets","38e5b797bed8d0ce7b224a64e12d00cff58b9cd6037ee0788f7c15311806e28b",
-            "subcontractTargets","bb2178d63b2bea3526f7a2cc86b2d9f37251feaccbaf538b92e35e0ea04cf53c",
-            "inspectionStockInTargets","61591df2103625e84bf6bcebe71eeba318d6f2f29204d582ad6eadc405f452b7",
-            "finishedInboundTargets","ece962f5860f6ea330ea7b4d85a98e33e2dcb52c7b65211766eecab89f5d5dca");
+            "subcontractTargets","bb2178d63b2bea3526f7a2cc86b2d9f37251feaccbaf538b92e35e0ea04cf53c");
     // Independent, pre-change selector. This is intentionally not constructed from the new candidate filter.
     private static final String OLD_SELECTOR="""
             SELECT analysis.id, analysis.maker_id
@@ -136,6 +134,44 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
         assertTargets("finishedInboundTargets",new Object[]{colored,1},Map.of("sourceDocumentId",colored,"requiredStatus",1),List.of(scope.colored()));
     }
 
+    @Test void mixedStockInBatchUsesEachApprovedReceiptAndDeduplicatesSharedAnalysis() throws Exception {
+        Scope scope = scope();
+        Receipt purchase = receipt("PURCHASE", scope.leaf(), scope.goods(), null, 1, "PARTIAL", true);
+        Receipt subcontract = receipt("SUBCONTRACT", scope.leaf(), scope.goods(), null, 1, "RESOLVED", false);
+        Receipt pending = receipt("PURCHASE", scope.leaf(), scope.goods(), scope.blue(), 1, "PARTIAL", false);
+        var batches = List.of(
+                new com.uten.imp.application.port.ProductionInspectionStockInPort.ReceiptStockIn(
+                        "PURCHASE", purchase.id(), UUID.randomUUID(), List.of(purchase.inspection())),
+                new com.uten.imp.application.port.ProductionInspectionStockInPort.ReceiptStockIn(
+                        "SUBCONTRACT", subcontract.id(), UUID.randomUUID(), List.of(subcontract.inspection())),
+                new com.uten.imp.application.port.ProductionInspectionStockInPort.ReceiptStockIn(
+                        "PURCHASE", pending.id(), UUID.randomUUID(), List.of(pending.inspection())));
+        var selector = MaterialAnalysisSupplyWakeupService.class.getDeclaredMethod("inspectionStockInTargets", List.class);
+        selector.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        var targets = (List<MaterialAnalysisSupplyWakeupService.AnalysisTarget>) selector.invoke(service, batches);
+        assertEquals(scope.expected().stream().sorted(Comparator.comparing(UUID::toString)).toList(),
+                targets.stream().map(MaterialAnalysisSupplyWakeupService.AnalysisTarget::analysisId).toList());
+        assertFalse(targets.stream().anyMatch(target -> target.analysisId().equals(scope.colored())),
+                "Unstocked partial inspection rows must not wake their colored analysis");
+    }
+
+    @Test void finishedInboundBatchCombinesApprovedDocumentsWithoutAdmittingDraftOrReversedRows() throws Exception {
+        Scope scope = scope();
+        UUID first = finished(scope.leaf(), scope.goods(), null, 1);
+        UUID second = finished(scope.leaf(), scope.goods(), null, 1);
+        UUID draft = finished(scope.leaf(), scope.goods(), scope.blue(), 0);
+        UUID reversed = finished(scope.leaf(), scope.goods(), scope.blue(), -1);
+        var selector = MaterialAnalysisSupplyWakeupService.class.getDeclaredMethod(
+                "finishedInboundTargets", Collection.class, int.class);
+        selector.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        var targets = (List<MaterialAnalysisSupplyWakeupService.AnalysisTarget>) selector.invoke(
+                service, List.of(first, second, first, draft, reversed), 1);
+        assertEquals(scope.expected().stream().sorted(Comparator.comparing(UUID::toString)).toList(),
+                targets.stream().map(MaterialAnalysisSupplyWakeupService.AnalysisTarget::analysisId).toList());
+    }
+
     @Test void unrelatedHistoryIsExcludedBeforeExpensivePredicatesWithRepeatedExplainEvidence() throws Exception {
         Scope scope=scope();Receipt source=receipt("PURCHASE",scope.leaf(),scope.goods(),null,1,"RESOLVED",false);
         Map<String,Object> params=Map.of("sourceDocumentId",source.id(),"includeLegacyFallback",false);
@@ -169,12 +205,24 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
 
     @SuppressWarnings("unchecked")
     private static void assertTargets(String method,Object[] arguments,Map<String,Object> params,List<UUID> expected) throws Exception {
-        Class<?>[] types=switch(method){case "inspectionStockInTargets"->new Class[]{String.class,UUID.class,Collection.class};case "finishedInboundTargets"->new Class[]{UUID.class,int.class};default->new Class[]{UUID.class,boolean.class};};
+        Class<?>[] types=switch(method){case "inspectionStockInTargets"->new Class[]{List.class};case "finishedInboundTargets"->new Class[]{UUID.class,int.class};default->new Class[]{UUID.class,boolean.class};};
+        if (method.equals("inspectionStockInTargets")) {
+            String receiptType = (String) arguments[0];
+            UUID receiptId = (UUID) arguments[1];
+            List<UUID> inspectionIds = List.copyOf((Collection<UUID>) arguments[2]);
+            arguments = new Object[]{List.of(new com.uten.imp.application.port.ProductionInspectionStockInPort.ReceiptStockIn(
+                    receiptType, receiptId, UUID.randomUUID(), inspectionIds))};
+            params = Map.of("purchaseReceiptIds", "PURCHASE".equals(receiptType) ? receiptId.toString() : "",
+                    "subcontractReceiptIds", "SUBCONTRACT".equals(receiptType) ? receiptId.toString() : "",
+                    "inspectionItemIds", inspectionIds);
+        } else if (method.equals("finishedInboundTargets")) {
+            params = Map.of("sourceDocumentIds", List.of((UUID) arguments[0]), "requiredStatus", arguments[1]);
+        }
         var selector=MaterialAnalysisSupplyWakeupService.class.getDeclaredMethod(method,types);selector.setAccessible(true);
         var actual=(List<MaterialAnalysisSupplyWakeupService.AnalysisTarget>)selector.invoke(service,arguments);
         String current=lastSql;
         String dimension=dimension(current).replaceAll("\\s+"," ").trim();
-        assertEquals(DIMENSION_HASHES.get(method),HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(dimension.getBytes(StandardCharsets.UTF_8))),"source UNION predicates are unchanged");
+        if (DIMENSION_HASHES.containsKey(method)) assertEquals(DIMENSION_HASHES.get(method),HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(dimension.getBytes(StandardCharsets.UTF_8))),"source UNION predicates are unchanged");
         var oldRows=(List<Object[]>)bind(em.createNativeQuery(oldQuery(current)),params).getResultList();
         var old=oldRows.stream().map(row->new MaterialAnalysisSupplyWakeupService.AnalysisTarget((UUID)row[0],(UUID)row[1])).toList();
         assertEquals(old,actual,"old/new UUID and maker results, including ordering");

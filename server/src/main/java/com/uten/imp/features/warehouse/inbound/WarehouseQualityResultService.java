@@ -94,12 +94,7 @@ public class WarehouseQualityResultService {
      * 各事实聚合再 JOIN scope，聚合量随筛选收窄。判定列由 V448 覆盖索引供给。
      */
     private static final String AGGREGATE_CTE = """
-            WITH event_stocked AS (
-                SELECT item.pass_event_id,
-                       COALESCE(SUM(item.base_qty), 0) AS stocked_qty
-                FROM procurement_iqc_stock_in_batch_items item
-                GROUP BY item.pass_event_id
-            ), receipt_scope AS (
+            WITH receipt_scope AS (
                 SELECT 'PURCHASE'::text AS receipt_type,
                        receipt.id AS receipt_id, receipt.bill_no, receipt.bill_date,
                        receipt.supplier_id, receipt.warehouse_id
@@ -141,11 +136,15 @@ public class WarehouseQualityResultService {
                 JOIN receipt_scope scope
                   ON scope.receipt_type = inspection.receipt_type
                  AND scope.receipt_id = inspection.receipt_id
-                LEFT JOIN event_stocked
-                  ON event_stocked.pass_event_id = event.id
+                LEFT JOIN LATERAL (
+                    SELECT SUM(item.base_qty) AS stocked_qty
+                    FROM procurement_iqc_stock_in_batch_items item
+                    WHERE item.pass_event_id = event.id
+                ) event_stocked ON TRUE
                 WHERE event.action = 'PASS'
                   AND event.requires_warehouse_stock_in = TRUE
                   AND inspection.status <> 'REVERSED'
+                  AND inspection.passed_base_qty > inspection.warehouse_stocked_base_qty
                   AND event.base_qty > COALESCE(event_stocked.stocked_qty, 0)
                 GROUP BY inspection.receipt_type, inspection.receipt_id
             ), pending_return AS (

@@ -209,6 +209,12 @@ public class PurchaseReceiptService {
     @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
     @PreAuthorize("hasAuthority('purchase_receipt:approve')")
     public ReceiptDetail approve(UUID id) {
+        approveReceipt(id);
+        return detail(id);
+    }
+
+    /** Shared transaction kernel; warehouse commands do not need the commercial detail projection. */
+    private void approveReceipt(UUID id) {
         tx.bind();
         SupplierPeriodIdentityGuard.Identity periodIdentity =
         periodIdentityGuard.requireIdentity(SourceTable.PURCHASE_RECEIPT, id);
@@ -297,13 +303,12 @@ public class PurchaseReceiptService {
                 ProcurementArrivalControlPort.PURCHASE, id);
         em.flush();
         procurementValue.receiptApproved("PURCHASE",id,currentUser.requireId());
-        return detail(id);
     }
     /** Dedicated warehouse-arrival gateway; normal approval keeps its exact action authority. */
     @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
     @PreAuthorize("hasAuthority('warehouse_inbound:stock_in')")
-    public ReceiptDetail approveFromWarehouseDecision(UUID id) {
-        return approve(id);
+    public void approveFromWarehouseDecision(UUID id) {
+        approveReceipt(id);
     }
 
 

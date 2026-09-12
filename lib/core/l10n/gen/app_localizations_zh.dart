@@ -3468,4 +3468,54 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get productionMaterialViewUsage => '查看用料记录';
+
+  @override
+  String get systemSettingInvalidInteger => '请输入有效的非负整数';
+
+  @override
+  String get systemSettingInvalidValue => '设置值超出允许范围';
+
+  @override
+  String get systemSettingEnabled => '开启';
+
+  @override
+  String get systemSettingDisabled => '关闭';
+
+  @override
+  String get systemSettingFixFields => '请先检查框内标记的设置项';
+
+  @override
+  String get systemSettingUnsavedRefresh => '请先保存或还原修改，再刷新设置';
+
+  @override
+  String get systemSettingEffectTiming =>
+      '安全阈值在后续操作生效，令牌有效期在下次签发生效；庆典与审计留存在各自的计划任务生效。修改会记录审计并需要账号密码确认。';
+
+  @override
+  String get auditSummaryUnavailable => '统计暂不可用，操作记录仍可核查';
+
+  @override
+  String get auditSummaryRetry => '重试统计';
+
+  @override
+  String get auditWorkspaceDescription => '按人员与时间查看会话，沿操作记录追溯业务变化。';
+
+  @override
+  String get materialReasonLabel => '原因';
+
+  @override
+  String get materialReasonRequired => '请填写原因';
+
+  @override
+  String materialReasonTooLong(int max) {
+    return '原因不能超过 $max 个字符';
+  }
+
+  @override
+  String materialReasonTooShort(int min) {
+    return '原因至少填写 $min 个字符';
+  }
+
+  @override
+  String get auditFiltersTitle => '操作类型 · 业务对象 · 事件类型';
 }

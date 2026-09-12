@@ -86,11 +86,10 @@ public class InventoryOpeningService extends InventoryValueLedger implements Inv
                 FROM stock_balances b WHERE b.warehouse_id=:warehouse AND b.goods_id=:goods AND
                 """+colorCondition("b.color_id",key),poolArgs(key,"event",eventId,"pool",pool.id(),"source",sourceId,
                 "head",headId,"qty",quantity,"recorded",recorded,"known",intent.known()==null?null:known,"mode",intent.mode(),"reason",intent.reason()));
-        Node source=createNode(sourceId,pool,"SOURCE",null,null,null,null,quantity,ZERO,ZERO,known,
-                finalValue?0:1,false,finalValue,eventId);
-        authority.initialSource(source.id(),actualKnown);
-        Node head=createNode(headId,pool,"POOL",null,null,null,null,quantity,ZERO,quantity,known,pending(source),true,true,eventId);
-        edge(source,head,ZERO,BigDecimal.ONE,BigDecimal.ONE,eventId);
+        Node source=createSourceNode(sourceId,pool,null,quantity,known,finalValue?0:1,finalValue,eventId);
+        source=initialSource(source,actualKnown);
+        Node head=createDerivedNode(headId,pool,"POOL",null,null,null,null,quantity,ZERO,quantity,known,
+                pending(source),true,true,eventId,List.of(whole(source)));
         State state=state(head);
         insertEvent(eventId,intent.operation(),context,request,pool.id(),null,quantity,quantity,known,source.id(),head.id(),state,
                 source.id(),1L,null,null,null,finalValue);

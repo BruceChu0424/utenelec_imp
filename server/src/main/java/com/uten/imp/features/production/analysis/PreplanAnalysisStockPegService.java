@@ -217,11 +217,12 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         SELECT allocation.id, allocation.analysis_id,
                                allocation.analysis_material_id,
                                allocation.allocated_qty, analysis.status,
-                               action.operation_type
+                               action.operation_type, action.status
                         FROM preplan_supply_action_allocations allocation
                         JOIN preplan_supply_actions action
                           ON action.id = allocation.action_id
-                         AND action.status <> 'CANCELLED'
+                         AND (action.status <> 'CANCELLED'
+                              OR fn_iqc_cancelled_supply_can_continue(action.id))
                         JOIN production_material_analyses analysis
                           ON analysis.id = allocation.analysis_id
                          AND analysis.is_deleted = FALSE
@@ -273,6 +274,15 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 legacyRemainingByAnalysis.put(
                         analysisId, legacyRemaining.subtract(legacyUse));
                 BigDecimal headroom = capacityAfterExact.subtract(legacyUse);
+                if ("CANCELLED".equals(Objects.toString(claimant[6], ""))) {
+                    // A terminal IQC action stays cancelled. Only the actual V518
+                    // replacement part on this stock-in may continue its old origin,
+                    // within current node demand and other live supply commitments.
+                    headroom = headroom.min(decimal(em.createNativeQuery("""
+                            SELECT fn_iqc_replacement_origin_capacity(:stockItemId,:allocationId,NULL)
+                            """).setParameter("stockItemId", warehouseStockInItemId)
+                            .setParameter("allocationId", allocationId).getSingleResult()));
+                }
                 boolean sharedClaim = "SHARED_FUTURE_CLAIM".equals(
                         Objects.toString(claimant[5], ""));
                 BigDecimal orderBudget = sharedClaim

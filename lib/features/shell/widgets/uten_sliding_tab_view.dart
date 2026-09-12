@@ -7,7 +7,7 @@
 //   - 点击 / 路由变更 index → 新页从一侧滑入、当前页向对侧滑出，绝不经过别的页
 //   - 方向：去更靠右的 Tab = 新页从右进、当前页左移（forward，即用户描述的效果）；
 //     反向同理镜像（去更左的 Tab = 新页从左进），与旧 PageView 手势方向一致
-//   - 全部页常驻树（非参与页用 Offstage 隐藏，仍 layout、保留 State 与滚动位置），
+//   - 首次访问才初始化；已访问页常驻树，非参与页用Offstage隐藏并保留状态，
 //     切回 Tab 时各页状态不丢（不回顶）
 //   - 可选横滑手势：手指左右滑切到相邻 Tab（与主 Tab 内纵向滚动不冲突；
 //     主 Tab 页无横向滚动控件，故无抢手势风险）
@@ -41,7 +41,7 @@ class UtenSlidingTabView extends StatefulWidget {
   /// 连续页位置（0..n-1），随转场 lerp；外壳用来驱动胶囊滑块。
   final ValueNotifier<double> position;
 
-  /// 各 Tab 页（顺序 = 页序），全部常驻保活。
+  /// Tabs mount on first visit, then keep their state across navigation.
   final List<Widget> children;
 
   /// 横滑切到相邻 Tab 时回调（外壳用它同步路由）。
@@ -70,6 +70,7 @@ class _UtenSlidingTabViewState extends State<UtenSlidingTabView>
 
   /// 转场中的来源页（转场期间与 _to 同时可见；结束 post-frame 追平 _to）
   int _from = 0;
+  final Set<int> _visited = {};
 
   /// 转场方向：+1 = 去更右的 Tab（forward，新页从右进），-1 = 去更左的 Tab
   int _dir = 1;
@@ -119,6 +120,9 @@ class _UtenSlidingTabViewState extends State<UtenSlidingTabView>
   void _animateTo(int to) {
     final n = widget.children.length;
     if (to < 0 || to >= n || to == _to) return;
+    // Gestures can lead the router update (or have no route callback). Mount
+    // the target before its first animation frame, not only on widget.index.
+    _visited.add(to);
     // 若上次转场未完，先停掉并把上次的目标 _to 落位为新的出发点，
     // 再开新转场，避免两条转场叠加造成视觉错乱（快速连点场景）。
     _ctrl.stop();
@@ -135,6 +139,7 @@ class _UtenSlidingTabViewState extends State<UtenSlidingTabView>
     final n = widget.children.length;
     if (to < 0 || to >= n || to == _to) return;
     setState(() {
+      _visited.add(to);
       _to = to;
       _from = to;
     });
@@ -193,9 +198,16 @@ class _UtenSlidingTabViewState extends State<UtenSlidingTabView>
   }
 
   Widget _pageAt(int index, {required bool ancestorTickersEnabled}) {
+    // A cold business deep link must not initialize the dashboard, notices,
+    // profile and settings behind it. Keep a stable slot so a visited tab is
+    // never remounted when another tab is first opened.
+    if (!_visited.contains(index)) {
+      return Positioned.fill(key: ValueKey(index), child: const SizedBox());
+    }
     final participatesInTransition = index == _to || index == _from;
     final isActiveMainTab = widget.index != null && participatesInTransition;
     return Positioned.fill(
+      key: ValueKey(index),
       child: ExcludeFocus(
         // Offstage 保留 State 时也可能保留焦点；隐藏页不得继续接收键盘事件。
         excluding: !isActiveMainTab,
@@ -221,6 +233,9 @@ class _UtenSlidingTabViewState extends State<UtenSlidingTabView>
     // 路由驱动：目标页码变化时，post-frame 启动转场（与旧 animateToPage 同模式，
     // 避免在 build 期操纵 AnimationController）。
     final idx = widget.index;
+    if (idx != null && idx >= 0 && idx < widget.children.length) {
+      _visited.add(idx);
+    }
     if (idx != null && idx != _to) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || idx != widget.index || idx == _to) return;

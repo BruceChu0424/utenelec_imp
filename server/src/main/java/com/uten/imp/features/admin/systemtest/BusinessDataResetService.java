@@ -99,14 +99,21 @@ public class BusinessDataResetService {
             long clearedRows,
             int preservedTableCount,
             long authorizationEpochAfter,
-            long deletedAttachmentFiles) {
+            long deletedAttachmentFiles,
+            UUID operatorId,
+            UUID attemptId) {
 
         static LastResult none() {
-            return new LastResult(false, null, null, 0, 0, 0, 0, 0);
+            return new LastResult(false, null, null, 0, 0, 0, 0, 0, null, null);
         }
     }
 
     public Result reset(UUID operatorId, String operatorAccount) {
+        return reset(operatorId, operatorAccount, null);
+    }
+
+    /** Optional correlation only; it never retries or bypasses any reset gate. */
+    public Result reset(UUID operatorId, String operatorAccount, UUID attemptId) {
         featureGate.requireEnabled();
         // 排水之前先分类：自动清理消化不了的阻塞直接 409，不进入排水（避免全站无谓 503）。
         rejectUnpurgeableAttachments(operatorId);
@@ -142,7 +149,7 @@ public class BusinessDataResetService {
                     operatorAccount,
                     AUDIT_ACTION,
                     "system_test",
-                    null,
+                    attemptId == null ? null : attemptId.toString(),
                     "cleared_tables=" + result.clearedTableCount()
                             + ",cleared_rows=" + result.clearedRows()
                             + ",preserved_tables=" + result.preservedTableCount()
@@ -256,10 +263,21 @@ public class BusinessDataResetService {
 
     /** 上次清空结果：audit_log 最近一条 {@value #AUDIT_ACTION} 显式事件（重登后工作台回显）。 */
     public LastResult lastResult() {
+        return lastResult(null, null);
+    }
+
+    /** A requested receipt is visible only to the authenticated original operator. */
+    public LastResult lastResult(UUID operatorId, UUID attemptId) {
         featureGate.requireEnabled();
+        if (attemptId != null && operatorId == null) {
+            throw new ApiException(ErrorCode.UNAUTHORIZED, "请重新登录后核对清空结果");
+        }
         try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement("SELECT actor_account, result, created_at FROM audit_log WHERE action = ? ORDER BY created_at DESC, id DESC LIMIT 1")) {
+             PreparedStatement statement = connection.prepareStatement("SELECT actor_id, actor_account, target_id, result, created_at FROM audit_log WHERE action = ? AND event_source = 'business' AND target_type = 'system_test' AND (CAST(? AS uuid) IS NULL OR (target_id = ? AND actor_id = ?)) ORDER BY created_at DESC, id DESC LIMIT 1")) {
             statement.setString(1, AUDIT_ACTION);
+            statement.setObject(2, attemptId);
+            statement.setString(3, attemptId == null ? null : attemptId.toString());
+            statement.setObject(4, operatorId);
             try (ResultSet rows = statement.executeQuery()) {
                 if (!rows.next()) {
                     return LastResult.none();
@@ -273,11 +291,19 @@ public class BusinessDataResetService {
                         values.getOrDefault("cleared_rows", 0L),
                         (int) (long) values.getOrDefault("preserved_tables", 0L),
                         values.getOrDefault("epoch", 0L),
-                        values.getOrDefault("deleted_attachment_files", 0L));
+                        values.getOrDefault("deleted_attachment_files", 0L),
+                        rows.getObject("actor_id", UUID.class),
+                        parseAttemptId(rows.getString("target_id")));
             }
         } catch (SQLException ex) {
             throw new ApiException(ErrorCode.INTERNAL, "读取上次清空结果失败：" + ex.getMessage());
         }
+    }
+
+    private static UUID parseAttemptId(String value) {
+        if (value == null) return null;
+        try { return UUID.fromString(value); }
+        catch (IllegalArgumentException historicalTarget) { return null; }
     }
 
     /** 解析审计 result 摘要 {@code k=v,k=v}（旧记录没有 deleted_attachment_files 时按 0）。 */

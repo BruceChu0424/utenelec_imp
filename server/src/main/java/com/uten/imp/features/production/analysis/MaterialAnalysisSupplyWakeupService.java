@@ -1,6 +1,7 @@
 package com.uten.imp.features.production.analysis;
 
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.application.port.ProductionInspectionStockInPort.ReceiptStockIn;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -60,20 +62,75 @@ public class MaterialAnalysisSupplyWakeupService {
                 || inspectionItemIds == null || inspectionItemIds.isEmpty()) {
             return;
         }
+        afterInspectionStockInConfirmed(List.of(new ReceiptStockIn(
+                sourceType, receiptId, warehouseStockInBatchId,
+                List.copyOf(inspectionItemIds))));
+    }
+
+    /**
+     * The caller has written every receipt's physical stock and entitlement slices.
+     * Resolve the union of affected dimensions once, then refresh each analysis once
+     * in the same transaction. A later failure still rolls back the entire stock-in.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void afterInspectionStockInConfirmed(List<ReceiptStockIn> batches) {
         Map<UUID, UUID> makers = new TreeMap<>();
-        for (AnalysisTarget target : inspectionStockInTargets(
-                sourceType, receiptId, inspectionItemIds)) {
-            makers.put(target.analysisId(), target.makerEmployeeId());
-        }
-        for (AnalysisTarget target : "PURCHASE".equals(sourceType)
-                ? purchaseTargets(receiptId, false)
-                : subcontractTargets(receiptId, false)) {
+        for (AnalysisTarget target : inspectionStockInTargets(batches)) {
             makers.put(target.analysisId(), target.makerEmployeeId());
         }
         List<AnalysisTarget> targets = new ArrayList<>(makers.size());
         makers.forEach((analysisId, makerEmployeeId) ->
                 targets.add(new AnalysisTarget(analysisId, makerEmployeeId)));
         refreshTargets(targets);
+    }
+
+    private List<AnalysisTarget> inspectionStockInTargets(List<ReceiptStockIn> batches) {
+        if (batches == null || batches.isEmpty()) return List.of();
+        List<UUID> purchaseReceiptIds = new ArrayList<>();
+        List<UUID> subcontractReceiptIds = new ArrayList<>();
+        var inspectionItemIds = new LinkedHashSet<UUID>();
+        for (ReceiptStockIn batch : batches) {
+            if (batch.batchId() == null || batch.inspectionItemIds().isEmpty()) continue;
+            switch (batch.receiptType()) {
+                case "PURCHASE" -> purchaseReceiptIds.add(batch.receiptId());
+                case "SUBCONTRACT" -> subcontractReceiptIds.add(batch.receiptId());
+                default -> throw new IllegalArgumentException("Unsupported stock-in receipt type");
+            }
+            inspectionItemIds.addAll(batch.inspectionItemIds());
+        }
+        if (inspectionItemIds.isEmpty()) return List.of();
+        // UUID arrays avoid IN () for a one-type batch, and bind each receipt to
+        // its document type. Resolved siblings retain the old rejection wakeup.
+        return analysisTargets(candidateQuery("""
+                    SELECT DISTINCT inspection.warehouse_id,
+                           inspection.goods_id, inspection.color_id
+                    FROM procurement_inspection_items inspection
+                    WHERE (
+                        (inspection.receipt_type = 'PURCHASE'
+                         AND inspection.receipt_id = ANY(CAST(string_to_array(:purchaseReceiptIds, ',') AS uuid[]))
+                         AND EXISTS (SELECT 1 FROM purchase_receipts receipt
+                             WHERE receipt.id = inspection.receipt_id
+                               AND receipt.status = 1 AND receipt.is_deleted = FALSE))
+                        OR
+                        (inspection.receipt_type = 'SUBCONTRACT'
+                         AND inspection.receipt_id = ANY(CAST(string_to_array(:subcontractReceiptIds, ',') AS uuid[]))
+                         AND EXISTS (SELECT 1 FROM subcontract_receipts receipt
+                             WHERE receipt.id = inspection.receipt_id
+                               AND receipt.status = 1 AND receipt.is_deleted = FALSE))
+                    )
+                    AND (inspection.status = 'RESOLVED'
+                         OR (inspection.id IN (:inspectionItemIds)
+                             AND inspection.status = 'PARTIAL'
+                             AND inspection.warehouse_stocked_base_qty > 0))
+                """)
+                .setParameter("purchaseReceiptIds", uuidParameter(purchaseReceiptIds))
+                .setParameter("subcontractReceiptIds", uuidParameter(subcontractReceiptIds))
+                .setParameter("inspectionItemIds", List.copyOf(inspectionItemIds)));
+    }
+
+    private static String uuidParameter(Collection<UUID> ids) {
+        return ids.stream().distinct().sorted().map(UUID::toString)
+                .collect(java.util.stream.Collectors.joining(","));
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -89,6 +146,11 @@ public class MaterialAnalysisSupplyWakeupService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterFinishedInboundApproved(UUID stockDocumentId) {
         refreshTargets(finishedInboundTargets(stockDocumentId, 1));
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void afterFinishedInboundApproved(Collection<UUID> stockDocumentIds) {
+        refreshTargets(finishedInboundTargets(stockDocumentIds, 1));
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -117,36 +179,6 @@ public class MaterialAnalysisSupplyWakeupService {
         // Planning can issue tasks before materials arrive. A stock receipt must
         // update these facts, not ask the plan maker to issue the same work again.
         // Actual WAITING -> READY notifications belong to the exact workshop task.
-    }
-
-    private List<AnalysisTarget> inspectionStockInTargets(
-            String sourceType, UUID receiptId, Collection<UUID> inspectionItemIds) {
-        return analysisTargets(candidateQuery("""
-                    SELECT inspection.warehouse_id,
-                           inspection.goods_id, inspection.color_id
-                    FROM procurement_inspection_items inspection
-                    WHERE inspection.id IN (:inspectionItemIds)
-                      AND inspection.receipt_type = :sourceType
-                      AND inspection.receipt_id = :sourceDocumentId
-                      AND inspection.status IN ('PARTIAL', 'RESOLVED')
-                      AND inspection.warehouse_stocked_base_qty > 0
-                      AND (
-                          (:sourceType = 'PURCHASE' AND EXISTS (
-                              SELECT 1 FROM purchase_receipts receipt
-                              WHERE receipt.id = inspection.receipt_id
-                                AND receipt.status = 1
-                                AND receipt.is_deleted = FALSE))
-                          OR
-                          (:sourceType = 'SUBCONTRACT' AND EXISTS (
-                              SELECT 1 FROM subcontract_receipts receipt
-                              WHERE receipt.id = inspection.receipt_id
-                                AND receipt.status = 1
-                                AND receipt.is_deleted = FALSE))
-                      )
-                """)
-                .setParameter("sourceType", sourceType)
-                .setParameter("sourceDocumentId", receiptId)
-                .setParameter("inspectionItemIds", inspectionItemIds));
     }
 
     private List<AnalysisTarget> purchaseTargets(
@@ -231,6 +263,12 @@ public class MaterialAnalysisSupplyWakeupService {
 
     private List<AnalysisTarget> finishedInboundTargets(
             UUID stockDocumentId, int requiredStatus) {
+        return finishedInboundTargets(List.of(stockDocumentId), requiredStatus);
+    }
+
+    private List<AnalysisTarget> finishedInboundTargets(
+            Collection<UUID> stockDocumentIds, int requiredStatus) {
+        if (stockDocumentIds == null || stockDocumentIds.isEmpty()) return List.of();
         return analysisTargets(candidateQuery("""
                     SELECT DISTINCT document.warehouse_id,
                            item.goods_id, item.color_id
@@ -238,13 +276,13 @@ public class MaterialAnalysisSupplyWakeupService {
                     JOIN stock_document_items item
                       ON item.doc_id = document.id
                      AND item.is_deleted = FALSE
-                    WHERE document.id = :sourceDocumentId
+                    WHERE document.id IN (:sourceDocumentIds)
                       AND document.doc_type = 'FINISHED_IN'
                       AND document.status = :requiredStatus
                       AND document.is_deleted = FALSE
                       AND document.warehouse_id IS NOT NULL
                       AND item.goods_id IS NOT NULL
-                """).setParameter("sourceDocumentId", stockDocumentId)
+                """).setParameter("sourceDocumentIds", stockDocumentIds.stream().distinct().sorted().toList())
                 .setParameter("requiredStatus", requiredStatus));
     }
 

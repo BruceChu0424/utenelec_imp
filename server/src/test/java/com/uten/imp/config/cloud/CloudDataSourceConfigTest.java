@@ -52,6 +52,18 @@ class CloudDataSourceConfigTest {
             assertEquals("5", primary.getDataSourceProperties().getProperty("connectTimeout"));
             assertEquals("5", primary.getDataSourceProperties().getProperty("socketTimeout"));
             assertEquals("true", primary.getDataSourceProperties().getProperty("tcpKeepAlive"));
+            assertEquals("SET jit = false", primary.getConnectionInitSql());
+            assertEquals("SET jit = false", replica.getConnectionInitSql());
+        }
+    }
+
+    @Test
+    void deploymentOverrideAppliesToBothCloudPools() {
+        org.springframework.test.util.ReflectionTestUtils.setField(config, "jitEnabled", true);
+        try (HikariDataSource primary = (HikariDataSource) config.primaryDataSource(configuredProperties());
+             HikariDataSource replica = (HikariDataSource) config.replicaDataSource(configuredProperties())) {
+            assertEquals("SET jit = true", primary.getConnectionInitSql());
+            assertEquals("SET jit = true", replica.getConnectionInitSql());
         }
     }
 

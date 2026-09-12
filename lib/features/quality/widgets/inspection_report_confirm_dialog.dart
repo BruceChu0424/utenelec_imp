@@ -137,16 +137,19 @@ class _InspectionReportConfirmDialogState
               const SizedBox(height: UtenSpacing.s12),
               TextField(
                 controller: _reason,
+                onChanged: (_) {
+                  if (_reasonError != null) setState(() => _reasonError = null);
+                },
                 maxLines: 3,
                 maxLength: 500,
                 decoration: UtenInputDecoration(
                   InputDecoration(
-                    labelText: widget.requireReason ? '结论原因(必填)' : '结论原因(选填)',
+                    labelText: hasFail ? '结论原因(必填)' : '结论原因(选填)',
                     error: _reasonError == null
                         ? null
                         : UtenFieldMessage.error(_reasonError!),
                   ),
-                  info: widget.requireReason
+                  info: hasFail
                       ? '请说明不合格原因，便于后续退货、返工或其它处置。'
                       : '可补充检验依据或需要仓库注意的事项。',
                 ),
@@ -204,14 +207,15 @@ class _InspectionReportConfirmDialogState
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
+          key: const Key('inspection-report-confirm-cancel'),
+          onPressed: () => Navigator.of(context).pop<String>(),
           child: const Text('取消'),
         ),
         UtenButton(
           key: const Key('inspection-report-confirm-submit'),
           onPressed: () {
             final reason = _reason.text.trim();
-            if (widget.requireReason && reason.isEmpty) {
+            if (hasFail && reason.isEmpty) {
               setState(() => _reasonError = '结论原因必填');
               return;
             }

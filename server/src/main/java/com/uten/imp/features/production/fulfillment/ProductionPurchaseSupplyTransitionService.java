@@ -404,10 +404,16 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
     public void afterPurchaseInspectionStockInConfirmed(
             UUID receiptId, UUID warehouseStockInBatchId,
             Collection<UUID> inspectionItemIds) {
-        advancePurchaseReceiptState(receiptId, warehouseStockInBatchId);
+        advanceInspectionStockInState(receiptId, warehouseStockInBatchId);
         materialAnalysisWakeup.afterInspectionStockInConfirmed(
                 "PURCHASE", receiptId, warehouseStockInBatchId,
                 inspectionItemIds);
+    }
+
+    /** Called once per new receipt batch before the command-wide analysis refresh. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void advanceInspectionStockInState(UUID receiptId, UUID warehouseStockInBatchId) {
+        advancePurchaseReceiptState(receiptId, warehouseStockInBatchId);
     }
 
     /**

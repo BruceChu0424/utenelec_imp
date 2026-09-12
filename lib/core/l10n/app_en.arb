@@ -1427,5 +1427,34 @@
   "attachmentUploadedFiles": "Uploaded {count} files",
   "productionMaterialRecheckHelp": "Recheck qualified receipts for this task and available stock. This does not receive stock or record actual consumption.",
   "productionMaterialRegisterUsage": "Record actual usage",
-  "productionMaterialViewUsage": "View usage records"
+  "productionMaterialViewUsage": "View usage records",
+  "systemSettingInvalidInteger": "Enter a valid non-negative integer",
+  "systemSettingInvalidValue": "The setting is outside its allowed range",
+  "systemSettingEnabled": "Enabled",
+  "systemSettingDisabled": "Disabled",
+  "systemSettingFixFields": "Check the highlighted settings first",
+  "systemSettingUnsavedRefresh": "Save or revert your changes before refreshing",
+  "systemSettingEffectTiming": "Security limits apply to subsequent actions and token lifetimes to newly issued tokens. Celebrations and audit retention apply on their scheduled runs. Changes are audited and require password confirmation.",
+  "auditSummaryUnavailable": "Summary unavailable; event records remain available",
+  "auditSummaryRetry": "Retry summary",
+  "auditWorkspaceDescription": "Review sessions by person and time, then follow events to business changes.",
+  "materialReasonLabel": "Reason",
+  "materialReasonRequired": "Enter a reason",
+  "materialReasonTooLong": "Use no more than {max} characters for the reason",
+  "materialReasonTooShort": "Enter at least {min} characters for the reason",
+  "@materialReasonTooLong": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "@materialReasonTooShort": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "auditFiltersTitle": "Operation, business object and event type"
 }

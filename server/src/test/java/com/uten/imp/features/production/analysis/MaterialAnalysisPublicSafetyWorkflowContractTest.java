@@ -53,7 +53,8 @@ class MaterialAnalysisPublicSafetyWorkflowContractTest {
     void splitProgressDrivesPartialPassFailureAndSafetyOnlyLifecycle()
             throws Exception {
         String analysis = source("MaterialAnalysisService.java");
-        String command = source("MaterialAnalysisCommandService.java");
+        String command = source("MaterialAnalysisCommandService.java")
+                + source("MaterialAnalysisSupplyCoverageReader.java");
         String progress = source("MaterialAnalysisSupplyProgressService.java");
 
         assertThat(analysis)

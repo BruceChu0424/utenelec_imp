@@ -53,12 +53,12 @@ public class InventoryPositionService extends InventoryValueLedger implements In
         BigDecimal actualNewCost=proof.knownValueLocal()==null?ZERO:sourceAmount(proof.knownValueLocal(),"已知取得成本原额",false);
         BigDecimal newCost=projection(actualNewCost);
         UUID eventId=UUID.randomUUID();
-        Node source=createNode(pool,"SOURCE",null,null,null,null,qty,ZERO,ZERO,newCost,proof.complete()?0:1,false,proof.complete(),eventId);
-        authority.initialSource(source.id(),actualNewCost);
+        Node source=createSourceNode(pool,null,qty,newCost,proof.complete()?0:1,proof.complete(),eventId);
+        source=initialSource(source,actualNewCost);
+        List<Contribution> contributions=new ArrayList<>();contributions.add(whole(source));contributions.addAll(transferContributions(takes));
         Node position=newPosition(pool,command.owner(),command.ownerId(),qty,
-                newCost.add(totalValue(takes)),pending(source)+totalPending(takes),eventId);
-        edge(source,position,ZERO,BigDecimal.ONE,BigDecimal.ONE,eventId);
-        transfer(takes,position,eventId);
+                newCost.add(totalValue(takes)),pending(source)+totalPending(takes),eventId,contributions);
+        finishTransfer(takes,position,eventId);
         db.update("""
                 INSERT INTO stock_value_acquisition_sources(source_node_id,event_id,evidence_id,evidence_version,
                     authority_type,authority_id,authority_version,evidence_hash,quantity_basis,carried_qty_base,
@@ -112,11 +112,10 @@ public class InventoryPositionService extends InventoryValueLedger implements In
             throw conflict("原实耗金额正在传播，请待原来源更新完成后重试");
         Pool pool=lockPool(key);UUID event=UUID.randomUUID();
         BigDecimal cost=interval(source.value(),root.returnedQty(),through,root.qty());
-        Node restored=newPosition(pool,command.materialOwner(),command.materialOwnerId(),qty,cost,pending(source),event);
-        Node cursor=createNode(pool,"COST_RETURN_CURSOR",null,null,null,root.id(),root.qty(),through,root.qty(),
-                source.value(),pending(source),true,true,event);
-        edge(source,restored,root.returnedQty(),through,root.qty(),event);
-        edge(source,cursor,ZERO,BigDecimal.ONE,BigDecimal.ONE,event);
+        Node restored=newPosition(pool,command.materialOwner(),command.materialOwnerId(),qty,cost,pending(source),event,
+                List.of(fraction(source,root.returnedQty(),through,root.qty())));
+        Node cursor=createDerivedNode(pool,"COST_RETURN_CURSOR",null,null,null,root.id(),root.qty(),through,root.qty(),
+                source.value(),pending(source),true,true,event,List.of(whole(source)));
         if(!source.id().equals(root.id()))deactivate(source);
         if(db.update("""
                 UPDATE stock_value_nodes SET returned_consumption_qty=:through,consumption_return_head_id=:head
@@ -140,8 +139,8 @@ public class InventoryPositionService extends InventoryValueLedger implements In
         requireSourceLocks(slices,key); Pool pool=lockPool(key);
         prior=replay("POSITION_MOVE",c,request);if(prior!=null)return result(prior,true);
         List<Take> takes=take(slices,key,restoringUnallocatedConsumed);UUID eventId=UUID.randomUUID();BigDecimal qty=totalQty(takes);
-        Node position=newPosition(pool,command.owner(),command.ownerId(),qty,totalValue(takes),totalPending(takes),eventId);
-        transfer(takes,position,eventId);State state=state(position);
+        Node position=newPosition(pool,command.owner(),command.ownerId(),qty,totalValue(takes),totalPending(takes),eventId,transferContributions(takes));
+        finishTransfer(takes,position,eventId);State state=state(position);
         insertEvent(eventId,"POSITION_MOVE",c,request,pool.id(),null,qty,null,position.value(),position.id(),null,state,
                 null,null,null,null,null,null);
         posting(eventId,null,position.id(),position.ownerKind(),position.ownerId(),position.value());
@@ -165,13 +164,13 @@ public class InventoryPositionService extends InventoryValueLedger implements In
         for(Take t:takes)if(!Set.of("QUALITY_PASSED","WIP","SUBCONTRACT_WIP","IN_TRANSIT","EXTERNAL").contains(t.head().ownerKind()))
             throw conflict("该价值位置尚未完成允许入仓的业务处置");
         UUID eventId=UUID.randomUUID();BigDecimal qty=totalQty(takes),cost=totalValue(takes);
-        Node source=createNode(pool,"RETURN_SOURCE",null,null,command.movementId(),null,
-                qty,ZERO,ZERO,cost,totalPending(takes)+(command.pendingOwnMaterialCost()?1:0),false,!command.pendingOwnMaterialCost(),eventId);
-        transfer(takes,source,eventId);
-        Node next=createNode(pool,"POOL",null,null,null,null,before.add(qty),ZERO,before.add(qty),
-                value(inventory).add(cost),pending(inventory)+pending(source),true,true,eventId);
-        if(inventory!=null){edge(inventory,next,ZERO,BigDecimal.ONE,BigDecimal.ONE,eventId);deactivate(inventory);}
-        edge(source,next,ZERO,BigDecimal.ONE,BigDecimal.ONE,eventId);head(pool,next.id(),pool.headId());
+        Node source=createDerivedNode(pool,"RETURN_SOURCE",null,null,command.movementId(),null,
+                qty,ZERO,ZERO,cost,totalPending(takes)+(command.pendingOwnMaterialCost()?1:0),false,!command.pendingOwnMaterialCost(),eventId,transferContributions(takes));
+        finishTransfer(takes,source,eventId);
+        Node next=createDerivedNode(pool,"POOL",null,null,null,null,before.add(qty),ZERO,before.add(qty),
+                value(inventory).add(cost),pending(inventory)+pending(source),true,true,eventId,poolContributions(inventory,source));
+        if(inventory!=null)deactivate(inventory);
+        head(pool,next.id(),pool.headId());
         State state=state(source);
         insertEvent(eventId,"POSITION_STORE",c,request,pool.id(),command.movementId(),qty,before,cost,source.id(),next.id(),state,
                 null,null,null,null,null,null);
@@ -227,9 +226,10 @@ public class InventoryPositionService extends InventoryValueLedger implements In
             BigDecimal partQty=(BigDecimal)transfer.get("qty_base"),from=(BigDecimal)transfer.get("range_from"),to=(BigDecimal)transfer.get("range_to");
             if(held.from().compareTo(to)<0)throw conflict("原入库切片尚未全部离开原合格位置");
             BigDecimal amount=interval(held.value(),from,to,held.qty());
-            Node restored=newPosition(pool,Owner.QUALITY_PASSED,held.ownerId(),partQty,amount,pending(held),eventId);
-            Node remainder=createNode(pool,"ISSUE_POSITION",held.ownerKind(),held.ownerId(),null,root.id(),held.qty(),held.from(),held.to(),held.value(),pending(held),true,true,eventId);
-            edge(held,restored,from,to,held.qty(),eventId);edge(held,remainder,ZERO,BigDecimal.ONE,BigDecimal.ONE,eventId);deactivate(held);
+            Node restored=newPosition(pool,Owner.QUALITY_PASSED,held.ownerId(),partQty,amount,pending(held),eventId,
+                    List.of(fraction(held,from,to,held.qty())));
+            Node remainder=createDerivedNode(pool,"ISSUE_POSITION",held.ownerKind(),held.ownerId(),null,root.id(),held.qty(),held.from(),held.to(),held.value(),pending(held),true,true,eventId,List.of(whole(held)));
+            deactivate(held);
             if(db.update("UPDATE stock_value_nodes SET return_head_id=:next WHERE id=:root AND return_head_id=:before",
                     args("next",remainder.id(),"root",root.id(),"before",held.id()))!=1)throw conflict("原合格位置已变化，请重新读取");
             db.update("""
@@ -246,10 +246,9 @@ public class InventoryPositionService extends InventoryValueLedger implements In
                 ||before.compareTo(originalHead.qty())!=0||before.subtract(qty).compareTo(remainingQty)!=0
                 ||current.value().compareTo(remainingValue.add(cost))!=0)
             throw conflict("原入库成本尚未完成来源传播或余额核对，不能按混合均价撤回");
-        Node archived=createNode(pool,"REVERSED_POOL_CURSOR",null,null,null,null,current.qty(),ZERO,current.qty(),current.value(),pending(current),true,true,eventId);
-        edge(current,archived,ZERO,BigDecimal.ONE,BigDecimal.ONE,eventId);
-        Node next=createNode(pool,"POOL",null,null,null,null,remainingQty,ZERO,remainingQty,remainingValue,pending(predecessor),true,true,eventId);
-        if(predecessor==null)edge(current,next,ZERO,ZERO,current.qty(),eventId);else edge(predecessor,next,ZERO,BigDecimal.ONE,BigDecimal.ONE,eventId);
+        Node archived=createDerivedNode(pool,"REVERSED_POOL_CURSOR",null,null,null,null,current.qty(),ZERO,current.qty(),current.value(),pending(current),true,true,eventId,List.of(whole(current)));
+        Node next=createDerivedNode(pool,"POOL",null,null,null,null,remainingQty,ZERO,remainingQty,remainingValue,pending(predecessor),true,true,eventId,
+                List.of(predecessor==null?fraction(current,ZERO,ZERO,current.qty()):whole(predecessor)));
         deactivate(current);head(pool,next.id(),pool.headId());State state=state(source);
         db.update("""
                 INSERT INTO stock_value_events(id,operation,source_event_id,source_doc_type,source_doc_id,source_item_id,source_version,
@@ -267,10 +266,9 @@ public class InventoryPositionService extends InventoryValueLedger implements In
 
     private PositionValue result(Event e,boolean replayed){Node root=node(e.resultNodeId(),false);
         return new PositionValue(e.id(),root.id(),e.sourceNodeId(),root.qty(),e.knownValue(),e.state(),replayed);}
-    private Node newPosition(Pool pool,Owner owner,UUID ownerId,BigDecimal qty,BigDecimal value,int pending,UUID event){
-        UUID id=UUID.randomUUID();Node position=createNode(id,pool,"ISSUE_POSITION",owner.name(),ownerId,null,id,
-                qty,ZERO,qty,value,pending,true,true,event);
-        db.update("UPDATE stock_value_nodes SET return_head_id=:id WHERE id=:id",args("id",id));return position;
+    private Node newPosition(Pool pool,Owner owner,UUID ownerId,BigDecimal qty,BigDecimal value,int pending,UUID event,List<Contribution> inputs){
+        UUID id=UUID.randomUUID();return createDerivedNode(id,pool,"ISSUE_POSITION",owner.name(),ownerId,null,id,
+                qty,ZERO,qty,value,pending,true,true,event,inputs);
     }
     private void requireSourceLocks(List<Slice> slices,PoolKey target){
         // Read the complete, immutable key set before taking any row locks.
@@ -282,7 +280,10 @@ public class InventoryPositionService extends InventoryValueLedger implements In
     }
     private List<Take> take(List<Slice> slices,PoolKey target,boolean restoringUnallocatedConsumed){
         List<Take> result=new ArrayList<>();
-        for(Slice s:slices){Node root=node(s.positionRootId(),true);requireRoot(root);Node head=node(root.returnHeadId(),true);
+        for(Slice s:slices){Node root=node(s.positionRootId(),true);requireRoot(root);
+            // The root is already locked and no write intervenes. When it is
+            // also the current head, a second SELECT would read the same row.
+            Node head=root.id().equals(root.returnHeadId())?root:node(root.returnHeadId(),true);
             if("COST_WIP".equals(head.ownerKind())&&!restoringUnallocatedConsumed)throw conflict("已确认实耗成本须通过生产分配版本处理，不能再次按实物携转");
             BigDecimal through=head.from().add(s.qtyBase());
             if(!head.active()||!sameGoods(head.key(),target)||through.compareTo(head.to())>0)
@@ -290,12 +291,15 @@ public class InventoryPositionService extends InventoryValueLedger implements In
             result.add(new Take(s,root,head,through,interval(head.value(),head.from(),through,head.qty())));}
         return result;
     }
-    private void transfer(List<Take> takes,Node target,UUID event){
+    private static List<Contribution> transferContributions(List<Take> takes){
+        return takes.stream().map(t->fraction(t.head(),t.head().from(),t.through(),t.head().qty())).toList();
+    }
+    /** Target already owns every frozen input edge; finish the original remainder/CAS/posting sequence. */
+    private void finishTransfer(List<Take> takes,Node target,UUID event){
         for(Take t:takes){Node old=t.head();
-            Node remainder=createNode(poolById(old.poolId(),false),"ISSUE_POSITION",old.ownerKind(),old.ownerId(),null,t.root().id(),
-                    old.qty(),t.through(),old.to(),old.value(),pending(old),true,true,event);
-            edge(old,target,old.from(),t.through(),old.qty(),event);
-            edge(old,remainder,ZERO,BigDecimal.ONE,BigDecimal.ONE,event);deactivate(old);
+            Node remainder=createDerivedNode(old.poolIdentity(),"ISSUE_POSITION",old.ownerKind(),old.ownerId(),null,t.root().id(),
+                    old.qty(),t.through(),old.to(),old.value(),pending(old),true,true,event,List.of(whole(old)));
+            deactivate(old);
             if(db.update("UPDATE stock_value_nodes SET return_head_id=:head WHERE id=:root AND return_head_id=:before",
                     args("root",t.root().id(),"head",remainder.id(),"before",old.id()))!=1)
                 throw conflict("原价值位置已变化，请重新读取来源");

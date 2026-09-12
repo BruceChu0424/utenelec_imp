@@ -65,10 +65,10 @@ public class InventoryValuationService extends InventoryValueLedger implements I
         if(before.compareTo(originalHead.qty())!=0||before.subtract(qty).compareTo(left)!=0||current.value().compareTo(value(predecessor))!=0)
             throw conflict("成品撤回的原数量、成本传播或前置库存余额不一致");
         UUID event=UUID.randomUUID();
-        Node archived=createNode(pool,"REVERSED_POOL_CURSOR",null,null,null,null,current.qty(),ZERO,current.qty(),current.value(),pending(current),true,true,event);
-        edge(current,archived,ZERO,BigDecimal.ONE,BigDecimal.ONE,event);
-        Node next=createNode(pool,"POOL",null,null,null,null,left,ZERO,left,value(predecessor),pending(predecessor),true,true,event);
-        if(predecessor==null)edge(current,next,ZERO,ZERO,current.qty(),event);else edge(predecessor,next,ZERO,BigDecimal.ONE,BigDecimal.ONE,event);
+        Node archived=createDerivedNode(pool,"REVERSED_POOL_CURSOR",null,null,null,null,current.qty(),ZERO,current.qty(),current.value(),
+                pending(current),true,true,event,List.of(whole(current)));
+        Node next=createDerivedNode(pool,"POOL",null,null,null,null,left,ZERO,left,value(predecessor),pending(predecessor),true,true,event,
+                List.of(predecessor==null?fraction(current,ZERO,ZERO,current.qty()):whole(predecessor)));
         deactivate(current);head(pool,next.id(),pool.headId());
         db.update("""
                 INSERT INTO stock_value_events(id,operation,source_event_id,source_doc_type,source_doc_id,source_item_id,source_version,
@@ -101,14 +101,11 @@ public class InventoryValuationService extends InventoryValueLedger implements I
         prior = replay("RECEIVE", c, request); if (prior != null) return prior.movement(true);
         Node head = requireBefore(pool, before);
         UUID eventId = UUID.randomUUID();
-        Node source = createNode(pool, "SOURCE", null, null, command.movementId(), null,
-                qty, ZERO, ZERO, cost, command.costFinal() ? 0 : 1, false, command.costFinal(), eventId);
-        authority.initialSource(source.id(),actualCost);
-        Node next = createNode(pool, "POOL", null, null, null, null,
-                before.add(qty), ZERO, before.add(qty), value(head).add(cost),
-                pending(head) + pending(source), true, true, eventId);
-        if (head != null) { edge(head, next, ZERO, BigDecimal.ONE, BigDecimal.ONE, eventId); deactivate(head); }
-        edge(source, next, ZERO, BigDecimal.ONE, BigDecimal.ONE, eventId);
+        Node source = createSourceNode(pool,command.movementId(),qty,cost,command.costFinal()?0:1,command.costFinal(),eventId);
+        source=initialSource(source,actualCost);
+        Node next = createDerivedNode(pool,"POOL",null,null,null,null,before.add(qty),ZERO,before.add(qty),value(head).add(cost),
+                pending(head)+pending(source),true,true,eventId,poolContributions(head,source));
+        if(head!=null)deactivate(head);
         head(pool, next.id(), pool.headId());
         State state = state(next);
         insertEvent(eventId, "RECEIVE", c, request, pool.id(), command.movementId(), qty, before,
@@ -136,14 +133,11 @@ public class InventoryValuationService extends InventoryValueLedger implements I
         if (old == null || qty.compareTo(before) > 0) throw conflict("库存数量不足以冻结本次出库成本");
         BigDecimal cost = interval(old.value(), ZERO, qty, before);
         UUID eventId = UUID.randomUUID(), issueId = UUID.randomUUID();
-        Node issue = createNode(issueId, pool, "ISSUE_POSITION", command.destinationKind().name(), command.destinationId(),
-                command.movementId(), issueId, qty, ZERO, qty, cost, pending(old), true, true, eventId);
-        db.update("UPDATE stock_value_nodes SET return_head_id=:id WHERE id=:id", args("id", issue.id()));
+        Node issue = createDerivedNode(issueId,pool,"ISSUE_POSITION",command.destinationKind().name(),command.destinationId(),
+                command.movementId(),issueId,qty,ZERO,qty,cost,pending(old),true,true,eventId,List.of(fraction(old,ZERO,qty,before)));
         BigDecimal left = before.subtract(qty);
-        Node next = createNode(pool, "POOL", null, null, null, null, left, ZERO, left,
-                old.value().subtract(cost), left.signum() == 0 ? 0 : pending(old), true, true, eventId);
-        edge(old, issue, ZERO, qty, before, eventId);
-        edge(old, next, qty, before, before, eventId);
+        Node next = createDerivedNode(pool,"POOL",null,null,null,null,left,ZERO,left,old.value().subtract(cost),
+                left.signum()==0?0:pending(old),true,true,eventId,List.of(fraction(old,qty,before,before)));
         deactivate(old); head(pool, next.id(), pool.headId());
         State state = state(issue);
         insertEvent(eventId, "ISSUE", c, request, pool.id(), command.movementId(), qty, before,
@@ -178,22 +172,19 @@ public class InventoryValuationService extends InventoryValueLedger implements I
         BigDecimal through = remaining.from().add(qty);
         BigDecimal cost = interval(remaining.value(), remaining.from(), through, remaining.qty());
         UUID eventId = UUID.randomUUID();
-        Node returned = createNode(pool, "RETURN_SOURCE", null, null, command.movementId(), root.id(),
-                qty, ZERO, ZERO, cost, pending(remaining), false, true, eventId);
+        Node returned = createDerivedNode(pool,"RETURN_SOURCE",null,null,command.movementId(),root.id(),qty,ZERO,ZERO,cost,
+                pending(remaining),false,true,eventId,List.of(fraction(remaining,remaining.from(),through,remaining.qty())));
         // Carry the ORIGINAL basis along the remainder chain. Its owned range
         // shrinks; this is not a second asset. Exact cumulative return intervals
         // avoid re-averaging an already rounded remainder (e.g. 0.0002 / 3).
-        Node nextRemainder = createNode(poolById(remaining.poolId(), false), "ISSUE_POSITION",
-                remaining.ownerKind(), remaining.ownerId(), null, root.id(), remaining.qty(), through, remaining.to(),
-                remaining.value(), pending(remaining), true, true, eventId);
-        edge(remaining, returned, remaining.from(), through, remaining.qty(), eventId);
-        edge(remaining, nextRemainder, ZERO, BigDecimal.ONE, BigDecimal.ONE, eventId);
+        Node nextRemainder = createDerivedNode(remaining.poolIdentity(),"ISSUE_POSITION",
+                remaining.ownerKind(),remaining.ownerId(),null,root.id(),remaining.qty(),through,remaining.to(),
+                remaining.value(),pending(remaining),true,true,eventId,List.of(whole(remaining)));
         deactivate(remaining);
         db.update("UPDATE stock_value_nodes SET return_head_id=:head WHERE id=:id", args("head", nextRemainder.id(), "id", root.id()));
-        Node next = createNode(pool, "POOL", null, null, null, null, before.add(qty), ZERO, before.add(qty),
-                value(inventory).add(cost), pending(inventory) + pending(returned), true, true, eventId);
-        if (inventory != null) { edge(inventory, next, ZERO, BigDecimal.ONE, BigDecimal.ONE, eventId); deactivate(inventory); }
-        edge(returned, next, ZERO, BigDecimal.ONE, BigDecimal.ONE, eventId);
+        Node next = createDerivedNode(pool,"POOL",null,null,null,null,before.add(qty),ZERO,before.add(qty),
+                value(inventory).add(cost),pending(inventory)+pending(returned),true,true,eventId,poolContributions(inventory,returned));
+        if(inventory!=null)deactivate(inventory);
         head(pool, next.id(), pool.headId());
         State state = state(returned);
         insertEvent(eventId, "RETURN_ISSUE", c, request, pool.id(), command.movementId(), qty, before,

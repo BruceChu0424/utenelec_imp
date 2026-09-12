@@ -48,12 +48,9 @@ class ProductionFqcPassAllServiceBehaviorTest {
         Query items = query(List.<Object[]>of(
                 new Object[]{first, firstEvent},
                 new Object[]{second, secondEvent}));
-        Query firstDetail = query(Collections.singletonList(
-                viewRow(first, "RB-1")));
-        Query secondDetail = query(Collections.singletonList(
-                viewRow(second, "RB-2")));
+        Query details = query(List.of(viewRow(second, "RB-2"), viewRow(first, "RB-1")));
         Fixture fixture = fixture(
-                actorId, header, items, firstDetail, secondDetail);
+                actorId, header, items, details);
 
         var result = fixture.service().passAll(request);
 
@@ -65,6 +62,13 @@ class ProductionFqcPassAllServiceBehaviorTest {
         assertThat(result.items())
                 .extracting(item -> item.decisionEventId())
                 .containsExactly(firstEvent, secondEvent);
+        assertThat(result.items()).extracting(item -> item.inspection().reportNo()).containsExactly("RB-1", "RB-2");
+        assertThat(result.items().getFirst().inspection().place()).isEqualTo("CP-A-01");
+        assertThat(result.items().getFirst().inspection().registrationRemark()).isEqualTo("夜班登记");
+        assertThat(result.items().getFirst().inspection().receiverName()).isEqualTo("收货人甲");
+        org.mockito.Mockito.verify(details).setParameter("inspectionIds", List.of(first, second));
+        org.mockito.Mockito.verify(fixture.em(),org.mockito.Mockito.times(1)).createNativeQuery(
+                org.mockito.ArgumentMatchers.argThat((String sql)->sql.contains("inspection.id IN (:inspectionIds)")));
         verifyNoInteractions(
                 fixture.finishedInbound(), fixture.recovery(), fixture.outbox());
         org.mockito.Mockito.verify(fixture.em(),org.mockito.Mockito.never()).createNativeQuery(
@@ -89,6 +93,23 @@ class ProductionFqcPassAllServiceBehaviorTest {
                 .hasMessageContaining("不同任务集合");
         verifyNoInteractions(
                 fixture.finishedInbound(), fixture.recovery(), fixture.outbox());
+    }
+
+    @Test
+    void missingDuplicateOrForeignViewsCannotProduceAPartialHistoricalBatchReply() {
+        UUID actor=UUID.randomUUID(),batch=UUID.randomUUID(),first=UUID.randomUUID(),second=UUID.randomUUID();
+        var request=new PassAllBatchRequest(List.of(first,second),"fqc-complete-view-negative");
+        var normalized=ProductionFqcInspectionService.normalizePassAllBatch(request);
+        for(List<Object[]> rows:List.of(
+                Collections.singletonList(viewRow(first,"RB-1")),
+                List.of(viewRow(first,"RB-1"),viewRow(first,"RB-1")),
+                List.of(viewRow(first,"RB-1"),viewRow(UUID.randomUUID(),"foreign")))) {
+            var fixture=fixture(actor,query(Collections.singletonList(new Object[]{batch,normalized.requestHash(),2})),
+                    query(List.of(new Object[]{first,UUID.randomUUID()},new Object[]{second,UUID.randomUUID()})),query(rows));
+            assertThatThrownBy(()->fixture.service().passAll(request)).isInstanceOf(ApiException.class)
+                    .hasMessageContaining("批量生产质检视图");
+            verifyNoInteractions(fixture.finishedInbound(),fixture.recovery(),fixture.outbox());
+        }
     }
 
     private static Fixture fixture(

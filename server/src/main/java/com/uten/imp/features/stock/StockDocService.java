@@ -315,6 +315,7 @@ public class StockDocService {
         List<FinishedInboundBatchConfirmResponse.Item> responseItems =
                 new ArrayList<>();
         List<FinishedInboundBatchItem> persistedItems = new ArrayList<>();
+        FinishedInboundBatchContext batchContext = new FinishedInboundBatchContext();
         int position = 0;
         for (UUID documentId : command.documentIds()) {
             String childKey = finishedInboundBatchChildKey(
@@ -328,8 +329,8 @@ public class StockDocService {
                     normalizeFinishedInboundAccepted(itemRequest);
             String itemHash = finishedInboundConfirmationHash(
                     documentId, accepted, null);
-            StockDocDetail detail = confirmFinishedInboundAfterPrelock(
-                    documentId, itemRequest, accepted, null, itemHash, null);
+            StockDocument detail = confirmFinishedInboundAfterPrelock(
+                    documentId, itemRequest, accepted, null, itemHash, null, batchContext);
             if (detail.getStatus() == null
                     || detail.getStatus() != STATUS_APPROVED
                     || detail.getBillNo() == null
@@ -349,6 +350,9 @@ public class StockDocService {
                     ++position, confirmationId, resultItem));
         }
 
+        if (!batchContext.postedDocumentIds.isEmpty()) {
+            productionCompletionReverse.afterFinishedInboundBatchApproved(batchContext.postedDocumentIds);
+        }
         UUID batchId = UUID.randomUUID();
         insertFinishedInboundBatch(
                 batchId,
@@ -374,17 +378,19 @@ public class StockDocService {
                 id, accepted, varianceReason);
 
         var guard = lockProductionDocuments(List.of(id));
-        return confirmFinishedInboundAfterPrelock(
-                id, request, accepted, varianceReason, requestHash, guard);
+        confirmFinishedInboundAfterPrelock(
+                id, request, accepted, varianceReason, requestHash, guard, null);
+        return detail(id);
     }
 
-    private StockDocDetail confirmFinishedInboundAfterPrelock(
+    private StockDocument confirmFinishedInboundAfterPrelock(
             UUID id,
             FinishedInboundConfirmRequest request,
             Map<UUID, BigDecimal> accepted,
             String varianceReason,
             String requestHash,
-            FulfillmentMutationLocks.Guard mutationGuard) {
+            FulfillmentMutationLocks.Guard mutationGuard,
+            FinishedInboundBatchContext batchContext) {
         taskClaim.requireNoActiveClaimByOther(
                 "FULFILLMENT_TASK_APPROVE", id.toString());
         StockDocument document = requireDocForUpdate(id);
@@ -413,7 +419,7 @@ public class StockDocService {
                         ErrorCode.CONFLICT,
                         "该成品入库单已按另一组实收数量确认");
             }
-            return detail(id);
+            return document;
         }
         if (mutationGuard!=null) mutationGuard.verifyUnchanged();
         if (document.getStatus() == null
@@ -423,7 +429,8 @@ public class StockDocService {
         if (document.getWarehouseId() == null) {
             throw new ApiException(ErrorCode.CONFLICT, "成品点收必须指定目标仓库");
         }
-        if (warehouseScopes != null) {
+        if (warehouseScopes != null && (batchContext == null
+                || batchContext.validatedWarehouseIds.add(document.getWarehouseId()))) {
             warehouseScopes.requireActiveLeafWarehouse(document.getWarehouseId(), "入库仓库");
         }
         UUID planId = requireApprovedLinkedProductionPlan(document);
@@ -509,7 +516,7 @@ public class StockDocService {
                     document.getId(), varianceReason,
                     request.getIdempotencyKey());
             chainNotice.notifyFinishedInboundPending(residualDocument.getId());
-            return detail(id);
+            return document;
         }
 
         lockInventory(items);
@@ -567,7 +574,7 @@ public class StockDocService {
         if (residualDocument != null) {
             chainNotice.notifyFinishedInboundPending(residualDocument.getId());
         }
-        return approveInternal(id, true, false);
+        return approveDocumentAfterPrelock(id, true, false, batchContext);
     }
 
     /** 审核：0→1；生产链 DRAW 必须走审核并出库的一段式端点。 */
@@ -582,8 +589,17 @@ public class StockDocService {
             UUID id,
             boolean warehouseQuantityConfirmed,
             boolean allowProductionDrawApproveAndIssue) {
+        approveDocumentAfterPrelock(id, warehouseQuantityConfirmed, allowProductionDrawApproveAndIssue, null);
+        return detail(id);
+    }
+
+    /** Caller has already frozen and verified the complete mutation graph before any write. */
+    private StockDocument approveDocumentAfterPrelock(
+            UUID id,
+            boolean warehouseQuantityConfirmed,
+            boolean allowProductionDrawApproveAndIssue,
+            FinishedInboundBatchContext batchContext) {
         tx.bind();
-        prelockProductionDocument(id);
         taskClaim.requireNoActiveClaimByOther("FULFILLMENT_TASK_APPROVE", id.toString());
         StockDocument d = requireDocForUpdate(id);
         if ("DRAW".equals(d.getDocType())
@@ -606,7 +622,8 @@ public class StockDocService {
         if (d.getStatus() == null || d.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         if (warehouseScopes != null) {
-            if (Set.of("OTHER_IN", "FINISHED_IN", "CHECK").contains(d.getDocType())) {
+            if (Set.of("OTHER_IN", "FINISHED_IN", "CHECK").contains(d.getDocType())
+                    && !(warehouseQuantityConfirmed && "FINISHED_IN".equals(d.getDocType()))) {
                 warehouseScopes.requireActiveLeafWarehouse(d.getWarehouseId(), "入库仓库");
             } else if ("TRANSFER".equals(d.getDocType())) {
                 warehouseScopes.requireActiveLeafWarehouse(d.getToWarehouseId(), "调入仓");
@@ -656,13 +673,19 @@ public class StockDocService {
             // database close guard keeps it open while a segment is IN_PROGRESS.
             em.flush();
             recomputeFinishedInboundPlanClosed(d.getId());
-            productionCompletionReverse.afterFinishedInboundApproved(
-                    d.getId(), d.getWarehouseId());
+            if (batchContext == null) {
+                productionCompletionReverse.afterFinishedInboundApproved(d.getId(), d.getWarehouseId());
+            } else {
+                // Exact MAKE/subcontract reservations must exist before the next
+                // document posts. Only the final analysis projection is coalesced.
+                productionCompletionReverse.afterFinishedInboundPosted(d.getId(), d.getWarehouseId());
+                batchContext.postedDocumentIds.add(d.getId());
+            }
             // Freeze notice payload only after all approved business facts exist.
             em.flush();
             chainNotice.notifyFinishedInbound(d.getId()); // 旁路通知：完工/部分完工→销售，提交后发送
         }
-        return detail(id);
+        return d;
     }
 
     /** 红冲：1→-1，反向冲销库存。DRAW 有已出库量时须先取消全部出库。 */
@@ -3286,6 +3309,12 @@ public class StockDocService {
                 .setParameter("id", documentId)
                 .getSingleResult();
         return Boolean.TRUE.equals(result);
+    }
+
+    /** Explicit command-local context; it cannot outlive or be reused by another transaction. */
+    private static final class FinishedInboundBatchContext {
+        private final List<UUID> postedDocumentIds = new ArrayList<>();
+        private final Set<UUID> validatedWarehouseIds = new java.util.HashSet<>();
     }
 
     record FinishedInboundBatchCommand(

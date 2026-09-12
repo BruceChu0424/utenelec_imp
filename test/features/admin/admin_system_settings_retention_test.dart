@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,7 +22,12 @@ void main() {
               _RetentionSettingRepository(),
             ),
           ],
-          child: const MaterialApp(home: AdminSystemSettingsPage()),
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: Locale('zh'),
+            home: AdminSystemSettingsPage(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -39,6 +45,11 @@ void main() {
 }
 
 class _RetentionSettingRepository implements SystemSettingRepository {
+  @override
+  Future<List<SystemSettingEntry>> updateBatch(
+    List<({String key, String value, String expectedValue})> changes,
+    String password,
+  ) async => _settings;
   static const _settings = <SystemSettingEntry>[
     SystemSettingEntry(
       key: 'audit_hot_retention_months',

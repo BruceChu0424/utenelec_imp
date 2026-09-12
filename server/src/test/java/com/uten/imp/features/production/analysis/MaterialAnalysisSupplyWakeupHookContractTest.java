@@ -85,15 +85,12 @@ class MaterialAnalysisSupplyWakeupHookContractTest {
         assertThat(stockIn)
                 .contains("stockService.recordMovementWithId(")
                 .contains("incrementStockedProjection(")
-                .contains("advanceProductionAfterStockIn(")
-                .contains("purchaseSupply.afterPurchaseInspectionStockInConfirmed(")
-                .contains("subcontractSupply.afterSubcontractInspectionStockInConfirmed(");
+                .contains("stockInProduction.afterInspectionStockInConfirmed(newStockIns)");
         assertOrdered(stockIn,
                 "stockService.recordMovementWithId(",
                 "incrementStockedProjection(");
-        assertOrdered(stockIn,
-                "incrementStockedProjection(",
-                "advanceProductionAfterStockIn(");
+        assertOrdered(stockIn, "ConfirmResult result = confirmOne(",
+                "stockInProduction.afterInspectionStockInConfirmed(newStockIns)");
         assertThat(purchase).contains(
                 "materialAnalysisWakeup.afterPurchaseReceiptApproved(receiptId)")
                 .contains("materialAnalysisWakeup.afterInspectionStockInConfirmed(")
@@ -101,7 +98,7 @@ class MaterialAnalysisSupplyWakeupHookContractTest {
         // 生产履约先落账、分析唤醒后整批一轮：顺序不可颠倒（唤醒必须看到
         // 本批全部预留/领料的最终库态，否则可用量口径错）。
         assertOrdered(purchase,
-                "advancePurchaseReceiptState(receiptId, warehouseStockInBatchId);",
+                "advanceInspectionStockInState(receiptId, warehouseStockInBatchId);",
                 "materialAnalysisWakeup.afterInspectionStockInConfirmed(");
         assertThat(subcontract).contains(
                 "materialAnalysisWakeup.afterSubcontractReceiptApproved(receiptId)")
@@ -138,7 +135,7 @@ class MaterialAnalysisSupplyWakeupHookContractTest {
                 "applyStockEffect(d, items, +1)",
                 "productionCompletionReverse.afterFinishedInboundApproved(");
         assertOrdered(completion,
-                "readiness.onFinishedInboundApproved(",
+                "afterFinishedInboundPosted(stockDocumentId, warehouseId)",
                 "materialAnalysisWakeup.afterFinishedInboundApproved(stockDocumentId)");
     }
 

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_field_message.dart';
 
 // 通用「必填原因」对话框：标题/初始值/说明文案/确认按钮文案由调用方给定。
 // 说明文案走 fieldLabel 的 ⓘ 悬停提示（Tooltip 不依赖 LayoutBuilder，
@@ -16,6 +19,8 @@ class MaterialRequiredReasonDialog extends StatefulWidget {
     required this.confirmLabel,
     this.requireReason = true,
     this.reasonLabel,
+    this.minReasonLength = 1,
+    this.maxReasonLength = 1000,
   });
 
   final String title;
@@ -25,6 +30,8 @@ class MaterialRequiredReasonDialog extends StatefulWidget {
   final String confirmLabel;
   final bool requireReason;
   final String? reasonLabel;
+  final int minReasonLength;
+  final int maxReasonLength;
 
   @override
   State<MaterialRequiredReasonDialog> createState() =>
@@ -34,6 +41,7 @@ class MaterialRequiredReasonDialog extends StatefulWidget {
 class _MaterialRequiredReasonDialogState
     extends State<MaterialRequiredReasonDialog> {
   late final TextEditingController _controller;
+  final _formKey = GlobalKey<FormState>();
 
   @override
   void initState() {
@@ -48,37 +56,64 @@ class _MaterialRequiredReasonDialogState
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text(widget.title),
-    content: TextField(
-      key: widget.fieldKey,
-      controller: _controller,
-      autofocus: true,
-      minLines: 2,
-      maxLines: 4,
-      decoration: UtenInputDecoration(
-        InputDecoration(
-          label: fieldLabel(
-            widget.reasonLabel ?? '原因(必填)',
-            Theme.of(context),
-            info: widget.info,
+  Widget build(BuildContext context) {
+    final l10n =
+        Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+        AppLocalizationsZh();
+    return AlertDialog(
+      title: Text(widget.title),
+      content: SizedBox(
+        width: 440,
+        child: Form(
+          key: _formKey,
+          child: TextFormField(
+            key: widget.fieldKey,
+            controller: _controller,
+            autofocus: true,
+            minLines: 2,
+            maxLines: 4,
+            autovalidateMode: AutovalidateMode.onUserInteraction,
+            validator: (value) {
+              final reason = value?.trim() ?? '';
+              if (widget.requireReason && reason.isEmpty) {
+                return l10n.materialReasonRequired;
+              }
+              if (reason.isNotEmpty && reason.length < widget.minReasonLength) {
+                return l10n.materialReasonTooShort(widget.minReasonLength);
+              }
+              if (reason.length > widget.maxReasonLength) {
+                return l10n.materialReasonTooLong(widget.maxReasonLength);
+              }
+              return null;
+            },
+            errorBuilder: utenTextFieldErrorBuilder,
+            decoration: UtenInputDecoration(
+              InputDecoration(
+                label: fieldLabel(
+                  widget.reasonLabel ?? l10n.materialReasonLabel,
+                  Theme.of(context),
+                  required: widget.requireReason,
+                  info: widget.info,
+                ),
+              ),
+            ),
           ),
         ),
       ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('取消'),
-      ),
-      FilledButton(
-        onPressed: () {
-          final value = _controller.text.trim();
-          if (widget.requireReason && value.isEmpty) return;
-          Navigator.pop(context, value);
-        },
-        child: Text(widget.confirmLabel),
-      ),
-    ],
-  );
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(l10n.commonCancel),
+        ),
+        FilledButton(
+          onPressed: () {
+            if (!_formKey.currentState!.validate()) return;
+            final value = _controller.text.trim();
+            Navigator.pop(context, value);
+          },
+          child: Text(widget.confirmLabel),
+        ),
+      ],
+    );
+  }
 }

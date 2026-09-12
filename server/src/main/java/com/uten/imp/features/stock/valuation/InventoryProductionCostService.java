@@ -50,7 +50,7 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
                 args("segment",segment,"pool",pool.id()));
         Map<String,Object> object=object(segment,true);
         requireSameProduct(object,pool);
-        bindOutput(segment,product,output);
+        bindOutput(segment,product,output,actual);
     }
 
     @Override @Transactional(propagation=Propagation.MANDATORY)
@@ -304,13 +304,21 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
                 args("node",n.id(),"segment",segment,"posting",input.approvedPostingId(),"kind",input.kind().name()),Boolean.class)))throw conflict("原耗用posting已经关联不同成本来源");
     }
     private void requireSameProduct(Map<String,Object> object,Pool candidate){
+        // Same immutable pool UUID is already an identity proof. A different
+        // physical pool must still pass the original goods/color comparison.
+        if(candidate.id().equals(object.get("product_pool_id")))return;
         Pool registered=poolById((UUID)object.get("product_pool_id"),false);
         if(!sameGoods(registered.key(),candidate.key()))throw conflict("同一成本对象不能改挂不同货品或颜色");
         // Keep the original pool as an immutable product identity anchor. Each output
         // retains its own physical pool; source kind/id and COST_WIP ownership stay fixed.
     }
-    private void bindOutput(UUID segment,PoolKey product,Output output){Node n=node(output.finishedSourceNodeId(),false);
-        if(!Set.of("SOURCE","RETURN_SOURCE").contains(n.kind())||!output.movementId().equals(n.movementId())||!sameGoods(n.key(),product))throw conflict("产出必须引用本产品确切的已入库来源及movement UUID");
+    private void bindOutput(UUID segment,PoolKey product,Output output){
+        bindOutput(segment,product,output,node(output.finishedSourceNodeId(),false));
+    }
+    private void bindOutput(UUID segment,PoolKey product,Output output,Node n){
+        // registerOutput has already read this operation's exact source identity;
+        // amount, pending state and revision are not cached or reused here.
+        if(!n.id().equals(output.finishedSourceNodeId())||!Set.of("SOURCE","RETURN_SOURCE").contains(n.kind())||!output.movementId().equals(n.movementId())||!sameGoods(n.key(),product))throw conflict("产出必须引用本产品确切的已入库来源及movement UUID");
         if(!Boolean.TRUE.equals(db.queryForObject("""
                 SELECT EXISTS(SELECT 1 FROM stock_value_production_cost_outputs WHERE source_node_id=:node
                     AND execution_segment_id=:segment AND movement_id=:movement)

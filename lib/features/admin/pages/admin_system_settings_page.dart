@@ -16,11 +16,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/display_datetime.dart';
 import '../../../shared/providers/idle_timeout_controller.dart';
 import '../models/system_setting_entry.dart';
 import '../repositories/system_setting_repository.dart';
@@ -41,6 +44,7 @@ class _AdminSystemSettingsPageState
   bool _loading = false;
   bool _saving = false;
   String? _error;
+  final _formKey = GlobalKey<FormState>();
 
   // 分组顺序：(category, 中文标题, 图标)。
   static const _groups = <(String, String, IconData)>[
@@ -101,28 +105,60 @@ class _AdminSystemSettingsPageState
   }
 
   void _markDirty(String key) {
-    if (!_dirty.contains(key)) {
-      setState(() => _dirty.add(key));
+    final original = _all!.firstWhere((entry) => entry.key == key).value;
+    setState(() {
+      if (_controllers[key]!.text.trim() == original) {
+        _dirty.remove(key);
+      } else {
+        _dirty.add(key);
+      }
+    });
+  }
+
+  Future<void> _refresh() async {
+    if (_loading || _saving) return;
+    if (_dirty.isNotEmpty) {
+      context.appWarning(
+        AppLocalizations.of(context).systemSettingUnsavedRefresh,
+      );
+      return;
     }
+    await _load();
   }
 
   Future<void> _save() async {
-    if (_dirty.isEmpty || _saving) return;
-    final pwd = await showDialog<String>(
-      context: context,
-      builder: (_) => _ConfirmPasswordDialog(
-        retentionChanged: _dirty.any((key) => key.startsWith('audit_')),
-      ),
-    );
-    if (pwd == null || pwd.isEmpty || !mounted) return;
-    setState(() => _saving = true);
-    final repo = ref.read(systemSettingRepositoryProvider);
+    if (_dirty.isEmpty || _saving || _loading || _error != null) return;
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      context.appWarning(AppLocalizations.of(context).systemSettingFixFields);
+      return;
+    }
     final keys = _dirty.toList();
+    final changes = [
+      for (final key in keys)
+        (
+          key: key,
+          value: _controllers[key]!.text.trim(),
+          expectedValue: _all!.firstWhere((entry) => entry.key == key).value,
+        ),
+    ];
+    setState(() => _saving = true);
     try {
-      for (final key in keys) {
-        await repo.update(key, _controllers[key]!.text.trim(), pwd);
-      }
+      final pwd = await showDialog<String>(
+        context: context,
+        builder: (_) => _ConfirmPasswordDialog(
+          retentionChanged: keys.any((key) => key.startsWith('audit_')),
+        ),
+      );
+      if (pwd == null || pwd.isEmpty || !mounted) return;
+      final saved = await ref
+          .read(systemSettingRepositoryProvider)
+          .updateBatch(changes, pwd);
       if (!mounted) return;
+      final byKey = {for (final entry in saved) entry.key: entry};
+      setState(() {
+        _all = [for (final entry in _all!) byKey[entry.key] ?? entry];
+        _dirty.clear();
+      });
       context.appSuccess('已保存 ${keys.length} 项设置');
       // 公共运行时设置变更后立即重拉：同步空闲阈值，也让本机回执采用新的总留存月数。
       if (keys.contains('session_idle_timeout_minutes') ||
@@ -156,24 +192,28 @@ class _AdminSystemSettingsPageState
             : _all == null || _all!.isEmpty
             ? const Center(child: Text('暂无设置项'))
             : RefreshIndicator(
-                onRefresh: _load,
-                child: ListView(
-                  padding: const EdgeInsets.all(UtenSpacing.s16),
-                  children: [
-                    _warningBanner(theme),
-                    for (final g in _groups)
-                      if (_all!.any((e) => e.category == g.$1))
-                        _SettingGroupCard(
-                          group: g,
-                          items: _all!
-                              .where((e) => e.category == g.$1)
-                              .toList(),
-                          controllers: _controllers,
-                          isDirty: (k) => _dirty.contains(k),
-                          onChanged: _markDirty,
-                        ),
-                    const SizedBox(height: 80),
-                  ],
+                onRefresh: _refresh,
+                child: Form(
+                  key: _formKey,
+                  child: ListView(
+                    padding: const EdgeInsets.all(UtenSpacing.s16),
+                    children: [
+                      _warningBanner(theme),
+                      for (final g in _groups)
+                        if (_all!.any((e) => e.category == g.$1))
+                          _SettingGroupCard(
+                            group: g,
+                            items: _all!
+                                .where((e) => e.category == g.$1)
+                                .toList(),
+                            controllers: _controllers,
+                            isDirty: (k) => _dirty.contains(k),
+                            onChanged: _markDirty,
+                            enabled: !_saving && !_loading,
+                          ),
+                      const SizedBox(height: 80),
+                    ],
+                  ),
                 ),
               ),
       ),
@@ -193,7 +233,11 @@ class _AdminSystemSettingsPageState
           color: theme.colorScheme.surface,
           border: Border(top: BorderSide(color: theme.dividerColor)),
         ),
-        child: Row(
+        child: Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: UtenSpacing.s16,
+          runSpacing: UtenSpacing.s8,
           children: [
             Text(
               hasDirty ? '${_dirty.length} 项已修改' : '所有设置保持当前值',
@@ -203,9 +247,10 @@ class _AdminSystemSettingsPageState
                     : theme.colorScheme.outline,
               ),
             ),
-            const Spacer(),
             FilledButton.icon(
-              onPressed: (hasDirty && !_saving) ? _save : null,
+              onPressed: (hasDirty && !_saving && !_loading && _error == null)
+                  ? _save
+                  : null,
               icon: _saving
                   ? const SizedBox(
                       width: 16,
@@ -240,7 +285,7 @@ class _AdminSystemSettingsPageState
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              '多数设置保存后立即生效；审计留存设置在下一次每日 03:17 清理任务生效。缩短期限可能永久删除历史日志，请谨慎操作。保存需二次密码确认，且记入审计日志。',
+              AppLocalizations.of(context).systemSettingEffectTiming,
               style: theme.textTheme.bodySmall,
             ),
           ),
@@ -258,12 +303,14 @@ class _SettingGroupCard extends StatelessWidget {
     required this.controllers,
     required this.isDirty,
     required this.onChanged,
+    required this.enabled,
   });
   final (String, String, IconData) group;
   final List<SystemSettingEntry> items;
   final Map<String, TextEditingController> controllers;
   final bool Function(String) isDirty;
   final void Function(String) onChanged;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -312,6 +359,7 @@ class _SettingGroupCard extends StatelessWidget {
                 controller: controllers[e.key]!,
                 dirty: isDirty(e.key),
                 onChanged: () => onChanged(e.key),
+                enabled: enabled,
               ),
           ],
         ),
@@ -410,58 +458,126 @@ class _SettingRow extends StatelessWidget {
     required this.controller,
     required this.dirty,
     required this.onChanged,
+    required this.enabled,
   });
   final SystemSettingEntry entry;
   final TextEditingController controller;
   final bool dirty;
   final VoidCallback onChanged;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final updated = entry.updatedAt == null
-        ? null
-        : (entry.updatedAt!.length > 19
-              ? entry.updatedAt!.substring(0, 19).replaceAll('T', ' ')
-              : entry.updatedAt!.replaceAll('T', ' '));
+    final updated = DisplayDateTime.beijing(entry.updatedAt);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(entry.label, style: theme.textTheme.bodyLarge),
-              ),
-              SizedBox(
-                width: 150,
-                child: TextField(
-                  controller: controller,
-                  keyboardType: TextInputType.number,
-                  decoration: UtenInputDecoration(
-                    InputDecoration(
-                      isDense: true,
-                      suffixText: entry.unit,
-                      hintText: '0',
-                      border: const OutlineInputBorder(),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 9,
-                      ),
-                      filled: dirty,
-                      fillColor: theme.colorScheme.primaryContainer.withValues(
-                        alpha: 0.35,
-                      ),
-                    ),
-                    info: entry.description,
-                  ),
-                  onChanged: (_) => onChanged(),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final numeric =
+                  entry.valueType == 'int' || entry.valueType == 'long';
+              final decoration = InputDecoration(
+                labelText: entry.label,
+                suffixText: entry.unit,
+                border: const OutlineInputBorder(),
+                filled: dirty,
+                fillColor: theme.colorScheme.primaryContainer.withValues(
+                  alpha: 0.35,
                 ),
-              ),
-            ],
+              );
+              final field = entry.valueType == 'bool'
+                  ? DropdownButtonFormField<String>(
+                      key: ValueKey('system-setting-${entry.key}'),
+                      initialValue: controller.text.toLowerCase(),
+                      decoration: UtenInputDecoration(
+                        decoration,
+                        info: entry.description,
+                      ),
+                      items: [
+                        DropdownMenuItem(
+                          value: 'true',
+                          child: Text(
+                            AppLocalizations.of(context).systemSettingEnabled,
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: 'false',
+                          child: Text(
+                            AppLocalizations.of(context).systemSettingDisabled,
+                          ),
+                        ),
+                      ],
+                      onChanged: !enabled
+                          ? null
+                          : (value) {
+                              if (value == null) return;
+                              controller.text = value;
+                              onChanged();
+                            },
+                    )
+                  : TextFormField(
+                      key: ValueKey('system-setting-${entry.key}'),
+                      controller: controller,
+                      enabled: enabled,
+                      keyboardType: numeric
+                          ? TextInputType.number
+                          : TextInputType.text,
+                      decoration: UtenInputDecoration(
+                        decoration,
+                        info: entry.description,
+                      ),
+                      maxLines: numeric ? 1 : 2,
+                      errorBuilder: utenTextFieldErrorBuilder,
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
+                      validator: (value) {
+                        if (!dirty) return null;
+                        if (!numeric) return null;
+                        final parsed = int.tryParse(value?.trim() ?? '');
+                        if (parsed == null || parsed < 0) {
+                          return AppLocalizations.of(
+                            context,
+                          ).systemSettingInvalidInteger;
+                        }
+                        final bounds = switch (entry.key) {
+                          'jwt_access_ttl_minutes' => (5, 43200),
+                          'jwt_refresh_ttl_days' => (1, 3650),
+                          'audit_hot_retention_months' => (1, 120),
+                          'audit_archive_retention_months' => (0, 240),
+                          'export_max_rows' => (1, 100000),
+                          'session_idle_timeout_minutes' => (1, 525600),
+                          'password_history_size' => (0, 100),
+                          'login_rate_limit_per_minute' => (1, 100000),
+                          'login_ip_rate_limit_per_minute' => (1, 1000000),
+                          'lockout_threshold' => (1, 1000),
+                          'lockout_minutes' => (1, 525600),
+                          'export_rate_limit_per_minute' => (1, 10000),
+                          'sms_code_ttl_minutes' => (1, 1440),
+                          'sms_send_interval_seconds' => (1, 86400),
+                          'sms_daily_limit' => (1, 10000),
+                          _ => (1, 2147483647),
+                        };
+                        if (parsed < bounds.$1 || parsed > bounds.$2) {
+                          return '${AppLocalizations.of(context).systemSettingInvalidValue} (${bounds.$1}–${bounds.$2})';
+                        }
+                        return null;
+                      },
+                      onChanged: (_) => onChanged(),
+                    );
+              if (constraints.maxWidth < 600 || !numeric) return field;
+              return Row(
+                children: [
+                  Expanded(
+                    child: Text(entry.label, style: theme.textTheme.bodyLarge),
+                  ),
+                  SizedBox(width: 280, child: field),
+                ],
+              );
+            },
           ),
-          if (updated != null)
+          if (updated.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 1),
               child: Text(
@@ -523,19 +639,13 @@ class _ConfirmPasswordDialogState extends State<_ConfirmPasswordDialog> {
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: 12),
-          TextField(
+          UtenInput(
             controller: _ctrl,
-            obscureText: true,
-            autofocus: true,
-            decoration: UtenInputDecoration(
-              InputDecoration(
-                labelText: '账号密码',
-                border: const OutlineInputBorder(),
-                isDense: true,
-                error: utenFieldError(_error),
-              ),
-            ),
-            onSubmitted: (_) => _submit(),
+            isPassword: true,
+            label: '账号密码',
+            errorMessage: _error,
+            autofillHints: const [AutofillHints.password],
+            onFieldSubmitted: (_) => _submit(),
           ),
         ],
       ),

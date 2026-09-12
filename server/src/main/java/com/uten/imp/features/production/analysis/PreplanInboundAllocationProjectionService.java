@@ -53,7 +53,7 @@ public class PreplanInboundAllocationProjectionService
         Set<UUID> orderItemIds = anchors.stream()
                 .map(SourceAnchor::orderItemId).filter(Objects::nonNull)
                 .collect(LinkedHashSet::new, Set::add, Set::addAll);
-        Map<UUID, List<PreplanCandidate>> preplan = preplanCandidates(externalItemIds);
+        Map<UUID, List<PreplanCandidate>> preplan = preplanCandidates(externalItemIds, true);
         Map<UUID, List<FormalCandidate>> formal = formalCandidates(
                 receiptType, orderItemIds);
 
@@ -92,6 +92,12 @@ public class PreplanInboundAllocationProjectionService
                     if (!slice.matches(candidate.goodsId(), candidate.colorId())) continue;
                     BigDecimal headroom = preplanHeadroom.getOrDefault(
                             candidate.allocationId(), BigDecimal.ZERO);
+                    if (candidate.replacementOnly()) {
+                        headroom = headroom.min(decimal(em.createNativeQuery("""
+                                SELECT fn_iqc_replacement_preview_capacity(:passEventId,:allocationId)
+                                """).setParameter("passEventId", slice.passEventId())
+                                .setParameter("allocationId", candidate.allocationId()).getSingleResult()));
+                    }
                     boolean shared = "SHARED_FUTURE_CLAIM".equals(
                             candidate.operationType());
                     SourceBudgetKey budgetKey = new SourceBudgetKey(
@@ -179,7 +185,7 @@ public class PreplanInboundAllocationProjectionService
         Set<UUID> orderItemIds = orderItems.stream()
                 .map(OrderItemQuantity::orderItemId)
                 .collect(LinkedHashSet::new, Set::add, Set::addAll);
-        Map<UUID, List<PreplanCandidate>> preplan = preplanCandidates(externalItemIds);
+        Map<UUID, List<PreplanCandidate>> preplan = preplanCandidates(externalItemIds, false);
         Map<UUID, List<FormalCandidate>> formal = formalCandidates(
                 orderType, orderItemIds);
         Map<UUID, BigDecimal> preplanHeadroom = new HashMap<>();
@@ -482,7 +488,7 @@ public class PreplanInboundAllocationProjectionService
     }
 
     private Map<UUID, List<PreplanCandidate>> preplanCandidates(
-            Set<UUID> externalItemIds) {
+            Set<UUID> externalItemIds, boolean includeIqcContinuations) {
         if (externalItemIds.isEmpty()) return Map.of();
         Map<UUID, List<PreplanCandidate>> result = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
@@ -497,10 +503,11 @@ public class PreplanInboundAllocationProjectionService
                        COALESCE(NULLIF(BTRIM(source.source_ref),''),'生产物料分析'),
                        work.plan_id,work.plan_no,work.segment_id,work.segment_code,
                        work.workshop_id,work.workshop_name,
-                       work.responsible_id,work.responsible_name
+                       work.responsible_id,work.responsible_name,action.status='CANCELLED'
                 FROM preplan_supply_action_allocations allocation
                 JOIN preplan_supply_actions action ON action.id=allocation.action_id
-                 AND action.status <> 'CANCELLED'
+                 AND (action.status <> 'CANCELLED' OR :includeIqcContinuations=TRUE
+                      AND fn_iqc_cancelled_supply_can_continue(action.id))
                 JOIN production_material_analyses analysis
                   ON analysis.id=allocation.analysis_id
                  AND analysis.is_deleted=FALSE
@@ -569,7 +576,8 @@ public class PreplanInboundAllocationProjectionService
                            WHEN 'SHARED_FUTURE_CLAIM' THEN 1 ELSE 0 END,
                          action.created_at,action.id,
                          allocation.created_at,allocation.id
-                """).setParameter("externalItemIds", externalItemIds))) {
+                """).setParameter("externalItemIds", externalItemIds)
+                .setParameter("includeIqcContinuations", includeIqcContinuations))) {
             PreplanCandidate value = PreplanCandidate.from(row);
             result.computeIfAbsent(value.externalItemId(), ignored -> new ArrayList<>())
                     .add(value);
@@ -974,7 +982,7 @@ public class PreplanInboundAllocationProjectionService
             String productCode, String productName, String sourceLabel,
             UUID planId, String planNo, UUID segmentId, String segmentCode,
             UUID workshopId, String workshopName,
-            UUID responsibleId, String responsibleName) {
+            UUID responsibleId, String responsibleName, boolean replacementOnly) {
         static PreplanCandidate from(Object[] row) {
             return new PreplanCandidate(
                     uuid(row[0]),uuid(row[1]),uuid(row[2]),string(row[3]),
@@ -982,7 +990,7 @@ public class PreplanInboundAllocationProjectionService
                     uuid(row[9]),uuid(row[10]),decimal(row[11]),string(row[12]),
                     string(row[13]),string(row[14]),uuid(row[15]),string(row[16]),
                     uuid(row[17]),string(row[18]),uuid(row[19]),string(row[20]),
-                    uuid(row[21]),string(row[22]));
+                    uuid(row[21]),string(row[22]),Boolean.TRUE.equals(row[23]));
         }
 
         AllocationView toView(

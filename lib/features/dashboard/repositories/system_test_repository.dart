@@ -1,7 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../core/network/server_config.dart';
+import '../../../shared/auth/session_epoch_provider.dart';
+import '../../../shared/providers/session_provider.dart';
+import '../models/business_data_reset_attempt.dart';
+import '../providers/business_data_reset_journal.dart';
 
 /// 清空请求的接收超时：服务端同步执行「排水（≤45s）→ 业务附件自动清理（≤5 分钟预算）
 /// → 清库」，网关对该路径同样放宽到 600s（deploy/nginx/*.conf 的
@@ -58,6 +65,9 @@ class BusinessDataResetLastResult {
     this.preservedTableCount = 0,
     this.authorizationEpochAfter = 0,
     this.deletedAttachmentFiles = 0,
+    this.operatorId,
+    this.attemptId,
+    this.confirmedPendingAttempt = false,
   });
 
   factory BusinessDataResetLastResult.fromJson(Map<String, dynamic> json) {
@@ -72,6 +82,8 @@ class BusinessDataResetLastResult {
           (json['authorizationEpochAfter'] as num?)?.toInt() ?? 0,
       deletedAttachmentFiles:
           (json['deletedAttachmentFiles'] as num?)?.toInt() ?? 0,
+      operatorId: json['operatorId'] as String?,
+      attemptId: json['attemptId'] as String?,
     );
   }
 
@@ -85,6 +97,43 @@ class BusinessDataResetLastResult {
   final int preservedTableCount;
   final int authorizationEpochAfter;
   final int deletedAttachmentFiles;
+  final String? operatorId;
+  final String? attemptId;
+
+  /// Local correlation result, never accepted from a server JSON flag.
+  final bool confirmedPendingAttempt;
+
+  BusinessDataResetLastResult confirmedForPendingAttempt() =>
+      BusinessDataResetLastResult(
+        available: available,
+        finishedAt: finishedAt,
+        operatorAccount: operatorAccount,
+        clearedTableCount: clearedTableCount,
+        clearedRows: clearedRows,
+        preservedTableCount: preservedTableCount,
+        authorizationEpochAfter: authorizationEpochAfter,
+        deletedAttachmentFiles: deletedAttachmentFiles,
+        operatorId: operatorId,
+        attemptId: attemptId,
+        confirmedPendingAttempt: true,
+      );
+}
+
+bool isBusinessDataResetOutcomeUncertain(ApiException error) =>
+    error is NetworkException ||
+    error is NetworkTimeoutException ||
+    error.httpStatus == 502 ||
+    error.httpStatus == 504 ||
+    error.code == 'SESSION_CHANGED' ||
+    error.code == 'SESSION_STATE_UNAVAILABLE' ||
+    error.code == 'RESET_PENDING_CONFIRMATION';
+
+class BusinessDataResetPendingException extends ApiException {
+  BusinessDataResetPendingException()
+    : super(
+        'RESET_PENDING_CONFIRMATION',
+        '清空结果待确认，服务器可能仍在执行或已完成。请勿再次提交；重新登录后核对本次完成记录。',
+      );
 }
 
 abstract interface class SystemTestRepository {
@@ -98,6 +147,7 @@ abstract interface class SystemTestRepository {
 
   /// 上次清空结果（重登后系统测试区回显；运行开关未开启时后端 403）。
   Future<BusinessDataResetLastResult> lastBusinessDataResetResult();
+  Future<BusinessDataResetAttempt?> pendingBusinessDataReset();
 }
 
 class BusinessAttachmentResetPreview {
@@ -126,9 +176,35 @@ class BusinessAttachmentResetPreview {
 }
 
 class ApiSystemTestRepository implements SystemTestRepository {
-  const ApiSystemTestRepository(this._api);
+  ApiSystemTestRepository(
+    this._api, {
+    required String server,
+    required this.operatorId,
+    required this.journal,
+    DateTime Function()? now,
+  }) : server = Uri.base.resolve(server).toString(),
+       _now = now ?? DateTime.now;
 
   final ApiClient _api;
+  final String server;
+  final String? operatorId;
+  final BusinessDataResetJournal journal;
+  final DateTime Function() _now;
+  bool _inFlight = false;
+
+  @override
+  Future<BusinessDataResetAttempt?> pendingBusinessDataReset() async {
+    final operator = operatorId;
+    if (operator == null || operator.isEmpty) return null;
+    try {
+      return await journal.read(server, operator);
+    } catch (_) {
+      throw ApiException(
+        'RESET_CONFIRMATION_UNAVAILABLE',
+        '无法读取本标签页的清空待确认记录，请勿重新提交；请稍后重试读取。',
+      );
+    }
+  }
 
   @override
   Future<BusinessAttachmentResetPreview> previewBusinessAttachments() async =>
@@ -152,28 +228,111 @@ class ApiSystemTestRepository implements SystemTestRepository {
 
   @override
   Future<BusinessDataResetResult> resetBusinessData() async {
-    final json = await _api.postLongRunning(
-      ApiEndpoints.systemTestBusinessDataReset,
-      body: const {'confirm': '清空业务数据'},
-      receiveTimeout: businessDataResetReceiveTimeout,
-    );
-    return BusinessDataResetResult.fromJson(json);
+    if (_inFlight) throw BusinessDataResetPendingException();
+    final operator = operatorId;
+    if (operator == null || operator.isEmpty) {
+      throw ApiException('UNAUTHORIZED', '请重新登录后操作');
+    }
+    _inFlight = true;
+    try {
+      if (await pendingBusinessDataReset() != null) {
+        throw BusinessDataResetPendingException();
+      }
+      final attempt = BusinessDataResetAttempt(
+        id: const Uuid().v4(),
+        server: server,
+        operatorId: operator,
+        startedAt: _now().toUtc(),
+      );
+      try {
+        await journal.save(attempt);
+      } catch (_) {
+        throw ApiException(
+          'RESET_CONFIRMATION_UNAVAILABLE',
+          '无法保存清空请求的待确认记录，尚未发送清空请求。',
+        );
+      }
+      try {
+        final json = await _api.postLongRunning(
+          ApiEndpoints.systemTestBusinessDataReset,
+          body: {'confirm': '清空业务数据', 'attemptId': attempt.id},
+          receiveTimeout: businessDataResetReceiveTimeout,
+        );
+        final result = BusinessDataResetResult.fromJson(json);
+        // A direct authenticated 200 is authoritative. If local cleanup fails,
+        // preserve its receipt for the next sign-in instead of hiding success.
+        try {
+          await journal.removeIfSame(attempt);
+        } catch (_) {}
+        return result;
+      } on ApiException catch (error) {
+        if (isBusinessDataResetOutcomeUncertain(error)) {
+          throw BusinessDataResetPendingException();
+        }
+        await journal.removeIfSame(attempt);
+        rethrow;
+      } catch (_) {
+        // Malformed/lost success responses can follow a committed reset too.
+        // Never replay a destructive command to discover what happened.
+        throw BusinessDataResetPendingException();
+      }
+    } finally {
+      _inFlight = false;
+    }
   }
 
   @override
-  Future<BusinessDataResetLastResult> lastBusinessDataResetResult() async =>
-      BusinessDataResetLastResult.fromJson(
-        await _api.get(ApiEndpoints.systemTestBusinessDataLastResult),
-      );
+  Future<BusinessDataResetLastResult> lastBusinessDataResetResult() async {
+    final attempt = await pendingBusinessDataReset();
+    final result = BusinessDataResetLastResult.fromJson(
+      await _api.get(
+        ApiEndpoints.systemTestBusinessDataLastResult,
+        query: attempt == null ? null : {'attemptId': attempt.id},
+      ),
+    );
+    if (attempt != null &&
+        result.available &&
+        attempt.matchesCompletion(
+          currentServer: server,
+          currentOperatorId: operatorId ?? '',
+          completedBy: result.operatorId,
+          completedAttemptId: result.attemptId,
+          finishedAt: result.finishedAt,
+        )) {
+      await journal.removeIfSame(attempt);
+      return result.confirmedForPendingAttempt();
+    }
+    return result;
+  }
 }
 
 final systemTestRepositoryProvider = Provider<SystemTestRepository>((ref) {
-  return ApiSystemTestRepository(ref.watch(apiClientProvider));
+  return ApiSystemTestRepository(
+    ref.watch(apiClientProvider),
+    server: ref.watch(apiBaseUrlProvider),
+    operatorId: ref.watch(sessionProvider.select((state) => state.user?.id)),
+    journal: ref.watch(businessDataResetJournalProvider),
+  );
 });
 
-/// 上次清空结果（系统测试区展开时才读取；autoDispose：收起即释放，重登后重拉）。
+final pendingBusinessDataResetProvider =
+    FutureProvider.autoDispose<BusinessDataResetAttempt?>((ref) {
+      ref.watch(sessionEpochProvider);
+      return ref.watch(systemTestRepositoryProvider).pendingBusinessDataReset();
+    });
+
+/// Every new login queries again. An exact completion releases only the original
+/// local receipt; a missing/older/other operator's record cannot unblock it.
 final lastBusinessDataResetResultProvider =
-    FutureProvider.autoDispose<BusinessDataResetLastResult>(
-      (ref) =>
-          ref.watch(systemTestRepositoryProvider).lastBusinessDataResetResult(),
-    );
+    FutureProvider.autoDispose<BusinessDataResetLastResult>((ref) async {
+      var active = true;
+      ref.onDispose(() => active = false);
+      ref.watch(sessionEpochProvider);
+      final result = await ref
+          .watch(systemTestRepositoryProvider)
+          .lastBusinessDataResetResult();
+      if (active && result.confirmedPendingAttempt) {
+        ref.invalidate(pendingBusinessDataResetProvider);
+      }
+      return result;
+    });

@@ -1,11 +1,14 @@
 // 多报工单汇总登记成品仓与库位（任务列表多选「批量登记成品仓并送检」落点）。
 //
-// 交互范式复刻采购到货登记明细表：行首选选列 + 「统一设置成品仓(n)」「统一填写库位(n)」
-// 批量动作 + 行内可各自改；成品仓选定后逐行批量拉默认库位建议（V431 偏好链，一次请求
-// 合并全部行）；页头「默认成品仓」预选当前用户上次登记所用的仓（last-warehouse），
-// 切换默认仓 = 批量落到全部未提交行。提交 = 一个事务逐单登记并生成各自的 FQC
-// 送检（逐报工分批、逐行 FQC，行级 UUID 锚定不变）；V547 起同一成品仓的行合并成
-// 一张品质检查单（结果 sheets 每仓一张）。已登记（只读）报工在品质未处理前可撤回登记。
+// 2026-09-12 对齐采购到货登记明细表口径：表头不再有「默认成品仓」下拉与
+// 「统一设置成品仓 / 统一填写库位」批量按钮——成品仓、库位号行级必填（空时红框），
+// **勾选多行后在其中任意一行改仓/写库位 = 批量落到全部选中行**，右键选中集可
+// 「批量设置成品仓 / 批量设置库位号」；上次登记仓（服务端 last-warehouse）与本页
+// 上次显式选择（账号记忆）预填全部未提交行（黄框待核对）。成品仓选定后逐行批量拉
+// 默认库位建议（V431 偏好链，一次请求合并全部行）。提交 = 一个事务逐单登记并生成
+// 各自的 FQC 送检（逐报工分批、逐行 FQC，行级 UUID 锚定不变）；V547 起同一成品仓
+// 的行合并成一张品质检查单（结果 sheets 每仓一张）。已登记（只读）报工在品质未
+// 处理前可撤回登记。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -19,8 +22,9 @@ import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -36,8 +40,8 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/master_name_provider.dart';
-import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../models/production_finished_inbound_task.dart';
+import '../providers/production_finished_arrival_fill_memory.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/production_finished_inbound_task_repository.dart';
 
@@ -68,12 +72,8 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
   final String _idempotencyKey = 'finished-arrival-batch-${const Uuid().v4()}';
 
   List<ProductionFinishedArrivalRegistration>? _reports;
-  String? _defaultWarehouseId;
   // 整批备注（V542）：落到本批每个登记批次。
   final _remarkController = TextEditingController();
-
-  /// 默认仓是否上次登记预选（黄框提醒核对；用户改选即清除）。
-  bool _warehouseAutofilled = false;
   String? _error;
   String? _validationError;
   bool _loading = false;
@@ -130,7 +130,10 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
         }
       }
       _grid.replaceAll(rows);
-      // 默认仓 = 当前用户上次登记所用仓（无历史不预选，不猜）。
+      // 预填链（都不猜，无历史不预选）：
+      //   1. 服务端 last-warehouse = 当前用户上次**成功登记**所用仓（权威）；
+      //   2. 本页上次显式选择的仓（账号记忆，登记未完成也记得）兜底。
+      // 预填一律黄框提醒核对，用户一动即清标。
       String? warehouseId;
       try {
         final last = await ref
@@ -146,11 +149,19 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       } catch (_) {
         /* 上次仓拉取失败不阻断，仅不预选 */
       }
+      warehouseId ??= () {
+        final remembered = ref
+            .read(productionFinishedArrivalFillMemoryProvider)
+            .warehouseId;
+        return WarehouseSelection(
+              ref.read(masterNameServiceProvider).warehouseHierarchy,
+            ).selectableIds.contains(remembered)
+            ? remembered
+            : null;
+      }();
       if (!mounted) return;
       setState(() {
         _reports = reports;
-        _defaultWarehouseId = warehouseId;
-        _warehouseAutofilled = warehouseId?.isNotEmpty == true;
         _removedLineCount = 0;
         _loading = false;
         _validationError = null;
@@ -248,43 +259,55 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
     });
   }
 
-  Future<void> _onDefaultWarehouseChanged(String? value) async {
-    setState(() {
-      _defaultWarehouseId = value;
-      _warehouseAutofilled = false; // 用户改选=已核对
-      _validationError = null;
-      _suggestionError = null;
-    });
-    if (value?.isNotEmpty == true) {
-      _applyWarehouseToRows(_editableRows, value!);
-      await _reloadSuggestions();
-    } else {
-      _suggestionGeneration++;
-      for (final row in _editableRows) {
-        row.setWarehouse(null);
-      }
-      setState(() => _suggestionsLoading = false);
-    }
+  /// 一次改动的落值范围（对齐采购批量登记页 `_writeTargets`，2026-09-12）：
+  /// **勾选若干行 → 在其中任意一行改仓/写库位 = 批量落到全部选中行**；
+  /// 点的行不在选中集里（或压根没勾）就只改这一行。
+  List<_BatchArrivalRegistrationRow> _writeTargets(
+    _BatchArrivalRegistrationRow row,
+  ) {
+    final selected = _grid.selectedRows;
+    return selected.contains(row) ? selected : [row];
   }
 
-  /// 行内/批量「设置成品仓」：共享仓库选择面板（主/子级联），返回后落到目标行并刷新建议。
+  /// 行内/右键批量「设置成品仓」：共享仓库选择面板（主/子级联），返回后落到
+  /// 目标行、记住这次选的仓（下次自动带）并刷新库位建议。
   Future<void> _pickWarehouseFor(
     List<_BatchArrivalRegistrationRow> rows,
   ) async {
+    final targets = rows.where((row) => !row.registered).toList();
+    if (targets.isEmpty) return;
     final names = ref.read(masterNameServiceProvider);
-    final current = rows.length == 1
-        ? rows.single.warehouseId.value
-        : _defaultWarehouseId;
     final picked = await showUtenWarehousePickerPanel(
       context,
       hierarchy: names.warehouseHierarchy,
-      initialWarehouseId: current,
-      title: '选择成品仓',
+      initialWarehouseId: targets.first.warehouseId.value,
+      title: targets.length > 1
+          ? '批量设置成品仓（选中 ${targets.length} 行）'
+          : '选择成品仓 · ${targets.single.item.goodsName}',
     );
     if (picked == null || !mounted) return;
-    _applyWarehouseToRows(rows, picked.id);
+    _applyWarehouseToRows(targets, picked.id);
+    ref
+        .read(productionFinishedArrivalFillMemoryProvider.notifier)
+        .rememberWarehouse(picked.id);
+    if (targets.length > 1) {
+      context.appInfo('已把成品仓写到选中的 ${targets.length} 行');
+    }
     setState(() {});
     await _reloadSuggestions();
+  }
+
+  /// 行内写库位：同样落到 [_writeTargets]——用户边打边能看到整批跟着变，
+  /// 与「改一行就是改一批」的心智一致。只改本行时什么都不用做（控件自己持有文本）。
+  void _onPlaceChanged(_BatchArrivalRegistrationRow row, String value) {
+    final targets = _writeTargets(row);
+    if (targets.length > 1) {
+      for (final target in targets) {
+        if (identical(target, row) || target.registered) continue;
+        target.setManualPlace(value);
+      }
+      setState(() {});
+    }
   }
 
   /// 多选行批量填库位：一次输入应用到全部选中行（同库位场景，如整托同架）。
@@ -451,29 +474,18 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
     }
 
     final reportIds = byReport.keys.toList()..sort();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('汇总登记并送检 ${reportIds.length} 张报工单'),
-        content: const Text(
-          '将在同一事务把表内明细按报工单登记成品仓与库位，并逐行送品质部检查。'
-          '已移出明细仍留在仓库待登记，不产生 FQC 或库存事实。'
-          '任一报工状态、权限、品质或并发校验失败，整批回滚。'
-          '提交后进入品质检查；品质放行后再按实物执行最终点收。',
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            icon: const Icon(Icons.fact_check_outlined),
-            label: const Text('确认登记并送检'),
-          ),
-        ],
-      ),
+    // 2026-09-12：原一整段连排确认文案把弹窗顶得巨长，改「一句结论 + 短要点」，
+    // 高度与宽度由 UtenDialog 统一兜（限宽 460 / 限高 60% 屏高 / 超出自滚）。
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '汇总登记并送检（${reportIds.length} 张报工单）',
+      confirmLabel: '确认登记并送检',
+      content: _confirmPoints(Theme.of(context), const [
+        '同一事务逐单登记成品仓与库位，逐行送品质部检查。',
+        '同一成品仓的行合并成一张品质检查单；品质放行后再按实物最终点收。',
+        '已移出明细仍留在仓库待登记，不产生 FQC 或库存事实。',
+        '任一报工状态、权限、品质或并发校验失败，整批回滚。',
+      ]),
     );
     if (confirmed != true || !mounted) return;
 
@@ -546,6 +558,19 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       sheetSummary: _sheetSummary(result),
     );
   }
+
+  /// 确认弹窗正文：一行一个要点（· 前缀 + 悬挂缩进），与采购批量登记页同款。
+  Widget _confirmPoints(ThemeData theme, List<String> points) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      for (final point in points)
+        Padding(
+          padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+          child: Text('· $point', style: theme.textTheme.bodyMedium),
+        ),
+    ],
+  );
 
   /// V547：同仓合并成一张品质检查单；成功提示带单号，便于品质部对单。
   static String _sheetSummary(
@@ -670,7 +695,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                     children: [
                       _buildBanner(theme),
                       const SizedBox(height: UtenSpacing.s12),
-                      _buildHeaderCard(theme, names),
+                      _buildHeaderCard(theme),
                       const SizedBox(height: UtenSpacing.s12),
                       if (_canRegister) ...[
                         _buildRememberSwitch(theme),
@@ -727,63 +752,26 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                             '确认从本次汇总登记移出选中的 $count 行？'
                             '报工事实不会删除，也不会产生 FQC、入库或库存事实；'
                             '返回任务中心后仍保持待登记送检。',
-                        batchActionsBuilder: _canRegister
-                            ? (context, controller) => [
-                                Tooltip(
-                                  message:
-                                      '把所选行的成品仓统一设为同一个仓，'
-                                      '并自动匹配默认库位；单行也可点击行内格单独改',
-                                  child: UtenButton(
-                                    key: const Key(
-                                      'production-finished-arrival-batch-set-warehouse',
-                                    ),
-                                    size: UtenButtonSize.large,
-                                    icon: Icons.warehouse_outlined,
-                                    onPressed: () {
-                                      final rows = controller.selectedRows;
-                                      if (rows.isEmpty) {
-                                        context.appWarning('请先勾选要统一设置成品仓的行');
-                                        return;
-                                      }
-                                      _pickWarehouseFor(rows);
-                                    },
-                                    child: Text(
-                                      '统一设置成品仓(${controller.selectedCount})',
-                                    ),
-                                  ),
+                        // 2026-09-12 表头上方常驻按钮全撤（用户口径，与采购批量
+                        // 登记页一致）：全选走表头复选框，「移出本次登记」搬进行
+                        // 右键菜单，批量设仓/填库位改成「勾选多行后在任意一行
+                        // 改仓/写库位即整批落值」+ 右键菜单批量动作。
+                        showSelectAllToggle: false,
+                        showRemoveRowsAction: false,
+                        rowMenuExtraBuilder:
+                            _canRegister && !_saving && !_submitted
+                            ? (context, selected) => [
+                                UtenMenuItem(
+                                  label: '批量设置成品仓 (${selected.length})',
+                                  icon: Icons.warehouse_outlined,
+                                  enabled: selected.isNotEmpty,
+                                  onTap: () => _pickWarehouseFor(selected),
                                 ),
-                                Tooltip(
-                                  message: '一次输入库位号，应用到全部选中行（整托同架场景）',
-                                  child: UtenButton(
-                                    key: const Key(
-                                      'production-finished-arrival-batch-place',
-                                    ),
-                                    size: UtenButtonSize.large,
-                                    type: UtenButtonType.secondary,
-                                    icon: Icons.edit_note_outlined,
-                                    onPressed:
-                                        controller.selectedCount == 0 ||
-                                            controller.selectedRows.any(
-                                              (row) =>
-                                                  row
-                                                      .warehouseId
-                                                      .value
-                                                      ?.isNotEmpty !=
-                                                  true,
-                                            )
-                                        ? null
-                                        : () => _batchFillPlace(
-                                            controller.selectedRows,
-                                          ),
-                                    onDisabledTap: () => context.appInfo(
-                                      controller.selectedCount == 0
-                                          ? '请先勾选要统一填写库位的明细行'
-                                          : '请先为所选行选择成品仓',
-                                    ),
-                                    child: Text(
-                                      '统一填写库位(${controller.selectedCount})',
-                                    ),
-                                  ),
+                                UtenMenuItem(
+                                  label: '批量设置库位号 (${selected.length})',
+                                  icon: Icons.edit_note_outlined,
+                                  enabled: selected.isNotEmpty,
+                                  onTap: () => _batchFillPlace(selected),
                                 ),
                               ]
                             : null,
@@ -886,9 +874,9 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                 ),
                 const SizedBox(height: UtenSpacing.s4),
                 Text(
-                  '默认成品仓按您上次登记自动预选；勾选行可「统一设置成品仓」，'
-                  '行内也可单独改库位。提交后每张报工单各生成一份品质送检；'
-                  '品质放行后再进行最终点收。',
+                  '成品仓、库位号逐行必填；上次登记仓自动预填（黄框待核对）。'
+                  '勾选多行后在任意一行改仓/写库位即批量落值，也可右键批量设置。'
+                  '提交后每张报工单各生成一份品质送检；品质放行后再进行最终点收。',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onTertiaryContainer,
                   ),
@@ -901,7 +889,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
     ),
   );
 
-  Widget _buildHeaderCard(ThemeData theme, MasterNameService names) {
+  Widget _buildHeaderCard(ThemeData theme) {
     final reports = _reports!;
     final registeredReports = reports.where((r) => r.registered).length;
     final receiverName = reports.isNotEmpty ? reports.first.receiverName : null;
@@ -927,20 +915,6 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
               ),
             ),
             _readOnlyField('收货人', receiverName ?? '—'),
-            UtenDropdownField(
-              key: const Key('production-finished-arrival-batch-warehouse'),
-              label: '默认成品仓',
-              required: true,
-              enabled: _canRegister && !_saving && !_submitted,
-              value: _defaultWarehouseId,
-              autofilled: _warehouseAutofilled,
-              // V476：主/子层级（父仓置灰分组，实收落具体仓）。
-              items: warehouseHierarchyItems(
-                names.warehouseHierarchy,
-                currentValue: _defaultWarehouseId,
-              ),
-              onChanged: _onDefaultWarehouseChanged,
-            ),
             TextFormField(
               key: const Key('production-finished-arrival-batch-remark'),
               errorBuilder: utenTextFieldErrorBuilder,
@@ -1131,13 +1105,21 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       label: '库位号',
       width: 230,
       required: _canRegister && !_submitted,
+      // 通用说明收进列头 ⓘ（2026-09-12 全站口径）：格内不再逐行挂 ⓘ 图标
+      //（把输入框挤窄），行级只剩黄框（预填待核对）与红框（必填为空）两种状态。
+      headerInfo:
+          '必填，不超过 100 字。选择成品仓后按「该仓默认 → 最近登记：'
+          '同仓同货品 → 货品主档通用建议」自动匹配；黄框 = 已带入默认值，'
+          '请核对本次实物存放位置，可直接修改。',
       textOf: (row) => row.place.text,
       listenableOf: (row) => row.place,
       cellBuilder: (context, row) => _buildPlaceCell(context, row),
     ),
   ];
 
-  /// 成品仓格：与订货单「供应商」格同款 outlined 选择格（点击弹选择器）。
+  /// 成品仓格：与采购批量登记页「入库仓库」格同款——不自带 border/contentPadding/
+  /// 小字/双行，圆角、内边距、字号吃 UtenEditableGrid 行级主题（与库位号格等高）；
+  /// 未选红框（必填）、预填黄框；勾选多行时点击改仓 = 整批落值。
   /// 已登记（只读）行：显示登记仓 + 检查单号，品质未处理时可撤回登记。
   Widget _buildWarehouseCell(
     BuildContext context,
@@ -1179,26 +1161,16 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       );
     }
     return InkWell(
-      onTap: enabled ? () => _pickWarehouseFor([row]) : null,
-      borderRadius: BorderRadius.circular(6),
+      onTap: enabled ? () => _pickWarehouseFor(_writeTargets(row)) : null,
+      borderRadius: BorderRadius.circular(UtenRadius.control),
       child: InputDecorator(
         decoration: applyAutofillHint(
           UtenInputDecoration(
             InputDecoration(
               isDense: true,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 8,
-              ),
-              suffixIcon: Icon(
-                name == null ? Icons.search_rounded : Icons.unfold_more_rounded,
-                size: 16,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              suffixIconConstraints: const BoxConstraints(minWidth: 20),
+              enabledBorder: name == null && enabled
+                  ? requiredEmptyBorder(theme)
+                  : null,
             ),
             info: row.warehouseAutofilled ? '已带入上次登记成品仓，请核对本次实际存放仓库' : null,
           ),
@@ -1206,15 +1178,27 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
           autofilled:
               !row.registered && name != null && row.warehouseAutofilled,
         ),
-        child: Text(
-          name ?? '点击选择成品仓',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: name != null
-                ? theme.colorScheme.onSurface
-                : theme.colorScheme.onSurfaceVariant,
-          ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                name ?? '必选 · 点击选择',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: name == null && enabled
+                    ? theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.error,
+                        fontWeight: FontWeight.w600,
+                      )
+                    : null,
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 16,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ],
         ),
       ),
     );
@@ -1229,28 +1213,22 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       builder: (context, source, _) {
         final warehouseSelected = row.warehouseId.value?.isNotEmpty == true;
         final matching = warehouseSelected && _suggestionsLoading;
-        final sourceLabel = row.registered
-            ? '已登记快照'
-            : !warehouseSelected
-            ? '请先选择成品仓'
-            : matching
-            ? '正在匹配默认库位'
-            : source.label;
-        return Semantics(
+        final editable =
+            _canRegister &&
+            !_saving &&
+            !_submitted &&
+            !row.registered &&
+            warehouseSelected &&
+            !matching;
+        final field = Semantics(
           textField: true,
-          label: '${row.item.goodsName} 库位号，$sourceLabel',
+          label: '${row.item.goodsName} 库位号，${source.label}',
           child: TextField(
             key: ValueKey(
               'production-finished-arrival-batch-place-${row.item.reportItemId}',
             ),
             controller: row.place,
-            enabled:
-                _canRegister &&
-                !_saving &&
-                !_submitted &&
-                !row.registered &&
-                warehouseSelected &&
-                !matching,
+            enabled: editable,
             inputFormatters: [LengthLimitingTextInputFormatter(100)],
             decoration: applyAutofillHint(
               UtenInputDecoration(
@@ -1262,22 +1240,29 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                       ? '正在匹配默认库位'
                       : '必填',
                 ),
-                info: sourceLabel,
               ),
               Theme.of(context),
               autofilled:
-                  !row.registered &&
-                  warehouseSelected &&
-                  !matching &&
+                  editable &&
                   source.isLearned &&
                   row.place.text.trim().isNotEmpty,
             ),
-            onChanged: (_) {
-              if (_validationError != null) {
-                setState(() => _validationError = null);
-              }
-            },
+            // 勾选多行时改本行 = 批量写到全部选中行；只改本行时同步无事可做。
+            onChanged: editable
+                ? (value) {
+                    _onPlaceChanged(row, value);
+                    if (_validationError != null) {
+                      setState(() => _validationError = null);
+                    }
+                  }
+                : null,
           ),
+        );
+        if (!editable) return field;
+        return RequiredCellFrame(
+          listenable: row.place,
+          isEmpty: () => row.place.text.trim().isEmpty,
+          child: field,
         );
       },
     );

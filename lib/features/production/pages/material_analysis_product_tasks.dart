@@ -753,7 +753,9 @@ abstract class _MaterialAnalysisProductTasksState
   /// 分批、幂等、409 恢复和计划向导仍由宿主页状态统一编排——实现只此一份，
   /// 避免详情页与宿主页各自漂移；弹层经 root Navigator 显示在详情页之上，
   /// 动作完成后详情页按最新快照刷新行集。
-  Future<void> _executeBucketAction(_BucketActionRequest request) async {
+  // Only successful workshop issuance returns true to close its bucket after
+  // the result dialog. Procurement/subcontract actions always keep their page.
+  Future<bool> _executeBucketAction(_BucketActionRequest request) async {
     switch (request.type) {
       case _BucketActionType.buy:
         await _notifyRoute(
@@ -771,17 +773,18 @@ abstract class _MaterialAnalysisProductTasksState
         // 一视同仁，单次原子调用服务端 issue-plans（候选行建子件任务、逐行
         // 出计划、有审核权限同事务审核下达）；任一行失败整体回滚，不再有
         // 「已建子件、未出计划」的残留行。
-        await _issueWorkshopPlans(
+        return _issueWorkshopPlans(
           candidateInputs: request.candidateInputs,
           planDrafts: request.planDrafts,
         );
     }
+    return false;
   }
 
   /// 下达车间（ADR-071）：把分桶页收集的行输入交给服务端原子执行。数量/
   /// 车间/负责人在分桶页已校验；这里组幂等键、处理 409 冲突恢复并展示
   /// 生成结果（计划单/领料单一屏）。齐不齐料由车间侧执行段自行判断等待。
-  Future<void> _issueWorkshopPlans({
+  Future<bool> _issueWorkshopPlans({
     List<_BucketCandidatePlanInput>? candidateInputs,
     List<_BucketPlanDraft>? planDrafts,
   }) async {
@@ -789,8 +792,8 @@ abstract class _MaterialAnalysisProductTasksState
     final warehouseId = _warehouseId;
     final candidates = candidateInputs ?? const <_BucketCandidatePlanInput>[];
     final products = planDrafts ?? const <_BucketPlanDraft>[];
-    if (analysis == null || warehouseId == null) return;
-    if (candidates.isEmpty && products.isEmpty) return;
+    if (analysis == null || warehouseId == null) return false;
+    if (candidates.isEmpty && products.isEmpty) return false;
     final lines = <MaterialAnalysisIssueLine>[
       for (final input in candidates)
         MaterialAnalysisIssueLine(
@@ -837,7 +840,7 @@ abstract class _MaterialAnalysisProductTasksState
             approveNow: approveNow,
             lines: lines,
           );
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() {
         _setGenerating(false);
         _applyAnalysis(result.analysis);
@@ -858,21 +861,23 @@ abstract class _MaterialAnalysisProductTasksState
             : '生产计划已生成并提交审批',
       );
       await _showGeneratedPlans(plans);
+      return true;
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) return false;
       if (await _recoverLatestAnalysisAfterConflict(
         error,
         operation: '创建生产计划',
       )) {
         if (mounted) setState(() => _setGenerating(false));
-        return;
+        return false;
       }
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() => _setGenerating(false));
       context.appError(
         productionErrorMessage(error, fallback: '创建生产计划失败，请刷新后重试'),
         force: true,
       );
+      return false;
     } finally {
       if (mounted && _planSubmissionApproveNow) {
         setState(() => _planSubmissionApproveNow = false);

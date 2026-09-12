@@ -8,6 +8,8 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.Generated;
+import org.hibernate.generator.EventType;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -51,7 +53,10 @@ public class SystemSetting {
     @Column(name = "sort_order", nullable = false)
     private int sortOrder;
 
-    @Column(name = "updated_at", insertable = false) // 由 DB 触发器维护（更新时）
+    // PostgreSQL DEFAULT/BEFORE UPDATE trigger owns the value. Hibernate reads
+    // it from the mutation result so a flushed DTO never exposes a stale time.
+    @Generated(event = {EventType.INSERT, EventType.UPDATE})
+    @Column(name = "updated_at", insertable = false, updatable = false)
     private OffsetDateTime updatedAt;
 
     @Column(name = "updated_by")

@@ -22,6 +22,7 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../features/basic_data/models/master_facet.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -108,6 +109,7 @@ abstract class _MaterialAnalysisPageBase
   String? _serverRefreshNotice;
   bool _booting = true;
   bool _loadingCandidates = false;
+  final _candidateRequests = LatestRequestGuard();
   bool _previewingAnalysis = false;
   bool _savingRoutes = false;
   bool _savingPriorities = false;
@@ -597,7 +599,7 @@ abstract class _MaterialAnalysisPageBase
   );
 
   Future<void> _loadCandidates({int? page}) async {
-    if (_loadingCandidates) return;
+    final request = _candidateRequests.begin();
     setState(() {
       _loadingCandidates = true;
       _error = null;
@@ -611,14 +613,14 @@ abstract class _MaterialAnalysisPageBase
             size: _candidatePageSize,
             keyword: _candidateKeyword,
           );
-      if (!mounted) return;
+      if (!mounted || !_candidateRequests.isCurrent(request)) return;
       setState(() {
         _candidatePage = result;
         _candidatePageNo = result.page;
         _loadingCandidates = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_candidateRequests.isCurrent(request)) return;
       setState(() {
         _loadingCandidates = false;
         _error = productionErrorMessage(error, fallback: '加载待分析销售订单失败');
@@ -736,13 +738,18 @@ abstract class _MaterialAnalysisPageBase
 
   Future<void> _boot() async {
     try {
-      await ref.read(masterNameServiceProvider).ensureLoaded();
-      if (!mounted) return;
       final existingAnalysisId = widget.seed.analysisId;
       if (existingAnalysisId != null) {
-        final view = await ref
-            .read(productionPlanRepositoryProvider)
-            .materialAnalysisDetail(existingAnalysisId);
+        // Independent reads start together. Opening a saved analysis must not
+        // write/recompute its complete BOM and stock snapshot on every visit.
+        // Explicit refresh and the server's version/BOM guards own that work.
+        final results = await Future.wait<Object?>([
+          ref.read(masterNameServiceProvider).ensureCommonLoaded(),
+          ref
+              .read(productionPlanRepositoryProvider)
+              .materialAnalysisDetail(existingAnalysisId),
+        ]);
+        final view = results[1] as ProductionMaterialAnalysisView;
         if (!mounted) return;
         setState(() {
           _booting = false;
@@ -753,17 +760,12 @@ abstract class _MaterialAnalysisPageBase
           // MAKE_COMPONENT children are recreated by the server and excluded.
           _sources = _reconstructSourcesFromView(view);
         });
-        // Opening an active writable analysis refreshes its stock/BOM snapshot
-        // once. This upgrades legacy persisted rows to the current node-task
-        // rules immediately; staff should not have to guess that the old
-        // "本批需求为 0" result needs a manual refresh. VIEW-only records remain
-        // strictly read-only and keep their persisted historical snapshot.
-        if (view.allowedActions.contains('REFRESH') && _canManage) {
-          await _previewAnalysis();
-        }
         return;
       }
-      await ref.read(materialAnalysisWarehousePrefsProvider.notifier).syncNow();
+      await Future.wait([
+        ref.read(masterNameServiceProvider).ensureCommonLoaded(),
+        ref.read(materialAnalysisWarehousePrefsProvider.notifier).syncNow(),
+      ]);
       if (!mounted) return;
       final preference = ref.read(materialAnalysisWarehousePrefsProvider);
       _warehouseId ??= preference.primaryWarehouseId;
@@ -1691,7 +1693,12 @@ class _ProductionMaterialAnalysisPageState
                 constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                 tooltip: '取消分析',
                 onPressed: _busy ? null : _cancelCurrentAnalysis,
-                icon: const Icon(Icons.cancel_outlined),
+                icon: _cancellingAnalysis
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.cancel_outlined),
               ),
           if (_analysis != null)
             IconButton(

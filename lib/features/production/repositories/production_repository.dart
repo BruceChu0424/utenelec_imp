@@ -83,6 +83,9 @@ class ProductionPlanRepository {
   final ApiClient api;
 
   static const _materialAnalysesBase = '/production/material-analyses';
+  static const _materialAnalysisProjection = {
+    'projection': 'shared-warehouses-v1',
+  };
 
   Future<PagedResult<ProductionPlanListItem>> list({
     int page = 1,
@@ -671,6 +674,7 @@ class ProductionPlanRepository {
   ) async {
     final json = await api.get(
       '$_materialAnalysesBase/$analysisId',
+      query: _materialAnalysisProjection,
     ); // ENDPOINT
     return ProductionMaterialAnalysisView.fromJson(json);
   }
@@ -688,6 +692,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/preview',
+      query: _materialAnalysisProjection,
       body: {
         'analysisId': ?analysisId,
         'version': ?expectedVersion,
@@ -706,8 +711,9 @@ class ProductionPlanRepository {
     required String idempotencyKey,
     required List<MaterialRouteDecision> decisions,
   }) async {
-    final json = await api.put(
+    final json = await api.putWithQuery(
       '$_materialAnalysesBase/${analysis.analysisId}/routes',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
@@ -725,6 +731,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/cancel',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
@@ -743,6 +750,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/actions/$actionId/cancel',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
@@ -761,6 +769,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/root-outputs/$eventId/revoke',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
@@ -778,6 +787,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/claim-shared-future',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
@@ -795,8 +805,9 @@ class ProductionPlanRepository {
     required String idempotencyKey,
     required List<MaterialAllocationPriorityInput> items,
   }) async {
-    final json = await api.put(
+    final json = await api.putWithQuery(
       '$_materialAnalysesBase/${analysis.analysisId}/allocation-priorities',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
@@ -819,6 +830,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/borrows',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
@@ -841,6 +853,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/borrows/$borrowId/revoke',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
@@ -888,6 +901,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${sourceAnalysis.analysisId}/cross-reallocations',
+      query: _materialAnalysisProjection,
       body: {
         'sourceVersion': sourceAnalysis.version,
         'sourceFingerprint': sourceAnalysis.fingerprint,
@@ -920,6 +934,7 @@ class ProductionPlanRepository {
     final json = await api.post(
       '$_materialAnalysesBase/$sourceAnalysisId/cross-reallocations/'
       '$crossReallocationId/revoke',
+      query: _materialAnalysisProjection,
       body: {
         'sourceVersion': sourceVersion,
         'sourceFingerprint': sourceFingerprint,
@@ -942,6 +957,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/notify',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
@@ -970,6 +986,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/issue-plans',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,

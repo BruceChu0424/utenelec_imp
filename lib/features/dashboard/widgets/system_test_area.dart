@@ -41,7 +41,8 @@ class SystemTestArea extends ConsumerStatefulWidget {
 }
 
 class _SystemTestAreaState extends ConsumerState<SystemTestArea> {
-  /// 展开后才读取「上次清空结果」（超管专属只读端点；收起不发请求）。
+  /// History is shown when expanded; an unresolved receipt and read failures
+  /// remain visible even with the danger controls collapsed.
   bool _expanded = false;
 
   @override
@@ -50,60 +51,111 @@ class _SystemTestAreaState extends ConsumerState<SystemTestArea> {
     final isSuperAdmin = ref.watch(isSuperAdminProvider);
     if (!isSuperAdmin) return const SizedBox.shrink();
 
-    return UtenCollapsibleSection(
-      title: '系统测试',
-      accentColor: UtenColors.error,
-      // 危险区默认收起：标题常驻可见，避免误触。
-      initiallyExpanded: false,
-      onExpandedChanged: (expanded) => setState(() => _expanded = expanded),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // 单卡仍走与功能模块区相同的响应式网格，卡片尺寸/换行与其它工作台卡片一致。
-          UtenResponsiveGrid(
-            itemCount: 1,
-            spacing: UtenSpacing.s12,
-            columns: const UtenResponsiveColumns(compact: 2, medium: 3),
-            itemBuilder: (context, index, itemWidth) => const _ClearDataCard(),
+    final pending = ref.watch(pendingBusinessDataResetProvider);
+    final last = ref.watch(lastBusinessDataResetResultProvider);
+    final showOutside =
+        pending.asData?.value != null ||
+        pending.hasError ||
+        last.hasError ||
+        last.asData?.value.confirmedPendingAttempt == true;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        UtenCollapsibleSection(
+          title: '系统测试',
+          accentColor: UtenColors.error,
+          // 危险区默认收起：标题常驻可见，避免误触。
+          initiallyExpanded: false,
+          onExpandedChanged: (expanded) => setState(() => _expanded = expanded),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 单卡仍走与功能模块区相同的响应式网格，卡片尺寸/换行与其它工作台卡片一致。
+              UtenResponsiveGrid(
+                itemCount: 1,
+                spacing: UtenSpacing.s12,
+                columns: const UtenResponsiveColumns(compact: 2, medium: 3),
+                itemBuilder: (context, index, itemWidth) =>
+                    const _ClearDataCard(),
+              ),
+              if (_expanded && !showOutside) const _LastResetResultLine(),
+            ],
           ),
-          if (_expanded) const _LastResetResultLine(),
-        ],
-      ),
+        ),
+        if (showOutside) const _LastResetResultLine(),
+      ],
     );
   }
 }
 
 /// 上次清空结果回显（重登后可见）：清空请求在客户端/网关超时后服务端仍会完成并
 /// 踢人，这里让发起人确认「已成功但断连」还是真的失败。
-/// 加载中 / 运行开关未开启（403）/ 网络失败 / 尚无记录均不占位——纯信息性回显。
+/// A pending reset is reconciled even when the danger section is collapsed.
+/// Read errors remain visible: absence of a response is not proof of failure.
 class _LastResetResultLine extends ConsumerWidget {
   const _LastResetResultLine();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final waiting =
+        ref.watch(pendingBusinessDataResetProvider).asData?.value != null;
+    Widget retry(String message) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          message,
+          key: const Key('system-test-reset-result-warning'),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.error,
+          ),
+        ),
+        TextButton(
+          key: const Key('system-test-last-reset-retry'),
+          onPressed: () {
+            ref.invalidate(lastBusinessDataResetResultProvider);
+            ref.invalidate(pendingBusinessDataResetProvider);
+          },
+          child: const Text('重新核对结果'),
+        ),
+      ],
+    );
     return ref
         .watch(lastBusinessDataResetResultProvider)
         .when(
-          loading: () => const SizedBox.shrink(),
-          error: (_, _) => const SizedBox.shrink(),
+          loading: () => const Text('正在核对清空完成记录…'),
+          error: (error, _) => retry(
+            '无法读取清空完成记录：${error is ApiException ? error.message : '请检查连接后重试'}'
+            '${waiting ? '。结果仍待确认，请勿再次提交。' : ''}',
+          ),
           data: (result) {
-            if (!result.available) return const SizedBox.shrink();
+            if (!result.available) {
+              return waiting
+                  ? retry('尚未查到本次清空的完成记录，可能仍在执行。请稍后核对，不要再次提交。')
+                  : const SizedBox.shrink();
+            }
             final finishedAt = result.finishedAt;
             final when = finishedAt == null
                 ? ''
                 : '${ChinaDateTime.formatInstant(finishedAt)} ';
             return Padding(
               padding: const EdgeInsets.only(top: UtenSpacing.s8),
-              child: Text(
-                '上次清空：$when由 ${result.operatorAccount ?? '—'} 执行，'
-                '清空 ${result.clearedTableCount} 张业务表（${result.clearedRows} 行），'
-                '保留 ${result.preservedTableCount} 张主档，'
-                '物理删除附件文件 ${result.deletedAttachmentFiles} 个',
-                key: const Key('system-test-last-reset-result'),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (waiting && !result.confirmedPendingAttempt)
+                    retry('这条记录未匹配本次请求的操作者和关联 ID，尚不能确认本次清空。请勿再次提交。'),
+                  Text(
+                    '${result.confirmedPendingAttempt ? '本次清空已确认' : '上次清空'}：$when由 ${result.operatorAccount ?? '—'} 执行，'
+                    '清空 ${result.clearedTableCount} 张业务表（${result.clearedRows} 行），'
+                    '保留 ${result.preservedTableCount} 张主档，'
+                    '物理删除附件文件 ${result.deletedAttachmentFiles} 个',
+                    key: const Key('system-test-last-reset-result'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
             );
           },
@@ -177,7 +229,7 @@ class _ClearDataCard extends ConsumerWidget {
       builder: (dialogContext) => _ClearConfirmDialog(
         onConfirmed: (result) => _handleCleared(context, ref, result),
         onError: (message) => _handleError(context, message),
-        onTimeout: (message) => _handleTimeout(context, message),
+        onPending: (message) => _handlePending(context, message),
       ),
     );
   }
@@ -187,6 +239,7 @@ class _ClearDataCard extends ConsumerWidget {
     WidgetRef ref,
     BusinessDataResetResult result,
   ) async {
+    if (!context.mounted) return;
     // 会话已被服务端作废（epoch 已递增、refresh token 已清空），
     // 这里主动本地登出并回登录页；通知先弹给用户再离开当前页。
     context.appSuccess(
@@ -202,12 +255,14 @@ class _ClearDataCard extends ConsumerWidget {
   }
 
   void _handleError(BuildContext context, String message) {
+    if (!context.mounted) return;
     context.appError(message, title: '清空失败');
   }
 
   /// 客户端/网关超时 ≠ 失败：服务端不感知断连、会继续执行完并把全员踢下线。
-  void _handleTimeout(BuildContext context, String message) {
-    context.appWarning(message, title: '清空请求已超时');
+  void _handlePending(BuildContext context, String message) {
+    if (!context.mounted) return;
+    context.appWarning(message, title: '清空结果待确认');
   }
 }
 
@@ -215,12 +270,12 @@ class _ClearConfirmDialog extends ConsumerStatefulWidget {
   const _ClearConfirmDialog({
     required this.onConfirmed,
     required this.onError,
-    required this.onTimeout,
+    required this.onPending,
   });
 
   final ValueChanged<BusinessDataResetResult> onConfirmed;
   final ValueChanged<String> onError;
-  final ValueChanged<String> onTimeout;
+  final ValueChanged<String> onPending;
 
   @override
   ConsumerState<_ClearConfirmDialog> createState() =>
@@ -232,6 +287,7 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
 
   final TextEditingController _controller = TextEditingController();
   bool _running = false;
+  bool _awaitingConfirmation = false;
   bool _checkingFiles = true;
 
   /// 附件预览被 FORBIDDEN 拒绝（运行开关未开启）：清空会被后端同样拒绝，
@@ -301,7 +357,11 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
   bool get _confirmed =>
       _controller.text.trim() == _confirmPhrase &&
       !_checkingFiles &&
-      !_previewForbidden;
+      !_previewForbidden &&
+      !_awaitingConfirmation &&
+      !ref.read(pendingBusinessDataResetProvider).isLoading &&
+      !ref.read(pendingBusinessDataResetProvider).hasError &&
+      ref.read(pendingBusinessDataResetProvider).asData?.value == null;
 
   Future<void> _submit() async {
     if (!_confirmed || _running) return;
@@ -314,130 +374,154 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
           .read(systemTestRepositoryProvider)
           .resetBusinessData();
       if (!mounted) return;
+      ref.invalidate(pendingBusinessDataResetProvider);
       Navigator.of(context).pop();
       widget.onConfirmed(result);
-    } on NetworkTimeoutException {
-      // 服务端不感知断连，清空会继续执行完并把全员踢下线；重登后本区回显上次结果。
-      if (!mounted) return;
-      const hint = '请求已超时，清空可能仍在后台执行；稍后若被强制下线即表示已完成';
-      setState(() {
-        _running = false;
-        _timeoutHint = hint;
-      });
-      widget.onTimeout(hint);
     } on ApiException catch (error) {
       if (!mounted) return;
+      if (isBusinessDataResetOutcomeUncertain(error)) {
+        _showPending();
+        return;
+      }
       setState(() => _running = false);
+      ref.invalidate(pendingBusinessDataResetProvider);
       widget.onError(error.message);
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
-      setState(() => _running = false);
-      widget.onError('清空请求失败，请稍后重试');
+      _showPending();
     }
+  }
+
+  void _showPending() {
+    const hint = '清空可能仍在后台执行，也可能已经完成。结果待确认，请勿再次提交；重新登录后将核对本次关联记录。';
+    setState(() {
+      _running = false;
+      _awaitingConfirmation = true;
+      _timeoutHint = hint;
+    });
+    ref.invalidate(pendingBusinessDataResetProvider);
+    ref.invalidate(lastBusinessDataResetResultProvider);
+    widget.onPending(hint);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final pending = ref.watch(pendingBusinessDataResetProvider);
+    final last = ref.watch(lastBusinessDataResetResultProvider);
+    final awaiting =
+        _awaitingConfirmation ||
+        pending.asData?.value != null ||
+        pending.hasError;
     return AlertDialog(
       key: const Key('system-test-clear-confirm-dialog'),
       title: const Text('清空业务数据'),
-      content: SizedBox(
-        width: 460,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('即将在本环境执行不可恢复的清空（不创建备份）：', style: theme.textTheme.bodyMedium),
-            if (_checkingFiles) const LinearProgressIndicator(),
-            if (_fileError != null)
+      content: SingleChildScrollView(
+        child: SizedBox(
+          width: 460,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Text(
-                _fileError!,
-                style: _previewForbidden
-                    ? theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.error,
-                      )
-                    : theme.textTheme.bodySmall,
+                '即将在本环境执行不可恢复的清空（不创建备份）：',
+                style: theme.textTheme.bodyMedium,
               ),
-            if (_fileError != null)
-              TextButton(onPressed: _checkFiles, child: const Text('重新核对附件')),
-            if ((_files?.blockingCount ?? 0) > 0) ...[
-              Text(
-                '检测到 ${_files!.blockingCount} 项业务文件/删除任务，'
-                '将随本次清空一并删除（含物理文件）。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+              if (_checkingFiles) const LinearProgressIndicator(),
+              if (_fileError != null)
+                Text(
+                  _fileError!,
+                  style: _previewForbidden
+                      ? theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.error,
+                        )
+                      : theme.textTheme.bodySmall,
                 ),
-              ),
-              TextButton.icon(
-                onPressed: _running ? null : _prepareFiles,
-                icon: const Icon(Icons.folder_delete_outlined),
-                label: const Text('先分批清理附件（可选）'),
-              ),
-            ],
-            const SizedBox(height: UtenSpacing.s12),
-            ...[
-              '保留：基础资料（货品/客户/供应商/账户/仓库…）、人事、账号权限、审计日志',
-              '清空：销售/采购/委外/生产/仓库/财务全部业务单据、明细、流水、预留、核销',
-              '删除：业务附件文件（人事档案/合同、货品图片/图纸除外）随清空自动物理删除',
-              '归零：库存、账户期初/累计收款/累计付款/累计调整/当前余额、各类期初往来',
-              '重排：业务表自增 ID 与编号序列从 1 重新开始',
-              '下线：所有人（含当前账号）立即退出，需重新登录',
-            ].map(
-              (line) => Padding(
-                padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(
-                      Icons.warning_amber_rounded,
-                      size: 16,
-                      color: UtenColors.warning,
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Expanded(
-                      child: Text(
-                        line,
-                        style: theme.textTheme.bodySmall?.copyWith(height: 1.4),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            Text(
-              '请输入「$_confirmPhrase」确认：',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            TextField(
-              key: const Key('system-test-clear-confirm-input'),
-              controller: _controller,
-              enabled: !_running,
-              autofocus: true,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: '清空业务数据',
-                isDense: true,
-              ),
-              onChanged: (_) => setState(() {}),
-              onSubmitted: (_) => _submit(),
-            ),
-            if (_timeoutHint != null)
-              Padding(
-                padding: const EdgeInsets.only(top: UtenSpacing.s8),
-                child: Text(
-                  _timeoutHint!,
-                  key: const Key('system-test-clear-timeout-hint'),
+              if (_fileError != null)
+                TextButton(onPressed: _checkFiles, child: const Text('重新核对附件')),
+              if ((_files?.blockingCount ?? 0) > 0) ...[
+                Text(
+                  '检测到 ${_files!.blockingCount} 项业务文件/删除任务，'
+                  '将随本次清空一并删除（含物理文件）。',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: UtenColors.warning,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _running ? null : _prepareFiles,
+                  icon: const Icon(Icons.folder_delete_outlined),
+                  label: const Text('先分批清理附件（可选）'),
+                ),
+              ],
+              const SizedBox(height: UtenSpacing.s12),
+              ...[
+                '保留：基础资料（货品/客户/供应商/账户/仓库…）、人事、账号权限、审计日志',
+                '清空：销售/采购/委外/生产/仓库/财务全部业务单据、明细、流水、预留、核销',
+                '删除：业务附件文件（人事档案/合同、货品图片/图纸除外）随清空自动物理删除',
+                '归零：库存、账户期初/累计收款/累计付款/累计调整/当前余额、各类期初往来',
+                '重排：业务表自增 ID 与编号序列从 1 重新开始',
+                '下线：所有人（含当前账号）立即退出，需重新登录',
+              ].map(
+                (line) => Padding(
+                  padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.warning_amber_rounded,
+                        size: 16,
+                        color: UtenColors.warning,
+                      ),
+                      const SizedBox(width: UtenSpacing.s8),
+                      Expanded(
+                        child: Text(
+                          line,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-          ],
+              const SizedBox(height: UtenSpacing.s12),
+              Text(
+                '请输入「$_confirmPhrase」确认：',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              TextField(
+                key: const Key('system-test-clear-confirm-input'),
+                controller: _controller,
+                enabled: !_running,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: '清空业务数据',
+                  isDense: true,
+                ),
+                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) => _submit(),
+              ),
+              if (_timeoutHint != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                  child: Text(
+                    last.asData?.value.confirmedPendingAttempt == true
+                        ? '已确认服务器完成清空，请关闭此窗口；无需再次提交。'
+                        : _timeoutHint!,
+                    key: const Key('system-test-clear-timeout-hint'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: UtenColors.warning,
+                    ),
+                  ),
+                ),
+              if (awaiting) const _LastResetResultLine(),
+            ],
+          ),
         ),
       ),
       actions: [

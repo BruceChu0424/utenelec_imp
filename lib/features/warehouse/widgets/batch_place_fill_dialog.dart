@@ -1,4 +1,4 @@
-// 「统一填写库位(n)」弹窗：单张/批量产成品登记页共用。
+// 「批量设置库位号」弹窗：产成品登记页与采购到货登记页的右键批量动作共用。
 //
 // 控制器由弹窗自身持有并在其 dispose 时释放（不能在 showDialog 返回后立刻 dispose，
 // 关闭动画期间 TextField 仍会重建）。返回 trim 后的库位号；取消返回 null。
@@ -48,7 +48,7 @@ class _BatchPlaceFillDialogState extends State<_BatchPlaceFillDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('统一填写库位(${widget.rowCount} 行)'),
+      title: Text('批量设置库位号(${widget.rowCount} 行)'),
       content: TextField(
         key: widget.inputKey,
         controller: _controller,

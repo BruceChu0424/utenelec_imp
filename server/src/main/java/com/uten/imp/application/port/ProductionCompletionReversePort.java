@@ -1,6 +1,7 @@
 package com.uten.imp.application.port;
 
 import java.util.UUID;
+import java.util.Collection;
 
 /**
  * Neutral application port for reversing a finished-product inbound document
@@ -29,6 +30,12 @@ public interface ProductionCompletionReversePort {
      */
     void afterFinishedInboundApproved(
             UUID stockDocumentId, UUID warehouseId);
+
+    /** Complete exact MAKE/subcontract handoffs for this document before the next physical posting. */
+    void afterFinishedInboundPosted(UUID stockDocumentId, UUID warehouseId);
+
+    /** Refresh analyses once after every document and its exact handoffs have completed. */
+    void afterFinishedInboundBatchApproved(Collection<UUID> stockDocumentIds);
     /**
      * Locks and reopens every completed exact segment referenced by the
      * approved finished-in document. Documents without exact segment rows are

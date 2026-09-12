@@ -3423,7 +3423,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             for (UUID uid : targets) {
                 Boolean sent = jdbc.queryForObject(
                         "SELECT EXISTS(SELECT 1 FROM notices WHERE audience_user_id = ? AND title = ? AND published_at >= ?)",
-                        Boolean.class, uid, title, startOfToday);
+                        Boolean.class, uid, title, java.sql.Timestamp.from(startOfToday));
                 if (Boolean.TRUE.equals(sent)) continue;
                 String route = uid.equals(o.ownerUserId())
                         ? o.route() : "/production/material-analysis";
@@ -3473,7 +3473,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             Instant startOfToday = BusinessTime.startOfDayInstant(BusinessTime.today());
             Boolean sent = jdbc.queryForObject(
                     "SELECT EXISTS(SELECT 1 FROM notices WHERE audience_user_id = ? AND title = ? AND published_at >= ?)",
-                    Boolean.class, o.ownerUserId(), title, startOfToday);
+                    Boolean.class, o.ownerUserId(), title, java.sql.Timestamp.from(startOfToday));
             if (Boolean.TRUE.equals(sent)) return;
             sendHoldOverdueNotice(orderId, overdueDays);
         } catch (Exception error) {

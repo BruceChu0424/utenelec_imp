@@ -8,9 +8,10 @@ import org.springframework.stereotype.Component;
 /**
  * 工作台「清空业务数据」的运行配置开关。
  *
- * <p>默认关闭（生产/云端 fail closed）；仅 {@code dev} 与 {@code internal-test}
- * profile 显式开启，对应「本地开发库」与「内网测试服务器」两类目标库。
- * 公司目标库（prod）不配置此开关，端点直接拒绝执行。</p>
+ * <p>base/cloud 默认关闭（fail closed）；{@code dev} 与 {@code internal-test}
+ * profile 显式开启。2026-09-12 用户拍板：测试阶段公司内网服务器（prod profile）
+ * 同样放行（可用 {@code UTEN_BUSINESS_DATA_RESET_ENABLED=false} 临时停用），
+ * 正式上线时整个 systemtest 功能随 ADR-067 一并删除。</p>
  */
 @Component
 public final class BusinessDataResetFeatureGate {

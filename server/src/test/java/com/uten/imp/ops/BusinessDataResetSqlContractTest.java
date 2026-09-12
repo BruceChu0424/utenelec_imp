@@ -384,6 +384,20 @@ class BusinessDataResetSqlContractTest {
                                 .formatted(head, count))
                 .contains("CURRENT_HEAD_VERSION = \"" + head + "\"")
                 .contains("CURRENT_MIGRATION_COUNT = " + count);
+
+        // 第四处：迁移总览文档的「当前正式目录」。
+        // LegacyMigrationSafetyContractTest 会拿上面那两个常量去比对这一行，
+        // 所以文档漏改一样让 CI 后端整轮挂——2026-09-12 又栽了一次。
+        // 那条断言在另一个测试类里，但**这里是新增迁移时唯一该看的清单**，
+        // 因此把它一并纳入，宁可重复也别再漏。
+        String migrationReadme = read(
+                Path.of("..", "docs", "数据迁移", "README.md"),
+                Path.of("docs", "数据迁移", "README.md"));
+        assertThat(migrationReadme)
+                .as("docs/数据迁移/README.md 的「当前正式目录」没跟上："
+                        + "请改成 **当前正式目录：V%d/%d …**（并补一句新迁移做了什么）"
+                                .formatted(head, count))
+                .contains("当前正式目录：V" + head + "/" + count);
     }
 
     private static Path resolve(Path direct, Path fallback) {

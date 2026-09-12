@@ -114,6 +114,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "spring.profiles.active=dev",
                 "uten.audit.retention.enabled=false",
                 "uten.reporting.materialized-view-refresh.enabled=false",
+                // 把存货计价的后台轮询推到整个套件跑完之后（本类 ~6 分钟，这里给 1 小时）。
+                // 它在 dev 档默认 10s 后启动、每 2s 排一批（InventoryValueWorkScheduler），
+                // 而本类的成本用例**全部自己显式 runBatch 到收敛**，多一个后台排程只带来竞态：
+                // 2026-09-12 CI 就是被它咬了——finalReportTargetChangeReprices… 刚批准完报工、
+                // 还没断言，后台先把 business_refresh_pending 抽干，断言读到 false。
+                // 调度器本身由 InventoryValueWorkSchedulerTest 单独覆盖，这里关掉不丢覆盖面。
+                "uten.inventory.value-work-initial-delay-ms=3600000",
                 "uten.policy-intelligence.enabled=false",
                 "uten.features.goods-owner-scope-enabled=false",
                 "uten.storage.uploads-enabled=true",

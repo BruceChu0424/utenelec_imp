@@ -9,7 +9,10 @@ import jakarta.persistence.Query;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 全模块草稿计数只读查询（{@code GET /api/documents/drafts/count} 的数据源）。
@@ -180,14 +183,67 @@ public class DocumentDraftCountQueryService {
         return sql.append(" AND ").append(scopePredicate).toString();
     }
 
-    /** 全部 21 类草稿计数；未登录或全无权限时各项为 0。 */
+    /**
+     * 全部 21 类草稿计数；未登录或全无权限时各项为 0。
+     *
+     * <p><b>一次往返</b>（2026-09-11 修）：此前是每个类型各发一条 count，而且每条都
+     * 重新算一遍归属范围——{@code OwnerVisibility.evaluate} 对非超管要查「交接继承」
+     * 和「授权归属人」两条 SQL。21 个类型 × 3 条 ≈ 63 次数据库往返，现场表现为
+     * 新建页的「草稿」徽章要等十几秒才出现。
+     *
+     * <p>现在：
+     * <ul>
+     *   <li>归属范围<b>按 scope 串去重</b>只算一次（21 个类型只有 6 个不同 scope），
+     *       同一 scope 共用一个绑定参数；</li>
+     *   <li>21 条 count 合并成<b>一条</b> {@code SELECT (子查询), (子查询), ...}；
+     *       每个子查询仍是走 {@code (status, is_deleted, 归属列)} 索引的廉价聚合。</li>
+     * </ul>
+     * 权限自卫不变：没有该类型 {@code *:view} 的，位置上直接写字面量 0，不进 SQL。
+     */
     @Transactional(readOnly = true)
     public DraftCountsResponse counts() {
         AuthUser user = currentUser.get().orElse(null);
         long[] values = new long[SOURCES.size()];
-        for (int i = 0; i < SOURCES.size(); i++) {
-            values[i] = count(SOURCES.get(i), user);
+        // scope 串 → 该 scope 的归属范围（含绑定参数名）。同一个 scope 只算一次。
+        Map<String, ScopeBinding> byScope = new LinkedHashMap<>();
+        List<String> projections = new ArrayList<>(SOURCES.size());
+        boolean anyQueryable = false;
+
+        for (DraftSource source : SOURCES) {
+            if (!canView(user, source.viewAuthority())) {
+                projections.add("0");
+                continue;
+            }
+            ScopeBinding binding = byScope.computeIfAbsent(source.scope(), scopeName -> {
+                DocumentAccessPolicy policy = new DraftScopeAccessPolicy(
+                        scopeName, source.viewAllAuthority(), ownerVisibility, currentUser);
+                return new ScopeBinding(
+                        policy, OWNER_PARAM + "_" + byScope.size(), policy.scope());
+            });
+            DocumentAccessPolicy.NativeReadScope readScope = binding.policy()
+                    .nativeReadScope(
+                            source.ownerColumn(), binding.parameterName(), binding.ownerScope());
+            projections.add("(" + countSql(source, readScope.predicate()) + ")");
+            anyQueryable = true;
         }
+
+        if (anyQueryable) {
+            Query query = em.createNativeQuery("SELECT " + String.join(", ", projections));
+            // 每个 scope 的归属集合只绑一次，且只在非空时绑（seeAll / 空集分支的
+            // 谓词里没有具名参数，绑 null 会让 Hibernate 推断不出类型）。
+            for (ScopeBinding binding : byScope.values()) {
+                if (!binding.ownerScope().seeAll()
+                        && !binding.ownerScope().visibleOwners().isEmpty()) {
+                    query.setParameter(binding.parameterName(), binding.ownerScope().visibleOwners());
+                }
+            }
+            Object row = query.getSingleResult();
+            Object[] cells = row instanceof Object[] array ? array : new Object[] {row};
+            for (int i = 0; i < values.length && i < cells.length; i++) {
+                values[i] = cells[i] instanceof Number number ? number.longValue() : 0L;
+            }
+        }
+
         // 顺序由 SOURCES 决定；DocumentDraftCountSqlContractTest 逐字段比对
         // SOURCES ↔ DraftCountsResponse 的记录组件，错位会在测试里直接炸。
         return new DraftCountsResponse(
@@ -198,22 +254,11 @@ public class DocumentDraftCountQueryService {
                 values[20]);
     }
 
-    private long count(DraftSource source, AuthUser user) {
-        // 权限自卫：无该类型查看权限直接 0，不查库（与前端 hub 卡的显隐同口径）。
-        if (!canView(user, source.viewAuthority())) {
-            return 0L;
-        }
-        DocumentAccessPolicy policy = new DraftScopeAccessPolicy(
-                source.scope(), source.viewAllAuthority(), ownerVisibility, currentUser);
-        DocumentAccessPolicy.NativeReadScope scope =
-                policy.nativeReadScope(source.ownerColumn(), OWNER_PARAM);
-        Query query = em.createNativeQuery(countSql(source, scope.predicate()));
-        // 归属集合只在非空时绑定（seeAll / 空集分支的谓词里没有具名参数），
-        // 因此这里不会出现「参数为 null 无法推断类型」的 Hibernate 报错。
-        scope.bind(query);
-        Object single = query.getSingleResult();
-        return single instanceof Number number ? number.longValue() : 0L;
-    }
+    /** 一个 scope 串对应的归属范围：策略、绑定参数名、已算好的范围（只算一次）。 */
+    private record ScopeBinding(
+            DocumentAccessPolicy policy,
+            String parameterName,
+            OwnerVisibility.OwnerScope ownerScope) {}
 
     private static boolean canView(AuthUser user, String authority) {
         if (user == null) {

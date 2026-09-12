@@ -12,6 +12,8 @@
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'draft_counts_provider.dart';
+
 /// B 类列表页的刷新信号（按 key family）。值为单调递增的 tick。
 ///
 /// 列表页用法（build 内）：
@@ -27,6 +29,15 @@ final listRefreshTickProvider = StateProvider.family<int, String>(
 );
 
 /// 操作成功后调用：bump 对应列表 key 的 tick，触发监听该 key 的列表页重拉。
+///
+/// **同时立刻失效跨模块草稿计数**（2026-09-11）：用户原话「我没有审核、退出了，
+/// 这个草稿就立马记录了，同时有徽章显示」。本函数是全部单据编辑页保存/审核/删除
+/// 成功后的唯一公共钩子，挂在这里就不用每个页面各记一次——漏一个页面，用户就要
+/// 等下一轮 60 秒轮询才看得到自己刚存的草稿。
+///
+/// 计数端点已合并成一次往返（见后端 DocumentDraftCountQueryService.counts），
+/// 因此这里无条件失效的代价是一条廉价查询；没人在看时 invalidate 是空操作。
 void bumpListRefresh(WidgetRef ref, String key) {
   ref.read(listRefreshTickProvider(key).notifier).state++;
+  ref.invalidate(draftCountsProvider);
 }

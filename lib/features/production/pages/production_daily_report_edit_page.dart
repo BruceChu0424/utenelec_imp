@@ -590,6 +590,8 @@ class _ProductionDailyReportEditPageState
           : await repo.update(widget.id!, body, expectedVersion: _rowVersion);
       if (!mounted) return;
       context.appSuccess(widget.id == null ? '已创建' : '已保存');
+      // 同生产计划单：本页不走 bumpListRefresh，草稿计数在这里单独失效。
+      ref.invalidate(draftCountsProvider);
       if (widget.id == null && _pendingFiles.isNotEmpty) {
         setState(() => _createdReportId = d.id);
         await _finishCreatedReport(d.id);

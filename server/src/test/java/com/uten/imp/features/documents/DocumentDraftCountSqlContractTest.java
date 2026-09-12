@@ -1,16 +1,31 @@
 package com.uten.imp.features.documents;
 
 import com.uten.imp.features.documents.DocumentDraftCountQueryService.DraftSource;
+import com.uten.imp.security.AuthUser;
+import com.uten.imp.security.OwnerVisibility;
+import com.uten.imp.security.SecurityContextCurrentUser;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.RecordComponent;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * 草稿计数 SQL 形状契约：每类单据都必须是
@@ -18,6 +33,52 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 且响应字段与查询顺序一一对应。
  */
 class DocumentDraftCountSqlContractTest {
+
+    /**
+     * 21 类草稿必须**一次往返**查完（2026-09-11 性能回归闸门）。
+     *
+     * <p>此前是每类各发一条 count，且每条都重算一次归属范围（非超管要多查
+     * 「交接继承」+「授权归属人」两条 SQL）——21 × 3 ≈ 63 次往返，现场表现为
+     * 新建页的「草稿」徽章要等十几秒才出现。退回逐条会让这个用例直接炸。
+     */
+    @Test
+    void allDraftCountsAreFetchedInASingleRoundTrip() {
+        EntityManager em = mock(EntityManager.class);
+        Query query = mock(Query.class);
+        List<String> statements = new ArrayList<>();
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            statements.add(invocation.getArgument(0));
+            return query;
+        });
+        when(query.setParameter(anyString(), any())).thenReturn(query);
+        when(query.getSingleResult())
+                .thenReturn(new Object[DocumentDraftCountQueryService.SOURCES.size()]);
+
+        OwnerVisibility ownerVisibility = mock(OwnerVisibility.class);
+        // 非超管、无 view:all：走归属集合分支，最容易退化成 N 次范围查询。
+        when(ownerVisibility.evaluate(anyString(), anyString()))
+                .thenReturn(new OwnerVisibility.OwnerScope(false, Set.of(UUID.randomUUID())));
+        SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
+        AuthUser user = mock(AuthUser.class);
+        when(user.isSuperAdmin()).thenReturn(true); // 权限自卫全放行，21 类都要进 SQL
+        when(currentUser.get()).thenReturn(Optional.of(user));
+
+        new DocumentDraftCountQueryService(em, ownerVisibility, currentUser).counts();
+
+        assertThat(statements).hasSize(1);
+        // 一条 SELECT 里挂 21 个标量子查询，顺序即 SOURCES 顺序。
+        assertThat(statements.getFirst()).startsWith("SELECT (SELECT count(*) FROM ");
+        for (DraftSource source : DocumentDraftCountQueryService.SOURCES) {
+            assertThat(statements.getFirst())
+                    .as("单据类型 %s 必须出现在合并查询里", source.table())
+                    .contains("FROM " + source.table() + " o WHERE ");
+        }
+        // 归属范围按 scope 串去重：不同 scope 各绑一个参数，同 scope 不重复算。
+        long distinctScopes = DocumentDraftCountQueryService.SOURCES.stream()
+                .map(DraftSource::scope).distinct().count();
+        verify(ownerVisibility, times((int) distinctScopes))
+                .evaluate(anyString(), anyString());
+    }
 
     @Test
     void everySourceCountsOnlyLiveDraftsWithinTheObjectScope() {

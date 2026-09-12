@@ -109,14 +109,22 @@ int _resolveCount(
       return todoEntryCount(TodoEntry.hrProfileReview, watch);
     case WorkbenchBadgeKind.hrTask:
       return todoEntryCount(TodoEntry.hrTaskCenter, watch);
+    // 「生产管理」卡 = 生产模块入口之和**减去车间任务**（它在工作台另有一张
+    // 「车间生产任务」卡，算进来就双计）。2026-09-11 起含生产草稿。
     case WorkbenchBadgeKind.production:
-      return todoEntryCount(TodoEntry.productionSchedule, watch);
+      return sumTodoEntries(const [
+        TodoEntry.productionSchedule,
+        TodoEntry.productionDrafts,
+      ], watch);
     case WorkbenchBadgeKind.productionWorkshop:
       return todoEntryCount(TodoEntry.productionWorkshop, watch);
     case WorkbenchBadgeKind.rdTask:
       return todoEntryCount(TodoEntry.rdTaskCenter, watch);
+    // 「销售管理」是销售模块在工作台的唯一一张卡，所以取整模块累计。
+    // 2026-09-11 修：此前写死成单个入口 salesAttention，销售草稿因此
+    // 永远进不了工作台——用户原话「工作台 销售管理没有显示」。
     case WorkbenchBadgeKind.sales:
-      return todoEntryCount(TodoEntry.salesAttention, watch);
+      return todoModuleCount(TodoModule.sales, watch);
     // 模块卡 = 该模块全部待办入口之和（采购/委外新含「待退回供应商」，
     // 钱流新含 IQC 驳回——此前这些入口在 hub 里有徽章却不进模块卡）。
     case WorkbenchBadgeKind.warehouse:

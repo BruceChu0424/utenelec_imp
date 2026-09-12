@@ -545,6 +545,9 @@ class _ProductionPlanEditPageState
       final d = await repo.update(widget.id!, body);
       if (!mounted) return;
       context.appSuccess('已保存');
+      // 草稿计数即时刷新：生产两页不走 bumpListRefresh（它们用 context.replace
+      // 直达详情，没有 B 类列表要 bump），所以在这里单独失效一次。
+      ref.invalidate(draftCountsProvider);
       context.replace('/production/plans/${d.id}');
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);

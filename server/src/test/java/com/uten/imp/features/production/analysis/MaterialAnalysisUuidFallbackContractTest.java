@@ -15,7 +15,7 @@ class MaterialAnalysisUuidFallbackContractTest {
     void bomExpansionNeverConvertsLegacyColorOrUnitShadowsIntoUuidRelations()
             throws IOException {
         String source = canonical(sourceFile(
-                "src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisService.java"));
+                "src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisBomSnapshotReader.java"));
 
         assertThat(source)
                 .doesNotContain("legacy_color")

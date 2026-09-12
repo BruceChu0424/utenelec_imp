@@ -231,10 +231,40 @@ do_activate() {
   fi
 }
 
+release_versions() {
+  local directory version
+  # A glob ending in '/' cannot be trimmed with s:.*/::: that also removes
+  # the version itself. Only verified-format directory names enter retention.
+  for directory in "$RELEASES_DIR"/v*/; do
+    [ -d "$directory" ] || continue
+    version=${directory%/}
+    version=${version##*/}
+    [[ "$version" =~ ^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[0-9]{1,3}$ ]] || continue
+    printf '%s\n' "$version"
+  done | sort -V
+}
+
+current_link_version() {
+  [ -L "$UTEN_BASE/current" ] || return 1
+  basename "$(readlink -f "$UTEN_BASE/current")"
+}
+
 prune_old() {
-  local keep=$UTEN_KEEP_RELEASES active dirs
+  local keep=$UTEN_KEEP_RELEASES active actual dirs
+  [[ "$keep" =~ ^[1-9][0-9]{0,3}$ ]] || {
+    log "跳过清理：UTEN_KEEP_RELEASES 必须为 1 至 9999 的整数"
+    return 0
+  }
   active=$(current_version)
-  dirs=$(ls -1d "$RELEASES_DIR"/v*/ 2>/dev/null | sed 's:.*/::;s:/$::' | sort -V) || true
+  actual=$(current_link_version) || {
+    log "跳过清理：无法核对 current 运行目录"
+    return 0
+  }
+  [[ "$active" =~ ^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[0-9]{1,3}$ && "$actual" = "$active" ]] || {
+    log "跳过清理：版本记录与 current 运行目录不一致"
+    return 0
+  }
+  dirs=$(release_versions)
   [ -n "$dirs" ] || return 0
   # sort -V 升序，保留最新 $keep 个，其余删除。
   # 「active 永远在最新之列」只在版本号方案单一时成立——一旦混用两种方案
@@ -258,8 +288,13 @@ do_status() {
   echo "current -> $(readlink -f "$UTEN_BASE/current" 2>/dev/null || echo 未设置)"
   echo "latest  : $(oss_get "LATEST.txt" 2>/dev/null | tr -d '[:space:]' || echo 无法读取)"
   echo "staged  :"
-  ls -1d "$RELEASES_DIR"/v*/ 2>/dev/null | sed 's:.*/::;s:/$::' | sed 's/^/  - /' \
-    || echo "  （无）"
+  local staged
+  staged=$(release_versions)
+  if [ -n "$staged" ]; then
+    printf '%s\n' "$staged" | sed 's/^/  - /'
+  else
+    echo "  （无）"
+  fi
   echo "health  : $(health_ok && echo UP || echo DOWN)"
 }
 

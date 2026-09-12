@@ -449,11 +449,16 @@ public class ProductionSubcontractSupplyTransitionService
     public void afterSubcontractInspectionStockInConfirmed(
             UUID receiptId, UUID warehouseStockInBatchId,
             Collection<UUID> inspectionItemIds) {
-        readiness.onSubcontractReceiptApproved(
-                receiptId, receiptWarehouse(receiptId));
+        advanceInspectionStockInState(receiptId);
         materialAnalysisWakeup.afterInspectionStockInConfirmed(
                 "SUBCONTRACT", receiptId, warehouseStockInBatchId,
                 inspectionItemIds);
+    }
+
+    /** Called once per new receipt batch before the command-wide analysis refresh. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void advanceInspectionStockInState(UUID receiptId) {
+        readiness.onSubcontractReceiptApproved(receiptId, receiptWarehouse(receiptId));
     }
 
     @Override

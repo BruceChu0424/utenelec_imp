@@ -1,7 +1,6 @@
-// 系统设置项（GET /admin/system-settings 的 items[]）。
-//
-// 后端 SystemSettingDto：{ key, value, value_type, category, label, description, unit,
-//   sort_order, updated_at }。value 统一字符串，按 valueType 校验/转换（本系统均为 int/long 数值）。
+// Runtime setting returned by GET /admin/system-settings.
+// The API uses camelCase; valueType determines numeric, boolean or text input.
+// Identity is the immutable setting key. Labels and descriptions are metadata.
 
 class SystemSettingEntry {
   const SystemSettingEntry({

@@ -6636,6 +6636,96 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'查看用料记录'**
   String get productionMaterialViewUsage;
+
+  /// No description provided for @systemSettingInvalidInteger.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入有效的非负整数'**
+  String get systemSettingInvalidInteger;
+
+  /// No description provided for @systemSettingInvalidValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'设置值超出允许范围'**
+  String get systemSettingInvalidValue;
+
+  /// No description provided for @systemSettingEnabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'开启'**
+  String get systemSettingEnabled;
+
+  /// No description provided for @systemSettingDisabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭'**
+  String get systemSettingDisabled;
+
+  /// No description provided for @systemSettingFixFields.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先检查框内标记的设置项'**
+  String get systemSettingFixFields;
+
+  /// No description provided for @systemSettingUnsavedRefresh.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先保存或还原修改，再刷新设置'**
+  String get systemSettingUnsavedRefresh;
+
+  /// No description provided for @systemSettingEffectTiming.
+  ///
+  /// In zh, this message translates to:
+  /// **'安全阈值在后续操作生效，令牌有效期在下次签发生效；庆典与审计留存在各自的计划任务生效。修改会记录审计并需要账号密码确认。'**
+  String get systemSettingEffectTiming;
+
+  /// No description provided for @auditSummaryUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'统计暂不可用，操作记录仍可核查'**
+  String get auditSummaryUnavailable;
+
+  /// No description provided for @auditSummaryRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试统计'**
+  String get auditSummaryRetry;
+
+  /// No description provided for @auditWorkspaceDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'按人员与时间查看会话，沿操作记录追溯业务变化。'**
+  String get auditWorkspaceDescription;
+
+  /// No description provided for @materialReasonLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'原因'**
+  String get materialReasonLabel;
+
+  /// No description provided for @materialReasonRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写原因'**
+  String get materialReasonRequired;
+
+  /// No description provided for @materialReasonTooLong.
+  ///
+  /// In zh, this message translates to:
+  /// **'原因不能超过 {max} 个字符'**
+  String materialReasonTooLong(int max);
+
+  /// No description provided for @materialReasonTooShort.
+  ///
+  /// In zh, this message translates to:
+  /// **'原因至少填写 {min} 个字符'**
+  String materialReasonTooShort(int min);
+
+  /// No description provided for @auditFiltersTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作类型 · 业务对象 · 事件类型'**
+  String get auditFiltersTitle;
 }
 
 class _AppLocalizationsDelegate

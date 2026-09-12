@@ -79,8 +79,8 @@ public class AuditSessionQueryService {
 
         Query query = entityManager.createNativeQuery(SESSION_PAGE_SQL);
         bindSessionScope(query, actorId, from, toExclusive, snapshotAuditId);
-        query.setFirstResult(offset(page, size));
-        query.setMaxResults(size);
+        query.setParameter("pageOffset", offset(page, size));
+        query.setParameter("pageSize", size);
 
         List<SessionAggregate> aggregates = new ArrayList<>();
         for (Object raw : query.getResultList()) {
@@ -661,6 +661,24 @@ public class AuditSessionQueryService {
             WHERE
             """ + SESSION_SCOPE;
 
+    // Rank only session identity and start time before loading detailed evidence.
+    // The complete session, including activity outside the date range, defines order.
+    private static final String PAGED_SESSIONS_CTE = """
+            paged_sessions AS (
+                SELECT event.session_id
+                FROM audit_log event
+                JOIN matched_sessions matched ON matched.session_id = event.session_id
+                WHERE event.id <= :snapshotAuditId
+                  AND LOWER(COALESCE(event.event_source, '')) <> 'database'
+                GROUP BY event.session_id
+                ORDER BY COALESCE(
+                    MIN(event.created_at) FILTER (WHERE event.action IN (
+                        'login', 'visitor_login', 'session_start_after_password_change')),
+                    MIN(event.created_at)) DESC, event.session_id DESC
+                LIMIT :pageSize OFFSET :pageOffset
+            ),
+            """;
+
     private static final String SESSION_PAGE_SQL = """
             WITH matched_sessions AS (
                 SELECT DISTINCT a.session_id
@@ -668,17 +686,21 @@ public class AuditSessionQueryService {
                 WHERE
                 """ + SESSION_SCOPE + """
             ),
+            """ + PAGED_SESSIONS_CTE + """
             session_events AS (
-                SELECT a.*
+                SELECT a.session_id, a.actor_id, a.actor_account, a.action,
+                       a.created_at, a.id, a.result, a.status_code,
+                       a.device_installation_id, a.device_name, a.device_model,
+                       a.device_platform, a.ip
                 FROM audit_log a
-                JOIN matched_sessions matched ON matched.session_id = a.session_id
+                JOIN paged_sessions matched ON matched.session_id = a.session_id
                 WHERE a.id <= :snapshotAuditId
                   AND LOWER(COALESCE(a.event_source, '')) <> 'database'
             ),
             archive_presence AS (
                 SELECT DISTINCT archived.session_id
                 FROM audit_log_archive archived
-                JOIN matched_sessions matched
+                JOIN paged_sessions matched
                   ON matched.session_id = archived.session_id
                 WHERE LOWER(COALESCE(archived.event_source, '')) <> 'database'
             ),
@@ -698,7 +720,7 @@ public class AuditSessionQueryService {
                        token.expires_at,
                        token.revoked_at
                 FROM refresh_tokens token
-                JOIN matched_sessions matched
+                JOIN paged_sessions matched
                   ON matched.session_id = token.session_id
                 UNION ALL
                 SELECT token.session_id,
@@ -707,7 +729,7 @@ public class AuditSessionQueryService {
                        token.expires_at,
                        token.revoked_at
                 FROM visitor_refresh_tokens token
-                JOIN matched_sessions matched
+                JOIN paged_sessions matched
                   ON matched.session_id = token.session_id
             ),
             latest_token AS (
@@ -825,7 +847,9 @@ public class AuditSessionQueryService {
             """;
 
     private static final String SESSION_DETAIL_SQL =
-            SESSION_PAGE_SQL.replace(SESSION_SCOPE, SESSION_DETAIL_SCOPE);
+            SESSION_PAGE_SQL.replace(SESSION_SCOPE, SESSION_DETAIL_SCOPE)
+                    .replace(PAGED_SESSIONS_CTE,
+                            "paged_sessions AS (SELECT session_id FROM matched_sessions),\n");
 
     private static final String SESSION_EVENTS_FIRST_JPQL = """
             SELECT a

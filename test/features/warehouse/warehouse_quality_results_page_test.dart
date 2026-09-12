@@ -307,6 +307,76 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('批量入库响应失败后保留原表单和幂等键供原请求重试', (tester) async {
+    _viewport(tester, const Size(1400, 1000));
+    final gateway = _QualityGateway([
+      WarehouseQualityResultTask.fromJson(
+        _summaryJson('ALL_PASSED', pendingSliceCount: 1, passedLineCount: 1),
+      ),
+      WarehouseQualityResultTask.fromJson(
+        _summaryJson(
+          'ALL_PASSED',
+          pendingSliceCount: 1,
+          passedLineCount: 1,
+          receiptId: 'receipt-2',
+          billNo: 'PR-002',
+        ),
+      ),
+    ])..failNextBatch = true;
+    final preferences = await SharedPreferences.getInstance();
+    await tester.pumpWidget(
+      _app(const WarehouseQualityResultsPage(), gateway, preferences),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('采购收货'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('全部合格'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find
+          .byWidgetPredicate((widget) => widget is Checkbox && widget.tristate)
+          .first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('warehouse-quality-result-batch-stock-in')),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('quality-slice-qty-pass-1')),
+      '3.5',
+    );
+    await tester.enterText(
+      find.byKey(const Key('quality-slice-place-pass-1')),
+      'B-02',
+    );
+    await tester.tap(find.byKey(const Key('warehouse-quality-batch-confirm')));
+    await tester.pumpAndSettle();
+    final originalKeys = gateway.lastBatchCommand!.batches
+        .map((entry) => entry.idempotencyKey)
+        .toList();
+    await tester.tap(find.text('知道了'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('warehouse-quality-batch-confirm')),
+      findsOneWidget,
+    );
+    expect(find.text('3.5'), findsOneWidget);
+    expect(find.text('B-02'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('warehouse-quality-batch-confirm')));
+    await tester.pumpAndSettle();
+    expect(gateway.batchConfirmCalls, 2);
+    expect(
+      gateway.lastBatchCommand!.batches.map((entry) => entry.idempotencyKey),
+      originalKeys,
+    );
+    expect(
+      find.byKey(const Key('warehouse-quality-batch-confirm')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('只选中一张时「批量入库」直接进该单详情页，不弹批量表', (tester) async {
     // 2026-09-11 用户口径：「只选中一个的情况，点击批量入库也应该去到对应的详情页，
     // 不是弹窗」——详情页信息全、能逐行核对；批量表只为跨多张单而存在。
@@ -399,6 +469,7 @@ class _QualityGateway implements WarehouseQualityResultGateway {
 
   final List<WarehouseQualityResultTask> tasks;
   int batchConfirmCalls = 0;
+  bool failNextBatch = false;
   int statusCountsCalls = 0;
   WarehouseQualityBatchConfirmCommand? lastBatchCommand;
 
@@ -455,6 +526,10 @@ class _QualityGateway implements WarehouseQualityResultGateway {
   ) async {
     batchConfirmCalls++;
     lastBatchCommand = command;
+    if (failNextBatch) {
+      failNextBatch = false;
+      throw StateError('response lost');
+    }
     return WarehouseQualityBatchConfirmResult(
       confirmedReceipts: 1,
       confirmedItemCount: command.batches.first.items.length,

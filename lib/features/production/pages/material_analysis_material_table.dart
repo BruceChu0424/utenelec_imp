@@ -2372,6 +2372,7 @@ abstract class _MaterialAnalysisMaterialTableState
       initialValue: '',
       info: '原因会写入审计记录；取消后不得把已发生的仓库或执行事实静默抹除。',
       confirmLabel: '确认取消',
+      minReasonLength: 2,
     ),
   );
 

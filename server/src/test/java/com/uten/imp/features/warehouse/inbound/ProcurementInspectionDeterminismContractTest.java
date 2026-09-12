@@ -46,9 +46,7 @@ class ProcurementInspectionDeterminismContractTest {
                 .contains("event.released_weight")
                 .contains("stockService.recordMovementWithId(")
                 .contains("preplanAnalysisPeg.attributeInspectionStockIn(")
-                .contains("advanceProductionAfterStockIn(")
-                .contains("purchaseSupply.afterPurchaseInspectionStockInConfirmed(")
-                .contains("subcontractSupply.afterSubcontractInspectionStockInConfirmed(");
+                .contains("stockInProduction.afterInspectionStockInConfirmed(newStockIns)");
     }
 
     @Test
@@ -98,7 +96,7 @@ class ProcurementInspectionDeterminismContractTest {
         String analysis = source(
                 "features/production/analysis/MaterialAnalysisService.java");
         String commands = source(
-                "features/production/analysis/MaterialAnalysisCommandService.java");
+                "features/production/analysis/MaterialAnalysisSupplyCoverageReader.java");
 
         assertThat(purchaseTransition)
                 .contains("inspection.warehouse_stocked_base_qty")
@@ -123,7 +121,7 @@ class ProcurementInspectionDeterminismContractTest {
                 .contains("inspection.passed_base_qty")
                 .contains("> inspection.warehouse_stocked_base_qty")
                 .doesNotContain("THEN inspection.passed_base_qty")
-                .contains("COALESCE(i.qty,0)-COALESCE(i.received_qty,0)")
+                .contains("fn_procurement_order_source_remaining_qty(")
                 .contains("o.is_closed = FALSE")
                 .contains("到货质检存在不合格且原采购需求已无在途")
                 .contains("到货质检存在不合格且原委外需求已无在途")

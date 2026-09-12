@@ -24,6 +24,9 @@ spring:
       connection-timeout: ${UTEN_DB_CONNECTION_TIMEOUT_MS:10000}
       idle-timeout: ${UTEN_DB_IDLE_TIMEOUT_MS:600000}
       max-lifetime: ${UTEN_DB_MAX_LIFETIME_MS:1800000}
+      # OLTP plans can overestimate nested BOM/view costs and spend seconds in
+      # JIT compilation. Apply only to application connections, not the cluster.
+      connection-init-sql: SET jit = ${uten.database.jit-enabled:false}
   jpa:
     hibernate:
       ddl-auto: validate          # schema 由 Flyway 管理
@@ -68,6 +71,8 @@ server:
   forward-headers-strategy: none
 
 uten:
+  database:
+    jit-enabled: ${UTEN_DB_JIT:false}
   deployment:
     # 部署站点：local（公司内网，默认）/ cloud（阿里云，仅 remote_access 授权账号可访问）。
     site: ${UTEN_DEPLOYMENT_SITE:local}

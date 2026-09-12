@@ -392,13 +392,18 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                 ), expansion AS (
                     SELECT bom.id,bom.component_goods_id,COALESCE(bom.color_id,goods.color_id) AS color_id,
                            1 AS depth,md5(to_jsonb(bom)::text) AS snapshot
-                    FROM roots JOIN goods_bom_items bom ON bom.goods_id=roots.goods_id AND bom.is_deleted=FALSE
+                    FROM roots JOIN LATERAL (
+                        SELECT edge.* FROM goods_bom_items edge
+                        WHERE edge.goods_id=roots.goods_id AND edge.is_deleted=FALSE OFFSET 0
+                    ) bom ON TRUE
                     JOIN goods ON goods.id=bom.component_goods_id AND goods.is_deleted=FALSE
                     UNION
                     SELECT bom.id,bom.component_goods_id,COALESCE(bom.color_id,goods.color_id),
                            parent.depth+1,md5(to_jsonb(bom)::text)
-                    FROM expansion parent JOIN goods_bom_items bom
-                      ON bom.goods_id=parent.component_goods_id AND bom.is_deleted=FALSE
+                    FROM expansion parent JOIN LATERAL (
+                        SELECT edge.* FROM goods_bom_items edge
+                        WHERE edge.goods_id=parent.component_goods_id AND edge.is_deleted=FALSE OFFSET 0
+                    ) bom ON TRUE
                     JOIN goods ON goods.id=bom.component_goods_id AND goods.is_deleted=FALSE
                     WHERE parent.depth<10
                 )

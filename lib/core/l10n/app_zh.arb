@@ -1581,5 +1581,34 @@
   },
   "productionMaterialRecheckHelp": "重新核对本任务已合格到货和可用库存；不能代替仓库入库或登记实耗。",
   "productionMaterialRegisterUsage": "登记实际用料",
-  "productionMaterialViewUsage": "查看用料记录"
+  "productionMaterialViewUsage": "查看用料记录",
+  "systemSettingInvalidInteger": "请输入有效的非负整数",
+  "systemSettingInvalidValue": "设置值超出允许范围",
+  "systemSettingEnabled": "开启",
+  "systemSettingDisabled": "关闭",
+  "systemSettingFixFields": "请先检查框内标记的设置项",
+  "systemSettingUnsavedRefresh": "请先保存或还原修改，再刷新设置",
+  "systemSettingEffectTiming": "安全阈值在后续操作生效，令牌有效期在下次签发生效；庆典与审计留存在各自的计划任务生效。修改会记录审计并需要账号密码确认。",
+  "auditSummaryUnavailable": "统计暂不可用，操作记录仍可核查",
+  "auditSummaryRetry": "重试统计",
+  "auditWorkspaceDescription": "按人员与时间查看会话，沿操作记录追溯业务变化。",
+  "materialReasonLabel": "原因",
+  "materialReasonRequired": "请填写原因",
+  "materialReasonTooLong": "原因不能超过 {max} 个字符",
+  "materialReasonTooShort": "原因至少填写 {min} 个字符",
+  "@materialReasonTooLong": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "@materialReasonTooShort": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "auditFiltersTitle": "操作类型 · 业务对象 · 事件类型"
 }

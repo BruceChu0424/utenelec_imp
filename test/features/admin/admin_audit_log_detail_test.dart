@@ -1,3 +1,9 @@
+import '../../support/audit_screenshot_support.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
+import 'package:uten_imp/core/utils/china_datetime.dart';
+import 'dart:async';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,12 +24,133 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  if (const bool.fromEnvironment('UTEN_CAPTURE_UI')) {
+    for (final width in [375.0, 1440.0]) {
+      for (final eventView in [false, true]) {
+        testWidgets('capture loaded audit $width events=$eventView', (
+          tester,
+        ) async {
+          tester.view.physicalSize = Size(width, 1000);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          await loadAuditScreenshotFonts(tester);
+          final date = ChinaDateTime.formatDate(ChinaDateTime.today());
+          final repository = _AuditRepository(
+            captureDate: date,
+            primaryEntry: AuditLogEntry(
+              id: 42,
+              actorId: _AuditRepository.actorId,
+              actorAccount: 'planner',
+              actorName: '王建华',
+              actorDisplay: '王建华(P016)',
+              actorDepartment: '生产部',
+              actorPosition: '计划专员',
+              action: 'update',
+              actionLabel: '下达车间任务',
+              targetType: 'production_execution_segments',
+              objectLabel: '车间任务',
+              targetId: 'segment-1',
+              targetName: '铜接头加工任务',
+              summary: '下达车间任务：铜接头加工 120 件',
+              result: 'success',
+              resultLabel: '成功',
+              statusCode: 200,
+              createdAt: '${date}T08:20:00+08:00',
+            ),
+          );
+          SharedPreferences.setMockInitialValues({});
+          final preferences = await SharedPreferences.getInstance();
+          final boundaryKey = GlobalKey();
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [
+                auditLogRepositoryProvider.overrideWithValue(repository),
+                sharedPreferencesProvider.overrideWithValue(preferences),
+              ],
+              child: MaterialApp(
+                localizationsDelegates: AppLocalizations.localizationsDelegates,
+                supportedLocales: AppLocalizations.supportedLocales,
+                locale: const Locale('zh'),
+                theme: auditScreenshotTheme(
+                  width < 600 ? buildDarkTheme() : buildLightTheme(),
+                ),
+                builder: (_, child) =>
+                    RepaintBoundary(key: boundaryKey, child: child),
+                home: const AdminAuditLogPage(),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          await _selectDefaultAuditScope(tester, eventView: eventView);
+          final scrollable = tester.state<ScrollableState>(
+            find
+                .descendant(
+                  of: find.byType(CustomScrollView).first,
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          );
+          scrollable.position.jumpTo(0);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          await saveAuditScreenshot(
+            tester,
+            boundaryKey,
+            'audit-loaded-${width.toInt()}-${eventView ? 'events' : 'sessions'}',
+          );
+        });
+      }
+    }
+  }
+
+  testWidgets(
+    'event rows render while summary is pending and survive summary failure',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 2000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final pending = Completer<AuditSummary>();
+      final repository = _AuditRepository(summaryCompleter: pending);
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            auditLogRepositoryProvider.overrideWithValue(repository),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+          ],
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: Locale('zh'),
+            home: AdminAuditLogPage(
+              initialRequestId: '123e4567-e89b-42d3-a456-426614174000',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(repository.summaryCalls, hasLength(1));
+      expect(find.textContaining('修改生产执行分段'), findsWidgets);
+      pending.completeError(Exception('aggregate unavailable'));
+      await tester.pumpAndSettle();
+      expect(find.text('统计暂不可用，操作记录仍可核查'), findsOneWidget);
+      expect(find.textContaining('修改生产执行分段'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('disabled export button does not open the password dialog', (
     tester,
   ) async {
     await tester.pumpWidget(
       const ProviderScope(
         child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
           home: Scaffold(
             body: UtenExportButton(
               endpoint: '/admin/audit-logs/export',
@@ -61,7 +188,12 @@ void main() {
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
         ],
-        child: const MaterialApp(home: AdminAuditLogPage()),
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
+          home: AdminAuditLogPage(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -105,7 +237,12 @@ void main() {
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
         ],
-        child: const MaterialApp(home: AdminAuditLogPage()),
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
+          home: AdminAuditLogPage(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -146,7 +283,12 @@ void main() {
             currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
             sharedPreferencesProvider.overrideWithValue(preferences),
           ],
-          child: const MaterialApp(home: AdminAuditLogPage()),
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: Locale('zh'),
+            home: AdminAuditLogPage(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -190,7 +332,12 @@ void main() {
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
         ],
-        child: const MaterialApp(home: AdminAuditLogPage()),
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
+          home: AdminAuditLogPage(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -224,7 +371,12 @@ void main() {
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
         ],
-        child: const MaterialApp(home: AdminAuditLogPage()),
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
+          home: AdminAuditLogPage(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -311,7 +463,12 @@ void main() {
               }),
               sharedPreferencesProvider.overrideWithValue(preferences),
             ],
-            child: const MaterialApp(home: AdminAuditLogPage()),
+            child: const MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              locale: Locale('zh'),
+              home: AdminAuditLogPage(),
+            ),
           ),
         );
         await tester.pumpAndSettle();
@@ -385,7 +542,12 @@ void main() {
             currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
             sharedPreferencesProvider.overrideWithValue(preferences),
           ],
-          child: const MaterialApp(home: AdminAuditLogPage()),
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: Locale('zh'),
+            home: AdminAuditLogPage(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -444,7 +606,12 @@ void main() {
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
         ],
-        child: const MaterialApp(home: AdminAuditLogPage()),
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
+          home: AdminAuditLogPage(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -478,7 +645,12 @@ void main() {
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
         ],
-        child: const MaterialApp(home: AdminAuditLogPage()),
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
+          home: AdminAuditLogPage(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -515,7 +687,12 @@ void main() {
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
         ],
-        child: const MaterialApp(home: AdminAuditLogPage()),
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
+          home: AdminAuditLogPage(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -562,7 +739,12 @@ void main() {
             deviceAuditStoreProvider.overrideWithValue(deviceStore),
             apiClientProvider.overrideWithValue(api),
           ],
-          child: const MaterialApp(home: AdminAuditLogPage()),
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: Locale('zh'),
+            home: AdminAuditLogPage(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -625,7 +807,12 @@ void main() {
           deviceAuditStoreProvider.overrideWithValue(deviceStore),
           apiClientProvider.overrideWithValue(api),
         ],
-        child: const MaterialApp(home: AdminAuditLogPage()),
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
+          home: AdminAuditLogPage(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -672,7 +859,12 @@ void main() {
             currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
             sharedPreferencesProvider.overrideWithValue(preferences),
           ],
-          child: const MaterialApp(home: AdminAuditLogPage()),
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: Locale('zh'),
+            home: AdminAuditLogPage(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -767,12 +959,18 @@ void main() {
             currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
             sharedPreferencesProvider.overrideWithValue(preferences),
           ],
-          child: const MaterialApp(home: AdminAuditLogPage()),
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: Locale('zh'),
+            home: AdminAuditLogPage(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
       await _selectDefaultAuditScope(tester);
 
+      await _expandAuditFilters(tester);
       final createChip = find.byKey(const ValueKey('audit-operation-create'));
       await _scrollAuditPageUntilVisible(tester, createChip);
       await tester.tap(createChip);
@@ -811,7 +1009,12 @@ void main() {
             currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
             sharedPreferencesProvider.overrideWithValue(preferences),
           ],
-          child: const MaterialApp(home: AdminAuditLogPage()),
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: Locale('zh'),
+            home: AdminAuditLogPage(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -833,6 +1036,7 @@ void main() {
       expect(repository.listCalls.last['snapshotId'], isNull);
       expect(repository.listCalls.last['dateFrom'], isNotNull);
 
+      await _expandAuditFilters(tester);
       final actionMenu = find.text('动作分类：全部');
       await _scrollAuditPageUntilVisible(tester, actionMenu);
       await tester.tap(actionMenu);
@@ -888,7 +1092,12 @@ void main() {
             currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
             sharedPreferencesProvider.overrideWithValue(preferences),
           ],
-          child: const MaterialApp(home: AdminAuditLogPage()),
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: Locale('zh'),
+            home: AdminAuditLogPage(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -935,7 +1144,12 @@ void main() {
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
         ],
-        child: const MaterialApp(home: AdminAuditLogPage()),
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
+          home: AdminAuditLogPage(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -971,7 +1185,12 @@ void main() {
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
         ],
-        child: const MaterialApp(home: AdminAuditLogPage()),
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
+          home: AdminAuditLogPage(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -1015,6 +1234,9 @@ void main() {
           sharedPreferencesProvider.overrideWithValue(preferences),
         ],
         child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
           home: AdminAuditLogPage(initialRequestId: _DeviceStore.requestId),
         ),
       ),
@@ -1046,7 +1268,12 @@ void main() {
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
         ],
-        child: const MaterialApp(home: AdminAuditLogPage()),
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
+          home: AdminAuditLogPage(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -1083,13 +1310,19 @@ void main() {
             currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
             sharedPreferencesProvider.overrideWithValue(preferences),
           ],
-          child: const MaterialApp(home: AdminAuditLogPage()),
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: Locale('zh'),
+            home: AdminAuditLogPage(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       await _selectDefaultAuditScope(tester);
 
+      await _expandAuditFilters(tester);
       await _scrollAuditPageUntilVisible(
         tester,
         find.byKey(const ValueKey('audit-target-suppliers')),
@@ -1166,6 +1399,15 @@ Future<void> _scrollAuditDetailUntilVisible(
   await tester.pumpAndSettle();
 }
 
+Future<void> _expandAuditFilters(WidgetTester tester) async {
+  final control = find.byKey(const ValueKey('audit-event-filters'));
+  await _scrollAuditPageUntilVisible(tester, control);
+  if (find.byKey(const ValueKey('audit-operation-all')).evaluate().isEmpty) {
+    await tester.tap(control);
+    await tester.pumpAndSettle();
+  }
+}
+
 Future<void> _selectDefaultAuditScope(
   WidgetTester tester, {
   bool eventView = true,
@@ -1228,6 +1470,8 @@ class _Api extends ApiClient {
 class _AuditRepository implements AuditLogRepository {
   _AuditRepository({
     this.earlyAttempt = false,
+    this.summaryCompleter,
+    this.captureDate,
     this.totalPages = 1,
     this.includeRelatedDatabase = false,
     this.resultCode = 'success',
@@ -1239,6 +1483,8 @@ class _AuditRepository implements AuditLogRepository {
   });
 
   final bool earlyAttempt;
+  final Completer<AuditSummary>? summaryCompleter;
+  final String? captureDate;
   final int totalPages;
   final bool includeRelatedDatabase;
   final String resultCode;
@@ -1290,10 +1536,18 @@ class _AuditRepository implements AuditLogRepository {
                 actorPosition: entry?.actorPosition ?? '计划专员',
                 startAction: 'login',
                 startLabel: '员工登录',
-                loginAt: '2026-08-29T23:30:00Z',
-                firstActivityAt: '2026-08-29T23:31:00Z',
-                lastActivityAt: '2026-08-30T01:00:00Z',
-                logoutAt: '2026-08-30T01:30:00Z',
+                loginAt: captureDate == null
+                    ? '2026-08-29T23:30:00Z'
+                    : '${captureDate}T07:30:00+08:00',
+                firstActivityAt: captureDate == null
+                    ? '2026-08-29T23:31:00Z'
+                    : '${captureDate}T07:31:00+08:00',
+                lastActivityAt: captureDate == null
+                    ? '2026-08-30T01:00:00Z'
+                    : '${captureDate}T09:00:00+08:00',
+                logoutAt: captureDate == null
+                    ? '2026-08-30T01:30:00Z'
+                    : '${captureDate}T09:30:00+08:00',
                 status: 'logged_out',
                 statusLabel: '已退出',
                 operationCount: 2,
@@ -1546,6 +1800,7 @@ class _AuditRepository implements AuditLogRepository {
       'dateFrom': dateFrom,
       'dateTo': dateTo,
     });
+    if (summaryCompleter != null) return summaryCompleter!.future;
     return const AuditSummary(
       total: 1,
       riskCount: 1,

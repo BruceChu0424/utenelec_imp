@@ -69,6 +69,7 @@ class _WarehouseQualityResultsPageState
   bool _loading = false;
   String? _error;
   int _requestVersion = 0;
+  int _statusCountRequestVersion = 0;
 
   // 分类层级：来源类型=大类（上）、作业状态=小类（下）。两行都没有「全部」段，
   // 默认都不选（不加载）；选中来源后状态行才解锁，状态行末尾是历史记录段。
@@ -124,14 +125,19 @@ class _WarehouseQualityResultsPageState
   /// 状态小类计数（后端全量口径；null = 尚未返回，分段按钮显示 '—'）。
   /// 独立于列表加载：进页面（全来源）/ 切换来源时主动刷新，列表加载时联动刷新。
   void _refreshStatusCounts() {
+    final version = ++_statusCountRequestVersion;
+    final receiptType = _receiptType;
+    final keyword = _keyword;
     ref
         .read(warehouseQualityResultRepositoryProvider)
         .statusCounts(
-          receiptType: _receiptType,
-          keyword: _keyword.isEmpty ? null : _keyword,
+          receiptType: receiptType,
+          keyword: keyword.isEmpty ? null : keyword,
         )
         .then((counts) {
-          if (mounted) setState(() => _statusCounts = counts);
+          if (mounted && version == _statusCountRequestVersion) {
+            setState(() => _statusCounts = counts);
+          }
         })
         .catchError((_) {});
   }
@@ -784,8 +790,9 @@ class _BatchStockInDialogState extends ConsumerState<_BatchStockInDialog> {
     }
   }
 
-  /// 失败结果弹窗：确认后关闭批量表回到列表（整批已回滚，回列表重新核对再试）。
+  /// 保留原批次、数量和库位。网络结果不明时原请求可安全重试，不能先丢弃表单。
   Future<void> _showFailureDialog(String message) async {
+    setState(() => _saving = false);
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -804,7 +811,6 @@ class _BatchStockInDialogState extends ConsumerState<_BatchStockInDialog> {
         ],
       ),
     );
-    if (mounted) Navigator.of(context).pop();
   }
 
   @override

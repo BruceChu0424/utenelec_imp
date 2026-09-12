@@ -137,6 +137,10 @@ class WarehouseQualityResultApiContractTest {
                 .doesNotContain("IN ('ALL_PASSED','PARTIAL_PASSED','RETURN_REQUIRED')");
         // 列表不再为展示列做整库 stocked 聚合（历史直接在详情按单读取）。
         assertThat(source).doesNotContain("stocked_stat");
+        assertThat(source)
+                .doesNotContain("WITH event_stocked AS (")
+                .contains("inspection.passed_base_qty > inspection.warehouse_stocked_base_qty")
+                .contains("WHERE item.pass_event_id = event.id");
         // V448 索引迁移与查询形状一一对应。
         String migration = readMigration();
         assertThat(migration)

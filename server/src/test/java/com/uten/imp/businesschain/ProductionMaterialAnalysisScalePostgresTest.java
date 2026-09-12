@@ -72,6 +72,7 @@ class ProductionMaterialAnalysisScalePostgresTest {
     @Autowired MaterialAnalysisCommandService commands;
     @Autowired SalesOrderService sales;
     @Autowired SalesOrderFinanceConfirmService finance;
+    @Autowired com.uten.imp.features.production.plan.ProductionPlanService planService;
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired ObjectMapper json;
     @Autowired MockMvc http;
@@ -174,18 +175,24 @@ class ProductionMaterialAnalysisScalePostgresTest {
             scale.put("actualAnalysisSourceRows",jdbc.queryForObject("select count(*) from production_material_analysis_items",Long.class));
             scale.put("java", System.getProperty("java.runtime.version")); scale.put("maxHeapBytes", Runtime.getRuntime().maxMemory());
             scale.put("processors", Runtime.getRuntime().availableProcessors());
+            scale.put("concurrentLoad", System.getProperty("uten.production.concurrentLoad", "unspecified"));
             scale.put("postgres", jdbc.queryForObject("select version()", String.class));
             scale.put("migrationHead", jdbc.queryForObject("select max(version::int) from flyway_schema_history where success", Integer.class));
+            scale.put("jit", jdbc.queryForObject("SHOW jit", String.class));
             emit(scale);
+            factory.login(scenario);
             AnalysisView view = measured("SERVICE", "analysis.preview.initial", size,
                     () -> analysis.preview(request(scenario, null, "scale-preview-" + suffix())));
             assertInitialDemand(scenario, view);
+            assertEquals("ACTIVE", view.status());
             UUID id = view.analysisId();
             for (int n = 0; n < samples; n++) {
                 factory.login(scenario);
                 AnalysisView refresh = view;
                 view = measured("SERVICE", "analysis.preview.refresh", size,
                         () -> analysis.preview(request(scenario, refresh, "scale-refresh-" + suffix())));
+                assertInitialDemand(scenario, view);
+                assertEquals("ACTIVE", view.status());
                 measured("SERVICE", "analysis.detail", size, () -> analysis.detail(id));
                 var actor = SecurityContextHolder.getContext().getAuthentication();
                 measured("MOCK_HTTP", "GET material-analyses/detail", size, () -> {
@@ -221,6 +228,49 @@ class ProductionMaterialAnalysisScalePostgresTest {
         assertTrue(rejected.getMessage().contains("十层"));
         assertEquals(0, jdbc.queryForObject("select count(*) from production_material_analyses where warehouse_id=?",
                 Integer.class, tooDeep.world().warehouseId()), "The rejected analysis must roll back completely");
+    }
+
+    @Test
+    void cancellationPersistsReplaysAndRejectsAnOutstandingPlanUntilItIsRemoved() throws Exception {
+        var scenario = factory.sharedTree("cancel-" + suffix(), 1);
+        AnalysisView first = analysis.preview(request(scenario, null, "cancel-preview-" + suffix()));
+        CancelRequest cancel = new CancelRequest(first.version(), first.fingerprint(),
+                "cancel-command-" + suffix(), "需求已取消");
+
+        AnalysisView cancelled = commands.cancelAnalysis(first.analysisId(), cancel);
+        assertEquals("CANCELLED", cancelled.status());
+        AnalysisView replay = commands.cancelAnalysis(first.analysisId(), cancel);
+        assertEquals(cancelled.version(), replay.version(), "A replay must not cancel or release a second time");
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM production_material_analysis_commands
+                WHERE analysis_id=? AND operation='CANCEL_ANALYSIS'
+                """, Integer.class, first.analysisId()));
+        assertThrows(com.uten.imp.common.web.ApiException.class, () -> commands.cancelAnalysis(
+                first.analysisId(), new CancelRequest(first.version(), first.fingerprint(),
+                        cancel.idempotencyKey(), "不同请求不能使用原幂等键")));
+
+        AnalysisView next = confirmAllRoutes(analysis.preview(
+                request(scenario, null, "cancel-plan-preview-" + suffix())), false);
+        var product = next.products().getFirst();
+        var generated = commands.issueWorkshopPlans(next.analysisId(), new IssueWorkshopPlansRequest(
+                next.version(), next.fingerprint(), "cancel-plan-" + suffix(), scenario.world().warehouseId(),
+                LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30), false,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(product.analysisLineId(), BigDecimal.TEN))));
+        var withPlan = generated.analysis();
+        var blocked = assertThrows(com.uten.imp.common.web.ApiException.class, () -> commands.cancelAnalysis(
+                next.analysisId(), new CancelRequest(withPlan.version(), withPlan.fingerprint(),
+                        "cancel-blocked-" + suffix(), "已下达计划不能直接取消分析")));
+        assertEquals(com.uten.imp.common.web.ErrorCode.CONFLICT, blocked.getCode());
+        assertEquals(withPlan.version(), analysis.detail(next.analysisId()).version());
+        assertEquals(0, jdbc.queryForObject("""
+                SELECT count(*) FROM production_material_analysis_commands
+                WHERE analysis_id=? AND operation='CANCEL_ANALYSIS'
+                """, Integer.class, next.analysisId()));
+
+        planService.delete(generated.plans().getFirst().planId());
+        AnalysisView released = analysis.detail(next.analysisId());
+        assertEquals("CANCELLED", commands.cancelAnalysis(next.analysisId(), new CancelRequest(
+                released.version(), released.fingerprint(), "cancel-after-delete-" + suffix(), "草稿已删除，取消分析")).status());
     }
 
     private AnalysisView confirmAllRoutes(AnalysisView initial, boolean measure) throws Exception {
@@ -315,6 +365,16 @@ class ProductionMaterialAnalysisScalePostgresTest {
             row.put("success", true);
             long serializationStart = System.nanoTime();
             row.put("responseBytes", result instanceof byte[] bytes ? bytes.length : json.writeValueAsBytes(result).length);
+            if (operation.equals("analysis.preview.initial") && result instanceof AnalysisView view) {
+                row.put("nonNullResponseBytes", json.copy()
+                        .setSerializationInclusion(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                        .writeValueAsBytes(view).length);
+                row.put("responseFieldBytes", Map.of(
+                        "products", json.writeValueAsBytes(view.products()).length,
+                        "flatMaterials", json.writeValueAsBytes(view.flatMaterials()).length,
+                        "warehouses", json.writeValueAsBytes(view.warehouses()).length,
+                        "supplyActions", json.writeValueAsBytes(view.supplyActions()).length));
+            }
             row.put("responseSizeMeasurementMillis", (System.nanoTime() - serializationStart) / 1_000_000.0);
             return result;
         } catch (Exception | AssertionError failure) {
@@ -346,11 +406,65 @@ class ProductionMaterialAnalysisScalePostgresTest {
                             emit(Map.of("event","explain","operation",operation,"products",products,"historyRows",historyRows,
                                     "sqlFingerprint",candidate.fingerprint(),"plan",safePlan(plan)));
                             if (historyRows>=20_000 && !operation.equals("analysis.list.all.50")) assertNoFullHistoricalScan(plan);
+                            if (historyRows >= 20_000 && operation.equals("analysis.preview.initial")
+                                    && candidate.sql().stripLeading().startsWith("WITH RECURSIVE")) {
+                                compareJitModes(connection, candidate, products);
+                            }
                         }
                     }
                 }
             } finally { connection.rollback(); }
         }
+    }
+
+    /** Same real prepared query and parameters, session-local JIT only, identical result digest. */
+    private void compareJitModes(java.sql.Connection connection,
+            ProductionJdbcMeasurement.CapturedQuery candidate, int products) throws Exception {
+        String original;
+        try (var statement = connection.createStatement(); var result = statement.executeQuery("SHOW jit")) {
+            assertTrue(result.next()); original = result.getString(1);
+        }
+        try {
+            setJit(connection, true);
+            var enabled = digestQuery(connection, candidate);
+            setJit(connection, false);
+            var disabled = digestQuery(connection, candidate);
+            assertEquals(enabled.rows(), disabled.rows());
+            assertEquals(enabled.hash(), disabled.hash(), "JIT must not change any source, quantity, path or marker");
+            emit(Map.of("event", "jit-comparison", "products", products, "sqlFingerprint", candidate.fingerprint(),
+                    "onMillis", enabled.millis(), "offMillis", disabled.millis(), "rows", enabled.rows(),
+                    "sameResult", true, "runtimeJit", original));
+        } finally { setJit(connection, "on".equals(original)); }
+    }
+
+    private static void setJit(java.sql.Connection connection, boolean enabled) throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute(enabled ? "SET LOCAL jit=on" : "SET LOCAL jit=off");
+        }
+    }
+
+    private record QueryDigest(long rows, String hash, double millis) {}
+    private static QueryDigest digestQuery(java.sql.Connection connection,
+            ProductionJdbcMeasurement.CapturedQuery candidate) throws Exception {
+        var hash = java.security.MessageDigest.getInstance("SHA-256");
+        long started = System.nanoTime(); long rows = 0;
+        try (var statement = connection.prepareStatement(candidate.sql())) {
+            candidate.bind(statement);
+            try (var result = statement.executeQuery()) {
+                int columns = result.getMetaData().getColumnCount();
+                while (result.next()) {
+                    rows++;
+                    for (int column = 1; column <= columns; column++) {
+                        Object value = result.getObject(column);
+                        String canonical = value == null ? "NULL" : value.getClass().getName() + ":" + value;
+                        byte[] bytes = canonical.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                        hash.update(java.nio.ByteBuffer.allocate(4).putInt(bytes.length).array()); hash.update(bytes);
+                    }
+                }
+            }
+        }
+        return new QueryDigest(rows, java.util.HexFormat.of().formatHex(hash.digest()),
+                (System.nanoTime() - started) / 1_000_000.0);
     }
 
     private Object safePlan(com.fasterxml.jackson.databind.JsonNode node) {
@@ -360,7 +474,8 @@ class ProductionMaterialAnalysisScalePostgresTest {
         // No SQL expressions, parameter values, conditions, query text or credential-bearing data are persisted.
         java.util.Set<String> keys=java.util.Set.of("Plan","Plans","Node Type","Relation Name","Index Name","Actual Rows","Actual Loops",
                 "Rows Removed by Filter","Rows Removed by Index Recheck","Plan Rows","Planning Time","Execution Time",
-                "Shared Hit Blocks","Shared Read Blocks","Shared Dirtied Blocks","Shared Written Blocks","Temp Read Blocks","Temp Written Blocks");
+                "Shared Hit Blocks","Shared Read Blocks","Shared Dirtied Blocks","Shared Written Blocks","Temp Read Blocks","Temp Written Blocks",
+                "JIT","Functions","Options","Timing","Generation","Inlining","Optimization","Emission","Total","Expressions","Deforming");
         node.fields().forEachRemaining(entry -> { if (keys.contains(entry.getKey())) result.put(entry.getKey(),safePlan(entry.getValue())); });
         return result;
     }

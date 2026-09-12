@@ -63,6 +63,13 @@ public class ProductionCompletionReverseService
     public void afterFinishedInboundApproved(
             UUID stockDocumentId,
             UUID warehouseId) {
+        afterFinishedInboundPosted(stockDocumentId, warehouseId);
+        materialAnalysisWakeup.afterFinishedInboundApproved(stockDocumentId);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void afterFinishedInboundPosted(UUID stockDocumentId, UUID warehouseId) {
         if (stockDocumentId == null || warehouseId == null) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
@@ -83,7 +90,12 @@ public class ProductionCompletionReverseService
         // The dedicated outbound reservation must exist before any analysis
         // refresh reads v_stock_available, otherwise the new target item can
         // be snapshotted as public stock by another analysis.
-        materialAnalysisWakeup.afterFinishedInboundApproved(stockDocumentId);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void afterFinishedInboundBatchApproved(java.util.Collection<UUID> stockDocumentIds) {
+        materialAnalysisWakeup.afterFinishedInboundApproved(stockDocumentIds);
     }
 
     @Override

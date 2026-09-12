@@ -11,6 +11,8 @@ import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/inputs/uten_search_bar.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
@@ -31,6 +33,95 @@ import 'package:uten_imp/features/production/providers/production_execution_refr
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 
 void main() {
+  testWidgets('cancelling analysis validates the reason and submits once', (
+    tester,
+  ) async {
+    final harness = await _pumpPage(
+      tester,
+      size: const Size(1200, 900),
+      seeded: false,
+      analysisId: 'analysis-1',
+      permissions: const {Perm.productionMaterialAnalysisCancel},
+      allowedActions: const ['CANCEL_ANALYSIS'],
+      responseOverride: (request) => request.path.endsWith('/cancel')
+          ? (_analysisJson(const ['VIEW'])..['status'] = 'CANCELLED')
+          : null,
+    );
+    await tester.tap(find.byKey(const Key('material-analysis-cancel')));
+    await tester.pumpAndSettle();
+    expect(find.text('取消物料分析'), findsOneWidget);
+    await tester.tap(find.text('确认取消'));
+    await tester.pumpAndSettle();
+    expect(
+      harness.requests.where((request) => request.path.endsWith('/cancel')),
+      isEmpty,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon && widget.errorMessage == '请填写原因',
+      ),
+      findsOneWidget,
+    );
+    final field = find.byKey(const Key('material-analysis-cancel-reason'));
+    await tester.enterText(field, '改');
+    await tester.tap(find.text('确认取消'));
+    await tester.pumpAndSettle();
+    expect(
+      harness.requests.where((request) => request.path.endsWith('/cancel')),
+      isEmpty,
+    );
+    await tester.enterText(field, '  重新安排需求  ');
+    await tester.tap(find.text('确认取消'));
+    await tester.pumpAndSettle();
+    final request = harness.requests.singleWhere(
+      (request) => request.path.endsWith('/cancel'),
+    );
+    expect((request.data as Map)['reason'], '重新安排需求');
+    expect(find.byKey(const Key('material-analysis-cancel')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'candidate search accepts newer input while an older request is pending',
+    (tester) async {
+      final slow = Completer<Map<String, dynamic>?>();
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        seeded: false,
+        permissions: const {Perm.productionMaterialAnalysisCreate},
+        responseOverride: (request) {
+          if (!request.path.endsWith('/sales-candidates')) return null;
+          final keyword = request.queryParameters['keyword'];
+          if (keyword == 'old') return slow.future;
+          if (keyword == 'new') return _pagedSalesCandidatesJson(2);
+          return _salesCandidatesJson();
+        },
+      );
+      final search = find.descendant(
+        of: find.byType(UtenSearchBar).first,
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(search, 'old');
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      await tester.enterText(search, 'new');
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(
+        harness.requests.where(
+          (request) => request.queryParameters['keyword'] == 'new',
+        ),
+        hasLength(1),
+      );
+      expect(find.textContaining('手机候选产品 B'), findsOneWidget);
+      slow.complete(_salesCandidatesJson());
+      await tester.pumpAndSettle();
+      expect(find.textContaining('手机候选产品 B'), findsOneWidget);
+      expect(find.text('候选产品 A'), findsNothing);
+    },
+  );
   testWidgets(
     'new MAKE child is visible in the first bounded workshop window',
     (tester) async {
@@ -449,7 +540,7 @@ void main() {
   });
 
   testWidgets(
-    'existing writable analysis auto-refreshes from the full persisted source set',
+    'opening writable analysis is read-only and explicit refresh uses all sources',
     (tester) async {
       final harness = await _pumpPage(
         tester,
@@ -471,6 +562,12 @@ void main() {
         ),
         hasLength(1),
       );
+      expect(
+        harness.requests.where((request) => request.method == 'POST'),
+        isEmpty,
+      );
+      await tester.tap(find.byTooltip('按最新库存刷新分析'));
+      await tester.pumpAndSettle();
       final refresh = harness.requests.singleWhere(
         (request) =>
             request.method == 'POST' &&
@@ -576,6 +673,9 @@ void main() {
         },
       );
 
+      expect(detailReads, 1);
+      await tester.tap(find.byTooltip('按最新库存刷新分析'));
+      await tester.pumpAndSettle();
       expect(detailReads, 2);
       // ADR-71：本批数量默认=剩余需求 10（齐套上限不再预填，齐套拆批由
       // 执行段 WAITING/READY 完成）。
@@ -639,7 +739,7 @@ void main() {
         errorOverride: (request) {
           if (request.path == '/production/material-analyses/preview') {
             previewCalls++;
-            return previewCalls == 2
+            return previewCalls == 1
                 ? _materialAnalysisConflict(request)
                 : null;
           }
@@ -3067,6 +3167,8 @@ void main() {
         analysisId: 'analysis-1',
         analysisJson: json,
       );
+      await tester.tap(find.byTooltip('按最新库存刷新分析'));
+      await tester.pumpAndSettle();
       expect(find.text('2 条路线因主档变更需重新确认'), findsOneWidget);
     },
   );
@@ -4376,14 +4478,10 @@ void main() {
         ),
         hasLength(1),
       );
-      // 页面回到可操作状态：生成是终态动作已返回宿主页（遮罩消失），
-      // 可安排桶入口仍在，重试不残留子件行（服务端整体回滚）。
-      expect(find.text('填写生产计划单'), findsNothing);
+      // A rejected command stays in the bucket; staff can inspect and retry
+      // without navigating back into the analysis and loading the same data.
       expect(
-        find.descendant(
-          of: find.byKey(const Key('material-analysis-entry-workshop')),
-          matching: find.text('下达车间'),
-        ),
+        find.byKey(const Key('material-analysis-bucket-action-ready')),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);

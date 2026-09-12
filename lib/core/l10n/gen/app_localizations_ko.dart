@@ -3509,4 +3509,55 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get productionMaterialViewUsage => '사용 기록 보기';
+
+  @override
+  String get systemSettingInvalidInteger => '유효한 음이 아닌 정수를 입력하세요';
+
+  @override
+  String get systemSettingInvalidValue => '설정 값이 허용 범위를 벗어났습니다';
+
+  @override
+  String get systemSettingEnabled => '활성화';
+
+  @override
+  String get systemSettingDisabled => '비활성화';
+
+  @override
+  String get systemSettingFixFields => '표시된 설정을 먼저 확인하세요';
+
+  @override
+  String get systemSettingUnsavedRefresh => '새로 고침 전에 변경 사항을 저장하거나 되돌리세요';
+
+  @override
+  String get systemSettingEffectTiming =>
+      '보안 한도는 이후 작업에, 토큰 유효 기간은 새로 발급되는 토큰에 적용됩니다. 기념 알림과 감사 보존은 예약 실행 시 적용됩니다. 변경 내용은 감사 기록에 남으며 비밀번호 확인이 필요합니다.';
+
+  @override
+  String get auditSummaryUnavailable => '요약을 사용할 수 없지만 이벤트 기록은 확인할 수 있습니다';
+
+  @override
+  String get auditSummaryRetry => '요약 다시 시도';
+
+  @override
+  String get auditWorkspaceDescription =>
+      '사람과 시간별 세션을 검토하고 이벤트에서 업무 변경 사항을 추적하세요.';
+
+  @override
+  String get materialReasonLabel => '사유';
+
+  @override
+  String get materialReasonRequired => '사유를 입력하세요';
+
+  @override
+  String materialReasonTooLong(int max) {
+    return '사유는 $max자 이내로 입력하세요';
+  }
+
+  @override
+  String materialReasonTooShort(int min) {
+    return '사유를 $min자 이상 입력하세요';
+  }
+
+  @override
+  String get auditFiltersTitle => '작업 · 업무 대상 · 이벤트 유형';
 }

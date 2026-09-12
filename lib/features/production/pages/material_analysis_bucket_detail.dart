@@ -567,15 +567,13 @@ class _MaterialAnalysisBucketPageState
     return null;
   }
 
-  /// 执行批量动作（2026-09-04 修订）：详情页**保持在前台**——宿主页的编排
-  /// （数量弹窗/分批/幂等/409 恢复）经 root Navigator 叠在本页之上。
-  /// 例外：`createProductionPlans`（ADR-71 单次原子下达）先返回宿主页再执行
-  /// ——提交遮罩挂在宿主页 Stack 上（留在本页会被不透明路由盖住不可见），
-  /// 生成是终态动作，结果对话框也在宿主页上下文里展示。
-  /// [_running] 覆盖弹窗关闭到请求返回之间的空窗（宿主页 busy 不通知本页），
-  /// 防止批量进度期间重复点提交。
+  /// Keep the bucket visible through submission, error recovery and results.
+  /// The parent orchestrates the command; progress is broadcast to this route.
+  /// [_running] also guards the interval occupied by confirmation/result dialogs.
   Future<void> _run(_BucketActionRequest request) async {
     if (_running) return;
+    final before = _host._analysis;
+    var issued = false;
     // 2026-09-11：下达车间**不再先 pop 回物料分析再加载**。原来是「关掉本页 →
     // 宿主页转圈 → 弹结果」，用户看到的是「点了下达，页面自己退回去，然后在那边
     // 转半天」。现在与下达采购/委外同一条路径：本页显示进度、原地刷新行集，
@@ -588,35 +586,41 @@ class _MaterialAnalysisBucketPageState
     };
     setState(() => _running = true);
     try {
-      await _host._executeBucketAction(request);
+      issued = await _host._executeBucketAction(request);
     } finally {
       if (mounted) {
-        final preparedIds = {
-          for (final product
-              in _host._analysis?.products ??
-                  const <ProductionMaterialAnalysisProduct>[])
-            if (!previousProductIds.contains(product.analysisLineId) &&
-                (product.sourceType == 'MAKE_COMPONENT' ||
-                    product.sourceType == 'SUBCONTRACT_MAKE'))
-              product.analysisLineId,
-        };
-        if (preparedIds.isNotEmpty) _preparedChildCount = preparedIds.length;
-        if (_bucket == _AnalysisBucket.workshop &&
-            (_host._canGenerate || _host._canNotify)) {
-          _taskFilter = _PreparationTaskFilter.pending;
-          _buildPlanRows(preferredIds: preparedIds);
-          if (preparedIds.isNotEmpty) unawaited(_loadWorkshopDefaults());
+        // Cancelled confirmations and rejected requests leave the authoritative
+        // snapshot intact. Preserve the user's quantities, selections and staff
+        // assignments so retrying does not require rebuilding the entire form.
+        if (identical(before, _host._analysis)) {
+          setState(() => _running = false);
+        } else {
+          final preparedIds = {
+            for (final product
+                in _host._analysis?.products ??
+                    const <ProductionMaterialAnalysisProduct>[])
+              if (!previousProductIds.contains(product.analysisLineId) &&
+                  (product.sourceType == 'MAKE_COMPONENT' ||
+                      product.sourceType == 'SUBCONTRACT_MAKE'))
+                product.analysisLineId,
+          };
+          if (preparedIds.isNotEmpty) _preparedChildCount = preparedIds.length;
+          if (_bucket == _AnalysisBucket.workshop &&
+              (_host._canGenerate || _host._canNotify)) {
+            _taskFilter = _PreparationTaskFilter.pending;
+            _buildPlanRows(preferredIds: preparedIds);
+            if (preparedIds.isNotEmpty) unawaited(_loadWorkshopDefaults());
+          }
+          setState(() {
+            _selectedIds.clear();
+            // 动作后快照已变（缺口/在途重算）：编辑值失效，恢复默认全量。
+            _disposeSubmitQtyControllers();
+            _running = false;
+          });
         }
-        setState(() {
-          _selectedIds.clear();
-          // 动作后快照已变（缺口/在途重算）：编辑值失效，恢复默认全量。
-          _disposeSubmitQtyControllers();
-          _running = false;
-        });
-        // 下达车间是终态动作（本批行已变成计划）：结果弹层看完后回物料分析。
-        // 与从前唯一的差别是**先办完再退**，而不是先退回去再让宿主页转圈。
-        if (request.type == _BucketActionType.createProductionPlans &&
-            mounted) {
+        // Only a successful workshop submission may return after its result
+        // dialog closes. A conflict/error stays on the page for inspection.
+        if (issued && ModalRoute.of(context)?.isCurrent == true) {
           Navigator.of(context).pop();
         }
       }

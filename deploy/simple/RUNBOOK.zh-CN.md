@@ -286,6 +286,8 @@ REMOTE
 
 ## 六、故障速查
 
+版本目录的列出与保留由更新器`release_versions`统一处理，只接受`vYYYY.MM.DD-N`目录。2026-09-12修复了旧`ls .../ | sed`把带尾斜杠的整个路径删空的问题：它会使`status`显示空版本且旧版本保留策略失效。新实现按版本排序，只清理保留数量之外的已识别目录，始终保护正在运行的版本；未识别目录不自动删除。保留数量不在1至9999、版本记录与实际current链接不一致或链接不可核对时，停止清理并保留全部文件，不把已健康激活的版本误报为发布失败。对应5项回归为`deploy/updater/test_simple_release_retention.py`。更新脚本源码与安装到`/usr/local/sbin/uten-imp-updater`是两个步骤，目标安装必须另外核验摘要。
+
 | 症状 | 命令 |
 |---|---|
 | 看更新器在干什么 | `journalctl -u uten-imp-updater.service -n 100` |

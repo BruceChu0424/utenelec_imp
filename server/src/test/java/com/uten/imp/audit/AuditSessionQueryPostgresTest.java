@@ -192,6 +192,30 @@ class AuditSessionQueryPostgresTest {
         assertTrue(archivedRange.getMessage().contains("只提供在线日志"));
     }
 
+    @Test
+    void pagingKeepsFullCrossMidnightEvidenceAndLoginOrder() {
+        UUID actorId = UUID.randomUUID();
+        UUID olderLogin = UUID.randomUUID();
+        UUID newerLogin = UUID.randomUUID();
+        insert(actorId, olderLogin, "login", "2026-08-28T23:00:00+08:00");
+        insert(actorId, olderLogin, "update", "2026-08-30T22:00:00+08:00");
+        insert(actorId, olderLogin, "logout", "2026-08-31T02:00:00+08:00");
+        insert(actorId, newerLogin, "login", "2026-08-29T23:00:00+08:00");
+        insert(actorId, newerLogin, "update", "2026-08-30T01:00:00+08:00");
+        var first = sessions.sessions(actorId, LocalDate.parse("2026-08-30"),
+                LocalDate.parse("2026-08-30"), 1, 1, null);
+        var second = sessions.sessions(actorId, LocalDate.parse("2026-08-30"),
+                LocalDate.parse("2026-08-30"), 2, 1, first.snapshotAuditId());
+        assertEquals(2, first.total());
+        assertEquals(newerLogin, first.items().getFirst().sessionId());
+        assertEquals(olderLogin, second.items().getFirst().sessionId());
+        assertEquals(3, second.items().getFirst().eventCount());
+        assertEquals(OffsetDateTime.parse("2026-08-31T02:00:00+08:00"),
+                second.items().getFirst().logoutAt());
+        assertEquals(sessions.session(olderLogin, first.snapshotAuditId()).operationCount(),
+                second.items().getFirst().operationCount());
+    }
+
     private void insert(
             UUID actorId,
             UUID sessionId,

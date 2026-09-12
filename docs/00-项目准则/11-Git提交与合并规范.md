@@ -19,7 +19,7 @@
 | 要做的事 | 最少步骤 | 不需要做的事 |
 |---|---|---|
 | 日常上传 GitHub | 定向测试 → 精确暂存 → Commit → push 功能分支 → SHA 回读；合并时走PR门禁 | 不需要 `gh`、第二审批人、OSS、服务器操作 |
-| 发版（internal-test） | Quality Gate 全绿 → `git tag vYYYY.MM.DD-N && git push origin v…` → 服务器 5 分钟内自动拉取；纯代码自动激活，含迁移 SSH `activate` | 不需要手动构建、手动传文件、手动改服务器目录 |
+| 发版（internal-test） | Quality Gate 全绿 → `git tag vYYYY.MM.DD-N && git push origin v…` → 服务器按已配置的更新器定时器拉取(立即更新可手动`check`)；纯代码自动激活，含迁移手动`activate` | 不需要手动构建、手动传文件、手动改服务器目录 |
 
 上传功能分支只证明代码已在 GitHub；不等于已合并 `main`，更不等于已部署服务器。
 

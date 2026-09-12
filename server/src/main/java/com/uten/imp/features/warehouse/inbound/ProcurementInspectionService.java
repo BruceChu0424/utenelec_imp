@@ -135,229 +135,89 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         }
     }
 
+    /** Same receipt, one lock set and one closing reconciliation; original event identities remain stable. */
+    @Transactional
+    @PreAuthorize("hasAuthority('procurement_inspection:view')"
+            + " and hasAuthority('procurement_inspection:handle')")
+    public void passBatch(String receiptType, UUID receiptId, BatchInspectionPassRequest request) {
+        tx.bind();
+        executeBatch(receiptType, receiptId, ProcurementInspectionBatchCommand.pass(receiptType, receiptId, request));
+    }
+
     /**
-     * 同一收货单的多行合格放行：先锁定库存维度和整张收货单全部 IQC 行，校验完整集合及
-     * 操作人看到的剩余量，再复用单行结论链。外层事务保证任一库存/分析/供给副作用失败时
-     * 整批回滚；每行独立幂等键保证响应丢失后的同体重放不会重复入库。
+     * Every normalized member and quantity is frozen on the original PASS/FAIL
+     * events. A completed identical batch replays before current-state CAS;
+     * partial evidence or a changed body never starts another quality action.
      */
     @Transactional
     @PreAuthorize("hasAuthority('procurement_inspection:view')"
             + " and hasAuthority('procurement_inspection:handle')")
-    public void passBatch(
-            String receiptType,
-            UUID receiptId,
-            BatchInspectionPassRequest request) {
+    public void decideBatch(String receiptType, UUID receiptId, BatchInspectionDecideRequest request) {
         tx.bind();
-        if (request == null || request.items() == null || request.items().isEmpty()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量合格明细不能为空");
-        }
-        if (request.items().size() > 100) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次最多合格放行 100 条明细");
-        }
-        String reason = normalizeDispositionReason("PASS", request.reason());
-        HashSet<UUID> uniqueIds = new HashSet<>();
-        List<NormalizedBatchPassItem> commands = new ArrayList<>();
-        for (BatchInspectionPassRequest.Item item : request.items()) {
-            if (item == null || item.inspectionItemId() == null) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量合格明细 ID 不能为空");
-            }
-            if (!uniqueIds.add(item.inspectionItemId())) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量合格明细不能重复");
-            }
-            commands.add(new NormalizedBatchPassItem(
-                    item.inspectionItemId(),
-                    normalizeQty(item.expectedRemainingBaseQty()),
-                    normalizeIdempotencyKey(item.idempotencyKey())));
-        }
-        commands.sort(Comparator.comparing(command -> command.inspectionItemId().toString()));
+        executeBatch(receiptType, receiptId, ProcurementInspectionBatchCommand.decide(receiptType, receiptId, request));
+    }
 
-        // 与单行处置相同：库存维度锁必须先于业务行锁。
-        var mutationGuard=mutationLocks.inspection(receiptType,receiptId,uniqueIds);
-        lockReceiptMutationDimensions(receiptType, receiptId);
+    private void executeBatch(String receiptType, UUID receiptId, ProcurementInspectionBatchCommand command) {
+        Map<UUID, Object[]> rows = lockInspectionRows(receiptType, receiptId,
+                command.lines().stream().map(ProcurementInspectionBatchCommand.Line::inspectionItemId).toList());
+        for (var line : command.lines()) requireInspectionRow(rows, line.inspectionItemId(), receiptType);
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery("""
-                        SELECT id, warehouse_id, goods_id, color_id, unit_id, unit_rate,
-                               received_base_qty, received_amount_local,
-                               passed_base_qty, failed_base_qty, status, receipt_type,
-                               received_weight, received_weight_unit_id
-                        FROM procurement_inspection_items
-                        WHERE receipt_type = :rt AND receipt_id = :rid
-                        ORDER BY id
-                        FOR UPDATE
+        List<Object[]> prior = em.createNativeQuery("""
+                        SELECT id, inspection_item_id, action, base_qty, reason,
+                               requires_warehouse_stock_in, batch_request_hash
+                        FROM procurement_inspection_events WHERE id IN (:ids)
                         """)
-                .setParameter("rt", receiptType)
-                .setParameter("rid", receiptId)
-                .getResultList();
-
-        mutationGuard.verifyUnchanged();
-        int replayCount = 0;
-        for (NormalizedBatchPassItem command : commands) {
-            UUID eventId = dispositionEventId(command.inspectionItemId(), command.idempotencyKey());
-            if (replayRequiresWarehouseStockIn(
-                    eventId,
-                    command.inspectionItemId(),
-                    "PASS",
-                    command.expectedRemainingBaseQty(),
-                    reason) != null) {
-                replayCount++;
-            }
-        }
-        if (replayCount != 0 && replayCount != commands.size()) {
-            throw new ApiException(ErrorCode.CONFLICT, "批量合格请求只部分匹配历史记录，请刷新后重试");
-        }
-
-        if (replayCount == 0) {
-            for (NormalizedBatchPassItem command : commands) {
-                Object[] row = rows.stream()
-                        .filter(candidate -> command.inspectionItemId().equals(candidate[0]))
-                        .findFirst()
-                        .orElse(null);
-                if (row == null) {
-                    throw new ApiException(ErrorCode.NOT_FOUND, "批量合格明细不存在或不属于当前收货单");
+                .setParameter("ids", command.candidateEventIds()).getResultList();
+        Map<UUID, Object[]> history = new java.util.HashMap<>();
+        for (Object[] event : prior) history.put((UUID) event[0], event);
+        boolean replay = !history.isEmpty();
+        if (replay) {
+            // All children must be present, with the same full request hash.
+            // A historical pass-batch can still prove its original per-row
+            // full PASS quantity/reason; old decide batches lack that proof.
+            boolean legacy = command.allowLegacyPassReplay()
+                    && history.values().stream().allMatch(event -> event[6] == null);
+            if (history.size() != command.events().size()) throw batchReplayConflict();
+            for (var event : command.events()) {
+                Object[] stored = history.get(event.id());
+                if (stored == null || !Objects.equals(stored[1], event.inspectionItemId())
+                        || !Objects.equals(stored[2], event.action())
+                        || dec(stored[3]).compareTo(event.quantity()) != 0
+                        || !Objects.equals(stored[4], event.reason())
+                        || (!legacy && !Objects.equals(stored[6], command.requestHash()))) {
+                    throw batchReplayConflict();
                 }
-                String currentStatus = (String) row[10];
-                if (!PENDING.equals(currentStatus) && !PARTIAL.equals(currentStatus)) {
-                    throw new ApiException(ErrorCode.CONFLICT, "批量合格明细状态已变化，请刷新后重试");
+            }
+        } else {
+            for (var line : command.lines()) {
+                Object[] row = rows.get(line.inspectionItemId());
+                if (!PENDING.equals(row[10]) && !PARTIAL.equals(row[10])) {
+                    throw new ApiException(ErrorCode.CONFLICT, "检验报告明细状态已变化，请刷新后重试");
                 }
                 BigDecimal remaining = dec(row[6]).subtract(dec(row[8])).subtract(dec(row[9]));
-                if (remaining.compareTo(command.expectedRemainingBaseQty()) != 0) {
-                    throw new ApiException(ErrorCode.CONFLICT, "批量合格明细待检数量已变化，请刷新后重试");
+                if (remaining.compareTo(line.expectedRemaining()) != 0) {
+                    throw new ApiException(ErrorCode.CONFLICT, "检验报告明细待检数量已变化，请刷新后重试");
                 }
             }
         }
-
-        for (NormalizedBatchPassItem command : commands) {
-            dispose(
-                    receiptType,
-                    receiptId,
-                    command.inspectionItemId(),
-                    new InspectionDispositionRequest(
-                            "PASS",
-                            command.expectedRemainingBaseQty(),
-                            reason,
-                            command.idempotencyKey()));
+        for (var event : command.events()) {
+            if (replay) {
+                notifyDispositionReplay(receiptType, receiptId, event.inspectionItemId(), event.id(),
+                        event.action(), (Boolean) history.get(event.id())[5]);
+            } else {
+                applyDisposition(receiptType, receiptId, rows.get(event.inspectionItemId()), event.id(),
+                        event.action(), event.quantity(), event.reason(), command.requestHash());
+            }
         }
+        completeReceiptDisposition(receiptType, receiptId);
     }
 
-    private record NormalizedBatchPassItem(
-            UUID inspectionItemId,
-            BigDecimal expectedRemainingBaseQty,
-            String idempotencyKey) {
-    }
-
-    /**
-     * 批量检验报告（2026-09-05「提交报告」）：同一收货单多条明细一次提交，
-     * 每行给合格/不合格数量（合计>0、不超剩余）。合格部分放行仓库入库，
-     * 不合格部分记质量事实；整批同事务，任一行冲突整批回滚。
-     * 无客户端断点重放：响应丢失后重试会因状态/剩余量已变化被 409 拒绝，
-     * 前端刷新后按最新待检量重填即可（与 passBatch 的乐观校验同口径）。
-     */
-    @Transactional
-    @PreAuthorize("hasAuthority('procurement_inspection:view')"
-            + " and hasAuthority('procurement_inspection:handle')")
-    public void decideBatch(
-            String receiptType,
-            UUID receiptId,
-            BatchInspectionDecideRequest request) {
-        tx.bind();
-        if (request == null || request.items() == null || request.items().isEmpty()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "检验报告明细不能为空");
-        }
-        if (request.items().size() > 100) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次最多提交 100 条明细");
-        }
-        boolean hasFail = false;
-        HashSet<UUID> uniqueIds = new HashSet<>();
-        List<NormalizedDecideItem> commands = new ArrayList<>();
-        for (BatchInspectionDecideRequest.Item item : request.items()) {
-            if (item == null || item.inspectionItemId() == null) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "检验报告明细 ID 不能为空");
-            }
-            if (!uniqueIds.add(item.inspectionItemId())) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "检验报告明细不能重复");
-            }
-            BigDecimal remaining = normalizeQty(item.expectedRemainingBaseQty());
-            BigDecimal pass = requireNonNegativeQty(item.passBaseQty(), "合格数量");
-            BigDecimal fail = requireNonNegativeQty(item.failBaseQty(), "不合格数量");
-            BigDecimal total = pass.add(fail);
-            if (total.signum() <= 0) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                        "检验报告每行合格与不合格数量不能同时为 0");
-            }
-            if (total.compareTo(remaining) > 0) {
-                throw new ApiException(ErrorCode.CONFLICT,
-                        "合格 + 不合格数量不能超过剩余待检数量 "
-                                + remaining.stripTrailingZeros().toPlainString());
-            }
-            hasFail = hasFail || fail.signum() > 0;
-            commands.add(new NormalizedDecideItem(
-                    item.inspectionItemId(), remaining, pass, fail,
-                    normalizeIdempotencyKey(item.idempotencyKey())));
-        }
-        // FAIL 处置必填原因（与单行 dispose 同口径）：含不合格的整批统一结论原因。
-        String passReason = normalizeDispositionReason("PASS", request.reason());
-        String failReason = normalizeDispositionReason(
-                hasFail ? "FAIL" : "PASS", request.reason());
-        commands.sort(Comparator.comparing(command -> command.inspectionItemId().toString()));
-
-        // 与单行处置相同：库存维度锁必须先于业务行锁。
-        var mutationGuard=mutationLocks.inspection(receiptType,receiptId,uniqueIds);
-        lockReceiptMutationDimensions(receiptType, receiptId);
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery("""
-                        SELECT id, received_base_qty, passed_base_qty, failed_base_qty, status
-                        FROM procurement_inspection_items
-                        WHERE receipt_type = :rt AND receipt_id = :rid
-                        ORDER BY id
-                        FOR UPDATE
-                        """)
-                .setParameter("rt", receiptType)
-                .setParameter("rid", receiptId)
-                .getResultList();
-        mutationGuard.verifyUnchanged();
-        for (NormalizedDecideItem command : commands) {
-            Object[] row = rows.stream()
-                    .filter(candidate -> command.inspectionItemId().equals(candidate[0]))
-                    .findFirst()
-                    .orElse(null);
-            if (row == null) {
-                throw new ApiException(ErrorCode.NOT_FOUND, "检验报告明细不存在或不属于当前收货单");
-            }
-            String currentStatus = (String) row[4];
-            if (!PENDING.equals(currentStatus) && !PARTIAL.equals(currentStatus)) {
-                throw new ApiException(ErrorCode.CONFLICT, "检验报告明细状态已变化，请刷新后重试");
-            }
-            BigDecimal liveRemaining = dec(row[1]).subtract(dec(row[2])).subtract(dec(row[3]));
-            if (liveRemaining.compareTo(command.expectedRemainingBaseQty()) != 0) {
-                throw new ApiException(ErrorCode.CONFLICT, "检验报告明细待检数量已变化，请刷新后重试");
-            }
-        }
-        for (NormalizedDecideItem command : commands) {
-            if (command.passBaseQty().signum() > 0) {
-                dispose(receiptType, receiptId, command.inspectionItemId(),
-                        new InspectionDispositionRequest(
-                                "PASS", command.passBaseQty(), passReason,
-                                command.idempotencyKey() + "-P"));
-            }
-            if (command.failBaseQty().signum() > 0) {
-                dispose(receiptType, receiptId, command.inspectionItemId(),
-                        new InspectionDispositionRequest(
-                                "FAIL", command.failBaseQty(), failReason,
-                                command.idempotencyKey() + "-F"));
-            }
-        }
-    }
-
-    private record NormalizedDecideItem(
-            UUID inspectionItemId,
-            BigDecimal expectedRemainingBaseQty,
-            BigDecimal passBaseQty,
-            BigDecimal failBaseQty,
-            String idempotencyKey) {
+    private static ApiException batchReplayConflict() {
+        return new ApiException(ErrorCode.CONFLICT, "批量检验报告与原请求不一致或历史记录不完整，请核对原报告；不能更换幂等键重复处置");
     }
 
     /** 非负数量校验（0 合法：检验报告某行可以只有合格或只有不合格）。 */
-    private static BigDecimal requireNonNegativeQty(BigDecimal qty, String label) {
+    static BigDecimal requireNonNegativeQty(BigDecimal qty, String label) {
         if (qty == null || qty.signum() < 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, label + "不能为空或为负");
         }
@@ -387,13 +247,23 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         BigDecimal requested = request.baseQty() == null ? null : normalizeQty(request.baseQty());
         String idempotencyKey = normalizeIdempotencyKey(request.idempotencyKey());
 
-        // Match receipt approval/reversal: acquire every inventory-dimension
-        // advisory lock before any inspection row lock. Locking the complete
-        // receipt below also serializes concurrent last-line dispositions, so
-        // exactly one transaction observes whole-receipt completion.
-        var mutationGuard=mutationLocks.inspection(receiptType,receiptId,List.of(inspectionItemId));
-        lockReceiptMutationDimensions(receiptType, receiptId);
+        Map<UUID, Object[]> rows = lockInspectionRows(receiptType, receiptId, List.of(inspectionItemId));
+        Object[] row = requireInspectionRow(rows, inspectionItemId, receiptType);
+        UUID eventId = dispositionEventId(inspectionItemId, idempotencyKey);
+        Boolean replayRequiresWarehouseStockIn = replayRequiresWarehouseStockIn(
+                eventId, inspectionItemId, action, requested, reason);
+        if (replayRequiresWarehouseStockIn != null) {
+            notifyDispositionReplay(receiptType, receiptId, inspectionItemId, eventId, action, replayRequiresWarehouseStockIn);
+        } else {
+            applyDisposition(receiptType, receiptId, row, eventId, action, requested, reason, null);
+        }
+        completeReceiptDisposition(receiptType, receiptId);
+    }
 
+    /** The complete receipt remains locked until every event and final reconciliation commits. */
+    private Map<UUID, Object[]> lockInspectionRows(String receiptType, UUID receiptId, List<UUID> inspectionIds) {
+        var mutationGuard = mutationLocks.inspection(receiptType, receiptId, inspectionIds);
+        lockReceiptMutationDimensions(receiptType, receiptId);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT id, warehouse_id, goods_id, color_id, unit_id, unit_rate,
@@ -405,47 +275,35 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                         ORDER BY id
                         FOR UPDATE
                         """)
-                .setParameter("rt", receiptType)
-                .setParameter("rid", receiptId)
-                .getResultList();
+                .setParameter("rt", receiptType).setParameter("rid", receiptId).getResultList();
         mutationGuard.verifyUnchanged();
-        Object[] row = rows.stream()
-                .filter(candidate -> inspectionItemId.equals(candidate[0]))
-                .findFirst()
-                .orElse(null);
-        if (row == null) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "待检明细不存在");
-        }
-        if (!Objects.equals(receiptType, row[11])) {
-            throw new ApiException(ErrorCode.CONFLICT, "质检结论的单据类型不一致");
-        }
-        UUID eventId = dispositionEventId(inspectionItemId, idempotencyKey);
-        Boolean replayRequiresWarehouseStockIn = replayRequiresWarehouseStockIn(
-                eventId, inspectionItemId, action, requested, reason);
-        if (replayRequiresWarehouseStockIn != null) {
-            // Older concurrent dispositions may have committed every line without
-            // publishing the whole-receipt wake marker. A same-command replay owns
-            // the receipt-scoped row locks above, so it can safely repair that state.
-            boolean wholeReceiptResolved = allResolved(receiptType, receiptId);
-            switch (replayNotification(action, replayRequiresWarehouseStockIn)) {
-                case STOCK_IN_PENDING -> publishIqcStockInPending(
-                        receiptType, receiptId, inspectionItemId, eventId);
-                case REJECTION_DETECTED -> publishIqcRejectionDetected(
-                        receiptType, receiptId, inspectionItemId, eventId);
-                case NONE -> {
-                    // Historical PASS was already posted before V446. Replaying it
-                    // must not fabricate either a warehouse task or a FAIL event.
-                }
-            }
-            recalculateOrderClosure(receiptType, receiptId);
-            wakeIfWholeReceiptResolved(
-                    receiptType,
-                    receiptId,
-                    OffsetDateTime.now(),
-                    wholeReceiptResolved);
-            return;
-        }
+        Map<UUID, Object[]> result = new java.util.LinkedHashMap<>();
+        for (Object[] row : rows) result.put((UUID) row[0], row);
+        return result;
+    }
 
+    private static Object[] requireInspectionRow(Map<UUID, Object[]> rows, UUID id, String receiptType) {
+        Object[] row = rows.get(id);
+        if (row == null) throw new ApiException(ErrorCode.NOT_FOUND, "待检明细不存在或不属于当前收货单");
+        if (!Objects.equals(receiptType, row[11])) throw new ApiException(ErrorCode.CONFLICT, "质检结论的单据类型不一致");
+        return row;
+    }
+
+    private void notifyDispositionReplay(String receiptType, UUID receiptId, UUID inspectionItemId,
+                                         UUID eventId, String action, Boolean replayRequiresWarehouseStockIn) {
+        switch (replayNotification(action, replayRequiresWarehouseStockIn)) {
+            case STOCK_IN_PENDING -> publishIqcStockInPending(receiptType, receiptId, inspectionItemId, eventId);
+            case REJECTION_DETECTED -> publishIqcRejectionDetected(receiptType, receiptId, inspectionItemId, eventId);
+            case NONE -> {
+                // A pre-V446 PASS already entered stock. Never fabricate a new
+                // warehouse release or rejection when replaying that history.
+            }
+        }
+    }
+
+    private void applyDisposition(String receiptType, UUID receiptId, Object[] row, UUID eventId,
+                                  String action, BigDecimal requested, String reason, String batchRequestHash) {
+        UUID inspectionItemId = (UUID) row[0];
         String currentStatus = (String) row[10];
         if (!PENDING.equals(currentStatus) && !PARTIAL.equals(currentStatus)) {
             throw new ApiException(ErrorCode.CONFLICT, "该待检明细已全部结案或已撤销");
@@ -504,7 +362,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         }
         appendEvent(
                 eventId, inspectionItemId, action, requested, reason, actor, now,
-                releasedAmount, releasedWeight, releasedWeightUnitId);
+                releasedAmount, releasedWeight, releasedWeightUnitId, batchRequestHash);
         if ("PASS".equals(action)) {
             publishIqcStockInPending(
                     receiptType, receiptId, inspectionItemId, eventId);
@@ -513,17 +371,21 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                     receiptType, receiptId, inspectionItemId, eventId);
         }
 
-        boolean wholeReceiptResolved = allResolved(receiptType, receiptId);
-        recalculateOrderClosure(receiptType, receiptId);
+        // PASS and FAIL of one row execute in that order. The next event must
+        // use the just-written cumulative quantity for amount/weight intervals.
+        row[8] = passed;
+        row[9] = failed;
+        row[10] = nextStatus;
+    }
 
-        // 整单结案事件/通知仍按收货单只发一次；每个 PASS 切片只生成仓库待入库任务，
-        // 正式生产供给仅按仓库已确认入库量推进。
-        wakeIfWholeReceiptResolved(
-                receiptType, receiptId, now, wholeReceiptResolved);
-        // V459 办结撤回：整单检验结案后撤回全部品质人员的待检弹卡（幂等）。
+    private void completeReceiptDisposition(String receiptType, UUID receiptId) {
+        boolean wholeReceiptResolved = allResolved(receiptType, receiptId);
+        // Closure reads warehouse-stocked/returned quantities, not PASS/FAIL.
+        // No intermediate event changes those inputs; reconcile each order once.
+        recalculateOrderClosure(receiptType, receiptId);
+        wakeIfWholeReceiptResolved(receiptType, receiptId, OffsetDateTime.now(), wholeReceiptResolved);
         if (wholeReceiptResolved) {
-            chainNotice.resolveReviewNotices(
-                    "IQC_INSPECTION", receiptId, "INSPECTED");
+            chainNotice.resolveReviewNotices("IQC_INSPECTION", receiptId, "INSPECTED");
         }
     }
 
@@ -818,24 +680,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     }
 
     private void recalculateOrderClosure(String receiptType, UUID receiptId) {
-        String receiptItemTable = PURCHASE.equals(receiptType)
-                ? "purchase_receipt_items"
-                : "subcontract_receipt_items";
-        @SuppressWarnings("unchecked")
-        List<UUID> orderItemIds = em.createNativeQuery("""
-                        SELECT DISTINCT order_item_id
-                        FROM %s
-                        WHERE receipt_id=:receiptId
-                          AND order_item_id IS NOT NULL
-                          AND COALESCE(is_deleted,FALSE)=FALSE
-                        ORDER BY order_item_id
-                        """.formatted(receiptItemTable))
-                .setParameter("receiptId", receiptId)
-                .getResultList();
-        for (UUID orderItemId : orderItemIds) {
-            ProcurementOrderClosurePolicy.recalculate(
-                    em, receiptType, orderItemId);
-        }
+        ProcurementOrderClosurePolicy.recalculateReceipt(em, receiptType, receiptId);
     }
 
     private void lockReceiptMutationDimensions(String receiptType, UUID receiptId) {
@@ -911,15 +756,23 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
             BigDecimal releasedAmountLocal,
             BigDecimal releasedWeight,
             UUID releasedWeightUnitId) {
+        appendEvent(eventId, inspectionItemId, action, baseQty, reason, actor, occurredAt,
+                releasedAmountLocal, releasedWeight, releasedWeightUnitId, null);
+    }
+
+    private void appendEvent(UUID eventId, UUID inspectionItemId, String action,
+                             BigDecimal baseQty, String reason, UUID actor, OffsetDateTime occurredAt,
+                             BigDecimal releasedAmountLocal, BigDecimal releasedWeight,
+                             UUID releasedWeightUnitId, String batchRequestHash) {
         em.createNativeQuery("""
                 INSERT INTO procurement_inspection_events (
                     id, inspection_item_id, action, base_qty, reason,
                     actor_employee_id, occurred_at, requires_warehouse_stock_in,
-                    released_amount_local, released_weight, released_weight_unit_id
+                    released_amount_local, released_weight, released_weight_unit_id, batch_request_hash
                 ) VALUES (
                     :id, :iid, :action, :qty, :reason,
                     :actor, :at, :requiresWarehouseStockIn,
-                    :releasedAmountLocal, :releasedWeight, :releasedWeightUnitId)
+                    :releasedAmountLocal, :releasedWeight, :releasedWeightUnitId, :batchRequestHash)
                 """)
                 .setParameter("id", eventId)
                 .setParameter("iid", inspectionItemId)
@@ -932,6 +785,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 .setParameter("releasedAmountLocal", releasedAmountLocal)
                 .setParameter("releasedWeight", releasedWeight)
                 .setParameter("releasedWeightUnitId", releasedWeightUnitId)
+                .setParameter("batchRequestHash", batchRequestHash)
                 .executeUpdate();
         if("PASS".equals(action)||"FAIL".equals(action)){
             consideration.freezeQuality(inspectionItemId);
@@ -1063,8 +917,16 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     }
 
     static UUID dispositionEventId(UUID inspectionItemId, String idempotencyKey) {
-        String canonical = "PROCUREMENT_INSPECTION|" + inspectionItemId
-                + "|" + normalizeIdempotencyKey(idempotencyKey);
+        return canonicalDispositionEventId(inspectionItemId, normalizeIdempotencyKey(idempotencyKey));
+    }
+
+    static UUID derivedDispositionEventId(UUID inspectionItemId, String baseKey, String suffix) {
+        if (!"-P".equals(suffix) && !"-F".equals(suffix)) throw new IllegalArgumentException("Unsupported IQC disposition suffix");
+        return canonicalDispositionEventId(inspectionItemId, normalizeIdempotencyKey(baseKey) + suffix);
+    }
+
+    private static UUID canonicalDispositionEventId(UUID inspectionItemId, String key) {
+        String canonical = "PROCUREMENT_INSPECTION|" + inspectionItemId + "|" + key;
         return UUID.nameUUIDFromBytes(canonical.getBytes(StandardCharsets.UTF_8));
     }
 

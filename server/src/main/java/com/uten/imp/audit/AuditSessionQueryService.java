@@ -661,20 +661,25 @@ public class AuditSessionQueryService {
             WHERE
             """ + SESSION_SCOPE;
 
-    // Rank only session identity and start time before loading detailed evidence.
-    // The complete session, including activity outside the date range, defines order.
+    // Look up the full start of each matched session through its session index.
+    // A grouped join lets the planner scan unrelated audit history even for a
+    // one-day scope. The correlated aggregate keeps the lookup session-bound,
+    // without truncating a login that happened before the selected date range.
     private static final String PAGED_SESSIONS_CTE = """
             paged_sessions AS (
-                SELECT event.session_id
-                FROM audit_log event
-                JOIN matched_sessions matched ON matched.session_id = event.session_id
-                WHERE event.id <= :snapshotAuditId
-                  AND LOWER(COALESCE(event.event_source, '')) <> 'database'
-                GROUP BY event.session_id
-                ORDER BY COALESCE(
-                    MIN(event.created_at) FILTER (WHERE event.action IN (
-                        'login', 'visitor_login', 'session_start_after_password_change')),
-                    MIN(event.created_at)) DESC, event.session_id DESC
+                SELECT matched.session_id
+                FROM matched_sessions matched
+                CROSS JOIN LATERAL (
+                    SELECT COALESCE(
+                        MIN(event.created_at) FILTER (WHERE event.action IN (
+                            'login', 'visitor_login', 'session_start_after_password_change')),
+                        MIN(event.created_at)) AS started_at
+                    FROM audit_log event
+                    WHERE event.session_id = matched.session_id
+                      AND event.id <= :snapshotAuditId
+                      AND LOWER(COALESCE(event.event_source, '')) <> 'database'
+                ) session_start
+                ORDER BY session_start.started_at DESC, matched.session_id DESC
                 LIMIT :pageSize OFFSET :pageOffset
             ),
             """;

@@ -14,8 +14,10 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/dashboard/repositories/system_test_repository.dart';
+import 'package:uten_imp/features/dashboard/models/business_data_reset_attempt.dart';
 import 'package:uten_imp/features/dashboard/widgets/system_test_area.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_epoch_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 class _FakeRepository implements SystemTestRepository {
@@ -24,7 +26,7 @@ class _FakeRepository implements SystemTestRepository {
   final BusinessDataResetResult? result;
 
   /// NetworkTimeoutException 也是 ApiException 子类，可直接放这里。
-  final ApiException? error;
+  ApiException? error;
   int calls = 0;
   int previewCalls = 0;
   int filePrepareCalls = 0;
@@ -33,6 +35,9 @@ class _FakeRepository implements SystemTestRepository {
   ApiException? preparationError;
   BusinessAttachmentResetPreview? submittedPreview;
   BusinessDataResetLastResult lastResult = BusinessDataResetLastResult.none;
+  ApiException? lastResultError;
+  int lastResultCalls = 0;
+  BusinessDataResetAttempt? pending;
 
   @override
   Future<BusinessAttachmentResetPreview> previewBusinessAttachments() async {
@@ -60,14 +65,29 @@ class _FakeRepository implements SystemTestRepository {
   Future<BusinessDataResetResult> resetBusinessData() async {
     calls++;
     if (error != null) {
+      if (isBusinessDataResetOutcomeUncertain(error!)) {
+        pending ??= BusinessDataResetAttempt(
+          id: 'attempt-1',
+          server: 'https://test/api',
+          operatorId: 'operator-1',
+          startedAt: DateTime.utc(2026, 9, 12),
+        );
+      }
       throw error!;
     }
     return result!;
   }
 
   @override
-  Future<BusinessDataResetLastResult> lastBusinessDataResetResult() async =>
-      lastResult;
+  Future<BusinessDataResetLastResult> lastBusinessDataResetResult() async {
+    lastResultCalls++;
+    if (lastResultError != null) throw lastResultError!;
+    if (lastResult.confirmedPendingAttempt) pending = null;
+    return lastResult;
+  }
+
+  @override
+  Future<BusinessDataResetAttempt?> pendingBusinessDataReset() async => pending;
 }
 
 class _TestSessionNotifier extends SessionNotifier {
@@ -418,10 +438,100 @@ void main() {
     final hint = find.byKey(const Key('system-test-clear-timeout-hint'));
     expect(hint, findsOneWidget);
     expect(tester.widget<Text>(hint).data, contains('清空可能仍在后台执行'));
-    // 超时后可重试提交（按钮恢复可点）
+    // Unknown outcome must never submit another destructive request.
     await tester.tap(find.byKey(const Key('system-test-clear-confirm-submit')));
     await tester.pumpAndSettle();
-    expect(repository.calls, 2);
+    expect(repository.calls, 1);
+  });
+
+  for (final error in [
+    ApiException('INTERNAL', 'gateway timeout', httpStatus: 504),
+    ApiException('INTERNAL', 'bad gateway', httpStatus: 502),
+    ApiException('SESSION_CHANGED', '登录状态已切换，本次旧请求结果已忽略', httpStatus: 409),
+  ]) {
+    testWidgets('${error.code}/${error.httpStatus}待确认且重建页面也不重复提交', (
+      tester,
+    ) async {
+      final repository = _FakeRepository(error: error);
+      await _pump(
+        tester,
+        superAdmin: true,
+        repository: repository,
+        notifier: _TestSessionNotifier(),
+      );
+      await _expandAndOpenDialog(tester);
+      await _typePhraseAndSubmit(tester);
+      expect(repository.calls, 1);
+      expect(
+        find.byKey(const Key('system-test-clear-timeout-hint')),
+        findsOneWidget,
+      );
+      expect(find.text('清空失败'), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _pump(
+        tester,
+        superAdmin: true,
+        repository: repository,
+        notifier: _TestSessionNotifier(),
+      );
+      await _expandAndOpenDialog(tester);
+      await _typePhraseAndSubmit(tester);
+      expect(repository.calls, 1);
+    });
+  }
+
+  testWidgets('完成记录读取失败可见并可重试，不发清空请求', (tester) async {
+    final repository = _FakeRepository()
+      ..lastResultError = NetworkTimeoutException();
+    await _pump(
+      tester,
+      superAdmin: true,
+      repository: repository,
+      notifier: _TestSessionNotifier(),
+    );
+    expect(find.textContaining('无法读取清空完成记录'), findsOneWidget);
+    repository.lastResultError = null;
+    await tester.tap(find.byKey(const Key('system-test-last-reset-retry')));
+    await tester.pumpAndSettle();
+    expect(repository.lastResultCalls, 2);
+    expect(repository.calls, 0);
+  });
+
+  testWidgets('登录纪元变化重新核对并显示本次精确完成回执', (tester) async {
+    final repository = _FakeRepository()
+      ..pending = BusinessDataResetAttempt(
+        id: 'attempt-1',
+        server: 'https://test/api',
+        operatorId: 'operator-1',
+        startedAt: DateTime.utc(2026, 9, 12),
+      );
+    await _pump(
+      tester,
+      superAdmin: true,
+      repository: repository,
+      notifier: _TestSessionNotifier(),
+    );
+    expect(repository.lastResultCalls, 1);
+    repository.lastResult = BusinessDataResetLastResult(
+      available: true,
+      finishedAt: DateTime.utc(2026, 9, 12, 0, 2),
+      operatorAccount: 'admin',
+      operatorId: 'operator-1',
+      attemptId: 'attempt-1',
+      clearedTableCount: 269,
+      clearedRows: 697,
+      preservedTableCount: 96,
+      authorizationEpochAfter: 366,
+      confirmedPendingAttempt: true,
+    );
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(SystemTestArea)),
+    );
+    container.read(sessionEpochProvider.notifier).state++;
+    await tester.pumpAndSettle();
+    expect(repository.lastResultCalls, 2);
+    expect(find.textContaining('本次清空已确认'), findsOneWidget);
+    expect(repository.calls, 0);
   });
 
   testWidgets('清空成功：登出并跳登录页', (tester) async {

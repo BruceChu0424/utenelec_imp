@@ -10606,7 +10606,16 @@ class FullChainEndToEndTest {
 
     @Test
     void subcontractMixedFreeReplacement_keepsTwoOriginalMaterialBatchesInOneWarehouseConfirmation(){
-        World w=seedWorld("sc-mixed-material-roots");receiveOpeningInputsForA(w,"20");
+        verifyMixedSubcontractReplacementWarehouse(false);
+    }
+
+    @Test
+    void subcontractMixedFreeReplacementRetainsOriginalCostsInAnotherActualWarehouse(){
+        verifyMixedSubcontractReplacementWarehouse(true);
+    }
+
+    private void verifyMixedSubcontractReplacementWarehouse(boolean differentWarehouse){
+        World w=seedWorld(differentWarehouse?"sc-mixed-material-other-warehouse":"sc-mixed-material-roots");receiveOpeningInputsForA(w,"20");
         UUID box=UUID.randomUUID();jdbc.update("insert into units(id,code,name) values (?,?,'box')",box,"SC-MIX-"+box);
         var submitted=submitLeafSubcontractForFinance(w,box,new BigDecimal("2"));
         loginAs(submitted.reviewerUserId());approvePendingFinance("SUBCONTRACT",submitted.orderId());loginAs(w.superAdminUserId());
@@ -10636,25 +10645,51 @@ class FullChainEndToEndTest {
             rejectionService.recordReturn(rejection,new com.uten.imp.features.finance.payables.ProcurementIqcRejectionContracts.RecordReturnRequest(
                     version,UUID.randomUUID(),"SC-MIX-RETURN",BusinessTime.today(),"按原回厂批交还供应商返修"));
         }
-        UUID replacement=receiveSubcontractIntoQuarantine(w,orderItem,box,"4");
+        UUID actualWarehouse=differentWarehouse?leafWarehouse("sc-mixed-replacement-actual"):w.warehouseId();
+        UUID replacement=receiveSubcontractIntoQuarantine(w,orderItem,box,"4",actualWarehouse);
         UUID inspection=jdbc.queryForObject("select id from procurement_inspection_items where receipt_type='SUBCONTRACT' and receipt_id=?",UUID.class,replacement);
         inspectionService.dispose("SUBCONTRACT",replacement,inspection,new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest(
                 "PASS",null,"两个原回厂批合并免费补回验收","sc-mix-pass-"+replacement));
-        loginAs(createIqcWarehouseConfirmer(w,"sc-mix-stock"));
-        var stored=iqcStockInService.confirm("SUBCONTRACT",replacement,latestIqcStockInRequest("SUBCONTRACT",replacement,inspection,
-                new BigDecimal("8"),"sc-mix-stock-"+replacement,"SC-MIX"));
+        loginAs(createIqcWarehouseConfirmer(w,differentWarehouse?"sc-mix-stock-other":"sc-mix-stock"));
+        var stockRequest=latestIqcStockInRequest("SUBCONTRACT",replacement,inspection,
+                new BigDecimal("8"),"sc-mix-stock-"+replacement,"SC-MIX");
+        var stored=iqcStockInService.confirm("SUBCONTRACT",replacement,stockRequest);
         for(int cycle=0;cycle<100&&inventoryValueWork.runBatch()>0;cycle++){ }
         assertEquals(2,count("select count(*) from procurement_iqc_stock_in_batch_items where batch_id=?",stored.batchId()),
                 "同次确认按原回厂批拆实物成本来源，不能把两批成本互借");
         assertEquals(2,count("select count(*) from subcontract_receipt_material_consumptions where receipt_item_id in (select id from subcontract_receipt_items where receipt_id in (?,?))",originals.get(0),originals.get(1)));
         assertEquals(0,count("select count(*) from subcontract_receipt_material_consumptions where receipt_item_id in (select id from subcontract_receipt_items where receipt_id=?)",replacement),"免费补回不再领用公司材料");
-        assertEquals(0,stockBalance(w.warehouseId(),w.goodsE()).compareTo(new BigDecimal("20")));
-        assertEquals(0,bigDecimalFor("select amount_local from stock_balances where warehouse_id=? and goods_id=?",w.warehouseId(),w.goodsE()).compareTo(new BigDecimal("400")));
+        if(differentWarehouse){
+            assertEquals(0,stockBalance(w.warehouseId(),w.goodsE()).compareTo(new BigDecimal("12")));
+            assertEquals(0,bigDecimalFor("select amount_local from stock_balances where warehouse_id=? and goods_id=?",w.warehouseId(),w.goodsE()).compareTo(new BigDecimal("120")));
+            assertEquals(0,stockBalance(actualWarehouse,w.goodsE()).compareTo(new BigDecimal("8")));
+            assertEquals(0,bigDecimalFor("select amount_local from stock_balances where warehouse_id=? and goods_id=?",actualWarehouse,w.goodsE()).compareTo(new BigDecimal("280")),
+                    "The other warehouse receives the original material 80 plus original supplier consideration 200");
+            assertEquals(2,count("""
+                    SELECT count(*) FROM stock_value_production_cost_objects object
+                    JOIN stock_value_pools pool ON pool.id=object.product_pool_id
+                    WHERE object.execution_segment_id IN(SELECT id FROM subcontract_receipt_items WHERE receipt_id IN (?,?))
+                      AND pool.warehouse_id=?
+                    """,originals.get(0),originals.get(1),w.warehouseId()),"Original receipt cost anchors must not move with their replacement output");
+        }else{
+            assertEquals(0,stockBalance(w.warehouseId(),w.goodsE()).compareTo(new BigDecimal("20")));
+            assertEquals(0,bigDecimalFor("select amount_local from stock_balances where warehouse_id=? and goods_id=?",w.warehouseId(),w.goodsE()).compareTo(new BigDecimal("400")));
+        }
+        String stableBalance=strFor("SELECT md5(string_agg(to_jsonb(balance)::text,'|' ORDER BY warehouse_id,color_id)) FROM stock_balances balance WHERE goods_id=?",w.goodsE());
+        int movements=count("SELECT count(*) FROM stock_movements WHERE source_doc_type='SUBCONTRACT_RECEIPT' AND source_doc_id=?",replacement);
+        var replay=iqcStockInService.confirm("SUBCONTRACT",replacement,stockRequest);
+        assertTrue(replay.replayed());assertEquals(stored.batchId(),replay.batchId());
+        assertEquals(stableBalance,strFor("SELECT md5(string_agg(to_jsonb(balance)::text,'|' ORDER BY warehouse_id,color_id)) FROM stock_balances balance WHERE goods_id=?",w.goodsE()));
+        assertEquals(movements,count("SELECT count(*) FROM stock_movements WHERE source_doc_type='SUBCONTRACT_RECEIPT' AND source_doc_id=?",replacement));
     }
 
     private UUID receiveSubcontractIntoQuarantine(World w,UUID item,UUID unit,String qty) {
+        return receiveSubcontractIntoQuarantine(w,item,unit,qty,w.warehouseId());
+    }
+
+    private UUID receiveSubcontractIntoQuarantine(World w,UUID item,UUID unit,String qty,UUID actualWarehouse) {
         var request=new com.uten.imp.features.subcontract.receipt.dto.ReceiptSaveRequest();
-        request.setBillDate(BusinessTime.today());request.setSupplierId(w.supplierId());request.setWarehouseId(w.warehouseId());
+        request.setBillDate(BusinessTime.today());request.setSupplierId(w.supplierId());request.setWarehouseId(actualWarehouse);
         request.setCurrencyId(w.currencyId());request.setExchangeRate(BigDecimal.ONE);request.setTaxRate(BigDecimal.ZERO);
         request.setSettlementMethodId(subcontractOrderSettlementMethodOf(item));
         var line=new com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine();

@@ -39,9 +39,10 @@ final class MaterialAnalysisSupplyCoverageReader {
                     FROM preplan_supply_action_allocations allocation
                     JOIN preplan_supply_actions action ON action.id = allocation.action_id
                     WHERE allocation.analysis_id = :analysisId
-                      AND allocation.analysis_material_id IN (:materialIds)
+                      AND allocation.analysis_material_id IN (SELECT unnest(CAST(string_to_array(:materialIds, ',') AS uuid[])))
                       AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
-                    """).setParameter("analysisId", analysisId).setParameter("materialIds", materialIds))) {
+                    """).setParameter("analysisId", analysisId).setParameter("materialIds", materialIds.stream()
+                            .map(UUID::toString).collect(java.util.stream.Collectors.joining(","))))) {
                 legacyByMaterial.computeIfAbsent((UUID) row[0], ignored -> new LinkedHashSet<>())
                         .add(new Key((String) row[1], (String) row[2]));
             }

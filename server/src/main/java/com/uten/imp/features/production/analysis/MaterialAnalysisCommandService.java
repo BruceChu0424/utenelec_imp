@@ -389,8 +389,8 @@ public class MaterialAnalysisCommandService {
                     .distinct().sorted().toList();
             em.createNativeQuery("""
                     SELECT id FROM preplan_supply_actions
-                    WHERE id IN (:ids) ORDER BY id FOR UPDATE
-                    """).setParameter("ids", sourceIds).getResultList();
+                    WHERE id IN (SELECT unnest(CAST(string_to_array(:ids, ',') AS uuid[]))) ORDER BY id FOR UPDATE
+                    """).setParameter("ids", sourceIds.stream().map(UUID::toString).collect(Collectors.joining(","))).getResultList();
             List<SharedFutureSource> sources = sharedFutureSources(
                     analysisId, group);
             for (SharedFutureSource source : sources) {
@@ -546,11 +546,11 @@ public class MaterialAnalysisCommandService {
                 FROM production_material_analysis_borrows borrow
                 WHERE borrow.analysis_id = :analysisId
                   AND borrow.status = 'ACTIVE'
-                  AND (borrow.from_material_id IN (:materialIds)
-                       OR borrow.to_material_id IN (:materialIds))
+                  AND (borrow.from_material_id IN (SELECT unnest(CAST(string_to_array(:materialIds, ',') AS uuid[])))
+                       OR borrow.to_material_id IN (SELECT unnest(CAST(string_to_array(:materialIds, ',') AS uuid[]))))
                 """)
                 .setParameter("analysisId", analysisId)
-                .setParameter("materialIds", materialIds)
+                .setParameter("materialIds", materialIds.stream().map(UUID::toString).collect(Collectors.joining(",")))
                 .getSingleResult();
         if (conflicts.longValue() > 0) {
             throw conflict("所选物料存在生效中的分析内调货，不能据此创建采购/委外任务；"
@@ -637,11 +637,9 @@ public class MaterialAnalysisCommandService {
             }
             subcontractLines.add(line.materialLineId());
         }
-        // 2026-09-10 性能：refresh 次数收敛——先建 MAKE 锚点，再走委外通知（notifySupply
-        // 自带「先刷新算增量、写入后再刷新」，已覆盖刚建的 MAKE 锚点）；只有 MAKE 锚点
-        // 实际新建/增量且没有走委外通知时，才补一次刷新。ADR-071「锚点建立后以最新快照
-        // 逐行生成」不变量不变：纯自制下达每次最多 2 次 refreshLocked（锚点后 + 建计划后），
-        // 既有锚点复用/纯产品行下达只剩建计划后的 1 次。
+        // 入场已按实时库存刷新。先建立 MAKE 锚点，再让委外通知复用或更新该快照；
+        // 仅在锚点实际改变且没有委外通知覆盖时，另作锚点后刷新。计划生成结束后
+        // 再投影正式计划覆盖，始终满足 ADR-071 的「以当前权威快照逐行生成」。
         boolean anchorsChanged = !makeLines.isEmpty()
                 && ensureWorkshopChildAnchors(analysisId, preArrange, makeLines);
         AnalysisView view = preArrange;
@@ -684,42 +682,48 @@ public class MaterialAnalysisCommandService {
         PlanScheduleDefaults defaults = new PlanScheduleDefaults(
                 request.billDate(), request.deliveryDate());
         List<GeneratedPlan> generated = new ArrayList<>();
-        for (Map.Entry<UUID, IssueWorkshopPlansRequest.IssuePlanLine> entry
-                : lineByAnalysisLine.entrySet()) {
-            UUID lineId = entry.getKey();
-            IssueWorkshopPlansRequest.IssuePlanLine line = entry.getValue();
-            ProductView product = products.get(lineId);
-            if (product == null) {
-                throw validation("待生成计划产品不属于当前分析");
+        // Plan linking and approval change sources, plans and reservations, but
+        // do not rewrite this analysis's material/BOM projection. Verify those
+        // two static slices at both batch boundaries; every nested dynamic
+        // discovery and prelock coverage check still runs before each write.
+        try (var structure = mutationFootprints.openAnalysisStructureScope(analysisId)) {
+            for (Map.Entry<UUID, IssueWorkshopPlansRequest.IssuePlanLine> entry
+                    : lineByAnalysisLine.entrySet()) {
+                UUID lineId = entry.getKey();
+                IssueWorkshopPlansRequest.IssuePlanLine line = entry.getValue();
+                ProductView product = products.get(lineId);
+                if (product == null) {
+                    throw validation("待生成计划产品不属于当前分析");
+                }
+                if (!product.canSchedule()) {
+                    throw conflict(product.scheduleBlockedReason() == null
+                            ? "当前产品不可排产" : product.scheduleBlockedReason());
+                }
+                if (line.qty().compareTo(product.remainingQty()) > 0) {
+                    throw validation("「" + product.goodsName() + "」生成数量 "
+                            + line.qty().stripTrailingZeros().toPlainString()
+                            + " 超过剩余需求 "
+                            + product.remainingQty().stripTrailingZeros().toPlainString());
+                }
+                PlanQuantity quantity = new PlanQuantity(lineId, line.qty(),
+                        line.billDate(), line.deliveryDate(), line.departmentId(),
+                        line.workshopName(), line.workerId(), line.teamDepartmentId(),
+                        line.productNo());
+                validatePlanSchedule(quantity, defaults);
+                // 客观齐套结论只决定 READY/WAITING，不再拦截：缺料批次进 WAITING，
+                // 车间侧等料（执行段齐套后自动提升）。
+                PlanDetail plan = createDraftPlan(analysisId, product, quantity, defaults);
+                ProductionPlanningDraftView draft = savePlanningDraft(
+                        analysisId, product, plan, quantity, defaults,
+                        request.warehouseId());
+                PlanningPackageResult applied = null;
+                if (request.approveNow()) {
+                    planService.approve(plan.getId());
+                    applied = planningPackages.currentResult(plan.getId()).orElseThrow(() ->
+                            conflict("生产计划已审核但正式计划包未生成，事务已回滚"));
+                }
+                generated.add(toGenerated(plan, draft, applied));
             }
-            if (!product.canSchedule()) {
-                throw conflict(product.scheduleBlockedReason() == null
-                        ? "当前产品不可排产" : product.scheduleBlockedReason());
-            }
-            if (line.qty().compareTo(product.remainingQty()) > 0) {
-                throw validation("「" + product.goodsName() + "」生成数量 "
-                        + line.qty().stripTrailingZeros().toPlainString()
-                        + " 超过剩余需求 "
-                        + product.remainingQty().stripTrailingZeros().toPlainString());
-            }
-            PlanQuantity quantity = new PlanQuantity(lineId, line.qty(),
-                    line.billDate(), line.deliveryDate(), line.departmentId(),
-                    line.workshopName(), line.workerId(), line.teamDepartmentId(),
-                    line.productNo());
-            validatePlanSchedule(quantity, defaults);
-            // 客观齐套结论只决定 READY/WAITING，不再拦截：缺料批次进 WAITING，
-            // 车间侧等料（执行段齐套后自动提升）。
-            PlanDetail plan = createDraftPlan(analysisId, product, quantity, defaults);
-            ProductionPlanningDraftView draft = savePlanningDraft(
-                    analysisId, product, plan, quantity, defaults,
-                    request.warehouseId());
-            PlanningPackageResult applied = null;
-            if (request.approveNow()) {
-                planService.approve(plan.getId());
-                applied = planningPackages.currentResult(plan.getId()).orElseThrow(() ->
-                        conflict("生产计划已审核但正式计划包未生成，事务已回滚"));
-            }
-            generated.add(toGenerated(plan, draft, applied));
         }
         MaterialAnalysisService.AnalysisHeader postPlanHeader =
                 analysisService.headerAfterPrelock(analysisId);

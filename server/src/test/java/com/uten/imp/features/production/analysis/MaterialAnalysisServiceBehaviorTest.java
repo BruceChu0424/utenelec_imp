@@ -361,7 +361,7 @@ class MaterialAnalysisServiceBehaviorTest {
             if (statement.contains("FROM production_material_analysis_items ai")) {
                 return sources;
             }
-            if (statement.contains("WITH RECURSIVE walk AS")) {
+            if (statement.contains("COALESCE(bool_or(cycle),FALSE)")) {
                 return graphValidation;
             }
             if (statement.contains("exp AS (")) {
@@ -1075,7 +1075,10 @@ class MaterialAnalysisServiceBehaviorTest {
         assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
         assertThat(error.getMessage()).contains("请先撤销调拨");
         verify(conflicts).setParameter("analysisId", analysisId);
-        verify(conflicts).setParameter("materialIds", materialIds);
+        var parameter = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(conflicts).setParameter(org.mockito.ArgumentMatchers.eq("materialIds"), parameter.capture());
+        assertThat(java.util.Arrays.stream(parameter.getValue().split(",")).map(UUID::fromString).collect(java.util.stream.Collectors.toSet()))
+                .isEqualTo(materialIds);
     }
 
     private static MaterialAnalysisService.ExactPegRecord exactPeg(

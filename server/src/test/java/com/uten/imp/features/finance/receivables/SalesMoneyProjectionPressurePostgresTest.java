@@ -11,6 +11,7 @@ import org.springframework.test.context.DynamicPropertySource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -96,7 +97,7 @@ class SalesMoneyProjectionPressurePostgresTest {
         report.put("scope","synthetic isolated PostgreSQL service/query benchmark; excludes setup, HTTP and write throughput");
         report.put("databaseImage",SalesPressureDatabase.image());
         report.put("resumableFixture",SalesPressureDatabase.persistent());
-        report.put("fixtureVersion",2);
+        report.put("fixtureVersion",3);
         report.put("databaseVersion",jdbc.getJdbcTemplate().queryForObject("SHOW server_version",String.class));
         report.put("databaseCollation",jdbc.getJdbcTemplate().queryForObject(
                 "SELECT datcollate FROM pg_database WHERE datname=current_database()",String.class));
@@ -119,9 +120,15 @@ class SalesMoneyProjectionPressurePostgresTest {
     private void verify(UUID order) {
         var value=summary.salesOrderSummary(order);
         assertThat(value.positionComplete()).isTrue();
-        assertThat(value.netReceivableOriginal()).isEqualTo("50.0000");
-        assertThat(value.unrecognizedOrderOriginal()).isEqualTo("150.0000");
-        assertThat(value.plannedRemainingOriginal()).isEqualTo("200.0000");
+        assertExactMoney(value.netReceivableOriginal(),"50");
+        assertExactMoney(value.unrecognizedOrderOriginal(),"150");
+        assertExactMoney(value.plannedRemainingOriginal(),"200");
+    }
+
+    private static void assertExactMoney(String actual, String expected) {
+        // DTOs preserve the exact decimal scale; display padding is not a money fact.
+        assertThat(actual).isNotNull();
+        assertThat(new BigDecimal(actual)).isEqualByComparingTo(expected);
     }
 
     private void waitForMeasurementWindow(int orders) throws Exception {
@@ -139,6 +146,10 @@ class SalesMoneyProjectionPressurePostgresTest {
     }
 
     private void seedRows(String stage, String sql, Map<String,Object> parameters) {
+        seedBatchStatements(stage,List.of(sql),parameters);
+    }
+
+    private void seedBatchStatements(String stage, List<String> statements, Map<String,Object> parameters) {
         int count=((Number)parameters.get("count")).intValue();
         // Keep real triggers and constraints, with bounded transactions like a
         // document batch. Large-history identifier lookups are indexed by V501;
@@ -147,17 +158,18 @@ class SalesMoneyProjectionPressurePostgresTest {
             parameters.put("first",first);
             parameters.put("last",Math.min(count,first+499));
             parameters.put("stage",stage);
-            parameters.put("sqlHash",sha256(sql));
+            parameters.put("sqlHash",sha256(String.join("\n-- next fixture statement --\n",statements)));
             seedTransactions.executeWithoutResult(transaction -> {
-                var hashes=jdbc.queryForList("SELECT sql_hash FROM audit_pressure.seed_batches WHERE fixture_id='sales-money-v2' AND stage=:stage AND first_row=:first",parameters,String.class);
+                var hashes=jdbc.queryForList("SELECT sql_hash FROM audit_pressure.seed_batches WHERE fixture_id='sales-money-v3' AND stage=:stage AND first_row=:first",parameters,String.class);
                 if (!hashes.isEmpty()) {
                     if (!hashes.getFirst().equals(parameters.get("sqlHash"))) throw new IllegalStateException("Fixture SQL changed; create a new isolated database");
                     return;
                 }
-                int inserted=jdbc.update(sql,parameters);
                 int expected=((Number)parameters.get("last")).intValue()-((Number)parameters.get("first")).intValue()+1;
-                if (inserted!=expected) throw new IllegalStateException("Incomplete synthetic fixture batch");
-                jdbc.update("INSERT INTO audit_pressure.seed_batches(fixture_id,stage,first_row,last_row,sql_hash) VALUES('sales-money-v2',:stage,:first,:last,:sqlHash)",parameters);
+                for (String sql:statements) {
+                    if (jdbc.update(sql,parameters)!=expected) throw new IllegalStateException("Incomplete synthetic fixture batch: "+stage);
+                }
+                jdbc.update("INSERT INTO audit_pressure.seed_batches(fixture_id,stage,first_row,last_row,sql_hash) VALUES('sales-money-v3',:stage,:first,:last,:sqlHash)",parameters);
                 committedBatches++;
             });
             int stopAfter=Integer.getInteger("uten.sales.pressure.stopAfterBatches",0);
@@ -193,17 +205,23 @@ class SalesMoneyProjectionPressurePostgresTest {
         Map<String,Object> p=new LinkedHashMap<>();
         p.put("salt",UUID.randomUUID().toString()); p.put("count",count);
         for (String key:List.of("client","currency","goods","warehouse")) p.put(key,UUID.randomUUID());
-        p.put("actor",jdbc.getJdbcTemplate().queryForObject("SELECT employee_id FROM users WHERE is_super_admin AND employee_id IS NOT NULL LIMIT 1",UUID.class));
+        p.put("actorUser",jdbc.getJdbcTemplate().queryForObject("SELECT id FROM users WHERE is_super_admin AND employee_id IS NOT NULL LIMIT 1",UUID.class));
+        p.put("actor",jdbc.queryForObject("SELECT employee_id FROM users WHERE id=:actorUser",p,UUID.class));
         seedTransactions.executeWithoutResult(transaction -> {
-        var existing=jdbc.getJdbcTemplate().queryForList("SELECT * FROM audit_pressure.fixtures WHERE fixture_id='sales-money-v2'");
+        if (Boolean.TRUE.equals(jdbc.getJdbcTemplate().queryForObject(
+                "SELECT EXISTS(SELECT 1 FROM audit_pressure.fixtures WHERE fixture_id<>'sales-money-v3')",Boolean.class))) {
+            throw new IllegalStateException("Historical query fixtures require their original migration head; use a new isolated database for fixture v3");
+        }
+        var existing=jdbc.getJdbcTemplate().queryForList("SELECT * FROM audit_pressure.fixtures WHERE fixture_id='sales-money-v3'");
         if (!existing.isEmpty()) {
             var fixture=existing.getFirst();
             if (((Number)fixture.get("order_count")).intValue()!=count) throw new IllegalStateException("Fixture scale differs; create a new isolated database");
             p.put("salt",fixture.get("salt")); p.put("actor",fixture.get("actor_id"));
+            p.put("actorUser",jdbc.queryForObject("SELECT id FROM users WHERE employee_id=:actor AND is_super_admin",p,UUID.class));
             for(String key:List.of("client","currency","goods","warehouse")) p.put(key,fixture.get(key+"_id"));
             return;
         }
-        jdbc.update("INSERT INTO audit_pressure.fixtures(fixture_id,order_count,salt,client_id,currency_id,goods_id,warehouse_id,actor_id) VALUES('sales-money-v2',:count,:salt,:client,:currency,:goods,:warehouse,:actor)",p);
+        jdbc.update("INSERT INTO audit_pressure.fixtures(fixture_id,order_count,salt,client_id,currency_id,goods_id,warehouse_id,actor_id) VALUES('sales-money-v3',:count,:salt,:client,:currency,:goods,:warehouse,:actor)",p);
         jdbc.update("INSERT INTO clients(id,code,name,status,code_sequence,sales_payment_type) VALUES(:client,'CLIENT-'||:salt,'Pressure customer','使用',100000,'MONTHLY')",p);
         jdbc.update("INSERT INTO currencies(id,code,name,exchange_rate,status) VALUES(:currency,'PRESSURE-CNY','Pressure currency',1,'使用')",p);
         jdbc.update("INSERT INTO goods(id,code,name,status,code_sequence) VALUES(:goods,'GOODS-'||:salt,'Pressure goods','使用',100000)",p);
@@ -223,33 +241,82 @@ class SalesMoneyProjectionPressurePostgresTest {
                     'XD20260907'||lpad(n::text,6,'0'),DATE '2026-09-07',:goods,20,10,200,10,5,0,
                     'PRESSURE','Pressure goods','MASTER_AT_APPROVAL',now()
                 """+series,p);
-        seedRows("shipments","""
+        // Header/items and immutable sales/finance decisions commit together.
+        // This is the current V511 query-fixture workflow, never a legacy import
+        // switch or a claim that setup measures business-command throughput.
+        seedBatchStatements("shipments-current-workflow",List.of("""
                 INSERT INTO sales_shipments(id,bill_no,bill_date,client_id,currency_id,warehouse_id,exchange_rate,tax_rate,
-                    status,warehouse_work_status,finance_gate_version,finance_audit,finance_auditor_id,finance_audited_at,
-                    handed_over_at,ar_posted,total_original,total_local)
+                    status,warehouse_work_status,finance_gate_version,finance_audit,source_order_id,
+                    ar_posted,total_original,total_local)
                 SELECT md5(:salt||'-ship-'||n)::uuid,'XC20260907'||lpad(n::text,6,'0'),DATE '2026-09-07',
-                    :client,:currency,:warehouse,1,0,1,'SHIPPED',1,1,:actor,now(),now(),TRUE,100,100
-                """+series,p);
-        seedRows("shipment-items","""
+                    :client,:currency,:warehouse,1,0,0,'PENDING_PICK',2,0,md5(:salt||'-order-'||n)::uuid,FALSE,100,100
+                """+series,"""
                 INSERT INTO sales_shipment_items(id,shipment_id,order_item_id,bill_no,bill_date,goods_id,qty,price,
                     amount_original,amount_local,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,goods_snapshot_locked_at)
                 SELECT md5(:salt||'-ship-line-'||n)::uuid,md5(:salt||'-ship-'||n)::uuid,md5(:salt||'-order-line-'||n)::uuid,
                     'XC20260907'||lpad(n::text,6,'0'),DATE '2026-09-07',:goods,10,10,100,100,
                     'PRESSURE','Pressure goods','MASTER_AT_APPROVAL',now()
-                """+series,p);
-        seedRows("returns","""
+                """+series,"""
+                INSERT INTO sales_shipment_submission_events(
+                    shipment_id,review_revision,content_hash,commercial_snapshot,actor_user_id,actor_employee_id,occurred_at)
+                SELECT shipment.id,shipment.review_revision,
+                    fn_customer_shipment_snapshot_hash(fn_customer_shipment_commercial_snapshot(shipment.id)),
+                    fn_customer_shipment_commercial_snapshot(shipment.id)::jsonb,:actorUser,:actor,now()
+                FROM generate_series(:first,:last) sample(n)
+                JOIN sales_shipments shipment ON shipment.id=md5(:salt||'-ship-'||n)::uuid
+                ""","""
+                UPDATE sales_shipments shipment SET sales_confirmed_revision=shipment.review_revision,
+                    sales_confirmed_at=submitted.occurred_at,sales_confirmed_by=submitted.actor_employee_id
+                FROM generate_series(:first,:last) sample(n),sales_shipment_submission_events submitted
+                WHERE shipment.id=md5(:salt||'-ship-'||n)::uuid AND submitted.shipment_id=shipment.id
+                  AND submitted.review_revision=shipment.review_revision
+                ""","""
+                INSERT INTO task_claims(id,target_type,target_key,claimed_by,lease_until)
+                SELECT md5(:salt||'-finance-claim-'||n)::uuid,'SALES_SHIPMENT_FINANCE_AUDIT',
+                    md5(:salt||'-ship-'||n)::uuid::text,:actor,now()+INTERVAL '30 minutes'
+                """+series,"""
+                INSERT INTO sales_shipment_finance_release_events(
+                    id,shipment_id,event_type,actor_user_id,occurred_at,client_id,client_name,currency_id,
+                    sales_payment_type,shipment_total_original,formal_ar_outstanding_local,credit_floor_local,
+                    over_floor_local,available_prepayment_original,available_prepayment_local,
+                    review_revision,claim_id,content_hash,commercial_snapshot,billing_mode)
+                SELECT md5(:salt||'-finance-release-'||n)::uuid,shipment.id,'RELEASED',:actorUser,now(),
+                    shipment.client_id,client.name,shipment.currency_id,client.sales_payment_type,
+                    shipment.total_original,0,0,0,0,0,shipment.review_revision,
+                    md5(:salt||'-finance-claim-'||n)::uuid,submitted.content_hash,submitted.commercial_snapshot,shipment.billing_mode
+                FROM generate_series(:first,:last) sample(n)
+                JOIN sales_shipments shipment ON shipment.id=md5(:salt||'-ship-'||n)::uuid
+                JOIN clients client ON client.id=shipment.client_id
+                JOIN sales_shipment_submission_events submitted ON submitted.shipment_id=shipment.id
+                  AND submitted.review_revision=shipment.review_revision
+                ""","""
+                UPDATE sales_shipments shipment SET finance_audit=1,finance_auditor_id=decision.actor_user_id,
+                    finance_audited_at=decision.occurred_at,finance_release_event_id=decision.id
+                FROM generate_series(:first,:last) sample(n),sales_shipment_finance_release_events decision
+                WHERE shipment.id=md5(:salt||'-ship-'||n)::uuid
+                  AND decision.id=md5(:salt||'-finance-release-'||n)::uuid
+                ""","""
+                UPDATE task_claims claim SET released_at=now(),released_by=:actor,release_reason='completed'
+                FROM generate_series(:first,:last) sample(n)
+                WHERE claim.id=md5(:salt||'-finance-claim-'||n)::uuid
+                ""","""
+                UPDATE sales_shipments shipment SET status=1,warehouse_work_status='SHIPPED',
+                    handed_over_at=now(),handed_over_by=:actor,ar_posted=TRUE
+                FROM generate_series(:first,:last) sample(n)
+                WHERE shipment.id=md5(:salt||'-ship-'||n)::uuid
+                """),p);
+        seedBatchStatements("returns-current-workflow",List.of("""
                 INSERT INTO sales_returns(id,bill_no,bill_date,client_id,currency_id,warehouse_id,exchange_rate,tax_rate,
                     status,ar_posted,source_shipment_id,total_original,total_local)
                 SELECT md5(:salt||'-return-'||n)::uuid,'XT20260907'||lpad(n::text,6,'0'),DATE '2026-09-07',
                     :client,:currency,:warehouse,1,0,1,TRUE,md5(:salt||'-ship-'||n)::uuid,50,50
-                """+series,p);
-        seedRows("return-items","""
+                """+series,"""
                 INSERT INTO sales_return_items(id,return_id,out_item_id,order_item_id,bill_no,bill_date,goods_id,qty,
                     price,amount_original,amount_local,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,goods_snapshot_locked_at)
                 SELECT md5(:salt||'-return-line-'||n)::uuid,md5(:salt||'-return-'||n)::uuid,md5(:salt||'-ship-line-'||n)::uuid,
                     md5(:salt||'-order-line-'||n)::uuid,'XT20260907'||lpad(n::text,6,'0'),DATE '2026-09-07',
                     :goods,5,10,50,50,'PRESSURE','Pressure goods','SHIPMENT_ITEM_AT_APPROVAL',now()
-                """+series,p);
+                """+series),p);
         for (String kind:List.of("ship","return")) {
             p.put("kind",kind); p.put("type",kind.equals("ship")?"SALES_SHIPMENT":"SALES_RETURN");
             p.put("prefix",kind.equals("ship")?"XC":"XT"); p.put("amount",kind.equals("ship")?100:-50);

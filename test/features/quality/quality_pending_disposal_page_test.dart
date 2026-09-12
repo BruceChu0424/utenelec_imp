@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/features/quality/pages/production_fqc_handling_page.dart';
 import 'package:uten_imp/features/quality/pages/quality_batch_approval_page.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/quality/pages/quality_pending_disposal_page.dart';
@@ -56,6 +58,21 @@ Future<void> _pumpPage(
                 selection: state.extra is QualityBatchApprovalSelection
                     ? state.extra! as QualityBatchApprovalSelection
                     : const QualityBatchApprovalSelection(),
+              ),
+            ),
+            // 2026-09-12 弹窗改页：FQC 检查单/单任务办理页。
+            GoRoute(
+              path: '${RouteName.productionFqcSheetHandlingBase}/:sheetId',
+              builder: (_, state) => ProductionFqcSheetHandlingPage(
+                sheetId: state.pathParameters['sheetId']!,
+              ),
+            ),
+            GoRoute(
+              path:
+                  '${RouteName.productionFqcInspectionHandlingBase}/:inspectionId',
+              builder: (_, state) => ProductionFqcInspectionPage(
+                inspectionId: state.pathParameters['inspectionId']!,
+                extra: state.extra,
               ),
             ),
           ],
@@ -146,20 +163,26 @@ void main() {
     );
 
     await _doubleTapRow(tester, _reportNo);
+    // 2026-09-12 弹窗改页：进入 FQC 单任务办理页（详情事实 + 决定表单）。
+    expect(find.byKey(const Key('fqc-inspection-facts-table')), findsOneWidget);
     expect(
-      find.byKey(const Key('production-fqc-detail-$_inspectionId')),
+      find.byKey(const Key('fqc-inspection-submit-report')),
       findsOneWidget,
     );
-    await tester.tap(
-      find.byKey(const Key('production-fqc-decide-$_inspectionId')),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('登记生产成品质检决定'), findsOneWidget);
 
-    await tester.tap(find.text('确认决定'));
+    // 默认全合格 → 提交报告 → 总结确认。
+    await tester.tap(find.byKey(const Key('fqc-inspection-submit-report')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
+    await tester.pump();
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
 
     expect(api.decisionBody?['decision'], 'PASS');
+    expect(api.decisionBody?['passQty'], 10);
+    // 决定成功自动带结果返回：已决定任务行消失，IQC 行仍在。
+    await tester.pumpAndSettle();
     expect(find.text(_reportNo), findsNothing);
     expect(find.text('CJ20260822000001'), findsOneWidget);
   });
@@ -217,22 +240,24 @@ void main() {
     expect(_segmentBadge('1'), findsNWidgets(3));
 
     await _doubleTapRow(tester, _sheetNo);
-    expect(
-      find.byKey(const Key('production-fqc-sheet-$_sheetId')),
-      findsOneWidget,
-    );
+    // 2026-09-12 弹窗改页：进入检查单办理页（对齐采购 IQC 处置页范式）。
+    expect(find.byKey(const Key('fqc-sheet-header-table')), findsOneWidget);
     expect(api.sheetDetailCalls, 1);
     expect(find.textContaining('登记备注：整托入库'), findsOneWidget);
-    expect(find.textContaining('库位 CP-A-01'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('production-fqc-sheet-pass-all')));
+    expect(find.text('CP-A-01'), findsWidgets);
+    // 默认全勾 + 合格默认=待检：一次提交即「全部合格」（逐行 decide）。
+    await tester.tap(find.byKey(const Key('fqc-sheet-submit-report')));
     await tester.pumpAndSettle();
-    expect(api.batchBody?['inspectionIds'], [_inspectionId]);
-    expect(
-      api.batchBody?['idempotencyKey'] as String?,
-      startsWith('fqc-sheet-pass-all-'),
-    );
-    // 单内已无待检行：关闭后队列刷新，检查单行消失。
-    await tester.tap(find.text('关闭'));
+    await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
+    await tester.pump();
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(api.decisionBody?['decision'], 'PASS');
+    expect(api.decisionBody?['passQty'], 10);
+    // 单内已无待检行 → 完成态；返回队列后检查单行消失。
+    expect(find.text('本检查单待检已全部处理完成'), findsOneWidget);
+    await tester.tap(find.byType(UtenBackButton));
     await tester.pumpAndSettle();
     expect(find.text(_sheetNo), findsNothing);
     expect(find.text('CJ20260822000001'), findsOneWidget);

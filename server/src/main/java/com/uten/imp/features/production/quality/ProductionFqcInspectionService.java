@@ -549,14 +549,13 @@ public class ProductionFqcInspectionService
         BatchCommand batch = claimPassAllBatch(actorUserId, normalized);
         if (batch.replay()) return loadPassAllBatch(batch.id(), true, normalized.inspectionIds().size());
 
-        List<PassAllBatchItem> items = new ArrayList<>(
-                normalized.inspectionIds().size());
+        Map<UUID, UUID> decisions = new LinkedHashMap<>();
         int lineNo = 0;
         for (UUID inspectionId : normalized.inspectionIds()) {
             NormalizedRequest child = normalizeRequest(new DecisionRequest(
                     "PASS", null, null, null, null,
                     passAllChildKey(batch.id(), inspectionId)));
-            DecisionResult decision = decideLocked(
+            DecisionWrite decision = recordDecisionLocked(
                     inspectionId, child, locked.get(inspectionId), () -> { /* whole batch verified before its first write */ });
             if (decision.replay()) {
                 throw conflict("批量全合格子结果已存在但缺少批次关联，请联系管理员核查");
@@ -574,15 +573,34 @@ public class ProductionFqcInspectionService
                     .setParameter("decisionEventId", decision.decisionEventId())
                     .setParameter("lineNo", nextLine)
                     .executeUpdate();
-            items.add(new PassAllBatchItem(
-                    inspectionId,
-                    decision.decisionEventId(),
-                    decision.inspection()));
+            decisions.put(inspectionId, decision.decisionEventId());
+        }
+        Map<UUID, InspectionView> views = detailViews(normalized.inspectionIds());
+        List<PassAllBatchItem> items = new ArrayList<>(decisions.size());
+        // Durable outbox rows become consumable only after commit. Each item's
+        // RELEASED still precedes its RESOLVED; no consumer observes this batch
+        // between its individual decisions and the final complete view query.
+        for (var decision : decisions.entrySet()) {
+            InspectionView view = views.get(decision.getKey());
+            publishResolved(view);
+            items.add(new PassAllBatchItem(decision.getKey(), decision.getValue(), view));
         }
         return new PassAllBatchResult(batch.id(), items, false);
     }
 
     private DecisionResult decideLocked(
+            UUID inspectionId,
+            NormalizedRequest normalized,
+            Object[] inspection,
+            Runnable verifyBeforeFirstWrite) {
+        DecisionWrite decision = recordDecisionLocked(inspectionId, normalized, inspection, verifyBeforeFirstWrite);
+        InspectionView view = detailInternal(inspectionId);
+        if (!decision.replay()) publishResolved(view);
+        return new DecisionResult(decision.decisionEventId(), view, decision.replay());
+    }
+
+    /** Writes the same decision/recovery/release facts without rebuilding a response for each batch member. */
+    private DecisionWrite recordDecisionLocked(
             UUID inspectionId,
             NormalizedRequest normalized,
             Object[] inspection,
@@ -601,10 +619,7 @@ public class ProductionFqcInspectionService
             if (!Objects.equals(replay.getFirst()[1], normalized.requestHash())) {
                 throw conflict("该质检幂等键已用于不同决定，请刷新后重试");
             }
-            return new DecisionResult(
-                    (UUID) replay.getFirst()[0],
-                    detailInternal(inspectionId),
-                    true);
+            return new DecisionWrite((UUID) replay.getFirst()[0], true);
         }
 
         BigDecimal reported = dec(inspection[1]);
@@ -683,20 +698,24 @@ public class ProductionFqcInspectionService
                     payload,
                     EVENT_RELEASED + ':' + eventId);
         }
-        InspectionView result = detailInternal(inspectionId);
+        return new DecisionWrite(eventId, false);
+    }
+
+    private record DecisionWrite(UUID decisionEventId, boolean replay) {}
+
+    private void publishResolved(InspectionView result) {
         if ("RESOLVED".equals(result.status())) {
             outbox.publishOnce(
                     EVENT_RESOLVED,
                     "PRODUCTION_FQC_INSPECTION",
-                    inspectionId,
+                    result.id(),
                     Map.of(
                             "sourceReportId", result.sourceReportId(),
                             "sourceReportItemId", result.sourceReportItemId(),
                             "passedQty", result.passedQty(),
                             "failedQty", result.failedQty()),
-                    EVENT_RESOLVED + ':' + inspectionId);
+                    EVENT_RESOLVED + ':' + result.id());
         }
-        return new DecisionResult(eventId, result, false);
     }
 
     @Override
@@ -1231,13 +1250,14 @@ public class ProductionFqcInspectionService
         if (rows.size() != expectedCount) {
             throw conflict("批量全合格历史结果不完整，请联系管理员核查");
         }
+        Map<UUID, InspectionView> views = detailViews(rows.stream().map(row -> (UUID) row[0]).toList());
         List<PassAllBatchItem> items = rows.stream()
                 .map(row -> {
                     UUID inspectionId = (UUID) row[0];
                     return new PassAllBatchItem(
                             inspectionId,
                             (UUID) row[1],
-                            detailInternal(inspectionId));
+                            views.get(inspectionId));
                 })
                 .toList();
         return new PassAllBatchResult(batchId, items, replay);
@@ -1321,6 +1341,29 @@ public class ProductionFqcInspectionService
                         .setParameter("inspectionId", inspectionId));
         if (rows.size() != 1) throw notFound("生产质检任务不存在");
         return toView(rows.getFirst());
+    }
+
+    /**
+     * One final snapshot, including every existing detail field. Batch members
+     * have distinct active inspection/source-report-item identities; later PASS
+     * decisions do not change a previous member's quantities or release total.
+     * Callers restore normalized UUID order or persisted line_no order themselves.
+     */
+    private Map<UUID, InspectionView> detailViews(List<UUID> inspectionIds) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery(viewSql("inspection.id IN (:inspectionIds)"))
+                        .setParameter("inspectionIds", inspectionIds));
+        Map<UUID, InspectionView> result = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            InspectionView view = toView(row);
+            if (result.putIfAbsent(view.id(), view) != null) {
+                throw conflict("批量生产质检视图出现重复来源，请联系管理员核查");
+            }
+        }
+        if (result.size() != inspectionIds.size() || !result.keySet().containsAll(inspectionIds)) {
+            throw conflict("批量生产质检视图不完整，请联系管理员核查");
+        }
+        return result;
     }
 
     private void requireReadable(UUID reportMakerId) {

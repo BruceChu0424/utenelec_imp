@@ -46,7 +46,8 @@ class ProductionMutationFootprintPostgresTest {
         var properties = new Properties(); properties.setProperty("hibernate.hbm2ddl.auto","none");
         builder.setJpaProperties(properties); builder.afterPropertiesSet();
         factory=builder.getObject(); assertThat(factory).isNotNull(); em=factory.createEntityManager();
-        footprints=new ProductionMutationFootprintService(em);
+        footprints=new ProductionMutationFootprintService(em,
+                org.mockito.Mockito.mock(com.uten.imp.application.concurrency.FulfillmentMutationLocks.class));
     }
 
     @AfterAll

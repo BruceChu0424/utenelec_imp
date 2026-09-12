@@ -18,7 +18,6 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
-import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -26,7 +25,8 @@ import '../models/warehouse_iqc_stock_in.dart';
 import '../models/warehouse_quality_result.dart';
 import '../providers/warehouse_quality_result_count_provider.dart';
 import '../repositories/warehouse_quality_result_repository.dart';
-import '../widgets/warehouse_quality_slice_table.dart';
+import '../widgets/warehouse_quality_slice_table.dart'
+    show warehouseQualityDateTime;
 
 /// 品质部检查结果：原「IQC 合格待入库」+「IQC 不合格实物退回」的合并任务中心。
 /// 与预计到货任务中心同款表格工作台——列表按收货单聚合作业状态（等待检查结果 /
@@ -249,7 +249,8 @@ class _WarehouseQualityResultsPageState
         task,
   ];
 
-  /// 多选批量入库：加载所选任务的放行切片，弹统一确认表（可改数量/库位，做部分入库）。
+  /// 多选批量入库（2026-09-12 弹窗改页）：进批量入库页——所选任务的放行切片
+  /// 集中成一张表，可勾选、可改数量/库位，整批同事务提交。
   Future<void> _openBatchStockIn([WarehouseQualityResultTask? single]) async {
     final targets = single == null
         ? _selectedStockInTasks
@@ -267,50 +268,22 @@ class _WarehouseQualityResultsPageState
       );
       return;
     }
-    // 只选中一张时不弹「批量」表——那是一张单据，直接进它自己的详情页办理
+    // 只选中一张时不进批量页——那是一张单据，直接进它自己的详情页办理
     // （用户 2026-09-11：「只选中一个的情况，点击批量入库也应该去到对应的详情页」）。
-    // 详情页信息全、能逐行核对，弹窗是为「跨多张单一次过」才存在的。
+    // 详情页信息全、能逐行核对，批量页是为「跨多张单一次过」才存在的。
     if (targets.length == 1) {
       await _openDetail(targets.single);
       return;
     }
-    final repo = ref.read(warehouseQualityResultRepositoryProvider);
-    final List<WarehouseQualityResultDetail> details;
-    try {
-      // 并行拉取所选任务的放行切片（串行 await 时 N 张单要排 N 个往返，
-      // 弹窗要等全部完成才出现）。
-      final fetched = await Future.wait(
-        targets.map(
-          (task) => repo.detail(task.receiptTypeValue, task.receiptId),
-        ),
-        eagerError: true,
-      );
-      details = [
-        for (final detail in fetched)
-          if (detail.canConfirm) detail,
-      ];
-    } on ApiException catch (error) {
-      if (mounted) context.appError(error.message);
-      return;
-    } catch (_) {
-      if (mounted) context.appError('待入库明细加载失败，请稍后重试');
-      return;
-    }
-    if (details.isEmpty) {
-      await _load(_result?.page ?? 1);
-      if (mounted) {
-        context.appWarning('所选任务当前均不可确认（可能已由同事处理完，或已无待入库明细）');
-      }
-      return;
-    }
-    if (!mounted) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => _BatchStockInDialog(details: details),
+    final done = await context.push<bool>(
+      RouteName.warehouseQualityBatchStockIn,
+      extra: targets,
     );
-    if (confirmed != true || !mounted) return;
-    setState(() => _selectedIds = {});
-    await _load(_result?.page ?? 1);
+    if (!mounted) return;
+    if (done == true) {
+      setState(() => _selectedIds = {});
+      await _load(_result?.page ?? 1);
+    }
   }
 
   /// 双击行 / 右键「查看检查结果」：进入完整详情页（单据信息 + 逐行判定表 +
@@ -664,241 +637,6 @@ class _QualityResultBoundaryBanner extends StatelessWidget {
           '全部不合格（需退回）→ 已完结。合格品由仓库核对实物数量与实际库位后确认入库；'
           '不合格品登记真实退回凭证。本页不显示单价、金额、币种或结算信息。',
           style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
-        ),
-      ),
-    );
-  }
-}
-
-// ———————————————————————— 批量入库弹窗 ————————————————————————
-
-/// 跨收货单批量入库：所有选中任务的放行切片集中成一张表，可勾选、可改数量
-/// （默认全额 =「批量全部入库」，改小即「批量部分入库」）；整批同事务提交。
-class _BatchStockInDialog extends ConsumerStatefulWidget {
-  const _BatchStockInDialog({required this.details});
-
-  final List<WarehouseQualityResultDetail> details;
-
-  @override
-  ConsumerState<_BatchStockInDialog> createState() =>
-      _BatchStockInDialogState();
-}
-
-class _BatchStockInDialogState extends ConsumerState<_BatchStockInDialog> {
-  late final List<WarehouseQualitySliceDraft> _drafts;
-  bool _saving = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _drafts = [
-      for (final detail in widget.details)
-        for (final slice in detail.items)
-          WarehouseQualitySliceDraft(
-            slice,
-            receiptTypeValue: detail.receiptType.apiValue,
-            receiptId: detail.receiptId,
-            receiptNo: detail.billNo,
-          ),
-    ];
-  }
-
-  @override
-  void dispose() {
-    for (final draft in _drafts) {
-      draft.dispose();
-    }
-    super.dispose();
-  }
-
-  List<WarehouseQualitySliceDraft> get _selected =>
-      _drafts.where((draft) => draft.selected).toList();
-
-  Future<void> _submit() async {
-    if (_saving) return;
-    final selected = _selected;
-    if (selected.isEmpty) {
-      setState(() => _error = '请至少勾选一条待入库明细');
-      return;
-    }
-    for (final draft in selected) {
-      final error = draft.validate();
-      if (error != null) {
-        setState(() => _error = error);
-        return;
-      }
-    }
-    // 按收货单分组成批量命令；每张单独立幂等键（服务端按 用户+键 去重）。
-    final byReceipt = <String, List<WarehouseQualitySliceDraft>>{};
-    for (final draft in selected) {
-      byReceipt.putIfAbsent(draft.receiptKey, () => []).add(draft);
-    }
-    final entries = <WarehouseQualityBatchConfirmEntry>[];
-    for (final mapEntry in byReceipt.entries) {
-      final group = mapEntry.value;
-      final items = [
-        for (final draft in group)
-          WarehouseIqcStockInConfirmItem(
-            passEventId: draft.slice.passEventId,
-            baseQty: double.parse(draft.quantity.text.trim()),
-            expectedRemainingBaseQty: draft.slice.remainingBaseQty,
-            place: draft.place.text.trim(),
-          ),
-      ];
-      entries.add(
-        WarehouseQualityBatchConfirmEntry(
-          receiptType: group.first.receiptTypeValue!,
-          receiptId: group.first.receiptId!,
-          idempotencyKey: businessIdempotencyKey(
-            'warehouse-iqc-stock-in',
-            '${mapEntry.key}|${warehouseQualitySliceFingerprint(items)}',
-          ),
-          items: items,
-        ),
-      );
-    }
-    // 2026-09-04 用户口径：本弹窗即唯一确认（表内可改数量/库位），不再叠加
-    // 第二层确认弹窗；成功直接入库不弹结果，只有失败才弹失败结果弹窗。
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-    try {
-      final result = await ref
-          .read(warehouseQualityResultRepositoryProvider)
-          .batchConfirm(WarehouseQualityBatchConfirmCommand(batches: entries));
-      if (!mounted) return;
-      context.appSuccess(
-        '已批量入库 ${result.confirmedReceipts} 张收货单 / '
-        '${result.confirmedItemCount} 条明细，库存已更新',
-      );
-      Navigator.of(context).pop(true);
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      await _showFailureDialog(
-        error.code == 'CONFLICT'
-            ? '${error.message}（整批已回滚，未产生任何入库；请刷新后重新核对）'
-            : error.message,
-      );
-    } catch (_) {
-      if (mounted) {
-        await _showFailureDialog('批量入库失败，请稍后重试');
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  /// 保留原批次、数量和库位。网络结果不明时原请求可安全重试，不能先丢弃表单。
-  Future<void> _showFailureDialog(String message) async {
-    setState(() => _saving = false);
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('批量入库失败'),
-        content: _MessagePanel(
-          message: message,
-          icon: Icons.error_outline_rounded,
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          UtenButton(
-            size: UtenButtonSize.large,
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('知道了'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return AlertDialog(
-      title: Text('批量入库 · ${widget.details.length} 张收货单'),
-      content: SizedBox(
-        width: 980,
-        height: 560,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '默认勾选全部待入库明细并按剩余量全额入库（批量全部入库）；'
-              '可取消勾选或改小数量做批量部分入库。实际库位必填，已按货品建议库位预填。',
-              style: theme.textTheme.bodySmall,
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            Expanded(
-              child: SingleChildScrollView(
-                child: WarehouseQualitySliceTable(
-                  drafts: _drafts,
-                  editable: true,
-                  saving: _saving,
-                  onChanged: () => setState(() {}),
-                  showReceipt: true,
-                ),
-              ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              _MessagePanel(
-                message: _error!,
-                icon: Icons.error_outline_rounded,
-              ),
-            ],
-          ],
-        ),
-      ),
-      actionsAlignment: MainAxisAlignment.center,
-      actions: [
-        TextButton(
-          onPressed: _saving ? null : () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        UtenButton(
-          key: const Key('warehouse-quality-batch-confirm'),
-          // 「点了就往下走一步」的主动作统一红底白字（与详情页「确认入库」、
-          // 编辑页「保存」同色；2026-09-11 全站口径）。
-          type: UtenButtonType.danger,
-          size: UtenButtonSize.large,
-          icon: Icons.move_to_inbox_rounded,
-          isLoading: _saving,
-          onPressed: _saving || _selected.isEmpty ? null : _submit,
-          child: Text('确认批量入库(${_selected.length} 条)'),
-        ),
-      ],
-    );
-  }
-}
-
-// ———————————————————————— 通用小组件 ————————————————————————
-
-class _MessagePanel extends StatelessWidget {
-  const _MessagePanel({required this.message, required this.icon});
-
-  final String message;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Semantics(
-      liveRegion: true,
-      child: Container(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.errorContainer.withValues(alpha: 0.45),
-          borderRadius: UtenRadius.mdAll,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, size: 20, color: theme.colorScheme.error),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(child: Text(message)),
-          ],
         ),
       ),
     );

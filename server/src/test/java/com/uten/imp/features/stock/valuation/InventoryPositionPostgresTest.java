@@ -136,9 +136,26 @@ class InventoryPositionPostgresTest {
 
     @Test void cumulativeTinyValueSplitsKeepTheOriginalBasisRatherThanReaveragingRemainders(){
         PoolKey k=key();PositionValue p=acquire(k,"3","0.0002","0",true,List.of());
-        PositionValue a=move(k,p.positionRootId(),"1",Owner.QUALITY_PASSED);
-        PositionValue b=move(k,p.positionRootId(),"1",Owner.REJECTED_HOLD);
-        PositionValue c=move(k,p.positionRootId(),"1",Owner.QUALITY_PASSED);
+        var jdbc=new ValueWriteProbe(db);var service=new InventoryPositionService(jdbc,mutex,Optional.empty());
+        java.util.function.Function<Owner,PositionValue> take=owner->locked(k,()->service.move(
+                new Move(context(),k,owner,UUID.randomUUID(),List.of(slice(p.positionRootId(),"1")))));
+        PositionValue a=take.apply(Owner.QUALITY_PASSED);
+        assertThat(jdbc.lockedNodeIds).containsExactly(p.positionRootId());
+        UUID firstHead=db.queryForObject("SELECT return_head_id FROM stock_value_nodes WHERE id=?",UUID.class,p.positionRootId());
+        assertThat(firstHead).isNotEqualTo(p.positionRootId());
+        money(db.queryForObject("SELECT range_from FROM stock_value_nodes WHERE id=?",BigDecimal.class,firstHead),"1");
+        jdbc.lockedNodeIds.clear();
+        PositionValue b=take.apply(Owner.REJECTED_HOLD);
+        // Once the head has advanced, lock/read both the immutable root anchor
+        // and its actual current remainder. A previous operation's Node is stale.
+        assertThat(jdbc.lockedNodeIds).containsExactly(p.positionRootId(),firstHead);
+        UUID secondHead=db.queryForObject("SELECT return_head_id FROM stock_value_nodes WHERE id=?",UUID.class,p.positionRootId());
+        assertThat(secondHead).isNotEqualTo(firstHead);
+        money(db.queryForObject("SELECT range_from FROM stock_value_nodes WHERE id=?",BigDecimal.class,secondHead),"2");
+        jdbc.lockedNodeIds.clear();
+        PositionValue c=take.apply(Owner.QUALITY_PASSED);
+        assertThat(jdbc.lockedNodeIds).containsExactly(p.positionRootId(),secondHead);
+        assertThat(jdbc.poolIdentityReads).isZero();
         money(a.knownValueLocal(),"0.0001");money(b.knownValueLocal(),"0");money(c.knownValueLocal(),"0.0001");
         store(k,List.of(slice(a.positionRootId(),"1"),slice(c.positionRootId(),"1")));balance(k,"2","0.0002");
         money(positions.position(p.positionRootId()).remainingQtyBase(),"0");
@@ -285,6 +302,107 @@ class InventoryPositionPostgresTest {
         var after=authorityValues.authority(new ValueReference(two.valueNodeId(),revision));
         assertThat(after.lowerKnownValue().multiply(bd("3"))).isLessThanOrEqualTo(new BigDecimal("1.00010002"));
         assertThat(after.upperKnownValue().multiply(bd("3"))).isGreaterThanOrEqualTo(new BigDecimal("1.00010002"));
+    }
+
+    @Test void completeFactsKeepBothParentBoundsWithoutInitializationRewrites(){
+        PoolKey k=key();var jdbc=new ValueWriteProbe(db);var service=new InventoryValuationService(jdbc,mutex);
+        List<MovementValue> receipts=new ArrayList<>();
+        for(String cost:List.of("1.00010001","2.00020002"))receipts.add(locked(k,()->{
+            EventContext c=context();MovementValue receipt=service.receive(new Receive(c,UUID.randomUUID(),k,bd("3"),qty(k),new BigDecimal(cost),true));
+            physical(receipt,c,k,bd("3"),1);return receipt;
+        }));
+        MovementValue last=receipts.getLast();
+        money(db.queryForObject("SELECT bound_lower FROM stock_value_nodes WHERE id=?",BigDecimal.class,last.poolHeadId()),"3.00030003");
+        money(db.queryForObject("SELECT bound_upper FROM stock_value_nodes WHERE id=?",BigDecimal.class,last.poolHeadId()),"3.00030003");
+        assertThat(jdbc.writes.stream().filter(s->s.startsWith("INSERT INTO stock_value_nodes"))).hasSize(4);
+        assertThat(jdbc.writes.stream().filter(s->s.startsWith("INSERT INTO stock_value_edges"))).hasSize(3);
+        assertThat(jdbc.writes).noneMatch(s->s.startsWith("UPDATE stock_value_nodes SET value_model="));
+        assertThat(jdbc.writes).noneMatch(s->s.startsWith("UPDATE stock_value_edges SET initial_bound_lower="));
+        assertThat(jdbc.writes).noneMatch(s->s.startsWith("UPDATE stock_value_nodes SET initial_bound_lower="));
+        // Both parent contributions are summed in their original order before the
+        // child INSERT; every edge is persisted before the complete Node returns.
+        assertThat(jdbc.nodeAuthorityReads).isZero();
+        jdbc.writes.clear();
+        var adjusted=locked(k,()->service.adjustSource(new SourceAdjustment(context(),receipts.getFirst().valueNodeId(),new BigDecimal("0.00000001"),true)));
+        assertThat(jdbc.writes.stream().filter(s->s.startsWith("INSERT INTO stock_value_node_revisions"))).hasSize(1);
+        assertThat(jdbc.writes.stream().filter(s->s.startsWith("UPDATE stock_value_nodes SET basis_value_local="))).hasSize(1);
+        assertThat(jdbc.writes).noneMatch(s->s.startsWith("UPDATE stock_value_node_revisions"));
+        assertThat(jdbc.writes).noneMatch(s->s.startsWith("UPDATE stock_value_nodes SET source_amount_exact="));
+        drain();
+        money(db.queryForObject("SELECT source_amount_exact FROM stock_value_nodes WHERE id=?",BigDecimal.class,receipts.getFirst().valueNodeId()),"1.00010002");
+        money(db.queryForObject("SELECT bound_lower FROM stock_value_nodes WHERE id=?",BigDecimal.class,last.poolHeadId()),"3.00030004");
+        assertThat(db.queryForObject("SELECT status FROM stock_value_jobs WHERE event_id=?",String.class,adjusted.eventId())).isEqualTo("APPLIED");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void hundredCompleteInputsKeepTinyExactCostsAndLateAdjustmentThroughTheirOriginalEdges(boolean includeAcquisitionSource){
+        PoolKey k=key();List<PositionValue> inputs=new ArrayList<>();
+        for(int i=1;i<=100;i++)inputs.add(acquire(k,"1",BigDecimal.valueOf(i).movePointLeft(9).toPlainString(),"0",true,List.of()));
+        List<Slice> parts=inputs.stream().map(input->slice(input.positionRootId(),"1")).toList();
+        var jdbc=new ValueWriteProbe(db);
+        var service=new InventoryPositionService(jdbc,mutex,Optional.of((id,version)->Optional.ofNullable(proofs.get(id)).filter(p->p.version()==version)));
+        UUID evidence=UUID.randomUUID();
+        proofs.put(evidence,new Evidence(evidence,1,k,bd("100"),bd("100"),new BigDecimal("0.000000003"),true,"TEST_APPROVED_COST",UUID.randomUUID(),1,"a".repeat(64)));
+        var passed=locked(k,()->includeAcquisitionSource
+                ?service.acquire(new Acquire(context(),k,evidence,1,Owner.QUALITY_PASSED,UUID.randomUUID(),parts))
+                :service.move(new Move(context(),k,Owner.QUALITY_PASSED,UUID.randomUUID(),parts)));
+        String initial=includeAcquisitionSource?"0.000005053":"0.00000505";
+        String adjusted=includeAcquisitionSource?"0.000005063":"0.00000506";
+        assertThat(db.queryForObject("SELECT count(*) FROM stock_value_edges WHERE child_node_id=?",Integer.class,passed.positionRootId())).isEqualTo(includeAcquisitionSource?101:100);
+        money(db.queryForObject("SELECT bound_lower FROM stock_value_nodes WHERE id=?",BigDecimal.class,passed.positionRootId()),initial);
+        money(db.queryForObject("SELECT bound_upper FROM stock_value_nodes WHERE id=?",BigDecimal.class,passed.positionRootId()),initial);
+        assertThat(db.queryForObject("SELECT return_head_id FROM stock_value_nodes WHERE id=?",UUID.class,passed.positionRootId())).isEqualTo(passed.positionRootId());
+        assertThat(jdbc.writes).noneMatch(sql->sql.startsWith("UPDATE stock_value_nodes SET initial_bound_lower="));
+        assertThat(jdbc.writes).noneMatch(sql->sql.startsWith("UPDATE stock_value_nodes SET return_head_id=:id"));
+        MovementValue stock=store(k,List.of(slice(passed.positionRootId(),"100")));
+        money(db.queryForObject("SELECT bound_lower FROM stock_value_nodes WHERE id=?",BigDecimal.class,stock.poolHeadId()),initial);
+        // All legacy four-decimal projections are zero; source identity, exact
+        // contributions and subsequent propagation must nevertheless survive.
+        money(stock.knownValueLocal(),"0");
+        adjust(k,inputs.getFirst().fundingSourceNodeId(),"0.00000001");drain();
+        money(db.queryForObject("SELECT bound_lower FROM stock_value_nodes WHERE id=?",BigDecimal.class,stock.poolHeadId()),adjusted);
+        money(db.queryForObject("SELECT bound_upper FROM stock_value_nodes WHERE id=?",BigDecimal.class,stock.poolHeadId()),adjusted);
+    }
+
+    private static final class ValueWriteProbe extends NamedParameterJdbcTemplate {
+        private final List<String> writes=new ArrayList<>();
+        private int nodeAuthorityReads;
+        private int poolIdentityReads;
+        private final List<UUID> lockedNodeIds=new ArrayList<>();
+        private ValueWriteProbe(JdbcTemplate jdbc){super(jdbc);}
+        @Override public int update(String sql,Map<String,?> params){writes.add(sql.replaceAll("\\s+"," ").trim());return super.update(sql,params);}
+        @Override public <T> List<T> query(String sql,Map<String,?> params,org.springframework.jdbc.core.RowMapper<T> mapper){
+            if(sql.startsWith("SELECT n.*,p.warehouse_id,p.goods_id,p.color_id")&&sql.endsWith("FOR UPDATE OF n"))lockedNodeIds.add((UUID)params.get("id"));
+            if(sql.startsWith("SELECT * FROM stock_value_pools WHERE id="))poolIdentityReads++;
+            return super.query(sql,params,mapper);
+        }
+        @Override public List<Map<String,Object>> queryForList(String sql,Map<String,?> params){
+            if(sql.startsWith("SELECT * FROM stock_value_nodes WHERE id="))nodeAuthorityReads++;
+            return super.queryForList(sql,params);
+        }
+    }
+
+    @Test void initializationSnapshotCannotClaimAnUnwrittenHistoricalNodeBound(){
+        PoolKey k=key();EventContext c=context();
+        MovementValue received=locked(k,()->{
+            MovementValue result=values.receive(new Receive(c,UUID.randomUUID(),k,bd("2"),bd("0"),new BigDecimal("1.00000001"),true));
+            physical(result,c,k,bd("2"),1);return result;
+        });
+        var store=new ValueAuthorityStore(new NamedParameterJdbcTemplate(db));
+        // Existing nodes belong to a committed acquisition. A zero-row guarded
+        // UPDATE must fail, never be returned as an apparently written snapshot.
+        assertThatThrownBy(()->locked(k,()->{store.initialSource(received.valueNodeId(),new BigDecimal("99"));return null;}))
+                .isInstanceOf(ApiException.class).hasMessageContaining("本次新建节点");
+        // A derived fact has only an INSERT constructor now. Reusing a historical
+        // identity must fail before the caller can receive a fictitious new bound.
+        assertThatThrownBy(()->locked(k,()->{
+            var pool=values.lockPool(k);var source=values.node(received.valueNodeId(),false);
+            return values.createDerivedNode(received.poolHeadId(),pool,"POOL",null,null,null,null,
+                    bd("2"),bd("0"),bd("2"),bd("99"),0,true,true,received.eventId(),List.of(InventoryValueLedger.whole(source)));
+        })).isInstanceOf(org.springframework.dao.DuplicateKeyException.class);
+        money(db.queryForObject("SELECT source_amount_exact FROM stock_value_nodes WHERE id=?",BigDecimal.class,received.valueNodeId()),"1.00000001");
+        money(db.queryForObject("SELECT bound_lower FROM stock_value_nodes WHERE id=?",BigDecimal.class,received.poolHeadId()),"1.00000001");
     }
 
     @Test void fullUnregisteredConsumptionCanReturnToItsExactIssueButRegisteredCostCannotBeMovedAgain(){

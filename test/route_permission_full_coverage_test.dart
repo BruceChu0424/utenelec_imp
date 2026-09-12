@@ -85,7 +85,7 @@ void _collect(RouteBase base, String parent, List<String> out) {
 /// 页面权限一览.md 表头同数；2026-09-10 实跑核对三处已对齐）。
 /// 断言精确计数：新增路由必须同步改代码守卫 + 本处计数 + 文档数字，
 /// 防止「文档说 180、实际已 190」的静默漂移。
-const _expectedGuardedCount = 181;
+const _expectedGuardedCount = 185;
 const _expectedExemptCount = 19;
 
 void main() {

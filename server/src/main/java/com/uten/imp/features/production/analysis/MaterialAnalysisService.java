@@ -25,6 +25,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -158,7 +159,12 @@ public class MaterialAnalysisService {
             }
         }
         if (analysisId != null) {
-            AnalysisHeader requestedHeader = lockHeader(analysisId);
+            // The verified preview footprint already holds the requested
+            // analysis row and both existing/requested source/warehouse sets.
+            // Read its current CAS under that lock instead of discovering the
+            // same full graph again. refreshLocked still discovers and verifies
+            // the graph after source quantities or warehouse scope are written.
+            AnalysisHeader requestedHeader = headerAfterPrelock(analysisId);
             access.requireWritable(requestedHeader.makerId(), "只能刷新本人负责的物料分析",
                     scopeForAnalysis(requestedHeader));
             if (isCommandReplay(analysisId, "PREVIEW", request.idempotencyKey(), requestHash)) {
@@ -221,7 +227,7 @@ public class MaterialAnalysisService {
             // 「新订单待物料分析」待办（幂等；刷新/重放分支不会走到这里）。
             resolvePendingMaterialAnalysisNotices(normalized);
         } else {
-            AnalysisHeader header = lockHeader(analysisId);
+            AnalysisHeader header = headerAfterPrelock(analysisId);
             access.requireWritable(header.makerId(), "只能刷新本人负责的物料分析",
                     scopeForAnalysis(header));
             previousMakeAnchorRequirements = makeAnchorParentRequirements(analysisId);
@@ -308,7 +314,7 @@ public class MaterialAnalysisService {
                         ORDER BY COALESCE(m.route_confirmed_at,m.created_at) DESC) AS recency
                     FROM production_material_analysis_materials m
                     JOIN production_material_analyses a ON a.id=m.analysis_id
-                    WHERE m.goods_id IN (:goodsIds) AND m.confirmed_route IS NOT NULL
+                    WHERE m.goods_id IN (SELECT unnest(CAST(string_to_array(:goodsIds, ',') AS uuid[]))) AND m.confirmed_route IS NOT NULL
                       AND a.is_deleted=FALSE AND a.status<>'CANCELLED'
                 )
                 SELECT goods_id,color_id,unit_id,MIN(confirmed_route),
@@ -318,7 +324,7 @@ public class MaterialAnalysisService {
                 HAVING COUNT(DISTINCT confirmed_route)=1
                 ORDER BY goods_id,color_id,unit_id
                 """);
-        query.setParameter("goodsIds", goodsIds);
+        query.setParameter("goodsIds", uuidArrayText(goodsIds));
         java.util.Map<String, java.util.List<LastRoutePerGoods>> result = new java.util.LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
             UUID goodsId = (UUID) row[0];
@@ -471,14 +477,21 @@ public class MaterialAnalysisService {
         requireCurrent(header, request.version(), request.fingerprint());
         Set<String> seen = new HashSet<>();
         List<MaterialRow> currentMaterials = loadMaterialRows(analysisId);
+        MaterialGroupIndex materialGroups = MaterialGroupIndex.of(currentMaterials);
         List<RouteDecision> decisions = request.decisions() == null
                 ? List.of() : request.decisions();
         List<SourceLine> routeSources = loadSourceLines(analysisId, false);
+        Map<UUID, String> planningBlocks = planningBlockedReasons(routeSources);
+        Set<UUID> knownSources = routeSources.stream().map(SourceLine::analysisItemId).collect(Collectors.toSet());
         for (RouteDecision decision : decisions) {
-            List<MaterialRow> group = resolveMaterialGroup(currentMaterials, decision);
-            requirePlanningSources(routeSources, group.stream()
-                    .map(MaterialRow::analysisItemId).collect(Collectors.toSet()));
-            String groupKey = group.getFirst().actionGroupKey();
+            MaterialGroup resolved = materialGroups.resolve(decision);
+            List<MaterialRow> group = resolved.materials();
+            for (UUID sourceId : group.stream().map(MaterialRow::analysisItemId).distinct().sorted().toList()) {
+                if (!knownSources.contains(sourceId)) throw conflict("待安排产品已变化，请刷新后重试");
+                String blocked = planningBlocks.get(sourceId);
+                if (blocked != null) throw conflict(blocked);
+            }
+            String groupKey = resolved.key();
             if (!seen.add(groupKey)) throw validation("物料路线操作组重复");
             String route = normalizeRoute(decision.route());
             String reason = normalizeRouteReason(decision.reason());
@@ -495,13 +508,13 @@ public class MaterialAnalysisService {
                               SELECT 1
                               FROM preplan_supply_action_allocations allocation
                               WHERE allocation.action_id = action.id
-                                AND allocation.analysis_material_id IN (:materialIds)
+                                AND allocation.analysis_material_id IN (SELECT unnest(CAST(string_to_array(:materialIds, ',') AS uuid[])))
                           )
                       )
                     """)
                     .setParameter("analysisId", analysisId)
                     .setParameter("groupKey", groupKey)
-                    .setParameter("materialIds", groupMaterialIds)
+                    .setParameter("materialIds", uuidArrayText(groupMaterialIds))
                     .setParameter("route", route)
                     .getSingleResult();
             if (downstream.longValue() > 0) {
@@ -1350,9 +1363,8 @@ public class MaterialAnalysisService {
                 .executeUpdate();
         AvailabilitySnapshot availability = availability(
                 analysisId, header.warehouseId(), nodes, sources);
-        // 2026-09-10 性能：逐节点单行 INSERT…ON CONFLICT（上千节点=上千次往返）改为
-        // 多行 VALUES 分块一条语句提交（upsertNodeSnapshots）；冲突键、列语义与
-        // 「BOM 事实变更即清人工确认」条件（NODE_FACT_CHANGED_CONDITION）不变。
+        // 以单个明确字段类型的行数组分块提交；SQL和绑定数量不随节点数膨胀。
+        // 冲突键、完整字段和「BOM 事实变更即清人工确认」条件保持原语义。
         // 写入前后各取一次已确认节点键，统计本次被清空的人工确认数（返回给刷新响应）。
         Set<String> confirmedBefore = confirmedRouteNodeKeys(analysisId);
         List<NodeSnapshotRow> snapshotRows = new ArrayList<>(nodes.size());
@@ -1418,8 +1430,30 @@ public class MaterialAnalysisService {
             BigDecimal inbound, BigDecimal shortage, LocalDate expectedReadyDate,
             boolean lowerPending) {}
 
-    /** 多行语句每块节点数：27 参数/行，100 行≈2700 参数，远低于 PostgreSQL 65535 上限。 */
-    private static final int NODE_WRITE_CHUNK = 100;
+    /** 每块至多 500 行；快照通过一个明确字段类型的 JSON 参数传递。 */
+    private static final int NODE_WRITE_CHUNK = 500;
+
+    private static final List<String> NODE_STRUCTURE_COLUMNS = List.of(
+            "parent_node_key", "bom_item_id", "goods_id", "color_id", "unit_id", "depth", "path", "per_product_qty",
+            "control_stage", "consumption_basis", "basis_output_qty", "allow_partial_package", "hard_gate", "bom_qty",
+            "parent_per_product_qty", "calculation_mode", "source_suggestion", "active");
+    private static final MaterialSnapshotInput NODE_INPUT = new MaterialSnapshotInput(
+            "id uuid", "analysis_id uuid", "analysis_item_id uuid", "node_key varchar", "parent_node_key varchar",
+            "bom_item_id uuid", "goods_id uuid", "color_id uuid", "unit_id uuid", "depth integer", "path text",
+            "per_product_qty numeric", "required_qty numeric", "available_qty numeric", "reserved_qty numeric",
+            "allocated_available_qty numeric", "safety_stock_qty numeric", "inbound_qty numeric",
+            "allocated_start_qty numeric", "allocated_finish_qty numeric", "allocated_ship_qty numeric", "shortage_qty numeric",
+            "expected_ready_date date", "control_stage varchar", "consumption_basis varchar", "basis_output_qty numeric",
+            "allow_partial_package boolean", "hard_gate boolean", "bom_qty numeric", "parent_per_product_qty numeric",
+            "calculation_mode varchar", "source_suggestion varchar", "lower_level_pending boolean", "active boolean",
+            "created_by uuid", "updated_by uuid");
+    private static final List<String> NODE_INPUT_COLUMNS = NODE_INPUT.columns();
+
+    private static String nodeStructureComparison(String left, String right, boolean distinct) {
+        String leftFields = NODE_STRUCTURE_COLUMNS.stream().map(column -> left + "." + column).collect(Collectors.joining(", "));
+        String rightFields = NODE_STRUCTURE_COLUMNS.stream().map(column -> right + "." + column).collect(Collectors.joining(", "));
+        return "(" + leftFields + ") IS " + (distinct ? "" : "NOT ") + "DISTINCT FROM (" + rightFields + ")";
+    }
 
     /**
      * 节点 upsert「BOM 事实变更即清人工确认」条件，四个路线确认列共用。
@@ -1487,61 +1521,34 @@ public class MaterialAnalysisService {
             + "    route_confirmed_at = " + resetUnlessFactsUnchanged("route_confirmed_at") + ",\n"
             + "    active = TRUE,\n"
             + "    updated_at = now(), updated_by = EXCLUDED.updated_by"
-            + "\nWHERE ("
-            + "production_material_analysis_materials.parent_node_key, production_material_analysis_materials.bom_item_id, production_material_analysis_materials.goods_id"
-            + ", production_material_analysis_materials.color_id, production_material_analysis_materials.unit_id, production_material_analysis_materials.depth"
-            + ", production_material_analysis_materials.path, production_material_analysis_materials.per_product_qty, production_material_analysis_materials.control_stage"
-            + ", production_material_analysis_materials.consumption_basis, production_material_analysis_materials.basis_output_qty, production_material_analysis_materials.allow_partial_package"
-            + ", production_material_analysis_materials.hard_gate, production_material_analysis_materials.bom_qty, production_material_analysis_materials.parent_per_product_qty"
-            + ", production_material_analysis_materials.calculation_mode, production_material_analysis_materials.source_suggestion, production_material_analysis_materials.active"
-            + ") IS DISTINCT FROM ("
-            + "EXCLUDED.parent_node_key, EXCLUDED.bom_item_id, EXCLUDED.goods_id"
-            + ", EXCLUDED.color_id, EXCLUDED.unit_id, EXCLUDED.depth"
-            + ", EXCLUDED.path, EXCLUDED.per_product_qty, EXCLUDED.control_stage"
-            + ", EXCLUDED.consumption_basis, EXCLUDED.basis_output_qty, EXCLUDED.allow_partial_package"
-            + ", EXCLUDED.hard_gate, EXCLUDED.bom_qty, EXCLUDED.parent_per_product_qty"
-            + ", EXCLUDED.calculation_mode, EXCLUDED.source_suggestion, EXCLUDED.active"
-            + ")";
+            + "\nWHERE " + nodeStructureComparison("production_material_analysis_materials", "EXCLUDED", true);
 
-    private static String nodeUpsertRow(int index) {
-        String i = Integer.toString(index);
-        // allocated_available/start/finish/ship 初始恒为 0（权威分配随后覆盖）。
-        return "(:id" + i + ", :analysisId, :analysisItemId" + i + ", :nodeKey" + i
-                + ", :parentNodeKey" + i + ", :bomItemId" + i + ", :goodsId" + i
-                + ", :colorId" + i + ", :unitId" + i + ", :depth" + i + ", :path" + i
-                + ", :perProductQty" + i + ", :requiredQty" + i + ", :availableQty" + i
-                + ", :reservedQty" + i + ", 0, :safetyStockQty" + i + ", :inboundQty" + i
-                + ", 0, 0, 0, :shortageQty" + i + ", :expectedReadyDate" + i
-                + ", :controlStage" + i + ", :consumptionBasis" + i + ", :basisOutputQty" + i
-                + ", :allowPartialPackage" + i + ", :hardGate" + i + ", :bomQty" + i
-                + ", :parentPerProductQty" + i + ", 'EDGE_RULE', :suggestion" + i
-                + ", :lowerPending" + i + ", TRUE, :actorId, :actorId)";
+    private static final String NODE_UPSERT_SQL =
+            "WITH incoming AS MATERIALIZED (SELECT * FROM " + NODE_INPUT.recordset("source") + ")\n"
+            + "INSERT INTO production_material_analysis_materials (" + String.join(", ", NODE_INPUT_COLUMNS) + ")\n"
+            + "SELECT " + NODE_INPUT.selection("incoming") + " FROM incoming WHERE NOT EXISTS (\n"
+            + "SELECT 1 FROM production_material_analysis_materials existing\n"
+            + "WHERE existing.analysis_item_id=incoming.analysis_item_id AND existing.node_key=incoming.node_key\n"
+            + "AND " + nodeStructureComparison("existing", "incoming", false) + ")\n"
+            + "ORDER BY incoming._position\n" + NODE_UPSERT_ON_CONFLICT;
+
+    private static String nodeUpsertSql() { return NODE_UPSERT_SQL; }
+
+    /** Same complete input row as the former VALUES form; exact numeric values never pass through double. */
+    private static Object[] nodeSnapshotValues(UUID analysisId, UUID actorId, NodeSnapshotRow row) {
+        BomNode node = row.node();
+        return new Object[] {
+                UUID.randomUUID(), analysisId, node.analysisItemId(), node.nodeKey(), node.parentNodeKey(),
+                node.bomItemId(), node.goodsId(), node.colorId(), node.unitId(), node.depth(), node.path(),
+                node.perProductQty(), row.required(), row.available(), row.reserved(), BigDecimal.ZERO,
+                node.safetyStock(), row.inbound(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, row.shortage(),
+                row.expectedReadyDate(), node.controlStage(), node.consumptionBasis(), node.basisOutputQty(),
+                node.allowPartialPackage(), node.hardGate(), node.bomQty(), node.parentPerProductQty(),
+                "EDGE_RULE", node.suggestion(), row.lowerPending(), true, actorId, actorId
+        };
     }
 
-    private static String nodeUpsertSql(int rows) {
-        StringBuilder values = new StringBuilder();
-        for (int index = 0; index < rows; index++) {
-            if (index > 0) values.append(",\n");
-            values.append(nodeUpsertRow(index));
-        }
-        return """
-                INSERT INTO production_material_analysis_materials (
-                    id, analysis_id, analysis_item_id, node_key, parent_node_key,
-                    bom_item_id, goods_id, color_id, unit_id, depth, path,
-                    per_product_qty, required_qty, available_qty, reserved_qty,
-                    allocated_available_qty, safety_stock_qty, inbound_qty,
-                    allocated_start_qty, allocated_finish_qty, allocated_ship_qty,
-                    shortage_qty, expected_ready_date,
-                    control_stage, consumption_basis, basis_output_qty,
-                    allow_partial_package, hard_gate, bom_qty,
-                    parent_per_product_qty, calculation_mode,
-                    source_suggestion, lower_level_pending, active,
-                    created_by, updated_by
-                ) VALUES
-                """ + values + "\n" + NODE_UPSERT_ON_CONFLICT;
-    }
-
-    /** 多行 upsert 节点初始快照；同一语句内同键不能重复命中 ON CONFLICT，按键去重后者覆盖。 */
+    /** Deduplicate the same source/path key before one statement; retain the original encounter order. */
     private void upsertNodeSnapshots(UUID analysisId, List<NodeSnapshotRow> rows) {
         Map<String, NodeSnapshotRow> distinct = new LinkedHashMap<>();
         for (NodeSnapshotRow row : rows) {
@@ -1550,47 +1557,11 @@ public class MaterialAnalysisService {
         List<NodeSnapshotRow> ordered = List.copyOf(distinct.values());
         UUID actorId = currentUser.requireId();
         for (int from = 0; from < ordered.size(); from += NODE_WRITE_CHUNK) {
-            List<NodeSnapshotRow> chunk = ordered.subList(
-                    from, Math.min(ordered.size(), from + NODE_WRITE_CHUNK));
-            Query query = em.createNativeQuery(nodeUpsertSql(chunk.size()))
-                    .setParameter("analysisId", analysisId)
-                    .setParameter("actorId", actorId);
-            for (int index = 0; index < chunk.size(); index++) {
-                NodeSnapshotRow row = chunk.get(index);
-                BomNode node = row.node();
-                String i = Integer.toString(index);
-                query.setParameter("id" + i, UUID.randomUUID())
-                        .setParameter("analysisItemId" + i, node.analysisItemId())
-                        .setParameter("nodeKey" + i, node.nodeKey())
-                        .setParameter("parentNodeKey" + i, node.parentNodeKey())
-                        .setParameter("bomItemId" + i, node.bomItemId())
-                        .setParameter("goodsId" + i, node.goodsId())
-                        .setParameter("colorId" + i, node.colorId())
-                        .setParameter("unitId" + i, node.unitId())
-                        .setParameter("depth" + i, node.depth())
-                        .setParameter("path" + i, node.path())
-                        .setParameter("perProductQty" + i, node.perProductQty())
-                        .setParameter("requiredQty" + i, row.required())
-                        .setParameter("availableQty" + i, row.available())
-                        .setParameter("reservedQty" + i, row.reserved())
-                        .setParameter("safetyStockQty" + i, node.safetyStock())
-                        .setParameter("inboundQty" + i, row.inbound())
-                        .setParameter("shortageQty" + i, row.shortage())
-                        .setParameter("expectedReadyDate" + i, row.expectedReadyDate())
-                        .setParameter("controlStage" + i, node.controlStage())
-                        .setParameter("consumptionBasis" + i, node.consumptionBasis())
-                        .setParameter("basisOutputQty" + i, node.basisOutputQty())
-                        .setParameter("allowPartialPackage" + i, node.allowPartialPackage())
-                        .setParameter("hardGate" + i, node.hardGate())
-                        .setParameter("bomQty" + i, node.bomQty())
-                        .setParameter("parentPerProductQty" + i, node.parentPerProductQty())
-                        .setParameter("suggestion" + i, node.suggestion())
-                        .setParameter("lowerPending" + i, row.lowerPending());
-            }
-            query.executeUpdate();
+            List<NodeSnapshotRow> chunk = ordered.subList(from, Math.min(ordered.size(), from + NODE_WRITE_CHUNK));
+            String snapshots = NODE_INPUT.json(chunk, row -> nodeSnapshotValues(analysisId, actorId, row));
+            em.createNativeQuery(NODE_UPSERT_SQL).setParameter("snapshots", snapshots).executeUpdate();
         }
     }
-
 
     /** Reconcile actionable coverage from authoritative downstream lifecycle facts. */
     private void reconcileSupplyActionStatuses(UUID analysisId) {
@@ -2337,6 +2308,7 @@ public class MaterialAnalysisService {
         StageExtension startAllocation = stagePlan.start();
         TimePhasedPool readyByPool = new TimePhasedPool(
                 finishAllocation.remainingPool(), availability.inbound());
+        List<SourceReadyRow> sourceReadyRows = new ArrayList<>(sources.size());
         for (SourceLine source : orderedSources(sources)) {
             BigDecimal demand = source.materialRequirementQty();
             List<BomNode> direct = directBySource.getOrDefault(
@@ -2355,25 +2327,10 @@ public class MaterialAnalysisService {
             readyByPool.consumeIncrementExact(
                     readyFinish, readyByDate, productionGates,
                     source.deliveryDate());
-            em.createNativeQuery("""
-                    UPDATE production_material_analysis_items
-                    SET ready_now_qty=:readyFinish,
-                        ready_start_qty=:readyStart,
-                        ready_finish_qty=:readyFinish,
-                        ready_ship_qty=:readyShip,
-                        ready_by_date_qty=:readyByDate,
-                        updated_at=now(), updated_by=:actorId
-                    WHERE id=:itemId AND analysis_id=:analysisId AND is_deleted=FALSE
-                    """)
-                    .setParameter("readyStart", source.unplannedReadyQty(readyStart))
-                    .setParameter("readyFinish", source.unplannedReadyQty(readyFinish))
-                    .setParameter("readyShip", source.unplannedReadyQty(readyShip))
-                    .setParameter("readyByDate", source.unplannedReadyQty(readyByDate))
-                    .setParameter("actorId", currentUser.requireId())
-                    .setParameter("itemId", source.analysisItemId())
-                    .setParameter("analysisId", analysisId)
-                    .executeUpdate();
+            sourceReadyRows.add(new SourceReadyRow(source.analysisItemId(), source.unplannedReadyQty(readyStart),
+                    source.unplannedReadyQty(readyFinish), source.unplannedReadyQty(readyShip), source.unplannedReadyQty(readyByDate)));
         }
+        updateSourceReadiness(analysisId, sourceReadyRows);
 
         Map<String, NodeAllocation> hardAllocations = projection.hardAllocations();
         Map<String, NodeAllocation> allocations = projection.allocations();
@@ -2424,6 +2381,39 @@ public class MaterialAnalysisService {
     }
 
     /** 权威分配快照写回的一行（按 analysis_item_id + node_key 定位活动节点）。 */
+    private record SourceReadyRow(UUID sourceId, BigDecimal start, BigDecimal finish, BigDecimal ship, BigDecimal byDate) {}
+
+    /** Pool consumption above remains ordered; persistence has no per-source read dependency. */
+    private void updateSourceReadiness(UUID analysisId, List<SourceReadyRow> rows) {
+        UUID actorId = currentUser.requireId();
+        for (int from=0; from<rows.size(); from+=NODE_WRITE_CHUNK) {
+            List<SourceReadyRow> chunk=rows.subList(from,Math.min(rows.size(),from+NODE_WRITE_CHUNK));
+            StringBuilder values=new StringBuilder();
+            for (int index=0; index<chunk.size(); index++) {
+                if(index>0) values.append(",");
+                values.append("(CAST(:analysisId AS uuid),CAST(:source").append(index).append(" AS uuid),CAST(:start").append(index)
+                        .append(" AS numeric),CAST(:finish").append(index).append(" AS numeric),CAST(:ship").append(index)
+                        .append(" AS numeric),CAST(:byDate").append(index).append(" AS numeric))");
+            }
+            Query query=em.createNativeQuery("""
+                    UPDATE production_material_analysis_items source
+                    SET ready_now_qty=snapshot.finish,ready_start_qty=snapshot.start,
+                        ready_finish_qty=snapshot.finish,ready_ship_qty=snapshot.ship,ready_by_date_qty=snapshot.by_date,
+                        updated_at=now(),updated_by=:actorId
+                    FROM (VALUES
+                    """+values+"""
+                    ) snapshot(analysis_id,source_id,start,finish,ship,by_date)
+                    WHERE source.id=snapshot.source_id AND source.analysis_id=snapshot.analysis_id AND source.is_deleted=FALSE
+                    """).setParameter("analysisId",analysisId).setParameter("actorId",actorId);
+            for(int index=0;index<chunk.size();index++) {
+                SourceReadyRow row=chunk.get(index);
+                query.setParameter("source"+index,row.sourceId()).setParameter("start"+index,row.start())
+                        .setParameter("finish"+index,row.finish()).setParameter("ship"+index,row.ship()).setParameter("byDate"+index,row.byDate());
+            }
+            query.executeUpdate();
+        }
+    }
+
     private record NodeAllocationRow(
             UUID analysisItemId, String nodeKey, BigDecimal required, BigDecimal allocated,
             BigDecimal allocatedStart, BigDecimal allocatedFinish, BigDecimal allocatedShip,
@@ -2436,91 +2426,63 @@ public class MaterialAnalysisService {
      * Equal projections need no second physical UPDATE after the initial upsert;
      * identity/endpoint guards still run for that upsert, and the analysis header
      * records refresh time. Every changed quantity or pending flag is written.
+     * The complete identity belongs to each input row: a newly inserted analysis
+     * is not yet present in planner statistics, so a separate analysis-id constant
+     * can incorrectly select a scan of the entire analysis for every block.
      */
+    private static final MaterialSnapshotInput NODE_ALLOCATION_INPUT = new MaterialSnapshotInput(
+            "analysis_id uuid", "analysis_item_id uuid", "node_key varchar", "required_qty numeric", "allocated_qty numeric",
+            "allocated_start_qty numeric", "allocated_finish_qty numeric", "allocated_ship_qty numeric",
+            "shortage_qty numeric", "lower_level_pending boolean", "available_qty numeric", "reserved_qty numeric",
+            "safety_stock_qty numeric", "inbound_qty numeric", "expected_ready_date date");
+
+    private static final String NODE_ALLOCATION_UPDATE_SQL = """
+            UPDATE production_material_analysis_materials AS material
+            SET required_qty = snapshot.required_qty,
+                allocated_available_qty = snapshot.allocated_qty,
+                allocated_start_qty = snapshot.allocated_start_qty,
+                allocated_finish_qty = snapshot.allocated_finish_qty,
+                allocated_ship_qty = snapshot.allocated_ship_qty,
+                shortage_qty = snapshot.shortage_qty,
+                lower_level_pending = snapshot.lower_level_pending,
+                available_qty = snapshot.available_qty,
+                reserved_qty = snapshot.reserved_qty,
+                safety_stock_qty = snapshot.safety_stock_qty,
+                inbound_qty = snapshot.inbound_qty,
+                expected_ready_date = snapshot.expected_ready_date,
+                updated_at = now(), updated_by = :actorId
+            FROM
+            """ + NODE_ALLOCATION_INPUT.recordset("snapshot") + "\n" + """
+            WHERE material.analysis_id = snapshot.analysis_id
+              AND material.analysis_item_id = snapshot.analysis_item_id
+              AND material.node_key = snapshot.node_key
+              AND material.active = TRUE
+              AND (material.required_qty, material.allocated_available_qty,
+                   material.allocated_start_qty, material.allocated_finish_qty,
+                   material.allocated_ship_qty, material.shortage_qty,
+                   material.lower_level_pending, material.available_qty,
+                   material.reserved_qty, material.safety_stock_qty,
+                   material.inbound_qty, material.expected_ready_date)
+                  IS DISTINCT FROM
+                  (snapshot.required_qty, snapshot.allocated_qty,
+                   snapshot.allocated_start_qty, snapshot.allocated_finish_qty,
+                   snapshot.allocated_ship_qty, snapshot.shortage_qty,
+                   snapshot.lower_level_pending, snapshot.available_qty,
+                   snapshot.reserved_qty, snapshot.safety_stock_qty,
+                   snapshot.inbound_qty, snapshot.expected_ready_date)
+            """;
+
     private void updateNodeAllocations(UUID analysisId, List<NodeAllocationRow> rows) {
         UUID actorId = currentUser.requireId();
         for (int from = 0; from < rows.size(); from += NODE_WRITE_CHUNK) {
-            List<NodeAllocationRow> chunk = rows.subList(
-                    from, Math.min(rows.size(), from + NODE_WRITE_CHUNK));
-            StringBuilder values = new StringBuilder();
-            for (int index = 0; index < chunk.size(); index++) {
-                if (index > 0) values.append(",\n");
-                String i = Integer.toString(index);
-                values.append("(CAST(:analysisItemId").append(i).append(" AS uuid)")
-                        .append(", CAST(:nodeKey").append(i).append(" AS varchar)")
-                        .append(", CAST(:required").append(i).append(" AS numeric)")
-                        .append(", CAST(:allocated").append(i).append(" AS numeric)")
-                        .append(", CAST(:allocatedStart").append(i).append(" AS numeric)")
-                        .append(", CAST(:allocatedFinish").append(i).append(" AS numeric)")
-                        .append(", CAST(:allocatedShip").append(i).append(" AS numeric)")
-                        .append(", CAST(:shortage").append(i).append(" AS numeric)")
-                        .append(", CAST(:lowerPending").append(i).append(" AS boolean)")
-                        .append(", CAST(:available").append(i).append(" AS numeric)")
-                        .append(", CAST(:reserved").append(i).append(" AS numeric)")
-                        .append(", CAST(:safety").append(i).append(" AS numeric)")
-                        .append(", CAST(:inbound").append(i).append(" AS numeric)")
-                        .append(", CAST(:expectedDate").append(i).append(" AS date))");
-            }
-            Query query = em.createNativeQuery("""
-                    UPDATE production_material_analysis_materials AS material
-                    SET required_qty = snapshot.required_qty,
-                        allocated_available_qty = snapshot.allocated_qty,
-                        allocated_start_qty = snapshot.allocated_start_qty,
-                        allocated_finish_qty = snapshot.allocated_finish_qty,
-                        allocated_ship_qty = snapshot.allocated_ship_qty,
-                        shortage_qty = snapshot.shortage_qty,
-                        lower_level_pending = snapshot.lower_level_pending,
-                        available_qty = snapshot.available_qty,
-                        reserved_qty = snapshot.reserved_qty,
-                        safety_stock_qty = snapshot.safety_stock_qty,
-                        inbound_qty = snapshot.inbound_qty,
-                        expected_ready_date = snapshot.expected_ready_date,
-                        updated_at = now(), updated_by = :actorId
-                    FROM (VALUES
-                    """ + values + "\n" + """
-                    ) AS snapshot(analysis_item_id, node_key, required_qty, allocated_qty,
-                        allocated_start_qty, allocated_finish_qty, allocated_ship_qty,
-                        shortage_qty, lower_level_pending, available_qty, reserved_qty,
-                        safety_stock_qty, inbound_qty, expected_ready_date)
-                    WHERE material.analysis_id = :analysisId
-                      AND material.analysis_item_id = snapshot.analysis_item_id
-                      AND material.node_key = snapshot.node_key
-                      AND material.active = TRUE
-                      AND (material.required_qty, material.allocated_available_qty,
-                           material.allocated_start_qty, material.allocated_finish_qty,
-                           material.allocated_ship_qty, material.shortage_qty,
-                           material.lower_level_pending, material.available_qty,
-                           material.reserved_qty, material.safety_stock_qty,
-                           material.inbound_qty, material.expected_ready_date)
-                          IS DISTINCT FROM
-                          (snapshot.required_qty, snapshot.allocated_qty,
-                           snapshot.allocated_start_qty, snapshot.allocated_finish_qty,
-                           snapshot.allocated_ship_qty, snapshot.shortage_qty,
-                           snapshot.lower_level_pending, snapshot.available_qty,
-                           snapshot.reserved_qty, snapshot.safety_stock_qty,
-                           snapshot.inbound_qty, snapshot.expected_ready_date)
-                    """)
-                    .setParameter("analysisId", analysisId)
-                    .setParameter("actorId", actorId);
-            for (int index = 0; index < chunk.size(); index++) {
-                NodeAllocationRow row = chunk.get(index);
-                String i = Integer.toString(index);
-                query.setParameter("analysisItemId" + i, row.analysisItemId())
-                        .setParameter("nodeKey" + i, row.nodeKey())
-                        .setParameter("required" + i, row.required())
-                        .setParameter("allocated" + i, row.allocated())
-                        .setParameter("allocatedStart" + i, row.allocatedStart())
-                        .setParameter("allocatedFinish" + i, row.allocatedFinish())
-                        .setParameter("allocatedShip" + i, row.allocatedShip())
-                        .setParameter("shortage" + i, row.shortage())
-                        .setParameter("lowerPending" + i, row.lowerPending())
-                        .setParameter("available" + i, row.available())
-                        .setParameter("reserved" + i, row.reserved())
-                        .setParameter("safety" + i, row.safety())
-                        .setParameter("inbound" + i, row.inbound())
-                        .setParameter("expectedDate" + i, row.expectedReadyDate());
-            }
-            query.executeUpdate();
+            List<NodeAllocationRow> chunk = rows.subList(from, Math.min(rows.size(), from + NODE_WRITE_CHUNK));
+            String snapshots = NODE_ALLOCATION_INPUT.json(chunk, row -> new Object[] {
+                    analysisId, row.analysisItemId(), row.nodeKey(), row.required(), row.allocated(),
+                    row.allocatedStart(), row.allocatedFinish(), row.allocatedShip(), row.shortage(), row.lowerPending(),
+                    row.available(), row.reserved(), row.safety(), row.inbound(), row.expectedReadyDate()
+            });
+            em.createNativeQuery(NODE_ALLOCATION_UPDATE_SQL)
+                    .setParameter("actorId", actorId).setParameter("snapshots", snapshots).executeUpdate();
         }
     }
 
@@ -2564,7 +2526,7 @@ public class MaterialAnalysisService {
                       AND material.active = TRUE AND material.depth = 1
                       AND material.hard_gate = TRUE
                       AND material.control_stage IN (:includedStages)
-                      AND material.goods_id IN (:goodsIds)
+                      AND material.goods_id IN (SELECT unnest(CAST(string_to_array(:goodsIds, ',') AS uuid[])))
                     GROUP BY analysis.id, material.goods_id, material.color_id, material.unit_id
                 ),
                 commitments AS (
@@ -2650,7 +2612,7 @@ public class MaterialAnalysisService {
                 """).setParameter("analysisId", analysisId)
                 .setParameter("warehouseId", warehouseId)
                 .setParameter("includedStages", effectiveStages)
-                .setParameter("goodsIds", goodsIds));
+                .setParameter("goodsIds", uuidArrayText(goodsIds)));
         Map<MaterialDimension, BigDecimal> result = new LinkedHashMap<>();
         for (Object[] row : rows) {
             MaterialDimension dimension = new MaterialDimension(
@@ -4921,6 +4883,11 @@ public class MaterialAnalysisService {
         return List.copyOf(result);
     }
 
+    /** Expanded trees use one typed array parameter, avoiding JDBC's scalar parameter ceiling. */
+    private static String uuidArrayText(Collection<UUID> values) {
+        return values.stream().map(UUID::toString).collect(Collectors.joining(","));
+    }
+
     /** Exact, qualified origin balances grouped by the actual physical warehouse. */
     private Map<WarehouseMaterialDimension, BigDecimal> qualifiedOwnedStock(
             UUID analysisId, Set<String> currentNodeKeys) {
@@ -4941,13 +4908,13 @@ public class MaterialAnalysisService {
                   AND NOT EXISTS(SELECT 1 FROM warehouses child
                       WHERE child.parent_id=warehouse.id AND child.is_deleted=FALSE)
                 WHERE balance.beneficiary_analysis_id=:analysisId AND balance.effective_qty>0
-                  -- Refresh temporarily deactivates the old rows before upserting
-                  -- this exact current BOM. The admitted node keys, not that
-                  -- transient flag, determine which existing source lots apply.
-                  AND (material.analysis_item_id::text||'|'||material.node_key) IN (:nodeKeys)
+                  -- Admission follows this authoritative BOM's composite UUID/path
+                  -- identities even before structural reconciliation is persisted.
+                  AND (material.analysis_item_id::text||'|'||material.node_key)
+                      IN (SELECT unnest(string_to_array(:nodeKeys, ',')))
                   AND fn_preplan_reservation_has_qualified_origin(reservation.id)
                 GROUP BY reservation.warehouse_id,reservation.goods_id,reservation.color_id,material.unit_id
-                """).setParameter("analysisId", analysisId).setParameter("nodeKeys", currentNodeKeys))) {
+                """).setParameter("analysisId", analysisId).setParameter("nodeKeys", String.join(",", currentNodeKeys)))) {
             result.put(new WarehouseMaterialDimension(uuid(row[0]),
                     new MaterialDimension(uuid(row[1]),uuid(row[2]),uuid(row[3]))),decimal(row[4]));
         }
@@ -4995,7 +4962,7 @@ public class MaterialAnalysisService {
                             WHERE balance.stock_reservation_id = r.id
                               AND balance.beneficiary_analysis_id = :analysisId
                               AND (beneficiary.analysis_item_id::text || '|'
-                                   || beneficiary.node_key) IN (:currentNodeKeys)
+                                   || beneficiary.node_key) IN (SELECT unnest(string_to_array(:currentNodeKeys, ',')))
                         ), 0)
                         WHEN r.owner_id = :analysisId
                         THEN r.qty - r.consumed_qty - r.released_qty
@@ -5009,15 +4976,15 @@ public class MaterialAnalysisService {
                       AND r.goods_id = v.goods_id
                       AND r.color_id IS NOT DISTINCT FROM v.color_id
                 ) own ON TRUE
-                WHERE v.goods_id IN (:goodsIds)
+                WHERE v.goods_id IN (SELECT unnest(CAST(string_to_array(:goodsIds, ',') AS uuid[])))
                   AND w.is_deleted = FALSE AND w.is_accountable = TRUE
                   AND (CAST(:warehouseId AS uuid) IS NULL
                        OR fn_warehouse_same_main(v.warehouse_id,CAST(:warehouseId AS uuid))
                        OR v.warehouse_id=ANY(CAST(string_to_array(:qualifiedWarehouses,',') AS uuid[])))
                 ORDER BY v.warehouse_id, v.goods_id, v.color_id NULLS FIRST
                 """)
-                .setParameter("goodsIds", goodsIds)
-                .setParameter("currentNodeKeys", currentNodeKeys)
+                .setParameter("goodsIds", uuidArrayText(goodsIds))
+                .setParameter("currentNodeKeys", String.join(",", currentNodeKeys))
                 .setParameter("analysisId", analysisId)
                 .setParameter("qualifiedWarehouses", qualifiedWarehouseIds)
                 .setParameter("warehouseId", warehouseId));
@@ -5664,7 +5631,7 @@ public class MaterialAnalysisService {
                   ON source_state.route = 'SUBCONTRACT'
                  AND subcontract_application.id = source_state.external_document_id
                 WHERE fn_warehouse_same_main(source_state.warehouse_id,:warehouseId)
-                  AND source_state.goods_id IN (:goodsIds)
+                  AND source_state.goods_id IN (SELECT unnest(CAST(string_to_array(:goodsIds, ',') AS uuid[])))
                   AND source_state.approved_open_qty > 0
                 ORDER BY source_state.warehouse_id, source_state.goods_id,
                          source_state.color_id NULLS FIRST,
@@ -5672,7 +5639,7 @@ public class MaterialAnalysisService {
                          source_state.expected_date NULLS LAST,
                          source_state.source_action_id
                 """).setParameter("warehouseId", warehouseId)
-                .setParameter("goodsIds", goodsIds))) {
+                .setParameter("goodsIds", uuidArrayText(goodsIds)))) {
             MaterialDimension dimension = new MaterialDimension(
                     uuid(row[1]), uuid(row[2]), uuid(row[3]));
             WarehouseMaterialDimension key = new WarehouseMaterialDimension(
@@ -5787,77 +5754,8 @@ public class MaterialAnalysisService {
         Map<MaterialDimension, MaterialRow> materialsByDimension = materials.stream()
                 .collect(Collectors.toMap(MaterialRow::dimension, row -> row,
                         (first, ignored) -> first, LinkedHashMap::new));
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                WITH dimensions AS (
-                    SELECT DISTINCT material.goods_id, material.color_id,
-                           material.unit_id
-                    FROM production_material_analysis_materials material
-                    WHERE material.analysis_id = :analysisId
-                      AND material.active = TRUE
-                      AND material.goods_id IN (:goodsIds)
-                )
-                SELECT dimension.goods_id, dimension.color_id, dimension.unit_id,
-                       w.id, w.code, w.name,
-                       COALESCE(v.on_hand_qty,0), COALESCE(v.reserved_qty,0),
-                       GREATEST(COALESCE(v.available_qty,0),0),
-                       COALESCE(own.own_qty,0),
-                       GREATEST(COALESCE(g.min_qty,0),0),
-                       COALESCE(open_safety.open_qty,0),
-                       (NOT w.is_defective
-                        AND NOT EXISTS(SELECT 1 FROM warehouses child
-                            WHERE child.parent_id=w.id AND child.is_deleted=FALSE)) AS public_allowed, fn_warehouse_main_id(w.id) AS main_warehouse_id
-                FROM dimensions dimension
-                CROSS JOIN warehouses w
-                JOIN goods g ON g.id = dimension.goods_id
-                LEFT JOIN v_stock_available v
-                  ON v.warehouse_id = w.id
-                 AND v.goods_id = dimension.goods_id
-                 AND v.color_id IS NOT DISTINCT FROM dimension.color_id
-                LEFT JOIN LATERAL (
-                    SELECT SUM(CASE
-                        WHEN EXISTS (
-                            SELECT 1
-                            FROM preplan_stock_entitlement_events tracked
-                            WHERE tracked.stock_reservation_id = r.id
-                        ) THEN COALESCE((
-                            SELECT SUM(balance.effective_qty)
-                            FROM v_preplan_stock_entitlement_beneficiary_balance balance
-                            JOIN production_material_analysis_materials beneficiary
-                              ON beneficiary.id =
-                                 balance.beneficiary_analysis_material_id
-                             AND beneficiary.analysis_id =
-                                 balance.beneficiary_analysis_id
-                            WHERE balance.stock_reservation_id = r.id
-                              AND balance.beneficiary_analysis_id = :analysisId
-                              AND beneficiary.active = TRUE
-                        ), 0)
-                        WHEN r.owner_id = :analysisId
-                        THEN r.qty - r.consumed_qty - r.released_qty
-                        ELSE 0
-                    END) AS own_qty
-                    FROM stock_reservations r
-                    WHERE r.is_deleted = FALSE
-                      AND r.status = 0
-                      AND r.owner_type = 'PREPLAN_ANALYSIS'
-                      AND r.warehouse_id = w.id
-                      AND r.goods_id = dimension.goods_id
-                      AND r.color_id IS NOT DISTINCT FROM dimension.color_id
-                ) own ON TRUE
-                LEFT JOIN LATERAL (
-                    SELECT SUM(progress.safety_future_qty)::numeric AS open_qty
-                    FROM preplan_supply_actions action
-                    JOIN v_preplan_buy_action_slice_progress progress
-                      ON progress.action_id = action.id
-                    WHERE action.status <> 'CANCELLED'
-                      AND progress.safety_source_valid = TRUE
-                      AND action.warehouse_id = w.id
-                      AND action.goods_id = dimension.goods_id
-                      AND action.color_id IS NOT DISTINCT FROM dimension.color_id
-                ) open_safety ON TRUE
-                WHERE w.is_deleted = FALSE AND w.is_accountable = TRUE
-                ORDER BY w.code, w.id
-                """).setParameter("goodsIds", goodsIds)
-                .setParameter("analysisId", analysisId));
+        List<Object[]> rows = MaterialAnalysisWarehouseBreakdownReader.read(
+                em, analysisId, uuidArrayText(goodsIds));
         Map<MainWarehouseMaterialDimension, List<com.uten.imp.common.inventory.MainWarehouseStockBudget.Leaf<WarehouseMaterialDimension>>> leaves = new LinkedHashMap<>();
         Map<MainWarehouseMaterialDimension, BigDecimal> safetyByMain = new HashMap<>();
         Map<WarehouseMaterialDimension, WarehouseBreakdown> preliminary = new LinkedHashMap<>();
@@ -5921,10 +5819,10 @@ public class MaterialAnalysisService {
                 FROM preplan_supply_actions action
                 JOIN v_preplan_buy_action_slice_progress progress ON progress.action_id=action.id
                 WHERE action.status<>'CANCELLED' AND progress.safety_source_valid=TRUE
-                  AND progress.safety_future_qty>0 AND action.goods_id IN (:goodsIds)
+                  AND progress.safety_future_qty>0 AND action.goods_id IN (SELECT unnest(CAST(string_to_array(:goodsIds, ',') AS uuid[])))
                   AND fn_warehouse_same_main(action.warehouse_id,:warehouseId)
                 GROUP BY action.goods_id, action.color_id
-                """).setParameter("goodsIds", goodsIds).setParameter("warehouseId", warehouseId))) {
+                """).setParameter("goodsIds", uuidArrayText(goodsIds)).setParameter("warehouseId", warehouseId))) {
             result.put(new StockIdentity(uuid(row[0]), uuid(row[1])), decimal(row[2]));
         }
         return result;
@@ -6144,11 +6042,11 @@ public class MaterialAnalysisService {
                 LEFT JOIN stock_documents stock
                   ON exact.source_receipt_type = 'MAKE'
                  AND stock.id = exact.source_stock_document_id
-                WHERE event.reallocation_id IN (:ids)
+                WHERE event.reallocation_id IN (SELECT unnest(CAST(string_to_array(:ids, ',') AS uuid[])))
                   AND event.event_type IN (
                       'PRIORITY_IN', 'PRIORITY_SATISFIED_IN_PLACE')
                 ORDER BY event.created_at, event.id
-                """).setParameter("ids", reallocationIds));
+                """).setParameter("ids", uuidArrayText(reallocationIds)));
         Map<UUID, List<ReplenishmentRef>> result = new LinkedHashMap<>();
         for (Object[] row : rows) {
             result.computeIfAbsent(uuid(row[0]), ignored -> new ArrayList<>())
@@ -6464,28 +6362,42 @@ public class MaterialAnalysisService {
         return result;
     }
 
-    private List<MaterialRow> resolveMaterialGroup(
-            List<MaterialRow> materials, RouteDecision decision) {
-        if (decision == null || (decision.materialLineId() == null
-                && blankToNull(decision.actionGroupKey()) == null)) {
-            throw validation("物料路线必须提交 actionGroupKey 或代表节点");
-        }
-        String groupKey = blankToNull(decision.actionGroupKey());
-        if (groupKey == null) {
-            MaterialRow representative = materials.stream()
-                    .filter(row -> row.id().equals(decision.materialLineId()))
-                    .findFirst().orElseThrow(() -> validation("物料分析代表节点不存在"));
-            if (!representative.actionable()) {
-                throw validation("该节点当前没有独立需求，不能确认供应路线");
+    record MaterialGroup(String key, List<MaterialRow> materials) {}
+
+    /** One command-local index; a group key's SHA is calculated once per node. */
+    record MaterialGroupIndex(Map<UUID, MaterialRow> byId, Map<UUID, String> keyById,
+                              Map<String, List<MaterialRow>> byKey) {
+        static MaterialGroupIndex of(List<MaterialRow> materials) {
+            Map<UUID, MaterialRow> byId = new LinkedHashMap<>();
+            Map<UUID, String> keys = new HashMap<>();
+            Map<String, List<MaterialRow>> groups = new LinkedHashMap<>();
+            for (MaterialRow row : materials) {
+                byId.put(row.id(), row);
+                if (!row.actionable()) continue;
+                String key = row.actionGroupKey();
+                keys.put(row.id(), key);
+                groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(row);
             }
-            groupKey = representative.actionGroupKey();
+            groups.replaceAll((key, rows) -> List.copyOf(rows));
+            return new MaterialGroupIndex(Map.copyOf(byId), Map.copyOf(keys), Map.copyOf(groups));
         }
-        final String resolved = groupKey;
-        List<MaterialRow> group = materials.stream()
-                .filter(MaterialRow::actionable)
-                .filter(row -> row.actionGroupKey().equals(resolved)).toList();
-        if (group.isEmpty()) throw validation("物料操作组不存在或已过期");
-        return group;
+
+        MaterialGroup resolve(RouteDecision decision) {
+            if (decision == null || (decision.materialLineId() == null
+                    && blankToNull(decision.actionGroupKey()) == null)) {
+                throw validation("物料路线必须提交 actionGroupKey 或代表节点");
+            }
+            String key = blankToNull(decision.actionGroupKey());
+            if (key == null) {
+                MaterialRow row = byId.get(decision.materialLineId());
+                if (row == null) throw validation("物料分析代表节点不存在");
+                if (!row.actionable()) throw validation("该节点当前没有独立需求，不能确认供应路线");
+                key = keyById.get(row.id());
+            }
+            List<MaterialRow> group = byKey.getOrDefault(key, List.of());
+            if (group.isEmpty()) throw validation("物料操作组不存在或已过期");
+            return new MaterialGroup(key, group);
+        }
     }
 
     List<SupplyActionView> supplyActions(UUID analysisId) {
@@ -6716,7 +6628,8 @@ public class MaterialAnalysisService {
     }
 
     static BigDecimal decimal(Object value) {
-        return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString());
+        return value == null ? BigDecimal.ZERO
+                : value instanceof BigDecimal number ? number : new BigDecimal(value.toString());
     }
 
     static String decimalText(BigDecimal value) {

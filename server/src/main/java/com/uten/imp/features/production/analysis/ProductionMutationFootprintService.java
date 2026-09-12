@@ -33,6 +33,7 @@ import java.util.stream.Collectors;
 @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
 public class ProductionMutationFootprintService implements ProductionMutationFootprintPort {
     private final EntityManager em;
+    private final com.uten.imp.application.concurrency.FulfillmentMutationLocks mutationLocks;
 
     @Override
     public FulfillmentMutationLockPlan forStockDocuments(Collection<UUID> rawIds) {
@@ -145,6 +146,13 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
     public FulfillmentMutationLockPlan forAnalyses(Collection<UUID> analysisIds) {
         var result = new Footprint(); ids(analysisIds).forEach(result::analysis);
         expandAnalyses(result); return result.build();
+    }
+
+    @Override
+    public AnalysisStructureScope openAnalysisStructureScope(UUID analysisId) {
+        return MaterialAnalysisStructureScope.open(em, analysisId,
+                () -> readAnalysisStructure(Set.of(analysisId)),
+                () -> mutationLocks.requireCovered(forAnalyses(List.of(analysisId))));
     }
 
     @Override
@@ -316,19 +324,9 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
             result.row("analysis", row); if (row[1]!=null) result.warehouses.add((UUID) row[1]);
             result.sales((UUID) row[4]); result.inventory((UUID) row[5], (UUID) row[6]);
         }
-        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT material.id,material.goods_id,material.color_id,md5(to_jsonb(material)::text)
-                FROM production_material_analysis_materials material
-                WHERE material.analysis_id IN (:ids) AND material.active=TRUE ORDER BY material.id
-                """).setParameter("ids", analyses))) {
-            result.row("material", row); result.inventory((UUID) row[1], (UUID) row[2]);
-        }
-        List<UUID> roots = NativeQueryResults.typedRows(em.createNativeQuery("""
-                SELECT DISTINCT item.goods_id FROM production_material_analysis_items item
-                WHERE item.analysis_id IN (:ids) AND item.is_deleted=FALSE
-                  AND item.source_type NOT IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE')
-                """, UUID.class).setParameter("ids",analyses),UUID.class);
-        addCurrentBom(result,roots);
+        var structure = MaterialAnalysisStructureScope.current(em, analyses);
+        if (structure == null) structure = readAnalysisStructure(analyses);
+        appendStructure(result, structure);
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT DISTINCT reservation.id,reservation.goods_id,reservation.color_id,md5(to_jsonb(reservation)::text),
                        fn_warehouse_main_id(reservation.warehouse_id)
@@ -380,37 +378,71 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
 
     /**
      * Include the current BOM even when its root is BUY: this command may change
-     * that route to MAKE. Lock reachability deduplicates each edge at each depth;
-     * it does not enumerate every repeated BOM path. Business path validation
+     * that route to MAKE. Lock reachability deduplicates goods at each depth;
+     * it does not enumerate every repeated incoming edge. Business path validation
      * and exact quantities stay in MaterialAnalysisService.
+     *
+     * These whole-row hashes are ephemeral Guard equality checks within the
+     * same MANDATORY transaction/connection and fixed schema. Composite output
+     * retains every value and PostgreSQL's null/escaping boundaries without
+     * repeatedly rendering JSON field names. It is not a persisted analysis
+     * fingerprint or schema signature; session formatting must remain fixed.
      */
     private void addCurrentBom(Footprint result, Collection<UUID> roots) {
-        if (roots.isEmpty()) return;
-        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+        for (var row : readCurrentBom(roots)) {
+            result.row("current-bom", row.values()); result.inventory(row.goodsId(), row.colorId());
+        }
+    }
+
+    private MaterialAnalysisStructureScope.Snapshot readAnalysisStructure(Collection<UUID> analyses) {
+        var materials = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT material.id,material.goods_id,material.color_id,md5(material::text)
+                FROM production_material_analysis_materials material
+                WHERE material.analysis_id IN (:ids) AND material.active=TRUE ORDER BY material.id
+                """).setParameter("ids", analyses)).stream().map(MaterialAnalysisStructureScope.Row::from).toList();
+        List<UUID> roots = NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT DISTINCT item.goods_id FROM production_material_analysis_items item
+                WHERE item.analysis_id IN (:ids) AND item.is_deleted=FALSE
+                  AND item.source_type NOT IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE') ORDER BY item.goods_id
+                """, UUID.class).setParameter("ids", analyses), UUID.class);
+        return new MaterialAnalysisStructureScope.Snapshot(roots, materials, readCurrentBom(roots));
+    }
+
+    private static void appendStructure(Footprint result, MaterialAnalysisStructureScope.Snapshot snapshot) {
+        // The complete immutable rows remain in Snapshot for the closing
+        // comparison. Reusing its digest and dimensions also avoids rebuilding
+        // every UUID/string and rehashing the entire tree for each nested plan.
+        result.parts.add("analysis-structure:" + snapshot.fingerprint());
+        result.inventory.addAll(snapshot.inventoryDimensions());
+    }
+
+    private List<MaterialAnalysisStructureScope.Row> readCurrentBom(Collection<UUID> roots) {
+        if (roots.isEmpty()) return List.of();
+        return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 WITH RECURSIVE roots AS (
                     SELECT id AS goods_id FROM goods WHERE id IN (:rootIds)
-                ), expansion AS (
-                    SELECT bom.id,bom.component_goods_id,COALESCE(bom.color_id,goods.color_id) AS color_id,
-                           1 AS depth,md5(to_jsonb(bom)::text) AS snapshot
-                    FROM roots JOIN LATERAL (
-                        SELECT edge.* FROM goods_bom_items edge
-                        WHERE edge.goods_id=roots.goods_id AND edge.is_deleted=FALSE OFFSET 0
-                    ) bom ON TRUE
-                    JOIN goods ON goods.id=bom.component_goods_id AND goods.is_deleted=FALSE
+                ), reachable(goods_id,depth) AS (
+                    SELECT goods_id,0 FROM roots
                     UNION
-                    SELECT bom.id,bom.component_goods_id,COALESCE(bom.color_id,goods.color_id),
-                           parent.depth+1,md5(to_jsonb(bom)::text)
-                    FROM expansion parent JOIN LATERAL (
-                        SELECT edge.* FROM goods_bom_items edge
-                        WHERE edge.goods_id=parent.component_goods_id AND edge.is_deleted=FALSE OFFSET 0
+                    SELECT bom.component_goods_id,parent.depth+1
+                    FROM reachable parent JOIN LATERAL (
+                        SELECT edge.component_goods_id FROM goods_bom_items edge
+                        WHERE edge.goods_id=parent.goods_id AND edge.is_deleted=FALSE OFFSET 0
                     ) bom ON TRUE
                     JOIN goods ON goods.id=bom.component_goods_id AND goods.is_deleted=FALSE
                     WHERE parent.depth<10
+                ), parents AS (
+                    SELECT DISTINCT goods_id FROM reachable WHERE depth<10
                 )
-                SELECT DISTINCT id,component_goods_id,color_id,snapshot FROM expansion ORDER BY id,component_goods_id,color_id
-                """).setParameter("rootIds", roots))) {
-            result.row("current-bom", row); result.inventory((UUID) row[1], (UUID) row[2]);
-        }
+                SELECT DISTINCT bom.id,bom.component_goods_id,
+                       COALESCE(bom.color_id,goods.color_id) AS color_id,md5(bom::text) AS snapshot
+                FROM parents JOIN LATERAL (
+                    SELECT edge.* FROM goods_bom_items edge
+                    WHERE edge.goods_id=parents.goods_id AND edge.is_deleted=FALSE OFFSET 0
+                ) bom ON TRUE
+                JOIN goods ON goods.id=bom.component_goods_id AND goods.is_deleted=FALSE
+                ORDER BY id,component_goods_id,color_id
+                """).setParameter("rootIds", roots)).stream().map(MaterialAnalysisStructureScope.Row::from).toList();
     }
 
     private static List<UUID> ids(Collection<UUID> values) {

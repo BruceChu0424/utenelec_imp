@@ -220,11 +220,24 @@ void main() {
         find.byKey(const Key('warehouse-quality-detail-confirm')),
       );
       await tester.pumpAndSettle();
-      expect(find.text('本分析预定'), findsOneWidget);
-      expect(find.text('数量 4 件'), findsOneWidget);
-      expect(find.text('公共在途已采用'), findsOneWidget);
-      expect(find.text('数量 1 件'), findsOneWidget);
-      expect(find.text('数量 3 件'), findsNothing);
+      // 2026-09-12 确认弹窗改紧凑摘要（用户口径「小点」）：货品行一行
+      // 「品名 + 本次数量 + 去向一句话」；完整去向明细在表格 ⓘ 的
+      // 「查看去向明细」里，不再塞进确认弹窗。
+      final confirmDialog = find.byKey(
+        const Key('warehouse-inbound-allocation-confirm-dialog'),
+      );
+      expect(
+        find.descendant(of: confirmDialog, matching: find.text('本次 5 件')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: confirmDialog,
+          matching: find.text('本分析预定 4 · 公共在途已采用 1'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('数量 4 件'), findsNothing);
       await tester.tap(
         find.byKey(const Key('warehouse-inbound-allocation-confirm')),
       );

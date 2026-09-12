@@ -2,7 +2,6 @@ package com.uten.imp.common.mastercode;
 
 import com.uten.imp.common.web.ApiException;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -12,6 +11,11 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.TestContext;
+import org.springframework.test.context.TestExecutionListeners;
+import org.springframework.test.context.support.AbstractTestExecutionListener;
+import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -26,6 +30,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** PostgreSQL proof for recursive prefix ownership and uniqueness-safe bulk renumbering. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
+// Evict the cached pool together with this class-owned PostgreSQL container.
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@TestExecutionListeners(listeners = CategoryDrivenCodeServicePostgresTest.DatabaseCleanup.class,
+        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 @DataJpaTest(properties = {
         "spring.jpa.hibernate.ddl-auto=none",
         "spring.flyway.enabled=true",
@@ -50,9 +58,10 @@ class CategoryDrivenCodeServicePostgresTest {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @AfterAll
-    static void stopPostgres() {
-        POSTGRES.stop();
+    public static class DatabaseCleanup extends AbstractTestExecutionListener {
+        // Spring invokes afterTestClass in reverse order: close its pool before PostgreSQL.
+        @Override public int getOrder() { return new DirtiesContextTestExecutionListener().getOrder() - 1; }
+        @Override public void afterTestClass(TestContext ignored) { POSTGRES.stop(); }
     }
 
     @Autowired

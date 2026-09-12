@@ -9,6 +9,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.UUID;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -28,6 +29,7 @@ class InventoryMutationLockOwnershipTest {
         query = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(query);
         when(query.setParameter(anyString(), any())).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.of(""));
         locks = new InventoryMutationLock(em);
         TransactionSynchronizationManager.setActualTransactionActive(true);
         TransactionSynchronizationManager.initSynchronization();
@@ -66,8 +68,14 @@ class InventoryMutationLockOwnershipTest {
     }
 
     @Test void failedDatabaseLockAcquisitionNeverRecordsOwnership() {
-        when(query.getSingleResult()).thenThrow(new IllegalStateException("lock failed"));
+        when(query.getResultList()).thenThrow(new IllegalStateException("lock failed"));
         assertThatThrownBy(() -> locks.lock(key)).hasMessage("lock failed");
+        assertThatThrownBy(() -> locks.requireHeld(key)).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test void incompleteDatabaseResultNeverRecordsOwnership() {
+        when(query.getResultList()).thenReturn(List.of());
+        assertThatThrownBy(() -> locks.lock(key)).isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> locks.requireHeld(key)).isInstanceOf(IllegalStateException.class);
     }
 }

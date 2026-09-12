@@ -166,6 +166,22 @@ do_check() {
   fi
 }
 
+# Dumps contain the full business database, including account hashes. Create
+# their directory/file with explicit private modes, independent of systemd's
+# umask. A unique pre-created file also prevents a same-second retry overwriting
+# the previous backup. Release artifacts keep their existing readable modes.
+create_database_backup() {
+  local version=$1 backup_file
+  install -d -m 0700 -- "$UTEN_BACKUP_DIR" || return 1
+  backup_file=$(mktemp -- "$UTEN_BACKUP_DIR/${UTEN_PG_DATABASE}-${version}-$(date +%Y%m%d-%H%M%S).XXXXXX.dump") \
+    || return 1
+  log "数据库有变化：先全量备份 → $backup_file" >&2
+  runuser -u postgres -- pg_dump -Fc -d "$UTEN_PG_DATABASE" > "$backup_file" \
+    || return 1
+  [ -s "$backup_file" ] || return 1
+  printf '%s\n' "$backup_file"
+}
+
 # ------------------------------------------------------------- activate ----
 do_activate() {
   local version=$1 mode=${2:-auto} prev prev_ver code_only backup_file rc
@@ -194,12 +210,8 @@ do_activate() {
   systemctl stop "$UTEN_APP_SERVICE"
 
   if [ "$code_only" = 0 ]; then
-    mkdir -p "$UTEN_BACKUP_DIR"
-    backup_file="$UTEN_BACKUP_DIR/${UTEN_PG_DATABASE}-${version}-$(date +%Y%m%d-%H%M%S).dump"
-    log "数据库有变化：先全量备份 → $backup_file"
-    runuser -u postgres -- pg_dump -Fc -d "$UTEN_PG_DATABASE" > "$backup_file" \
-      || die "pg_dump 失败，中止激活（数据库未改动）"
-    [ -s "$backup_file" ] || die "备份文件为空，中止激活"
+    backup_file=$(create_database_backup "$version") \
+      || die "数据库备份失败或为空，中止激活（数据库未改动）"
     log "运行 migrator（${UTEN_MIGRATOR_ENV}）"
     set -a; . "$UTEN_MIGRATOR_ENV"; set +a
     timeout 900 /usr/bin/java -jar "$RELEASES_DIR/$version/server/uten-imp-migrator.jar" \

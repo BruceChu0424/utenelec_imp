@@ -231,6 +231,11 @@ abstract final class RouteName {
   /// 品质部检查结果（原 IQC 合格待入库 + IQC 不合格实物退回的合并任务中心）。
   static const String warehouseQualityResults = '/warehouse/quality-results';
 
+  /// 待入库多选「批量入库」页（2026-09-12 弹窗改页；extra 带所选任务）。
+  /// 静态段，须先于 :receiptType/:receiptId 声明。
+  static const String warehouseQualityBatchStockIn =
+      '$warehouseQualityResults/batch-stock-in';
+
   /// 品质检查结果详情完整页（列表双击进入；旧 IQC 待入库详情深链重定向至此）。
   static String warehouseQualityResultDetail(
     String receiptType,
@@ -267,6 +272,10 @@ abstract final class RouteName {
   static const String warehouseProductionFinishedInboundTasks =
       '/warehouse/production-finished-in/tasks';
 
+  /// 待点收多选「批量全量点收入库」页（2026-09-12 弹窗改页；extra 带所选任务）。
+  static const String warehouseProductionFinishedBatchStockIn =
+      '/warehouse/production-finished-in/batch-stock-in';
+
   /// 单张生产报工的成品仓/库位登记页；reportId 是不可变报工 UUID。
   static const String warehouseProductionFinishedArrivalRegistrationBase =
       '/warehouse/production-finished-in/arrival-registrations';
@@ -282,6 +291,18 @@ abstract final class RouteName {
   static const String qualityInspectionRecords = '/quality/inspection-records';
   static const String productionFqcInspections =
       '/quality/production-inspections';
+
+  /// FQC 检查单办理页 / 单任务办理页（2026-09-12 弹窗改页，对齐采购 IQC 处置页；
+  /// 挂在待检处置前缀下复用其权限面）。
+  static const String productionFqcSheetHandlingBase =
+      '$warehouseInspections/fqc/sheets';
+  static String productionFqcSheetHandling(String sheetId) =>
+      '$productionFqcSheetHandlingBase/${Uri.encodeComponent(sheetId.trim())}';
+  static const String productionFqcInspectionHandlingBase =
+      '$warehouseInspections/fqc/inspections';
+  static String productionFqcInspectionHandling(String inspectionId) =>
+      '$productionFqcInspectionHandlingBase/'
+      '${Uri.encodeComponent(inspectionId.trim())}';
 
   /// 货架目视化清单（库位号驱动的挂牌打印/导出；静态段，须先于 /warehouse/:code）。
   static const String warehouseShelfLabels = '/warehouse/shelf-labels';

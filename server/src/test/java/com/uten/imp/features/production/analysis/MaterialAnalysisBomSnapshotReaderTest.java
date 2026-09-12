@@ -36,7 +36,7 @@ class MaterialAnalysisBomSnapshotReaderTest {
         var result = new MaterialAnalysisBomSnapshotReader(em).read(sources);
 
         verify(em, times(2)).createNativeQuery(anyString());
-        verify(validation).setParameter("goodsIds", List.of(goods));
+        verify(validation).setParameter("goodsIds", goods.toString());
         verify(tree).setParameter("source0", sources.getFirst().analysisItemId());
         verify(tree).setParameter("source499", sources.getLast().analysisItemId());
         verify(tree).setParameter("rate499", new BigDecimal("500"));

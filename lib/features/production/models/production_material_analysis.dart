@@ -615,45 +615,124 @@ class ProductionMaterialAnalysisView {
       .where((item) => item.shortageQty > 0)
       .every((item) => item.routeConfirmed && item.confirmedRoute != null);
 
-  factory ProductionMaterialAnalysisView.fromJson(Map<String, dynamic> json) =>
-      ProductionMaterialAnalysisView(
-        analysisId: _string(json['analysisId'] ?? json['id']) ?? '',
-        status: _string(json['status']),
-        version: _int(json['version']) ?? 0,
-        fingerprint: _string(json['fingerprint']) ?? '',
-        warehouseId: _string(json['warehouseId']),
-        warehouseIds: _stringList(json['warehouseIds']),
-        analyzedAt: _string(
-          json['analyzedAt'] ?? json['calculatedAt'] ?? json['updatedAt'],
-        ),
-        products: _mapList(
-          json['products'],
-          ProductionMaterialAnalysisProduct.fromJson,
-        ),
-        materials: _mapList(
-          json['flatMaterials'] ?? json['materials'],
-          ProductionMaterialAnalysisMaterial.fromJson,
-        ),
-        warehouses: _mapList(
-          json['warehouses'],
-          ProductionMaterialAnalysisWarehouse.fromJson,
-        ),
-        supplyActions: _mapList(
-          json['supplyActions'],
-          MaterialAnalysisSupplyAction.fromJson,
-        ),
-        allowedActions: _stringList(json['allowedActions']).toSet(),
-        fqcReplenishmentOnly: json['fqcReplenishmentOnly'] == true,
-        fqcRecoveryAuthorizationId: _string(json['fqcRecoveryAuthorizationId']),
-        routeResetCount: _int(json['routeResetCount']) ?? 0,
-        planningBlockedReasons: {
-          if (json['planningBlockedReasons']
-              case final Map<Object?, Object?> reasons)
-            for (final entry in reasons.entries)
-              if (_string(entry.value) case final String reason)
-                entry.key.toString(): reason,
-        },
+  factory ProductionMaterialAnalysisView.fromJson(Map<String, dynamic> json) {
+    final shared = _sharedWarehouseStocks(json);
+    final rawMaterials = json['flatMaterials'] ?? json['materials'];
+    if (shared != null &&
+        (rawMaterials is! List || rawMaterials.any((row) => row is! Map))) {
+      throw const FormatException('物料分析节点快照不完整');
+    }
+    ProductionMaterialAnalysisMaterial material(Map<String, dynamic> row) {
+      if (shared == null) {
+        return ProductionMaterialAnalysisMaterial.fromJson(row);
+      }
+      final stocks = shared[row['materialKey']];
+      if (stocks == null) {
+        throw const FormatException('物料分析缺少对应维度的仓库快照');
+      }
+      return ProductionMaterialAnalysisMaterial.fromJson(
+        row,
+        warehouseStocks: stocks,
       );
+    }
+
+    return ProductionMaterialAnalysisView(
+      analysisId: _string(json['analysisId'] ?? json['id']) ?? '',
+      status: _string(json['status']),
+      version: _int(json['version']) ?? 0,
+      fingerprint: _string(json['fingerprint']) ?? '',
+      warehouseId: _string(json['warehouseId']),
+      warehouseIds: _stringList(json['warehouseIds']),
+      analyzedAt: _string(
+        json['analyzedAt'] ?? json['calculatedAt'] ?? json['updatedAt'],
+      ),
+      products: _mapList(
+        json['products'],
+        ProductionMaterialAnalysisProduct.fromJson,
+      ),
+      materials: _mapList(rawMaterials, material),
+      warehouses: _mapList(
+        json['warehouses'],
+        ProductionMaterialAnalysisWarehouse.fromJson,
+      ),
+      supplyActions: _mapList(
+        json['supplyActions'],
+        MaterialAnalysisSupplyAction.fromJson,
+      ),
+      allowedActions: _stringList(json['allowedActions']).toSet(),
+      fqcReplenishmentOnly: json['fqcReplenishmentOnly'] == true,
+      fqcRecoveryAuthorizationId: _string(json['fqcRecoveryAuthorizationId']),
+      routeResetCount: _int(json['routeResetCount']) ?? 0,
+      planningBlockedReasons: {
+        if (json['planningBlockedReasons']
+            case final Map<Object?, Object?> reasons)
+          for (final entry in reasons.entries)
+            if (_string(entry.value) case final String reason)
+              entry.key.toString(): reason,
+      },
+    );
+  }
+}
+
+/// The optional wire format preserves all warehouse facts, including zero stock.
+/// Decode a dimension once per response and share its immutable list across BOM
+/// paths. The old inline representation remains valid when no version is sent.
+Map<String, List<MaterialWarehouseStock>>? _sharedWarehouseStocks(
+  Map<String, dynamic> json,
+) {
+  final version = json['projection'];
+  if (version == null) {
+    if (json.containsKey('warehouseBreakdownsByMaterialKey')) {
+      throw const FormatException('物料分析共享快照缺少格式版本');
+    }
+    return null;
+  }
+  if (version != 'shared-warehouses-v1') {
+    throw const FormatException('不支持的物料分析快照格式');
+  }
+  final raw = json['warehouseBreakdownsByMaterialKey'];
+  if (raw is! Map) {
+    throw const FormatException('物料分析仓库快照不完整');
+  }
+  final result = <String, List<MaterialWarehouseStock>>{};
+  for (final entry in raw.entries) {
+    final key = entry.key;
+    final rows = entry.value;
+    if (key is! String || key.isEmpty || rows is! List) {
+      throw const FormatException('物料分析仓库快照维度无效');
+    }
+    final warehouseIds = <String>{};
+    for (final row in rows) {
+      if (row is! Map ||
+          row['warehouseId'] is! String ||
+          (row['warehouseId'] as String).trim().isEmpty ||
+          !warehouseIds.add(row['warehouseId'] as String)) {
+        throw const FormatException('物料分析仓库快照身份无效或重复');
+      }
+      for (final field in const [
+        'onHandQty',
+        'reservedQty',
+        'availableQty',
+        'ownPeggedQty',
+        'publicAvailableQty',
+        'openSafetySupplyQty',
+        'safetyReplenishmentGapQty',
+        'publicSurplusApprovedInboundQty',
+        'publicSurplusRemainingQty',
+      ]) {
+        final quantity = _double(row[field]);
+        if (quantity == null || !quantity.isFinite) {
+          throw const FormatException('物料分析仓库快照数量缺失或无效');
+        }
+      }
+    }
+    final stocks = _mapList(rows, MaterialWarehouseStock.fromJson);
+    if (stocks.length != rows.length) {
+      throw const FormatException('物料分析仓库快照明细无效');
+    }
+    result[key] = List.unmodifiable(stocks);
+  }
+  return result;
 }
 
 class ProductionMaterialAnalysisProduct {
@@ -1145,8 +1224,9 @@ class ProductionMaterialAnalysisMaterial {
       : requirementState ?? MaterialRequirementState.inactive;
 
   factory ProductionMaterialAnalysisMaterial.fromJson(
-    Map<String, dynamic> json,
-  ) => ProductionMaterialAnalysisMaterial(
+    Map<String, dynamic> json, {
+    List<MaterialWarehouseStock>? warehouseStocks,
+  }) => ProductionMaterialAnalysisMaterial(
     materialLineId: _string(json['materialLineId'] ?? json['id']) ?? '',
     nodeRole: _string(json['nodeRole']) ?? 'BOM_COMPONENT',
     analysisLineId: _string(json['analysisLineId']),
@@ -1238,10 +1318,9 @@ class ProductionMaterialAnalysisMaterial {
       json['crossReallocationRefs'],
       MaterialCrossReallocationRef.fromJson,
     ),
-    warehouseStocks: _mapList(
-      json['warehouseBreakdown'],
-      MaterialWarehouseStock.fromJson,
-    ),
+    warehouseStocks:
+        warehouseStocks ??
+        _mapList(json['warehouseBreakdown'], MaterialWarehouseStock.fromJson),
     actionable:
         _boolOrNull(json['actionable']) ?? ((_int(json['level']) ?? 0) == 1),
   );

@@ -8,6 +8,7 @@ import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_iqc_stock_in.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_quality_result.dart';
+import 'package:uten_imp/features/warehouse/pages/warehouse_quality_batch_stock_in_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_quality_results_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_iqc_stock_in_repository.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_quality_result_repository.dart';
@@ -235,7 +236,7 @@ void main() {
     ]);
     final preferences = await SharedPreferences.getInstance();
     await tester.pumpWidget(
-      _app(const WarehouseQualityResultsPage(), gateway, preferences),
+      _app(null, gateway, preferences, router: _routerWithBatchPage()),
     );
     await tester.pumpAndSettle();
 
@@ -258,7 +259,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 批量弹窗：改库位 + 改小数量（部分入库），提交。
+    // 2026-09-12 弹窗改页：批量入库是独立页（不再是 980x560 大弹窗）。
+    expect(find.byType(WarehouseQualityBatchStockInPage), findsOneWidget);
+    // 页内：改库位 + 改小数量（部分入库），提交。
     expect(find.textContaining('批量入库'), findsWidgets);
     await tester.enterText(
       find.byKey(const Key('quality-slice-qty-pass-1')),
@@ -271,8 +274,9 @@ void main() {
     await tester.tap(find.byKey(const Key('warehouse-quality-batch-confirm')));
     await tester.pumpAndSettle();
 
-    // 2026-09-04 用户口径：批量表明细表即唯一确认——不再叠加第二层确认弹窗，
-    // 成功直接入库、不弹结果弹窗（成功反馈走全局通知服务，测试宿主不挂载）。
+    // 2026-09-04 用户口径（随弹窗改页保留）：表内可改数量/库位，本页即唯一
+    // 确认——不再叠加第二层确认弹窗；成功直接入库不弹结果（成功反馈走全局
+    // 通知服务，测试宿主不挂载）。
     expect(
       find.byKey(const Key('warehouse-inbound-allocation-confirm')),
       findsNothing,
@@ -281,11 +285,8 @@ void main() {
       find.byKey(const Key('warehouse-inbound-allocation-result-dialog')),
       findsNothing,
     );
-    // 批量弹窗已随成功提交关闭。
-    expect(
-      find.byKey(const Key('warehouse-quality-batch-confirm')),
-      findsNothing,
-    );
+    // 批量页已随成功提交关闭并回到列表。
+    expect(find.byType(WarehouseQualityBatchStockInPage), findsNothing);
 
     final command = gateway.lastBatchCommand;
     expect(command, isNotNull);
@@ -325,7 +326,7 @@ void main() {
     ])..failNextBatch = true;
     final preferences = await SharedPreferences.getInstance();
     await tester.pumpWidget(
-      _app(const WarehouseQualityResultsPage(), gateway, preferences),
+      _app(null, gateway, preferences, router: _routerWithBatchPage()),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('采购收货'));
@@ -357,6 +358,7 @@ void main() {
         .toList();
     await tester.tap(find.text('知道了'));
     await tester.pumpAndSettle();
+    // 失败后批量页保留：输入与幂等键原样，供原请求重试。
     expect(
       find.byKey(const Key('warehouse-quality-batch-confirm')),
       findsOneWidget,
@@ -429,6 +431,27 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
+
+/// 列表 + 批量入库页共用路由壳（2026-09-12 批量入库弹窗改页）。
+GoRouter _routerWithBatchPage() => GoRouter(
+  initialLocation: '/warehouse/quality-results',
+  routes: [
+    GoRoute(
+      path: '/warehouse/quality-results',
+      builder: (_, _) => const WarehouseQualityResultsPage(),
+    ),
+    GoRoute(
+      path: '/warehouse/quality-results/batch-stock-in',
+      builder: (_, state) =>
+          WarehouseQualityBatchStockInPage(targets: _batchTargetsOf(state)),
+    ),
+  ],
+);
+
+List<WarehouseQualityResultTask> _batchTargetsOf(GoRouterState state) =>
+    state.extra is List<WarehouseQualityResultTask>
+    ? state.extra! as List<WarehouseQualityResultTask>
+    : const [];
 
 /// [router] 非空时用它建壳（需要真实导航的用例传；其余仍用最轻的 MaterialApp）。
 Widget _app(

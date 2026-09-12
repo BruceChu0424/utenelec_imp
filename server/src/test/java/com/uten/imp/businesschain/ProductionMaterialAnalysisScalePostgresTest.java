@@ -45,12 +45,28 @@ import org.testcontainers.containers.PostgreSQLContainer;
         "spring.profiles.active=dev", "uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false", "uten.policy-intelligence.enabled=false",
         "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=false"})
-@AutoConfigureMockMvc
+// Default failure-only printing still eagerly formats and retains every large
+// successful response. Measure real MockMvc bytes without that test-only copy.
+@AutoConfigureMockMvc(print = org.springframework.boot.test.autoconfigure.web.servlet.MockMvcPrint.NONE)
 @Import(ProductionJdbcMeasurement.Configuration.class)
 class ProductionMaterialAnalysisScalePostgresTest {
-    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
-            .withDatabaseName("uten_production_scale").withUsername("uten_test").withPassword(UUID.randomUUID().toString());
+    private static final PostgreSQLContainer<?> POSTGRES = configuredDatabase();
     private static final String TEST_SECRET = UUID.randomUUID() + "-" + UUID.randomUUID();
+
+    private static PostgreSQLContainer<?> configuredDatabase() {
+        var database = new PostgreSQLContainer<>("postgres:16-alpine")
+                .withDatabaseName("uten_production_scale").withUsername("uten_test").withPassword(UUID.randomUUID().toString());
+        if ("company".equals(System.getenv("UTEN_PRODUCTION_STRESS_DATABASE_PROFILE"))) {
+            // Explicit isolated capacity profile; ordinary CI keeps its small
+            // database. These are read-only verified company-server settings.
+            database.withSharedMemorySize(1024L * 1024 * 1024).withCommand("postgres",
+                    "-c", "shared_buffers=4GB", "-c", "work_mem=32MB",
+                    "-c", "effective_cache_size=12GB", "-c", "max_connections=200",
+                    "-c", "fsync=on", "-c", "synchronous_commit=on", "-c", "full_page_writes=on",
+                    "-c", "wal_buffers=16MB", "-c", "default_statistics_target=100");
+        }
+        return database;
+    }
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) throws java.io.IOException {
@@ -77,6 +93,8 @@ class ProductionMaterialAnalysisScalePostgresTest {
     @Autowired ObjectMapper json;
     @Autowired MockMvc http;
     @Autowired javax.sql.DataSource dataSource;
+    @Autowired jakarta.persistence.EntityManager em;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
     private ProductionChainDataFactory factory;
     private int historyRows;
 
@@ -149,6 +167,189 @@ class ProductionMaterialAnalysisScalePostgresTest {
 
     @Test
     @EnabledIfEnvironmentVariable(named = "UTEN_RUN_PRODUCTION_STRESS", matches = "(?i)true")
+    void hundredSourcesCompareFootprintHashRepresentations() throws Exception {
+        var scenario = factory.sharedTree("hash-compare-" + suffix(), 100);
+        factory.terminalAnalysisMetadata(scenario, 20_000);
+        factory.historicalBomMasters(scenario, 20_000);
+        historyRows = 20_000;
+        for (String table : List.of("production_material_analyses", "production_material_analysis_items", "goods_bom_items", "goods")) {
+            jdbc.execute("ANALYZE " + table);
+        }
+        factory.login(scenario);
+        var view = measured("SERVICE", "analysis.preview.initial", 100,
+                () -> analysis.preview(request(scenario, null, "hash-preview-" + suffix())));
+        assertInitialDemand(scenario, view);
+    }
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "UTEN_RUN_PRODUCTION_STRESS", matches = "(?i)true")
+    void hundredSourcesProfileNodeInsertBatches() throws Exception {
+        var scenario = factory.sharedTree("insert-profile-" + suffix(), 100);
+        factory.historicalBomMasters(scenario, 20_000);
+        jdbc.execute("ANALYZE goods_bom_items"); jdbc.execute("ANALYZE goods");
+        var view = analysis.preview(request(scenario, null, "insert-profile-" + suffix()));
+        var rows = jdbc.queryForList("""
+                SELECT * FROM production_material_analysis_materials
+                WHERE analysis_id=? AND node_role='BOM_COMPONENT' ORDER BY analysis_item_id,depth,node_key LIMIT 1000
+                """, view.analysisId());
+        assertEquals(1000, rows.size());
+        String ids = rows.stream().map(row -> row.get("id").toString()).collect(java.util.stream.Collectors.joining(","));
+        boolean noOp = Boolean.getBoolean("uten.production.profileNodeNoop");
+        for (int sampleIndex : java.util.stream.IntStream.range(0, noOp ? 5 : 1).toArray()) {
+        for (int batch : sampleIndex % 2 == 0 ? List.of(100, 500, 1000) : List.of(1000, 500, 100)) {
+            new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                beans.getBean(com.uten.imp.security.TxSessionVars.class).bind();
+                // Only this private fixture's unreferenced component snapshots
+                // are replaced. Every statement, audit and constraint is real;
+                // the transaction always rolls back to the identical baseline.
+                if (!noOp) assertEquals(1000, em.createNativeQuery("""
+                        DELETE FROM production_material_analysis_materials
+                        WHERE analysis_id=:analysis AND id IN (SELECT unnest(CAST(string_to_array(:ids, ',') AS uuid[])))
+                        """).setParameter("analysis", view.analysisId()).setParameter("ids", ids).executeUpdate());
+                var sample = ProductionJdbcMeasurement.begin();
+                long started = System.nanoTime();
+                var timings = new LinkedHashMap<String, Double>();
+                double executionMillis = 0;
+                try {
+                    for (int offset = 0; offset < rows.size(); offset += batch) {
+                        int count = Math.min(batch, rows.size() - offset);
+                        String sql = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                                MaterialAnalysisService.class, "nodeUpsertSql");
+                        var query = em.createNativeQuery("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) " + sql)
+                                .setParameter("snapshots", MaterialNodeUpsertProbe.snapshots(view.analysisId(),
+                                        scenario.world().superAdminUserId(), rows.subList(offset, offset + count)));
+                        var plan = json.readTree(query.getSingleResult().toString()).get(0);
+                        if (noOp) {
+                            assertEquals(0,plan.path("Plan").path("Tuples Inserted").asLong(-1));
+                            assertEquals(0,plan.path("Plan").path("Conflicting Tuples").asLong(-1));
+                        }
+                        executionMillis += plan.path("Execution Time").asDouble();
+                        for (var trigger : plan.path("Triggers")) {
+                            timings.merge(trigger.path("Trigger Name").asText(), trigger.path("Time").asDouble(), Double::sum);
+                        }
+                    }
+                    double statementsMillis = (System.nanoTime() - started) / 1_000_000.0;
+                    long constraintsStarted = System.nanoTime();
+                    em.createNativeQuery("SET CONSTRAINTS ALL IMMEDIATE").executeUpdate();
+                    emit(Map.of("event", noOp ? "node-upsert-noop-profile" : "node-upsert-trigger-profile", "sample",sampleIndex,
+                            "rows", rows.size(), "batchRows", batch,
+                            "statementMillis", statementsMillis, "databaseExecutionMillis", executionMillis, "triggerMillis", timings,
+                            "deferredConstraintMillis", (System.nanoTime() - constraintsStarted) / 1_000_000.0,
+                            "maxPreparedParameterIndex", sample.maxPreparedParameterIndex));
+                    assertEquals(1, sample.maxPreparedParameterIndex, "Typed snapshot cardinality must not expand the JDBC parameter count");
+                } catch (Exception failure) { throw new IllegalStateException(failure); }
+                finally { ProductionJdbcMeasurement.end(); status.setRollbackOnly(); }
+            });
+        }
+        }
+        assertEquals(9800, jdbc.queryForObject("SELECT count(*) FROM production_material_analysis_materials WHERE analysis_id=?",
+                Integer.class, view.analysisId()), "Every profiling mutation must have rolled back");
+    }
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "UTEN_RUN_PRODUCTION_STRESS", matches = "(?i)true")
+    void hundredAndMaximumSourcesBulkPurchaseAndSubcontractNotifications() throws Exception {
+        historyRows=integerEnv("UTEN_PRODUCTION_STRESS_HISTORY_ROWS",20_000,20_000,500_000);
+        boolean historySeeded=false;
+        for (String sizeText : System.getenv().getOrDefault("UTEN_PRODUCTION_STRESS_SIZES", "100,500").split(",")) {
+            int size=Integer.parseInt(sizeText.trim());
+            assertTrue(size==100 || size==500);
+            var scenario=factory.sharedTree("notify-scale-"+size+"-"+suffix(),size);
+            if (!historySeeded) {
+                factory.terminalAnalysisMetadata(scenario,historyRows);
+                factory.historicalBomMasters(scenario,historyRows);
+                historySeeded=true;
+            }
+            for (String table:List.of("production_material_analyses","production_material_analysis_items","goods_bom_items","goods")) {
+                jdbc.execute("ANALYZE "+table);
+            }
+            measureBulkSupplyNotifications(scenario,size);
+        }
+    }
+
+    @Test
+    void twoSourcesPurchaseSubcontractAndPreparationNotificationsKeepPhysicalFactsAndReplay() throws Exception {
+        measureBulkSupplyNotifications(factory.sharedTree("notify-small-"+suffix(),2),2);
+    }
+
+    private void measureBulkSupplyNotifications(ProductionChainDataFactory.Scenario scenario,int size) throws Exception {
+        factory.login(scenario);
+        AnalysisView view=measured("SERVICE","supply.analysis.preview.initial",size,
+                ()->analysis.preview(request(scenario,null,"notify-preview-"+suffix())));
+        assertInitialDemand(scenario,view);
+        Map<String,Object> scale = new LinkedHashMap<>();
+        scale.put("event","supply-scale"); scale.put("products",size);
+        scale.put("initialMaterialRows",view.flatMaterials().size()); scale.put("historicalRows",historyRows);
+        scale.put("maxHeapBytes",Runtime.getRuntime().maxMemory());
+        scale.put("migrationHead",jdbc.queryForObject("select max(version::int) from flyway_schema_history where success",Integer.class));
+        scale.put("successfulMigrations",jdbc.queryForObject("select count(*) from flyway_schema_history where success and type='SQL'",Integer.class));
+        scale.put("jit",jdbc.queryForObject("SHOW jit",String.class));
+        scale.put("databaseProfile",System.getenv().getOrDefault("UTEN_PRODUCTION_STRESS_DATABASE_PROFILE","test-default"));
+        scale.put("databaseSettings",databaseSettings());
+        scale.put("concurrentLoad",System.getProperty("uten.production.concurrentLoad","unspecified"));
+        emit(scale);
+        List<RouteDecision> roots=view.flatMaterials().stream().filter(row->row.level()==0)
+                .map(row->new RouteDecision(null,row.actionGroupKey(),"MAKE",null)).toList();
+        view=analysis.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"notify-roots-"+suffix(),roots));
+        for (String mode:List.of("BUY","SUBCONTRACT","SUBCONTRACT_PREPARATION")) {
+            String route=mode.equals("BUY")?"BUY":"SUBCONTRACT";
+            var parents=view.flatMaterials().stream().filter(row->row.parentNodeKey()!=null)
+                    .map(row->row.analysisLineId()+"|"+row.parentNodeKey()).collect(java.util.stream.Collectors.toSet());
+            var groups=new LinkedHashMap<String,MaterialView>();
+            for (MaterialView row:view.flatMaterials()) {
+                boolean preparation=parents.contains(row.analysisLineId()+"|"+row.nodeKey());
+                if (row.actionable() && route.equals(row.sourceSuggestion()) && row.shortageQty().signum()>0
+                        && (route.equals("BUY") || preparation==mode.equals("SUBCONTRACT_PREPARATION"))) {
+                    groups.putIfAbsent(row.actionGroupKey(),row);
+                }
+            }
+            List<String> selected=groups.keySet().stream().limit(500).toList();
+            var selectedSet=java.util.Set.copyOf(selected);
+            assertTrue(selected.size()>=Math.min(size,100),"The notification must remain a real bulk command");
+            List<RouteDecision> decisions=selected.stream().map(key->new RouteDecision(null,key,route,null)).toList();
+            view=analysis.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"notify-route-"+suffix(),decisions));
+            var before=new LinkedHashMap<UUID,BigDecimal>();
+            for (MaterialView row:view.flatMaterials()) if (selectedSet.contains(row.actionGroupKey())) {
+                before.put(row.materialLineId(),row.shortageQty());
+            }
+            NotifyRequest notification=new NotifyRequest(view.version(),view.fingerprint(),
+                    "notify-bulk-"+route+"-"+suffix(),route,List.of(),selected,null);
+            UUID analysisId=view.analysisId();
+            long actionsBefore=jdbc.queryForObject("SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=? AND route=?",
+                    Long.class,analysisId,route);
+            view=measured("SERVICE","analysis.notify."+mode+"."+selected.size(),size,
+                    ()->commands.notifySupply(analysisId,notification));
+            assertActionConservation(analysisId);
+            assertNoInventoryOrSalesCompletion(scenario);
+            for (MaterialView row:view.flatMaterials()) if (before.containsKey(row.materialLineId())) {
+                assertEquals(0,before.get(row.materialLineId()).compareTo(row.shortageQty()),
+                        "Creating an external request is not a qualified receipt");
+                assertEquals(0,row.allocatedAvailableQty().signum());
+            }
+            long actions=jdbc.queryForObject("SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=? AND route=?",
+                    Long.class,analysisId,route);
+            assertEquals(selected.size(),actions-actionsBefore,"Every selected demand group must have exactly one downstream action");
+            String expectedDocument=mode.equals("SUBCONTRACT_PREPARATION")?"SUBCONTRACT_MAKE_TASK"
+                    :mode.equals("SUBCONTRACT")?"SUBCONTRACT_APPLICATION":"PURCHASE_REQUEST";
+            assertEquals(selected.size(),jdbc.queryForObject("""
+                    SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=? AND external_document_type=?
+                      AND action_group_key IN (SELECT unnest(string_to_array(?, ',')))
+                    """,Integer.class,analysisId,expectedDocument,String.join(",",selected)),
+                    "Subcontract preparation must not be presented as an already-created external application");
+            BigDecimal allocated=jdbc.queryForObject("SELECT coalesce(sum(allocated_qty),0) FROM preplan_supply_action_allocations WHERE analysis_id=?",
+                    BigDecimal.class,analysisId);
+            measured("SERVICE","analysis.notify."+mode+"."+selected.size()+".replay",size,
+                    ()->commands.notifySupply(analysisId,notification));
+            assertEquals(actions,jdbc.queryForObject("SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=? AND route=?",
+                    Long.class,analysisId,route));
+            assertEquals(0,allocated.compareTo(jdbc.queryForObject(
+                    "SELECT coalesce(sum(allocated_qty),0) FROM preplan_supply_action_allocations WHERE analysis_id=?",BigDecimal.class,analysisId)));
+            assertNoInventoryOrSalesCompletion(scenario);
+        }
+    }
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "UTEN_RUN_PRODUCTION_STRESS", matches = "(?i)true")
     void hundredAndMaximumProductsWithHistoryRecordRealServiceAndMockHttpCosts() throws Exception {
         int samples = integerEnv("UTEN_PRODUCTION_STRESS_SAMPLES", 5, 1, 30);
         historyRows=integerEnv("UTEN_PRODUCTION_STRESS_HISTORY_ROWS",20_000,20_000,500_000);
@@ -178,7 +379,12 @@ class ProductionMaterialAnalysisScalePostgresTest {
             scale.put("concurrentLoad", System.getProperty("uten.production.concurrentLoad", "unspecified"));
             scale.put("postgres", jdbc.queryForObject("select version()", String.class));
             scale.put("migrationHead", jdbc.queryForObject("select max(version::int) from flyway_schema_history where success", Integer.class));
+            scale.put("successfulMigrations", jdbc.queryForObject("select count(*) from flyway_schema_history where success and type='SQL'", Integer.class));
             scale.put("jit", jdbc.queryForObject("SHOW jit", String.class));
+            scale.put("databaseProfile", System.getenv().getOrDefault("UTEN_PRODUCTION_STRESS_DATABASE_PROFILE", "test-default"));
+            scale.put("databaseSettings", databaseSettings());
+            scale.put("routeScope", size == 500 ? "five distinct 500-row requests and selected 20 root routes" : "all material routes");
+            scale.put("issuedPlans", 20);
             emit(scale);
             factory.login(scenario);
             AnalysisView view = measured("SERVICE", "analysis.preview.initial", size,
@@ -201,11 +407,21 @@ class ProductionMaterialAnalysisScalePostgresTest {
                     assertEquals(200, response.getStatus());
                     return response.getContentAsByteArray();
                 });
+                measured("MOCK_HTTP", "GET material-analyses/detail.shared", size, () -> {
+                    var response = http.perform(get("/api/production/material-analyses/{id}", id)
+                            .param("projection",com.uten.imp.features.production.analysis.MaterialAnalysisResponseProjection.VERSION)
+                            .with(authentication(actor))).andReturn().getResponse();
+                    assertEquals(200,response.getStatus());
+                    return response.getContentAsByteArray();
+                });
+                // Spring Security clears the MockMvc request's thread context.
+                // Restore the fixture actor before the next direct service call.
+                factory.login(scenario);
                 measured("SERVICE", "analysis.list.active.50", size, () -> analysis.list(null,"ACTIVE",null,1,50));
                 measured("SERVICE", "analysis.list.all.50", size, () -> analysis.list(null,null,null,1,50));
             }
             factory.login(scenario);
-            view = confirmAllRoutes(view, true);
+            view = size == 500 ? confirmSampleRoutesAndPlanRoots(view) : confirmAllRoutes(view, true);
             IssueWorkshopPlansRequest issue = issueRequest(scenario, view, 20, "scale-issue-" + suffix());
             GenerateResult result = measured("SERVICE", "analysis.issueWorkshopPlans.20", size,
                     () -> commands.issueWorkshopPlans(id, issue));
@@ -289,6 +505,32 @@ class ProductionMaterialAnalysisScalePostgresTest {
         return view;
     }
 
+    /** The maximum-background profile measures five real bulk requests, not 98 repeated setup requests. */
+    private AnalysisView confirmSampleRoutesAndPlanRoots(AnalysisView initial) throws Exception {
+        Map<String, RouteDecision> byGroup = new LinkedHashMap<>();
+        for (MaterialView row : initial.flatMaterials()) if (row.actionable()) {
+            byGroup.putIfAbsent(row.actionGroupKey(), new RouteDecision(null, row.actionGroupKey(), row.sourceSuggestion(), null));
+        }
+        List<RouteDecision> decisions = new ArrayList<>(byGroup.values());
+        assertTrue(decisions.size() >= 2500);
+        AnalysisView view = initial;
+        for (int offset = 0; offset < 2500; offset += 500) {
+            RouteRequest request = new RouteRequest(view.version(), view.fingerprint(), "scale-route-" + suffix(),
+                    List.copyOf(decisions.subList(offset, offset + 500)));
+            view = measured("SERVICE", "analysis.saveRoutes.500", initial.products().size(),
+                    () -> analysis.saveRoutes(initial.analysisId(), request));
+        }
+        var selected = initial.products().stream().filter(row -> row.salesOrderItemId() != null).limit(20)
+                .map(ProductView::analysisLineId).collect(java.util.stream.Collectors.toSet());
+        List<RouteDecision> roots = view.flatMaterials().stream()
+                .filter(row -> selected.contains(row.analysisLineId()) && row.level() == 0)
+                .map(row -> new RouteDecision(null, row.actionGroupKey(), "MAKE", null)).toList();
+        assertEquals(20, roots.size());
+        RouteRequest rootRequest = new RouteRequest(view.version(), view.fingerprint(), "scale-root-route-" + suffix(), roots);
+        return measured("SERVICE", "analysis.saveRoutes.selectedRoots.20", initial.products().size(),
+                () -> analysis.saveRoutes(initial.analysisId(), rootRequest));
+    }
+
     private PreviewRequest request(ProductionChainDataFactory.Scenario scenario, AnalysisView previous, String key) {
         return new PreviewRequest(previous == null ? null : previous.analysisId(), previous == null ? null : previous.version(),
                 previous == null ? null : previous.fingerprint(), scenario.world().warehouseId(), key, scenario.sources());
@@ -353,8 +595,26 @@ class ProductionMaterialAnalysisScalePostgresTest {
                 """, Integer.class, scenario.orderId()));
     }
 
+    private Map<String,Object> databaseSettings() {
+        return jdbc.queryForMap("""
+                SELECT current_setting('shared_buffers') AS shared_buffers, current_setting('work_mem') AS work_mem,
+                       current_setting('effective_cache_size') AS effective_cache_size, current_setting('max_connections') AS max_connections,
+                       current_setting('fsync') AS fsync, current_setting('synchronous_commit') AS synchronous_commit,
+                       current_setting('full_page_writes') AS full_page_writes, current_setting('wal_buffers') AS wal_buffers,
+                       current_setting('default_statistics_target') AS default_statistics_target
+                """);
+    }
+
     @FunctionalInterface private interface Work<T> { T run() throws Exception; }
     private <T> T measured(String transport, String operation, int products, Work<T> work) throws Exception {
+        try (var profile=ProductionOperationProfile.start(operation,products)) {
+            return measuredProfiled(transport,operation,products,work,profile);
+        }
+    }
+
+    private <T> T measuredProfiled(String transport,String operation,int products,Work<T> work,
+                                  ProductionOperationProfile profile) throws Exception {
+        JvmGc gcBefore = jvmGc();
         ProductionJdbcMeasurement.Sample sample = ProductionJdbcMeasurement.begin();
         long started = System.nanoTime();
         Map<String, Object> row = new LinkedHashMap<>();
@@ -363,8 +623,24 @@ class ProductionMaterialAnalysisScalePostgresTest {
             T result = work.run();
             row.put("elapsedMillis", (System.nanoTime() - started) / 1_000_000.0);
             row.put("success", true);
+            // Separate the real endpoint from the diagnostic serialization of
+            // both compatibility representations, which allocates extra buffers.
+            JvmGc operationGc = jvmGc();
+            row.put("operationGcCollections", operationGc.collections() - gcBefore.collections());
+            row.put("operationGcMillis", operationGc.millis() - gcBefore.millis());
+            row.put("operationUsedHeapBytes", Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory());
+            profile.complete(row);
             long serializationStart = System.nanoTime();
             row.put("responseBytes", result instanceof byte[] bytes ? bytes.length : json.writeValueAsBytes(result).length);
+            if (result instanceof AnalysisView view) {
+                row.put("legacyResponseBytes",row.get("responseBytes"));
+                row.put("sharedResponseBytes",json.writeValueAsBytes(
+                        com.uten.imp.features.production.analysis.MaterialAnalysisResponseProjection.project(view)).length);
+            } else if (result instanceof GenerateResult generated) {
+                row.put("legacyResponseBytes",row.get("responseBytes"));
+                row.put("sharedResponseBytes",json.writeValueAsBytes(new com.uten.imp.features.production.analysis.MaterialAnalysisResponseProjection.SharedGenerateResult(
+                        com.uten.imp.features.production.analysis.MaterialAnalysisResponseProjection.project(generated.analysis()),generated.replayed(),generated.plans())).length);
+            }
             if (operation.equals("analysis.preview.initial") && result instanceof AnalysisView view) {
                 row.put("nonNullResponseBytes", json.copy()
                         .setSerializationInclusion(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
@@ -377,11 +653,15 @@ class ProductionMaterialAnalysisScalePostgresTest {
             }
             row.put("responseSizeMeasurementMillis", (System.nanoTime() - serializationStart) / 1_000_000.0);
             return result;
-        } catch (Exception | AssertionError failure) {
+        } catch (Exception | Error failure) {
             row.put("success", false); row.put("failureType", failure.getClass().getSimpleName());
             throw failure;
         } finally {
             row.putIfAbsent("elapsedMillis", (System.nanoTime() - started) / 1_000_000.0);
+            JvmGc gcAfter = jvmGc();
+            row.put("gcCollections", gcAfter.collections() - gcBefore.collections());
+            row.put("gcMillis", gcAfter.millis() - gcBefore.millis());
+            row.put("usedHeapAfterBytes", Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory());
             row.putAll(sample.result()); ProductionJdbcMeasurement.end(); emit(row);
             if (Boolean.TRUE.equals(row.get("success")) && historyRows>0
                     && (operation.equals("analysis.preview.initial") || operation.equals("analysis.list.active.50")
@@ -389,6 +669,16 @@ class ProductionMaterialAnalysisScalePostgresTest {
                 explainActualQueries(sample,operation,products);
             }
         }
+    }
+
+    private record JvmGc(long collections, long millis) {}
+    private static JvmGc jvmGc() {
+        long collections = 0, millis = 0;
+        for (var collector : java.lang.management.ManagementFactory.getGarbageCollectorMXBeans()) {
+            collections += Math.max(0, collector.getCollectionCount());
+            millis += Math.max(0, collector.getCollectionTime());
+        }
+        return new JvmGc(collections, millis);
     }
 
     /** Explain exactly the prepared query and scalar bindings issued by the real service, outside its timer. */
@@ -409,6 +699,9 @@ class ProductionMaterialAnalysisScalePostgresTest {
                             if (historyRows >= 20_000 && operation.equals("analysis.preview.initial")
                                     && candidate.sql().stripLeading().startsWith("WITH RECURSIVE")) {
                                 compareJitModes(connection, candidate, products);
+                            }
+                            if (operation.equals("analysis.preview.initial")) {
+                                compareFootprintHashes(connection, candidate, products);
                             }
                         }
                     }
@@ -446,12 +739,44 @@ class ProductionMaterialAnalysisScalePostgresTest {
     private record QueryDigest(long rows, String hash, double millis) {}
     private static QueryDigest digestQuery(java.sql.Connection connection,
             ProductionJdbcMeasurement.CapturedQuery candidate) throws Exception {
+        return digestQuery(connection, candidate, false);
+    }
+
+    private void compareFootprintHashes(java.sql.Connection connection,
+            ProductionJdbcMeasurement.CapturedQuery candidate, int products) throws Exception {
+        String alias = candidate.sql().contains("md5(to_jsonb(material)::text)") || candidate.sql().contains("md5(material::text)") ? "material"
+                : candidate.sql().contains("md5(to_jsonb(bom)::text)") || candidate.sql().contains("md5(bom::text)") ? "bom" : null;
+        if (alias == null) return;
+        String jsonSql = candidate.sql().replace("md5(" + alias + "::text)", "md5(to_jsonb(" + alias + ")::text)");
+        var jsonCandidate = new ProductionJdbcMeasurement.CapturedQuery(candidate.fingerprint(), jsonSql, candidate.bindings());
+        String alternate = jsonSql.replace("md5(to_jsonb(" + alias + ")::text)", "md5(" + alias + "::text)");
+        var composite = new ProductionJdbcMeasurement.CapturedQuery(candidate.fingerprint(), alternate, candidate.bindings());
+        for (int sample = 0; sample < 5; sample++) {
+            QueryDigest jsonResult;
+            QueryDigest textResult;
+            if (sample % 2 == 0) {
+                jsonResult = digestQuery(connection, jsonCandidate, true);
+                textResult = digestQuery(connection, composite, true);
+            } else {
+                textResult = digestQuery(connection, composite, true);
+                jsonResult = digestQuery(connection, jsonCandidate, true);
+            }
+            assertEquals(jsonResult.rows(), textResult.rows());
+            assertEquals(jsonResult.hash(), textResult.hash(), "Only the ephemeral hash encoding may differ");
+            emit(Map.of("event", "footprint-hash-comparison", "products", products, "kind", alias,
+                    "sample", sample, "rows", jsonResult.rows(), "jsonMillis", jsonResult.millis(),
+                    "compositeMillis", textResult.millis(), "sameSourceColumns", true));
+        }
+    }
+
+    private static QueryDigest digestQuery(java.sql.Connection connection,
+            ProductionJdbcMeasurement.CapturedQuery candidate, boolean omitLastHash) throws Exception {
         var hash = java.security.MessageDigest.getInstance("SHA-256");
         long started = System.nanoTime(); long rows = 0;
         try (var statement = connection.prepareStatement(candidate.sql())) {
             candidate.bind(statement);
             try (var result = statement.executeQuery()) {
-                int columns = result.getMetaData().getColumnCount();
+                int columns = result.getMetaData().getColumnCount() - (omitLastHash ? 1 : 0);
                 while (result.next()) {
                     rows++;
                     for (int column = 1; column <= columns; column++) {
@@ -477,6 +802,8 @@ class ProductionMaterialAnalysisScalePostgresTest {
                 "Shared Hit Blocks","Shared Read Blocks","Shared Dirtied Blocks","Shared Written Blocks","Temp Read Blocks","Temp Written Blocks",
                 "JIT","Functions","Options","Timing","Generation","Inlining","Optimization","Emission","Total","Expressions","Deforming");
         node.fields().forEachRemaining(entry -> { if (keys.contains(entry.getKey())) result.put(entry.getKey(),safePlan(entry.getValue())); });
+        if (node.has("Node Type")) result.put("Index Restricted",
+                !node.path("Index Cond").asText().isBlank() || !node.path("Recheck Cond").asText().isBlank());
         return result;
     }
 
@@ -485,11 +812,48 @@ class ProductionMaterialAnalysisScalePostgresTest {
         if (!node.isObject()) return;
         String relation=node.path("Relation Name").asText();
         if (java.util.Set.of("goods_bom_items","production_material_analyses","production_material_analysis_items").contains(relation)) {
-            double visited=(node.path("Actual Rows").asDouble()+node.path("Rows Removed by Filter").asDouble()
-                    +node.path("Rows Removed by Index Recheck").asDouble())*node.path("Actual Loops").asDouble(1);
-            assertTrue(visited<historyRows/2.0,"Current bucket/tree scanned a substantial historical table: "+relation+" rows="+visited);
+            double perLoop=node.path("Actual Rows").asDouble()+node.path("Rows Removed by Filter").asDouble()
+                    +node.path("Rows Removed by Index Recheck").asDouble();
+            double loops=node.path("Actual Loops").asDouble(1);
+            double visited=perLoop*loops;
+            // A parameterized current-edge lookup may expand 49k current paths
+            // across many small index probes. That is not a scan of 20k unrelated
+            // historic edges. Keep rejecting full scans and wide individual probes.
+            boolean indexRestricted=java.util.Set.of("Index Scan","Index Only Scan","Bitmap Index Scan")
+                    .contains(node.path("Node Type").asText()) && !node.path("Index Cond").asText().isBlank()
+                    || node.path("Node Type").asText().equals("Bitmap Heap Scan") && !node.path("Recheck Cond").asText().isBlank();
+            boolean boundedIndexProbe=indexRestricted && loops>1 && perLoop<=500;
+            assertTrue(visited<historyRows/2.0 || boundedIndexProbe,
+                    "Current bucket/tree scanned a substantial historical table: "+relation+" rows="+visited);
         }
         node.elements().forEachRemaining(this::assertNoFullHistoricalScan);
+    }
+
+    @Test
+    void historyScanGuardDistinguishesBoundedCurrentIndexLoopsFromHistoryScans() throws Exception {
+        historyRows=20_000;
+        assertDoesNotThrow(() -> assertNoFullHistoricalScan(json.readTree("""
+                {"Node Type":"Index Scan","Relation Name":"goods_bom_items","Index Cond":"goods_id = parent.component_goods_id",
+                 "Actual Rows":98,"Actual Loops":500}
+                """)));
+        assertDoesNotThrow(() -> assertNoFullHistoricalScan(json.readTree("""
+                {"Node Type":"Bitmap Heap Scan","Relation Name":"goods_bom_items","Recheck Cond":"goods_id = parent.component_goods_id",
+                 "Actual Rows":6,"Actual Loops":6584}
+                """)));
+        assertThrows(AssertionError.class, () -> assertNoFullHistoricalScan(json.readTree("""
+                {"Node Type":"Seq Scan","Relation Name":"goods_bom_items","Actual Rows":20000,"Actual Loops":1}
+                """)));
+        assertThrows(AssertionError.class, () -> assertNoFullHistoricalScan(json.readTree("""
+                {"Node Type":"Index Scan","Relation Name":"goods_bom_items","Index Cond":"is_deleted = false",
+                 "Actual Rows":20000,"Actual Loops":1}
+                """)));
+        assertThrows(AssertionError.class, () -> assertNoFullHistoricalScan(json.readTree("""
+                {"Node Type":"Index Scan","Relation Name":"goods_bom_items","Actual Rows":98,"Actual Loops":500}
+                """)));
+        assertThrows(AssertionError.class, () -> assertNoFullHistoricalScan(json.readTree("""
+                {"Node Type":"Bitmap Heap Scan","Relation Name":"goods_bom_items","Recheck Cond":"is_deleted = false",
+                 "Actual Rows":20000,"Actual Loops":1}
+                """)));
     }
 
     private void emit(Map<String, Object> record) throws Exception {

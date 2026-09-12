@@ -184,7 +184,19 @@ class SubcontractLossValueEndToEndTest {
         fixture.loginAs(c.world().superAdminUserId());return receipt;
     }
     private void changeQty(CaseFixture c,String qty){orders.changeQty(c.submitted().orderId(),new OrderQtyChangeRequest(List.of(new OrderQtyChangeItem(c.item(),new BigDecimal(qty)))));}
-    private void drain(){for(int n=0;n<200;n++){if(worker.runBatch()==0)return;}fail("原价值传播必须有限完成，不能在同scope内循环重算");}
+    private void drain(){
+        long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+        for(int n=0;n<200&&System.nanoTime()<deadline;n++){
+            int applied=worker.runBatch();
+            if(!worker.hasPendingWork())return;
+            // A scheduler may already own the remaining scope/task. Zero local
+            // work is not proof that its uncommitted durable work has finished.
+            if(applied==0)try{Thread.sleep(25);}catch(InterruptedException interrupted){
+                Thread.currentThread().interrupt();throw new AssertionError("等待价值任务时被中断",interrupted);
+            }
+        }
+        fail("原价值传播必须有限完成，不能在同scope内循环重算");
+    }
     private BigDecimal stock(CaseFixture c){return decimal("select amount_local from stock_balances where warehouse_id=? and goods_id=?",c.world().warehouseId(),c.world().goodsE());}
     private BigDecimal normalHeld(CaseFixture c){return decimal("select coalesce(sum(node.owned_value_local),0) from stock_value_nodes node where node.owner_kind='COST_WIP' and node.owner_id=?",c.item());}
     private BigDecimal decimal(String sql,Object...args){return db.queryForObject(sql,BigDecimal.class,args);}

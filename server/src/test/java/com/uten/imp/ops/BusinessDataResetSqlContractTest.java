@@ -251,7 +251,9 @@ class BusinessDataResetSqlContractTest {
                 // V552 只加权限码与默认授权，不新增业务表；但迁移头一动，
                 // 清库脚本的 fail-closed 白名单就必须跟着动，否则脚本拒跑。
                 .contains("(555, 513)")
-                .contains("V507/469、V508/470及V511至V555完整目录");
+                .contains("(556, 514)")
+                .contains("(557, 515)")
+                .contains("V507/469、V508/470及V511至V557完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);

@@ -20,43 +20,15 @@ final class ValueAuthorityStore {
                 """,Map.of(),Boolean.class));
     }
 
-    void initialize(UUID id,String kind,BigDecimal sourceProjection){
-        if(!installed)return;
-        boolean source="SOURCE".equals(kind);BigDecimal initial=source?null:BigDecimal.ZERO;
-        db.update("""
-                UPDATE stock_value_nodes SET value_model='EXACT_SOURCE_SHARES',source_initial_amount_exact=:source,
-                    source_amount_exact=:source,initial_bound_lower=:amount,initial_bound_upper=:amount,
-                    bound_lower=:amount,bound_upper=:amount,initial_bound_scale=:scale,bound_scale=:scale,bound_revision=1
-                WHERE id=:id
-                """,args("id",id,"source",null,"amount",initial,"scale",source?null:ValueBounds.DEFAULT_SCALE));
-    }
-
     void initialSource(UUID id,BigDecimal actual){
         if(!installed)return;actual=FinancialExactAmount.book(actual,"取得本币原额");
         if(actual.signum()<0)throw conflict("取得原额不能为负");
-        db.update("""
+        if(db.update("""
                 UPDATE stock_value_nodes SET source_initial_amount_exact=:value,source_amount_exact=:value,
                     initial_bound_lower=:value,initial_bound_upper=:value,bound_lower=:value,bound_upper=:value,
                     initial_bound_scale=32,bound_scale=32
                 WHERE id=:id AND kind='SOURCE' AND revision=1 AND creation_txid=txid_current()
-                """,args("id",id,"value",actual));
-    }
-
-    void edge(UUID parent,long parentRevision,UUID child,BigDecimal from,BigDecimal to,BigDecimal denominator){
-        if(!installed)return;ValueBounds p=bound(new ValueReference(parent,parentRevision));
-        ValueBounds contribution=p==null?null:p.weighted(from,to,denominator,ValueBounds.DEFAULT_SCALE);
-        db.update("""
-                UPDATE stock_value_edges SET initial_bound_lower=:lower,initial_bound_upper=:upper,
-                    allocated_bound_lower=:lower,allocated_bound_upper=:upper,bound_scale=:scale,bound_parent_revision=:revision
-                WHERE parent_node_id=:parent AND child_node_id=:child AND creation_txid=txid_current()
-                """,args("parent",parent,"child",child,"revision",parentRevision,"lower",lower(contribution),"upper",upper(contribution),"scale",scale(contribution)));
-        Map<String,Object> c=current(child);ValueBounds current=from(c,"bound_lower","bound_upper","bound_scale");
-        ValueBounds total=current==null||contribution==null?null:current.add(contribution);
-        db.update("""
-                UPDATE stock_value_nodes SET initial_bound_lower=:lower,initial_bound_upper=:upper,
-                    bound_lower=:lower,bound_upper=:upper,initial_bound_scale=:scale,bound_scale=:scale,bound_revision=1
-                WHERE id=:id AND revision=1 AND creation_txid=txid_current()
-                """,args("id",child,"lower",lower(total),"upper",upper(total),"scale",scale(total)));
+                """,args("id",id,"value",actual))!=1)throw conflict("取得来源初始化必须属于本次新建节点");
     }
 
     Change sourceChange(UUID id,BigDecimal delta){
@@ -130,20 +102,14 @@ final class ValueAuthorityStore {
         return input.weighted((BigDecimal)t.get("output_from"),(BigDecimal)t.get("output_to"),denominator,requestedScale);
     }
 
-    void revision(UUID id,long revision,Change change){
-        if(!installed||change==null)return;
-        db.update("""
-                UPDATE stock_value_node_revisions SET before_source_amount_exact=:sourceBefore,after_source_amount_exact=:sourceAfter,
-                    before_bound_lower=:beforeLower,before_bound_upper=:beforeUpper,before_bound_scale=:beforeScale,
-                    after_bound_lower=:afterLower,after_bound_upper=:afterUpper,after_bound_scale=:afterScale
-                WHERE node_id=:id AND revision=:revision
-                """,args("id",id,"revision",revision,"sourceBefore",change.sourceBefore(),"sourceAfter",change.sourceAfter(),
+    static Map<String,Object> revisionArgs(Change change){
+        return args("sourceBefore",change.sourceBefore(),"sourceAfter",change.sourceAfter(),
                 "beforeLower",lower(change.before()),"beforeUpper",upper(change.before()),"beforeScale",scale(change.before()),
-                "afterLower",lower(change.after()),"afterUpper",upper(change.after()),"afterScale",scale(change.after())));
-        db.update("""
-                UPDATE stock_value_nodes SET source_amount_exact=:source,bound_lower=:lower,bound_upper=:upper,
-                    bound_scale=:scale,bound_revision=:revision WHERE id=:id AND revision=:revision
-                """,args("id",id,"revision",revision,"source",change.sourceAfter(),"lower",lower(change.after()),"upper",upper(change.after()),"scale",scale(change.after())));
+                "afterLower",lower(change.after()),"afterUpper",upper(change.after()),"afterScale",scale(change.after()));
+    }
+
+    void reviseEdge(Change change){
+        if(!installed||change==null)return;
         if(change.edge()!=null){EdgeBound e=change.edge();db.update("""
                 UPDATE stock_value_edges SET allocated_bound_lower=:lower,allocated_bound_upper=:upper,
                     bound_scale=:scale,bound_parent_revision=:revision WHERE id=:id

@@ -19,13 +19,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 final class MigrationRehearsalSupport {
 
     // 迁移头（新增迁移**必须**同步这两个常量，否则整组迁移演练/引导兼容性用例全红）。
-    // V555 preserves replacement source entitlements; V544 is unused: 513 migrations.
+    // V557 records complete IQC batch request identity; V544 is unused: 515 migrations.
     // 同一条耦合的另外两处：ops/reset_business_data.sql 的 fail-closed 白名单，
     // 以及它的两份契约测试——BusinessDataResetSqlContractTest
     // #resetScriptAllowlistCoversTheCurrentMigrationHead 会从迁移目录算出真实头再比对，
     // 漏改时直接告诉你该补哪一行。
-    static final String CURRENT_HEAD_VERSION = "555";
-    static final int CURRENT_MIGRATION_COUNT = 513;
+    static final String CURRENT_HEAD_VERSION = "557";
+    static final int CURRENT_MIGRATION_COUNT = 515;
 
     /** Reviewed post-V238 system/evidence row-count mutations on pre-existing tables. */
     private static final Set<String> EXPECTED_ROW_COUNT_MUTATIONS = Set.of(

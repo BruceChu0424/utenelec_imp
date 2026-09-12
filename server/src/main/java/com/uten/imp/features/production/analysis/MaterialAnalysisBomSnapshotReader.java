@@ -56,7 +56,8 @@ final class MaterialAnalysisBomSnapshotReader {
 
     private void validate(List<UUID> goodsIds) {
         Object[] row = NativeQueryResults.objectArrayRows(em.createNativeQuery(VALIDATION_SQL)
-                .setParameter("goodsIds", goodsIds)).getFirst();
+                .setParameter("goodsIds", goodsIds.stream().map(UUID::toString)
+                        .collect(java.util.stream.Collectors.joining(",")))).getFirst();
         if (Boolean.TRUE.equals(row[0])) throw conflict("BOM 存在循环引用，不能进行物料分析");
         if (Boolean.TRUE.equals(row[1])) throw conflict("BOM 超过十层，不能静默截断分析");
         if (Boolean.TRUE.equals(row[2])) {
@@ -153,7 +154,9 @@ final class MaterialAnalysisBomSnapshotReader {
                 """;
 
     private static final String VALIDATION_SQL = """
-                WITH RECURSIVE walk AS (
+                WITH RECURSIVE roots(goods_id) AS (
+                    SELECT DISTINCT unnest(CAST(string_to_array(:goodsIds, ',') AS uuid[]))
+                ), walk AS (
                     SELECT b.id, b.component_goods_id AS goods_id, 1 AS depth,
                            ARRAY[b.id]::uuid[] AS path, FALSE AS cycle,
                             (b.qty <= 0 OR component.is_deleted
@@ -164,14 +167,17 @@ final class MaterialAnalysisBomSnapshotReader {
                                  AND NULLIF(b.color_legacy_id,0) IS NOT NULL)
                              OR (component.color_id IS NULL
                                  AND NULLIF(component.color_legacy_id,0) IS NOT NULL)) AS invalid
-                    FROM goods_bom_items b
+                    FROM roots
+                    JOIN LATERAL (
+                        SELECT edge.* FROM goods_bom_items edge
+                        WHERE edge.goods_id=roots.goods_id AND edge.is_deleted=FALSE OFFSET 0
+                    ) b ON TRUE
                     JOIN goods component ON component.id = b.component_goods_id
                     LEFT JOIN units component_unit ON component_unit.id = component.unit_id
                                                    AND component_unit.is_deleted = FALSE
                     LEFT JOIN colors resolved_color ON resolved_color.id =
                         COALESCE(b.color_id, component.color_id)
                                                     AND resolved_color.is_deleted = FALSE
-                    WHERE b.goods_id IN (:goodsIds) AND b.is_deleted = FALSE
                     UNION ALL
                     SELECT b.id, b.component_goods_id, walk.depth + 1,
                            walk.path || b.id, b.id = ANY(walk.path),

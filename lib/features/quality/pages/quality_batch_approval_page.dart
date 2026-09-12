@@ -37,6 +37,7 @@ import '../../../shared/providers/production_fqc_pending_count_provider.dart';
 import '../models/production_fqc_inspection.dart';
 import '../widgets/production_fqc_dialogs.dart' show fqcQtyText;
 import '../repositories/production_fqc_repository.dart';
+import '../services/quality_batch_submission.dart';
 import '../widgets/inspection_report_confirm_dialog.dart';
 
 /// 列表页多选结果（extra 传入）：IQC 收货单 + FQC 检查单 + 无检查单 FQC 任务。
@@ -71,9 +72,11 @@ class _EditableIqcRow {
   final TextEditingController pass;
   final TextEditingController fail;
 
-  /// 幂等键随行生成一次：同页重试复用，改数后由服务端乐观校验兜底。
+  /// Before submission this is a draft. The accepted report freezes this key,
+  /// quantities and reason together, so retries never pair it with a new body.
   final String idempotencyKey = 'iqc-decide-${const Uuid().v4()}';
   bool selected = true;
+  bool completed = false;
 
   double get _pass => double.tryParse(pass.text.trim()) ?? 0;
   double get _fail => double.tryParse(fail.text.trim()) ?? 0;
@@ -81,6 +84,14 @@ class _EditableIqcRow {
   /// null = 校验通过；否则为错误文案。
   String? validate() {
     final remaining = item.remainingBaseQty ?? 0;
+    final passQty = double.tryParse(pass.text.trim());
+    final failQty = double.tryParse(fail.text.trim());
+    if (passQty == null ||
+        failQty == null ||
+        !passQty.isFinite ||
+        !failQty.isFinite) {
+      return '请输入有效的合格与不合格数量';
+    }
     if (_pass < 0 || _fail < 0) return '数量不能为负';
     if (_pass + _fail <= 0) return '合格与不合格不能同时为 0';
     if (_pass + _fail > remaining + 1e-9) {
@@ -121,7 +132,9 @@ class _QualityBatchApprovalPageState
   List<_EditableIqcRow>? _flatRows;
   bool _loading = true;
   bool _submitting = false;
-  String? _error;
+  bool _confirming = false;
+  bool _leaving = false;
+  QualityBatchSubmission? _submission;
 
   @override
   void initState() {
@@ -131,100 +144,126 @@ class _QualityBatchApprovalPageState
 
   @override
   void dispose() {
+    _leaving = true;
     _flatRows?.forEach((row) => row.dispose());
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool retryFailuresOnly = false}) async {
+    if (_submission != null) return;
     setState(() {
       _loading = true;
-      _error = null;
     });
-    final repo = ref.read(procurementInspectionRepositoryProvider);
-    final groups = <_IqcReceiptGroup>[];
-    try {
-      final loaded = await Future.wait([
-        for (final receipt in widget.selection.receipts)
-          repo
-              .items(receipt.receiptType, receipt.receiptId)
-              .then(
-                (rows) => MapEntry(
-                  receipt,
-                  rows
-                      .where(
-                        (item) =>
-                            (item.remainingBaseQty ?? 0) > 0 &&
-                            item.status != 'RESOLVED' &&
-                            item.status != 'REVERSED',
-                      )
-                      .toList(growable: false),
-                ),
-              ),
-      ]);
-      for (final entry in loaded) {
-        groups.add(
-          _IqcReceiptGroup(entry.key, [
-            for (final item in entry.value)
-              // ignore: avoid-unnecessary_state_update
-              _EditableIqcRow(item),
-          ], null),
-        );
+    final iqc = ref.read(procurementInspectionRepositoryProvider);
+    final fqc = ref.read(productionFqcRepositoryProvider);
+    final oldIqc = {
+      for (final group in _groups ?? const <_IqcReceiptGroup>[])
+        (group.receipt.receiptType, group.receipt.receiptId): group,
+    };
+    final oldFqc = {
+      for (final group in _sheetGroups ?? const <_FqcSheetGroup>[])
+        group.sheet.id: group,
+    };
+    final tasks = <Future<Object> Function()>[
+      for (final receipt in widget.selection.receipts)
+        () async {
+          final old = oldIqc[(receipt.receiptType, receipt.receiptId)];
+          if (retryFailuresOnly && old != null && old.loadError == null) {
+            return old;
+          }
+          try {
+            final rows = await iqc.items(
+              receipt.receiptType,
+              receipt.receiptId,
+            );
+            return _IqcReceiptGroup(receipt, [
+              for (final item in rows)
+                if ((item.remainingBaseQty ?? 0) > 0 &&
+                    item.status != 'RESOLVED' &&
+                    item.status != 'REVERSED')
+                  _EditableIqcRow(item),
+            ], null);
+          } on ApiException catch (error) {
+            return _IqcReceiptGroup(receipt, const [], error.message);
+          } catch (_) {
+            return _IqcReceiptGroup(receipt, const [], '待检明细加载失败');
+          }
+        },
+      for (final sheet in widget.selection.sheets)
+        () async {
+          final old = oldFqc[sheet.id];
+          if (retryFailuresOnly && old != null && old.loadError == null) {
+            return old;
+          }
+          try {
+            final detail = await fqc.sheetDetail(sheet.id);
+            return _FqcSheetGroup(detail.sheet, detail.activeInspections, null);
+          } on ApiException catch (error) {
+            return _FqcSheetGroup(sheet, const [], error.message);
+          } catch (_) {
+            return _FqcSheetGroup(sheet, const [], '检查单加载失败');
+          }
+        },
+    ];
+    // One shared bound for IQC and FQC. Preserve selection order while avoiding
+    // both unbounded receipt requests and serial FQC round trips.
+    final results = List<Object?>.filled(tasks.length, null);
+    var next = 0;
+    Future<void> worker() async {
+      while (mounted && !_leaving && next < tasks.length) {
+        final index = next++;
+        results[index] = await tasks[index]();
       }
-    } on ApiException catch (error) {
-      if (mounted) {
-        setState(() {
-          _error = '待检明细加载失败：${error.message}';
-          _loading = false;
-        });
-      }
-      return;
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _error = '待检明细加载失败，请稍后重试';
-          _loading = false;
-        });
-      }
-      return;
     }
-    // FQC 检查单：逐单拉办理视图（仍待检行进入本页并默认勾选）。
-    final sheetGroups = <_FqcSheetGroup>[];
-    final fqcRepo = ref.read(productionFqcRepositoryProvider);
-    for (final sheet in widget.selection.sheets) {
-      try {
-        final detail = await fqcRepo.sheetDetail(sheet.id);
-        sheetGroups.add(
-          _FqcSheetGroup(detail.sheet, detail.activeInspections, null),
-        );
-      } on ApiException catch (error) {
-        sheetGroups.add(_FqcSheetGroup(sheet, const [], error.message));
-      } catch (_) {
-        sheetGroups.add(_FqcSheetGroup(sheet, const [], '检查单加载失败'));
-      }
-    }
-    if (!mounted) return;
+
+    await Future.wait([
+      for (var i = 0; i < 4 && i < tasks.length; i++) worker(),
+    ]);
+    final groups = results.whereType<_IqcReceiptGroup>().toList();
+    final sheetGroups = results.whereType<_FqcSheetGroup>().toList();
     final flat = [for (final group in groups) ...group.rows];
+    if (!mounted || _leaving) {
+      // Retained rows were already disposed by State.dispose; dispose only
+      // controllers created by a late successful response.
+      for (final row in flat) {
+        if (!(_flatRows?.contains(row) ?? false)) row.dispose();
+      }
+      return;
+    }
+    final retained = flat.toSet();
+    for (final row in _flatRows ?? const <_EditableIqcRow>[]) {
+      if (!retained.contains(row)) row.dispose();
+    }
     setState(() {
       _groups = groups;
       _sheetGroups = sheetGroups;
       _flatRows = flat;
-      _selectedFqcIds.addAll([
-        for (final group in sheetGroups)
-          for (final inspection in group.inspections) inspection.id,
-      ]);
+      for (final group in sheetGroups) {
+        if (!retryFailuresOnly || !identical(oldFqc[group.sheet.id], group)) {
+          _selectedFqcIds.addAll(group.inspections.map((item) => item.id));
+        }
+      }
       _loading = false;
     });
   }
 
-  List<_EditableIqcRow> get _selectedIqcRows =>
-      (_flatRows ?? const []).where((row) => row.selected).toList();
+  List<_EditableIqcRow> get _selectedIqcRows => (_flatRows ?? const [])
+      .where((row) => row.selected && !row.completed)
+      .toList();
 
   /// 全部 FQC 行：检查单内仍待检行 + 无检查单的历史任务。
-  List<ProductionFqcInspection> get _allFqc => [
-    for (final group in _sheetGroups ?? const <_FqcSheetGroup>[])
-      ...group.inspections,
-    ...widget.selection.inspections,
-  ];
+  List<ProductionFqcInspection> get _allFqc {
+    final byId = <String, ProductionFqcInspection>{};
+    for (final group in _sheetGroups ?? const <_FqcSheetGroup>[]) {
+      for (final inspection in group.inspections) {
+        byId.putIfAbsent(inspection.id, () => inspection);
+      }
+    }
+    for (final inspection in widget.selection.inspections) {
+      byId.putIfAbsent(inspection.id, () => inspection);
+    }
+    return byId.values.toList(growable: false);
+  }
 
   /// 列表里已勾选的任务进入本页默认保持选中（可再取消）；IQC 行同理
   ///（_EditableIqcRow 构造即 selected = true）。
@@ -238,7 +277,7 @@ class _QualityBatchApprovalPageState
 
   /// 胶囊 ✕：一键取消全部勾选（IQC 行 + FQC 任务），提交按钮随之进入空选提示态。
   void _clearSelection() {
-    if (_submitting) return;
+    if (_submitting || _submission != null) return;
     setState(() {
       for (final row in _flatRows ?? const <_EditableIqcRow>[]) {
         row.selected = false;
@@ -248,7 +287,11 @@ class _QualityBatchApprovalPageState
   }
 
   Future<void> _submitReport() async {
-    if (_submitting) return;
+    if (_submitting || _confirming) return;
+    if (_submission != null) {
+      await _sendSubmission();
+      return;
+    }
     final iqcRows = _selectedIqcRows;
     final fqcSelected = [
       for (final inspection in _allFqc)
@@ -257,6 +300,19 @@ class _QualityBatchApprovalPageState
     if (iqcRows.isEmpty && fqcSelected.isEmpty) {
       context.appWarning('请先选择要提交的明细');
       return;
+    }
+    if (fqcSelected.length > 100) {
+      context.appWarning('自制产成品每批最多100项，请减少本次勾选');
+      return;
+    }
+    final selected = iqcRows.toSet();
+    for (final group in _groups ?? const <_IqcReceiptGroup>[]) {
+      if (group.rows.where(selected.contains).length > 100) {
+        context.appWarning(
+          '${group.receipt.billNo ?? group.receipt.receiptId}每单报告最多100行，请减少本次勾选',
+        );
+        return;
+      }
     }
     for (final row in iqcRows) {
       final problem = row.validate();
@@ -270,93 +326,119 @@ class _QualityBatchApprovalPageState
     final hasFail = iqcRows.any(
       (row) => (double.tryParse(row.fail.text.trim()) ?? 0) > 0,
     );
-    final reason = await showInspectionReportConfirmDialog(
-      context,
-      lineCount: iqcRows.length,
-      passTotalText: iqcRows.isEmpty
-          ? '0'
-          : inspectionQuantityTotalText(
-              context,
-              iqcRows.map(
-                (row) => (row.item, double.tryParse(row.pass.text.trim()) ?? 0),
+    setState(() => _confirming = true);
+    String? reason;
+    try {
+      reason = await showInspectionReportConfirmDialog(
+        context,
+        lineCount: iqcRows.length,
+        passTotalText: iqcRows.isEmpty
+            ? '0'
+            : inspectionQuantityTotalText(
+                context,
+                iqcRows.map(
+                  (row) =>
+                      (row.item, double.tryParse(row.pass.text.trim()) ?? 0),
+                ),
               ),
-            ),
-      failTotalText: iqcRows.isEmpty
-          ? '0'
-          : inspectionQuantityTotalText(
-              context,
-              iqcRows.map(
-                (row) => (row.item, double.tryParse(row.fail.text.trim()) ?? 0),
+        failTotalText: iqcRows.isEmpty
+            ? '0'
+            : inspectionQuantityTotalText(
+                context,
+                iqcRows.map(
+                  (row) =>
+                      (row.item, double.tryParse(row.fail.text.trim()) ?? 0),
+                ),
               ),
+        fqcTaskCount: fqcSelected.length,
+        requireReason: hasFail,
+        lines: [
+          for (final row in iqcRows)
+            InspectionReportConfirmLine(
+              label: [
+                row.item.goodsName,
+                row.item.goodsCode,
+                row.item.colorName,
+              ].where((text) => text?.isNotEmpty == true).join(' · '),
+              passText: _fmt(double.tryParse(row.pass.text.trim()) ?? 0),
+              failText: _fmt(double.tryParse(row.fail.text.trim()) ?? 0),
+              dim: inspectionQuantityUnit(context, row.item),
             ),
-      fqcTaskCount: fqcSelected.length,
-      requireReason: hasFail,
-      lines: [
-        for (final row in iqcRows)
-          InspectionReportConfirmLine(
-            label: [
-              row.item.goodsName,
-              row.item.goodsCode,
-              row.item.colorName,
-            ].where((text) => text?.isNotEmpty == true).join(' · '),
-            passText: _fmt(double.tryParse(row.pass.text.trim()) ?? 0),
-            failText: _fmt(double.tryParse(row.fail.text.trim()) ?? 0),
-            dim: inspectionQuantityUnit(context, row.item),
-          ),
-        for (final inspection in fqcSelected)
-          InspectionReportConfirmLine(
-            label: '自制产成品 ${inspection.reportNo ?? inspection.id}',
-            passText: '',
-            failText: '0',
-          ),
+          for (final inspection in fqcSelected)
+            InspectionReportConfirmLine(
+              label: '自制产成品 ${inspection.reportNo ?? inspection.id}',
+              passText: '',
+              failText: '0',
+            ),
+        ],
+      );
+    } finally {
+      if (mounted) setState(() => _confirming = false);
+    }
+    if (reason == null || !mounted) return;
+    _submission = QualityBatchSubmission(
+      reason: reason.isEmpty ? null : reason,
+      fqcInspectionIds: [for (final item in fqcSelected) item.id],
+      receipts: [
+        for (final group in _groups ?? const <_IqcReceiptGroup>[])
+          if (group.rows.any(selected.contains))
+            QualityReceiptSubmission(
+              receiptType: group.receipt.receiptType,
+              receiptId: group.receipt.receiptId,
+              label: group.receipt.billNo ?? group.receipt.receiptId,
+              items: [
+                for (final row in group.rows.where(selected.contains))
+                  ProcurementInspectionDecideItem(
+                    inspectionItemId: row.item.id,
+                    expectedRemainingBaseQty: row.item.remainingBaseQty ?? 0,
+                    passBaseQty: row._pass,
+                    failBaseQty: row._fail,
+                    idempotencyKey: row.idempotencyKey,
+                  ),
+              ],
+            ),
       ],
     );
-    if (reason == null || !mounted) return;
-    setState(() => _submitting = true);
-    try {
-      final repo = ref.read(procurementInspectionRepositoryProvider);
-      // 逐单 decide-batch：单内同事务；跨单逐张执行，失败即停（错误带单号定位）。
-      final byReceipt = <PendingInspectionReceipt, List<_EditableIqcRow>>{};
-      for (final row in iqcRows) {
-        final group = _groups?.firstWhere(
-          (candidate) => candidate.rows.contains(row),
-        );
-        if (group == null) continue;
-        byReceipt.putIfAbsent(group.receipt, () => []).add(row);
-      }
-      for (final entry in byReceipt.entries) {
-        await repo.decideBatch(
-          receiptType: entry.key.receiptType,
-          receiptId: entry.key.receiptId,
-          reason: reason.isEmpty ? null : reason,
-          items: [
-            for (final row in entry.value)
-              ProcurementInspectionDecideItem(
-                inspectionItemId: row.item.id,
-                expectedRemainingBaseQty: row.item.remainingBaseQty ?? 0,
-                passBaseQty: double.tryParse(row.pass.text.trim()) ?? 0,
-                failBaseQty: double.tryParse(row.fail.text.trim()) ?? 0,
-                idempotencyKey: row.idempotencyKey,
-              ),
-          ],
-        );
-      }
-      if (fqcSelected.isNotEmpty) {
-        await ref
-            .read(productionFqcRepositoryProvider)
-            .passAll(
-              inspectionIds: [for (final item in fqcSelected) item.id],
-              idempotencyKey: 'fqc-batch-approval-${const Uuid().v4()}',
-            );
-      }
+    FocusScope.of(context).unfocus();
+    await _sendSubmission();
+  }
+
+  Future<void> _sendSubmission() async {
+    final submission = _submission!;
+    var countsInvalidated = false;
+    void invalidateCounts() {
+      if (!mounted || countsInvalidated) return;
       ref.invalidate(procurementInspectionPendingCountProvider);
       ref.invalidate(warehouseQualityResultPendingCountProvider);
       ref.invalidate(productionFqcPendingCountProvider);
       ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
+      countsInvalidated = true;
+    }
+
+    setState(() => _submitting = true);
+    try {
+      await submission.send(
+        iqc: ref.read(procurementInspectionRepositoryProvider),
+        fqc: ref.read(productionFqcRepositoryProvider),
+        onProgress: () {
+          if (!mounted) return;
+          final completed = submission.acknowledgedIqcIds.toSet();
+          setState(() {
+            for (final row in _flatRows ?? const <_EditableIqcRow>[]) {
+              if (completed.contains(row.item.id)) {
+                row.completed = true;
+                row.selected = false;
+              }
+            }
+          });
+        },
+      );
       if (!mounted) return;
+      invalidateCounts();
+      setState(() => _submitting = false);
       context.appSuccess(
-        '检验报告已提交：IQC ${iqcRows.length} 行、'
-        '自制产成品全部合格 ${fqcSelected.length} 项；合格部分已转仓库待入库',
+        '检验报告已提交：IQC ${submission.iqcLineCount} 行、'
+        '自制产成品全部合格 ${submission.fqcInspectionIds.length} 项；合格部分已转仓库待入库',
       );
       if (context.canPop()) {
         context.pop(true);
@@ -365,50 +447,71 @@ class _QualityBatchApprovalPageState
       }
     } on ApiException catch (error) {
       if (mounted) {
-        context.appError('提交被拒：${error.message}。已成功部分不会重复提交，请处理后重试');
+        context.appError(
+          '${submission.currentLabel}：${error.message}。重试将核对原报告，已确认成功的单据不会重发',
+        );
       }
     } catch (_) {
-      if (mounted) context.appError('提交检验报告失败，请稍后重试');
+      if (mounted) context.appError('${submission.currentLabel}提交未确认，请重试原报告');
     } finally {
-      if (mounted) setState(() => _submitting = false);
+      invalidateCounts();
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
-      appBar: UtenAppBar(
-        title:
-            '批量审批 · ${widget.selection.receipts.length} 单 IQC'
-            '${widget.selection.sheets.isNotEmpty ? ' + ${widget.selection.sheets.length} 张产成品检查单' : ''}'
-            '${widget.selection.inspections.isNotEmpty ? ' + ${widget.selection.inspections.length} 项产成品' : ''}',
-        leading: UtenBackButton(
-          onPressed: () =>
-              popOrBackTo(context, defaultPath: RouteName.warehouseInspections),
+    return PopScope(
+      canPop: !_submitting,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) _leaving = true;
+      },
+      child: Scaffold(
+        appBar: UtenAppBar(
+          title:
+              '批量审批 · ${widget.selection.receipts.length} 单 IQC'
+              '${widget.selection.sheets.isNotEmpty ? ' + ${widget.selection.sheets.length} 张产成品检查单' : ''}'
+              '${widget.selection.inspections.isNotEmpty ? ' + ${widget.selection.inspections.length} 项产成品' : ''}',
+          leading: UtenBackButton(
+            color: _submitting ? theme.disabledColor : null,
+            onPressed: () {
+              if (!_submitting) {
+                _leaving = true;
+                popOrBackTo(
+                  context,
+                  defaultPath: RouteName.warehouseInspections,
+                );
+              }
+            },
+          ),
         ),
-      ),
-      body: SafeArea(
-        child: _loading
-            ? const UtenSkeletonList()
-            : _error != null
-            ? UtenEmpty.error(
-                message: _error,
-                actionLabel: '重新加载',
-                onAction: _load,
-              )
-            : AbsorbPointer(
-                absorbing: _submitting,
-                child: UtenContentContainer.wide(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(child: _buildBody(theme)),
-                      _buildBottomBar(theme),
-                    ],
+        body: SafeArea(
+          child: _loading
+              ? const UtenSkeletonList()
+              : AbsorbPointer(
+                  absorbing: _submitting,
+                  child: UtenContentContainer.wide(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: AbsorbPointer(
+                            absorbing: _submission != null,
+                            child: ExcludeFocus(
+                              excluding: _submission != null,
+                              child: _buildBody(theme),
+                            ),
+                          ),
+                        ),
+                        _buildBottomBar(theme),
+                      ],
+                    ),
                   ),
                 ),
-              ),
+        ),
       ),
     );
   }
@@ -416,7 +519,13 @@ class _QualityBatchApprovalPageState
   Widget _buildBody(ThemeData theme) {
     final groups = _groups ?? const <_IqcReceiptGroup>[];
     final sheetGroups = _sheetGroups ?? const <_FqcSheetGroup>[];
-    final looseFqc = widget.selection.inspections;
+    final groupedFqcIds = {
+      for (final group in sheetGroups)
+        for (final inspection in group.inspections) inspection.id,
+    };
+    final looseFqc = widget.selection.inspections
+        .where((inspection) => !groupedFqcIds.contains(inspection.id))
+        .toList(growable: false);
     if (groups.isEmpty && sheetGroups.isEmpty && looseFqc.isEmpty) {
       return UtenEmpty(
         icon: Icons.fact_check_outlined,
@@ -430,6 +539,17 @@ class _QualityBatchApprovalPageState
     return ListView(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       children: [
+        if (groups.any((group) => group.loadError != null) ||
+            sheetGroups.any((group) => group.loadError != null))
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              key: const Key('batch-approval-reload-failed'),
+              onPressed: () => _load(retryFailuresOnly: true),
+              icon: const Icon(Icons.refresh),
+              label: const Text('重试加载失败的单据'),
+            ),
+          ),
         for (final group in groups) ...[
           _receiptHeader(theme, group),
           if (group.loadError != null)
@@ -536,7 +656,9 @@ class _QualityBatchApprovalPageState
   }
 
   Widget _receiptHeader(ThemeData theme, _IqcReceiptGroup group) {
-    final allSelected = group.rows.every((row) => row.selected);
+    final pending = group.rows.where((row) => !row.completed).toList();
+    final allSelected =
+        pending.isNotEmpty && pending.every((row) => row.selected);
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: UtenSpacing.s8,
@@ -548,11 +670,13 @@ class _QualityBatchApprovalPageState
           Checkbox(
             value: allSelected,
             tristate: true,
-            onChanged: (value) => setState(() {
-              for (final row in group.rows) {
-                row.selected = value != false;
-              }
-            }),
+            onChanged: pending.isEmpty
+                ? null
+                : (value) => setState(() {
+                    for (final row in pending) {
+                      row.selected = value != false;
+                    }
+                  }),
           ),
           Expanded(
             child: Text(
@@ -572,65 +696,82 @@ class _QualityBatchApprovalPageState
 
   Widget _iqcRowTile(ThemeData theme, _EditableIqcRow row) {
     final remaining = row.item.remainingBaseQty ?? 0;
-    return CheckboxListTile(
-      value: row.selected,
-      controlAffinity: ListTileControlAffinity.leading,
-      onChanged: (value) => setState(() => row.selected = value ?? false),
-      title: Text(
-        [
-          row.item.goodsName,
-          row.item.goodsCode,
-          row.item.colorName,
-        ].where((text) => text?.isNotEmpty == true).join(' · '),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        '剩余待检 ${_fmt(remaining)} ${inspectionQuantityUnit(context, row.item)}',
-      ),
-      secondary: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 140,
-            child: TextField(
-              key: Key('batch-approval-pass-${row.item.id}'),
-              controller: row.pass,
-              enabled: row.selected,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              textAlign: TextAlign.right,
-              decoration: UtenInputDecoration(
-                const InputDecoration(labelText: '合格数量', isDense: true),
-                info: inspectionQuantityHint(context, row.item, passed: true),
-              ),
-            ),
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          SizedBox(
-            width: 140,
-            child: TextField(
-              key: Key('batch-approval-fail-${row.item.id}'),
-              controller: row.fail,
-              enabled: row.selected,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              textAlign: TextAlign.right,
-              decoration: UtenInputDecoration(
-                InputDecoration(
-                  labelText: '不合格数量',
-                  isDense: true,
-                  error: row.validate() == null
-                      ? null
-                      : UtenFieldMessage.error(row.validate()!),
+    return ListenableBuilder(
+      listenable: Listenable.merge([row.pass, row.fail]),
+      builder: (context, child) => CheckboxListTile(
+        value: row.selected,
+        controlAffinity: ListTileControlAffinity.leading,
+        onChanged: row.completed
+            ? null
+            : (value) => setState(() => row.selected = value ?? false),
+        title: Text(
+          [
+            row.item.goodsName,
+            row.item.goodsCode,
+            row.item.colorName,
+          ].where((text) => text?.isNotEmpty == true).join(' · '),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          row.completed
+              ? '本次报告已确认提交'
+              : '剩余待检 ${_fmt(remaining)} ${inspectionQuantityUnit(context, row.item)}',
+        ),
+        secondary: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 140,
+              child: TextField(
+                key: Key('batch-approval-pass-${row.item.id}'),
+                controller: row.pass,
+                enabled: row.selected && _submission == null,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
                 ),
-                info: inspectionQuantityHint(context, row.item, passed: false),
+                textAlign: TextAlign.right,
+                decoration: UtenInputDecoration(
+                  InputDecoration(
+                    labelText: '合格数量',
+                    isDense: true,
+                    error: row.validate() == null
+                        ? null
+                        : UtenFieldMessage.error(row.validate()!),
+                  ),
+                  info: inspectionQuantityHint(context, row.item, passed: true),
+                ),
               ),
             ),
-          ),
-        ],
+            const SizedBox(width: UtenSpacing.s8),
+            SizedBox(
+              width: 140,
+              child: TextField(
+                key: Key('batch-approval-fail-${row.item.id}'),
+                controller: row.fail,
+                enabled: row.selected && _submission == null,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                textAlign: TextAlign.right,
+                decoration: UtenInputDecoration(
+                  InputDecoration(
+                    labelText: '不合格数量',
+                    isDense: true,
+                    error: row.validate() == null
+                        ? null
+                        : UtenFieldMessage.error(row.validate()!),
+                  ),
+                  info: inspectionQuantityHint(
+                    context,
+                    row.item,
+                    passed: false,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -674,12 +815,16 @@ class _QualityBatchApprovalPageState
           UtenSelectionSummaryPill(
             key: const Key('batch-approval-selected-count'),
             count: selectedCount,
-            onClear: selectedCount == 0 ? null : _clearSelection,
+            onClear: selectedCount == 0 || _submission != null
+                ? null
+                : _clearSelection,
           ),
           const SizedBox(width: UtenSpacing.s12),
           Expanded(
             child: Text(
-              '提交后合格部分转仓库待入库',
+              _submission == null
+                  ? '提交后合格部分转仓库待入库'
+                  : '已确认 ${_submission!.completedReceiptCount} 单；重试原报告核对未完成部分。需修改请返回待检重新读取',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(
@@ -692,8 +837,8 @@ class _QualityBatchApprovalPageState
             key: const Key('batch-approval-submit-report'),
             isLoading: _submitting,
             icon: Icons.fact_check_outlined,
-            onPressed: _submitting ? null : _submitReport,
-            child: const Text('提交报告'),
+            onPressed: _submitting || _confirming ? null : _submitReport,
+            child: Text(_submission == null ? '提交报告' : '重试原报告'),
           ),
         ],
       ),

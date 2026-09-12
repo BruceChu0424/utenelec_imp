@@ -77,7 +77,8 @@ public class SubcontractLossValueService implements SubcontractMaterialValuePort
         UUID order=db.queryForObject("SELECT order_item_id FROM subcontract_receipt_items WHERE id=:id",Map.of("id",receiptItem),UUID.class);
         var source=order(order);PoolKey product=pool(source);support.ensureActive(product,event);
         costs.registerScope(new Scope(order,ScopeKind.SUBCONTRACT_ORDER_NORMAL_LOSS,product));
-        costs.registerOutput(order,product,new Output(output.valueNodeId(),output.movementId()));
+        // The order pool anchors the cost scope; each receipt output keeps its actual stock-in warehouse.
+        costs.registerOutput(order,physicalPool,new Output(output.valueNodeId(),output.movementId()));
         refresh(order,event.sourceEventId(),event.actorUserId());
     }
 

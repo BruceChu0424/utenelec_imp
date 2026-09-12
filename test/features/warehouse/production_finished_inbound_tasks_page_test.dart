@@ -2,6 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/features/warehouse/pages/production_finished_batch_stock_in_page.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
@@ -18,6 +21,25 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     final api = _FinishedInboundApi();
+    // 2026-09-12 弹窗改页：批量全量点收进独立页，路由壳带上该页。
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (_, _) => const ProductionFinishedInboundTasksPage(),
+        ),
+        GoRoute(
+          path: RouteName.warehouseProductionFinishedBatchStockIn,
+          builder: (_, state) => ProductionFinishedBatchStockInPage(
+            targets: state.extra is List<ProductionFinishedInboundTask>
+                ? state.extra! as List<ProductionFinishedInboundTask>
+                : const [],
+          ),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -28,7 +50,7 @@ void main() {
           }),
           isSuperAdminProvider.overrideWithValue(false),
         ],
-        child: const MaterialApp(home: ProductionFinishedInboundTasksPage()),
+        child: MaterialApp.router(routerConfig: router),
       ),
     );
     await tester.pumpAndSettle();
@@ -98,9 +120,18 @@ void main() {
       const Key('production-finished-inbound-batch-confirm'),
     );
     expect(batchButton, findsOneWidget);
+    // 2026-09-12 弹窗改页：进批量点收页 → 小结确认 → 整批提交。
     await tester.tap(batchButton);
     await tester.pumpAndSettle();
-    expect(find.text('批量全量点收 1 张'), findsOneWidget);
+    expect(
+      find.byKey(const Key('production-finished-batch-stock-in-table')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const Key('production-finished-batch-confirm')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('批量全量点收（1 张）'), findsOneWidget);
     await tester.tap(find.text('确认批量入库'));
     await tester.pumpAndSettle();
 

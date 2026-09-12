@@ -29,6 +29,7 @@ import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
@@ -64,6 +65,7 @@ import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../providers/warehouse_arrival_fill_memory.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/procurement_inbound_repository.dart';
+import '../widgets/batch_place_fill_dialog.dart';
 import '../widgets/warehouse_inbound_allocation_view.dart';
 import '../widgets/warehouse_autofill_text_field.dart';
 import '../widgets/warehouse_arrival_source_field.dart';
@@ -307,14 +309,26 @@ class _WarehouseArrivalReceiptPageState
   /// 落到 [_writeTargets]，并记住这次选的仓。
   Future<void> _pickLineWarehouse(_ArrivalReceiptLine line) async {
     if (_saving) return;
-    final targets = _writeTargets(line);
+    await _pickWarehouseFor(
+      _writeTargets(line),
+      fallbackWarehouseId: _suggestedWarehouseId,
+    );
+  }
+
+  /// 选仓核心（行内点击与右键「批量设置入库仓库」共用，2026-09-12）：
+  /// 面板返回后落到目标行、记住这次选的仓。
+  Future<void> _pickWarehouseFor(
+    List<_ArrivalReceiptLine> targets, {
+    String? fallbackWarehouseId,
+  }) async {
+    if (_saving || targets.isEmpty) return;
     final picked = await showUtenWarehousePickerPanel(
       context,
       hierarchy: ref.read(masterNameServiceProvider).warehouseHierarchy,
-      initialWarehouseId: line.warehouseId ?? _suggestedWarehouseId,
+      initialWarehouseId: targets.first.warehouseId ?? fallbackWarehouseId,
       title: targets.length > 1
           ? '批量设置入库仓库（选中 ${targets.length} 行）'
-          : '选择入库仓库 · ${line.item.goodsName}',
+          : '选择入库仓库 · ${targets.first.item.goodsName}',
     );
     if (picked == null || !mounted) return;
     setState(() {
@@ -329,6 +343,31 @@ class _WarehouseArrivalReceiptPageState
     if (targets.length > 1) {
       context.appInfo('已把入库仓库写到选中的 ${targets.length} 行');
     }
+  }
+
+  /// 右键「批量设置库位号」（2026-09-12，与批量登记页统一口径）：一次输入应用
+  /// 到全部选中行，并记住这次写的库位号（下次登记自动带）。
+  Future<void> _batchFillStockPlace(List<_ArrivalReceiptLine> rows) async {
+    if (_saving || rows.isEmpty) return;
+    final place = await showBatchPlaceFillDialog(
+      context,
+      rowCount: rows.length,
+      inputKey: const Key('warehouse-arrival-receipt-place-input'),
+      applyKey: const Key('warehouse-arrival-receipt-place-apply'),
+    );
+    if (place == null || !mounted) return;
+    if (place.isEmpty) {
+      context.appWarning('库位号不能为空');
+      return;
+    }
+    setState(() {
+      for (final line in rows) {
+        line.setCheckedStockPlace(place);
+      }
+    });
+    ref
+        .read(warehouseArrivalFillMemoryProvider.notifier)
+        .rememberStockPlace(place);
   }
 
   Future<void> _save() async {
@@ -693,6 +732,24 @@ class _WarehouseArrivalReceiptPageState
               // 落仓/写库位改成「勾选多行后改任意一行即整批落值」。
               showSelectAllToggle: false,
               showRemoveRowsAction: false,
+              // 2026-09-12 右键菜单补显式批量入口（与批量登记页、产成品登记页
+              // 统一口径）：勾选多行后右键可批量设仓/批量填库位。
+              rowMenuExtraBuilder: canRegister && !_saving
+                  ? (context, selected) => [
+                      UtenMenuItem(
+                        label: '批量设置入库仓库 (${selected.length})',
+                        icon: Icons.warehouse_outlined,
+                        enabled: selected.isNotEmpty,
+                        onTap: () => _pickWarehouseFor(selected),
+                      ),
+                      UtenMenuItem(
+                        label: '批量设置库位号 (${selected.length})',
+                        icon: Icons.edit_note_outlined,
+                        enabled: selected.isNotEmpty,
+                        onTap: () => _batchFillStockPlace(selected),
+                      ),
+                    ]
+                  : null,
               emptyMessage: '该任务没有可登记明细，请返回任务中心刷新',
               footer: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,

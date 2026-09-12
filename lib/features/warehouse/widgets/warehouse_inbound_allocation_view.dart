@@ -211,14 +211,70 @@ class _WarehouseInboundAllocationDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
     final theme = Theme.of(context);
+    // 2026-09-12 用户口径「确认入库的弹窗小点」：确认弹窗改紧凑摘要——限宽 460、
+    // 限高 60% 屏高自滚，货品行收敛为一行「品名 + 数量 + 去向一句话」；完整去向
+    // 明细仍在表格 ⓘ 的「查看去向明细」里，需要核对的人点开看，不塞进确认弹窗。
+    // 查看/结果弹窗保留原完整卡片（那里才是看明细的地方）。
+    if (_confirming) {
+      return AlertDialog(
+        key: const Key('warehouse-inbound-allocation-confirm-dialog'),
+        insetPadding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s16,
+          vertical: UtenSpacing.s24,
+        ),
+        title: Text(title),
+        content: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 460,
+            maxHeight: MediaQuery.sizeOf(context).height * 0.6,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  description,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: UtenSpacing.s8),
+                UtenReviewerResponsibilityNotice(
+                  actionLabel: reviewerActionLabel ?? '仓库实物入库确认',
+                  description: ownRelease
+                      ? '本单品质放行也由当前账号执行，请再次核对实物数量、库位和预计去向。'
+                      : '请核对本次实物数量、库位和预计去向；最终分配以提交事务返回为准。',
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                for (final section in sections)
+                  _ConfirmSummaryRow(section: section),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          UtenButton(
+            type: UtenButtonType.secondary,
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('返回修改'),
+          ),
+          UtenButton(
+            key: const Key('warehouse-inbound-allocation-confirm'),
+            icon: Icons.inventory_2_outlined,
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(confirmLabel!),
+          ),
+        ],
+      );
+    }
+    final size = MediaQuery.sizeOf(context);
     return AlertDialog(
       key: Key(
         actual
             ? 'warehouse-inbound-allocation-result-dialog'
-            : _confirming
-            ? 'warehouse-inbound-allocation-confirm-dialog'
             : 'warehouse-inbound-allocation-detail-dialog',
       ),
       insetPadding: const EdgeInsets.symmetric(
@@ -239,15 +295,6 @@ class _WarehouseInboundAllocationDialog extends StatelessWidget {
                 height: 1.45,
               ),
             ),
-            if (_confirming) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              UtenReviewerResponsibilityNotice(
-                actionLabel: reviewerActionLabel ?? '仓库实物入库确认',
-                description: ownRelease
-                    ? '本单品质放行也由当前账号执行，请再次核对实物数量、库位和预计去向。'
-                    : '请核对本次实物数量、库位和预计去向；最终分配以提交事务返回为准。',
-              ),
-            ],
             const SizedBox(height: UtenSpacing.s12),
             Expanded(
               child: ListView.separated(
@@ -267,16 +314,74 @@ class _WarehouseInboundAllocationDialog extends StatelessWidget {
         UtenButton(
           type: UtenButtonType.secondary,
           onPressed: () => Navigator.pop(context, _confirming ? false : null),
-          child: Text(_confirming ? '返回修改' : '关闭'),
+          child: const Text('关闭'),
         ),
-        if (_confirming)
-          UtenButton(
-            key: const Key('warehouse-inbound-allocation-confirm'),
-            icon: Icons.inventory_2_outlined,
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(confirmLabel!),
-          ),
       ],
+    );
+  }
+}
+
+/// 确认弹窗里的一行货品摘要：品名 + 本次数量 + 预计去向一句话；跨仓给警示横幅
+///（跨仓影响计划绑定，是确认前必须看见的安全信息，不随紧凑化省略）。
+class _ConfirmSummaryRow extends StatelessWidget {
+  const _ConfirmSummaryRow({required this.section});
+
+  final WarehouseInboundAllocationSection section;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final allocations = section.previewAllocations();
+    final unit = section.unitName?.trim().isNotEmpty == true
+        ? ' ${section.unitName}'
+        : '';
+    final mismatch = allocations
+        .where((item) => item.isCrossWarehouse)
+        .toList(growable: false);
+    final color = mismatch.isNotEmpty
+        ? theme.colorScheme.error
+        : theme.colorScheme.primary;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  section.goodsLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Text('本次 ${_qty(section.quantity)}$unit'),
+            ],
+          ),
+          const SizedBox(height: UtenSpacing.s2),
+          Text(
+            warehouseInboundAllocationSummaryText(allocations, _qty),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: color,
+              fontWeight: mismatch.isNotEmpty ? FontWeight.w700 : null,
+            ),
+          ),
+          if (mismatch.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s4),
+            _CrossWarehouseWarning(
+              allocations: mismatch,
+              allAllocations: allocations,
+              sectionQuantity: section.quantity,
+              unit: unit,
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

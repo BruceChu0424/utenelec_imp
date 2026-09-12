@@ -28,6 +28,7 @@ public class InventoryMutationLock {
 
     /** Fixed server-side namespace/seed; never derived from a JVM hash code. */
     static final long HASH_NAMESPACE = 0x5554454E494D504CL;
+    private static final int KEYS_PER_STATEMENT = 500;
 
     private final EntityManager em;
     private final Object heldKeysResource = new Object();
@@ -47,16 +48,31 @@ public class InventoryMutationLock {
         com.uten.imp.application.concurrency.FulfillmentLockState.beforeInventoryLocks(keys.stream()
                 .map(key -> new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(
                         key.goodsId(), key.colorId())).toList());
-        for (InventoryKey key : keys) {
-            em.createNativeQuery("""
+        for (int from = 0; from < keys.size(); from += KEYS_PER_STATEMENT) {
+            List<InventoryKey> chunk = keys.subList(from, Math.min(from + KEYS_PER_STATEMENT, keys.size()));
+            // Keep the existing key, namespace and Java order. The ordered
+            // subquery feeds the volatile lock function in that exact order;
+            // OFFSET 0 preserves the ordering boundary under generic plans.
+            // Always reacquire in PostgreSQL: an earlier savepoint rollback may
+            // have released a lock even while Java still remembers the key.
+            List<?> acquired = em.createNativeQuery("""
                             SELECT pg_advisory_xact_lock(
-                                hashtextextended(CAST(:inventoryKey AS text), CAST(:namespace AS bigint))
-                            )
+                                hashtextextended(ordered.inventory_key, CAST(:namespace AS bigint)))
+                            FROM (
+                                SELECT inventory_key
+                                FROM unnest(string_to_array(:inventoryKeys, ','))
+                                     WITH ORDINALITY AS requested(inventory_key, position)
+                                ORDER BY position OFFSET 0
+                            ) ordered
                             """)
-                    .setParameter("inventoryKey", key.canonical())
+                    .setParameter("inventoryKeys", chunk.stream().map(InventoryKey::canonical)
+                            .collect(java.util.stream.Collectors.joining(",")))
                     .setParameter("namespace", HASH_NAMESPACE)
-                    .getSingleResult();
-            recordAcquired(key);
+                    .getResultList();
+            if (acquired.size() != chunk.size()) {
+                throw new IllegalStateException("Inventory lock batch did not acquire every requested key");
+            }
+            chunk.forEach(this::recordAcquired);
         }
     }
 

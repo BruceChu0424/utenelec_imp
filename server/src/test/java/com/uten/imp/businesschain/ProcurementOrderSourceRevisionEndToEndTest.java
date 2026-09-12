@@ -21,6 +21,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.TestContext;
+import org.springframework.test.context.TestExecutionListeners;
+import org.springframework.test.context.support.AbstractTestExecutionListener;
+import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -38,6 +43,10 @@ import static org.assertj.core.api.Assertions.*;
 
 /** Real source generation, finance claims, quantity changes and unchanged database guards. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
+// The class owns and stops its database; cached schedulers must not outlive it.
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@TestExecutionListeners(listeners = ProcurementOrderSourceRevisionEndToEndTest.DatabaseCleanup.class,
+        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false","uten.policy-intelligence.enabled=false",
@@ -65,7 +74,11 @@ class ProcurementOrderSourceRevisionEndToEndTest {
     private FullChainEndToEndTest harness;
     @BeforeEach void harness(){harness=new FullChainEndToEndTest();beans.autowireBean(harness);}
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
-    @AfterAll static void stop(){DB.stop();}
+    public static class DatabaseCleanup extends AbstractTestExecutionListener {
+        // Spring invokes afterTestClass in reverse order: close its context before PostgreSQL.
+        @Override public int getOrder() { return new DirtiesContextTestExecutionListener().getOrder() - 1; }
+        @Override public void afterTestClass(TestContext ignored) { DB.stop(); }
+    }
 
     @Test void reducedOrderReturnsOnlyTwoToOriginalDemandAndLaterIncreaseAndWholeReversalAreExact(){
         Fixture f=fixture("revision-exact");UUID source=source(f.orderId());UUID transfer=transfer(f.orderId(),source);

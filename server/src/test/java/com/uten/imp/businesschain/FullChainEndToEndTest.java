@@ -11745,7 +11745,8 @@ class FullChainEndToEndTest {
         List<UUID> remaining=fqcService.sheetDetail(sheetA.sheetId()).inspections().stream().filter(item->"PENDING".equals(item.status())).map(item->item.id()).toList();
         fqcService.passAll(new com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchRequest(remaining,"sheet-batch-pass-"+UUID.randomUUID()));
         assertEquals(0,count("SELECT count(*) FROM production_fqc_inspection_sheet_items si JOIN production_fqc_inspections i ON i.id=si.inspection_id WHERE si.sheet_id=? AND i.status IN ('PENDING','PARTIAL')",sheetA.sheetId()));
-        assertEquals(1,fqcService.listSheets("CLOSED","",1,50).getItems().stream().filter(sheet->sheet.id().equals(sheetA.sheetId())).count());
+        // 页宽与上文 11710 同口径（200）：154 个用例共享累积库，CLOSED 单可能超过 50/页。
+        assertEquals(1,fqcService.listSheets("CLOSED","",1,200).getItems().stream().filter(sheet->sheet.id().equals(sheetA.sheetId())).count());
         assertEquals(activeBefore+1,fqcService.countActive(),"只剩 B 仓那张单");
         // 来源报工红冲：inspection CANCELLED，检查单及明细保留为历史。
         loginAs(r.reporter()); reportService.reverse(r.id()); loginAs(w.superAdminUserId());

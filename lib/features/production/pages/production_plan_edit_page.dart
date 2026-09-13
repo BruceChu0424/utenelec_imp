@@ -25,6 +25,7 @@ import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/buttons/uten_drafts_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -674,7 +675,7 @@ class _ProductionPlanEditPageState
                       UtenSpacing.s12,
                       UtenSpacing.s12,
                       UtenSpacing.s12,
-                      UtenSpacing.s12 + 88,
+                      UtenFloatingActionGroup.scrollClearance,
                     ),
                     children: [
                       Card(

@@ -26,13 +26,14 @@ public class ProductionWorkshopTaskController {
             @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String preparationFilter,
             @RequestParam(required = false) UUID workshopDepartmentId,
             @RequestParam(required = false) LocalDate dateFrom,
             @RequestParam(required = false) LocalDate dateTo) {
         // dateFrom/dateTo 只对「历史任务」段生效（ADR-066 §1.3 时间门控：
         // 已完工/已取消/已红冲按计划完工日期筛选）；活动段忽略日期参数。
         return service.workshopTasks(page, size, keyword, status,
-                workshopDepartmentId, dateFrom, dateTo);
+                workshopDepartmentId, dateFrom, dateTo, preparationFilter);
     }
 
     @GetMapping("/count")

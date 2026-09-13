@@ -201,8 +201,7 @@ public class SalesOrderService {
         String sql = """
                 SELECT i.id, i.order_id, o.bill_no, o.client_id, i.deliver_date, i.goods_id, i.color_id,
                        i.unit_id, i.unit_rate, i.qty, i.shipped_qty,
-                       GREATEST(COALESCE(i.reserved_qty,0)
-                           - COALESCE(draft.allocated_qty,0), 0) AS available_to_draft,
+                       GREATEST(%s - COALESCE(draft.allocated_qty,0), 0) AS available_to_draft,
                        i.price,
                        o.owner_employee_id
                 FROM sales_order_items i
@@ -221,9 +220,8 @@ public class SalesOrderService {
                   AND o.finance_confirmed = true
                   AND COALESCE(o.finance_rejected, false) = false
                   AND COALESCE(o.is_deleted,false) = false AND COALESCE(i.is_deleted,false) = false
-                  AND GREATEST(COALESCE(i.reserved_qty,0)
-                      - COALESCE(draft.allocated_qty,0), 0) > 0
-                """ + " AND " + ownerScope.predicate()
+                  AND GREATEST(%s - COALESCE(draft.allocated_qty,0), 0) > 0
+                """.formatted(physicalShipmentReservationSql("i"),physicalShipmentReservationSql("i")) + " AND " + ownerScope.predicate()
                 + " ORDER BY o.client_id, i.deliver_date NULLS LAST, o.bill_no, i.line_no NULLS LAST";
         var q = em.createNativeQuery(sql);
         ownerScope.bind(q);
@@ -574,20 +572,26 @@ public class SalesOrderService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_order:view')")
     public List<com.uten.imp.features.sales.order.dto.PlanProgressLine> planProgress(UUID id) {
-        requireReadableOrder(id);
+        SalesOrder order = requireReadableOrder(id);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                 SELECT i.id, i.line_no, g.code, g.name, g.spec, col.name, u.name,
                        i.qty, COALESCE(i.reserved_qty,0), COALESCE(i.planned_qty,0),
                        COALESCE(i.produced_qty,0), COALESCE(i.shipped_qty,0), i.chain_status,
-                       %s AS unplanned_qty
+                       %s AS unplanned_qty,
+                       COALESCE((SELECT SUM(shipment_item.qty) FROM sales_shipment_items shipment_item
+                           JOIN sales_shipments shipment ON shipment.id=shipment_item.shipment_id
+                           WHERE shipment_item.order_item_id=i.id AND NOT shipment_item.is_deleted
+                             AND NOT shipment.is_deleted AND shipment.status=0
+                             AND NOT COALESCE(shipment.rejected,FALSE)),0) pending_shipment_qty,
+                       %s AS physical_reserved_qty
                 FROM sales_order_items i
                 JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
                 LEFT JOIN units u ON u.id = i.unit_id
                 WHERE i.order_id = :oid AND i.is_deleted = false
                 ORDER BY i.line_no NULLS LAST, i.id
-                """.formatted(SalesOrderChainSql.unplannedQtySql("i")))
+                """.formatted(SalesOrderChainSql.unplannedQtySql("i"), physicalShipmentReservationSql("i")))
                 .setParameter("oid", id).getResultList();
         List<UUID> itemIds = rows.stream().map(r -> (UUID) r[0]).toList();
         Map<UUID, List<com.uten.imp.features.sales.order.dto.PlanProgressLine.MaterialAnalysisProgress>>
@@ -749,7 +753,12 @@ public class SalesOrderService {
             out.add(new com.uten.imp.features.sales.order.dto.PlanProgressLine(
                     (UUID) r[0], r[1] == null ? null : ((Number) r[1]).intValue(),
                     (String) r[2], (String) r[3], (String) r[4], (String) r[5], (String) r[6],
-                    nz((BigDecimal) r[7]), nz((BigDecimal) r[8]), nz((BigDecimal) r[9]),
+                    nz((BigDecimal) r[7]), nz((BigDecimal) r[8]),
+                    order.getStatus()==STATUS_APPROVED && !order.isStopped() && !order.isClosed()
+                            && order.isFinanceConfirmed() && !order.isFinanceRejected()
+                            ? nz((BigDecimal)r[15]).subtract(nz((BigDecimal)r[14])).max(BigDecimal.ZERO)
+                            : BigDecimal.ZERO,
+                    nz((BigDecimal)r[14]), nz((BigDecimal) r[9]),
                     nz((BigDecimal) r[10]), nz((BigDecimal) r[11]),
                     r[12] == null ? null : ((Number) r[12]).shortValue(),
                     nz((BigDecimal) r[13]),
@@ -757,6 +766,17 @@ public class SalesOrderService {
                     byItem.getOrDefault((UUID) r[0], List.of())));
         }
         return out;
+    }
+
+    private static String physicalShipmentReservationSql(String item) {
+        return """
+                GREATEST(LEAST(COALESCE(%1$s.reserved_qty,0),
+                    GREATEST(%1$s.qty-COALESCE(%1$s.shipped_qty,0)+COALESCE(%1$s.returned_qty,0)-COALESCE(%1$s.flag_qty,0),0),
+                    COALESCE((SELECT SUM(GREATEST(reservation.qty-reservation.consumed_qty-reservation.released_qty,0))
+                        FROM stock_reservations reservation WHERE reservation.order_item_id=%1$s.id
+                          AND NOT reservation.is_deleted AND reservation.status=0),0)
+                        /COALESCE(NULLIF(%1$s.unit_rate,0),1)),0)
+                """.formatted(item);
     }
 
     /** 报价转入回联（SOP §三1）：只按 sourceQuoteId 回联；sourceDocNo 仅作历史显示快照。 */

@@ -1,5 +1,5 @@
 // 销售订单关注事项红色数字徽章（销售 hub「订单进度查询」卡用）。
-// 数据源 = 未解决财务驳回订单 + 未读完工通知；count<=0 不渲染。
+// 数据源 = 未解决财务驳回订单 + 当前可分批发货待开单订单；count<=0 不渲染。
 // 范式同 ProductionPendingBadge。
 
 import 'package:flutter/material.dart';

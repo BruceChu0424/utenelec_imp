@@ -55,13 +55,20 @@ public class TxSessionVars {
         this.auditDeviceContext = auditDeviceContext;
     }
 
-    /** 绑定审计 actor（当前登录用户，可为空）。 */
+    /**
+     * Bind the current principal when present. Without a principal, retain an
+     * explicitly established system actor for nested background work (for
+     * example automatic material readiness); transaction-local settings prevent
+     * that identity from leaking to another transaction on the pooled connection.
+     */
     public void bind() {
+        Map<String, String> values = new LinkedHashMap<>();
         currentUser.get().ifPresent(user -> {
-            setConfig("app.actor_id", user.getId().toString());
-            setConfig("app.actor_account", truncate(user.getLoginAccount(), 200));
+            values.put("app.actor_id", user.getId().toString());
+            values.put("app.actor_account", truncate(user.getLoginAccount(), 200));
         });
-        bindRequestMetadata();
+        bindRequestMetadata(values);
+        setConfigs(values);
     }
 
     public void bindActor(UUID actorId) {
@@ -69,13 +76,15 @@ public class TxSessionVars {
     }
 
     public void bindActor(UUID actorId, String actorAccount) {
-        if (actorId != null) {
-            setConfig("app.actor_id", actorId.toString());
+        Map<String, String> values = new LinkedHashMap<>();
+        if (actorId != null || actorAccount != null && !actorAccount.isBlank()) {
+            // Identity fields form a pair. A UUID-only rebind must not inherit
+            // the previous actor's account label from this same transaction.
+            values.put("app.actor_id", actorId == null ? "" : actorId.toString());
+            values.put("app.actor_account", actorAccount == null ? "" : truncate(actorAccount, 200));
         }
-        if (actorAccount != null && !actorAccount.isBlank()) {
-            setConfig("app.actor_account", truncate(actorAccount, 200));
-        }
-        bindRequestMetadata();
+        bindRequestMetadata(values);
+        setConfigs(values);
     }
 
     /**
@@ -96,21 +105,38 @@ public class TxSessionVars {
         setConfig("app.employee_pii_extra_backfill", "v1");
     }
 
-    private void bindRequestMetadata() {
+    private void bindRequestMetadata(Map<String, String> values) {
         HttpServletRequest request = AuditRequestContext.currentRequest();
         if (request == null) {
             return;
         }
-        setConfig("app.audit_request_id",
+        values.put("app.audit_request_id",
                 AuditRequestContext.ensureRequestId(request).toString());
-        setConfig("app.audit_ip", truncate(request.getRemoteAddr(), 64));
+        values.put("app.audit_ip", truncate(request.getRemoteAddr(), 64));
         String userAgent = request.getHeader("User-Agent");
         if (userAgent != null && !userAgent.isBlank()) {
-            setConfig("app.audit_user_agent", truncate(userAgent, 1000));
+            values.put("app.audit_user_agent", truncate(userAgent, 1000));
         }
-        setConfig(
+        values.put(
                 "app.audit_device_context",
                 auditDeviceContext.sessionJson(request));
+    }
+
+    /** One round trip per binding, without retaining actor state across calls or transactions. */
+    private void setConfigs(Map<String, String> values) {
+        if (values.isEmpty()) return;
+        List<String> expressions = new ArrayList<>();
+        for (int index = 0; index < values.size(); index++) {
+            expressions.add("set_config(:name" + index + ", :value" + index + ", true)");
+        }
+        var query = em.createNativeQuery("SELECT " + String.join(", ", expressions));
+        int index = 0;
+        for (var entry : values.entrySet()) {
+            query.setParameter("name" + index, entry.getKey());
+            query.setParameter("value" + index, entry.getValue());
+            index++;
+        }
+        query.getSingleResult();
     }
 
     private void setConfig(String name, String value) {

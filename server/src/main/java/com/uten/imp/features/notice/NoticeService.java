@@ -987,7 +987,7 @@ public class NoticeService {
 
     private Set<UUID> visibleWorkshopNoticeIds(List<Notice> notices, UUID userId) {
         Set<UUID> ids = notices.stream()
-                .filter(n -> ReviewNoticeAudience.WORKSHOP_EVENT.equals(n.getSourceEvent()))
+                .filter(NoticeService::requiresScopedNoticeVisibility)
                 .map(Notice::getId).collect(Collectors.toSet());
         if (ids.isEmpty()) return Set.of();
         return Set.copyOf(noticeRepo.findScopedVisibleNoticeIds(userId, ids,
@@ -995,12 +995,17 @@ public class NoticeService {
     }
 
     private boolean visibleTo(Notice n, UUID userId, NoticeUserState state, Set<UUID> scopedWorkshopNotices) {
-        if (ReviewNoticeAudience.WORKSHOP_EVENT.equals(n.getSourceEvent())
+        if (requiresScopedNoticeVisibility(n)
                 && !scopedWorkshopNotices.contains(n.getId())) return false;
         if (n.getAudienceUserId() != null) {
             return n.getAudienceUserId().equals(userId);
         }
         return !"selected".equals(n.getAudienceScope()) || state != null;
+    }
+
+    private static boolean requiresScopedNoticeVisibility(Notice notice) {
+        return ReviewNoticeAudience.WORKSHOP_EVENT.equals(notice.getSourceEvent())
+                || ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING.equals(notice.getSourceEvent());
     }
 
     /**

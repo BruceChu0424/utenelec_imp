@@ -10,6 +10,8 @@
 // 发票号（invoiceNo）仍由用户手工录入（未弃用）。日期统一用 UtenDateField。
 // 保存组装 body 调 create/update，成功后跳详情。
 import 'package:flutter/material.dart';
+
+import '../../../components/layout/uten_floating_action_group.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
@@ -1622,7 +1624,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                       UtenSpacing.s12,
                       UtenSpacing.s12,
                       UtenSpacing.s12,
-                      88,
+                      UtenFloatingActionGroup.scrollClearance,
                     ),
                     children: [
                       Card(

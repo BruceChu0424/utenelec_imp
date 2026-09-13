@@ -10,6 +10,16 @@ public interface ProductionMutationFootprintPort {
 
     FulfillmentMutationLockPlan forStockDocuments(Collection<UUID> documentIds);
     FulfillmentMutationLockPlan forAnalyses(Collection<UUID> analysisIds);
+    /**
+     * Only the plan-creation loop may hold this scope. Its complete material/BOM
+     * structure is verified again on close, before any analysis refresh.
+     * Dynamic commercial and execution discovery remains live on every call.
+     */
+    AnalysisStructureScope openAnalysisStructureScope(UUID analysisId);
+
+    interface AnalysisStructureScope extends AutoCloseable {
+        @Override void close();
+    }
     FulfillmentMutationLockPlan forSharedFutureClaim(UUID analysisId);
     FulfillmentMutationLockPlan forPreview(
             Collection<UUID> salesItemIds, Collection<UUID> subcontractItemIds,

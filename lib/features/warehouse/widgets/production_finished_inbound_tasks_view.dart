@@ -7,7 +7,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
@@ -60,9 +59,6 @@ class _ProductionFinishedInboundTasksViewState
   String _keyword = '';
   int _requestVersion = 0;
   final Set<String> _selectedIds = <String>{};
-  bool _batchConfirming = false;
-  String? _batchSelectionFingerprint;
-  String? _batchIdempotencyKey;
 
   @override
   void initState() {
@@ -178,105 +174,44 @@ class _ProductionFinishedInboundTasksViewState
     });
   }
 
-  String _batchKey(Set<String> ids) {
-    final sorted = ids.toList()..sort();
-    final fingerprint = sorted.join('|');
-    if (_batchSelectionFingerprint != fingerprint ||
-        _batchIdempotencyKey == null) {
-      _batchSelectionFingerprint = fingerprint;
-      _batchIdempotencyKey = 'finished-in-batch-${const Uuid().v4()}';
-    }
-    return _batchIdempotencyKey!;
-  }
-
+  /// 多选「批量全量点收入库」（2026-09-12 弹窗改页，与入库中心统一口径）：
+  /// 进批量点收页（所选任务一张表 + 底部确认批量入库，小结确认后整批同事务提交）。
   Future<void> _confirmSelected(Set<String> selectedIds) async {
     final documentIds = selectedIds
         .where((id) => id.startsWith('doc:'))
         .map((id) => id.substring(4))
         .toSet();
-    if (_batchConfirming || documentIds.isEmpty) {
-      if (documentIds.isEmpty) context.appWarning('请先选择待最终点收任务');
+    if (documentIds.isEmpty) {
+      context.appWarning('请先选择待最终点收任务');
       return;
     }
-    final ids = documentIds.toList()..sort();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('批量全量点收 ${ids.length} 张'),
-        content: const Text(
-          '系统将按每张单当前全部待点收数量执行实物全量接收，并在同一事务写入库存、生产入库完成量和审计链。'
-          '任一任务状态、权限、品质放行、库存或并发校验失败，整批都会回滚。'
-          '如果存在短收或拒收，请取消并双击对应任务逐单处理。',
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            icon: const Icon(Icons.inventory_rounded),
-            label: const Text('确认批量入库'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() => _batchConfirming = true);
-    try {
-      final result = await ref
-          .read(productionFinishedInboundTaskRepositoryProvider)
-          .confirmAll(documentIds: ids, idempotencyKey: _batchKey(selectedIds));
-      if (!mounted) return;
-      final confirmedIds = result.confirmedDocumentIds.isEmpty
-          ? ids.toSet()
-          : result.confirmedDocumentIds;
-      final current = _result;
-      setState(() {
-        if (current != null) {
-          final remaining = current.items
-              .where(
-                (task) =>
-                    task.documentId == null ||
-                    !confirmedIds.contains(task.documentId),
-              )
-              .toList(growable: false);
-          final removed = current.items.length - remaining.length;
-          final total = (current.total - removed).clamp(0, 1 << 31);
-          _result = PagedResult(
-            items: remaining,
-            page: current.page,
-            size: current.size,
-            total: total,
-            totalPages: total == 0
-                ? 0
-                : (total + current.size - 1) ~/ current.size,
-          );
-        }
-        _selectedIds.clear();
-        _batchSelectionFingerprint = null;
-        _batchIdempotencyKey = null;
-      });
-      invalidateWarehouseTaskCounts(ref);
-      context.appSuccess(
-        result.replay
-            ? '该批次已完成，已安全重放 ${result.confirmedCount} 张结果'
-            : '已批量全量点收 ${result.confirmedCount} 张产成品入库任务',
-      );
-      await _load(_result?.page ?? 1, replaceActive: true);
-    } on ApiException catch (error) {
-      if (mounted) context.appError(error.message);
-    } catch (_) {
-      if (mounted) context.appError('批量点收入库失败，请保持当前选择后重试');
-    } finally {
-      if (mounted) setState(() => _batchConfirming = false);
+    if (documentIds.length != selectedIds.length) {
+      context.appWarning('登记送检与最终点收属于不同步骤，请分开选择');
+      return;
     }
+    final targets = (_result?.items ?? const <ProductionFinishedInboundTask>[])
+        .where(
+          (task) =>
+              (task.documentId ?? '').isNotEmpty &&
+              documentIds.contains(task.documentId),
+        )
+        .toList(growable: false);
+    if (targets.isEmpty) {
+      context.appWarning('所选任务状态已变化，请刷新后重新选择');
+      return;
+    }
+    final changed = await context.push<bool>(
+      RouteName.warehouseProductionFinishedBatchStockIn,
+      extra: targets,
+    );
+    if (!mounted || changed != true) return;
+    setState(() => _selectedIds.clear());
+    invalidateWarehouseTaskCounts(ref);
+    await _load(_result?.page ?? 1, replaceActive: true);
   }
 
   /// 多选「批量登记成品仓并送检」：进入多报工单汇总登记页（页头默认仓+行内批量设）。
   Future<void> _openBatchRegistration(Set<String> selectedIds) async {
-    if (_batchConfirming) return;
     final currentItems =
         _result?.items ?? const <ProductionFinishedInboundTask>[];
     final reportIds = <String>{
@@ -317,46 +252,54 @@ class _ProductionFinishedInboundTasksViewState
     final registerCount = selectedIds
         .where((id) => id.startsWith('reg:'))
         .length;
+    if (count > 0 && registerCount > 0) {
+      return [
+        Text('登记送检与最终点收请分开选择', style: Theme.of(context).textTheme.bodyMedium),
+      ];
+    }
+    final registrationStage =
+        registerCount > 0 ||
+        (count == 0 &&
+            (_result?.items.any((task) => task.isArrivalRegistration) ?? true));
     return [
-      Tooltip(
-        message: registerCount == 0
-            ? '请选择“待登记成品仓与库位”的任务'
-            : '多张报工单汇总到一页统一登记成品仓与库位，一次提交逐单送检',
-        child: UtenButton(
-          key: const Key('production-finished-inbound-batch-register'),
-          size: UtenButtonSize.large,
-          type: UtenButtonType.danger,
-          icon: Icons.edit_location_alt_outlined,
-          onPressed: _batchConfirming || registerCount == 0
-              ? null
-              : () => _openBatchRegistration(selectedIds),
-          onDisabledTap: registerCount == 0
-              ? () => context.appWarning('请先选择“待登记成品仓与库位”的任务')
-              : null,
-          child: Text(
-            registerCount == 0 ? '批量登记成品仓并送检' : '批量登记成品仓并送检($registerCount)',
+      if (registrationStage)
+        Tooltip(
+          message: registerCount == 0
+              ? '请选择“待登记成品仓与库位”的任务'
+              : '多张报工单汇总到一页统一登记成品仓与库位，一次提交逐单送检',
+          child: UtenButton(
+            key: const Key('production-finished-inbound-batch-register'),
+            size: UtenButtonSize.large,
+            type: UtenButtonType.danger,
+            icon: Icons.edit_location_alt_outlined,
+            onPressed: registerCount == 0
+                ? null
+                : () => _openBatchRegistration(selectedIds),
+            onDisabledTap: registerCount == 0
+                ? () => context.appWarning('请先选择“待登记成品仓与库位”的任务')
+                : null,
+            child: Text(
+              registerCount == 0 ? '批量登记成品仓并送检' : '批量登记成品仓并送检($registerCount)',
+            ),
           ),
         ),
-      ),
-      Tooltip(
-        message: count == 0
-            ? '请选择“品质通过 · 待最终点收”的任务'
-            : '按每张单全部待点收数量原子入库；短收请逐单处理',
-        child: UtenButton(
-          key: const Key('production-finished-inbound-batch-confirm'),
-          size: UtenButtonSize.large,
-          type: UtenButtonType.danger,
-          icon: Icons.inventory_rounded,
-          isLoading: _batchConfirming,
-          onPressed: _batchConfirming || count == 0
-              ? null
-              : () => _confirmSelected(selectedIds),
-          onDisabledTap: count == 0
-              ? () => context.appWarning('请先选择待最终点收任务')
-              : null,
-          child: Text(count == 0 ? '批量全量点收入库' : '批量全量点收入库($count)'),
+      if (!registrationStage)
+        Tooltip(
+          message: count == 0
+              ? '请选择“品质通过 · 待最终点收”的任务'
+              : '按每张单全部待点收数量原子入库；短收请逐单处理',
+          child: UtenButton(
+            key: const Key('production-finished-inbound-batch-confirm'),
+            size: UtenButtonSize.large,
+            type: UtenButtonType.danger,
+            icon: Icons.inventory_rounded,
+            onPressed: count == 0 ? null : () => _confirmSelected(selectedIds),
+            onDisabledTap: count == 0
+                ? () => context.appWarning('请先选择待最终点收任务')
+                : null,
+            child: Text(count == 0 ? '批量全量点收入库' : '批量全量点收入库($count)'),
+          ),
         ),
-      ),
     ];
   }
 
@@ -411,7 +354,7 @@ class _ProductionFinishedInboundTasksViewState
             onFilterChanged: (_, _) {},
             selectable: canCount,
             // 两类任务分别可选：待登记任务键 reg:<reportId>（批量登记送检），
-            // 待点收任务键 doc:<documentId>（批量全量点收）；两个批量按钮各取各的。
+            // 待点收任务键 doc:<documentId>(批量全量点收)；只展示所选阶段的动作。
             idOf: (task) => task.isArrivalRegistration
                 ? (task.reportId?.isNotEmpty == true
                       ? 'reg:${task.reportId}'

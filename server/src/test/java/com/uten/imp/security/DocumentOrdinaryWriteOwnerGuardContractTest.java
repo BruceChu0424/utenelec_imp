@@ -76,7 +76,8 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
 
         assertMethods("features/stock/StockDocService.java", " update(", " delete(");
         String stock = source("features/stock/StockDocService.java");
-        assertThat(method(stock, " approveInternal(")).contains("requireOperationWritable(");
+        assertThat(method(stock, " approveInternal(")).contains("approveDocumentAfterPrelock(");
+        assertThat(method(stock, " approveDocumentAfterPrelock(")).contains("requireOperationWritable(");
         assertThat(method(stock, " reverseInternal(")).contains("requireOperationWritable(");
         assertThat(method(stock, " issue(")).contains("issueAfterPrelock(");
         assertThat(method(stock, " issueAfterPrelock(")).contains("requireOperationWritable(");
@@ -103,7 +104,14 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
     private static void assertMethods(String relative, String... signatures) throws Exception {
         String source = source(relative);
         for (String signature : signatures) {
-            assertThat(method(source, signature))
+            String body = method(source, signature);
+            if (" approve(".equals(signature) && (
+                    relative.equals("features/purchase/receipt/PurchaseReceiptService.java")
+                    || relative.equals("features/subcontract/receipt/SubcontractReceiptService.java"))) {
+                assertThat(body).contains("approveReceipt(id)");
+                body = method(source, " approveReceipt(");
+            }
+            assertThat(body)
                     .as("%s in %s", signature.trim(), relative)
                     .containsAnyOf(
                             "access.requireWritable(",

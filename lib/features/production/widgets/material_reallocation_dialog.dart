@@ -14,7 +14,31 @@ import '../../../core/responsive/dialog_size.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../models/production_material_analysis.dart';
+import '../models/material_future_transfer.dart';
 import '../repositories/production_repository.dart';
+
+/// The exact successful stock-transfer intent, retained independently from
+/// the current page's projection (which may be the receiving analysis).
+class MaterialReallocationCompletion {
+  const MaterialReallocationCompletion({
+    required this.sourceAnalysisId,
+    required this.sourceMaterialLineId,
+    required this.targetAnalysisId,
+    required this.targetMaterialLineId,
+    required this.quantity,
+    required this.sourceLabel,
+    required this.idempotencyKey,
+    this.futureTransfer = false,
+  });
+  final String sourceAnalysisId;
+  final String sourceMaterialLineId;
+  final String targetAnalysisId;
+  final String targetMaterialLineId;
+  final double quantity;
+  final String sourceLabel;
+  final String idempotencyKey;
+  final bool futureTransfer;
+}
 
 /// 打开跨计划让料工作区。紧凑屏使用安全区底部抽屉，中大屏使用居中弹窗。
 /// 返回服务端最新来源分析；取消返回 null。
@@ -27,6 +51,9 @@ Future<ProductionMaterialAnalysisView?> showMaterialReallocationDialog({
   required String sourcePathLabel,
   required String Function(double?) qtyText,
   ValueChanged<ProductionMaterialAnalysisView>? onSourceRebased,
+  ValueChanged<MaterialReallocationCompletion>? onCompleted,
+  bool receiveIntoCurrent = false,
+  bool futureTransfer = false,
 }) {
   final body = _MaterialReallocationDialogBody(
     repository: repository,
@@ -36,6 +63,9 @@ Future<ProductionMaterialAnalysisView?> showMaterialReallocationDialog({
     sourcePathLabel: sourcePathLabel,
     qtyText: qtyText,
     onSourceRebased: onSourceRebased,
+    onCompleted: onCompleted,
+    receiveIntoCurrent: receiveIntoCurrent || futureTransfer,
+    futureTransfer: futureTransfer,
   );
   if (context.breakpoint.isCompact) {
     return showModalBottomSheet<ProductionMaterialAnalysisView>(
@@ -81,8 +111,13 @@ class _MaterialReallocationDialogBody extends StatefulWidget {
     required this.sourcePathLabel,
     required this.qtyText,
     this.onSourceRebased,
+    this.onCompleted,
+    this.receiveIntoCurrent = false,
+    this.futureTransfer = false,
   });
 
+  final bool receiveIntoCurrent;
+  final bool futureTransfer;
   final ProductionPlanRepository repository;
   final ProductionMaterialAnalysisView sourceAnalysis;
   final ProductionMaterialAnalysisMaterial sourceMaterial;
@@ -90,6 +125,7 @@ class _MaterialReallocationDialogBody extends StatefulWidget {
   final String sourcePathLabel;
   final String Function(double?) qtyText;
   final ValueChanged<ProductionMaterialAnalysisView>? onSourceRebased;
+  final ValueChanged<MaterialReallocationCompletion>? onCompleted;
 
   @override
   State<_MaterialReallocationDialogBody> createState() =>
@@ -106,14 +142,17 @@ class _MaterialReallocationDialogBodyState
 
   late ProductionMaterialAnalysisView _sourceAnalysis;
   late ProductionMaterialAnalysisMaterial _sourceMaterial;
-  final List<MaterialCrossReallocationCandidate> _candidates = [];
-  MaterialCrossReallocationCandidate? _target;
+  final List<MaterialReallocationEndpointCandidate> _candidates = [];
+  MaterialReallocationEndpointCandidate? _target;
   int _page = 0;
   int _totalPages = 0;
   int _loadEpoch = 0;
   bool _loading = true;
   bool _loadingMore = false;
   bool _submitting = false;
+  bool _uncertain = false;
+  bool _allowLate = false;
+  bool get _locked => _submitting || _uncertain;
   bool _dirty = false;
   bool _allowPop = false;
   bool _showValidation = false;
@@ -137,6 +176,9 @@ class _MaterialReallocationDialogBodyState
     super.dispose();
   }
 
+  String get _counterpartRole => widget.receiveIntoCurrent ? '供料计划' : '接受计划';
+  String get _currentRole => widget.receiveIntoCurrent ? '接受计划' : '让出计划';
+
   double get _maxQty {
     final target = _target;
     if (target == null) return 0;
@@ -146,17 +188,20 @@ class _MaterialReallocationDialogBodyState
   }
 
   bool _sameCandidate(
-    MaterialCrossReallocationCandidate left,
-    MaterialCrossReallocationCandidate right,
+    MaterialReallocationEndpointCandidate left,
+    MaterialReallocationEndpointCandidate right,
   ) =>
-      left.targetAnalysisId == right.targetAnalysisId &&
-      left.targetMaterialLineId == right.targetMaterialLineId;
+      (left is MaterialFutureTransferSource &&
+          right is MaterialFutureTransferSource
+      ? left.sourceAllocationId == right.sourceAllocationId
+      : left.analysisId == right.analysisId &&
+            left.materialLineId == right.materialLineId);
 
-  bool _candidateHasCas(MaterialCrossReallocationCandidate candidate) =>
-      candidate.targetAnalysisId.isNotEmpty &&
-      candidate.targetMaterialLineId.isNotEmpty &&
-      candidate.targetVersion > 0 &&
-      candidate.targetFingerprint.isNotEmpty &&
+  bool _candidateHasCas(MaterialReallocationEndpointCandidate candidate) =>
+      candidate.analysisId.isNotEmpty &&
+      candidate.materialLineId.isNotEmpty &&
+      candidate.version > 0 &&
+      candidate.fingerprint.isNotEmpty &&
       candidate.shortageQty > 0 &&
       candidate.sourceLendableQty > 0;
 
@@ -164,6 +209,7 @@ class _MaterialReallocationDialogBodyState
     required bool reset,
     bool preserveSelection = false,
   }) async {
+    if (_uncertain) return;
     final epoch = ++_loadEpoch;
     final nextPage = reset ? 1 : _page + 1;
     final selected = preserveSelection ? _target : null;
@@ -176,12 +222,26 @@ class _MaterialReallocationDialogBodyState
       }
     });
     try {
-      final page = await widget.repository.materialCrossReallocationCandidates(
-        sourceAnalysisId: _sourceAnalysis.analysisId,
-        sourceMaterialLineId: _sourceMaterial.materialLineId,
-        page: nextPage,
-        keyword: _searchController.text,
-      );
+      final page = widget.futureTransfer
+          ? await widget.repository.materialFutureTransferSources(
+              targetAnalysisId: _sourceAnalysis.analysisId,
+              targetMaterialId: _sourceMaterial.materialLineId,
+              page: nextPage,
+              keyword: _searchController.text,
+            )
+          : widget.receiveIntoCurrent
+          ? await widget.repository.materialCrossReallocationSources(
+              targetAnalysisId: _sourceAnalysis.analysisId,
+              targetMaterialLineId: _sourceMaterial.materialLineId,
+              page: nextPage,
+              keyword: _searchController.text,
+            )
+          : await widget.repository.materialCrossReallocationCandidates(
+              sourceAnalysisId: _sourceAnalysis.analysisId,
+              sourceMaterialLineId: _sourceMaterial.materialLineId,
+              page: nextPage,
+              keyword: _searchController.text,
+            );
       if (!mounted || epoch != _loadEpoch) return;
       setState(() {
         if (reset) _candidates.clear();
@@ -206,7 +266,7 @@ class _MaterialReallocationDialogBodyState
           );
           _target = matches.isEmpty ? null : matches.first;
           if (_target == null) {
-            _submitError = '原接受计划已不再符合让料条件，请重新选择；数量和原因已保留。';
+            _submitError = '原$_counterpartRole已不再符合让料条件，请重新选择；数量和原因已保留。';
           }
         }
       });
@@ -217,7 +277,7 @@ class _MaterialReallocationDialogBodyState
         _loadingMore = false;
         _loadError = productionErrorMessage(
           error,
-          fallback: '接受计划加载失败，请检查网络后重试',
+          fallback: '$_counterpartRole加载失败，请检查网络后重试',
         );
       });
     }
@@ -228,7 +288,8 @@ class _MaterialReallocationDialogBodyState
   }
 
   void _selectCandidate(String? identity) {
-    MaterialCrossReallocationCandidate? selected;
+    if (_locked) return;
+    MaterialReallocationEndpointCandidate? selected;
     for (final candidate in _candidates) {
       if (_candidateIdentity(candidate) == identity) {
         selected = candidate;
@@ -241,15 +302,26 @@ class _MaterialReallocationDialogBodyState
       _dirty = true;
       _submitError = null;
       _qtyController.text = widget.qtyText(_maxQty);
+      _allowLate = false;
     });
   }
 
-  String _candidateIdentity(MaterialCrossReallocationCandidate candidate) =>
-      '${candidate.targetAnalysisId}|${candidate.targetMaterialLineId}';
+  String _candidateIdentity(MaterialReallocationEndpointCandidate candidate) =>
+      candidate is MaterialFutureTransferSource
+      ? candidate.sourceAllocationId
+      : '${candidate.analysisId}|${candidate.materialLineId}';
 
   String? _validateQty(String? raw) {
     final qty = double.tryParse(raw?.trim() ?? '');
-    if (qty == null || qty <= 0) return '请输入大于 0 的让料数量';
+    if (qty == null || !qty.isFinite || qty <= 0) return '请输入大于 0 的让料数量';
+    if (!RegExp(r'^\d+(\.\d{1,4})?$').hasMatch(raw?.trim() ?? '')) {
+      return '数量最多支持 4 位小数';
+    }
+    if (_target is MaterialFutureTransferSource &&
+        (_target! as MaterialFutureTransferSource).lateOrUnknown &&
+        !_allowLate) {
+      return '请先明确接受晚到或交期未明确的供给';
+    }
     if (qty > _maxQty) {
       return '最多可让 ${widget.qtyText(_maxQty)}'
           '(不超过服务端权威可让量和接受计划缺口)';
@@ -275,40 +347,96 @@ class _MaterialReallocationDialogBodyState
     final qty = double.parse(_qtyController.text.trim());
     final reason = _reasonController.text.trim();
     final key = businessIdempotencyKey(
-      'material-analysis-cross-reallocation',
+      widget.futureTransfer
+          ? 'material-analysis-private-future-transfer'
+          : widget.receiveIntoCurrent
+          ? 'material-analysis-cross-reallocation-receive'
+          : 'material-analysis-cross-reallocation',
       [
         _sourceAnalysis.analysisId,
         _sourceAnalysis.version,
         _sourceAnalysis.fingerprint,
         _sourceMaterial.materialLineId,
-        target.targetAnalysisId,
-        target.targetVersion,
-        target.targetFingerprint,
-        target.targetMaterialLineId,
+        target.analysisId,
+        target.version,
+        target.fingerprint,
+        target.materialLineId,
+        if (target is MaterialFutureTransferSource) target.sourceAllocationId,
+        if (widget.futureTransfer) _allowLate,
         qty,
         reason,
       ].join('|'),
     );
     setState(() => _submitting = true);
     try {
-      final view = await widget.repository.createMaterialCrossReallocation(
-        sourceAnalysis: _sourceAnalysis,
-        target: target,
-        sourceMaterialLineId: _sourceMaterial.materialLineId,
-        qty: qty,
-        reason: reason,
-        idempotencyKey: key,
-      );
+      final view = widget.futureTransfer
+          ? await widget.repository.createMaterialFutureTransfer(
+              targetAnalysis: _sourceAnalysis,
+              targetMaterialId: _sourceMaterial.materialLineId,
+              source: target as MaterialFutureTransferSource,
+              qty: qty,
+              allowLateSupply: _allowLate,
+              reason: reason,
+              idempotencyKey: key,
+            )
+          : widget.receiveIntoCurrent
+          ? await widget.repository.acceptMaterialCrossReallocation(
+              targetAnalysis: _sourceAnalysis,
+              targetMaterialLineId: _sourceMaterial.materialLineId,
+              source: target as MaterialCrossReallocationSourceCandidate,
+              qty: qty,
+              reason: reason,
+              idempotencyKey: key,
+            )
+          : await widget.repository.createMaterialCrossReallocation(
+              sourceAnalysis: _sourceAnalysis,
+              target: target as MaterialCrossReallocationCandidate,
+              sourceMaterialLineId: _sourceMaterial.materialLineId,
+              qty: qty,
+              reason: reason,
+              idempotencyKey: key,
+            );
       if (!mounted) return;
+      widget.onCompleted?.call(
+        MaterialReallocationCompletion(
+          sourceAnalysisId: widget.receiveIntoCurrent
+              ? target.analysisId
+              : _sourceAnalysis.analysisId,
+          sourceMaterialLineId: widget.receiveIntoCurrent
+              ? target.materialLineId
+              : _sourceMaterial.materialLineId,
+          targetAnalysisId: widget.receiveIntoCurrent
+              ? _sourceAnalysis.analysisId
+              : target.analysisId,
+          targetMaterialLineId: widget.receiveIntoCurrent
+              ? _sourceMaterial.materialLineId
+              : target.materialLineId,
+          quantity: qty,
+          sourceLabel: widget.receiveIntoCurrent
+              ? target.displayAnalysisLabel
+              : widget.sourceProductLabel,
+          idempotencyKey: key,
+          futureTransfer: widget.futureTransfer,
+        ),
+      );
       _finish(view);
     } catch (error) {
       if (!mounted) return;
       if (error is ApiException && error.code == 'CONFLICT') {
+        _uncertain = false;
         await _recoverConflict(error);
       } else {
         setState(() {
           _submitting = false;
-          _submitError = productionErrorMessage(error, fallback: '跨计划让料失败，请重试');
+          _uncertain =
+              error is! ApiException ||
+              error is NetworkException ||
+              error is NetworkTimeoutException ||
+              error.code == 'INTERNAL' ||
+              (error.httpStatus ?? 0) >= 500;
+          _submitError = _uncertain
+              ? '暂未确认调拨结果，原来源、数量和请求已保留，请同键重试确认。'
+              : productionErrorMessage(error, fallback: '跨计划让料失败，请重试');
         });
       }
     }
@@ -350,7 +478,7 @@ class _MaterialReallocationDialogBodyState
   }
 
   Future<void> _requestClose() async {
-    if (_submitting) return;
+    if (_locked) return;
     if (_dirty) {
       final discard = await UtenDialog.show(
         context,
@@ -439,13 +567,15 @@ class _MaterialReallocationDialogBodyState
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '跨计划让料',
+                widget.futureTransfer ? '调整其他计划专属在途' : '跨计划让料',
                 style: theme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
               ),
               Text(
-                '让出后原计划进入优先待补；接受计划无需返还。',
+                widget.futureTransfer
+                    ? '专属份额改给本计划；原计划缺口另行补供，未实收前不计现货。'
+                    : '让出后原计划进入优先待补；接受计划无需返还。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -455,7 +585,7 @@ class _MaterialReallocationDialogBodyState
         ),
         IconButton(
           tooltip: '关闭跨计划让料',
-          onPressed: _submitting ? null : _requestClose,
+          onPressed: _locked ? null : _requestClose,
           icon: const Icon(Icons.close_rounded),
         ),
       ],
@@ -465,9 +595,10 @@ class _MaterialReallocationDialogBodyState
   Widget _sourceSummary(ThemeData theme) => Semantics(
     container: true,
     label:
-        '让出计划：${widget.sourceProductLabel}，'
+        '$_currentRole：${widget.sourceProductLabel}，'
         '${_sourceMaterial.goodsName ?? _sourceMaterial.goodsCode ?? '物料'}，'
-        '最多可让 ${widget.qtyText(_sourceMaterial.allocatedAvailableQty)}',
+        '${widget.receiveIntoCurrent ? '当前缺口' : '现货覆盖'} '
+        '${widget.qtyText(widget.receiveIntoCurrent ? _sourceMaterial.shortageQty : _sourceMaterial.allocatedAvailableQty)}',
     child: Container(
       width: double.infinity,
       padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -477,7 +608,7 @@ class _MaterialReallocationDialogBodyState
         runSpacing: UtenSpacing.s4,
         children: [
           Text(
-            '让出计划：${widget.sourceProductLabel}',
+            '$_currentRole：${widget.sourceProductLabel}',
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w700,
             ),
@@ -486,7 +617,13 @@ class _MaterialReallocationDialogBodyState
           Text(
             '物料：${_sourceMaterial.goodsName ?? _sourceMaterial.goodsCode ?? '未命名物料'}',
           ),
-          Text('可让：${widget.qtyText(_sourceMaterial.allocatedAvailableQty)}'),
+          Text(
+            widget.futureTransfer
+                ? '本计划物理缺口：${widget.qtyText(_sourceMaterial.shortageQty)}；尚需安排 ${widget.qtyText(_sourceMaterial.additionalSupplyRecommendedQty)}'
+                : widget.receiveIntoCurrent
+                ? '本计划缺口：${widget.qtyText(_sourceMaterial.shortageQty)}'
+                : '现货覆盖：${widget.qtyText(_sourceMaterial.allocatedAvailableQty)}',
+          ),
         ],
       ),
     ),
@@ -500,7 +637,7 @@ class _MaterialReallocationDialogBodyState
         IgnorePointer(
           // 提交期间不接受新的关键词检索（原 TextField enabled: !_submitting 语义，
           // UtenSearchBar 无 enabled 参数，用指针拦截保持等价）。
-          ignoring: _submitting,
+          ignoring: _locked,
           child: UtenSearchBar(
             key: const Key('cross-reallocation-search'),
             controller: _searchController,
@@ -541,15 +678,20 @@ class _MaterialReallocationDialogBodyState
         theme,
         key: const Key('cross-reallocation-candidates-empty'),
         icon: Icons.inventory_2_outlined,
-        text:
-            '没有可接受这批料的其它计划。\n'
-            '候选必须同仓库、同货品/颜色/单位，并且仍有真实缺口。',
+        text: widget.futureTransfer
+            ? '没有可调整的其他计划专属在途。仅可选尚未实收、仍有可调整份额的正式来源；公共余量请使用“采用公共在途”。'
+            : widget.receiveIntoCurrent
+            ? '没有可调入的其它计划现货。\n'
+                  '供料计划须在同主仓范围、同货品/颜色/单位，持有尚未正式预留的原始合格库存；已有未补齐让料或分析内调配的节点须先完成或撤销。\n'
+                  '已正式预留、已领或在制的料受保护。若旧计划尚未领料，可从原计划详情按原取消流程解除正式占用，权益恢复后再调入。已下达但仍等待物料的计划可以参与让料。'
+            : '没有可接受这批料的其它计划。\n'
+                  '候选必须同主仓范围、同货品/颜色/单位，并且仍有真实缺口。',
       );
     }
     return RadioGroup<String>(
       groupValue: _target == null ? null : _candidateIdentity(_target!),
       onChanged: (value) {
-        if (!_submitting) _selectCandidate(value);
+        if (!_locked) _selectCandidate(value);
       },
       child: ListView.separated(
         key: const Key('cross-reallocation-candidates-list'),
@@ -566,34 +708,39 @@ class _MaterialReallocationDialogBodyState
                 type: UtenButtonType.ghost,
                 isLoading: _loadingMore,
                 isExpanded: true,
-                onPressed: _loadingMore || _submitting
+                onPressed: _loadingMore || _locked
                     ? null
                     : () => _loadCandidates(reset: false),
-                child: const Text('加载更多接受计划'),
+                child: Text('加载更多$_counterpartRole'),
               ),
             );
           }
           final candidate = _candidates[index];
-          final enabled = _candidateHasCas(candidate) && !_submitting;
+          final enabled = _candidateHasCas(candidate) && !_locked;
           final details = [
             if (candidate.productLabel?.trim().isNotEmpty == true)
               candidate.productLabel!.trim(),
             if (candidate.pathLabel?.trim().isNotEmpty == true)
               candidate.pathLabel!.trim(),
-            '本计划可让 ${widget.qtyText(candidate.sourceLendableQty)}',
-            '缺 ${widget.qtyText(candidate.shortageQty)}',
+            '${widget.receiveIntoCurrent ? '该计划' : '本计划'}可让 ${widget.qtyText(candidate.sourceLendableQty)}',
+            '${widget.receiveIntoCurrent ? '本计划' : '对方'}${widget.futureTransfer ? '尚需安排' : '缺'} ${widget.qtyText(candidate.shortageQty)}',
             if (candidate.deliveryDate?.trim().isNotEmpty == true)
               '交期 ${candidate.deliveryDate}',
             if (candidate.warehouseName?.trim().isNotEmpty == true)
               candidate.warehouseName!.trim(),
+            if (candidate is MaterialFutureTransferSource) candidate.stageLabel,
+            if (candidate is MaterialFutureTransferSource &&
+                candidate.lateOrUnknown)
+              '晚到或交期待确认，须明确接受',
           ];
           return Semantics(
             selected: _target != null && _sameCandidate(_target!, candidate),
             label: '${candidate.displayAnalysisLabel}，${details.join('，')}',
             child: RadioListTile<String>(
               key: ValueKey(
-                'cross-reallocation-candidate-${candidate.targetAnalysisId}-'
-                '${candidate.targetMaterialLineId}',
+                candidate is MaterialFutureTransferSource
+                    ? 'future-transfer-candidate-${candidate.sourceAllocationId}'
+                    : 'cross-reallocation-candidate-${candidate.analysisId}-${candidate.materialLineId}',
               ),
               value: _candidateIdentity(candidate),
               enabled: enabled,
@@ -607,7 +754,11 @@ class _MaterialReallocationDialogBodyState
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              subtitle: Text(enabled ? details.join(' · ') : '候选快照已失效，请重新加载'),
+              subtitle: Text(
+                _candidateHasCas(candidate)
+                    ? details.join(' · ')
+                    : '候选快照已失效，请重新加载',
+              ),
             ),
           );
         },
@@ -622,7 +773,7 @@ class _MaterialReallocationDialogBodyState
         theme,
         key: const Key('cross-reallocation-target-prompt'),
         icon: Icons.touch_app_outlined,
-        text: '先选择一份接受计划，再填写让料数量和业务原因。',
+        text: '先选择一份$_counterpartRole，再填写让料数量和业务原因。',
       );
     }
     final parsedQty = double.tryParse(_qtyController.text.trim());
@@ -635,7 +786,7 @@ class _MaterialReallocationDialogBodyState
         padding: const EdgeInsets.all(UtenSpacing.s12),
         children: [
           Text(
-            '接受计划',
+            _counterpartRole,
             style: theme.textTheme.labelLarge?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -649,12 +800,25 @@ class _MaterialReallocationDialogBodyState
           if (target.productLabel?.trim().isNotEmpty == true)
             Text(target.productLabel!, style: theme.textTheme.bodyMedium),
           const SizedBox(height: UtenSpacing.s12),
+          if (target is MaterialFutureTransferSource && target.lateOrUnknown)
+            CheckboxListTile(
+              key: const Key('future-transfer-accept-late'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('接受晚到或交期未明确供给'),
+              value: _allowLate,
+              onChanged: _locked
+                  ? null
+                  : (value) => setState(() {
+                      _allowLate = value ?? false;
+                      _dirty = true;
+                    }),
+            ),
           TextFormField(
             errorBuilder: utenTextFieldErrorBuilder,
             key: const Key('cross-reallocation-qty'),
             controller: _qtyController,
             ignorePointers: false,
-            enabled: !_submitting,
+            enabled: !_locked,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             textInputAction: TextInputAction.next,
             validator: _validateQty,
@@ -665,7 +829,7 @@ class _MaterialReallocationDialogBodyState
             decoration: UtenInputDecoration(
               InputDecoration(
                 label: fieldLabel(
-                  '让料数量',
+                  widget.futureTransfer ? '调整在途份额' : '让料数量',
                   theme,
                   info:
                       '服务端可让 ${widget.qtyText(target.sourceLendableQty)} · '
@@ -681,7 +845,7 @@ class _MaterialReallocationDialogBodyState
             key: const Key('cross-reallocation-reason'),
             controller: _reasonController,
             ignorePointers: false,
-            enabled: !_submitting,
+            enabled: !_locked,
             minLines: 2,
             maxLines: 4,
             maxLength: 1000,
@@ -706,9 +870,10 @@ class _MaterialReallocationDialogBodyState
             Semantics(
               key: const Key('cross-reallocation-impact'),
               container: true,
-              label:
-                  '让料影响：当前计划优先待补 ${widget.qtyText(parsedQty)}，'
-                  '接受计划缺口减少 ${widget.qtyText(parsedQty)}，无需返还',
+              label: widget.futureTransfer
+                  ? '原计划减少专属在途 ${widget.qtyText(parsedQty)}，接受计划新增未来供给，尚未实收、不计现货或开工量'
+                  : '让料影响：${widget.receiveIntoCurrent ? '供料计划' : '当前计划'}优先待补 ${widget.qtyText(parsedQty)}，'
+                        '接受计划缺口减少 ${widget.qtyText(parsedQty)}，无需返还',
               child: Container(
                 padding: const EdgeInsets.all(UtenSpacing.s12),
                 decoration: BoxDecoration(
@@ -726,9 +891,19 @@ class _MaterialReallocationDialogBodyState
                       ),
                     ),
                     const SizedBox(height: UtenSpacing.s4),
-                    Text('• 当前计划让出 ${widget.qtyText(parsedQty)}，并标记优先待补。'),
-                    Text('• 接受计划缺口减少 ${widget.qtyText(parsedQty)}，无需返还。'),
-                    const Text('• 当前计划后续来源的合格入库会先补本计划。'),
+                    Text(
+                      '• ${widget.receiveIntoCurrent ? '供料计划' : '当前计划'}让出 ${widget.qtyText(parsedQty)}，并标记优先待补。',
+                    ),
+                    Text(
+                      widget.futureTransfer
+                          ? '• 接受计划新增已安排未来供给 ${widget.qtyText(parsedQty)}；物理缺口在实际合格入库后再减少。'
+                          : '• 接受计划缺口减少 ${widget.qtyText(parsedQty)}，无需返还。',
+                    ),
+                    Text(
+                      widget.futureTransfer
+                          ? '• 未实收份额可按正式记录撤销；原计划需补供时另行确认，不自动下单。'
+                          : '• 双方后续符合条件的合格入库，会优先补齐让出计划。',
+                    ),
                   ],
                 ),
               ),
@@ -794,7 +969,7 @@ class _MaterialReallocationDialogBodyState
           size: UtenButtonSize.large,
           type: UtenButtonType.ghost,
           isExpanded: compact,
-          onPressed: _submitting ? null : _requestClose,
+          onPressed: _locked ? null : _requestClose,
           child: const Text('取消'),
         );
         final confirm = UtenButton(
@@ -803,7 +978,13 @@ class _MaterialReallocationDialogBodyState
           isExpanded: compact,
           isLoading: _submitting,
           onPressed: _target == null || _submitting ? null : _submit,
-          child: const Text('确认让料'),
+          child: Text(
+            _uncertain
+                ? '重试确认调拨'
+                : widget.futureTransfer
+                ? '确认调整在途'
+                : '确认让料',
+          ),
         );
         if (compact) {
           return Row(

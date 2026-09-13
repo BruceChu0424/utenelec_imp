@@ -225,8 +225,10 @@ void main() {
     await tester.ensureVisible(submit);
     await tester.tap(submit);
     await tester.pumpAndSettle();
-    expect(find.text('本分析预定'), findsOneWidget);
-    expect(find.text('数量 24 个'), findsNWidgets(2));
+    // 2026-09-12 确认弹窗改紧凑摘要：一行「品名 + 本次数量 + 去向一句话」，
+    // 跨仓警示横幅保留（安全信息不随紧凑化省略）；完整明细在表格 ⓘ。
+    expect(find.text('本次 48 个'), findsOneWidget);
+    expect(find.text('跨仓部分 24 不绑定计划 · 其余按预定分配'), findsOneWidget);
     expect(
       find.descendant(
         of: find.byKey(

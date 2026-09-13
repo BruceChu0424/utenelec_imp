@@ -221,7 +221,6 @@ public class ProductionExecutionSegmentService {
             UUID planId, UUID segmentId, SegmentTransitionRequest request) {
         tx.bind();
         requireTransitionRequest(request);
-        requirePlanOperationAccess(planId, "production_execution:start");
         UUID warehouseId = readiness.lockManualReleaseDimensions(planId, segmentId);
         LockedSegment segment = lock(planId, segmentId);
         requireSegmentOperationAccess(segment, "production_execution:start");
@@ -582,7 +581,7 @@ public class ProductionExecutionSegmentService {
                                        s.responsible_employee_id,
                                        s.auto_promote_when_ready,
                                        s.material_requirement_mode,
-                                       plan.maker_id
+                                       plan.maker_id, s.source_segment_id
                                 FROM production_execution_segments s
                                 JOIN production_planning_packages p
                                   ON p.id = s.package_id
@@ -618,7 +617,7 @@ public class ProductionExecutionSegmentService {
                 (UUID) row[12],
                 Boolean.TRUE.equals(row[13]),
                 (String) row[14],
-                (UUID) row[15]);
+                (UUID) row[15], (UUID) row[16]);
     }
 
     /**
@@ -628,6 +627,9 @@ public class ProductionExecutionSegmentService {
      */
     private void requireMaterialsIssuedForStart(LockedSegment segment) {
         if ("ZERO_MATERIAL".equals(segment.materialRequirementMode())) return;
+        if (segment.sourceSegmentId()!=null && !Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_split_batch_prerequisites_issued(:id)")
+                .setParameter("id",segment.id()).getSingleResult()))
+            throw conflict("前批共享的固定或整包物料尚未实际领齐，不能开工");
         List<Object[]> demands = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT id, status
@@ -640,6 +642,8 @@ public class ProductionExecutionSegmentService {
                                 """)
                         .setParameter("segmentId", segment.id()));
         if (demands.isEmpty()) {
+            if (segment.sourceSegmentId()!=null && Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_split_batch_empty_issued(:id)")
+                    .setParameter("id",segment.id()).getSingleResult())) return;
             throw conflict("执行段缺少正式物料需求，不能按零物料任务开工");
         }
         long pending = demands.stream()
@@ -755,12 +759,12 @@ public class ProductionExecutionSegmentService {
                                s.plan_begin_date, s.plan_end_date,
                                s.material_kind_count,
                                s.shortage_kind_count,
-                               s.material_ready,
+                               (s.material_ready OR fn_split_batch_empty_issued(s.id)),
                                base.auto_promote_when_ready,
                                issue.demand_count,
                                issue.fulfilled_count,
                                CASE
-                                 WHEN base.material_requirement_mode = 'ZERO_MATERIAL'
+                                 WHEN base.material_requirement_mode = 'ZERO_MATERIAL' OR fn_split_batch_empty_issued(s.id)
                                    THEN TRUE
                                  WHEN issue.demand_count > 0
                                   AND issue.fulfilled_count = issue.demand_count
@@ -782,10 +786,32 @@ public class ProductionExecutionSegmentService {
                                COALESCE(recovery.replacement_ready_qty, 0),
                                s.lock_version,
                                base.material_requirement_mode = 'ZERO_MATERIAL'
-                                   AS zero_material
+                                   AS zero_material,
+                               draw_request.fully_requested,
+                               (base.status IN ('READY','DISPATCHED')
+                                 AND plan.status=1 AND NOT plan.is_deleted
+                                 AND NOT plan.is_closed AND NOT plan.is_canceled AND NOT plan.is_stopped
+                                 AND package.status='CONFIRMED' AND NOT package.is_deleted
+                                 AND base.material_requirement_mode<>'ZERO_MATERIAL'
+                                 AND issue.fulfilled_count<issue.demand_count
+                                 AND draw_request.has_unrequested),
+                               fn_can_split_execution_batch(s.id),
+                               base.source_segment_id,
+                               EXISTS(SELECT 1 FROM production_execution_segment_splits split WHERE split.source_segment_id=s.id),
+                               plan.maker_id
                         FROM v_production_execution_segments s
                         JOIN production_execution_segments base
                           ON base.id = s.id
+                        JOIN production_plans plan ON plan.id=s.plan_id
+                        JOIN production_planning_packages package ON package.id=s.package_id
+                        LEFT JOIN LATERAL (
+                            SELECT COALESCE(bool_and(fn_production_draw_fully_requested(document.id)),FALSE) AS fully_requested,
+                                   COALESCE(bool_or(NOT fn_production_draw_fully_requested(document.id)),FALSE) AS has_unrequested
+                            FROM production_planning_package_documents mapping
+                            JOIN stock_documents document ON document.id=mapping.document_id
+                            WHERE mapping.execution_segment_id=s.id AND mapping.document_type='DRAW'
+                              AND NOT document.is_deleted AND document.status IN (0,1)
+                        ) draw_request ON TRUE
                         LEFT JOIN LATERAL (
                             SELECT SUM(item.qty) AS gross_reported_qty,
                                    SUM(item.qty)
@@ -905,8 +931,21 @@ public class ProductionExecutionSegmentService {
         if (segmentId != null) {
             query.setParameter("segmentId", segmentId);
         }
-        return NativeQueryResults.objectArrayRows(query).stream()
-                .map(ProductionExecutionSegmentService::view)
+        boolean hasDrawAuthority=access.hasAuthority("production_execution:view")
+                && access.hasAuthority("production_execution:start");
+        UUID employeeId=currentUser.employeeId().orElse(null);
+        Map<String,Boolean> workshopAccess=new LinkedHashMap<>();
+        List<Object[]> resultRows=NativeQueryResults.objectArrayRows(query);
+        UUID owner=resultRows.isEmpty()?null:(UUID)resultRows.getFirst()[48];
+        boolean planWritable=hasDrawAuthority && access.canRead(owner)
+                && access.canWrite(owner,"production_execution:start");
+        return resultRows.stream()
+                .map(row->{
+                    boolean allowed=hasDrawAuthority && (planWritable
+                            || workshopAccess.computeIfAbsent(row[15]+"|"+row[19],ignored->
+                            workshopMembership.isWorkshopMember((UUID)row[15],(UUID)row[19],employeeId)));
+                    return view(row,allowed);
+                })
                 .toList();
     }
 
@@ -1062,7 +1101,7 @@ public class ProductionExecutionSegmentService {
                 "VERSION|" + request.expectedVersion()));
     }
 
-    private static ExecutionSegmentView view(Object[] row) {
+    private static ExecutionSegmentView view(Object[] row,boolean canOperateDraw) {
         return new ExecutionSegmentView(
                 (UUID) row[0],
                 (UUID) row[1],
@@ -1106,7 +1145,12 @@ public class ProductionExecutionSegmentService {
                 decimal(row[39]),
                 decimal(row[40]),
                 ((Number) row[41]).longValue(),
-                Boolean.TRUE.equals(row[42]));
+                Boolean.TRUE.equals(row[42]),
+                Boolean.TRUE.equals(row[43]),
+                canOperateDraw && Boolean.TRUE.equals(row[44]),
+                canOperateDraw && Boolean.TRUE.equals(row[45]),
+                (UUID)row[46],
+                Boolean.TRUE.equals(row[47]));
     }
 
     private static BigDecimal decimal(Object value) {
@@ -1145,7 +1189,8 @@ public class ProductionExecutionSegmentService {
             UUID responsibleEmployeeId,
             boolean autoPromoteWhenReady,
             String materialRequirementMode,
-            UUID planMakerId) {
+            UUID planMakerId,
+            UUID sourceSegmentId) {
     }
 
     private record LockedStartRequest(

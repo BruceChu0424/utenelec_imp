@@ -65,18 +65,9 @@ public class PreplanStockEntitlementService {
         }
     }
 
-    /** Only immutable origin supply may be selected by a manual reallocation. */
-    @Transactional(propagation = Propagation.MANDATORY)
-    public List<AvailableLot> listAvailableOriginalLots(
-            UUID analysisId,
-            UUID analysisMaterialId,
-            UUID warehouseId,
-            UUID goodsId,
-            UUID colorId,
-            boolean forUpdate) {
-        tx.bind();
-        String lock = forUpdate ? " FOR UPDATE OF positive, reservation" : "";
-        Query query = em.createNativeQuery("""
+    // Shared by both candidate directions and the locked command; lot ancestry and
+    // remaining physical slices must not drift between discovery and execution.
+    static final String AVAILABLE_ORIGINAL_LOTS_SQL = """
                 WITH RECURSIVE entitlement_lineage AS (
                     SELECT positive.id AS lot_id,
                            positive.id AS current_positive_event_id,
@@ -133,7 +124,7 @@ public class PreplanStockEntitlementService {
                  AND reservation.owner_type = 'PREPLAN_ANALYSIS'
                 WHERE positive.beneficiary_analysis_id = :analysisId
                   AND positive.beneficiary_analysis_material_id = :materialId
-                  AND reservation.warehouse_id = :warehouseId
+                  AND fn_warehouse_same_main(reservation.warehouse_id, :warehouseId)
                   AND reservation.goods_id = :goodsId
                   AND reservation.color_id IS NOT DISTINCT FROM
                       CAST(:colorId AS uuid)
@@ -167,7 +158,20 @@ public class PreplanStockEntitlementService {
                             'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                   ), 0) > 0
                 ORDER BY positive.created_at, positive.id
-                """ + lock)
+                """;
+
+    /** Only immutable origin supply may be selected by a manual reallocation. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<AvailableLot> listAvailableOriginalLots(
+            UUID analysisId,
+            UUID analysisMaterialId,
+            UUID warehouseId,
+            UUID goodsId,
+            UUID colorId,
+            boolean forUpdate) {
+        tx.bind();
+        String lock = forUpdate ? " FOR UPDATE OF positive, reservation" : "";
+        Query query = em.createNativeQuery(AVAILABLE_ORIGINAL_LOTS_SQL + lock)
                 .setParameter("analysisId", analysisId)
                 .setParameter("materialId", analysisMaterialId)
                 .setParameter("warehouseId", warehouseId)

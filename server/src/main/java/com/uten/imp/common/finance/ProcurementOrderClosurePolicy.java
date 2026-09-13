@@ -16,6 +16,16 @@ public final class ProcurementOrderClosurePolicy {
     public static void recalculate(
             EntityManager em, String rawOrderType, UUID orderItemId) {
         if (orderItemId == null) return;
+        recalculate(em, rawOrderType, orderItemId, false);
+    }
+
+    /** One receipt may contain many items of the same order; update each order only once. */
+    public static void recalculateReceipt(EntityManager em, String rawOrderType, UUID receiptId) {
+        if (receiptId == null) return;
+        recalculate(em, rawOrderType, receiptId, true);
+    }
+
+    private static void recalculate(EntityManager em, String rawOrderType, UUID sourceId, boolean receiptScope) {
         String orderType = rawOrderType == null ? "" : rawOrderType.strip().toUpperCase();
         String orderTable;
         String orderItemTable;
@@ -79,8 +89,7 @@ public final class ProcurementOrderClosurePolicy {
                     WHERE order_item.order_id = order_doc.id
                       AND COALESCE(order_item.is_deleted,FALSE)=FALSE
                 )
-                WHERE order_doc.id = (
-                    SELECT order_id FROM %s WHERE id=:orderItemId)
+                WHERE order_doc.id IN (%s)
                 """.formatted(
                         orderTable,
                         receiptItemTable,
@@ -88,9 +97,12 @@ public final class ProcurementOrderClosurePolicy {
                         receiptItemTable,
                         receiptTable,
                         orderItemTable,
-                        orderItemTable))
+                        receiptScope ? "SELECT DISTINCT item.order_id FROM " + receiptItemTable + " receipt_item JOIN "
+                                + orderItemTable + " item ON item.id=receipt_item.order_item_id"
+                                + " WHERE receipt_item.receipt_id=:sourceId AND COALESCE(receipt_item.is_deleted,FALSE)=FALSE"
+                                : "SELECT order_id FROM " + orderItemTable + " WHERE id=:sourceId"))
                 .setParameter("receiptType", orderType)
-                .setParameter("orderItemId", orderItemId)
+                .setParameter("sourceId", sourceId)
                 .executeUpdate();
     }
 }

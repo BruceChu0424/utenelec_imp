@@ -13,6 +13,8 @@
 // 窄屏表格横向滚动即可。
 // 文档：docs/03-页面/员工列表页.md
 import 'package:flutter/material.dart';
+
+import '../../../components/layout/uten_floating_action_group.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -284,6 +286,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
     return Padding(
       padding: const EdgeInsets.only(top: UtenSpacing.s12),
       child: MasterDataTableView<EmployeeSummary>(
+        bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
         key: const Key('employee-list-table'),
         columns: _columns(l10n),
         items: _visibleItems,

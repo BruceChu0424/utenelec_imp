@@ -54,6 +54,7 @@ import '../../features/finance/pages/finance_procurement_approval_tasks_page.dar
 import '../../features/finance/pages/finance_sales_order_confirmation_page.dart';
 import '../../features/finance/pages/finance_sales_order_review_page.dart';
 import '../../features/finance/pages/finance_sales_shipment_audit_page.dart';
+import '../../features/finance/pages/finance_sales_shipment_audit_review_page.dart';
 import '../../features/finance/pages/finance_reconciliation_page.dart';
 import '../../features/finance/pages/finance_report_table_page.dart';
 import '../../features/finance/pages/finance_ar_ap_overview_page.dart';
@@ -87,6 +88,9 @@ import '../../features/warehouse/pages/warehouse_arrival_exceptions_page.dart';
 import '../../features/warehouse/pages/warehouse_arrival_batch_receipt_page.dart';
 import '../../features/warehouse/pages/warehouse_arrival_receipt_page.dart';
 import '../../features/warehouse/pages/warehouse_inbound_expectations_page.dart';
+import '../../features/warehouse/models/production_finished_inbound_task.dart';
+import '../../features/warehouse/models/warehouse_quality_result.dart';
+import '../../features/warehouse/pages/warehouse_quality_batch_stock_in_page.dart';
 import '../../features/warehouse/pages/warehouse_quality_results_page.dart';
 import '../../features/warehouse/pages/warehouse_quality_result_detail_page.dart';
 import '../../features/warehouse/pages/warehouse_sales_outbound_detail_page.dart';
@@ -94,15 +98,18 @@ import '../../features/warehouse/pages/warehouse_document_history_detail_page.da
 import '../../features/warehouse/pages/warehouse_document_history_list_page.dart';
 import '../../features/warehouse/pages/production_finished_arrival_batch_registration_page.dart';
 import '../../features/warehouse/pages/production_finished_arrival_registration_page.dart';
+import '../../features/warehouse/pages/production_finished_batch_stock_in_page.dart';
 import '../../features/warehouse/pages/production_finished_inbound_tasks_page.dart';
 import '../../features/quality/pages/quality_task_center_page.dart';
 import '../../features/quality/pages/quality_pending_disposal_page.dart';
 import '../../features/quality/pages/quality_batch_approval_page.dart';
 import '../../features/quality/pages/quality_inspection_records_page.dart';
+import '../../features/quality/pages/production_fqc_handling_page.dart';
 import '../../features/quality/pages/production_fqc_inspections_page.dart';
 import '../../features/quality/models/quality_inspection_record.dart';
 import '../../shared/models/procurement_inbound.dart';
 import '../../features/warehouse/pages/stock_doc_detail_page.dart';
+import '../../features/warehouse/pages/production_draw_batch_issue_page.dart';
 import '../../features/warehouse/pages/stock_doc_edit_page.dart';
 import '../../features/warehouse/pages/stock_doc_list_page.dart';
 import '../../features/warehouse/config/warehouse_report_config.dart';
@@ -872,6 +879,25 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   : const QualityBatchApprovalSelection(),
             ),
           ),
+          // FQC 检查单办理页（2026-09-12 弹窗改页，对齐采购 IQC 处置页范式；
+          // extra 带列表行检查单快照，深链直达时页面自行拉取）。
+          GoRoute(
+            path: '${RouteName.productionFqcSheetHandlingBase}/:sheetId',
+            name: 'production-fqc-sheet-handling',
+            builder: (_, s) => ProductionFqcSheetHandlingPage(
+              sheetId: s.pathParameters['sheetId']!,
+            ),
+          ),
+          // FQC 单任务办理页（详情 + 决定 + 检验证据；extra 带任务快照）。
+          GoRoute(
+            path:
+                '${RouteName.productionFqcInspectionHandlingBase}/:inspectionId',
+            name: 'production-fqc-inspection-handling',
+            builder: (_, s) => ProductionFqcInspectionPage(
+              inspectionId: s.pathParameters['inspectionId']!,
+              extra: s.extra,
+            ),
+          ),
           // 单张收货单的待检明细处置页（extra 携带任务卡快照；深链直达时页面自行反查）。
           GoRoute(
             path: '${RouteName.warehouseInspections}/:receiptType/:receiptId',
@@ -901,6 +927,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.warehouseQualityResults,
             name: 'warehouse-quality-results',
             builder: (_, _) => const WarehouseQualityResultsPage(),
+          ),
+          // 待入库多选「批量入库」页（2026-09-12 弹窗改页；须先于
+          // :receiptType/:receiptId 声明）。
+          GoRoute(
+            path: RouteName.warehouseQualityBatchStockIn,
+            name: 'warehouse-quality-batch-stock-in',
+            builder: (_, s) => WarehouseQualityBatchStockInPage(
+              targets: s.extra is List<WarehouseQualityResultTask>
+                  ? s.extra! as List<WarehouseQualityResultTask>
+                  : const [],
+            ),
           ),
           GoRoute(
             path:
@@ -947,6 +984,27 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.warehouseProductionFinishedInboundTasks,
             name: 'warehouse-production-finished-inbound-tasks',
             builder: (_, _) => const ProductionFinishedInboundTasksPage(),
+          ),
+          GoRoute(
+            path: RouteName.warehouseProductionDrawBatchIssue,
+            name: 'warehouse-production-draw-batch-issue',
+            builder: (_, state) => ProductionDrawBatchIssuePage(
+              documentIds: (state.uri.queryParameters['documentIds'] ?? '')
+                  .split(',')
+                  .map((id) => id.trim())
+                  .where((id) => id.isNotEmpty)
+                  .toList(),
+            ),
+          ),
+          // 待点收多选「批量全量点收入库」页（2026-09-12 弹窗改页）。
+          GoRoute(
+            path: RouteName.warehouseProductionFinishedBatchStockIn,
+            name: 'warehouse-production-finished-batch-stock-in',
+            builder: (_, s) => ProductionFinishedBatchStockInPage(
+              targets: s.extra is List<ProductionFinishedInboundTask>
+                  ? s.extra! as List<ProductionFinishedInboundTask>
+                  : const [],
+            ),
           ),
           GoRoute(
             // 多单汇总登记页须先于 :reportId 声明（GoRouter 按声明顺序匹配同前缀）。
@@ -1086,7 +1144,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.warehouseOutboundTasks,
             name: 'warehouse-outbound-tasks',
-            builder: (_, _) => const WarehouseOutboundTaskCenterPage(),
+            builder: (_, state) => WarehouseOutboundTaskCenterPage(
+              initialSection: state.uri.queryParameters['section'],
+              initialView: state.uri.queryParameters['view'],
+            ),
           ),
           GoRoute(
             path: RouteName.warehouseInboundTasks,
@@ -1191,6 +1252,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             redirect: _rejectUnknownSalesDoc,
             builder: (_, s) => SalesDocEditPage(
               docType: SalesDocType.byPath(s.pathParameters['seg']!),
+              initialOrderId: s.uri.queryParameters['sourceOrderId'],
+              initialOrderItems: s.uri.queryParameters['orderItems'],
             ),
           ),
           GoRoute(
@@ -1357,6 +1420,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.financeSalesShipmentAudit,
             name: 'finance-sales-shipment-audit',
             builder: (_, _) => const FinanceSalesShipmentAuditPage(),
+          ),
+          GoRoute(
+            path: RouteName.financeSalesShipmentAuditReview,
+            name: 'finance-sales-shipment-audit-review',
+            builder: (_, state) => FinanceSalesShipmentAuditReviewPage(
+              id: state.pathParameters['id']!,
+            ),
           ),
           GoRoute(
             path: RouteName.financeArrivalExceptions,

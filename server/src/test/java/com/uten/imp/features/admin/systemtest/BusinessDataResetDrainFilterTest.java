@@ -9,6 +9,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BusinessDataResetDrainFilterTest {
@@ -42,5 +43,51 @@ class BusinessDataResetDrainFilterTest {
             release.countDown();request.get(5,TimeUnit.SECONDS);assertTrue(drained.get(5,TimeUnit.SECONDS));
         } finally {release.countDown();gate.endReset();}
         assertTrue(gate.tryEnter());gate.leave();assertTrue(gate.beginDrain(100));gate.endReset();
+    }
+
+    @Test
+    void interruptedDrainReopensHttpTrafficAndAllowsAnotherReset() throws Exception {
+        var gate = new BusinessDataResetDrainGate();
+        var filter = new BusinessDataResetDrainFilter(gate, new ObjectMapper());
+        assertTrue(gate.tryEnter()); // An existing request keeps the reset waiting.
+        var interrupted = new AtomicBoolean();
+        var failure = new AtomicReference<Throwable>();
+        var reset = new Thread(() -> {
+            try {
+                gate.beginDrain(30_000);
+                failure.set(new AssertionError("Reset should have been interrupted"));
+            } catch (InterruptedException expected) {
+                interrupted.set(true);
+            } catch (Throwable unexpected) {
+                failure.set(unexpected);
+            }
+        }, "interrupted-business-data-reset-test");
+        try {
+            reset.start();
+            org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(2))
+                    .until(gate::blockingNewRequests);
+            var blocked = new MockHttpServletResponse();
+            filter.doFilter(new MockHttpServletRequest("GET", "/api/goods"), blocked,
+                    (request, response) -> fail("The drain must block new API requests"));
+            assertEquals(503, blocked.getStatus());
+
+            reset.interrupt();
+            reset.join(5_000);
+            assertFalse(reset.isAlive());
+            assertNull(failure.get());
+            assertTrue(interrupted.get());
+            assertFalse(gate.blockingNewRequests());
+            var admitted = new AtomicBoolean();
+            filter.doFilter(new MockHttpServletRequest("GET", "/api/goods"),
+                    new MockHttpServletResponse(), (request, response) -> admitted.set(true));
+            assertTrue(admitted.get(), "Ordinary traffic must resume without restarting the server");
+        } finally {
+            reset.interrupt();
+            reset.join(5_000);
+            gate.leave();
+            gate.endReset();
+        }
+        assertTrue(gate.beginDrain(100), "A later reset must still be possible");
+        gate.endReset();
     }
 }

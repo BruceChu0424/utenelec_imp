@@ -57,3 +57,10 @@
 - 四列均用 `headerInfo` 列头 ⓘ 承载通用说明（`workflowFieldText(context)`，函数签名因此带 `required BuildContext context`），格内不再放 ⓘ。
 - 默认宽：币种 150 / 汇率 140 / 税率 140 / 结账 180；`chromeWidth` = 下拉箭头 20 + 预填黄标图标 44（`UtenEditableGridCellSpec.dropdownChevronWidth + hintIconWidth`），汇率/税率提供 `textOf/listenableOf` 随值自动加宽——新单每行默认就是学习/回退预填态（黄框 + 格内图标），此前 110/120 只按箭头计宽，「人民币」「月结30天」被裁成省略号。
 - 备注列单行（与销售订货单一致，长文本横向滚动）；下拉格/供应商格不自带 border/contentPadding/小字，吃 `UtenEditableGrid` 行级主题（圆角 10、内边距 14·12、正文字号），同一行所有格等高同圆角。
+
+## 2026-09-12 修订
+
+`ProcurementTermDropdownCell`（币种/结账方式格）由原生 `PopupMenuButton` 换成
+`UtenDropdownField(dense: true)` 统一弹层（圆角面板/选中勾/选项≥4 自动搜索）；
+必填空红框与学习预填黄框口径不变。`UtenDropdownField` 新增 `dense` 紧凑形态参数
+（grid 单元格与数量/单价等文本格等高）。

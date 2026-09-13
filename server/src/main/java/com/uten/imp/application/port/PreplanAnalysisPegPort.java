@@ -16,8 +16,9 @@ import java.util.UUID;
  *
  * <p>自制备料（成品入库单）对无销售订单链接的计划行产出，补同一形态的归属预留。
  *
- * <p>所有方法均要求调用方已持有对应库存维度 advisory 锁与单据行锁，
+ * <p>写命令要求调用方已持有对应库存维度 advisory 锁与单据行锁，
  * 并在来源单据状态机事务内以 {@code MANDATORY} 传播执行，保证全链对称、可回滚。
+ * {@code previewPlanDemandTransfers} 只读取同一选源规则，不取得写锁或改变库存事实。
  */
 public interface PreplanAnalysisPegPort {
 
@@ -25,6 +26,14 @@ public interface PreplanAnalysisPegPort {
     record DemandSlice(UUID demandId, UUID goodsId, UUID colorId,
                        BigDecimal requiredQty) {
     }
+
+    /** Read-only source selection using the same lot order as formalization. */
+    record PreviewPlanTransfer(UUID demandId, UUID warehouseId, BigDecimal qty,
+                               boolean qualified, boolean explicitPreference) {}
+
+    /** Does not release/consume stock, reserve inventory or create a document. */
+    List<PreviewPlanTransfer> previewPlanDemandTransfers(UUID analysisId, UUID planId,
+                                                        UUID warehouseId, List<DemandSlice> demands);
 
     /** In-transaction entitlement consumption prepared before stock allocation. */
     record PreparedPlanTransfer(

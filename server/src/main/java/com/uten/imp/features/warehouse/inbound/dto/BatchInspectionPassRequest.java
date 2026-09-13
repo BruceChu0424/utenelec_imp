@@ -17,6 +17,8 @@ import java.util.UUID;
  *
  * <p>每行携带质检明细 UUID、操作人看到的剩余待检量和独立幂等键。
  * 服务端在任何库存写入前锁定并校验完整集合；任一行冲突时整批回滚。
+ * 新批以完整摘要验证同体重放；旧 NULL 摘要仅保留原逐行全量 PASS 数量/原因的
+ * 兼容重放，不声称已恢复旧批的完整成员集合。
  */
 public record BatchInspectionPassRequest(
         @NotEmpty @Size(max = 100) List<@Valid Item> items,

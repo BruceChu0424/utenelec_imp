@@ -8,6 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/buttons/uten_import_button.dart';
+import 'package:uten_imp/features/sales/widgets/sales_grid_columns.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
@@ -127,10 +130,73 @@ void main() {
     expect(files.listed, [('SALES_ORDER', 'order-1')]);
   });
 
-  testWidgets('non-order sales documents have no attachment area', (
+  for (final entry in [
+    (
+      SalesDocType.quote,
+      Perm.salesQuoteCreate,
+      Perm.salesQuoteEdit,
+      Perm.salesQuoteView,
+    ),
+    (
+      SalesDocType.shipment,
+      Perm.salesShipmentCreate,
+      Perm.salesShipmentEdit,
+      Perm.salesShipmentView,
+    ),
+    (
+      SalesDocType.customerShipment,
+      Perm.salesOtherShipmentCreate,
+      Perm.salesOtherShipmentEdit,
+      Perm.salesOtherShipmentView,
+    ),
+    (
+      SalesDocType.returnDoc,
+      Perm.salesReturnCreate,
+      Perm.salesReturnEdit,
+      Perm.salesReturnView,
+    ),
+  ]) {
+    testWidgets(
+      '${entry.$1.name} supports pending files with its own document permissions',
+      (tester) async {
+        final files = _Files();
+        await _pumpEditor(
+          tester,
+          files,
+          type: entry.$1,
+          permissions: {
+            Perm.attachmentView,
+            Perm.attachmentUpload,
+            entry.$2,
+            entry.$3,
+            entry.$4,
+            Perm.salesOrderPriceView,
+          },
+        );
+        final section = tester.widget<BusinessAttachmentSection>(
+          find.byType(BusinessAttachmentSection),
+        );
+        expect(section.isDraft, isTrue);
+        expect(find.text('添加文件'), findsOneWidget);
+        expect(files.uploads, isEmpty);
+        if (entry.$1 == SalesDocType.shipment ||
+            entry.$1 == SalesDocType.returnDoc) {
+          final grid = tester.widget<UtenEditableGrid<SalesGridRow>>(
+            find.byType(UtenEditableGrid<SalesGridRow>),
+          );
+          expect(
+            grid.toolbarActions.whereType<UtenImportButton>(),
+            hasLength(1),
+          );
+        }
+      },
+    );
+  }
+
+  testWidgets('historical other shipments retain their read-only scope', (
     tester,
   ) async {
-    await _pumpEditor(tester, _Files(), type: SalesDocType.quote);
+    await _pumpEditor(tester, _Files(), type: SalesDocType.otherShipment);
     expect(find.byType(BusinessAttachmentSection), findsNothing);
   });
 }
@@ -147,6 +213,8 @@ Future<void> _pumpEditor(
     Perm.attachmentDelete,
     Perm.salesOrderCreate,
     Perm.salesOrderEdit,
+    Perm.salesOrderView,
+    Perm.salesOrderPriceView,
   },
 }) async {
   await tester.binding.setSurfaceSize(const Size(1600, 1400));

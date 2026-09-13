@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:uuid/uuid.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
@@ -27,6 +27,7 @@ import '../../warehouse/providers/production_finished_inbound_task_count_provide
 import '../models/production_fqc_inspection.dart';
 import '../repositories/production_fqc_repository.dart';
 import '../widgets/production_fqc_dialogs.dart';
+import 'quality_batch_approval_page.dart';
 
 class ProductionFqcInspectionsPage extends ConsumerStatefulWidget {
   const ProductionFqcInspectionsPage({super.key});
@@ -46,9 +47,6 @@ class _ProductionFqcInspectionsPageState
   int _requestVersion = 0;
   bool _canDecideByScope = false;
   final Set<String> _selectedIds = <String>{};
-  bool _batchPassing = false;
-  String? _batchSelectionFingerprint;
-  String? _batchIdempotencyKey;
 
   @override
   void initState() {
@@ -126,137 +124,28 @@ class _ProductionFqcInspectionsPageState
     await _load(page: 1);
   }
 
-  Future<void> _openDecision(ProductionFqcInspection inspection) async {
-    final result = await showDialog<ProductionFqcDecisionResult>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => ProductionFqcDecisionDialog(inspection: inspection),
-    );
-    if (result == null || !mounted) return;
-    _applyDecisionResult(result.inspection);
-    context.appSuccess(result.replay ? '该质检决定已安全重放' : '质检决定已保存');
-    await _load(page: _result?.page ?? 1);
-  }
-
-  Future<void> _openDetail(
+  /// 双击行 / 右键「办理质检」：进入 FQC 单任务办理页（2026-09-12 弹窗改页，
+  /// 对齐采购 IQC 处置页——详情事实 + 合格/不合格数量 + 提交报告 + 检验证据）。
+  Future<void> _openHandling(
     ProductionFqcInspection inspection, {
     required bool canApprove,
   }) async {
-    final decisionTarget = await showDialog<ProductionFqcInspection>(
-      context: context,
-      builder: (_) => ProductionFqcDetailDialog(
-        key: ValueKey('production-fqc-detail-${inspection.id}'),
-        inspectionId: inspection.id,
-        canApprove: canApprove,
-      ),
+    // 页面决定成功后带结果返回：先本地落位（刷新失败也保得住「已决定」事实），
+    // 再重拉列表与角标。
+    final decided = await context.push<ProductionFqcInspection>(
+      RouteName.productionFqcInspectionHandling(inspection.id),
+      extra: inspection,
     );
-    if (decisionTarget == null || !mounted) return;
-    await _openDecision(decisionTarget);
-  }
-
-  void _setSelectedIds(Set<String> next) {
-    setState(() {
-      _selectedIds
-        ..clear()
-        ..addAll(next);
-    });
-  }
-
-  String _batchKey(Set<String> ids) {
-    final sorted = ids.toList()..sort();
-    final fingerprint = sorted.join('|');
-    if (_batchSelectionFingerprint != fingerprint ||
-        _batchIdempotencyKey == null) {
-      _batchSelectionFingerprint = fingerprint;
-      _batchIdempotencyKey = 'fqc-pass-all-${const Uuid().v4()}';
+    if (!mounted) return;
+    if (decided != null) {
+      _applyDecisionResult(decided);
     }
-    return _batchIdempotencyKey!;
+    ref.invalidate(productionFqcPendingCountProvider);
+    ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
+    await _load(page: _result?.page ?? 1);
   }
 
-  Future<void> _passSelected(Set<String> selectedIds) async {
-    if (_batchPassing || selectedIds.isEmpty) {
-      if (selectedIds.isEmpty) context.appWarning('请先选择待处理质检任务');
-      return;
-    }
-    final ids = selectedIds.toList()..sort();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('批量全部合格 ${ids.length} 项'),
-        content: const Text(
-          '系统将把所选任务当前全部待检数量登记为合格，并在同一事务生成对应的仓库待最终点收任务。'
-          '本操作不会直接增加库存或 iqty；任一任务状态、权限、品质组织、放行或并发校验失败，整批都会回滚。'
-          '存在不合格或部分合格时，请取消并双击对应任务逐项登记。',
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            icon: const Icon(Icons.rule_rounded),
-            label: const Text('确认全部合格'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() => _batchPassing = true);
-    try {
-      final result = await ref
-          .read(productionFqcRepositoryProvider)
-          .passAll(inspectionIds: ids, idempotencyKey: _batchKey(selectedIds));
-      if (!mounted) return;
-      for (final inspection in result.inspections) {
-        _applyDecisionResult(inspection);
-      }
-      setState(() {
-        _selectedIds.clear();
-        _batchSelectionFingerprint = null;
-        _batchIdempotencyKey = null;
-      });
-      ref.invalidate(productionFqcPendingCountProvider);
-      ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
-      context.appSuccess(
-        result.replay
-            ? '该批次已完成，已安全重放 ${result.processedCount} 项结果'
-            : '已将 ${result.processedCount} 项质检任务批量登记为全部合格',
-      );
-      await _load(page: _result?.page ?? 1);
-    } on ApiException catch (error) {
-      if (mounted) context.appError(error.message);
-    } catch (_) {
-      if (mounted) context.appError('批量全部合格失败，请保持当前选择后重试');
-    } finally {
-      if (mounted) setState(() => _batchPassing = false);
-    }
-  }
-
-  List<Widget> _batchActions(BuildContext context, Set<String> selectedIds) {
-    final count = selectedIds.length;
-    return [
-      Tooltip(
-        message: count == 0 ? '请选择待检或部分已决定的任务' : '将所选任务全部剩余待检数量原子登记为合格',
-        child: UtenButton(
-          key: const Key('production-fqc-batch-pass-all'),
-          size: UtenButtonSize.large,
-          type: UtenButtonType.danger,
-          icon: Icons.rule_rounded,
-          isLoading: _batchPassing,
-          onPressed: _batchPassing || count == 0
-              ? null
-              : () => _passSelected(selectedIds),
-          onDisabledTap: count == 0
-              ? () => context.appWarning('请先选择待处理质检任务')
-              : null,
-          child: Text(count == 0 ? '批量全部合格' : '批量全部合格($count)'),
-        ),
-      ),
-    ];
-  }
-
+  /// 决定成功先本地落位（决定行保留为 PARTIAL 或移除 RESOLVED），刷新失败也不回滚。
   void _applyDecisionResult(ProductionFqcInspection updated) {
     final current = _result;
     if (current == null) return;
@@ -299,6 +188,58 @@ class _ProductionFqcInspectionsPageState
       item.colorName,
     ].whereType<String>().join(' ').toLowerCase();
     return text.contains(keyword);
+  }
+
+  void _setSelectedIds(Set<String> next) {
+    setState(() {
+      _selectedIds
+        ..clear()
+        ..addAll(next);
+    });
+  }
+
+  /// 右下角「批量审批」（2026-09-12 与待检处置统一）：所选任务进批量审批汇总页
+  ///（默认全勾 = 全部合格），页面里可再取消/调整后一次「提交报告」。
+  Future<void> _openBatchApproval(Set<String> selectedIds) async {
+    if (selectedIds.isEmpty) {
+      context.appWarning('请先选择待处理质检任务');
+      return;
+    }
+    final inspections = [
+      for (final item in _result?.items ?? const <ProductionFqcInspection>[])
+        if (selectedIds.contains(item.id) && item.active) item,
+    ];
+    if (inspections.isEmpty) {
+      context.appWarning('所选任务状态已变化，请刷新后重新选择');
+      return;
+    }
+    final done = await context.push<bool>(
+      RouteName.warehouseInspectionBatchApproval,
+      extra: QualityBatchApprovalSelection(inspections: inspections),
+    );
+    if (!mounted) return;
+    setState(() => _selectedIds.clear());
+    if (done == true) await _load(page: _result?.page ?? 1);
+  }
+
+  List<Widget> _batchActions(BuildContext context, Set<String> selectedIds) {
+    final count = selectedIds.length;
+    return [
+      Tooltip(
+        message: count == 0 ? '请选择待检或部分已决定的任务' : '所选任务汇总到批量审批页：默认全部合格，一次提交报告办结',
+        child: UtenButton(
+          key: const Key('production-fqc-batch-approval'),
+          size: UtenButtonSize.large,
+          type: UtenButtonType.danger,
+          icon: Icons.fact_check_outlined,
+          onPressed: count == 0 ? null : () => _openBatchApproval(selectedIds),
+          onDisabledTap: count == 0
+              ? () => context.appWarning('请先选择待处理质检任务')
+              : null,
+          child: Text(count == 0 ? '批量审批' : '批量审批($count)'),
+        ),
+      ),
+    ];
   }
 
   @override
@@ -387,20 +328,18 @@ class _ProductionFqcInspectionsPageState
                 onSelectedIdsChanged: _setSelectedIds,
                 batchActionsBuilder: canBatchPass ? _batchActions : null,
                 onRowTap: (inspection) =>
-                    _openDetail(inspection, canApprove: canApprove),
+                    _openHandling(inspection, canApprove: canApprove),
                 rowMenuBuilder: (inspection) => [
                   UtenMenuItem(
-                    label: '查看质检详情',
-                    icon: Icons.visibility_outlined,
+                    label: inspection.active && canApprove
+                        ? '办理质检（详情 + 登记决定）'
+                        : '查看质检详情',
+                    icon: inspection.active && canApprove
+                        ? Icons.rule_rounded
+                        : Icons.visibility_outlined,
                     onTap: () =>
-                        _openDetail(inspection, canApprove: canApprove),
+                        _openHandling(inspection, canApprove: canApprove),
                   ),
-                  if (inspection.active && canApprove)
-                    UtenMenuItem(
-                      label: '登记检验决定',
-                      icon: Icons.rule_rounded,
-                      onTap: () => _openDecision(inspection),
-                    ),
                 ],
                 isLoading: _loading,
                 loadingMore: _loading && value != null,
@@ -579,7 +518,8 @@ class _FqcProcessHint extends StatelessWidget {
       const Expanded(
         child: Text(
           '任务来自仓库已登记送检；FQC 只记录质量决定，不直接写库存或 iqty。'
-          '待处理任务可多选后在右下角批量登记为全部合格；部分合格或不合格仍须逐项登记。',
+          '双击进入办理页逐项登记；多选后点右下角「批量审批」汇总到一页，'
+          '默认全部合格、一次提交办结。',
         ),
       ),
     ],

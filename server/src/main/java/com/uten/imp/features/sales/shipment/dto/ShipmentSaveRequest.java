@@ -18,6 +18,9 @@ import java.util.UUID;
 @Setter
 public class ShipmentSaveRequest {
 
+    @com.fasterxml.jackson.annotation.JsonIgnore private String batchRequestKey;
+    @com.fasterxml.jackson.annotation.JsonIgnore private String batchRequestHash;
+    @com.fasterxml.jackson.annotation.JsonIgnore private Integer batchPosition;
     private String billNo;
     private String shipmentKind;
     private String billingMode;
@@ -32,6 +35,9 @@ public class ShipmentSaveRequest {
     private UUID clientId;
 
     private UUID warehouseId;
+    /** Internal batch allocation may suggest a proven source while warehouse staff confirm the physical selection. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private boolean warehouseChoiceByWarehouse;
     private UUID currencyId;
     private BigDecimal exchangeRate;
     private BigDecimal taxRate;

@@ -1143,7 +1143,7 @@
   },
   "procurementApprovalQtyChangesHint": "재무 승인 후 수량이 변경되어 자동으로 재검토 대기로 돌아갔습니다. 이전→현재를 한 줄씩 확인한 뒤 재검토해 주세요.",
   "productionMaterialRecheck": "자재 준비 재확인",
-  "productionMaterialRecheckReady": "자재가 준비되어 실제 창고별 출고 지시가 생성되었습니다. 자재 출고 완료 후 작업을 시작하세요.",
+  "productionMaterialRecheckReady": "자재가 준비되었습니다. 내 작업장 작업에서 작업을 선택하여 자재 요청을 제출하세요. 창고에서 모든 자재를 출고한 후 작업을 시작하세요.",
   "productionMaterialRecheckWaiting": "아직 자재가 부족합니다. 실제 입고 및 다른 작업의 예약 수량을 확인하세요.",
   "fieldAutofilledReview": "이전 기록 또는 기본값이 자동 입력되었습니다. 사용 전에 확인하세요.",
   "workflowQuantityHint": "이 행의 단위로 이번 수량을 입력하세요. 박스, 개, kg을 혼동하지 말고 연결된 원본의 가능 수량을 넘기지 마세요.",
@@ -1268,5 +1268,324 @@
   "attachmentUploadedFiles": "파일 {count}개 업로드 완료",
   "productionMaterialRecheckHelp": "이 작업의 합격 입고와 가용 재고를 다시 확인합니다. 창고 입고나 실제 사용량 등록을 대신하지 않습니다.",
   "productionMaterialRegisterUsage": "실제 사용량 등록",
-  "productionMaterialViewUsage": "사용 기록 보기"
+  "productionMaterialViewUsage": "사용 기록 보기",
+  "systemSettingInvalidInteger": "유효한 음이 아닌 정수를 입력하세요",
+  "systemSettingInvalidValue": "설정 값이 허용 범위를 벗어났습니다",
+  "systemSettingEnabled": "활성화",
+  "systemSettingDisabled": "비활성화",
+  "systemSettingFixFields": "표시된 설정을 먼저 확인하세요",
+  "systemSettingUnsavedRefresh": "새로 고침 전에 변경 사항을 저장하거나 되돌리세요",
+  "systemSettingEffectTiming": "보안 한도는 이후 작업에, 토큰 유효 기간은 새로 발급되는 토큰에 적용됩니다. 기념 알림과 감사 보존은 예약 실행 시 적용됩니다. 변경 내용은 감사 기록에 남으며 비밀번호 확인이 필요합니다.",
+  "auditSummaryUnavailable": "요약을 사용할 수 없지만 이벤트 기록은 확인할 수 있습니다",
+  "auditSummaryRetry": "요약 다시 시도",
+  "auditWorkspaceDescription": "사람과 시간별 세션을 검토하고 이벤트에서 업무 변경 사항을 추적하세요.",
+  "materialReasonLabel": "사유",
+  "materialReasonRequired": "사유를 입력하세요",
+  "materialReasonTooLong": "사유는 {max}자 이내로 입력하세요",
+  "materialReasonTooShort": "사유를 {min}자 이상 입력하세요",
+  "@materialReasonTooLong": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "@materialReasonTooShort": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "auditFiltersTitle": "작업 · 업무 대상 · 이벤트 유형",
+  "warehouseOutboundBatchAction": "Batch {action}",
+  "@warehouseOutboundBatchAction": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
+  "warehouseOutboundBatchReview": "Review sales outbound tasks",
+  "warehouseOutboundBatchHint": "Check goods, quantities, units, warehouses and suggested locations before confirming the current work stage.",
+  "warehouseOutboundBatchConfirm": "Confirm {action} for {count} selected documents?",
+  "@warehouseOutboundBatchConfirm": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "warehouseOutboundBatchStopped": "Batch processing stopped. Return and refresh before selecting unfinished tasks.",
+  "warehouseOutboundBatchUnknown": "No definite result was received. Return and refresh to check the current status before proceeding.",
+  "warehouseOutboundBatchStale": "The task status or allowed actions have changed. Refresh and review.",
+  "warehouseOutboundBatchEmpty": "The selected tasks are no longer actionable. Return and refresh the list.",
+  "warehouseOutboundBatchResult": "Processing result",
+  "warehouseOutboundBatchDone": "Completed",
+  "warehouseOutboundBatchPending": "Not processed",
+  "warehouseOutboundBatchFailed": "Failed; review required",
+  "warehouseOutboundBatchSelection": "{count} documents selected",
+  "@warehouseOutboundBatchSelection": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "warehouseOutboundBatchSelect": "Select actionable tasks first",
+  "warehouseOutboundBatchReason": "Processing note",
+  "warehouseOutboundBatchReasonRequired": "Enter a specific explanation",
+  "warehouseOutboundBillNo": "Shipment number",
+  "warehouseOutboundClient": "Customer",
+  "warehouseOutboundWarehouse": "Warehouse",
+  "warehouseOutboundStatus": "Warehouse status",
+  "warehouseOutboundLineNo": "Line",
+  "warehouseOutboundGoodsCode": "Goods code",
+  "warehouseOutboundGoodsName": "Goods name",
+  "warehouseOutboundPlaceHint": "Suggested location",
+  "warehouseOutboundColor": "Color",
+  "warehouseOutboundUnit": "Unit",
+  "warehouseOutboundQuantity": "Shipment quantity",
+  "warehouseOutboundWeight": "Weight",
+  "warehouseOutboundParcelQuantity": "Packages",
+  "warehouseOutboundCartonCount": "Cartons",
+  "warehouseOutboundClientProductCode": "Customer product code",
+  "warehouseOutboundClientModel": "Customer model",
+  "warehouseOutboundSourceOrder": "Source order",
+  "warehouseOutboundStartPicking": "Start picking",
+  "warehouseOutboundFinishPicking": "Complete picking",
+  "warehouseOutboundHandOver": "Hand over shipment",
+  "warehouseOutboundRestorePending": "Restore pending picking",
+  "warehouseStockOutboundTitle": "Review outbound documents",
+  "warehouseStockOutboundAction": "Batch outbound",
+  "warehouseStockOutboundConfirm": "Confirm batch outbound",
+  "warehouseStockOutboundConfirmMessage": "Issue the quantities shown for {count} selected documents?\nEach document is approved separately, deducting stock from its actual warehouse and recording your approval. Processing stops on an error; successful documents remain completed.",
+  "@warehouseStockOutboundConfirmMessage": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "warehouseStockOutboundHint": "Check goods, quantities, units and actual warehouses. Selecting a line selects its entire document. To change quantities, edit the draft first.",
+  "warehouseStockOutboundLoadFailed": "Unable to load outbound details. Please retry.",
+  "warehouseStockOutboundCompleted": "Completed {count} outbound documents",
+  "@warehouseStockOutboundCompleted": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "warehouseStockOutboundDone": "Issued",
+  "warehouseStockOutboundUnavailable": "Currently unavailable",
+  "warehouseStockOutboundProcessing": "Confirming outbound documents",
+  "warehouseStockOutboundBillNo": "Outbound document",
+  "warehouseStockOutboundPlace": "Actual location",
+  "warehouseStockOutboundQuantity": "Outbound quantity",
+  "warehouseStockOutboundSource": "Source document",
+  "warehouseStockOutboundRemark": "Notes",
+  "warehouseSubcontractOutboundBatchTitle": "Batch outbound details",
+  "warehouseSubcontractOutboundBatchAction": "Batch outbound",
+  "warehouseSubcontractOutboundBatchConfirm": "Confirm batch outbound",
+  "warehouseSubcontractOutboundReviewHint": "Check each quantity, weight and actual warehouse before confirming outbound.",
+  "warehouseSubcontractOutboundBatchHint": "Lines are selected together for each outbound document. Reduce quantities for a partial issue. Each document is saved and approved separately; completed results are retained. Processing pauses on errors. Verify the result before continuing unprocessed documents.",
+  "warehouseSubcontractOutboundDocuments": "Document details",
+  "warehouseSubcontractOutboundLines": "Outbound lines",
+  "warehouseSubcontractOutboundOrder": "Source order",
+  "warehouseSubcontractOutboundSupplier": "Subcontractor",
+  "warehouseSubcontractOutboundWarehouse": "Issue warehouse",
+  "warehouseSubcontractOutboundWorker": "Handler",
+  "warehouseSubcontractOutboundDate": "Outbound date",
+  "warehouseSubcontractOutboundDeliveryDate": "Delivery date",
+  "warehouseSubcontractOutboundGoods": "Goods",
+  "warehouseSubcontractOutboundColor": "Colour",
+  "warehouseSubcontractOutboundUnit": "Unit",
+  "warehouseSubcontractOutboundPlanned": "Planned quantity",
+  "warehouseSubcontractOutboundPrepared": "Prepared quantity",
+  "warehouseSubcontractOutboundIssued": "Issued quantity",
+  "warehouseSubcontractOutboundAvailable": "Maximum this issue",
+  "warehouseSubcontractOutboundQuantity": "Issue quantity",
+  "warehouseSubcontractOutboundWeight": "Actual weight",
+  "warehouseSubcontractOutboundPlace": "Location",
+  "warehouseSubcontractOutboundStatus": "Result",
+  "warehouseSubcontractOutboundPending": "Pending outbound",
+  "warehouseSubcontractOutboundDone": "Issued",
+  "warehouseSubcontractOutboundPaused": "Paused; verify the result",
+  "warehouseSubcontractOutboundUncertain": "The receipt is uncertain. Verify the result before continuing.",
+  "warehouseSubcontractOutboundChanged": "The document has changed or been processed. Return, refresh and select it again.",
+  "warehouseSubcontractOutboundSelectRequired": "Select at least one outbound task.",
+  "warehouseSubcontractOutboundSelectionLimit": "Select at most 50 tasks per batch.",
+  "warehouseSubcontractOutboundWarehouseRequired": "Select an issue warehouse.",
+  "warehouseSubcontractOutboundQuantityInvalid": "Issue quantity must be greater than zero and cannot exceed the maximum this issue.",
+  "warehouseSubcontractOutboundWeightInvalid": "Actual weight must be empty or a number greater than zero.",
+  "warehouseSubcontractOutboundLoadFailed": "Could not load outbound details. Please retry.",
+  "warehouseSubcontractOutboundConfirmResponsibility": "Confirmation records the signed-in employee as responsible for this outbound approval.",
+  "warehouseSubcontractOutboundSubcontractEffects": "Approval issues the target goods from the selected warehouse to the subcontractor. Returned goods still require registration and quality inspection.",
+  "warehouseSubcontractOutboundBatchResult": "Completed {done} of {total} tasks.",
+  "@warehouseSubcontractOutboundBatchResult": {
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "warehouseSubcontractOutboundContinue": "Continue unprocessed tasks",
+  "warehouseSubcontractOutboundVerify": "Verify processing result",
+  "warehouseSubcontractOutboundSelectAll": "Select all outbound lines",
+  "warehouseSubcontractOutboundDraft": "Outbound draft",
+  "warehouseSubcontractOutboundRemark": "Remark",
+  "warehouseSubcontractOutboundNoLines": "No outbound lines are currently available",
+  "warehouseSubcontractOutboundLegacyParent": "Historical parent goods",
+  "warehouseStockOutboundConfirmSingle": "Confirm outbound",
+  "warehouseStockOutboundSeries": "Series",
+  "warehouseSubcontractOutboundDraftsGenerated": "Outbound drafts have been generated. Review each draft's actual warehouse and quantities before confirming outbound.",
+  "warehouseSubcontractOutboundPrepareDrafts": "Generate drafts and review",
+  "warehouseOutboundBatchDocuments": "문서 정보",
+  "warehouseOutboundBatchLines": "출고 상세",
+  "warehouseOutboundBatchBillDate": "업무 일자",
+  "warehouseOutboundBatchWorker": "담당자",
+  "warehouseOutboundBatchMaker": "작성자",
+  "warehouseOutboundBatchCreatedAt": "작성 시간",
+  "warehouseOutboundBatchUpdatedAt": "작업 갱신 시간",
+  "warehouseSubcontractOutboundDocumentRemark": "Document notes",
+  "warehouseSubcontractOutboundLineRemark": "Line notes",
+  "warehouseSubcontractOutboundWarehouseSyncHint": "Defaults to the original document's actual warehouse. Changing it updates every line belonging to that document.",
+  "warehouseSubcontractOutboundDocumentRemarkHint": "These notes are shared by every line of the same outbound document. Use line notes for information specific to one line.",
+  "productionBatchTitle": "Batch production and material request",
+  "productionBatchPermission": "You do not have permission to arrange batch material requests.",
+  "productionBatchSelectTask": "Select a waiting work order from workshop tasks.",
+  "productionBatchInvalidQuantity": "Enter a positive quantity with up to four decimal places.",
+  "productionBatchPreviewFailed": "Unable to review the producible batch. Please retry.",
+  "productionBatchReplay": "This batch was already arranged; no duplicate tasks were created.",
+  "productionBatchSubmittedReuse": "Arranged {quantity} {unit} using previously issued materials. Return to workshop tasks to start.",
+  "@productionBatchSubmittedReuse": {
+    "placeholders": {
+      "quantity": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "productionBatchSubmitted": "Submitted the material request for {quantity} {unit}; {remaining} {unit} remain for a later batch.",
+  "@productionBatchSubmitted": {
+    "placeholders": {
+      "quantity": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      },
+      "remaining": {
+        "type": "String"
+      }
+    }
+  },
+  "productionBatchUncertain": "The result is not yet confirmed. Use “{action}” to check this same request. The reviewed batch is retained.",
+  "@productionBatchUncertain": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
+  "productionBatchRejected": "{message}. Review the batch quantity and material summary again.",
+  "@productionBatchRejected": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "productionBatchRetryRequest": "Retry this material request",
+  "productionBatchRetryArrange": "Retry this batch arrangement",
+  "productionBatchConfirmRequest": "Confirm batch material request",
+  "productionBatchConfirmArrange": "Confirm this production batch",
+  "productionBatchSubmitting": "Submitting this batch",
+  "productionBatchSubmittingHint": "Checking this batch's quantity and material sources. Please wait.",
+  "productionBatchProductFallback": "Production item not confirmed",
+  "productionBatchPlan": "Production plan",
+  "productionBatchWorkOrder": "Work order",
+  "productionBatchOriginal": "Awaiting production",
+  "productionBatchOriginalHint": "Quantity awaiting arrangement for this work order",
+  "productionBatchReady": "Complete-kit capacity",
+  "productionBatchReadyHint": "Based on qualified physical materials",
+  "productionBatchSelected": "Reviewed batch quantity",
+  "productionBatchSelectedHint": "Quantity arranged upon confirmation",
+  "productionBatchRemaining": "Remaining after this batch",
+  "productionBatchRemainingHint": "Retained for later arrangement",
+  "productionBatchUnitUnknown": "Unit not confirmed",
+  "productionBatchSetup": "Arrange this production batch",
+  "productionBatchQuantity": "Quantity for this batch",
+  "productionBatchQuantityHint": "Up to {quantity} {unit}. After editing, review the material summary before confirming.",
+  "@productionBatchQuantityHint": {
+    "placeholders": {
+      "quantity": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "productionBatchReview": "Review material summary",
+  "productionBatchReviewReady": "Batch reviewed",
+  "productionBatchNeedsReview": "Quantity changed; review required",
+  "productionBatchNeedsReviewHint": "The table shows the previous review. Review again before confirming this batch.",
+  "productionBatchNoKit": "This batch cannot be arranged yet",
+  "productionBatchNoKitHint": "Available materials cannot form a complete batch. Review again after materials are received.",
+  "productionBatchReuse": "No additional materials required",
+  "productionBatchReuseHint": "This batch uses materials already issued for earlier batches. Confirm, then return to workshop tasks to start.",
+  "productionBatchFlow": "Confirm request → Warehouse issues materials → Start in workshop",
+  "productionBatchRemainingText": "After this batch, {quantity} {unit} remain for later arrangement.",
+  "@productionBatchRemainingText": {
+    "placeholders": {
+      "quantity": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "productionBatchAllRemaining": "This batch covers all production remaining on this work order.",
+  "productionBatchMaterials": "Materials for this batch",
+  "productionBatchMaterialCount": "{lines} material lines · {warehouses} warehouses",
+  "@productionBatchMaterialCount": {
+    "placeholders": {
+      "lines": {
+        "type": "int"
+      },
+      "warehouses": {
+        "type": "int"
+      }
+    }
+  },
+  "productionBatchWarehouse": "Actual issue warehouse",
+  "productionBatchGoodsCode": "Material code",
+  "productionBatchGoodsName": "Material name",
+  "productionBatchColor": "Color",
+  "productionBatchUnit": "Issue unit",
+  "productionBatchMaterialQuantity": "Quantity to request",
+  "productionBatchMaterialQuantityHint": "Additional material needed for this batch, in this row's unit and actual warehouse.",
+  "productionBatchNoAdditionalMaterials": "No additional materials are needed; arrange production using the existing material sources.",
+  "productionBatchConfirmedSummary": "This batch: {quantity} {unit}",
+  "@productionBatchConfirmedSummary": {
+    "placeholders": {
+      "quantity": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  }
 }

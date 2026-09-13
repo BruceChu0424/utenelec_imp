@@ -23,6 +23,8 @@ abstract interface class WarehouseSalesOutboundGateway {
     String id, {
     required String targetStatus,
     String? reason,
+    String? warehouseId,
+    Map<String, String>? stockPlaces,
   });
 }
 
@@ -75,9 +77,17 @@ class WarehouseSalesOutboundRepository
     String id, {
     required String targetStatus,
     String? reason,
+    String? warehouseId,
+    Map<String, String>? stockPlaces,
   }) async {
     final body = <String, dynamic>{
       'targetStatus': targetStatus.trim().toUpperCase(),
+      'warehouseId': ?_trimmed(warehouseId),
+      if (stockPlaces != null)
+        'stockPlaces': [
+          for (final entry in stockPlaces.entries)
+            {'shipmentItemId': entry.key, 'stockPlace': entry.value.trim()},
+        ],
     };
     final safeReason = _trimmed(reason);
     if (safeReason != null) {

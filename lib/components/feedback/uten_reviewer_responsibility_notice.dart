@@ -33,6 +33,8 @@ class UtenReviewerResponsibilityNotice extends ConsumerWidget {
         ? code
         : '当前登录员工';
     final detail = description ?? '确认后，系统将以此登录员工记录$actionLabel责任。';
+    // compact 只收紧留白；显式传入的责任文案必须可见（不能只剩 Semantics 标签）。
+    final showDetail = !compact || description != null;
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
 
@@ -72,7 +74,7 @@ class UtenReviewerResponsibilityNotice extends ConsumerWidget {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  if (!compact) ...[
+                  if (showDetail) ...[
                     const SizedBox(height: UtenSpacing.s4),
                     Text(
                       detail,

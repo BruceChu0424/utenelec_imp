@@ -56,7 +56,11 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         jdbc = new JdbcTemplate(new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
         jdbc.execute("""
-                CREATE TABLE production_execution_segments(id uuid PRIMARY KEY, status text, auto_promote_when_ready boolean DEFAULT TRUE, is_deleted boolean DEFAULT FALSE);
+                CREATE TABLE production_execution_segments(id uuid PRIMARY KEY, status text, auto_promote_when_ready boolean DEFAULT TRUE, is_deleted boolean DEFAULT FALSE,source_segment_id uuid);
+                CREATE TABLE production_execution_segment_splits(source_segment_id uuid);
+                CREATE FUNCTION fn_split_batch_empty_issued(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
+                CREATE FUNCTION fn_can_split_execution_batch(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
+                CREATE FUNCTION fn_production_material_usage_source_segments(uuid) RETURNS TABLE(segment_id uuid) LANGUAGE sql AS 'SELECT NULL::uuid WHERE FALSE';
                 CREATE TABLE departments(id uuid PRIMARY KEY, parent_id uuid, manager_id uuid, is_deleted boolean DEFAULT FALSE);
                 CREATE TABLE employees(id uuid PRIMARY KEY, department_id uuid, status text DEFAULT 'active', is_deleted boolean DEFAULT FALSE);
                 CREATE TABLE employee_secondary_departments(employee_id uuid, department_id uuid);
@@ -107,11 +111,26 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                     execution_segment_id uuid, goods_id uuid, color_id uuid, required_qty numeric,
                     status text DEFAULT 'ACTIVE', is_deleted boolean DEFAULT FALSE);
                 CREATE TABLE production_material_stock_postings(id uuid PRIMARY KEY, demand_id uuid,
-                    posting_type text, qty_base numeric);
+                    posting_type text, qty_base numeric, stock_document_item_id uuid);
+                CREATE TABLE production_planning_package_documents(document_id uuid, document_type text, execution_segment_id uuid);
+                CREATE TABLE stock_documents(id uuid, doc_type text, status integer, is_deleted boolean DEFAULT FALSE);
+                CREATE TABLE stock_document_items(id uuid, doc_id uuid,qty numeric DEFAULT 1,issued_qty numeric DEFAULT 0,is_deleted boolean DEFAULT false);
+                CREATE TABLE production_execution_segment_events(action text, draw_document_ids uuid[],draw_item_quantities jsonb);
+                CREATE TABLE production_material_return_request_items(issue_posting_id uuid,request_id uuid,qty_base numeric);
+                CREATE TABLE production_material_return_request_cancellations(request_id uuid);
                 CREATE TABLE production_material_settlement_events(id uuid PRIMARY KEY, event_type text);
                 CREATE TABLE production_material_settlement_postings(id uuid PRIMARY KEY, demand_id uuid,
                     event_id uuid, settlement_type text, qty_base numeric);
                 """);
+        String requestMigration = Files.readString(Path.of("src/main/resources/db/migration/V559__production_workshop_draw_request.sql"));
+        int functionStart = requestMigration.indexOf("CREATE OR REPLACE FUNCTION fn_production_draw_requested(");
+        jdbc.execute(requestMigration.substring(functionStart, requestMigration.indexOf("$$;", functionStart) + 3));
+        String quantitiesMigration = Files.readString(Path.of("src/main/resources/db/migration/V564__production_draw_requested_quantities.sql"));
+        jdbc.execute(quantitiesMigration.substring(quantitiesMigration.indexOf("CREATE FUNCTION fn_production_draw_item_requested_qty("),
+                quantitiesMigration.indexOf("CREATE FUNCTION fn_guard_production_draw_quantities(")));
+        String returnMigration = Files.readString(Path.of("src/main/resources/db/migration/V560__production_material_return_requests.sql"));
+        int pendingStart = returnMigration.indexOf("CREATE FUNCTION fn_material_issue_pending_return(");
+        jdbc.execute(returnMigration.substring(pendingStart,returnMigration.indexOf("$$;",pendingStart)+3));
         // Execute the formal authoritative clearance view, not a test copy of its arithmetic.
         String migration = Files.readString(Path.of("src/main/resources/db/migration/V152__production_material_issue_return_ledger.sql"));
         int start = migration.lastIndexOf("CREATE OR REPLACE VIEW v_production_material_clearance AS");
@@ -133,14 +152,14 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
             UUID demand = new UUID(1, number);
             jdbc.update("INSERT INTO production_material_demands(id,plan_id,execution_segment_id,goods_id,required_qty) VALUES (?,?,?,?,10)",
                     demand, PLAN, new UUID(0, number), UUID.randomUUID());
-            jdbc.update("INSERT INTO production_material_stock_postings VALUES (?,?, 'ISSUE',?)",
+            jdbc.update("INSERT INTO production_material_stock_postings(id,demand_id,posting_type,qty_base) VALUES (?,?, 'ISSUE',?)",
                     UUID.randomUUID(), demand, number == 2 ? 4 : 10);
         }
         UUID settlementEvent = UUID.randomUUID();
         jdbc.update("INSERT INTO production_material_settlement_events VALUES (?,'POST')", settlementEvent);
         jdbc.update("INSERT INTO production_material_settlement_postings VALUES (?,?,?,'CONSUMED',10)",
                 UUID.randomUUID(), new UUID(1, 3), settlementEvent);
-        jdbc.update("INSERT INTO production_material_stock_postings VALUES (?,?,'ISSUE_REVERSE',10)",
+        jdbc.update("INSERT INTO production_material_stock_postings(id,demand_id,posting_type,qty_base) VALUES (?,?,'ISSUE_REVERSE',10)",
                 UUID.randomUUID(), new UUID(1, 4));
         factory = new Configuration()
                 .setProperty("hibernate.connection.driver_class", "org.postgresql.Driver")
@@ -199,6 +218,35 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         assertThat(reversedIssue.hasMaterialActivity()).isTrue();
         assertThat(reversedIssue.hasUnregisteredMaterial()).isFalse();
         assertThat(factory.getStatistics().getPrepareStatementCount()).isEqualTo(3);
+    }
+
+    @Test
+    void preparationFilterRunsBeforePaginationAndPartialWarehouseRequestStaysSelectable() {
+        UUID segment = new UUID(0, 2), firstDraw = UUID.randomUUID(), secondDraw = UUID.randomUUID();
+        when(access.hasAuthority("production_execution:start")).thenReturn(true);
+        jdbc.update("INSERT INTO stock_documents(id,doc_type,status) VALUES (?,'DRAW',0),(?,'DRAW',0)", firstDraw, secondDraw);
+        jdbc.update("INSERT INTO production_planning_package_documents VALUES (?,'DRAW',?),(?,'DRAW',?)",
+                firstDraw, segment, secondDraw, segment);
+        jdbc.update("INSERT INTO production_execution_segment_events(action,draw_document_ids) VALUES ('DRAW_REQUEST',ARRAY[CAST(? AS uuid)])", firstDraw);
+        try {
+            var unrequested = service.workshopTasks(1, 1, null, "PREPARING", null, null, null, "DRAW_NOT_REQUESTED");
+            assertThat(unrequested.getTotal()).isEqualTo(1);
+            assertThat(unrequested.getItems().getFirst().segmentId()).isEqualTo(segment);
+            assertThat(unrequested.getItems().getFirst().drawRequested()).isFalse();
+            assertThat(unrequested.getItems().getFirst().canRequestDraw()).isTrue();
+            assertThat(service.workshopTasks(1, 1, null, "PREPARING", null, null, null, "DRAW_REQUESTED").getTotal()).isZero();
+            jdbc.update("INSERT INTO production_execution_segment_events(action,draw_document_ids) VALUES ('DRAW_REQUEST',ARRAY[CAST(? AS uuid)])", secondDraw);
+            var requested = service.workshopTasks(1, 1, null, "PREPARING", null, null, null, "DRAW_REQUESTED");
+            assertThat(requested.getTotal()).isEqualTo(1);
+            assertThat(requested.getItems().getFirst().drawRequested()).isTrue();
+            assertThat(requested.getItems().getFirst().canRequestDraw()).isFalse();
+            assertThat(service.workshopTasks(1, 1, null, "PREPARING", null, null, null, "WAITING_MATERIAL").getTotal()).isEqualTo(1);
+            assertThat(service.workshopTasks(1, 1, null, "PREPARING", null, null, null, "READY_TO_START").getTotal()).isEqualTo(1);
+        } finally {
+            jdbc.update("DELETE FROM production_execution_segment_events");
+            jdbc.update("DELETE FROM production_planning_package_documents");
+            jdbc.update("DELETE FROM stock_documents");
+        }
     }
 
     /** V477 读侧放行回归锁：超管在我的车间任务页看到全部车间的活跃段与角标。 */

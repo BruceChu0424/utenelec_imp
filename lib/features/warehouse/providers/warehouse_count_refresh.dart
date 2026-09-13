@@ -13,6 +13,7 @@ import '../../../shared/providers/production_fqc_pending_count_provider.dart'
     show productionFqcPendingCountProvider;
 import 'procurement_inbound_count_providers.dart';
 import 'production_draw_count_provider.dart';
+import 'production_return_count_provider.dart';
 import 'production_finished_inbound_task_count_provider.dart';
 import 'warehouse_quality_result_count_provider.dart';
 import 'warehouse_sales_outbound_count_provider.dart';
@@ -32,6 +33,7 @@ void invalidateWarehouseTaskCounts(WidgetRef ref) {
   ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
   // 领料：履约待领（DRAW open_qty 投影）。
   ref.invalidate(warehouseProductionDrawPendingCountProvider);
+  ref.invalidate(warehouseProductionReturnPendingCountProvider);
   // 品质部检查结果（仓库 hub 第四张任务卡）：未完结总数 + 父分类（来源）分段。
   ref.invalidate(warehouseQualityResultPendingCountProvider);
   ref.invalidate(warehouseQualityResultTypeCountsProvider);

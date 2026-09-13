@@ -87,6 +87,7 @@ class GoodsBomTab extends ConsumerStatefulWidget {
     required this.canDelete,
     this.productCode,
     this.productName,
+    this.onPreview,
     this.onDataChanged,
   });
 
@@ -98,6 +99,11 @@ class GoodsBomTab extends ConsumerStatefulWidget {
   /// 导出文件名用（产品配件清单_编号/名称）。
   final String? productCode;
   final String? productName;
+
+  /// 打开 A4 产品配件清单预览（goods_bom_preview.dart）。由宿主 GoodsDetailBody
+  /// 接线（要读 _detail 的型号等）；按钮渲染在表格工具条「全屏」旁（2026-09-12
+  /// 从详情头部迁入，样式与全屏按钮同款）。
+  final VoidCallback? onPreview;
 
   final VoidCallback? onDataChanged;
 
@@ -390,148 +396,155 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   // ---- 渲染 ---------------------------------------------------------------
 
   /// 表格列（与 MasterDataTableView 对齐：key 仅标识用，本页不接筛选/排序）。
-  List<MasterColumnDef<_BomRow>> get _columns => [
-    // 层级身份集中在首列：级联号 + 明确层级文字 + 连续树轨 + 48dp
-    // 单击展开按钮。行单击只负责选中，不再让“双击整行”兼任树导航。
-    MasterColumnDef(
-      key: 'treeIdentity',
-      label: '层级 / 组件',
-      width: 320,
-      value: (r) =>
-          '${r.seq} 层级 ${r.depth + 1} '
-          '${r.node.item.componentName ?? ''} '
-          '${r.node.item.componentCode ?? ''}',
-      cellBuilderHandlesSemantics: true,
-      cellBuilder: (context, r) => UtenTreeTableCell(
-        key: ValueKey('goods-bom-tree-cell-${r.node.item.id}'),
-        toggleKey: ValueKey('goods-bom-tree-toggle-${r.node.item.id}'),
-        depth: r.depth,
-        sequence: r.seq,
-        levelLabel: '组件 ${r.depth + 1} 级',
-        title:
-            r.node.item.componentName ?? r.node.item.componentCode ?? '未命名组件',
-        subtitle: [
-          r.node.item.componentCode,
-          if (r.node.loading) '正在加载下级…',
-        ].whereType<String>().where((value) => value.isNotEmpty).join(' · '),
-        pathLabel: '组件树 ${r.seq}',
-        hasChildren: r.node.item.hasChildren,
-        expanded: r.node.expanded,
-        onToggle: r.node.loading ? null : () => _toggle(r.node),
-        ancestorContinuations: r.ancestorContinuations,
-        isLastChild: r.isLastChild,
-        foregroundColor:
-            _selected != null && r.node.item.id == _selected!.node.item.id
-            ? Colors.white
-            : null,
+  /// 售价可见性（goods:price:view，V570）：无授权者「单价/金额」两列整列移除
+  ///（服务端 BOM 行 price/total 已同步置 null）。
+  List<MasterColumnDef<_BomRow>> get _columns {
+    final canViewPrice =
+        ref.watch(isSuperAdminProvider) ||
+        ref.watch(currentPermissionsProvider).contains(Perm.goodsPriceView) ||
+        ref.watch(currentPermissionsProvider).contains(Perm.goodsPriceEdit);
+    return [
+      // 层级身份集中在首列：级联号 + 明确层级文字 + 连续树轨 + 48dp
+      // 单击展开按钮。行单击只负责选中，不再让“双击整行”兼任树导航。
+      // 2026-09-12 用户口径「只显示名字和组件X级」：身份格不再堆路径行与编号
+      // 副标题（编号看「编号」列），副标题仅剩懒加载中的提示。
+      MasterColumnDef(
+        key: 'treeIdentity',
+        label: '层级 / 组件',
+        width: 320,
+        value: (r) =>
+            '${r.seq} 组件 ${r.depth + 1} 级 '
+            '${r.node.item.componentName ?? ''}',
+        cellBuilderHandlesSemantics: true,
+        cellBuilder: (context, r) => UtenTreeTableCell(
+          key: ValueKey('goods-bom-tree-cell-${r.node.item.id}'),
+          toggleKey: ValueKey('goods-bom-tree-toggle-${r.node.item.id}'),
+          depth: r.depth,
+          sequence: r.seq,
+          levelLabel: '组件 ${r.depth + 1} 级',
+          title:
+              r.node.item.componentName ?? r.node.item.componentCode ?? '未命名组件',
+          subtitle: r.node.loading ? '正在加载下级…' : null,
+          hasChildren: r.node.item.hasChildren,
+          expanded: r.node.expanded,
+          onToggle: r.node.loading ? null : () => _toggle(r.node),
+          ancestorContinuations: r.ancestorContinuations,
+          isLastChild: r.isLastChild,
+          foregroundColor:
+              _selected != null && r.node.item.id == _selected!.node.item.id
+              ? Colors.white
+              : null,
+        ),
       ),
-    ),
-    // 已审列（V256）：审计标记为服务端持久数据，对所有人可见（✓ + 行变绿）；
-    // 改标记要 goods:bom:audit，进「审计模式」点行翻面。
-    MasterColumnDef(
-      key: 'audited',
-      label: '已审',
-      width: 56,
-      value: (r) => r.node.item.audited ? '✓' : '',
-    ),
-    MasterColumnDef(
-      key: 'code',
-      label: '编号',
-      width: 110,
-      value: (r) => r.node.item.componentCode,
-    ),
-    MasterColumnDef(
-      key: 'model',
-      label: '型号',
-      width: 120,
-      value: (r) => r.node.item.componentModel,
-    ),
-    MasterColumnDef(
-      key: 'spec',
-      label: '规格',
-      width: 170,
-      value: (r) => r.node.item.componentSpec,
-    ),
-    MasterColumnDef(
-      key: 'unit',
-      label: '单位',
-      width: 56,
-      value: (r) => r.node.item.componentUnitName,
-    ),
-    MasterColumnDef(
-      key: 'color',
-      label: '颜色',
-      width: 80,
-      value: (r) => r.node.item.componentColorName,
-    ),
-    MasterColumnDef(
-      key: 'source',
-      label: '来源',
-      width: 64,
-      value: (r) => r.node.item.componentSourceType,
-    ),
-    MasterColumnDef(
-      key: 'controlStage',
-      label: '需求阶段',
-      width: 112,
-      value: (r) => r.node.item.controlStage.label,
-    ),
-    MasterColumnDef(
-      key: 'consumptionBasis',
-      label: '计量方式',
-      width: 92,
-      value: (r) => r.node.item.consumptionBasis.label,
-    ),
-    MasterColumnDef(
-      key: 'basisOutputQty',
-      label: '基准产量',
-      width: 88,
-      type: 'number',
-      value: (r) => _num(r.node.item.basisOutputQty),
-    ),
-    MasterColumnDef(
-      key: 'allowPartialPackage',
-      label: '尾包',
-      width: 72,
-      value: (r) =>
-          r.node.item.consumptionBasis == BomConsumptionBasis.perPackage
-          ? (r.node.item.allowPartialPackage ? '允许' : '整包')
-          : '—',
-    ),
-    MasterColumnDef(
-      key: 'hardGate',
-      label: '缺料处理',
-      width: 88,
-      value: (r) => r.node.item.hardGate ? '阻止进入' : '只提醒',
-    ),
-    MasterColumnDef(
-      key: 'qty',
-      label: '数量',
-      width: 72,
-      type: 'number',
-      value: (r) => _num(r.node.item.qty),
-    ),
-    MasterColumnDef(
-      key: 'price',
-      label: '单价',
-      width: 90,
-      type: 'money',
-      value: (r) => _money(r.node.item.price),
-    ),
-    MasterColumnDef(
-      key: 'total',
-      label: '金额',
-      width: 90,
-      type: 'money',
-      value: (r) => _money(r.node.item.total),
-    ),
-    MasterColumnDef(
-      key: 'summary',
-      label: '备注',
-      width: 120,
-      value: (r) => r.node.item.summary,
-    ),
-  ];
+      // 已审列（V256）：审计标记为服务端持久数据，对所有人可见（✓ + 行变绿）；
+      // 改标记要 goods:bom:audit，进「审计模式」点行翻面。
+      MasterColumnDef(
+        key: 'audited',
+        label: '已审',
+        width: 56,
+        value: (r) => r.node.item.audited ? '✓' : '',
+      ),
+      MasterColumnDef(
+        key: 'code',
+        label: '编号',
+        width: 110,
+        value: (r) => r.node.item.componentCode,
+      ),
+      MasterColumnDef(
+        key: 'model',
+        label: '型号',
+        width: 120,
+        value: (r) => r.node.item.componentModel,
+      ),
+      MasterColumnDef(
+        key: 'spec',
+        label: '规格',
+        width: 170,
+        value: (r) => r.node.item.componentSpec,
+      ),
+      MasterColumnDef(
+        key: 'unit',
+        label: '单位',
+        width: 56,
+        value: (r) => r.node.item.componentUnitName,
+      ),
+      MasterColumnDef(
+        key: 'color',
+        label: '颜色',
+        width: 80,
+        value: (r) => r.node.item.componentColorName,
+      ),
+      MasterColumnDef(
+        key: 'source',
+        label: '来源',
+        width: 64,
+        value: (r) => r.node.item.componentSourceType,
+      ),
+      MasterColumnDef(
+        key: 'controlStage',
+        label: '需求阶段',
+        width: 112,
+        value: (r) => r.node.item.controlStage.label,
+      ),
+      MasterColumnDef(
+        key: 'consumptionBasis',
+        label: '计量方式',
+        width: 92,
+        value: (r) => r.node.item.consumptionBasis.label,
+      ),
+      MasterColumnDef(
+        key: 'basisOutputQty',
+        label: '基准产量',
+        width: 88,
+        type: 'number',
+        value: (r) => _num(r.node.item.basisOutputQty),
+      ),
+      MasterColumnDef(
+        key: 'allowPartialPackage',
+        label: '尾包',
+        width: 72,
+        value: (r) =>
+            r.node.item.consumptionBasis == BomConsumptionBasis.perPackage
+            ? (r.node.item.allowPartialPackage ? '允许' : '整包')
+            : '—',
+      ),
+      MasterColumnDef(
+        key: 'hardGate',
+        label: '缺料处理',
+        width: 88,
+        value: (r) => r.node.item.hardGate ? '阻止进入' : '只提醒',
+      ),
+      MasterColumnDef(
+        key: 'qty',
+        label: '数量',
+        width: 72,
+        type: 'number',
+        value: (r) => _num(r.node.item.qty),
+      ),
+      if (canViewPrice) ...[
+        MasterColumnDef(
+          key: 'price',
+          label: '单价',
+          width: 90,
+          type: 'money',
+          value: (r) => _money(r.node.item.price),
+        ),
+        MasterColumnDef(
+          key: 'total',
+          label: '金额',
+          width: 90,
+          type: 'money',
+          value: (r) => _money(r.node.item.total),
+        ),
+      ],
+      MasterColumnDef(
+        key: 'summary',
+        label: '备注',
+        width: 120,
+        value: (r) => r.node.item.summary,
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -600,6 +613,20 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             // 编辑/删除/添加组件：挂进表格工具条——普通态显示在「全屏」按钮旁，
             // 进全屏后由全屏路由同位置渲染，按钮逻辑（本 State 的增删改方法）
             // 与选中态（didUpdateWidget → _fsTick 驱动全屏重建）全部生效。
+            // 「预览」（A4 产品配件清单）2026-09-12 从详情头部迁入：走
+            // toolbarLeadingActions 紧挨「全屏」按钮，样式同款（48 高、primary），
+            // 全屏路由与空态工具条同位置渲染。
+            toolbarLeadingActions: [
+              if (widget.onPreview != null)
+                UtenButton(
+                  key: const ValueKey('goods-bom-preview'),
+                  size: UtenButtonSize.large,
+                  height: UtenTableToolbar.controlHeight,
+                  icon: Icons.preview_outlined,
+                  onPressed: widget.onPreview,
+                  child: const Text('预览'), // TODO(l10n): 补 arb
+                ),
+            ],
             toolbarActions: [
               // 页面主动作置于业务工具条最前：持有独立 goods:bom:create 即显示，
               // 不依赖 goods:edit，窄屏换行时也不会被次要导出/编辑动作挤到末尾。

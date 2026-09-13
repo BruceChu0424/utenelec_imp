@@ -190,7 +190,7 @@ class PermissionResolverSecondaryDepartmentTest {
         when(permissionRepo.findAllByActiveTrue()).thenReturn(List.of(primary, secondary));
         var management = resolver.breakdownOf(account);
         assertTrue(management.revokes().contains(SECONDARY_CODE), "管理页仍保留完整个人撤销来源");
-        clearInvocations(permissionRepo, roleRepo, rolePermissionRepo, departmentPermissionRepo,
+        org.mockito.Mockito.<Object>clearInvocations(permissionRepo, roleRepo, rolePermissionRepo, departmentPermissionRepo,
                 overrideRepo, employeeRepo, secondaryDeptRepo, managerDelegationRepo, userAccountRepo);
         assertEquals(management.effective(), resolver.permsOf(account));
         verify(permissionRepo).findAllByActiveTrue();

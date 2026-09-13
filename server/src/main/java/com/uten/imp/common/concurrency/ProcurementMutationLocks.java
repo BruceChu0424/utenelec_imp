@@ -36,11 +36,14 @@ public class ProcurementMutationLocks {
     public FulfillmentMutationLocks.Guard inspection(String type,UUID receiptId,Collection<UUID> inspectionIds) {
         return receipts(List.of(new ProcurementMutationFootprint.ReceiptRef(type,receiptId,new java.util.HashSet<>(inspectionIds))));
     }
-    public record StockInRef(String type,UUID receiptId,List<UUID> passEventIds) {}
+    public record StockInRef(String type,UUID receiptId,List<UUID> passEventIds,java.util.Map<UUID,UUID> warehouseByPassEvent) {
+        public StockInRef { warehouseByPassEvent=java.util.Map.copyOf(warehouseByPassEvent==null?java.util.Map.of():warehouseByPassEvent); }
+        public StockInRef(String type,UUID receiptId,List<UUID> passEventIds){this(type,receiptId,passEventIds,java.util.Map.of());}
+    }
     public FulfillmentMutationLocks.Guard stockIn(Collection<StockInRef> refs) {
         var snapshot=List.copyOf(refs);
         return locks.acquire(()->footprint.receipts(snapshot.stream()
-                .map(ref->footprint.stockInReceipt(ref.type(),ref.receiptId(),ref.passEventIds())).toList()));
+                .map(ref->footprint.stockInReceipt(ref.type(),ref.receiptId(),ref.passEventIds(),ref.warehouseByPassEvent())).toList()));
     }
     public FulfillmentMutationLocks.Guard productReturn(String type,UUID id) {
         return locks.acquire(()->footprint.productReturn(type,id));

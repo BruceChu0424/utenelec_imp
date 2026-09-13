@@ -20,7 +20,7 @@ enum ProductionFlowRoute { make, buy, subcontract }
 /// 现在按**该谁动手、动什么手**分色，同一条链里相邻步骤必然不同色：
 /// - [pending]    还没轮到本环节（等下达、待审核）—— 中性灰
 /// - [waiting]    在等别人/等物料到位 —— 琥珀（看得见但不催人）
-/// - [toDraw]     料齐了，**该去仓库领料**（本人要跑一趟）—— 橙，最扎眼
+/// - [toDraw]     料齐了，可由车间提交领料 —— 青绿
 /// - [ready]      料在手上，**可开工** —— 靛蓝
 /// - [active]     生产中 · 可报工 —— 品牌青（主色系）
 /// - [done]       已完工 —— 绿
@@ -160,10 +160,41 @@ class ProductionFlowStage {
     required String segmentStatus,
     required bool zeroMaterial,
     bool materialIssued = true,
+    bool drawRequested = false,
+    bool splitReplaced = false,
     double? reportedQty,
     double? plannedQty,
+    double? remainingReportQty,
+    double fqcPendingQty = 0,
+    double fqcFailedQty = 0,
+    double finishedInboundPendingQty = 0,
+    double inboundQty = 0,
+    bool hasUnregisteredMaterial = false,
+    bool hasPendingReturn = false,
+    bool hasAvailableMaterial = true,
   }) {
+    if (splitReplaced) {
+      return _make(2, '已拆分为生产批次', ProductionFlowTone.pending);
+    }
     final status = segmentStatus.trim().toUpperCase();
+    if (status == 'IN_PROGRESS' &&
+        remainingReportQty != null &&
+        remainingReportQty <= 0.000001) {
+      final label = fqcPendingQty > 0
+          ? '已报完 · 待品质检查'
+          : finishedInboundPendingQty > 0
+          ? '品质通过 · 待点收入库'
+          : plannedQty != null && inboundQty >= plannedQty && plannedQty > 0
+          ? hasPendingReturn && !hasAvailableMaterial
+                ? '已入库 · 待仓库收退料'
+                : hasUnregisteredMaterial
+                ? '已入库 · 待登记实际用料'
+                : '已入库 · 待结清核对'
+          : fqcFailedQty > 0
+          ? '品质异常 · 待处理'
+          : '已报完 · 待仓库登记送检';
+      return _make(4, label, ProductionFlowTone.waiting);
+    }
     return switch (status) {
       'WAITING' => _make(2, '车间已收到 · 等待物料', ProductionFlowTone.waiting),
       'READY' =>
@@ -171,9 +202,15 @@ class ProductionFlowStage {
             ? _make(3, '无需领料 · 可开工', ProductionFlowTone.ready)
             : _make(
                 3,
-                materialIssued ? '物料齐套 · 可开工' : '物料齐套 · 去领料',
+                materialIssued
+                    ? '物料齐套 · 可开工'
+                    : drawRequested
+                    ? '已提交领料 · 待仓库发料'
+                    : '物料齐套 · 去领料',
                 materialIssued
                     ? ProductionFlowTone.ready
+                    : drawRequested
+                    ? ProductionFlowTone.pending
                     : ProductionFlowTone.toDraw,
               ),
       'DISPATCHED' =>
@@ -181,9 +218,15 @@ class ProductionFlowStage {
             ? _make(3, '无需领料 · 可开工', ProductionFlowTone.ready)
             : _make(
                 3,
-                materialIssued ? '物料齐套 · 可开工' : '物料齐套 · 去领料',
+                materialIssued
+                    ? '物料齐套 · 可开工'
+                    : drawRequested
+                    ? '已提交领料 · 待仓库发料'
+                    : '物料齐套 · 去领料',
                 materialIssued
                     ? ProductionFlowTone.ready
+                    : drawRequested
+                    ? ProductionFlowTone.pending
                     : ProductionFlowTone.toDraw,
               ),
       'IN_PROGRESS' => _make(

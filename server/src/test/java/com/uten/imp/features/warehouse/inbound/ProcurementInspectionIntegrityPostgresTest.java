@@ -602,8 +602,9 @@ class ProcurementInspectionIntegrityPostgresTest {
         UUID unitId=UUID.randomUUID();
         jdbc.update("INSERT INTO units(id,code,name) VALUES(?,?,'piece')",unitId,"IQC-U-"+unitId);
         LocalDate billDate = com.uten.imp.common.time.BusinessTime.today();
-        jdbc.update("INSERT INTO warehouses(id,code,name) VALUES (?,?,?)",
-                warehouseId, "W-IQC-" + suffix, "IQC integrity warehouse");
+        // V563：IQC 实际入库仓必须是「使用」状态的记账叶子仓。
+        jdbc.update("INSERT INTO warehouses(id,code,name,is_accountable,status) VALUES (?,?,?,?, '使用')",
+                warehouseId, "W-IQC-" + suffix, "IQC integrity warehouse", true);
         String receiptTable = ProcurementInspectionPort.PURCHASE.equals(type)
                 ? "purchase_receipts" : "subcontract_receipts";
         String receiptNo = businessIdentifier(
@@ -701,8 +702,9 @@ class ProcurementInspectionIntegrityPostgresTest {
 
         jdbc.update("INSERT INTO units(id,code,name) VALUES (?,?,?)",
                 unitId, "U-IQC-" + suffix, "IQC piece");
-        jdbc.update("INSERT INTO warehouses(id,code,name) VALUES (?,?,?)",
-                warehouseId, "W-IQC-PROD-" + suffix, "IQC production warehouse");
+        // V563：IQC 实际入库仓必须是「使用」状态的记账叶子仓。
+        jdbc.update("INSERT INTO warehouses(id,code,name,is_accountable,status) VALUES (?,?,?,?, '使用')",
+                warehouseId, "W-IQC-PROD-" + suffix, "IQC production warehouse", true);
         for (UUID goodsId : List.of(productId, materialId, unrelatedGoodsId)) {
             jdbc.update("INSERT INTO goods(id,code,name,unit_id,min_qty,code_sequence) "
                             + "VALUES (?,?,?,?,0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",

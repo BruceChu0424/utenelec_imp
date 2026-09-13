@@ -95,38 +95,126 @@ abstract class InventoryValueLedger {
                 r.getInt("pending_parents"),r.getLong("revision"),r.getBoolean("active"),r.getBoolean("source_final"),uuid(r,"return_head_id"),uuid(r,"adjustment_head_id"),
                 "COST_WIP".equals(r.getString("owner_kind"))?r.getBigDecimal("distributed_value_local"):ZERO,
                 hasColumn(r,"returned_consumption_qty")?r.getBigDecimal("returned_consumption_qty"):ZERO,
-                hasColumn(r,"consumption_return_head_id")?uuid(r,"consumption_return_head_id"):null);
+                hasColumn(r,"consumption_return_head_id")?uuid(r,"consumption_return_head_id"):null,
+                hasColumn(r,"bound_lower")&&r.getBigDecimal("bound_lower")!=null&&r.getBigDecimal("bound_upper")!=null&&r.getObject("bound_scale")!=null
+                    ?new ValueBounds(r.getBigDecimal("bound_lower"),r.getBigDecimal("bound_upper"),r.getInt("bound_scale")):null,
+                hasColumn(r,"bound_revision")?r.getObject("bound_revision",Long.class):null);
     }
     private static boolean hasColumn(ResultSet r,String name)throws SQLException{
         var metadata=r.getMetaData();for(int i=1;i<=metadata.getColumnCount();i++)if(name.equals(metadata.getColumnLabel(i)))return true;return false;
     }
 
-    protected Node createNode(Pool p,String kind,String ownerKind,UUID ownerId,UUID movementId,UUID rootIssueId,
-                            BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal value,int pending,boolean active,boolean finalValue,UUID event){
-        return createNode(UUID.randomUUID(),p,kind,ownerKind,ownerId,movementId,rootIssueId,qty,from,to,value,pending,active,finalValue,event);
+    /** A SOURCE starts with its own separately validated acquisition amount, not input edges. */
+    protected Node createSourceNode(Pool pool,UUID movement,BigDecimal qty,BigDecimal value,
+                                    int pending,boolean finalValue,UUID event){
+        return createSourceNode(UUID.randomUUID(),pool,movement,qty,value,pending,finalValue,event);
     }
-    protected Node createNode(UUID id,Pool p,String kind,String ownerKind,UUID ownerId,UUID movementId,UUID rootIssueId,
-                            BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal value,int pending,boolean active,boolean finalValue,UUID event){
+    protected Node createSourceNode(UUID id,Pool pool,UUID movement,BigDecimal qty,BigDecimal value,
+                                    int pending,boolean finalValue,UUID event){
+        return insertNode(id,pool.identity(),"SOURCE",null,null,movement,null,qty,ZERO,ZERO,value,pending,
+                false,finalValue,event,null,null);
+    }
+    protected Node initialSource(Node source,BigDecimal actual){
+        authority.initialSource(source.id(),actual);
+        return authority.installed?source.withBound(ValueBounds.exact(actual)):source;
+    }
+
+    protected record Contribution(Node parent,BigDecimal from,BigDecimal to,BigDecimal denominator){}
+    private record PreparedContribution(Contribution input,BigDecimal projected,ValueBounds bound){}
+    protected static Contribution whole(Node parent){return new Contribution(parent,ZERO,BigDecimal.ONE,BigDecimal.ONE);}
+    protected static Contribution fraction(Node parent,BigDecimal from,BigDecimal to,BigDecimal denominator){
+        return new Contribution(parent,from,to,denominator);
+    }
+    protected static List<Contribution> poolContributions(Node previous,Node incoming){
+        return previous==null?List.of(whole(incoming)):List.of(whole(previous),whole(incoming));
+    }
+
+    protected Node createDerivedNode(Pool pool,String kind,String ownerKind,UUID ownerId,UUID movement,UUID rootIssue,
+                                     BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal value,int pending,
+                                     boolean active,boolean finalValue,UUID event,List<Contribution> inputs){
+        return createDerivedNode(UUID.randomUUID(),pool,kind,ownerKind,ownerId,movement,rootIssue,
+                qty,from,to,value,pending,active,finalValue,event,inputs);
+    }
+
+    /** Immutable location already proved by the caller's current operation. */
+    protected Node createDerivedNode(PoolIdentity pool,String kind,String ownerKind,UUID ownerId,UUID movement,UUID rootIssue,
+                                     BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal value,int pending,
+                                     boolean active,boolean finalValue,UUID event,List<Contribution> inputs){
+        return createDerivedNode(UUID.randomUUID(),pool,kind,ownerKind,ownerId,movement,rootIssue,
+                qty,from,to,value,pending,active,finalValue,event,inputs);
+    }
+
+    protected Node createDerivedNode(UUID id,Pool pool,String kind,String ownerKind,UUID ownerId,UUID movement,UUID rootIssue,
+                                     BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal value,int pending,
+                                     boolean active,boolean finalValue,UUID event,List<Contribution> inputs){
+        return createDerivedNode(id,pool.identity(),kind,ownerKind,ownerId,movement,rootIssue,
+                qty,from,to,value,pending,active,finalValue,event,inputs);
+    }
+
+    /**
+     * Compute the entire expression in the established input order, then persist
+     * a complete child and every immutable input edge before exposing its Node.
+     * There is no partially initialized derived-node API: omitting an input edge
+     * cannot be disguised by a broad numerical bound. V517's ALWAYS/deferred
+     * expression and lifecycle checks still validate the final facts at commit.
+     */
+    private Node createDerivedNode(UUID id,PoolIdentity pool,String kind,String ownerKind,UUID ownerId,UUID movement,UUID rootIssue,
+                                     BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal value,int pending,
+                                     boolean active,boolean finalValue,UUID event,List<Contribution> inputs){
+        if("SOURCE".equals(kind))throw conflict("取得来源必须使用独立的原额初始化入口");
+        if(inputs==null||inputs.isEmpty())throw conflict("派生价值节点必须保留完整输入来源");
+        List<PreparedContribution> prepared=new ArrayList<>(inputs.size());
+        Set<UUID> parents=new HashSet<>();
+        ValueBounds total=authority.installed?ValueBounds.exact(ZERO):null;
+        for(Contribution input:List.copyOf(inputs)){
+            Node parent=Objects.requireNonNull(input.parent(),"value contribution parent");
+            if(!parents.add(parent.id()))throw conflict("同一父价值节点不能在一个派生节点中重复分摊");
+            ValueBounds parentBound=nodeBound(parent);
+            // Unknown remains unknown even for a zero-width interval, matching
+            // the original edge semantics and the database's parent-bound guard.
+            ValueBounds contribution=parentBound==null?null:parentBound.weighted(
+                    input.from(),input.to(),input.denominator(),ValueBounds.DEFAULT_SCALE);
+            total=total==null||contribution==null?null:total.add(contribution);
+            prepared.add(new PreparedContribution(input,interval(parent.value(),input.from(),input.to(),input.denominator()),contribution));
+        }
+        UUID returnHead="ISSUE_POSITION".equals(kind)&&id.equals(rootIssue)?id:null;
+        Node child=insertNode(id,pool,kind,ownerKind,ownerId,movement,rootIssue,qty,from,to,value,pending,
+                active,finalValue,event,total,returnHead);
+        // Child must already exist: edge parent/child FKs and the BEFORE sequence
+        // and fan-out guard are immediate. Parent order and edge facts stay intact.
+        for(PreparedContribution part:prepared)insertEdge(part,child,event);
+        return child;
+    }
+
+    private Node insertNode(UUID id,PoolIdentity p,String kind,String ownerKind,UUID ownerId,UUID movementId,UUID rootIssueId,
+                            BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal value,int pending,boolean active,
+                            boolean finalValue,UUID event,ValueBounds initial,UUID returnHead){
         db.update("""
                 INSERT INTO stock_value_nodes(id,pool_id,kind,owner_kind,owner_id,movement_id,root_issue_id,
                     quantity_basis,range_from,range_to,initial_known_value,initial_pending,creation_event_id,
-                    basis_value_local,pending_parents,active,source_final)
-                VALUES (:id,:pool,:kind,:ownerKind,:owner,:movement,:root,:qty,:start,:end,:value,:pending,:event,:value,:pending,:active,:final)
-                """,args("id",id,"pool",p.id(),"kind",kind,"ownerKind",ownerKind,"owner",ownerId,"movement",movementId,"root",rootIssueId,
-                "qty",qty,"start",from,"end",to,"value",value,"pending",pending,"event",event,"active",active,"final",finalValue));
-        authority.initialize(id,kind,value);
-        return new Node(id,p.id(),p.key(),kind,ownerKind,ownerId,movementId,rootIssueId,qty,from,to,value,pending,1,active,finalValue,null,null,ZERO,ZERO,null);
+                    basis_value_local,pending_parents,active,source_final,return_head_id%s)
+                VALUES (:id,:pool,:kind,:ownerKind,:owner,:movement,:root,:qty,:start,:end,:value,:pending,:event,:value,:pending,:active,:final,:returnHead%s)
+                """.formatted(authority.installed?",value_model,initial_bound_lower,initial_bound_upper,bound_lower,bound_upper,initial_bound_scale,bound_scale,bound_revision":"",
+                        authority.installed?",'EXACT_SOURCE_SHARES',:lower,:upper,:lower,:upper,:scale,:scale,1":""),
+                args("id",id,"pool",p.id(),"kind",kind,"ownerKind",ownerKind,"owner",ownerId,"movement",movementId,"root",rootIssueId,
+                "qty",qty,"start",from,"end",to,"value",value,"pending",pending,"event",event,"active",active,"final",finalValue,
+                "returnHead",returnHead,"lower",ValueAuthorityStore.lower(initial),"upper",ValueAuthorityStore.upper(initial),"scale",ValueAuthorityStore.scale(initial)));
+        return new Node(id,p.id(),p.key(),kind,ownerKind,ownerId,movementId,rootIssueId,qty,from,to,value,pending,1,active,
+                finalValue,returnHead,null,ZERO,ZERO,null,initial,authority.installed?1L:null);
     }
-    protected void edge(Node parent,Node child,BigDecimal from,BigDecimal to,BigDecimal denominator,UUID event){
+    private void insertEdge(PreparedContribution part,Node child,UUID event){
+        Contribution input=part.input();Node parent=input.parent();ValueBounds contribution=part.bound();
         db.update("""
                 INSERT INTO stock_value_edges(id,parent_node_id,child_node_id,interval_from,interval_to,denominator,
                     creation_event_id,initial_parent_revision,initial_allocated_amount,last_parent_revision,
-                    allocated_amount_local,pending_contribution)
-                VALUES (:id,:parent,:child,:start,:end,:denom,:event,:revision,:amount,:revision,:amount,:pending)
-                """,args("id",UUID.randomUUID(),"parent",parent.id(),"child",child.id(),"start",from,"end",to,"denom",denominator,
-                "event",event,"revision",parent.revision(),"amount",interval(parent.value(),from,to,denominator),
-                "pending",parent.pending()>0&&to.compareTo(from)>0));
-        authority.edge(parent.id(),parent.revision(),child.id(),from,to,denominator);
+                    allocated_amount_local,pending_contribution%s)
+                VALUES (:id,:parent,:child,:start,:end,:denom,:event,:revision,:amount,:revision,:amount,:pending%s)
+                """.formatted(authority.installed?",initial_bound_lower,initial_bound_upper,allocated_bound_lower,allocated_bound_upper,bound_scale,bound_parent_revision":"",
+                        authority.installed?",:lower,:upper,:lower,:upper,:scale,:revision":""),
+                args("id",UUID.randomUUID(),"parent",parent.id(),"child",child.id(),"start",input.from(),"end",input.to(),"denom",input.denominator(),
+                "event",event,"revision",parent.revision(),"amount",part.projected(),
+                "pending",parent.pending()>0&&input.to().compareTo(input.from())>0,"lower",ValueAuthorityStore.lower(contribution),
+                "upper",ValueAuthorityStore.upper(contribution),"scale",ValueAuthorityStore.scale(contribution)));
     }
     protected Edge edge(UUID id,boolean lock){
         List<Edge> rows=db.query("SELECT * FROM stock_value_edges WHERE id=:id"+(lock?" FOR UPDATE":""),args("id",id),(r,i)->edgeRow(r));
@@ -151,16 +239,23 @@ abstract class InventoryValueLedger {
         if("POOL".equals(before.kind())&&before.qty().signum()==0&&value.signum()!=0)
             throw conflict("零数量库存不得承接后补价值残留");
         long revision=before.revision()+1;
+        boolean exact=authority.installed&&exactChange!=null;
+        Map<String,Object> parameters=args("id",before.id(),"revision",revision,"event",event,"task",task,"beforeValue",before.value(),"afterValue",value,
+                "beforePending",before.pending(),"afterPending",pending,"beforeFinal",before.sourceFinal(),"afterFinal",finalValue,
+                "value",value,"pending",pending,"final",finalValue,"before",before.revision());
+        if(exact)parameters.putAll(ValueAuthorityStore.revisionArgs(exactChange));
+        // The exact revision fact precedes the node CAS, as required by V517's
+        // immutable-source guard. Both representations of this revision are atomic.
         db.update("""
                 INSERT INTO stock_value_node_revisions(node_id,revision,event_id,task_id,before_value,after_value,
-                    before_pending,after_pending,before_final,after_final)
-                VALUES (:id,:revision,:event,:task,:beforeValue,:afterValue,:beforePending,:afterPending,:beforeFinal,:afterFinal)
-                """,args("id",before.id(),"revision",revision,"event",event,"task",task,"beforeValue",before.value(),"afterValue",value,
-                "beforePending",before.pending(),"afterPending",pending,"beforeFinal",before.sourceFinal(),"afterFinal",finalValue));
+                    before_pending,after_pending,before_final,after_final%s)
+                VALUES (:id,:revision,:event,:task,:beforeValue,:afterValue,:beforePending,:afterPending,:beforeFinal,:afterFinal%s)
+                """.formatted(exact?",before_source_amount_exact,after_source_amount_exact,before_bound_lower,before_bound_upper,before_bound_scale,after_bound_lower,after_bound_upper,after_bound_scale":"",
+                        exact?",:sourceBefore,:sourceAfter,:beforeLower,:beforeUpper,:beforeScale,:afterLower,:afterUpper,:afterScale":""),parameters);
         if(db.update("""
-                UPDATE stock_value_nodes SET basis_value_local=:value,pending_parents=:pending,source_final=:final,revision=:revision
+                UPDATE stock_value_nodes SET basis_value_local=:value,pending_parents=:pending,source_final=:final,revision=:revision%s
                 WHERE id=:id AND revision=:before
-                """,args("id",before.id(),"value",value,"pending",pending,"final",finalValue,"revision",revision,"before",before.revision()))!=1)
+                """.formatted(exact?",source_amount_exact=:sourceAfter,bound_lower=:afterLower,bound_upper=:afterUpper,bound_scale=:afterScale,bound_revision=:revision":""),parameters)!=1)
             throw conflict("价值节点revision已变化");
         if(productionCostInstalled&&"COST_WIP".equals(before.ownerKind()))db.update("""
                 INSERT INTO stock_value_production_cost_dirty(input_node_id,execution_segment_id,source_event_id,observed_revision)
@@ -168,9 +263,10 @@ abstract class InventoryValueLedger {
                 SET observed_revision=excluded.observed_revision,source_event_id=excluded.source_event_id
                 WHERE stock_value_production_cost_dirty.observed_revision<excluded.observed_revision
                 """,args("node",before.id(),"segment",before.ownerId(),"event",event,"revision",revision));
-        authority.revision(before.id(),revision,exactChange);
+        authority.reviseEdge(exactChange);
         return new Node(before.id(),before.poolId(),before.key(),before.kind(),before.ownerKind(),before.ownerId(),before.movementId(),before.rootIssueId(),
-                before.qty(),before.from(),before.to(),value,pending,revision,before.active(),finalValue,before.returnHeadId(),before.adjustmentHeadId(),before.distributed(),before.returnedQty(),before.consumptionReturnHeadId());
+                before.qty(),before.from(),before.to(),value,pending,revision,before.active(),finalValue,before.returnHeadId(),before.adjustmentHeadId(),before.distributed(),before.returnedQty(),before.consumptionReturnHeadId(),
+                exact?exactChange.after():before.exactBound(),exact?Long.valueOf(revision):before.boundRevision());
     }
     protected int schedule(Node parent,UUID event){
         List<Edge> edges=db.query("SELECT * FROM stock_value_edges WHERE parent_node_id=:id ORDER BY id",args("id",parent.id()),(r,i)->edgeRow(r));
@@ -242,7 +338,14 @@ abstract class InventoryValueLedger {
                 +(productionCostInstalled?" OR EXISTS(SELECT 1 FROM stock_value_production_cost_tasks WHERE status='PENDING') OR EXISTS(SELECT 1 FROM stock_value_production_cost_dirty WHERE observed_revision>cleared_revision)":""),Map.of(),Boolean.class));
     }
     protected State state(Node n){return (effectivePending(n)||propagationPending()
-            ||(authority.installed&&authority.bound(new com.uten.imp.application.port.InventoryValueAuthorityPort.ValueReference(n.id(),n.revision()))==null))?State.PENDING:State.FINAL;}
+            ||(authority.installed&&nodeBound(n)==null))?State.PENDING:State.FINAL;}
+    private ValueBounds nodeBound(Node node){
+        if(!authority.installed)return null;
+        // This is an explicit value returned by the current operation, not a
+        // transaction-wide cache. Legacy/stale bound revisions keep the old lookup.
+        return Objects.equals(node.boundRevision(),node.revision())?node.exactBound():
+                authority.bound(new com.uten.imp.application.port.InventoryValueAuthorityPort.ValueReference(node.id(),node.revision()));
+    }
     protected static boolean effectivePending(Node n){
         if(n.kind().equals("POOL")&&n.qty().signum()==0)return false;
         if(n.kind().equals("ISSUE_POSITION")&&n.from().compareTo(n.to())==0)return false;
@@ -322,12 +425,21 @@ abstract class InventoryValueLedger {
         catch(JsonProcessingException|NoSuchAlgorithmException e){throw new IllegalStateException(e);}
     }
 
-    protected record Pool(UUID id,PoolKey key,String state,UUID headId){}
+    /** Identity only: cannot be mistaken for a fresh balance, active state or pool-head lock. */
+    protected record PoolIdentity(UUID id,PoolKey key){}
+    protected record Pool(UUID id,PoolKey key,String state,UUID headId){
+        PoolIdentity identity(){return new PoolIdentity(id,key);}
+    }
     protected record Balance(int rows,BigDecimal qty,BigDecimal amount){boolean empty(){return qty.signum()==0&&amount!=null&&amount.signum()==0;}}
     protected record Request(String hash,String json){}
     protected record Node(UUID id,UUID poolId,PoolKey key,String kind,String ownerKind,UUID ownerId,UUID movementId,UUID rootIssueId,
                         BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal value,int pending,long revision,boolean active,boolean sourceFinal,
-                        UUID returnHeadId,UUID adjustmentHeadId,BigDecimal distributed,BigDecimal returnedQty,UUID consumptionReturnHeadId){}
+                        UUID returnHeadId,UUID adjustmentHeadId,BigDecimal distributed,BigDecimal returnedQty,UUID consumptionReturnHeadId,
+                        ValueBounds exactBound,Long boundRevision){
+        PoolIdentity poolIdentity(){return new PoolIdentity(poolId,key);}
+        Node withBound(ValueBounds bound){return new Node(id,poolId,key,kind,ownerKind,ownerId,movementId,rootIssueId,qty,from,to,value,pending,revision,
+                active,sourceFinal,returnHeadId,adjustmentHeadId,distributed,returnedQty,consumptionReturnHeadId,bound,revision);}
+    }
     protected record Edge(UUID id,UUID parentId,UUID childId,BigDecimal from,BigDecimal to,BigDecimal denominator,long lastRevision,BigDecimal allocated,boolean pending){}
     protected record Event(UUID id,String operation,String hash,UUID movementId,BigDecimal knownValue,UUID resultNodeId,UUID resultHeadId,State state,
                          UUID sourceNodeId,UUID previousAdjustmentId,boolean beforeFinal){

@@ -288,7 +288,6 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
     ),
     // 实物出入库单据（出货/其它出货/退货=hasWarehouse）：库位号（主档带出，拣货/上架指引）。
     if (const [
-      SalesDocType.shipment,
       SalesDocType.otherShipment,
       SalesDocType.returnDoc,
     ].contains(docType))

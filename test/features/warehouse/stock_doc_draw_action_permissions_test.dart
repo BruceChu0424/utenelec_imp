@@ -187,24 +187,21 @@ void main() {
           Perm.stockDocIssue,
         },
       );
-      await tester.tap(_action('出库'));
+      // 2026-09-12 弹窗改表格流：表格「本次出库」列默认=待出库（0.0001），
+      // 点「出库」只弹总结确认。
       await tester.pumpAndSettle();
-      expect(find.text('领料仓库：主仓库 - 五金仓库'), findsOneWidget);
-      // 出库弹窗现在含备注框（2026-09-09）：数量输入是弹窗里的第一个输入框。
       expect(
         tester
             .widget<TextField>(
-              find
-                  .descendant(
-                    of: find.byType(AlertDialog),
-                    matching: find.byType(TextField),
-                  )
-                  .first,
+              find.byKey(const Key('draw-issue-qty-draw-item-1')),
             )
             .controller
             ?.text,
         '0.0001',
       );
+      await tester.tap(_action('出库'));
+      await tester.pumpAndSettle();
+      expect(find.text('确认出库（1 行）'), findsOneWidget);
       await tester.tap(find.text('确认出库'));
       await tester.pumpAndSettle();
       expect(api.postedPath, '/stock/docs/draw-1/approve-and-issue');

@@ -745,7 +745,7 @@ Future<void> acknowledgeNoticeInline(
 ///
 /// 交互契约（2026-09-03 口径修订）：
 /// - 主交互全部由同时弹出的居中审核弹窗承载（认领状态心跳/去审核/稍后再看）；
-/// - 顶部条降级为纯显示——不带操作按钮与状态行，20s 自然收起，
+/// - 顶部条降级为纯显示——不带操作按钮与状态行，8s 自然收起，
 ///   避免同一待办在两处出现重复的「去审核」按钮；
 /// - 弹前先校验一次：已办结的待办不弹，也不打扰。
 Future<void> dispatchReviewCard(
@@ -785,7 +785,9 @@ Future<void> dispatchReviewCard(
     return;
   }
 
-  // 纯显示顶部条：无按钮/状态行，20s 自然收起（悬停暂停）。
+  // 纯显示顶部条：无按钮/状态行，8s 自然收起（悬停暂停有 8s 上限）。
+  // 2026-09-12 用户口径：待办/审批顶部条也要「显示一会就消失」——原 20s 停留
+  // 在积压多条时近乎常驻；主交互本就在居中审核弹窗，顶部条只做到达提醒。
   container
       .read(appNotificationProvider.notifier)
       .showMessage(
@@ -793,14 +795,14 @@ Future<void> dispatchReviewCard(
         title: '待办 · ${notice.type.label}',
         kind: kind,
         icon: notice.type.icon,
-        duration: const Duration(seconds: 20),
+        duration: const Duration(seconds: 8),
         onDismissed: onDelivered,
         // 同一单据的多份通知（逐人落库）必须各自弹卡；ID 去重由协调器负责。
         force: true,
       );
 
   // 三形态并存（ADR-063 第二轮口径）：通知中心条目（落库即有）+ 顶部通知条
-  // （纯显示，20s 自然收起）+ 居中审核弹窗（主交互：认领状态/去审核/稍后再看；
+  // （纯显示，8s 自然收起）+ 居中审核弹窗（主交互：认领状态/去审核/稍后再看；
   // 关闭或办结自动退出）。detailContext 为根 Navigator context（提前捕获，
   // 页面切换不失效；弹前校验后仍挂载才弹）。
   if (detailContext.mounted) {

@@ -6,9 +6,10 @@ void main() {
   test(
     'purchase editor validates and submits the reviewed commercial snapshot',
     () {
+      // 行尾归一化：源码可能被 IDE 以 CRLF 保存（2026-09-12 实遇），断言按 LF 写。
       final source = File(
         'lib/features/purchase/pages/purchase_doc_edit_page.dart',
-      ).readAsStringSync();
+      ).readAsStringSync().replaceAll('\r\n', '\n');
 
       expect(source, contains("context.appError('请选择币种')"));
       expect(source, contains("context.appError('汇率必须大于 0')"));

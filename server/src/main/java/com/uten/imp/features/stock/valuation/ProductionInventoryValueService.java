@@ -28,6 +28,12 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
             InventoryProductionCostPort production,InventoryMutationLock mutex,InventoryBusinessValueSupport support){
         this.db=db;this.positions=positions;this.production=production;this.mutex=mutex;this.support=support;
     }
+    /** Resolve only through the immutable split proof; never infer a cost pool from a plan or goods match. */
+    public UUID costScope(UUID segment) {
+        UUID scope=db.queryForObject("SELECT fn_production_execution_cost_scope(:segment)",Map.of("segment",segment),UUID.class);
+        if(scope==null)throw conflict("生产成本缺少有效的原工单或分批来源证明");
+        return scope;
+    }
     @Override public void targetChangedByReport(UUID reportId,UUID actor){
         db.update("""
                 UPDATE stock_value_production_cost_objects object
@@ -36,10 +42,12 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
                     SELECT 1 FROM production_daily_reports report
                     JOIN production_daily_report_items item ON item.report_id=report.id
                     JOIN production_execution_segments segment ON segment.id=item.execution_segment_id
+                    JOIN production_execution_segments cost_root ON cost_root.id=fn_production_execution_cost_scope(segment.id)
                     LEFT JOIN stock_value_production_cost_revisions revision ON revision.id=object.current_revision_id
                     WHERE report.id=:report AND report.status IN(1,-1) AND NOT report.is_deleted
-                        AND item.is_final AND NOT item.is_deleted AND segment.id=object.execution_segment_id
-                        AND (revision.id IS NULL OR revision.target_qty_base<>segment.planned_qty*segment.product_unit_rate))
+                        AND item.is_final AND NOT item.is_deleted
+                        AND cost_root.id=object.execution_segment_id
+                        AND (revision.id IS NULL OR revision.target_qty_base<>fn_production_execution_cost_target(cost_root.id)))
                 """,Map.of("report",reportId,"actor",actor));
     }
     public void bound(UUID event,Map<UUID,UUID> movements){
@@ -90,6 +98,7 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
         for(var row:postings){
             UUID posting=(UUID)row.get("id"),issue=(UUID)row.get("issue_posting_id"),segment=(UUID)row.get("execution_segment_id");
             if(segment==null)throw conflict("旧物料清账尚无明确执行段，不能猜测成品成本");
+            segment=costScope(segment);
             if("LEGAL_WIP".equals(row.get("settlement_type")))continue;
             if(row.get("source_posting_id")!=null){
                 var original=db.queryForMap("""
@@ -115,8 +124,9 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
         for(UUID segment:segments)refresh(segment,event,actor);
     }
     public void refresh(UUID segment,UUID event,UUID actor){
+        segment=costScope(segment);
         var objects=db.queryForList("""
-                SELECT object.version,object.state,p.warehouse_id,p.goods_id,p.color_id,segment.planned_qty*segment.product_unit_rate target,
+                SELECT object.version,object.state,p.warehouse_id,p.goods_id,p.color_id,fn_production_execution_cost_target(segment.id) target,
                        segment.bom_fingerprint,segment.lock_version,segment.updated_at
                 FROM stock_value_production_cost_objects object JOIN stock_value_pools p ON p.id=object.product_pool_id
                 JOIN production_execution_segments segment ON segment.id=object.execution_segment_id
@@ -130,7 +140,8 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
                 JOIN production_material_demands demand ON demand.id=p.demand_id
                 JOIN stock_value_events e ON e.source_event_id=p.id AND e.source_doc_type='PRODUCTION_CONSUMED_VALUE'
                 JOIN stock_value_nodes n ON n.id=e.result_node_id JOIN stock_value_pools pool ON pool.id=n.pool_id
-                WHERE demand.execution_segment_id=:id AND n.active AND NOT EXISTS(
+                WHERE demand.execution_segment_id IN (SELECT member.id FROM production_execution_segments member
+                    WHERE member.id=:id OR member.split_root_segment_id=:id) AND n.active AND NOT EXISTS(
                     SELECT 1 FROM stock_value_production_cost_inputs i WHERE i.approved_posting_id=p.id)
                 ORDER BY p.id LIMIT 100
                 """,Map.of("id",segment));
@@ -144,14 +155,22 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
         boolean complete=Boolean.TRUE.equals(db.queryForObject("""
                 SELECT NOT EXISTS(SELECT 1 FROM v_production_material_clearance clearance
                     JOIN production_material_demands demand ON demand.id=clearance.demand_id
-                    WHERE demand.execution_segment_id=:id AND (clearance.uncleared_qty<>0 OR clearance.legal_wip_qty<>0))
+                    WHERE demand.execution_segment_id IN (SELECT member.id FROM production_execution_segments member
+                        WHERE member.id=:id OR member.split_root_segment_id=:id)
+                        AND (clearance.uncleared_qty<>0 OR clearance.legal_wip_qty<>0))
                 AND NOT EXISTS(SELECT 1 FROM production_daily_report_items item JOIN production_daily_reports report ON report.id=item.report_id
-                    WHERE item.execution_segment_id=:id AND report.status=1 AND NOT item.is_deleted AND NOT report.is_deleted
+                    WHERE item.execution_segment_id IN (SELECT member.id FROM production_execution_segments member
+                        WHERE member.id=:id OR member.split_root_segment_id=:id)
+                        AND report.status=1 AND NOT item.is_deleted AND NOT report.is_deleted
                         AND NOT EXISTS(SELECT 1 FROM production_fqc_legacy_exemptions exempt WHERE exempt.source_report_item_id=item.id)
                         AND (item.qty>coalesce((SELECT sum(inspection.passed_qty+inspection.failed_qty) FROM production_fqc_inspections inspection
                                 WHERE inspection.source_report_item_id=item.id AND inspection.status<>'CANCELLED'),0)
                             OR EXISTS(SELECT 1 FROM production_fqc_inspections inspection WHERE inspection.source_report_item_id=item.id
                                 AND inspection.status<>'CANCELLED' AND inspection.failed_qty>0)))
+                AND (NOT EXISTS(SELECT 1 FROM production_execution_segment_splits split WHERE split.source_segment_id=:id)
+                    OR (SELECT COALESCE(sum(output.qty_base),0) FROM stock_value_production_cost_outputs output
+                        WHERE output.execution_segment_id=:id AND output.withdrawn_movement_id IS NULL)
+                       =fn_production_execution_cost_target(:id))
                 """,Map.of("id",segment),Boolean.class));
         UUID sourceItem=rows.isEmpty()?segment:(UUID)rows.getFirst().get("id");
         EventContext sourceContext=support.context("PRODUCTION_COST_BUSINESS",event,segment,sourceItem,actor,time(object.get("updated_at")));
@@ -172,7 +191,8 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
                     JOIN production_material_demands demand ON demand.id=posting.demand_id
                     JOIN stock_value_events cost ON cost.source_event_id=posting.id AND cost.source_doc_type='PRODUCTION_CONSUMED_VALUE'
                     JOIN stock_value_nodes node ON node.id=cost.result_node_id
-                    WHERE demand.execution_segment_id=:segment AND node.active AND NOT EXISTS(
+                    WHERE demand.execution_segment_id IN (SELECT member.id FROM production_execution_segments member
+                        WHERE member.id=:segment OR member.split_root_segment_id=:segment) AND node.active AND NOT EXISTS(
                         SELECT 1 FROM stock_value_production_cost_inputs input WHERE input.approved_posting_id=posting.id))
                 WHERE execution_segment_id=:segment AND business_refresh_event_id=:event
                 """,

@@ -233,8 +233,9 @@ flowchart TD
 - **业务事件覆盖**：到达 feed 面向当前员工全部可见 Notice；业务模块只负责可靠落库/outbox、接收人、`source_event`、priority、业务操作者/时间/原因和 actionRoute，不直接操作 Flutter 弹层。角标另读真实任务状态；通知未读不能冒充未解决业务。
 - **V459 审核待办卡（ADR-063；2026-09-03 第三轮修订：纯显示）**：`source_event`
   在服务端 `ReviewNoticeCatalog` 注册的通知（DTO `interactive=true`）不走普通顶部条，
-  改走 `dispatchReviewCard`。顶部条**纯显示**——不带操作按钮与动态状态行，停留 20s
-  （悬停暂停）；操作入口只在同时弹出的居中审核弹窗（避免同一待办两处重复按钮）。
+  改走 `dispatchReviewCard`。顶部条**纯显示**——不带操作按钮与动态状态行，停留 8s
+  （悬停暂停有 8s 上限；2026-09-12 用户口径从 20s 调短，避免积压时近乎常驻）；
+  操作入口只在同时弹出的居中审核弹窗（避免同一待办两处重复按钮）。
   弹前先调 `GET /notices/pending-review-status` 真态校验（已办结不弹）。
   `banner()` 的 `statusLine` 参数与返回卡片 id 的能力保留备用；`actions` 自 2026-09-10
   起由人工打卡通知使用（下一条）。

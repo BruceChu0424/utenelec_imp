@@ -31,8 +31,6 @@ void main() {
       'countQty',
       'surplusQty',
       'qty',
-      'issuedQty',
-      'remainingQty',
       'reportedQty',
       'acceptedQty',
     ]) {
@@ -42,5 +40,9 @@ void main() {
         reason: '$quantityKey must remain available to the column chooser',
       );
     }
+    // 2026-09-12 DRAW 出库改表格流后，issuedQty/remainingQty 不再是表头选择器列，
+    // 改为出库表格行内直接使用（it.issuedQty / it.remainingQty）。
+    expect(source, contains('it.issuedQty'));
+    expect(source, contains('it.remainingQty'));
   });
 }

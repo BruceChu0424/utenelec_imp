@@ -1,5 +1,10 @@
 part of 'production_material_analysis_page.dart';
 
+Color _crossReallocationSourceColor(ThemeData theme) =>
+    theme.brightness == Brightness.dark
+    ? UtenColors.infoOnDark
+    : UtenColors.infoText;
+
 @visibleForTesting
 class MaterialAnalysisBorrowBadgeContent extends StatelessWidget {
   const MaterialAnalysisBorrowBadgeContent({
@@ -16,11 +21,15 @@ class MaterialAnalysisBorrowBadgeContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scope = MasterDataTableCellScope.maybeOf(context);
+    final foreground = scope?.selected == true
+        ? scope?.foregroundColor ?? color
+        : color;
     return ExcludeSemantics(
       child: Text.rich(
         TextSpan(
           style: theme.textTheme.labelMedium?.copyWith(
-            color: color,
+            color: foreground,
             fontWeight: FontWeight.w700,
           ),
           children: [
@@ -28,7 +37,7 @@ class MaterialAnalysisBorrowBadgeContent extends StatelessWidget {
               alignment: PlaceholderAlignment.middle,
               child: Padding(
                 padding: const EdgeInsets.only(right: UtenSpacing.s4),
-                child: Icon(icon, size: 16, color: color),
+                child: Icon(icon, size: 16, color: foreground),
               ),
             ),
             TextSpan(text: label),
@@ -105,7 +114,7 @@ abstract class _MaterialAnalysisBorrowState
       final label = _crossReallocationChipLabel(allocation);
       final color = inbound
           ? theme.colorScheme.primary
-          : theme.colorScheme.tertiary;
+          : _crossReallocationSourceColor(theme);
       chips.add(
         Semantics(
           label: label,
@@ -175,6 +184,30 @@ abstract class _MaterialAnalysisBorrowState
     return stage != 'SHIP' && stage != 'REFERENCE';
   }
 
+  bool _canCrossReallocateIn(ProductionMaterialAnalysisMaterial material) {
+    if (!_canCrossReallocate ||
+        _busy ||
+        !_hasResolvedMaterialSource(material)) {
+      return false;
+    }
+    if (material.level != 1 ||
+        material.requiredQty <= 0 ||
+        material.shortageQty <= 0) {
+      return false;
+    }
+    final stage = material.controlStage?.trim().toUpperCase();
+    return stage != 'SHIP' && stage != 'REFERENCE';
+  }
+
+  bool _canFutureTransferIn(ProductionMaterialAnalysisMaterial material) =>
+      _canCrossReallocate &&
+      !_busy &&
+      _hasResolvedMaterialSource(material) &&
+      material.requiredQty > 0 &&
+      material.additionalSupplyRecommendedQty > 0 &&
+      (material.confirmedRoute == MaterialSupplyRoute.buy ||
+          material.confirmedRoute == MaterialSupplyRoute.subcontract);
+
   /// 可调入路径：同一物料（货品+颜色+单位）、其它产品、直接组件层、
   /// 仍有缺口、无在途任务。客户端只列候选，数量与合法性由服务端复核。
   List<ProductionMaterialAnalysisMaterial> _borrowCandidates(
@@ -224,10 +257,19 @@ abstract class _MaterialAnalysisBorrowState
   }
 
   Future<void> _showCrossReallocationDialog(
-    ProductionMaterialAnalysisMaterial material,
-  ) async {
+    ProductionMaterialAnalysisMaterial material, {
+    bool receiveIntoCurrent = false,
+    bool futureTransfer = false,
+  }) async {
     final analysis = _analysis;
-    if (analysis == null || !_canCrossReallocateOut(material)) return;
+    if (analysis == null ||
+        !(futureTransfer
+            ? _canFutureTransferIn(material)
+            : receiveIntoCurrent
+            ? _canCrossReallocateIn(material)
+            : _canCrossReallocateOut(material))) {
+      return;
+    }
     final indexes = _analysisIndexes(analysis);
     final product = indexes.productsById[material.analysisLineId];
     final productLabel = product?.goodsName?.trim().isNotEmpty == true
@@ -239,6 +281,7 @@ abstract class _MaterialAnalysisBorrowState
         : '当前计划产品';
     setState(() => _borrowing = true);
     try {
+      MaterialReallocationCompletion? completed;
       final view = await showMaterialReallocationDialog(
         context: context,
         repository: ref.read(productionPlanRepositoryProvider),
@@ -247,6 +290,9 @@ abstract class _MaterialAnalysisBorrowState
         sourceProductLabel: productLabel,
         sourcePathLabel: _pathLabel(material),
         qtyText: _qty,
+        receiveIntoCurrent: receiveIntoCurrent,
+        futureTransfer: futureTransfer,
+        onCompleted: (result) => completed = result,
         onSourceRebased: (latest) {
           if (!mounted) return;
           setState(() => _applyAnalysis(latest));
@@ -258,10 +304,85 @@ abstract class _MaterialAnalysisBorrowState
         if (view != null) _applyAnalysis(view);
       });
       if (view != null) {
-        context.appSuccess('跨计划让料已生效；本计划已标记优先待补，接受计划无需返还');
+        context.appSuccess(
+          futureTransfer
+              ? '专属在途份额已调整；当前仅增加已安排供给，实际合格入库后才减少物理缺口'
+              : receiveIntoCurrent
+              ? '跨计划调入已生效；供料计划保留需求并优先待补，本计划可继续按剩余缺口备料'
+              : '跨计划让料已生效；本计划已标记优先待补，可继续按剩余缺口下达采购、委外或车间',
+        );
+        final result = completed;
+        if (result != null) {
+          await _showPriorityReplenishment(
+            sourceAnalysisId: result.sourceAnalysisId,
+            sourceMaterialLineId: result.sourceMaterialLineId,
+            idempotencyKey: result.idempotencyKey,
+            futureTransfer: result.futureTransfer,
+            sourceLabel: result.sourceLabel,
+          );
+        } else {
+          context.appInfo('调料已生效；补供关联尚未返回，请从让料记录继续为原计划补供。');
+        }
       }
     } finally {
       if (mounted && _borrowing) setState(() => _borrowing = false);
+    }
+  }
+
+  Future<void> _showPriorityReplenishment({
+    required String sourceAnalysisId,
+    required String sourceMaterialLineId,
+    String? reallocationId,
+    String? idempotencyKey,
+    bool futureTransfer = false,
+    required String sourceLabel,
+  }) async {
+    if (_analysis == null || _borrowing || !mounted) return;
+    final currentId = _analysis!.analysisId;
+    setState(() => _borrowing = true);
+    try {
+      final supplied = await showMaterialPriorityReplenishmentDialog(
+        context: context,
+        sourceAnalysisId: sourceAnalysisId,
+        sourceMaterialLineId: sourceMaterialLineId,
+        reallocationId: reallocationId,
+        idempotencyKey: idempotencyKey,
+        futureTransfer: futureTransfer,
+        sourceLabel: sourceLabel,
+        onOpenSource: _permissions.contains(Perm.productionMaterialAnalysisView)
+            ? (source) async {
+                await context.push(
+                  RouteName.productionMaterialAnalysis,
+                  extra: ProductionMaterialAnalysisSeed(
+                    analysisId: source.analysisId,
+                    analysisVersion: source.version,
+                    warehouseId: source.warehouseId,
+                  ),
+                );
+              }
+            : null,
+      );
+      if (!mounted || supplied == null) return;
+      final refreshed = supplied.analysisId == currentId
+          ? supplied
+          : await ref
+                .read(productionPlanRepositoryProvider)
+                .materialAnalysisDetail(currentId);
+      if (!mounted) return;
+      setState(() => _applyAnalysis(refreshed));
+      refreshAfterProductionPlanGenerated(ref);
+      context.appSuccess('已为原计划提交补供；原计划入库后减少待补量，超量部分进入公共余量。');
+    } catch (error) {
+      if (mounted) {
+        context.appError(
+          productionErrorMessage(
+            error,
+            fallback: '补供后的页面刷新失败，请重新读取计划；调料已完成，不会回滚',
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _borrowing = false);
     }
   }
 
@@ -545,10 +666,15 @@ abstract class _MaterialAnalysisBorrowState
     final crossRefs = material.crossReallocationRefs;
     final canBorrowOut = _canBorrowOut(material);
     final canCrossReallocateOut = _canCrossReallocateOut(material);
+    final canCrossReallocateIn = _canCrossReallocateIn(material);
+    final canTransferFuture = _canFutureTransferIn(material);
     if (refs.isEmpty &&
         crossRefs.isEmpty &&
         !canBorrowOut &&
-        !canCrossReallocateOut) {
+        !canCrossReallocateOut &&
+        !canCrossReallocateIn &&
+        !canTransferFuture &&
+        _analysis?.allowedActions.contains('VIEW_FUTURE_TRANSFERS') != true) {
       return const SizedBox.shrink();
     }
     return Container(
@@ -599,9 +725,25 @@ abstract class _MaterialAnalysisBorrowState
               margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
               padding: const EdgeInsets.all(UtenSpacing.s8),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerLow,
+                color:
+                    allocation.isOutbound &&
+                        !allocation.isReversed &&
+                        !allocation.isCancelled
+                    ? _crossReallocationSourceColor(
+                        theme,
+                      ).withValues(alpha: 0.08)
+                    : theme.colorScheme.surfaceContainerLow,
                 borderRadius: UtenRadius.smAll,
-                border: Border.all(color: theme.colorScheme.outlineVariant),
+                border: Border.all(
+                  color:
+                      allocation.isOutbound &&
+                          !allocation.isReversed &&
+                          !allocation.isCancelled
+                      ? _crossReallocationSourceColor(
+                          theme,
+                        ).withValues(alpha: 0.45)
+                      : theme.colorScheme.outlineVariant,
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -634,6 +776,41 @@ abstract class _MaterialAnalysisBorrowState
                     ),
                     for (final replenishment in allocation.replenishmentRefs)
                       Text('• ${replenishment.displayLabel}'),
+                  ],
+                  if (!allocation.isReversed &&
+                      !allocation.isCancelled &&
+                      allocation.priorityOpenQty > 0 &&
+                      (_permissions.contains(
+                            Perm.productionMaterialAnalysisNotify,
+                          ) ||
+                          _permissions.contains(
+                            Perm.productionMaterialAnalysisGenerate,
+                          )) &&
+                      (allocation.isOutbound ||
+                          allocation.counterpartMaterialLineId != null)) ...[
+                    const SizedBox(height: UtenSpacing.s8),
+                    UtenButton(
+                      key: ValueKey(
+                        'material-priority-replenishment-${allocation.id}',
+                      ),
+                      type: UtenButtonType.tonal,
+                      icon: Icons.add_shopping_cart_outlined,
+                      onPressed: _busy
+                          ? null
+                          : () => _showPriorityReplenishment(
+                              sourceAnalysisId: allocation.isOutbound
+                                  ? _analysis!.analysisId
+                                  : allocation.counterpartAnalysisId,
+                              sourceMaterialLineId: allocation.isOutbound
+                                  ? material.materialLineId
+                                  : allocation.counterpartMaterialLineId!,
+                              reallocationId: allocation.id,
+                              sourceLabel: allocation.isOutbound
+                                  ? '当前供料计划'
+                                  : _crossReallocationCounterpart(allocation),
+                            ),
+                      child: Text(allocation.isOutbound ? '继续补供' : '为原计划补供'),
+                    ),
                   ],
                   const SizedBox(height: UtenSpacing.s8),
                   if (_canCrossReallocate && allocation.canRevoke)
@@ -675,7 +852,39 @@ abstract class _MaterialAnalysisBorrowState
                 ],
               ),
             ),
-          if (canBorrowOut || canCrossReallocateOut)
+          if (_analysis?.allowedActions.contains('VIEW_FUTURE_TRANSFERS') ==
+              true)
+            MaterialFutureTransferHistory(
+              repository: ref.read(productionPlanRepositoryProvider),
+              analysisId: _analysis!.analysisId,
+              materialId: material.materialLineId,
+              revision: materialDetailRevision.value,
+              canWrite: _canCrossReallocate && !_busy,
+              canReplenish:
+                  !_busy &&
+                  (_permissions.contains(
+                        Perm.productionMaterialAnalysisNotify,
+                      ) ||
+                      _permissions.contains(
+                        Perm.productionMaterialAnalysisGenerate,
+                      )),
+              onChanged: (view) {
+                if (mounted && view.analysisId == _analysis?.analysisId) {
+                  setState(() => _applyAnalysis(view));
+                }
+              },
+              onReplenish: (record) => _showPriorityReplenishment(
+                sourceAnalysisId: record.sourceAnalysisId,
+                sourceMaterialLineId: record.sourceMaterialId,
+                reallocationId: record.id,
+                sourceLabel: record.sourceLabel ?? '原供料计划',
+                futureTransfer: true,
+              ),
+            ),
+          if (canBorrowOut ||
+              canCrossReallocateOut ||
+              canCrossReallocateIn ||
+              canTransferFuture)
             Wrap(
               spacing: UtenSpacing.s8,
               runSpacing: UtenSpacing.s8,
@@ -703,6 +912,39 @@ abstract class _MaterialAnalysisBorrowState
                         ? null
                         : () => _showCrossReallocationDialog(material),
                     child: const Text('跨计划让料'),
+                  ),
+                if (canCrossReallocateIn)
+                  UtenButton(
+                    key: ValueKey(
+                      'material-cross-reallocation-receive-${material.materialLineId}',
+                    ),
+                    size: UtenButtonSize.large,
+                    type: UtenButtonType.tonal,
+                    icon: Icons.move_to_inbox_outlined,
+                    onPressed: _busy
+                        ? null
+                        : () => _showCrossReallocationDialog(
+                            material,
+                            receiveIntoCurrent: true,
+                          ),
+                    child: const Text('从其他计划调入'),
+                  ),
+                if (canTransferFuture)
+                  UtenButton(
+                    key: ValueKey(
+                      'material-private-future-receive-${material.materialLineId}',
+                    ),
+                    size: UtenButtonSize.large,
+                    type: UtenButtonType.tonal,
+                    icon: Icons.schedule_outlined,
+                    onPressed: _busy
+                        ? null
+                        : () => _showCrossReallocationDialog(
+                            material,
+                            receiveIntoCurrent: true,
+                            futureTransfer: true,
+                          ),
+                    child: const Text('调入其他计划专属在途'),
                   ),
               ],
             ),

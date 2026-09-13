@@ -4,12 +4,128 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/production/models/production_execution_planning.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/production/widgets/production_execution_segments_card.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
+  for (final split in [false, true]) {
+    testWidgets(
+      'plan detail opens ${split ? 'partial batch' : 'draw'} directly and refreshes after return',
+      (tester) async {
+        await tester.binding.setSurfaceSize(Size(split ? 390 : 1200, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        var reads = 0;
+        Uri? opened;
+        final path = split
+            ? RouteName.productionBatchDraw
+            : RouteName.productionDrawRequest;
+        final router = GoRouter(
+          initialLocation: '/plan',
+          routes: [
+            GoRoute(
+              path: '/plan',
+              builder: (_, _) => const Scaffold(
+                body: SingleChildScrollView(
+                  child: ProductionExecutionSegmentsCard(
+                    planId: 'plan-1',
+                    canAssign: false,
+                    canReleaseDefer: false,
+                    canReport: false,
+                    canStart: true,
+                  ),
+                ),
+              ),
+            ),
+            GoRoute(
+              path: path,
+              builder: (context, state) {
+                opened = state.uri;
+                return Scaffold(
+                  body: TextButton(
+                    onPressed: context.pop,
+                    child: const Text('核对后返回'),
+                  ),
+                );
+              },
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              productionPlanRepositoryProvider.overrideWithValue(
+                _repository(
+                  status: split ? 'WAITING' : 'READY',
+                  materialIssued: false,
+                  canRequestDraw: !split,
+                  canSplitBatch: split,
+                  onRead: () => reads++,
+                ),
+              ),
+            ],
+            child: MaterialApp.router(routerConfig: router),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('SEG-001'));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(
+            ValueKey(
+              'production-execution-detail-${split ? 'batch' : 'draw'}-segment-1',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          opened?.queryParameters,
+          split
+              ? {'segmentId': 'segment-1', 'version': '1'}
+              : {'segmentIds': 'segment-1', 'versions': '1'},
+        );
+        expect(reads, 1);
+        await tester.tap(find.text('核对后返回'));
+        await tester.pumpAndSettle();
+        expect(reads, 2);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'read-only plan detail has no material request actions even when server allows task',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        _app(
+          repository: _repository(
+            status: 'READY',
+            materialIssued: false,
+            canRequestDraw: true,
+          ),
+          permissions: const {},
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('SEG-001'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(
+          const ValueKey('production-execution-detail-draw-segment-1'),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('production-execution-draw-segment-1')),
+        findsNothing,
+      );
+    },
+  );
   test('execution segment model decodes warehouse issue progress', () {
     final segment = ProductionExecutionSegmentView.fromJson(
       _segmentJson(
@@ -519,7 +635,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('待发料 · 1/2 项'), findsOneWidget);
-      expect(find.textContaining('全部实物出库前不能报工'), findsOneWidget);
+      expect(find.textContaining('实际领齐本批并开工后可分次报工'), findsOneWidget);
     },
   );
 
@@ -683,6 +799,8 @@ ProductionPlanRepository _repository({
   int materialDemandCount = 2,
   int fullyIssuedDemandCount = 2,
   bool materialIssued = true,
+  bool canRequestDraw = false,
+  bool canSplitBatch = false,
   double reportedQty = 3,
   double remainingQty = 7,
   double? ordinaryRemainingQty,
@@ -721,6 +839,8 @@ ProductionPlanRepository _repository({
                             materialDemandCount: materialDemandCount,
                             fullyIssuedDemandCount: fullyIssuedDemandCount,
                             materialIssued: materialIssued,
+                            canRequestDraw: canRequestDraw,
+                            canSplitBatch: canSplitBatch,
                             reportedQty: reportedQty,
                             remainingQty: remainingQty,
                             ordinaryRemainingQty:
@@ -786,6 +906,8 @@ Map<String, dynamic> _segmentJson({
   int materialDemandCount = 2,
   int fullyIssuedDemandCount = 2,
   bool materialIssued = true,
+  bool canRequestDraw = false,
+  bool canSplitBatch = false,
   double reportedQty = 3,
   double remainingQty = 7,
   double ordinaryRemainingQty = 7,
@@ -828,6 +950,8 @@ Map<String, dynamic> _segmentJson({
   'materialKindCount': 2,
   'shortageKindCount': 0,
   'materialReady': true,
+  'canRequestDraw': canRequestDraw,
+  'canSplitBatch': canSplitBatch,
   'materialDemandCount': materialDemandCount,
   'fullyIssuedDemandCount': fullyIssuedDemandCount,
   'materialIssued': materialIssued,

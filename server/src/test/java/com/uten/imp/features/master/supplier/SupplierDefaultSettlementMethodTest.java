@@ -14,6 +14,8 @@ import jakarta.persistence.Query;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -142,7 +144,7 @@ class SupplierDefaultSettlementMethodTest {
         UUID methodId = UUID.randomUUID();
         withDefault.setDefaultSettlementMethodId(methodId);
         Supplier without = new Supplier();
-        when(repo.findAll(any(org.springframework.data.jpa.domain.Specification.class),
+        when(repo.findAll(Mockito.<Specification<Supplier>>notNull(),
                 any(org.springframework.data.domain.Sort.class)))
                 .thenReturn(List.of(withDefault, without));
 

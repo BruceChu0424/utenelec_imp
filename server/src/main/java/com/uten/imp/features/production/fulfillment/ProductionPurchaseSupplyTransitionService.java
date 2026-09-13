@@ -404,10 +404,16 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
     public void afterPurchaseInspectionStockInConfirmed(
             UUID receiptId, UUID warehouseStockInBatchId,
             Collection<UUID> inspectionItemIds) {
-        advancePurchaseReceiptState(receiptId, warehouseStockInBatchId);
+        advanceInspectionStockInState(receiptId, warehouseStockInBatchId);
         materialAnalysisWakeup.afterInspectionStockInConfirmed(
                 "PURCHASE", receiptId, warehouseStockInBatchId,
                 inspectionItemIds);
+    }
+
+    /** Called once per new receipt batch before the command-wide analysis refresh. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void advanceInspectionStockInState(UUID receiptId, UUID warehouseStockInBatchId) {
+        advancePurchaseReceiptState(receiptId, warehouseStockInBatchId);
     }
 
     /**
@@ -419,11 +425,9 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
      */
     private void advancePurchaseReceiptState(
             UUID receiptId, UUID dispositionEventId) {
-        UUID actorId = currentUser.requireId();
-        UUID employeeId = currentUser.requireEmployeeId();
-        List<UUID> warehouses = NativeQueryResults.typedRows(
+        List<UUID> receipts = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
-                                SELECT warehouse_id
+                                SELECT id
                                 FROM purchase_receipts
                                 WHERE id = :receiptId
                                   AND is_deleted = FALSE
@@ -432,23 +436,25 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                 """)
                         .setParameter("receiptId", receiptId),
                 UUID.class);
-        if (warehouses.isEmpty() || warehouses.getFirst() == null) {
+        if (receipts.isEmpty()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "采购收货单缺少目标仓库，不能转为生产备料");
+                    "采购收货单未生效，不能转为生产备料");
         }
-        UUID warehouseId = warehouses.getFirst();
+        List<UUID> warehouses=NativeQueryResults.typedRows(em.createNativeQuery(
+                "SELECT warehouse_id FROM fn_procurement_receipt_stock_warehouses('PURCHASE',:id) ORDER BY warehouse_id",UUID.class)
+                .setParameter("id",receiptId),UUID.class);
+        for(UUID warehouse:warehouses)advancePurchaseReceiptWarehouse(receiptId,dispositionEventId,warehouse);
+    }
+
+    private void advancePurchaseReceiptWarehouse(UUID receiptId,UUID dispositionEventId,UUID warehouseId) {
+        UUID actorId = currentUser.requireId();
+        UUID employeeId = currentUser.requireEmployeeId();
         List<Object[]> receiptItems = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT receipt_item.id,
                                        receipt_item.order_item_id,
-                                       CASE
-                                           WHEN inspection.id IS NULL
-                                           THEN receipt_item.qty
-                                               * COALESCE(
-                                                   receipt_item.unit_rate, 1)
-                                           ELSE inspection.warehouse_stocked_base_qty
-                                       END AS qualified_base_qty
+                                       fn_procurement_received_in_warehouse('PURCHASE',receipt_item.id,:warehouseId) AS qualified_base_qty
                                 FROM purchase_receipt_items receipt_item
                                 LEFT JOIN procurement_inspection_items inspection
                                   ON inspection.receipt_type = 'PURCHASE'
@@ -468,7 +474,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                          receipt_item.id
                                 FOR UPDATE OF receipt_item
                                 """)
-                        .setParameter("receiptId", receiptId));
+                        .setParameter("receiptId", receiptId).setParameter("warehouseId",warehouseId));
 
         Map<ReceiptPackage, DrawHandle> draws = new HashMap<>();
         Set<UUID> touched = new LinkedHashSet<>();
@@ -481,8 +487,12 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                             FROM production_material_receipt_allocations
                             WHERE receipt_item_id = :receiptItemId
                               AND status = 'EFFECTIVE'
+                              AND EXISTS(SELECT 1 FROM stock_reservations actual
+                                  WHERE actual.id=production_material_receipt_allocations.reservation_id
+                                    AND actual.warehouse_id=:warehouseId)
                             """)
                     .setParameter("receiptItemId", receiptItemId)
+                    .setParameter("warehouseId",warehouseId)
                     .getSingleResult());
             BigDecimal remaining = receivedBase.subtract(replayed);
             if (remaining.signum() <= 0) {

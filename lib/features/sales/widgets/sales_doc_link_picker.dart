@@ -96,6 +96,9 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
   String? initialClientId,
 }) async {
   final upstream = _upstreamType(cfg);
+  final availableByOrderItem = <String, double>{};
+  final importsShipment =
+      upstream == SalesDocType.order && cfg.type == SalesDocType.shipment;
   final docConfig =
       UtenDocLinkPickerConfig<
         SalesDocListItem,
@@ -134,6 +137,20 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
           final detail = await ref
               .read(salesRepositoryProvider(upstream))
               .detail(docId);
+          if (importsShipment) {
+            if (!detail.writable ||
+                !detail.financeConfirmed ||
+                detail.closed ||
+                detail.stopped) {
+              throw const FormatException('该订单当前不能发货，请核对财务状态和操作权限');
+            }
+            final progress = await ref
+                .read(salesRepositoryProvider(upstream))
+                .planProgress(docId);
+            for (final line in progress) {
+              availableByOrderItem[line.orderItemId] = line.shippableQty ?? 0;
+            }
+          }
           return UtenDocLinkDetail<SalesDocItem>(
             partyId: detail.clientId,
             items: detail.items,
@@ -152,7 +169,9 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
         colorName: (names, colorId) => names.color(colorId),
         unitName: (names, unitId) => names.unit(unitId),
         middleItemColumns: (names) => _middleItemColumns(upstream),
-        remainQty: (it) => _remainQty(cfg, upstream, it),
+        remainQty: (it) => importsShipment
+            ? availableByOrderItem[it.id] ?? 0
+            : _remainQty(cfg, upstream, it),
         createBlankRow: () =>
             UtenDocLinkItemRow<SalesDocItem>(const SalesDocItem(id: null)),
       );

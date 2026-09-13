@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
@@ -12,10 +14,16 @@ void main() {
     required Map<String, String?> filters,
     required void Function(String key, String? value) onFilterChanged,
     bool showFullscreenToggle = false,
+    bool embedded = true,
+    bool selectable = false,
+    bool showSelectionSummary = true,
+    Set<String> selectedIds = const {},
+    Widget? floatingActionButton,
     List<Widget>? leading,
     List<Map<String, String>> items = const [],
   }) => MaterialApp(
     home: Scaffold(
+      floatingActionButton: floatingActionButton,
       body: SizedBox(
         width: 900,
         height: 500,
@@ -35,7 +43,11 @@ void main() {
           nullCounts: const {},
           filters: filters,
           onFilterChanged: onFilterChanged,
-          embedded: true,
+          embedded: embedded,
+          selectable: selectable,
+          idOf: selectable ? (row) => row['status'] : null,
+          selectedIds: selectedIds,
+          showSelectionSummary: showSelectionSummary,
           showFullscreenToggle: showFullscreenToggle,
           toolbarLeadingActions: leading,
           emptyMessage: '没有数据',
@@ -82,6 +94,69 @@ void main() {
       findsNothing,
     );
     expect(find.textContaining('个表头筛选生效'), findsNothing);
+  });
+
+  testWidgets('empty selection stays only in the host floating action group', (
+    tester,
+  ) async {
+    Widget page(List<Map<String, String>> items) => host(
+      filters: const {'status': 'x'},
+      onFilterChanged: (_, _) {},
+      embedded: false,
+      selectable: true,
+      showSelectionSummary: false,
+      selectedIds: const {'甲'},
+      items: items,
+      leading: const [Text('分类筛选')],
+      floatingActionButton: const UtenFloatingActionGroup(
+        children: [
+          UtenSelectionSummaryPill(
+            key: Key('host-floating-selection'),
+            count: 1,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpWidget(
+      page(const [
+        {'status': '甲'},
+      ]),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(UtenSelectionSummaryPill), findsOneWidget);
+    await tester.pumpWidget(page(const []));
+    await tester.pumpAndSettle();
+    expect(find.text('没有数据'), findsOneWidget);
+    expect(find.text('分类筛选'), findsOneWidget);
+    expect(find.byType(UtenSelectionSummaryPill), findsOneWidget);
+    final summary = find.byKey(const Key('host-floating-selection'));
+    expect(
+      find.ancestor(
+        of: summary,
+        matching: find.byType(UtenFloatingActionGroup),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(MasterDataTableView<Map<String, String>>),
+        matching: find.byType(UtenSelectionSummaryPill),
+      ),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('empty table retains its selection summary when requested', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(filters: const {}, onFilterChanged: (_, _) {}, selectable: true),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('没有数据'), findsOneWidget);
+    expect(find.text('已选 0 项'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   // 2026-09-11 口径变更：空表不再提供「进全屏」——放大一张没有行的表毫无意义，

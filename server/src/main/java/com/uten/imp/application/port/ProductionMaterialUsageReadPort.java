@@ -9,7 +9,11 @@ public interface ProductionMaterialUsageReadPort {
     /** The caller applies its exact segment visibility scope before supplying these IDs. */
     Map<UUID, UsageFlags> forVisibleSegments(Collection<UUID> segmentIds);
 
-    record UsageFlags(boolean hasMaterialActivity, boolean hasUnregisteredMaterial) {
+    record UsageFlags(boolean hasMaterialActivity, boolean hasUnregisteredMaterial,
+                      boolean hasPendingReturn, boolean hasAvailableMaterial) {
+        public UsageFlags(boolean hasMaterialActivity, boolean hasUnregisteredMaterial) {
+            this(hasMaterialActivity,hasUnregisteredMaterial,false,hasUnregisteredMaterial);
+        }
         public static final UsageFlags NONE = new UsageFlags(false, false);
     }
 }

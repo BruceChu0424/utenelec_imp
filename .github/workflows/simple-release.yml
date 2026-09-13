@@ -38,7 +38,7 @@ jobs:
   release:
     name: Build, sign, publish to OSS
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 120
     steps:
       - name: Resolve and validate version
         shell: bash
@@ -95,8 +95,13 @@ jobs:
 
       - name: Build Flutter Web
         run: |
+          set -euo pipefail
+          node --test web/update_check.test.cjs
           flutter pub get
-          flutter build web --release --no-pub --no-web-resources-cdn --dart-define=API_BASE_URL=/api
+          flutter build web --release --no-pub --no-web-resources-cdn \
+            --dart-define="APP_VERSION=$VERSION" \
+            --dart-define="APP_BUILD_ID=$GITHUB_SHA" \
+            --dart-define=API_BASE_URL=/api
 
       - name: Assemble release directory
         shell: bash
@@ -108,8 +113,8 @@ jobs:
           cp server/target/uten-imp-server-*.jar dist/server/uten-imp-server.jar
           cp server/target/uten-imp-migrator.jar dist/server/uten-imp-migrator.jar
           cp -r build/web/. dist/web/
-          printf '{"version":"%s","commit":"%s","publishedAt":"%s"}\n' \
-            "$VERSION" "$GITHUB_SHA" "$(date -u +%FT%TZ)" > dist/web/version.json
+          python3 deploy/release/release_tools.py stamp-web \
+            --web-root dist/web --version "$VERSION" --commit "$GITHUB_SHA"
           cd dist
           find . -type f ! -name SHA256SUMS -print0 | sort -z \
             | xargs -0 sha256sum > SHA256SUMS

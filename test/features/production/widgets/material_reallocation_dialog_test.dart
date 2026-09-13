@@ -10,6 +10,52 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
   testWidgets(
+    'deficient plan selects donor and rebases both snapshots without losing quantity',
+    (tester) async {
+      final repository = _FakeRepository(conflictOnce: true);
+      await _pumpLauncher(
+        tester,
+        repository,
+        size: const Size(1200, 900),
+        receiveIntoCurrent: true,
+      );
+      await tester.tap(find.byKey(const Key('open-cross-reallocation')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(
+          const ValueKey(
+            'cross-reallocation-candidate-donor-analysis-donor-material',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(_fieldText(tester, const Key('cross-reallocation-qty')), '3');
+      await tester.enterText(
+        find.byKey(const Key('cross-reallocation-qty')),
+        '2',
+      );
+      await tester.enterText(
+        find.byKey(const Key('cross-reallocation-reason')),
+        '加急订单先调入两套',
+      );
+      await tester.tap(find.byKey(const Key('cross-reallocation-confirm')));
+      await tester.pumpAndSettle();
+      expect(repository.createCalls, 1);
+      expect(_fieldText(tester, const Key('cross-reallocation-qty')), '2');
+      expect(find.textContaining('供料计划让出 2'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('cross-reallocation-confirm')));
+      await tester.pumpAndSettle();
+      expect(repository.createCalls, 2);
+      expect(repository.lastDonor?.sourceAnalysisId, 'donor-analysis');
+      expect(repository.lastDonor?.sourceVersion, 8);
+      expect(repository.lastReceiver?.analysisId, 'source-analysis');
+      expect(repository.lastReceiver?.version, 2);
+      expect(repository.lastQty, 2);
+      expect(repository.lastReason, '加急订单先调入两套');
+    },
+  );
+
+  testWidgets(
     'wide dialog validates impact and submits source plus target CAS once',
     (tester) async {
       final repository = _FakeRepository();
@@ -156,7 +202,7 @@ void main() {
       find.byKey(const Key('cross-reallocation-candidates-empty')),
       findsOneWidget,
     );
-    expect(find.textContaining('同仓库、同货品/颜色/单位'), findsOneWidget);
+    expect(find.textContaining('同主仓范围、同货品/颜色/单位'), findsOneWidget);
   });
 }
 
@@ -166,6 +212,7 @@ Future<void> _pumpLauncher(
   required Size size,
   double textScale = 1,
   bool dark = false,
+  bool receiveIntoCurrent = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -198,6 +245,7 @@ Future<void> _pumpLauncher(
                 sourceProductLabel: '来源计划产品',
                 sourcePathLabel: '来源计划产品 / 共享电机',
                 qtyText: _qty,
+                receiveIntoCurrent: receiveIntoCurrent,
               ),
               child: const Text('打开'),
             ),
@@ -289,6 +337,8 @@ class _FakeRepository extends ProductionPlanRepository {
   int detailCalls = 0;
   ProductionMaterialAnalysisView? lastSource;
   MaterialCrossReallocationCandidate? lastTarget;
+  MaterialCrossReallocationSourceCandidate? lastDonor;
+  ProductionMaterialAnalysisView? lastReceiver;
   double? lastQty;
   String? lastReason;
 
@@ -334,6 +384,57 @@ class _FakeRepository extends ProductionPlanRepository {
     lastReason = reason;
     if (conflictOnce && createCalls == 1) {
       throw ApiException('CONFLICT', '两份物料分析已更新，请重新加载');
+    }
+    return _latestSource();
+  }
+
+  @override
+  Future<PagedResult<MaterialCrossReallocationSourceCandidate>>
+  materialCrossReallocationSources({
+    required String targetAnalysisId,
+    required String targetMaterialLineId,
+    int page = 1,
+    int size = 20,
+    String keyword = '',
+  }) async {
+    candidateCalls++;
+    return PagedResult(
+      items: [
+        MaterialCrossReallocationSourceCandidate(
+          sourceAnalysisId: 'donor-analysis',
+          sourceVersion: candidateCalls == 1 ? 7 : 8,
+          sourceFingerprint: 'e' * 64,
+          sourceMaterialLineId: 'donor-material',
+          analysisLabel: '正常交期订单',
+          productLabel: '供料产品',
+          warehouseName: '主仓',
+          sourceLendableQty: 3,
+          shortageQty: 5,
+        ),
+      ],
+      page: 1,
+      size: size,
+      total: 1,
+      totalPages: 1,
+    );
+  }
+
+  @override
+  Future<ProductionMaterialAnalysisView> acceptMaterialCrossReallocation({
+    required ProductionMaterialAnalysisView targetAnalysis,
+    required String targetMaterialLineId,
+    required MaterialCrossReallocationSourceCandidate source,
+    required double qty,
+    required String reason,
+    required String idempotencyKey,
+  }) async {
+    createCalls++;
+    lastDonor = source;
+    lastReceiver = targetAnalysis;
+    lastQty = qty;
+    lastReason = reason;
+    if (conflictOnce && createCalls == 1) {
+      throw ApiException('CONFLICT', '供料计划已变化');
     }
     return _latestSource();
   }

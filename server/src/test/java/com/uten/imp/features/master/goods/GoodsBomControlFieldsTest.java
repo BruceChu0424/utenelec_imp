@@ -33,6 +33,7 @@ class GoodsBomControlFieldsTest {
             mock(ColorRepository.class),
             mock(UnitRepository.class),
             mock(TxSessionVars.class),
+            mock(com.uten.imp.security.SecurityContextCurrentUser.class),
             mock(MasterReferenceValidationPort.class),
             mock(GoodsMasterRelationshipResolver.class),
             mock(BusinessEventPublisher.class));

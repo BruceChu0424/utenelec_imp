@@ -23,12 +23,16 @@ class AdminAuditSessionDetailPage extends ConsumerStatefulWidget {
     required this.sessionId,
     this.initialSummary,
     this.routeSnapshotAuditId,
+    this.onClose,
     super.key,
   });
 
   final String sessionId;
   final AuditSessionSummary? initialSummary;
   final int? routeSnapshotAuditId;
+
+  /// 审计中心滑窗内关闭；独立深链仍按路由返回。
+  final VoidCallback? onClose;
 
   @override
   ConsumerState<AdminAuditSessionDetailPage> createState() =>
@@ -142,8 +146,9 @@ class _AdminAuditSessionDetailPageState
             ? '按一次登录查看完整人员操作'
             : '$titleActor · ${auditSessionStatusLabel(summary!)}',
         leading: UtenBackButton(
-          onPressed: () =>
-              popOrBackTo(context, defaultPath: RouteName.adminAuditLogs),
+          onPressed:
+              widget.onClose ??
+              () => popOrBackTo(context, defaultPath: RouteName.adminAuditLogs),
         ),
         actions: [
           IconButton(

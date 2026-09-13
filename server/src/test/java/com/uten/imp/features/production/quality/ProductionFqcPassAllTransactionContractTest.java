@@ -47,12 +47,16 @@ class ProductionFqcPassAllTransactionContractTest {
         assertThat(batchBody)
                 .contains("lockPassAllDecisionDimensions(")
                 .contains("requireActiveDecisionRow(locked.get(inspectionId))")
-                .contains("DecisionResult decision = decideLocked(")
+                .contains("DecisionWrite decision = recordDecisionLocked(")
                 .contains("INSERT INTO production_fqc_pass_all_batch_items")
+                .contains("detailViews(normalized.inspectionIds())")
+                .doesNotContain("detailInternal(")
                 .doesNotContain("catch (")
                 .doesNotContain("REQUIRES_NEW");
         assertThat(batchBody.indexOf("requireActiveDecisionRow"))
-                .isLessThan(batchBody.indexOf("DecisionResult decision = decideLocked"));
+                .isLessThan(batchBody.indexOf("DecisionWrite decision = recordDecisionLocked"));
+        assertThat(batchBody.indexOf("INSERT INTO production_fqc_pass_all_batch_items"))
+                .isLessThan(batchBody.indexOf("detailViews(normalized.inspectionIds())"));
         assertThat(batchBody.indexOf("mutationFootprint.beginInspections("))
                 .isGreaterThan(0).isLessThan(batchBody.indexOf("findPassAllBatch("));
         assertThat(batchBody.indexOf("findPassAllBatch("))

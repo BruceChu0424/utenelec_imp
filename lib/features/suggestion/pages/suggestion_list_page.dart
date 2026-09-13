@@ -12,6 +12,8 @@
 // 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
 
 import 'package:flutter/material.dart';
+
+import '../../../components/layout/uten_floating_action_group.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -64,6 +66,7 @@ class SuggestionListPage extends ConsumerWidget {
             return createAction.emptyState();
           }
           return MasterDataTableView<Suggestion>(
+            bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
             key: const Key('suggestion-list-table'),
             columns: _columns,
             items: suggestions,

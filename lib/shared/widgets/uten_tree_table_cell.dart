@@ -16,7 +16,6 @@ class UtenTreeTableCell extends StatelessWidget {
     required this.sequence,
     required this.title,
     this.subtitle,
-    this.pathLabel,
     this.levelLabel,
     this.sequenceInline = false,
     this.foregroundColor,
@@ -39,7 +38,6 @@ class UtenTreeTableCell extends StatelessWidget {
   final String sequence;
   final String title;
   final String? subtitle;
-  final String? pathLabel;
   final String? levelLabel;
 
   /// 紧凑身份行：序号徽章与标题同排（「P1 名字」），副标题（如编号）另起一行。
@@ -80,13 +78,14 @@ class UtenTreeTableCell extends StatelessWidget {
     final effectiveLevelLabel = levelLabel ?? '层级 ${depth + 1}';
     final visualDepth = depth.clamp(0, maxVisualDepth);
     final safeSubtitle = subtitle?.trim();
-    final safePath = pathLabel?.trim();
+    // 2026-09-12 起不再有 pathLabel 路径行：货品 BOM 宿主按用户口径收敛为
+    // 「名字 + 组件X级」（编号看「编号」列），物料分析宿主本就不传。语义朗读
+    // 随副标题一并精简。
     final identityLabel = <String>[
       title,
       if (sequence.trim().isNotEmpty) '级联号 $sequence',
       if (!sequenceInline) effectiveLevelLabel,
       if (safeSubtitle?.isNotEmpty == true) safeSubtitle!,
-      if (safePath?.isNotEmpty == true) '路径 $safePath',
     ].join('，');
     Widget sequenceChip(ThemeData theme) => Container(
       padding: const EdgeInsets.symmetric(
@@ -151,19 +150,19 @@ class UtenTreeTableCell extends StatelessWidget {
                                 : '展开下级'),
                       onPressed: onToggle,
                       // 2026-09-10 用户口径「展开箭头要一眼看到」：由淡色线性图标
-                      // 改为 28px 层级色实心圆底 + 反相箭头；选中行（foregroundColor
-                      // 白）自动反相为白底主色箭头；未展开且已知子件数时叠「N」徽章。
+                      // 改为 28px 层级色实心圆底 + 反相箭头；2026-09-12 再加强
+                      //（用户口径「箭头粗一点、浅色模式亮一点」）：箭头改自绘粗描边
+                      //（3px 圆头，比线性图标明显更粗），且圆底偏深时箭头一律反白——
+                      // 浅色模式黑底上的箭头从暗青色改白色更亮；选中行（白底）仍主色箭头。
+                      // 未展开且已知子件数时叠「N」徽章。
                       icon: _ToggleGlyph(
                         expanded: expanded,
                         background: foregroundColor ?? levelColor,
-                        foreground: foregroundColor == null
-                            ? (ThemeData.estimateBrightnessForColor(
-                                        levelColor,
-                                      ) ==
-                                      Brightness.dark
-                                  ? Colors.white
-                                  : colors.onSurface)
-                            : colors.primary,
+                        foreground: _toggleForeground(
+                          circleColor: foregroundColor ?? levelColor,
+                          colors: colors,
+                          explicitForeground: foregroundColor,
+                        ),
                         badge: !expanded && (childCount ?? 0) > 0
                             ? childCount
                             : null,
@@ -246,18 +245,6 @@ class UtenTreeTableCell extends StatelessWidget {
                           color: secondaryColor,
                         ),
                       ),
-                    if (safePath?.isNotEmpty == true)
-                      Tooltip(
-                        message: safePath!,
-                        child: Text(
-                          '路径：$safePath',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: secondaryColor,
-                          ),
-                        ),
-                      ),
                   ],
                 ),
               ),
@@ -267,10 +254,24 @@ class UtenTreeTableCell extends StatelessWidget {
       ),
     );
   }
+
+  /// 展开按钮箭头的前景色：圆底偏深一律反白（浅色模式黑底 → 白箭头，更亮）；
+  /// 圆底偏浅时，层级色宿主用正文色、显式前景宿主（选中行白底）用主色。
+  Color _toggleForeground({
+    required Color circleColor,
+    required ColorScheme colors,
+    required Color? explicitForeground,
+  }) {
+    final circleIsDark =
+        ThemeData.estimateBrightnessForColor(circleColor) == Brightness.dark;
+    if (circleIsDark) return Colors.white;
+    return explicitForeground == null ? colors.onSurface : colors.primary;
+  }
 }
 
-/// 展开/收起按钮的图形：28px 实心圆底 + 反相箭头，未展开且已知子件数时右下角
-/// 叠「N」徽章。命中区仍由外层 IconButton 的 48×48 保证。
+/// 展开/收起按钮的图形：28px 实心圆底 + 自绘粗箭头（3px 圆头描边，2026-09-12
+/// 起替换细线图标——浅色模式黑底上白色粗箭头一眼可见），未展开且已知子件数时
+/// 右下角叠「N」徽章。命中区仍由外层 IconButton 的 48×48 保证。
 class _ToggleGlyph extends StatelessWidget {
   const _ToggleGlyph({
     required this.expanded,
@@ -301,12 +302,14 @@ class _ToggleGlyph extends StatelessWidget {
               color: background,
               shape: BoxShape.circle,
             ),
-            child: Icon(
-              expanded
-                  ? Icons.expand_more_rounded
-                  : Icons.chevron_right_rounded,
-              size: 20,
-              color: foreground,
+            child: Center(
+              child: CustomPaint(
+                size: const Size(14, 14),
+                painter: _ThickChevronPainter(
+                  direction: expanded ? _ChevronAxis.down : _ChevronAxis.right,
+                  color: foreground,
+                ),
+              ),
             ),
           ),
           if (badge != null)
@@ -340,6 +343,43 @@ class _ToggleGlyph extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 粗箭头朝向：未展开朝右（›），展开后朝下（⌄）。
+enum _ChevronAxis { right, down }
+
+/// 自绘粗折线箭头：3px 圆头描边，比 Material 线性图标明显更粗（2026-09-12
+/// 用户口径「箭头粗一点」）；14×14 视口，拐点内收防圆头出界。
+class _ThickChevronPainter extends CustomPainter {
+  const _ThickChevronPainter({required this.direction, required this.color});
+
+  final _ChevronAxis direction;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    final w = size.width;
+    final h = size.height;
+    final path = direction == _ChevronAxis.right
+        ? (Path()
+            ..moveTo(w * 0.30, h * 0.18)
+            ..lineTo(w * 0.72, h * 0.5)
+            ..lineTo(w * 0.30, h * 0.82))
+        : (Path()
+            ..moveTo(w * 0.18, h * 0.32)
+            ..lineTo(w * 0.5, h * 0.74)
+            ..lineTo(w * 0.82, h * 0.32));
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ThickChevronPainter oldDelegate) =>
+      oldDelegate.direction != direction || oldDelegate.color != color;
 }
 
 class _TreeGuidePainter extends CustomPainter {

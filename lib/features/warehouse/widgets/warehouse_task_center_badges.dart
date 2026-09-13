@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/feedback/uten_notification_badge.dart';
 import '../providers/procurement_inbound_count_providers.dart';
 import '../providers/production_draw_count_provider.dart';
+import '../providers/production_return_count_provider.dart';
 import '../providers/production_finished_inbound_task_count_provider.dart';
 import '../providers/warehouse_sales_outbound_count_provider.dart';
 import '../repositories/warehouse_subcontract_outbound_repository.dart'
@@ -76,12 +77,16 @@ class WarehouseDrawTaskBadge extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final draw = ref.watch(warehouseProductionDrawPendingCountProvider);
-    if (draw.hasError) {
-      return _badgeError(context, '领料待办数量加载失败，请进入生产领料任务中心后重试');
+    final returns = ref.watch(warehouseProductionReturnPendingCountProvider);
+    if (draw.hasError || returns.hasError) {
+      return _badgeError(context, '领退料待办数量加载失败，请进入生产领料任务中心后重试');
     }
-    if (draw.isLoading) return const SizedBox.shrink();
+    if ((draw.isLoading && draw.valueOrNull == null) ||
+        (returns.isLoading && returns.valueOrNull == null)) {
+      return const SizedBox.shrink();
+    }
     return UtenNotificationBadge(
-      count: draw.valueOrNull ?? 0,
+      count: (draw.valueOrNull ?? 0) + (returns.valueOrNull ?? 0),
       showLabel: showLabel,
     );
   }

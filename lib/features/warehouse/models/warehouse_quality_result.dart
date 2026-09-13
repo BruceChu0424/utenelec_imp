@@ -84,6 +84,8 @@ class WarehouseQualityResultTask {
   final String? billDate;
   final String? supplierId;
   final String? supplierName;
+
+  /// Receipt-time warehouse reference; actual stock-in warehouses are line facts.
   final String? warehouseId;
   final String? warehouseName;
   final WarehouseQualityWorkStatus workStatus;
@@ -262,6 +264,8 @@ class WarehouseQualityInspectionLine {
     this.colorName,
     this.unitId,
     this.unitName,
+    this.warehouseId,
+    this.warehouseName,
   });
 
   final String inspectionItemId;
@@ -271,6 +275,8 @@ class WarehouseQualityInspectionLine {
   final String? colorName;
   final String? unitId;
   final String? unitName;
+  final String? warehouseId;
+  final String? warehouseName;
   final double receivedBaseQty;
   final double passedBaseQty;
   final double failedBaseQty;
@@ -317,6 +323,8 @@ class WarehouseQualityInspectionLine {
         colorName: _text(json['colorName']),
         unitId: _text(json['unitId']),
         unitName: _text(json['unitName']),
+        warehouseId: _text(json['warehouseId']),
+        warehouseName: _text(json['warehouseName']),
         receivedBaseQty: _decimal(json['receivedBaseQty']),
         passedBaseQty: _decimal(json['passedBaseQty']),
         failedBaseQty: _decimal(json['failedBaseQty']),
@@ -351,6 +359,8 @@ class WarehouseQualityReleasedSlice {
     this.releaseNote,
     this.releasedBy,
     this.releasedAt,
+    this.warehouseId,
+    this.warehouseName,
     this.expectedAllocations = const [],
   });
 
@@ -376,6 +386,8 @@ class WarehouseQualityReleasedSlice {
   final String? releaseNote;
   final String? releasedBy;
   final String? releasedAt;
+  final String? warehouseId;
+  final String? warehouseName;
   final List<WarehouseInboundAllocation> expectedAllocations;
 
   String get goodsLabel => [
@@ -411,6 +423,8 @@ class WarehouseQualityReleasedSlice {
         releaseNote: _text(json['releaseNote']),
         releasedBy: _text(json['releasedBy']),
         releasedAt: _text(json['releasedAt']),
+        warehouseId: _text(json['warehouseId']),
+        warehouseName: _text(json['warehouseName']),
         expectedAllocations: _allocationList(json['expectedAllocations']),
       );
 }
@@ -432,6 +446,8 @@ class WarehouseQualityStockInHistoryItem {
     this.weightUnitName,
     this.confirmedBy,
     this.confirmedAt,
+    this.warehouseId,
+    this.warehouseName,
     this.actualAllocations = const [],
   });
 
@@ -449,6 +465,8 @@ class WarehouseQualityStockInHistoryItem {
   final String place;
   final String? confirmedBy;
   final String? confirmedAt;
+  final String? warehouseId;
+  final String? warehouseName;
   final List<WarehouseInboundAllocation> actualAllocations;
 
   String get goodsLabel => [
@@ -474,6 +492,8 @@ class WarehouseQualityStockInHistoryItem {
     place: _text(json['place']) ?? '—',
     confirmedBy: _text(json['confirmedBy']),
     confirmedAt: _text(json['confirmedAt']),
+    warehouseId: _text(json['warehouseId']),
+    warehouseName: _text(json['warehouseName']),
     actualAllocations: _allocationList(json['actualAllocations']),
   );
 }

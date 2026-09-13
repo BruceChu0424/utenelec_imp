@@ -60,7 +60,12 @@ class UtenDropdownField extends StatefulWidget {
     this.warningMessage,
     this.onAddNew,
     this.addNewLabel,
+    this.dense = false,
   });
+
+  /// 紧凑形态（grid 单元格）：isDense 吃全局主题，与数量/单价等文本格等高
+  ///（2026-09-12 用户口径：结账方式等网格下拉用统一 UI，不要原生 PopupMenu）。
+  final bool dense;
 
   /// 标签（表头字段用；grid 单元格可不传，由列头标识列）。
   final String? label;

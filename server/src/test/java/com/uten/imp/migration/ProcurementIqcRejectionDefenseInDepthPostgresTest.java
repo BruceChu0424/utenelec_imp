@@ -319,7 +319,7 @@ class ProcurementIqcRejectionDefenseInDepthPostgresTest {
                 insertDetectionOutbox(connection, inspectionItemId, eventId);
             }
             resolveFailure(connection, inspectionItemId);
-            SQLException failure = catchThrowableOfType(connection::commit, SQLException.class);
+            SQLException failure = catchThrowableOfType(SQLException.class, connection::commit);
             assertNotNull(failure);
             assertThat(failure.getSQLState()).isEqualTo("23514");
             assertThat(((PSQLException) failure).getServerErrorMessage().getConstraint())
@@ -458,11 +458,10 @@ class ProcurementIqcRejectionDefenseInDepthPostgresTest {
             int amountOriginal,
             int amountLocal,
             String constraint) throws SQLException {
-        SQLException failure = catchThrowableOfType(
+        SQLException failure = catchThrowableOfType(SQLException.class,
                 () -> insertAllocation(
                         connection, caseId, item, qty, baseQty,
-                        amountOriginal, amountLocal),
-                SQLException.class);
+                        amountOriginal, amountLocal));
         assertDatabaseError(failure, "23514", constraint);
     }
 
@@ -598,8 +597,8 @@ class ProcurementIqcRejectionDefenseInDepthPostgresTest {
             String sql,
             String sqlState,
             String constraint) {
-        SQLException failure = catchThrowableOfType(
-                () -> execute(connection, sql), SQLException.class);
+        SQLException failure = catchThrowableOfType(SQLException.class,
+                () -> execute(connection, sql));
         assertDatabaseError(failure, sqlState, constraint);
     }
 

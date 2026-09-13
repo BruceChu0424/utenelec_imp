@@ -100,6 +100,9 @@ class StockDocFinishedInboundBatchContractTest {
                 .isGreaterThan(batch.indexOf("prelockProductionDocuments("));
         assertThat(batch)
                 .contains("confirmFinishedInboundAfterPrelock(")
+                .contains("StockDocument detail =")
+                .contains("afterFinishedInboundBatchApproved(batchContext.postedDocumentIds)")
+                .doesNotContain("detail(documentId)")
                 .contains("insertFinishedInboundBatch(")
                 .doesNotContain("catch (")
                 .doesNotContain("REQUIRES_NEW")
@@ -111,6 +114,9 @@ class StockDocFinishedInboundBatchContractTest {
                 .contains("该批量点收幂等键已用于不同单据集合")
                 .contains("fullFinishedInboundAcceptanceRequest(")
                 .contains("line.setAcceptedQty(item.getQty())");
+        int kernel = source.indexOf("private StockDocument approveDocumentAfterPrelock(");
+        int kernelEnd = source.indexOf("/** 红冲", kernel);
+        assertThat(source.substring(kernel, kernelEnd)).doesNotContain("prelockProductionDocument(");
     }
 
     private static FinishedInboundBatchConfirmRequest request(

@@ -5,8 +5,7 @@
 // 点卡片进对应列表/查询/报表页。卡片统一用 UtenHubCard，计数一律走红色徽章
 //（准则 14-徽章与计数口径）：生产调度卡挂待排产徽章，生产计划单/日报卡挂本人
 // 草稿徽章（2026-09-11 口径反转：草稿是必须处理完的活，逐级累加），报表卡无计数。
-// 顶栏右上角另显本模块累计，数字由 todo_badge_registry 求和，与工作台「生产管理」
-// 卡同源，保证外层不会小于内层各卡之和。
+// 顶栏右上角汇总本页可见的待排产与草稿；车间任务在其独立入口计数。
 // 路由统一使用 RouteName 常量；查看权限进入列表，新增动作由列表页按编辑权限控制。
 //
 // 注：原「BOM 成本展开」入口已下线（组装/BOM 数据并入 基础资料-货品资料「组装信息」页签）。
@@ -50,12 +49,13 @@ class ProductionHubPage extends ConsumerWidget {
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
         actions: [
-          // 本模块累计：数字由 todo_badge_registry 对 TodoModule.production 下登记的
-          // 全部入口求和得出（待排产 + 车间任务 + 本模块草稿），页面里不要手写加法，
-          // 否则新增入口时顶栏又会小于卡片之和。0 由徽章组件自行不渲染。
+          // 只汇总本页对应卡片的待办，车间任务不属于本 Hub 的卡片集合。
           // AppBar 的 actions 行是 crossAxisAlignment.stretch，故包 Center 才竖直居中。
           UtenModuleTodoChip(
-            count: todoModuleCount(TodoModule.production, ref.watch),
+            count: sumTodoEntries(const [
+              TodoEntry.productionSchedule,
+              TodoEntry.productionDrafts,
+            ], ref.watch),
           ),
         ],
       ),

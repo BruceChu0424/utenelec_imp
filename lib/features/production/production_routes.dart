@@ -19,6 +19,8 @@ import 'pages/production_plan_summary_sheet_page.dart';
 import 'pages/production_report_page.dart';
 import 'pages/where_used_report_page.dart';
 import 'pages/production_workshop_tasks_page.dart';
+import 'pages/production_draw_request_page.dart';
+import 'pages/production_execution_batch_page.dart';
 
 /// 生产模块公开路由清单。
 ///
@@ -39,6 +41,32 @@ final List<RouteBase> productionRoutes = [
     path: RouteName.productionProgress,
     name: 'production-progress',
     builder: (_, _) => const ProductionBoardPage(initialTab: 1),
+  ),
+  GoRoute(
+    path: RouteName.productionBatchDraw,
+    name: 'production-batch-draw',
+    builder: (_, state) => ProductionExecutionBatchPage(
+      segmentId: state.uri.queryParameters['segmentId'] ?? '',
+      expectedVersion: int.tryParse(state.uri.queryParameters['version'] ?? ''),
+    ),
+  ),
+  GoRoute(
+    path: RouteName.productionDrawRequest,
+    name: 'production-draw-request',
+    builder: (_, state) {
+      final ids =
+          state.uri.queryParameters['segmentIds']?.split(',') ??
+          const <String>[];
+      final versions =
+          state.uri.queryParameters['versions']?.split(',') ?? const <String>[];
+      return ProductionDrawRequestPage(
+        segmentIds: ids,
+        expectedVersions: {
+          for (var i = 0; i < ids.length && i < versions.length; i++)
+            ids[i]: ?int.tryParse(versions[i]),
+        },
+      );
+    },
   ),
   GoRoute(
     path: RouteName.productionWorkshopTasks,

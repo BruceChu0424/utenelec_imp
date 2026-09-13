@@ -180,6 +180,23 @@ class MaterialAnalysisServiceBehaviorTest {
     }
 
     @Test
+    void returnedSubcontractPreparationCannotCoverNewWaitingInputsAndOpenCoverageIsSharedOnce() {
+        UUID itemId=UUID.randomUUID(),child=UUID.randomUUID();
+        var node=bomNode(itemId,UUID.randomUUID(),UUID.randomUUID(),"component","10",
+                "START","PER_UNIT","1","1",true);
+        var returned=MaterialAnalysisService.planFormalCoverage(List.of(
+                new MaterialAnalysisService.FormalMaterialCoverage(UUID.randomUUID(),itemId,
+                        "component",bd("10"),BigDecimal.ZERO,child)),List.of(node));
+        assertThat(returned.securedTotal(itemId+"|component")).isZero();
+        var reserved=MaterialAnalysisService.planFormalCoverage(List.of(
+                new MaterialAnalysisService.FormalMaterialCoverage(UUID.randomUUID(),itemId,
+                        "component",bd("10"),bd("4"),child),
+                new MaterialAnalysisService.FormalMaterialCoverage(UUID.randomUUID(),itemId,
+                        "component",bd("4"),bd("4"),child)),List.of(node));
+        assertThat(reserved.securedTotal(itemId+"|component")).isEqualByComparingTo("4");
+    }
+
+    @Test
     void siblingWarehousesKeepTheirOwnSafetyFloorAndCannotLendExactPriority() {
         UUID itemId=UUID.randomUUID();
         UUID warehouseA=UUID.randomUUID();
@@ -349,22 +366,22 @@ class MaterialAnalysisServiceBehaviorTest {
                 bomItemId.toString(), null, BigDecimal.ONE, bd("2"), bd("2"),
                 "C-01", "Component", null, null, "piece", BigDecimal.ZERO,
                 "\u91c7\u8d2d", false, "START", "PER_UNIT", BigDecimal.ONE,
-                true, true
+                true, true, itemId
         }));
         Query staleSnapshot = query(Collections.singletonList(new Object[]{
                 bomItemId, componentId, null, componentUnitId,
                 BigDecimal.ONE, bd("3"), bd("3"), "START", "PER_UNIT",
-                BigDecimal.ONE, true, true, "BUY", "EDGE_RULE"
+                BigDecimal.ONE, true, true, "BUY", "EDGE_RULE", itemId
         }));
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String statement = invocation.getArgument(0);
             if (statement.contains("FROM production_material_analysis_items ai")) {
                 return sources;
             }
-            if (statement.contains("WITH RECURSIVE walk AS")) {
+            if (statement.contains("COALESCE(bool_or(cycle),FALSE)")) {
                 return graphValidation;
             }
-            if (statement.contains("WITH RECURSIVE exp AS")) {
+            if (statement.contains("exp AS (")) {
                 return currentBom;
             }
             if (statement.contains("FROM production_material_analysis_materials")) {
@@ -568,6 +585,81 @@ class MaterialAnalysisServiceBehaviorTest {
                 .isEqualByComparingTo("0.0000");
         assertThat(rows.get(lowPriorityId + "|low-x").shortageQty())
                 .isEqualByComparingTo("0.0000");
+    }
+
+    @Test
+    void residualPublicStockCoversHardMaterialWithoutDeclaringItsIncompleteProductReady() {
+        UUID unit = UUID.randomUUID();
+        UUID early = UUID.randomUUID();
+        UUID complete = UUID.randomUUID();
+        UUID goods = UUID.randomUUID();
+        var a = allocationSource(early, UUID.randomUUID(), unit, 0, "6");
+        var b = allocationSource(complete, UUID.randomUUID(), unit, 1, "6");
+        var ax = bomNode(early, goods, unit, "a-x", "6", "START", "PER_UNIT", "1", "1", true);
+        var ay = bomNode(early, UUID.randomUUID(), unit, "a-y", "6", "START", "PER_UNIT", "1", "1", true);
+        var bx = bomNode(complete, goods, unit, "b-x", "6", "START", "PER_UNIT", "1", "1", true);
+        var nodes = Map.of(early, List.of(ax, ay), complete, List.of(bx));
+        var kits = MaterialAnalysisService.allocateStageReadiness(List.of(a, b), nodes,
+                Map.of(ax.dimension(), bd("10"), ay.dimension(), BigDecimal.ZERO), Set.of("START", "ASSEMBLY", "FINISH"));
+
+        var coverage = MaterialAnalysisService.allocateDirectMaterials(List.of(a, b), nodes,
+                kits.remainingPool(), kits.nodeAllocations());
+
+        assertThat(kits.readyByItem().get(early)).isZero();
+        assertThat(kits.readyByItem().get(complete)).isEqualByComparingTo("6");
+        assertThat(coverage.get(complete + "|b-x").allocatedQty()).isEqualByComparingTo("6");
+        assertThat(coverage.get(early + "|a-x").allocatedQty()).isEqualByComparingTo("4");
+        assertThat(coverage.get(early + "|a-x").shortageQty()).isEqualByComparingTo("2");
+        assertThat(coverage.get(early + "|a-y").shortageQty()).isEqualByComparingTo("6");
+        assertThat(coverage.get(complete + "|b-x").allocatedQty()
+                .add(coverage.get(early + "|a-x").allocatedQty())).isEqualByComparingTo("10");
+    }
+
+    @Test
+    void earlierReferenceSourceCannotTakeResidualStockBeforeAHardProductionNode() {
+        UUID unit = UUID.randomUUID(), referenceSource = UUID.randomUUID(), productionSource = UUID.randomUUID(), goods = UUID.randomUUID();
+        var reference = allocationSource(referenceSource, UUID.randomUUID(), unit, 0, "6");
+        var production = allocationSource(productionSource, UUID.randomUUID(), unit, 1, "6");
+        var hint = bomNode(referenceSource, goods, unit, "hint", "6", "REFERENCE", "PER_UNIT", "1", "1", false);
+        var input = bomNode(productionSource, goods, unit, "input", "6", "START", "PER_UNIT", "1", "1", true);
+        var missing = bomNode(productionSource, UUID.randomUUID(), unit, "missing", "6", "START", "PER_UNIT", "1", "1", true);
+        var nodes = Map.of(referenceSource, List.of(hint), productionSource, List.of(input, missing));
+        var kits = MaterialAnalysisService.allocateStageReadiness(List.of(reference, production), nodes,
+                Map.of(input.dimension(), bd("4")), Set.of("START", "ASSEMBLY", "FINISH"));
+
+        var coverage = MaterialAnalysisService.allocateDirectMaterials(List.of(reference, production), nodes,
+                kits.remainingPool(), kits.nodeAllocations());
+
+        assertThat(kits.readyByItem().get(productionSource)).isZero();
+        assertThat(coverage.get(productionSource + "|input").allocatedQty()).isEqualByComparingTo("4");
+        assertThat(coverage.get(referenceSource + "|hint").allocatedQty()).isZero();
+    }
+
+    @Test
+    void residualPublicCoverageNeverLendsAnotherSourcesQualifiedStock() {
+        UUID unit = UUID.randomUUID(), owner = UUID.randomUUID(), first = UUID.randomUUID(), goods = UUID.randomUUID();
+        var ownerSource = allocationSource(owner, UUID.randomUUID(), unit, 1, "6");
+        var firstSource = allocationSource(first, UUID.randomUUID(), unit, 0, "6");
+        var owned = bomNode(owner, goods, unit, "owned", "6", "START", "PER_UNIT", "1", "1", true);
+        var shared = bomNode(first, goods, unit, "shared", "6", "START", "PER_UNIT", "1", "1", true);
+        var missing = UUID.randomUUID();
+        var ownerMissing = bomNode(owner, missing, unit, "missing-owner", "6", "START", "PER_UNIT", "1", "1", true);
+        var firstMissing = bomNode(first, missing, unit, "missing-first", "6", "START", "PER_UNIT", "1", "1", true);
+        var nodes = Map.of(owner, List.of(owned, ownerMissing), first, List.of(shared, firstMissing));
+        var tuning = MaterialAnalysisService.planExactPegs(List.of(new MaterialAnalysisService.ExactPegRecord(
+                UUID.randomUUID(), UUID.randomUUID(), owner, "owned", owned.dimension(), bd("3"))),
+                List.of(owned, ownerMissing, shared, firstMissing), Map.of(owned.dimension(), bd("7")));
+        var kits = MaterialAnalysisService.allocateStageReadiness(List.of(firstSource, ownerSource), nodes,
+                Map.of(owned.dimension(), bd("4")), Set.of("START", "ASSEMBLY", "FINISH"), tuning);
+
+        var coverage = MaterialAnalysisService.allocateDirectMaterials(List.of(firstSource, ownerSource), nodes,
+                kits.remainingPool(), kits.nodeAllocations(), tuning);
+
+        assertThat(kits.readyByItem().values()).allSatisfy(qty -> assertThat(qty).isZero());
+        assertThat(coverage.get(owner + "|owned").allocatedQty()).isEqualByComparingTo("3");
+        assertThat(coverage.get(first + "|shared").allocatedQty()).isEqualByComparingTo("4");
+        assertThat(coverage.get(owner + "|owned").allocatedQty()
+                .add(coverage.get(first + "|shared").allocatedQty())).isEqualByComparingTo("7");
     }
 
     @Test
@@ -1000,7 +1092,10 @@ class MaterialAnalysisServiceBehaviorTest {
         assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
         assertThat(error.getMessage()).contains("请先撤销调拨");
         verify(conflicts).setParameter("analysisId", analysisId);
-        verify(conflicts).setParameter("materialIds", materialIds);
+        var parameter = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(conflicts).setParameter(org.mockito.ArgumentMatchers.eq("materialIds"), parameter.capture());
+        assertThat(java.util.Arrays.stream(parameter.getValue().split(",")).map(UUID::fromString).collect(java.util.stream.Collectors.toSet()))
+                .isEqualTo(materialIds);
     }
 
     private static MaterialAnalysisService.ExactPegRecord exactPeg(
@@ -1207,11 +1302,16 @@ class MaterialAnalysisServiceBehaviorTest {
                 projection, "allocations", new Class<?>[]{});
 
         assertThat(allocations.get(itemId + "|parent").allocatedQty())
-                .as("Incomplete kits retain the existing no-partial-commitment rule")
-                .isEqualByComparingTo("0");
+                .as("Existing parent stock covers that node even while another material is missing")
+                .isEqualByComparingTo("1");
         assertThat(allocations.get(itemId + "|parent/child").shortageQty())
                 .as("Existing parent stock does not create unnecessary child supply")
                 .isEqualByComparingTo("0");
+        Object stagePlan = invokePrivate(projection, "stagePlan", new Class<?>[]{});
+        MaterialAnalysisService.StageAllocation finish = invokePrivate(stagePlan, "finish", new Class<?>[]{});
+        assertThat(finish.readyByItem().get(itemId)).isZero();
+        assertThat(finish.nodeAllocations().getOrDefault(itemId + "|parent",
+                MaterialAnalysisService.NodeAllocation.ZERO).allocatedQty()).isZero();
     }
 
     @Test
@@ -2132,11 +2232,25 @@ class MaterialAnalysisServiceBehaviorTest {
                 warehouseId, dimension, "BUY", LocalDate.of(2026, 9, 15));
         assertThat(buy.approvedInboundQty()).isEqualByComparingTo("3000");
         assertThat(buy.availableQty()).isEqualByComparingTo("500");
+        assertThat(buy.lateAvailableQty()).isEqualByComparingTo("1000");
         assertThat(buy.refs()).extracting(SharedFutureSupplyRef::route)
                 .containsOnly("BUY");
         var subcontractOnly = index.forMaterial(
                 warehouseId, dimension, "SUBCONTRACT", LocalDate.of(2026, 9, 15));
         assertThat(subcontractOnly.availableQty()).isEqualByComparingTo("1000");
+    }
+
+    @Test
+    void unknownPublicEtaRequiresExplicitAcceptanceEvenWithoutAnOriginalPlanDate() {
+        UUID warehouse=UUID.randomUUID();
+        var dimension=new MaterialAnalysisService.MaterialDimension(UUID.randomUUID(),null,UUID.randomUUID());
+        var source=new SharedFutureSupplyRef("BUY",bd("900"),bd("900"),null,null,null,null,null,false);
+        var index=new MaterialAnalysisService.SharedFutureIndex(Map.of(
+                new MaterialAnalysisService.WarehouseMaterialDimension(warehouse,dimension),
+                MaterialAnalysisService.SharedFutureAggregate.ZERO.plus(source)));
+        var view=index.forMaterial(warehouse,dimension,"BUY",null);
+        assertThat(view.availableQty()).isZero();assertThat(view.lateAvailableQty()).isEqualByComparingTo("900");
+        assertThat(view.refs()).containsExactly(source);
     }
 
     private static MaterialView material(
@@ -2168,7 +2282,8 @@ class MaterialAnalysisServiceBehaviorTest {
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, List.of(), null, null,
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO);
     }
 
     private static MaterialAnalysisService.MaterialRow materialRow(

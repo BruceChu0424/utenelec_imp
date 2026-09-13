@@ -216,7 +216,7 @@ class DailyReportExecutionSegmentGuardTest {
                 workshopId,
                 responsibleEmployeeId,
                 materialMode,
-                7L
+                7L, null
         }));
         Query allocation = query();
         when(allocation.getResultList()).thenReturn(List.of());

@@ -6,8 +6,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -17,21 +22,30 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/concurrency/task_claim_session.dart';
+import '../../../shared/providers/sales_shipment_finance_count_provider.dart';
+import '../../../shared/widgets/finance_review_claim_notice.dart';
+import '../../basic_data/models/client_node.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
+import 'shipment_finance_change_summary.dart';
 
 enum SalesShipmentTaskWorkbenchMode { financeAudit, warehouseOutbound }
 
 /// 销售出货跨部门任务的共享只读投影视图。
 ///
 /// 财务和仓库各自拥有独立路由、标题、默认过滤和权限入口；这里只复用同一套
-/// 响应式列表骨架与权威出货 DTO。业务动作仍在既有出货详情中按权限和服务端
-/// capability 终审，工作台不会暴露销售新建/编辑入口。
+/// 响应式骨架与权威出货 DTO。
+/// - 财务（出货财务审核，2026-09-12 对齐订货审批任务中心）：表格多选 +
+///   批量放行/批量退回（整批原子），双击/行菜单进财务专用审核详情页
+///   `/finance/sales-shipment-audits/:id`，与销售端出货详情彻底分离；
+/// - 仓库（销售出库）：保持只读列表，双击进共享出货详情做仓库作业。
 class SalesShipmentTaskWorkbench extends ConsumerStatefulWidget {
   const SalesShipmentTaskWorkbench({super.key, required this.mode});
 
@@ -44,6 +58,8 @@ class SalesShipmentTaskWorkbench extends ConsumerStatefulWidget {
 
 class _SalesShipmentTaskWorkbenchState
     extends ConsumerState<SalesShipmentTaskWorkbench> {
+  static const int _maxBatchSize = 100;
+
   PagedResult<SalesDocListItem>? _result;
   bool _loading = false;
   String? _error;
@@ -54,6 +70,12 @@ class _SalesShipmentTaskWorkbenchState
 
   int? _financeAudit;
   String? _warehouseWorkStatus;
+
+  // ===== 财务批量审批（仅 financeAudit 模式；仓库模式恒空）=====
+  final Set<String> _selectedIds = <String>{};
+  final Map<String, SalesDocListItem> _selectedById = {};
+  bool _busyDecision = false;
+  TaskClaimSession? _batchClaim;
 
   bool get _isFinance =>
       widget.mode == SalesShipmentTaskWorkbenchMode.financeAudit;
@@ -109,6 +131,7 @@ class _SalesShipmentTaskWorkbenchState
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _batchClaim?.releaseAll().ignore();
     super.dispose();
   }
 
@@ -141,6 +164,9 @@ class _SalesShipmentTaskWorkbenchState
       setState(() {
         _result = value;
         _loading = false;
+        for (final item in value.items) {
+          if (_selectedIds.contains(item.id)) _selectedById[item.id] = item;
+        }
       });
     } on ApiException catch (error) {
       if (!mounted || generation != _requestGeneration) return;
@@ -165,10 +191,347 @@ class _SalesShipmentTaskWorkbenchState
     });
   }
 
-  void _open(SalesDocListItem item) {
+  /// 财务：双击/行菜单 → 财务专用审核详情页（右下角放行/退回，不必回本列表即可决策）；
+  /// 决策完成 pop(true) → 回列表刷新并清空勾选。仓库：共享出货详情做仓库作业。
+  Future<void> _open(SalesDocListItem item) async {
+    if (_isFinance) {
+      final decided = await context.push<bool>(
+        '${RouteName.financeSalesShipmentAudit}/${Uri.encodeComponent(item.id)}',
+      );
+      if (decided == true && mounted) {
+        _clearSelection();
+        await _load();
+      }
+      return;
+    }
     context.push(
       SalesRoutePath.docDetail(SalesDocType.shipment.pathSegment, item.id),
     );
+  }
+
+  /// 次要入口（财务）：共享只读销售出货详情，看单据全貌时用。
+  void _openSalesDetail(SalesDocListItem item) {
+    context.push(
+      SalesRoutePath.docDetail(SalesDocType.shipment.pathSegment, item.id),
+    );
+  }
+
+  // ======================= 财务批量审批（对齐订货审批任务中心） =======================
+
+  /// 行可选条件：待财审 + 销售已确认提交（financeReviewPending）。
+  bool _canSelectItem(SalesDocListItem item) =>
+      _isFinance &&
+      item.financeAudit == 0 &&
+      item.shipmentWorkflow.financeReviewPending;
+
+  void _clearSelection() {
+    _selectedIds.clear();
+    _selectedById.clear();
+  }
+
+  void _setSelectedIds(Set<String> next) {
+    if (_batchClaim != null) return;
+    final capped = next.length > _maxBatchSize;
+    final normalized = capped ? next.take(_maxBatchSize).toSet() : next;
+    setState(() {
+      _selectedIds
+        ..clear()
+        ..addAll(normalized);
+      _selectedById.removeWhere((id, _) => !normalized.contains(id));
+      for (final item in _result?.items ?? const <SalesDocListItem>[]) {
+        if (normalized.contains(item.id)) _selectedById[item.id] = item;
+      }
+    });
+    if (capped) {
+      context.appWarning('单次最多处理 $_maxBatchSize 笔，已保留前 $_maxBatchSize 笔');
+    }
+  }
+
+  List<SalesDocListItem> get _selectedItems => [
+    for (final id in _selectedIds)
+      if (_selectedById[id] != null) _selectedById[id]!,
+  ];
+
+  String? _selectionIssue() {
+    if (_selectedIds.isEmpty) return '请先选择待审出货单';
+    final items = _selectedItems;
+    if (items.length != _selectedIds.length ||
+        items.any((item) => !_canSelectItem(item))) {
+      return '部分出货单已变化或不可审，请刷新后重新选择';
+    }
+    return null;
+  }
+
+  String _selectedBillSummary() {
+    final items = _selectedItems;
+    final visible = items.map((item) => item.billNo ?? '未编号').take(5).join('、');
+    return items.length > 5 ? '$visible 等 ${items.length} 笔' : visible;
+  }
+
+  static bool _paymentTypeClassified(ShipmentFinanceAuditInfo info) {
+    if (info.billingMode == 'FREE') return true;
+    return const {
+      ClientSalesPaymentType.monthly,
+      ClientSalesPaymentType.cash,
+      ClientSalesPaymentType.deposit,
+    }.contains(info.salesPaymentType?.trim());
+  }
+
+  static bool _readableSnapshot(ShipmentFinanceAuditInfo info) =>
+      info.reviewRevision != null &&
+      info.contentHash != null &&
+      readableShipmentReviewSnapshot(info.commercialSnapshot) &&
+      (info.previousCommercialSnapshot == null ||
+          readableShipmentReviewSnapshot(info.previousCommercialSnapshot));
+
+  /// 整批认领 + 逐笔拉审核快照核对（对齐订货审批 _claimSelection）：
+  /// 任一笔认领失败/内容失效/客户未分类（放行）→ 整批不提交。
+  Future<TaskClaimSession?> _claimSelection({required bool forApprove}) async {
+    final claim = financeReviewClaim(
+      ProviderScope.containerOf(context, listen: false),
+    );
+    _batchClaim = claim;
+    setState(() => _busyDecision = true);
+    final repo = ref.read(salesRepositoryProvider(SalesDocType.shipment));
+    try {
+      await claim.claimAll(
+        'SALES_SHIPMENT_FINANCE_AUDIT',
+        _selectedIds.toList(),
+      );
+      if (!mounted || !claim.isReady) {
+        if (mounted) {
+          context.appWarning(claim.failureMessage ?? '整批未取得审核占用，请重试');
+        }
+        await _releaseBatchClaim(claim);
+        return null;
+      }
+      for (final id in _selectedIds) {
+        final info = await repo.financeAuditInfo(id);
+        if (!mounted || !claim.isReady || !_readableSnapshot(info)) {
+          if (mounted) {
+            context.appWarning('部分出货内容或占用已变化，请刷新后重新核对');
+          }
+          await _releaseBatchClaim(claim);
+          return null;
+        }
+        if (forApprove && !_paymentTypeClassified(info)) {
+          if (mounted) {
+            final item = _selectedById[id];
+            context.appWarning(
+              '出货单 ${item?.billNo ?? ''} 的客户尚未完成销售货款分类（月结/现金/定金），'
+              '不能放行；请先在审核详情处理或从选择中移除。',
+            );
+          }
+          await _releaseBatchClaim(claim);
+          return null;
+        }
+      }
+      if (mounted) setState(() => _busyDecision = false);
+      return claim;
+    } on Object {
+      if (mounted) {
+        context.appError('无法核对整批审核内容，请检查网络或权限后重试');
+      }
+      await _releaseBatchClaim(claim);
+      return null;
+    }
+  }
+
+  Future<void> _releaseBatchClaim(TaskClaimSession claim) async {
+    await claim.releaseAll();
+    if (identical(_batchClaim, claim)) _batchClaim = null;
+    if (mounted) setState(() => _busyDecision = false);
+  }
+
+  Future<void> _approveSelected() async {
+    if (_busyDecision || _batchClaim != null) return;
+    final issue = _selectionIssue();
+    if (issue != null) {
+      context.appWarning(issue);
+      return;
+    }
+    final count = _selectedIds.length;
+    final claim = await _claimSelection(forApprove: true);
+    if (claim == null || !mounted) return;
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('批量放行($count 笔)'),
+          content: SizedBox(
+            width: 440,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const UtenReviewerResponsibilityNotice(
+                  actionLabel: '批量出货财务审核',
+                  description: '确认后，系统将以此登录员工记录整批放行责任；放行仅开放仓库作业，应收在交接出库后生成。',
+                  compact: true,
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                Text('${_selectedBillSummary()}。整批原子提交：任一笔失败全部回滚。'),
+              ],
+            ),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FinanceReviewClaimButton(
+              claim: claim,
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('确认批量放行'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      await _runBatch(
+        (decisions) => ref
+            .read(salesRepositoryProvider(SalesDocType.shipment))
+            .financeAuditBatch(decisions),
+        claim,
+        '已批量放行 $count 笔出货',
+      );
+    } finally {
+      await _releaseBatchClaim(claim);
+    }
+  }
+
+  Future<void> _rejectSelected() async {
+    if (_busyDecision || _batchClaim != null) return;
+    final issue = _selectionIssue();
+    if (issue != null) {
+      context.appWarning(issue);
+      return;
+    }
+    final count = _selectedIds.length;
+    final claim = await _claimSelection(forApprove: false);
+    if (claim == null || !mounted) return;
+    try {
+      final controller = TextEditingController();
+      String? errorText;
+      final reason = await showDialog<String>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: Text('批量退回($count 笔)'),
+            content: SizedBox(
+              width: 440,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const UtenReviewerResponsibilityNotice(
+                    actionLabel: '批量退回出货财务审核',
+                    description: '确认后，系统将以此登录员工记录整批退回责任。',
+                    compact: true,
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  Text('${_selectedBillSummary()}将使用同一个退回原因，整批原子提交。'),
+                  const SizedBox(height: UtenSpacing.s12),
+                  TextField(
+                    key: const Key('finance-shipment-batch-reject-reason'),
+                    controller: controller,
+                    autofocus: true,
+                    maxLength: 500,
+                    maxLines: 3,
+                    decoration: UtenInputDecoration(
+                      InputDecoration(
+                        labelText: '退回原因(必填)',
+                        border: const OutlineInputBorder(),
+                        error: utenFieldError(errorText),
+                      ),
+                      info: '写明需要销售修改的内容；整批共用同一原因。',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
+              FinanceReviewClaimButton(
+                claim: claim,
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(ctx).colorScheme.error,
+                  foregroundColor: Theme.of(ctx).colorScheme.onError,
+                ),
+                onPressed: () {
+                  final value = controller.text.trim();
+                  if (value.isEmpty) {
+                    setDialogState(() => errorText = '请填写退回原因');
+                    return;
+                  }
+                  Navigator.pop(ctx, value);
+                },
+                child: const Text('确认批量退回'),
+              ),
+            ],
+          ),
+        ),
+      );
+      controller.dispose();
+      if (reason == null || reason.isEmpty || !mounted) return;
+      await _runBatch(
+        (decisions) => ref
+            .read(salesRepositoryProvider(SalesDocType.shipment))
+            .rejectShipmentFinanceBatch(decisions, reason),
+        claim,
+        '已批量退回 $count 笔出货',
+      );
+    } finally {
+      await _releaseBatchClaim(claim);
+    }
+  }
+
+  /// 提交前重拉整批快照并组装乐观锁三元组（认领心跳复检），再整批原子提交。
+  Future<void> _runBatch(
+    Future<void> Function(List<ShipmentFinanceBatchDecision>) action,
+    TaskClaimSession claim,
+    String okMsg,
+  ) async {
+    setState(() => _busyDecision = true);
+    try {
+      if (!await claim.validateForDecision() || !mounted) {
+        if (mounted) {
+          context.appWarning(claim.failureMessage ?? '审核占用已失效，请重新核对');
+        }
+        return;
+      }
+      final repo = ref.read(salesRepositoryProvider(SalesDocType.shipment));
+      final decisions = <ShipmentFinanceBatchDecision>[];
+      for (final id in _selectedIds) {
+        final info = await repo.financeAuditInfo(id);
+        decisions.add(
+          ShipmentFinanceBatchDecision(
+            id: id,
+            expectedRevision: info.reviewRevision!,
+            expectedContentHash: info.contentHash!,
+            expectedClaimId: claim.claimIdFor(
+              'SALES_SHIPMENT_FINANCE_AUDIT',
+              id,
+            )!,
+          ),
+        );
+      }
+      await action(decisions);
+      if (!mounted) return;
+      context.appSuccess(okMsg);
+      setState(_clearSelection);
+      ref.invalidate(salesShipmentFinanceCountProvider);
+      await _load(1);
+    } on ApiException catch (e) {
+      if (mounted) context.appError('整批未提交：${e.message}');
+    } catch (_) {
+      if (mounted) context.appError('整批未提交，请检查网络后重试');
+    }
   }
 
   @override
@@ -199,20 +562,29 @@ class _SalesShipmentTaskWorkbenchState
       // 仅搜索防抖无周期轮询，可包）。
       body: SelectionArea(
         child: SafeArea(
-          child: !allowed
-              ? UtenEmpty.error(
-                  message: '无权查看$_title',
-                  description: '请在本页权限中授予 $_requiredPermission。',
-                )
-              : _loading && _result == null
-              ? const UtenSkeletonList()
-              : _error != null && _result == null
-              ? UtenEmpty.error(
-                  message: _error,
-                  actionLabel: '重新加载',
-                  onAction: () => _load(1),
-                )
-              : _body(),
+          child: Stack(
+            children: [
+              !allowed
+                  ? UtenEmpty.error(
+                      message: '无权查看$_title',
+                      description: '请在本页权限中授予 $_requiredPermission。',
+                    )
+                  : _loading && _result == null
+                  ? const UtenSkeletonList()
+                  : _error != null && _result == null
+                  ? UtenEmpty.error(
+                      message: _error,
+                      actionLabel: '重新加载',
+                      onAction: () => _load(1),
+                    )
+                  : _body(),
+              // 2026-09-12 口径：批量提交等一段必须屏幕中央加载动画（跟随网络段）。
+              if (_busyDecision)
+                const Positioned.fill(
+                  child: UtenBusyOverlay(title: '正在提交批量审核决定'),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -234,18 +606,26 @@ class _SalesShipmentTaskWorkbenchState
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s12),
         child: LayoutBuilder(
           builder: (context, constraints) {
+            // 财务模式大小屏统一走响应式表格（多选/批量/双击与窄屏同款）；
+            // 仓库模式保持 桌面表格 / 窄屏卡片 的既有形态。
             final desktop = breakpointForWidth(constraints.maxWidth).isExpanded;
-            return desktop ? _desktop(result, names) : _compact(result, names);
+            return _isFinance || desktop
+                ? _table(result, names)
+                : _compact(result, names);
           },
         ),
       ),
     );
   }
 
-  Widget _desktop(
+  /// 财务+桌面共用的表格形态（财务含多选与批量动作；仓库纯只读）。
+  Widget _table(
     PagedResult<SalesDocListItem> result,
     SalesMasterNameService names,
   ) {
+    final selectable =
+        _isFinance &&
+        ((result.items.any(_canSelectItem)) || _selectedItems.isNotEmpty);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -258,24 +638,46 @@ class _SalesShipmentTaskWorkbenchState
         ],
         const SizedBox(height: UtenSpacing.s12),
         Expanded(
-          child: MasterDataTableView<SalesDocListItem>(
-            key: Key(
-              _isFinance
-                  ? 'finance-shipment-audit-table'
-                  : 'warehouse-sales-outbound-table',
+          child: AbsorbPointer(
+            absorbing: _busyDecision,
+            child: MasterDataTableView<SalesDocListItem>(
+              key: Key(
+                _isFinance
+                    ? 'finance-shipment-audit-table'
+                    : 'warehouse-sales-outbound-table',
+              ),
+              columns: _columns(names),
+              items: result.items,
+              facets: const {},
+              nullCounts: const {},
+              filters: const {},
+              onFilterChanged: (_, _) {},
+              onRowTap: _open,
+              selectable: selectable,
+              idOf: (item) => _canSelectItem(item) ? item.id : null,
+              selectedIds: _selectedIds,
+              onSelectedIdsChanged: _setSelectedIds,
+              batchActionsBuilder: selectable ? _batchActions : null,
+              rowMenuBuilder: _isFinance
+                  ? (item) => [
+                      UtenMenuItem(
+                        label: '打开审核详情',
+                        icon: Icons.fact_check_outlined,
+                        onTap: () => _open(item),
+                      ),
+                      UtenMenuItem(
+                        label: '查看销售出货单',
+                        icon: Icons.open_in_new_rounded,
+                        onTap: () => _openSalesDetail(item),
+                      ),
+                    ]
+                  : null,
+              isLoading: _loading,
+              emptyMessage: _emptyMessage,
+              currentPage: result.page,
+              totalPages: result.totalPages,
+              onPageChange: _load,
             ),
-            columns: _columns(names),
-            items: result.items,
-            facets: const {},
-            nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
-            onRowTap: _open,
-            isLoading: _loading,
-            emptyMessage: _emptyMessage,
-            currentPage: result.page,
-            totalPages: result.totalPages,
-            onPageChange: _load,
           ),
         ),
       ],
@@ -348,7 +750,7 @@ class _SalesShipmentTaskWorkbenchState
   Widget _summary(int total) {
     final theme = Theme.of(context);
     final description = _isFinance
-        ? '默认只看待审核。进入详情逐张核对客户货款类型、应收、铺底和可用预收(真实已审到账)后再人工放行；“定金”只是一种客户分类。'
+        ? '默认只看待审核。双击进入审核详情逐张核对客户货款类型、应收、铺底和可用预收(真实已审到账)后再人工放行；也可多选后批量放行/退回（整批原子提交）。'
         : '固定只看财务已放行的出货。仓库按待拣、拣货、已拣和异常推进；交接出库后才正式扣库存并形成应收。';
     return Semantics(
       container: true,
@@ -423,15 +825,40 @@ class _SalesShipmentTaskWorkbenchState
               SizedBox(width: double.infinity, child: search),
               const SizedBox(height: UtenSpacing.s8),
               chips,
+              if (_isFinance)
+                Padding(
+                  padding: const EdgeInsets.only(top: UtenSpacing.s4),
+                  child: Text(
+                    '单击选择，双击或长按打开审核详情',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
             ],
           );
         }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            search,
-            const SizedBox(width: UtenSpacing.s12),
-            Expanded(child: chips),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                search,
+                const SizedBox(width: UtenSpacing.s12),
+                Expanded(child: chips),
+              ],
+            ),
+            if (_isFinance)
+              Padding(
+                padding: const EdgeInsets.only(top: UtenSpacing.s4),
+                child: Text(
+                  '共 ${_result?.total ?? 0} 笔 · 单击选择，双击打开审核详情',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
           ],
         );
       },
@@ -453,6 +880,7 @@ class _SalesShipmentTaskWorkbenchState
     selected: _financeAudit == value,
     onSelected: (_) {
       setState(() => _financeAudit = value);
+      _clearSelection();
       _load(1);
     },
   );
@@ -476,6 +904,31 @@ class _SalesShipmentTaskWorkbenchState
       _load(1);
     },
   );
+
+  List<Widget> _batchActions(BuildContext context, Set<String> selectedIds) {
+    final issue = _selectionIssue();
+    return [
+      UtenButton(
+        key: const Key('finance-shipment-batch-reject'),
+        type: UtenButtonType.danger,
+        size: UtenButtonSize.large,
+        icon: Icons.reply_rounded,
+        isLoading: _busyDecision,
+        onPressed: issue == null && !_busyDecision ? _rejectSelected : null,
+        onDisabledTap: issue == null ? null : () => context.appWarning(issue),
+        child: Text('批量退回(${selectedIds.length})'),
+      ),
+      UtenButton(
+        key: const Key('finance-shipment-batch-approve'),
+        size: UtenButtonSize.large,
+        icon: Icons.fact_check_outlined,
+        isLoading: _busyDecision,
+        onPressed: issue == null && !_busyDecision ? _approveSelected : null,
+        onDisabledTap: issue == null ? null : () => context.appWarning(issue),
+        child: Text('批量放行(${selectedIds.length})'),
+      ),
+    ];
+  }
 
   List<MasterColumnDef<SalesDocListItem>> _columns(
     SalesMasterNameService names,

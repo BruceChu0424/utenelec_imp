@@ -168,4 +168,20 @@ public class SalesShipmentController {
     public java.util.Map<String, Object> financeAuditReverse(@PathVariable UUID id) {
         return service.financeAuditReverse(id);
     }
+
+    /** 批量放行（财务工作台多选）：整批同事务，任一项失败全部回滚。 */
+    @PostMapping("/finance-audit-batch")
+    @PreAuthorize("hasAuthority('finance_shipment_audit')")
+    public java.util.List<java.util.Map<String, Object>> financeAuditBatch(
+            @Valid @RequestBody com.uten.imp.features.sales.shipment.dto.ShipmentFinanceBatchDecisionRequest request) {
+        return service.financeAuditBatch(request);
+    }
+
+    /** 批量退回：整批共用同一退回原因，任一项失败全部回滚。 */
+    @PostMapping("/finance-audit-reject-batch")
+    @PreAuthorize("hasAuthority('finance_shipment_audit')")
+    public java.util.List<java.util.Map<String, Object>> financeAuditRejectBatch(
+            @Valid @RequestBody com.uten.imp.features.sales.shipment.dto.ShipmentFinanceBatchDecisionRequest request) {
+        return service.financeAuditRejectBatch(request);
+    }
 }

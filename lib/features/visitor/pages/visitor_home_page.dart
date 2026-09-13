@@ -8,6 +8,8 @@
 // 响应式：访客流程不经主外壳，全断点自套 UtenContentContainer 收敛
 //（列表页 maxWidth 1600，宽屏居中不拉宽，水平 gutter 由容器提供）。
 import 'package:flutter/material.dart';
+
+import '../../../components/layout/uten_floating_action_group.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -130,6 +132,8 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
                   onRefresh: () async =>
                       ref.invalidate(visitorApplicationsProvider(_query)),
                   child: MasterDataTableView<VisitorApplication>(
+                    bottomContentPadding:
+                        UtenFloatingActionGroup.scrollClearance,
                     key: const Key('visitor-home-table'),
                     columns: _columns(l10n),
                     items: page.items,

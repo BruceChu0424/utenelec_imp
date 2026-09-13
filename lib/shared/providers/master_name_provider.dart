@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 import 'session_provider.dart';
+import 'master_lookup_queue.dart';
 
 /// 货品搜索/选择用的轻量项。
 class GoodsOption {
@@ -103,6 +104,31 @@ class MasterDictionaryService {
   final Map<String, GoodsDictEntry> _goodsInfo = {};
   final Map<String, String> _employees = {};
   final Map<String, Future<void>> _dictionaryLoads = {};
+  // 100 UUIDs stay below ordinary HTTP request-line limits. Employees retain
+  // their object-authorized detail endpoint and at most four concurrent reads.
+  late final _goodsLookup = MasterLookupQueue(
+    batchSize: 100,
+    fetch: (ids) async {
+      final entries = await api.getList(
+        ApiEndpoints.goodsLookup,
+        query: {'ids': ids.join(',')},
+      );
+      for (final entry in entries) {
+        final id = entry['id'] as String;
+        final info = GoodsDictEntry.fromJson(entry);
+        _goods.putIfAbsent(id, () => info.name);
+        _goodsInfo[id] = info;
+      }
+    },
+  );
+  late final _employeeLookup = MasterLookupQueue(
+    batchSize: 1,
+    fetch: (ids) async {
+      final id = ids.single;
+      final employee = await api.get(ApiEndpoints.employee(id));
+      _employees[id] = (employee['fullName'] as String?) ?? '';
+    },
+  );
 
   /// Cache successful dictionaries independently and merge concurrent requests.
   /// Failure remains a display fallback, but the next explicit load can retry it.
@@ -132,18 +158,22 @@ class MasterDictionaryService {
     return pending;
   }
 
+  /// Load just the actual warehouse tree for operations that already have
+  /// product and counterparty display snapshots in their task DTO.
+  Future<void> ensureWarehousesLoaded() => ensureDictionaryLoaded(
+    ApiEndpoints.warehousesDict,
+    () => api.getList(ApiEndpoints.warehousesDict),
+    (entries) {
+      final hierarchy = entries.map(WarehouseDictEntry.fromJson).toList();
+      _warehouses = warehouseDisplayNames(hierarchy);
+      _warehouseList = hierarchy;
+      _warehouseById = {for (final entry in hierarchy) entry.id: entry};
+      _mainWarehouseCache.clear();
+    },
+  );
+
   Future<void> ensureCommonLoaded() => Future.wait([
-    ensureDictionaryLoaded(
-      ApiEndpoints.warehousesDict,
-      () => api.getList(ApiEndpoints.warehousesDict),
-      (entries) {
-        final hierarchy = entries.map(WarehouseDictEntry.fromJson).toList();
-        _warehouses = warehouseDisplayNames(hierarchy);
-        _warehouseList = hierarchy;
-        _warehouseById = {for (final entry in hierarchy) entry.id: entry};
-        _mainWarehouseCache.clear();
-      },
-    ),
+    ensureWarehousesLoaded(),
     ensureDictionaryLoaded(
       ApiEndpoints.currenciesDict,
       () => api.getList(ApiEndpoints.currenciesDict),
@@ -168,16 +198,7 @@ class MasterDictionaryService {
         .toSet();
     if (need.isEmpty) return;
     try {
-      final list = await api.getList(
-        ApiEndpoints.goodsLookup,
-        query: {'ids': need.join(',')},
-      );
-      for (final map in list) {
-        final id = map['id'] as String;
-        final info = GoodsDictEntry.fromJson(map);
-        _goods[id] = info.name;
-        _goodsInfo[id] = info;
-      }
+      await _goodsLookup.load(need);
     } catch (_) {
       // 同上：列表可降级为占位符。
     }
@@ -293,16 +314,7 @@ class MasterDictionaryService {
         .toSet();
     if (need.isEmpty) return;
     try {
-      final list = await api.getList(
-        ApiEndpoints.goodsLookup,
-        query: {'ids': need.join(',')},
-      );
-      for (final map in list) {
-        final id = map['id'] as String;
-        final info = GoodsDictEntry.fromJson(map);
-        _goods.putIfAbsent(id, () => info.name);
-        _goodsInfo[id] = info;
-      }
+      await _goodsLookup.load(need);
     } catch (_) {
       // 同上：辅助信息可降级。
     }
@@ -316,12 +328,7 @@ class MasterDictionaryService {
         .toSet();
     if (need.isEmpty) return;
     try {
-      await Future.wait(
-        need.map((id) async {
-          final employee = await api.get(ApiEndpoints.employee(id));
-          _employees[id] = (employee['fullName'] as String?) ?? '';
-        }),
-      );
+      await _employeeLookup.load(need);
     } catch (_) {
       // 名称解析可降级为占位符，不阻塞展示。
     }

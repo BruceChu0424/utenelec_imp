@@ -14,7 +14,8 @@ class ProductionMaterialAnalysisWorkflowContractTest {
 
     @Test
     void notifyUsesOpenExternalCoverageAndDoesNotCountDoneActions() throws Exception {
-        String source = source("features/production/analysis/MaterialAnalysisCommandService.java");
+        String source = source("features/production/analysis/MaterialAnalysisCommandService.java")
+                + source("features/production/analysis/MaterialAnalysisSupplyCoverageReader.java");
 
         assertThat(source).contains("activeOpenActionQty");
         assertThat(source).contains("status IN ('OPEN','CREATED','IN_PROGRESS')");

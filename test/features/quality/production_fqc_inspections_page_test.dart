@@ -2,12 +2,18 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
+import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/quality/models/production_fqc_inspection.dart';
+import 'package:uten_imp/features/quality/pages/production_fqc_handling_page.dart';
 import 'package:uten_imp/features/quality/pages/production_fqc_inspections_page.dart';
+import 'package:uten_imp/features/quality/pages/quality_batch_approval_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 const _inspectionId = '10000000-0000-0000-0000-000000000001';
 const _reportNo = 'RB202608280001';
@@ -19,17 +25,54 @@ Future<void> _pumpPage(
 }) async {
   await tester.binding.setSurfaceSize(const Size(375, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
+  // 批量审批页依赖 shared_preferences（页面偏好缓存）。
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(api),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
+        sharedPreferencesProvider.overrideWithValue(preferences),
       ],
-      child: const MaterialApp(home: ProductionFqcInspectionsPage()),
+      // 带路由壳：2026-09-12 起双击进 FQC 办理页、批量审批进汇总页（都不再弹窗）。
+      child: MaterialApp.router(
+        routerConfig: GoRouter(
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (_, _) => const ProductionFqcInspectionsPage(),
+            ),
+            GoRoute(
+              path:
+                  '${RouteName.productionFqcInspectionHandlingBase}/:inspectionId',
+              builder: (_, state) => ProductionFqcInspectionPage(
+                inspectionId: state.pathParameters['inspectionId']!,
+                extra: state.extra,
+              ),
+            ),
+            GoRoute(
+              path: RouteName.warehouseInspectionBatchApproval,
+              builder: (_, state) => QualityBatchApprovalPage(
+                selection: state.extra is QualityBatchApprovalSelection
+                    ? state.extra! as QualityBatchApprovalSelection
+                    : const QualityBatchApprovalSelection(),
+              ),
+            ),
+          ],
+        ),
+      ),
     ),
   );
   await tester.pumpAndSettle();
+}
+
+Future<void> _drainAsyncWork(WidgetTester tester) async {
+  await tester.pump();
+  for (var i = 0; i < 12; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
 }
 
 MasterDataTableView<ProductionFqcInspection> _taskTable(WidgetTester tester) =>
@@ -99,25 +142,21 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     await _doubleTapRow(tester, _reportNo);
-    expect(
-      find.byKey(const Key('production-fqc-detail-$_inspectionId')),
-      findsOneWidget,
-    );
-    final decide = find.byKey(
-      const Key('production-fqc-decide-$_inspectionId'),
-    );
-    expect(decide, findsOneWidget);
-    await tester.tap(decide);
-    await tester.pumpAndSettle();
-    expect(find.text('登记生产成品质检决定'), findsOneWidget);
-    expect(find.text('本次合格数量'), findsOneWidget);
+    // 2026-09-12 弹窗改页：进入 FQC 单任务办理页（详情事实 + 决定表单）。
+    expect(find.byKey(const Key('fqc-inspection-facts-table')), findsOneWidget);
+    final submit = find.byKey(const Key('fqc-inspection-submit-report'));
+    expect(submit, findsOneWidget);
+    expect(find.text('合格数量'), findsOneWidget);
 
-    await tester.tap(find.text('确认决定'));
+    await tester.tap(submit);
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
+    await _drainAsyncWork(tester);
 
     expect(api.decisionBody?['decision'], 'PASS');
     expect(api.decisionBody?['passQty'], 10);
-    expect(api.decisionBody?['idempotencyKey'], startsWith('fqc-decision-'));
+    expect(api.decisionBody?['idempotencyKey'], startsWith('fqc-report-'));
+    // 决定成功带结果返回：行已本地移除（不等刷新）。
     expect(find.text(_reportNo), findsNothing);
     expect(_taskTable(tester).items, isEmpty);
     expect(find.text('当前筛选下没有生产质检任务'), findsOneWidget);
@@ -142,7 +181,8 @@ void main() {
             Perm.productionQualityInspectionApprove,
           },
           canDecide: false,
-          capabilityCalls: 1,
+          // 列表 _load 查一次 + 办理页开页查一次。
+          capabilityCalls: 2,
         ),
         (
           name: 'view-only authority',
@@ -157,12 +197,13 @@ void main() {
 
       expect(_taskTable(tester).selectable, isFalse);
       await _doubleTapRow(tester, _reportNo);
+      // 办理页只读态：无决定表单，只有详情事实与证据。
       expect(
-        find.byKey(const Key('production-fqc-detail-$_inspectionId')),
+        find.byKey(const Key('fqc-inspection-facts-table')),
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('production-fqc-decide-$_inspectionId')),
+        find.byKey(const Key('fqc-inspection-submit-report')),
         findsNothing,
       );
       expect(find.textContaining('当前为只读查看'), findsOneWidget);
@@ -184,12 +225,10 @@ void main() {
       },
     );
     await _doubleTapRow(tester, _reportNo);
-    await tester.tap(
-      find.byKey(const Key('production-fqc-decide-$_inspectionId')),
-    );
+    await tester.tap(find.byKey(const Key('fqc-inspection-submit-report')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('确认决定'));
-    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
+    await _drainAsyncWork(tester);
 
     expect(find.text(_reportNo), findsNothing);
     expect(_taskTable(tester).items, isEmpty);
@@ -200,7 +239,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('selected active tasks expose atomic pass-all floating action', (
+  testWidgets('selected active tasks go to batch approval page (pass-all)', (
     tester,
   ) async {
     final api = _FqcApi();
@@ -216,16 +255,23 @@ void main() {
     await tester.tap(find.text(_reportNo));
     await tester.pump();
     expect(_taskTable(tester).selectedIds, {_inspectionId});
-    final action = find.byKey(const Key('production-fqc-batch-pass-all'));
+    // 2026-09-12 与待检处置统一：右下角「批量审批」进汇总页（默认全勾=全部合格）。
+    final action = find.byKey(const Key('production-fqc-batch-approval'));
     expect(action, findsOneWidget);
     await tester.tap(action);
     await tester.pumpAndSettle();
-    expect(find.text('批量全部合格 1 项'), findsOneWidget);
-    await tester.tap(find.text('确认全部合格'));
+    expect(
+      find.byKey(const Key('batch-approval-submit-report')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('勾选即全部合格'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('batch-approval-submit-report')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
+    await _drainAsyncWork(tester);
 
     expect(api.batchBody?['inspectionIds'], [_inspectionId]);
-    expect(api.batchBody?['idempotencyKey'], startsWith('fqc-pass-all-'));
+    expect(api.batchBody?['idempotencyKey'], startsWith('fqc-batch-approval-'));
     expect(find.text(_reportNo), findsNothing);
     expect(_taskTable(tester).items, isEmpty);
     expect(tester.takeException(), isNull);

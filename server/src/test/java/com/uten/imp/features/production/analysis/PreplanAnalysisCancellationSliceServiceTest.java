@@ -22,6 +22,8 @@ import static org.mockito.Mockito.when;
 
 class PreplanAnalysisCancellationSliceServiceTest {
 
+    private interface OriginHooks extends ObjectProvider<PreplanOriginEntitlementHook> {}
+
     @Test
     void fulfilledSourceCancellationReleasesOnlySourceBeneficiarySlice()
             throws Exception {
@@ -193,7 +195,7 @@ class PreplanAnalysisCancellationSliceServiceTest {
                 new PreplanAnalysisStockPegService(
                         em, mock(TxSessionVars.class), currentUser,
                         mock(InventoryMutationLock.class), entitlement,
-                        mock(ObjectProvider.class));
+                        mock(OriginHooks.class));
         return new CancellationFixture(
                 service, entitlement, sliceUpdate, closeUpdate,
                 legacyUpdate, analysisId, sql);

@@ -9,6 +9,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -569,7 +571,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                       UtenSpacing.s12,
                       UtenSpacing.s12,
                       UtenSpacing.s12,
-                      UtenSpacing.s12 + 88,
+                      UtenFloatingActionGroup.scrollClearance,
                     ),
                     children: [
                       Card(

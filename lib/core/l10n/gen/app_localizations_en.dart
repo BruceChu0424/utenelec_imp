@@ -3185,7 +3185,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get productionMaterialRecheckReady =>
-      'Materials are ready. Draw orders were created for the actual warehouses. Start after all materials have been issued.';
+      'Materials are ready. Select the tasks and submit a material request in My Workshop Tasks. Start after the warehouse has issued all materials.';
 
   @override
   String get productionMaterialRecheckWaiting =>
@@ -3585,4 +3585,632 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get productionMaterialViewUsage => 'View usage records';
+
+  @override
+  String get systemSettingInvalidInteger =>
+      'Enter a valid non-negative integer';
+
+  @override
+  String get systemSettingInvalidValue =>
+      'The setting is outside its allowed range';
+
+  @override
+  String get systemSettingEnabled => 'Enabled';
+
+  @override
+  String get systemSettingDisabled => 'Disabled';
+
+  @override
+  String get systemSettingFixFields => 'Check the highlighted settings first';
+
+  @override
+  String get systemSettingUnsavedRefresh =>
+      'Save or revert your changes before refreshing';
+
+  @override
+  String get systemSettingEffectTiming =>
+      'Security limits apply to subsequent actions and token lifetimes to newly issued tokens. Celebrations and audit retention apply on their scheduled runs. Changes are audited and require password confirmation.';
+
+  @override
+  String get auditSummaryUnavailable =>
+      'Summary unavailable; event records remain available';
+
+  @override
+  String get auditSummaryRetry => 'Retry summary';
+
+  @override
+  String get auditWorkspaceDescription =>
+      'Review sessions by person and time, then follow events to business changes.';
+
+  @override
+  String get materialReasonLabel => 'Reason';
+
+  @override
+  String get materialReasonRequired => 'Enter a reason';
+
+  @override
+  String materialReasonTooLong(int max) {
+    return 'Use no more than $max characters for the reason';
+  }
+
+  @override
+  String materialReasonTooShort(int min) {
+    return 'Enter at least $min characters for the reason';
+  }
+
+  @override
+  String get auditFiltersTitle => 'Operation, business object and event type';
+
+  @override
+  String warehouseOutboundBatchAction(String action) {
+    return 'Batch $action';
+  }
+
+  @override
+  String get warehouseOutboundBatchReview => 'Review sales outbound tasks';
+
+  @override
+  String get warehouseOutboundBatchHint =>
+      'Check goods, quantities, units, warehouses and suggested locations before confirming the current work stage.';
+
+  @override
+  String warehouseOutboundBatchConfirm(String action, int count) {
+    return 'Confirm $action for $count selected documents?';
+  }
+
+  @override
+  String get warehouseOutboundBatchStopped =>
+      'Batch processing stopped. Return and refresh before selecting unfinished tasks.';
+
+  @override
+  String get warehouseOutboundBatchUnknown =>
+      'No definite result was received. Return and refresh to check the current status before proceeding.';
+
+  @override
+  String get warehouseOutboundBatchStale =>
+      'The task status or allowed actions have changed. Refresh and review.';
+
+  @override
+  String get warehouseOutboundBatchEmpty =>
+      'The selected tasks are no longer actionable. Return and refresh the list.';
+
+  @override
+  String get warehouseOutboundBatchResult => 'Processing result';
+
+  @override
+  String get warehouseOutboundBatchDone => 'Completed';
+
+  @override
+  String get warehouseOutboundBatchPending => 'Not processed';
+
+  @override
+  String get warehouseOutboundBatchFailed => 'Failed; review required';
+
+  @override
+  String warehouseOutboundBatchSelection(int count) {
+    return '$count documents selected';
+  }
+
+  @override
+  String get warehouseOutboundBatchSelect => 'Select actionable tasks first';
+
+  @override
+  String get warehouseOutboundBatchReason => 'Processing note';
+
+  @override
+  String get warehouseOutboundBatchReasonRequired =>
+      'Enter a specific explanation';
+
+  @override
+  String get warehouseOutboundBillNo => 'Shipment number';
+
+  @override
+  String get warehouseOutboundClient => 'Customer';
+
+  @override
+  String get warehouseOutboundWarehouse => 'Warehouse';
+
+  @override
+  String get warehouseOutboundStatus => 'Warehouse status';
+
+  @override
+  String get warehouseOutboundLineNo => 'Line';
+
+  @override
+  String get warehouseOutboundGoodsCode => 'Goods code';
+
+  @override
+  String get warehouseOutboundGoodsName => 'Goods name';
+
+  @override
+  String get warehouseOutboundPlaceHint => 'Suggested location';
+
+  @override
+  String get warehouseOutboundColor => 'Color';
+
+  @override
+  String get warehouseOutboundUnit => 'Unit';
+
+  @override
+  String get warehouseOutboundQuantity => 'Shipment quantity';
+
+  @override
+  String get warehouseOutboundWeight => 'Weight';
+
+  @override
+  String get warehouseOutboundParcelQuantity => 'Packages';
+
+  @override
+  String get warehouseOutboundCartonCount => 'Cartons';
+
+  @override
+  String get warehouseOutboundClientProductCode => 'Customer product code';
+
+  @override
+  String get warehouseOutboundClientModel => 'Customer model';
+
+  @override
+  String get warehouseOutboundSourceOrder => 'Source order';
+
+  @override
+  String get warehouseOutboundStartPicking => 'Start picking';
+
+  @override
+  String get warehouseOutboundFinishPicking => 'Complete picking';
+
+  @override
+  String get warehouseOutboundHandOver => 'Hand over shipment';
+
+  @override
+  String get warehouseOutboundRestorePending => 'Restore pending picking';
+
+  @override
+  String get warehouseStockOutboundTitle => 'Review outbound documents';
+
+  @override
+  String get warehouseStockOutboundAction => 'Batch outbound';
+
+  @override
+  String get warehouseStockOutboundConfirm => 'Confirm batch outbound';
+
+  @override
+  String warehouseStockOutboundConfirmMessage(int count) {
+    return 'Issue the quantities shown for $count selected documents?\nEach document is approved separately, deducting stock from its actual warehouse and recording your approval. Processing stops on an error; successful documents remain completed.';
+  }
+
+  @override
+  String get warehouseStockOutboundHint =>
+      'Check goods, quantities, units and actual warehouses. Selecting a line selects its entire document. To change quantities, edit the draft first.';
+
+  @override
+  String get warehouseStockOutboundLoadFailed =>
+      'Unable to load outbound details. Please retry.';
+
+  @override
+  String warehouseStockOutboundCompleted(int count) {
+    return 'Completed $count outbound documents';
+  }
+
+  @override
+  String get warehouseStockOutboundDone => 'Issued';
+
+  @override
+  String get warehouseStockOutboundUnavailable => 'Currently unavailable';
+
+  @override
+  String get warehouseStockOutboundProcessing =>
+      'Confirming outbound documents';
+
+  @override
+  String get warehouseStockOutboundBillNo => 'Outbound document';
+
+  @override
+  String get warehouseStockOutboundPlace => 'Actual location';
+
+  @override
+  String get warehouseStockOutboundQuantity => 'Outbound quantity';
+
+  @override
+  String get warehouseStockOutboundSource => 'Source document';
+
+  @override
+  String get warehouseStockOutboundRemark => 'Notes';
+
+  @override
+  String get warehouseSubcontractOutboundBatchTitle => 'Batch outbound details';
+
+  @override
+  String get warehouseSubcontractOutboundBatchAction => 'Batch outbound';
+
+  @override
+  String get warehouseSubcontractOutboundBatchConfirm =>
+      'Confirm batch outbound';
+
+  @override
+  String get warehouseSubcontractOutboundReviewHint =>
+      'Check each quantity, weight and actual warehouse before confirming outbound.';
+
+  @override
+  String get warehouseSubcontractOutboundBatchHint =>
+      'Lines are selected together for each outbound document. Reduce quantities for a partial issue. Each document is saved and approved separately; completed results are retained. Processing pauses on errors. Verify the result before continuing unprocessed documents.';
+
+  @override
+  String get warehouseSubcontractOutboundDocuments => 'Document details';
+
+  @override
+  String get warehouseSubcontractOutboundLines => 'Outbound lines';
+
+  @override
+  String get warehouseSubcontractOutboundOrder => 'Source order';
+
+  @override
+  String get warehouseSubcontractOutboundSupplier => 'Subcontractor';
+
+  @override
+  String get warehouseSubcontractOutboundWarehouse => 'Issue warehouse';
+
+  @override
+  String get warehouseSubcontractOutboundWorker => 'Handler';
+
+  @override
+  String get warehouseSubcontractOutboundDate => 'Outbound date';
+
+  @override
+  String get warehouseSubcontractOutboundDeliveryDate => 'Delivery date';
+
+  @override
+  String get warehouseSubcontractOutboundGoods => 'Goods';
+
+  @override
+  String get warehouseSubcontractOutboundColor => 'Colour';
+
+  @override
+  String get warehouseSubcontractOutboundUnit => 'Unit';
+
+  @override
+  String get warehouseSubcontractOutboundPlanned => 'Planned quantity';
+
+  @override
+  String get warehouseSubcontractOutboundPrepared => 'Prepared quantity';
+
+  @override
+  String get warehouseSubcontractOutboundIssued => 'Issued quantity';
+
+  @override
+  String get warehouseSubcontractOutboundAvailable => 'Maximum this issue';
+
+  @override
+  String get warehouseSubcontractOutboundQuantity => 'Issue quantity';
+
+  @override
+  String get warehouseSubcontractOutboundWeight => 'Actual weight';
+
+  @override
+  String get warehouseSubcontractOutboundPlace => 'Location';
+
+  @override
+  String get warehouseSubcontractOutboundStatus => 'Result';
+
+  @override
+  String get warehouseSubcontractOutboundPending => 'Pending outbound';
+
+  @override
+  String get warehouseSubcontractOutboundDone => 'Issued';
+
+  @override
+  String get warehouseSubcontractOutboundPaused => 'Paused; verify the result';
+
+  @override
+  String get warehouseSubcontractOutboundUncertain =>
+      'The receipt is uncertain. Verify the result before continuing.';
+
+  @override
+  String get warehouseSubcontractOutboundChanged =>
+      'The document has changed or been processed. Return, refresh and select it again.';
+
+  @override
+  String get warehouseSubcontractOutboundSelectRequired =>
+      'Select at least one outbound task.';
+
+  @override
+  String get warehouseSubcontractOutboundSelectionLimit =>
+      'Select at most 50 tasks per batch.';
+
+  @override
+  String get warehouseSubcontractOutboundWarehouseRequired =>
+      'Select an issue warehouse.';
+
+  @override
+  String get warehouseSubcontractOutboundQuantityInvalid =>
+      'Issue quantity must be greater than zero and cannot exceed the maximum this issue.';
+
+  @override
+  String get warehouseSubcontractOutboundWeightInvalid =>
+      'Actual weight must be empty or a number greater than zero.';
+
+  @override
+  String get warehouseSubcontractOutboundLoadFailed =>
+      'Could not load outbound details. Please retry.';
+
+  @override
+  String get warehouseSubcontractOutboundConfirmResponsibility =>
+      'Confirmation records the signed-in employee as responsible for this outbound approval.';
+
+  @override
+  String get warehouseSubcontractOutboundSubcontractEffects =>
+      'Approval issues the target goods from the selected warehouse to the subcontractor. Returned goods still require registration and quality inspection.';
+
+  @override
+  String warehouseSubcontractOutboundBatchResult(int done, int total) {
+    return 'Completed $done of $total tasks.';
+  }
+
+  @override
+  String get warehouseSubcontractOutboundContinue =>
+      'Continue unprocessed tasks';
+
+  @override
+  String get warehouseSubcontractOutboundVerify => 'Verify processing result';
+
+  @override
+  String get warehouseSubcontractOutboundSelectAll =>
+      'Select all outbound lines';
+
+  @override
+  String get warehouseSubcontractOutboundDraft => 'Outbound draft';
+
+  @override
+  String get warehouseSubcontractOutboundRemark => 'Remark';
+
+  @override
+  String get warehouseSubcontractOutboundNoLines =>
+      'No outbound lines are currently available';
+
+  @override
+  String get warehouseSubcontractOutboundLegacyParent =>
+      'Historical parent goods';
+
+  @override
+  String get warehouseStockOutboundConfirmSingle => 'Confirm outbound';
+
+  @override
+  String get warehouseStockOutboundSeries => 'Series';
+
+  @override
+  String get warehouseSubcontractOutboundDraftsGenerated =>
+      'Outbound drafts have been generated. Review each draft\'s actual warehouse and quantities before confirming outbound.';
+
+  @override
+  String get warehouseSubcontractOutboundPrepareDrafts =>
+      'Generate drafts and review';
+
+  @override
+  String get warehouseOutboundBatchDocuments => 'Document information';
+
+  @override
+  String get warehouseOutboundBatchLines => 'Outbound lines';
+
+  @override
+  String get warehouseOutboundBatchBillDate => 'Document date';
+
+  @override
+  String get warehouseOutboundBatchWorker => 'Handler';
+
+  @override
+  String get warehouseOutboundBatchMaker => 'Created by';
+
+  @override
+  String get warehouseOutboundBatchCreatedAt => 'Created at';
+
+  @override
+  String get warehouseOutboundBatchUpdatedAt => 'Work updated at';
+
+  @override
+  String get warehouseSubcontractOutboundDocumentRemark => 'Document notes';
+
+  @override
+  String get warehouseSubcontractOutboundLineRemark => 'Line notes';
+
+  @override
+  String get warehouseSubcontractOutboundWarehouseSyncHint =>
+      'Defaults to the original document\'s actual warehouse. Changing it updates every line belonging to that document.';
+
+  @override
+  String get warehouseSubcontractOutboundDocumentRemarkHint =>
+      'These notes are shared by every line of the same outbound document. Use line notes for information specific to one line.';
+
+  @override
+  String get productionBatchTitle => 'Batch production and material request';
+
+  @override
+  String get productionBatchPermission =>
+      'You do not have permission to arrange batch material requests.';
+
+  @override
+  String get productionBatchSelectTask =>
+      'Select a waiting work order from workshop tasks.';
+
+  @override
+  String get productionBatchInvalidQuantity =>
+      'Enter a positive quantity with up to four decimal places.';
+
+  @override
+  String get productionBatchPreviewFailed =>
+      'Unable to review the producible batch. Please retry.';
+
+  @override
+  String get productionBatchReplay =>
+      'This batch was already arranged; no duplicate tasks were created.';
+
+  @override
+  String productionBatchSubmittedReuse(String quantity, String unit) {
+    return 'Arranged $quantity $unit using previously issued materials. Return to workshop tasks to start.';
+  }
+
+  @override
+  String productionBatchSubmitted(
+    String quantity,
+    String unit,
+    String remaining,
+  ) {
+    return 'Submitted the material request for $quantity $unit; $remaining $unit remain for a later batch.';
+  }
+
+  @override
+  String productionBatchUncertain(String action) {
+    return 'The result is not yet confirmed. Use “$action” to check this same request. The reviewed batch is retained.';
+  }
+
+  @override
+  String productionBatchRejected(String message) {
+    return '$message. Review the batch quantity and material summary again.';
+  }
+
+  @override
+  String get productionBatchRetryRequest => 'Retry this material request';
+
+  @override
+  String get productionBatchRetryArrange => 'Retry this batch arrangement';
+
+  @override
+  String get productionBatchConfirmRequest => 'Confirm batch material request';
+
+  @override
+  String get productionBatchConfirmArrange => 'Confirm this production batch';
+
+  @override
+  String get productionBatchSubmitting => 'Submitting this batch';
+
+  @override
+  String get productionBatchSubmittingHint =>
+      'Checking this batch\'s quantity and material sources. Please wait.';
+
+  @override
+  String get productionBatchProductFallback => 'Production item not confirmed';
+
+  @override
+  String get productionBatchPlan => 'Production plan';
+
+  @override
+  String get productionBatchWorkOrder => 'Work order';
+
+  @override
+  String get productionBatchOriginal => 'Awaiting production';
+
+  @override
+  String get productionBatchOriginalHint =>
+      'Quantity awaiting arrangement for this work order';
+
+  @override
+  String get productionBatchReady => 'Complete-kit capacity';
+
+  @override
+  String get productionBatchReadyHint =>
+      'Based on qualified physical materials';
+
+  @override
+  String get productionBatchSelected => 'Reviewed batch quantity';
+
+  @override
+  String get productionBatchSelectedHint =>
+      'Quantity arranged upon confirmation';
+
+  @override
+  String get productionBatchRemaining => 'Remaining after this batch';
+
+  @override
+  String get productionBatchRemainingHint => 'Retained for later arrangement';
+
+  @override
+  String get productionBatchUnitUnknown => 'Unit not confirmed';
+
+  @override
+  String get productionBatchSetup => 'Arrange this production batch';
+
+  @override
+  String get productionBatchQuantity => 'Quantity for this batch';
+
+  @override
+  String productionBatchQuantityHint(String quantity, String unit) {
+    return 'Up to $quantity $unit. After editing, review the material summary before confirming.';
+  }
+
+  @override
+  String get productionBatchReview => 'Review material summary';
+
+  @override
+  String get productionBatchReviewReady => 'Batch reviewed';
+
+  @override
+  String get productionBatchNeedsReview => 'Quantity changed; review required';
+
+  @override
+  String get productionBatchNeedsReviewHint =>
+      'The table shows the previous review. Review again before confirming this batch.';
+
+  @override
+  String get productionBatchNoKit => 'This batch cannot be arranged yet';
+
+  @override
+  String get productionBatchNoKitHint =>
+      'Available materials cannot form a complete batch. Review again after materials are received.';
+
+  @override
+  String get productionBatchReuse => 'No additional materials required';
+
+  @override
+  String get productionBatchReuseHint =>
+      'This batch uses materials already issued for earlier batches. Confirm, then return to workshop tasks to start.';
+
+  @override
+  String get productionBatchFlow =>
+      'Confirm request → Warehouse issues materials → Start in workshop';
+
+  @override
+  String productionBatchRemainingText(String quantity, String unit) {
+    return 'After this batch, $quantity $unit remain for later arrangement.';
+  }
+
+  @override
+  String get productionBatchAllRemaining =>
+      'This batch covers all production remaining on this work order.';
+
+  @override
+  String get productionBatchMaterials => 'Materials for this batch';
+
+  @override
+  String productionBatchMaterialCount(int lines, int warehouses) {
+    return '$lines material lines · $warehouses warehouses';
+  }
+
+  @override
+  String get productionBatchWarehouse => 'Actual issue warehouse';
+
+  @override
+  String get productionBatchGoodsCode => 'Material code';
+
+  @override
+  String get productionBatchGoodsName => 'Material name';
+
+  @override
+  String get productionBatchColor => 'Color';
+
+  @override
+  String get productionBatchUnit => 'Issue unit';
+
+  @override
+  String get productionBatchMaterialQuantity => 'Quantity to request';
+
+  @override
+  String get productionBatchMaterialQuantityHint =>
+      'Additional material needed for this batch, in this row\'s unit and actual warehouse.';
+
+  @override
+  String get productionBatchNoAdditionalMaterials =>
+      'No additional materials are needed; arrange production using the existing material sources.';
+
+  @override
+  String productionBatchConfirmedSummary(String quantity, String unit) {
+    return 'This batch: $quantity $unit';
+  }
 }

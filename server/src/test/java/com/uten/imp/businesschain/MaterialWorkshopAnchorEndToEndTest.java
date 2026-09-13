@@ -58,8 +58,179 @@ class MaterialWorkshopAnchorEndToEndTest {
     @Autowired com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService finance;
     @Autowired com.uten.imp.features.common.taskclaim.TaskClaimService claims;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
+    @Autowired com.uten.imp.features.stock.StockDocService stockDocuments;
+    @Autowired com.uten.imp.features.master.goods.GoodsBomService goodsBom;
     private FullChainEndToEndTest fixture;
     @BeforeEach void prepare(){fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);}
+
+    @Test void unchangedRefreshPreservesBomRowsButStillRecomputesCurrentStockAndVersion() {
+        Case c = create("incremental-snapshot", false);
+        AnalysisView before = analyses.detail(c.analysis());
+        Map<UUID, String> originalRows = materialRowVersions(c);
+
+        AnalysisView unchanged = refreshCase(c, "unchanged");
+
+        assertEquals(before.version() + 1, unchanged.version());
+        assertEquals(originalRows, materialRowVersions(c), "Unchanged BOM nodes must not toggle active or reset allocation");
+        postGenericStock(c, c.world().goodsC(), "4000", "OTHER_IN");
+        fixture.loginAs(c.planner());
+        AnalysisView changed = refreshCase(c, "new-stock");
+        qty("4000", material(changed, c.materials().getFirst()).allocatedAvailableQty());
+        qty("6000", material(changed, c.materials().getFirst()).demandSupplyGapQty());
+        assertNotEquals(originalRows.get(c.materials().getFirst()), materialRowVersions(c).get(c.materials().getFirst()));
+        Map<UUID, String> updatedRows = materialRowVersions(c);
+        refreshCase(c, "stable-stock");
+        assertEquals(updatedRows, materialRowVersions(c), "Existing nonzero allocation must remain untouched when its inputs did not change");
+    }
+
+    @Test void removingABomEdgeOnlyDeactivatesThatHistoricalNode() {
+        Case c = create("incremental-bom-delete", false);
+        Map<UUID, String> before = materialRowVersions(c);
+        UUID removedMaterial = c.materials().getFirst();
+        UUID edge = db.queryForObject("SELECT id FROM goods_bom_items WHERE goods_id=? AND component_goods_id=? AND is_deleted=FALSE",
+                UUID.class, c.root(), c.world().goodsC());
+        fixture.loginAs(c.world().superAdminUserId());
+        goodsBom.delete(c.root(), edge);
+        fixture.loginAs(c.planner());
+
+        AnalysisView refreshed = refreshCase(c, "removed-edge");
+
+        assertFalse(db.queryForObject("SELECT active FROM production_material_analysis_materials WHERE id=?", Boolean.class, removedMaterial));
+        assertTrue(refreshed.flatMaterials().stream().noneMatch(row -> row.materialLineId().equals(removedMaterial)));
+        var after = materialRowVersions(c);
+        for (var row : before.entrySet()) if (!row.getKey().equals(removedMaterial)) assertEquals(row.getValue(), after.get(row.getKey()));
+    }
+
+    private Map<UUID, String> materialRowVersions(Case c) {
+        Map<UUID, String> result = new LinkedHashMap<>();
+        db.query("SELECT id,xmin::text FROM production_material_analysis_materials WHERE analysis_id=? AND node_role='BOM_COMPONENT' ORDER BY id",
+                rs -> { result.put(rs.getObject(1, UUID.class), rs.getString(2)); }, c.analysis());
+        return result;
+    }
+
+    private AnalysisView refreshCase(Case c, String key) {
+        AnalysisView view = analyses.detail(c.analysis());
+        ProductView source = view.products().stream().filter(row -> row.sourceType().equals("OTHER")).findFirst().orElseThrow();
+        return analyses.preview(new PreviewRequest(c.analysis(), view.version(), view.fingerprint(), c.world().warehouseId(),
+                key + "-" + c.analysis(), List.of(new PreviewItem("OTHER", null, c.root(), null, c.world().unitId(),
+                c.sourceRef(), source.sourceReason(), source.deliveryDate(), source.requestedQty()))));
+    }
+
+    @Test void genericStockIncreaseReducesNewChildQuotaWithoutARefreshOnPageEntry() {
+        Case c = create("anchor-live-stock-in", false);
+        AnalysisView stale = analyses.detail(c.analysis());
+        postGenericStock(c, c.world().goodsC(), "4000", "OTHER_IN");
+        fixture.loginAs(c.planner());
+        assertEquals(stale.version(), analyses.detail(c.analysis()).version(), "Generic stock posting does not silently rewrite the analysis");
+
+        var result = commands.issueWorkshopPlans(c.analysis(), request(c, stale, c.materials().getFirst(), "6000", "live-stock", true));
+
+        UUID anchor = material(result.analysis(), c.materials().getFirst()).planAnchorAnalysisLineId();
+        qty("6000", product(result.analysis(), anchor).requestedQty());
+        assertQuotaAndPlans(c, anchor, "6000", 1);
+    }
+
+    @Test void genericStockCoveringTheWholeCandidateRejectsStaleIssueWithoutCreatingAnAnchor() {
+        Case c = create("anchor-stock-covered", false);
+        AnalysisView stale = analyses.detail(c.analysis());
+        postGenericStock(c, c.world().goodsC(), "10000", "OTHER_IN");
+        fixture.loginAs(c.planner());
+
+        ApiException rejected = assertThrows(ApiException.class, () -> commands.issueWorkshopPlans(
+                c.analysis(), request(c, stale, c.materials().getFirst(), "10000", "covered", true)));
+
+        assertTrue(rejected.getMessage().contains("刷新"));
+        assertEquals(0, count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?", c.analysis()));
+        assertEquals(0, count("SELECT count(*) FROM production_material_analysis_items WHERE analysis_id=? AND source_type='MAKE_COMPONENT'", c.analysis()));
+    }
+
+    @Test void genericStockDecreaseMakesTheRootWaitAndReplayDoesNotCreateDraws() {
+        Case c = create("anchor-live-stock-out", false);
+        postGenericStock(c, c.world().goodsC(), "10000", "OTHER_IN");
+        postGenericStock(c, c.world().goodsD(), "10000", "OTHER_IN");
+        fixture.loginAs(c.planner());
+        AnalysisView before = analyses.detail(c.analysis());
+        AnalysisView ready = analyses.preview(new PreviewRequest(c.analysis(), before.version(), before.fingerprint(),
+                c.world().warehouseId(), "stock-ready-" + c.analysis(), List.of(new PreviewItem("OTHER", null,
+                c.root(), null, c.world().unitId(), c.sourceRef(), "实际入库后刷新", BusinessTime.today().plusDays(10), new BigDecimal("10000")))));
+        qty("10000", ready.products().getFirst().readyFinishQty());
+        postGenericStock(c, c.world().goodsD(), "10000", "OTHER_OUT");
+        fixture.loginAs(c.planner());
+        var request = new IssueWorkshopPlansRequest(ready.version(), ready.fingerprint(), "stock-out-" + c.analysis(),
+                c.world().warehouseId(), BusinessTime.today(), BusinessTime.today().plusDays(10), true,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(ready.products().getFirst().analysisLineId(), new BigDecimal("10000"))));
+
+        var result = commands.issueWorkshopPlans(c.analysis(), request);
+        var replay = commands.issueWorkshopPlans(c.analysis(), request);
+
+        UUID plan = result.plans().getFirst().planId();
+        assertEquals(plan, replay.plans().getFirst().planId());
+        assertEquals(1, count("SELECT count(*) FROM production_execution_segments WHERE plan_id=? AND status='WAITING'", plan));
+        assertEquals(0, count("SELECT count(*) FROM production_planning_package_documents doc "
+                + "JOIN production_planning_packages package ON package.id=doc.package_id "
+                + "JOIN stock_documents stock ON stock.id=doc.document_id "
+                + "WHERE package.plan_id=? AND doc.document_type='DRAW' AND stock.is_deleted=FALSE", plan));
+    }
+
+    @Test void stockCoverageUsesActualSiblingLeafAndExcludesAnotherMainWarehouse() {
+        Case c = create("anchor-leaf-coverage", false);
+        UUID leaf = UUID.randomUUID();
+        UUID unrelated = UUID.randomUUID();
+        db.update("INSERT INTO warehouses(id,code,name,parent_id,is_accountable) VALUES (?,?,?, ?,TRUE)",
+                leaf, "LEAF-" + leaf, "实际入库分仓", c.world().warehouseId());
+        db.update("INSERT INTO warehouses(id,code,name,is_accountable) VALUES (?,?,?,TRUE)",
+                unrelated, "OTHER-" + unrelated, "其它主仓库存");
+        postGenericStock(c, c.world().goodsC(), "4000", "OTHER_IN", leaf);
+        postGenericStock(c, c.world().goodsC(), "10000", "OTHER_IN", unrelated);
+        fixture.loginAs(c.planner());
+        AnalysisView stale = analyses.detail(c.analysis());
+
+        var result = commands.issueWorkshopPlans(c.analysis(), request(c, stale,
+                c.materials().getFirst(), "6000", "leaf-current", true));
+
+        UUID anchor = material(result.analysis(), c.materials().getFirst()).planAnchorAnalysisLineId();
+        qty("6000", product(result.analysis(), anchor).requestedQty());
+        qty("4000", db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=? AND color_id IS NULL",
+                BigDecimal.class, leaf, c.world().goodsC()));
+        qty("10000", db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=? AND color_id IS NULL",
+                BigDecimal.class, unrelated, c.world().goodsC()));
+    }
+
+    @Test void twoParentPathsKeepTheirPartialFormalCoverageOnTheirOwnOriginalNodes() {
+        Case c = create("anchor-formal-paths", true);
+        postGenericStock(c, c.world().goodsC(), "6000", "OTHER_IN");
+        fixture.loginAs(c.planner());
+        var parents = analyses.detail(c.analysis()).flatMaterials().stream()
+                .filter(row -> row.level() == 1 && "MAKE".equals(row.sourceConfirmed()))
+                .map(MaterialView::materialLineId).toList();
+        assertEquals(2, parents.size());
+        for (UUID parent : parents) issue(c, parent, "3000", "partial-" + parent, true);
+
+        var view = analyses.detail(c.analysis());
+        for (UUID materialId : c.materials()) {
+            qty("3000", material(view, materialId).allocatedAvailableQty());
+            qty("7000", material(view, materialId).demandSupplyGapQty());
+        }
+        qty("6000", c.materials().stream().map(id -> material(view, id).allocatedAvailableQty())
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        assertEquals(2, count("SELECT count(*) FROM production_material_demands demand JOIN production_plans plan ON plan.id=demand.plan_id "
+                + "WHERE plan.material_analysis_id=? AND demand.required_qty=3000 AND demand.is_deleted=FALSE", c.analysis()));
+    }
+
+    private void postGenericStock(Case c, UUID goods, String quantity, String type) {
+        postGenericStock(c, goods, quantity, type, c.world().warehouseId());
+    }
+
+    private void postGenericStock(Case c, UUID goods, String quantity, String type, UUID warehouse) {
+        fixture.loginAs(c.world().superAdminUserId());
+        var request = new com.uten.imp.features.stock.dto.StockDocSaveRequest();
+        request.setDocType(type); request.setWarehouseId(warehouse); request.setBillDate(BusinessTime.today());
+        var item = new com.uten.imp.features.stock.dto.StockDocItemLine();
+        item.setGoodsId(goods); item.setUnitId(c.world().unitId()); item.setUnitRate(BigDecimal.ONE);
+        item.setQty(new BigDecimal(quantity)); item.setPrice(BigDecimal.TEN);
+        item.setAmountOriginal(item.getQty().multiply(item.getPrice())); item.setAmountLocal(item.getAmountOriginal());
+        request.setItems(List.of(item)); stockDocuments.approve(stockDocuments.create(request).getId());
+    }
 
     @Test void repeatedMaterialLineReusesQuotaAnd6000Then4000AreTwoDeltasNotCumulativeTotals(){
         Case c=create("anchor-partial",false);

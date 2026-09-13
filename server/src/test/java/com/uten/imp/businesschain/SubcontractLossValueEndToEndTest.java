@@ -135,9 +135,57 @@ class SubcontractLossValueEndToEndTest {
         money(normalHeld(c),"0");assertTwoChildren();
     }
 
+    @Test void nullOrderWarehouseKeepsOneCostScopeAcrossActualReceiptWarehousesAndReversals(){
+        var c=ready("normal-null-warehouse","3","3",true);
+        UUID firstWarehouse=warehouse("loss-first"),secondWarehouse=warehouse("loss-second");
+        assertNull(db.queryForObject("select warehouse_id from subcontract_orders where id=?",UUID.class,c.submitted().orderId()));
+        UUID firstReceipt=receive(c,"1",firstWarehouse);drain();
+        UUID scopePool=db.queryForObject("select product_pool_id from stock_value_production_cost_objects where execution_segment_id=?",UUID.class,c.item());
+        assertEquals(firstWarehouse,db.queryForObject("select warehouse_id from stock_value_pools where id=?",UUID.class,scopePool));
+        UUID secondReceipt=receive(c,"2",secondWarehouse);drain();
+        assertEquals(scopePool,db.queryForObject("select product_pool_id from stock_value_production_cost_objects where execution_segment_id=?",UUID.class,c.item()));
+        money(stock(c,firstWarehouse),"51");money(stock(c,secondWarehouse),"102");
+        assertEquals(Set.of(firstWarehouse,secondWarehouse),new HashSet<>(db.queryForList("""
+                select pool.warehouse_id from stock_value_production_cost_outputs output
+                join stock_value_nodes node on node.id=output.source_node_id
+                join stock_value_pools pool on pool.id=node.pool_id where output.execution_segment_id=?
+                """,UUID.class,c.item())));
+        fixture.loginAs(c.world().superAdminUserId());receipts.reverse(secondReceipt);drain();
+        money(stock(c,firstWarehouse),"51");money(stock(c,secondWarehouse),"0");
+        receipts.reverse(firstReceipt);drain();
+        money(stock(c,firstWarehouse),"0");
+        receive(c,"3",secondWarehouse);drain();
+        money(stock(c,secondWarehouse),"153");
+        assertEquals(scopePool,db.queryForObject("select product_pool_id from stock_value_production_cost_objects where execution_segment_id=?",UUID.class,c.item()));
+        assertNull(db.queryForObject("select warehouse_id from subcontract_orders where id=?",UUID.class,c.submitted().orderId()));
+        assertEquals(1,integer("select count(*) from stock_value_production_cost_outputs where execution_segment_id=? and withdrawn_movement_id is null",c.item()));
+        assertTwoChildren();
+    }
+
+    @Test void normalLossBeforeFirstReceiptWaitsForAnActualOutputAndThenCollectsItsOriginalValue(){
+        var c=ready("normal-loss-before-output","5","5",true);
+        loss(c,"2","2");drain();
+        assertEquals(0,integer("select count(*) from stock_value_production_cost_objects where execution_segment_id=?",c.item()));
+        money(normalHeld(c),"2");
+        UUID firstWarehouse=warehouse("loss-later-first"),secondWarehouse=warehouse("loss-later-second");
+        receive(c,"1",firstWarehouse);drain();money(stock(c,firstWarehouse),"51.4");
+        UUID scopePool=db.queryForObject("select product_pool_id from stock_value_production_cost_objects where execution_segment_id=?",UUID.class,c.item());
+        receive(c,"2",secondWarehouse);drain();money(stock(c,secondWarehouse),"102.8");
+        assertEquals(scopePool,db.queryForObject("select product_pool_id from stock_value_production_cost_objects where execution_segment_id=?",UUID.class,c.item()));
+        money(normalHeld(c),"0.8");
+        assertEquals(1,integer("select count(*) from stock_value_production_cost_inputs where execution_segment_id=?",c.item()));
+        assertTwoChildren();
+    }
+
     private CaseFixture ready(String tag,String quantity,String amount){
+        return ready(tag,quantity,amount,false);
+    }
+    private CaseFixture ready(String tag,String quantity,String amount,boolean omitOrderWarehouse){
         var w=fixture.seedWorld(tag);fixture.loginAs(w.superAdminUserId());opening(w,quantity,amount);
-        var submitted=fixture.submitLeafSubcontractForFinance(w,new BigDecimal(quantity));
+        var orderWorld=omitOrderWarehouse?new FullChainEndToEndTest.World(w.departmentId(),w.employeeId(),w.superAdminUserId(),
+                w.goodsA(),w.goodsB(),w.goodsC(),w.goodsD(),w.goodsE(),w.clientId(),w.supplierId(),null,
+                w.unitId(),w.currencyId(),w.colorId(),w.unitLegacy()):w;
+        var submitted=fixture.submitLeafSubcontractForFinance(orderWorld,new BigDecimal(quantity));
         fixture.loginAs(submitted.reviewerUserId());fixture.approvePendingFinance("SUBCONTRACT",submitted.orderId());fixture.loginAs(w.superAdminUserId());
         UUID item=db.queryForObject("select id from subcontract_order_items where order_id=?",UUID.class,submitted.orderId());
         UUID issue=db.queryForObject("select header.id from subcontract_material_issues header join subcontract_material_issue_items line on line.issue_id=header.id where line.order_item_id=? and header.status=0 and not header.is_deleted",UUID.class,item);
@@ -169,8 +217,11 @@ class SubcontractLossValueEndToEndTest {
         UUID id=wastes.create(command).getId();wastes.approve(id);return id;
     }
     private UUID receive(CaseFixture c,String quantity){
+        return receive(c,quantity,c.world().warehouseId());
+    }
+    private UUID receive(CaseFixture c,String quantity,UUID warehouse){
         fixture.loginAs(c.world().superAdminUserId());var command=new com.uten.imp.features.subcontract.receipt.dto.ReceiptSaveRequest();
-        command.setBillDate(BusinessTime.today());command.setSupplierId(c.world().supplierId());command.setWarehouseId(c.world().warehouseId());
+        command.setBillDate(BusinessTime.today());command.setSupplierId(c.world().supplierId());command.setWarehouseId(warehouse);
         command.setCurrencyId(c.world().currencyId());command.setExchangeRate(BigDecimal.ONE);command.setTaxRate(BigDecimal.ZERO);
         command.setSettlementMethodId(db.queryForObject("select settlement_method_id from subcontract_orders where id=?",UUID.class,c.submitted().orderId()));
         var line=new com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine();line.setGoodsId(c.world().goodsE());line.setOrderItemId(c.item());line.setUnitId(c.world().unitId());line.setUnitRate(BigDecimal.ONE);
@@ -184,8 +235,24 @@ class SubcontractLossValueEndToEndTest {
         fixture.loginAs(c.world().superAdminUserId());return receipt;
     }
     private void changeQty(CaseFixture c,String qty){orders.changeQty(c.submitted().orderId(),new OrderQtyChangeRequest(List.of(new OrderQtyChangeItem(c.item(),new BigDecimal(qty)))));}
-    private void drain(){for(int n=0;n<200;n++){if(worker.runBatch()==0)return;}fail("原价值传播必须有限完成，不能在同scope内循环重算");}
+    private void drain(){
+        long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+        for(int n=0;n<200&&System.nanoTime()<deadline;n++){
+            int applied=worker.runBatch();
+            if(!worker.hasPendingWork())return;
+            // A scheduler may already own the remaining scope/task. Zero local
+            // work is not proof that its uncommitted durable work has finished.
+            if(applied==0)try{Thread.sleep(25);}catch(InterruptedException interrupted){
+                Thread.currentThread().interrupt();throw new AssertionError("等待价值任务时被中断",interrupted);
+            }
+        }
+        fail("原价值传播必须有限完成，不能在同scope内循环重算");
+    }
     private BigDecimal stock(CaseFixture c){return decimal("select amount_local from stock_balances where warehouse_id=? and goods_id=?",c.world().warehouseId(),c.world().goodsE());}
+    private BigDecimal stock(CaseFixture c,UUID warehouse){return decimal("select amount_local from stock_balances where warehouse_id=? and goods_id=?",warehouse,c.world().goodsE());}
+    private UUID warehouse(String tag){
+        UUID id=UUID.randomUUID();db.update("INSERT INTO warehouses(id,code,name,status,is_accountable) VALUES (?,?,?,'使用',TRUE)",id,"WH-"+id,tag);return id;
+    }
     private BigDecimal normalHeld(CaseFixture c){return decimal("select coalesce(sum(node.owned_value_local),0) from stock_value_nodes node where node.owner_kind='COST_WIP' and node.owner_id=?",c.item());}
     private BigDecimal decimal(String sql,Object...args){return db.queryForObject(sql,BigDecimal.class,args);}
     private int integer(String sql,Object...args){return db.queryForObject(sql,Integer.class,args);}

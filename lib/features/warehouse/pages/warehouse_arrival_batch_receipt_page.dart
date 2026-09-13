@@ -20,6 +20,7 @@ import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
@@ -29,6 +30,7 @@ import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -54,6 +56,7 @@ import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../providers/warehouse_arrival_fill_memory.dart';
 import '../providers/warehouse_count_refresh.dart';
+import '../widgets/batch_place_fill_dialog.dart';
 import '../widgets/warehouse_autofill_text_field.dart';
 import '../widgets/warehouse_arrival_source_field.dart';
 import '../repositories/procurement_inbound_repository.dart';
@@ -228,15 +231,26 @@ class _WarehouseArrivalBatchReceiptPageState
   /// 行内选仓：落到 [_writeTargets]（选中一批就整批落仓），并记住这次选的仓。
   Future<void> _pickLineWarehouse(_BatchArrivalLine line) async {
     if (_saving) return;
-    final targets = _writeTargets(line);
-    final suggested = line.prefill.suggestedWarehouseId;
+    await _pickWarehouseFor(
+      _writeTargets(line),
+      fallbackWarehouseId: line.prefill.suggestedWarehouseId,
+    );
+  }
+
+  /// 选仓核心（行内点击与右键「批量设置入库仓库」共用）：面板返回后落到目标行、
+  /// 记住这次选的仓。
+  Future<void> _pickWarehouseFor(
+    List<_BatchArrivalLine> targets, {
+    String? fallbackWarehouseId,
+  }) async {
+    if (_saving || targets.isEmpty) return;
     final picked = await showUtenWarehousePickerPanel(
       context,
       hierarchy: ref.read(masterNameServiceProvider).warehouseHierarchy,
-      initialWarehouseId: line.warehouseId ?? suggested,
+      initialWarehouseId: targets.first.warehouseId ?? fallbackWarehouseId,
       title: targets.length > 1
           ? '批量设置入库仓库（选中 ${targets.length} 行）'
-          : '选择入库仓库 · ${line.item.goodsName}',
+          : '选择入库仓库 · ${targets.first.item.goodsName}',
     );
     if (picked == null || !mounted) return;
     setState(() {
@@ -251,6 +265,31 @@ class _WarehouseArrivalBatchReceiptPageState
     if (targets.length > 1) {
       context.appInfo('已把入库仓库写到选中的 ${targets.length} 行');
     }
+  }
+
+  /// 右键「批量设置库位号」：一次输入应用到全部选中行（整托同架场景），
+  /// 并记住这次写的库位号（下次登记自动带）。
+  Future<void> _batchFillStockPlace(List<_BatchArrivalLine> rows) async {
+    if (_saving || rows.isEmpty) return;
+    final place = await showBatchPlaceFillDialog(
+      context,
+      rowCount: rows.length,
+      inputKey: const Key('warehouse-arrival-batch-place-input'),
+      applyKey: const Key('warehouse-arrival-batch-place-apply'),
+    );
+    if (place == null || !mounted) return;
+    if (place.isEmpty) {
+      context.appWarning('库位号不能为空');
+      return;
+    }
+    setState(() {
+      for (final line in rows) {
+        line.setCheckedStockPlace(place);
+      }
+    });
+    ref
+        .read(warehouseArrivalFillMemoryProvider.notifier)
+        .rememberStockPlace(place);
   }
 
   /// 行内写库位：同样落到 [_writeTargets]，并记住这次写的库位号。
@@ -504,7 +543,9 @@ class _WarehouseArrivalBatchReceiptPageState
                 child: _buildForm(context, theme, canRegister),
               ),
       ),
-      bottomNavigationBar: _lines.isEmpty
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _lines.isEmpty
           ? null
           : _buildBottomBar(theme, canRegister),
     );
@@ -602,8 +643,25 @@ class _WarehouseArrivalBatchReceiptPageState
               // 2026-09-11 表头上方四个常驻按钮全撤：「全选/取消全选」由表头
               // 复选框承担，「移出本次登记」搬进行右键菜单，「批量设置入库仓库 /
               // 批量填写库位」改成「勾选多行后在任意一行改仓/写库位即批量落值」。
+              // 2026-09-12 再补右键菜单显式批量入口（与产成品登记页统一口径）。
               showSelectAllToggle: false,
               showRemoveRowsAction: false,
+              rowMenuExtraBuilder: canRegister && !_saving
+                  ? (context, selected) => [
+                      UtenMenuItem(
+                        label: '批量设置入库仓库 (${selected.length})',
+                        icon: Icons.warehouse_outlined,
+                        enabled: selected.isNotEmpty,
+                        onTap: () => _pickWarehouseFor(selected),
+                      ),
+                      UtenMenuItem(
+                        label: '批量设置库位号 (${selected.length})',
+                        icon: Icons.edit_note_outlined,
+                        enabled: selected.isNotEmpty,
+                        onTap: () => _batchFillStockPlace(selected),
+                      ),
+                    ]
+                  : null,
               emptyMessage: '没有可登记明细，请返回任务中心刷新',
               footer: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -927,42 +985,28 @@ class _WarehouseArrivalBatchReceiptPageState
   );
 
   Widget _buildBottomBar(ThemeData theme, bool canRegister) {
-    // 合计不再挂底部操作条（2026-09-11 用户口径：明细表下方已有合计条，
-    // 底部再报一遍是重复），这里只剩取消 / 登记并送检。
-    return SafeArea(
-      child: Container(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          border: Border(
-            top: BorderSide(color: theme.colorScheme.outlineVariant),
-          ),
+    // 2026-09-12 用户口径「跟其他页面一样，悬浮的在右下角」：吸底操作条改
+    // UtenFloatingActionGroup（与品质批量审批页同款），只剩取消 / 登记并送检
+    //（合计在明细表下方的合计条，不在操作条重复）。
+    return UtenFloatingActionGroup(
+      children: [
+        UtenButton(
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
+          onPressed: _saving ? null : () => context.pop(),
+          child: const Text('取消'),
         ),
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            UtenButton(
-              type: UtenButtonType.secondary,
-              size: UtenButtonSize.large,
-              onPressed: _saving ? null : () => context.pop(),
-              child: const Text('取消'),
-            ),
-            const SizedBox(width: UtenSpacing.s12),
-            UtenButton(
-              key: const Key('warehouse-arrival-batch-submit'),
-              // 「点了就往下走一步」的主动作统一红底白字（全站口径）。
-              type: UtenButtonType.danger,
-              size: UtenButtonSize.large,
-              isLoading: _saving,
-              icon: Icons.fact_check_outlined,
-              onPressed: !canRegister || _saving || _lines.isEmpty
-                  ? null
-                  : _save,
-              child: const Text('登记并送检'),
-            ),
-          ],
+        UtenButton(
+          key: const Key('warehouse-arrival-batch-submit'),
+          // 「点了就往下走一步」的主动作统一红底白字（全站口径）。
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          isLoading: _saving,
+          icon: Icons.fact_check_outlined,
+          onPressed: !canRegister || _saving || _lines.isEmpty ? null : _save,
+          child: const Text('登记并送检'),
         ),
-      ),
+      ],
     );
   }
 

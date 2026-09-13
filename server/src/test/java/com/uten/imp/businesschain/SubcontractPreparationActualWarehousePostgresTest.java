@@ -69,7 +69,9 @@ class SubcontractPreparationActualWarehousePostgresTest {
                 "direct-owned-plan-"+orderItem,w.warehouseId(),BusinessTime.today(),null,true,
                 List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null,view.products().getFirst().analysisLineId(),BigDecimal.ONE,
                         BusinessTime.today(),null,null,null,null,null,null)))).plans().getFirst();
-        for(UUID draw:db.queryForList("SELECT draw_id FROM plan_draw_links WHERE plan_id=? AND NOT is_deleted",UUID.class,generated.planId())){
+        var directOwnedDraws=db.queryForList("SELECT draw_id FROM plan_draw_links WHERE plan_id=? AND NOT is_deleted",UUID.class,generated.planId());
+        fixture.requestWorkshopDraws("direct-owned",directOwnedDraws);
+        for(UUID draw:directOwnedDraws){
             com.uten.imp.features.stock.dto.StockDocIssueRequest issue=call(fixture,"drawIssueRequest",draw,"direct-owned-draw-"+draw,null,BigDecimal.ZERO);
             stock.approveAndIssue(draw,issue);
         }
@@ -120,7 +122,9 @@ class SubcontractPreparationActualWarehousePostgresTest {
                 ? List.of(new Object[]{b,"0.4"},new Object[]{c,"0.6"})
                 : java.util.Collections.singletonList(new Object[]{b,"1"});
         call(fixture,"produceInternal",world,leafPlanItem,leafGoods,"1");
-        for(UUID draw:db.queryForList("SELECT draw_id FROM plan_draw_links WHERE plan_id=? AND NOT is_deleted",UUID.class,childPlan)){
+        var scActualDraws=db.queryForList("SELECT draw_id FROM plan_draw_links WHERE plan_id=? AND NOT is_deleted",UUID.class,childPlan);
+        fixture.requestWorkshopDraws("sc-actual",scActualDraws);
+        for(UUID draw:scActualDraws){
             com.uten.imp.features.stock.dto.StockDocIssueRequest request=call(fixture,"drawIssueRequest",draw,"sc-actual-draw-"+draw,null,BigDecimal.ZERO);
             stock.approveAndIssue(draw,request);
         }

@@ -34,6 +34,8 @@ import '../../basic_data/models/master_facet.dart';
 import '../models/production_daily_report.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_material_analysis.dart';
+import '../models/material_priority_replenishment.dart';
+import '../models/material_future_transfer.dart';
 import '../models/production_plan.dart';
 import '../models/production_work_card.dart';
 import '../models/reportable_plan_line.dart';
@@ -83,6 +85,9 @@ class ProductionPlanRepository {
   final ApiClient api;
 
   static const _materialAnalysesBase = '/production/material-analyses';
+  static const _materialAnalysisProjection = {
+    'projection': 'shared-warehouses-v1',
+  };
 
   Future<PagedResult<ProductionPlanListItem>> list({
     int page = 1,
@@ -671,6 +676,7 @@ class ProductionPlanRepository {
   ) async {
     final json = await api.get(
       '$_materialAnalysesBase/$analysisId',
+      query: _materialAnalysisProjection,
     ); // ENDPOINT
     return ProductionMaterialAnalysisView.fromJson(json);
   }
@@ -688,6 +694,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/preview',
+      query: _materialAnalysisProjection,
       body: {
         'analysisId': ?analysisId,
         'version': ?expectedVersion,
@@ -706,8 +713,9 @@ class ProductionPlanRepository {
     required String idempotencyKey,
     required List<MaterialRouteDecision> decisions,
   }) async {
-    final json = await api.put(
+    final json = await api.putWithQuery(
       '$_materialAnalysesBase/${analysis.analysisId}/routes',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
@@ -725,6 +733,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/cancel',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
@@ -743,6 +752,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/actions/$actionId/cancel',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
@@ -761,6 +771,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/root-outputs/$eventId/revoke',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
@@ -775,14 +786,20 @@ class ProductionPlanRepository {
     required ProductionMaterialAnalysisView analysis,
     required String idempotencyKey,
     required List<String> actionGroupKeys,
+    List<MaterialSharedFutureClaimQuantity>? quantities,
+    bool allowLateSupply = false,
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/claim-shared-future',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
         'idempotencyKey': idempotencyKey,
         'actionGroupKeys': actionGroupKeys,
+        if (quantities != null)
+          'quantities': quantities.map((entry) => entry.toJson()).toList(),
+        if (allowLateSupply) 'allowLateSupply': true,
       },
     ); // ENDPOINT
     return ProductionMaterialAnalysisView.fromJson(json);
@@ -795,8 +812,9 @@ class ProductionPlanRepository {
     required String idempotencyKey,
     required List<MaterialAllocationPriorityInput> items,
   }) async {
-    final json = await api.put(
+    final json = await api.putWithQuery(
       '$_materialAnalysesBase/${analysis.analysisId}/allocation-priorities',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
@@ -819,6 +837,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/borrows',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
@@ -841,6 +860,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/borrows/$borrowId/revoke',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
@@ -878,6 +898,57 @@ class ProductionPlanRepository {
 
   /// 原计划让出已分配现货给另一份分析。两端版本/指纹同时参与 CAS；原计划
   /// 保留需求并进入“优先待补”，接受计划无需返还。
+  Future<PagedResult<MaterialCrossReallocationSourceCandidate>>
+  materialCrossReallocationSources({
+    required String targetAnalysisId,
+    required String targetMaterialLineId,
+    int page = 1,
+    int size = 20,
+    String keyword = '',
+  }) async {
+    final json = await api.get(
+      '$_materialAnalysesBase/$targetAnalysisId/materials/'
+      '$targetMaterialLineId/cross-reallocation-sources',
+      query: {
+        'page': page,
+        'size': size,
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      },
+    ); // ENDPOINT
+    return PagedResult.fromJson(
+      json,
+      MaterialCrossReallocationSourceCandidate.fromJson,
+    );
+  }
+
+  /// 从接受方发起仍使用同一让料命令、双端 CAS 和库存事务。
+  Future<ProductionMaterialAnalysisView> acceptMaterialCrossReallocation({
+    required ProductionMaterialAnalysisView targetAnalysis,
+    required String targetMaterialLineId,
+    required MaterialCrossReallocationSourceCandidate source,
+    required double qty,
+    required String reason,
+    required String idempotencyKey,
+  }) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/${source.sourceAnalysisId}/cross-reallocations',
+      query: {..._materialAnalysisProjection, 'returnTarget': true},
+      body: {
+        'sourceVersion': source.sourceVersion,
+        'sourceFingerprint': source.sourceFingerprint,
+        'sourceMaterialLineId': source.sourceMaterialLineId,
+        'targetAnalysisId': targetAnalysis.analysisId,
+        'targetVersion': targetAnalysis.version,
+        'targetFingerprint': targetAnalysis.fingerprint,
+        'targetMaterialLineId': targetMaterialLineId,
+        'qty': qty,
+        'reason': reason,
+        'idempotencyKey': idempotencyKey,
+      },
+    ); // ENDPOINT
+    return ProductionMaterialAnalysisView.fromJson(json);
+  }
+
   Future<ProductionMaterialAnalysisView> createMaterialCrossReallocation({
     required ProductionMaterialAnalysisView sourceAnalysis,
     required MaterialCrossReallocationCandidate target,
@@ -888,6 +959,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${sourceAnalysis.analysisId}/cross-reallocations',
+      query: _materialAnalysisProjection,
       body: {
         'sourceVersion': sourceAnalysis.version,
         'sourceFingerprint': sourceAnalysis.fingerprint,
@@ -903,6 +975,119 @@ class ProductionPlanRepository {
     ); // ENDPOINT
     return ProductionMaterialAnalysisView.fromJson(json);
   }
+
+  Future<MaterialPriorityReplenishmentPreview>
+  materialPriorityReplenishmentPreview({
+    required String sourceAnalysisId,
+    String? reallocationId,
+    String? idempotencyKey,
+    bool futureTransfer = false,
+  }) async => MaterialPriorityReplenishmentPreview.fromJson(
+    await api.get(
+      futureTransfer
+          ? (idempotencyKey != null
+                ? '$_materialAnalysesBase/${Uri.encodeComponent(sourceAnalysisId)}/future-transfer-replenishment-preview'
+                : '$_materialAnalysesBase/${Uri.encodeComponent(sourceAnalysisId)}/future-transfers/${Uri.encodeComponent(reallocationId!)}/replenishment-preview')
+          : idempotencyKey != null
+          ? '$_materialAnalysesBase/${Uri.encodeComponent(sourceAnalysisId)}/cross-reallocation-replenishment-preview'
+          : '$_materialAnalysesBase/${Uri.encodeComponent(sourceAnalysisId)}/cross-reallocations/${Uri.encodeComponent(reallocationId!)}/replenishment-preview',
+      query: {
+        ..._materialAnalysisProjection,
+        'idempotencyKey': ?idempotencyKey,
+      },
+    ),
+  );
+
+  Future<PagedResult<MaterialFutureTransferSource>>
+  materialFutureTransferSources({
+    required String targetAnalysisId,
+    required String targetMaterialId,
+    int page = 1,
+    int size = 20,
+    String keyword = '',
+  }) async {
+    final json = await api.getList(
+      '$_materialAnalysesBase/${Uri.encodeComponent(targetAnalysisId)}/materials/${Uri.encodeComponent(targetMaterialId)}/future-transfer-sources',
+    );
+    final all = json
+        .map(MaterialFutureTransferSource.fromJson)
+        .where(
+          (source) =>
+              keyword.trim().isEmpty ||
+              '${source.sourceLabel} ${source.goodsName ?? ''} ${source.goodsCode ?? ''}'
+                  .toLowerCase()
+                  .contains(keyword.trim().toLowerCase()),
+        )
+        .toList();
+    final start = ((page - 1) * size).clamp(0, all.length);
+    final end = (start + size).clamp(0, all.length);
+    return PagedResult(
+      items: all.sublist(start, end),
+      page: page,
+      size: size,
+      total: all.length,
+      totalPages: (all.length / size).ceil(),
+    );
+  }
+
+  Future<ProductionMaterialAnalysisView> createMaterialFutureTransfer({
+    required ProductionMaterialAnalysisView targetAnalysis,
+    required String targetMaterialId,
+    required MaterialFutureTransferSource source,
+    required double qty,
+    required bool allowLateSupply,
+    required String reason,
+    required String idempotencyKey,
+  }) async => ProductionMaterialAnalysisView.fromJson(
+    await api.post(
+      '$_materialAnalysesBase/${targetAnalysis.analysisId}/future-transfers',
+      body: {
+        'sourceAllocationId': source.sourceAllocationId,
+        'targetMaterialId': targetMaterialId,
+        'qty': qty,
+        'sourceVersion': source.sourceVersion,
+        'sourceFingerprint': source.sourceFingerprint,
+        'targetVersion': targetAnalysis.version,
+        'targetFingerprint': targetAnalysis.fingerprint,
+        'allowLateSupply': allowLateSupply,
+        'reason': reason,
+        'idempotencyKey': idempotencyKey,
+      },
+      query: _materialAnalysisProjection,
+    ),
+  );
+
+  Future<List<MaterialFutureTransferRecord>> materialFutureTransfers({
+    required String analysisId,
+    String? materialId,
+  }) async => (await api.getList(
+    '$_materialAnalysesBase/${Uri.encodeComponent(analysisId)}/future-transfers',
+    query: {'materialId': ?materialId},
+  )).map(MaterialFutureTransferRecord.fromJson).toList();
+
+  Future<ProductionMaterialAnalysisView> cancelMaterialFutureTransfer({
+    required String analysisId,
+    required MaterialFutureTransferRecord transfer,
+    required double qty,
+    required String reason,
+    required String idempotencyKey,
+    bool acceptPublicRelease = false,
+  }) async => ProductionMaterialAnalysisView.fromJson(
+    await api.post(
+      '$_materialAnalysesBase/$analysisId/future-transfers/${transfer.id}/cancel',
+      body: {
+        'qty': qty,
+        'sourceVersion': transfer.sourceVersion,
+        'sourceFingerprint': transfer.sourceFingerprint,
+        'targetVersion': transfer.targetVersion,
+        'targetFingerprint': transfer.targetFingerprint,
+        'reason': reason,
+        'idempotencyKey': idempotencyKey,
+        if (acceptPublicRelease) 'acceptPublicRelease': true,
+      },
+      query: _materialAnalysisProjection,
+    ),
+  );
 
   /// 撤销跨计划让料。调用方必须传两端最新 CAS；是否可撤销及阻断原因由
   /// 服务端记录权威决定，客户端不能按展示状态猜测。
@@ -920,6 +1105,7 @@ class ProductionPlanRepository {
     final json = await api.post(
       '$_materialAnalysesBase/$sourceAnalysisId/cross-reallocations/'
       '$crossReallocationId/revoke',
+      query: _materialAnalysisProjection,
       body: {
         'sourceVersion': sourceVersion,
         'sourceFingerprint': sourceFingerprint,
@@ -942,6 +1128,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/notify',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
@@ -970,6 +1157,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/issue-plans',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,

@@ -7,9 +7,136 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/repositories/sales_repository.dart';
 import 'package:uten_imp/features/sales/widgets/sales_plan_progress_panel.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
+  testWidgets(
+    'desktop product progress uses selectable columns and opens source details',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1500, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            salesRepositoryProvider(
+              SalesDocType.order,
+            ).overrideWithValue(_ShippableRepository()),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.salesShipmentView,
+              Perm.salesShipmentCreate,
+            }),
+            isSuperAdminProvider.overrideWithValue(false),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: SalesPlanProgressPanel(
+                  orderId: 'order-1',
+                  canShip: true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final table = tester.widget<MasterDataTableView<OrderPlanProgressLine>>(
+        find.byKey(const Key('sales-product-progress-table')),
+      );
+      expect(table.selectable, isTrue);
+      expect(
+        table.columns.map((column) => column.label),
+        containsAll(['产品', '订货', '已排', '已生产入库', '已发', '本次可发', '办理中']),
+      );
+      expect(table.idOf!(table.items.last), isNull);
+      await tester.tap(find.text('查看进度').first);
+      await tester.pumpAndSettle();
+      expect(find.text('产品甲 · 进度来源'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'selectable product progress prefills exact available lines without writing a shipment',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repository = _ShippableRepository();
+      Uri? opened;
+      final router = GoRouter(
+        initialLocation: '/',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => const Scaffold(
+              body: SingleChildScrollView(
+                child: SalesPlanProgressPanel(
+                  orderId: 'order-1',
+                  canShip: true,
+                ),
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/sales/shipments/new',
+            builder: (context, state) {
+              opened = state.uri;
+              return Scaffold(
+                body: TextButton(
+                  onPressed: context.pop,
+                  child: const Text('返回产品进度'),
+                ),
+              );
+            },
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            salesRepositoryProvider(
+              SalesDocType.order,
+            ).overrideWithValue(repository),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.salesShipmentView,
+              Perm.salesShipmentCreate,
+            }),
+            isSuperAdminProvider.overrideWithValue(false),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Checkbox>(
+              find.byKey(const ValueKey('sales-progress-select-order-item-2')),
+            )
+            .onChanged,
+        isNull,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('sales-progress-select-order-item-1')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        repository.reads,
+        1,
+        reason: 'selection must not refetch and reset product progress',
+      );
+      await tester.tap(find.byKey(const Key('sales-progress-create-shipment')));
+      await tester.pumpAndSettle();
+      expect(opened?.queryParameters, {
+        'sourceOrderId': 'order-1',
+        'orderItems': 'order-item-1:1.25',
+      });
+      await tester.tap(find.text('返回产品进度'));
+      await tester.pumpAndSettle();
+      expect(repository.reads, 2);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('submitted analysis plan is not shown as unplanned', (
     tester,
   ) async {
@@ -90,6 +217,37 @@ void main() {
       expect(find.text('计划 plan-1 执行段 segment-1'), findsOneWidget);
     },
   );
+}
+
+class _ShippableRepository extends SalesRepository {
+  _ShippableRepository() : super(ApiClient(Dio()), SalesDocType.order);
+  int reads = 0;
+  @override
+  Future<List<OrderPlanProgressLine>> planProgress(String id) async {
+    reads++;
+    return const [
+      OrderPlanProgressLine(
+        orderItemId: 'order-item-1',
+        goodsName: '产品甲',
+        qty: 1000,
+        plannedQty: 1000,
+        producedQty: 10,
+        shippedQty: 0,
+        shippableQty: 1.25,
+        pendingShipmentQty: 8.75,
+      ),
+      OrderPlanProgressLine(
+        orderItemId: 'order-item-2',
+        goodsName: '产品乙',
+        qty: 1000,
+        plannedQty: 1000,
+        producedQty: 0,
+        shippedQty: 0,
+        shippableQty: 0,
+        pendingShipmentQty: 0,
+      ),
+    ];
+  }
 }
 
 SalesRepository _analysisRepository() {

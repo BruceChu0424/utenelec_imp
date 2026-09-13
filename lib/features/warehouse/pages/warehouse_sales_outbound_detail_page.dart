@@ -11,6 +11,9 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -19,6 +22,8 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/warehouse_sales_outbound.dart';
 import '../repositories/warehouse_sales_outbound_repository.dart';
 import '../providers/warehouse_count_refresh.dart';
+import '../widgets/warehouse_sales_outbound_table_columns.dart';
+import '../widgets/warehouse_sales_picking_fields.dart';
 
 class WarehouseSalesOutboundDetailPage extends ConsumerStatefulWidget {
   const WarehouseSalesOutboundDetailPage({super.key, required this.id});
@@ -35,8 +40,23 @@ class _WarehouseSalesOutboundDetailPageState
   WarehouseSalesOutboundDetail? _detail;
   bool _loading = false;
   bool _acting = false;
+  bool _confirming = false;
+  bool _needsReview = false;
   String? _error;
   int _requestVersion = 0;
+  WarehouseSalesPickingDraft? _picking;
+
+  @override
+  void dispose() {
+    _picking?.dispose();
+    super.dispose();
+  }
+
+  void _replaceDetail(WarehouseSalesOutboundDetail detail) {
+    _picking?.dispose();
+    _detail = detail;
+    _picking = WarehouseSalesPickingDraft(detail);
+  }
 
   @override
   void initState() {
@@ -56,8 +76,9 @@ class _WarehouseSalesOutboundDetailPageState
           .detail(widget.id);
       if (!mounted || version != _requestVersion) return;
       setState(() {
-        _detail = detail;
+        _replaceDetail(detail);
         _loading = false;
+        _needsReview = false;
       });
     } on ApiException catch (error) {
       if (!mounted || version != _requestVersion) return;
@@ -75,31 +96,103 @@ class _WarehouseSalesOutboundDetailPageState
   }
 
   Future<void> _runAction(WarehouseSalesOutboundAction action) async {
-    if (_acting || _detail?.header.allows(action) != true) return;
-    final reason = await _confirmAction(action);
-    if (reason == null || !mounted) return;
-    setState(() => _acting = true);
+    if (_acting ||
+        _confirming ||
+        _loading ||
+        _needsReview ||
+        _error != null ||
+        _detail?.header.allows(action) != true) {
+      return;
+    }
+    final reviewed = _detail!;
+    if (action == WarehouseSalesOutboundAction.startPicking &&
+        _picking?.validate() == false) {
+      setState(() {});
+      context.appWarning(_picking!.error!);
+      return;
+    }
+    setState(() => _confirming = true);
     try {
+      final reason = await _confirmAction(action);
+      if (reason == null || !mounted) return;
+      setState(() {
+        _confirming = false;
+        _acting = true;
+      });
+      final repository = ref.read(warehouseSalesOutboundRepositoryProvider);
+      final latest = await repository.detail(widget.id);
+      if (!mounted) return;
+      if (warehouseSalesOutboundReviewSnapshot(latest) !=
+              warehouseSalesOutboundReviewSnapshot(reviewed) ||
+          !latest.header.allows(action)) {
+        setState(() {
+          _replaceDetail(latest);
+          _needsReview = true;
+          _error =
+              (Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+                      AppLocalizationsZh())
+                  .warehouseOutboundBatchStale;
+        });
+        context.appWarning(
+          (Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+                  AppLocalizationsZh())
+              .warehouseOutboundBatchStale,
+        );
+        return;
+      }
       final updated = await ref
           .read(warehouseSalesOutboundRepositoryProvider)
           .transition(
             widget.id,
             targetStatus: action.targetStatus,
             reason: reason,
+            warehouseId:
+                action == WarehouseSalesOutboundAction.startPicking &&
+                    reviewed.canSelectWarehouse
+                ? _picking?.warehouseId
+                : null,
+            stockPlaces: action == WarehouseSalesOutboundAction.startPicking
+                ? _picking?.stockPlaces
+                : null,
           );
       if (!mounted) return;
-      setState(() => _detail = updated);
+      if (updated.header.id != widget.id ||
+          updated.header.warehouseWorkStatus != action.targetStatus) {
+        throw const FormatException();
+      }
+      setState(() => _replaceDetail(updated));
       // 交接出库会减少待出库角标；流转成功立即失效全部仓库任务计数。
       invalidateWarehouseTaskCounts(ref);
       context.appSuccess('${action.label}已完成');
     } on ApiException catch (error) {
       if (!mounted) return;
+      setState(() {
+        _needsReview = true;
+        _error = error.message;
+      });
       context.appError(error.message);
-      if (error.code == 'CONFLICT') await _load();
     } catch (_) {
-      if (mounted) context.appError('${action.label}失败，请稍后重试');
+      if (mounted) {
+        setState(() {
+          _needsReview = true;
+          _error =
+              (Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+                      AppLocalizationsZh())
+                  .warehouseOutboundBatchUnknown;
+        });
+        context.appError(
+          (Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+                  AppLocalizationsZh())
+              .warehouseOutboundBatchUnknown,
+        );
+      }
     } finally {
-      if (mounted) setState(() => _acting = false);
+      if (mounted) {
+        setState(() {
+          _acting = false;
+          _confirming = false;
+        });
+      }
     }
   }
 
@@ -145,13 +238,15 @@ class _WarehouseSalesOutboundDetailPageState
           ),
           actionsAlignment: MainAxisAlignment.center,
           actions: [
-            TextButton(
-              style: TextButton.styleFrom(minimumSize: const Size(88, 48)),
+            UtenButton(
+              type: UtenButtonType.secondary,
+              size: UtenButtonSize.large,
               onPressed: () => Navigator.of(dialogContext).pop(),
               child: const Text('取消'),
             ),
-            FilledButton(
-              style: FilledButton.styleFrom(minimumSize: const Size(88, 48)),
+            UtenButton(
+              type: UtenButtonType.danger,
+              size: UtenButtonSize.large,
               onPressed: () {
                 final reason = controller.text.trim();
                 if (action.requiresReason && reason.isEmpty) {
@@ -173,141 +268,173 @@ class _WarehouseSalesOutboundDetailPageState
   @override
   Widget build(BuildContext context) {
     final detail = _detail;
+    final rows = [
+      if (detail != null)
+        for (final line in detail.lines)
+          WarehouseSalesOutboundTableRow(detail, line),
+    ];
     final actions = detail == null
         ? const <WarehouseSalesOutboundAction>[]
         : WarehouseSalesOutboundAction.values
               .where(detail.header.allows)
               .toList(growable: false);
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '销售出库详情',
-        subtitle: '仓库作业视图',
-        leading: UtenBackButton(
-          onPressed: () =>
-              popOrBackTo(context, defaultPath: '/warehouse/sales-outbound'),
-        ),
-        actions: [
-          UtenAppBarActionButton(
-            key: const Key('warehouse-sales-outbound-detail-refresh'),
-            label: '刷新',
-            icon: Icons.refresh_rounded,
-            isLoading: _loading && detail != null,
-            onPressed: _loading || _acting ? null : _load,
+    return PopScope(
+      canPop: !_acting,
+      child: Scaffold(
+        appBar: UtenAppBar(
+          title: '销售出库详情',
+          subtitle: '仓库作业视图',
+          leading: UtenBackButton(
+            onPressed: _acting
+                ? null
+                : () => popOrBackTo(
+                    context,
+                    defaultPath: '/warehouse/sales-outbound',
+                  ),
           ),
-        ],
-      ),
-      body: SafeArea(
-        child: _loading && detail == null
-            ? const UtenSkeletonList(itemCount: 6)
-            : _error != null && detail == null
-            ? UtenEmpty.error(
-                message: _error,
-                actionLabel: '重新加载',
-                onAction: _load,
-              )
-            : detail == null
-            ? UtenEmpty.error(message: '任务不存在或已不在仓库作业范围')
-            // 2026-09-11 折叠头+表内滚（对齐采购/货品资料页）：上滑先收头部
-            // （作业状态横幅/错误提示/事实卡），明细标题吸顶后表格内部继续滚。
-            : UtenContentContainer.wide(
-                child: UtenCollapsingHeaderScrollView(
-                  collapsingHeader: Padding(
-                    padding: const EdgeInsets.only(top: UtenSpacing.s16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _OutboundStatusBanner(detail: detail),
-                        if (_error != null) ...[
-                          const SizedBox(height: UtenSpacing.s8),
-                          Semantics(
-                            liveRegion: true,
-                            child: Text(
-                              _error!,
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.error,
+          actions: [
+            UtenAppBarActionButton(
+              key: const Key('warehouse-sales-outbound-detail-refresh'),
+              label: '刷新',
+              icon: Icons.refresh_rounded,
+              isLoading: _loading && detail != null,
+              onPressed: _loading || _acting ? null : _load,
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: _loading && detail == null
+              ? const UtenSkeletonList(itemCount: 6)
+              : _error != null && detail == null
+              ? UtenEmpty.error(
+                  message: _error,
+                  actionLabel: '重新加载',
+                  onAction: _load,
+                )
+              : detail == null
+              ? UtenEmpty.error(message: '任务不存在或已不在仓库作业范围')
+              // 2026-09-11 折叠头+表内滚（对齐采购/货品资料页）：上滑先收头部
+              // （作业状态横幅/错误提示/事实卡），明细标题吸顶后表格内部继续滚。
+              : UtenContentContainer.wide(
+                  child: UtenCollapsingHeaderScrollView(
+                    collapsingHeader: Padding(
+                      padding: const EdgeInsets.only(top: UtenSpacing.s16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _OutboundStatusBanner(detail: detail),
+                          if (_error != null) ...[
+                            const SizedBox(height: UtenSpacing.s8),
+                            Semantics(
+                              liveRegion: true,
+                              child: Text(
+                                _error!,
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
                               ),
                             ),
-                          ),
+                          ],
+                          const SizedBox(height: UtenSpacing.s12),
+                          _factsCard(detail),
+                          if (detail.header.allows(
+                                WarehouseSalesOutboundAction.startPicking,
+                              ) &&
+                              _picking != null) ...[
+                            const SizedBox(height: UtenSpacing.s12),
+                            WarehouseSalesPickingFields(
+                              draft: _picking!,
+                              enabled:
+                                  !_acting && !_confirming && !_needsReview,
+                              onChanged: () => setState(() {}),
+                            ),
+                          ],
+                          const SizedBox(height: UtenSpacing.s16),
                         ],
-                        const SizedBox(height: UtenSpacing.s12),
-                        _factsCard(detail),
-                        const SizedBox(height: UtenSpacing.s16),
+                      ),
+                    ),
+                    // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
+                    body: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '拣货明细 (${detail.lines.length})',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: UtenSpacing.s8),
+                        Expanded(
+                          child:
+                              MasterDataTableView<
+                                WarehouseSalesOutboundTableRow
+                              >(
+                                key: const Key(
+                                  'warehouse-sales-outbound-detail-table',
+                                ),
+                                primary: true,
+                                bottomContentPadding:
+                                    UtenFloatingActionGroup.scrollClearance,
+                                columns: warehouseSalesOutboundTableColumns(
+                                  l10n:
+                                      Localizations.of<AppLocalizations>(
+                                        context,
+                                        AppLocalizations,
+                                      ) ??
+                                      AppLocalizationsZh(),
+                                  rows: rows,
+                                  warehouseNameOf: (_) =>
+                                      _picking?.warehouseName,
+                                  stockPlaceControllerOf:
+                                      detail.header.allows(
+                                        WarehouseSalesOutboundAction
+                                            .startPicking,
+                                      )
+                                      ? (row) => _picking?.places[row.line.id]
+                                      : null,
+                                  editingEnabled:
+                                      !_acting && !_confirming && !_needsReview,
+                                ),
+                                items: rows,
+                                rowKeyOf: (row) => row.key,
+                                facets: const {},
+                                nullCounts: const {},
+                                filters: const {},
+                                onFilterChanged: (_, _) {},
+                                emptyMessage: '该任务暂无拣货明细',
+                              ),
+                        ),
                       ],
                     ),
                   ),
-                  // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
-                  body: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '拣货明细 (${detail.lines.length})',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s8),
-                      Expanded(
-                        child: MasterDataTableView<WarehouseSalesOutboundLine>(
-                          key: const Key(
-                            'warehouse-sales-outbound-detail-table',
-                          ),
-                          primary: true,
-                          columns: _lineColumns(detail.lines),
-                          items: detail.lines,
-                          facets: const {},
-                          nullCounts: const {},
-                          filters: const {},
-                          onFilterChanged: (_, _) {},
-                          emptyMessage: '该任务暂无拣货明细',
-                        ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s16),
-                    ],
-                  ),
                 ),
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButton: actions.isEmpty
+            ? null
+            : UtenFloatingActionGroup(
+                children: [
+                  for (final action in actions)
+                    UtenButton(
+                      key: Key(
+                        'warehouse-sales-outbound-action-${action.targetStatus}',
+                      ),
+                      size: UtenButtonSize.large,
+                      type: UtenButtonType.danger,
+                      icon: _actionIcon(action),
+                      isLoading: _acting,
+                      onPressed:
+                          _acting ||
+                              _confirming ||
+                              _loading ||
+                              _needsReview ||
+                              _error != null
+                          ? null
+                          : () => _runAction(action),
+                      child: Text(action.label),
+                    ),
+                ],
               ),
       ),
-      bottomNavigationBar: actions.isEmpty
-          ? null
-          : SafeArea(
-              child: Container(
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  border: Border(
-                    top: BorderSide(
-                      color: Theme.of(context).colorScheme.outlineVariant,
-                    ),
-                  ),
-                ),
-                child: Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: UtenSpacing.s8,
-                  runSpacing: UtenSpacing.s8,
-                  children: [
-                    for (final action in actions)
-                      UtenButton(
-                        key: Key(
-                          'warehouse-sales-outbound-action-'
-                          '${action.targetStatus}',
-                        ),
-                        size: UtenButtonSize.large,
-                        type:
-                            action ==
-                                WarehouseSalesOutboundAction.reportException
-                            ? UtenButtonType.danger
-                            : action == WarehouseSalesOutboundAction.handOver
-                            ? UtenButtonType.primary
-                            : UtenButtonType.secondary,
-                        icon: _actionIcon(action),
-                        isLoading: _acting,
-                        onPressed: _acting ? null : () => _runAction(action),
-                        child: Text(action.label),
-                      ),
-                  ],
-                ),
-              ),
-            ),
     );
   }
 
@@ -363,107 +490,6 @@ class _WarehouseSalesOutboundDetailPageState
         ),
       ),
     );
-  }
-
-  List<MasterColumnDef<WarehouseSalesOutboundLine>> _lineColumns(
-    List<WarehouseSalesOutboundLine> lines,
-  ) {
-    bool has(String? Function(WarehouseSalesOutboundLine) value) =>
-        lines.any((line) => _present(value(line)));
-    return [
-      MasterColumnDef(
-        key: 'lineNumber',
-        label: '行号',
-        width: 64,
-        type: 'number',
-        value: (line) => line.lineNumber?.toString() ?? '—',
-      ),
-      MasterColumnDef(
-        key: 'goodsCode',
-        label: '货品编码',
-        width: 126,
-        value: (line) => line.goodsCode ?? '—',
-      ),
-      MasterColumnDef(
-        key: 'goodsName',
-        label: '货品名称',
-        width: 210,
-        value: (line) => line.goodsName ?? '—',
-      ),
-      if (has((line) => line.currentStockPlaceHint))
-        MasterColumnDef(
-          key: 'currentStockPlaceHint',
-          label: '当前建议库位',
-          width: 126,
-          value: (line) => line.currentStockPlaceHint ?? '—',
-        ),
-      if (has((line) => line.colorName))
-        MasterColumnDef(
-          key: 'colorName',
-          label: '颜色',
-          width: 96,
-          value: (line) => line.colorName ?? '—',
-        ),
-      if (has((line) => line.unitName))
-        MasterColumnDef(
-          key: 'unitName',
-          label: '单位',
-          width: 80,
-          value: (line) => line.unitName ?? '—',
-        ),
-      MasterColumnDef(
-        key: 'quantity',
-        label: '出货数量',
-        width: 108,
-        type: 'number',
-        value: (line) => line.quantity ?? '—',
-      ),
-      if (has((line) => line.weight))
-        MasterColumnDef(
-          key: 'weight',
-          label: '重量',
-          width: 96,
-          type: 'number',
-          value: (line) => line.weight ?? '—',
-        ),
-      if (has((line) => line.parcelQuantity))
-        MasterColumnDef(
-          key: 'parcelQuantity',
-          label: '件数',
-          width: 90,
-          type: 'number',
-          value: (line) => line.parcelQuantity ?? '—',
-        ),
-      if (lines.any((line) => line.cartonCount != null))
-        MasterColumnDef(
-          key: 'cartonCount',
-          label: '箱数',
-          width: 90,
-          type: 'number',
-          value: (line) => line.cartonCount?.toString() ?? '—',
-        ),
-      if (has((line) => line.clientProductCode))
-        MasterColumnDef(
-          key: 'clientProductCode',
-          label: '客户产品号',
-          width: 140,
-          value: (line) => line.clientProductCode ?? '—',
-        ),
-      if (has((line) => line.clientModel))
-        MasterColumnDef(
-          key: 'clientModel',
-          label: '客户型号',
-          width: 130,
-          value: (line) => line.clientModel ?? '—',
-        ),
-      if (has((line) => line.sourceDocumentNo))
-        MasterColumnDef(
-          key: 'sourceDocumentNo',
-          label: '来源订单',
-          width: 170,
-          value: (line) => line.sourceDocumentNo ?? '—',
-        ),
-    ];
   }
 }
 

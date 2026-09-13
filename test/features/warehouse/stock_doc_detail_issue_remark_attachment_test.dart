@@ -178,12 +178,10 @@ void main() {
       permissions: _approverIssuer,
     );
 
-    await tester.tap(find.widgetWithText(UtenButton, '出库'));
+    // 2026-09-12 弹窗改表格流：数量在表格「本次出库」列（默认=待出库），备注在
+    // 表格上方的总备注框；点「出库」只弹总结确认。
     await tester.pumpAndSettle();
-    final remarkField = find.byWidgetPredicate(
-      (widget) =>
-          widget is TextField && widget.decoration?.labelText == '备注(选填)',
-    );
+    final remarkField = find.byKey(const Key('draw-issue-remark'));
     expect(remarkField, findsOneWidget);
     expect(
       tester.widget<TextField>(remarkField).maxLength,
@@ -191,7 +189,10 @@ void main() {
       reason: '输入上限与服务端单条备注上限同值',
     );
     await tester.enterText(remarkField, '首轮出库备注');
-    await tester.tap(find.widgetWithText(FilledButton, '确认出库'));
+    await tester.tap(find.widgetWithText(UtenButton, '出库'));
+    await tester.pumpAndSettle();
+    expect(find.text('确认出库（1 行）'), findsOneWidget);
+    await tester.tap(find.text('确认出库'));
     await tester.pumpAndSettle();
 
     expect(api.postedPath, endsWith('/approve-and-issue'));

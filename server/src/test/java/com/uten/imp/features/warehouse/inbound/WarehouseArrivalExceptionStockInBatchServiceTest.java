@@ -32,6 +32,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -177,16 +178,16 @@ class WarehouseArrivalExceptionStockInBatchServiceTest {
         ArrivalExceptionTask resultA = resultTask("CLOSED", 4);
         when(fixture.arrivalControl().warehouseExceptionDetail(EXCEPTION_A))
                 .thenReturn(resultA);
-        when(fixture.subcontractReceipts().approveFromWarehouseDecision(
-                SUBCONTRACT_RECEIPT))
-                .thenThrow(new ApiException(ErrorCode.CONFLICT, "second group failed"));
+        doThrow(new ApiException(ErrorCode.CONFLICT, "second group failed"))
+                .when(fixture.subcontractReceipts()).approveFromWarehouseDecision(SUBCONTRACT_RECEIPT);
 
         RecordingTransactionManager transactions = new RecordingTransactionManager();
         ProxyFactory proxyFactory = new ProxyFactory(fixture.service());
         proxyFactory.setProxyTargetClass(true);
-        proxyFactory.addAdvice(new TransactionInterceptor(
-                transactions,
-                new AnnotationTransactionAttributeSource()));
+        TransactionInterceptor transactionInterceptor = new TransactionInterceptor();
+        transactionInterceptor.setTransactionManager(transactions);
+        transactionInterceptor.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
+        proxyFactory.addAdvice(transactionInterceptor);
         WarehouseArrivalExceptionStockInBatchService transactional =
                 (WarehouseArrivalExceptionStockInBatchService) proxyFactory.getProxy();
 

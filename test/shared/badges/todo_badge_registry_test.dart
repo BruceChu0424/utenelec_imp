@@ -181,10 +181,14 @@ void main() {
     expect(todoModuleCount(TodoModule.subcontract, watch), 18);
   });
 
-  test('仓库容器 = 7 个分段入口 + 1 条草稿入口', () {
-    expect(entriesOfModule(TodoModule.warehouse), hasLength(8));
-    // 7 个分段各 2 + 草稿（只取 stockDocument 一类）2 = 16。
-    expect(todoModuleCount(TodoModule.warehouse, _watchReturning(2)), 16);
+  test('仓库容器包含独立待收退料，和待发领料各计一次', () {
+    expect(entriesOfModule(TodoModule.warehouse), hasLength(9));
+    expect(
+      entriesOfModule(TodoModule.warehouse),
+      contains(TodoEntry.warehouseProductionReturn),
+    );
+    // 8 个分段各 2 + 普通草稿（只取 stockDocument 一类）2 = 18。
+    expect(todoModuleCount(TodoModule.warehouse, _watchReturning(2)), 18);
   });
 
   test('钱流容器含 IQC 驳回入口（此前只在 hub 上有徽章、没进工作台累加）', () {

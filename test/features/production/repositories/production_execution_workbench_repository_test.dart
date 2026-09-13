@@ -5,6 +5,45 @@ import 'package:uten_imp/features/production/repositories/production_execution_w
 
 void main() {
   test(
+    'preparation status filters and draw eligibility use server facts',
+    () async {
+      late RequestOptions captured;
+      final repository = ProductionExecutionWorkbenchRepository(
+        _api((request) {
+          captured = request;
+          return {
+            'items': [
+              {
+                'segmentId': 'task-1',
+                'drawRequested': false,
+                'canRequestDraw': true,
+              },
+            ],
+            'page': 2,
+            'size': 50,
+            'total': 51,
+            'totalPages': 2,
+          };
+        }),
+      );
+      final result = await repository.workshopTasks(
+        page: 2,
+        status: 'PREPARING',
+        preparationFilter: 'DRAW_NOT_REQUESTED',
+        workshopDepartmentId: 'workshop-1',
+      );
+      expect(captured.queryParameters, {
+        'page': 2,
+        'size': 50,
+        'status': 'PREPARING',
+        'preparationFilter': 'DRAW_NOT_REQUESTED',
+        'workshopDepartmentId': 'workshop-1',
+      });
+      expect(result.items.single.canRequestDraw, isTrue);
+      expect(result.items.single.drawRequested, isFalse);
+    },
+  );
+  test(
     'workshop defaults to all active tasks; history segment sends the date gate',
     () async {
       final requests = <RequestOptions>[];

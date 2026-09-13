@@ -51,7 +51,7 @@ class SalesOrderPlanProgressServiceTest {
                 new BigDecimal("7.0000"), new BigDecimal("2.0000"), BigDecimal.ZERO,
                 (short) 4,
                 // V545 剩余未排量列：20 − 0 − max(7−2,0) = 15
-                new BigDecimal("15.0000")
+                new BigDecimal("15.0000"), BigDecimal.ZERO, BigDecimal.ZERO
         }));
         Query executionSegments = queryReturning(List.of());
         Query formalPlans = queryReturning(List.of(

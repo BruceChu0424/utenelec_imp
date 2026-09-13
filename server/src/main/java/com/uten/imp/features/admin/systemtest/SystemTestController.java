@@ -12,7 +12,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.UUID;
 
 /**
  * 工作台「系统测试」区后端入口。
@@ -69,11 +72,13 @@ public class SystemTestController {
      * 只读、不进排水豁免（重登本身发生在清空完成之后）；门禁同预览端点（运行开关 + 超管）。</p>
      */
     @GetMapping("/business-data/last-result")
-    public BusinessDataResetService.LastResult lastBusinessDataResult() {
-        return businessDataResetService.lastResult();
+    public BusinessDataResetService.LastResult lastBusinessDataResult(
+            @RequestParam(required = false) UUID attemptId) {
+        return businessDataResetService.lastResult(currentUser.requireId(), attemptId);
     }
 
-    public record ResetBusinessDataRequest(@NotBlank String confirm) {
+    public record ResetBusinessDataRequest(@NotBlank String confirm, UUID attemptId) {
+        public ResetBusinessDataRequest(String confirm) { this(confirm, null); }
     }
 
     /** 清空业务数据（保留基础资料/人事/权限，业务表从 1 重新编号，全员下线重登）。 */
@@ -87,6 +92,6 @@ public class SystemTestController {
         }
         AuthUser operator = currentUser.get().orElseThrow(
                 () -> new ApiException(ErrorCode.UNAUTHORIZED, "请先登录"));
-        return businessDataResetService.reset(operator.getId(), operator.getLoginAccount());
+        return businessDataResetService.reset(operator.getId(), operator.getLoginAccount(), request.attemptId());
     }
 }

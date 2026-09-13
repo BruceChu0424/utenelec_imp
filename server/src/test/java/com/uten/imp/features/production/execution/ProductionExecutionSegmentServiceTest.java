@@ -145,15 +145,13 @@ class ProductionExecutionSegmentServiceTest {
     void materialRecheckUsesInventoryLocksBeforeSegmentAndRecordsReadyVersion() {
         UUID warehouseId = UUID.randomUUID();
         when(readiness.lockManualReleaseDimensions(planId, segmentId)).thenReturn(warehouseId);
-        Query owner = query();
-        when(owner.getResultList()).thenReturn(List.of(planMakerId));
         Query lock = locked("WAITING", 5L, "CONFIRMED", null, true);
         Query replay = query();
         when(replay.getResultList()).thenReturn(List.of());
         Query view = query();
         when(view.getResultList()).thenReturn(Collections.singletonList(viewRow(null, 6L)));
         Query event = query();
-        when(em.createNativeQuery(anyString())).thenReturn(owner, lock, replay, view, event);
+        when(em.createNativeQuery(anyString())).thenReturn(lock, replay, view, event);
         service.recheckMaterial(planId, segmentId,
                 new SegmentTransitionRequest(5L, "material-recheck-key-0001"));
         var ordered = inOrder(readiness, lock);
@@ -162,18 +160,16 @@ class ProductionExecutionSegmentServiceTest {
         ordered.verify(readiness).promoteAfterMaterialRecheck(segmentId, warehouseId);
         verify(event).setParameter("action", "RECHECK_MATERIAL");
         verify(event).setParameter("resultingVersion", 6L);
-        verify(access, times(2)).requireScopedOperationWritable(planMakerId,
+        verify(access).requireScopedOperationWritable(planMakerId,
                 "无权操作此生产计划的执行任务", "production_execution:start");
     }
 
     @Test
     void materialRecheckCannotOverrideAnExplicitManualDefer() {
-        Query owner = query();
-        when(owner.getResultList()).thenReturn(List.of(planMakerId));
         Query lock = locked("WAITING", 5L, "CONFIRMED", null, false);
         Query replay = query();
         when(replay.getResultList()).thenReturn(List.of());
-        when(em.createNativeQuery(anyString())).thenReturn(owner, lock, replay);
+        when(em.createNativeQuery(anyString())).thenReturn(lock, replay);
         assertThat(assertThrows(ApiException.class, () -> service.recheckMaterial(
                 planId, segmentId, new SegmentTransitionRequest(5L, "recheck-defer-blocked"))))
                 .hasMessageContaining("人工暂缓");
@@ -719,7 +715,7 @@ class ProductionExecutionSegmentServiceTest {
                         null,
                         autoPromoteWhenReady,
                         materialRequirementMode,
-                        planMakerId
+                        planMakerId, null
                 }));
         return lock;
     }
@@ -764,7 +760,8 @@ class ProductionExecutionSegmentServiceTest {
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 version,
                 // V487：zero_material（零料直制段展示「无需领料 · 可开工」）。
-                false
+                false,
+                false, false, false, null, false, null
         };
     }
     private void stubLockAndReplay(
@@ -787,7 +784,7 @@ class ProductionExecutionSegmentServiceTest {
                 null,
                 true,
                 "DEMANDED",
-                planMakerId
+                planMakerId, null
         }));
         Query replay = query();
         when(replay.getResultList()).thenReturn(List.of());

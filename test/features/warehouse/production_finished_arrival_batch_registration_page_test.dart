@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -37,9 +38,10 @@ void main() {
       final field = _placeField(_itemA);
       UtenInputDecoration decoration() =>
           tester.widget<TextField>(field).decoration! as UtenInputDecoration;
-      expect(decoration().info, '该仓默认');
+      // 2026-09-12 起库位说明 ⓘ 收进列头，格内只剩黄框（预填待核对）/红框
+      //（必填为空）两种状态，故不再断言行内 info 文案。
+      expect(decoration().info, isNull);
       expect(decoration().autofilled, isTrue);
-      expect(find.text('该仓默认'), findsNothing);
       await tester.showKeyboard(field);
       expect(
         tester
@@ -57,13 +59,13 @@ void main() {
       await tester.enterText(field, 'MANUAL-B');
       await tester.pump();
       expect(decoration().autofilled, isFalse);
-      expect(decoration().info, '手工输入');
     },
   );
 
   testWidgets('正式批量登记页响应 stock_doc:approve 动态授予与撤销', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    SharedPreferences.setMockInitialValues({});
     final api = _BatchArrivalApi();
     final container = ProviderContainer(
       overrides: [
@@ -206,7 +208,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('批量登记备注 trim 后随批提交；统一填写库位(n) 应用到全部选中行', (tester) async {
+  testWidgets('批量登记备注 trim 后随批提交；右键批量设置库位号应用到全部选中行', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final api = _BatchArrivalApi();
@@ -216,15 +218,22 @@ void main() {
       find.byKey(const Key('production-finished-arrival-batch-remark')),
       '  整托入库  ',
     );
-    UtenButton fillButton() => tester.widget<UtenButton>(
-      find.byKey(const Key('production-finished-arrival-batch-place')),
+    // 2026-09-12 表头上方「全选/统一设置成品仓/统一填写库位/移出」按钮全撤：
+    // 全选走表头复选框，批量填库位走右键菜单。
+    expect(find.text('全选'), findsNothing);
+    expect(find.text('统一填写库位(0)'), findsNothing);
+    await tester.tap(
+      find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate),
     );
-    expect(find.text('统一填写库位(0)'), findsOneWidget);
-    expect(fillButton().onPressed, isNull);
-    await tester.tap(find.text('全选'));
     await tester.pump();
-    expect(find.text('统一填写库位(2)'), findsOneWidget);
-    fillButton().onPressed!();
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('三极插套')),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryButton,
+    );
+    await gesture.up();
+    await tester.pump();
+    await tester.tap(find.text('批量设置库位号 (2)'));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('production-finished-arrival-batch-place-input')),
@@ -245,8 +254,8 @@ void main() {
     expect(
       (tester.widget<TextField>(_placeField(_itemB)).decoration!
               as UtenInputDecoration)
-          .info,
-      '手工输入',
+          .autofilled,
+      isFalse,
     );
 
     _pressSubmit(tester);
@@ -275,15 +284,16 @@ void main() {
     await tester.pumpAndSettle();
 
     // 报工 A 两行分别选不同仓；报工 B 的行也分配好仓与库位（不参与冲突）。
-    await tester.tap(find.text('点击选择成品仓').first);
+    // 2026-09-12 表头默认仓下拉已撤：未选行格内文案为「必选 · 点击选择」。
+    await tester.tap(find.text('必选 · 点击选择').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('成品仓').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('点击选择成品仓').first);
+    await tester.tap(find.text('必选 · 点击选择').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('备用成品仓').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('点击选择成品仓').first);
+    await tester.tap(find.text('必选 · 点击选择').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('成品仓').last);
     await tester.pumpAndSettle();
@@ -318,6 +328,9 @@ Future<void> _openBatchPage(
   WidgetTester tester, {
   required _BatchArrivalApi api,
 }) async {
+  // 选仓记忆（productionFinishedArrivalFillMemoryProvider）本地走
+  // shared_preferences 缓存，测试宿主必须给 mock 初值。
+  SharedPreferences.setMockInitialValues({});
   await tester.pumpWidget(
     ProviderScope(
       overrides: [apiClientProvider.overrideWithValue(api)],

@@ -132,6 +132,7 @@ class DocumentDraftCountSqlContractTest {
     void onlyDeclaredSourcesCarryAnExtraPredicate() {
         for (DraftSource source : DocumentDraftCountQueryService.SOURCES) {
             if (source == DocumentDraftCountQueryService.SALES_ORDER
+                    || source == DocumentDraftCountQueryService.STOCK_DOCUMENT
                     || source == DocumentDraftCountQueryService.STOCK_TRANSFER
                     || source == DocumentDraftCountQueryService.STOCK_CHECK) {
                 continue;
@@ -148,6 +149,11 @@ class DocumentDraftCountSqlContractTest {
      */
     @Test
     void stockDocumentSlicesAreMutuallyExclusiveSubsetsOfTheAggregate() {
+        // 生产自动领料/成品入库走任务队列，不能再次算作手工草稿。
+        assertThat(DocumentDraftCountQueryService.countSql(
+                DocumentDraftCountQueryService.STOCK_DOCUMENT, "o.maker_id = :owner"))
+                .contains("NOT fn_is_production_linked_stock_document(o.id)")
+                .contains("o.maker_id = :owner");
         assertThat(DocumentDraftCountQueryService.STOCK_TRANSFER.table())
                 .isEqualTo(DocumentDraftCountQueryService.STOCK_DOCUMENT.table());
         assertThat(DocumentDraftCountQueryService.STOCK_CHECK.table())

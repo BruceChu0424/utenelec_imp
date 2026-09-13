@@ -184,6 +184,14 @@ class ProductionExecutionWorkbenchSegment {
     required this.lockVersion,
     required this.zeroMaterial,
     this.canRecheckMaterial = false,
+    this.drawRequested = false,
+    this.canRequestDraw = false,
+    this.canSplitBatch = false,
+    this.sourceSegmentId,
+    this.splitReplaced = false,
+    this.hasSharedMaterialActivity = false,
+    this.hasPendingReturn = false,
+    bool? hasAvailableMaterial,
     this.hasMaterialActivity = false,
     this.hasUnregisteredMaterial = false,
     this.salesOrderNos,
@@ -197,7 +205,7 @@ class ProductionExecutionWorkbenchSegment {
     this.blockedReason,
     this.planBeginDate,
     this.planEndDate,
-  });
+  }) : hasAvailableMaterial = hasAvailableMaterial ?? hasUnregisteredMaterial;
 
   final String segmentId;
   final String planId;
@@ -235,6 +243,14 @@ class ProductionExecutionWorkbenchSegment {
   final int lockVersion;
   final bool zeroMaterial;
   final bool canRecheckMaterial;
+  final bool drawRequested;
+  final bool canRequestDraw;
+  final bool canSplitBatch;
+  final String? sourceSegmentId;
+  final bool splitReplaced;
+  final bool hasSharedMaterialActivity;
+  final bool hasPendingReturn;
+  final bool hasAvailableMaterial;
 
   /// Actual issue/settlement history for this exact task, including reversals.
   final bool hasMaterialActivity;
@@ -310,6 +326,14 @@ class ProductionExecutionWorkbenchSegment {
     lockVersion: (json['lockVersion'] as num?)?.toInt() ?? 0,
     zeroMaterial: json['zeroMaterial'] == true,
     canRecheckMaterial: json['canRecheckMaterial'] == true,
+    drawRequested: json['drawRequested'] == true,
+    canRequestDraw: json['canRequestDraw'] == true,
+    canSplitBatch: json['canSplitBatch'] == true,
+    sourceSegmentId: json['sourceSegmentId'] as String?,
+    splitReplaced: json['splitReplaced'] == true,
+    hasSharedMaterialActivity: json['hasSharedMaterialActivity'] == true,
+    hasPendingReturn: json['hasPendingReturn'] == true,
+    hasAvailableMaterial: json['hasAvailableMaterial'] as bool?,
     hasMaterialActivity: json['hasMaterialActivity'] == true,
     hasUnregisteredMaterial: json['hasUnregisteredMaterial'] == true,
   );

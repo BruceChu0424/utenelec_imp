@@ -13,12 +13,14 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -60,7 +62,7 @@ class InventoryValueWorkSchedulerTest {
                     context.getEnvironment().setActiveProfiles(profile);
                     AtomicInteger polls = new AtomicInteger();
                     NamedParameterJdbcTemplate database = mock(NamedParameterJdbcTemplate.class);
-                    when(database.queryForList(anyString(), anyMap())).thenAnswer(invocation -> {
+                    when(database.queryForList(anyString(), anyMap(), eq(UUID.class))).thenAnswer(invocation -> {
                         polls.incrementAndGet();
                         return List.of();
                     });

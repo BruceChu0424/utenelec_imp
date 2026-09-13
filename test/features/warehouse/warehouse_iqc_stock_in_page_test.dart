@@ -25,6 +25,7 @@ void main() {
           passEventId: 'pass-1',
           baseQty: 3.5,
           expectedRemainingBaseQty: 5,
+          warehouseId: 'warehouse-1',
           place: ' B-02 ',
         ),
       ],
@@ -34,6 +35,7 @@ void main() {
         'passEventId': 'pass-1',
         'baseQty': 3.5,
         'expectedRemainingBaseQty': 5.0,
+        'warehouseId': 'warehouse-1',
         'place': 'B-02',
       },
     ]);

@@ -10,23 +10,25 @@
 //   - 「不再出仓」关闭计划余量（必填原因）；无草稿时可「生成出仓草稿」。
 // 数据走既有 /api/subcontract/material-issues 端点（数据通用），草稿 maker 为空时
 // 服务端凭 subcontract_material_issue:edit 权限放行（V304 授权 SUB_WH）。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
-import '../../../components/inputs/required_field_decoration.dart';
-import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -34,14 +36,20 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/master_name_provider.dart' as mn;
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../subcontract/models/subcontract_doc.dart';
 import '../../subcontract/repositories/subcontract_repository.dart';
 import '../models/subcontract_outbound.dart';
+import '../models/subcontract_outbound_execution.dart';
+import '../widgets/subcontract_outbound_detail_table.dart';
 import '../repositories/warehouse_subcontract_outbound_repository.dart';
+import '../repositories/subcontract_outbound_detail_loader.dart';
+import '../navigation/warehouse_subcontract_outbound_navigation.dart';
 import '../providers/warehouse_count_refresh.dart';
+import 'warehouse_subcontract_outbound_batch_page.dart';
 
 class WarehouseSubcontractOutboundEditPage extends ConsumerStatefulWidget {
   const WarehouseSubcontractOutboundEditPage({super.key, required this.planId});
@@ -53,28 +61,6 @@ class WarehouseSubcontractOutboundEditPage extends ConsumerStatefulWidget {
       _WarehouseSubcontractOutboundEditPageState();
 }
 
-class _LineEdit {
-  _LineEdit(
-    this.line,
-    this.draftItemId,
-    String initialQty,
-    String initialWeight,
-  ) : qty = TextEditingController(text: initialQty),
-      weight = TextEditingController(text: initialWeight);
-
-  final OutboundPlanLine line;
-
-  /// 草稿明细行 id（仅存引用，保存时以 planItemId/orderItemId 回传）。
-  final String? draftItemId;
-  final TextEditingController qty;
-  final TextEditingController weight;
-
-  void dispose() {
-    qty.dispose();
-    weight.dispose();
-  }
-}
-
 class _WarehouseSubcontractOutboundEditPageState
     extends ConsumerState<WarehouseSubcontractOutboundEditPage> {
   final _remark = TextEditingController();
@@ -82,14 +68,27 @@ class _WarehouseSubcontractOutboundEditPageState
 
   OutboundTaskDetail? _detail;
   String? _draftId;
+  SubcontractDocDetail? _draftDocument;
   DateTime _billDate = ChinaDateTime.today();
   DateTime? _deliverDate;
   String? _warehouseId;
   String? _workerId;
   bool _loading = true;
   bool _saving = false;
+  bool _confirming = false;
+  bool _requiresReload = false;
+  bool _requestUncertain = false;
+  bool _writeStarted = false;
+  bool _generatedDrafts = false;
+  bool _showAllDrafts = false;
+  List<SubcontractOutboundReadBundle>? _initialBundles;
+  int _loadGeneration = 0;
   String? _error;
-  List<_LineEdit> _lines = const [];
+  List<SubcontractOutboundLineDraft> _lines = const [];
+
+  AppLocalizations get _l10n =>
+      Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+      AppLocalizationsZh();
 
   @override
   void initState() {
@@ -107,14 +106,44 @@ class _WarehouseSubcontractOutboundEditPageState
   }
 
   Future<void> _load() async {
+    if (_requestUncertain) {
+      await _verifyExecution();
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
     });
+    final generation = ++_loadGeneration;
     try {
-      await ref.read(mn.masterNameServiceProvider).ensureLoaded();
       final repo = ref.read(warehouseSubcontractOutboundRepositoryProvider);
-      final detail = await repo.taskDetail(widget.planId);
+      final docRepo = ref.read(
+        subcontractRepositoryProvider(SubcontractDocType.materialIssue),
+      );
+      final results = await Future.wait([
+        ref.read(mn.masterNameServiceProvider).ensureWarehousesLoaded(),
+        loadSubcontractOutboundDetails(
+          planIds: [widget.planId],
+          taskDetail: repo.taskDetail,
+          documentDetail: docRepo.detail,
+        ),
+      ]);
+      if (!mounted || generation != _loadGeneration) return;
+      final bundles = results[1] as List<SubcontractOutboundReadBundle>;
+      final bundle = bundles.single;
+      final detail = bundle.task;
+      if (bundle.documents.length > 1) {
+        if (mounted) {
+          setState(() {
+            _initialBundles = bundles;
+            _showAllDrafts = true;
+            _loading = false;
+          });
+        }
+        return;
+      }
+      _draftId = null;
+      _draftDocument = null;
       // 找未审草稿：有则载入草稿行（数量/表头），否则按计划行预填。
       OutboundDraftRef? draft;
       for (final d in detail.drafts) {
@@ -124,14 +153,18 @@ class _WarehouseSubcontractOutboundEditPageState
       String? workerId;
       DateTime? deliverDate = _parseDate(detail.deliverDate);
       final remarkText = StringBuffer();
-      final lines = <_LineEdit>[];
+      final lines = <SubcontractOutboundLineDraft>[];
       if (draft != null) {
-        final doc = await ref
-            .read(
-              subcontractRepositoryProvider(SubcontractDocType.materialIssue),
-            )
-            .detail(draft.issueId);
+        final doc = bundle.documents.single;
         _draftId = doc.id;
+        _draftDocument = doc;
+        if (doc.status != 0) {
+          throw ApiException(
+            'CONFLICT',
+            _l10n.warehouseSubcontractOutboundChanged,
+            httpStatus: 409,
+          );
+        }
         warehouseId = doc.warehouseId;
         workerId = doc.workerId;
         deliverDate = _parseDate(doc.deliverDate) ?? deliverDate;
@@ -152,24 +185,52 @@ class _WarehouseSubcontractOutboundEditPageState
           if (draftLine == null) continue;
           final initial = draftLine.qty ?? 0;
           lines.add(
-            _LineEdit(
+            SubcontractOutboundLineDraft(
               line,
               draftLine.id,
               _fmtQty(initial),
               draftLine.weight?.toString() ?? '',
+              remark: draftLine.remark,
+              unitRate: draftLine.unitRate,
             ),
+          );
+        }
+        if (lines.length != doc.items.length) {
+          for (final line in lines) {
+            line.dispose();
+          }
+          throw ApiException(
+            'CONFLICT',
+            _l10n.warehouseSubcontractOutboundChanged,
+            httpStatus: 409,
           );
         }
       } else {
         for (final line in detail.lines) {
           if (line.readyOutboundQty <= 0) continue;
-          lines.add(_LineEdit(line, null, _fmtQty(line.readyOutboundQty), ''));
+          lines.add(
+            SubcontractOutboundLineDraft(
+              line,
+              null,
+              _fmtQty(line.readyOutboundQty),
+              '',
+            ),
+          );
         }
       }
       // 经办人默认当前登录人。
-      workerId ??= ref.read(sessionProvider).user?.employeeId;
+      final user = ref.read(sessionProvider).user;
+      workerId ??= user?.employeeId;
+      if (workerId != null &&
+          workerId == user?.employeeId &&
+          user!.name.isNotEmpty) {
+        _empCache[workerId] = UtenEmployeePickerItem(
+          id: workerId,
+          name: user.name,
+          departmentName: user.department,
+        );
+      }
       _remark.text = remarkText.toString();
-      await _preloadEmployees([workerId]);
       if (!mounted) return;
       setState(() {
         _detail = detail;
@@ -181,7 +242,9 @@ class _WarehouseSubcontractOutboundEditPageState
         }
         _lines = lines;
         _loading = false;
+        _requiresReload = false;
       });
+      unawaited(_preloadEmployees([workerId], generation));
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -203,19 +266,25 @@ class _WarehouseSubcontractOutboundEditPageState
   static String _fmtQty(double v) =>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
 
-  Future<void> _preloadEmployees(Iterable<String?> ids) async {
-    final uniq = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
+  Future<void> _preloadEmployees(Iterable<String?> ids, int generation) async {
+    final uniq = ids
+        .whereType<String>()
+        .where((id) => id.isNotEmpty && !_empCache.containsKey(id))
+        .toSet();
     if (uniq.isEmpty) return;
     final repo = ref.read(employeeRepositoryProvider);
     await Future.wait(
       uniq.map((id) async {
         try {
           final p = await repo.getById(id);
-          _empCache[id] = UtenEmployeePickerItem(
-            id: p.id,
-            name: p.fullName ?? '',
-            employeeCode: p.code,
-            departmentName: p.departmentName,
+          if (!mounted || generation != _loadGeneration) return;
+          setState(
+            () => _empCache[id] = UtenEmployeePickerItem(
+              id: p.id,
+              name: p.fullName ?? '',
+              employeeCode: p.code,
+              departmentName: p.departmentName,
+            ),
           );
         } catch (_) {
           // 静默：picker 的 initial 为 null 时不显示名字，不阻塞流程。
@@ -228,30 +297,37 @@ class _WarehouseSubcontractOutboundEditPageState
   Future<String?> _saveDraft({required bool silent}) async {
     final detail = _detail;
     if (detail == null) return null;
-    if (_warehouseId == null) {
+    if (_warehouseId == null ||
+        (_warehouseId != _draftDocument?.warehouseId &&
+            !WarehouseSelection(
+              ref.read(mn.masterNameServiceProvider).warehouseHierarchy,
+            ).selectableIds.contains(_warehouseId))) {
       context.appError('请选择发出仓');
       return null;
     }
     final items = <Map<String, dynamic>>[];
     for (final e in _lines) {
       final qty = double.tryParse(e.qty.text.trim()) ?? -1;
-      final maxQty = e.line.maxEditableQty;
+      final maxQty = e.maxEditableQty;
       final name = e.line.goodsName ?? e.line.goodsCode ?? '该目标件';
-      if (qty <= 0) {
+      if (!qty.isFinite || qty <= 0) {
         context.appError('$name 的本次出仓量必须大于 0');
         return null;
       }
-      if (qty > maxQty + 0.0001) {
-        context.appError('$name 的本次出仓量不能超过计划剩余量 ${_fmtQty(maxQty)}');
+      if (qty - maxQty > 0.0000001) {
+        context.appError(
+          '$name: ${_l10n.warehouseSubcontractOutboundQuantityInvalid}',
+        );
         return null;
       }
       final weightText = e.weight.text.trim();
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
-      if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
+      if (weightText.isNotEmpty &&
+          (weight == null || !weight.isFinite || weight <= 0)) {
         context.appError('$name 的实际重量必须大于 0');
         return null;
       }
-      items.add(e.line.toMaterialIssueItemPayload(qty: qty, weight: weight));
+      items.add(e.toPayload());
     }
     if (items.isEmpty) {
       context.appError('出仓明细为空');
@@ -274,39 +350,77 @@ class _WarehouseSubcontractOutboundEditPageState
       subcontractRepositoryProvider(SubcontractDocType.materialIssue),
     );
     if (_draftId != null) {
-      await repo.update(_draftId!, body);
+      final fresh = await repo.detail(_draftId!);
+      if (_draftDocument == null ||
+          subcontractOutboundDraftFingerprint(fresh) !=
+              subcontractOutboundDraftFingerprint(_draftDocument!)) {
+        _requiresReload = true;
+        throw ApiException(
+          'CONFLICT',
+          _l10n.warehouseSubcontractOutboundChanged,
+          httpStatus: 409,
+        );
+      }
+      _writeStarted = true;
+      _draftDocument = await repo.update(_draftId!, body);
       return _draftId;
     }
     // 无草稿（红冲后补发等）：先经工作台按计划余量重建草稿，再写入表头/数量。
+    _writeStarted = true;
     final newDraftId = await ref
         .read(warehouseSubcontractOutboundRepositoryProvider)
         .regenerateDraft(widget.planId);
-    await repo.update(newDraftId, body);
-    return newDraftId;
+    _draftId = newDraftId;
+    _draftDocument = await repo.detail(newDraftId);
+    // Generation may split the plan into several actual-warehouse drafts.
+    // Return to review the generated documents before any update or approval.
+    _requiresReload = true;
+    _generatedDrafts = true;
+    if (mounted) {
+      context.appInfo(_l10n.warehouseSubcontractOutboundDraftsGenerated);
+    }
+    return null;
   }
 
   Future<void> _onSave() async {
-    if (_saving) return;
+    if (_saving || _confirming || _requiresReload) return;
+    _writeStarted = false;
     setState(() => _saving = true);
     try {
       final id = await _saveDraft(silent: false);
       if (!mounted) return;
+      if (_generatedDrafts) {
+        await _reviewGeneratedDrafts();
+        return;
+      }
       if (id != null) {
         invalidateWarehouseTaskCounts(ref);
         context.appSuccess('出仓草稿已保存');
         context.pop(true);
       }
     } on ApiException catch (error) {
-      if (mounted) context.appError(error.message);
+      if (mounted) {
+        _requiresReload = true;
+        _requestUncertain =
+            _writeStarted &&
+            (error.httpStatus == null || error.httpStatus! >= 500);
+        context.appError(error.message);
+      }
     } catch (_) {
-      if (mounted) context.appError('保存失败，请稍后重试');
+      if (mounted) {
+        _requiresReload = true;
+        _requestUncertain = _writeStarted;
+        context.appError(_l10n.warehouseSubcontractOutboundUncertain);
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
   Future<void> _onApprove() async {
-    if (_saving) return;
+    if (_saving || _confirming || _requiresReload) return;
+    _writeStarted = false;
+    setState(() => _confirming = true);
     final confirmed = await showUtenReviewerConfirmDialog(
       context,
       title: '审核出仓确认',
@@ -319,25 +433,99 @@ class _WarehouseSubcontractOutboundEditPageState
           '② 有子层级的目标件必须已经完成前置自制、FQC 和成品入仓，本页不能绕过；\n'
           '③ 加工完成回厂后仍需登记回仓、品质检查，合格后才正式入仓。',
     );
-    if (!confirmed || !mounted) return;
-    setState(() => _saving = true);
+    if (!confirmed || !mounted) {
+      if (mounted) setState(() => _confirming = false);
+      return;
+    }
+    setState(() {
+      _confirming = false;
+      _saving = true;
+    });
     try {
       final id = await _saveDraft(silent: true);
       if (id == null) {
         if (mounted) setState(() => _saving = false);
+        if (mounted && _generatedDrafts) await _reviewGeneratedDrafts();
         return;
       }
-      await ref
-          .read(subcontractRepositoryProvider(SubcontractDocType.materialIssue))
-          .approve(id);
+      final repo = ref.read(
+        subcontractRepositoryProvider(SubcontractDocType.materialIssue),
+      );
+      final fresh = await repo.detail(id);
+      if (subcontractOutboundDraftFingerprint(fresh) !=
+          subcontractOutboundDraftFingerprint(_draftDocument!)) {
+        throw ApiException(
+          'CONFLICT',
+          _l10n.warehouseSubcontractOutboundChanged,
+          httpStatus: 409,
+        );
+      }
+      _writeStarted = true;
+      final approved = await repo.approve(id);
+      if (approved.status != 1) {
+        throw ApiException(
+          'UNKNOWN_RECEIPT',
+          _l10n.warehouseSubcontractOutboundUncertain,
+        );
+      }
       if (!mounted) return;
       invalidateWarehouseTaskCounts(ref);
       context.appSuccess('委外目标件出仓已审核，可交委外商加工');
-      context.pop(true);
+      returnToSubcontractOutboundTasks(context);
+    } on ApiException catch (error) {
+      if (mounted) {
+        _requiresReload = true;
+        _requestUncertain =
+            _writeStarted &&
+            (error.httpStatus == null || error.httpStatus! >= 500);
+        context.appError(error.message);
+      }
+    } catch (_) {
+      if (mounted) {
+        _requiresReload = true;
+        _requestUncertain = _writeStarted;
+        context.appError(_l10n.warehouseSubcontractOutboundUncertain);
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _reviewGeneratedDrafts() async {
+    setState(() {
+      _saving = false;
+      _generatedDrafts = false;
+      _showAllDrafts = true;
+      _initialBundles = null;
+    });
+  }
+
+  Future<void> _verifyExecution() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      if (_draftId != null) {
+        final doc = await ref
+            .read(
+              subcontractRepositoryProvider(SubcontractDocType.materialIssue),
+            )
+            .detail(_draftId!);
+        if (doc.status == 1 && mounted) {
+          invalidateWarehouseTaskCounts(ref);
+          context.appSuccess(_l10n.warehouseSubcontractOutboundDone);
+          returnToSubcontractOutboundTasks(context);
+          return;
+        }
+      }
+      if (mounted) {
+        context.appWarning(_l10n.warehouseSubcontractOutboundUncertain);
+      }
     } on ApiException catch (error) {
       if (mounted) context.appError(error.message);
     } catch (_) {
-      if (mounted) context.appError('审核失败，请稍后重试');
+      if (mounted) {
+        context.appError(_l10n.warehouseSubcontractOutboundUncertain);
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -401,27 +589,56 @@ class _WarehouseSubcontractOutboundEditPageState
 
   @override
   Widget build(BuildContext context) {
+    if (_showAllDrafts) {
+      return WarehouseSubcontractOutboundBatchPage(
+        planIds: [widget.planId],
+        initialBundles: _initialBundles,
+        onCompleted: () => returnToSubcontractOutboundTasks(context),
+      );
+    }
     final detail = _detail;
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '委外拣货出仓',
-        leading: UtenBackButton(
-          onPressed: () =>
-              backTo(context, defaultPath: '/warehouse/subcontract-outbound'),
+    return PopScope(
+      canPop: !_saving && !_confirming,
+      child: Scaffold(
+        appBar: UtenAppBar(
+          title: '委外拣货出仓',
+          leading: UtenBackButton(
+            onPressed: _saving || _confirming
+                ? null
+                : () => backTo(
+                    context,
+                    defaultPath: '/warehouse/subcontract-outbound',
+                  ),
+          ),
         ),
-      ),
-      body: SafeArea(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-            : _error != null
-            ? UtenEmpty.error(
-                message: _error,
-                actionLabel: '重新加载',
-                onAction: _load,
-              )
-            : detail == null
-            ? const UtenEmpty(message: '出仓任务不存在')
-            : _buildBody(detail),
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: SafeArea(
+                child: _loading
+                    ? const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                      )
+                    : _error != null
+                    ? UtenEmpty.error(
+                        message: _error,
+                        actionLabel: '重新加载',
+                        onAction: _load,
+                      )
+                    : detail == null
+                    ? const UtenEmpty(message: '出仓任务不存在')
+                    : AbsorbPointer(
+                        absorbing: _saving || _confirming,
+                        child: _buildBody(detail),
+                      ),
+              ),
+            ),
+            if (_saving)
+              Positioned.fill(
+                child: UtenBusyOverlay(title: _l10n.commonLoading),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -436,16 +653,24 @@ class _WarehouseSubcontractOutboundEditPageState
         canExecute &&
         permissions.contains(Perm.subcontractMaterialIssueEdit);
     final canApprove =
-        openWithLines &&
-        canExecute &&
-        permissions.contains(Perm.subcontractMaterialIssueApprove);
+        canEdit && permissions.contains(Perm.subcontractMaterialIssueApprove);
     final canClose =
         detail.status == 'OPEN' &&
         permissions.contains(Perm.subcontractOutboundClose);
-    return UtenContentContainer.narrow(
+    return UtenContentContainer.wide(
       child: ListView(
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
         children: [
+          if (_requiresReload) ...[
+            Text(_l10n.warehouseSubcontractOutboundUncertain),
+            UtenButton(
+              type: UtenButtonType.secondary,
+              isLoading: _loading,
+              onPressed: _saving || _loading ? null : _load,
+              child: Text(_l10n.warehouseSubcontractOutboundVerify),
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+          ],
           // —— 表头信息（订货单/委外商只读，防改坏来源关联）——
           Card(
             margin: EdgeInsets.zero,
@@ -565,7 +790,17 @@ class _WarehouseSubcontractOutboundEditPageState
                       ),
                     )
                   else
-                    for (final e in _lines) _buildLineEditor(e, canEdit),
+                    SubcontractOutboundDetailTable(
+                      rows: [
+                        for (final line in _lines)
+                          SubcontractOutboundTableRow(
+                            draft: line,
+                            warehouse: names.warehouse(_warehouseId),
+                          ),
+                      ],
+                      editable: canEdit && !_saving,
+                      onChanged: () => setState(() {}),
+                    ),
                 ],
               ),
             ),
@@ -655,7 +890,7 @@ class _WarehouseSubcontractOutboundEditPageState
                       type: UtenButtonType.tonal,
                       icon: Icons.save_outlined,
                       isLoading: _saving,
-                      onPressed: _saving ? null : _onSave,
+                      onPressed: _saving || _requiresReload ? null : _onSave,
                       child: const Text('保存草稿'),
                     ),
                   ),
@@ -666,8 +901,10 @@ class _WarehouseSubcontractOutboundEditPageState
                     flex: 2,
                     child: UtenButton(
                       icon: Icons.outbound_rounded,
+                      type: UtenButtonType.danger,
+                      size: UtenButtonSize.large,
                       isLoading: _saving,
-                      onPressed: _saving ? null : _onApprove,
+                      onPressed: _saving || _requiresReload ? null : _onApprove,
                       child: const Text('审核出仓'),
                     ),
                   ),
@@ -684,110 +921,6 @@ class _WarehouseSubcontractOutboundEditPageState
             ),
           ],
           const SizedBox(height: UtenSpacing.s24),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLineEditor(_LineEdit e, bool canEdit) {
-    final theme = Theme.of(context);
-    final line = e.line;
-    return Padding(
-      padding: const EdgeInsets.only(top: UtenSpacing.s12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 3,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${line.goodsCode ?? ''} ${line.goodsName ?? ''}'.trim(),
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                if (line.flowMode ==
-                    SubcontractOutboundFlowMode.legacyBomComponent)
-                  Text(
-                    '历史父件 ${line.parentGoodsCode ?? ''} ${line.parentGoodsName ?? ''}'
-                        .trim(),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  )
-                else
-                  Text(
-                    '${line.flowMode.label} · ${line.preparationStatus.label}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                Text(
-                  line.flowMode ==
-                          SubcontractOutboundFlowMode.legacyBomComponent
-                      ? '历史单耗 ${_fmtQty(line.bomUnitQty)}'
-                            '${line.unitName != null ? ' ${line.unitName}' : ''}'
-                            '${line.goodsStockPlace != null ? ' · 库位 ${line.goodsStockPlace}' : ''}'
-                            ' · 计划 ${_fmtQty(line.plannedQty)} / 已出仓 ${_fmtQty(line.issuedQty)}'
-                      : '目标件总量 ${_fmtQty(line.plannedQty)}'
-                            ' · 已完成前置自制 ${_fmtQty(line.preparedQty)}'
-                            ' · 当前可出 ${_fmtQty(line.readyOutboundQty)}'
-                            ' · 已出仓 ${_fmtQty(line.issuedQty)}'
-                            '${line.goodsStockPlace != null ? ' · 库位 ${line.goodsStockPlace}' : ''}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: UtenSpacing.s12),
-          SizedBox(
-            width: 140,
-            child: TextField(
-              controller: e.qty,
-              ignorePointers: false,
-              enabled: canEdit,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,4}')),
-              ],
-              decoration: UtenInputDecoration(
-                InputDecoration(
-                  label: fieldLabel(
-                    '本次出仓',
-                    theme,
-                    info: '本次最多 ${_fmtQty(line.maxEditableQty)}',
-                  ),
-                ),
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          SizedBox(
-            width: 120,
-            child: TextField(
-              controller: e.weight,
-              enabled: canEdit,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,4}')),
-              ],
-              decoration: const InputDecoration(
-                labelText: '实际重量',
-                hintText: '可选',
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-          ),
         ],
       ),
     );

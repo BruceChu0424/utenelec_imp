@@ -1789,17 +1789,10 @@ public class SubcontractMaterialPlanService
                        pi.goods_id, g.code, g.name, g.stock_place,
                        pi.color_id, c.name, pi.unit_id, u.name, pi.unit_rate, pi.bom_unit_qty,
                        pi.planned_qty, pi.issued_qty,
-                       COALESCE((SELECT SUM(ii.qty) FROM subcontract_material_issue_items ii
-                                 JOIN subcontract_material_issues i ON i.id = ii.issue_id
-                                 WHERE ii.plan_item_id = pi.id AND i.status = 0 AND i.is_deleted = FALSE), 0)
+                       COALESCE(draft_qty.qty, 0)
                        , pi.flow_mode, pi.preparation_status, pi.prepared_qty,
                        GREATEST(LEAST(pi.planned_qty, pi.prepared_qty)
-                           - pi.issued_qty - COALESCE((
-                               SELECT SUM(ii.qty)
-                               FROM subcontract_material_issue_items ii
-                               JOIN subcontract_material_issues i ON i.id = ii.issue_id
-                               WHERE ii.plan_item_id = pi.id
-                                 AND i.status = 0 AND i.is_deleted = FALSE), 0), 0),
+                           - pi.issued_qty - COALESCE(draft_qty.qty, 0), 0),
                        GREATEST(pi.planned_qty - pi.issued_qty, 0),
                        pi.preparation_analysis_id, pi.preparation_analysis_item_id
                 FROM subcontract_material_plan_items pi
@@ -1807,6 +1800,13 @@ public class SubcontractMaterialPlanService
                 JOIN goods g ON g.id = pi.goods_id
                 LEFT JOIN colors c ON c.id = pi.color_id
                 LEFT JOIN units u ON u.id = pi.unit_id
+                LEFT JOIN LATERAL (
+                    SELECT SUM(ii.qty) AS qty
+                    FROM subcontract_material_issue_items ii
+                    JOIN subcontract_material_issues i ON i.id = ii.issue_id
+                    WHERE ii.plan_item_id = pi.id
+                      AND i.status = 0 AND i.is_deleted = FALSE
+                ) draft_qty ON TRUE
                 WHERE pi.plan_id = ? AND pi.is_deleted = FALSE
                   AND pi.preparation_status IN ('LEGACY_READY','READY_OUTBOUND')
                   AND pi.planned_qty - pi.issued_qty > 0

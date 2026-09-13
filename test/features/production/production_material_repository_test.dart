@@ -27,6 +27,8 @@ void main() {
             'legalWipQty': 0,
             'maxReturnQty': 1,
             'unclearedQty': 1,
+            'pendingReturnQty': .4,
+            'availableToSettleQty': .6,
             'canClose': false,
           },
         ];
@@ -41,6 +43,8 @@ void main() {
     expect(rows.single.executionSegmentId, 'segment-1');
     expect(rows.single.executionSegmentCode, 'SEG-001');
     expect(rows.single.unclearedQty, 1);
+    expect(rows.single.pendingReturnQty, .4);
+    expect(rows.single.availableToSettleQty, .6);
     expect(rows.single.canClose, isFalse);
   });
 
@@ -79,6 +83,55 @@ void main() {
       ],
     });
   });
+
+  test(
+    'return request carries exact stock posting and segment without converting its original unit',
+    () async {
+      late RequestOptions captured;
+      final repository = ProductionMaterialRepository(
+        _api((request) {
+          captured = request;
+          return <Map<String, dynamic>>[];
+        }),
+      );
+      await repository.requestReturn(
+        'plan',
+        executionSegmentId: 'segment',
+        idempotencyKey: 'return-intention-1',
+        reason: '生产余料退仓',
+        items: const [
+          {'issuePostingId': 'issue-posting', 'qty': 2.5},
+        ],
+      );
+      expect(
+        captured.path,
+        '/stock/production-materials/plans/plan/return-requests',
+      );
+      expect(captured.method, 'POST');
+      expect(captured.data, {
+        'executionSegmentId': 'segment',
+        'idempotencyKey': 'return-intention-1',
+        'reason': '生产余料退仓',
+        'items': [
+          {'issuePostingId': 'issue-posting', 'qty': 2.5},
+        ],
+      });
+      await repository.returnSources('plan', executionSegmentId: 'segment');
+      expect(
+        captured.path,
+        '/stock/production-materials/plans/plan/return-requests/sources',
+      );
+      expect(captured.method, 'GET');
+      expect(captured.queryParameters, {'executionSegmentId': 'segment'});
+      await repository.returnRequests('plan', executionSegmentId: 'segment');
+      expect(
+        captured.path,
+        '/stock/production-materials/plans/plan/return-requests',
+      );
+      expect(captured.method, 'GET');
+      expect(captured.queryParameters, {'executionSegmentId': 'segment'});
+    },
+  );
 }
 
 ApiClient _api(Object? Function(RequestOptions request) responder) {

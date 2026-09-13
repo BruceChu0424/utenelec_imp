@@ -41,18 +41,21 @@ class WarehouseIqcStockInConfirmItem {
     required this.passEventId,
     required this.baseQty,
     required this.expectedRemainingBaseQty,
+    required this.warehouseId,
     required this.place,
   });
 
   final String passEventId;
   final double baseQty;
   final double expectedRemainingBaseQty;
+  final String warehouseId;
   final String place;
 
   Map<String, dynamic> toJson() => {
     'passEventId': passEventId,
     'baseQty': baseQty,
     'expectedRemainingBaseQty': expectedRemainingBaseQty,
+    'warehouseId': warehouseId,
     'place': place.trim(),
   };
 }

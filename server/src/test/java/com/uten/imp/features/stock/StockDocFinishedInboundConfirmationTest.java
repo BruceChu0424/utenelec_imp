@@ -319,7 +319,7 @@ class StockDocFinishedInboundConfirmationTest {
                 .contains("proposed.subtract(actual)")
                 .contains("'app.production_finished_in_confirm_doc_id'")
                 .contains(".setParameter(\"documentId\", id.toString())")
-                .contains("return approveInternal(id, true, false)")
+                .contains("return approveDocumentAfterPrelock(id, true, false, batchContext)")
                 .contains("\"REJECTED\", varianceReason")
                 .contains("confirmationId, document, residualDocument")
                 .contains("notifyFinishedInboundPending(residualDocument.getId())")

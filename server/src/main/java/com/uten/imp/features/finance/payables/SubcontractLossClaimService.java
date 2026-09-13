@@ -3,6 +3,7 @@ package com.uten.imp.features.finance.payables;
 import com.uten.imp.application.port.SubcontractLossClaimPort;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
@@ -226,23 +227,22 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
     @Transactional(propagation = Propagation.MANDATORY)
     public void beforeWasteReverse(UUID wasteId) {
         tx.bind();
-        @SuppressWarnings("unchecked")
-        List<UUID> wasteSuppliers=em.createNativeQuery("""
+        List<UUID> wasteSuppliers=NativeQueryResults.typedRows(em.createNativeQuery("""
                 SELECT supplier_id FROM subcontract_wastes
                 WHERE id=:wasteId AND COALESCE(is_deleted,FALSE)=FALSE
                 FOR SHARE
-                """).setParameter("wasteId",wasteId).getResultList();
+                """).setParameter("wasteId",wasteId),UUID.class);
         if(wasteSuppliers.size()!=1)throw conflict("委外损耗单不存在或已删除，禁止红冲");
         closedPeriodGuard.requireOpen(
                 wasteSuppliers.getFirst(),baseCurrencyId(),BusinessTime.today(),"委外损耗红冲");
 
-        List<Object[]> rows = em.createNativeQuery("""
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT id, status, row_version,
                        (SELECT COUNT(*) FROM subcontract_loss_resolutions r WHERE r.case_id=c.id)
                 FROM subcontract_loss_cases c
                 WHERE waste_id=:wasteId AND COALESCE(is_deleted,FALSE)=FALSE
                 FOR UPDATE
-                """).setParameter("wasteId", wasteId).getResultList();
+                """).setParameter("wasteId", wasteId));
         if (rows.isEmpty()) return; // pre-V330 historical waste
         Object[] row = rows.getFirst();
         UUID caseId = (UUID) row[0];
@@ -758,7 +758,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 arApService.reverseArAp(resolutionId, AP_SOURCE_TYPE);
             }
             if(claimReceivableId!=null){
-                List<Object> claimDates=em.createNativeQuery("""
+                List<?> claimDates=em.createNativeQuery("""
                         SELECT claim_date FROM supplier_claim_receivables
                         WHERE id=:id AND status='OPEN' FOR UPDATE
                         """).setParameter("id",claimReceivableId).getResultList();

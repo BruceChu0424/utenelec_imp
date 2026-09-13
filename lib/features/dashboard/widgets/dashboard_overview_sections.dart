@@ -49,7 +49,7 @@ class _DashboardOverviewBody extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 2026-09-12 改版：这两块从「卡片堆 + 折叠列表」换成控制台形态
-          // （指标带 / 待办泳道），见 dashboard_console_sections.dart 的设计说明。
+          // （指标带 / 横向待办网格），见 dashboard_console_sections.dart 的设计说明。
           UtenConsoleHeader(
             title: '今日概览',
             // 口径文案同步改正：范围本来就该是「本部门」，此前写「按本人权限展示」
@@ -73,7 +73,7 @@ class _DashboardOverviewBody extends ConsumerWidget {
           DashboardMetricStrip(
             metrics: data.metrics,
             departmentName: data.departmentName,
-            // generatedAt 每次取数都变：数据到达（含手动刷新）时面板重扫一次光。
+            // generatedAt 每次取数都变：作为刷新标识保留。
             // provider 不轮询，这里不会变成循环动画。
             sweepTrigger: data.generatedAt.millisecondsSinceEpoch,
           ),
@@ -117,7 +117,7 @@ class _DashboardOverviewBody extends ConsumerWidget {
 // 2026-09-12 随控制台改版删除，不留死代码：新形态在
 // dashboard_console_sections.dart（DashboardMetricStrip / DashboardTodoLane）。
 // 骨架屏与错误态仍留在本文件，两种形态共用；空态已由控制台形态各自承担
-//（指标带/待办泳道的空态要说清「本部门」，与旧的通用空卡文案不同）。
+//（指标带/待办网格的空态要说清「本部门」，与旧的通用空卡文案不同）。
 
 class _PolicyList extends StatefulWidget {
   const _PolicyList({required this.items});

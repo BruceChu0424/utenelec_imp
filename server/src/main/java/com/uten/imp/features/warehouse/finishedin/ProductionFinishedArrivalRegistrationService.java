@@ -221,6 +221,14 @@ public class ProductionFinishedArrivalRegistrationService {
         UUID receiverEmployeeId = currentUser.requireEmployeeId();
 
         lockCommand(actorId, normalized.idempotencyKey());
+        RegistrationOutcome replay = existingRegistration(reportId, normalized, actorId);
+        if (replay != null) return replay;
+        return registerNew(reportId, normalized, new RegistrationReferences(), actorId, receiverEmployeeId);
+    }
+
+    /** Read only after the corresponding command lock, before any current warehouse checks. */
+    private RegistrationOutcome existingRegistration(
+            UUID reportId, NormalizedRequest normalized, UUID actorId) {
         List<Object[]> replay = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT id, source_report_id, request_hash,
@@ -243,8 +251,13 @@ public class ProductionFinishedArrivalRegistrationService {
                     (UUID) existing[0], true, (UUID) existing[3],
                     text(existing[4]), null);
         }
+        return null;
+    }
 
-        Object[] report = lockApprovedReport(reportId);
+    private RegistrationOutcome registerNew(
+            UUID reportId, NormalizedRequest normalized, RegistrationReferences references,
+            UUID actorId, UUID receiverEmployeeId) {
+        Object[] report = references.reports.computeIfAbsent(reportId, this::lockApprovedReport);
         // V548：待登记口径统一走视图（撤回后的报工行重新可登记）。
         List<UUID> pendingReportItemIds = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
@@ -261,9 +274,9 @@ public class ProductionFinishedArrivalRegistrationService {
         requireSelectedPending(
                 pendingReportItemIds, normalized.places().keySet());
 
-        WarehouseSnapshot warehouse = lockWarehouse(normalized.warehouseId());
-        warehouseScopes.requireActiveLeafWarehouse(normalized.warehouseId(), "入库仓库");
-        EmployeeSnapshot receiver = requireReceiver(receiverEmployeeId);
+        WarehouseSnapshot warehouse = references.warehouses.computeIfAbsent(normalized.warehouseId(), this::validatedWarehouse);
+        if (references.receiver == null) references.receiver = requireReceiver(receiverEmployeeId);
+        EmployeeSnapshot receiver = references.receiver;
         UUID registrationId = UUID.randomUUID();
         em.createNativeQuery("""
                         INSERT INTO production_finished_arrival_registrations(
@@ -1006,13 +1019,49 @@ public class ProductionFinishedArrivalRegistrationService {
                         BatchReportRegistrationRequest::reportId))
                 .toList();
         Map<UUID, RegistrationOutcome> outcomes = new LinkedHashMap<>();
+        Map<UUID, NormalizedRequest> normalizedReports = new LinkedHashMap<>();
         for (BatchReportRegistrationRequest report : orderedReports) {
             UUID reportId = report.reportId();
             // 子键 = 批量键 + 报工单 UUID（UUID 仅含十六进制与 '-'，落在合法字符集内）。
             String reportKey = batchKey + ":" + reportId;
             NormalizedRequest normalized = normalize(new ArrivalRegistrationRequest(
                     reportKey, report.warehouseId(), report.items(), request.remark()));
-            outcomes.put(reportId, registerNormalized(reportId, normalized));
+            normalizedReports.put(reportId, normalized);
+        }
+        UUID actorId = currentUser.requireId();
+        UUID receiverEmployeeId = currentUser.requireEmployeeId();
+        for (String key : normalizedReports.values().stream().map(NormalizedRequest::idempotencyKey).sorted().toList()) {
+            lockCommand(actorId, key);
+        }
+        for (var entry : normalizedReports.entrySet()) {
+            RegistrationOutcome replay = existingRegistration(entry.getKey(), entry.getValue(), actorId);
+            outcomes.put(entry.getKey(), replay);
+        }
+        List<UUID> pendingReports = normalizedReports.keySet().stream()
+                .filter(id -> outcomes.get(id) == null).toList();
+        RegistrationReferences references = new RegistrationReferences();
+        // Every report/item precedes every warehouse. Otherwise disjoint report
+        // batches visiting warehouses A/B in opposite order can deadlock.
+        for (UUID reportId : pendingReports) {
+            references.reports.put(reportId, lockApprovedReport(reportId));
+        }
+        if (!pendingReports.isEmpty()) {
+            em.createNativeQuery("""
+                    SELECT id FROM production_daily_report_items
+                    WHERE report_id IN (:reportIds)
+                    ORDER BY report_id, id FOR UPDATE
+                    """).setParameter("reportIds", pendingReports).getResultList();
+            for (UUID warehouseId : pendingReports.stream()
+                    .map(id -> normalizedReports.get(id).warehouseId()).distinct().sorted().toList()) {
+                references.warehouses.put(warehouseId, validatedWarehouse(warehouseId));
+            }
+            references.receiver = requireReceiver(receiverEmployeeId);
+        }
+        for (var entry : normalizedReports.entrySet()) {
+            if (outcomes.get(entry.getKey()) == null) {
+                outcomes.put(entry.getKey(), registerNew(entry.getKey(), entry.getValue(), references,
+                        actorId, receiverEmployeeId));
+            }
         }
 
         // 同仓新建批次 → 一张检查单；备注与收货人来自本批命令（登记头已分别冻结）。
@@ -1249,6 +1298,12 @@ public class ProductionFinishedArrivalRegistrationService {
             throw new ApiException(ErrorCode.FORBIDDEN, "当前收货人员无效");
         }
         return new EmployeeSnapshot(employeeId, text(names.getFirst()));
+    }
+
+    private WarehouseSnapshot validatedWarehouse(UUID warehouseId) {
+        WarehouseSnapshot warehouse = lockWarehouse(warehouseId);
+        warehouseScopes.requireActiveLeafWarehouse(warehouseId, "入库仓库");
+        return warehouse;
     }
 
     private void lockCommand(UUID actorId, String idempotencyKey) {
@@ -1504,6 +1559,13 @@ public class ProductionFinishedArrivalRegistrationService {
     }
 
     private record WarehouseSnapshot(String code, String name) {
+    }
+
+    /** Command-local snapshots protected by the report/warehouse row locks. */
+    private static final class RegistrationReferences {
+        private final Map<UUID, Object[]> reports = new LinkedHashMap<>();
+        private final Map<UUID, WarehouseSnapshot> warehouses = new LinkedHashMap<>();
+        private EmployeeSnapshot receiver;
     }
 
     private record EmployeeSnapshot(UUID id, String name) {

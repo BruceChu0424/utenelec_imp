@@ -25,10 +25,18 @@ public class BatchShipRequest {
     @NotNull
     private LocalDate billDate;
 
-    /** 出货仓（可空：草稿可先不指定，审核前必填）。 */
+    /** 出货仓（可空：旧客户端可指定；新自动分仓由实际库存来源建议，仓库最终确认）。 */
     private UUID warehouseId;
 
     private String remark;
+    @Size(min=8,max=128) private String idempotencyKey;
+    private String shipAddr;
+    private String linkPhone;
+    private String logisticsNo;
+    private UUID sellerId;
+    private UUID senderId;
+    private UUID settlementMethodId;
+    @jakarta.validation.constraints.Min(0) private Integer parcelCount;
 
     @Valid
     @NotNull
@@ -46,5 +54,6 @@ public class BatchShipRequest {
         @DecimalMin(value = "0", inclusive = true)
         @Digits(integer = 14, fraction = 4)
         private BigDecimal weight;
+        private String remark;
     }
 }

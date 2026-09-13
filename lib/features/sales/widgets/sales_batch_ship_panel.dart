@@ -6,17 +6,21 @@
 // 返回生成的出货单张数（null=取消）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
-import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../repositories/sales_repository.dart';
+import '../providers/sales_completion_count_provider.dart';
+import '../config/sales_doc_config.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 
 /// 弹出批量发货面板；返回生成的出货单张数（null 表示取消）。
 Future<int?> showSalesBatchShipPanel(BuildContext context, WidgetRef ref) {
@@ -42,7 +46,9 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
   final Set<String> _selected = {};
   final Map<String, TextEditingController> _qtyCtl = {};
   final Map<String, TextEditingController> _weightCtl = {};
-  String? _warehouseId;
+  String _idempotencyKey = const Uuid().v4();
+  List<Map<String, dynamic>>? _retainedLines;
+  String? _retainedDate;
   bool _busy = false;
 
   @override
@@ -64,7 +70,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
 
   static String _num(double? v) {
     if (v == null) return '—';
-    return v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+    return v.toStringAsFixed(4).replaceFirst(RegExp(r'\.?0+$'), '');
   }
 
   Future<void> _load() async {
@@ -122,7 +128,10 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
       final raw = _qtyCtl[l.orderItemId]?.text.trim() ?? '';
       final qty = double.tryParse(raw);
       final reserved = l.reservedQty ?? 0;
-      if (qty == null || qty <= 0) {
+      if (qty == null ||
+          !qty.isFinite ||
+          qty <= 0 ||
+          !RegExp(r'^\d+(\.\d{1,4})?$').hasMatch(raw)) {
         _toast('订单 ${l.billNo} 本次数量须大于 0');
         return;
       }
@@ -140,15 +149,40 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
     }
     setState(() => _busy = true);
     final today = ChinaDateTime.formatDate(ChinaDateTime.today());
-    final created = await context.guardAction(
-      () => ref
+    _retainedLines ??= lines;
+    _retainedDate ??= today;
+    try {
+      final created = await ref
           .read(salesRepositoryProvider(SalesDocType.shipment))
-          .batchShip(billDate: today, warehouseId: _warehouseId, lines: lines),
-      errorFallback: '批量开单失败，请稍后重试',
-    );
-    if (!mounted) return;
-    setState(() => _busy = false);
-    if (created != null) Navigator.pop(context, created.length);
+          .batchShip(
+            billDate: _retainedDate!,
+            idempotencyKey: _idempotencyKey,
+            lines: _retainedLines!,
+          );
+      if (!mounted) return;
+      if (created.isEmpty) throw const FormatException('未收到开单结果');
+      ref.invalidate(salesAttentionCountProvider);
+      bumpListRefresh(ref, SalesDocConfig.shipment.refreshKey);
+      bumpListRefresh(ref, SalesDocConfig.order.refreshKey);
+      Navigator.pop(context, created.length);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      final uncertain =
+          error is NetworkException ||
+          error is NetworkTimeoutException ||
+          error.httpStatus == null ||
+          error.httpStatus! >= 500;
+      if (!uncertain) {
+        _retainedLines = null;
+        _retainedDate = null;
+        _idempotencyKey = const Uuid().v4();
+      }
+      _toast(uncertain ? '请重试确认本次开单结果，当前产品和数量已保留。' : error.message);
+    } catch (_) {
+      if (mounted) _toast('请重试确认本次开单结果，当前产品和数量已保留。');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   void _toast(String msg) => context.appWarning(msg);
@@ -158,108 +192,110 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
     final theme = Theme.of(context);
     final names = ref.watch(salesMasterNameServiceProvider);
     final lines = _lines;
-    return Column(
-      children: [
-        // 头部
-        Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Row(
-            children: [
-              Icon(
-                Icons.local_shipping_outlined,
-                size: 20,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              Text(
-                '批量发货',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
+    return PopScope(
+      canPop: !_busy && _retainedLines == null,
+      child: Column(
+        children: [
+          // 头部
+          Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.local_shipping_outlined,
+                  size: 20,
+                  color: theme.colorScheme.primary,
                 ),
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              if (lines != null)
+                const SizedBox(width: UtenSpacing.s8),
                 Text(
-                  '可操作 $_writableCount / 共 ${lines.length} 行',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                  '批量发货',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-              const Spacer(),
-              IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close),
-              ),
-            ],
-          ),
-        ),
-        const Divider(height: 1),
-        // 明细
-        Expanded(
-          child: _error != null
-              ? Center(child: Text(_error!))
-              : lines == null
-              ? const Center(child: CircularProgressIndicator())
-              : lines.isEmpty
-              ? const Center(child: Text('暂无可发货的订单行(reserved > 0)'))
-              : ListView.separated(
-                  padding: const EdgeInsets.all(UtenSpacing.s8),
-                  itemCount: lines.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (_, i) => _row(theme, names, lines[i]),
-                ),
-        ),
-        const Divider(height: 1),
-        // 底部：仓库 + 全选 + 提交
-        Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 220,
-                child: UtenDropdownField(
-                  label: '出货仓',
-                  hintText: '审核前可补',
-                  value: _warehouseId,
-                  // V476：主/子层级（父仓置灰分组，出货落具体仓）。
-                  items: warehouseHierarchyItems(
-                    names.warehouseHierarchy,
-                    currentValue: _warehouseId,
-                  ),
-                  onChanged: (v) => setState(() => _warehouseId = v),
-                ),
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              InkWell(
-                onTap: _writableCount == 0
-                    ? null
-                    : () => _toggleAll(_selectedCount < _writableCount),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Checkbox(
-                      value:
-                          _writableCount > 0 &&
-                          _selectedCount == _writableCount,
-                      tristate: true,
-                      onChanged: _writableCount == 0
-                          ? null
-                          : (v) => _toggleAll(v ?? false),
+                const SizedBox(width: UtenSpacing.s8),
+                if (lines != null)
+                  Text(
+                    '可操作 $_writableCount / 共 ${lines.length} 行',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
-                    Text('全选', style: Theme.of(context).textTheme.bodySmall),
-                  ],
+                  ),
+                const Spacer(),
+                IconButton(
+                  onPressed: _busy || _retainedLines != null
+                      ? null
+                      : () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
                 ),
-              ),
-              const Spacer(),
-              UtenButton(
-                icon: Icons.check_circle_outline,
-                onPressed: _selectedCount == 0 || _busy ? null : _confirm,
-                child: Text(_busy ? '开单中…' : '生成出货单($_selectedCount 行)'),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ],
+          const Divider(height: 1),
+          // 明细
+          Expanded(
+            child: _error != null
+                ? Center(child: Text(_error!))
+                : lines == null
+                ? const Center(child: CircularProgressIndicator())
+                : lines.isEmpty
+                ? const Center(child: Text('暂无可发货的订单行(reserved > 0)'))
+                : ListView.separated(
+                    padding: const EdgeInsets.all(UtenSpacing.s8),
+                    itemCount: lines.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (_, i) => _row(theme, names, lines[i]),
+                  ),
+          ),
+          const Divider(height: 1),
+          // 销售只确认本次产品和数量，正式出货仍需财务审核。
+          Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            child: Wrap(
+              spacing: UtenSpacing.s12,
+              runSpacing: UtenSpacing.s8,
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                InkWell(
+                  onTap: _writableCount == 0 || _busy || _retainedLines != null
+                      ? null
+                      : () => _toggleAll(_selectedCount < _writableCount),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Checkbox(
+                        value:
+                            _writableCount > 0 &&
+                            _selectedCount == _writableCount,
+                        tristate: true,
+                        onChanged:
+                            _writableCount == 0 ||
+                                _busy ||
+                                _retainedLines != null
+                            ? null
+                            : (v) => _toggleAll(v ?? false),
+                      ),
+                      Text('全选', style: Theme.of(context).textTheme.bodySmall),
+                    ],
+                  ),
+                ),
+                UtenButton(
+                  icon: Icons.check_circle_outline,
+                  onPressed: _selectedCount == 0 || _busy ? null : _confirm,
+                  child: Text(
+                    _busy
+                        ? '开单中…'
+                        : _retainedLines != null
+                        ? '重试确认开单'
+                        : '生成出货单($_selectedCount 行)',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -271,7 +307,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
         children: [
           Checkbox(
             value: checked,
-            onChanged: l.writable
+            onChanged: l.writable && !_busy && _retainedLines == null
                 ? (v) => setState(() {
                     if (v ?? false) {
                       _selected.add(l.orderItemId);
@@ -334,7 +370,8 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
             width: 90,
             child: TextField(
               controller: _qtyCtl[l.orderItemId],
-              enabled: checked && l.writable,
+              enabled:
+                  checked && l.writable && !_busy && _retainedLines == null,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
@@ -352,17 +389,21 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
             width: 104,
             child: TextField(
               controller: _weightCtl[l.orderItemId],
-              enabled: checked && l.writable,
+              enabled:
+                  checked && l.writable && !_busy && _retainedLines == null,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
               textAlign: TextAlign.right,
               style: theme.textTheme.bodySmall,
-              decoration: const InputDecoration(
-                isDense: true,
-                labelText: '实际重量',
-                hintText: '可选',
-                border: OutlineInputBorder(),
+              decoration: const UtenInputDecoration(
+                InputDecoration(
+                  isDense: true,
+                  labelText: '实际重量',
+                  hintText: '可选',
+                  border: OutlineInputBorder(),
+                ),
+                info: '若同一产品将分成多张出货单，请先留空，生成后分别填写实际重量；系统不会猜测拆分比例。',
               ),
             ),
           ),

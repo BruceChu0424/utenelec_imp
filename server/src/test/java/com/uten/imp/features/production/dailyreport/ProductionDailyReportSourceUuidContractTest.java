@@ -76,7 +76,8 @@ class ProductionDailyReportSourceUuidContractTest {
                 .contains("旧报工行只有销售订单号快照");
         assertThat(row)
                 .contains("bool get hasSourceSnapshot")
-                .contains("row.hasLinkedSource || row.hasSourceSnapshot");
+                // 来源列对「已关联」与「仅号快照」两类行都要展示（重构后经局部 linked 表达）。
+                .contains("linked || row.hasSourceSnapshot");
     }
 
     private static String source(String serverRelativePath) throws IOException {

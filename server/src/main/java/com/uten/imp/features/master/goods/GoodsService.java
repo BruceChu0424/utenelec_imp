@@ -762,8 +762,10 @@ public class GoodsService {
         if (hasPriceEdit()) return;
         BigDecimal oldPrice = oldGoods == null ? null : oldGoods.getPrice();
         BigDecimal oldDiscount = oldGoods == null ? null : oldGoods.getDiscount();
-        // 售价人人可见，触碰恒判。
-        if (bigDecimalChanged(oldPrice, req.getPrice())) {
+        // 售价触碰仅可查看者（goods:price:view，或持有 goods:price:edit）参与判定——
+        // 不可查看者前端隐藏价格字段、不提交价格（req.price=null 是脱敏产物而非改价意图），
+        // 若恒判触碰会把他们改名字等正常编辑一并 403。apply 同步对不可查看者保留原价（见 apply）。
+        if (canViewPrice() && bigDecimalChanged(oldPrice, req.getPrice())) {
             throw new ApiException(ErrorCode.FORBIDDEN, "无编辑货品售价/折扣权限(goods:price:edit)");
         }
         // 折扣仅可查看者（goods:discount:view）才参与触碰判定——不可查看者前端隐藏折扣字段、
@@ -778,6 +780,14 @@ public class GoodsService {
         return currentUser.get()
                 .map(AuthUser::getPermissions)
                 .map(p -> p.contains("goods:price:edit"))
+                .orElse(false);
+    }
+
+    /** 售价可见性（goods:price:view，V570）：未授权者后端价格置 null、前端隐藏字段/列；持有 goods:price:edit 视为可见。 */
+    private boolean canViewPrice() {
+        return currentUser.get()
+                .map(AuthUser::getPermissions)
+                .map(p -> p.contains("goods:price:view") || p.contains("goods:price:edit"))
                 .orElse(false);
     }
 
@@ -943,7 +953,11 @@ public class GoodsService {
         g.setSpec(req.getSpec());
         g.setSeries(req.getSeries() == null ? null : req.getSeries().trim());
         g.setStockPlace(req.getStockPlace() == null ? null : req.getStockPlace().trim());
-        g.setPrice(req.getPrice());
+        // 售价：仅可查看者（goods:price:view，含 price:edit）提交的价格才落库。
+        // 不可查看者前端隐藏价格字段不提交（null=脱敏产物）——保留原值，避免误清。
+        if (canViewPrice()) {
+            g.setPrice(req.getPrice());
+        }
         // 折扣（goods.zk）：仅可查看折扣者（goods:discount:view）提交的折扣才落库。
         // 不可查看者前端隐藏折扣字段不提交——保留原值，避免误清；亦防遗漏 setDiscount
         // 导致折扣任何人都存不进。
@@ -1055,7 +1069,7 @@ public class GoodsService {
                 : mouldsByLegacyFor(List.of(g.getMouldLegacyId()));
         GoodsDetail d = new GoodsDetail(
                 g.getId(), g.getCode(), g.getName(), g.getSpec(), g.getModel(),
-                g.getPrice(), g.getDiscount(), g.getStatus(), g.getLegacyId(),
+                canViewPrice() ? g.getPrice() : null, g.getDiscount(), g.getStatus(), g.getLegacyId(),
                 g.getShortName(), categoryId, categoryName, g.getPack(),
                 g.getMaterial(), g.getThickness(),
                 g.getUnit() == null ? null : g.getUnit().getId(),
@@ -1084,7 +1098,7 @@ public class GoodsService {
                         ? g.getThicknessUnitLegacyId() : g.getThicknessUnit().getLegacyId(),
                 g.getMWeightUnit() == null
                         ? g.getMWeightUnitLegacyId() : g.getMWeightUnit().getLegacyId(),
-                false, false, stock.getTotalQty(), stock.getRows(), g.getVersion(),
+                false, false, false, stock.getTotalQty(), stock.getRows(), g.getVersion(),
                 g.getSeries(), g.getStockPlace(),
                 g.getThicknessUnit() == null ? null : g.getThicknessUnit().getId(),
                 g.getMWeightUnit() == null ? null : g.getMWeightUnit().getId(),
@@ -1103,6 +1117,11 @@ public class GoodsService {
             d.setDiscount(null);
             d.setDiscountMasked(true);
         }
+        // 售价可见性（goods:price:view，V570）：未授权 price 置 null + 置 priceMasked（前端隐藏价格字段/列）
+        if (!canViewPrice()) {
+            d.setPrice(null);
+            d.setPriceMasked(true);
+        }
         return d;
     }
 
@@ -1110,7 +1129,8 @@ public class GoodsService {
                                  Map<Integer, Mould> mouldsByLegacy, Map<UUID, BigDecimal> stockByGoods) {
         return new GoodsListItem(
                 g.getId(), g.getCode(), g.getName(), g.getSpec(), g.getModel(),
-                g.getPrice(), canViewDiscount() ? g.getDiscount() : null, g.getStatus(), g.getLegacyId(),
+                canViewPrice() ? g.getPrice() : null,
+                canViewDiscount() ? g.getDiscount() : null, g.getStatus(), g.getLegacyId(),
                 g.getSeries(), g.getMaterial(), g.getCNumber(), g.getRequireRemark(),
                 mouldCodeOf(g, mouldsByLegacy),
                 g.getRearInsertCode(),

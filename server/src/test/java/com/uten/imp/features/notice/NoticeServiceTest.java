@@ -1037,9 +1037,8 @@ class NoticeServiceTest {
         assertEquals(subjectId, n.getSubjectEmployeeId());
 
         // V454：单人卡也落一行主角快照（幂等/跳转口径统一）
-        @SuppressWarnings("unchecked")
         ArgumentCaptor<List<NoticeCelebrationSubject>> subjectsCaptor =
-                ArgumentCaptor.forClass(List.class);
+                ArgumentCaptor.captor();
         verify(subjectRepo).saveAll(subjectsCaptor.capture());
         assertEquals(1, subjectsCaptor.getValue().size());
         NoticeCelebrationSubject row = subjectsCaptor.getValue().getFirst();
@@ -1078,9 +1077,8 @@ class NoticeServiceTest {
         assertTrue(n.getContent().contains("李四（入职10周年）"));
 
         verify(noticeRepository, times(1)).saveAndFlush(any());
-        @SuppressWarnings("unchecked")
         ArgumentCaptor<List<NoticeCelebrationSubject>> subjectsCaptor =
-                ArgumentCaptor.forClass(List.class);
+                ArgumentCaptor.captor();
         verify(subjectRepo).saveAll(subjectsCaptor.capture());
         assertEquals(2, subjectsCaptor.getValue().size());
         // 聚合卡模板面向「各位」，不含 {name} 占位符
@@ -1229,9 +1227,8 @@ class NoticeServiceTest {
         assertEquals(0, result.skipped());
         assertEquals(1, result.notices());
         verify(noticeRepository, times(1)).saveAndFlush(any());
-        @SuppressWarnings("unchecked")
         ArgumentCaptor<List<NoticeCelebrationSubject>> subjectsCaptor =
-                ArgumentCaptor.forClass(List.class);
+                ArgumentCaptor.captor();
         verify(subjectRepo).saveAll(subjectsCaptor.capture());
         assertEquals(2, subjectsCaptor.getValue().size());
     }
@@ -1286,7 +1283,7 @@ class NoticeServiceTest {
 
         assertEquals(3, service.markReadByRoutes(routes));
 
-        ArgumentCaptor<List<String>> captor = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<List<String>> captor = ArgumentCaptor.captor();
         verify(stateRepository).markVisibleReadByRoutes(eq(userId), captor.capture());
         List<String> passed = captor.getValue();
         assertEquals(50, passed.size());

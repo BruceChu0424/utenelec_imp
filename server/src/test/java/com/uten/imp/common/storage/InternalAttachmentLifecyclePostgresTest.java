@@ -258,8 +258,9 @@ class InternalAttachmentLifecyclePostgresTest {
         long humans=jdbc.queryForObject("SELECT count(*) FROM employees",Long.class);
         String humanDigest=jdbc.queryForObject("SELECT md5(to_jsonb(attachment)::text) FROM attachments attachment WHERE id=?",String.class,UUID.fromString(human.attachment.path("id").asText()));
         JsonNode result=json(HttpMethod.POST,"/api/system-test/business-data/reset",Map.of("confirm","清空业务数据"),HttpStatus.OK);
-        // V547 +2（品质检查单头/明细）、V548 +1（登记撤回记录）：266→269。
-        assertThat(result.path("clearedTableCount").asInt()).isEqualTo(269);
+        // V547 +2（品质检查单头/明细）、V548 +1（登记撤回）、V560 +3（退料申请）、
+        // V561 +1（分批谱系）、V568 +1（让料补自制）、V569 +2（在途转拨）：266→276（V572 目录）。
+        assertThat(result.path("clearedTableCount").asInt()).isEqualTo(276);
         assertThat(result.path("preservedTableCount").asInt()).isEqualTo(96);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_orders",Long.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM employees",Long.class)).isEqualTo(humans);

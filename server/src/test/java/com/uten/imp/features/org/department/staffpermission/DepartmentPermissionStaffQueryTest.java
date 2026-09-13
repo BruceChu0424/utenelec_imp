@@ -1,6 +1,7 @@
 package com.uten.imp.features.org.department.staffpermission;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
@@ -30,7 +31,8 @@ class DepartmentPermissionStaffQueryTest {
                 anyString(), eq(Long.class), any(Object[].class)))
                 .thenReturn(0L);
         when(jdbc.query(
-                anyString(), any(RowMapper.class), any(Object[].class)))
+                anyString(), ArgumentMatchers.<RowMapper<DepartmentPermissionStaffQuery.StaffProjection>>notNull(),
+                any(Object[].class)))
                 .thenReturn(List.of());
         DepartmentPermissionStaffQuery query =
                 new DepartmentPermissionStaffQuery(jdbc);
@@ -52,7 +54,7 @@ class DepartmentPermissionStaffQueryTest {
                                 && sql.contains("authorized_departments")
                                 && sql.contains("selected_departments")
                                 && sql.contains("LIMIT ? OFFSET ?")),
-                any(RowMapper.class),
+                ArgumentMatchers.<RowMapper<DepartmentPermissionStaffQuery.StaffProjection>>notNull(),
                 eq(managerId),
                 eq(departmentId),
                 eq(managerId),

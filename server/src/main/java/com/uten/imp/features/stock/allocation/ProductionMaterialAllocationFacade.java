@@ -216,33 +216,14 @@ public class ProductionMaterialAllocationFacade {
                 owned.put(source.warehouseId(), new OwnedSlice(before.qty().add(source.qty()),
                         before.qualifiedQty().add(proof.qualified() ? source.qty() : BigDecimal.ZERO)));
             }
-            BigDecimal remaining = request.requiredQty();
-            BigDecimal outstanding = owned.values().stream().map(OwnedSlice::qty).reduce(BigDecimal.ZERO, BigDecimal::add);
-            if (outstanding.compareTo(remaining) > 0) throw allocationConflict("本批来源物料数量超过工单需求");
-            for (var entry : owned.entrySet()) {
-                OwnedSlice slice = entry.getValue();
-                boolean requiresProof = !normal.contains(entry.getKey());
-                if (requiresProof && slice.qualifiedQty().compareTo(slice.qty()) != 0)
-                    throw allocationConflict("跨原仓库领料必须有本单据已验收合格的入库来源");
-                outstanding = outstanding.subtract(slice.qty());
-                batch.releaseOwned(request, entry.getKey());
-                BigDecimal limit = requiresProof ? slice.qty() : remaining.subtract(outstanding);
-                AllocationResult result = allocateOne(withWarehouse(request, entry.getKey(), limit, "OWN"),
-                        slice.qualifiedQty(), requiresProof, batch);
-                if (result.allocatedQty().compareTo(slice.qty()) < 0)
-                    throw allocationConflict("本批物料所在仓库的实际可用数量已变化，请刷新后重试");
-                results.add(withWarehouse(result, entry.getKey()));
-                remaining = remaining.subtract(result.allocatedQty());
-            }
-            for (UUID warehouseId : normal) {
-                if (remaining.signum() <= 0) break;
-                if (owned.containsKey(warehouseId)) continue;
-                AllocationResult result = allocateOne(withWarehouse(request, warehouseId, remaining, "STOCK"), BigDecimal.ZERO, false, batch);
-                if (result.allocatedQty().signum() > 0) {
-                    results.add(withWarehouse(result, warehouseId));
-                    remaining = remaining.subtract(result.allocatedQty());
-                }
-            }
+            allocateByQualifiedSourceOrder(request.requiredQty(),normal,owned,
+                    (warehouse,limit,qualified,requiresProof,isOwned)->{
+                        if(isOwned)batch.releaseOwned(request,warehouse);
+                        AllocationResult result=allocateOne(withWarehouse(request,warehouse,limit,isOwned?"OWN":"STOCK"),
+                                qualified,requiresProof,batch);
+                        if(isOwned||result.allocatedQty().signum()>0)results.add(withWarehouse(result,warehouse));
+                        return result.allocatedQty();
+                    });
         }
         return List.copyOf(results);
     }
@@ -309,7 +290,43 @@ public class ProductionMaterialAllocationFacade {
     private record SourceDemandKey(UUID sourceEventId, UUID demandId) {}
     private record SourceProof(UUID reservationId, UUID warehouseId, BigDecimal remainingQty,
                                BigDecimal releasedQty, boolean qualified) {}
-    private record OwnedSlice(BigDecimal qty, BigDecimal qualifiedQty) {}
+    public record OwnedSlice(BigDecimal qty, BigDecimal qualifiedQty) {}
+
+    @FunctionalInterface
+    public interface WarehouseAllocationAttempt {
+        BigDecimal take(UUID warehouse,BigDecimal limit,BigDecimal qualified,
+                        boolean requiresProof,boolean owned);
+    }
+
+    /** The command and read-only batch preview share source order and protected future slices. */
+    public static Map<UUID,BigDecimal> allocateByQualifiedSourceOrder(BigDecimal requested,List<UUID> normal,
+            Map<UUID,OwnedSlice> owned,WarehouseAllocationAttempt attempt) {
+        Map<UUID,BigDecimal> result=new LinkedHashMap<>();
+        BigDecimal remaining=requested;
+        BigDecimal outstanding=owned.values().stream().map(OwnedSlice::qty).reduce(BigDecimal.ZERO,BigDecimal::add);
+        if(outstanding.compareTo(remaining)>0)throw allocationConflict("本批来源物料数量超过工单需求");
+        for(var entry:owned.entrySet().stream().sorted(Map.Entry.comparingByKey(Comparator.comparing(UUID::toString))).toList()) {
+            OwnedSlice slice=entry.getValue();boolean requiresProof=!normal.contains(entry.getKey());
+            if(requiresProof&&slice.qualifiedQty().compareTo(slice.qty())!=0)
+                throw allocationConflict("跨原仓库领料必须有本单据已验收合格的入库来源");
+            outstanding=outstanding.subtract(slice.qty());
+            BigDecimal taken=attempt.take(entry.getKey(),requiresProof?slice.qty():remaining.subtract(outstanding),
+                    slice.qualifiedQty(),requiresProof,true);
+            if(taken.compareTo(slice.qty())<0)throw allocationConflict("本批物料所在仓库的实际可用数量已变化，请刷新后重试");
+            result.put(entry.getKey(),taken);remaining=remaining.subtract(taken);
+        }
+        for(UUID warehouse:normal) {
+            if(remaining.signum()<=0)break;if(owned.containsKey(warehouse))continue;
+            BigDecimal taken=attempt.take(warehouse,remaining,BigDecimal.ZERO,false,false);
+            if(taken.signum()>0){result.put(warehouse,taken);remaining=remaining.subtract(taken);}
+        }
+        return result;
+    }
+
+    public static BigDecimal allocationTake(BigDecimal requested,BigDecimal physical,
+                                            BigDecimal qualified,BigDecimal publicLimit) {
+        return requested.min(physical).min(qualified.min(physical).add(publicLimit));
+    }
 
     private record DemandWarehouse(UUID demandId, UUID warehouseId) {}
     private record LeafKey(UUID warehouseId, MaterialDimension material) {}
@@ -576,7 +593,7 @@ public class ProductionMaterialAllocationFacade {
         BigDecimal publicLimit = requiresQualifiedOrigin || !batch.normalWarehouses.contains(request.warehouseId())
                 ? BigDecimal.ZERO : batch.publicRemaining.getOrDefault(group, BigDecimal.ZERO)
                     .subtract(batch.pendingUnqualified.getOrDefault(group, BigDecimal.ZERO)).max(BigDecimal.ZERO);
-        BigDecimal take = request.requiredQty().min(physical).min(qualified.add(publicLimit));
+        BigDecimal take = allocationTake(request.requiredQty(),physical,qualified,publicLimit);
         if (take.signum() <= 0) return new AllocationResult(request.demandId(), null, supplyId,
                 BigDecimal.ZERO, false, request.warehouseId());
         UUID allocationId = UUID.randomUUID();

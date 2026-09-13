@@ -319,6 +319,7 @@ class ReportablePlanLinePostgresTest {
                 service.list(1, 100, null, null).getItems();
 
         assertEquals(2, items.size());
+        assertTrue(items.stream().allMatch(item -> PLAN_ID.equals(item.planId())));
         assertEquals(0, items.get(0).maxReportQty().compareTo(
                 new java.math.BigDecimal("50.0000")));
         assertEquals(0, items.get(1).maxReportQty().compareTo(

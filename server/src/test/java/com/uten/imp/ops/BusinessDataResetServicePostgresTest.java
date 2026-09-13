@@ -1,7 +1,10 @@
 package com.uten.imp.ops;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.audit.AuditDeviceContext;
+import com.uten.imp.audit.AuditLog;
 import com.uten.imp.audit.AuditLogRepository;
+import com.uten.imp.audit.AuditRequestContext;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.application.port.BusinessAttachmentResetPreparationPort;
 import com.uten.imp.common.web.ApiException;
@@ -10,9 +13,21 @@ import com.uten.imp.features.admin.systemtest.BusinessDataResetDrainGate;
 import com.uten.imp.features.admin.systemtest.BusinessDataResetFeatureGate;
 import com.uten.imp.features.admin.systemtest.BusinessDataResetService;
 import org.flywaydb.core.Flyway;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.postgresql.Driver;
+import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.orm.jpa.JpaTransactionManager;
+import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
+import org.springframework.orm.jpa.SharedEntityManagerCreator;
+import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionInterceptor;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -22,8 +37,13 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import jakarta.persistence.EntityManagerFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -53,6 +73,14 @@ class BusinessDataResetServicePostgresTest {
                     .withDatabaseName("uten_business_reset")
                     .withUsername("uten")
                     .withPassword("uten");
+
+    private final List<EntityManagerFactory> entityManagerFactories = new ArrayList<>();
+
+    @AfterEach
+    void releaseJpaAndRequestContext() {
+        RequestContextHolder.resetRequestAttributes();
+        entityManagerFactories.forEach(EntityManagerFactory::close);
+    }
 
     @Test
     void resetsBusinessDataZeroesProjectionsRestartsIdentityAndKicksEveryone() throws Exception {
@@ -88,12 +116,8 @@ class BusinessDataResetServicePostgresTest {
         when(attachmentReset.preview(any())).thenReturn(
                 new BusinessAttachmentResetPreparationPort.Preview(
                         "uten_imp", "fp-empty", 0L, List.of(), false));
-        BusinessDataResetService service = new BusinessDataResetService(
-                dataSource,
-                new BusinessDataResetFeatureGate(true),
-                new BusinessDataResetDrainGate(),
-                new AuditService(mock(AuditLogRepository.class), mock(AuditDeviceContext.class)),
-                attachmentReset);
+        var drain = new BusinessDataResetDrainGate();
+        BusinessDataResetService service = newService(dataSource, attachmentReset, drain);
 
         // —— 阶段一：outbox 有待处理事件 → UT900 拒绝（409）——
         insertSeedBusinessOutboxRow(dataSource, (short) 0);
@@ -112,7 +136,62 @@ class BusinessDataResetServicePostgresTest {
         long auditBefore = countAuditLog(dataSource);
         long usersBefore = countUsers(dataSource);
 
-        var result = service.reset(UUID.randomUUID(), "superadmin");
+        UUID operator = UUID.randomUUID();
+        UUID attempt = UUID.randomUUID();
+        UUID session = UUID.randomUUID();
+        UUID operation = UUID.randomUUID();
+        UUID installation = UUID.randomUUID();
+        var request = new MockHttpServletRequest("POST", "/api/system-test/business-data/reset");
+        request.setRemoteAddr("192.0.2.12");
+        request.addHeader("User-Agent", "reset-receipt-test");
+        request.addHeader(AuditDeviceContext.HEADER_CLIENT_EVENT_ID, operation.toString());
+        String device = new ObjectMapper().writeValueAsString(Map.of(
+                "version", 1, "installationId", installation.toString(), "platform", "windows",
+                "appVersion", "receipt-test", "deviceName", "Reset test device"));
+        request.addHeader(AuditDeviceContext.HEADER_DEVICE_CONTEXT,
+                Base64.getUrlEncoder().withoutPadding().encodeToString(device.getBytes(StandardCharsets.UTF_8)));
+        AuditRequestContext.bindSessionId(request, session);
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+
+        // A deferred database failure occurs at the actual commit, after the
+        // reset function and JPA receipt INSERT have both returned successfully.
+        installFailingReceiptTrigger(dataSource);
+        long postingBefore = nextPostingSeqValue(dataSource);
+        try {
+            ApiException auditFailure = assertThrows(ApiException.class,
+                    () -> service.reset(operator, "superadmin", attempt));
+            assertThat(auditFailure.getCode()).isEqualTo(ErrorCode.INTERNAL);
+            assertThat(auditFailure.getMessage()).contains("未确认完成", "重新登录核对本次结果")
+                    .doesNotContain("已整体回滚");
+            assertThat(auditFailure).hasStackTraceContaining("reset completion unavailable");
+            assertThat(readEpoch(dataSource)).isEqualTo(epochBefore);
+            assertThat(countRefreshTokens(dataSource)).isEqualTo(1);
+            assertThat(countBusinessOutbox(dataSource)).isEqualTo(2);
+            assertThat(countAuditLog(dataSource)).isEqualTo(auditBefore);
+            assertThat(countFullyZeroedAccounts(dataSource)).isZero();
+            assertThat(nextPostingSeqValue(dataSource)).isEqualTo(postingBefore + 1);
+            assertUnchangedMoneyAndStock(dataSource);
+            assertThat(service.lastResult(operator, attempt).available()).isFalse();
+            assertThat(drain.blockingNewRequests()).isFalse();
+            assertThat(drain.tryEnter()).isTrue();
+            drain.leave();
+            verify(attachmentReset, never()).cleanupAbandonedScratch();
+        } finally {
+            removeFailingReceiptTrigger(dataSource);
+        }
+
+        var result = service.reset(operator, "superadmin", attempt);
+        assertThat(drain.blockingNewRequests()).isFalse();
+        var receipt = service.lastResult(operator, attempt);
+        assertThat(receipt.available()).isTrue();
+        assertThat(receipt.operatorId()).isEqualTo(operator);
+        assertThat(receipt.attemptId()).isEqualTo(attempt);
+        assertThat(receipt.clearedRows()).isEqualTo(result.clearedRows());
+        assertThat(receipt.authorizationEpochAfter()).isEqualTo(result.authorizationEpochAfter());
+        assertThat(service.lastResult(UUID.randomUUID(), attempt).available()).isFalse();
+        assertThat(service.lastResult(operator, UUID.randomUUID()).available()).isFalse();
+        assertReceiptMetadata(dataSource, attempt, session, operation, installation,
+                AuditRequestContext.ensureRequestId(request));
 
         // V463/V464：+purchase/subcontract_order_item_sources 两张 CLEAR 表（222→224）；
         // V474 运行时补丁再 +preplan_public_supply_events（224→225）。
@@ -123,7 +202,9 @@ class BusinessDataResetServicePostgresTest {
         // V496 adds the append-only notification reversal ledger.
         // V504 adds all eight V500 value tables and three V503 source revision tables.
         // V547 +2（品质检查单头/明细）、V548 +1（登记撤回记录）：266→269。
-        assertThat(result.clearedTableCount()).isEqualTo(269);
+        // V560 +3（退料事实）、V561 +1（分批谱系）、V568 +1（让料补供）、
+        // V569 +2（在途转拨及撤销）：269→276；V570/V571 不新增业务表。
+        assertThat(result.clearedTableCount()).isEqualTo(276);
         assertThat(result.preservedTableCount()).isEqualTo(96);
         // cleared_rows 只统计 CLEAR 表：2 条 outbox、1 条库存余额、1 条待核历史价值池。
         // refresh_tokens 属 PRESERVE，
@@ -155,6 +236,9 @@ class BusinessDataResetServicePostgresTest {
         var second = service.reset(UUID.randomUUID(), "superadmin");
         assertThat(second.clearedRows()).isEqualTo(1);
         assertThat(second.authorizationEpochAfter()).isEqualTo(epochBefore + 2);
+        assertThat(service.lastResult(operator, attempt).authorizationEpochAfter())
+                .isEqualTo(epochBefore + 1); // A later reset must not replace this exact receipt.
+        RequestContextHolder.resetRequestAttributes();
 
         // Exercise the operator's actual psql script against this disposable
         // migrated database, with the required database and cluster identity.
@@ -258,14 +342,117 @@ class BusinessDataResetServicePostgresTest {
                 new Driver(), POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
     }
 
-    private static BusinessDataResetService newService(
+    private BusinessDataResetService newService(
             SimpleDriverDataSource dataSource, BusinessAttachmentResetPreparationPort attachmentReset) {
+        return newService(dataSource, attachmentReset, new BusinessDataResetDrainGate());
+    }
+
+    private BusinessDataResetService newService(
+            SimpleDriverDataSource dataSource, BusinessAttachmentResetPreparationPort attachmentReset,
+            BusinessDataResetDrainGate drain) {
+        var factory = new LocalContainerEntityManagerFactoryBean();
+        factory.setDataSource(dataSource);
+        factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
+        factory.setPackagesToScan(AuditLog.class.getPackageName());
+        factory.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "none"));
+        factory.afterPropertiesSet();
+        EntityManagerFactory entityManagerFactory = factory.getObject();
+        entityManagerFactories.add(entityManagerFactory);
+        var transactions = new JpaTransactionManager(entityManagerFactory);
+        assertThat(transactions.getDataSource()).isSameAs(dataSource);
+        var entityManager = SharedEntityManagerCreator.createSharedEntityManager(entityManagerFactory);
+        AuditLogRepository auditRepository = new JpaRepositoryFactory(entityManager)
+                .getRepository(AuditLogRepository.class);
+        var auditProxy = new ProxyFactory(new AuditService(
+                auditRepository, new AuditDeviceContext(new ObjectMapper())));
+        auditProxy.addAdvice(new TransactionInterceptor(transactions,
+                new AnnotationTransactionAttributeSource()));
         return new BusinessDataResetService(
                 dataSource,
+                transactions,
                 new BusinessDataResetFeatureGate(true),
-                new BusinessDataResetDrainGate(),
-                new AuditService(mock(AuditLogRepository.class), mock(AuditDeviceContext.class)),
+                drain,
+                (AuditService) auditProxy.getProxy(),
                 attachmentReset);
+    }
+
+    private void installFailingReceiptTrigger(SimpleDriverDataSource dataSource) throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE FUNCTION reset_receipt_commit_probe() RETURNS trigger LANGUAGE plpgsql AS $$
+                    BEGIN
+                        IF NEW.action = 'business_data_reset' THEN
+                            IF current_setting('app.actor_id', true) IS DISTINCT FROM NEW.actor_id::text
+                               OR EXISTS (SELECT 1 FROM business_outbox)
+                               OR EXISTS (SELECT 1 FROM refresh_tokens)
+                               OR (SELECT epoch::text FROM authorization_state WHERE singleton_id=1)
+                                  IS DISTINCT FROM substring(NEW.result FROM 'epoch=([0-9]+)') THEN
+                                RAISE EXCEPTION 'receipt must share the reset connection and transaction';
+                            END IF;
+                            RAISE EXCEPTION 'reset completion unavailable';
+                        END IF;
+                        RETURN NEW;
+                    END $$
+                    """);
+            statement.execute("""
+                    CREATE CONSTRAINT TRIGGER reset_receipt_commit_probe
+                    AFTER INSERT ON audit_log DEFERRABLE INITIALLY DEFERRED
+                    FOR EACH ROW EXECUTE FUNCTION reset_receipt_commit_probe()
+                    """);
+        }
+    }
+
+    private void removeFailingReceiptTrigger(SimpleDriverDataSource dataSource) throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("DROP TRIGGER IF EXISTS reset_receipt_commit_probe ON audit_log");
+            statement.execute("DROP FUNCTION IF EXISTS reset_receipt_commit_probe()");
+        }
+    }
+
+    private void assertUnchangedMoneyAndStock(SimpleDriverDataSource dataSource) throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("""
+                     SELECT (SELECT count(*) FROM accounts WHERE code='ACCT-TEST-1'
+                         AND init_balance=100 AND receipts_total=200 AND payments_total=300
+                         AND balance_adjustments_total=50 AND balance_current=50),
+                         (SELECT count(*) FROM stock_balances WHERE qty=7 AND amount_local=999),
+                         (SELECT count(*) FROM stock_value_pools WHERE legacy_qty=7 AND legacy_amount_local=999)
+                     """)) {
+            assertThat(rows.next()).isTrue();
+            assertThat(rows.getInt(1)).isEqualTo(1);
+            assertThat(rows.getInt(2)).isEqualTo(1);
+            assertThat(rows.getInt(3)).isEqualTo(1);
+        }
+    }
+
+    private void assertReceiptMetadata(SimpleDriverDataSource dataSource, UUID attempt,
+            UUID session, UUID operation, UUID installation, UUID requestId) throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT session_id, client_event_id, device_installation_id, request_id,
+                            ip, user_agent, device_platform, device_name, app_version, event_source,
+                            http_method, http_path, device_profile_hash
+                     FROM audit_log WHERE action='business_data_reset' AND target_id=?
+                     """)) {
+            statement.setString(1, attempt.toString());
+            try (ResultSet rows = statement.executeQuery()) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getObject("session_id", UUID.class)).isEqualTo(session);
+                assertThat(rows.getObject("client_event_id", UUID.class)).isEqualTo(operation);
+                assertThat(rows.getObject("device_installation_id", UUID.class)).isEqualTo(installation);
+                assertThat(rows.getObject("request_id", UUID.class)).isEqualTo(requestId);
+                assertThat(rows.getString("ip")).isEqualTo("192.0.2.12");
+                assertThat(rows.getString("user_agent")).isEqualTo("reset-receipt-test");
+                assertThat(rows.getString("device_platform")).isEqualTo("windows");
+                assertThat(rows.getString("device_name")).isEqualTo("Reset test device");
+                assertThat(rows.getString("app_version")).isEqualTo("receipt-test");
+                assertThat(rows.getString("event_source")).isEqualTo("business");
+                assertThat(rows.getString("http_method")).isEqualTo("POST");
+                assertThat(rows.getString("http_path")).isEqualTo("/api/system-test/business-data/reset");
+                assertThat(rows.getString("device_profile_hash")).isNotBlank();
+                assertThat(rows.next()).isFalse();
+            }
+        }
     }
 
     private void insertSeedDepartment(SimpleDriverDataSource dataSource) throws SQLException {

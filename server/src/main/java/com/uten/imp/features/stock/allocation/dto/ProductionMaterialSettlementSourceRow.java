@@ -22,5 +22,6 @@ public record ProductionMaterialSettlementSourceRow(
         BigDecimal reversibleQtyBase,
         String reason,
         OffsetDateTime createdAt,
-        UUID createdBy) {
+        UUID createdBy,
+        String unitName) {
 }

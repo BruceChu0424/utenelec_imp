@@ -1,5 +1,5 @@
 // MasterDataTableView primary 模式（联动折叠页，如货品资料）横滚条位置行为回归：
-// - 内容少：横滚条贴最后一行下方（隔 16），不再钉在联动区底/屏幕底；
+// - 内容少：横滚条贴最后一行下方（隔 11），不再钉在联动区底/屏幕底；
 // - 内容多：横滚条钉在表体区底；
 // - 顶部卡片折叠手势不受覆盖层影响（表格上上滑仍能收起卡片）。
 import 'package:flutter/material.dart';
@@ -23,7 +23,11 @@ void _setView(WidgetTester tester) {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
-Widget _page(List<String> items, {bool withBatch = false}) {
+Widget _page(
+  List<String> items, {
+  bool withBatch = false,
+  double bottomContentPadding = 0,
+}) {
   return MaterialApp(
     home: Scaffold(
       body: SizedBox(
@@ -40,6 +44,7 @@ Widget _page(List<String> items, {bool withBatch = false}) {
               Expanded(
                 child: MasterDataTableView<String>(
                   primary: true,
+                  bottomContentPadding: bottomContentPadding,
                   columns: [
                     for (var i = 0; i < 6; i++)
                       MasterColumnDef<String>(
@@ -70,7 +75,7 @@ Widget _page(List<String> items, {bool withBatch = false}) {
   );
 }
 
-/// 覆盖层横滚条 = 高度 16 的 Scrollbar（竖向条与表同高）。
+/// 覆盖层横滚条 = 高度 11 的 Scrollbar（竖向条与表同高）。
 RenderBox _overlayBarBox(WidgetTester tester) {
   RenderBox? box;
   for (final el in find.byType(Scrollbar).evaluate()) {
@@ -95,7 +100,7 @@ RenderBox _lastRowBox(WidgetTester tester, String lastText) {
 }
 
 void main() {
-  testWidgets('内容少：横滚条贴最后一行下方（隔 16），不钉屏幕底', (tester) async {
+  testWidgets('内容少：横滚条贴最后一行下方（隔 11），不钉屏幕底', (tester) async {
     _setView(tester);
     await tester.pumpWidget(_page(['ROW-0', 'ROW-1', 'ROW-2']));
     await tester.pump(); // post-frame 量内容高并定位覆盖层。
@@ -157,8 +162,35 @@ void main() {
     final barTop = bar.localToGlobal(Offset.zero).dy;
     final row = _lastRowBox(tester, 'ROW-2');
     final rowBottom = row.localToGlobal(Offset.zero).dy + row.size.height;
-    debugPrint('批量表内容少：横滚条 top=$barTop，最后一行底=$rowBottom（应贴合，非 +88）');
+    debugPrint('批量表内容少：横滚条 top=$barTop，最后一行底=$rowBottom（应贴合，非 +200）');
     expect(barTop, closeTo(rowBottom, 1.5));
-    expect(barTop, lessThan(rowBottom + 20), reason: '不受悬浮批量 88 让位影响');
+    expect(barTop, lessThan(rowBottom + 20), reason: '不受悬浮批量 200 让位影响');
+  });
+  testWidgets('联动表移除外置留白后仍以末行定位横滚条', (tester) async {
+    _setView(tester);
+    await tester.pumpWidget(
+      _page(['ROW-0', 'ROW-1', 'ROW-2'], bottomContentPadding: 200),
+    );
+    await tester.pumpAndSettle();
+    final bodyList = find.byWidgetPredicate(
+      (widget) => widget is ListView && widget.primary == true,
+    );
+    expect(
+      tester.widget<ListView>(bodyList).padding,
+      const EdgeInsets.only(bottom: 200),
+    );
+    await tester.pumpWidget(_page(['ROW-0', 'ROW-1', 'ROW-2']));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<ListView>(bodyList).padding,
+      const EdgeInsets.only(bottom: 11),
+    );
+    final bar = _overlayBarBox(tester);
+    final row = _lastRowBox(tester, 'ROW-2');
+    expect(
+      bar.localToGlobal(Offset.zero).dy,
+      closeTo(row.localToGlobal(Offset.zero).dy + row.size.height, 1),
+    );
+    expect(tester.takeException(), isNull);
   });
 }

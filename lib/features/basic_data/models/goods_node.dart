@@ -166,6 +166,7 @@ class GoodsDetail {
     this.sourceType,
     this.costMasked = false,
     this.discountMasked = false,
+    this.priceMasked = false,
     this.stockQty,
     this.stockByWarehouse = const [],
     this.series,
@@ -246,6 +247,9 @@ class GoodsDetail {
   // ===== 折扣可见性（goods:discount:view；未授权时 discount 置 null 且 discountMasked=true） =====
   final bool discountMasked;
 
+  // ===== 售价可见性（goods:price:view，V570；未授权时 price 置 null 且 priceMasked=true） =====
+  final bool priceMasked;
+
   /// Server object scope; missing capability on older responses is read-only.
   final bool writable;
 
@@ -321,6 +325,7 @@ class GoodsDetail {
     sourceType: json['sourceType'] as String?,
     costMasked: json['costMasked'] as bool? ?? false,
     discountMasked: json['discountMasked'] as bool? ?? false,
+    priceMasked: json['priceMasked'] as bool? ?? false,
     writable: json['writable'] == true,
     stockQty: (json['stockQty'] as num?)?.toDouble(),
     stockByWarehouse:

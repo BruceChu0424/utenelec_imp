@@ -23,10 +23,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -37,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -56,6 +57,7 @@ class PagePermissionWorkspaceServiceTest {
     @Mock private TxSessionVars tx;
     @Mock private PermissionResolver permissionResolver;
     @Mock private OrganizationPermissionManagementScopeService managementScope;
+    @Captor private ArgumentCaptor<List<UserPermissionOverride>> savedOverrides;
 
     private PagePermissionWorkspaceService service;
 
@@ -273,15 +275,15 @@ class PagePermissionWorkspaceServiceTest {
         inactiveEdit.setRowVersion(7L);
         inactiveEdit.setAuthoritySource("SUPER_ADMIN_CONFIRMED");
         when(currentUser.get()).thenReturn(Optional.of(actor));
-        when(employeeRepo.findAllByIdForUpdate(any(Collection.class)))
+        when(employeeRepo.findAllByIdForUpdate(anyCollection()))
                 .thenReturn(List.of(target));
         when(userAccountRepo.findByEmployeeId(targetEmployeeId))
                 .thenReturn(Optional.of(targetAccount));
-        when(userAccountRepo.findAllByIdForUpdate(any(Collection.class)))
+        when(userAccountRepo.findAllByIdForUpdate(anyCollection()))
                 .thenReturn(List.of(actorAccount, targetAccount));
         when(managementScope.resolveAuthority(actor, departmentId))
                 .thenReturn(Optional.of(superAuthority(actorUserId)));
-        when(departmentRepo.findAllByIdForUpdate(any(Collection.class)))
+        when(departmentRepo.findAllByIdForUpdate(anyCollection()))
                 .thenReturn(List.of(department));
         when(delegationRepo.lockAuthorizationEpoch()).thenReturn(7L);
         when(permissionRepo.findByCodeIn(Set.of("goods:edit", "goods:export")))
@@ -289,7 +291,7 @@ class PagePermissionWorkspaceServiceTest {
         when(permissionResolver.breakdownsOf(targetAccount))
                 .thenReturn(new PermissionResolver.PermissionBreakdowns(
                         breakdown(Set.of()), breakdown(Set.of())));
-        when(overrideRepo.findAllByIdForUpdate(any(Collection.class)))
+        when(overrideRepo.findAllByIdForUpdate(anyCollection()))
                 .thenReturn(List.of(inactiveEdit));
 
         var result = service.setPermissions(
@@ -306,11 +308,9 @@ class PagePermissionWorkspaceServiceTest {
         assertEquals(2, result.changes().size());
         assertEquals(8L, result.changes().getFirst().rowVersion());
         assertTrue(result.changes().getFirst().effective());
-        ArgumentCaptor<List<UserPermissionOverride>> saved =
-                ArgumentCaptor.forClass(List.class);
-        verify(overrideRepo).saveAllAndFlush(saved.capture());
-        assertEquals(2, saved.getValue().size());
-        for (UserPermissionOverride row : saved.getValue()) {
+        verify(overrideRepo).saveAllAndFlush(savedOverrides.capture());
+        assertEquals(2, savedOverrides.getValue().size());
+        for (UserPermissionOverride row : savedOverrides.getValue()) {
             assertEquals("grant", row.getEffect());
             assertEquals("SUPER_ADMIN_CONFIRMED", row.getAuthoritySource());
             assertEquals(actorUserId, row.getSourceActorUserId());

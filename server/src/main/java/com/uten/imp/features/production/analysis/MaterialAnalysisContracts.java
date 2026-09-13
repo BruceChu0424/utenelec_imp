@@ -151,7 +151,22 @@ public final class MaterialAnalysisContracts {
             @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String fingerprint,
             @NotBlank @Size(min = 8, max = 128) String idempotencyKey,
             @NotEmpty @Size(max = RequestLimits.DOCUMENT_LINES)
-            List<@NotBlank @Size(max = 64) String> actionGroupKeys) {
+            List<@NotBlank @Size(max = 64) String> actionGroupKeys,
+            @Size(max = RequestLimits.DOCUMENT_LINES) List<@NotNull @Valid SharedFutureClaimQuantity> quantities,
+            boolean allowLateSupply) {
+        public ClaimSharedFutureRequest(Long version,String fingerprint,String idempotencyKey,List<String> actionGroupKeys) {
+            this(version,fingerprint,idempotencyKey,actionGroupKeys,List.of(),false);
+        }
+        public ClaimSharedFutureRequest(Long version,String fingerprint,String idempotencyKey,List<String> actionGroupKeys,
+                List<SharedFutureClaimQuantity> quantities) {
+            this(version,fingerprint,idempotencyKey,actionGroupKeys,quantities,false);
+        }
+    }
+
+    public record SharedFutureClaimQuantity(
+            @NotBlank @Size(max=64) String actionGroupKey,
+            @NotNull @DecimalMin("0.0001") @Digits(integer=14,fraction=4) BigDecimal qty,
+            UUID sourceActionId) {
     }
 
     /**
@@ -284,6 +299,41 @@ public final class MaterialAnalysisContracts {
             LocalDate deliveryDate,
             BigDecimal sourceLendableQty,
             BigDecimal shortageQty) {
+    }
+
+    /** 缺料分析反向查询可让料来源；仓库为计划范围，实物仍属于原始叶仓 lot。 */
+    public record CrossReallocationSourceCandidate(
+            UUID sourceAnalysisId,
+            long sourceVersion,
+            String sourceFingerprint,
+            UUID sourceMaterialLineId,
+            UUID warehouseId,
+            String warehouseName,
+            String analysisLabel,
+            String productLabel,
+            LocalDate deliveryDate,
+            BigDecimal sourceLendableQty,
+            BigDecimal shortageQty) {
+    }
+
+    /** Read-only follow-up for the original donor; opening it never orders supply. */
+    public record CrossReallocationReplenishmentView(
+            UUID reallocationId,
+            AnalysisView sourceAnalysis,
+            UUID sourceMaterialLineId,
+            UUID targetAnalysisId,
+            BigDecimal transferredQty,
+            BigDecimal priorityPendingQty,
+            BigDecimal remainingSupplementQty,
+            BigDecimal defaultQty,
+            String route,
+            List<String> allowedRoutes,
+            String operation,
+            boolean canOverSupply,
+            boolean requiresPreparation,
+            UUID existingChildAnalysisLineId,
+            BigDecimal safetyReplenishmentQty,
+            String blockedReason) {
     }
 
     /** 一次优先补齐来源；用于计划员解释“哪一批新供给补回了来源计划”。 */
@@ -571,7 +621,10 @@ public final class MaterialAnalysisContracts {
             UUID planAnchorAnalysisLineId,
             BigDecimal mainWarehousePublicAvailableQty,
             BigDecimal mainWarehouseOpenSafetySupplyQty,
-            BigDecimal mainWarehouseSafetyReplenishmentGapQty) {
+            BigDecimal mainWarehouseSafetyReplenishmentGapQty,
+            BigDecimal priorityMakeSupplementQty,
+            BigDecimal sharedFuturePendingQty,
+            BigDecimal lateSharedFutureAvailableQty) {
         @JsonProperty("nodeRole")
         public String nodeRole() {
             return level == 0 ? "ROOT_SUPPLY" : "BOM_COMPONENT";

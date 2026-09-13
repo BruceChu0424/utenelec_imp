@@ -51,6 +51,7 @@ import '../../features/subcontract/providers/subcontract_task_count_provider.dar
 import '../../features/visitor_approval/providers/visitor_pending_count_provider.dart';
 import '../../features/warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../features/warehouse/providers/production_draw_count_provider.dart';
+import '../../features/warehouse/providers/production_return_count_provider.dart';
 import '../../features/warehouse/providers/production_finished_inbound_task_count_provider.dart';
 import '../../features/warehouse/providers/warehouse_quality_result_count_provider.dart';
 import '../../features/warehouse/providers/warehouse_sales_outbound_count_provider.dart';
@@ -156,6 +157,9 @@ enum TodoEntry {
   /// 生产领料任务中心 · 待领任务。
   warehouseProductionDraw(TodoModule.warehouse),
 
+  /// 生产退料：车间已提交，仓库尚未确认实收。
+  warehouseProductionReturn(TodoModule.warehouse),
+
   /// 入库任务中心 · 产成品待点收。
   warehouseFinishedInbound(TodoModule.warehouse),
 
@@ -184,7 +188,7 @@ enum TodoEntry {
   qualityFqcPending(TodoModule.quality),
 
   // —— 销售 ——
-  /// 订单进度查询：财务驳回待修正 + 未读完工提醒。
+  /// 订单进度查询：财务驳回待修正 + 可分批发货待开单，阅读通知不清除业务待办。
   salesAttention(TodoModule.sales),
 
   // —— 草稿（2026-09-11 起计入累加；每个模块一条，数字来自 draftCountsProvider）——
@@ -272,6 +276,10 @@ int todoEntryCount(TodoEntry entry, TodoWatch watch) => switch (entry) {
   TodoEntry.warehouseProductionDraw => _async(
     watch,
     warehouseProductionDrawPendingCountProvider,
+  ),
+  TodoEntry.warehouseProductionReturn => _async(
+    watch,
+    warehouseProductionReturnPendingCountProvider,
   ),
   TodoEntry.warehouseFinishedInbound => _async(
     watch,
@@ -389,6 +397,7 @@ final todoTotalCountProvider = Provider<int>(
 /// 60s 轮询的 `StateNotifier` 角标（生产待排产/车间/采购/委外/研发/访客/HR/通知）
 /// 走各自的 `notifier.refresh()`，不在此列。
 void invalidateTodoBadgeCaches(WidgetRef ref) {
+  ref.invalidate(warehouseProductionReturnPendingCountProvider);
   ref.invalidate(salesOrderFinanceConfirmationCountProvider);
   ref.invalidate(salesShipmentFinanceCountProvider);
   ref.invalidate(financeProcurementApprovalCountProvider);

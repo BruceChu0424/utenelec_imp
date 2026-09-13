@@ -12,6 +12,8 @@ import com.uten.imp.features.master.goods.dto.BomItemSaveRequest;
 import com.uten.imp.features.master.goods.dto.BomItemView;
 import com.uten.imp.features.master.unit.Unit;
 import com.uten.imp.features.master.unit.UnitRepository;
+import com.uten.imp.security.AuthUser;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -58,6 +60,7 @@ public class GoodsBomService {
     private final ColorRepository colorRepo;
     private final UnitRepository unitRepo;
     private final TxSessionVars tx;
+    private final SecurityContextCurrentUser currentUser;
     private final MasterReferenceValidationPort references;
     private final GoodsMasterRelationshipResolver relationships;
     private final BusinessEventPublisher events;
@@ -100,7 +103,7 @@ public class GoodsBomService {
                     r.getDefaultSupplier() == null
                             ? r.getVendLegacyId()
                             : r.getDefaultSupplier().getLegacyId(),
-                    r.getQty(), r.getPrice(), r.getTotal(),
+                    r.getQty(), viewPrice(r.getPrice()), viewTotal(r),
                     r.getSummary(), r.getLegacyId(),
                     withChildren.contains(c.getId()),
                     c.getSourceType(),
@@ -285,11 +288,18 @@ public class GoodsBomService {
                             + "并使用 PER_PACKAGE 或 FIXED_BATCH");
         }
         r.setHardGate(hardGate);
-        r.setPrice(req.getPrice());
+        // 单价（goods:price:view，V570）：显式传入优先；null = 不可查看者的脱敏产物
+        // （前端隐藏单价，不提交）——新建回退组件货品价（保住「单价取自组件」与成本聚合
+        // sourceE 口径），编辑保留行原值，均不误清。金额随实际落库单价重算兜底。
+        BigDecimal price = req.getPrice();
+        if (price == null) {
+            price = r.getPrice() != null ? r.getPrice() : component.getPrice();
+        }
+        r.setPrice(price);
         // 金额：显式传入优先，否则 qty*price 兜底（无单价则 null）
         BigDecimal total = req.getTotal();
-        if (total == null && req.getPrice() != null) {
-            total = qty.multiply(req.getPrice()).setScale(2, RoundingMode.HALF_UP);
+        if (total == null && price != null) {
+            total = qty.multiply(price).setScale(2, RoundingMode.HALF_UP);
         }
         r.setTotal(total);
         if (req.hasColorReference()) {
@@ -349,7 +359,7 @@ public class GoodsBomService {
                 r.getDefaultSupplier() == null
                         ? r.getVendLegacyId()
                         : r.getDefaultSupplier().getLegacyId(),
-                r.getQty(), r.getPrice(), r.getTotal(),
+                r.getQty(), viewPrice(r.getPrice()), viewTotal(r),
                 r.getSummary(), r.getLegacyId(), hasChildren, component.getSourceType(),
                 r.getControlStage(), r.getConsumptionBasis(),
                 r.getBasisOutputQty(), r.isAllowPartialPackage(), r.isHardGate(),
@@ -361,10 +371,26 @@ public class GoodsBomService {
         return new BomItemView(
                 r.getId(), component.getId(), null, null, null, null, null,
                 null, null, null, null, null, null,
-                r.getQty(), r.getPrice(), r.getTotal(), r.getSummary(), r.getLegacyId(),
+                r.getQty(), viewPrice(r.getPrice()), viewTotal(r), r.getSummary(), r.getLegacyId(),
                 false, null, r.getControlStage(), r.getConsumptionBasis(),
                 r.getBasisOutputQty(), r.isAllowPartialPackage(), r.isHardGate(),
                 r.getAuditedAt());
+    }
+
+    /** 售价可见性（goods:price:view，V570）：未授权者 BOM 行单价/金额置 null（前端隐藏列）。 */
+    private BigDecimal viewPrice(BigDecimal price) {
+        return canViewPrice() ? price : null;
+    }
+
+    private BigDecimal viewTotal(GoodsBomItem r) {
+        return canViewPrice() ? r.getTotal() : null;
+    }
+
+    private boolean canViewPrice() {
+        return currentUser.get()
+                .map(AuthUser::getPermissions)
+                .map(p -> p.contains("goods:price:view") || p.contains("goods:price:edit"))
+                .orElse(false);
     }
 
     private int nextSortOrder(UUID goodsId) {

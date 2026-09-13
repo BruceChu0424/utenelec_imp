@@ -243,7 +243,7 @@ UtenStatusBadgeType productionFlowBadgeType(ProductionFlowStage stage) =>
       ProductionFlowTone.done => UtenStatusBadgeType.success,
       ProductionFlowTone.active => UtenStatusBadgeType.info,
       ProductionFlowTone.ready => UtenStatusBadgeType.info,
-      ProductionFlowTone.toDraw => UtenStatusBadgeType.warning,
+      ProductionFlowTone.toDraw => UtenStatusBadgeType.accent,
       ProductionFlowTone.waiting => UtenStatusBadgeType.warning,
       ProductionFlowTone.pending => UtenStatusBadgeType.neutral,
     };
@@ -256,8 +256,11 @@ Color productionFlowToneColor(ThemeData theme, ProductionFlowTone tone) =>
       ProductionFlowTone.active => UtenColors.teal600,
       // 「可开工」与「生产中」相邻，必须换一个色系才分得开。
       ProductionFlowTone.ready => UtenColors.info,
-      // 「去领料」= 本人得跑一趟仓库，全链最需要被一眼看到。
-      ProductionFlowTone.toDraw => UtenColors.catAmber,
+      // 与等待物料的琥珀色分开：齐套后由车间主动提交领料。
+      ProductionFlowTone.toDraw =>
+        theme.brightness == Brightness.dark
+            ? UtenColors.teal300
+            : UtenColors.teal700,
       ProductionFlowTone.waiting => UtenColors.warning,
       ProductionFlowTone.pending => theme.colorScheme.outline,
     };

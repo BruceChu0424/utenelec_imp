@@ -202,6 +202,8 @@ class _Fixture {
             data = <Object>[];
           } else if (request.path.endsWith('/capabilities')) {
             data = {'canSettle': true, 'canReverse': true, 'canClose': false};
+          } else if (request.path.endsWith('/return-requests')) {
+            data = <Object>[];
           } else if (request.path.endsWith('/clearance')) {
             data = [
               _row(
@@ -223,6 +225,7 @@ class _Fixture {
                       'demandId': 'material',
                       'goodsId': 'goods-material',
                       'goodsName': '本工单原料',
+                      'unitName': '件',
                       'settlementType': 'CONSUMED',
                       'postedQtyBase': 10,
                       'reversibleQtyBase': 10,

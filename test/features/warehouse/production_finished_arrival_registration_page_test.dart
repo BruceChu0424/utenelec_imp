@@ -6,10 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
-import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
-import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -26,22 +25,12 @@ void _expectSourceInsideField(WidgetTester tester, String source) {
   );
   expect(field.decoration, isA<UtenInputDecoration>());
   final decoration = field.decoration! as UtenInputDecoration;
-  expect(decoration.info, source);
+  // 2026-09-12 起库位来源说明 ⓘ 收进列头，格内不再逐行挂图标；
+  // 来源语义只剩黄框（预填待核对）一种可见状态。
+  expect(decoration.info, isNull);
   expect(
     decoration.autofilled,
     {'货品主档通用建议', '最近登记：同仓同货品', '该仓默认'}.contains(source),
-  );
-  expect(
-    find.text(source),
-    findsNothing,
-    reason: 'Source must not consume a line below the field',
-  );
-  expect(
-    find.descendant(
-      of: _placeField('30000000-0000-0000-0000-000000000001'),
-      matching: find.byType(UtenFieldHintIcon),
-    ),
-    findsOneWidget,
   );
 }
 
@@ -52,16 +41,7 @@ void main() {
     final api = _ArrivalRegistrationApi(duplicateGoodsRows: true);
     await _openPage(tester, api: api, canRegister: true);
 
-    await tester.ensureVisible(
-      find.byKey(const Key('production-finished-arrival-warehouse')),
-    );
-    await tester.pump();
-    await tester.tap(
-      find.byKey(const Key('production-finished-arrival-warehouse')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('成品仓').last);
-    await tester.pumpAndSettle();
+    await _selectWarehouse(tester, '成品仓', settle: true);
     await _revealGrid(tester);
 
     final removedPlace = _placeField('30000000-0000-0000-0000-000000000002');
@@ -113,24 +93,8 @@ void main() {
       await _revealValidationError(tester);
       expect(find.text('请选择实际存放的成品仓库'), findsWidgets);
 
-      await tester.ensureVisible(
-        find.byKey(const Key('production-finished-arrival-warehouse')),
-      );
-      await tester.pump();
-      await tester.tap(
-        find.byKey(const Key('production-finished-arrival-warehouse')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('成品仓').last);
-      await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<UtenDropdownField>(
-              find.byKey(const Key('production-finished-arrival-warehouse')),
-            )
-            .value,
-        'warehouse-1',
-      );
+      await _selectWarehouse(tester, '成品仓', settle: true);
+      expect(api.suggestionWarehouses, contains('warehouse-1'));
       await _revealGrid(tester);
       expect(find.text('10'), findsOneWidget);
       final placeField = find.byKey(
@@ -258,6 +222,7 @@ void main() {
         ],
       );
       addTearDown(router.dispose);
+      SharedPreferences.setMockInitialValues({});
 
       await tester.pumpWidget(
         ProviderScope(
@@ -282,16 +247,7 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.ensureVisible(
-        find.byKey(const Key('production-finished-arrival-warehouse')),
-      );
-      await tester.pump();
-      await tester.tap(
-        find.byKey(const Key('production-finished-arrival-warehouse')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('成品仓').last);
-      await tester.pumpAndSettle();
+      await _selectWarehouse(tester, '成品仓', settle: true);
       await _revealGrid(tester);
       await tester.enterText(
         find.byKey(
@@ -332,7 +288,6 @@ void main() {
     expect(_requiredPlaceHeader(), findsNothing);
     expect(find.byType(RequiredCellFrame), findsNothing);
 
-    await _revealWarehouse(tester);
     await _selectWarehouse(tester, '成品仓', settle: true);
     await _revealGrid(tester);
 
@@ -534,7 +489,6 @@ void main() {
     await tester.enterText(placeField, 'MANUAL-A-07');
     await tester.pump();
 
-    await _revealWarehouse(tester);
     await _selectWarehouse(tester, '备用成品仓', settle: true);
     await _revealGrid(tester);
 
@@ -640,14 +594,11 @@ void main() {
     );
     await _openPage(tester, api: api, canRegister: true);
 
-    // 上次登记仓预选为默认仓（黄框待核对），并落到未手工改过的两行。
-    final defaultField = tester.widget<UtenDropdownField>(
-      find.byKey(const Key('production-finished-arrival-warehouse')),
-    );
-    expect(defaultField.value, 'warehouse-1');
-    expect(defaultField.autofilled, isTrue);
+    // 上次登记仓（黄框待核对）落到未手工改过的两行：不再有表头默认仓下拉
+    //（2026-09-12 撤），预填直接体现在行内仓格与建议请求上。
     expect(api.suggestionWarehouses, contains('warehouse-1'));
     await _revealGrid(tester);
+    expect(find.text('成品仓'), findsWidgets);
 
     // 第二行改成备用成品仓：行内仓格 → 共享仓库选择面板。
     await _tapGridCell(
@@ -768,7 +719,7 @@ void main() {
     expect(find.byKey(const Key('open-arrival-registration')), findsOneWidget);
   });
 
-  testWidgets('统一填写库位(n) 随勾选即时刷新并应用到全部选中行', (tester) async {
+  testWidgets('勾选多行后右键批量设置库位号应用到全部选中行', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final api = _ArrivalRegistrationApi(
@@ -778,21 +729,23 @@ void main() {
     await _openPage(tester, api: api, canRegister: true);
     await _revealGrid(tester);
 
-    UtenButton fillButton() => tester.widget<UtenButton>(
-      find.byKey(const Key('production-finished-arrival-batch-place')),
+    // 2026-09-12 表头上方「全选/统一填写库位」按钮全撤：全选走表头复选框，
+    // 批量填库位走右键菜单。
+    expect(find.text('全选'), findsNothing);
+    expect(find.text('统一填写库位(0)'), findsNothing);
+    await tester.tap(
+      find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate),
     );
-    expect(find.text('统一填写库位(0)'), findsOneWidget);
-    expect(fillButton().onPressed, isNull);
-
-    // 表头全选：计数即时变为 2（订阅 controller，不是 build 时快照）。
-    await tester.tap(find.text('全选'));
     await tester.pump();
-    expect(find.text('统一填写库位(2)'), findsOneWidget);
-    expect(fillButton().onPressed, isNotNull);
-
-    fillButton().onPressed!();
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('三极插套').first),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryButton,
+    );
+    await gesture.up();
+    await tester.pump();
+    await tester.tap(find.text('批量设置库位号 (2)'));
     await tester.pumpAndSettle();
-    expect(find.text('统一填写库位(2 行)'), findsOneWidget);
     await tester.enterText(
       find.byKey(const Key('production-finished-arrival-batch-place-input')),
       ' RACK-7 ',
@@ -899,6 +852,7 @@ void main() {
       final api = _ArrivalRegistrationApi(duplicateGoodsRows: true);
       await _openPage(tester, api: api, canRegister: true);
       await _selectWarehouse(tester, '成品仓', settle: true);
+      await _selectWarehouse(tester, '成品仓', settle: true, row: 2);
       await _revealGrid(tester);
       await tester.enterText(
         _placeField('30000000-0000-0000-0000-000000000001'),
@@ -994,13 +948,6 @@ Finder _requiredPlaceHeader() => find.byWidgetPredicate(
   (widget) => widget is Text && widget.textSpan?.toPlainText() == '库位号 *',
 );
 
-Future<void> _revealWarehouse(WidgetTester tester) async {
-  await tester.ensureVisible(
-    find.byKey(const Key('production-finished-arrival-warehouse')),
-  );
-  await tester.pump();
-}
-
 Future<void> _revealGrid(WidgetTester tester) async {
   await tester.scrollUntilVisible(
     find.byKey(const Key('production-finished-arrival-registration-grid')),
@@ -1041,17 +988,29 @@ Future<void> _selectWarehouse(
   WidgetTester tester,
   String label, {
   bool settle = false,
+  int row = 1,
 }) async {
-  await tester.ensureVisible(
-    find.byKey(const Key('production-finished-arrival-warehouse')),
+  // 2026-09-12 表头「默认成品仓」下拉已撤：选仓 = 点行内仓格弹共享仓库面板。
+  // 注意不能用 pumpAndSettle——延迟建议类用例里 place-suggestions 永远挂起。
+  final cell = find.byKey(
+    ValueKey(
+      'production-finished-arrival-wh-30000000-0000-0000-0000-00000000000$row',
+    ),
+  );
+  await tester.scrollUntilVisible(
+    cell,
+    120,
+    scrollable: find.byType(Scrollable).first,
   );
   await tester.pump();
-  await tester.tap(
-    find.byKey(const Key('production-finished-arrival-warehouse')),
-  );
+  // alignment 0.5 = 滚到视口中部，避开表格自带的 sticky 表头覆盖层。
+  await Scrollable.ensureVisible(tester.element(cell), alignment: 0.5);
   await tester.pump();
-  await tester.pump(const Duration(milliseconds: 250));
-  await tester.tap(find.text(label).last);
+  await tester.tap(cell);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+  final entry = {'成品仓': 'warehouse-1', '备用成品仓': 'warehouse-2'}[label]!;
+  await tester.tap(find.byKey(ValueKey('warehouse-picker-entry-$entry')));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 250));
   if (settle) await tester.pumpAndSettle();
@@ -1071,6 +1030,9 @@ Future<void> _openPage(
   required _ArrivalRegistrationApi api,
   required bool canRegister,
 }) async {
+  // 选仓记忆（productionFinishedArrivalFillMemoryProvider）本地走
+  // shared_preferences 缓存，测试宿主必须给 mock 初值。
+  SharedPreferences.setMockInitialValues({});
   await tester.pumpWidget(
     ProviderScope(
       overrides: [apiClientProvider.overrideWithValue(api)],

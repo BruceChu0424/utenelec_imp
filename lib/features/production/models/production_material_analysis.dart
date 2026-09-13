@@ -615,45 +615,124 @@ class ProductionMaterialAnalysisView {
       .where((item) => item.shortageQty > 0)
       .every((item) => item.routeConfirmed && item.confirmedRoute != null);
 
-  factory ProductionMaterialAnalysisView.fromJson(Map<String, dynamic> json) =>
-      ProductionMaterialAnalysisView(
-        analysisId: _string(json['analysisId'] ?? json['id']) ?? '',
-        status: _string(json['status']),
-        version: _int(json['version']) ?? 0,
-        fingerprint: _string(json['fingerprint']) ?? '',
-        warehouseId: _string(json['warehouseId']),
-        warehouseIds: _stringList(json['warehouseIds']),
-        analyzedAt: _string(
-          json['analyzedAt'] ?? json['calculatedAt'] ?? json['updatedAt'],
-        ),
-        products: _mapList(
-          json['products'],
-          ProductionMaterialAnalysisProduct.fromJson,
-        ),
-        materials: _mapList(
-          json['flatMaterials'] ?? json['materials'],
-          ProductionMaterialAnalysisMaterial.fromJson,
-        ),
-        warehouses: _mapList(
-          json['warehouses'],
-          ProductionMaterialAnalysisWarehouse.fromJson,
-        ),
-        supplyActions: _mapList(
-          json['supplyActions'],
-          MaterialAnalysisSupplyAction.fromJson,
-        ),
-        allowedActions: _stringList(json['allowedActions']).toSet(),
-        fqcReplenishmentOnly: json['fqcReplenishmentOnly'] == true,
-        fqcRecoveryAuthorizationId: _string(json['fqcRecoveryAuthorizationId']),
-        routeResetCount: _int(json['routeResetCount']) ?? 0,
-        planningBlockedReasons: {
-          if (json['planningBlockedReasons']
-              case final Map<Object?, Object?> reasons)
-            for (final entry in reasons.entries)
-              if (_string(entry.value) case final String reason)
-                entry.key.toString(): reason,
-        },
+  factory ProductionMaterialAnalysisView.fromJson(Map<String, dynamic> json) {
+    final shared = _sharedWarehouseStocks(json);
+    final rawMaterials = json['flatMaterials'] ?? json['materials'];
+    if (shared != null &&
+        (rawMaterials is! List || rawMaterials.any((row) => row is! Map))) {
+      throw const FormatException('物料分析节点快照不完整');
+    }
+    ProductionMaterialAnalysisMaterial material(Map<String, dynamic> row) {
+      if (shared == null) {
+        return ProductionMaterialAnalysisMaterial.fromJson(row);
+      }
+      final stocks = shared[row['materialKey']];
+      if (stocks == null) {
+        throw const FormatException('物料分析缺少对应维度的仓库快照');
+      }
+      return ProductionMaterialAnalysisMaterial.fromJson(
+        row,
+        warehouseStocks: stocks,
       );
+    }
+
+    return ProductionMaterialAnalysisView(
+      analysisId: _string(json['analysisId'] ?? json['id']) ?? '',
+      status: _string(json['status']),
+      version: _int(json['version']) ?? 0,
+      fingerprint: _string(json['fingerprint']) ?? '',
+      warehouseId: _string(json['warehouseId']),
+      warehouseIds: _stringList(json['warehouseIds']),
+      analyzedAt: _string(
+        json['analyzedAt'] ?? json['calculatedAt'] ?? json['updatedAt'],
+      ),
+      products: _mapList(
+        json['products'],
+        ProductionMaterialAnalysisProduct.fromJson,
+      ),
+      materials: _mapList(rawMaterials, material),
+      warehouses: _mapList(
+        json['warehouses'],
+        ProductionMaterialAnalysisWarehouse.fromJson,
+      ),
+      supplyActions: _mapList(
+        json['supplyActions'],
+        MaterialAnalysisSupplyAction.fromJson,
+      ),
+      allowedActions: _stringList(json['allowedActions']).toSet(),
+      fqcReplenishmentOnly: json['fqcReplenishmentOnly'] == true,
+      fqcRecoveryAuthorizationId: _string(json['fqcRecoveryAuthorizationId']),
+      routeResetCount: _int(json['routeResetCount']) ?? 0,
+      planningBlockedReasons: {
+        if (json['planningBlockedReasons']
+            case final Map<Object?, Object?> reasons)
+          for (final entry in reasons.entries)
+            if (_string(entry.value) case final String reason)
+              entry.key.toString(): reason,
+      },
+    );
+  }
+}
+
+/// The optional wire format preserves all warehouse facts, including zero stock.
+/// Decode a dimension once per response and share its immutable list across BOM
+/// paths. The old inline representation remains valid when no version is sent.
+Map<String, List<MaterialWarehouseStock>>? _sharedWarehouseStocks(
+  Map<String, dynamic> json,
+) {
+  final version = json['projection'];
+  if (version == null) {
+    if (json.containsKey('warehouseBreakdownsByMaterialKey')) {
+      throw const FormatException('物料分析共享快照缺少格式版本');
+    }
+    return null;
+  }
+  if (version != 'shared-warehouses-v1') {
+    throw const FormatException('不支持的物料分析快照格式');
+  }
+  final raw = json['warehouseBreakdownsByMaterialKey'];
+  if (raw is! Map) {
+    throw const FormatException('物料分析仓库快照不完整');
+  }
+  final result = <String, List<MaterialWarehouseStock>>{};
+  for (final entry in raw.entries) {
+    final key = entry.key;
+    final rows = entry.value;
+    if (key is! String || key.isEmpty || rows is! List) {
+      throw const FormatException('物料分析仓库快照维度无效');
+    }
+    final warehouseIds = <String>{};
+    for (final row in rows) {
+      if (row is! Map ||
+          row['warehouseId'] is! String ||
+          (row['warehouseId'] as String).trim().isEmpty ||
+          !warehouseIds.add(row['warehouseId'] as String)) {
+        throw const FormatException('物料分析仓库快照身份无效或重复');
+      }
+      for (final field in const [
+        'onHandQty',
+        'reservedQty',
+        'availableQty',
+        'ownPeggedQty',
+        'publicAvailableQty',
+        'openSafetySupplyQty',
+        'safetyReplenishmentGapQty',
+        'publicSurplusApprovedInboundQty',
+        'publicSurplusRemainingQty',
+      ]) {
+        final quantity = _double(row[field]);
+        if (quantity == null || !quantity.isFinite) {
+          throw const FormatException('物料分析仓库快照数量缺失或无效');
+        }
+      }
+    }
+    final stocks = _mapList(rows, MaterialWarehouseStock.fromJson);
+    if (stocks.length != rows.length) {
+      throw const FormatException('物料分析仓库快照明细无效');
+    }
+    result[key] = List.unmodifiable(stocks);
+  }
+  return result;
 }
 
 class ProductionMaterialAnalysisProduct {
@@ -970,7 +1049,10 @@ class ProductionMaterialAnalysisMaterial {
     this.publicSurplusApprovedInboundQty = 0,
     this.publicSurplusRemainingQty = 0,
     this.sharedFutureClaimedQty = 0,
+    this.sharedFuturePendingQty,
+    this.lateSharedFutureAvailableQty = 0,
     this.additionalSupplyRecommendedQty = 0,
+    this.additionalSupplyRecommendationKnown = false,
     this.selectedWarehousesAvailableQty = 0,
     this.selectedOtherWarehouseTransferableQty = 0,
     this.publicSurplusExpectedDate,
@@ -1001,6 +1083,7 @@ class ProductionMaterialAnalysisMaterial {
     this.crossReallocatedInQty = 0,
     this.crossReallocatedOutQty = 0,
     this.priorityPendingQty = 0,
+    this.priorityMakeSupplementQty = 0,
     this.priorityFulfilledQty = 0,
     this.crossReallocationRefs = const [],
     this.warehouseStocks = const [],
@@ -1062,7 +1145,10 @@ class ProductionMaterialAnalysisMaterial {
   final double publicSurplusApprovedInboundQty;
   final double publicSurplusRemainingQty;
   final double sharedFutureClaimedQty;
+  final double? sharedFuturePendingQty;
+  final double lateSharedFutureAvailableQty;
   final double additionalSupplyRecommendedQty;
+  final bool additionalSupplyRecommendationKnown;
 
   /// Availability across the explicitly checked warehouses. Reference only:
   /// it never raises readyNow or creates an entitlement outside the primary.
@@ -1126,6 +1212,12 @@ class ProductionMaterialAnalysisMaterial {
   final double crossReallocatedInQty;
   final double crossReallocatedOutQty;
   final double priorityPendingQty;
+
+  /// Server-authorized additional MAKE responsibility after cross-plan stock
+  /// transfer, already reduced by existing effective replenishment work.
+  final double priorityMakeSupplementQty;
+  bool get hasPriorityMakeSupplement =>
+      priorityPendingQty > 0.000001 && priorityMakeSupplementQty > 0.000001;
   final double priorityFulfilledQty;
   final List<MaterialCrossReallocationRef> crossReallocationRefs;
 
@@ -1145,8 +1237,9 @@ class ProductionMaterialAnalysisMaterial {
       : requirementState ?? MaterialRequirementState.inactive;
 
   factory ProductionMaterialAnalysisMaterial.fromJson(
-    Map<String, dynamic> json,
-  ) => ProductionMaterialAnalysisMaterial(
+    Map<String, dynamic> json, {
+    List<MaterialWarehouseStock>? warehouseStocks,
+  }) => ProductionMaterialAnalysisMaterial(
     materialLineId: _string(json['materialLineId'] ?? json['id']) ?? '',
     nodeRole: _string(json['nodeRole']) ?? 'BOM_COMPONENT',
     analysisLineId: _string(json['analysisLineId']),
@@ -1184,8 +1277,13 @@ class ProductionMaterialAnalysisMaterial {
         _double(json['publicSurplusApprovedInboundQty']) ?? 0,
     publicSurplusRemainingQty: _double(json['publicSurplusRemainingQty']) ?? 0,
     sharedFutureClaimedQty: _double(json['sharedFutureClaimedQty']) ?? 0,
+    sharedFuturePendingQty: _double(json['sharedFuturePendingQty']),
+    lateSharedFutureAvailableQty:
+        _double(json['lateSharedFutureAvailableQty']) ?? 0,
     additionalSupplyRecommendedQty:
         _double(json['additionalSupplyRecommendedQty']) ?? 0,
+    additionalSupplyRecommendationKnown:
+        json['additionalSupplyRecommendedQty'] != null,
     selectedWarehousesAvailableQty:
         _double(json['selectedWarehousesAvailableQty']) ?? 0,
     selectedOtherWarehouseTransferableQty:
@@ -1233,15 +1331,15 @@ class ProductionMaterialAnalysisMaterial {
     crossReallocatedInQty: _double(json['crossReallocatedInQty']) ?? 0,
     crossReallocatedOutQty: _double(json['crossReallocatedOutQty']) ?? 0,
     priorityPendingQty: _double(json['priorityPendingQty']) ?? 0,
+    priorityMakeSupplementQty: _double(json['priorityMakeSupplementQty']) ?? 0,
     priorityFulfilledQty: _double(json['priorityFulfilledQty']) ?? 0,
     crossReallocationRefs: _mapList(
       json['crossReallocationRefs'],
       MaterialCrossReallocationRef.fromJson,
     ),
-    warehouseStocks: _mapList(
-      json['warehouseBreakdown'],
-      MaterialWarehouseStock.fromJson,
-    ),
+    warehouseStocks:
+        warehouseStocks ??
+        _mapList(json['warehouseBreakdown'], MaterialWarehouseStock.fromJson),
     actionable:
         _boolOrNull(json['actionable']) ?? ((_int(json['level']) ?? 0) == 1),
   );
@@ -1353,7 +1451,22 @@ class MaterialBorrowRef {
 
 /// 跨物料分析让料候选。版本与指纹属于接受计划的 CAS 快照；提交时必须
 /// 原样回传，不能用列表展示值在客户端重算合法数量。
-class MaterialCrossReallocationCandidate {
+abstract interface class MaterialReallocationEndpointCandidate {
+  String get analysisId;
+  int get version;
+  String get fingerprint;
+  String get materialLineId;
+  String get displayAnalysisLabel;
+  String? get productLabel;
+  String? get pathLabel;
+  String? get warehouseName;
+  String? get deliveryDate;
+  double get shortageQty;
+  double get sourceLendableQty;
+}
+
+class MaterialCrossReallocationCandidate
+    implements MaterialReallocationEndpointCandidate {
   const MaterialCrossReallocationCandidate({
     required this.targetAnalysisId,
     required this.targetVersion,
@@ -1377,15 +1490,31 @@ class MaterialCrossReallocationCandidate {
   final String targetMaterialLineId;
   final String? targetAnalysisLineId;
   final String? analysisLabel;
+  @override
   final String? productLabel;
+  @override
   final String? pathLabel;
   final List<String> sourceRefs;
   final String? warehouseId;
+  @override
   final String? warehouseName;
+  @override
   final String? deliveryDate;
+  @override
   final double shortageQty;
+  @override
   final double sourceLendableQty;
 
+  @override
+  String get analysisId => targetAnalysisId;
+  @override
+  int get version => targetVersion;
+  @override
+  String get fingerprint => targetFingerprint;
+  @override
+  String get materialLineId => targetMaterialLineId;
+
+  @override
   String get displayAnalysisLabel {
     final explicit = analysisLabel?.trim();
     if (explicit?.isNotEmpty == true) return explicit!;
@@ -1417,6 +1546,68 @@ class MaterialCrossReallocationCandidate {
     deliveryDate: _string(json['deliveryDate']),
     shortageQty: _double(json['shortageQty']) ?? 0,
     sourceLendableQty: _double(json['sourceLendableQty']) ?? 0,
+  );
+}
+
+/// 当前缺料计划可直接选择的来源。服务端只返回可写范围内、仍持有原始现货的计划。
+class MaterialCrossReallocationSourceCandidate
+    implements MaterialReallocationEndpointCandidate {
+  const MaterialCrossReallocationSourceCandidate({
+    required this.sourceAnalysisId,
+    required this.sourceVersion,
+    required this.sourceFingerprint,
+    required this.sourceMaterialLineId,
+    this.analysisLabel,
+    this.productLabel,
+    this.warehouseName,
+    this.deliveryDate,
+    this.sourceLendableQty = 0,
+    this.shortageQty = 0,
+  });
+
+  final String sourceAnalysisId;
+  final int sourceVersion;
+  final String sourceFingerprint;
+  final String sourceMaterialLineId;
+  final String? analysisLabel;
+  @override
+  final String? productLabel;
+  @override
+  final String? warehouseName;
+  @override
+  final String? deliveryDate;
+  @override
+  final double sourceLendableQty;
+  @override
+  final double shortageQty;
+  @override
+  String get analysisId => sourceAnalysisId;
+  @override
+  int get version => sourceVersion;
+  @override
+  String get fingerprint => sourceFingerprint;
+  @override
+  String get materialLineId => sourceMaterialLineId;
+  @override
+  String? get pathLabel => null;
+  @override
+  String get displayAnalysisLabel => analysisLabel?.trim().isNotEmpty == true
+      ? analysisLabel!.trim()
+      : '物料分析 ${_shortIdentity(sourceAnalysisId)}';
+
+  factory MaterialCrossReallocationSourceCandidate.fromJson(
+    Map<String, dynamic> json,
+  ) => MaterialCrossReallocationSourceCandidate(
+    sourceAnalysisId: _string(json['sourceAnalysisId']) ?? '',
+    sourceVersion: _int(json['sourceVersion']) ?? 0,
+    sourceFingerprint: _string(json['sourceFingerprint']) ?? '',
+    sourceMaterialLineId: _string(json['sourceMaterialLineId']) ?? '',
+    analysisLabel: _string(json['analysisLabel']),
+    productLabel: _string(json['productLabel']),
+    warehouseName: _string(json['warehouseName']),
+    deliveryDate: _string(json['deliveryDate']),
+    sourceLendableQty: _double(json['sourceLendableQty']) ?? 0,
+    shortageQty: _double(json['shortageQty']) ?? 0,
   );
 }
 
@@ -1850,6 +2041,22 @@ class MaterialSupplyQuantityInput {
     'qty': qty,
     'safetyReplenishmentQty': safetyReplenishmentQty,
     'publicExtraQty': publicExtraQty,
+  };
+}
+
+class MaterialSharedFutureClaimQuantity {
+  const MaterialSharedFutureClaimQuantity({
+    required this.actionGroupKey,
+    required this.qty,
+    this.sourceActionId,
+  });
+  final String actionGroupKey;
+  final double qty;
+  final String? sourceActionId;
+  Map<String, dynamic> toJson() => {
+    'actionGroupKey': actionGroupKey,
+    'qty': qty,
+    'sourceActionId': ?sourceActionId,
   };
 }
 

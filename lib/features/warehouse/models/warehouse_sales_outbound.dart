@@ -114,6 +114,8 @@ class WarehouseSalesOutboundDetail {
     this.pickedAt,
     this.handedOverAt,
     this.warehouseExceptionReason,
+    this.canSelectWarehouse = false,
+    this.warehouseOptions = const [],
   });
 
   final WarehouseSalesOutboundSummary header;
@@ -127,6 +129,8 @@ class WarehouseSalesOutboundDetail {
   final String? handedOverAt;
   final String? warehouseExceptionReason;
   final List<WarehouseSalesOutboundLine> lines;
+  final bool canSelectWarehouse;
+  final List<WarehouseSalesWarehouseOption> warehouseOptions;
 
   factory WarehouseSalesOutboundDetail.fromJson(Map<String, dynamic> json) {
     return WarehouseSalesOutboundDetail(
@@ -140,6 +144,10 @@ class WarehouseSalesOutboundDetail {
       pickedAt: _text(json['pickedAt']),
       handedOverAt: _text(json['handedOverAt']),
       warehouseExceptionReason: _text(json['warehouseExceptionReason']),
+      canSelectWarehouse: json['canSelectWarehouse'] == true,
+      warehouseOptions: _objectList(
+        json['warehouseOptions'],
+      ).map(WarehouseSalesWarehouseOption.fromJson).toList(growable: false),
       lines: _objectList(
         json['lines'],
       ).map(WarehouseSalesOutboundLine.fromJson).toList(growable: false),
@@ -155,6 +163,7 @@ class WarehouseSalesOutboundLine {
     this.goodsCode,
     this.goodsName,
     this.currentStockPlaceHint,
+    this.actualStockPlace,
     this.colorId,
     this.colorName,
     this.unitId,
@@ -174,6 +183,7 @@ class WarehouseSalesOutboundLine {
   final String? goodsCode;
   final String? goodsName;
   final String? currentStockPlaceHint;
+  final String? actualStockPlace;
   final String? colorId;
   final String? colorName;
   final String? unitId;
@@ -194,6 +204,7 @@ class WarehouseSalesOutboundLine {
       goodsCode: _text(json['goodsCode']),
       goodsName: _text(json['goodsName']),
       currentStockPlaceHint: _text(json['currentStockPlaceHint']),
+      actualStockPlace: _text(json['actualStockPlace']),
       colorId: _text(json['colorId']),
       colorName: _text(json['colorName']),
       unitId: _text(json['unitId']),
@@ -207,6 +218,45 @@ class WarehouseSalesOutboundLine {
       sourceDocumentNo: _text(json['sourceDocumentNo']),
     );
   }
+}
+
+class WarehouseSalesWarehouseOption {
+  const WarehouseSalesWarehouseOption({
+    required this.warehouseId,
+    required this.warehouseName,
+    required this.canFulfill,
+    this.lines = const [],
+  });
+  final String warehouseId;
+  final String warehouseName;
+  final bool canFulfill;
+  final List<WarehouseSalesWarehouseLine> lines;
+  factory WarehouseSalesWarehouseOption.fromJson(Map<String, dynamic> json) =>
+      WarehouseSalesWarehouseOption(
+        warehouseId: _requiredId(json['warehouseId']),
+        warehouseName: _text(json['warehouseName']) ?? '—',
+        canFulfill: json['canFulfill'] == true,
+        lines: _objectList(
+          json['lines'],
+        ).map(WarehouseSalesWarehouseLine.fromJson).toList(growable: false),
+      );
+}
+
+class WarehouseSalesWarehouseLine {
+  const WarehouseSalesWarehouseLine({
+    required this.shipmentItemId,
+    this.availableQty,
+    this.requiredQty,
+  });
+  final String shipmentItemId;
+  final String? availableQty;
+  final String? requiredQty;
+  factory WarehouseSalesWarehouseLine.fromJson(Map<String, dynamic> json) =>
+      WarehouseSalesWarehouseLine(
+        shipmentItemId: _requiredId(json['shipmentItemId']),
+        availableQty: _decimalText(json['availableQty']),
+        requiredQty: _decimalText(json['requiredQty']),
+      );
 }
 
 String _requiredId(Object? value) {

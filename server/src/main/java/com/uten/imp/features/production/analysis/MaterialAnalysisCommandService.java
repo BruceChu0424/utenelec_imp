@@ -92,6 +92,11 @@ public class MaterialAnalysisCommandService {
      */
     @Transactional
     public AnalysisView notifySupply(UUID analysisId, NotifyRequest request) {
+        return notifySupplyInternal(analysisId, request, false);
+    }
+
+    private AnalysisView notifySupplyInternal(
+            UUID analysisId, NotifyRequest request, boolean allocationCurrent) {
         tx.bind();
         var mutationGuard = lockAnalysisInventoryDimensions(analysisId);
         MaterialAnalysisService.AnalysisHeader header = analysisService.headerAfterPrelock(analysisId);
@@ -107,7 +112,7 @@ public class MaterialAnalysisCommandService {
         analysisService.requireCurrent(header, request.version(), request.fingerprint());
         // Stock, receipts and downstream document lifecycle can change without touching the
         // analysis header. Rebuild the authoritative allocation before calculating a delta.
-        analysisService.refreshLocked(analysisId);
+        if (!allocationCurrent) analysisService.refreshLocked(analysisId);
         AnalysisView view = analysisService.detailInternal(analysisId, false);
         List<ActionGroup> groups = selectedGroups(view, request);
         for (ActionGroup group : groups) {
@@ -135,15 +140,14 @@ public class MaterialAnalysisCommandService {
         Set<UUID> subcontractBomParents = activeBomParentIds(groups.stream()
                 .filter(group -> "SUBCONTRACT".equals(group.route()))
                 .map(group -> group.dimension().goodsId()).toList());
+        var coverage = supplyCoverage(analysisId, groups);
         List<ActionPlan> plans = new ArrayList<>();
         for (ActionGroup group : groups) {
-            BigDecimal existingOpen = activeOpenActionQty(
-                    analysisId, group);
+            BigDecimal existingOpen = activeOpenActionQty(coverage, group);
             // V466 补货单通道收口：因 IQC 不合格取消的行动，其原订货单在实物退回
             // 登记后重新欠货（未收 + 已退 + 已退回不合格），这部分在途仍是有效覆盖，
             // 必须从可下达余量里扣除——否则原订单等补货 + 重新通知新单 = 双重补货。
-            BigDecimal replacementInFlight = cancelledIqcReplacementInFlight(
-                    analysisId, group);
+            BigDecimal replacementInFlight = cancelledIqcReplacementInFlight(coverage, group);
             BigDecimal delta = group.demandRequiredQty()
                     .subtract(existingOpen)
                     .subtract(replacementInFlight)
@@ -360,10 +364,13 @@ public class MaterialAnalysisCommandService {
                 view.version(), view.fingerprint(), request.idempotencyKey(),
                 null, List.of(), request.actionGroupKeys(), List.of());
         List<ActionGroup> groups = selectedGroups(view, selector);
+        Map<String,SharedFutureClaimQuantity> requestedQuantities=sharedFutureQuantities(request,groups);
         Set<UUID> subcontractBomParents = activeBomParentIds(groups.stream()
                 .filter(group -> "SUBCONTRACT".equals(group.route()))
                 .map(group -> group.dimension().goodsId()).toList());
+        var coverage = supplyCoverage(analysisId, groups);
         List<UUID> createdIds = new ArrayList<>();
+        List<Map<String,String>> acceptedLateSources=new ArrayList<>();
         for (ActionGroup group : groups) {
             if (!Set.of("BUY", "SUBCONTRACT").contains(group.route())) {
                 throw validation("只有采购或叶子委外物料可以采用公共在途");
@@ -372,22 +379,33 @@ public class MaterialAnalysisCommandService {
                     && subcontractBomParents.contains(group.dimension().goodsId())) {
                 throw validation("有我方供料 BOM 的委外件不能采用公共超量在途");
             }
-            BigDecimal existingOpen = activeOpenActionQty(analysisId, group);
+            BigDecimal existingOpen = activeOpenActionQty(coverage, group);
             BigDecimal needed = group.demandRequiredQty().subtract(existingOpen)
+                    .subtract(cancelledIqcReplacementInFlight(coverage,group))
                     .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING);
+            SharedFutureClaimQuantity quantity=requestedQuantities.get(group.groupKey());
+            if(quantity!=null) {
+                if(quantity.qty().compareTo(needed)>0) throw conflict("本次认领数量超过尚未被有效供给覆盖的需求，请刷新后重试");
+                needed=quantity.qty();
+            }
             if (needed.signum() <= 0) continue;
 
             List<SharedFutureSource> initial = sharedFutureSources(
-                    analysisId, group);
-            if (initial.isEmpty()) continue;
+                    analysisId, group,request.allowLateSupply()).stream()
+                    .filter(source->quantity==null || quantity.sourceActionId()==null || quantity.sourceActionId().equals(source.actionId())).toList();
+            if (initial.isEmpty()) {
+                if(quantity!=null) throw conflict("所选公共在途已不可认领；晚到或交期未明确的来源须明确确认后再采用");
+                continue;
+            }
             List<UUID> sourceIds = initial.stream().map(SharedFutureSource::actionId)
                     .distinct().sorted().toList();
             em.createNativeQuery("""
                     SELECT id FROM preplan_supply_actions
-                    WHERE id IN (:ids) ORDER BY id FOR UPDATE
-                    """).setParameter("ids", sourceIds).getResultList();
+                    WHERE id IN (SELECT unnest(CAST(string_to_array(:ids, ',') AS uuid[]))) ORDER BY id FOR UPDATE
+                    """).setParameter("ids", sourceIds.stream().map(UUID::toString).collect(Collectors.joining(","))).getResultList();
             List<SharedFutureSource> sources = sharedFutureSources(
-                    analysisId, group);
+                    analysisId, group,request.allowLateSupply()).stream()
+                    .filter(source->quantity==null || quantity.sourceActionId()==null || quantity.sourceActionId().equals(source.actionId())).toList();
             for (SharedFutureSource source : sources) {
                 if (needed.signum() <= 0) break;
                 BigDecimal take = needed.min(source.availableQty())
@@ -444,8 +462,13 @@ public class MaterialAnalysisCommandService {
                 allocateClaim(actionId, analysisId, group.materials(), take,
                         source.externalItemId());
                 createdIds.add(actionId);
+                if(source.expectedDate()==null || group.needDate()!=null && source.expectedDate().isAfter(group.needDate())) {
+                    acceptedLateSources.add(Map.of("claimActionId",actionId.toString(),"sourceActionId",source.actionId().toString(),
+                            "expectedDate",Objects.toString(source.expectedDate(),""),"originalNeedDate",Objects.toString(group.needDate(),"")));
+                }
                 needed = needed.subtract(take);
             }
+            if(quantity!=null && needed.signum()>0) throw conflict("公共在途余量已变化，本次认领未生效，请核对数量后重试");
         }
         if (createdIds.isEmpty()) {
             throw conflict("当前没有可采用的同仓、同路线、按期公共在途余量");
@@ -453,27 +476,28 @@ public class MaterialAnalysisCommandService {
         analysisService.refreshLocked(analysisId);
         recordCommand(analysisId, OP_CLAIM_SHARED_FUTURE,
                 request.idempotencyKey(), requestHash,
-                Map.of("actionIds", List.copyOf(createdIds)));
+                Map.of("actionIds",List.copyOf(createdIds),"allowLateSupply",request.allowLateSupply(),
+                        "acceptedLateSources",List.copyOf(acceptedLateSources)));
         return analysisService.detailInternal(analysisId, false);
     }
 
     private List<SharedFutureSource> sharedFutureSources(
-            UUID analysisId, ActionGroup group) {
+            UUID analysisId, ActionGroup group,boolean allowLateSupply) {
         return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT source_action_id, available_to_claim_qty, expected_date,
                        claim_external_item_id, external_document_type,
                        external_document_id, external_document_no
                 FROM v_preplan_public_surplus_source_state
                 WHERE source_analysis_id <> :analysisId
-                  AND warehouse_id = :warehouseId
+                  AND fn_warehouse_same_main(warehouse_id, :warehouseId)
                   AND goods_id = :goodsId
                   AND color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
                   AND unit_id = :unitId
                   AND route = :route
                   AND available_to_claim_qty > 0
                   AND claim_external_item_id IS NOT NULL
-                  AND (CAST(:needDate AS date) IS NULL
-                       OR expected_date <= CAST(:needDate AS date))
+                  AND (:allowLateSupply=TRUE OR (expected_date IS NOT NULL AND
+                       (CAST(:needDate AS date) IS NULL OR expected_date <= CAST(:needDate AS date))))
                 ORDER BY expected_date, created_at, source_action_id
                 """)
                 .setParameter("analysisId", analysisId)
@@ -482,7 +506,7 @@ public class MaterialAnalysisCommandService {
                 .setParameter("colorId", group.dimension().colorId())
                 .setParameter("unitId", group.dimension().unitId())
                 .setParameter("route", group.route())
-                .setParameter("needDate", group.needDate())).stream()
+                .setParameter("needDate", group.needDate()).setParameter("allowLateSupply",allowLateSupply)).stream()
                 .map(row -> new SharedFutureSource(
                         (UUID) row[0], decimal(row[1]),
                         MaterialAnalysisService.date(row[2]),
@@ -541,11 +565,11 @@ public class MaterialAnalysisCommandService {
                 FROM production_material_analysis_borrows borrow
                 WHERE borrow.analysis_id = :analysisId
                   AND borrow.status = 'ACTIVE'
-                  AND (borrow.from_material_id IN (:materialIds)
-                       OR borrow.to_material_id IN (:materialIds))
+                  AND (borrow.from_material_id IN (SELECT unnest(CAST(string_to_array(:materialIds, ',') AS uuid[])))
+                       OR borrow.to_material_id IN (SELECT unnest(CAST(string_to_array(:materialIds, ',') AS uuid[]))))
                 """)
                 .setParameter("analysisId", analysisId)
-                .setParameter("materialIds", materialIds)
+                .setParameter("materialIds", materialIds.stream().map(UUID::toString).collect(Collectors.joining(",")))
                 .getSingleResult();
         if (conflicts.longValue() > 0) {
             throw conflict("所选物料存在生效中的分析内调货，不能据此创建采购/委外任务；"
@@ -585,6 +609,12 @@ public class MaterialAnalysisCommandService {
         if (request.approveNow() && !access.hasAuthority("production_plan:approve")) {
             throw new ApiException(ErrorCode.FORBIDDEN, "生成并审核需要独立的生产计划审核权限");
         }
+        // Admission uses the original request CAS and BOM snapshot. Stock can
+        // change through generic warehouse commands without updating this
+        // analysis, so recompute allocation under the held mutation locks before
+        // deciding a new child quota. Page entry and GET remain read-only.
+        analysisService.requireCurrentBomSnapshot(analysisId, workshopSourceIds(analysisId, request));
+        analysisService.refreshLocked(analysisId);
         // 1) 候选行建「子件锚点行」（2026-09-05 简化：计划侧不再接管子树需求、
         //    不搬权益——物料行保持原位单一份数据，计划员照常在采购/委外桶下达；
         //    锚点行仅承载计划链接与执行进度）。MAKE 只建锚点行；有子层委外
@@ -600,8 +630,11 @@ public class MaterialAnalysisCommandService {
             goodsByMaterialLine.putIfAbsent(material.materialLineId(), material.goodsId());
         }
         java.util.Set<UUID> goodsWithMakeChildren = new java.util.HashSet<>(
-                activeBomParentIds(
-                        goodsByMaterialLine.values().stream()
+                activeBomParentIds(request.lines().stream()
+                                .map(IssueWorkshopPlansRequest.IssuePlanLine::materialLineId)
+                                .filter(java.util.Objects::nonNull)
+                                .filter(id -> "SUBCONTRACT".equals(candidateRoutes.get(id)))
+                                .map(goodsByMaterialLine::get)
                                 .filter(java.util.Objects::nonNull)
                                 .distinct().toList()));
         for (IssueWorkshopPlansRequest.IssuePlanLine line : request.lines()) {
@@ -623,25 +656,27 @@ public class MaterialAnalysisCommandService {
             }
             subcontractLines.add(line.materialLineId());
         }
-        // 2026-09-10 性能：refresh 次数收敛——先建 MAKE 锚点，再走委外通知（notifySupply
-        // 自带「先刷新算增量、写入后再刷新」，已覆盖刚建的 MAKE 锚点）；只有 MAKE 锚点
-        // 实际新建/增量且没有走委外通知时，才补一次刷新。ADR-071「锚点建立后以最新快照
-        // 逐行生成」不变量不变：纯自制下达每次最多 2 次 refreshLocked（锚点后 + 建计划后），
-        // 既有锚点复用/纯产品行下达只剩建计划后的 1 次。
+        // 入场已按实时库存刷新。先建立 MAKE 锚点，再让委外通知复用或更新该快照；
+        // 仅在锚点实际改变且没有委外通知覆盖时，另作锚点后刷新。计划生成结束后
+        // 再投影正式计划覆盖，始终满足 ADR-071 的「以当前权威快照逐行生成」。
         boolean anchorsChanged = !makeLines.isEmpty()
                 && ensureWorkshopChildAnchors(analysisId, preArrange, makeLines);
+        AnalysisView view = preArrange;
         if (!subcontractLines.isEmpty()) {
-            notifySupply(analysisId, new NotifyRequest(
-                    request.version(), request.fingerprint(),
+            view = notifySupplyInternal(analysisId, new NotifyRequest(
+                    preArrange.version(), preArrange.fingerprint(),
                     request.idempotencyKey() + "-ARRANGE", "SUBCONTRACT",
-                    subcontractLines, null, null));
+                    subcontractLines, null, null), !anchorsChanged);
             anchorsChanged = false;
         }
         // 2) 以最新快照逐行生成计划：产品行直接用行 id，候选行解析到刚建/既有子件行。
         if (anchorsChanged) {
             analysisService.refreshLocked(analysisId);
+            view = analysisService.detailInternal(analysisId, false);
         }
-        AnalysisView view = analysisService.detailInternal(analysisId, false);
+        // Reuse the exact same transaction snapshot when anchors did not change.
+        // notifySupply already returns its post-write view; discarding it would
+        // repeat every warehouse, entitlement and document-chain projection.
         Map<UUID, ProductView> products = view.products().stream()
                 .collect(Collectors.toMap(ProductView::analysisLineId, value -> value));
         Map<UUID, IssueWorkshopPlansRequest.IssuePlanLine> lineByAnalysisLine =
@@ -658,7 +693,7 @@ public class MaterialAnalysisCommandService {
                     ? line.analysisLineId()
                     : childLineByMaterialLine.get(line.materialLineId());
             if (lineId == null || lineByAnalysisLine.put(lineId, line) != null) {
-                throw validation("计划行为空、重复或子件任务未生成，请刷新后重试");
+                throw validation("物料库存或候选任务已变化，本次未下达；请点击刷新重新核对后再提交");
             }
         }
         // BOM/订单来源漂移闸：分析快照之后 BOM 或销售订单状态变了就拒绝下达。
@@ -666,42 +701,48 @@ public class MaterialAnalysisCommandService {
         PlanScheduleDefaults defaults = new PlanScheduleDefaults(
                 request.billDate(), request.deliveryDate());
         List<GeneratedPlan> generated = new ArrayList<>();
-        for (Map.Entry<UUID, IssueWorkshopPlansRequest.IssuePlanLine> entry
-                : lineByAnalysisLine.entrySet()) {
-            UUID lineId = entry.getKey();
-            IssueWorkshopPlansRequest.IssuePlanLine line = entry.getValue();
-            ProductView product = products.get(lineId);
-            if (product == null) {
-                throw validation("待生成计划产品不属于当前分析");
+        // Plan linking and approval change sources, plans and reservations, but
+        // do not rewrite this analysis's material/BOM projection. Verify those
+        // two static slices at both batch boundaries; every nested dynamic
+        // discovery and prelock coverage check still runs before each write.
+        try (var structure = mutationFootprints.openAnalysisStructureScope(analysisId)) {
+            for (Map.Entry<UUID, IssueWorkshopPlansRequest.IssuePlanLine> entry
+                    : lineByAnalysisLine.entrySet()) {
+                UUID lineId = entry.getKey();
+                IssueWorkshopPlansRequest.IssuePlanLine line = entry.getValue();
+                ProductView product = products.get(lineId);
+                if (product == null) {
+                    throw validation("待生成计划产品不属于当前分析");
+                }
+                if (!product.canSchedule()) {
+                    throw conflict(product.scheduleBlockedReason() == null
+                            ? "当前产品不可排产" : product.scheduleBlockedReason());
+                }
+                if (line.qty().compareTo(product.remainingQty()) > 0) {
+                    throw validation("「" + product.goodsName() + "」生成数量 "
+                            + line.qty().stripTrailingZeros().toPlainString()
+                            + " 超过剩余需求 "
+                            + product.remainingQty().stripTrailingZeros().toPlainString());
+                }
+                PlanQuantity quantity = new PlanQuantity(lineId, line.qty(),
+                        line.billDate(), line.deliveryDate(), line.departmentId(),
+                        line.workshopName(), line.workerId(), line.teamDepartmentId(),
+                        line.productNo());
+                validatePlanSchedule(quantity, defaults);
+                // 客观齐套结论只决定 READY/WAITING，不再拦截：缺料批次进 WAITING，
+                // 车间侧等料（执行段齐套后自动提升）。
+                PlanDetail plan = createDraftPlan(analysisId, product, quantity, defaults);
+                ProductionPlanningDraftView draft = savePlanningDraft(
+                        analysisId, product, plan, quantity, defaults,
+                        request.warehouseId());
+                PlanningPackageResult applied = null;
+                if (request.approveNow()) {
+                    planService.approve(plan.getId());
+                    applied = planningPackages.currentResult(plan.getId()).orElseThrow(() ->
+                            conflict("生产计划已审核但正式计划包未生成，事务已回滚"));
+                }
+                generated.add(toGenerated(plan, draft, applied));
             }
-            if (!product.canSchedule()) {
-                throw conflict(product.scheduleBlockedReason() == null
-                        ? "当前产品不可排产" : product.scheduleBlockedReason());
-            }
-            if (line.qty().compareTo(product.remainingQty()) > 0) {
-                throw validation("「" + product.goodsName() + "」生成数量 "
-                        + line.qty().stripTrailingZeros().toPlainString()
-                        + " 超过剩余需求 "
-                        + product.remainingQty().stripTrailingZeros().toPlainString());
-            }
-            PlanQuantity quantity = new PlanQuantity(lineId, line.qty(),
-                    line.billDate(), line.deliveryDate(), line.departmentId(),
-                    line.workshopName(), line.workerId(), line.teamDepartmentId(),
-                    line.productNo());
-            validatePlanSchedule(quantity, defaults);
-            // 客观齐套结论只决定 READY/WAITING，不再拦截：缺料批次进 WAITING，
-            // 车间侧等料（执行段齐套后自动提升）。
-            PlanDetail plan = createDraftPlan(analysisId, product, quantity, defaults);
-            ProductionPlanningDraftView draft = savePlanningDraft(
-                    analysisId, product, plan, quantity, defaults,
-                    request.warehouseId());
-            PlanningPackageResult applied = null;
-            if (request.approveNow()) {
-                planService.approve(plan.getId());
-                applied = planningPackages.currentResult(plan.getId()).orElseThrow(() ->
-                        conflict("生产计划已审核但正式计划包未生成，事务已回滚"));
-            }
-            generated.add(toGenerated(plan, draft, applied));
         }
         MaterialAnalysisService.AnalysisHeader postPlanHeader =
                 analysisService.headerAfterPrelock(analysisId);
@@ -715,12 +756,26 @@ public class MaterialAnalysisCommandService {
                 List.copyOf(generated));
     }
 
+    private Set<UUID> workshopSourceIds(UUID analysisId, IssueWorkshopPlansRequest request) {
+        Set<UUID> sourceIds = request.lines().stream()
+                .map(IssueWorkshopPlansRequest.IssuePlanLine::analysisLineId)
+                .filter(Objects::nonNull).collect(Collectors.toCollection(LinkedHashSet::new));
+        List<UUID> materialIds = request.lines().stream()
+                .map(IssueWorkshopPlansRequest.IssuePlanLine::materialLineId)
+                .filter(Objects::nonNull).distinct().toList();
+        if (!materialIds.isEmpty()) sourceIds.addAll(NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT DISTINCT analysis_item_id FROM production_material_analysis_materials
+                WHERE analysis_id=:analysisId AND id IN (:materialIds)
+                """).setParameter("analysisId", analysisId).setParameter("materialIds", materialIds), UUID.class));
+        return sourceIds;
+    }
+
     /**
      * 下达车间的候选锚点（2026-09-05 简化）：按操作组只补建「剩余缺口」的
      * MAKE_COMPONENT 锚点行——不建 preplan action、不委托权益、不展开子树，
      * 物料行保持原位（计划员照常在采购/委外桶下达）。已有锚点只消费其
-     * remainingQty，不从仍存在的物理缺口再次增加来源需求；数量变化由明确
-     * 的来源变更处理。新锚点才按当前缺口建立需求。
+     * remainingQty，不从普通物理缺口再次增加来源需求；明确来源变更及V568
+     * 有让料事实/净补供额度的追加责任例外，均保留独立证据。新锚点才按当前缺口建立需求。
      */
     private boolean ensureWorkshopChildAnchors(
             UUID analysisId, AnalysisView view, List<UUID> makeLineIds) {
@@ -732,6 +787,9 @@ public class MaterialAnalysisCommandService {
         // 返回是否真的新建/增量了锚点行：调用方据此决定要不要补一次 refreshLocked
         // （既有锚点全部复用时快照未变，不必重算）。
         boolean changed = false;
+        var coverage = supplyCoverage(analysisId, groups.stream()
+                .filter(group -> group.materials().getFirst().planAnchorAnalysisLineId() == null)
+                .toList());
         for (ActionGroup group : groups) {
             UUID anchorId = group.materials().getFirst().planAnchorAnalysisLineId();
             if (anchorId != null) {
@@ -739,11 +797,17 @@ public class MaterialAnalysisCommandService {
                 if (anchor == null || !"MAKE_COMPONENT".equals(anchor.sourceType())) {
                     throw conflict("物料节点的计划锚点来源不一致，请刷新后核对路线");
                 }
+                MaterialView material=group.materials().getFirst();
+                if(material.priorityMakeSupplementQty().signum()>0) {
+                    new PreplanReallocationMakeSupplement(em).append(analysisId,material.materialLineId(),anchorId,
+                            material.priorityMakeSupplementQty(),currentUser.requireId());
+                    changed=true;
+                }
                 continue;
             }
             BigDecimal delta = group.demandRequiredQty()
-                    .subtract(activeOpenActionQty(analysisId, group))
-                    .subtract(cancelledIqcReplacementInFlight(analysisId, group))
+                    .subtract(activeOpenActionQty(coverage, group))
+                    .subtract(cancelledIqcReplacementInFlight(coverage, group))
                     .max(BigDecimal.ZERO)
                     .setScale(4, RoundingMode.CEILING);
             if (delta.signum() <= 0) continue;
@@ -1444,14 +1508,14 @@ public class MaterialAnalysisCommandService {
         UUID representative = action.group().materials().getFirst().materialLineId();
         UUID warehouseId = selectedWarehouse(analysisId);
         UUID actorId = currentUser.requireId();
-        List<Object[]> existing = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+        List<UUID> existing = NativeQueryResults.typedRows(em.createNativeQuery("""
                 SELECT id FROM preplan_subcontract_make_tasks
                 WHERE analysis_id = :analysisId
                   AND analysis_material_id = :materialId
                   AND status = 'ACTIVE'
                 FOR UPDATE
                 """).setParameter("analysisId", analysisId)
-                .setParameter("materialId", representative));
+                .setParameter("materialId", representative), UUID.class);
         BigDecimal requiredQty = action.demandQty();
         UUID taskId;
         if (existing.isEmpty()) {
@@ -1479,7 +1543,7 @@ public class MaterialAnalysisCommandService {
                     .setParameter("actorId", actorId)
                     .executeUpdate();
         } else {
-            taskId = (UUID) existing.getFirst()[0];
+            taskId = existing.getFirst();
             // 任务需求量始终与任务行的 requested_qty 同步（重下达只增不减）。
             em.createNativeQuery("""
                     UPDATE preplan_subcontract_make_tasks task
@@ -1501,7 +1565,7 @@ public class MaterialAnalysisCommandService {
     private UUID createOrIncrementSubcontractMakeDemand(UUID analysisId, ActionDraft action) {
         UUID representative = action.group().materials().getFirst().materialLineId();
         List<Object[]> existing = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT id, source_type
+                SELECT id, source_type, requested_qty
                 FROM production_material_analysis_items
                 WHERE analysis_id = :analysisId
                   AND source_type IN ('MAKE_COMPONENT', 'SUBCONTRACT_MAKE')
@@ -1527,6 +1591,11 @@ public class MaterialAnalysisCommandService {
                     .setParameter("needDate", action.group().needDate())
                     .setParameter("actorId", currentUser.requireId())
                     .setParameter("id", itemId).executeUpdate();
+            MaterialView material=action.group().materials().getFirst();
+            BigDecimal attributed=material.priorityMakeSupplementQty().min(action.demandQty());
+            if(attributed.signum()>0) new PreplanReallocationMakeSupplement(em).recordExistingIncrease(
+                    analysisId,representative,itemId,attributed,decimal(existing.getFirst()[2]),
+                    decimal(existing.getFirst()[2]).add(action.demandQty()),currentUser.requireId());
             return itemId;
         }
         UUID itemId = UUID.randomUUID();
@@ -1975,6 +2044,9 @@ public class MaterialAnalysisCommandService {
         UUID documentId = (UUID) row[5];
         boolean sharedFutureClaim = "SHARED_FUTURE_CLAIM".equals(
                 Objects.toString(row[6], "SUPPLY"));
+        if("FUTURE_TRANSFER".equals(Objects.toString(row[6],"SUPPLY"))) {
+            throw conflict("专属在途调整请在转拨记录中撤销未实收份额，不能撤销原供给单据");
+        }
         if (sharedFutureClaim) {
             // A claim reuses another action's document.  Cancelling it releases only
             // this analysis allocation/entitlement; the source document is immutable.
@@ -2127,368 +2199,22 @@ public class MaterialAnalysisCommandService {
      * current V3 node key. Allocation lookup keeps actions created with the
      * legacy grouped key from being duplicated after the node model upgrade.
      */
-    private BigDecimal activeOpenActionQty(UUID analysisId, ActionGroup group) {
-        Set<String> groupKeys = new LinkedHashSet<>();
-        groupKeys.add(group.groupKey());
-        List<UUID> materialIds = group.materials().stream()
-                .map(MaterialView::materialLineId).toList();
-        if (!materialIds.isEmpty()) {
-            @SuppressWarnings("unchecked")
-            List<String> legacyKeys = (List<String>) em.createNativeQuery("""
-                    SELECT DISTINCT action.action_group_key
-                    FROM preplan_supply_action_allocations allocation
-                    JOIN preplan_supply_actions action ON action.id = allocation.action_id
-                    WHERE allocation.analysis_id = :analysisId
-                      AND allocation.analysis_material_id IN (:materialIds)
-                      AND action.route = :route
-                      AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
-                    ORDER BY action.action_group_key
-                    """)
-                    .setParameter("analysisId", analysisId)
-                    .setParameter("materialIds", materialIds)
-                    .setParameter("route", group.route())
-                    .getResultList();
-            groupKeys.addAll(legacyKeys);
-        }
-        return groupKeys.stream()
-                .map(key -> activeOpenActionQtyByGroup(
-                        analysisId, key, group.route()))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    private MaterialAnalysisSupplyCoverageReader.Coverage supplyCoverage(
+            UUID analysisId, List<ActionGroup> groups) {
+        return new MaterialAnalysisSupplyCoverageReader(em).read(analysisId, groups.stream()
+                .map(group -> new MaterialAnalysisSupplyCoverageReader.Group(
+                        group.groupKey(), group.route(), group.materials().stream()
+                                .map(MaterialView::materialLineId).toList())).toList());
     }
 
-    /**
-     * V466：本组因 IQC 不合格取消的行动，其锚定申请行对应订货行的当前欠货
-     * （未收 + 已退 + 已退回不合格，基本单位）。行动本身按 V250 契约保持
-     * CANCELLED 不复活；补货默认走原订单（预计到货重开 + 补货收货授权），
-     * 该欠货因此仍是有效在途覆盖，重新通知的余量须扣除它。退回未登记
-     * （return_recorded_at 为空）时退回量不计——与全不合格后立即重新通知的
-     * 既有口径（E2E 锁定）一致。
-     */
-    private BigDecimal cancelledIqcReplacementInFlight(
-            UUID analysisId, ActionGroup group) {
-        boolean purchase = "BUY".equals(group.route());
-        if (!purchase && !"SUBCONTRACT".equals(group.route())) {
-            return BigDecimal.ZERO;
-        }
-        String sourceJoin = purchase
-                ? """
-                  JOIN preplan_supply_action_allocations allocation
-                    ON allocation.action_id = action.id
-                   AND allocation.external_item_id IS NOT NULL
-                  JOIN purchase_order_item_sources src
-                    ON src.request_item_id = allocation.external_item_id
-                  JOIN purchase_order_items order_item
-                    ON order_item.id = src.order_item_id
-                   AND order_item.is_deleted = FALSE
-                  JOIN purchase_orders po ON po.id = order_item.order_id
-                   AND po.status = 1 AND po.is_deleted = FALSE
-                  """
-                : """
-                  JOIN preplan_supply_action_allocations allocation
-                    ON allocation.action_id = action.id
-                   AND allocation.external_item_id IS NOT NULL
-                  JOIN subcontract_order_item_sources src
-                    ON src.application_item_id = allocation.external_item_id
-                  JOIN subcontract_order_items order_item
-                    ON order_item.id = src.order_item_id
-                   AND order_item.is_deleted = FALSE
-                  JOIN subcontract_orders po ON po.id = order_item.order_id
-                   AND po.status = 1 AND po.is_deleted = FALSE
-                  """;
-        return decimal(em.createNativeQuery("""
-                SELECT COALESCE(SUM(
-                    GREATEST(
-                        COALESCE(order_item.qty, 0)
-                            - COALESCE(order_item.received_qty, 0)
-                            + COALESCE(order_item.returned_qty, 0),
-                        0) * COALESCE(order_item.unit_rate, 1)
-                    + COALESCE((
-                        SELECT SUM(rejection.failed_base_qty)
-                        FROM procurement_iqc_rejection_cases rejection
-                        WHERE rejection.receipt_type = :receiptType
-                          AND rejection.order_item_id = order_item.id
-                          AND rejection.is_deleted = FALSE
-                          AND rejection.return_recorded_at IS NOT NULL
-                          AND rejection.status IN (
-                              'RETURN_RECORDED','CREDIT_CONFIRMED',
-                              'CLOSED_NO_CREDIT','FINANCE_EXCEPTION')
-                        ), 0)), 0)
-                FROM preplan_supply_actions action
-                %s
-                WHERE action.analysis_id = :analysisId
-                  AND action.action_group_key = :groupKey
-                  AND action.route = :route
-                  AND action.status = 'CANCELLED'
-                  AND action.cancellation_reason IN (
-                      '到货质检存在不合格且原采购需求已无在途，需重新通知补采',
-                      '到货质检存在不合格且原委外需求已无在途，需重新通知补委外',
-                      '需求或公共安全补库存在终态不合格且已无未来供给，需按失败切片重新通知')
-                """.formatted(sourceJoin))
-                .setParameter("receiptType", purchase ? "PURCHASE" : "SUBCONTRACT")
-                .setParameter("analysisId", analysisId)
-                .setParameter("groupKey", group.groupKey())
-                .setParameter("route", group.route())
-                .getSingleResult());
+    private static BigDecimal activeOpenActionQty(
+            MaterialAnalysisSupplyCoverageReader.Coverage coverage, ActionGroup group) {
+        return coverage.active(group.groupKey(), group.route());
     }
 
-    private BigDecimal activeOpenActionQtyByGroup(
-            UUID analysisId, String groupKey, String route) {
-        if ("MAKE".equals(route)) {
-            return activeOpenMakeActionQty(analysisId, groupKey);
-        }
-        BigDecimal generic = genericExternalOpenActionQty(analysisId, groupKey, route);
-        if ("SUBCONTRACT".equals(route)) {
-            // V458：有子层级委外件的任务走子件进度口径（与自制同构），
-            // 与旧流 SUBCONTRACT_APPLICATION 的通用口径相加。
-            return generic.add(activeOpenSubcontractMakeActionQty(
-                    analysisId, groupKey));
-        }
-        return generic;
-    }
-
-    private BigDecimal genericExternalOpenActionQty(
-            UUID analysisId, String groupKey, String route) {
-        if ("BUY".equals(route)) {
-            return decimal(em.createNativeQuery("""
-                    SELECT COALESCE(SUM(LEAST(
-                        GREATEST(
-                            progress.demand_requested_qty
-                                - progress.demand_qualified_qty,
-                            0),
-                        progress.demand_future_qty
-                    )),0)
-                    FROM preplan_supply_actions action
-                    JOIN v_preplan_buy_action_slice_progress progress
-                      ON progress.action_id = action.id
-                    WHERE action.analysis_id = :analysisId
-                      AND action.action_group_key = :groupKey
-                      AND action.route = 'BUY'
-                      AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
-                      AND progress.demand_source_valid = TRUE
-                    """).setParameter("analysisId", analysisId)
-                    .setParameter("groupKey", groupKey)
-                    .getSingleResult());
-        }
-        return decimal(em.createNativeQuery("""
-                SELECT COALESCE(SUM(CASE
-                    WHEN action.external_document_type = 'PURCHASE_REQUEST'
-                         AND EXISTS (
-                             SELECT 1
-                             FROM preplan_supply_action_allocations allocation
-                             JOIN purchase_request_items request_item
-                               ON request_item.id = allocation.external_item_id
-                              AND request_item.is_deleted = FALSE
-                             JOIN purchase_requests request
-                               ON request.id = request_item.request_id
-                              AND request.id = action.external_document_id
-                              AND request.is_deleted = FALSE
-                              AND request.status IN (0,1)
-                              AND request.is_stopped = FALSE
-                             WHERE allocation.action_id = action.id)
-                        THEN GREATEST(action.requested_qty - LEAST(
-                            action.requested_qty, COALESCE((
-                                -- V463：合并订货行按来源 FIFO 分摊到各申请行后再汇总。
-                                SELECT SUM(fn_purchase_order_source_share(
-                                    item.id, src.request_item_id,
-                                    GREATEST(
-                                        COALESCE((
-                                            SELECT SUM(CASE
-                                                WHEN inspection.id IS NULL
-                                                THEN receipt_item.qty * COALESCE(
-                                                    receipt_item.unit_rate,1)
-                                                WHEN inspection.status IN (
-                                                    'PARTIAL','RESOLVED')
-                                                THEN inspection.warehouse_stocked_base_qty
-                                                ELSE 0
-                                            END)
-                                            FROM purchase_receipt_items receipt_item
-                                            JOIN purchase_receipts receipt
-                                              ON receipt.id = receipt_item.receipt_id
-                                             AND receipt.status = 1
-                                             AND receipt.is_deleted = FALSE
-                                            LEFT JOIN procurement_inspection_items inspection
-                                              ON inspection.receipt_type = 'PURCHASE'
-                                             AND inspection.receipt_item_id = receipt_item.id
-                                            WHERE receipt_item.order_item_id = item.id
-                                              AND receipt_item.is_deleted = FALSE
-                                        ),0) - COALESCE(item.returned_qty,0)
-                                            * COALESCE(item.unit_rate,1), 0)))
-                                FROM purchase_order_item_sources src
-                                JOIN purchase_order_items item
-                                  ON item.id = src.order_item_id
-                                 AND item.is_deleted = FALSE
-                                JOIN purchase_orders purchase_order
-                                  ON purchase_order.id = item.order_id
-                                 AND purchase_order.status = 1
-                                 AND purchase_order.is_deleted = FALSE
-                                WHERE src.request_item_id IN (
-                                      SELECT DISTINCT allocation.external_item_id
-                                      FROM preplan_supply_action_allocations allocation
-                                      WHERE allocation.action_id = action.id
-                                        AND allocation.external_item_id IS NOT NULL)
-                            ),0)), 0)
-                    WHEN action.external_document_type = 'SUBCONTRACT_APPLICATION'
-                         AND EXISTS (
-                             SELECT 1
-                             FROM preplan_supply_action_allocations allocation
-                             JOIN subcontract_application_items application_item
-                               ON application_item.id = allocation.external_item_id
-                              AND application_item.is_deleted = FALSE
-                             JOIN subcontract_applications application
-                               ON application.id = application_item.application_id
-                              AND application.id = action.external_document_id
-                              AND application.is_deleted = FALSE
-                              AND application.status IN (0,1)
-                             WHERE allocation.action_id = action.id)
-                        THEN GREATEST(action.requested_qty - LEAST(
-                            action.requested_qty, COALESCE((
-                                -- V463：合并订货行按来源 FIFO 分摊到各申请行后再汇总。
-                                SELECT SUM(fn_subcontract_order_source_share(
-                                    item.id, src.application_item_id,
-                                    GREATEST(
-                                        COALESCE((
-                                            SELECT SUM(CASE
-                                                WHEN inspection.id IS NULL
-                                                THEN receipt_item.qty * COALESCE(
-                                                    receipt_item.unit_rate,1)
-                                                WHEN inspection.status IN (
-                                                    'PARTIAL','RESOLVED')
-                                                THEN inspection.warehouse_stocked_base_qty
-                                                ELSE 0
-                                            END)
-                                            FROM subcontract_receipt_items receipt_item
-                                            JOIN subcontract_receipts receipt
-                                              ON receipt.id = receipt_item.receipt_id
-                                             AND receipt.status = 1
-                                             AND receipt.is_deleted = FALSE
-                                            LEFT JOIN procurement_inspection_items inspection
-                                              ON inspection.receipt_type = 'SUBCONTRACT'
-                                             AND inspection.receipt_item_id = receipt_item.id
-                                            WHERE receipt_item.order_item_id = item.id
-                                              AND receipt_item.is_deleted = FALSE
-                                        ),0) - COALESCE(item.returned_qty,0)
-                                            * COALESCE(item.unit_rate,1), 0)))
-                                FROM subcontract_order_item_sources src
-                                JOIN subcontract_order_items item
-                                  ON item.id = src.order_item_id
-                                 AND item.is_deleted = FALSE
-                                JOIN subcontract_orders subcontract_order
-                                  ON subcontract_order.id = item.order_id
-                                 AND subcontract_order.status = 1
-                                 AND subcontract_order.is_deleted = FALSE
-                                WHERE src.application_item_id IN (
-                                      SELECT DISTINCT allocation.external_item_id
-                                      FROM preplan_supply_action_allocations allocation
-                                      WHERE allocation.action_id = action.id
-                                        AND allocation.external_item_id IS NOT NULL)
-                            ),0)), 0)
-                    ELSE 0
-                END),0)
-                FROM preplan_supply_actions action
-                WHERE action.analysis_id = :analysisId
-                  AND action.action_group_key = :groupKey
-                  AND action.route = :route
-                  AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
-                """).setParameter("analysisId", analysisId)
-                .setParameter("groupKey", groupKey).setParameter("route", route)
-                .getSingleResult());
-    }
-
-    /** MAKE coverage follows the child demand and unfinished approved child plans. */
-    private BigDecimal activeOpenMakeActionQty(UUID analysisId, String groupKey) {        return decimal(em.createNativeQuery("""
-                WITH active_actions AS (
-                    SELECT action.external_document_id AS child_item_id,
-                           SUM(action.requested_qty) AS requested_qty
-                    FROM preplan_supply_actions action
-                    WHERE action.analysis_id = :analysisId
-                      AND action.action_group_key = :groupKey
-                      AND action.route = 'MAKE'
-                      AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
-                      AND action.external_document_type = 'PREPLAN_MAKE_TASK'
-                      AND action.external_document_id IS NOT NULL
-                    GROUP BY action.external_document_id
-                ), child_open AS (
-                    SELECT active.child_item_id, active.requested_qty,
-                           GREATEST(
-                               child.requested_qty - child.approved_qty
-                               + COALESCE((
-                                   SELECT SUM(GREATEST(
-                                       plan_item.qty - COALESCE(plan_item.iqty,0), 0))
-                                   FROM production_material_analysis_plan_links analysis_link
-                                   JOIN production_plans plan
-                                     ON plan.id = analysis_link.plan_id
-                                    AND plan.status = 1
-                                    AND plan.is_deleted = FALSE
-                                    AND plan.is_canceled = FALSE
-                                   JOIN production_plan_items plan_item
-                                     ON plan_item.plan_id = plan.id
-                                    AND plan_item.is_deleted = FALSE
-                                   WHERE analysis_link.analysis_item_id = child.id
-                                     AND analysis_link.allocation_status = 'APPROVED'
-                               ),0), 0) AS open_qty
-                    FROM active_actions active
-                    JOIN production_material_analysis_items child
-                      ON child.id = active.child_item_id
-                     AND child.analysis_id = :analysisId
-                     AND child.source_type = 'MAKE_COMPONENT'
-                     AND child.is_deleted = FALSE
-                )
-                SELECT COALESCE(SUM(LEAST(requested_qty, open_qty)),0)
-                FROM child_open
-                """).setParameter("analysisId", analysisId)
-                .setParameter("groupKey", groupKey)
-                .getSingleResult());
-    }
-
-    /**
-     * V458：有子层级委外件的前置自制任务覆盖量。口径与自制一致——
-     * 任务行剩余需求 + 已批未完工计划；产出已通知委外的部分不再计入在途。
-     */
-    private BigDecimal activeOpenSubcontractMakeActionQty(
-            UUID analysisId, String groupKey) {
-        return decimal(em.createNativeQuery("""
-                WITH active_actions AS (
-                    SELECT action.external_document_id AS child_item_id,
-                           SUM(action.requested_qty) AS requested_qty
-                    FROM preplan_supply_actions action
-                    WHERE action.analysis_id = :analysisId
-                      AND action.action_group_key = :groupKey
-                      AND action.route = 'SUBCONTRACT'
-                      AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
-                      AND action.external_document_type = 'SUBCONTRACT_MAKE_TASK'
-                      AND action.external_document_id IS NOT NULL
-                    GROUP BY action.external_document_id
-                ), child_open AS (
-                    SELECT active.child_item_id, active.requested_qty,
-                           GREATEST(
-                               child.requested_qty - child.approved_qty
-                               + COALESCE((
-                                   SELECT SUM(GREATEST(
-                                       plan_item.qty - COALESCE(plan_item.iqty,0), 0))
-                                   FROM production_material_analysis_plan_links analysis_link
-                                   JOIN production_plans plan
-                                     ON plan.id = analysis_link.plan_id
-                                    AND plan.status = 1
-                                    AND plan.is_deleted = FALSE
-                                    AND plan.is_canceled = FALSE
-                                   JOIN production_plan_items plan_item
-                                     ON plan_item.plan_id = plan.id
-                                    AND plan_item.is_deleted = FALSE
-                                   WHERE analysis_link.analysis_item_id = child.id
-                                     AND analysis_link.allocation_status = 'APPROVED'
-                               ),0), 0) AS open_qty
-                    FROM active_actions active
-                    JOIN production_material_analysis_items child
-                      ON child.id = active.child_item_id
-                     AND child.analysis_id = :analysisId
-                     AND child.source_type = 'SUBCONTRACT_MAKE'
-                     AND child.is_deleted = FALSE
-                )
-                SELECT COALESCE(SUM(LEAST(requested_qty, open_qty)),0)
-                FROM child_open
-                """).setParameter("analysisId", analysisId)
-                .setParameter("groupKey", groupKey)
-                .getSingleResult());
+    private static BigDecimal cancelledIqcReplacementInFlight(
+            MaterialAnalysisSupplyCoverageReader.Coverage coverage, ActionGroup group) {
+        return coverage.replacement(group.groupKey(), group.route());
     }
 
     private ActionSequence nextActionSequence(UUID analysisId, String groupKey, String route) {
@@ -2588,6 +2314,19 @@ public class MaterialAnalysisCommandService {
         return PlanningPackageFingerprint.sha256(parts);
     }
 
+    private static Map<String,SharedFutureClaimQuantity> sharedFutureQuantities(ClaimSharedFutureRequest request,List<ActionGroup> groups) {
+        if(request.quantities()==null || request.quantities().isEmpty()) return Map.of();
+        Set<String> groupKeys=groups.stream().map(ActionGroup::groupKey).collect(Collectors.toSet());
+        Map<String,SharedFutureClaimQuantity> result=new HashMap<>();
+        for(SharedFutureClaimQuantity quantity:request.quantities()) {
+            if(quantity==null || !groupKeys.contains(quantity.actionGroupKey()) || quantity.qty()==null || quantity.qty().signum()<=0
+                    || quantity.qty().scale()>4 || quantity.qty().precision()-quantity.qty().scale()>14
+                    || result.putIfAbsent(quantity.actionGroupKey(),quantity)!=null) throw validation("公共在途认领数量必须逐项对应本次选择，不得重复或超出数量精度");
+        }
+        if(result.size()!=groupKeys.size()) throw validation("请为每个所选物料填写本次认领数量");
+        return Map.copyOf(result);
+    }
+
     private static String claimSharedFutureHash(
             UUID analysisId, ClaimSharedFutureRequest request) {
         List<String> parts = new ArrayList<>(List.of(
@@ -2595,6 +2334,9 @@ public class MaterialAnalysisCommandService {
                 Long.toString(request.version()), request.fingerprint()));
         request.actionGroupKeys().stream().distinct().sorted()
                 .forEach(value -> parts.add("GROUP|" + value));
+        if(request.quantities()!=null) request.quantities().stream().sorted(Comparator.comparing(SharedFutureClaimQuantity::actionGroupKey))
+                .forEach(quantity->parts.add("QUANTITY|"+quantity.actionGroupKey()+"|"+canonicalOptionalQuantity(quantity.qty())+"|"+Objects.toString(quantity.sourceActionId(),"AUTO")));
+        if(request.allowLateSupply()) parts.add("ALLOW_LATE_SUPPLY|true");
         return PlanningPackageFingerprint.sha256(parts);
     }
 

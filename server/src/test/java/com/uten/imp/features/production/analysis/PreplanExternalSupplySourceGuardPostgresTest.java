@@ -39,8 +39,9 @@ class PreplanExternalSupplySourceGuardPostgresTest {
             throws Exception {
         try (Connection connection = connection()) {
             Fixture fixture = createFixture(connection, Route.BUY);
-            execute(connection, "UPDATE goods SET min_qty=100 WHERE id=?",
-                    fixture.goodsId());
+            // V563：IQC 实际入库仓必须是「使用」状态的记账叶子仓。
+            com.uten.imp.support.WarehouseFixtureActivation.activate(connection, fixture.warehouseId());
+            com.uten.imp.support.GoodsFixtureAdjustment.setMinimumQuantity(connection, fixture.goodsId(), 100);
 
             UUID actionId = UUID.randomUUID();
             UUID allocationId = UUID.randomUUID();

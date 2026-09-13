@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_draft_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -19,6 +20,7 @@ import 'package:uten_imp/features/purchase/pages/purchase_hub_page.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_hub_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_hub_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/providers/draft_counts_provider.dart';
 
 Future<void> _pumpHub(
@@ -35,6 +37,8 @@ Future<void> _pumpHub(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        // Production return badges read the real session/network preferences.
+        sharedPreferencesProvider.overrideWithValue(_preferences),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
         draftCountsProvider.overrideWith((ref) async => counts),
@@ -47,11 +51,17 @@ Future<void> _pumpHub(
       ),
     ),
   );
-  await tester.pump();
-  await tester.pump();
+  // Drain the real badge providers' initial async reads before assertions and disposal.
+  await tester.pumpAndSettle();
 }
 
+late SharedPreferences _preferences;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   group('采购 hub', () {
     // 订货/收货/退货三张卡都是 skipListOnCreate（点进直达新建页），
     // 故 hub 显隐走 *:create 路由权限；草稿数字仍受各自 *:view 门控。

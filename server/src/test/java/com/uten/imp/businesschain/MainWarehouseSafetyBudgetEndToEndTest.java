@@ -62,6 +62,7 @@ class MainWarehouseSafetyBudgetEndToEndTest {
         assertEquals(Set.of(c.a(), c.b()), Set.copyOf(db.queryForList(
                 "SELECT warehouse_id FROM stock_documents WHERE id IN (?,?)", UUID.class, draws.get(0), draws.get(1))));
         assertCovered(plan, "80");
+        fixture.requestWorkshopDraws("main-safety", draws);
         for (UUID draw : draws) {
             com.uten.imp.features.stock.dto.StockDocIssueRequest request = ReflectionTestUtils.invokeMethod(
                     fixture, "drawIssueRequest", draw, "main-safety-draw-" + draw, null, BigDecimal.ZERO);
@@ -73,7 +74,10 @@ class MainWarehouseSafetyBudgetEndToEndTest {
                 SELECT COALESCE(SUM(reservation.consumed_qty),0) FROM stock_reservations reservation
                 JOIN production_material_demands demand ON demand.id=reservation.demand_id WHERE demand.plan_id=?
                 """, BigDecimal.class, plan.plan()));
-        for(int cycle=0;cycle<100 && inventoryValueWork.runBatch()>0;cycle++) { }
+        List<UUID> costGoods = new ArrayList<>(c.materials());
+        costGoods.addAll(List.of(c.world().goodsA(), c.world().goodsB(), c.world().goodsC(),
+                c.world().goodsD(), c.world().goodsE()));
+        InventoryValueWorkTestSupport.drain(inventoryValueWork, db, costGoods);
         qty("210",db.queryForObject("""
                 SELECT COALESCE(SUM(node.owned_value_local),0) FROM stock_value_nodes node
                 JOIN stock_value_pools pool ON pool.id=node.pool_id

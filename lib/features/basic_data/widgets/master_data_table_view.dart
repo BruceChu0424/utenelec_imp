@@ -168,6 +168,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.rowMenuBuilder,
     this.canShowRowMenu,
     this.batchActionsBuilder,
+    this.bottomContentPadding = 0,
     this.sortColumn,
     this.sortAscending = true,
     this.onSortChange,
@@ -266,6 +267,9 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 未选中时动作保留位置但灰显并拦截点击，调用方仍应保留空集业务守卫。
   final List<Widget> Function(BuildContext context, Set<String> selectedIds)?
   batchActionsBuilder;
+
+  /// 页面自己提供悬浮按钮时，为表体保留的末尾滚动空间。
+  final double bottomContentPadding;
 
   /// 多选模式开关：true 时在最前列渲染勾选框 + 表头三态全选，行高亮改由 [selectedIds] 驱动
   /// （此时单选 [isSelected]/[onSelectionChanged]/内部 _selectedItem 全部失效）。
@@ -420,19 +424,20 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   late final ScrollController _bodyH;
   // 表体竖向滚动：翻页时 jumpTo(0) 回顶（从第一条开始）。
   late final ScrollController _bodyV;
-  // primary 模式横滚条覆盖层：与 _bodyH 双向同步（_overlaySyncing 防回环）。
-  // 该模式下表体竖向填满联动区（折叠手势全域有效），自然横滚条会沉到区底，
-  // 故用覆盖层按「内容高度」定位——内容少贴末行下（约 1px 空隙），超高钉表体区底。
+  // 联动表格与带悬浮留白表格共用横滚条覆盖层，与 _bodyH 双向同步。
+  // 横滚条按实际末行定位，额外滚动留白不改变横滚条与末行的间距。
   late final ScrollController _overlayH = ScrollController();
   bool _overlaySyncing = false;
   // 分页跳转输入框：填数字回车跳页；外部翻页（上一页/下一页/跳页）时同步回当前页。
   late final TextEditingController _pageCtrl;
   bool _syncing = false;
 
-  // —— primary 模式横滚条覆盖层测量 ——
+  // —— 横滚条覆盖层测量 ——
   /// 表体区 Stack / 末行 的测量键。
   final GlobalKey _bodyAreaKey = GlobalKey();
   final GlobalKey _lastRowKey = GlobalKey();
+  // 自然滚动条/覆盖层切换时保留同一个横向视口，不因包装层变化重建 ScrollPosition。
+  final GlobalKey _bodyHorizontalKey = GlobalKey();
 
   /// 横滚条底边在表体区内的 local top；null=未测得（隐藏覆盖层）。
   final ValueNotifier<double?> _hBarY = ValueNotifier<double?>(null);
@@ -443,12 +448,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 末行底到横滚条 box 底边的距离（含滑块厚 10）：滑块上缘距末行约 1px。
   static const double _hBarGap = 11;
 
-  /// 悬浮批量按钮的滚动让位（按钮组约 72 + 底距 16）：内容超高时表体底 padding
-  /// 扩到这个值，滚动到底末行能露出按钮上方；内容装得下时回到 [_hBarGap]。
-  static const double _batchPad = 88;
+  /// 悬浮批量按钮的额外滚动让位，末行可继续滚出操作区。
+  static const double _batchPad = UtenFloatingActionGroup.scrollClearance;
 
-  /// 表体 ListView 当前底 padding（初值小间距；仅悬浮批量表会动态切换，见
-  /// [_updateBodyPad]）。
+  /// 表体 ListView 当前底 padding，随悬浮动作或外部留白配置同步。
   double _bodyBottomPad = _hBarGap;
 
   /// 当前列宽：默认按列内容自动适配最宽值（[MasterColumnDef.width] 不再用于布局，
@@ -622,8 +625,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _syncing = false;
   }
 
-  /// primary 模式横滚条覆盖层 ↔ 表体横滚 双向同步（[_overlaySyncing] 防回环；
-  /// 覆盖层未挂载（非 primary/未测得）时 no-op）。
+  /// 横滚条覆盖层与表体双向同步，未挂载时不做处理。
   void _syncH(ScrollController src, ScrollController dst) {
     if (_overlaySyncing || !dst.hasClients || !src.hasClients) return;
     _overlaySyncing = true;
@@ -632,7 +634,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   /// 布局完成后重算表体测量（渲染对象须完成 layout 才能量）：
-  /// primary 模式横滚条覆盖层位置 + 表体底 padding（悬浮批量让位，见 [_updateBodyPad]）。
+  /// 更新横滚条覆盖层位置与表体底部留白。
   bool _hBarUpdateScheduled = false;
 
   void _scheduleHBarUpdate() {
@@ -641,33 +643,27 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _hBarUpdateScheduled = false;
       if (!mounted) return;
-      if (widget.primary) _updateHBar();
+      if (_usesOverlayHBar) {
+        _updateHBar();
+        _syncH(_bodyH, _overlayH);
+      } else if (_hBarY.value != null) {
+        _hBarY.value = null;
+      }
       _updateBodyPad();
     });
   }
 
-  /// 表体底 padding 动态让位（仅 [_hasFloatingBatchActions] 时参与）：内容装得下 →
-  /// 小间距 [_hBarGap]（横滚条贴末行）；内容超高 → 88（滚动到底时末行能露出悬浮
-  /// 批量按钮上方）。判定与滚动位置无关（maxScrollExtent 恒定），且两态阈值差
-  /// （0 ↔ 77）天然构成迟滞带，行数在临界附近不抖动。
+  /// 滚动留白独立于横滚条：悬浮动作取共享留白，页面可再提供更大的让位空间。
   void _updateBodyPad() {
-    if (!_hasFloatingBatchActions) return;
-    final rowCtx = _lastRowKey.currentContext;
-    final pos = rowCtx == null ? null : Scrollable.maybeOf(rowCtx)?.position;
-    final double next;
-    if (pos == null || !pos.hasContentDimensions) {
-      next = _batchPad; // 末行未挂载（内容超高被虚拟化）→ 让位。
-    } else {
-      // 滚动无关：内容(不含 pad)超出视口 ⇔ maxScrollExtent > 当前pad - 最小gap。
-      next = pos.maxScrollExtent > _bodyBottomPad - _hBarGap
-          ? _batchPad
-          : _hBarGap;
-    }
+    // 即使内容刚好装得下，也要允许把最后一行滚到操作区上方。
+    final next = (_hasFloatingBatchActions ? _batchPad : _hBarGap).clamp(
+      widget.bottomContentPadding,
+      double.infinity,
+    );
     if (next != _bodyBottomPad) setState(() => _bodyBottomPad = next);
   }
 
-  /// primary 模式横滚条定位：末行可量（内容少，行都在树里）→ 底边贴末行 + 底
-  /// padding（滑块上缘距末行约 1px）；末行未挂载（内容超高被虚拟化）→ 钉表体区底。
+  /// 末行可量时贴实际末行，始终只保留滑块自身的间距；末行未挂载时钉视口底。
   /// 顶部卡片折叠/展开改变区高、翻页/筛选改变内容高，都会经 LayoutBuilder 重建
   /// 触发重测。（不能用 maxScrollExtent+viewportDimension：primary 表体被强制
   /// 填满联动区，量出来恒等于区高。）
@@ -698,12 +694,24 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     } else {
       barBottom = areaBox.size.height;
     }
+    final minimumBottom = areaBox.size.height < _hBarHeight
+        ? areaBox.size.height
+        : _hBarHeight;
+    barBottom = barBottom.clamp(minimumBottom, areaBox.size.height);
     if (_hBarY.value != barBottom) _hBarY.value = barBottom;
   }
 
   @override
   void didUpdateWidget(covariant MasterDataTableView<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // 包括 200 -> 0 / 移除悬浮动作：新布局不再启用覆盖层时也必须撤掉旧留白。
+    if (oldWidget.bottomContentPadding != widget.bottomContentPadding ||
+        oldWidget.primary != widget.primary ||
+        oldWidget.selectable != widget.selectable ||
+        (oldWidget.batchActionsBuilder == null) !=
+            (widget.batchActionsBuilder == null)) {
+      _scheduleHBarUpdate();
+    }
     // 列集合变了（数量或 key 序列不同，如报表切 docType）→ 清手动标记、全量重算列宽。
     if (!_sameColumnKeys(oldWidget.columns, widget.columns)) {
       _manualResized.clear();
@@ -1140,6 +1148,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   bool get _hasFloatingBatchActions =>
       widget.selectable && widget.batchActionsBuilder != null;
 
+  bool get _usesOverlayHBar =>
+      widget.primary ||
+      _hasFloatingBatchActions ||
+      widget.bottomContentPadding > 0;
+
   /// 自动加载触发距底阈值（约 4~5 行高）：滚到末尾前预取下一页，体感「到底即有」。
   static const double _loadMoreEdge = 200;
 
@@ -1258,7 +1271,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           },
           child: const Text('清除筛选'), // TODO(l10n): 补 arb
         ),
-      if (widget.selectable && !_hasFloatingBatchActions)
+      if (widget.selectable &&
+          widget.showSelectionSummary &&
+          !_hasFloatingBatchActions)
         _buildBatchBar(Theme.of(context)),
       // 空态也保留左簇前缀按钮（视图切换 chips 等）：筛选出 0 行时用户才有得
       // 切回其他视图——否则整个工具条随表格一起消失，页面“不知道点哪里”
@@ -1477,7 +1492,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 LayoutBuilder(
                   builder: (ctx, c) {
                     // 区高随卡片折叠/展开变化（constraints 变化）→ 重测横滚条位置。
-                    if (widget.primary || _hasFloatingBatchActions) {
+                    if (_usesOverlayHBar) {
                       _scheduleHBarUpdate();
                     }
                     final list = ListView.builder(
@@ -1492,9 +1507,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                       physics: widget.primary
                           ? const AlwaysScrollableScrollPhysics()
                           : const ClampingScrollPhysics(),
-                      // 底部留可滚余量：内容超高时滚动到底，末行能露出钉底横滚条
-                      // （问题 #10）与悬浮批量按钮（[_batchPad]）上方；内容装得下时
-                      // 为小间距（[_bodyBottomPad]，见 [_updateBodyPad] 动态切换）。
+                      // 留白只参与竖向滚动范围，覆盖层横滚条始终以真实末行为锚点。
                       padding: EdgeInsets.only(bottom: _bodyBottomPad),
                       itemCount: plan.length + (widget.loadingMore ? 1 : 0),
                       itemBuilder: (ctx, i) {
@@ -1536,7 +1549,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                                   : ValueKey('idx:$i')),
                           child: _buildDataRow(theme, item),
                         );
-                        // 末行挂测量键：primary 模式横滚条按末行定位（贴末行下）。
+                        // 末行挂测量键：覆盖层横滚条按末行定位（贴末行下）。
                         // 内容超高时末行被虚拟化不挂载 → 横滚条钉表体区底。
                         if (i == plan.length - 1) {
                           return KeyedSubtree(
@@ -1548,6 +1561,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                       },
                     );
                     final hArea = SingleChildScrollView(
+                      key: _bodyHorizontalKey,
                       controller: _bodyH,
                       scrollDirection: Axis.horizontal,
                       child: SizedBox(
@@ -1558,10 +1572,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                         ),
                       ),
                     );
-                    // 横向滚动条（左右）：非 primary 用流内 Scrollbar（表体随内容收缩，
-                    // 行少贴末行下、行多钉视口底）；primary 表体填满联动区（折叠手势），
-                    // 流内条会沉到区底 → 改用下方 Stack 覆盖层按内容高度定位。
-                    final hWrapped = widget.primary
+                    // 普通无悬浮留白表使用流内横滚条；联动/悬浮表使用独立覆盖层，
+                    // 避免 ListView 底部留白把横滚条推离末行。
+                    final hWrapped = _usesOverlayHBar
                         ? hArea
                         : Scrollbar(
                             controller: _bodyH,
@@ -1584,10 +1597,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                     );
                   },
                 ),
-                // primary 模式横滚条覆盖层：按内容高度定位（[_hBarY] 为底边 local top）。
+                // 横滚条覆盖层：按内容高度定位（[_hBarY] 为底边 local top）。
                 // 内容少 → 贴末行下方（约 1px 空隙）；超高 → 钉表体区底。与 _bodyH 双向同步，
-                // 表头经既有 _sync 跟随。非 primary 不渲染（自然滚动条本就贴内容）。
-                if (widget.primary)
+                // 表头经既有 _sync 跟随，底部额外留白不参与定位。
+                if (_usesOverlayHBar)
                   ValueListenableBuilder<double?>(
                     valueListenable: _hBarY,
                     builder: (context, y, _) => Positioned(

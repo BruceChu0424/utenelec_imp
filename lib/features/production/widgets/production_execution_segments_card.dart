@@ -189,6 +189,44 @@ class _ProductionExecutionSegmentsCardState
       case _SegmentAction.report:
         await _openReport(segment);
         break;
+      case _SegmentAction.draw:
+        await _openDraw(segment, split: false);
+        break;
+      case _SegmentAction.splitBatch:
+        await _openDraw(segment, split: true);
+        break;
+    }
+  }
+
+  Future<void> _openDraw(
+    ProductionExecutionSegmentView segment, {
+    required bool split,
+  }) async {
+    if (_busy ||
+        !widget.canStart ||
+        (split ? !segment.canSplitBatch : !segment.canRequestDraw)) {
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await context.push(
+        Uri(
+          path: split
+              ? RouteName.productionBatchDraw
+              : RouteName.productionDrawRequest,
+          queryParameters: split
+              ? {'segmentId': segment.id, 'version': '${segment.lockVersion}'}
+              : {
+                  'segmentIds': segment.id,
+                  'versions': '${segment.lockVersion}',
+                },
+        ).toString(),
+      );
+      if (!mounted) return;
+      await _load();
+      await widget.onChanged?.call();
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -261,6 +299,7 @@ class _ProductionExecutionSegmentsCardState
       canAssign: widget.canAssign,
       canReleaseDefer: widget.canReleaseDefer,
       canReport: widget.canReport,
+      canStart: widget.canStart,
     );
     if (context.breakpoint.isCompact) {
       return showModalBottomSheet<_SegmentAction>(
@@ -855,8 +894,8 @@ class _ProductionExecutionSegmentsCardState
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '请到仓库把这些段的物料领出来（仓库侧对应「生产领料任务」）；'
-                    '领料完成后本段即可开工报工。',
+                    '打开执行段详情，点击「去领料」核对本次物料和数量；'
+                    '提交后仓库才收到领料任务，全部实物领齐后再开工。',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -1123,6 +1162,26 @@ class _ProductionExecutionSegmentsCardState
   List<Widget> _segmentCardActions(ProductionExecutionSegmentView segment) {
     final commandBusy = _busy;
     return [
+      if (widget.canStart && segment.canRequestDraw)
+        UtenButton(
+          key: ValueKey('production-execution-draw-${segment.id}'),
+          size: UtenButtonSize.small,
+          icon: Icons.move_to_inbox_outlined,
+          onPressed: commandBusy
+              ? null
+              : () => _handleSegmentAction(segment, _SegmentAction.draw),
+          child: const Text('去领料'),
+        ),
+      if (widget.canStart && segment.canSplitBatch)
+        UtenButton(
+          key: ValueKey('production-execution-batch-${segment.id}'),
+          size: UtenButtonSize.small,
+          icon: Icons.call_split_rounded,
+          onPressed: commandBusy
+              ? null
+              : () => _handleSegmentAction(segment, _SegmentAction.splitBatch),
+          child: const Text('分批领料'),
+        ),
       if (widget.canAssign &&
           (segment.status == 'READY' || segment.status == 'WAITING'))
         UtenButton(
@@ -1208,7 +1267,7 @@ class _ProductionExecutionSegmentsCardState
   }
 }
 
-enum _SegmentAction { assign, releaseDefer, start, report }
+enum _SegmentAction { assign, releaseDefer, start, report, draw, splitBatch }
 
 class _ExecutionSegmentDetail extends StatelessWidget {
   const _ExecutionSegmentDetail({
@@ -1216,12 +1275,14 @@ class _ExecutionSegmentDetail extends StatelessWidget {
     required this.canAssign,
     required this.canReleaseDefer,
     required this.canReport,
+    required this.canStart,
   });
 
   final ProductionExecutionSegmentView segment;
   final bool canAssign;
   final bool canReleaseDefer;
   final bool canReport;
+  final bool canStart;
 
   @override
   Widget build(BuildContext context) {
@@ -1234,14 +1295,21 @@ class _ExecutionSegmentDetail extends StatelessWidget {
       segment.productName,
       segment.productCode,
     ].where((value) => value?.isNotEmpty == true).join(' · ');
-    final hasCommandPermission = canAssign || canReleaseDefer || canReport;
+    final hasCommandPermission =
+        canAssign || canReleaseDefer || canReport || canStart;
     final hasAction =
         (canReleaseDefer &&
             segment.status == 'WAITING' &&
             !segment.autoPromoteWhenReady) ||
         (canAssign &&
             (segment.status == 'READY' || segment.status == 'WAITING')) ||
-        (canReport && _canReportSegment(segment));
+        (canReport && _canReportSegment(segment)) ||
+        (canStart &&
+            (segment.canRequestDraw ||
+                segment.canSplitBatch ||
+                ((segment.status == 'READY' ||
+                        segment.status == 'DISPATCHED') &&
+                    (segment.zeroMaterial || segment.materialIssued))));
 
     return Material(
       color: theme.colorScheme.surface,
@@ -1374,7 +1442,9 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                     else if (segment.status == 'WAITING')
                       _notice(
                         theme,
-                        '等待整套物料补齐；当前不会占用零散库存，到货齐套后自动转产。',
+                        segment.canSplitBatch
+                            ? '现有合格物料可先配成完整子批。点击「分批领料」核对可生产量，其余数量继续等料。'
+                            : '正在等待可用物料。满足整套后自动齐套；分批入口会按任务来源和可用物料条件开放。',
                         theme.colorScheme.error,
                       )
                     else if ((segment.status == 'READY' ||
@@ -1382,7 +1452,9 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                         !segment.materialIssued)
                       _notice(
                         theme,
-                        '工单已确认，仓库正在按领料单备料；全部实物出库前不能报工。',
+                        segment.canRequestDraw
+                            ? '点击「去领料」选择本次物料和数量；已提交部分继续由仓库发料，实际领齐本批后再开工。'
+                            : '已提交领料，等待仓库实际发料；实际领齐本批并开工后可分次报工。',
                         theme.colorScheme.tertiary,
                       )
                     else if ((segment.status == 'READY' ||
@@ -1424,20 +1496,48 @@ class _ExecutionSegmentDetail extends StatelessWidget {
             const Divider(height: 1),
             Padding(
               padding: const EdgeInsets.all(UtenSpacing.s12),
-              child: Row(
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                spacing: UtenSpacing.s8,
+                runSpacing: UtenSpacing.s8,
                 children: [
-                  Expanded(
-                    child: Text(
-                      '可用操作已显示在执行子计划卡片上。',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
                     child: const Text('关闭'),
                   ),
+                  if (canStart && segment.canRequestDraw)
+                    FilledButton.icon(
+                      key: ValueKey(
+                        'production-execution-detail-draw-${segment.id}',
+                      ),
+                      onPressed: () =>
+                          Navigator.of(context).pop(_SegmentAction.draw),
+                      icon: const Icon(Icons.move_to_inbox_outlined),
+                      label: const Text('去领料'),
+                    ),
+                  if (canStart && segment.canSplitBatch)
+                    FilledButton.icon(
+                      key: ValueKey(
+                        'production-execution-detail-batch-${segment.id}',
+                      ),
+                      onPressed: () =>
+                          Navigator.of(context).pop(_SegmentAction.splitBatch),
+                      icon: const Icon(Icons.call_split_rounded),
+                      label: const Text('分批领料'),
+                    ),
+                  if (canStart &&
+                      (segment.status == 'READY' ||
+                          segment.status == 'DISPATCHED') &&
+                      (segment.zeroMaterial || segment.materialIssued))
+                    FilledButton.icon(
+                      key: ValueKey(
+                        'production-execution-detail-start-${segment.id}',
+                      ),
+                      onPressed: () =>
+                          Navigator.of(context).pop(_SegmentAction.start),
+                      icon: const Icon(Icons.play_circle_outline),
+                      label: const Text('开工'),
+                    ),
                 ],
               ),
             ),
@@ -1540,7 +1640,9 @@ int _planFlowStepIndex(List<ProductionExecutionSegmentView> segments) {
 }
 
 String _segmentStatusText(ProductionExecutionSegmentView segment) =>
-    segment.status == 'WAITING' && !segment.autoPromoteWhenReady
+    segment.splitReplaced
+    ? '已拆分为生产批次'
+    : segment.status == 'WAITING' && !segment.autoPromoteWhenReady
     ? '人工暂缓'
     // 2026-09-06 统一流程词表：等待物料 → 等待车间领料 →（料已发/无需领料）
     // 可开工 → 生产中 → 已完工。零料直制不是「备料完毕」，是无需领料。
@@ -1554,7 +1656,11 @@ String _segmentStatusText(ProductionExecutionSegmentView segment) =>
     ? '无需领料 · 可开工'
     : (segment.status == 'READY' || segment.status == 'DISPATCHED') &&
           !segment.materialIssued
-    ? '等待车间领料'
+    ? segment.canRequestDraw
+          ? '物料齐套 · 去领料'
+          : segment.drawRequested
+          ? '已提交领料 · 待仓库发料'
+          : '等待车间领料'
     : (segment.status == 'READY' || segment.status == 'DISPATCHED') &&
           segment.materialIssued
     ? '料已发 · 可开工'
@@ -1576,6 +1682,8 @@ String _segmentStatusText(ProductionExecutionSegmentView segment) =>
           ? '已报完·待品质'
           : segment.finishedInboundPendingQty > 0
           ? '品质通过·待点收'
+          : segment.plannedQty > 0 && segment.inboundQty >= segment.plannedQty
+          ? '已入库·待用料结清'
           : segment.fqcFailedQty > 0
           ? '品质异常·待处理'
           : '已报完·待入库'

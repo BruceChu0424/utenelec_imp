@@ -32,6 +32,8 @@ const Set<String> kAuthorizeAllExcluded = {
   Perm.auditLogExport,
   Perm.authorizationManage,
   'user:manage',
+  // 敏感商务信息（V570）：售价可见性不随「一键全部授权」发放，按部门/个人显式授予。
+  Perm.goodsPriceView,
   Perm.accountBalanceAdjust,
   Perm.stockBalanceAdjust,
   Perm.financeAssetApprove,

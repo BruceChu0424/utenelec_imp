@@ -199,7 +199,8 @@ public class SubcontractOwnMaterialCostService {
         materials.forEach(row->keys.add(new InventoryKey((UUID)row.get("goods_id"),(UUID)row.get("color_id"))));mutex.lockAll(keys);
         if(output!=null)losses.registerOutput(receiptItem,output,physicalPool,physical);
         costs.registerScope(new Scope(receiptItem,ScopeKind.SUBCONTRACT_RECEIPT_ITEM,product));
-        if(output!=null)costs.registerOutput(receiptItem,product,new Output(output.valueNodeId(),output.movementId()));
+        // Replacement provenance stays on the original receipt, while its output may enter another real warehouse.
+        if(output!=null)costs.registerOutput(receiptItem,physicalPool,new Output(output.valueNodeId(),output.movementId()));
         var current=db.queryForMap("SELECT version,state FROM stock_value_production_cost_objects WHERE execution_segment_id=:id",Map.of("id",receiptItem));
         if("APPLYING".equals(current.get("state"))){
             db.update("""

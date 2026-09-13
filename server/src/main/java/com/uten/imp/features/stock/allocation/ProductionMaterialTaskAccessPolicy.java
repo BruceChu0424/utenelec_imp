@@ -23,7 +23,7 @@ public class ProductionMaterialTaskAccessPolicy {
     private final ProductionMaterialReadAccessPolicy legacyReads;
 
     public record ReadScope(boolean all, List<UUID> segmentIds) {}
-    public record Capabilities(boolean canSettle, boolean canReverse, boolean canClose) {}
+    public record Capabilities(boolean canSettle, boolean canReverse, boolean canClose, boolean canRequestReturn) {}
 
     public Capabilities capabilities(UUID planId, UUID segmentId) {
         readable(planId,segmentId);
@@ -37,8 +37,20 @@ public class ProductionMaterialTaskAccessPolicy {
                     .setParameter("planId",planId).setParameter("segmentId",segmentId)
                     .setParameter("employeeId",currentUser.requireEmployeeId()).getSingleResult());
         }
+        boolean canRequestReturn = false;
+        if (writable && has("production_material:settle")) {
+            var returnable = em.createNativeQuery("""
+                    SELECT EXISTS(SELECT 1 FROM production_execution_segments segment
+                      WHERE segment.plan_id=:planId AND NOT segment.is_deleted
+                        AND segment.status IN ('IN_PROGRESS','COMPLETED')
+                    """ + (segmentId == null ? "" : " AND segment.id=:segmentId") + ")")
+                    .setParameter("planId",planId);
+            if (segmentId != null) returnable.setParameter("segmentId",segmentId);
+            canRequestReturn = Boolean.TRUE.equals(returnable.getSingleResult());
+        }
         return new Capabilities(writable && has("production_material:settle"),
-                writable && has("production_material:reverse"),segmentId==null && manager && has("production_material:close"));
+                writable && has("production_material:reverse"),segmentId==null && manager && has("production_material:close"),
+                canRequestReturn);
     }
 
     public ReadScope readable(UUID planId, UUID segmentId) {

@@ -85,6 +85,11 @@ public class PasswordService {
         }
 
         passwordPolicy.validate(req.newPassword(), user.getLoginAccount());
+        // The old password was verified above. Reject the same value even when
+        // historical lookback is disabled, without another expensive hash check.
+        if (req.newPassword().equals(req.oldPassword())) {
+            throw new ApiException(ErrorCode.PASSWORD_REUSE);
+        }
 
         // 防重用：最近 N 条历史
         for (PasswordHistory h : passwordHistoryRepo.findRecent(userId, sysSettings.readInt("password_history_size", 5))) {

@@ -249,6 +249,40 @@ class SalesShipmentOwnerBoundaryTest {
                         .compareTo(item.getWeight()) == 0));
     }
 
+    @Test
+    void unauthorizedKeyedBatchIsRejectedBeforeReadingPhysicalSourceCapacity() {
+        UUID item=UUID.randomUUID(), owner=UUID.randomUUID();
+        Query metadata=queryReturning(List.of());
+        Query batch=queryReturning(Collections.singletonList(batchRow(item,UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),owner,UUID.randomUUID(),"PRIVATE")));
+        List<String> queries=new ArrayList<>();
+        when(currentUser.requireId()).thenReturn(UUID.randomUUID());
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation->{
+            String sql=invocation.getArgument(0);queries.add(sql);
+            return sql.contains("FROM sales_order_items i") ? batch : metadata;
+        });
+        org.mockito.Mockito.doThrow(new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.FORBIDDEN,"no scope"))
+                .when(accessPolicy).requireWritable(org.mockito.ArgumentMatchers.eq(owner),anyString(),org.mockito.ArgumentMatchers.nullable(com.uten.imp.security.OwnerVisibility.OwnerScope.class));
+        SalesShipmentService service = new SalesShipmentService(
+                shipmentRepo,
+                itemRepo,
+                stockService,
+                reservationService,
+                arApService,
+                tx,
+                em,
+                docNumberService,
+                accessPolicy,
+                currentUser,
+                nameResolver,
+                chainNotice, clientShipAddressService,
+                org.mockito.Mockito.mock(com.uten.imp.features.sales.SalesMutationFootprintService.class), org.mockito.Mockito.mock(CustomerShipmentPolicy.class), org.mockito.Mockito.mock(DirectCustomerShipmentCommercialService.class), org.mockito.Mockito.mock(SalesShipmentReviewSnapshotService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.CustomerShipmentInventoryPort.class), org.mockito.Mockito.mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class));
+        BatchShipRequest request=new BatchShipRequest();request.setBillDate(LocalDate.now());
+        request.setIdempotencyKey("forbidden-batch-intent");request.setLines(List.of(batchLine(item)));
+        assertThrows(com.uten.imp.common.web.ApiException.class,()->service.batchCreate(request));
+        assertTrue(queries.stream().noneMatch(sql->sql.contains("active_warehouses") || sql.contains("stock_balances")));
+        org.mockito.Mockito.verifyNoInteractions(shipmentRepo,itemRepo);
+    }
+
     private Query queryReturning(List<Object[]> rows) {
         return queryReturningRaw(rows);
     }

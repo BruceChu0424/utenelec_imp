@@ -122,7 +122,7 @@ class AuditSessionQueryContractTest {
         String source = source("AuditSessionQueryService.java");
         assertTrue(source.contains("WITH matched_sessions AS"));
         assertTrue(source.contains(
-                "JOIN matched_sessions matched ON matched.session_id = a.session_id"));
+                "JOIN paged_sessions matched ON matched.session_id = a.session_id"));
         int timelineStart = source.indexOf("session_events AS");
         int timelineEnd = source.indexOf("logout_event AS", timelineStart);
         assertTrue(timelineStart >= 0 && timelineEnd > timelineStart);
@@ -210,7 +210,7 @@ class AuditSessionQueryContractTest {
 
         String service = source("AuditSessionQueryService.java");
         assertTrue(service.contains(
-                "JOIN matched_sessions matched\n"
+                "JOIN paged_sessions matched\n"
                         + "                  ON matched.session_id = token.session_id"));
     }
 
@@ -225,7 +225,7 @@ class AuditSessionQueryContractTest {
     }
 
     private static String source(String name) throws IOException {
-        return Files.readString(SOURCE_ROOT.resolve(name));
+        return Files.readString(SOURCE_ROOT.resolve(name)).replace("\r\n", "\n");
     }
 
     private static int occurrences(String source, String expected) {

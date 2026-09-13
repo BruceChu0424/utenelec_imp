@@ -170,9 +170,27 @@ class FulfillmentWorkbenchQueryServiceTest {
         //（DISTINCT COALESCE 兜底尚未挂单的行级需求）。
         assertTrue(sql.getValue().contains("v_fulfillment_workbench_actions"));
         assertTrue(sql.getValue().contains("open_qty > 0"));
+        assertTrue(sql.getValue().contains("fn_production_draw_pending(action_doc_id)"));
         assertTrue(sql.getValue()
                 .contains("DISTINCT COALESCE(action_doc_id, task_id)"));
         verify(countQuery).setParameter("department", "WAREHOUSE");
+    }
+
+    @Test
+    void warehouseListAndStatusBreakdownRequireTheSameExplicitRequest() {
+        EntityManager em = mock(EntityManager.class);
+        Query query = mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.of());
+        FulfillmentWorkbenchAccessPolicy access = mock(FulfillmentWorkbenchAccessPolicy.class);
+        when(access.canAccessWarehouseTasks()).thenReturn(true);
+
+        new FulfillmentWorkbenchQueryService(em, access).warehouseStatusBreakdown();
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em).createNativeQuery(sql.capture());
+        assertTrue(sql.getValue().contains(FulfillmentWorkbenchQueryService.WAREHOUSE_DOCUMENT_ROWS));
+        assertTrue(sql.getValue().contains("fn_production_draw_requested(v.action_doc_id)"));
     }
 
     @Test

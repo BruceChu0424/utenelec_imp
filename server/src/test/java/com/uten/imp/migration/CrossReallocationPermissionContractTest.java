@@ -57,7 +57,7 @@ class CrossReallocationPermissionContractTest {
                 String.class, int.class, int.class));
         assertAuthority(MaterialAnalysisController.class.getDeclaredMethod(
                 "createCrossReallocation", UUID.class,
-                CrossReallocationRequest.class));
+                CrossReallocationRequest.class, boolean.class));
         assertAuthority(MaterialAnalysisController.class.getDeclaredMethod(
                 "revokeCrossReallocation", UUID.class, UUID.class,
                 CrossReallocationRevokeRequest.class));

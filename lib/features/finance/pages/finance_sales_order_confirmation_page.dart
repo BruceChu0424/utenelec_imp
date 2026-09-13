@@ -672,7 +672,11 @@ class _FinanceSalesOrderConfirmationPageState
       child: ListView(
         key: const Key('sales-order-finance-mobile-list'),
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.only(bottom: selectable ? 96 : UtenSpacing.s24),
+        padding: EdgeInsets.only(
+          bottom: selectable
+              ? UtenFloatingActionGroup.scrollClearance
+              : UtenSpacing.s24,
+        ),
         children: [
           _filters(Theme.of(context)),
           if (_error != null) ...[

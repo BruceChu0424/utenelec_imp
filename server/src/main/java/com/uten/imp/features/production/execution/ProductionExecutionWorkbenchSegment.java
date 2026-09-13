@@ -43,5 +43,13 @@ public record ProductionExecutionWorkbenchSegment(
         boolean zeroMaterial,
         boolean canRecheckMaterial,
         boolean hasMaterialActivity,
-        boolean hasUnregisteredMaterial) {
+        boolean hasUnregisteredMaterial,
+        boolean drawRequested,
+        boolean canRequestDraw,
+        boolean canSplitBatch,
+        UUID sourceSegmentId,
+        boolean splitReplaced,
+        boolean hasSharedMaterialActivity,
+        boolean hasPendingReturn,
+        boolean hasAvailableMaterial) {
 }

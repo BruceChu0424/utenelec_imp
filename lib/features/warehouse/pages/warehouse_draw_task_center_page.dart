@@ -12,6 +12,7 @@ import '../../../core/router/route_names.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/stock_doc.dart';
 import '../providers/production_draw_count_provider.dart';
+import '../providers/production_return_count_provider.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../widgets/warehouse_draw_task_segment.dart';
 import '../widgets/warehouse_stock_doc_segment.dart';
@@ -29,6 +30,7 @@ class WarehouseDrawTaskCenterPage extends ConsumerWidget {
       return const _NoDrawPermission();
     }
     final draw = ref.watch(warehouseProductionDrawPendingCountProvider);
+    final returns = ref.watch(warehouseProductionReturnPendingCountProvider);
     return WarehouseTaskCenterScaffold(
       location: RouteName.warehouseDrawTasks,
       title: '生产领料任务中心',
@@ -41,7 +43,11 @@ class WarehouseDrawTaskCenterPage extends ConsumerWidget {
           count: draw.isLoading ? null : draw.valueOrNull,
         ),
         const WarehouseTaskSegmentSpec(value: 'draw', label: '领料单'),
-        const WarehouseTaskSegmentSpec(value: 'wdraw', label: '生产退料'),
+        WarehouseTaskSegmentSpec(
+          value: 'wdraw',
+          label: '生产退料',
+          count: returns.valueOrNull,
+        ),
       ],
       onResume: () => invalidateWarehouseTaskCounts(ref),
       bodyBuilder: (segment, keyword, refreshTick) => switch (segment) {
@@ -59,6 +65,8 @@ class WarehouseDrawTaskCenterPage extends ConsumerWidget {
         ),
         _ => WarehouseStockDocSegment(
           docType: StockDocType.wdraw,
+          pendingReturnCount: returns.valueOrNull,
+          productionReturnRequests: true,
           keyword: keyword,
           refreshTick: refreshTick,
         ),

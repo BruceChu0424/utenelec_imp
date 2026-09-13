@@ -2218,7 +2218,10 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
     // 横滚时钉在视口左缘的副本浮在数据格之上：必须自带同色不透明底 + 右线 + 行底线，
     // 否则下面的数据格会透上来、行线也会在这一段断开。
     final frozenSelectionCell = ColoredBox(
-      color: rowBg ?? theme.colorScheme.surface,
+      color: Color.alphaBlend(
+        rowBg ?? Colors.transparent,
+        theme.colorScheme.surface,
+      ),
       child: DecoratedBox(
         decoration: BoxDecoration(
           border: Border(right: divider, bottom: divider),

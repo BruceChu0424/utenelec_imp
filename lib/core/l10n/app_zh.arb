@@ -1412,7 +1412,7 @@
     "description": "修改清单卡片说明"
   },
   "productionMaterialRecheck": "重新核对备料",
-  "productionMaterialRecheckReady": "物料已齐套，已按实际子仓生成领料单。请仓库发料完成后开工。",
+  "productionMaterialRecheckReady": "物料已齐套，请在「我的车间任务」勾选并提交领料；仓库发料完成后再开工。",
   "productionMaterialRecheckWaiting": "已重新检查，当前仍有物料未满足，请核对实际入库和其他任务的预留。",
   "fieldAutofilledReview": "已自动带出上次记录或默认值，请核对后使用",
   "workflowQuantityHint": "按本行单位填写本次数量，箱、个、千克不要混填；引用来源时不能超过当前可用数量。",
@@ -1581,5 +1581,324 @@
   },
   "productionMaterialRecheckHelp": "重新核对本任务已合格到货和可用库存；不能代替仓库入库或登记实耗。",
   "productionMaterialRegisterUsage": "登记实际用料",
-  "productionMaterialViewUsage": "查看用料记录"
+  "productionMaterialViewUsage": "查看用料记录",
+  "systemSettingInvalidInteger": "请输入有效的非负整数",
+  "systemSettingInvalidValue": "设置值超出允许范围",
+  "systemSettingEnabled": "开启",
+  "systemSettingDisabled": "关闭",
+  "systemSettingFixFields": "请先检查框内标记的设置项",
+  "systemSettingUnsavedRefresh": "请先保存或还原修改，再刷新设置",
+  "systemSettingEffectTiming": "安全阈值在后续操作生效，令牌有效期在下次签发生效；庆典与审计留存在各自的计划任务生效。修改会记录审计并需要账号密码确认。",
+  "auditSummaryUnavailable": "统计暂不可用，操作记录仍可核查",
+  "auditSummaryRetry": "重试统计",
+  "auditWorkspaceDescription": "按人员与时间查看会话，沿操作记录追溯业务变化。",
+  "materialReasonLabel": "原因",
+  "materialReasonRequired": "请填写原因",
+  "materialReasonTooLong": "原因不能超过 {max} 个字符",
+  "materialReasonTooShort": "原因至少填写 {min} 个字符",
+  "@materialReasonTooLong": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "@materialReasonTooShort": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "auditFiltersTitle": "操作类型 · 业务对象 · 事件类型",
+  "warehouseOutboundBatchAction": "批量{action}",
+  "@warehouseOutboundBatchAction": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
+  "warehouseOutboundBatchReview": "销售出库批量核对",
+  "warehouseOutboundBatchHint": "请逐项核对所选单据的货品、数量、单位、仓库与建议库位；确认后办理当前作业阶段。",
+  "warehouseOutboundBatchConfirm": "确认对所选 {count} 张单据执行{action}？",
+  "@warehouseOutboundBatchConfirm": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "warehouseOutboundBatchStopped": "批量作业已停止，请返回刷新核对后重新选择未完成任务。",
+  "warehouseOutboundBatchUnknown": "未收到明确回执，请返回刷新核对当前状态后再处理。",
+  "warehouseOutboundBatchStale": "任务状态或允许动作已变化，请刷新后重新核对。",
+  "warehouseOutboundBatchEmpty": "所选任务已不可办理，请返回刷新任务列表。",
+  "warehouseOutboundBatchResult": "处理结果",
+  "warehouseOutboundBatchDone": "已完成",
+  "warehouseOutboundBatchPending": "未处理",
+  "warehouseOutboundBatchFailed": "失败，请核对",
+  "warehouseOutboundBatchSelection": "已选 {count} 张单据",
+  "@warehouseOutboundBatchSelection": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "warehouseOutboundBatchSelect": "请先选择可办理任务",
+  "warehouseOutboundBatchReason": "处理说明",
+  "warehouseOutboundBatchReasonRequired": "请填写具体说明",
+  "warehouseOutboundBillNo": "出货单号",
+  "warehouseOutboundClient": "客户",
+  "warehouseOutboundWarehouse": "仓库",
+  "warehouseOutboundStatus": "仓库作业",
+  "warehouseOutboundLineNo": "行号",
+  "warehouseOutboundGoodsCode": "货品编码",
+  "warehouseOutboundGoodsName": "货品名称",
+  "warehouseOutboundPlaceHint": "当前建议库位",
+  "warehouseOutboundColor": "颜色",
+  "warehouseOutboundUnit": "单位",
+  "warehouseOutboundQuantity": "出货数量",
+  "warehouseOutboundWeight": "重量",
+  "warehouseOutboundParcelQuantity": "件数",
+  "warehouseOutboundCartonCount": "箱数",
+  "warehouseOutboundClientProductCode": "客户产品号",
+  "warehouseOutboundClientModel": "客户型号",
+  "warehouseOutboundSourceOrder": "来源订单",
+  "warehouseOutboundStartPicking": "开始拣货",
+  "warehouseOutboundFinishPicking": "拣货完成",
+  "warehouseOutboundHandOver": "交接出库",
+  "warehouseOutboundRestorePending": "恢复待拣货",
+  "warehouseStockOutboundTitle": "批量出库详情",
+  "warehouseStockOutboundAction": "批量出库",
+  "warehouseStockOutboundConfirm": "确认批量出库",
+  "warehouseStockOutboundConfirmMessage": "确认对所选 {count} 张单据按表内数量出库？\n每张单据独立审核并扣减实际仓库库存，记录当前员工的审核责任。发生异常时停止后续操作，已成功单据保留结果。",
+  "@warehouseStockOutboundConfirmMessage": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "warehouseStockOutboundHint": "核对货品、出库数量、单位和实际仓库。同一单据的明细一同勾选、整单出库；如需改量，请先返回编辑草稿。",
+  "warehouseStockOutboundLoadFailed": "出库详情加载失败，请重试。",
+  "warehouseStockOutboundCompleted": "已完成 {count} 张单据出库",
+  "@warehouseStockOutboundCompleted": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "warehouseStockOutboundDone": "已出库",
+  "warehouseStockOutboundUnavailable": "当前不可办理",
+  "warehouseStockOutboundProcessing": "正在确认出库",
+  "warehouseStockOutboundBillNo": "出库单号",
+  "warehouseStockOutboundPlace": "实际库位",
+  "warehouseStockOutboundQuantity": "出库数量",
+  "warehouseStockOutboundSource": "来源单据",
+  "warehouseStockOutboundRemark": "备注",
+  "warehouseSubcontractOutboundBatchTitle": "批量出库详情",
+  "warehouseSubcontractOutboundBatchAction": "批量出库",
+  "warehouseSubcontractOutboundBatchConfirm": "确认批量出库",
+  "warehouseSubcontractOutboundReviewHint": "请逐行核对本次出库数量、重量和实际仓库，再确认出库。",
+  "warehouseSubcontractOutboundBatchHint": "明细按整张出库单勾选，本次数量可改小分批出库。各单独立保存并审核，保留已完成结果；发生异常时暂停，核实后继续尚未执行的单据。",
+  "warehouseSubcontractOutboundDocuments": "单据信息",
+  "warehouseSubcontractOutboundLines": "出库明细",
+  "warehouseSubcontractOutboundOrder": "来源订单",
+  "warehouseSubcontractOutboundSupplier": "委外商",
+  "warehouseSubcontractOutboundWarehouse": "发出仓",
+  "warehouseSubcontractOutboundWorker": "经办人",
+  "warehouseSubcontractOutboundDate": "出库日期",
+  "warehouseSubcontractOutboundDeliveryDate": "交货日期",
+  "warehouseSubcontractOutboundGoods": "货品",
+  "warehouseSubcontractOutboundColor": "颜色",
+  "warehouseSubcontractOutboundUnit": "单位",
+  "warehouseSubcontractOutboundPlanned": "计划数量",
+  "warehouseSubcontractOutboundPrepared": "已备齐",
+  "warehouseSubcontractOutboundIssued": "已出库",
+  "warehouseSubcontractOutboundAvailable": "本次最多",
+  "warehouseSubcontractOutboundQuantity": "本次出库",
+  "warehouseSubcontractOutboundWeight": "实际重量",
+  "warehouseSubcontractOutboundPlace": "库位",
+  "warehouseSubcontractOutboundStatus": "处理结果",
+  "warehouseSubcontractOutboundPending": "待出库",
+  "warehouseSubcontractOutboundDone": "已出库",
+  "warehouseSubcontractOutboundPaused": "已暂停，请核实",
+  "warehouseSubcontractOutboundUncertain": "回执尚未确定，请刷新核实后再继续。",
+  "warehouseSubcontractOutboundChanged": "单据已被修改或处理，请返回刷新后重新选择。",
+  "warehouseSubcontractOutboundSelectRequired": "请至少选择一项出库任务。",
+  "warehouseSubcontractOutboundSelectionLimit": "每批最多选择 50 项任务。",
+  "warehouseSubcontractOutboundWarehouseRequired": "请选择发出仓。",
+  "warehouseSubcontractOutboundQuantityInvalid": "本次出库数量必须大于 0 且不能超过本次最多数量。",
+  "warehouseSubcontractOutboundWeightInvalid": "实际重量须为空或大于 0 的数字。",
+  "warehouseSubcontractOutboundLoadFailed": "出库详情加载失败，请重试。",
+  "warehouseSubcontractOutboundConfirmResponsibility": "确认后，系统将以当前登录员工记录本次出库审核责任。",
+  "warehouseSubcontractOutboundSubcontractEffects": "审核后，目标件从所选仓库实际出库并交委外商加工；回厂后仍需登记和品质检查。",
+  "warehouseSubcontractOutboundBatchResult": "已完成 {done} 项，共 {total} 项。",
+  "@warehouseSubcontractOutboundBatchResult": {
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "warehouseSubcontractOutboundContinue": "继续未执行项",
+  "warehouseSubcontractOutboundVerify": "核实处理结果",
+  "warehouseSubcontractOutboundSelectAll": "全选出库明细",
+  "warehouseSubcontractOutboundDraft": "出库草稿",
+  "warehouseSubcontractOutboundRemark": "备注",
+  "warehouseSubcontractOutboundNoLines": "当前没有可出库明细",
+  "warehouseSubcontractOutboundLegacyParent": "历史父件",
+  "warehouseStockOutboundConfirmSingle": "确认出库",
+  "warehouseStockOutboundSeries": "系列",
+  "warehouseSubcontractOutboundDraftsGenerated": "出库草稿已生成，请重新核对各张单据的实际仓库和数量，再确认出库。",
+  "warehouseSubcontractOutboundPrepareDrafts": "生成草稿并核对",
+  "warehouseOutboundBatchDocuments": "单据信息",
+  "warehouseOutboundBatchLines": "出库明细",
+  "warehouseOutboundBatchBillDate": "业务日期",
+  "warehouseOutboundBatchWorker": "经办人",
+  "warehouseOutboundBatchMaker": "制单员",
+  "warehouseOutboundBatchCreatedAt": "制单时间",
+  "warehouseOutboundBatchUpdatedAt": "作业更新",
+  "warehouseSubcontractOutboundDocumentRemark": "单据备注",
+  "warehouseSubcontractOutboundLineRemark": "明细备注",
+  "warehouseSubcontractOutboundWarehouseSyncHint": "默认带出原出库单的实际仓库。同一出库单的所有明细共用发出仓，修改后同步更新。",
+  "warehouseSubcontractOutboundDocumentRemarkHint": "同一出库单共用此备注，修改后在该单所有明细同步显示。单行说明填写在明细备注中。",
+  "productionBatchTitle": "分批生产领料",
+  "productionBatchPermission": "当前账号没有安排车间分批领料的权限",
+  "productionBatchSelectTask": "请从我的车间任务选择待料工单",
+  "productionBatchInvalidQuantity": "请输入大于 0 的数量，最多 4 位小数",
+  "productionBatchPreviewFailed": "可生产批量核对失败，请重试",
+  "productionBatchReplay": "本批已安排，未重复生成任务",
+  "productionBatchSubmittedReuse": "已安排本批 {quantity} {unit}，沿用前批已领物料，可回车间任务开工",
+  "@productionBatchSubmittedReuse": {
+    "placeholders": {
+      "quantity": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "productionBatchSubmitted": "已提交本批 {quantity} {unit} 领料；剩余 {remaining} {unit} 留待后续安排",
+  "@productionBatchSubmitted": {
+    "placeholders": {
+      "quantity": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      },
+      "remaining": {
+        "type": "String"
+      }
+    }
+  },
+  "productionBatchUncertain": "暂未确认本批提交结果，请用“{action}”继续确认。当前批量和汇总已保留。",
+  "@productionBatchUncertain": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
+  "productionBatchRejected": "{message}。请重新核对本批数量和领料汇总。",
+  "@productionBatchRejected": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "productionBatchRetryRequest": "重试本批领料",
+  "productionBatchRetryArrange": "重试本批安排",
+  "productionBatchConfirmRequest": "确认本批领料",
+  "productionBatchConfirmArrange": "确认本批生产",
+  "productionBatchSubmitting": "正在提交本批安排",
+  "productionBatchSubmittingHint": "正在核对本批数量和物料来源，请稍候。",
+  "productionBatchProductFallback": "生产产品待确认",
+  "productionBatchPlan": "生产计划",
+  "productionBatchWorkOrder": "生产工单",
+  "productionBatchOriginal": "任务待生产",
+  "productionBatchOriginalHint": "当前工单的待生产数量",
+  "productionBatchReady": "当前可齐套上限",
+  "productionBatchReadyHint": "仅按现有合格实物计算",
+  "productionBatchSelected": "本批已核对量",
+  "productionBatchSelectedHint": "确认后安排的本批数量",
+  "productionBatchRemaining": "安排后剩余",
+  "productionBatchRemainingHint": "留待后续安排",
+  "productionBatchUnitUnknown": "单位待确认",
+  "productionBatchSetup": "本批生产安排",
+  "productionBatchQuantity": "本次生产数量",
+  "productionBatchQuantityHint": "最多可安排 {quantity} {unit}。修改后需重新核对领料汇总，再确认提交。",
+  "@productionBatchQuantityHint": {
+    "placeholders": {
+      "quantity": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "productionBatchReview": "重新核对领料汇总",
+  "productionBatchReviewReady": "本批已核对",
+  "productionBatchNeedsReview": "数量已修改，需重新核对",
+  "productionBatchNeedsReviewHint": "下方为上次核对的明细，重新核对后才能确认本批。",
+  "productionBatchNoKit": "暂不能安排本批",
+  "productionBatchNoKitHint": "现有物料尚不能配齐一个生产批次，请等待实际入库后重新核对",
+  "productionBatchReuse": "本批无需新增领料",
+  "productionBatchReuseHint": "本批沿用前批已领物料，无需再次领料；确认后回车间任务开工。",
+  "productionBatchFlow": "确认本批领料 → 仓库发齐 → 车间开工",
+  "productionBatchRemainingText": "本批安排后，剩余 {quantity} {unit} 留待后续安排。",
+  "@productionBatchRemainingText": {
+    "placeholders": {
+      "quantity": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "productionBatchAllRemaining": "本批包含当前工单全部待生产数量。",
+  "productionBatchMaterials": "本批领料明细",
+  "productionBatchMaterialCount": "{lines} 行物料 · {warehouses} 个领料仓",
+  "@productionBatchMaterialCount": {
+    "placeholders": {
+      "lines": {
+        "type": "int"
+      },
+      "warehouses": {
+        "type": "int"
+      }
+    }
+  },
+  "productionBatchWarehouse": "实际领料仓",
+  "productionBatchGoodsCode": "物料编码",
+  "productionBatchGoodsName": "物料名称",
+  "productionBatchColor": "颜色",
+  "productionBatchUnit": "领料单位",
+  "productionBatchMaterialQuantity": "本批领料数量",
+  "productionBatchMaterialQuantityHint": "仅为本批需要新增领取的数量，按本行单位和实际仓库办理。",
+  "productionBatchNoAdditionalMaterials": "本批无需新增领料，沿已有物料来源安排生产",
+  "productionBatchConfirmedSummary": "本批 {quantity} {unit}",
+  "@productionBatchConfirmedSummary": {
+    "placeholders": {
+      "quantity": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  }
 }

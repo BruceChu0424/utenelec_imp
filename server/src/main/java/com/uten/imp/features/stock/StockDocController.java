@@ -5,6 +5,8 @@ import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.stock.dto.FinishedInboundBatchConfirmRequest;
 import com.uten.imp.features.stock.dto.FinishedInboundBatchConfirmResponse;
 import com.uten.imp.features.stock.dto.StockDocDetail;
+import com.uten.imp.features.stock.dto.StockDocOutboundReview;
+import com.uten.imp.features.stock.dto.StockDocReviewedApproveRequest;
 import com.uten.imp.features.stock.dto.FinishedInboundConfirmRequest;
 import com.uten.imp.features.stock.dto.StockDocIssueRequest;
 import com.uten.imp.features.stock.dto.StockDocListItem;
@@ -59,12 +61,13 @@ public class StockDocController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) UUID departmentId,
             @RequestParam(required = false) Short issueStatus,
+            @RequestParam(required = false) Boolean productionReturnRequests,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.list(new StockDocQueryFilter(docType, keyword, warehouseId, status, dateFrom, dateTo,
-                departmentId, issueStatus), page, size, sort, order);
+                departmentId, issueStatus, productionReturnRequests), page, size, sort, order);
     }
 
     @GetMapping("/{id}")
@@ -85,6 +88,22 @@ public class StockDocController {
     @PreAuthorize("hasAuthority('stock_doc:create')")
     public StockDocDetail create(@Valid @RequestBody StockDocSaveRequest req) {
         return service.create(req);
+    }
+
+    @GetMapping("/{id}/outbound-review")
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public StockDocOutboundReview reviewOutbound(@PathVariable UUID id) {
+        StockDocOutboundReview result = service.reviewOutbound(id);
+        auditViews.record("view_stock_document_detail", "stock_documents", id,
+                result.document().getBillNo(), result.document().getLegacyId(), "库存单据");
+        return result;
+    }
+
+    @PostMapping("/{id}/approve-reviewed")
+    @PreAuthorize("hasAuthority('stock_doc:approve')")
+    public StockDocDetail approveReviewed(@PathVariable UUID id,
+            @Valid @RequestBody StockDocReviewedApproveRequest request) {
+        return service.approveReviewed(id, request);
     }
 
     @PutMapping("/{id}")

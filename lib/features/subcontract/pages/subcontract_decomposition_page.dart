@@ -588,7 +588,9 @@ class _SubcontractDecompositionPageState
         return _withCardActions(
           ListView(
             key: const Key('subcontract-decomposition-compact-list'),
-            padding: const EdgeInsets.only(bottom: 160),
+            padding: const EdgeInsets.only(
+              bottom: UtenFloatingActionGroup.scrollClearance,
+            ),
             children: [
               header,
               const SizedBox(height: UtenSpacing.s12),

@@ -11,6 +11,7 @@ import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
@@ -25,7 +26,6 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -43,7 +43,7 @@ class ProcurementFinanceApprovalReviewTest {
     void unknownCaseFailsClosedAsNotFound() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         UUID caseId = UUID.randomUUID();
-        when(jdbc.query(anyString(), any(RowMapper.class), eq(caseId)))
+        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<Object[]>>notNull(), eq(caseId)))
                 .thenReturn(List.of());
         ProcurementFinanceApprovalService service = service(jdbc, false);
 
@@ -126,14 +126,14 @@ class ProcurementFinanceApprovalReviewTest {
         row[21] = "采购员甲";
         row[22] = "制单员乙";
         row[23] = new BigDecimal("12500.50");
-        when(jdbc.query(anyString(), any(RowMapper.class), eq(caseId)))
+        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<Object[]>>notNull(), eq(caseId)))
                 .thenReturn(java.util.Collections.singletonList(row));
         // V486 修改清单查询独立返回空（普通 case 无改量事实账行）。
         when(jdbc.query(
                 org.mockito.ArgumentMatchers.argThat(
                         (String sql) -> sql != null
                                 && sql.contains("procurement_order_qty_change_logs")),
-                any(RowMapper.class), eq(caseId)))
+                ArgumentMatchers.<RowMapper<Object[]>>notNull(), eq(caseId)))
                 .thenReturn(java.util.List.of());
         return jdbc;
     }

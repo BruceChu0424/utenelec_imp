@@ -5,6 +5,341 @@ import 'package:uten_imp/features/production/models/production_material_analysis
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 
 void main() {
+  test(
+    'private future source list keeps exact allocation and command carries both reviewed CAS',
+    () async {
+      final requests = <RequestOptions>[];
+      final repository = ProductionPlanRepository(
+        _api((request) {
+          requests.add(request);
+          if (request.method == 'GET') {
+            return [
+              {
+                'sourceAllocationId': 'allocation-exact',
+                'sourceAnalysisId': 'source-A',
+                'sourceMaterialId': 'source-material',
+                'sourceLabel': '原计划 A',
+                'availableQty': 500,
+                'receivedQty': 30,
+                'sourceVersion': 8,
+                'sourceFingerprint': 'source-fp',
+                'targetVersion': 99,
+                'targetFingerprint': 'new-target-fp',
+                'targetUncoveredQty': 100,
+                'lateOrUnknown': true,
+                'stage': 'PARTIAL_STOCK_IN',
+              },
+            ];
+          }
+          return _analysisJson;
+        }),
+      );
+      final sources = await repository.materialFutureTransferSources(
+        targetAnalysisId: 'analysis-1',
+        targetMaterialId: 'target-material',
+      );
+      expect(
+        requests.single.path,
+        '/production/material-analyses/analysis-1/materials/target-material/future-transfer-sources',
+      );
+      expect(sources.items.single.sourceAllocationId, 'allocation-exact');
+      expect(sources.items.single.shortageQty, 100);
+      await repository.createMaterialFutureTransfer(
+        targetAnalysis: ProductionMaterialAnalysisView.fromJson(_analysisJson),
+        targetMaterialId: 'target-material',
+        source: sources.items.single,
+        qty: 80,
+        allowLateSupply: true,
+        reason: '调整专属供给',
+        idempotencyKey: 'exact-private-key',
+      );
+      expect(
+        requests.last.path,
+        '/production/material-analyses/analysis-1/future-transfers',
+      );
+      expect(requests.last.data, {
+        'sourceAllocationId': 'allocation-exact',
+        'targetMaterialId': 'target-material',
+        'qty': 80.0,
+        'sourceVersion': 8,
+        'sourceFingerprint': 'source-fp',
+        'targetVersion': 7,
+        'targetFingerprint': _analysisJson['fingerprint'],
+        'allowLateSupply': true,
+        'reason': '调整专属供给',
+        'idempotencyKey': 'exact-private-key',
+      });
+    },
+  );
+
+  test(
+    'private records preserve safe cancellation quota and cancel with record CAS',
+    () async {
+      final requests = <RequestOptions>[];
+      final repository = ProductionPlanRepository(
+        _api((request) {
+          requests.add(request);
+          if (request.method == 'GET') {
+            return [
+              {
+                'id': 'transfer-exact',
+                'sourceAllocationId': 'allocation-exact',
+                'sourceAnalysisId': 'source-A',
+                'sourceMaterialId': 'source-material',
+                'targetAnalysisId': 'analysis-1',
+                'targetMaterialId': 'target-material',
+                'qty': 100,
+                'receivedQty': 30,
+                'remainingQty': 70,
+                'cancelableQty': 20,
+                'sourceVersion': 8,
+                'sourceFingerprint': 'source-fp',
+                'targetVersion': 7,
+                'targetFingerprint': 'target-fp',
+                'status': 'PARTIAL',
+                'direction': 'IN',
+                'canCancel': true,
+              },
+            ];
+          }
+          return _analysisJson;
+        }),
+      );
+      final records = await repository.materialFutureTransfers(
+        analysisId: 'analysis-1',
+        materialId: 'target-material',
+      );
+      expect(requests.single.queryParameters, {
+        'materialId': 'target-material',
+      });
+      expect(records.single.maxCancelableQty, 20);
+      await repository.cancelMaterialFutureTransfer(
+        analysisId: 'analysis-1',
+        transfer: records.single,
+        qty: 10,
+        reason: '恢复原计划',
+        idempotencyKey: 'cancel-key',
+      );
+      expect(
+        requests.last.path,
+        '/production/material-analyses/analysis-1/future-transfers/transfer-exact/cancel',
+      );
+      expect(requests.last.data, {
+        'qty': 10.0,
+        'sourceVersion': 8,
+        'sourceFingerprint': 'source-fp',
+        'targetVersion': 7,
+        'targetFingerprint': 'target-fp',
+        'reason': '恢复原计划',
+        'idempotencyKey': 'cancel-key',
+      });
+      await repository.cancelMaterialFutureTransfer(
+        analysisId: 'analysis-1',
+        transfer: records.single,
+        qty: 10,
+        reason: '确认释放公共余量',
+        idempotencyKey: 'cancel-public-key',
+        acceptPublicRelease: true,
+      );
+      expect((requests.last.data as Map)['acceptPublicRelease'], isTrue);
+    },
+  );
+
+  test(
+    'private donor preview uses successful command key and exact source analysis',
+    () async {
+      late RequestOptions request;
+      final repository = ProductionPlanRepository(
+        _api((value) {
+          request = value;
+          return {
+            'sourceAnalysis': {..._analysisJson, 'analysisId': 'source-A'},
+            'sourceMaterialLineId': 'source-material',
+            'targetAnalysisId': 'analysis-1',
+            'route': 'BUY',
+            'allowedRoutes': ['BUY'],
+            'operation': 'NOTIFY_SUPPLY',
+            'defaultQty': 80,
+            'remainingSupplementQty': 80,
+            'canOverSupply': true,
+          };
+        }),
+      );
+      final preview = await repository.materialPriorityReplenishmentPreview(
+        sourceAnalysisId: 'source-A',
+        idempotencyKey: 'private-transfer-key',
+        futureTransfer: true,
+      );
+      expect(
+        request.path,
+        '/production/material-analyses/source-A/future-transfer-replenishment-preview',
+      );
+      expect(request.queryParameters['idempotencyKey'], 'private-transfer-key');
+      expect(request.method, 'GET');
+      expect(preview.sourceAnalysis.analysisId, 'source-A');
+      expect(preview.defaultQty, 80);
+      await repository.materialPriorityReplenishmentPreview(
+        sourceAnalysisId: 'source-A',
+        reallocationId: 'transfer-1',
+        futureTransfer: true,
+      );
+      expect(
+        request.path,
+        '/production/material-analyses/source-A/future-transfers/transfer-1/replenishment-preview',
+      );
+    },
+  );
+
+  test(
+    'explicit shared future quantities and late approval keep the exact source action',
+    () async {
+      late RequestOptions captured;
+      final repository = ProductionPlanRepository(
+        _api((request) {
+          captured = request;
+          return _analysisJson;
+        }),
+      );
+      await repository.claimSharedFutureSupply(
+        analysis: ProductionMaterialAnalysisView.fromJson(_analysisJson),
+        idempotencyKey: 'claim-exact-key',
+        actionGroupKeys: ['group'],
+        allowLateSupply: true,
+        quantities: const [
+          MaterialSharedFutureClaimQuantity(
+            actionGroupKey: 'group',
+            qty: 900,
+            sourceActionId: 'source-public-action',
+          ),
+        ],
+      );
+      expect(
+        captured.path,
+        '/production/material-analyses/analysis-1/claim-shared-future',
+      );
+      final body = captured.data as Map<String, dynamic>;
+      expect(body['allowLateSupply'], isTrue);
+      expect(body['quantities'], [
+        {
+          'actionGroupKey': 'group',
+          'qty': 900.0,
+          'sourceActionId': 'source-public-action',
+        },
+      ]);
+      expect(body['version'], 7);
+      expect(body['idempotencyKey'], 'claim-exact-key');
+    },
+  );
+
+  test(
+    'donor replenishment lookup follows the successful transfer key without guessing historical rows',
+    () async {
+      late RequestOptions captured;
+      final repository = ProductionPlanRepository(
+        _api((request) {
+          captured = request;
+          return {
+            'sourceAnalysis': {..._analysisJson, 'analysisId': 'source-A'},
+            'sourceMaterialLineId': 'source-line',
+            'targetAnalysisId': 'target-B',
+            'transferredQty': 4,
+            'priorityPendingQty': 4,
+            'remainingSupplementQty': 4,
+            'defaultQty': 4,
+            'route': 'BUY',
+            'allowedRoutes': ['BUY'],
+            'operation': 'NOTIFY_SUPPLY',
+            'canOverSupply': true,
+          };
+        }),
+      );
+      final preview = await repository.materialPriorityReplenishmentPreview(
+        sourceAnalysisId: 'source-A',
+        idempotencyKey: 'completed-transfer-key',
+      );
+      expect(captured.method, 'GET');
+      expect(
+        captured.path,
+        '/production/material-analyses/source-A/cross-reallocation-replenishment-preview',
+      );
+      expect(
+        captured.queryParameters['idempotencyKey'],
+        'completed-transfer-key',
+      );
+      expect(preview.sourceAnalysis.analysisId, 'source-A');
+      expect(preview.defaultQty, 4);
+      expect(preview.canOverSupply, isTrue);
+    },
+  );
+  test(
+    'receive from another plan keeps donor and recipient CAS and returns recipient in same command',
+    () async {
+      final requests = <RequestOptions>[];
+      final repository = ProductionPlanRepository(
+        _api((request) {
+          requests.add(request);
+          if (request.method == 'GET') {
+            return {
+              'items': [
+                {
+                  'sourceAnalysisId': 'donor',
+                  'sourceVersion': 7,
+                  'sourceFingerprint': 'donor-fp',
+                  'sourceMaterialLineId': 'donor-material',
+                  'sourceLendableQty': 3,
+                  'shortageQty': 8,
+                },
+              ],
+              'page': 1,
+              'size': 20,
+              'total': 1,
+              'totalPages': 1,
+            };
+          }
+          return _analysisJson;
+        }),
+      );
+      final sources = await repository.materialCrossReallocationSources(
+        targetAnalysisId: 'analysis-1',
+        targetMaterialLineId: 'need-material',
+        keyword: ' 急单 ',
+      );
+      expect(
+        requests.single.path,
+        '/production/material-analyses/analysis-1/materials/need-material/cross-reallocation-sources',
+      );
+      expect(requests.single.queryParameters['keyword'], '急单');
+      final target = ProductionMaterialAnalysisView.fromJson(_analysisJson);
+      await repository.acceptMaterialCrossReallocation(
+        targetAnalysis: target,
+        targetMaterialLineId: 'need-material',
+        source: sources.items.single,
+        qty: 2,
+        reason: '临时插单',
+        idempotencyKey: 'receive-1234',
+      );
+      expect(requests.length, 2);
+      final command = requests.last;
+      expect(
+        command.path,
+        '/production/material-analyses/donor/cross-reallocations',
+      );
+      expect(command.queryParameters['returnTarget'], true);
+      expect(command.data, {
+        'sourceVersion': 7,
+        'sourceFingerprint': 'donor-fp',
+        'sourceMaterialLineId': 'donor-material',
+        'targetAnalysisId': target.analysisId,
+        'targetVersion': target.version,
+        'targetFingerprint': target.fingerprint,
+        'targetMaterialLineId': 'need-material',
+        'qty': 2,
+        'reason': '临时插单',
+        'idempotencyKey': 'receive-1234',
+      });
+    },
+  );
+
   test('lists object-scoped analysis history with exact filters', () async {
     RequestOptions? captured;
     final repository = ProductionPlanRepository(
@@ -343,7 +678,7 @@ void main() {
 
       await repository.notifyMaterialAnalysis(
         analysis: analysis,
-        idempotencyKey: 'notify-safety-split-1',
+        idempotencyKey: 'notify-safety-1',
         target: MaterialSupplyRoute.buy,
         actionGroupKeys: const ['action-group-1'],
         quantities: const [
@@ -359,7 +694,7 @@ void main() {
       expect(captured?.data, {
         'version': 7,
         'fingerprint': 'b' * 64,
-        'idempotencyKey': 'notify-safety-split-1',
+        'idempotencyKey': 'notify-safety-1',
         'target': 'BUY',
         'actionGroupKeys': ['action-group-1'],
         'quantities': [

@@ -26,7 +26,17 @@ class SystemSettingsServiceRetentionValidationTest {
             "audit_hot_retention_months,0,1 至 120",
             "audit_hot_retention_months,121,1 至 120",
             "audit_archive_retention_months,241,0 至 240",
-            "export_max_rows,100001,1 至 100000"
+            "export_max_rows,100001,1 至 100000",
+            "password_history_size,101,0 至 100",
+            "sms_code_ttl_minutes,2147483647,1 至 1440",
+            "sms_send_interval_seconds,86401,1 至 86400",
+            "sms_daily_limit,10001,1 至 10000",
+            "login_rate_limit_per_minute,100001,1 至 100000",
+            "login_ip_rate_limit_per_minute,1000001,1 至 1000000",
+            "lockout_threshold,1001,1 至 1000",
+            "lockout_minutes,525601,1 至 525600",
+            "export_rate_limit_per_minute,10001,1 至 10000",
+            "session_idle_timeout_minutes,525601,1 至 525600"
     })
     void dangerousRetentionAndExportValuesAreRejected(
             String key,
@@ -51,7 +61,7 @@ class SystemSettingsServiceRetentionValidationTest {
         setting.setLabel("测试设置");
         when(userRepository.findById(actorId)).thenReturn(Optional.of(actor));
         when(passwordEncoder.matches("password", "hash")).thenReturn(true);
-        when(repository.findById(key)).thenReturn(Optional.of(setting));
+        when(repository.findAllForUpdate(java.util.List.of(key))).thenReturn(java.util.List.of(setting));
 
         ApiException error = assertThrows(
                 ApiException.class,

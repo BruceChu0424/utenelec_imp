@@ -136,6 +136,14 @@ public class ProductionExecutionWorkbenchService {
             UUID workshopDepartmentId,
             LocalDate dateFrom,
             LocalDate dateTo) {
+        return workshopTasks(requestedPage, requestedSize, keyword, rawStatus,
+                workshopDepartmentId, dateFrom, dateTo, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<ProductionExecutionWorkbenchSegment> workshopTasks(
+            int requestedPage, int requestedSize, String keyword, String rawStatus,
+            UUID workshopDepartmentId, LocalDate dateFrom, LocalDate dateTo, String preparationFilter) {
         UUID employeeId = currentUser.employeeId().orElse(null);
         // V477 读侧放行：超管在本页看全部车间任务（前端徽章本就放行超管，
         // 两端口径必须一致）；写侧（报工）仍要求车间归属——FullChainEndToEndTest
@@ -189,11 +197,12 @@ public class ProductionExecutionWorkbenchService {
                     " AND task.segment_status <> 'IN_PROGRESS'";
                 case "READY_TO_START" ->
                     " AND task.segment_status IN ('READY', 'DISPATCHED')"
-                    + " AND (task.issued OR task.zero_material)";
+                    + " AND (" + effectiveIssuedPredicate() + " OR task.zero_material)";
                 case "IN_PROGRESS" -> " AND task.segment_status = 'IN_PROGRESS'";
                 default -> "";
             };
         }
+        predicate += preparationPredicate(preparationFilter);
         String finalPredicate = predicate;
         UUID scopedEmployeeId = seeAll ? null : employeeId;
         return segmentPage(
@@ -286,6 +295,8 @@ public class ProductionExecutionWorkbenchService {
                 productionAccess.hasAuthority("production_daily_report:create"),
                 productionAccess.hasAuthority("production_execution:view"));
         data.setParameter("allowReport", allowReport);
+        data.setParameter("allowRequestDraw", productionAccess.hasAuthority("production_execution:start")
+                && productionAccess.hasAuthority("production_execution:view"));
         data.setParameter("limit", size);
         data.setParameter("offset", (long) (page - 1) * size);
         List<Object[]> rows = NativeQueryResults.objectArrayRows(data);
@@ -517,10 +528,11 @@ public class ProductionExecutionWorkbenchService {
                        task.fqc_pending_qty, task.fqc_passed_qty,
                        task.fqc_failed_qty,
                        task.finished_inbound_pending_qty, task.inbound_qty,
-                       task.segment_status, task.material_status,
-                       task.preparation_status,
-                       task.material_status = 'KIT_READY' AS material_ready,
-                       task.warehouse_ready, task.issued,
+                       task.segment_status,
+                       CASE WHEN fn_split_batch_empty_issued(task.segment_id) THEN 'KIT_READY' ELSE task.material_status END,
+                       CASE WHEN fn_split_batch_empty_issued(task.segment_id) THEN 'PREPARED' ELSE task.preparation_status END,
+                       (task.material_status = 'KIT_READY' OR fn_split_batch_empty_issued(task.segment_id)) AS material_ready,
+                       task.warehouse_ready, %s,
                        FALSE,
                        FALSE,
                        (:allowReport AND task.reportable AND task.segment_status = 'IN_PROGRESS'),
@@ -541,8 +553,51 @@ public class ProductionExecutionWorkbenchService {
                            WHERE current_segment.id = task.segment_id
                              AND current_segment.status = 'WAITING'
                              AND current_segment.auto_promote_when_ready = TRUE
-                             AND current_segment.is_deleted = FALSE)
+                             AND current_segment.is_deleted = FALSE),
+                       %s,
+                       (:allowRequestDraw AND task.segment_status IN ('READY','DISPATCHED')
+                         AND NOT task.zero_material AND NOT %s AND NOT (%s)),
+                       (:allowRequestDraw AND fn_can_split_execution_batch(task.segment_id)),
+                       (SELECT source_segment_id FROM production_execution_segments WHERE id=task.segment_id),
+                       EXISTS(SELECT 1 FROM production_execution_segment_splits WHERE source_segment_id=task.segment_id),
+                       EXISTS(SELECT 1 FROM fn_production_material_usage_source_segments(task.segment_id) source
+                              WHERE source.segment_id<>task.segment_id)
+                """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), effectiveIssuedPredicate(), drawRequestedPredicate());
+    }
+
+    static String drawRequestedPredicate() {
+        return """
+                EXISTS (SELECT 1 FROM production_planning_package_documents draw_mapping
+                    JOIN stock_documents draw_document ON draw_document.id=draw_mapping.document_id
+                    WHERE draw_mapping.execution_segment_id=task.segment_id
+                      AND draw_mapping.document_type='DRAW' AND NOT draw_document.is_deleted
+                      AND draw_document.status IN (0,1)
+                ) AND NOT EXISTS (
+                    SELECT 1 FROM production_planning_package_documents draw_mapping
+                    JOIN stock_documents draw_document ON draw_document.id=draw_mapping.document_id
+                    WHERE draw_mapping.execution_segment_id=task.segment_id
+                      AND draw_mapping.document_type='DRAW' AND NOT draw_document.is_deleted
+                      AND draw_document.status IN (0,1)
+                      AND NOT fn_production_draw_fully_requested(draw_document.id))
                 """;
+    }
+
+    static String preparationPredicate(String rawFilter) {
+        if (rawFilter == null || rawFilter.isBlank()) return "";
+        return switch (rawFilter.strip().toUpperCase(Locale.ROOT)) {
+            case "WAITING_MATERIAL" -> " AND task.segment_status='WAITING'";
+            case "DRAW_NOT_REQUESTED" -> " AND task.segment_status IN ('READY','DISPATCHED')"
+                    + " AND NOT task.zero_material AND NOT (" + effectiveIssuedPredicate() + ") AND NOT (" + drawRequestedPredicate() + ")";
+            case "DRAW_REQUESTED" -> " AND task.segment_status IN ('READY','DISPATCHED')"
+                    + " AND NOT task.zero_material AND NOT (" + effectiveIssuedPredicate() + ") AND (" + drawRequestedPredicate() + ")";
+            case "READY_TO_START" -> " AND task.segment_status IN ('READY','DISPATCHED')"
+                    + " AND (task.zero_material OR " + effectiveIssuedPredicate() + ")";
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "等待物料状态筛选无效");
+        };
+    }
+
+    static String effectiveIssuedPredicate() {
+        return "(task.issued OR fn_split_batch_empty_issued(task.segment_id))";
     }
 
     private static String rootFilters(
@@ -686,7 +741,9 @@ public class ProductionExecutionWorkbenchService {
                 bool(row[25]), bool(row[26]), bool(row[27]), bool(row[28]),
                 bool(row[29]), text(row[30]), date(row[31]), date(row[32]),
                 ((Number) row[33]).longValue(), bool(row[34]), bool(row[35]),
-                usage.hasMaterialActivity(), usage.hasUnregisteredMaterial());
+                usage.hasMaterialActivity(), usage.hasUnregisteredMaterial(), bool(row[36]), bool(row[37]),
+                bool(row[38]), uuid(row[39]), bool(row[40]), bool(row[41]),
+                usage.hasPendingReturn(), usage.hasAvailableMaterial());
     }
 
     private static int boundedSize(int requested) {

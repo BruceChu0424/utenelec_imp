@@ -1,3 +1,7 @@
+import '../../support/audit_screenshot_support.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +14,68 @@ import 'package:uten_imp/shared/repositories/public_settings_repository.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  for (final width in [375.0, 768.0, 1440.0]) {
+    for (final dark in [false, true]) {
+      testWidgets(
+        'audit viewport $width dark=$dark keeps content and supports large text',
+        (tester) async {
+          SharedPreferences.setMockInitialValues(const {});
+          final preferences = await SharedPreferences.getInstance();
+          tester.view.physicalSize = Size(width, 1000);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          const capture = bool.fromEnvironment('UTEN_CAPTURE_UI');
+          if (capture) await loadAuditScreenshotFonts(tester);
+          final boundaryKey = GlobalKey();
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [
+                sharedPreferencesProvider.overrideWithValue(preferences),
+                publicSettingsRepositoryProvider.overrideWithValue(
+                  const _PublicSettingsRepository(),
+                ),
+              ],
+              child: MaterialApp(
+                localizationsDelegates: AppLocalizations.localizationsDelegates,
+                supportedLocales: AppLocalizations.supportedLocales,
+                locale: const Locale('zh'),
+                theme: capture
+                    ? auditScreenshotTheme(buildLightTheme())
+                    : buildLightTheme(),
+                darkTheme: capture
+                    ? auditScreenshotTheme(buildDarkTheme())
+                    : buildDarkTheme(),
+                themeMode: dark ? ThemeMode.dark : ThemeMode.light,
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(context).copyWith(
+                    textScaler: const TextScaler.linear(1.3),
+                    disableAnimations: true,
+                  ),
+                  child: RepaintBoundary(key: boundaryKey, child: child),
+                ),
+                home: const AdminAuditLogPage(),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const ValueKey('audit-select-actor')),
+            findsOneWidget,
+          );
+          expect(tester.takeException(), isNull);
+          if (capture) {
+            await saveAuditScreenshot(
+              tester,
+              boundaryKey,
+              'audit-${width.toInt()}-${dark ? 'dark' : 'light'}',
+            );
+          }
+        },
+      );
+    }
+  }
 
   testWidgets(
     '375px audit center keeps the person selector in the first viewport',
@@ -29,7 +95,12 @@ void main() {
               const _PublicSettingsRepository(),
             ),
           ],
-          child: const MaterialApp(home: AdminAuditLogPage()),
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: Locale('zh'),
+            home: AdminAuditLogPage(),
+          ),
         ),
       );
       await tester.pump();
@@ -96,8 +167,8 @@ void main() {
         scopeApplied: true,
       );
 
-      expect(find.text('调查范围已应用'), findsOneWidget);
-      expect(find.text('已加载范围'), findsOneWidget);
+      expect(find.text('调查范围已应用'), findsNothing);
+      expect(find.text('已加载范围'), findsNothing);
       expect(find.textContaining('2026-08-28 至 2026-08-30'), findsWidgets);
       expect(
         find.byKey(const ValueKey('audit-date-today')),
@@ -162,6 +233,9 @@ Future<void> _pumpComposer(
     ProviderScope(
       overrides: [sharedPreferencesProvider.overrideWithValue(preferences)],
       child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('zh'),
         theme: ThemeData(colorSchemeSeed: Colors.teal),
         darkTheme: ThemeData(
           brightness: Brightness.dark,

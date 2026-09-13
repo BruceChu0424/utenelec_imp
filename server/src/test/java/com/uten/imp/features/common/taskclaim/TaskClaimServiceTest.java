@@ -68,10 +68,14 @@ class TaskClaimServiceTest {
         procurementTargets=mock(com.uten.imp.application.port.ReviewTaskTargetLockPort.class);
         when(procurementTargets.targetType()).thenReturn("PROCUREMENT_FINANCE_APPROVE");
         when(procurementTargets.resolve(org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyBoolean()))
-                .thenAnswer(invocation -> ((java.util.List<String>)invocation.getArgument(0)).stream()
+                .thenAnswer(invocation -> {
+                    java.util.List<?> targetKeys = invocation.getArgument(0,java.util.List.class);
+                    return targetKeys.stream()
+                        .map(String.class::cast)
                         .map(key -> new com.uten.imp.application.port.ReviewTaskTargetLockPort.Target(key,"PURCHASE",
                                 UUID.nameUUIDFromBytes(key.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
-                                UUID.nameUUIDFromBytes(key.getBytes(java.nio.charset.StandardCharsets.UTF_8)))).toList());
+                                UUID.nameUUIDFromBytes(key.getBytes(java.nio.charset.StandardCharsets.UTF_8)))).toList();
+                });
         service = new TaskClaimService(
                 claimRepo,nameResolver,currentUser,audit,java.util.List.of(
                         new com.uten.imp.features.sales.order.SalesFinanceClaimTargetLocks(em),procurementTargets),procurementReviewers,salesReviewers);
@@ -152,7 +156,7 @@ class TaskClaimServiceTest {
         String type="PROCUREMENT_FINANCE_APPROVE", key=UUID.randomUUID().toString();
         when(meUser.getPermissions()).thenReturn(Set.of("finance_order_approval:view","finance_order_approval:approve"));
         var eligible=new com.uten.imp.application.port.FinanceReviewerEligibilityPort.EligibleFinanceReviewer(actor,me,"审核员");
-        when(procurementReviewers.findEligible(actor)).thenReturn(Optional.of(eligible),Optional.empty());
+        when(procurementReviewers.findEligible(actor)).thenReturn(Optional.of(eligible)).thenReturn(Optional.empty());
         assertEquals(ErrorCode.FORBIDDEN,assertThrows(ApiException.class,() -> service.claim(type,key)).getCode());
         org.mockito.Mockito.verifyNoInteractions(claimRepo);
     }
@@ -341,7 +345,7 @@ class TaskClaimServiceTest {
             when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(type, key)).thenReturn(Optional.of(mine));
             assertTrue(service.heartbeat(type, key).claimedByMe());
             when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(type, key))
-                    .thenReturn(Optional.of(activeClaim(other)), Optional.empty());
+                    .thenReturn(Optional.of(activeClaim(other))).thenReturn(Optional.empty());
             assertTrue(service.takeover(type, key).claimedByMe());
         }
         verify(procurementReviewers, org.mockito.Mockito.times(12)).findEligible(actor);
@@ -405,7 +409,7 @@ class TaskClaimServiceTest {
         when(meUser.getPermissions()).thenReturn(Set.of("expense:approve"));
         TaskClaim mine = activeClaim(me);
         when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(TYPE, KEY))
-                .thenReturn(Optional.of(mine), Optional.of(mine));
+                .thenReturn(Optional.of(mine)).thenReturn(Optional.of(mine));
 
         TaskClaimService.TaskClaimView view = service.takeover(TYPE, KEY);
 
@@ -420,7 +424,7 @@ class TaskClaimServiceTest {
         when(meUser.getPermissions()).thenReturn(Set.of("expense:approve"));
         TaskClaim theirs = activeClaim(other);
         when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(TYPE, KEY))
-                .thenReturn(Optional.of(theirs), Optional.empty());
+                .thenReturn(Optional.of(theirs)).thenReturn(Optional.empty());
 
         TaskClaimService.TaskClaimView view = service.takeover(TYPE, KEY);
 
@@ -434,7 +438,7 @@ class TaskClaimServiceTest {
     void takeoverWithoutActiveOwnerIsRecordedAsClaim() {
         when(meUser.getPermissions()).thenReturn(Set.of("expense:approve"));
         when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(TYPE, KEY))
-                .thenReturn(Optional.empty(), Optional.empty());
+                .thenReturn(Optional.empty()).thenReturn(Optional.empty());
 
         assertTrue(service.takeover(TYPE, KEY).claimedByMe());
 

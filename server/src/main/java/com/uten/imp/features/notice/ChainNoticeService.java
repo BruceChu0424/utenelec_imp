@@ -1020,66 +1020,83 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         });
     }
 
-    /** 计划批准或待料段齐套后，把真实 DRAW 草稿可靠投递给仓库任务人员。 */
+    /** 车间明确申请后，把真实 DRAW 草稿可靠投递给仓库任务人员。 */
     public void notifyProductionDrawPending(UUID stockDocId) {
         if (!isOutboxDelivery()) {
+            if (!Boolean.TRUE.equals(jdbc.queryForObject(
+                    "SELECT fn_production_draw_pending(?)", Boolean.class, stockDocId))) {
+                return;
+            }
             outbox.publishOnce(
                     EVENT_PRODUCTION_DRAW_PENDING,
                     "STOCK_DOCUMENT",
                     stockDocId,
                     Map.of(),
-                    EVENT_PRODUCTION_DRAW_PENDING + ':' + stockDocId);
+                    EVENT_PRODUCTION_DRAW_PENDING + ":REQUESTED:" + stockDocId + ":"
+                        + jdbc.queryForObject("""
+                            SELECT COALESCE((SELECT event.id::text FROM production_execution_segment_events event
+                            WHERE event.action='DRAW_REQUEST' AND event.draw_document_ids @> ARRAY[?]::uuid[]
+                            ORDER BY event.created_at DESC,event.id DESC LIMIT 1),'LEGACY')
+                            """, String.class, stockDocId));
             return;
         }
-        deliverAtomically(() -> {
-            Map<String, Object> document = one("""
-                    SELECT stock.bill_no, stock.plan_no,
-                           warehouse.name AS warehouse_name,
-                           department.name AS department_name,
-                           COUNT(item.id) AS line_count
-                    FROM stock_documents stock
-                    LEFT JOIN warehouses warehouse
-                      ON warehouse.id = stock.warehouse_id
-                    LEFT JOIN departments department
-                      ON department.id = stock.department_id
-                    JOIN stock_document_items item
-                      ON item.doc_id = stock.id
-                     AND item.is_deleted = FALSE
-                    WHERE stock.id = ?
-                      AND stock.doc_type = 'DRAW'
-                      AND stock.status = 0
-                      AND stock.is_deleted = FALSE
-                    GROUP BY stock.bill_no, stock.plan_no,
-                             warehouse.name, department.name
-                    """, stockDocId);
-            if (document == null) return;
-            String billNo = str(document.get("bill_no"));
-            String planNo = str(document.get("plan_no"));
-            String warehouse = str(document.get("warehouse_name"));
-            String department = str(document.get("department_name"));
-            String content = "计划部已下达生产领料单 " + billNo
-                    + (planNo.isBlank() ? "" : "(生产计划 " + planNo + ")")
-                    + "，共 " + str(document.get("line_count")) + " 行物料"
-                    + (warehouse.isBlank() ? "" : "，发料仓库「" + warehouse + "」")
-                    + (department.isBlank() ? "" : "，领料车间「" + department + "」")
-                    + "。请核对实物后直接点“出库”；首次出库会在同一事务完成审核与本次扣账，"
-                    + "任一步失败都不会留下半审核状态。";
-            for (UUID warehouseUser : departmentUserIdsWithAuthorities(
-                    "SUB_WH", "stock_doc:view", "stock_doc:approve",
-                    "stock_doc:issue")) {
-                // 2026-09-05 起升级为居中行动卡：aggregate 绑定
-                // (STOCK_DOCUMENT, stockDocId)，DRAW 实际出库后按聚合办结撤回。
-                sendToUser(
-                        warehouseUser,
-                        TYPE_TASK,
-                        "待处理生产领料：" + billNo,
-                        content,
-                        "/warehouse/DRAW/" + stockDocId,
-                        EVENT_PRODUCTION_DRAW_PENDING,
-                        null,
-                        stockDocId);
-            }
-        });
+        deliverAtomically(() -> deliverProductionDrawPending(stockDocId, false));
+    }
+
+    private void deliverProductionDrawPending(UUID stockDocId, boolean preserveExistingPending) {
+        Map<String, Object> document = one("""
+                SELECT stock.bill_no, stock.plan_no,
+                       warehouse.name AS warehouse_name,
+                       department.name AS department_name,
+                       COUNT(item.id) AS line_count
+                FROM stock_documents stock
+                LEFT JOIN warehouses warehouse
+                  ON warehouse.id = stock.warehouse_id
+                LEFT JOIN departments department
+                  ON department.id = stock.department_id
+                JOIN stock_document_items item
+                  ON item.doc_id = stock.id
+                 AND item.is_deleted = FALSE
+                WHERE stock.id = ?
+                  AND stock.doc_type = 'DRAW'
+                  AND fn_production_draw_pending(stock.id)
+                  AND fn_production_draw_item_requested_qty(item.id)>COALESCE(item.issued_qty,0)
+                  AND stock.status IN (0,1)
+                  AND stock.is_deleted = FALSE
+                GROUP BY stock.bill_no, stock.plan_no,
+                         warehouse.name, department.name
+                """, stockDocId);
+        if (document == null) return;
+        String billNo = str(document.get("bill_no"));
+        String planNo = str(document.get("plan_no"));
+        String warehouse = str(document.get("warehouse_name"));
+        String department = str(document.get("department_name"));
+        String content = "车间已提交生产领料单 " + billNo
+                + (planNo.isBlank() ? "" : "(生产计划 " + planNo + ")")
+                + "，共 " + str(document.get("line_count")) + " 行物料"
+                + (warehouse.isBlank() ? "" : "，发料仓库「" + warehouse + "」")
+                + (department.isBlank() ? "" : "，领料车间「" + department + "」")
+                + "。请核对实物后直接点“出库”；首次出库会在同一事务完成审核与本次扣账，"
+                + "任一步失败都不会留下半审核状态。";
+        for (UUID warehouseUser : departmentUserIdsWithAuthorities(
+                "SUB_WH", "stock_doc:view", "stock_doc:approve",
+                "stock_doc:issue")) {
+            if (preserveExistingPending && Boolean.TRUE.equals(jdbc.queryForObject("""
+                    SELECT EXISTS(SELECT 1 FROM notices WHERE aggregate_kind='STOCK_DOCUMENT'
+                      AND aggregate_id=? AND audience_user_id=? AND source_event=? AND resolved_at IS NULL)
+                    """, Boolean.class, stockDocId, warehouseUser, EVENT_PRODUCTION_DRAW_PENDING))) continue;
+            // 2026-09-05 起升级为居中行动卡：aggregate 绑定
+            // (STOCK_DOCUMENT, stockDocId)，DRAW 实际出库后按聚合办结撤回。
+            sendToUser(
+                    warehouseUser,
+                    TYPE_TASK,
+                    "待处理生产领料：" + billNo,
+                    content,
+                    "/warehouse/DRAW/" + stockDocId,
+                    EVENT_PRODUCTION_DRAW_PENDING,
+                    null,
+                    stockDocId);
+        }
     }
 
     /** 仓库把 DRAW 全部实际出库后，仅通知精确执行段所属车间可以直接报工。 */
@@ -1113,7 +1130,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                     """, stockDocId);
             if (document == null) return;
             // DRAW 已实际出库：撤回「待处理生产领料」居中行动卡（按单据聚合）。
-            resolveReviewNotices("STOCK_DOCUMENT", stockDocId, "DRAW_ISSUED");
+            if (!Boolean.TRUE.equals(jdbc.queryForObject("SELECT fn_production_draw_pending(?)", Boolean.class, stockDocId))) {
+                resolveReviewNotices("STOCK_DOCUMENT", stockDocId, "DRAW_ISSUED");
+            }
             publishWorkshopTasksForDraw(
                     stockDocId,
                     "仓库已完成领料单 "
@@ -1123,7 +1142,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         });
     }
 
-    /** 首次报工前取消已发物料后，仅提醒精确执行段所属车间重新等待备料。 */
+    /** 取消实物发料后提醒精确车间任务，并恢复尚未发完申请的仓库待办。 */
     public void notifyProductionDrawIssueReversed(
             UUID stockDocId, String reverseIdempotencyKey) {
         if (!isOutboxDelivery()) {
@@ -1152,6 +1171,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                       AND stock.doc_type = 'DRAW'
                       AND stock.status = 1
                       AND stock.issue_status <> 2
+                      AND fn_production_draw_pending(stock.id)
                       AND stock.is_deleted = FALSE
                     """, stockDocId);
             if (document == null) return;
@@ -1160,6 +1180,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                     "领料单 " + str(document.get("bill_no"))
                             + " 已取消部分出库，等待仓库重新备料",
                     false);
+            // The reversal outbox event is the new intent. Deliver in this same
+            // transaction instead of reusing the already-processed request key.
+            deliverProductionDrawPending(stockDocId, true);
         });
     }
 
@@ -2794,7 +2817,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         deliverAtomically(() -> {
             String sourceLabel = executionReadySourceLabel(normalizedSource);
             publishWorkshopTask(
-                    segmentId, sourceLabel + "后工单已齐套，仓库进入备料流程");
+                    segmentId, sourceLabel + "后工单已齐套，请确认领料安排");
         });
     }
 
@@ -2914,15 +2937,17 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                        task.product_color_name, task.product_unit_name,
                        task.planned_qty, task.segment_status,
                        task.material_status, task.preparation_status,
-                       task.issued,
+                       (task.issued OR fn_split_batch_empty_issued(task.segment_id)) AS issued,
                        task.workshop_department_id, task.workshop_name,
                        task.responsible_employee_id,
                        task.responsible_employee_name,
-                       draw.summary AS draw_summary
+                       draw.summary AS draw_summary,
+                       draw.requested AS draw_requested
                 FROM v_production_execution_workbench_segments task
                 LEFT JOIN LATERAL (
                     SELECT string_agg(draw_row.summary, '；'
-                        ORDER BY draw_row.created_at,draw_row.id) AS summary
+                        ORDER BY draw_row.created_at,draw_row.id) AS summary,
+                           bool_and(fn_production_draw_fully_requested(draw_row.id)) AS requested
                     FROM (
                         SELECT DISTINCT document.id, document.created_at,
                                document.bill_no || '（' ||
@@ -2957,6 +2982,11 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         if (onlyFullyIssued && !canStart) return;
         noticeService.resolveReviewNotices(
                 "PRODUCTION_EXECUTION_SEGMENT", segmentId, "STATE_CHANGED");
+        // A delayed READY/assignment event must not recreate an action card
+        // after the workshop already submitted its request. Warehouse issue
+        // completion will publish the next actionable START card.
+        if (!issued && Boolean.TRUE.equals(task.get("draw_requested"))
+                && Set.of("READY", "DISPATCHED").contains(status)) return;
         String taskState;
         String titlePrefix;
         if (canStart) {
@@ -2967,13 +2997,15 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                 || "WAITING".equals(status)) {
             taskState = "物料尚未齐套，任务已分配并持续跟踪";
             titlePrefix = "生产任务·备料中：";
+        } else if (!drawNo.isBlank() && !Boolean.TRUE.equals(task.get("draw_requested"))) {
+            taskState = "物料已齐套，请在我的车间任务中选择工单并提交领料汇总；提交后仓库才会收到领料任务";
+            titlePrefix = "物料齐套·待申请领料：";
         } else if (!drawNo.isBlank()) {
             taskState = "物料已齐套，领料单 " + drawNo + "；请按仓库安排领料";
             titlePrefix = "物料齐套·等待领料：";
         } else {
-            taskState = "物料已齐套，仓库正在生成或核对领料单；"
-                    + "领料单形成前无需到仓";
-            titlePrefix = "生产任务·仓库备料中：";
+            taskState = "物料已齐套，正在核对领料明细；明细确认后请提交领料汇总";
+            titlePrefix = "生产任务·核对领料明细：";
         }
         String segmentCode = str(task.get("segment_code"));
         String product = (str(task.get("product_code")) + " "

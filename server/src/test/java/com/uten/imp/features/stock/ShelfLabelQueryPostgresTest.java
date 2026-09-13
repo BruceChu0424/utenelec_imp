@@ -245,7 +245,9 @@ class ShelfLabelQueryPostgresTest {
     private static UUID insertWarehouse(Connection c, String code, UUID parentId, boolean accountable) throws Exception {
         UUID id = UUID.randomUUID();
         try (PreparedStatement ps = c.prepareStatement(
-                "INSERT INTO warehouses(id, code, name, parent_id, is_accountable) VALUES (?, ?, ?, ?, ?)")) {
+                // V563：IQC 实际入库仓必须是「使用」状态的记账叶子仓，夹具对齐生产口径。
+                "INSERT INTO warehouses(id, code, name, parent_id, is_accountable, status) "
+                        + "VALUES (?, ?, ?, ?, ?, '使用')")) {
             ps.setObject(1, id);
             ps.setString(2, code);
             ps.setString(3, "货架清单测试仓 " + code);

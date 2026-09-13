@@ -1,24 +1,22 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'dart:convert';
 
-import '../../../components/inputs/uten_field_message.dart';
-import '../../../components/inputs/uten_input_decoration.dart';
-import '../../../core/theme/uten_tokens.dart';
+import 'package:flutter/material.dart';
+
 import '../models/warehouse_iqc_stock_in.dart'
     show WarehouseIqcStockInConfirmItem;
 import '../models/warehouse_quality_result.dart';
-import 'warehouse_inbound_allocation_view.dart';
 
-/// 品质放行切片的可编辑草稿（勾选 + 本次数量 + 实际库位 + 所属收货单）。
-/// 详情页待入库表格与批量入库弹窗共用同一草稿形态，保证键与校验一致。
+/// 单据详情和批量入库共用的放行切片草稿。按放行 UUID 保存输入，
+/// 每个切片独立选择本次实际叶仓，刷新不会把不同来源或分仓合并。
 class WarehouseQualitySliceDraft {
   WarehouseQualitySliceDraft(
     this.slice, {
     this.receiptTypeValue,
     this.receiptId,
     this.receiptNo,
+    this.canConfirm = true,
     WarehouseQualitySliceSnapshot? snapshot,
-  }) : selected = snapshot?.selected ?? true,
+  }) : selected = canConfirm && (snapshot?.selected ?? true),
        quantity = TextEditingController(
          text:
              snapshot?.quantity ??
@@ -26,47 +24,113 @@ class WarehouseQualitySliceDraft {
        ),
        place = TextEditingController(
          text: snapshot?.place ?? slice.placeHint ?? '',
-       );
+       ),
+       _warehouseId = snapshot == null
+           ? slice.warehouseId
+           : snapshot.warehouseId,
+       _warehouseName = snapshot == null
+           ? slice.warehouseName
+           : snapshot.warehouseName,
+       _placeRequiresReview = snapshot?.placeRequiresReview ?? false;
 
   final WarehouseQualityReleasedSlice slice;
   final String? receiptTypeValue;
   final String? receiptId;
   final String? receiptNo;
+  final bool canConfirm;
   bool selected;
   final TextEditingController quantity;
   final TextEditingController place;
+  String? _warehouseId;
+  String? _warehouseName;
+  bool _placeRequiresReview;
+
+  String? get warehouseId => _warehouseId;
+  String? get warehouseName => _warehouseName;
+
+  /// 库位属于实际叶仓。改仓必须重新核对位置；选同一个 UUID 仅更新显示名，
+  /// 不清空已经填写的库位。刷新走 snapshot，不属于人工改仓。
+  bool selectWarehouse({required String id, required String name}) {
+    final changed = id != _warehouseId;
+    _warehouseId = id;
+    _warehouseName = name;
+    if (changed) {
+      _placeRequiresReview = true;
+      place.clear();
+    }
+    return changed;
+  }
+
+  String get placeInputHint =>
+      _placeRequiresReview ? '请重新填写实际库位' : slice.placeHint ?? '实际库位';
 
   String get receiptKey => '$receiptTypeValue:$receiptId';
+  String get snapshotKey => '$receiptKey:${slice.passEventId}';
+  String get goodsLabel =>
+      slice.goodsLabel.isEmpty ? slice.passEventId : slice.goodsLabel;
+  bool get usesSuggestedWarehouse =>
+      warehouseId != null && warehouseId == slice.warehouseId;
+  double get previewQuantity {
+    final value = double.tryParse(quantity.text.trim());
+    return value != null && value.isFinite && value > 0 ? value : 0;
+  }
 
   WarehouseQualitySliceSnapshot get snapshot => WarehouseQualitySliceSnapshot(
     selected: selected,
     quantity: quantity.text,
     place: place.text,
+    warehouseId: warehouseId,
+    warehouseName: warehouseName,
+    placeRequiresReview: _placeRequiresReview,
   );
+
+  String? get quantityError {
+    final value = double.tryParse(quantity.text.trim());
+    if (value == null || !value.isFinite || value < 0.0001) {
+      return '请输入不小于 0.0001 的本次实收数量';
+    }
+    if (value - slice.remainingBaseQty > 0.0000001) {
+      return '本次数量 ${warehouseQualityQuantity(value)} 不得超过合格待入量 '
+          '${warehouseQualityQuantity(slice.remainingBaseQty)}';
+    }
+    final scaled = value * 10000;
+    if (!scaled.isFinite ||
+        (scaled - scaled.roundToDouble()).abs() > 0.000001) {
+      return '本次实收数量最多保留 4 位小数';
+    }
+    return null;
+  }
+
+  String? get warehouseError =>
+      warehouseId?.trim().isNotEmpty == true ? null : '请选择本次实际入库的目标叶仓';
+
+  String? get placeError {
+    if (place.text.trim().isEmpty) {
+      return _placeRequiresReview ? '目标仓库已更换，请重新填写实际库位' : '请填写本次实际库位';
+    }
+    if (place.text.trim().length > 100) return '实际库位不得超过 100 个字符';
+    return null;
+  }
+
+  String? validate() {
+    if (!selected) return null;
+    if (!canConfirm) return '「$goodsLabel」当前已不可入库，请刷新后核对';
+    final error = quantityError ?? warehouseError ?? placeError;
+    return error == null ? null : '「$goodsLabel」$error';
+  }
+
+  WarehouseIqcStockInConfirmItem toConfirmItem() =>
+      WarehouseIqcStockInConfirmItem(
+        passEventId: slice.passEventId,
+        baseQty: double.parse(quantity.text.trim()),
+        expectedRemainingBaseQty: slice.remainingBaseQty,
+        warehouseId: warehouseId!,
+        place: place.text.trim(),
+      );
 
   void dispose() {
     quantity.dispose();
     place.dispose();
-  }
-
-  /// 就地校验（未勾选的行不校验）；返回错误文案或 null。
-  String? validate() {
-    if (!selected) return null;
-    final value = double.tryParse(quantity.text.trim());
-    if (value == null || value <= 0) {
-      return '「${slice.goodsLabel.isEmpty ? slice.passEventId : slice.goodsLabel}」'
-          '请输入大于 0 的本次实收数量';
-    }
-    if (value - slice.remainingBaseQty > 0.0000001) {
-      return '「${slice.goodsLabel.isEmpty ? slice.passEventId : slice.goodsLabel}」'
-          '本次数量 ${warehouseQualityQuantity(value)} 不得超过待入库余量 '
-          '${warehouseQualityQuantity(slice.remainingBaseQty)}';
-    }
-    if (place.text.trim().isEmpty) {
-      return '「${slice.goodsLabel.isEmpty ? slice.passEventId : slice.goodsLabel}」'
-          '请填写本次实际库位';
-    }
-    return null;
   }
 }
 
@@ -75,224 +139,25 @@ class WarehouseQualitySliceSnapshot {
     required this.selected,
     required this.quantity,
     required this.place,
+    this.warehouseId,
+    this.warehouseName,
+    this.placeRequiresReview = false,
   });
 
   final bool selected;
   final String quantity;
   final String place;
-}
-
-/// 放行切片表格（详情页待入库区块与批量入库弹窗共用形态）。
-class WarehouseQualitySliceTable extends StatelessWidget {
-  const WarehouseQualitySliceTable({
-    super.key,
-    required this.drafts,
-    required this.editable,
-    required this.saving,
-    required this.onChanged,
-    this.showReceipt = false,
-  });
-
-  final List<WarehouseQualitySliceDraft> drafts;
-  final bool editable;
-  final bool saving;
-  final VoidCallback onChanged;
-  final bool showReceipt;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        headingTextStyle: theme.textTheme.labelMedium?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-        dataRowMinHeight: 64,
-        dataRowMaxHeight: 72,
-        columnSpacing: UtenSpacing.s12,
-        columns: [
-          if (editable)
-            DataColumn(
-              label: Semantics(
-                label: '全选待入库明细',
-                child: Checkbox(
-                  value:
-                      drafts.isNotEmpty &&
-                      drafts.every((draft) => draft.selected),
-                  tristate: true,
-                  onChanged: saving
-                      ? null
-                      : (value) {
-                          final next = value != false;
-                          for (final draft in drafts) {
-                            draft.selected = next;
-                          }
-                          onChanged();
-                        },
-                ),
-              ),
-            ),
-          if (showReceipt) const DataColumn(label: Text('收货单')),
-          const DataColumn(label: Text('货品')),
-          const DataColumn(label: Text('待入库量'), numeric: true),
-          if (editable) ...[
-            const DataColumn(label: Text('本次实收 *'), numeric: true),
-            const DataColumn(label: Text('实际库位 *')),
-          ],
-          const DataColumn(label: Text('预计去向')),
-          const DataColumn(label: Text('放行信息')),
-        ],
-        rows: [
-          for (final draft in drafts)
-            DataRow(
-              selected: editable && draft.selected,
-              onSelectChanged: editable && !saving
-                  ? (value) {
-                      draft.selected = value ?? false;
-                      onChanged();
-                    }
-                  : null,
-              cells: [
-                if (editable)
-                  DataCell(
-                    Checkbox(
-                      value: draft.selected,
-                      onChanged: saving
-                          ? null
-                          : (value) {
-                              draft.selected = value ?? false;
-                              onChanged();
-                            },
-                    ),
-                  ),
-                if (showReceipt) DataCell(Text(draft.receiptNo ?? '—')),
-                DataCell(
-                  SizedBox(
-                    width: 220,
-                    child: Text(
-                      draft.slice.goodsLabel.isEmpty
-                          ? '未命名货品'
-                          : draft.slice.goodsLabel,
-                    ),
-                  ),
-                ),
-                DataCell(
-                  Text(
-                    '${warehouseQualityQuantity(draft.slice.remainingBaseQty)}'
-                    '${draft.slice.unitName == null ? '' : ' ${draft.slice.unitName}'}',
-                  ),
-                ),
-                if (editable) ...[
-                  DataCell(
-                    SizedBox(
-                      width: 130,
-                      child: TextFormField(
-                        key: ValueKey(
-                          'quality-slice-qty-${draft.slice.passEventId}',
-                        ),
-                        controller: draft.quantity,
-                        enabled: draft.selected && !saving,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        inputFormatters: [LengthLimitingTextInputFormatter(24)],
-                        errorBuilder: utenTextFieldErrorBuilder,
-                        decoration: const UtenInputDecoration(
-                          InputDecoration(isDense: true, counterText: ''),
-                        ),
-                        onChanged: (_) => onChanged(),
-                      ),
-                    ),
-                  ),
-                  DataCell(
-                    SizedBox(
-                      width: 150,
-                      child: TextFormField(
-                        key: ValueKey(
-                          'quality-slice-place-${draft.slice.passEventId}',
-                        ),
-                        controller: draft.place,
-                        enabled: draft.selected && !saving,
-                        maxLength: 100,
-                        errorBuilder: utenTextFieldErrorBuilder,
-                        decoration: UtenInputDecoration(
-                          InputDecoration(
-                            isDense: true,
-                            counterText: '',
-                            hintText: draft.slice.placeHint ?? '实际库位',
-                          ),
-                        ),
-                        onChanged: (_) => onChanged(),
-                      ),
-                    ),
-                  ),
-                ],
-                DataCell(
-                  SizedBox(
-                    width: 220,
-                    child: ValueListenableBuilder<TextEditingValue>(
-                      valueListenable: draft.quantity,
-                      builder: (context, _, _) {
-                        final requested =
-                            double.tryParse(draft.quantity.text.trim()) ?? 0;
-                        return WarehouseInboundAllocationSummary(
-                          allocations: draft.slice.expectedAllocations,
-                          previewQty: requested,
-                          qtyText: warehouseQualityQuantity,
-                          onTap: () => showWarehouseInboundAllocationDetails(
-                            context,
-                            title: '预计去向 · ${draft.slice.goodsLabel}',
-                            sections: [
-                              WarehouseInboundAllocationSection(
-                                id: draft.slice.passEventId,
-                                goodsLabel: draft.slice.goodsLabel,
-                                quantity: requested,
-                                unitName: draft.slice.unitName,
-                                sourceOrderNo:
-                                    draft.receiptNo ??
-                                    draft.slice.sourceOrderNo,
-                                allocations: draft.slice.expectedAllocations,
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                DataCell(
-                  SizedBox(
-                    width: 210,
-                    child: Text(
-                      [
-                        if (draft.slice.releasedBy?.isNotEmpty == true)
-                          '放行人 ${draft.slice.releasedBy}',
-                        if (draft.slice.releasedAt?.isNotEmpty == true)
-                          warehouseQualityDateTime(draft.slice.releasedAt),
-                        if (draft.slice.releaseNote?.isNotEmpty == true)
-                          draft.slice.releaseNote!,
-                      ].join(' · '),
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
+  final String? warehouseId;
+  final String? warehouseName;
+  final bool placeRequiresReview;
 }
 
 String warehouseQualitySliceFingerprint(
   List<WarehouseIqcStockInConfirmItem> items,
 ) {
-  final parts = [
-    for (final item in items)
-      '${item.passEventId}|${item.baseQty}|${item.expectedRemainingBaseQty}|${item.place.trim()}',
-  ]..sort();
-  return parts.join('||');
+  final sorted = [...items]
+    ..sort((left, right) => left.passEventId.compareTo(right.passEventId));
+  return jsonEncode([for (final item in sorted) item.toJson()]);
 }
 
 String warehouseQualityQuantity(double value) => value

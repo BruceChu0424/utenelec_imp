@@ -160,6 +160,72 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
         assertThat(grandchild.bomItemId()).isEqualTo(rawMaterialBomItemId);
         assertThat(grandchild.parentNodeKey()).isEqualTo(direct.nodeKey());
         assertThat(grandchild.perProductQty()).isEqualByComparingTo("6");
+
+        // The maximum admitted batch repeats the same goods with independent
+        // source UUIDs and different conversion rates. Exercise real Hibernate
+        // parameter binding and PostgreSQL recursion, not just SQL text.
+        EntityManager observer = mock(EntityManager.class);
+        org.mockito.Mockito.when(observer.createNativeQuery(org.mockito.ArgumentMatchers.anyString()))
+                .thenAnswer(call -> entityManager.createNativeQuery(call.getArgument(0)));
+        List<MaterialAnalysisService.SourceLine> batch = java.util.stream.IntStream.range(0, 500)
+                .mapToObj(index -> sourceLine(UUID.randomUUID(), finishedGoodsId, unitId,
+                        BigDecimal.valueOf(index + 1), BigDecimal.ONE)).toList();
+        var snapshots = new MaterialAnalysisBomSnapshotReader(observer).read(batch);
+        org.mockito.Mockito.verify(observer, org.mockito.Mockito.times(2))
+                .createNativeQuery(org.mockito.ArgumentMatchers.anyString());
+        assertThat(snapshots).hasSize(500);
+        for (int index = 0; index < batch.size(); index++) {
+            assertThat(snapshots.get(batch.get(index).analysisItemId())).hasSize(2);
+            Object[] nested = snapshots.get(batch.get(index).analysisItemId()).get(1);
+            assertThat((UUID) nested[24]).isEqualTo(batch.get(index).analysisItemId());
+            assertThat((BigDecimal) nested[10]).isEqualByComparingTo(BigDecimal.valueOf(6L * (index + 1)));
+        }
+        if ("true".equalsIgnoreCase(System.getenv("UTEN_RUN_PRODUCTION_STRESS"))) {
+            measureSourceReadModes(batch);
+        }
+    }
+
+    /** Real PostgreSQL comparison of the previous per-source read mode and the batched mode. */
+    private static void measureSourceReadModes(List<MaterialAnalysisService.SourceLine> sources) {
+        try {
+            var output = java.nio.file.Path.of(System.getProperty("uten.build.directory", "target"),
+                    "bom-read-modes.jsonl");
+            java.nio.file.Files.createDirectories(output.toAbsolutePath().getParent());
+            var json = new com.fasterxml.jackson.databind.ObjectMapper();
+            for (int size : List.of(100, 500)) {
+                var batch = sources.subList(0, size);
+                var expected = new MaterialAnalysisBomSnapshotReader(entityManager).read(batch);
+                for (int sample = 0; sample < 5; sample++) {
+                    for (String mode : sample % 2 == 0
+                            ? List.of("PER_SOURCE", "BATCH") : List.of("BATCH", "PER_SOURCE")) {
+                        EntityManager observed = mock(EntityManager.class);
+                        var calls = new java.util.concurrent.atomic.AtomicInteger();
+                        org.mockito.Mockito.when(observed.createNativeQuery(org.mockito.ArgumentMatchers.anyString()))
+                                .thenAnswer(call -> { calls.incrementAndGet(); return entityManager.createNativeQuery(call.getArgument(0)); });
+                        long started = System.nanoTime();
+                        var reader = new MaterialAnalysisBomSnapshotReader(observed);
+                        java.util.Map<UUID, List<Object[]>> actual = new java.util.LinkedHashMap<>();
+                        if ("BATCH".equals(mode)) actual.putAll(reader.read(batch));
+                        else for (var source : batch) actual.putAll(reader.read(List.of(source)));
+                        double elapsed = (System.nanoTime() - started) / 1_000_000.0;
+                        assertThat(actual.keySet()).containsExactlyInAnyOrderElementsOf(expected.keySet());
+                        for (UUID source : expected.keySet()) {
+                            for (int row = 0; row < expected.get(source).size(); row++) {
+                                org.junit.jupiter.api.Assertions.assertArrayEquals(
+                                        expected.get(source).get(row), actual.get(source).get(row));
+                            }
+                        }
+                        assertThat(calls.get()).isEqualTo("BATCH".equals(mode) ? 2 : 2 * size);
+                        java.nio.file.Files.writeString(output, json.writeValueAsString(java.util.Map.of(
+                                "sources", size, "mode", mode, "sample", sample, "queryCalls", calls.get(),
+                                "elapsedMillis", elapsed, "rows", size * 2)) + System.lineSeparator(),
+                                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+                    }
+                }
+            }
+        } catch (java.io.IOException error) {
+            throw new AssertionError(error);
+        }
     }
 
     @Test
@@ -309,11 +375,17 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
 
     private static MaterialAnalysisService.SourceLine sourceLine(
             UUID analysisItemId, UUID goodsId, UUID unitId) {
+        return sourceLine(analysisItemId, goodsId, unitId, BigDecimal.ONE, BigDecimal.ONE);
+    }
+
+    private static MaterialAnalysisService.SourceLine sourceLine(
+            UUID analysisItemId, UUID goodsId, UUID unitId,
+            BigDecimal rate, BigDecimal requested) {
         return MaterialAnalysisService.SourceLine.from(new Object[]{
                 analysisItemId, "OTHER", null, null, null, null,
                 LocalDate.of(2026, 8, 20), null,
                 goodsId, "FG-01", "Finished good", null, null, null,
-                unitId, "piece", BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ZERO,
+                unitId, "piece", rate, requested, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ONE,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, false,
@@ -333,9 +405,9 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
             MaterialAnalysisService.SourceLine source) {
         try {
             Method method = MaterialAnalysisService.class.getDeclaredMethod(
-                    "loadBomTree", MaterialAnalysisService.SourceLine.class);
+                    "loadBomTrees", List.class);
             method.setAccessible(true);
-            return (List<MaterialAnalysisService.BomNode>) method.invoke(service, source);
+            return (List<MaterialAnalysisService.BomNode>) method.invoke(service, List.of(source));
         } catch (InvocationTargetException error) {
             if (error.getCause() instanceof RuntimeException runtime) {
                 throw runtime;

@@ -25,11 +25,14 @@ public record WarehouseSalesOutboundDetail(
         OffsetDateTime handedOverAt,
         String warehouseExceptionReason,
         List<String> allowedWarehouseTargets,
-        List<WarehouseSalesOutboundLine> lines) {
+        List<WarehouseSalesOutboundLine> lines,
+        boolean canSelectWarehouse,
+        List<WarehouseSalesOutboundWarehouseOption> warehouseOptions) {
 
     public WarehouseSalesOutboundDetail {
         allowedWarehouseTargets = allowedWarehouseTargets == null
                 ? List.of() : List.copyOf(allowedWarehouseTargets);
         lines = lines == null ? List.of() : List.copyOf(lines);
+        warehouseOptions=warehouseOptions==null?List.of():List.copyOf(warehouseOptions);
     }
 }

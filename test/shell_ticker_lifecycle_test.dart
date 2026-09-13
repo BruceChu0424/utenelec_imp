@@ -3,6 +3,35 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/shell/widgets/uten_sliding_tab_view.dart';
 
 void main() {
+  testWidgets('a gesture mounts its target before a router callback arrives', (
+    tester,
+  ) async {
+    final position = ValueNotifier<double>(0);
+    addTearDown(position.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UtenSlidingTabView(
+            index: 0,
+            position: position,
+            children: const [Text('first-tab'), Text('second-tab')],
+          ),
+        ),
+      ),
+    );
+    expect(find.text('second-tab', skipOffstage: false), findsNothing);
+    await tester.fling(
+      find.byType(UtenSlidingTabView),
+      const Offset(-500, 0),
+      1000,
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('second-tab'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(position.value, greaterThan(0));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets('inactive main tabs stop ticking and keep their State', (
     tester,
   ) async {
@@ -19,7 +48,7 @@ void main() {
       skipOffstage: false,
     );
     final first = tester.state<_TickerProbeState>(firstFinder);
-    final second = tester.state<_TickerProbeState>(secondFinder);
+    expect(secondFinder, findsNothing);
 
     first.requestProbeFocus();
     await tester.pump();
@@ -28,11 +57,10 @@ void main() {
     first.incrementMarker();
     await tester.pump();
     final firstBefore = first.animationValue;
-    final secondBefore = second.animationValue;
     await tester.pump(const Duration(milliseconds: 200));
 
     expect(first.animationValue, isNot(firstBefore));
-    expect(second.animationValue, secondBefore);
+    expect(secondFinder, findsNothing);
     expect(first.marker, 1);
 
     harnessKey.currentState!.showTab(1);
@@ -40,6 +68,7 @@ void main() {
     await tester.pump();
 
     expect(tester.state<_TickerProbeState>(firstFinder), same(first));
+    final second = tester.state<_TickerProbeState>(secondFinder);
     expect(tester.state<_TickerProbeState>(secondFinder), same(second));
     expect(first.marker, 1);
     expect(first.hasProbeFocus, isFalse);
@@ -75,7 +104,7 @@ void main() {
       skipOffstage: false,
     );
     final first = tester.state<_TickerProbeState>(firstFinder);
-    final second = tester.state<_TickerProbeState>(secondFinder);
+    expect(secondFinder, findsNothing);
     final activeBefore = first.animationValue;
     await tester.pump(const Duration(milliseconds: 200));
     expect(first.animationValue, isNot(activeBefore));
@@ -83,19 +112,38 @@ void main() {
     harnessKey.currentState!.setTabsVisible(false);
     await tester.pump();
     final firstPaused = first.animationValue;
-    final secondPaused = second.animationValue;
     await tester.pump(const Duration(milliseconds: 300));
     expect(first.animationValue, firstPaused);
-    expect(second.animationValue, secondPaused);
+    expect(secondFinder, findsNothing);
 
     harnessKey.currentState!.setTabsVisible(true);
     await tester.pump();
     final firstResumed = first.animationValue;
-    final secondStillHidden = second.animationValue;
     await tester.pump(const Duration(milliseconds: 200));
     expect(first.animationValue, isNot(firstResumed));
-    expect(second.animationValue, secondStillHidden);
+    expect(secondFinder, findsNothing);
     expect(tester.state<_TickerProbeState>(firstFinder), same(first));
+  });
+
+  testWidgets('a cold business deep link mounts no background main tabs', (
+    tester,
+  ) async {
+    final position = ValueNotifier<double>(0);
+    addTearDown(position.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: UtenSlidingTabView(
+          index: null,
+          position: position,
+          children: const [
+            _TickerProbe(key: Key('cold-first'), label: 'first'),
+            _TickerProbe(key: Key('cold-second'), label: 'second'),
+          ],
+        ),
+      ),
+    );
+    expect(find.byType(_TickerProbe, skipOffstage: false), findsNothing);
+    expect(tester.binding.transientCallbackCount, 0);
   });
 }
 

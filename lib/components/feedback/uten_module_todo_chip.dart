@@ -10,6 +10,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../buttons/uten_app_bar_action_button.dart';
 
 class UtenModuleTodoChip extends StatelessWidget {
   const UtenModuleTodoChip({super.key, required this.count, this.tooltip});
@@ -26,7 +27,7 @@ class UtenModuleTodoChip extends StatelessWidget {
     final theme = Theme.of(context);
     final text = count > 99 ? '99+' : '$count';
     return Padding(
-      padding: const EdgeInsets.only(right: UtenSpacing.s8),
+      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: Center(
         child: Tooltip(
           message: tooltip ?? '本模块待办合计 $count 项（各任务卡待办数之和）',
@@ -35,18 +36,23 @@ class UtenModuleTodoChip extends StatelessWidget {
             child: ExcludeSemantics(
               child: Container(
                 key: const ValueKey('uten-module-todo-chip'),
-                height: 24,
+                constraints: const BoxConstraints(
+                  minHeight: UtenAppBarActionButton.height,
+                ),
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.error,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(UtenRadius.control),
                 ),
-                alignment: Alignment.center,
-                child: Text(
-                  '待办 $text',
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: theme.colorScheme.onError,
-                    fontWeight: FontWeight.w800,
+                child: Center(
+                  widthFactor: 1,
+                  heightFactor: 1,
+                  child: Text(
+                    '待办 $text',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: theme.colorScheme.onError,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ),

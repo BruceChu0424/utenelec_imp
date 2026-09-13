@@ -567,15 +567,13 @@ class _MaterialAnalysisBucketPageState
     return null;
   }
 
-  /// 执行批量动作（2026-09-04 修订）：详情页**保持在前台**——宿主页的编排
-  /// （数量弹窗/分批/幂等/409 恢复）经 root Navigator 叠在本页之上。
-  /// 例外：`createProductionPlans`（ADR-71 单次原子下达）先返回宿主页再执行
-  /// ——提交遮罩挂在宿主页 Stack 上（留在本页会被不透明路由盖住不可见），
-  /// 生成是终态动作，结果对话框也在宿主页上下文里展示。
-  /// [_running] 覆盖弹窗关闭到请求返回之间的空窗（宿主页 busy 不通知本页），
-  /// 防止批量进度期间重复点提交。
+  /// Keep the bucket visible through submission, error recovery and results.
+  /// The parent orchestrates the command; progress is broadcast to this route.
+  /// [_running] also guards the interval occupied by confirmation/result dialogs.
   Future<void> _run(_BucketActionRequest request) async {
     if (_running) return;
+    final before = _host._analysis;
+    var issued = false;
     // 2026-09-11：下达车间**不再先 pop 回物料分析再加载**。原来是「关掉本页 →
     // 宿主页转圈 → 弹结果」，用户看到的是「点了下达，页面自己退回去，然后在那边
     // 转半天」。现在与下达采购/委外同一条路径：本页显示进度、原地刷新行集，
@@ -588,35 +586,41 @@ class _MaterialAnalysisBucketPageState
     };
     setState(() => _running = true);
     try {
-      await _host._executeBucketAction(request);
+      issued = await _host._executeBucketAction(request);
     } finally {
       if (mounted) {
-        final preparedIds = {
-          for (final product
-              in _host._analysis?.products ??
-                  const <ProductionMaterialAnalysisProduct>[])
-            if (!previousProductIds.contains(product.analysisLineId) &&
-                (product.sourceType == 'MAKE_COMPONENT' ||
-                    product.sourceType == 'SUBCONTRACT_MAKE'))
-              product.analysisLineId,
-        };
-        if (preparedIds.isNotEmpty) _preparedChildCount = preparedIds.length;
-        if (_bucket == _AnalysisBucket.workshop &&
-            (_host._canGenerate || _host._canNotify)) {
-          _taskFilter = _PreparationTaskFilter.pending;
-          _buildPlanRows(preferredIds: preparedIds);
-          if (preparedIds.isNotEmpty) unawaited(_loadWorkshopDefaults());
+        // Cancelled confirmations and rejected requests leave the authoritative
+        // snapshot intact. Preserve the user's quantities, selections and staff
+        // assignments so retrying does not require rebuilding the entire form.
+        if (identical(before, _host._analysis)) {
+          setState(() => _running = false);
+        } else {
+          final preparedIds = {
+            for (final product
+                in _host._analysis?.products ??
+                    const <ProductionMaterialAnalysisProduct>[])
+              if (!previousProductIds.contains(product.analysisLineId) &&
+                  (product.sourceType == 'MAKE_COMPONENT' ||
+                      product.sourceType == 'SUBCONTRACT_MAKE'))
+                product.analysisLineId,
+          };
+          if (preparedIds.isNotEmpty) _preparedChildCount = preparedIds.length;
+          if (_bucket == _AnalysisBucket.workshop &&
+              (_host._canGenerate || _host._canNotify)) {
+            _taskFilter = _PreparationTaskFilter.pending;
+            _buildPlanRows(preferredIds: preparedIds);
+            if (preparedIds.isNotEmpty) unawaited(_loadWorkshopDefaults());
+          }
+          setState(() {
+            _selectedIds.clear();
+            // 动作后快照已变（缺口/在途重算）：编辑值失效，恢复默认全量。
+            _disposeSubmitQtyControllers();
+            _running = false;
+          });
         }
-        setState(() {
-          _selectedIds.clear();
-          // 动作后快照已变（缺口/在途重算）：编辑值失效，恢复默认全量。
-          _disposeSubmitQtyControllers();
-          _running = false;
-        });
-        // 下达车间是终态动作（本批行已变成计划）：结果弹层看完后回物料分析。
-        // 与从前唯一的差别是**先办完再退**，而不是先退回去再让宿主页转圈。
-        if (request.type == _BucketActionType.createProductionPlans &&
-            mounted) {
+        // Only a successful workshop submission may return after its result
+        // dialog closes. A conflict/error stays on the page for inspection.
+        if (issued && ModalRoute.of(context)?.isCurrent == true) {
           Navigator.of(context).pop();
         }
       }
@@ -624,6 +628,152 @@ class _MaterialAnalysisBucketPageState
   }
 
   bool _running = false;
+
+  List<_MaterialGroup> _supplyGroupsForRow(_BucketRow row) {
+    if (row.group != null) return [row.group!];
+    if (row.candidate?.group != null) return [row.candidate!.group!];
+    final product = row.product;
+    final analysis = _host._analysis;
+    if (product == null || analysis == null) return const [];
+    final materials = [..._host._depth1MaterialsFor(product)];
+    if (materials.isEmpty) {
+      final root = _host._rootSupplyMaterialOf(product);
+      if (root != null) materials.add(root);
+    }
+    final indexes = _host._analysisIndexes(analysis);
+    return [
+      for (final material in materials)
+        if (indexes.groupsByLine[material.materialLineId] != null)
+          indexes.groupsByLine[material.materialLineId]!,
+    ];
+  }
+
+  Future<void> _openSupplyDetails(_BucketRow row) async {
+    if (_actionsLocked) return;
+    final groups = _supplyGroupsForRow(row);
+    if (groups.isEmpty) return;
+    final before = _host._analysis;
+    final oldPlanDefaults = {
+      for (final planRow in _planGrid?.rows ?? const <_BucketPlanRow>[])
+        planRow.id: _planRowDefaultQty(planRow),
+    };
+    final oldMaterialDefaults = <String, double>{
+      if (_bucket.supplyRoute != null && before != null)
+        for (final group in _host._materialGroups(before))
+          if (group.representative.actionGroupKey != null)
+            group.representative.actionGroupKey!: _host._residualSubmitQty(
+              group,
+              _bucket.supplyRoute!,
+            ),
+    };
+    final group = groups.length == 1
+        ? groups.single
+        : await showDialog<_MaterialGroup>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('选择需要查看或调拨的物料'),
+              content: SizedBox(
+                width: 600,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final group in groups)
+                        ListTile(
+                          title: Text(
+                            group.representative.goodsName ??
+                                group.representative.goodsCode ??
+                                '物料',
+                          ),
+                          subtitle: Text(
+                            '需求 ${_host._qty(group.representative.requiredQty)} · 物理缺口 ${_host._qty(group.representative.shortageQty)}',
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => Navigator.of(context).pop(group),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('关闭'),
+                ),
+              ],
+            ),
+          );
+    if (group == null || !mounted) return;
+    await _host._showMaterialTableDetails(group);
+    if (!mounted || identical(before, _host._analysis)) return;
+    final current = _host._analysis!;
+    // Material work changes the remaining supply amount. Retain staff choices
+    // and any still-valid custom quantity, while replacing old auto defaults.
+    final currentGroups = {
+      for (final group in _host._materialGroups(current))
+        group.representative.actionGroupKey: group,
+    };
+    for (final entry in _submitQtyControllers.entries) {
+      final next = currentGroups[entry.key];
+      if (next == null || _bucket.supplyRoute == null) continue;
+      final max = _host._residualSubmitQty(next, _bucket.supplyRoute!);
+      final qty = double.tryParse(entry.value.text);
+      if (qty == oldMaterialDefaults[entry.key] || (qty ?? 0) > max) {
+        entry.value.text = _bucketQtyText(max);
+      }
+    }
+    if (_planGrid != null) {
+      final origins = {
+        for (final origin in _host._bucketRows(_AnalysisBucket.workshop))
+          origin.id: origin,
+      };
+      for (final planRow in _planGrid!.rows) {
+        final next = origins[planRow.id];
+        final candidate = next?.candidate;
+        final max =
+            next?.product?.remainingQty ??
+            (candidate?.group == null
+                ? null
+                : _host._residualSubmitQty(candidate!.group!, candidate.route));
+        if (max == null) continue;
+        final qty = double.tryParse(planRow.qty.text);
+        if (qty == double.tryParse(oldPlanDefaults[planRow.id] ?? '') ||
+            (qty ?? 0) > max) {
+          planRow.qty.text = _host._qty(max);
+        }
+      }
+      _planGrid!.clearSelection();
+      _buildPlanRows();
+    }
+    setState(() {
+      _selectedIds.clear();
+      _pageNo = 1;
+    });
+  }
+
+  Widget _supplyDetailsButton(BuildContext cellContext, _BucketRow row) =>
+      TextButton.icon(
+        key: ValueKey('material-bucket-supply-details-${row.id}'),
+        icon: const Icon(Icons.inventory_2_outlined, size: 16),
+        style: TextButton.styleFrom(
+          foregroundColor: MasterDataTableCellScope.maybeOf(
+            cellContext,
+          )?.foregroundColor,
+        ),
+        onPressed: _actionsLocked || _supplyGroupsForRow(row).isEmpty
+            ? null
+            : () => _openSupplyDetails(row),
+        label: const Text('物料 / 调拨'),
+      );
+
+  MasterColumnDef<_BucketRow> _supplyDetailsColumn() => MasterColumnDef(
+    key: 'supplyDetails',
+    label: '物料办理',
+    width: 150,
+    value: (_) => '物料 / 调拨',
+    cellBuilderHandlesSemantics: true,
+    cellBuilder: (context, row) => _supplyDetailsButton(context, row),
+  );
 
   bool get _hasWriteAction => _canAct;
 
@@ -846,6 +996,15 @@ class _MaterialAnalysisBucketPageState
     final n = selected.length;
     final editable = !_actionsLocked && _host._canGenerate && n > 0;
     return [
+      if (selected.length == 1)
+        UtenMenuItem(
+          label: '物料调拨与公共在途',
+          icon: Icons.inventory_2_outlined,
+          enabled:
+              !_actionsLocked &&
+              _supplyGroupsForRow(selected.single.origin).isNotEmpty,
+          onTap: () => _openSupplyDetails(selected.single.origin),
+        ),
       UtenMenuItem(
         label: '填满剩余数量 ($n)',
         icon: Icons.playlist_add_check_rounded,
@@ -1169,8 +1328,42 @@ class _MaterialAnalysisBucketPageState
       body: Stack(
         children: [
           _bucketBody(theme, analysis, allRows, rows),
+          if (_usesPlanGrid)
+            Positioned(
+              right: UtenSpacing.s16,
+              bottom: UtenSpacing.s16,
+              child: AnimatedBuilder(
+                animation: _planGrid!,
+                builder: (context, _) => UtenFloatingActionGroup(
+                  children: [
+                    UtenSelectionSummaryPill(
+                      count: _planGrid!.selectedRows.length,
+                      clearKey: const Key(
+                        'material-analysis-bucket-selected-count',
+                      ),
+                      onClear: _planGrid!.selectedRows.isEmpty || _actionsLocked
+                          ? null
+                          : () => _planGrid!.clearSelection(),
+                    ),
+                    ..._planBatchActions(context),
+                  ],
+                ),
+              ),
+            ),
           // 进度遮罩跟随宿主的**网络调用本身**（planSubmissionProgress），不跟
           // `_running`：后者要到结果弹层看完才落下，遮罩会一直转在弹层背后。
+          // 2026-09-12：下达采购/委外的通用加载遮罩（车间仍走下方专用遮罩）。
+          ValueListenableBuilder<String?>(
+            valueListenable: _host.bucketActionBusyMessage,
+            builder: (context, message, _) => message != null
+                ? Positioned.fill(
+                    child: UtenBusyOverlay(
+                      title: message,
+                      description: '同一事务内批量处理所选行，完成后自动刷新。',
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
           ValueListenableBuilder<bool>(
             valueListenable: _host.planSubmissionProgress,
             builder: (context, submitting, _) => submitting
@@ -1296,6 +1489,9 @@ class _MaterialAnalysisBucketPageState
                 // NeverScrollable，编辑页同款结构）；首屏 100 行增量装载。
                 child: _usesPlanGrid
                     ? SingleChildScrollView(
+                        padding: const EdgeInsets.only(
+                          bottom: UtenFloatingActionGroup.scrollClearance,
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
@@ -1326,32 +1522,6 @@ class _MaterialAnalysisBucketPageState
                       )
                     : _bucketReadOnlyTable(rows),
               ),
-              // 可安排桶的批量动作条：常驻钉底（UtenEditableGrid 的
-              // batchActionsBuilder 只随编辑模式操作条渲染，select-only 模式
-              // 不出现——故由本页自管，订阅控制器按选中数即时刷新）。
-              // 2026-09-05 与全站对齐：「已选 N 项 + ✕」用标准胶囊
-              // （UtenSelectionSummaryPill），与按钮同框进右对齐悬浮组
-              // （UtenFloatingActionGroup）——与 MasterDataTableView 悬浮组同款。
-              if (_usesPlanGrid) ...[
-                const SizedBox(height: UtenSpacing.s8),
-                AnimatedBuilder(
-                  animation: _planGrid!,
-                  builder: (context, _) => UtenFloatingActionGroup(
-                    children: [
-                      UtenSelectionSummaryPill(
-                        count: _planGrid!.selectedRows.length,
-                        clearKey: const Key(
-                          'material-analysis-bucket-selected-count',
-                        ),
-                        onClear: _planGrid!.selectedRows.isEmpty
-                            ? null
-                            : () => _planGrid!.clearSelection(),
-                      ),
-                      ..._planBatchActions(context),
-                    ],
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -1437,7 +1607,7 @@ class _MaterialAnalysisBucketPageState
       }),
       batchActionsBuilder: _canAct ? _readOnlyBatchActions : null,
       // 行右键/长按 = 对当前选择集整组恢复默认下达数量（2026-09-11 用户要求）。
-      rowMenuBuilder: _canAct ? _readOnlyRowMenu : null,
+      rowMenuBuilder: _readOnlyRowMenu,
       // 勿传 virtualized（它强制表体撑满剩余高度 → 横滚条恒钉屏底）：保持默认
       // content-tall——与车间计划网格/货品资料同款，内容少横滚条贴末行、超高才钉底。
       onRowTap: _onRowTap,
@@ -1529,15 +1699,22 @@ class _MaterialAnalysisBucketPageState
     final n = targets.length;
     return [
       UtenMenuItem(
-        label: '恢复默认下达数量 ($n)',
-        icon: Icons.restart_alt_rounded,
-        enabled: !_actionsLocked && n > 0,
-        onTap: () => setState(() {
-          for (final target in targets) {
-            _resetSubmitQty(target);
-          }
-        }),
+        label: '物料调拨与公共在途',
+        icon: Icons.inventory_2_outlined,
+        enabled: !_actionsLocked && _supplyGroupsForRow(row).isNotEmpty,
+        onTap: () => _openSupplyDetails(row),
       ),
+      if (_canAct)
+        UtenMenuItem(
+          label: '恢复默认下达数量 ($n)',
+          icon: Icons.restart_alt_rounded,
+          enabled: !_actionsLocked && n > 0,
+          onTap: () => setState(() {
+            for (final target in targets) {
+              _resetSubmitQty(target);
+            }
+          }),
+        ),
     ];
   }
 
@@ -1646,6 +1823,29 @@ class _MaterialAnalysisBucketPageState
     }
   }
 
+  /// 选择类单元格（生产车间/负责人）列宽自适应（2026-09-12 用户口径「内容
+  /// 越长宽度越长，icon 也要算进去」）：按当前行集最长文本 bodyMedium 实测宽度
+  /// + 格内边距 + 后缀图标计算；钳在 [min, 320]，超长名换行省略不再、但不撑爆表格。
+  double _adaptivePickerColumnWidth(
+    Iterable<String?> values, {
+    double min = 132,
+  }) {
+    final theme = Theme.of(context);
+    var longest = 0.0;
+    for (final value in values) {
+      final text = value?.trim() ?? '';
+      if (text.isEmpty) continue;
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: theme.textTheme.bodyMedium),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      if (painter.width > longest) longest = painter.width;
+      painter.dispose();
+    }
+    // 26 = 格内左右内边距；20 = 后缀图标 16 + 间隙；再留 4px 呼吸位。
+    return (longest + 26 + 20 + 4).clamp(min, 320);
+  }
+
   /// 可安排桶：可编辑计划表（数量 / 车间 / 负责人）。表头设置与只读桶的
   /// MasterDataTableView 对齐——支持列显隐、拖拽排序与恢复默认（列多时
   /// 计划员可自行收敛视野）。类型/货品/车间/负责人/状态表头均可点筛选
@@ -1664,6 +1864,13 @@ class _MaterialAnalysisBucketPageState
       rowMenuExtraBuilder: _canAct ? _planRowMenu : null,
       emptyMessage: _host._l10n.materialTaskEmpty,
       columns: [
+        EditableGridColumn<_BucketPlanRow>(
+          key: 'supplyDetails',
+          label: '物料办理',
+          width: 150,
+          cellBuilder: (context, row) =>
+              _supplyDetailsButton(context, row.origin),
+        ),
         EditableGridColumn<_BucketPlanRow>(
           key: 'kind',
           label: '类型',
@@ -1715,7 +1922,10 @@ class _MaterialAnalysisBucketPageState
             final product = row.origin.product;
             final candidate = row.origin.candidate;
             final qty =
-                product?.requestedQty ?? candidate?.material.requiredQty;
+                product?.requestedQty ??
+                (candidate?.material.hasPriorityMakeSupplement == true
+                    ? candidate!.material.priorityMakeSupplementQty
+                    : candidate?.material.requiredQty);
             final unit =
                 product?.unitName?.trim() ??
                 candidate?.material.unitName?.trim();
@@ -1759,7 +1969,13 @@ class _MaterialAnalysisBucketPageState
         EditableGridColumn<_BucketPlanRow>(
           key: 'workshop',
           label: '生产车间',
-          width: 150,
+          // 2026-09-12 用户口径：宽度自适应内容（名字越长列越宽，把后缀图标
+          // 与格内边距算进去），不再固定 150 截断省略号。
+          width: _adaptivePickerColumnWidth(
+            _planGrid!.rows.map(
+              (row) => row.departmentName ?? row.departmentId.value ?? '',
+            ),
+          ),
           required: true,
           // 空值返回 null（不建桶，计入「未填」），不要空串桶。
           filterValueOf: (row) => row.departmentName ?? row.departmentId.value,
@@ -1807,7 +2023,12 @@ class _MaterialAnalysisBucketPageState
         EditableGridColumn<_BucketPlanRow>(
           key: 'worker',
           label: '负责人',
-          width: 130,
+          // 同生产车间列：内容自适应宽度（含图标与内边距）。
+          width: _adaptivePickerColumnWidth(
+            _planGrid!.rows.map(
+              (row) => row.workerName ?? row.workerId.value ?? '',
+            ),
+          ),
           required: true,
           filterValueOf: (row) => row.workerName ?? row.workerId.value,
           cellBuilder: (context, row) => ValueListenableBuilder<String?>(
@@ -1890,6 +2111,9 @@ class _MaterialAnalysisBucketPageState
   /// 计划行的类型文案（自制候选 / 自制子件 / 委外子件）。单元格与表头筛选共用
   /// 同一口径——取值稳定（不随重建变动），空值不可能出现，故不返回 null。
   String _planRowKindLabel(_BucketPlanRow row) {
+    if (row.origin.candidate?.material.hasPriorityMakeSupplement == true) {
+      return '让料后补自制';
+    }
     if (!row.isProduct) return '自制候选';
     return switch (row.origin.product!.sourceType) {
       'MAKE_COMPONENT' => '自制子件',
@@ -1934,6 +2158,20 @@ class _MaterialAnalysisBucketPageState
     final host = _host;
     final route = _bucket.supplyRoute!;
     return [
+      _supplyDetailsColumn(),
+      if (_host._analysis?.materials.any(
+            (material) => (material.sharedFuturePendingQty ?? 0) > 0,
+          ) ==
+          true)
+        MasterColumnDef<_BucketRow>(
+          key: 'sharedFuturePendingQty',
+          label: '公共认领未实收',
+          width: 130,
+          type: 'number',
+          value: (row) =>
+              _host._qty(row.group?.representative.sharedFuturePendingQty),
+          info: '从公共余量认领的未实收供给；其他计划专属调入另见物料详情。实际合格入库前不增加现货，本次下达只补剩余未安排量。',
+        ),
       MasterColumnDef<_BucketRow>(
         key: 'goods',
         label: '物料',
@@ -2204,6 +2442,7 @@ class _MaterialAnalysisBucketPageState
     final host = _host;
     final issued = _taskFilter == _PreparationTaskFilter.issued;
     return [
+      _supplyDetailsColumn(),
       MasterColumnDef<_BucketRow>(
         key: 'goods',
         label: '产品',
@@ -2225,7 +2464,10 @@ class _MaterialAnalysisBucketPageState
         width: 90,
         type: 'number',
         value: (row) => host._qty(
-          row.product?.requestedQty ?? row.candidate?.material.requiredQty,
+          row.product?.requestedQty ??
+              (row.candidate?.material.hasPriorityMakeSupplement == true
+                  ? row.candidate!.material.priorityMakeSupplementQty
+                  : row.candidate?.material.requiredQty),
         ),
       ),
       MasterColumnDef<_BucketRow>(

@@ -9,8 +9,8 @@ import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/providers/color_unit_dict.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_detail_body.dart';
 import 'package:uten_imp/features/quality/models/production_fqc_inspection.dart';
+import 'package:uten_imp/features/quality/pages/production_fqc_handling_page.dart';
 import 'package:uten_imp/features/quality/repositories/production_fqc_repository.dart';
-import 'package:uten_imp/features/quality/widgets/production_fqc_dialogs.dart';
 import 'package:uten_imp/shared/attachments/attachment_section.dart';
 import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -19,6 +19,8 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 class _Fqc extends ProductionFqcRepository {
   _Fqc(this.status) : super(ApiClient(Dio()));
   final String status;
+  @override
+  Future<bool> canDecide() async => true;
   @override
   Future<ProductionFqcInspection> detail(String id) async =>
       ProductionFqcInspection.fromJson({
@@ -170,10 +172,7 @@ void main() {
     ) async {
       await pump(
         tester,
-        const ProductionFqcDetailDialog(
-          inspectionId: 'inspection-a',
-          canApprove: true,
-        ),
+        const ProductionFqcInspectionPage(inspectionId: 'inspection-a'),
         status: status,
       );
       final files = tester.widget<AttachmentSection>(
@@ -197,10 +196,13 @@ void main() {
   ) async {
     await pump(
       tester,
-      const ProductionFqcDetailDialog(
-        inspectionId: 'inspection-a',
-        canApprove: false,
-      ),
+      const ProductionFqcInspectionPage(inspectionId: 'inspection-a'),
+      // 无决定权限（缺审批权限码 + 服务端 canDecide=false）→ 只读。
+      permissions: {
+        Perm.goodsView,
+        Perm.productionQualityInspectionView,
+        Perm.attachmentView,
+      },
     );
     expect(find.byType(AttachmentSection), findsOneWidget);
     expect(find.text('上传'), findsNothing);
@@ -212,6 +214,7 @@ void main() {
     const permissions = {
       Perm.goodsView,
       Perm.productionQualityInspectionView,
+      Perm.productionQualityInspectionApprove,
       Perm.attachmentView,
       Perm.attachmentUpload,
       Perm.attachmentDelete,
@@ -222,11 +225,9 @@ void main() {
     expect(find.text('上传'), findsNothing);
     await pump(
       tester,
-      const ProductionFqcDetailDialog(
-        inspectionId: 'inspection-a',
-        canApprove: true,
-      ),
+      const ProductionFqcInspectionPage(inspectionId: 'inspection-a'),
       permissions: permissions,
+      status: 'RESOLVED',
     );
     expect(find.text('上传'), findsNothing);
   });

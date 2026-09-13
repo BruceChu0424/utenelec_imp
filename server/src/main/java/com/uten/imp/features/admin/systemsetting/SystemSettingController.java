@@ -7,6 +7,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import jakarta.validation.Valid;
 
 /**
  * 系统设置管理端（仅超级管理员 authorization:manage）。
@@ -29,8 +30,14 @@ public class SystemSettingController {
     }
 
     @PutMapping("/{key}")
-    public SystemSettingDto update(@PathVariable String key, @RequestBody SystemSettingDto.Update body) {
+    public SystemSettingDto update(@PathVariable String key, @Valid @RequestBody SystemSettingDto.Update body) {
         AuthUser u = currentUser.get().orElseThrow(() -> new IllegalStateException("未登录"));
         return service.write(key, body.value(), body.password(), u.getId(), u.getLoginAccount());
+    }
+
+    @PutMapping
+    public List<SystemSettingDto> updateBatch(@Valid @RequestBody SystemSettingDto.BatchUpdate body) {
+        AuthUser u = currentUser.get().orElseThrow(() -> new IllegalStateException("未登录"));
+        return service.writeBatch(body, u.getId(), u.getLoginAccount());
     }
 }

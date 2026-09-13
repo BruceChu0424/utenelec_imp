@@ -321,6 +321,29 @@ class ShipmentFinanceAuditInfo {
   }
 }
 
+/// 出货财务审核批量决策项：单笔决策的乐观锁三元组（revision/哈希/认领）。
+/// 整批同事务提交，服务端任一项失配即整体回滚。
+class ShipmentFinanceBatchDecision {
+  const ShipmentFinanceBatchDecision({
+    required this.id,
+    required this.expectedRevision,
+    required this.expectedContentHash,
+    required this.expectedClaimId,
+  });
+
+  final String id;
+  final int expectedRevision;
+  final String expectedContentHash;
+  final String expectedClaimId;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'expectedRevision': expectedRevision,
+    'expectedContentHash': expectedContentHash,
+    'expectedClaimId': expectedClaimId,
+  };
+}
+
 enum SalesWarehouseWorkAction {
   startPicking(SalesWarehouseWorkStatus.picking),
   finishPicking(SalesWarehouseWorkStatus.picked),
@@ -1134,6 +1157,8 @@ class OrderPlanProgressLine {
     this.unitName,
     this.qty,
     this.reservedQty,
+    this.shippableQty,
+    this.pendingShipmentQty,
     this.plannedQty,
     this.producedQty,
     this.shippedQty,
@@ -1161,6 +1186,10 @@ class OrderPlanProgressLine {
   final String? unitName;
   final double? qty;
   final double? reservedQty;
+
+  /// Qualified stock available for a new shipment after existing drafts/tasks.
+  final double? shippableQty;
+  final double? pendingShipmentQty;
   final double? plannedQty;
   final double? producedQty;
   final double? shippedQty;
@@ -1206,6 +1235,8 @@ class OrderPlanProgressLine {
       unitName: j['unitName'] as String?,
       qty: (j['qty'] as num?)?.toDouble(),
       reservedQty: (j['reservedQty'] as num?)?.toDouble(),
+      shippableQty: (j['shippableQty'] as num?)?.toDouble(),
+      pendingShipmentQty: (j['pendingShipmentQty'] as num?)?.toDouble(),
       plannedQty: (j['plannedQty'] as num?)?.toDouble(),
       producedQty: (j['producedQty'] as num?)?.toDouble(),
       shippedQty: (j['shippedQty'] as num?)?.toDouble(),

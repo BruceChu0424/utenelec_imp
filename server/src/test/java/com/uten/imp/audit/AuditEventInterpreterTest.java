@@ -72,7 +72,7 @@ class AuditEventInterpreterTest {
         log.setHttpPath("/api/payroll/slips/ignored/download");
         log.setResult("success");
         log.setStatusCode(200);
-        // Mirrors the stored generated-column fallback for this explicit action.
+        // Mirrors the database-enforced classification fallback for this explicit action.
         log.setRiskLevel("low");
         log.setEventCategory("business");
 
@@ -697,7 +697,7 @@ class AuditEventInterpreterTest {
         log.setHttpPath("/api/admin/audit-logs");
         log.setResult("success");
         log.setStatusCode(200);
-        // Mirrors the current generated-column fallback for newly introduced actions.
+        // Mirrors the current database-enforced classification fallback for newly introduced actions.
         log.setRiskLevel("low");
         log.setEventCategory("business");
 

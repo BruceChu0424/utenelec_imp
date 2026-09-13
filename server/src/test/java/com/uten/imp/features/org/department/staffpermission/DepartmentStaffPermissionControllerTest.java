@@ -1,20 +1,23 @@
 package com.uten.imp.features.org.department.staffpermission;
 
-import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.GlobalExceptionHandler;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class DepartmentStaffPermissionControllerTest {
 
     @Test
-    void legacyUnboundedManagedMatrixIsExplicitlyRetired() {
+    void legacyUnboundedManagedMatrixIsExplicitlyRetired() throws Exception {
         DepartmentStaffPermissionService legacy =
                 mock(DepartmentStaffPermissionService.class);
         PagePermissionWorkspaceService workspace =
@@ -22,11 +25,16 @@ class DepartmentStaffPermissionControllerTest {
         DepartmentStaffPermissionController controller =
                 new DepartmentStaffPermissionController(legacy, workspace);
 
-        ApiException error = assertThrows(
-                ApiException.class,
-                () -> controller.managed("sales.order", UUID.randomUUID()));
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
 
-        assertEquals(ErrorCode.CONFLICT, error.getCode());
+        mvc.perform(get("/api/department-staff-permissions/managed")
+                        .param("surfaceKey", "sales.order")
+                        .param("departmentId", UUID.randomUUID().toString()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(ErrorCode.CONFLICT.name()));
+
         verifyNoInteractions(legacy, workspace);
     }
 }

@@ -79,7 +79,7 @@ void main() {
 
       expect(find.text('选择报工子任务'), findsNothing);
       expect(find.text('成品灯'), findsOneWidget);
-      expect(find.textContaining('SJ-001'), findsOneWidget);
+      expect(find.text('SEG-001'), findsOneWidget);
       expect(find.text('10'), findsOneWidget);
 
       await tester.tap(find.byType(UtenEmployeeMultiPicker));

@@ -17,6 +17,20 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ProductionFinishedArrivalRegistrationServiceTest {
 
     @Test
+    void batchLocksEveryReportBeforeAnyWarehouseAndReplaysBeforeCurrentReferenceChecks() throws Exception {
+        String source = Files.readString(Path.of("src/main/java/com/uten/imp/features/warehouse/finishedin/ProductionFinishedArrivalRegistrationService.java"));
+        int start = source.indexOf("public BatchArrivalRegistrationResult batchRegister(");
+        int end = source.indexOf("// 同仓新建批次", start);
+        String prepare = source.substring(start, end);
+        assertThat(prepare).containsSubsequence("lockCommand(actorId, key)",
+                "existingRegistration(entry.getKey()", "lockApprovedReport(reportId)",
+                "ORDER BY report_id, id FOR UPDATE", "validatedWarehouse(warehouseId)",
+                "references.receiver = requireReceiver(receiverEmployeeId)", "registerNew(");
+        assertThat(prepare).contains("outcomes.get(id) == null")
+                .contains(".distinct().sorted().toList()");
+    }
+
+    @Test
     void canonicalHashIsOrderIndependentAndPlaceIsTrimmed() {
         UUID warehouseId = UUID.randomUUID();
         UUID first = UUID.randomUUID();

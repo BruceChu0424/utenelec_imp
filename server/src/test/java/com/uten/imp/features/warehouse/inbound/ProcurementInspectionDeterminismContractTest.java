@@ -46,9 +46,7 @@ class ProcurementInspectionDeterminismContractTest {
                 .contains("event.released_weight")
                 .contains("stockService.recordMovementWithId(")
                 .contains("preplanAnalysisPeg.attributeInspectionStockIn(")
-                .contains("advanceProductionAfterStockIn(")
-                .contains("purchaseSupply.afterPurchaseInspectionStockInConfirmed(")
-                .contains("subcontractSupply.afterSubcontractInspectionStockInConfirmed(");
+                .contains("stockInProduction.afterInspectionStockInConfirmed(newStockIns)");
     }
 
     @Test
@@ -98,7 +96,7 @@ class ProcurementInspectionDeterminismContractTest {
         String analysis = source(
                 "features/production/analysis/MaterialAnalysisService.java");
         String commands = source(
-                "features/production/analysis/MaterialAnalysisCommandService.java");
+                "features/production/analysis/MaterialAnalysisSupplyCoverageReader.java");
 
         assertThat(purchaseTransition)
                 .contains("inspection.warehouse_stocked_base_qty")
@@ -107,24 +105,26 @@ class ProcurementInspectionDeterminismContractTest {
                 .contains("inspection.warehouse_stocked_base_qty > 0")
                 .contains(":IQC_PASS:")
                 .contains("AND status = 1");
-        assertThat(readiness)
+        // V554 起供给覆盖 SQL 已从 ReadinessService 抽进 CoverageReader（commands 源）；
+        // 产成品送检 FINISHED_IN 覆盖与窄锁留在 MaterialAnalysisService。
+        assertThat(commands)
                 .contains("THEN inspection")
                 .contains(".warehouse_stocked_base_qty")
                 .contains("WHEN inspection.status IN (")
-                .contains("'PARTIAL', 'RESOLVED'")
-                .contains("receipt.doc_type = 'FINISHED_IN'")
+                .contains("'PARTIAL','RESOLVED'")
                 .contains("AND receipt.status = 1")
-                .contains("FOR UPDATE OF peg")
                 .doesNotContain("FOR UPDATE OF peg, receipt_item, receipt");
-        assertThat(occurrences(readiness, "'PARTIAL', 'RESOLVED'"))
+        assertThat(occurrences(commands, "'PARTIAL','RESOLVED'"))
                 .isEqualTo(2);
         assertThat(analysis)
                 .contains("THEN inspection.warehouse_stocked_base_qty")
                 .contains("inspection.passed_base_qty")
                 .contains("> inspection.warehouse_stocked_base_qty")
                 .doesNotContain("THEN inspection.passed_base_qty")
-                .contains("COALESCE(i.qty,0)-COALESCE(i.received_qty,0)")
+                .contains("fn_procurement_order_source_remaining_qty(")
                 .contains("o.is_closed = FALSE")
+                .contains("document.doc_type='FINISHED_IN' AND document.status=1")
+                .contains("FOR UPDATE OF o, i")
                 .contains("到货质检存在不合格且原采购需求已无在途")
                 .contains("到货质检存在不合格且原委外需求已无在途")
                 .contains("inspection.failed_base_qty > 0")

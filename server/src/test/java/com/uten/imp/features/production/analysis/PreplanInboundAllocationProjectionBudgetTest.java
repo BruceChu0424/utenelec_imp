@@ -171,7 +171,7 @@ class PreplanInboundAllocationProjectionBudgetTest {
     private static Object[] candidate(UUID external, UUID material, String mode, String headroom) {
         return new Object[]{external, id((int) material.getLeastSignificantBits()+1000), id((int) material.getLeastSignificantBits()+2000),
                 mode, PLANNED_WAREHOUSE, "原计划仓", PLANNED_WAREHOUSE, id(500), material, GOODS, null,
-                new BigDecimal(headroom), "P", "目标产品", "来源分析", null, null, null, null, null, null, null, null};
+                new BigDecimal(headroom), "P", "目标产品", "来源分析", null, null, null, null, null, null, null, null, false};
     }
     private static UUID id(int value) { return new UUID(0, value); }
 }

@@ -5,6 +5,9 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/stock_doc.dart';
+import '../models/stock_doc_outbound_review.dart';
+
+export '../models/stock_doc_outbound_review.dart';
 
 class StockDocFilter {
   const StockDocFilter({
@@ -15,6 +18,7 @@ class StockDocFilter {
     this.issueStatus,
     this.dateFrom,
     this.dateTo,
+    this.productionReturnRequests,
   });
   final String? keyword;
   final String? warehouseId;
@@ -29,6 +33,7 @@ class StockDocFilter {
   /// 业务日期范围（yyyy-MM-dd；历史记录段时间门控用）。
   final String? dateFrom;
   final String? dateTo;
+  final bool? productionReturnRequests;
 }
 
 class StockDocRepository {
@@ -57,6 +62,8 @@ class StockDocRepository {
         if (filter.issueStatus != null) 'issueStatus': filter.issueStatus,
         if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
         if (filter.dateTo != null) 'dateTo': filter.dateTo,
+        if (filter.productionReturnRequests != null)
+          'productionReturnRequests': filter.productionReturnRequests,
         if (sort != null && sort.isNotEmpty) 'sort': sort,
         if (order != null && order.isNotEmpty) 'order': order,
       },
@@ -67,6 +74,13 @@ class StockDocRepository {
   Future<StockDocDetail> detail(String id) async {
     final json = await api.get(ApiEndpoints.stockDoc(id));
     return StockDocDetail.fromJson(json);
+  }
+
+  Future<int> pendingProductionReturnCount() async {
+    final json = await api.get(
+      '/stock/production-materials/return-requests/warehouse/count',
+    );
+    return (json['count'] as num?)?.toInt() ?? 0;
   }
 
   Future<StockDocDetail> create(Map<String, dynamic> body) async {
@@ -82,6 +96,21 @@ class StockDocRepository {
   Future<void> delete(String id) async => api.delete(ApiEndpoints.stockDoc(id));
   Future<StockDocDetail> approve(String id) async =>
       StockDocDetail.fromJson(await api.post(ApiEndpoints.stockDocApprove(id)));
+
+  Future<StockDocOutboundReview> review(String id) async =>
+      StockDocOutboundReview.fromJson(
+        await api.get('${ApiEndpoints.stockDoc(id)}/outbound-review'),
+      );
+
+  Future<StockDocDetail> approveReviewed(
+    String id, {
+    required String expectedReviewToken,
+  }) async => StockDocDetail.fromJson(
+    await api.post(
+      '${ApiEndpoints.stockDoc(id)}/approve-reviewed',
+      body: {'expectedReviewToken': expectedReviewToken},
+    ),
+  );
 
   /// 生产报工成品入库：仓库逐行确认实收数量，少收量由服务端拆成余量草稿。
   Future<StockDocDetail> confirmFinishedInbound(

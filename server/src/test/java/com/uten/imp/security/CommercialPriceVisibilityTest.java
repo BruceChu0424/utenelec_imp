@@ -72,7 +72,7 @@ class CommercialPriceVisibilityTest {
         when(currentUser.get()).thenReturn(Optional.empty());
         assertFalse(visibility.canViewPurchaseReceipt());
         assertFalse(visibility.canViewPurchaseOrder());
-        assertFalse(visibility.canViewSubcontract());
+        assertFalse(visibility.canViewSubcontractReceipt());
         assertFalse(visibility.canViewSubcontractOrder());
         assertFalse(visibility.canViewSubcontractMaterialCost());
         assertFalse(visibility.canViewFinance());

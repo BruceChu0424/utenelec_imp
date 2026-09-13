@@ -22,5 +22,6 @@ public record WarehouseSalesOutboundLine(
         BigDecimal cartonCount,
         String clientProductCode,
         String clientModel,
-        String sourceDocumentNo) {
+        String sourceDocumentNo,
+        String actualStockPlace) {
 }

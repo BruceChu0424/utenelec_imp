@@ -21,11 +21,13 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -334,7 +336,22 @@ class _ProductionFqcSheetHandlingPageState
                 actionLabel: '重新加载',
                 onAction: _load,
               )
-            : AbsorbPointer(absorbing: _submitting, child: _buildBody(context)),
+            : Stack(
+                children: [
+                  AbsorbPointer(
+                    absorbing: _submitting,
+                    child: _buildBody(context),
+                  ),
+                  // 2026-09-12 用户口径：逐行提交期间屏幕中间加载动画。
+                  if (_submitting)
+                    const Positioned.fill(
+                      child: UtenBusyOverlay(
+                        title: '正在提交检验报告',
+                        description: '逐行登记质检决定，已完成行不会重复提交。',
+                      ),
+                    ),
+                ],
+              ),
       ),
     );
   }
@@ -900,6 +917,22 @@ class _ProductionFqcInspectionPageState
           ),
         ],
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: _canDecide && _row != null
+          ? UtenFloatingActionGroup(
+              children: [
+                UtenButton(
+                  key: const Key('fqc-inspection-submit-report'),
+                  type: UtenButtonType.danger,
+                  size: UtenButtonSize.large,
+                  icon: Icons.fact_check_outlined,
+                  isLoading: _saving,
+                  onPressed: _saving ? null : _submitReport,
+                  child: const Text('提交报告'),
+                ),
+              ],
+            )
+          : null,
       body: SafeArea(
         child: _loading && inspection == null
             ? const UtenSkeletonList()
@@ -911,7 +944,12 @@ class _ProductionFqcInspectionPageState
               )
             : UtenContentContainer.wide(
                 child: ListView(
-                  padding: const EdgeInsets.all(UtenSpacing.s16),
+                  padding: const EdgeInsets.fromLTRB(
+                    UtenSpacing.s16,
+                    UtenSpacing.s16,
+                    UtenSpacing.s16,
+                    UtenFloatingActionGroup.scrollClearance,
+                  ),
                   children: [
                     _buildFactsCard(theme, inspection!),
                     const SizedBox(height: UtenSpacing.s12),
@@ -1057,136 +1095,136 @@ class _ProductionFqcInspectionPageState
 
   /// 决定表单：合格/不合格数量 + 不合格处置；提交前由总结弹窗收结论原因。
   Widget _buildDecisionForm(ThemeData theme, FqcReportRow row) {
-    final inspection = row.inspection;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              '登记检验决定',
+              '检验明细',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: UtenSpacing.s4),
+            const SizedBox(height: UtenSpacing.s8),
             Text(
-              '待检 ${fqty(inspection.remainingQty)}'
-              '${inspection.unitName == null ? '' : ' ${inspection.unitName}'}；'
-              '合格数量会生成仓库待点收任务，尚不直接增加库存。',
+              '合格部分提交后转仓库待最终点收。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: UtenSpacing.s12),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final narrow = constraints.maxWidth < 720;
-                final fields = [
-                  SizedBox(
-                    width: 200,
-                    child: TextField(
-                      key: const Key('fqc-inspection-pass'),
-                      controller: row.pass,
-                      enabled: !_saving,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: const UtenInputDecoration(
-                        InputDecoration(labelText: '合格数量', isDense: true),
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 200,
-                    child: TextField(
-                      key: const Key('fqc-inspection-fail'),
-                      controller: row.fail,
-                      enabled: !_saving,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: const UtenInputDecoration(
-                        InputDecoration(labelText: '不合格数量', isDense: true),
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 200,
-                    child: DropdownButtonFormField<String>(
-                      key: const Key('fqc-inspection-disposition'),
-                      initialValue: row.disposition,
-                      decoration: const UtenInputDecoration(
-                        InputDecoration(labelText: '不合格处置', isDense: true),
-                      ),
-                      items: [
-                        for (final entry in kFqcDispositions)
-                          DropdownMenuItem(
-                            value: entry.$1,
-                            child: Text(entry.$2),
-                          ),
-                      ],
-                      onChanged: _saving
-                          ? null
-                          : (value) => setState(
-                              () => row.disposition = value ?? 'REWORK',
-                            ),
-                    ),
-                  ),
-                ];
-                final submit = UtenButton(
-                  key: const Key('fqc-inspection-submit-report'),
-                  type: UtenButtonType.danger,
-                  size: UtenButtonSize.large,
-                  icon: Icons.fact_check_outlined,
-                  isLoading: _saving,
-                  onPressed: _saving ? null : _submitReport,
-                  child: const Text('提交报告'),
-                );
-                if (narrow) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Wrap(
-                        spacing: UtenSpacing.s12,
-                        runSpacing: UtenSpacing.s8,
-                        children: fields,
-                      ),
-                      const SizedBox(height: UtenSpacing.s12),
-                      Align(alignment: Alignment.centerLeft, child: submit),
-                    ],
-                  );
-                }
-                return Row(
-                  children: [
-                    ...fields.expand(
-                      (field) => [
-                        field,
-                        const SizedBox(width: UtenSpacing.s12),
-                      ],
-                    ),
-                    const Spacer(),
-                    submit,
-                  ],
-                );
-              },
-            ),
-            if (row.validate() case final problem?) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              Text(
-                problem,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                  fontWeight: FontWeight.w600,
+            MasterDataTableView<FqcReportRow>(
+              key: const Key('fqc-inspection-decision-table'),
+              embedded: true,
+              showColumnChooser: false,
+              columns: [
+                MasterColumnDef(
+                  key: 'goods',
+                  label: '货品',
+                  width: 200,
+                  value: (row) =>
+                      row.inspection.goodsName ??
+                      row.inspection.goodsCode ??
+                      '—',
                 ),
-              ),
-            ],
+                MasterColumnDef(
+                  key: 'pass',
+                  label: '合格数量',
+                  width: 150,
+                  type: 'number',
+                  info: '本次判定合格的数量；与不合格数量合计不能超过本行待检量。',
+                  value: (row) => row.pass.text,
+                  cellBuilder: (context, row) =>
+                      _singleQuantityField(row, passed: true),
+                ),
+                MasterColumnDef(
+                  key: 'fail',
+                  label: '不合格数量',
+                  width: 150,
+                  type: 'number',
+                  info: '含不合格数量时，选择不合格处置并在提交时说明原因。',
+                  value: (row) => row.fail.text,
+                  cellBuilder: (context, row) =>
+                      _singleQuantityField(row, passed: false),
+                ),
+                MasterColumnDef(
+                  key: 'disposition',
+                  label: '不合格处置',
+                  width: 170,
+                  value: (row) => row.failValue > 0
+                      ? _dispositionLabel(row.disposition)
+                      : '—',
+                  cellBuilder: (context, row) =>
+                      DropdownButtonFormField<String>(
+                        key: const Key('fqc-inspection-disposition'),
+                        initialValue: row.disposition,
+                        isExpanded: true,
+                        decoration: const UtenInputDecoration(
+                          InputDecoration(isDense: true),
+                        ),
+                        items: [
+                          for (final entry in kFqcDispositions)
+                            DropdownMenuItem(
+                              value: entry.$1,
+                              child: Text(entry.$2),
+                            ),
+                        ],
+                        onChanged: _saving || row.failValue <= 0
+                            ? null
+                            : (value) => setState(
+                                () => row.disposition = value ?? 'REWORK',
+                              ),
+                      ),
+                ),
+                MasterColumnDef(
+                  key: 'remaining',
+                  label: '待检数量',
+                  width: 110,
+                  type: 'number',
+                  value: (row) => fqty(row.inspection.remainingQty),
+                ),
+                MasterColumnDef(
+                  key: 'unit',
+                  label: '单位',
+                  width: 80,
+                  value: (row) => row.inspection.unitName ?? '—',
+                ),
+              ],
+              items: [row],
+              facets: const {},
+              nullCounts: const {},
+              filters: const {},
+              onFilterChanged: (_, _) {},
+            ),
           ],
         ),
       ),
     );
   }
+
+  Widget _singleQuantityField(FqcReportRow row, {required bool passed}) =>
+      Semantics(
+        textField: true,
+        label:
+            '${row.inspection.goodsName ?? '明细'} ${passed ? '合格数量' : '不合格数量'}',
+        child: TextField(
+          key: Key('fqc-inspection-${passed ? 'pass' : 'fail'}'),
+          controller: passed ? row.pass : row.fail,
+          enabled: !_saving,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          textAlign: TextAlign.right,
+          decoration: UtenInputDecoration(
+            InputDecoration(
+              isDense: true,
+              error: row.validate() == null
+                  ? null
+                  : UtenFieldMessage.error(row.validate()!),
+            ),
+          ),
+        ),
+      );
 
   List<Widget> _readOnlyHint(
     ThemeData theme,

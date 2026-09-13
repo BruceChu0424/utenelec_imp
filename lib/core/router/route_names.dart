@@ -326,6 +326,10 @@ abstract final class RouteName {
   static const String warehouseInboundTasks = '/warehouse/tasks/inbound';
 
   /// 生产领料任务中心：待领任务（履约备料）+ 领料单（新建/历史/出库进度）+ 生产退料。
+  /// 多选领料单完整详情，documentIds 查询参数承接跨页选择并支持刷新。
+  static const String warehouseProductionDrawBatchIssue =
+      '/warehouse/DRAW/batch-issue';
+
   static const String warehouseDrawTasks = '/warehouse/tasks/draw';
 
   static const String procurementArrivalExceptions =
@@ -357,6 +361,10 @@ abstract final class RouteName {
   static const String productionSchedule = '/production/schedule';
   static const String productionProgress = '/production/progress';
   static const String productionWorkshopTasks = '/production/workshop-tasks';
+  static const String productionDrawRequest =
+      '/production/workshop-tasks/draw-request';
+  static const String productionBatchDraw =
+      '/production/workshop-tasks/batch-draw';
   static const String productionMaterialAnalysis =
       '/production/material-analysis';
   static const String productionMaterialAnalysisHistory =
@@ -374,6 +382,10 @@ abstract final class RouteName {
   /// 销售出货财务人工放行工作台。
   static const String financeSalesShipmentAudit =
       '/finance/sales-shipment-audits';
+
+  /// 出货财务审核详情（财务专用审核视图，与销售端出货详情分离）。
+  static const String financeSalesShipmentAuditReview =
+      '/finance/sales-shipment-audits/:id';
   static const String financeArAp = '/finance/ar-ap';
   static const String financePayables = '/finance/payables';
   static const String financeReconciliations = '/finance/reconciliations';

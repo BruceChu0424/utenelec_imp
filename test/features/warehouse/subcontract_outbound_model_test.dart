@@ -72,4 +72,59 @@ void main() {
     expect(line.readyOutboundQty, 0);
     expect(line.maxEditableQty, 0);
   });
+
+  test('PREPARED_OUTBOUND 实收入库后复用原草稿占用，不把可新增量零当作不可出库', () {
+    // Reproduces the V5 prepared-output contract: all 10000 received units
+    // already belong to the existing pending EC draft; none are free for a
+    // second draft. Recognising the flow restores handling of the original EC.
+    final line = OutboundPlanLine.fromJson({
+      'planItemId': 'prepared-v5-line',
+      'orderItemId': 'prepared-v5-order-line',
+      'goodsId': 'prepared-v5-goods',
+      'flowMode': 'PREPARED_OUTBOUND',
+      'preparationStatus': 'READY_OUTBOUND',
+      'plannedQty': 10000,
+      'preparedQty': 10000,
+      'issuedQty': 0,
+      'readyOutboundQty': 0,
+      'draftReservedQty': 10000,
+      'remainingQty': 10000,
+      'allowedActions': ['HANDLE_OUTBOUND'],
+    });
+    expect(line.flowMode, SubcontractOutboundFlowMode.preparedOutbound);
+    expect(line.readyOutboundQty, 0);
+    expect(line.maxEditableQty, 10000);
+    expect(line.allows('HANDLE_OUTBOUND'), isTrue);
+  });
+
+  test('PREPARED_OUTBOUND 无草稿时仅服务端放行数量可用于新出库', () {
+    final line = OutboundPlanLine.fromJson({
+      'planItemId': 'prepared-line',
+      'orderItemId': 'prepared-order-line',
+      'goodsId': 'prepared-goods',
+      'flowMode': 'PREPARED_OUTBOUND',
+      'preparationStatus': 'READY_OUTBOUND',
+      'plannedQty': 10000,
+      'preparedQty': 10000,
+      'readyOutboundQty': 10000,
+      'draftReservedQty': 0,
+    });
+    expect(line.readyOutboundQty, 10000);
+    expect(line.maxEditableQty, 10000);
+  });
+
+  test('PREPARED_OUTBOUND 遇到未知准备状态仍然禁止执行', () {
+    final line = OutboundPlanLine.fromJson({
+      'planItemId': 'prepared-line',
+      'orderItemId': 'prepared-order-line',
+      'goodsId': 'prepared-goods',
+      'flowMode': 'PREPARED_OUTBOUND',
+      'preparationStatus': 'FUTURE_STATUS',
+      'plannedQty': 10000,
+      'readyOutboundQty': 10000,
+      'draftReservedQty': 10000,
+    });
+    expect(line.readyOutboundQty, 0);
+    expect(line.maxEditableQty, 0);
+  });
 }

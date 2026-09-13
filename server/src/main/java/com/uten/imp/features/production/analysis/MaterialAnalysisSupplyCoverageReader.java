@@ -100,8 +100,9 @@ final class MaterialAnalysisSupplyCoverageReader {
     private static final String BUY_SQL = """
                     SELECT action.action_group_key, COALESCE(SUM(LEAST(
                         GREATEST(
-                            progress.demand_requested_qty
-                                - progress.demand_qualified_qty,
+                            CASE WHEN fn_preplan_action_has_future_transfer(action.id) OR fn_preplan_action_has_shared_claim_history(action.id) THEN fn_preplan_future_action_pending_qty(action.id)
+                                WHEN action.operation_type='SHARED_FUTURE_CLAIM' THEN fn_preplan_shared_action_pending_qty(action.id)
+                                ELSE progress.demand_requested_qty-progress.demand_qualified_qty END,
                             0),
                         progress.demand_future_qty
                     )),0)
@@ -118,6 +119,8 @@ final class MaterialAnalysisSupplyCoverageReader {
 
     private static final String EXTERNAL_SQL = """
                 SELECT action.action_group_key, COALESCE(SUM(CASE
+                    WHEN fn_preplan_action_has_future_transfer(action.id) OR fn_preplan_action_has_shared_claim_history(action.id) THEN fn_preplan_future_action_pending_qty(action.id)
+                    WHEN action.operation_type='SHARED_FUTURE_CLAIM' THEN fn_preplan_shared_action_pending_qty(action.id)
                     WHEN action.external_document_type = 'PURCHASE_REQUEST'
                          AND EXISTS (
                              SELECT 1

@@ -138,6 +138,9 @@ void main() {
     // 仅 ref.invalidate/read 计数 provider，无 UI/业务依赖。
     'production->dashboard',
     'production->notice',
+    // 2026-09-13：领料/退料出库单详情过账后复用同一扇出失效生产执行列表，
+    // 与上一条同款：仅 ref.invalidate/read 计数 provider，无 UI/业务依赖。
+    'warehouse->production',
   };
 
   test('feature dependency graph does not grow', () {

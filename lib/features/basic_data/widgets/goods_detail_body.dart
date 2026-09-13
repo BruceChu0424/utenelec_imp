@@ -6,9 +6,10 @@
 //   组装/成本页签激活（BOM 接口要求货品 id 已存在，故两阶段）。
 // - 查看：基本信息只读网格 + 编辑/删除/流水；编辑切 inline 表单。
 // - 组装信息：货品 BOM 树（goods_bom_tab.dart），表格吃满全宽，层级添加组件、
-//   滑窗选组件；编辑/删除/添加组件按钮挂在表格工具条，全屏表格内同样可用。
+//   滑窗选组件；编辑/删除/添加组件/预览按钮挂在表格工具条，全屏表格内同样可用。
 // - 成本预算：18 字段（sourceE 由 BOM 聚合只读，下游自动级联，goods_cost_tab.dart）。
-// - 头部：返回键 + 货品名 + 「预览」（A4 产品配件清单，goods_bom_preview.dart）。
+// - 头部：返回键 + 货品名（「预览」A4 产品配件清单 2026-09-12 起在组装信息
+//   表格工具条「全屏」旁，goods_bom_tab.dart）。
 // - 布局：页签靠左；基本信息/成本限宽 960 居中；组装信息全宽。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -235,7 +236,10 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
     return createdId.trim();
   }
 
-  List<MasterFieldDef> _goodsFields({required bool canViewDiscount}) {
+  List<MasterFieldDef> _goodsFields({
+    required bool canViewDiscount,
+    required bool canViewPrice,
+  }) {
     final permissions = ref.watch(currentPermissionsProvider);
     final canAddColor = permissions.contains(Perm.colorCreate);
     final canAddUnit = permissions.contains(Perm.unitCreate);
@@ -338,12 +342,13 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
         group: '生产',
         hint: '如：平 / 45A / 1M仁（换后模镶件时模具师傅对板用）',
       ),
-      const MasterFieldDef(
-        key: 'price',
-        label: '价格',
-        type: MasterFieldType.money,
-        group: '商务',
-      ),
+      if (canViewPrice)
+        const MasterFieldDef(
+          key: 'price',
+          label: '价格',
+          type: MasterFieldType.money,
+          group: '商务',
+        ),
       if (canViewDiscount)
         const MasterFieldDef(
           key: 'discount',
@@ -634,22 +639,6 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
             ),
           ),
           const PagePermissionAction(),
-          const SizedBox(width: UtenSpacing.s8),
-          if (_goodsId != null)
-            UtenButton(
-              // 默认 type=primary（实心深绿 + 白字）：预览是组装信息的主入口，
-              // 从 tonal 调深以突出。
-              size: UtenButtonSize.small,
-              icon: Icons.preview_outlined,
-              onPressed: () => showGoodsBomPreview(
-                context: context,
-                goodsId: _goodsId!,
-                productName: _detail?.name,
-                productModel: _detail?.model,
-                productCode: _detail?.code,
-              ),
-              child: const Text('预览'),
-            ),
         ],
       ),
     );
@@ -691,8 +680,15 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
     final canViewDiscount =
         ref.watch(isSuperAdminProvider) ||
         ref.watch(currentPermissionsProvider).contains(Perm.goodsDiscountView);
+    // 售价可见性（goods:price:view，V570）：无授权者（含无 goods:price:edit）价格字段
+    // 整段不渲染（也不提交），后端保留原值；超管恒可见。
+    final canViewPrice =
+        ref.watch(isSuperAdminProvider) ||
+        ref.watch(currentPermissionsProvider).contains(Perm.goodsPriceView) ||
+        canEditPrice;
     final readOnlyKeys = <String>{
-      if (!canEditPrice) 'price',
+      // 价格字段仅可查看者才在表里；可见但无编辑权 → 锁定。
+      if (!canEditPrice && canViewPrice) 'price',
       if (!canEditPrice && canViewDiscount) 'discount',
       if (!widget.canStatus || !_writable) 'status',
     };
@@ -705,10 +701,13 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
               constraints: const BoxConstraints(maxWidth: 960),
               child: MasterEditForm(
                 key: _formKey,
-                fields: _goodsFields(canViewDiscount: canViewDiscount),
+                fields: _goodsFields(
+                  canViewDiscount: canViewDiscount,
+                  canViewPrice: canViewPrice,
+                ),
                 initialValues: _initialValues(),
                 fixedValues: _costFixedValues(),
-                // 无 goods:price:edit 权限者：售价 UI 锁定（折扣字段仅可查看者才在表里，故一并锁定）。
+                // 无 goods:price:edit 权限者：可见的售价/折扣 UI 锁定。
                 readOnlyKeys: readOnlyKeys.isEmpty ? null : readOnlyKeys,
               ),
             ),
@@ -875,6 +874,12 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
     final canViewDiscount =
         ref.watch(isSuperAdminProvider) ||
         ref.watch(currentPermissionsProvider).contains(Perm.goodsDiscountView);
+    // 售价可见性（goods:price:view，V570）：无授权者查看态不显示价格行（后端已置
+    // price=null；超管/持有 goods:price:edit 恒可见）。
+    final canViewPrice =
+        ref.watch(isSuperAdminProvider) ||
+        ref.watch(currentPermissionsProvider).contains(Perm.goodsPriceView) ||
+        ref.watch(currentPermissionsProvider).contains(Perm.goodsPriceEdit);
     String s(Object? v) => v == null ? '' : '$v';
     String withUnit(Object? v, String? unitId, int? unitLegacyId) {
       if (v == null) return '';
@@ -913,7 +918,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
         MasterDetailRow('后模镶件编号', d.rearInsertCode),
       ]),
       _DetailSection('商务', [
-        MasterDetailRow('价格', s(d.price)),
+        if (canViewPrice) MasterDetailRow('价格', s(d.price)),
         if (canViewDiscount)
           MasterDetailRow('折扣', d.discount == null ? '' : '${d.discount}'),
         MasterDetailRow('包装', d.pack),
@@ -989,6 +994,15 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
       canDelete: widget.canBomDelete,
       productCode: _detail?.code,
       productName: _detail?.name,
+      // 「预览」按钮渲染在组装信息表格工具条「全屏」旁（2026-09-12 从详情头部
+      // 迁入）；弹窗要的型号等取自 _detail，故由本 Body 接线。
+      onPreview: () => showGoodsBomPreview(
+        context: context,
+        goodsId: _goodsId!,
+        productName: _detail?.name,
+        productModel: _detail?.model,
+        productCode: _detail?.code,
+      ),
       onDataChanged: () {
         // BOM 变动后刷新 detail（sourceE 已被后端聚合），同步成本 Tab 与外层列表。
         _refreshDetail();

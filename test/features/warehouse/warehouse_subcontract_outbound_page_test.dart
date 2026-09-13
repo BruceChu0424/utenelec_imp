@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
@@ -109,16 +111,21 @@ void main() {
     },
   );
 
-  testWidgets('two pending drafts load only the selected draft lines', (
+  testWidgets('multiple actual-warehouse drafts open together from one plan', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1200, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final api = _MultiDraftOutboundApi();
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [apiClientProvider.overrideWithValue(api)],
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
         child: const MaterialApp(
           home: Scaffold(
             body: WarehouseSubcontractOutboundEditPage(planId: 'plan-multi'),
@@ -128,11 +135,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(api.loadedDraftIds, ['draft-b']);
+    expect(api.loadedDraftIds, ['draft-a', 'draft-b']);
+    await tester.tap(find.text('单据信息'));
+    await tester.pumpAndSettle();
     expect(find.text('ITEM-B 当前草稿目标件'), findsOneWidget);
-    expect(find.text('ITEM-A 其它仓草稿目标件'), findsNothing);
+    expect(find.text('ITEM-A 其它仓草稿目标件'), findsOneWidget);
     final qty = tester.widget<TextField>(
-      find.widgetWithText(TextField, '本次出仓'),
+      find.byKey(const ValueKey('subcontract-outbound-draft-item-b-quantity')),
     );
     expect(qty.controller?.text, '3');
     expect(tester.takeException(), isNull);
@@ -290,6 +299,25 @@ class _MultiDraftOutboundApi extends ApiClient {
             'status': 0,
             'warehouseName': 'B 仓',
             'totalQty': 3,
+          },
+        ],
+      };
+    }
+    if (path == '/subcontract/material-issues/draft-a') {
+      loadedDraftIds.add('draft-a');
+      return const {
+        'id': 'draft-a',
+        'billNo': 'EC-A',
+        'billDate': '2026-08-30',
+        'warehouseId': 'warehouse-a',
+        'status': 0,
+        'items': [
+          {
+            'id': 'draft-item-a',
+            'planItemId': 'plan-item-a',
+            'orderItemId': 'order-item-a',
+            'goodsId': 'goods-a',
+            'qty': 5,
           },
         ],
       };

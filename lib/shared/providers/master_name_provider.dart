@@ -158,18 +158,22 @@ class MasterDictionaryService {
     return pending;
   }
 
+  /// Load just the actual warehouse tree for operations that already have
+  /// product and counterparty display snapshots in their task DTO.
+  Future<void> ensureWarehousesLoaded() => ensureDictionaryLoaded(
+    ApiEndpoints.warehousesDict,
+    () => api.getList(ApiEndpoints.warehousesDict),
+    (entries) {
+      final hierarchy = entries.map(WarehouseDictEntry.fromJson).toList();
+      _warehouses = warehouseDisplayNames(hierarchy);
+      _warehouseList = hierarchy;
+      _warehouseById = {for (final entry in hierarchy) entry.id: entry};
+      _mainWarehouseCache.clear();
+    },
+  );
+
   Future<void> ensureCommonLoaded() => Future.wait([
-    ensureDictionaryLoaded(
-      ApiEndpoints.warehousesDict,
-      () => api.getList(ApiEndpoints.warehousesDict),
-      (entries) {
-        final hierarchy = entries.map(WarehouseDictEntry.fromJson).toList();
-        _warehouses = warehouseDisplayNames(hierarchy);
-        _warehouseList = hierarchy;
-        _warehouseById = {for (final entry in hierarchy) entry.id: entry};
-        _mainWarehouseCache.clear();
-      },
-    ),
+    ensureWarehousesLoaded(),
     ensureDictionaryLoaded(
       ApiEndpoints.currenciesDict,
       () => api.getList(ApiEndpoints.currenciesDict),

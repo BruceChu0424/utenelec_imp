@@ -23,5 +23,7 @@ public record ProductionMaterialClearanceRow(
         BigDecimal maxReturnQty,
         BigDecimal unclearedQty,
         boolean canClose,
-        String unitName) {
+        String unitName,
+        BigDecimal pendingReturnQty,
+        BigDecimal availableToSettleQty) {
 }

@@ -9,6 +9,7 @@ import 'package:uten_imp/features/warehouse/models/warehouse_sales_outbound.dart
 import 'package:uten_imp/features/warehouse/pages/warehouse_sales_outbound_detail_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_sales_outbound_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_sales_outbound_repository.dart';
+import 'package:uten_imp/features/warehouse/widgets/warehouse_sales_picking_fields.dart';
 import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -16,6 +17,132 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 void main() {
   final summary = WarehouseSalesOutboundSummary.fromJson(_detailJson);
   final detail = WarehouseSalesOutboundDetail.fromJson(_detailJson);
+
+  test(
+    'actual location never comes from a master hint and changing warehouse clears current intent',
+    () {
+      final hinted = WarehouseSalesPickingDraft(detail);
+      expect(hinted.stockPlaces, {'line-1': ''});
+      hinted.dispose();
+      final historical = WarehouseSalesOutboundDetail.fromJson({
+        ..._detailJson,
+        'warehouseId': 'old-leaf',
+        'lines': [
+          {
+            ...(_detailJson['lines'] as List).single as Map<String, dynamic>,
+            'actualStockPlace': 'OLD-A',
+          },
+        ],
+      });
+      final draft = WarehouseSalesPickingDraft(historical);
+      expect(draft.stockPlaces, {'line-1': 'OLD-A'});
+      draft.changeWarehouse('new-leaf');
+      expect(draft.stockPlaces, {'line-1': ''});
+      expect(historical.lines.single.actualStockPlace, 'OLD-A');
+      draft.dispose();
+      final unchosen = WarehouseSalesPickingDraft(
+        WarehouseSalesOutboundDetail.fromJson({
+          ..._detailJson,
+          'warehouseId': 'old-leaf',
+          'canSelectWarehouse': true,
+          'warehouseOptions': [
+            {
+              'warehouseId': 'new-a',
+              'warehouseName': '新仓甲',
+              'canFulfill': true,
+            },
+            {
+              'warehouseId': 'new-b',
+              'warehouseName': '新仓乙',
+              'canFulfill': true,
+            },
+          ],
+          'lines': [
+            {
+              ...(_detailJson['lines'] as List).single as Map<String, dynamic>,
+              'actualStockPlace': 'OLD-A',
+            },
+          ],
+        }),
+      );
+      expect(unchosen.warehouseId, isNull);
+      expect(
+        unchosen.warehouseName,
+        isNull,
+        reason:
+            'no current choice must not display a former warehouse as actual',
+      );
+      expect(unchosen.stockPlaces, {'line-1': ''});
+      expect(unchosen.validate(), isFalse);
+      unchosen.dispose();
+    },
+  );
+
+  testWidgets(
+    '375px warehouse picker retains a usable long name and disables insufficient source',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(375, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final pending = WarehouseSalesOutboundDetail.fromJson({
+        ..._detailJson,
+        'canSelectWarehouse': true,
+        'warehouseOptions': [
+          {
+            'warehouseId': 'ready',
+            'warehouseName': '生产成品总仓下面的可用发货子仓名称较长',
+            'canFulfill': true,
+            'lines': <Map<String, dynamic>>[],
+          },
+          {
+            'warehouseId': 'short',
+            'warehouseName': '物料不足的子仓',
+            'canFulfill': false,
+            'lines': <Map<String, dynamic>>[],
+          },
+        ],
+      });
+      final draft = WarehouseSalesPickingDraft(pending);
+      addTearDown(draft.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MediaQuery(
+              data: const MediaQueryData(
+                size: Size(375, 844),
+                textScaler: TextScaler.linear(1.3),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: StatefulBuilder(
+                  builder: (context, setState) => WarehouseSalesPickingFields(
+                    draft: draft,
+                    onChanged: () => setState(() {}),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final picker = tester.widget<DropdownButtonFormField<String>>(
+        find.byKey(const ValueKey('sales-picking-warehouse-shipment-1')),
+      );
+      final dropdown = tester.widget<DropdownButton<String>>(
+        find.descendant(
+          of: find.byWidget(picker),
+          matching: find.byType(DropdownButton<String>),
+        ),
+      );
+      expect(
+        dropdown.items!.singleWhere((item) => item.value == 'short').enabled,
+        isFalse,
+      );
+      await tester.tap(find.byType(DropdownButton<String>));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   test('warehouse sales parser and routes stay commercial-free', () {
     expect(summary.allows(WarehouseSalesOutboundAction.startPicking), isTrue);
@@ -93,6 +220,72 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.binding.setSurfaceSize(null);
   });
+
+  testWidgets(
+    'warehouse chooses a real source and confirms actual location before picking',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1800, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final pending = WarehouseSalesOutboundDetail.fromJson({
+        ..._detailJson,
+        'warehouseName': null,
+        'canSelectWarehouse': true,
+        'warehouseOptions': [
+          {
+            'warehouseId': 'leaf-1',
+            'warehouseName': '成品一仓',
+            'canFulfill': true,
+            'lines': [
+              {
+                'shipmentItemId': 'line-1',
+                'availableQty': '10',
+                'requiredQty': '10',
+              },
+            ],
+          },
+          {
+            'warehouseId': 'leaf-2',
+            'warehouseName': '成品二仓',
+            'canFulfill': false,
+            'lines': [
+              {
+                'shipmentItemId': 'line-1',
+                'availableQty': '2',
+                'requiredQty': '10',
+              },
+            ],
+          },
+        ],
+      });
+      final gateway = _SalesGateway(pending.header, pending);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            warehouseSalesOutboundRepositoryProvider.overrideWithValue(gateway),
+          ],
+          child: const MaterialApp(
+            home: WarehouseSalesOutboundDetailPage(id: 'shipment-1'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('实际发货仓库'), findsOneWidget);
+      expect(find.textContaining('本仓可发 10 / 本单需发 10'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const ValueKey('sales-picking-place-line-1')),
+        'B02-08',
+      );
+      await tester.tap(
+        find.byKey(const Key('warehouse-sales-outbound-action-PICKING')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认'));
+      await tester.pumpAndSettle();
+      expect(gateway.selectedWarehouse, 'leaf-1');
+      expect(gateway.selectedPlaces, {'line-1': 'B02-08'});
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 const _detailJson = <String, dynamic>{
@@ -133,6 +326,8 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
 
   final WarehouseSalesOutboundSummary summary;
   final WarehouseSalesOutboundDetail value;
+  String? selectedWarehouse;
+  Map<String, String>? selectedPlaces;
 
   @override
   Future<PagedResult<WarehouseSalesOutboundSummary>> list({
@@ -158,5 +353,17 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
     String id, {
     required String targetStatus,
     String? reason,
-  }) async => value;
+    String? warehouseId,
+    Map<String, String>? stockPlaces,
+  }) async {
+    selectedWarehouse = warehouseId;
+    selectedPlaces = stockPlaces;
+    return WarehouseSalesOutboundDetail.fromJson({
+      ..._detailJson,
+      'warehouseWorkStatus': targetStatus,
+      'allowedWarehouseTargets': <String>[],
+      'warehouseId': warehouseId,
+      'warehouseName': '成品一仓',
+    });
+  }
 }

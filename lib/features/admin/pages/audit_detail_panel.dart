@@ -16,64 +16,15 @@ Future<void> showAuditLogDetailViewer({
     context.push(RoutePath.adminAuditInvestigation(requestId));
   }
 
-  final width = MediaQuery.sizeOf(context).width;
-  if (width < 720) {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (sheetContext) => FractionallySizedBox(
-        heightFactor: 0.92,
-        child: _AuditDetailPanel(
-          loader: () => _loadSharedAuditDetailBundle(ref, entry),
-          onClose: () => Navigator.pop(sheetContext),
-          onLocateRequest: (requestId) =>
-              locateRequest(sheetContext, requestId),
-        ),
-      ),
-    );
-    return;
-  }
-  final panelWidth = (width * 0.56).clamp(640.0, 900.0).toDouble();
-  await showGeneralDialog<void>(
+  await showUtenAdaptivePanel<void>(
     context: context,
-    barrierDismissible: true,
+    drawerWidth: 960,
+    compactHeightFactor: 0.95,
     barrierLabel: '关闭审计详情',
-    barrierColor: Colors.black54,
-    transitionDuration: const Duration(milliseconds: 220),
-    pageBuilder: (dialogContext, _, _) => SafeArea(
-      child: Align(
-        alignment: Alignment.centerRight,
-        child: Material(
-          color: Theme.of(dialogContext).colorScheme.surface,
-          clipBehavior: Clip.antiAlias,
-          shape: RoundedRectangleBorder(
-            borderRadius: const BorderRadius.horizontal(
-              left: Radius.circular(20),
-            ),
-            side: BorderSide(
-              color: Theme.of(dialogContext).colorScheme.outlineVariant,
-            ),
-          ),
-          child: SizedBox(
-            width: panelWidth,
-            height: double.infinity,
-            child: _AuditDetailPanel(
-              loader: () => _loadSharedAuditDetailBundle(ref, entry),
-              onClose: () => Navigator.pop(dialogContext),
-              onLocateRequest: (requestId) =>
-                  locateRequest(dialogContext, requestId),
-            ),
-          ),
-        ),
-      ),
-    ),
-    transitionBuilder: (_, animation, _, child) => SlideTransition(
-      position: Tween<Offset>(
-        begin: const Offset(1, 0),
-        end: Offset.zero,
-      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
-      child: child,
+    builder: (panelContext) => _AuditDetailPanel(
+      loader: () => _loadSharedAuditDetailBundle(ref, entry),
+      onClose: () => Navigator.pop(panelContext),
+      onLocateRequest: (requestId) => locateRequest(panelContext, requestId),
     ),
   );
 }

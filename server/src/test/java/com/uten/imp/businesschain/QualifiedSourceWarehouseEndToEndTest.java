@@ -69,7 +69,7 @@ class QualifiedSourceWarehouseEndToEndTest {
         assertEquals("WAITING",status(c));assertEquals(0,drawCount(c));
         long purchases=db.queryForObject("SELECT count(*) FROM purchase_receipts",Long.class);
         org.springframework.security.core.context.SecurityContextHolder.clearContext();
-        readinessReconciler.runBatch();
+        runReconcilerUntilReady(c);
         assertEquals("READY",status(c));assertEquals(1,drawCount(c));
         qty("10000",db.queryForObject("""
                 SELECT SUM(event.qty) FROM preplan_stock_entitlement_events event
@@ -90,6 +90,7 @@ class QualifiedSourceWarehouseEndToEndTest {
         assertSystemActorGuards(c,world.superAdminUserId());
         fixture.loginAs(world.superAdminUserId());
         UUID draw=db.queryForObject("SELECT document_id FROM production_planning_package_documents WHERE package_id=? AND document_type='DRAW'",UUID.class,c.packageId());
+        fixture.requestWorkshopDraws("reconciled",List.of(draw));
         com.uten.imp.features.stock.dto.StockDocIssueRequest issue=call("drawIssueRequest",draw,
                 "reconciled-draw-"+draw,null,BigDecimal.ZERO);
         stockDocuments.approveAndIssue(draw,issue);
@@ -113,7 +114,7 @@ class QualifiedSourceWarehouseEndToEndTest {
         // that location must not make its existing qualified stock disappear.
         db.update("UPDATE warehouses SET status='禁用' WHERE id=?",actual);
         org.springframework.security.core.context.SecurityContextHolder.clearContext();
-        readinessReconciler.runBatch();
+        runReconcilerUntilReady(c);
         assertEquals("READY",status(c));assertEquals(1,drawCount(c));
         var draw=db.queryForMap("""
                 SELECT document.id,document.warehouse_id FROM production_planning_package_documents link
@@ -123,6 +124,7 @@ class QualifiedSourceWarehouseEndToEndTest {
         assertEquals(actual,draw.get("warehouse_id"));
         qty("10000",db.queryForObject("SELECT SUM(qty-released_qty) FROM stock_reservations WHERE demand_id IN (SELECT id FROM production_material_demands WHERE execution_segment_id=?) AND warehouse_id=? AND NOT is_deleted",BigDecimal.class,c.segment(),actual));
         UUID drawId=(UUID)draw.get("id");fixture.loginAs(world.superAdminUserId());
+        fixture.requestWorkshopDraws("disabled-qualified",List.of(drawId));
         com.uten.imp.features.stock.dto.StockDocIssueRequest issue=call("drawIssueRequest",drawId,
                 "disabled-qualified-issue-"+drawId,null,BigDecimal.ZERO);
         stockDocuments.approveAndIssue(drawId,issue);stockDocuments.approveAndIssue(drawId,issue);
@@ -247,7 +249,9 @@ class QualifiedSourceWarehouseEndToEndTest {
         MakeCase sc=makeCase("qualified-sc-not-final",true);
         call("produceInternal",sc.world(),sc.leafPlanItem(),sc.leafGoods(),"1");
         assertEquals("READY",segmentStatus(sc.childPlan()));
-        for(UUID draw:db.queryForList("SELECT draw_id FROM plan_draw_links WHERE plan_id=? AND NOT is_deleted",UUID.class,sc.childPlan())){
+        var qualifiedScDraws=db.queryForList("SELECT draw_id FROM plan_draw_links WHERE plan_id=? AND NOT is_deleted",UUID.class,sc.childPlan());
+        fixture.requestWorkshopDraws("qualified-sc",qualifiedScDraws);
+        for(UUID draw:qualifiedScDraws){
             com.uten.imp.features.stock.dto.StockDocIssueRequest request=call("drawIssueRequest",draw,
                     "qualified-sc-draw-"+draw,null,BigDecimal.ZERO);
             stockDocuments.approveAndIssue(draw,request);
@@ -367,6 +371,16 @@ class QualifiedSourceWarehouseEndToEndTest {
         UUID id=UUID.randomUUID();db.update("INSERT INTO warehouses(id,code,name,status,is_accountable,is_defective) VALUES(?,?,?,'使用',TRUE,?)",id,"WH-"+id,name,defective);return id;
     }
     private String status(Case c){return db.queryForObject("SELECT status FROM production_execution_segments WHERE id=?",String.class,c.segment());}
+
+    /** runBatch 每轮按段 id 顺序只处理 25 个候选；全量套件的共享库会积压早前用例的
+     *  WAITING 段，单轮轮不到新建段（单跑绿、全量红的根源）。循环到本段就绪，有界。 */
+    private void runReconcilerUntilReady(Case c){
+        for(int round=0;round<400;round++){
+            if("READY".equals(status(c)))return;
+            readinessReconciler.runBatch();
+        }
+        assertEquals("READY",status(c),"自动核对备料未在有限轮次内处理到本段");
+    }
     private MaterialView material(Case c){return analyses.detail(c.analysis()).flatMaterials().stream().filter(row->row.goodsId().equals(c.material())).findFirst().orElseThrow();}
     private int drawCount(Case c){return db.queryForObject("SELECT count(DISTINCT doc.id) FROM production_planning_package_documents link JOIN stock_documents doc ON doc.id=link.document_id WHERE link.execution_segment_id=? AND link.document_type='DRAW' AND NOT doc.is_deleted",Integer.class,c.segment());}
     private static FullChainEndToEndTest.World withWarehouse(FullChainEndToEndTest.World w,UUID warehouse){

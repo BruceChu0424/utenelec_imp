@@ -434,9 +434,7 @@ public class ProductionSubcontractSupplyTransitionService
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void onSubcontractReceiptApproved(UUID receiptId) {
-        UUID warehouseId = receiptWarehouse(receiptId);
-        readiness.onSubcontractReceiptApproved(
-                receiptId, warehouseId);
+        advanceInspectionStockInState(receiptId);
         materialAnalysisWakeup.afterSubcontractReceiptApproved(receiptId);
     }
 
@@ -458,7 +456,7 @@ public class ProductionSubcontractSupplyTransitionService
     /** Called once per new receipt batch before the command-wide analysis refresh. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void advanceInspectionStockInState(UUID receiptId) {
-        readiness.onSubcontractReceiptApproved(receiptId, receiptWarehouse(receiptId));
+        for(UUID warehouse:receiptWarehouses(receiptId))readiness.onSubcontractReceiptApproved(receiptId,warehouse);
     }
 
     @Override
@@ -526,10 +524,10 @@ public class ProductionSubcontractSupplyTransitionService
                 .toList());
     }
 
-    private UUID receiptWarehouse(UUID receiptId) {
-        List<UUID> warehouses = NativeQueryResults.typedRows(
+    private List<UUID> receiptWarehouses(UUID receiptId) {
+        List<UUID> receipts = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
-                                SELECT warehouse_id
+                                SELECT id
                                 FROM subcontract_receipts
                                 WHERE id = :receiptId
                                   AND is_deleted = FALSE
@@ -538,12 +536,13 @@ public class ProductionSubcontractSupplyTransitionService
                                 """)
                         .setParameter("receiptId", receiptId),
                 UUID.class);
-        if (warehouses.isEmpty()
-                || warehouses.getFirst() == null) {
+        if (receipts.isEmpty()) {
             throw conflict(
-                    "委外回厂单缺少目标仓库，不能转为生产备料");
+                    "委外回厂单未生效，不能转为生产备料");
         }
-        return warehouses.getFirst();
+        return NativeQueryResults.typedRows(em.createNativeQuery(
+                "SELECT warehouse_id FROM fn_procurement_receipt_stock_warehouses('SUBCONTRACT',:id) ORDER BY warehouse_id",UUID.class)
+                .setParameter("id",receiptId),UUID.class);
     }
 
     private static BigDecimal decimal(Object value) {

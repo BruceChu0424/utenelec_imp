@@ -36,6 +36,10 @@ public class SalesShipment extends SoftDeletableEntity {
     public static final String WORK_CANCELLED = "CANCELLED";
     public static final String WORK_REVERSED = "REVERSED";
 
+    @Column(name="batch_request_key") private String batchRequestKey;
+    @Column(name="batch_request_hash") private String batchRequestHash;
+    @Column(name="batch_position") private Integer batchPosition;
+
     @Column(name = "legacy_id", unique = true)
     private Integer legacyId;
 
@@ -73,6 +77,9 @@ public class SalesShipment extends SoftDeletableEntity {
 
     @Column(name = "warehouse_id")
     private UUID warehouseId;
+
+    @Column(name = "warehouse_chosen_at_pick", nullable = false)
+    private boolean warehouseChosenAtPick;
 
     @Column(name = "currency_id")
     private UUID currencyId;

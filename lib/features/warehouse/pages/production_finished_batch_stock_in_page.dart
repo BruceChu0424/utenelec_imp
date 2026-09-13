@@ -11,11 +11,11 @@ import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -23,6 +23,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_finished_inbound_task.dart';
 import '../repositories/production_finished_inbound_task_repository.dart';
@@ -70,6 +71,10 @@ class _ProductionFinishedBatchStockInPageState
 
   Future<void> _submit() async {
     if (_saving || _selectedDocumentIds.isEmpty) return;
+    if (!ref.read(currentPermissionsProvider).contains(Perm.stockDocApprove)) {
+      context.appWarning('当前账号没有仓库入库确认权限');
+      return;
+    }
     final ids = _selectedDocumentIds.toList()..sort();
     // 2026-09-12：原一整段连排确认文案改「短要点」，高度与宽度由 UtenDialog
     // 统一兜（限宽 460 / 限高 60% 屏高 / 超出自滚）。
@@ -143,25 +148,36 @@ class _ProductionFinishedBatchStockInPageState
           ),
         ),
         body: SafeArea(
-          child: AbsorbPointer(
-            absorbing: _saving,
-            child: UtenContentContainer.wide(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: rows.isEmpty
-                        ? const UtenEmpty(
-                            icon: Icons.inventory_rounded,
-                            message: '所选任务状态已变化',
-                            description: '请返回任务中心刷新后重新选择。',
-                          )
-                        : _buildTable(rows),
+          child: Stack(
+            children: [
+              AbsorbPointer(
+                absorbing: _saving,
+                child: UtenContentContainer.wide(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: rows.isEmpty
+                            ? const UtenEmpty(
+                                icon: Icons.inventory_rounded,
+                                message: '所选任务状态已变化',
+                                description: '请返回任务中心刷新后重新选择。',
+                              )
+                            : _buildTable(rows),
+                      ),
+                    ],
                   ),
-                  _buildBottomBar(theme, rows.length),
-                ],
+                ),
               ),
-            ),
+              // 2026-09-12 用户口径：批量全量点收提交期间屏幕中间加载动画。
+              if (_saving)
+                const Positioned.fill(
+                  child: UtenBusyOverlay(
+                    title: '正在批量全量点收',
+                    description: '同一事务写入库存、生产入库完成量和审计链。',
+                  ),
+                ),
+            ],
           ),
         ),
       ),
@@ -191,7 +207,13 @@ class _ProductionFinishedBatchStockInPageState
               nullCounts: const {},
               filters: const {},
               onFilterChanged: (_, _) {},
-              selectable: !_saving,
+              selectable: true,
+              batchActionsBuilder:
+                  ref
+                      .watch(currentPermissionsProvider)
+                      .contains(Perm.stockDocApprove)
+                  ? (_, _) => _batchActions()
+                  : null,
               idOf: (task) => task.documentId,
               selectedIds: _selectedDocumentIds,
               onSelectedIdsChanged: (next) => setState(() {
@@ -201,6 +223,7 @@ class _ProductionFinishedBatchStockInPageState
               }),
               emptyMessage: '没有可点收任务',
               showFullscreenToggle: false,
+              bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
             ),
           ),
         ],
@@ -208,67 +231,23 @@ class _ProductionFinishedBatchStockInPageState
     );
   }
 
-  /// 吸底操作栏（对齐品质批量审批页）：已选计数胶囊 + 说明 + 确认批量入库。
-  /// 窄屏竖排（横排会在 375px 溢出），大屏同款横排。
-  Widget _buildBottomBar(ThemeData theme, int totalCount) {
+  /// 表格统一管理唯一一组右下浮动「已选」与批量提交，不重复渲染顶部计数。
+  List<Widget> _batchActions() {
     final count = _selectedDocumentIds.length;
-    final confirm = UtenButton(
-      key: const Key('production-finished-batch-confirm'),
-      type: UtenButtonType.danger,
-      size: UtenButtonSize.large,
-      icon: Icons.inventory_rounded,
-      isLoading: _saving,
-      onPressed: _saving || count == 0 ? null : _submit,
-      onDisabledTap: count == 0 ? () => context.appWarning('请先勾选待点收任务') : null,
-      child: Text('确认批量入库($count)'),
-    );
-    final summary = Row(
-      children: [
-        UtenSelectionSummaryPill(
-          key: const Key('production-finished-batch-selected-count'),
-          count: count,
-          onClear: count == 0 || _saving
-              ? null
-              : () => setState(() => _selectedDocumentIds.clear()),
-        ),
-        const SizedBox(width: UtenSpacing.s12),
-        Expanded(
-          child: Text(
-            '共 $totalCount 张待点收 · 全量接收写入库存与生产入库完成量',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      ],
-    );
-    return UtenBottomActionBar(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth < 560) {
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                summary,
-                const SizedBox(height: UtenSpacing.s8),
-                Align(alignment: Alignment.centerRight, child: confirm),
-              ],
-            );
-          }
-          return Row(
-            children: [
-              Expanded(child: summary),
-              const SizedBox(width: UtenSpacing.s12),
-              confirm,
-            ],
-          );
-        },
+    return [
+      UtenButton(
+        key: const Key('production-finished-batch-confirm'),
+        type: UtenButtonType.danger,
+        size: UtenButtonSize.large,
+        icon: Icons.inventory_rounded,
+        isLoading: _saving,
+        onPressed: _saving || count == 0 ? null : _submit,
+        onDisabledTap: count == 0
+            ? () => context.appWarning('请先勾选待点收任务')
+            : null,
+        child: Text('确认批量入库($count)'),
       ),
-    );
+    ];
   }
 
   List<MasterColumnDef<ProductionFinishedInboundTask>> get _columns => [

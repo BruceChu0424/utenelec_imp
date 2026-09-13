@@ -75,15 +75,25 @@ public class SubcontractLossValueService implements SubcontractMaterialValuePort
 
     public void registerOutput(UUID receiptItem,MovementValue output,PoolKey physicalPool,EventContext event){
         UUID order=db.queryForObject("SELECT order_item_id FROM subcontract_receipt_items WHERE id=:id",Map.of("id",receiptItem),UUID.class);
-        var source=order(order);PoolKey product=pool(source);support.ensureActive(product,event);
+        if(order==null)throw conflict("委外损耗成本必须关联原订货明细");
+        var source=order(order);
+        if(physicalPool==null||physicalPool.warehouseId()==null
+                ||!Objects.equals(source.get("goods_id"),physicalPool.goodsId())
+                ||!Objects.equals(source.get("color_id"),physicalPool.colorId()))
+            throw conflict("委外产出成本必须关联该订货目标件的真实入库仓库");
+        PoolKey product=registeredProduct(order);
+        if(product==null)product=physicalPool;
+        support.ensureActive(product,event);
         costs.registerScope(new Scope(order,ScopeKind.SUBCONTRACT_ORDER_NORMAL_LOSS,product));
-        // The order pool anchors the cost scope; each receipt output keeps its actual stock-in warehouse.
+        // The first physical output anchors this order's immutable cost scope; later outputs keep their own warehouse.
         costs.registerOutput(order,physicalPool,new Output(output.valueNodeId(),output.movementId()));
         refresh(order,event.sourceEventId(),event.actorUserId());
     }
 
     public void refresh(UUID order,UUID event,UUID actor){
-        var source=order(order);PoolKey product=pool(source);
+        var source=order(order);PoolKey product=registeredProduct(order);
+        // Loss facts already retain their exact COST_WIP inputs. The first physical output will collect them.
+        if(product==null)return;
         var inputs=db.queryForList("""
                 SELECT event.result_node_id,item.id,p.goods_id,p.color_id FROM subcontract_waste_items item
                 JOIN subcontract_material_issue_items issue ON issue.id=item.material_issue_item_id
@@ -117,7 +127,19 @@ public class SubcontractLossValueService implements SubcontractMaterialValuePort
                 (BigDecimal)row.get("normal_value_local"),(BigDecimal)row.get("excess_value_local"),Boolean.TRUE.equals(row.get("complete"))?State.FINAL:State.PENDING);
     }
 
-    private Map<String,Object> order(UUID id){return db.queryForMap("SELECT item.id,item.goods_id,item.color_id,header.warehouse_id,md5(to_jsonb(item)::text) basis_hash FROM subcontract_order_items item JOIN subcontract_orders header ON header.id=item.order_id WHERE item.id=:id",Map.of("id",id));}
+    private PoolKey registeredProduct(UUID order){
+        var scopes=db.queryForList("""
+                SELECT object.source_kind,pool.warehouse_id,pool.goods_id,pool.color_id
+                FROM stock_value_production_cost_objects object
+                JOIN stock_value_pools pool ON pool.id=object.product_pool_id
+                WHERE object.execution_segment_id=:id
+                """,Map.of("id",order));
+        if(scopes.isEmpty())return null;
+        if(scopes.size()!=1||!ScopeKind.SUBCONTRACT_ORDER_NORMAL_LOSS.name().equals(scopes.getFirst().get("source_kind")))
+            throw conflict("委外订货正常损耗成本来源类型已变化，请核对原成本对象");
+        return pool(scopes.getFirst());
+    }
+    private Map<String,Object> order(UUID id){return db.queryForMap("SELECT item.id,item.goods_id,item.color_id,md5(to_jsonb(item)::text) basis_hash FROM subcontract_order_items item WHERE item.id=:id",Map.of("id",id));}
     private List<Map<String,Object>> lines(UUID waste){return db.queryForList("""
             SELECT item.*,item.qty*COALESCE(item.unit_rate,1) qty_base,
                 LEAST(item.qty,COALESCE(item.standard_qty,0))*COALESCE(item.unit_rate,1) normal_base,issue.order_item_id,

@@ -15,6 +15,9 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
     // Applied inside every list/count query, before pagination. Old broadcast or
     // unanchored workshop messages cannot inherit newly widened department access.
     String WORKSHOP_VISIBILITY = """
+              AND (n.sourceEvent IS NULL OR n.sourceEvent <> 'PRODUCTION_DRAW_PENDING'
+                OR (n.aggregateKind = 'STOCK_DOCUMENT'
+                  AND cast(function('fn_production_draw_requested', n.aggregateId) as Boolean) = true))
               AND (n.sourceEvent IS NULL OR n.sourceEvent <> 'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED'
                 OR (:#{#workshopScope.allowed} = true
                   AND n.audienceUserId = :userId

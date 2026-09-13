@@ -8,6 +8,7 @@
 // 商业字段下移明细行后，单头不再录商业条款；保存时逐行提交，
 // 后端 createBatch 按「供应商+商业条款」组合拆单归集到各张单的头字段。
 import 'package:flutter/material.dart';
+import '../../components/inputs/uten_dropdown_field.dart';
 import '../../components/inputs/uten_input_decoration.dart';
 import '../presentation/workflow_field_guidance.dart';
 
@@ -169,61 +170,23 @@ class ProcurementTermDropdownCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final hasValue = value != null && value!.isNotEmpty;
-    final label = hasValue ? (entries[value] ?? value!) : hint;
-    return PopupMenuButton<String>(
-      initialValue: hasValue ? value : null,
-      enabled: onChanged != null,
-      onSelected: onChanged,
-      constraints: const BoxConstraints(minWidth: 160),
-      position: PopupMenuPosition.under,
-      itemBuilder: (context) => [
+    // 2026-09-12 用户口径「用我们自己写的统一 UI」：原生 PopupMenu 换
+    // UtenDropdownField 的统一弹层（圆角面板/选中勾/可选搜索）。dense 形态
+    // 与数量/单价等文本格等高；必填空红框与学习预填黄框口径不变
+    //（required 只在未选时描红，避免有值后仍常红）。
+    return UtenDropdownField(
+      dense: true,
+      value: hasValue ? value : null,
+      items: [
         for (final entry in entries.entries)
-          PopupMenuItem<String>(
-            value: entry.key,
-            height: 42,
-            child: Text(
-              entry.value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium,
-            ),
-          ),
+          UtenDropdownItem(value: entry.key, label: entry.value),
       ],
-      child: InputDecorator(
-        decoration: applyAutofillHint(
-          applyRequiredEmpty(
-            UtenInputDecoration(
-              InputDecoration(
-                isDense: true,
-                suffixIcon: Icon(
-                  hasValue ? Icons.unfold_more_rounded : Icons.search_rounded,
-                  size: 16,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                suffixIconConstraints: const BoxConstraints(minWidth: 20),
-              ),
-            ),
-            theme,
-            requiredEmpty: requiredEmpty,
-          ),
-          theme,
-          autofilled: autofilled && hasValue,
-        ),
-        child: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: hasValue
-                ? theme.colorScheme.onSurface
-                : (requiredEmpty
-                      ? theme.colorScheme.error
-                      : theme.colorScheme.onSurfaceVariant),
-          ),
-        ),
-      ),
+      onChanged: onChanged ?? (value) {},
+      enabled: onChanged != null,
+      hintText: hint,
+      required: requiredEmpty && !hasValue,
+      autofilled: autofilled && hasValue,
     );
   }
 }

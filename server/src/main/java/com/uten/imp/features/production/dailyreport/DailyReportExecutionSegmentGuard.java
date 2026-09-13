@@ -55,7 +55,7 @@ public class DailyReportExecutionSegmentGuard {
                         line.getColorId(),
                         line.getUnitId(),
                         line.getUnitRate(),
-                        line.getQty()))
+                        line.getQty(),Boolean.TRUE.equals(line.getIsFinal())))
                 .toList();
         validateAndLock(
                 reportId, reportDepartmentId, normalized, "DRAFT", true);
@@ -76,7 +76,7 @@ public class DailyReportExecutionSegmentGuard {
                         item.getColorId(),
                         item.getUnitId(),
                         item.getUnitRate(),
-                        item.getQty()))
+                        item.getQty(),item.isFinal()))
                 .toList();
         validateAndLock(reportId, null, lines, "APPROVED", false);
     }
@@ -95,7 +95,7 @@ public class DailyReportExecutionSegmentGuard {
                         item.getColorId(),
                         item.getUnitId(),
                         item.getUnitRate(),
-                        item.getQty()))
+                        item.getQty(),item.isFinal()))
                 .toList();
         lockAndValidateIdentity(null, lines, true);
         for (ReportLine line : lines) {
@@ -129,6 +129,11 @@ public class DailyReportExecutionSegmentGuard {
         Map<UUID, SegmentSnapshot> segments =
                 lockAndValidateIdentity(
                         reportId, lines, false);
+        for(ReportLine line:lines) {
+            SegmentSnapshot segment=segments.get(line.executionSegmentId());
+            if(line.finalReport()&&segment!=null&&segment.sourceSegmentId()!=null)
+                throw validation("分批报工不调整原批准总量，请按本批实际数量正常报工；剩余数量继续报工，不使用提前完结或自动补产");
+        }
         if (requireDraftWorkshop) {
             requireOneWorkshop(reportDepartmentId, segments.values());
         }
@@ -201,7 +206,7 @@ public class DailyReportExecutionSegmentGuard {
                                            s.workshop_department_id,
                                            s.responsible_employee_id,
                                            s.material_requirement_mode,
-                                           s.lock_version
+                                           s.lock_version, s.source_segment_id
                                     FROM production_execution_segments s
                                     JOIN production_planning_packages package
                                       ON package.id = s.package_id
@@ -233,7 +238,7 @@ public class DailyReportExecutionSegmentGuard {
                     (UUID) row[11],
                     (UUID) row[12],
                     (String) row[13],
-                    ((Number) row[14]).longValue());
+                    ((Number) row[14]).longValue(),(UUID)row[15]);
             // Exact workshop assignment is the write-side object scope for an
             // execution task. Reusing the plan maker scope here would make a
             // workshop employee see the task but receive 404 when reporting a
@@ -307,6 +312,9 @@ public class DailyReportExecutionSegmentGuard {
 
     private void requireMaterialsIssued(SegmentSnapshot segment) {
         if ("ZERO_MATERIAL".equals(segment.materialRequirementMode())) return;
+        if (segment.sourceSegmentId()!=null && !Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_split_batch_prerequisites_issued(:id)")
+                .setParameter("id",segment.id()).getSingleResult()))
+            throw conflict("前批共享物料已退回或处于待退状态，请先核对后续批次用料");
         List<Object[]> demands = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT id, status
@@ -319,6 +327,8 @@ public class DailyReportExecutionSegmentGuard {
                                 """)
                         .setParameter("segmentId", segment.id()));
         if (demands.isEmpty()) {
+            if (segment.sourceSegmentId()!=null && Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_split_batch_empty_issued(:id)")
+                    .setParameter("id",segment.id()).getSingleResult())) return;
             throw conflict("执行工单缺少正式物料需求，不能按零物料任务报工");
         }
         long pending = demands.stream()
@@ -544,7 +554,8 @@ public class DailyReportExecutionSegmentGuard {
             UUID colorId,
             UUID unitId,
             BigDecimal unitRate,
-            BigDecimal qty) {
+            BigDecimal qty,
+            boolean finalReport) {
     }
 
     private record SegmentSnapshot(
@@ -562,6 +573,7 @@ public class DailyReportExecutionSegmentGuard {
             UUID workshopDepartmentId,
             UUID responsibleEmployeeId,
             String materialRequirementMode,
-            long lockVersion) {
+            long lockVersion,
+            UUID sourceSegmentId) {
     }
 }

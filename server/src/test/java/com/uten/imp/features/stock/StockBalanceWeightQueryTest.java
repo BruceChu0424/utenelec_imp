@@ -2,6 +2,7 @@ package com.uten.imp.features.stock;
 
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -25,7 +26,7 @@ class StockBalanceWeightQueryTest {
         balance.setQty(new BigDecimal("12.5000"));
         balance.setWeight(new BigDecimal("7.2500"));
         when(balances.findAll(
-                any(Specification.class),
+                Mockito.<Specification<StockBalance>>notNull(),
                 any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(balance)));
         StockCostMasker costMasker = mock(StockCostMasker.class);
@@ -45,7 +46,7 @@ class StockBalanceWeightQueryTest {
 
         var pageable = org.mockito.ArgumentCaptor.forClass(Pageable.class);
         verify(balances).findAll(
-                any(Specification.class),
+                Mockito.<Specification<StockBalance>>notNull(),
                 pageable.capture());
         var weightOrder = pageable.getValue().getSort().getOrderFor("weight");
         assertThat(weightOrder).isNotNull();

@@ -139,8 +139,49 @@ class GoodsDiscountVisibilityTest {
 
         assertNull(d.getDiscount());
         assertTrue(d.isDiscountMasked());
-        // 价格不受折扣可见性影响，仍可见。
+        // V570（goods:price:view）：无售价查看权者价格一并脱敏。
+        assertNull(d.getPrice());
+        assertTrue(d.isPriceMasked());
+    }
+
+    @Test
+    void detailMasksPriceWhenViewerLacksPriceView() {
+        GoodsService service = serviceWith(Set.of("goods:view", "goods:discount:view"));
+        Goods g = goodsWithDiscount();
+        when(goodsRepo.findById(g.getId())).thenReturn(Optional.of(g));
+
+        GoodsDetail d = service.detail(g.getId());
+
+        assertNull(d.getPrice());
+        assertTrue(d.isPriceMasked());
+        // 折扣可见性独立：有 goods:discount:view 仍可见。
+        assertEquals(DISCOUNT, d.getDiscount());
+        assertFalse(d.isDiscountMasked());
+    }
+
+    @Test
+    void detailShowsPriceWhenViewerHasPriceView() {
+        GoodsService service = serviceWith(Set.of("goods:view", "goods:price:view"));
+        Goods g = goodsWithDiscount();
+        when(goodsRepo.findById(g.getId())).thenReturn(Optional.of(g));
+
+        GoodsDetail d = service.detail(g.getId());
+
         assertEquals(PRICE, d.getPrice());
+        assertFalse(d.isPriceMasked());
+    }
+
+    @Test
+    void priceEditImpliesPriceView() {
+        // 持有 goods:price:edit 视为可查看价（编辑者必须能看到在改的价）。
+        GoodsService service = serviceWith(Set.of("goods:view", "goods:price:edit"));
+        Goods g = goodsWithDiscount();
+        when(goodsRepo.findById(g.getId())).thenReturn(Optional.of(g));
+
+        GoodsDetail d = service.detail(g.getId());
+
+        assertEquals(PRICE, d.getPrice());
+        assertFalse(d.isPriceMasked());
     }
 
     @Test
@@ -166,7 +207,8 @@ class GoodsDiscountVisibilityTest {
         var item = service.list(emptyFilter(), 1, 20, null, null).getItems().getFirst();
 
         assertNull(item.getDiscount());
-        assertEquals(PRICE, item.getPrice());
+        // V570：无 goods:price:view 者列表价格列同样置空。
+        assertNull(item.getPrice());
     }
 
     // ---- 写侧守卫 ----
@@ -232,6 +274,48 @@ class GoodsDiscountVisibilityTest {
         GoodsSaveRequest req = saveRequest();
         req.setPrice(PRICE);
         req.setDiscount(new BigDecimal("0.80")); // 试图改折扣
+
+        assertThrows(com.uten.imp.common.web.ApiException.class,
+                () -> service.update(g.getId(), req));
+    }
+
+    // ---- 售价可见性写侧（goods:price:view，V570） ----
+
+    @Test
+    void editorWithoutPriceViewPreservesPriceWhenUpdatingOtherFields() {
+        // 无售价查看权：前端隐藏价格字段不提交（null=脱敏产物）——改品名不得被
+        // 价格触碰判定 403，且底层价格保留原值不被清空。
+        GoodsService service = serviceWith(Set.of("goods:view", "goods:edit"));
+        Goods g = goodsWithDiscount();
+        when(goodsRepo.findById(g.getId())).thenReturn(Optional.of(g));
+        when(goodsRepo.save(any(Goods.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        GoodsSaveRequest req = saveRequest();
+        req.setName("新品名");
+        req.setPrice(null);   // 价格隐藏不提交
+        req.setDiscount(null);
+
+        GoodsDetail d = assertDoesNotThrow(() -> service.update(g.getId(), req));
+
+        assertEquals("新品名", d.getName());
+        assertNull(d.getPrice());
+        assertTrue(d.isPriceMasked());
+        ArgumentCaptor<Goods> captor = ArgumentCaptor.forClass(Goods.class);
+        verify(goodsRepo).save(captor.capture());
+        assertEquals(PRICE, captor.getValue().getPrice(), "不可查看者保存须保留原价，不得被清空");
+    }
+
+    @Test
+    void viewerWithPriceViewButNoEditCannotChangePrice() {
+        // 可看价格（goods:price:view）但无 goods:price:edit：改价 → 403（触碰判定对可查看者生效）。
+        GoodsService service = serviceWith(
+                Set.of("goods:view", "goods:edit", "goods:price:view", "goods:discount:view"));
+        Goods g = goodsWithDiscount();
+        when(goodsRepo.findById(g.getId())).thenReturn(Optional.of(g));
+
+        GoodsSaveRequest req = saveRequest();
+        req.setPrice(new BigDecimal("999.0000")); // 试图改价
+        req.setDiscount(DISCOUNT);
 
         assertThrows(com.uten.imp.common.web.ApiException.class,
                 () -> service.update(g.getId(), req));

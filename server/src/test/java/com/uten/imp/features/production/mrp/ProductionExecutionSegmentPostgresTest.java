@@ -946,6 +946,9 @@ class ProductionExecutionSegmentPostgresTest {
                         "production_subcontract_receipt_reversal_guard",
                         receiptReverse.getServerErrorMessage().getConstraint());
 
+                // V564：实物领料数量不得超过车间申请量；夹具先以全量 DRAW_REQUEST 事件开闸。
+                com.uten.imp.support.WorkshopDrawRequestFixture.openFullRequest(connection, fixture.packageId());
+
                 execute(
                         connection,
                         """

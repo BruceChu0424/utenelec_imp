@@ -26,10 +26,18 @@ class WarehouseQualityMergedRow extends EditableGridRow {
     this.draft,
     this.sliceOrdinal = 0,
     this.sliceTotal = 0,
+    this.receiptNo,
+    this.receiptTypeLabel,
+    this.supplierId,
+    this.supplierName,
   });
 
   final WarehouseQualityInspectionLine line;
   final WarehouseQualitySliceDraft? draft;
+  final String? receiptNo;
+  final String? receiptTypeLabel;
+  final String? supplierId;
+  final String? supplierName;
 
   /// 该明细行的第几个放行切片（1 起；无切片 = 0）。切片总数 [sliceTotal] > 1 时
   /// 货品列显示「切片 i/n」，避免同货品多行被误读为重复数据。
@@ -40,12 +48,59 @@ class WarehouseQualityMergedRow extends EditableGridRow {
       draft?.slice.passEventId ?? 'line-${line.inspectionItemId}';
 
   String? get unitName => draft?.slice.unitName ?? line.unitName;
+  String? get warehouseName => draft != null
+      ? draft!.warehouseName ?? draft!.warehouseId
+      : line.warehouseName ?? line.warehouseId;
 }
 
-/// 品质检查结果详情的合并明细表（原「检查结果明细」+「品质放行待入库明细」两表合一）。
+/// 两种办理入口共用同一个按检查行和放行 UUID 关联的行集。
+List<WarehouseQualityMergedRow> warehouseQualityRowsForDetail(
+  WarehouseQualityResultDetail detail,
+  List<WarehouseQualitySliceDraft> drafts,
+) {
+  final byLine = <String, List<WarehouseQualitySliceDraft>>{};
+  for (final draft in drafts) {
+    byLine.putIfAbsent(draft.slice.inspectionItemId, () => []).add(draft);
+  }
+  final rows = <WarehouseQualityMergedRow>[];
+  WarehouseQualityMergedRow row(
+    WarehouseQualityInspectionLine line,
+    WarehouseQualitySliceDraft? draft,
+    int ordinal,
+    int count,
+  ) => WarehouseQualityMergedRow(
+    line: line,
+    draft: draft,
+    sliceOrdinal: ordinal,
+    sliceTotal: count,
+    receiptNo: detail.billNo ?? detail.receiptId,
+    receiptTypeLabel: detail.receiptType.label,
+    supplierId: detail.supplierId,
+    supplierName: detail.supplierName,
+  );
+  for (final line in detail.lines) {
+    final slices = byLine.remove(line.inspectionItemId) ?? const [];
+    if (slices.isEmpty) {
+      rows.add(row(line, null, 0, 0));
+    } else {
+      for (var i = 0; i < slices.length; i++) {
+        if (slices[i].slice.goodsId != line.goodsId) {
+          throw const FormatException('放行记录与检查明细货品不一致，请重新加载');
+        }
+        rows.add(row(line, slices[i], i + 1, slices.length));
+      }
+    }
+  }
+  if (byLine.isNotEmpty) {
+    throw const FormatException('放行记录缺少对应检查明细，请重新加载');
+  }
+  return rows;
+}
+
+/// 单张详情与批量入库共用的检查结果、来源和实际点收表。
 ///
-/// 列序：勾选 | 判定结果 | 货品名称 | 货品库位 | 收货总量 | 合格总量 | 不合格总量 |
-/// 待入库余量（可办理行内嵌本次实收输入）| 放行信息。
+/// 来源商、目标叶仓、实际库位、单位和合格待入量均逐行保留，本次实收单独输入。
+/// 批量入口加来源收货单列；相同货品的不同放行切片始终是不同来源行。
 /// 三个总量列是明细行级口径（多放行切片行各自重复展示同一行总量，切片 i/n 已标注）；
 /// 判定结果已覆盖原「检验状态」列的待检/部分/结案语义（红冲行显示已撤销），2026-09-03
 /// 表头清理后不再单列。行底色随判定：合格绿 / 部分合格黄 / 不合格红 / 待检蓝 /
@@ -58,12 +113,16 @@ class WarehouseQualityMergedTable extends StatelessWidget {
     required this.editable,
     required this.saving,
     required this.onChanged,
+    this.onPickWarehouse,
+    this.showReceipt = false,
   });
 
   final UtenEditableGridController<WarehouseQualityMergedRow> controller;
   final bool editable;
   final bool saving;
   final VoidCallback onChanged;
+  final void Function(WarehouseQualitySliceDraft draft)? onPickWarehouse;
+  final bool showReceipt;
 
   @override
   Widget build(BuildContext context) {
@@ -74,11 +133,11 @@ class WarehouseQualityMergedTable extends StatelessWidget {
       showAddRow: false,
       showRowDelete: false,
       selectable: editable,
-      canSelectRow: (row) => row.draft != null && !saving,
+      canSelectRow: (row) => row.draft?.canConfirm == true && !saving,
       selectedOf: (row) => row.draft?.selected ?? false,
       onRowSelect: (row, next) {
         final draft = row.draft;
-        if (draft == null || saving) return;
+        if (draft == null || !draft.canConfirm || saving) return;
         draft.selected = next;
         onChanged();
       },
@@ -91,6 +150,27 @@ class WarehouseQualityMergedTable extends StatelessWidget {
     BuildContext context,
   ) {
     return [
+      if (showReceipt)
+        EditableGridColumn(
+          key: 'receipt',
+          label: '来源收货单',
+          width: 150,
+          filterValueOf: (row) => row.receiptNo,
+          textOf: (row) => row.receiptNo ?? '—',
+          cellBuilder: (context, row) => Text(
+            '${row.receiptNo ?? '—'}\n${row.receiptTypeLabel ?? ''}',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      EditableGridColumn(
+        key: 'supplier',
+        label: '供应商 / 委外商',
+        width: 140,
+        filterValueOf: (row) => row.supplierName,
+        textOf: (row) => row.supplierName ?? '—',
+        cellBuilder: (context, row) => Text(row.supplierName ?? '—'),
+      ),
       EditableGridColumn(
         key: 'verdict',
         label: '判定结果',
@@ -123,18 +203,20 @@ class WarehouseQualityMergedTable extends StatelessWidget {
       EditableGridColumn(
         key: 'goods',
         label: '货品名称',
-        width: 250,
-        textOf: (row) => row.line.goodsLabel,
+        width: 220,
         filterValueOf: (row) =>
             row.line.goodsLabel.trim().isEmpty ? null : row.line.goodsLabel,
         cellBuilder: (context, row) {
           final label = row.line.goodsLabel;
           final chip = row.sliceTotal > 1;
           if (!chip) {
-            return Text(
-              label.isEmpty ? '未命名货品' : label,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+            return Tooltip(
+              message: label,
+              child: Text(
+                label.isEmpty ? '未命名货品' : label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             );
           }
           // 同一明细行拆成多个放行切片时标注序号，避免误读为重复货品。
@@ -172,9 +254,46 @@ class WarehouseQualityMergedTable extends StatelessWidget {
         },
       ),
       EditableGridColumn(
+        key: 'unit',
+        label: '单位',
+        width: 64,
+        filterValueOf: (row) => row.unitName,
+        cellBuilder: (context, row) => Text(row.unitName ?? '—'),
+      ),
+      EditableGridColumn(
+        key: 'remaining',
+        label: '合格待入量',
+        width: 110,
+        numeric: true,
+        cellBuilder: (context, row) => Text(
+          warehouseQualityQuantity(
+            row.draft?.slice.remainingBaseQty ?? row.line.pendingStockBaseQty,
+          ),
+        ),
+      ),
+      if (editable)
+        EditableGridColumn(
+          key: 'quantity',
+          label: '本次实收',
+          width: 140,
+          numeric: true,
+          required: true,
+          cellBuilder: (context, row) => _remainingCell(context, row),
+        ),
+      EditableGridColumn(
+        key: 'warehouse',
+        label: '目标叶仓',
+        width: 160,
+        required: editable,
+        headerInfo: '本次实际入库仓库。来源建议仓可调整；每条放行明细独立保留所选叶仓。',
+        filterValueOf: (row) => row.warehouseName,
+        textOf: (row) => row.warehouseName ?? '未选择',
+        cellBuilder: _warehouseCell,
+      ),
+      EditableGridColumn(
         key: 'place',
-        label: '货品库位',
-        width: editable ? 170 : 140,
+        label: '实际库位',
+        width: 112,
         required: editable,
         cellBuilder: (context, row) => _placeCell(context, row),
       ),
@@ -213,14 +332,6 @@ class WarehouseQualityMergedTable extends StatelessWidget {
         },
       ),
       EditableGridColumn(
-        key: 'remaining',
-        label: editable ? '待入库余量 / 本次实收' : '待入库余量',
-        width: editable ? 208 : 130,
-        numeric: true,
-        required: editable,
-        cellBuilder: (context, row) => _remainingCell(context, row),
-      ),
-      EditableGridColumn(
         key: 'expectedAllocation',
         label: '预计去向',
         width: 220,
@@ -251,15 +362,65 @@ class WarehouseQualityMergedTable extends StatelessWidget {
     ];
   }
 
+  Widget _warehouseCell(BuildContext context, WarehouseQualityMergedRow row) {
+    final draft = row.draft;
+    if (!editable || draft == null || !draft.canConfirm) {
+      return Text(row.warehouseName ?? '未登记');
+    }
+    final enabled = draft.selected && !saving && onPickWarehouse != null;
+    final theme = Theme.of(context);
+    return Semantics(
+      button: true,
+      label: '${draft.goodsLabel} 目标叶仓：${row.warehouseName ?? '未选择'}',
+      child: InkWell(
+        key: ValueKey('quality-slice-warehouse-${draft.slice.passEventId}'),
+        onTap: enabled ? () => onPickWarehouse!(draft) : null,
+        borderRadius: UtenRadius.controlAll,
+        child: InputDecorator(
+          decoration: UtenInputDecoration(
+            InputDecoration(
+              isDense: true,
+              enabled: enabled,
+              error: utenFieldError(
+                draft.selected ? draft.warehouseError : null,
+              ),
+            ),
+            info:
+                !draft.usesSuggestedWarehouse &&
+                    draft.slice.warehouseName != null
+                ? '来源建议仓：${draft.slice.warehouseName}。以本行选择的实际仓入库。'
+                : null,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  row.warehouseName ?? '请选择',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 16,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   /// 货品库位：可办理行 = 实际库位输入（选中后必填，描红框）；
   /// 只读切片行 = 建议库位提示；无切片行 = —。
   Widget _placeCell(BuildContext context, WarehouseQualityMergedRow row) {
     final draft = row.draft;
     final slice = draft?.slice;
-    if (editable && draft != null && slice != null) {
+    if (editable && draft != null && draft.canConfirm && slice != null) {
       return RequiredCellFrame(
         listenable: draft.place,
-        isEmpty: () => draft.selected && draft.place.text.trim().isEmpty,
+        isEmpty: () => draft.selected && draft.placeError != null,
         child: TextFormField(
           key: ValueKey('quality-slice-place-${slice.passEventId}'),
           controller: draft.place,
@@ -270,16 +431,18 @@ class WarehouseQualityMergedTable extends StatelessWidget {
             InputDecoration(
               isDense: true,
               counterText: '',
-              hintText: slice.placeHint ?? '实际库位',
+              hintText: draft.placeInputHint,
+              error: utenFieldError(draft.selected ? draft.placeError : null),
             ),
           ),
           onChanged: (_) => onChanged(),
         ),
       );
     }
-    if (slice?.placeHint?.isNotEmpty == true) {
+    final place = draft?.place.text.trim();
+    if (place?.isNotEmpty == true) {
       return Text(
-        slice!.placeHint!,
+        place!,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -290,17 +453,14 @@ class WarehouseQualityMergedTable extends StatelessWidget {
     return const Text('—');
   }
 
-  /// 待入库余量：可办理行 = 本次实收输入（默认全额，suffix 提示剩余量、可改小做
-  /// 部分入库）；其余行只读展示余量（无切片行显示明细行级余量，0 显示 —）。
+  /// 可办理行填写本次实收，单位随输入框显示；未放行或不可办理行只读。
   Widget _remainingCell(BuildContext context, WarehouseQualityMergedRow row) {
     final draft = row.draft;
     final slice = draft?.slice;
-    if (editable && draft != null && slice != null) {
+    if (editable && draft != null && draft.canConfirm && slice != null) {
       return RequiredCellFrame(
         listenable: draft.quantity,
-        isEmpty: () =>
-            draft.selected &&
-            (double.tryParse(draft.quantity.text.trim()) ?? 0) <= 0,
+        isEmpty: () => draft.selected && draft.quantityError != null,
         child: TextFormField(
           key: ValueKey('quality-slice-qty-${slice.passEventId}'),
           controller: draft.quantity,
@@ -312,8 +472,10 @@ class WarehouseQualityMergedTable extends StatelessWidget {
             InputDecoration(
               isDense: true,
               counterText: '',
-              suffixText:
-                  '余 ${warehouseQualityQuantity(slice.remainingBaseQty)}',
+              error: utenFieldError(
+                draft.selected ? draft.quantityError : null,
+              ),
+              suffixText: draft.slice.unitName,
               suffixStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -323,9 +485,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
         ),
       );
     }
-    final remaining = slice?.remainingBaseQty ?? row.line.pendingStockBaseQty;
-    if (remaining <= 0) return const Text('—');
-    return Text(_qty(remaining, row.unitName));
+    return const Text('—');
   }
 
   Widget _expectedAllocationCell(
@@ -334,10 +494,16 @@ class WarehouseQualityMergedTable extends StatelessWidget {
   ) {
     final draft = row.draft;
     if (draft == null) return const Text('—');
+    if (!draft.usesSuggestedWarehouse) {
+      return Text(
+        draft.warehouseId == null ? '选定目标叶仓后，提交时核定去向' : '目标叶仓已调整，提交时重新核定去向',
+        style: Theme.of(context).textTheme.bodySmall,
+      );
+    }
     return ValueListenableBuilder<TextEditingValue>(
       valueListenable: draft.quantity,
       builder: (context, _, _) {
-        final requested = double.tryParse(draft.quantity.text.trim()) ?? 0;
+        final requested = draft.previewQuantity;
         final section = WarehouseInboundAllocationSection(
           id: draft.slice.passEventId,
           goodsLabel: draft.slice.goodsLabel,

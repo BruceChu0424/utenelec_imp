@@ -49,4 +49,6 @@ public class StockDocItemDto {
     private BigDecimal issuedQty;
     /** 当前用户无 goods:cost:view 时单价和金额已由服务端置空。 */
     private boolean costMasked;
+    /** 累计车间申请量；本次可发=申请量-已发量，原始需求 qty 保持不变。 */
+    private BigDecimal requestedQty;
 }

@@ -23,9 +23,14 @@ public class ProcurementMutationFootprint {
     private final ProductionMutationFootprintPort production;
 
     public record OrderRef(String type,UUID id) {}
-    public record ReceiptRef(String type,UUID id,Set<UUID> changedInspectionIds) {
-        public ReceiptRef { changedInspectionIds=Set.copyOf(changedInspectionIds==null?Set.of():changedInspectionIds); }
-        public ReceiptRef(String type,UUID id){this(type,id,Set.of());}
+    public record ReceiptRef(String type,UUID id,Set<UUID> changedInspectionIds,
+                             Set<ProductionMutationFootprintPort.WarehouseDimension> stockInDestinations) {
+        public ReceiptRef {
+            changedInspectionIds=Set.copyOf(changedInspectionIds==null?Set.of():changedInspectionIds);
+            stockInDestinations=Set.copyOf(stockInDestinations==null?Set.of():stockInDestinations);
+        }
+        public ReceiptRef(String type,UUID id,Set<UUID> changedInspectionIds){this(type,id,changedInspectionIds,Set.of());}
+        public ReceiptRef(String type,UUID id){this(type,id,Set.of(),Set.of());}
     }
 
     /** Receipt approval/reversal or IQC state/stock-in: only changed source dimensions seed wakeups. */
@@ -35,6 +40,11 @@ public class ProcurementMutationFootprint {
         Set<ProductionMutationFootprintPort.WarehouseDimension> changed=new LinkedHashSet<>();
         for(ReceiptRef ref:refs) {
             String prefix=prefix(ref.type()); own.parts.add("receipt:"+ref);
+            for(var destination:ref.stockInDestinations()) {
+                changed.add(destination);
+                own.warehouse(destination.warehouseId());
+                own.inventory(destination.goodsId(),destination.colorId());
+            }
             for(Object[] row:rows("""
                     SELECT h.id,h.warehouse_id,i.id,i.goods_id,i.color_id,oi.order_id,
                            md5(to_jsonb(h)::text),md5(to_jsonb(i)::text),inspection.id,md5(to_jsonb(inspection)::text),inspection.status
@@ -56,20 +66,45 @@ public class ProcurementMutationFootprint {
                     """,Map.of("id",ref.id(),"sourceType",ref.type()+"_RECEIPT"))) {
                 own.row("receipt-entitlement",row); own.analysis((UUID)row[1]); own.inventory((UUID)row[2],(UUID)row[3]);
             }
+            for(Object[] row:rows("""
+                    SELECT stock.id,stock.inspection_item_id,stock.warehouse_id,stock.goods_id,stock.color_id,
+                           inspection.status,md5(to_jsonb(stock)::text)
+                    FROM procurement_iqc_stock_in_batch_items stock
+                    JOIN procurement_iqc_stock_in_batches batch ON batch.id=stock.batch_id
+                    JOIN procurement_inspection_items inspection ON inspection.id=stock.inspection_item_id
+                    WHERE batch.receipt_type=:type AND batch.receipt_id=:id ORDER BY stock.id
+                    """,Map.of("type",ref.type(),"id",ref.id()))) {
+                own.row("receipt-actual-stock",row);
+                if(ref.changedInspectionIds().isEmpty()||ref.changedInspectionIds().contains(row[1])||"RESOLVED".equals(row[5])) {
+                    changed.add(new ProductionMutationFootprintPort.WarehouseDimension((UUID)row[2],(UUID)row[3],(UUID)row[4]));
+                    own.inventory((UUID)row[3],(UUID)row[4]);
+                }
+            }
         }
         return physical(own,orders,changed);
     }
 
     public ReceiptRef stockInReceipt(String type,UUID receiptId,Collection<UUID> passEventIds) {
+        return stockInReceipt(type,receiptId,passEventIds,Map.of());
+    }
+
+    public ReceiptRef stockInReceipt(String type,UUID receiptId,Collection<UUID> passEventIds,Map<UUID,UUID> warehouseByPassEvent) {
         Set<UUID> inspections=new LinkedHashSet<>();
+        Set<ProductionMutationFootprintPort.WarehouseDimension> destinations=new LinkedHashSet<>();
         if(!passEventIds.isEmpty())for(Object[] row:rows("""
-                SELECT event.id,event.inspection_item_id FROM procurement_inspection_events event
+                SELECT event.id,event.inspection_item_id,inspection.goods_id,inspection.color_id,inspection.warehouse_id
+                FROM procurement_inspection_events event
                 JOIN procurement_inspection_items inspection ON inspection.id=event.inspection_item_id
                 WHERE event.id IN (:ids) AND inspection.receipt_type=:type AND inspection.receipt_id=:receipt
                 ORDER BY event.id
-                """,Map.of("ids",passEventIds,"type",type,"receipt",receiptId))) inspections.add((UUID)row[1]);
+                """,Map.of("ids",passEventIds,"type",type,"receipt",receiptId))) {
+            inspections.add((UUID)row[1]);
+            UUID warehouse=warehouseByPassEvent.getOrDefault((UUID)row[0],(UUID)row[4]);
+            if(warehouse!=null&&row[2]!=null)destinations.add(new ProductionMutationFootprintPort.WarehouseDimension(
+                    warehouse,(UUID)row[2],(UUID)row[3]));
+        }
         // Invalid/missing PASS ids remain rejected by the locked stock-in command validation.
-        return new ReceiptRef(type,receiptId,inspections);
+        return new ReceiptRef(type,receiptId,inspections,destinations);
     }
 
     /** Supplier product returns alter the actual return warehouse, while keeping exact original order provenance. */

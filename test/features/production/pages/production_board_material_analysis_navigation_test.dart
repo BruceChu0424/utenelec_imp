@@ -5,6 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
+import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
@@ -14,6 +17,71 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
+  for (final width in [400.0, 1400.0]) {
+    testWidgets(
+      'empty pending schedule keeps zero selection in floating actions width=$width',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        await tester.binding.setSurfaceSize(Size(width, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final router = _router();
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              productionPlanRepositoryProvider.overrideWithValue(
+                _repository([], empty: true),
+              ),
+              currentPermissionsProvider.overrideWithValue(const {
+                Perm.productionMaterialAnalysisCreate,
+              }),
+              sharedPreferencesProvider.overrideWithValue(preferences),
+            ],
+            child: MaterialApp.router(routerConfig: router),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('待排产'));
+        await tester.pumpAndSettle();
+        expect(find.text('暂无待排产的订单行'), findsOneWidget);
+        final summary = find.byKey(
+          const Key('production-pending-selected-total'),
+        );
+        expect(find.text('已选 0 项'), findsOneWidget);
+        expect(tester.getRect(summary).top, greaterThan(675));
+        expect(
+          find.ancestor(
+            of: summary,
+            matching: find.byType(UtenFloatingActionGroup),
+          ),
+          findsOneWidget,
+        );
+        if (width > 600) {
+          final tableFinder = find.byType(
+            MasterDataTableView<SchedulePendingRow>,
+          );
+          final table = tester.widget<MasterDataTableView<SchedulePendingRow>>(
+            tableFinder,
+          );
+          expect(table.showSelectionSummary, isFalse);
+          expect(
+            table.bottomContentPadding,
+            UtenFloatingActionGroup.scrollClearance,
+          );
+          expect(
+            find.descendant(
+              of: tableFinder,
+              matching: find.byType(UtenSelectionSummaryPill),
+            ),
+            findsNothing,
+          );
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'multi-select seeds joint analysis and never calls the legacy merge endpoint',
     (tester) async {
@@ -90,9 +158,12 @@ void main() {
         lessThan(2),
       );
 
-      await tester.tap(checkboxes.at(0));
+      await tester.tap(
+        find.byKey(const Key('production-pending-clear-selection')),
+      );
       await tester.pump();
       expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isFalse);
+      expect(find.text('已选 0 项'), findsOneWidget);
       expect(find.text('新建物料分析'), findsOneWidget);
       expect(find.text('已选 2 项'), findsNothing);
 
@@ -291,6 +362,7 @@ GoRouter _router() => GoRouter(
 ProductionPlanRepository _repository(
   List<RequestOptions> requests, {
   bool activeFirst = false,
+  bool empty = false,
 }) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
@@ -302,41 +374,43 @@ ProductionPlanRepository _repository(
             'status': <Map<String, dynamic>>[],
           },
           '/production/schedule/pending' => {
-            'items': [
-              {
-                'orderItemId': 'line-a',
-                'orderId': 'order-a',
-                'orderBillNo': 'SO-A',
-                'goodsId': 'goods-a',
-                'goodsCode': 'A-001',
-                'goodsName': '产品 A',
-                'qty': 10,
-                'plannedQty': 0,
-                'needQty': 10,
-                'readyNowQty': 3,
-                'readyByDateQty': 8,
-                'readinessRatio': 0.3,
-                if (activeFirst) 'materialAnalysisId': 'analysis-a',
-                if (activeFirst) 'materialAnalysisVersion': 2,
-                'materialAnalyzedAt': '2026-08-08T10:00:00Z',
-                'deliverDate': '2026-08-20',
-              },
-              {
-                'orderItemId': 'line-b',
-                'orderId': 'order-b',
-                'orderBillNo': 'SO-B',
-                'goodsId': 'goods-b',
-                'goodsCode': 'B-001',
-                'goodsName': '产品 B',
-                'qty': 4,
-                'plannedQty': 0,
-                'needQty': 4,
-                'deliverDate': '2026-08-25',
-              },
-            ],
+            'items': empty
+                ? <dynamic>[]
+                : [
+                    {
+                      'orderItemId': 'line-a',
+                      'orderId': 'order-a',
+                      'orderBillNo': 'SO-A',
+                      'goodsId': 'goods-a',
+                      'goodsCode': 'A-001',
+                      'goodsName': '产品 A',
+                      'qty': 10,
+                      'plannedQty': 0,
+                      'needQty': 10,
+                      'readyNowQty': 3,
+                      'readyByDateQty': 8,
+                      'readinessRatio': 0.3,
+                      if (activeFirst) 'materialAnalysisId': 'analysis-a',
+                      if (activeFirst) 'materialAnalysisVersion': 2,
+                      'materialAnalyzedAt': '2026-08-08T10:00:00Z',
+                      'deliverDate': '2026-08-20',
+                    },
+                    {
+                      'orderItemId': 'line-b',
+                      'orderId': 'order-b',
+                      'orderBillNo': 'SO-B',
+                      'goodsId': 'goods-b',
+                      'goodsCode': 'B-001',
+                      'goodsName': '产品 B',
+                      'qty': 4,
+                      'plannedQty': 0,
+                      'needQty': 4,
+                      'deliverDate': '2026-08-25',
+                    },
+                  ],
             'page': 1,
             'size': 20,
-            'total': 2,
+            'total': empty ? 0 : 2,
             'totalPages': 1,
           },
           _ => <String, dynamic>{},

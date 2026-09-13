@@ -17,8 +17,9 @@ void main() {
     final expectedMarkers = <String, List<String>>{
       'lib/features/sales/pages/sales_doc_detail_page.dart': [
         'reviewerResponsibility: true',
-        "actionLabel: '财务审核发货'",
       ],
+      'lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart':
+          ["actionLabel: '出货财务审核'", "actionLabel: '出货财务退回'"],
       'lib/features/warehouse/pages/stock_doc_detail_page.dart': [
         'reviewerResponsibility: true',
       ],

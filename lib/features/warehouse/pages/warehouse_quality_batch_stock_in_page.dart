@@ -10,13 +10,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -24,10 +27,12 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
-import '../models/warehouse_iqc_stock_in.dart';
 import '../models/warehouse_quality_result.dart';
 import '../repositories/warehouse_quality_result_repository.dart';
+import '../providers/warehouse_quality_result_count_provider.dart';
+import '../widgets/warehouse_quality_merged_table.dart';
 import '../widgets/warehouse_quality_slice_table.dart';
+import '../widgets/warehouse_quality_stock_in_warehouse_picker.dart';
 
 class WarehouseQualityBatchStockInPage extends ConsumerStatefulWidget {
   const WarehouseQualityBatchStockInPage({super.key, required this.targets});
@@ -43,6 +48,8 @@ class WarehouseQualityBatchStockInPage extends ConsumerStatefulWidget {
 class _WarehouseQualityBatchStockInPageState
     extends ConsumerState<WarehouseQualityBatchStockInPage> {
   List<WarehouseQualitySliceDraft>? _drafts;
+  final _grid = UtenEditableGridController<WarehouseQualityMergedRow>();
+  int _requestVersion = 0;
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -63,10 +70,18 @@ class _WarehouseQualityBatchStockInPageState
   @override
   void dispose() {
     _drafts?.forEach((draft) => draft.dispose());
+    _grid.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool preserveInputs = false}) async {
+    final version = ++_requestVersion;
+    final snapshots = preserveInputs
+        ? {
+            for (final draft in _drafts ?? <WarehouseQualitySliceDraft>[])
+              draft.snapshotKey: draft.snapshot,
+          }
+        : const <String, WarehouseQualitySliceSnapshot>{};
     setState(() {
       _loading = true;
       _error = null;
@@ -75,23 +90,16 @@ class _WarehouseQualityBatchStockInPageState
       final repo = ref.read(warehouseQualityResultRepositoryProvider);
       // 并行拉取所选任务的放行切片（串行 await 时 N 张单要排 N 个往返）。
       final fetched = await Future.wait(
-        widget.targets.map(
+        {
+          for (final target in widget.targets)
+            '${target.receiptTypeValue}:${target.receiptId}': target,
+        }.values.map(
           (task) => repo.detail(task.receiptTypeValue, task.receiptId),
         ),
         eagerError: true,
       );
-      final details = [
-        for (final detail in fetched)
-          if (detail.canConfirm) detail,
-      ];
-      if (!mounted) return;
-      if (details.isEmpty) {
-        setState(() {
-          _loading = false;
-          _error = '所选任务当前均不可确认（可能已由同事处理完，或已无待入库明细）';
-        });
-        return;
-      }
+      final details = fetched;
+      if (!mounted || version != _requestVersion) return;
       final drafts = [
         for (final detail in details)
           for (final slice in detail.items)
@@ -100,21 +108,49 @@ class _WarehouseQualityBatchStockInPageState
               receiptTypeValue: detail.receiptType.apiValue,
               receiptId: detail.receiptId,
               receiptNo: detail.billNo,
+              canConfirm: detail.canConfirm,
+              snapshot:
+                  snapshots['${detail.receiptType.apiValue}:${detail.receiptId}:${slice.passEventId}'],
             ),
       ];
-      _drafts?.forEach((draft) => draft.dispose());
+      final List<WarehouseQualityMergedRow> nextRows;
+      try {
+        nextRows = [
+          for (final detail in details)
+            ...warehouseQualityRowsForDetail(
+              detail,
+              drafts
+                  .where(
+                    (draft) =>
+                        draft.receiptTypeValue == detail.receiptType.apiValue &&
+                        draft.receiptId == detail.receiptId,
+                  )
+                  .toList(),
+            ),
+        ];
+      } catch (_) {
+        for (final draft in drafts) {
+          draft.dispose();
+        }
+        rethrow;
+      }
+      final previous = _drafts;
       setState(() {
         _drafts = drafts;
+        _grid.replaceAll(nextRows);
         _loading = false;
       });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        previous?.forEach((draft) => draft.dispose());
+      });
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || version != _requestVersion) return;
       setState(() {
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || version != _requestVersion) return;
       setState(() {
         _error = '待入库明细加载失败，请稍后重试';
         _loading = false;
@@ -125,8 +161,27 @@ class _WarehouseQualityBatchStockInPageState
   List<WarehouseQualitySliceDraft> get _selected =>
       (_drafts ?? const []).where((draft) => draft.selected).toList();
 
+  Future<void> _pickWarehouse(WarehouseQualitySliceDraft draft) async {
+    if (_saving || _loading || !_canConfirmStockIn || !draft.canConfirm) return;
+    try {
+      final picked = await pickWarehouseQualityStockInWarehouse(
+        context,
+        ref,
+        draft,
+      );
+      if (picked == null || !mounted || _drafts?.contains(draft) != true) {
+        return;
+      }
+      setState(() {
+        draft.selectWarehouse(id: picked.id, name: picked.label);
+      });
+    } catch (_) {
+      if (mounted) context.appError('仓库资料加载失败，请重试');
+    }
+  }
+
   Future<void> _submit() async {
-    if (_saving || !_canConfirmStockIn) return;
+    if (_saving || _loading || !_canConfirmStockIn) return;
     final selected = _selected;
     if (selected.isEmpty) {
       setState(() => _error = '请至少勾选一条待入库明细');
@@ -144,18 +199,22 @@ class _WarehouseQualityBatchStockInPageState
     for (final draft in selected) {
       byReceipt.putIfAbsent(draft.receiptKey, () => []).add(draft);
     }
+    if (byReceipt.length > 20) {
+      setState(() => _error = '单次最多批量入库 20 张收货单，请分批办理');
+      return;
+    }
     final entries = <WarehouseQualityBatchConfirmEntry>[];
     for (final mapEntry in byReceipt.entries) {
       final group = mapEntry.value;
-      final items = [
-        for (final draft in group)
-          WarehouseIqcStockInConfirmItem(
-            passEventId: draft.slice.passEventId,
-            baseQty: double.parse(draft.quantity.text.trim()),
-            expectedRemainingBaseQty: draft.slice.remainingBaseQty,
-            place: draft.place.text.trim(),
-          ),
-      ];
+      if (group.length > 100) {
+        setState(
+          () => _error =
+              '「${group.first.receiptNo ?? group.first.receiptId}」'
+              '单次最多确认 100 条放行明细，请分批办理',
+        );
+        return;
+      }
+      final items = [for (final draft in group) draft.toConfirmItem()];
       entries.add(
         WarehouseQualityBatchConfirmEntry(
           receiptType: group.first.receiptTypeValue!,
@@ -179,18 +238,31 @@ class _WarehouseQualityBatchStockInPageState
           .read(warehouseQualityResultRepositoryProvider)
           .batchConfirm(WarehouseQualityBatchConfirmCommand(batches: entries));
       if (!mounted) return;
+      ref.invalidate(warehouseQualityResultPendingCountProvider);
       context.appSuccess(
         '已批量入库 ${result.confirmedReceipts} 张收货单 / '
         '${result.confirmedItemCount} 条明细，库存已更新',
       );
-      if (context.canPop()) context.pop(true);
+      if (context.canPop()) {
+        context.pop(true);
+      } else {
+        await _load();
+      }
     } on ApiException catch (error) {
       if (!mounted) return;
       await _showFailureDialog(
         error.code == 'CONFLICT'
-            ? '${error.message}（整批已回滚，未产生任何入库；请刷新后重新核对）'
+            ? '${error.message}（本次新入库已回滚；保留输入并刷新余量后重新核对）'
             : error.message,
       );
+      if (mounted && error.code == 'CONFLICT') {
+        await _load(preserveInputs: true);
+        if (mounted) {
+          setState(
+            () => _error = '${error.message}；已刷新待入量，保留了本次数量、目标叶仓和库位，请重新核对。',
+          );
+        }
+      }
     } catch (_) {
       if (mounted) {
         await _showFailureDialog('批量入库失败，请稍后重试');
@@ -240,30 +312,56 @@ class _WarehouseQualityBatchStockInPageState
                     defaultPath: RouteName.warehouseQualityResults,
                   ),
           ),
+          actions: [
+            UtenAppBarActionButton(
+              key: const Key('warehouse-quality-batch-refresh'),
+              label: '刷新',
+              icon: Icons.refresh_rounded,
+              isLoading: _loading,
+              onPressed: _loading || _saving
+                  ? null
+                  : () => _load(preserveInputs: true),
+            ),
+          ],
         ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButton: _canConfirmStockIn
+            ? _buildBottomBar(theme)
+            : null,
         body: SafeArea(
           child: _loading
               ? const UtenSkeletonList()
-              : AbsorbPointer(
-                  absorbing: _saving,
-                  child: UtenContentContainer.wide(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(
-                          child: _drafts == null || _drafts!.isEmpty
-                              ? UtenEmpty.error(
-                                  message: _error ?? '所选任务没有可入库明细',
-                                  description: '可能已由其他同事处理完毕，请返回刷新。',
-                                  actionLabel: '重新加载',
-                                  onAction: _load,
-                                )
-                              : _buildBody(theme),
+              : Stack(
+                  children: [
+                    AbsorbPointer(
+                      absorbing: _saving,
+                      child: UtenContentContainer.wide(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              child: _drafts == null || _grid.rows.isEmpty
+                                  ? UtenEmpty.error(
+                                      message: _error ?? '所选任务没有可入库明细',
+                                      description: '可能已由其他同事处理完毕，请返回刷新。',
+                                      actionLabel: '重新加载',
+                                      onAction: _load,
+                                    )
+                                  : _buildBody(theme),
+                            ),
+                          ],
                         ),
-                        _buildBottomBar(theme),
-                      ],
+                      ),
                     ),
-                  ),
+                    // 2026-09-12 用户口径：批量入库提交期间屏幕中间加载动画。
+                    if (_saving)
+                      const Positioned.fill(
+                        child: UtenBusyOverlay(
+                          title: '正在批量入库',
+                          description: '按收货单分组织整批同事务提交，请稍候。',
+                        ),
+                      ),
+                  ],
                 ),
         ),
       ),
@@ -272,19 +370,27 @@ class _WarehouseQualityBatchStockInPageState
 
   Widget _buildBody(ThemeData theme) {
     return ListView(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
+      padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s12,
+        UtenSpacing.s12,
+        UtenSpacing.s12,
+        UtenFloatingActionGroup.scrollClearance,
+      ),
       children: [
         Text(
-          '默认勾选全部待入库明细并按剩余量全额入库（批量全部入库）；'
-          '可取消勾选或改小数量做批量部分入库。实际库位必填，已按货品建议库位预填。',
+          _canConfirmStockIn
+              ? '核对每行来源商、合格待入量、目标叶仓和实际库位。默认勾选可入库明细；'
+                    '可改小本次数量，或为不同明细选择不同叶仓，提交后才增加库存。'
+              : '当前为只读预览；入库办理需要 IQC 待入库查看和确认入库权限。',
           style: theme.textTheme.bodySmall,
         ),
         const SizedBox(height: UtenSpacing.s8),
-        WarehouseQualitySliceTable(
-          drafts: _drafts!,
-          editable: true,
-          saving: _saving,
+        WarehouseQualityMergedTable(
+          controller: _grid,
+          editable: _canConfirmStockIn,
+          saving: _saving || _loading,
           onChanged: () => setState(() {}),
+          onPickWarehouse: _pickWarehouse,
           showReceipt: true,
         ),
         if (_error != null) ...[
@@ -306,7 +412,8 @@ class _WarehouseQualityBatchStockInPageState
       size: UtenButtonSize.large,
       icon: Icons.move_to_inbox_rounded,
       isLoading: _saving,
-      onPressed: _saving || selectedCount == 0 || !_canConfirmStockIn
+      onPressed:
+          _saving || _loading || selectedCount == 0 || !_canConfirmStockIn
           ? null
           : _submit,
       onDisabledTap: selectedCount == 0
@@ -316,50 +423,15 @@ class _WarehouseQualityBatchStockInPageState
           : null,
       child: Text('确认批量入库($selectedCount 条)'),
     );
-    final summary = Row(
+    return UtenFloatingActionGroup(
       children: [
         UtenSelectionSummaryPill(
           key: const Key('warehouse-quality-batch-selected-count'),
           count: selectedCount,
-          onClear: selectedCount == 0 ? null : _clearSelection,
+          onClear: selectedCount == 0 || _saving ? null : _clearSelection,
         ),
-        const SizedBox(width: UtenSpacing.s12),
-        Expanded(
-          child: Text(
-            '提交成功后增加可用库存；失败时保留本次输入，可直接重试',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
+        confirm,
       ],
-    );
-    return UtenBottomActionBar(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth < 560) {
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                summary,
-                const SizedBox(height: UtenSpacing.s8),
-                Align(alignment: Alignment.centerRight, child: confirm),
-              ],
-            );
-          }
-          return Row(
-            children: [
-              Expanded(child: summary),
-              const SizedBox(width: UtenSpacing.s12),
-              confirm,
-            ],
-          );
-        },
-      ),
     );
   }
 

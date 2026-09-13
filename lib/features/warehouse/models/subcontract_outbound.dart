@@ -8,6 +8,7 @@ enum SubcontractOutboundFlowMode {
   legacyBomComponent('LEGACY_BOM_COMPONENT', '历史 BOM 子件发料'),
   directOutbound('DIRECT_OUTBOUND', '目标件直接出仓'),
   makeThenOutbound('MAKE_THEN_OUTBOUND', '先自制再出仓'),
+  preparedOutbound('PREPARED_OUTBOUND', '已备齐目标件出仓'),
   unknown('UNKNOWN', '路线待确认');
 
   const SubcontractOutboundFlowMode(this.wireName, this.label);

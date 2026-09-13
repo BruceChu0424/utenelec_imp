@@ -67,7 +67,9 @@ public final class ProcurementIqcStockInContracts {
             String releaseNote,
             String releasedBy,
             OffsetDateTime releasedAt,
-            List<InboundAllocation> expectedAllocations) {
+            List<InboundAllocation> expectedAllocations,
+            @JsonSerialize(using = ToStringSerializer.class) UUID warehouseId,
+            String warehouseName) {
 
         public ReleasedSlice {
             expectedAllocations = expectedAllocations == null
@@ -89,7 +91,7 @@ public final class ProcurementIqcStockInContracts {
                     qualityPassedBaseQty, warehouseStockedBaseQty, releasedBaseQty,
                     stockedForReleaseBaseQty, remainingBaseQty, releasedWeight,
                     weightUnitId, weightUnitName, placeHint, releaseNote, releasedBy,
-                    releasedAt, List.of());
+                    releasedAt, List.of(), null, null);
         }
     }
 
@@ -108,7 +110,9 @@ public final class ProcurementIqcStockInContracts {
             String place,
             String confirmedBy,
             OffsetDateTime confirmedAt,
-            List<InboundAllocation> actualAllocations) {
+            List<InboundAllocation> actualAllocations,
+            @JsonSerialize(using = ToStringSerializer.class) UUID warehouseId,
+            String warehouseName) {
 
         public StockInHistoryItem {
             actualAllocations = actualAllocations == null
@@ -122,7 +126,7 @@ public final class ProcurementIqcStockInContracts {
                 String place, String confirmedBy, OffsetDateTime confirmedAt) {
             this(stockInItemId, batchId, passEventId, goodsId, goodsCode, goodsName,
                     colorName, unitName, baseQty, weight, weightUnitName, place,
-                    confirmedBy, confirmedAt, List.of());
+                    confirmedBy, confirmedAt, List.of(), null, null);
         }
     }
 
@@ -168,7 +172,12 @@ public final class ProcurementIqcStockInContracts {
             @NotNull @JsonSerialize(using = ToStringSerializer.class) UUID passEventId,
             @NotNull @DecimalMin(value = "0.0001") BigDecimal baseQty,
             @NotNull @DecimalMin(value = "0.0001") BigDecimal expectedRemainingBaseQty,
-            @NotBlank @Size(max = 100) String place) {
+            @NotBlank @Size(max = 100) String place,
+            @JsonSerialize(using = ToStringSerializer.class) UUID warehouseId) {
+        /** Existing callers retain only their already recorded source warehouse; missing sources never default. */
+        public ConfirmItem(UUID passEventId,BigDecimal baseQty,BigDecimal expectedRemainingBaseQty,String place) {
+            this(passEventId,baseQty,expectedRemainingBaseQty,place,null);
+        }
     }
 
     public record ConfirmResult(

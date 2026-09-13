@@ -34,7 +34,13 @@ import '../widgets/warehouse_sales_outbound_workbench.dart';
 import '../widgets/warehouse_task_center_scaffold.dart';
 
 class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
-  const WarehouseOutboundTaskCenterPage({super.key});
+  const WarehouseOutboundTaskCenterPage({
+    super.key,
+    this.initialSection,
+    this.initialView,
+  });
+  final String? initialSection;
+  final String? initialView;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -84,6 +90,7 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
       subtitle: '销售 · 委外 · 其它 · 产成品出库一站式办理',
       searchHint: '搜索单号 / 客户 / 委外商 / 货品',
       segments: segments,
+      initialSegment: initialSection,
       onResume: () => invalidateWarehouseTaskCounts(ref),
       bodyBuilder: (segment, keyword, refreshTick) => switch (segment) {
         'sales' => WarehouseSalesOutboundWorkbench(
@@ -98,6 +105,8 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
           canTasks: canSubcontract,
           canHistory: canSubcontractHistory,
           taskCount: subcontractTaskCount,
+          initialTasks:
+              initialSection == 'subcontract' && initialView == 'tasks',
         ),
         'otherOut' => WarehouseStockDocSegment(
           docType: StockDocType.otherOut,
@@ -124,6 +133,7 @@ class _SubcontractOutboundSegment extends StatefulWidget {
     required this.canTasks,
     required this.canHistory,
     this.taskCount,
+    this.initialTasks = false,
   });
 
   final String keyword;
@@ -133,6 +143,7 @@ class _SubcontractOutboundSegment extends StatefulWidget {
 
   /// 「待出仓任务」小类段徽章（与父分类徽章同源；null = 加载中不显示）。
   final int? taskCount;
+  final bool initialTasks;
 
   @override
   State<_SubcontractOutboundSegment> createState() =>
@@ -146,6 +157,20 @@ class _SubcontractOutboundSegmentState
 
   /// null = 未选择引导态（2026-09-03 统一范式：小类默认不选，不发请求）。
   int? _mode;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialTasks && widget.canTasks) _mode = _tasksMode;
+  }
+
+  @override
+  void didUpdateWidget(covariant _SubcontractOutboundSegment oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.initialTasks && widget.initialTasks && widget.canTasks) {
+      _mode = _tasksMode;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

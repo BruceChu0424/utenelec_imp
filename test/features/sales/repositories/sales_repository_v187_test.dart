@@ -6,6 +6,56 @@ import 'package:uten_imp/features/sales/repositories/sales_repository.dart';
 
 void main() {
   test(
+    'batch shipping decodes array responses and sends reviewed idempotent lines without warehouse',
+    () async {
+      final requests = <RequestOptions>[];
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (request, handler) {
+            requests.add(request);
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: request,
+                statusCode: 200,
+                data: request.path.endsWith('shippable-lines')
+                    ? [
+                        {
+                          'orderItemId': 'line-1',
+                          'orderId': 'order-1',
+                          'reservedQty': 10,
+                          'writable': true,
+                        },
+                      ]
+                    : [
+                        {'id': 'draft-a'},
+                        {'id': 'draft-b'},
+                      ],
+              ),
+            );
+          },
+        ),
+      );
+      final repo = SalesRepository(ApiClient(dio), SalesDocType.shipment);
+      final available = await repo.shippableLines();
+      expect(available.single.orderItemId, 'line-1');
+      final created = await repo.batchShip(
+        billDate: '2026-09-12',
+        idempotencyKey: 'intent-1',
+        header: {'shipAddr': '客户地址', 'linkPhone': '1234567'},
+        lines: [
+          {'orderItemId': 'line-1', 'qty': '1.25'},
+        ],
+      );
+      expect(created.map((doc) => doc.id), ['draft-a', 'draft-b']);
+      expect((requests.last.data as Map)['idempotencyKey'], 'intent-1');
+      expect((requests.last.data as Map)['lines'], [
+        {'orderItemId': 'line-1', 'qty': '1.25'},
+      ]);
+      expect((requests.last.data as Map).containsKey('warehouseId'), isFalse);
+    },
+  );
+  test(
     'partial shipment confirmation uses the V187 command contract',
     () async {
       late RequestOptions captured;

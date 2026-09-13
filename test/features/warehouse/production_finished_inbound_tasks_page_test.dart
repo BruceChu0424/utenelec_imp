@@ -116,6 +116,21 @@ void main() {
       'reg:20000000-0000-0000-0000-000000000001',
       'doc:10000000-0000-0000-0000-000000000001',
     });
+    expect(find.text('登记送检与最终点收请分开选择'), findsOneWidget);
+    expect(
+      find.byKey(const Key('production-finished-inbound-batch-register')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('production-finished-inbound-batch-confirm')),
+      findsNothing,
+    );
+    await tester.tap(find.text('待登记成品仓与库位'));
+    await tester.pump();
+    expect(
+      find.byKey(const Key('production-finished-inbound-batch-register')),
+      findsNothing,
+    );
     final batchButton = find.byKey(
       const Key('production-finished-inbound-batch-confirm'),
     );
@@ -127,6 +142,7 @@ void main() {
       find.byKey(const Key('production-finished-batch-stock-in-table')),
       findsOneWidget,
     );
+    expect(find.text('已选 1 项'), findsOneWidget, reason: '批量页只保留右下唯一选择摘要');
     await tester.tap(
       find.byKey(const Key('production-finished-batch-confirm')),
     );

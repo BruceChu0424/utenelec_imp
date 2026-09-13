@@ -1,7 +1,7 @@
 # UtenTreeTableCell（表格树形层级单元格）
 
 > 路径：`lib/shared/widgets/uten_tree_table_cell.dart` · 测试：`test/shared/widgets/uten_tree_table_cell_test.dart`
-> 已接入：货品资料-组件信息（`goods_bom_tab.dart`，懒加载不传 `childCount`）/ 生产物料分析统一物料表（`material_analysis_material_table.dart`，2026-09-10 起传 `childCount` = 当前投影可见的直接子件数：产品行 = 直挂子件数、物料行 = `childCountByParent`；「只看缺料」/表头筛选下是可见数而非 BOM 全量；汇总行副标题已有「N 来源」不传）。**凡在 MasterDataTableView/UtenEditableGrid 类表格里展示「父子层级行」，层级标识一律用本单元格，不得各页自写缩进**（2026-09-04 起）。
+> 已接入：货品资料-组装信息（`goods_bom_tab.dart`，懒加载不传 `childCount`；**2026-09-12 用户口径「只显示名字和组件X级」**：不再传路径行/编号副标题，身份格 = 级联号徽标 + 「组件 N 级」 + 名字，编号看表格「编号」列）/ 生产物料分析统一物料表（`material_analysis_material_table.dart`，2026-09-10 起传 `childCount` = 当前投影可见的直接子件数：产品行 = 直挂子件数、物料行 = `childCountByParent`；「只看缺料」/表头筛选下是可见数而非 BOM 全量；汇总行副标题已有「N 来源」不传）。**凡在 MasterDataTableView/UtenEditableGrid 类表格里展示「父子层级行」，层级标识一律用本单元格，不得各页自写缩进**（2026-09-04 起）。`pathLabel` 路径行参数已随最后宿主下线（2026-09-12）删除。
 
 ## 一、解决什么
 
@@ -19,10 +19,10 @@ UtenTreeTableCell 把层级表达收敛为**四重冗余标识**（颜色只是�
 
 | 元素 | 行为 |
 |---|---|
-| 展开箭头（48×48 命中区） | 有子级（`hasChildren`）才显示；独立命中区，**与行选择/双击打开互不抢手势**；`Semantics(button, expanded)` 带中文朗读。**2026-09-10 起为 28px 层级色实心圆底 + 反相箭头**（用户口径「有子层级的行一眼要看到」），选中行（`foregroundColor` 白）自动反相为白底主色箭头；宿主传 `childCount` 时未展开态在圆底右下角叠「N」徽章（展开后消失），懒加载宿主（展开前不知数量，如货品 BOM）不传即无徽章 |
+| 展开箭头（48×48 命中区） | 有子级（`hasChildren`）才显示；独立命中区，**与行选择/双击打开互不抢手势**；`Semantics(button, expanded)` 带中文朗读。**2026-09-10 起为 28px 层级色实心圆底 + 反相箭头**（用户口径「有子层级的行一眼要看到」），**2026-09-12 起箭头为自绘 3px 圆头粗箭头且圆底偏深时一律反白**（用户口径「箭头粗一点、浅色模式亮一点」——浅色模式黑底上从暗青细线改白色粗箭头）；选中行（`foregroundColor` 白）自动反相为白底主色箭头；宿主传 `childCount` 时未展开态在圆底右下角叠「N」徽章（展开后消失），懒加载宿主（展开前不知数量，如货品 BOM）不传即无徽章 |
 | 叶子节点圆点 | 无子级时 8px 圆点占位（alpha 0.45，与实心圆底拉开对比），与箭头同列对齐 |
-| 路径行 | `pathLabel` 非空时追加「路径：A/B/C」（Tooltip 全文，超长省略）；`sequenceInline` 紧凑模式下同样支持 |
-| 无障碍 | 整格 `Semantics(container)` 朗读 `标题，级联号 X，层级 N，副标题，路径 …`（`sequenceInline` 下不朗读默认层级标签） |
+| 副标题行 | `subtitle` 非空时以次要色单行省略（如物料分析的编号）；货品 BOM 宿主 2026-09-12 起不传编号（看「编号」列），仅懒加载中显示提示。原 `pathLabel`「路径：A/B/C」行已删除（最后宿主货品 BOM 下线，2026-09-12） |
+| 无障碍 | 整格 `Semantics(container)` 朗读 `标题，级联号 X，层级 N，副标题`（`sequenceInline` 下不朗读默认层级标签） |
 
 ## 三、用法
 

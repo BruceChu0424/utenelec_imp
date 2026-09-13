@@ -578,8 +578,9 @@ public class WarehouseQualityResultService {
                                inspection.passed_base_qty,
                                inspection.failed_base_qty,
                                inspection.warehouse_stocked_base_qty,
-                               COALESCE(pending_release.pending_qty, 0)
+                               COALESCE(pending_release.pending_qty, 0),inspection.warehouse_id,source_warehouse.name
                         FROM procurement_inspection_items inspection
+                        LEFT JOIN warehouses source_warehouse ON source_warehouse.id=inspection.warehouse_id
                         LEFT JOIN goods ON goods.id = inspection.goods_id
                         LEFT JOIN colors color ON color.id = inspection.color_id
                         LEFT JOIN units source_unit
@@ -599,7 +600,7 @@ public class WarehouseQualityResultService {
                 uuid(row[0]), uuid(row[1]), str(row[2]), str(row[3]),
                 str(row[4]), uuid(row[5]), str(row[6]), str(row[7]),
                 decimal(row[8]), decimal(row[9]), decimal(row[10]),
-                decimal(row[11]), decimal(row[12]))).toList();
+                decimal(row[11]), decimal(row[12]),uuid(row[13]),str(row[14]))).toList();
     }
 
     /** 品质放行待入库切片（与 IQC 待入库详情同口径、只读不加锁）。 */
@@ -629,10 +630,11 @@ public class WarehouseQualityResultService {
                                         NULLIF(BTRIM(goods.stock_place), '')),
                                event.reason,
                                employee.full_name,
-                               event.occurred_at
+                               event.occurred_at,inspection.warehouse_id,source_warehouse.name
                         FROM procurement_inspection_events event
                         JOIN procurement_inspection_items inspection
                           ON inspection.id = event.inspection_item_id
+                        LEFT JOIN warehouses source_warehouse ON source_warehouse.id=inspection.warehouse_id
                         LEFT JOIN LATERAL (
                             SELECT COALESCE(SUM(item.base_qty), 0) AS stocked_qty
                             FROM procurement_iqc_stock_in_batch_items item
@@ -685,7 +687,7 @@ public class WarehouseQualityResultService {
                 decimal(row[12]), decimal(row[13]), decimal(row[14]),
                 nullableDecimal(row[15]), uuid(row[16]), str(row[17]),
                 str(row[18]), str(row[19]), str(row[20]),
-                offsetDateTime(row[21]))).toList();
+                offsetDateTime(row[21]),List.of(),uuid(row[22]),str(row[23]))).toList();
         Map<UUID, List<PreplanInboundAllocationReadPort.AllocationView>> expected =
                 inboundAllocationRead.expectedForPassEvents(
                         receiptType, receiptId,
@@ -701,7 +703,7 @@ public class WarehouseQualityResultService {
                 slice.placeHint(), slice.releaseNote(), slice.releasedBy(),
                 slice.releasedAt(), expected.getOrDefault(slice.passEventId(), List.of())
                         .stream().map(WarehouseQualityResultService::toAllocation)
-                        .toList())).toList();
+                        .toList(),slice.warehouseId(),slice.warehouseName())).toList();
     }
 
     private static InboundAllocation toAllocation(
@@ -728,12 +730,13 @@ public class WarehouseQualityResultService {
                                color.name, COALESCE(base_unit.name, source_unit.name),
                                item.base_qty, item.weight, weight_unit.name,
                                item.place_snapshot, employee.full_name,
-                               batch.confirmed_at
+                               batch.confirmed_at,item.warehouse_id,actual_warehouse.name
                         FROM procurement_iqc_stock_in_batch_items item
                         JOIN procurement_iqc_stock_in_batches batch
                           ON batch.id = item.batch_id
                         JOIN procurement_inspection_items inspection
                           ON inspection.id = item.inspection_item_id
+                        LEFT JOIN warehouses actual_warehouse ON actual_warehouse.id=item.warehouse_id
                         LEFT JOIN goods ON goods.id = item.goods_id
                         LEFT JOIN colors color ON color.id = item.color_id
                         LEFT JOIN units source_unit
@@ -755,7 +758,7 @@ public class WarehouseQualityResultService {
                 uuid(row[0]), uuid(row[1]), uuid(row[2]), uuid(row[3]),
                 str(row[4]), str(row[5]), str(row[6]), str(row[7]),
                 decimal(row[8]), nullableDecimal(row[9]), str(row[10]),
-                str(row[11]), str(row[12]), offsetDateTime(row[13]))).toList();
+                str(row[11]), str(row[12]), offsetDateTime(row[13]),List.of(),uuid(row[14]),str(row[15]))).toList();
     }
 
     /** 检查不合格的实物退回案件（V440 拒收案件在仓库侧的投影）。 */

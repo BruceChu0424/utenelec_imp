@@ -182,7 +182,11 @@ class _ProductionFinishedInboundTasksViewState
         .map((id) => id.substring(4))
         .toSet();
     if (documentIds.isEmpty) {
-      if (documentIds.isEmpty) context.appWarning('请先选择待最终点收任务');
+      context.appWarning('请先选择待最终点收任务');
+      return;
+    }
+    if (documentIds.length != selectedIds.length) {
+      context.appWarning('登记送检与最终点收属于不同步骤，请分开选择');
       return;
     }
     final targets = (_result?.items ?? const <ProductionFinishedInboundTask>[])
@@ -248,43 +252,54 @@ class _ProductionFinishedInboundTasksViewState
     final registerCount = selectedIds
         .where((id) => id.startsWith('reg:'))
         .length;
+    if (count > 0 && registerCount > 0) {
+      return [
+        Text('登记送检与最终点收请分开选择', style: Theme.of(context).textTheme.bodyMedium),
+      ];
+    }
+    final registrationStage =
+        registerCount > 0 ||
+        (count == 0 &&
+            (_result?.items.any((task) => task.isArrivalRegistration) ?? true));
     return [
-      Tooltip(
-        message: registerCount == 0
-            ? '请选择“待登记成品仓与库位”的任务'
-            : '多张报工单汇总到一页统一登记成品仓与库位，一次提交逐单送检',
-        child: UtenButton(
-          key: const Key('production-finished-inbound-batch-register'),
-          size: UtenButtonSize.large,
-          type: UtenButtonType.danger,
-          icon: Icons.edit_location_alt_outlined,
-          onPressed: registerCount == 0
-              ? null
-              : () => _openBatchRegistration(selectedIds),
-          onDisabledTap: registerCount == 0
-              ? () => context.appWarning('请先选择“待登记成品仓与库位”的任务')
-              : null,
-          child: Text(
-            registerCount == 0 ? '批量登记成品仓并送检' : '批量登记成品仓并送检($registerCount)',
+      if (registrationStage)
+        Tooltip(
+          message: registerCount == 0
+              ? '请选择“待登记成品仓与库位”的任务'
+              : '多张报工单汇总到一页统一登记成品仓与库位，一次提交逐单送检',
+          child: UtenButton(
+            key: const Key('production-finished-inbound-batch-register'),
+            size: UtenButtonSize.large,
+            type: UtenButtonType.danger,
+            icon: Icons.edit_location_alt_outlined,
+            onPressed: registerCount == 0
+                ? null
+                : () => _openBatchRegistration(selectedIds),
+            onDisabledTap: registerCount == 0
+                ? () => context.appWarning('请先选择“待登记成品仓与库位”的任务')
+                : null,
+            child: Text(
+              registerCount == 0 ? '批量登记成品仓并送检' : '批量登记成品仓并送检($registerCount)',
+            ),
           ),
         ),
-      ),
-      Tooltip(
-        message: count == 0
-            ? '请选择“品质通过 · 待最终点收”的任务'
-            : '按每张单全部待点收数量原子入库；短收请逐单处理',
-        child: UtenButton(
-          key: const Key('production-finished-inbound-batch-confirm'),
-          size: UtenButtonSize.large,
-          type: UtenButtonType.danger,
-          icon: Icons.inventory_rounded,
-          onPressed: count == 0 ? null : () => _confirmSelected(selectedIds),
-          onDisabledTap: count == 0
-              ? () => context.appWarning('请先选择待最终点收任务')
-              : null,
-          child: Text(count == 0 ? '批量全量点收入库' : '批量全量点收入库($count)'),
+      if (!registrationStage)
+        Tooltip(
+          message: count == 0
+              ? '请选择“品质通过 · 待最终点收”的任务'
+              : '按每张单全部待点收数量原子入库；短收请逐单处理',
+          child: UtenButton(
+            key: const Key('production-finished-inbound-batch-confirm'),
+            size: UtenButtonSize.large,
+            type: UtenButtonType.danger,
+            icon: Icons.inventory_rounded,
+            onPressed: count == 0 ? null : () => _confirmSelected(selectedIds),
+            onDisabledTap: count == 0
+                ? () => context.appWarning('请先选择待最终点收任务')
+                : null,
+            child: Text(count == 0 ? '批量全量点收入库' : '批量全量点收入库($count)'),
+          ),
         ),
-      ),
     ];
   }
 
@@ -339,7 +354,7 @@ class _ProductionFinishedInboundTasksViewState
             onFilterChanged: (_, _) {},
             selectable: canCount,
             // 两类任务分别可选：待登记任务键 reg:<reportId>（批量登记送检），
-            // 待点收任务键 doc:<documentId>（批量全量点收）；两个批量按钮各取各的。
+            // 待点收任务键 doc:<documentId>(批量全量点收)；只展示所选阶段的动作。
             idOf: (task) => task.isArrivalRegistration
                 ? (task.reportId?.isNotEmpty == true
                       ? 'reg:${task.reportId}'

@@ -313,10 +313,54 @@ abstract class _MaterialAnalysisSupplyActionsState
   /// 剩余本批生产需求 = demandSupplyGapQty − 已在途生产需求（下限 0）。
   /// 公共安全库存补库是另一条显式数量切片，不得混入本值。
   double _residualSubmitQty(_MaterialGroup group, MaterialSupplyRoute route) {
+    if (_isPriorityMakeSupplementGroup(group, route)) {
+      // The backend has already deducted issued replenishment responsibility.
+      // Do not subtract old MAKE events again or reconstruct from shortage.
+      return group.paths.fold(
+        0.0,
+        (sum, path) =>
+            sum +
+            (path.hasPriorityMakeSupplement
+                ? path.priorityMakeSupplementQty
+                : 0),
+      );
+    }
+    if (group.paths.every(
+      (path) =>
+          path.additionalSupplyRecommendationKnown &&
+          (path.sharedFuturePendingQty != null ||
+              path.sharedFutureClaimedQty > 0),
+    )) {
+      return group.paths.fold(
+        0.0,
+        (sum, path) => sum + path.additionalSupplyRecommendedQty,
+      );
+    }
     final residual =
         _groupDemandSupplyGapQty(group) - _openSubmittedQty(group, route);
     return residual > 0 ? residual : 0;
   }
+
+  bool _hasIssuedMakeOwnership(ProductionMaterialAnalysisMaterial material) =>
+      _taskChildProductOf(material) != null ||
+      _hasUnlinkedIssuedPlan(material) ||
+      material.notifiedTargets.any(
+        (target) =>
+            target.status?.toUpperCase() != 'CANCELLED' &&
+            (target.documentType == 'PREPLAN_MAKE_TASK' ||
+                target.documentType == 'SUBCONTRACT_MAKE_TASK'),
+      );
+
+  bool _isPriorityMakeSupplementGroup(
+    _MaterialGroup group,
+    MaterialSupplyRoute route,
+  ) =>
+      route == MaterialSupplyRoute.make &&
+      group.paths.any(
+        (path) =>
+            path.priorityPendingQty > 0.000001 &&
+            (path.hasPriorityMakeSupplement || _hasIssuedMakeOwnership(path)),
+      );
 
   /// Each path repeats the authoritative main-warehouse budget. Never sum it
   /// across BOM roots or rebuild it from the selected/default leaf warehouse.
@@ -355,12 +399,14 @@ abstract class _MaterialAnalysisSupplyActionsState
       );
 
   bool _hasSupplySubmitQty(_MaterialGroup group, MaterialSupplyRoute route) =>
-      _residualSubmitQty(group, route) > 0 ||
-      _hasRootStockToAllocate(group, route) ||
-      (route != MaterialSupplyRoute.make &&
-          _groupCoveredByStock(group, route)) ||
-      (route == MaterialSupplyRoute.buy &&
-          _groupSafetyReplenishmentGapQty(group) > 0);
+      _isPriorityMakeSupplementGroup(group, route)
+      ? _residualSubmitQty(group, route) > 0
+      : _residualSubmitQty(group, route) > 0 ||
+            _hasRootStockToAllocate(group, route) ||
+            (route != MaterialSupplyRoute.make &&
+                _groupCoveredByStock(group, route)) ||
+            (route == MaterialSupplyRoute.buy &&
+                _groupSafetyReplenishmentGapQty(group) > 0);
 
   /// 仓库现货已覆盖需求（2026-09-06 用户口径：仓库够货不跳过采购/委外流程）。
   ///
@@ -387,10 +433,21 @@ abstract class _MaterialAnalysisSupplyActionsState
     _MaterialGroup group,
     MaterialSupplyRoute route,
   ) =>
-      (group.actionable || _hasRootStockToAllocate(group, route)) &&
+      (group.actionable ||
+          group.paths.any((path) => path.hasPriorityMakeSupplement) ||
+          _hasRootStockToAllocate(group, route)) &&
       _planningBlockForGroup(group) == null &&
       group.paths.every(_hasResolvedMaterialSource) &&
-      !group.paths.any(_hasUnlinkedIssuedPlan) &&
+      !group.paths.any(
+        (path) =>
+            _hasUnlinkedIssuedPlan(path) && !path.hasPriorityMakeSupplement,
+      ) &&
+      (route != MaterialSupplyRoute.make ||
+          !group.paths.any(
+            (path) =>
+                _hasIssuedMakeOwnership(path) &&
+                !path.hasPriorityMakeSupplement,
+          )) &&
       group.representative.confirmedRoute == route &&
       _draftRoute(group) == route &&
       !_dirtyRouteGroups.contains(group.key) &&
@@ -696,6 +753,14 @@ abstract class _MaterialAnalysisSupplyActionsState
     final batches = _chunked(targets);
     var current = analysis;
     var completed = 0;
+    // 2026-09-12 用户口径「点了没反应像卡住」：采购/委外分块提交期间屏幕中间
+    // 给加载遮罩。挂在这里（数量确认弹窗已收口、纯网络段）——挂早了会把确认
+    // 弹窗也盖在背后转圈，pumpAndSettle 永不落定（planSubmissionProgress 同款教训）。
+    bucketActionBusyMessage.value = switch (route) {
+      MaterialSupplyRoute.buy => '正在下达采购任务',
+      MaterialSupplyRoute.subcontract => '正在下达委外任务',
+      MaterialSupplyRoute.make => '正在创建自制备料任务',
+    };
     setState(() {
       _notifyingRoute = route;
       _bulkOperationLabel = switch (route) {
@@ -751,6 +816,7 @@ abstract class _MaterialAnalysisSupplyActionsState
         setState(() => _bulkOperationCompleted = completed);
       }
       if (!mounted) return null;
+      bucketActionBusyMessage.value = null;
       setState(() {
         _notifyingRoute = null;
         _clearBulkOperation();
@@ -783,6 +849,7 @@ abstract class _MaterialAnalysisSupplyActionsState
         operation: '提交${route.label}需求',
       )) {
         if (!mounted) return null;
+        bucketActionBusyMessage.value = null;
         setState(() {
           _notifyingRoute = null;
           _clearBulkOperation();
@@ -790,6 +857,7 @@ abstract class _MaterialAnalysisSupplyActionsState
         return null;
       }
       if (!mounted) return null;
+      bucketActionBusyMessage.value = null;
       setState(() {
         _notifyingRoute = null;
         _clearBulkOperation();
@@ -1029,7 +1097,9 @@ abstract class _MaterialAnalysisSupplyActionsState
         ? materials
               .where(
                 (material) =>
-                    (material.actionable || material.isRootSupply) &&
+                    (material.actionable ||
+                        material.isRootSupply ||
+                        material.hasPriorityMakeSupplement) &&
                     material.actionGroupKey == target.actionGroupKey,
               )
               .toList(growable: false)
@@ -1039,16 +1109,12 @@ abstract class _MaterialAnalysisSupplyActionsState
               )
               .toList(growable: false);
     final representative = lines.isEmpty ? null : lines.first;
-    var demandGap = 0.0;
     var open = 0.0;
     var safetyStock = 0.0;
     var publicAvailable = 0.0;
     var openSafetySupply = 0.0;
     var safetyGap = 0.0;
     for (final material in lines) {
-      if (material.demandSupplyGapQty > 0) {
-        demandGap += material.demandSupplyGapQty;
-      }
       if (material.safetyStockQty > safetyStock) {
         safetyStock = material.safetyStockQty;
       }
@@ -1071,7 +1137,6 @@ abstract class _MaterialAnalysisSupplyActionsState
             (material.demandSupplyGapQty > 0 ? material.demandSupplyGapQty : 0);
       }
     }
-    final residual = demandGap - open;
     final nodeKey = representative?.nodeKey;
     final analysis = _analysis;
     final hasProductionChildren =
@@ -1097,7 +1162,12 @@ abstract class _MaterialAnalysisSupplyActionsState
           ? target.identity
           : _materialDimensionKey(representative),
       openQty: open,
-      maxQty: residual > 0 ? residual : 0,
+      maxQty: lines.isEmpty
+          ? 0
+          : _residualSubmitQty(
+              _MaterialGroup(key: target.identity, paths: lines),
+              route,
+            ),
       rootAllocatedStockQty: lines
           .where((material) => material.isRootSupply)
           .fold(0, (sum, material) => sum + material.allocatedAvailableQty),

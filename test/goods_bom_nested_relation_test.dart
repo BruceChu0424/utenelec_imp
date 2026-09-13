@@ -126,7 +126,9 @@ Future<void> _pumpBom(WidgetTester tester, _FakeGoodsBomRepository repo) async {
   expect(nestedName, findsOneWidget);
   expect(find.text('1.1'), findsOneWidget);
   expect(find.text('组件 2 级'), findsOneWidget);
-  expect(find.textContaining('路径：组件树 1.1'), findsOneWidget);
+  // 2026-09-12 用户口径「只显示名字和组件X级」：身份格不再有路径行，
+  // 编号也不再堆进副标题（看「编号」列）。
+  expect(find.textContaining('路径：'), findsNothing);
   // 单击嵌套行：选中（onSelectionChanged 驱动 _selected），编辑/删除按钮随之可用。
   await tester.tap(nestedName);
   await tester.pumpAndSettle();
@@ -176,6 +178,43 @@ void main() {
       expect(find.text('选择组件'), findsOneWidget);
     },
   );
+
+  testWidgets('preview button sits in the toolbar next to fullscreen', (
+    tester,
+  ) async {
+    final repo = _FakeGoodsBomRepository();
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    var previews = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [goodsBomRepositoryProvider.overrideWithValue(repo)],
+        child: MaterialApp(
+          home: Scaffold(
+            body: GoodsBomTab(
+              goodsId: 'goods-a',
+              canCreate: true,
+              canEdit: true,
+              canDelete: true,
+              onPreview: () => previews++,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 2026-09-12：「预览」从详情头部迁入表格工具条，紧挨「全屏」按钮（左簇
+    // toolbarLeadingActions），样式同款；不传 onPreview 则不渲染。
+    final preview = find.widgetWithText(UtenButton, '预览');
+    final fullscreen = find.widgetWithText(UtenButton, '全屏');
+    expect(preview, findsOneWidget);
+    expect(fullscreen, findsOneWidget);
+    expect(tester.getTopLeft(preview).dy, tester.getTopLeft(fullscreen).dy);
+    await tester.tap(preview);
+    await tester.pumpAndSettle();
+    expect(previews, 1);
+  });
 
   testWidgets('nested delete uses the owning parent goods id', (tester) async {
     final repo = _FakeGoodsBomRepository();

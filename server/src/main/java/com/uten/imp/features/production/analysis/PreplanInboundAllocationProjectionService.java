@@ -498,7 +498,7 @@ public class PreplanInboundAllocationProjectionService
                        analysis.warehouse_id,
                        allocation.analysis_id,allocation.analysis_material_id,
                        material.goods_id,material.color_id,
-                       GREATEST(allocation.allocated_qty-COALESCE(exact.qty,0),0),
+                       GREATEST(fn_preplan_allocation_admitted_qty(allocation.id)-COALESCE(exact.qty,0),0),
                        product_goods.code,product_goods.name,
                        COALESCE(NULLIF(BTRIM(source.source_ref),''),'生产物料分析'),
                        work.plan_id,work.plan_no,work.segment_id,work.segment_code,
@@ -573,6 +573,7 @@ public class PreplanInboundAllocationProjectionService
                 WHERE allocation.external_item_id IN (:externalItemIds)
                 ORDER BY allocation.external_item_id,
                          CASE action.operation_type
+                           WHEN 'FUTURE_TRANSFER' THEN -1
                            WHEN 'SHARED_FUTURE_CLAIM' THEN 1 ELSE 0 END,
                          action.created_at,action.id,
                          allocation.created_at,allocation.id

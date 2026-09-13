@@ -103,9 +103,17 @@ void main() {
     },
   );
 
-  for (final status in [502, 504]) {
+  for (final (status, code) in [
+    (500, 'INTERNAL'),
+    (501, 'NOT_IMPLEMENTED'),
+    (502, 'INTERNAL'),
+    (503, 'SERVICE_UNAVAILABLE'),
+    (504, 'INTERNAL'),
+    (599, 'UNKNOWN'),
+    (null, 'INTERNAL'),
+  ]) {
     test(
-      'gateway $status stores one exact pending request and never submits it again',
+      'server $code/$status stores one exact pending request and never submits it again',
       () async {
         final store = _MemoryScope();
         final journal = BusinessDataResetJournal(store);
@@ -115,9 +123,22 @@ void main() {
           ..httpClientAdapter = _Adapter((request) {
             calls++;
             sentAttempt = (request.data as Map)['attemptId'] as String;
+            if (status == null) {
+              throw DioException(
+                requestOptions: request,
+                type: DioExceptionType.badResponse,
+                response: Response(
+                  requestOptions: request,
+                  data: {
+                    'code': code,
+                    'message': 'response status unavailable',
+                  },
+                ),
+              );
+            }
             return (
               status,
-              {'code': 'INTERNAL', 'message': 'gateway unavailable'},
+              {'code': code, 'message': 'server response interrupted'},
             );
           });
         final repository = _repo(dio, journal);
@@ -135,6 +156,30 @@ void main() {
       },
     );
   }
+
+  test('only definitive client refusals release the pending reset', () {
+    for (var status = 500; status < 600; status++) {
+      expect(
+        isBusinessDataResetOutcomeUncertain(
+          ApiException(
+            'SERVER_ERROR',
+            'response incomplete',
+            httpStatus: status,
+          ),
+        ),
+        isTrue,
+        reason: 'HTTP $status cannot prove that the reset rolled back',
+      );
+    }
+    for (final status in [400, 401, 403, 409, 422, 429]) {
+      expect(
+        isBusinessDataResetOutcomeUncertain(
+          ApiException('REFUSED', 'request rejected', httpStatus: status),
+        ),
+        isFalse,
+      );
+    }
+  });
 
   test(
     'a late authenticated 200 still obeys the global session fence and remains pending',

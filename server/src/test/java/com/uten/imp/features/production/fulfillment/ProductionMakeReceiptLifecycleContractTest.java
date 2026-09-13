@@ -114,7 +114,9 @@ class ProductionMakeReceiptLifecycleContractTest {
             throws Exception {
         String readiness = source(
                 "production/fulfillment/ProductionExecutionReadinessService.java");
-        int start = readiness.indexOf("private boolean isFullyAvailable(");
+        // SQL 事实已抽进 availabilityRows（位于 isFullyAvailable 之前）；
+        // 窗口从 availabilityRows 起到锁定助手前，覆盖两方法全部标记。
+        int start = readiness.indexOf("private List<Object[]> availabilityRows(");
         int end = readiness.indexOf(
                 "private void lockExecutionSegmentMaterialDimensions(", start);
         String availability = readiness.substring(start, end)

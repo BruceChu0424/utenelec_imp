@@ -14,6 +14,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_button.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_input.dart';
@@ -211,58 +213,33 @@ class _AdminSystemSettingsPageState
                             onChanged: _markDirty,
                             enabled: !_saving && !_loading,
                           ),
-                      const SizedBox(height: 80),
+                      const SizedBox(
+                        height: UtenFloatingActionGroup.scrollClearance,
+                      ),
                     ],
                   ),
                 ),
               ),
       ),
-      bottomNavigationBar: _saveBar(theme),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: _saveBar(theme),
     );
   }
 
   Widget _saveBar(ThemeData theme) {
-    final hasDirty = _dirty.isNotEmpty;
-    return SafeArea(
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: UtenSpacing.s16,
-          vertical: UtenSpacing.s12,
+    if (_all == null || _error != null) return const SizedBox.shrink();
+    return UtenFloatingActionGroup(
+      children: [
+        UtenButton(
+          key: const ValueKey('system-settings-save'),
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          isLoading: _saving,
+          icon: Icons.save_outlined,
+          onPressed: _dirty.isNotEmpty && !_saving && !_loading ? _save : null,
+          child: Text(_dirty.isEmpty ? '保存改动' : '保存 ${_dirty.length} 项改动'),
         ),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          border: Border(top: BorderSide(color: theme.dividerColor)),
-        ),
-        child: Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: UtenSpacing.s16,
-          runSpacing: UtenSpacing.s8,
-          children: [
-            Text(
-              hasDirty ? '${_dirty.length} 项已修改' : '所有设置保持当前值',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: hasDirty
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.outline,
-              ),
-            ),
-            FilledButton.icon(
-              onPressed: (hasDirty && !_saving && !_loading && _error == null)
-                  ? _save
-                  : null,
-              icon: _saving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.save_outlined),
-              label: Text(_saving ? '保存中…' : '保存改动'),
-            ),
-          ],
-        ),
-      ),
+      ],
     );
   }
 

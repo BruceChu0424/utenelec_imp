@@ -20,6 +20,9 @@ public record PlanProgressLine(
         String unitName,
         BigDecimal qty,
         BigDecimal reservedQty,
+        /** 当前真实预留扣除待出货单占用后的可开单量，按订单单位。 */
+        BigDecimal shippableQty,
+        BigDecimal pendingShipmentQty,
         BigDecimal plannedQty,
         BigDecimal producedQty,
         BigDecimal shippedQty,

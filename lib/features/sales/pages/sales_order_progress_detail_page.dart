@@ -3,21 +3,35 @@
 // 2026-08-19 起替代原「排产进度底表弹窗」：订单进度查询卡点订单、订货单详情页
 // 「排产进度」按钮都进入本整页。页面自上而下三段：
 //   ① 订单摘要卡（单号/开单/交货/制单员/单据状态/财务状态/结案中止徽标）；
-//   ② 产品进度（复用 SalesPlanProgressPanel，财务确认前按 V300 口径隐藏，只给提示）；
-//   ③ 履约进度（UtenProgressTimeline 快递式时间线：下单→销售审核→财务审核→
+//   ② 履约进度（UtenProgressTimeline 快递式时间线：下单→销售审核→财务审核→
 //      物料分析→物料准备-采购/委外订货→生产计划→生产→发货→结案，
-//      每环带责任人与发生时间，最新进展在最上面高亮）。
+//      每环带责任人与发生时间，最新进展在最上面高亮）；
+//   ③ 产品进度（复用 SalesPlanProgressPanel，财务确认前按 V300 口径隐藏，只给提示）。
 // 三个数据源并行加载（detail / plan-progress / progress-timeline），互不阻塞。
 // 2026-09-05 起财务驳回框提供双出口：修改订单（修订重报）+ 取消订单（终止处置，
 // 无发货/无排产在产完工关联时开放；取消后订单转已中止、不再挂在驳回段）。
+//
+// 2026-09-12 版式统一（对齐全站批量/详情页口径）：
+// - 摘要卡文字放大一档（单号 titleLarge、字段 bodyMedium）；
+// - 履约进度上移到摘要之下，默认折叠——标题行常驻「最新」状态胶囊，展开才见
+//   完整时间线；产品进度沉底；
+// - 「修改订单/取消订单/去发货(N)」全部收敛到右下 UtenFloatingActionGroup 悬浮组
+//   （去发货为红色大按钮，与所选行数联动；面板经 SalesShipmentActionScope 上报）；
+// - 刷新收进 AppBar 右上（UtenAppBarActionButton，整页口径：三段全部重读），
+//   产品进度不再有面板内刷新按钮；下拉刷新保留。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/feedback/uten_progress_timeline.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -51,6 +65,10 @@ class _SalesOrderProgressDetailPageState
   String? _detailError;
   String? _timelineError;
   bool _cancelBusy = false;
+  bool _reloading = false;
+
+  /// 产品进度面板 → 右下悬浮「去发货」的桥（本页持有，见组件文档）。
+  final SalesShipmentActionScope _shipmentActions = SalesShipmentActionScope();
 
   @override
   void initState() {
@@ -58,40 +76,70 @@ class _SalesOrderProgressDetailPageState
     _load();
   }
 
-  /// 摘要与时间线并行加载，各自独立展示错误，不互相阻塞。
-  Future<void> _load() async {
-    final repo = ref.read(salesRepositoryProvider(SalesDocType.order));
-    repo
-        .detail(widget.orderId)
-        .then((d) {
-          if (mounted) setState(() => _detail = d);
-        })
-        .catchError((Object e) {
-          if (mounted) setState(() => _detailError = '$e');
-        });
-    repo
-        .progressTimeline(widget.orderId)
-        .then((events) {
-          if (mounted) setState(() => _timeline = events);
-        })
-        .catchError((Object e) {
-          if (mounted) setState(() => _timelineError = '$e');
-        });
+  @override
+  void dispose() {
+    _shipmentActions.dispose();
+    super.dispose();
   }
 
+  /// 摘要与时间线并行加载，各自独立展示错误，不互相阻塞。
+  Future<void> _load() {
+    final repo = ref.read(salesRepositoryProvider(SalesDocType.order));
+    return Future.wait([
+      repo
+          .detail(widget.orderId)
+          .then((d) {
+            if (mounted) setState(() => _detail = d);
+          })
+          .catchError((Object e) {
+            if (mounted) setState(() => _detailError = '$e');
+          }),
+      repo
+          .progressTimeline(widget.orderId)
+          .then((events) {
+            if (mounted) setState(() => _timeline = events);
+          })
+          .catchError((Object e) {
+            if (mounted) setState(() => _timelineError = '$e');
+          }),
+    ]);
+  }
+
+  /// 整页刷新口径：摘要 + 履约时间线 + 产品进度三段全部重读。
   Future<void> _reload() async {
+    if (_reloading) return;
     setState(() {
+      _reloading = true;
       _detail = null;
       _timeline = null;
       _detailError = null;
       _timelineError = null;
     });
-    await _load();
+    try {
+      await Future.wait([_load(), _shipmentActions.reload()]);
+    } finally {
+      if (mounted) setState(() => _reloading = false);
+    }
   }
 
   bool _hasPerm(String code) =>
       ref.read(isSuperAdminProvider) ||
       ref.read(currentPermissionsProvider).contains(code);
+
+  /// 可修订入口（未驳回且未终结 + 可写 + 权限）；驳回单同入口另有取消出口。
+  bool get _canEditOrder {
+    final d = _detail;
+    return d != null &&
+        !d.closed &&
+        !d.stopped &&
+        d.writable &&
+        _hasPerm(Perm.salesOrderEdit);
+  }
+
+  Future<void> _editOrder() async {
+    await context.push(RoutePath.salesDocEdit('orders', widget.orderId));
+    if (mounted) await _reload();
+  }
 
   /// 财务驳回单的整单取消（终止处置）：驳回单不能只靠「修改后重报」出队——
   /// 客户撤单/重谈时销售可直接取消，订单转已中止、不再挂在「财务驳回」段。
@@ -152,6 +200,71 @@ class _SalesOrderProgressDetailPageState
     }
   }
 
+  // ============================ 右下悬浮操作组 ============================
+
+  /// 全站详情/批量页统一口径：业务动作收进右下 UtenFloatingActionGroup——
+  /// 「已选 N 项」胶囊 + 红色「去发货(N)」（面板经 scope 驱动），
+  /// 「修改订单」（可修订时），驳回单另有「取消订单」。
+  Widget _floatingActions() {
+    return ListenableBuilder(
+      listenable: _shipmentActions,
+      builder: (context, _) {
+        final shipping = _shipmentActions.shippingEnabled;
+        final count = _shipmentActions.selectedCount;
+        final busy = _shipmentActions.busy || _cancelBusy;
+        final canEdit = _canEditOrder;
+        final canCancel = _canCancelRejected;
+        if (!shipping && !canEdit && !canCancel) {
+          return const SizedBox.shrink();
+        }
+        return UtenFloatingActionGroup(
+          children: [
+            if (shipping)
+              UtenSelectionSummaryPill(
+                clearKey: const Key('sales-progress-clear-selection'),
+                count: count,
+                onClear: count > 0 && !busy
+                    ? _shipmentActions.clearSelection
+                    : null,
+              ),
+            if (shipping)
+              UtenButton(
+                key: const Key('sales-progress-create-shipment'),
+                type: UtenButtonType.danger,
+                size: UtenButtonSize.large,
+                icon: Icons.local_shipping_outlined,
+                isLoading: busy,
+                onPressed: count > 0 && !busy
+                    ? () => _shipmentActions.createShipment()
+                    : null,
+                onDisabledTap: count == 0
+                    ? () => context.appWarning('请先勾选要发货的产品')
+                    : null,
+                child: Text(count > 0 ? '去发货($count)' : '去发货'),
+              ),
+            if (canEdit)
+              UtenButton(
+                key: const Key('sales-order-progress-edit'),
+                size: UtenButtonSize.large,
+                icon: Icons.edit_outlined,
+                onPressed: busy ? null : _editOrder,
+                child: const Text('修改订单'),
+              ),
+            if (canCancel)
+              UtenButton(
+                key: const Key('sales-order-progress-cancel'),
+                type: UtenButtonType.danger,
+                size: UtenButtonSize.large,
+                icon: Icons.cancel_outlined,
+                onPressed: busy ? null : _cancelRejectedOrder,
+                child: Text(_cancelBusy ? '取消中…' : '取消订单'),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -161,7 +274,17 @@ class _SalesOrderProgressDetailPageState
           onPressed: () =>
               backTo(context, defaultPath: RouteName.salesOrderProgress),
         ),
+        actions: [
+          UtenAppBarActionButton(
+            label: '刷新',
+            icon: Icons.refresh_rounded,
+            isLoading: _reloading,
+            onPressed: _reloading ? null : _reload,
+          ),
+        ],
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: _floatingActions(),
       body: SafeArea(
         child: UtenContentContainer(
           child: RefreshIndicator(
@@ -172,13 +295,13 @@ class _SalesOrderProgressDetailPageState
               children: [
                 _summarySection(),
                 const SizedBox(height: UtenSpacing.s16),
+                _timelineSection(),
+                const SizedBox(height: UtenSpacing.s16),
                 const UtenSectionHeader(title: '产品进度'),
                 const SizedBox(height: UtenSpacing.s8),
                 _productProgressSection(),
-                const SizedBox(height: UtenSpacing.s16),
-                const UtenSectionHeader(title: '履约进度'),
-                const SizedBox(height: UtenSpacing.s8),
-                _timelineSection(),
+                // 末尾留白：把最后一段完整滚到右下悬浮操作组上方。
+                const SizedBox(height: UtenFloatingActionGroup.scrollClearance),
               ],
             ),
           ),
@@ -206,7 +329,7 @@ class _SalesOrderProgressDetailPageState
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
+        padding: const EdgeInsets.all(UtenSpacing.s16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -215,7 +338,7 @@ class _SalesOrderProgressDetailPageState
                 Expanded(
                   child: Text(
                     d.billNo ?? '—',
-                    style: theme.textTheme.titleMedium?.copyWith(
+                    style: theme.textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -223,29 +346,10 @@ class _SalesOrderProgressDetailPageState
                 _docStatusChip(theme, d),
               ],
             ),
-            const SizedBox(height: UtenSpacing.s8),
-            if (!d.financeRejected &&
-                !d.closed &&
-                !d.stopped &&
-                d.writable &&
-                _hasPerm(Perm.salesOrderEdit)) ...[
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  icon: const Icon(Icons.edit_outlined),
-                  label: const Text('修改订单'),
-                  onPressed: () async {
-                    await context.push(
-                      RoutePath.salesDocEdit('orders', widget.orderId),
-                    );
-                    if (mounted) await _reload();
-                  },
-                ),
-              ),
-            ],
+            const SizedBox(height: UtenSpacing.s12),
             Wrap(
-              spacing: UtenSpacing.s16,
-              runSpacing: UtenSpacing.s4,
+              spacing: UtenSpacing.s20,
+              runSpacing: UtenSpacing.s6,
               children: [
                 if (d.billDate != null) _kv(theme, '开单日期', _date(d.billDate!)),
                 if (d.deliverDate != null && d.deliverDate!.isNotEmpty)
@@ -295,52 +399,12 @@ class _SalesOrderProgressDetailPageState
                         ),
                       ),
                     ],
-                    if (d.writable &&
-                        (ref.read(isSuperAdminProvider) ||
-                            ref
-                                .read(currentPermissionsProvider)
-                                .contains(Perm.salesOrderEdit))) ...[
-                      const SizedBox(height: UtenSpacing.s8),
-                      // 驳回处置双出口：修订重报（修改订单）或终止（取消订单）。
-                      // 只给修改入口的话，客户撤单的驳回单会永远挂在驳回段。
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Wrap(
-                          spacing: UtenSpacing.s8,
-                          runSpacing: UtenSpacing.s4,
-                          alignment: WrapAlignment.end,
-                          children: [
-                            FilledButton.icon(
-                              onPressed: () => context.push(
-                                RoutePath.salesDocEdit(
-                                  'orders',
-                                  widget.orderId,
-                                ),
-                              ),
-                              icon: const Icon(Icons.edit_outlined),
-                              label: const Text('修改订单'),
-                            ),
-                            if (_canCancelRejected)
-                              FilledButton.icon(
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: theme.colorScheme.error,
-                                  foregroundColor: theme.colorScheme.onError,
-                                ),
-                                onPressed: _cancelBusy
-                                    ? null
-                                    : _cancelRejectedOrder,
-                                icon: const Icon(Icons.cancel_outlined),
-                                label: Text(_cancelBusy ? '取消中…' : '取消订单'),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
+                    // 处置出口（修改订单/取消订单）在右下悬浮操作组，本框只陈述事实。
                   ],
                 ),
               ),
             ],
-            const SizedBox(height: UtenSpacing.s8),
+            const SizedBox(height: UtenSpacing.s12),
             Wrap(
               spacing: UtenSpacing.s8,
               runSpacing: UtenSpacing.s4,
@@ -381,14 +445,14 @@ class _SalesOrderProgressDetailPageState
 
   Widget _flagChip(ThemeData theme, String label, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
         label,
-        style: theme.textTheme.labelSmall?.copyWith(
+        style: theme.textTheme.labelMedium?.copyWith(
           color: color,
           fontWeight: FontWeight.w700,
         ),
@@ -402,13 +466,13 @@ class _SalesOrderProgressDetailPageState
         children: [
           TextSpan(
             text: '$label ',
-            style: theme.textTheme.bodySmall?.copyWith(
+            style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
           TextSpan(
             text: value,
-            style: theme.textTheme.bodySmall?.copyWith(
+            style: theme.textTheme.bodyMedium?.copyWith(
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -417,7 +481,108 @@ class _SalesOrderProgressDetailPageState
     );
   }
 
-  // ============================ ② 产品进度 ============================
+  // ============================ ② 履约进度（默认折叠） ============================
+
+  /// 履约进度默认折叠：标题行常驻最新状态胶囊，点标题展开完整时间线。
+  Widget _timelineSection() {
+    final theme = Theme.of(context);
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          UtenSpacing.s12,
+          UtenSpacing.s4,
+          UtenSpacing.s12,
+          UtenSpacing.s12,
+        ),
+        child: UtenCollapsibleSection(
+          title: '履约进度',
+          initiallyExpanded: false,
+          titleTrailing: _latestStatusChip(theme),
+          child: _timelineBody(theme),
+        ),
+      ),
+    );
+  }
+
+  Widget _timelineBody(ThemeData theme) {
+    if (_timelineError != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+        child: Row(
+          children: [
+            Icon(Icons.error_outline, size: 18, color: theme.colorScheme.error),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Text(
+                '履约进度加载失败：$_timelineError',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final events = _timeline;
+    if (events == null) {
+      return const Padding(
+        padding: EdgeInsets.all(UtenSpacing.s24),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return UtenProgressTimeline(
+      events: events,
+      onOpenDoc: _openLinkedDoc,
+      emptyText: '暂无履约进度',
+    );
+  }
+
+  /// 折叠态常驻的最新状态胶囊（与时间线最新节点同色系）。
+  Widget _latestStatusChip(ThemeData theme) {
+    final (text, color) = _latestStatus(theme);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.labelMedium?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  (String, Color) _latestStatus(ThemeData theme) {
+    if (_timelineError != null) {
+      return ('最新：加载失败', theme.colorScheme.error);
+    }
+    final events = _timeline;
+    if (events == null) return ('最新：加载中…', theme.colorScheme.onSurfaceVariant);
+    if (events.isEmpty) return ('暂无履约进度', theme.colorScheme.onSurfaceVariant);
+    final latest = events.first;
+    final time = UtenProgressTimeline.formatTime(latest.occurredAt);
+    final short = time.length >= 16 ? time.substring(5) : time;
+    final label = short.isEmpty
+        ? '最新：${latest.title}'
+        : '最新：${latest.title} · $short';
+    final color = switch (latest.state) {
+      'REJECTED' => theme.colorScheme.error,
+      'CURRENT' => theme.colorScheme.tertiary,
+      'DONE' => theme.colorScheme.primary,
+      _ => theme.colorScheme.onSurfaceVariant,
+    };
+    return (label, color);
+  }
+
+  // ============================ ③ 产品进度 ============================
 
   Widget _productProgressSection() {
     final theme = Theme.of(context);
@@ -475,36 +640,17 @@ class _SalesOrderProgressDetailPageState
         ),
       );
     }
-    return SalesPlanProgressPanel(orderId: widget.orderId);
-  }
-
-  // ============================ ③ 履约进度（快递式时间线） ============================
-
-  Widget _timelineSection() {
-    final theme = Theme.of(context);
-    if (_timelineError != null) {
-      return _errorCard(theme, '履约进度加载失败：$_timelineError');
-    }
-    final events = _timeline;
-    if (events == null) {
-      return const Card(
-        margin: EdgeInsets.zero,
-        child: Padding(
-          padding: EdgeInsets.all(UtenSpacing.s24),
-          child: Center(child: CircularProgressIndicator()),
-        ),
-      );
-    }
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: UtenProgressTimeline(
-          events: events,
-          onOpenDoc: _openLinkedDoc,
-          emptyText: '暂无履约进度',
-        ),
-      ),
+    return SalesPlanProgressPanel(
+      orderId: widget.orderId,
+      canShip:
+          d != null &&
+          d.writable &&
+          d.status == kSalesStatusApproved &&
+          d.financeConfirmed &&
+          !d.closed &&
+          !d.stopped,
+      onChanged: _reload,
+      shipmentActions: _shipmentActions,
     );
   }
 

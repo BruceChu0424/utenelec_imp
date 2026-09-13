@@ -10,6 +10,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
+import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
@@ -33,6 +36,89 @@ import 'package:uten_imp/features/production/providers/production_execution_refr
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 
 void main() {
+  for (final empty in [true, false]) {
+    testWidgets(
+      'candidate selection summary floats at zero and clears selected rows empty=$empty',
+      (tester) async {
+        await _pumpPage(
+          tester,
+          size: const Size(1400, 900),
+          seeded: false,
+          permissions: const {
+            Perm.productionMaterialAnalysisCreate,
+            Perm.productionMaterialAnalysisRefresh,
+          },
+          responseOverride: (request) =>
+              request.path.endsWith('/sales-candidates')
+              ? empty
+                    ? {
+                        'items': <dynamic>[],
+                        'page': 1,
+                        'size': 100,
+                        'total': 0,
+                        'totalPages': 0,
+                      }
+                    : _salesCandidatesJson()
+              : null,
+        );
+        final tableFinder = find.byKey(
+          const Key('material-analysis-candidate-table'),
+        );
+        final table = tester
+            .widget<MasterDataTableView<MaterialAnalysisSalesCandidateLine>>(
+              tableFinder,
+            );
+        expect(table.showSelectionSummary, isFalse);
+        expect(
+          table.bottomContentPadding,
+          UtenFloatingActionGroup.scrollClearance,
+        );
+        expect(
+          find.descendant(
+            of: tableFinder,
+            matching: find.byType(UtenSelectionSummaryPill),
+          ),
+          findsNothing,
+        );
+        final summary = find.byKey(
+          const Key('material-analysis-candidate-selected-total'),
+        );
+        expect(summary, findsOneWidget);
+        expect(find.text('已选 0 项'), findsOneWidget);
+        expect(tester.getRect(summary).top, greaterThan(675));
+        expect(
+          find.ancestor(
+            of: summary,
+            matching: find.byType(UtenFloatingActionGroup),
+          ),
+          findsOneWidget,
+        );
+        if (!empty) {
+          final checkboxes = find.descendant(
+            of: tableFinder,
+            matching: find.byType(Checkbox),
+          );
+          await tester.tap(checkboxes.first);
+          await tester.pump();
+          expect(find.text('已选 2 项'), findsOneWidget);
+          await tester.tap(
+            find.byKey(
+              const Key('material-analysis-candidate-clear-selection'),
+            ),
+          );
+          await tester.pump();
+          expect(find.text('已选 0 项'), findsOneWidget);
+          expect(
+            find.byKey(const Key('source-qty-sales-line-a')),
+            findsNothing,
+          );
+          expect(tester.widget<Checkbox>(checkboxes.first).value, isFalse);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('cancelling analysis validates the reason and submits once', (
     tester,
   ) async {
@@ -359,8 +445,8 @@ void main() {
       await tester.tap(checkboxes.at(0));
       await tester.pump();
       expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isFalse);
-      // MasterDataTableView 仍会如实显示「已选 0 项」；这里真正要守住的是
-      // 页面级已选产品数量编辑区已经清空，不能用跨组件的泛化文案断言。
+      // 清空后只有右下悬浮摘要保留 0，表头不再重复显示。
+      expect(find.text('已选 0 项'), findsOneWidget);
       expect(find.byKey(const Key('source-qty-sales-line-a')), findsNothing);
       expect(find.byKey(const Key('source-qty-sales-line-b')), findsNothing);
     },
@@ -2234,6 +2320,245 @@ void main() {
     expect(find.text('测试产品(P-1)'), findsOneWidget);
     expect(find.text('第二测试产品(P-2)'), findsOneWidget);
   });
+
+  for (final net in <double?>[null, 0, 2]) {
+    testWidgets(
+      'MAKE priority supplement uses explicit net allowance $net despite completed child',
+      (tester) async {
+        await _pumpPage(
+          tester,
+          size: const Size(1600, 1000),
+          permissions: const {
+            Perm.productionMaterialAnalysisCreate,
+            Perm.productionMaterialAnalysisRefresh,
+            Perm.productionMaterialAnalysisNotify,
+            Perm.productionMaterialAnalysisGenerate,
+          },
+          analysisJson: _priorityMakeSupplementAnalysisJson(net: net),
+        );
+        await _openBucketDetail(tester, 'workshop');
+        if (net == 2) {
+          expect(find.text('让料后补自制'), findsOneWidget);
+          final row = _frozenRowOf('待自制壳体');
+          final quantity = tester.widget<TextField>(
+            find.descendant(of: row, matching: find.byType(TextField)).first,
+          );
+          expect(
+            quantity.controller?.text,
+            '2',
+            reason:
+                'must not reuse original need 8 or total priority pending 4',
+          );
+        } else {
+          expect(
+            find.text('待自制壳体'),
+            findsNothing,
+            reason:
+                'general shortage and DONE history do not authorize duplicate child creation',
+          );
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'MAKE priority supplement submits only net quantity and disappears after fresh covered allowance',
+    (tester) async {
+      final after = _priorityMakeSupplementAnalysisJson(net: 0);
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1600, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisNotify,
+          Perm.productionMaterialAnalysisGenerate,
+        },
+        analysisJson: _priorityMakeSupplementAnalysisJson(net: 2),
+        responseOverride: (request) => request.path.endsWith('/issue-plans')
+            ? {
+                'analysis': after,
+                'plans': [
+                  {
+                    'planId': 'supplement-plan',
+                    'planNo': 'PP-SUPPLEMENT',
+                    'status': 'DRAFT',
+                    'segmentIds': <String>[],
+                    'drawIds': <String>[],
+                  },
+                ],
+              }
+            : null,
+      );
+      await _openBucketDetail(tester, 'workshop');
+      final row = _frozenRowOf('待自制壳体');
+      await _pickBucketRowWorkshop(tester, row, '装配一车间');
+      await _tapBucketRowCheckbox(tester, '待自制壳体');
+      await tester.tap(
+        find.byKey(const Key('material-analysis-bucket-action-ready')),
+      );
+      await tester.pumpAndSettle();
+      final issued = harness.requests.singleWhere(
+        (request) => request.path.endsWith('/issue-plans'),
+      );
+      expect((issued.data as Map<String, dynamic>)['lines'], [
+        {
+          'materialLineId': 'pending-make-1',
+          'qty': 2.0,
+          'departmentId': 'workshop-1',
+          'workshopName': '装配一车间',
+          'workerId': 'worker-1',
+        },
+      ]);
+      await tester.tap(find.text('留在物料分析'));
+      await tester.pumpAndSettle();
+      await _openBucketDetail(tester, 'workshop');
+      expect(find.text('待自制壳体'), findsNothing);
+      expect(find.text('让料后补自制'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'SUBCONTRACT priority supplement keeps existing residual notification when MAKE allowance is absent',
+    (tester) async {
+      final initial = _priorityMakeSupplementAnalysisJson(
+        net: null,
+        subcontract: true,
+      );
+      final after = _priorityMakeSupplementAnalysisJson(
+        net: null,
+        subcontract: true,
+      );
+      final parent = (after['flatMaterials'] as List)
+          .cast<Map<String, dynamic>>()
+          .first;
+      parent['notifiedTargets'] = [
+        ...(parent['notifiedTargets'] as List),
+        {
+          'target': 'SUBCONTRACT',
+          'documentType': 'SUBCONTRACT_MAKE_TASK',
+          'documentId': 'pending-make-child-1',
+          'status': 'CREATED',
+          'allocatedQty': 4,
+        },
+      ];
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1600, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        analysisJson: initial,
+        responseOverride: (request) =>
+            request.path.endsWith('/notify') ? after : null,
+      );
+      await _openBucketDetail(tester, 'subcontract');
+      await _tapBucketRowCheckbox(tester, '待自制壳体');
+      await tester.tap(
+        find.byKey(const Key('material-analysis-bucket-action-subcontract')),
+      );
+      await tester.pumpAndSettle();
+      await _confirmSupplyQuantityDialog(tester);
+      final request = harness.requests.singleWhere(
+        (request) => request.path.endsWith('/notify'),
+      );
+      final body = request.data as Map<String, dynamic>;
+      expect(body['target'], 'SUBCONTRACT');
+      final quantities = (body['quantities'] as List)
+          .cast<Map<String, dynamic>>();
+      expect(quantities.single['qty'], 4.0);
+      expect(
+        find.text('待自制壳体'),
+        findsNothing,
+        reason: 'active successor supply covers the remaining priority demand',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'MAKE priority supplement remainder uses existing child without adding responsibility twice',
+    (tester) async {
+      final remaining = _priorityMakeSupplementAnalysisJson(net: 0);
+      final child = (remaining['products'] as List)
+          .cast<Map<String, dynamic>>()
+          .last;
+      child.addAll({
+        'requestedQty': 12,
+        'remainingQty': 2,
+        'generatedQty': 10,
+        'submittedQty': 10,
+        'approvedQty': 10,
+        'planExecutionStatus': 'NOT_STARTED',
+        'canSchedule': true,
+        'maxSchedulableQty': 2,
+      });
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1600, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisNotify,
+          Perm.productionMaterialAnalysisGenerate,
+        },
+        analysisJson: remaining,
+        responseOverride: (request) => request.path.endsWith('/issue-plans')
+            ? {
+                'analysis': _priorityMakeSupplementAnalysisJson(net: 0),
+                'plans': [
+                  {
+                    'planId': 'remaining-plan',
+                    'planNo': 'PP-REMAINING',
+                    'status': 'DRAFT',
+                    'segmentIds': <String>[],
+                    'drawIds': <String>[],
+                  },
+                ],
+              }
+            : null,
+      );
+      await _openBucketDetail(tester, 'workshop');
+      expect(find.text('让料后补自制'), findsNothing);
+      final row = _frozenRowOf('待自制壳体(自制备料)');
+      expect(
+        tester
+            .widget<TextField>(
+              find.descendant(of: row, matching: find.byType(TextField)).first,
+            )
+            .controller
+            ?.text,
+        '2',
+      );
+      await _pickBucketRowWorkshop(tester, row, '装配一车间');
+      await _tapBucketRowCheckbox(tester, '待自制壳体(自制备料)');
+      await tester.tap(
+        find.byKey(const Key('material-analysis-bucket-action-ready')),
+      );
+      await tester.pumpAndSettle();
+      final request = harness.requests.singleWhere(
+        (request) => request.path.endsWith('/issue-plans'),
+      );
+      expect((request.data as Map<String, dynamic>)['lines'], [
+        {
+          'analysisLineId': 'pending-make-child-1',
+          'qty': 2.0,
+          'departmentId': 'workshop-1',
+          'workshopName': '装配一车间',
+          'workerId': 'worker-1',
+        },
+      ]);
+      expect(
+        harness.requests.where((request) => request.path.endsWith('/notify')),
+        isEmpty,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('MAKE bucket keeps all 21 tasks reachable', (tester) async {
     final json = _analysisJson(const ['VIEW'])
@@ -5133,12 +5458,19 @@ void main() {
     final crossEntry = find.byKey(
       const ValueKey('material-cross-reallocation-start-agg-path-1'),
     );
-    await tester.scrollUntilVisible(
-      crossEntry,
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
+    await tester.ensureVisible(crossEntry);
+    await tester.pumpAndSettle();
     expect(crossEntry, findsOneWidget);
+    // Details now belong to one exact material path; the recipient is another
+    // row, not a second section inside the donor's dialog.
+    await _closeMaterialTableDetails(tester);
+    await _openMaterialTableDetails(tester, 'agg-path-2');
+    final receiveEntry = find.byKey(
+      const ValueKey('material-cross-reallocation-receive-agg-path-2'),
+    );
+    await tester.ensureVisible(receiveEntry);
+    await tester.pumpAndSettle();
+    expect(receiveEntry, findsOneWidget, reason: '缺料的新计划须直接提供从其他计划调入入口');
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
@@ -5164,6 +5496,518 @@ void main() {
       reason: '服务端动作缺失时跨计划入口必须 fail closed',
     );
   });
+
+  testWidgets(
+    'public future claim from purchase bucket keeps remaining 100 actionable without donor replenishment',
+    (tester) async {
+      final initial = _futureCoverageAnalysisJson('BUY', claimed: false);
+      final claimed = _futureCoverageAnalysisJson('BUY', claimed: true);
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1600, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisNotify,
+          Perm.productionMaterialAnalysisClaimSharedFuture,
+        },
+        analysisJson: initial,
+        responseOverride: (request) =>
+            request.path.endsWith('/claim-shared-future') ? claimed : null,
+      );
+      await _openBucketDetail(tester, 'buy');
+      final quantity = find.byKey(
+        const ValueKey('material-analysis-bucket-submit-qty-future-action'),
+      );
+      expect(tester.widget<TextField>(quantity).controller?.text, '1000');
+      final row = _frozenRowOf('未来物料');
+      await tester.tap(
+        find.descendant(of: row, matching: find.text('物料 / 调拨')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(
+          const ValueKey('material-detail-claim-shared-future-material'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final claimQty = find.byKey(
+        const ValueKey('shared-future-claim-qty-future-action'),
+      );
+      expect(tester.widget<TextField>(claimQty).controller?.text, '900');
+      await tester.tap(
+        find.byKey(const Key('material-table-confirm-claim-shared')),
+      );
+      await tester.pumpAndSettle();
+      final request = harness.requests.singleWhere(
+        (request) => request.path.endsWith('/claim-shared-future'),
+      );
+      expect((request.data as Map<String, dynamic>)['quantities'], [
+        {'actionGroupKey': 'future-action', 'qty': 900.0},
+      ]);
+      expect(
+        find.byKey(const Key('material-priority-replenishment-dialog')),
+        findsNothing,
+        reason:
+            'public surplus does not take the original owner share and needs no donor replacement order',
+      );
+      expect(find.textContaining('公共已认领未实收 900'), findsWidgets);
+      await _closeMaterialTableDetails(tester);
+      expect(
+        tester.widget<TextField>(quantity).controller?.text,
+        '100',
+        reason: 'bucket refresh must update the old 1000 default',
+      );
+      await _tapBucketRowCheckbox(tester, '未来物料');
+      expect(find.text('提交采购需求(1)'), findsOneWidget);
+      expect(
+        harness.requests.where((request) => request.path.endsWith('/notify')),
+        isEmpty,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'private future transfer from purchase bucket refreshes pending supply and opens exact donor replenishment',
+    (tester) async {
+      final initial = _futureCoverageAnalysisJson('BUY', claimed: false);
+      initial['allowedActions'] = [
+        'CROSS_REALLOCATE',
+        'NOTIFY_SUPPLY',
+        'VIEW_FUTURE_TRANSFERS',
+      ];
+      final after = jsonDecode(jsonEncode(initial)) as Map<String, dynamic>;
+      after['version'] = 4;
+      (after['flatMaterials'] as List)
+          .cast<Map<String, dynamic>>()
+          .single
+          .addAll({
+            'additionalSupplyRecommendedQty': 100,
+            'inboundQty': 900,
+            'status': 'NOTIFIED',
+          });
+      final source = {
+        ...initial,
+        'analysisId': 'source-A',
+        'flatMaterials': [
+          {
+            'materialLineId': 'source-material',
+            'goodsId': 'goods-1',
+            'goodsName': '未来物料',
+            'requiredQty': 1000,
+            'shortageQty': 900,
+            'additionalSupplyRecommendedQty': 900,
+            'sourceConfirmed': 'BUY',
+            'routeConfirmed': true,
+          },
+        ],
+      };
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1600, 1100),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisNotify,
+          Perm.productionMaterialAnalysisCrossReallocate,
+        },
+        analysisJson: initial,
+        responseOverride: (request) {
+          if (request.path.endsWith('/future-transfer-sources')) {
+            return [
+              {
+                'sourceAllocationId': 'allocation-exact',
+                'sourceAnalysisId': 'source-A',
+                'sourceMaterialId': 'source-material',
+                'sourceLabel': '原计划 A',
+                'sourceVersion': 7,
+                'sourceFingerprint': 'source-fp',
+                'targetVersion': 3,
+                'targetFingerprint': initial['fingerprint'],
+                'availableQty': 900,
+                'targetUncoveredQty': 1000,
+                'stage': 'IN_TRANSIT_OR_PENDING_STOCK_IN',
+              },
+            ];
+          }
+          if (request.path.endsWith('/future-transfers')) {
+            return request.method == 'POST' ? after : <Object>[];
+          }
+          if (request.path.endsWith('/future-transfer-replenishment-preview')) {
+            return {
+              'sourceAnalysis': source,
+              'sourceMaterialLineId': 'source-material',
+              'targetAnalysisId': 'analysis-1',
+              'transferredQty': 900,
+              'priorityPendingQty': 900,
+              'remainingSupplementQty': 900,
+              'defaultQty': 900,
+              'route': 'BUY',
+              'allowedRoutes': ['BUY'],
+              'operation': 'NOTIFY_SUPPLY',
+              'canOverSupply': true,
+            };
+          }
+          return null;
+        },
+      );
+      await _openBucketDetail(tester, 'buy');
+      await tester.tap(
+        find.descendant(
+          of: _frozenRowOf('未来物料'),
+          matching: find.text('物料 / 调拨'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final entry = find.byKey(
+        const Key('material-private-future-receive-future-material'),
+      );
+      await tester.ensureVisible(entry);
+      await tester.tap(entry);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('future-transfer-candidate-allocation-exact')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('cross-reallocation-reason')),
+        '加急计划采用九百份专属供给',
+      );
+      await tester.tap(find.byKey(const Key('cross-reallocation-confirm')));
+      await tester.pumpAndSettle();
+      final create = harness.requests.singleWhere(
+        (request) =>
+            request.method == 'POST' &&
+            request.path.endsWith('/future-transfers'),
+      );
+      final preview = harness.requests.singleWhere(
+        (request) =>
+            request.path.endsWith('/future-transfer-replenishment-preview'),
+      );
+      expect((create.data as Map)['sourceAllocationId'], 'allocation-exact');
+      expect((create.data as Map)['qty'], 900);
+      expect(
+        preview.path,
+        '/production/material-analyses/source-A/future-transfer-replenishment-preview',
+      );
+      expect(
+        preview.queryParameters['idempotencyKey'],
+        (create.data as Map)['idempotencyKey'],
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('priority-replenishment-quantity')),
+            )
+            .controller
+            ?.text,
+        '900',
+      );
+      await tester.tap(find.text('稍后补供'));
+      await tester.pumpAndSettle();
+      await _closeMaterialTableDetails(tester);
+      final quantity = find.byKey(
+        const Key('material-analysis-bucket-submit-qty-future-action'),
+      );
+      expect(tester.widget<TextField>(quantity).controller?.text, '100');
+      expect(
+        harness.requests.where((request) => request.path.endsWith('/notify')),
+        isEmpty,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'failed public commitment keeps the full uncovered quantity actionable despite historical notification',
+    (tester) async {
+      final analysis = _failedFutureClaimJson();
+      await _pumpPage(
+        tester,
+        size: const Size(1600, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        analysisJson: analysis,
+      );
+      await _openBucketDetail(tester, 'buy');
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(
+                const Key('material-analysis-bucket-submit-qty-future-action'),
+              ),
+            )
+            .controller
+            ?.text,
+        '1000',
+      );
+      await _tapBucketRowCheckbox(tester, '未来物料');
+      expect(find.text('提交采购需求(1)'), findsOneWidget);
+      expect(find.textContaining('公共已认领未实收 900'), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'claim-only owner can revoke failed public commitment without exposing ordinary supply cancellation',
+    (tester) async {
+      final analysis = _failedFutureClaimJson();
+      final cancelled =
+          jsonDecode(jsonEncode(analysis)) as Map<String, dynamic>;
+      cancelled['version'] = 5;
+      (cancelled['flatMaterials'] as List)
+              .cast<Map<String, dynamic>>()
+              .single['sharedFuturePendingQty'] =
+          0;
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisClaimSharedFuture,
+        },
+        analysisJson: analysis,
+        responseOverride: (request) =>
+            request.path.endsWith('/actions/claim-1/cancel') ? cancelled : null,
+      );
+      await _openMaterialTableDetails(tester, 'future-material');
+      expect(
+        find.byKey(const Key('material-detail-claim-shared-future-material')),
+        findsNothing,
+      );
+      final revoke = find.byKey(
+        const Key('material-table-cancel-action-claim-1'),
+      );
+      expect(revoke, findsOneWidget);
+      expect(
+        find.byKey(const Key('material-table-cancel-action-original-task')),
+        findsNothing,
+      );
+      await tester.ensureVisible(revoke);
+      await tester.tap(revoke);
+      await tester.pumpAndSettle();
+      expect(find.text('撤回公共认领（不撤回原采购 / 委外单）'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('material-analysis-cancel-reason')),
+        '原供给终检失败，撤回未实收认领',
+      );
+      await tester.tap(find.text('确认取消'));
+      await tester.pumpAndSettle();
+      final request = harness.requests.singleWhere(
+        (request) => request.path.endsWith('/actions/claim-1/cancel'),
+      );
+      expect((request.data as Map)['version'], analysis['version']);
+      expect(
+        harness.requests.where(
+          (request) => request.path.endsWith('/actions/original-task/cancel'),
+        ),
+        isEmpty,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final route in ['MAKE', 'SUBCONTRACT']) {
+    testWidgets(
+      'authoritative future coverage leaves remaining 100 in $route bucket',
+      (tester) async {
+        await _pumpPage(
+          tester,
+          size: const Size(1600, 1000),
+          permissions: const {
+            Perm.productionMaterialAnalysisCreate,
+            Perm.productionMaterialAnalysisRefresh,
+            Perm.productionMaterialAnalysisNotify,
+            Perm.productionMaterialAnalysisGenerate,
+          },
+          analysisJson: _futureCoverageAnalysisJson(route, claimed: true),
+        );
+        await _openBucketDetail(
+          tester,
+          route == 'MAKE' ? 'workshop' : 'subcontract',
+        );
+        final row = _frozenRowOf('未来物料');
+        final quantity = find
+            .descendant(of: row, matching: find.byType(TextField))
+            .first;
+        expect(tester.widget<TextField>(quantity).controller?.text, '100');
+        expect(
+          find.descendant(of: row, matching: find.text('物料 / 调拨')),
+          findsOneWidget,
+        );
+        await _tapBucketRowCheckbox(tester, '未来物料');
+        expect(_bucketRowCheckboxValue(tester, '未来物料'), isTrue);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'cross-plan receive immediately refreshes coverage and offers exact donor replenishment',
+    (tester) async {
+      final initial =
+          jsonDecode(jsonEncode(_aggregateAnalysisJson()))
+              as Map<String, dynamic>;
+      initial['allowedActions'] = ['CROSS_REALLOCATE', 'NOTIFY_SUPPLY'];
+      final received = jsonDecode(jsonEncode(initial)) as Map<String, dynamic>;
+      received['version'] = 4;
+      final target = (received['flatMaterials'] as List)
+          .cast<Map<String, dynamic>>()
+          .singleWhere((row) => row['materialLineId'] == 'agg-path-2');
+      target.addAll({
+        'allocatedAvailableQty': 4,
+        'shortageQty': 1,
+        'demandSupplyGapQty': 1,
+        'crossReallocatedInQty': 4,
+        'crossReallocationRefs': [
+          {
+            'id': 'transfer-exact',
+            'direction': 'IN',
+            'status': 'OPEN',
+            'counterpartAnalysisId': 'source-A',
+            'counterpartMaterialLineId': 'source-material',
+            'counterpartLabel': '原计划 A',
+            'qty': 4,
+            'currentEffectiveQty': 4,
+            'priorityOpenQty': 4,
+          },
+        ],
+      });
+      final source = <String, dynamic>{
+        'analysisId': 'source-A',
+        'version': 8,
+        'fingerprint': 'source-after',
+        'warehouseId': 'warehouse-1',
+        'allowedActions': ['NOTIFY_SUPPLY', 'OVER_SUPPLY'],
+        'products': <Map<String, dynamic>>[],
+        'flatMaterials': [
+          {
+            'materialLineId': 'source-material',
+            'goodsId': 'goods-shared-motor',
+            'goodsName': '共享电机',
+            'requiredQty': 10,
+            'shortageQty': 4,
+            'sourceConfirmed': 'BUY',
+            'routeConfirmed': true,
+          },
+        ],
+      };
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisCrossReallocate,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        analysisJson: initial,
+        responseOverride: (request) {
+          if (request.path.endsWith('/cross-reallocation-sources')) {
+            return {
+              'items': [
+                {
+                  'sourceAnalysisId': 'source-A',
+                  'sourceMaterialLineId': 'source-material',
+                  'sourceVersion': 7,
+                  'sourceFingerprint': 'source-before',
+                  'analysisLabel': '原计划 A',
+                  'productLabel': '原计划产品',
+                  'shortageQty': 5,
+                  'sourceLendableQty': 4,
+                },
+              ],
+              'page': 1,
+              'size': 20,
+              'total': 1,
+              'totalPages': 1,
+            };
+          }
+          if (request.path.endsWith('/cross-reallocations')) return received;
+          if (request.path.endsWith(
+            '/cross-reallocation-replenishment-preview',
+          )) {
+            return {
+              'sourceAnalysis': source,
+              'sourceMaterialLineId': 'source-material',
+              'targetAnalysisId': 'analysis-1',
+              'transferredQty': 4,
+              'priorityPendingQty': 4,
+              'remainingSupplementQty': 4,
+              'defaultQty': 4,
+              'route': 'BUY',
+              'allowedRoutes': ['BUY'],
+              'operation': 'NOTIFY_SUPPLY',
+              'canOverSupply': true,
+            };
+          }
+          return null;
+        },
+      );
+      await _openMaterialTableDetails(tester, 'agg-path-2');
+      await tester.tap(
+        find.byKey(
+          const ValueKey('material-cross-reallocation-receive-agg-path-2'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(
+          const ValueKey(
+            'cross-reallocation-candidate-source-A-source-material',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('cross-reallocation-reason')),
+        '加急计划先调用四个',
+      );
+      await tester.tap(find.byKey(const Key('cross-reallocation-confirm')));
+      await tester.pumpAndSettle();
+      expect(find.text('为原计划补供'), findsWidgets);
+      final transfer = harness.requests.singleWhere(
+        (request) => request.path.endsWith('/cross-reallocations'),
+      );
+      final preview = harness.requests.singleWhere(
+        (request) =>
+            request.path.endsWith('/cross-reallocation-replenishment-preview'),
+      );
+      expect(
+        transfer.path,
+        '/production/material-analyses/source-A/cross-reallocations',
+      );
+      expect(
+        preview.path,
+        '/production/material-analyses/source-A/cross-reallocation-replenishment-preview',
+      );
+      expect(
+        preview.queryParameters['idempotencyKey'],
+        (transfer.data as Map)['idempotencyKey'],
+      );
+      await tester.tap(find.text('稍后补供'));
+      await tester.pumpAndSettle();
+      final details = find.byKey(
+        const ValueKey('material-node-details-agg-path-2'),
+      );
+      expect(
+        find.descendant(
+          of: details,
+          matching: find.textContaining('合格库存保障 4/5'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        harness.requests.where((request) => request.path.endsWith('/notify')),
+        isEmpty,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'cross-plan revoke has independent local and server permissions',
@@ -6747,8 +7591,7 @@ Future<_Harness> _pumpPage(
   List<MaterialAnalysisSourceInput>? sources,
   Map<String, dynamic>? analysisJson,
   DioException? Function(RequestOptions request)? errorOverride,
-  FutureOr<Map<String, dynamic>?> Function(RequestOptions request)?
-  responseOverride,
+  FutureOr<Object?> Function(RequestOptions request)? responseOverride,
   String? billDate,
   String? deliveryDate,
   String? departmentId,
@@ -6960,8 +7803,7 @@ ApiClient _api(
   required List<Map<String, dynamic>> warehouseEntries,
   Map<String, dynamic>? analysisJson,
   DioException? Function(RequestOptions request)? errorOverride,
-  FutureOr<Map<String, dynamic>?> Function(RequestOptions request)?
-  responseOverride,
+  FutureOr<Object?> Function(RequestOptions request)? responseOverride,
 }) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
@@ -7661,6 +8503,161 @@ Map<String, dynamic> _pendingMakeCandidateAnalysisJson({
       'allocationPriority': 3,
     });
   }
+  return json;
+}
+
+Map<String, dynamic> _priorityMakeSupplementAnalysisJson({
+  required double? net,
+  bool subcontract = false,
+}) {
+  final json =
+      jsonDecode(
+            jsonEncode(
+              _pendingMakeCandidateAnalysisJson(
+                includeRealChild: true,
+                lowerLevelPending: false,
+                parentRoute: subcontract ? 'SUBCONTRACT' : 'MAKE',
+                childSourceType: subcontract
+                    ? 'SUBCONTRACT_MAKE'
+                    : 'MAKE_COMPONENT',
+              ),
+            ),
+          )
+          as Map<String, dynamic>;
+  final parent = (json['flatMaterials'] as List)
+      .cast<Map<String, dynamic>>()
+      .first;
+  parent.addAll({
+    'requiredQty': subcontract ? 8 : 0,
+    'shortageQty': 4,
+    'demandSupplyGapQty': subcontract ? 4 : 0,
+    'priorityPendingQty': 4,
+    'crossReallocatedOutQty': 4,
+    'actionable': subcontract,
+    'planAnchorAnalysisLineId': 'pending-make-child-1',
+    'flowStage': 'MAKE_COMPLETED',
+    'priorityMakeSupplementQty': ?net,
+  });
+  final target = (parent['notifiedTargets'] as List)
+      .cast<Map<String, dynamic>>()
+      .single;
+  parent['notifiedTargets'] = <Map<String, dynamic>>[
+    {...target, 'status': 'DONE', 'allocatedQty': 8},
+  ];
+  final child = (json['products'] as List).cast<Map<String, dynamic>>().last;
+  child.addAll({
+    'remainingQty': 0,
+    'submittedQty': 8,
+    'approvedQty': 8,
+    'planExecutionStatus': 'COMPLETED',
+    'planExecutionPlannedQty': 8,
+    'planExecutionInboundQty': 8,
+    'canSchedule': false,
+    'maxSchedulableQty': 0,
+  });
+  return json;
+}
+
+Map<String, dynamic> _failedFutureClaimJson() {
+  final analysis = _futureCoverageAnalysisJson('BUY', claimed: true);
+  analysis['allowedActions'] = [
+    'NOTIFY_SUPPLY',
+    'CANCEL_ACTION',
+    'CLAIM_SHARED_FUTURE',
+  ];
+  analysis['supplyActions'] = [
+    {
+      'actionId': 'claim-1',
+      'operationType': 'SHARED_FUTURE_CLAIM',
+      'route': 'BUY',
+      'status': 'OPEN',
+    },
+    {
+      'actionId': 'original-task',
+      'operationType': 'SUPPLY',
+      'route': 'BUY',
+      'status': 'OPEN',
+    },
+  ];
+  (analysis['flatMaterials'] as List)
+      .cast<Map<String, dynamic>>()
+      .single
+      .addAll({
+        'additionalSupplyRecommendedQty': 1000,
+        'publicSurplusRemainingQty': 0,
+        'lateSharedFutureAvailableQty': 0,
+        'notifiedTargets': [
+          {
+            'actionId': 'claim-1',
+            'target': 'BUY',
+            'status': 'OPEN',
+            'allocatedQty': 900,
+            'documentType': 'SHARED_FUTURE_CLAIM',
+          },
+          {
+            'actionId': 'original-task',
+            'target': 'BUY',
+            'status': 'OPEN',
+            'allocatedQty': 100,
+            'documentType': 'PURCHASE_APPLICATION',
+          },
+        ],
+      });
+  return analysis;
+}
+
+Map<String, dynamic> _futureCoverageAnalysisJson(
+  String route, {
+  required bool claimed,
+}) {
+  final json = _analysisJson(const [
+    'NOTIFY_SUPPLY',
+    'GENERATE_PLAN',
+    'CLAIM_SHARED_FUTURE',
+  ]);
+  final product = Map<String, dynamic>.from(
+    (json['products'] as List).first as Map,
+  );
+  product.addAll({
+    'readyNowQty': 0,
+    'readyStartQty': 0,
+    'readyFinishQty': 0,
+    'readyShipQty': 0,
+    'requestedQty': 1000,
+    'remainingQty': 1000,
+    'maxSchedulableQty': 1000,
+    'canSchedule': true,
+  });
+  json['products'] = [product];
+  json['version'] = claimed ? 4 : 3;
+  json['flatMaterials'] = [
+    {
+      ..._routeMaterial(
+        id: 'future-material',
+        nodeKey: 'future-node',
+        actionGroupKey: 'future-action',
+        goodsCode: 'FUTURE',
+        goodsName: '未来物料',
+        route: route,
+        controlStage: 'START',
+      ),
+      'requiredQty': 1000,
+      'shortageQty': 1000,
+      'demandSupplyGapQty': 1000,
+      'allocatedAvailableQty': 0,
+      'availableQty': 0,
+      'exactPeggedQty': 0,
+      'inboundQty': 0,
+      'additionalSupplyRecommendedQty': claimed ? 100 : 1000,
+      'sharedFutureClaimedQty': claimed ? 900 : 0,
+      'sharedFuturePendingQty': claimed ? 900 : 0,
+      'publicSurplusRemainingQty': claimed ? 0 : 900,
+      'publicSurplusApprovedInboundQty': 900,
+      'lateSharedFutureAvailableQty': 0,
+      'status': claimed ? 'NOTIFIED' : 'SHORTAGE',
+      'sharedFutureSupplyRefs': <Map<String, dynamic>>[],
+    },
+  ];
   return json;
 }
 

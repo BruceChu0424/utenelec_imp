@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/shared/widgets/uten_tree_table_cell.dart';
 
 void main() {
-  testWidgets('shows redundant hierarchy and a visible path', (tester) async {
+  testWidgets('shows redundant hierarchy cues', (tester) async {
     final semantics = tester.ensureSemantics();
     await tester.pumpWidget(
       const MaterialApp(
@@ -16,7 +16,6 @@ void main() {
               levelLabel: '组件 2 级',
               title: '安装螺钉包组件',
               subtitle: '80NG0012R · M4',
-              pathLabel: '产品 A → 壳体 → 安装螺钉包组件',
               ancestorContinuations: [true, false],
               isLastChild: true,
             ),
@@ -27,7 +26,8 @@ void main() {
 
     expect(find.text('P1.2.3'), findsOneWidget);
     expect(find.text('组件 2 级'), findsOneWidget);
-    expect(find.text('路径：产品 A → 壳体 → 安装螺钉包组件'), findsOneWidget);
+    // 2026-09-12 用户口径：不再有「路径：A → B」堆叠行（pathLabel 已退役）。
+    expect(find.textContaining('路径：'), findsNothing);
     expect(
       find.bySemanticsLabel(RegExp('安装螺钉包组件，级联号 P1\\.2\\.3，组件 2 级')),
       findsOneWidget,
@@ -96,6 +96,18 @@ void main() {
         .single;
     expect(semantic.properties.button, isTrue);
     expect(semantic.properties.expanded, isFalse);
+    // 2026-09-12 用户口径「箭头粗一点、浅色模式亮一点」：细线图标换自绘 3px 圆头
+    // 粗箭头（锁住字形不再退回 Icons 线性款）。
+    final glyphPainters = tester
+        .widgetList<CustomPaint>(
+          find.descendant(of: toggle, matching: find.byType(CustomPaint)),
+        )
+        .map((widget) => widget.painter)
+        .where(
+          (painter) => painter.runtimeType.toString().contains('ThickChevron'),
+        )
+        .toList();
+    expect(glyphPainters, hasLength(1));
     await tester.tap(toggle);
     expect(toggles, 1);
     semantics.dispose();
@@ -117,7 +129,6 @@ void main() {
                 levelLabel: '组件 2 级',
                 title: '选中组件',
                 subtitle: '编号 A-1',
-                pathLabel: '产品 → 选中组件',
                 foregroundColor: Colors.white,
               ),
             ),

@@ -7,6 +7,8 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+import '../../../components/layout/uten_floating_action_group.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -52,7 +54,7 @@ class SettingsPage extends ConsumerWidget {
         child: SingleChildScrollView(
           padding: const EdgeInsets.only(
             top: UtenSpacing.s16,
-            bottom: 96, // 底部悬浮胶囊导航留白
+            bottom: UtenFloatingActionGroup.scrollClearance, // 底部悬浮导航留白
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

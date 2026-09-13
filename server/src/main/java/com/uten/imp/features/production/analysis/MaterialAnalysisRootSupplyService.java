@@ -235,7 +235,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
             if (exists(command)) continue;
             BigDecimal qty = root.allocated().min(root.remainingBase());
             if (qty.signum() <= 0) continue;
-            BigDecimal available = decimal(em.createNativeQuery("""
+            List<?> availableBalances = em.createNativeQuery("""
                     SELECT GREATEST(COALESCE(balance.qty,0)-COALESCE((
                       SELECT SUM(r.qty-r.consumed_qty-r.released_qty) FROM stock_reservations r
                       WHERE r.goods_id=:goodsId AND r.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
@@ -245,8 +245,9 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                       AND balance.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
                       AND balance.warehouse_id=:warehouseId
                     """).setParameter("goodsId", root.goodsId()).setParameter("colorId", root.colorId())
-                    .setParameter("warehouseId", root.warehouseId()).getResultStream().findFirst()
-                    .orElse(BigDecimal.ZERO));
+                    .setParameter("warehouseId", root.warehouseId()).getResultList();
+            BigDecimal available = availableBalances.isEmpty()
+                    ? BigDecimal.ZERO : decimal(availableBalances.getFirst());
             if (available.compareTo(qty) < 0) throw conflict("根产品现货已变化，请重新分析后下达");
             transfer(root, qty, null, null, null, null, command);
             changed = true;

@@ -572,7 +572,9 @@ class _OperationsWorkbenchPageState
               key: const Key('operations-workbench-mobile-list'),
               // 悬浮主操作不占页面布局；仅在滚动尾部留透明避让，防止遮住末张任务卡/分页器。
               padding: EdgeInsets.only(
-                bottom: selectionAction == null ? 0 : 96,
+                bottom: selectionAction == null
+                    ? 0
+                    : UtenFloatingActionGroup.scrollClearance,
               ),
               children: [
                 filterRows,

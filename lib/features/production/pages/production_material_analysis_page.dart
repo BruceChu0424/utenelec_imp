@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -45,12 +46,17 @@ import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../models/production_material_analysis.dart';
+import '../models/material_future_transfer.dart';
+import '../models/material_future_transfer_progress.dart';
 import '../models/production_flow_stage.dart';
 import '../models/production_work_card.dart';
 import '../providers/material_analysis_warehouse_prefs_provider.dart';
 import '../providers/production_execution_refresh.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/material_reallocation_dialog.dart';
+import '../widgets/material_priority_replenishment_dialog.dart';
+import '../widgets/material_shared_future_claim_dialog.dart';
+import '../widgets/material_future_transfer_history.dart';
 import '../widgets/production_execution_card_print_preview.dart';
 import '../widgets/production_flow_stage_cell.dart';
 import '../widgets/material_borrow_dialog.dart';
@@ -102,6 +108,67 @@ abstract class _MaterialAnalysisPageBase
   };
 
   ProductionMaterialAnalysisView? _analysis;
+  List<MaterialFutureTransferRecord> _futureTransferRecords = const [];
+  Map<String, List<MaterialFutureTransferRecord>> _futureTransferByMaterial =
+      const {};
+  String? _futureTransferReadScope;
+  String? _futureTransferError;
+  int _futureTransferRequest = 0;
+
+  Future<void> _refreshFutureTransfers(
+    ProductionMaterialAnalysisView view,
+  ) async {
+    if (!mounted ||
+        !identical(_analysis, view) ||
+        !view.allowedActions.contains('VIEW_FUTURE_TRANSFERS')) {
+      return;
+    }
+    final request = ++_futureTransferRequest;
+    final scope = _routeMemoryScopeKey();
+    try {
+      final records = await ref
+          .read(productionPlanRepositoryProvider)
+          .materialFutureTransfers(analysisId: view.analysisId);
+      if (!mounted ||
+          request != _futureTransferRequest ||
+          _analysis?.analysisId != view.analysisId ||
+          scope != _routeMemoryScopeKey()) {
+        return;
+      }
+      setState(() {
+        _futureTransferRecords = records;
+        _futureTransferByMaterial = MaterialFutureTransferProgress.index(
+          view.analysisId,
+          records,
+        );
+        _futureTransferReadScope = scope;
+        _futureTransferError = null;
+      });
+      materialDetailRevision.value++;
+    } catch (_) {
+      if (!mounted ||
+          request != _futureTransferRequest ||
+          _analysis?.analysisId != view.analysisId ||
+          scope != _routeMemoryScopeKey()) {
+        return;
+      }
+      setState(() => _futureTransferError = '在途调拨进度暂不可用，请刷新核对');
+    }
+  }
+
+  void _reloadFutureTransferScope() {
+    if (_futureTransferReadScope == _routeMemoryScopeKey()) return;
+    setState(() {
+      ++_futureTransferRequest;
+      _futureTransferRecords = const [];
+      _futureTransferByMaterial = const {};
+      _futureTransferError = null;
+      _futureTransferReadScope = null;
+    });
+    final view = _analysis;
+    if (view != null) unawaited(_refreshFutureTransfers(view));
+  }
+
   MaterialAnalysisSalesCandidatePage? _candidatePage;
   String? _warehouseId;
   final Set<String> _warehouseIds = {};
@@ -124,11 +191,19 @@ abstract class _MaterialAnalysisPageBase
   /// 只跟随网络调用本身——结果弹层展示期间必须为 false，否则弹层背后还在转圈，
   /// 且 widget test 的 pumpAndSettle 永远settle 不了。
   final ValueNotifier<bool> planSubmissionProgress = ValueNotifier<bool>(false);
+  final ValueNotifier<int> materialDetailRevision = ValueNotifier<int>(0);
 
   void _setGenerating(bool value) {
     _generating = value;
     planSubmissionProgress.value = value;
   }
+
+  /// 2026-09-12 用户口径「点了没反应像卡住」：下达采购/委外执行期间屏幕中间
+  /// 给加载遮罩（车间已有 planSubmissionProgress 专用遮罩，不重复盖）。与
+  /// planSubmissionProgress 同一约束：只跟随网络调用本身，结果弹层前必须清空。
+  final ValueNotifier<String?> bucketActionBusyMessage = ValueNotifier<String?>(
+    null,
+  );
 
   bool _planSubmissionApproveNow = false;
   MaterialSupplyRoute? _notifyingRoute;
@@ -357,113 +432,16 @@ abstract class _MaterialAnalysisPageBase
   Widget _planSubmissionOverlay(ThemeData theme) {
     // ADR-71：下达车间是一次原子调用（建子件任务+出计划+可选审核同一事务），
     // 不再有「校验→生成」两阶段，遮罩只描述这一个不可中断的步骤。
+    // 2026-09-12 起 delegate 到全站统一的 UtenBusyOverlay（root Overlay 全屏
+    // 蒙版 + 屏幕正中卡片；蒙版色贴近页面背景，见组件注释）。
     final title = _planSubmissionApproveNow ? '正在生成并审核下达' : '正在生成生产计划';
     final description = _planSubmissionApproveNow
         ? '系统正在同一事务内创建子件任务、生成计划、审核下达并按需生成提货单。'
         : '系统正在创建计划草稿并提交审批。';
-
-    return BlockSemantics(
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          ModalBarrier(
-            dismissible: false,
-            color: theme.colorScheme.scrim.withValues(alpha: 0.42),
-            semanticsLabel: '生产计划提交处理中',
-          ),
-          Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s24),
-            child: SingleChildScrollView(
-              child: Semantics(
-                key: const Key('material-analysis-plan-submission-progress'),
-                container: true,
-                liveRegion: true,
-                label: '$title。$description。请勿重复提交或关闭页面。',
-                child: ExcludeSemantics(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 440),
-                    child: Material(
-                      color: theme.colorScheme.surface,
-                      elevation: 12,
-                      borderRadius: UtenRadius.lgAll,
-                      child: Padding(
-                        padding: const EdgeInsets.all(UtenSpacing.s24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(
-                                  width: 32,
-                                  height: 32,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 3,
-                                  ),
-                                ),
-                                const SizedBox(width: UtenSpacing.s16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        title,
-                                        style: theme.textTheme.titleMedium
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w800,
-                                            ),
-                                      ),
-                                      const SizedBox(height: UtenSpacing.s8),
-                                      Text(
-                                        description,
-                                        style: theme.textTheme.bodyMedium
-                                            ?.copyWith(
-                                              color: theme
-                                                  .colorScheme
-                                                  .onSurfaceVariant,
-                                              height: 1.45,
-                                            ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: UtenSpacing.s20),
-                            const LinearProgressIndicator(minHeight: 4),
-                            const SizedBox(height: UtenSpacing.s12),
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.hourglass_top_rounded,
-                                  size: 18,
-                                  color: theme.colorScheme.primary,
-                                ),
-                                const SizedBox(width: UtenSpacing.s8),
-                                Expanded(
-                                  child: Text(
-                                    '请勿重复提交或关闭页面',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+    return UtenBusyOverlay(
+      semanticsKey: const Key('material-analysis-plan-submission-progress'),
+      title: title,
+      description: description,
     );
   }
 
@@ -592,6 +570,7 @@ abstract class _MaterialAnalysisPageBase
     ProductionMaterialAnalysisProduct product,
   );
   bool _hasResolvedMaterialSource(ProductionMaterialAnalysisMaterial material);
+  Future<void> _showMaterialTableDetails(_MaterialGroup group);
   String _analysisDynamicProjectionKey(ProductionMaterialAnalysisView view);
   Widget _nodeBorrowSection(
     ThemeData theme,
@@ -721,6 +700,8 @@ abstract class _MaterialAnalysisPageBase
 
   @override
   void dispose() {
+    materialDetailRevision.dispose();
+    bucketActionBusyMessage.dispose();
     _analysisPollTimer?.cancel();
     _candidateSearch.dispose();
     _bomSearch.dispose();
@@ -793,6 +774,15 @@ abstract class _MaterialAnalysisPageBase
 
   void _applyAnalysis(ProductionMaterialAnalysisView view) {
     final previousAnalysisId = _analysis?.analysisId;
+    ++_futureTransferRequest;
+    if (previousAnalysisId != view.analysisId ||
+        _futureTransferReadScope != _routeMemoryScopeKey() ||
+        !view.allowedActions.contains('VIEW_FUTURE_TRANSFERS')) {
+      _futureTransferRecords = const [];
+      _futureTransferByMaterial = const {};
+      _futureTransferError = null;
+      _futureTransferReadScope = null;
+    }
     _routeMemoryGeneration++;
     _routeMemoryPendingKey = null;
     _loadingRouteMemory = false;
@@ -808,6 +798,7 @@ abstract class _MaterialAnalysisPageBase
       _systemSeededBatchQtyTexts.clear();
     }
     _analysis = view;
+    unawaited(Future<void>.microtask(() => _refreshFutureTransfers(view)));
     _serverRefreshNotice = null;
     _invalidateBucketRowsCache();
     _indexCacheAnalysis = null;
@@ -895,6 +886,7 @@ abstract class _MaterialAnalysisPageBase
     // 新快照的进度/路线桶可能不再含旧筛选值（确认路线后「路线待确认」桶消失
     // 即典型）：只移除失效值，避免不可见的激活筛选把表过滤成空。
     _pruneMaterialTableFilters();
+    materialDetailRevision.value++;
   }
 
   /// 服务端刷新会重建节点视图；只把相对最新快照仍合法的未保存路线覆盖回去。
@@ -1558,6 +1550,21 @@ abstract class _MaterialAnalysisPageBase
 /// 继承链的最终实现类：保持测试与 createState 引用的原私有名。
 class _ProductionMaterialAnalysisPageState
     extends _MaterialAnalysisMaterialTableState {
+  /// 顶部「主仓库」字段实测高度（更新时间事实框与之等高，2026-09-12 用户口径）。
+  final GlobalKey _warehouseFieldMeasureKey = GlobalKey();
+  double? _factChipHeight;
+
+  /// 帧后量一次主仓库字段高度；变了才 setState（主题/字号切换自适应）。
+  void _measureWarehouseFieldHeight() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final height = _warehouseFieldMeasureKey.currentContext?.size?.height;
+      if (height != null && (height - (_factChipHeight ?? 0)).abs() > 0.5) {
+        setState(() => _factChipHeight = height);
+      }
+    });
+  }
+
   /// 任何路径装上新分析快照后只做路线学习预填。
   /// 子件任务必须由计划员在表格/分桶中显式创建，不因刷新、
   /// 轮询或采用路线而隐式下达。
@@ -1582,8 +1589,14 @@ class _ProductionMaterialAnalysisPageState
       if (analysis != null) unawaited(_prefillRememberedRoutes(analysis));
     }
 
-    ref.listen(sessionProvider, (_, _) => reloadMemory());
-    ref.listen(currentPermissionsProvider, (_, _) => reloadMemory());
+    ref.listen(sessionProvider, (_, _) {
+      reloadMemory();
+      _reloadFutureTransferScope();
+    });
+    ref.listen(currentPermissionsProvider, (_, _) {
+      reloadMemory();
+      _reloadFutureTransferScope();
+    });
 
     // 返回即刷新（须与 ref.listen 同位置=build 内注册）：采购/委外到货、IQC 合格放行
     // 等下游事实由服务端在各自事务里重算分析快照；本页从子页面返回时静默重拉详情，
@@ -1728,6 +1741,17 @@ class _ProductionMaterialAnalysisPageState
             ),
             if (_planSubmissionInProgress)
               Positioned.fill(child: _planSubmissionOverlay(theme)),
+            ValueListenableBuilder<String?>(
+              valueListenable: bucketActionBusyMessage,
+              builder: (context, message, _) => message != null
+                  ? Positioned.fill(
+                      child: UtenBusyOverlay(
+                        title: message,
+                        description: '同一事务内批量处理所选行，完成后自动刷新。',
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
           ],
         ),
       ),
@@ -1749,9 +1773,7 @@ class _ProductionMaterialAnalysisPageState
     final actionCount = _bottomActionButtons().length;
     final bottomClearance = actionCount == 0
         ? UtenSpacing.s16
-        : context.breakpoint.isCompact
-        ? 24.0 + actionCount * 60.0
-        : 96.0;
+        : UtenFloatingActionGroup.scrollClearance;
     final headerSections = [
       Padding(
         padding: const EdgeInsets.only(top: UtenSpacing.s8),
@@ -1823,117 +1845,129 @@ class _ProductionMaterialAnalysisPageState
   Widget _analysisHeader(
     ThemeData theme,
     ProductionMaterialAnalysisView analysis,
-  ) => Container(
-    padding: const EdgeInsets.all(UtenSpacing.s12),
-    decoration: BoxDecoration(
-      color: theme.colorScheme.surfaceContainerLow,
-      borderRadius: UtenRadius.mdAll,
-      border: Border.all(color: theme.colorScheme.outlineVariant),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Wrap(
-          spacing: UtenSpacing.s12,
-          runSpacing: UtenSpacing.s8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            SizedBox(width: 260, child: _warehouseField()),
-            Tooltip(
-              message:
-                  '分析版本 ${analysis.version} · '
-                  '产品 ${analysis.products.length} · 物料 ${analysis.materials.length}',
-              child: _factChip(
-                theme,
-                Icons.schedule_outlined,
-                '更新 ${_dateTimeOnly(analysis.analyzedAt)}',
-              ),
-            ),
-            // 查找框常驻顶部卡片（更新时间右侧）；全屏时顶部卡片不可见，
-            // 由 _bomToolbarActions 在全屏工具条里再挂一个（共享同一控制器）。
-            SizedBox(
-              width: context.breakpoint.isCompact ? 200 : 240,
-              child: UtenSearchBar(
-                key: const Key('material-bom-search'),
-                controller: _bomSearch,
-                hint: _l10n.materialSearchHint,
-                onChanged: _bomSearchChanged,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        Container(
-          key: const Key('material-analysis-next-step'),
-          constraints: const BoxConstraints(minHeight: 52),
-          padding: const EdgeInsets.symmetric(
-            horizontal: UtenSpacing.s12,
-            vertical: UtenSpacing.s8,
-          ),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
-            borderRadius: UtenRadius.mdAll,
-          ),
-          child: Row(
+  ) {
+    _measureWarehouseFieldHeight();
+    return Container(
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: UtenRadius.mdAll,
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: UtenSpacing.s12,
+            runSpacing: UtenSpacing.s8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Icon(
-                Icons.assistant_direction_rounded,
-                color: theme.colorScheme.primary,
+              // 2026-09-12 用户口径：更新时间框与主仓库框等高——用 GlobalKey 量
+              // 主仓库字段的实际高度（随主题/字号自适应），量得后 setState 一次。
+              SizedBox(
+                width: 260,
+                child: KeyedSubtree(
+                  key: _warehouseFieldMeasureKey,
+                  child: _warehouseField(),
+                ),
               ),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Text(
-                  _nextStepText(analysis),
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    height: 1.45,
-                  ),
+              Tooltip(
+                message:
+                    '分析版本 ${analysis.version} · '
+                    '产品 ${analysis.products.length} · 物料 ${analysis.materials.length}',
+                child: _factChip(
+                  theme,
+                  Icons.schedule_outlined,
+                  '更新 ${_dateTimeOnly(analysis.analyzedAt)}',
+                  height: _factChipHeight,
+                ),
+              ),
+              // 查找框常驻顶部卡片（更新时间右侧）；全屏时顶部卡片不可见，
+              // 由 _bomToolbarActions 在全屏工具条里再挂一个（共享同一控制器）。
+              SizedBox(
+                width: context.breakpoint.isCompact ? 200 : 240,
+                child: UtenSearchBar(
+                  key: const Key('material-bom-search'),
+                  controller: _bomSearch,
+                  hint: _l10n.materialSearchHint,
+                  onChanged: _bomSearchChanged,
                 ),
               ),
             ],
           ),
-        ),
-        if (_bulkOperationLabel != null && _bulkOperationTotal > 0) ...[
           const SizedBox(height: UtenSpacing.s8),
-          Semantics(
-            liveRegion: true,
-            label:
-                '$_bulkOperationLabel，已完成 $_bulkOperationCompleted / $_bulkOperationTotal',
-            child: Container(
-              key: const Key('material-analysis-bulk-progress'),
-              padding: const EdgeInsets.all(UtenSpacing.s12),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.tertiaryContainer.withValues(
-                  alpha: 0.45,
+          Container(
+            key: const Key('material-analysis-next-step'),
+            constraints: const BoxConstraints(minHeight: 52),
+            padding: const EdgeInsets.symmetric(
+              horizontal: UtenSpacing.s12,
+              vertical: UtenSpacing.s8,
+            ),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+              borderRadius: UtenRadius.mdAll,
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.assistant_direction_rounded,
+                  color: theme.colorScheme.primary,
                 ),
-                borderRadius: UtenRadius.mdAll,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    '$_bulkOperationLabel · $_bulkOperationCompleted / $_bulkOperationTotal',
+                const SizedBox(width: UtenSpacing.s8),
+                Expanded(
+                  child: Text(
+                    _nextStepText(analysis),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w700,
+                      height: 1.45,
                     ),
                   ),
-                  const SizedBox(height: UtenSpacing.s8),
-                  LinearProgressIndicator(
-                    value: _bulkOperationCompleted / _bulkOperationTotal,
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    '数量较多时系统会自动分批提交，请勿重复点击。已完成的批次不会重复创建。',
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
+          if (_bulkOperationLabel != null && _bulkOperationTotal > 0) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Semantics(
+              liveRegion: true,
+              label:
+                  '$_bulkOperationLabel，已完成 $_bulkOperationCompleted / $_bulkOperationTotal',
+              child: Container(
+                key: const Key('material-analysis-bulk-progress'),
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.tertiaryContainer.withValues(
+                    alpha: 0.45,
+                  ),
+                  borderRadius: UtenRadius.mdAll,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      '$_bulkOperationLabel · $_bulkOperationCompleted / $_bulkOperationTotal',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s8),
+                    LinearProgressIndicator(
+                      value: _bulkOperationCompleted / _bulkOperationTotal,
+                    ),
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text(
+                      '数量较多时系统会自动分批提交，请勿重复点击。已完成的批次不会重复创建。',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
-      ],
-    ),
-  );
+      ),
+    );
+  }
 
   String _nextStepText(ProductionMaterialAnalysisView analysis) {
     if (analysis.fqcReplenishmentOnly) {
@@ -2027,12 +2061,16 @@ class _ProductionMaterialAnalysisPageState
           material.crossReallocatedInQty,
           material.crossReallocatedOutQty,
           material.priorityPendingQty,
+          material.priorityMakeSupplementQty,
           material.priorityFulfilledQty,
           material.selectedWarehousesAvailableQty,
           material.selectedOtherWarehouseTransferableQty,
           material.publicSurplusApprovedInboundQty,
           material.publicSurplusRemainingQty,
           material.sharedFutureClaimedQty,
+          material.sharedFuturePendingQty,
+          material.lateSharedFutureAvailableQty,
+          material.additionalSupplyRecommendationKnown,
           material.additionalSupplyRecommendedQty,
           for (final target in material.notifiedTargets)
             '${target.target?.wireName}:${target.documentType}:'

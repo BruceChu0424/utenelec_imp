@@ -221,14 +221,17 @@ public class InventoryPositionService extends InventoryValueLedger implements In
         UUID eventId=UUID.randomUUID();BigDecimal cost=ZERO,qty=ZERO;
         for(var transfer:transfers){
             UUID rootId=(UUID)transfer.get("source_root_id");Node root=node(rootId,true);requireRoot(root);Node held=node(root.returnHeadId(),true);
-            if(!"QUALITY_PASSED".equals(held.ownerKind())||!held.active()||!held.key().equals(key))
+            if(!"QUALITY_PASSED".equals(held.ownerKind())||!held.active()
+                    ||!sameGoods(held.key(),key)||!held.poolId().equals(root.poolId()))
                 throw conflict("原合格来源位置已变更，不能把其它价值当作供应商费用归还");
             BigDecimal partQty=(BigDecimal)transfer.get("qty_base"),from=(BigDecimal)transfer.get("range_from"),to=(BigDecimal)transfer.get("range_to");
             if(held.from().compareTo(to)<0)throw conflict("原入库切片尚未全部离开原合格位置");
             BigDecimal amount=interval(held.value(),from,to,held.qty());
-            Node restored=newPosition(pool,Owner.QUALITY_PASSED,held.ownerId(),partQty,amount,pending(held),eventId,
+            // Quality custody retains its original pool even when warehouse staff stored the goods elsewhere.
+            Pool sourcePool=held.poolId().equals(pool.id())?pool:poolById(held.poolId(),false);
+            Node restored=newPosition(sourcePool,Owner.QUALITY_PASSED,held.ownerId(),partQty,amount,pending(held),eventId,
                     List.of(fraction(held,from,to,held.qty())));
-            Node remainder=createDerivedNode(pool,"ISSUE_POSITION",held.ownerKind(),held.ownerId(),null,root.id(),held.qty(),held.from(),held.to(),held.value(),pending(held),true,true,eventId,List.of(whole(held)));
+            Node remainder=createDerivedNode(held.poolIdentity(),"ISSUE_POSITION",held.ownerKind(),held.ownerId(),null,root.id(),held.qty(),held.from(),held.to(),held.value(),pending(held),true,true,eventId,List.of(whole(held)));
             deactivate(held);
             if(db.update("UPDATE stock_value_nodes SET return_head_id=:next WHERE id=:root AND return_head_id=:before",
                     args("next",remainder.id(),"root",root.id(),"before",held.id()))!=1)throw conflict("原合格位置已变化，请重新读取");

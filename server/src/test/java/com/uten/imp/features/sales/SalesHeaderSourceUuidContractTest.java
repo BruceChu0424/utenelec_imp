@@ -45,7 +45,8 @@ class SalesHeaderSourceUuidContractTest {
                 .contains("applySource(s, source);")
                 .contains("一张销售出货单只能关联同一张销售订单")
                 .contains("UUID sourceOrderId")
-                .contains("UUID sourceOrderId) {}")
+                // V566 后投影桩以 warehouseId 收尾（拣货仓随行），来源字段仍在首位。
+                .contains("UUID sourceOrderId,")
                 .contains("sourceReadable ? s.getSourceOrderId() : null");
         assertThat(other)
                 .contains("throw retiredWrite();")

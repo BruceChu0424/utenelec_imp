@@ -33,22 +33,28 @@ class ProductionDrawNoticeTest {
     void pendingAndIssuedEventsUseDocumentAndIssueScopedDedupeKeys() {
         UUID drawId = UUID.randomUUID();
         BusinessEventPublisher outbox = mock(BusinessEventPublisher.class);
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForObject(contains("fn_production_draw_pending"),
+                eq(Boolean.class), eq(drawId))).thenReturn(true);
+        when(jdbc.queryForObject(contains("event.id::text"), eq(String.class), eq(drawId)))
+                .thenReturn("request-1");
         ChainNoticeService service = service(
                 mock(NoticeService.class),
                 mock(UserAccountRepository.class),
                 mock(PermissionResolver.class),
-                mock(JdbcTemplate.class),
+                jdbc,
                 outbox);
 
         service.notifyProductionDrawPending(drawId);
         service.notifyProductionDrawIssued(drawId, "draw-issue-key-0001");
+        service.notifyProductionDrawIssueReversed(drawId, "draw-reverse-key-0001");
 
         verify(outbox).publishOnce(
                 ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING,
                 "STOCK_DOCUMENT",
                 drawId,
                 Map.of(),
-                ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING + ':' + drawId);
+                ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING + ":REQUESTED:" + drawId + ":request-1");
         verify(outbox).publishOnce(
                 ChainNoticeService.EVENT_PRODUCTION_DRAW_ISSUED,
                 "STOCK_DOCUMENT",
@@ -56,6 +62,75 @@ class ProductionDrawNoticeTest {
                 Map.of(),
                 ChainNoticeService.EVENT_PRODUCTION_DRAW_ISSUED + ':' + drawId
                         + ":draw-issue-key-0001");
+        verify(outbox).publishOnce(ChainNoticeService.EVENT_PRODUCTION_DRAW_ISSUE_REVERSED,
+                "STOCK_DOCUMENT",drawId,Map.of(),
+                ChainNoticeService.EVENT_PRODUCTION_DRAW_ISSUE_REVERSED+':'+drawId+":draw-reverse-key-0001");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void reversalDeliveryRestoresMissingWarehouseCardWithoutReusingTheOldRequestOutboxKey(boolean existingPending) {
+        UUID drawId=UUID.randomUUID(),warehouseUser=UUID.randomUUID();
+        JdbcTemplate jdbc=mock(JdbcTemplate.class);NoticeService notices=mock(NoticeService.class);
+        UserAccountRepository users=mock(UserAccountRepository.class);PermissionResolver permissions=mock(PermissionResolver.class);
+        BusinessEventPublisher outbox=mock(BusinessEventPublisher.class);UserAccount user=active(warehouseUser);
+        when(jdbc.queryForList(contains("FROM stock_documents stock"),eq(drawId))).thenReturn(List.of(Map.of(
+                "bill_no","SL-PARTIAL","plan_no","SJ-PARTIAL","warehouse_name","原料仓","department_name","车间","line_count",1L)));
+        when(jdbc.queryForList(contains("WITH RECURSIVE subtree"),eq(UUID.class),eq("SUB_WH"))).thenReturn(List.of(warehouseUser));
+        when(jdbc.queryForObject(contains("FROM notices WHERE aggregate_kind='STOCK_DOCUMENT'"),eq(Boolean.class),eq(drawId),eq(warehouseUser),
+                eq(ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING))).thenReturn(existingPending);
+        when(users.findById(warehouseUser)).thenReturn(Optional.of(user));
+        when(permissions.permsOf(user)).thenReturn(Set.of("stock_doc:view","stock_doc:approve","stock_doc:issue"));
+        ChainNoticeService service=service(notices,users,permissions,jdbc,outbox);
+        service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_DRAW_ISSUE_REVERSED,drawId,new ObjectMapper().createObjectNode());
+        verify(notices,org.mockito.Mockito.times(existingPending?0:1)).publishForUser(eq(warehouseUser),eq("待处理生产领料：SL-PARTIAL"),
+                anyString(),eq(ChainNoticeService.TYPE_TASK),anyString(),eq("/warehouse/DRAW/"+drawId),
+                eq(ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING),isNull(),eq(drawId));
+        org.mockito.Mockito.verifyNoInteractions(outbox);
+        verify(jdbc,never()).queryForObject(contains("event.id::text"),eq(String.class),eq(drawId));
+    }
+
+    @Test
+    void staleReverseDeliveryDoesNotRestoreARequestThatHasAlreadyBeenIssuedAgain() {
+        UUID drawId=UUID.randomUUID();JdbcTemplate jdbc=mock(JdbcTemplate.class);
+        NoticeService notices=mock(NoticeService.class);UserAccountRepository users=mock(UserAccountRepository.class);
+        BusinessEventPublisher outbox=mock(BusinessEventPublisher.class);
+        when(jdbc.queryForList(contains("fn_production_draw_pending(stock.id)"),eq(drawId))).thenReturn(List.of());
+        ChainNoticeService service=service(notices,users,mock(PermissionResolver.class),jdbc,outbox);
+        service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_DRAW_ISSUE_REVERSED,drawId,new ObjectMapper().createObjectNode());
+        org.mockito.Mockito.verifyNoInteractions(notices,users,outbox);
+    }
+
+    @Test
+    void unrequestedDrawNeverPublishesWarehousePendingEvent() {
+        UUID drawId = UUID.randomUUID();
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        BusinessEventPublisher outbox = mock(BusinessEventPublisher.class);
+        when(jdbc.queryForObject(contains("fn_production_draw_pending"),
+                eq(Boolean.class), eq(drawId))).thenReturn(false);
+        ChainNoticeService service = service(mock(NoticeService.class),
+                mock(UserAccountRepository.class), mock(PermissionResolver.class), jdbc, outbox);
+
+        service.notifyProductionDrawPending(drawId);
+
+        org.mockito.Mockito.verifyNoInteractions(outbox);
+    }
+
+    @Test
+    void stalePendingDeliveryRechecksRequestBeforeFindingRecipients() {
+        UUID drawId = UUID.randomUUID();
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        NoticeService notices = mock(NoticeService.class);
+        UserAccountRepository users = mock(UserAccountRepository.class);
+        when(jdbc.queryForList(contains("fn_production_draw_pending(stock.id)"),
+                eq(drawId))).thenReturn(List.of());
+        ChainNoticeService service = service(notices, users,
+                mock(PermissionResolver.class), jdbc, mock(BusinessEventPublisher.class));
+
+        service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING,
+                drawId, new ObjectMapper().createObjectNode());
+
+        org.mockito.Mockito.verifyNoInteractions(notices, users);
     }
 
     @Test

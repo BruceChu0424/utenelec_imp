@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.hibernate.query.criteria.JpaExpression;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Answers;
+import org.mockito.Mockito;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -137,14 +138,13 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void listCapturesAHighWaterBoundaryAndUsesDeterministicDescendingSort() {
         AuditLogRepository repository = mock(AuditLogRepository.class);
         AuditQueryService service = new AuditQueryService(
                 repository, new AuditEventInterpreter(), emptyActorDirectory());
         when(repository.findMaxId()).thenReturn(61L);
         when(repository.findAll(
-                any(Specification.class), any(Pageable.class)))
+                Mockito.<Specification<AuditLog>>notNull(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
         AuditPageResponse response = service.query(criteria(null), 0, 1_000);
@@ -153,7 +153,7 @@ class AuditQueryServiceTest {
         assertEquals(1, response.getPage());
         assertEquals(100, response.getSize());
         ArgumentCaptor<Specification<AuditLog>> specificationCaptor =
-                ArgumentCaptor.forClass(Specification.class);
+                ArgumentCaptor.captor();
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
         verify(repository).findAll(specificationCaptor.capture(), pageableCaptor.capture());
         Pageable pageable = pageableCaptor.getValue();
@@ -164,7 +164,7 @@ class AuditQueryServiceTest {
                 org.springframework.data.domain.Sort.Direction.DESC,
                 pageable.getSort().getOrderFor("id").getDirection());
 
-        Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder criteriaBuilder = mock(
                 CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
         specificationCaptor.getValue().toPredicate(root, null, criteriaBuilder);
@@ -172,13 +172,12 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void suppliedSnapshotIsReusedWithoutAdvancingTheHighWaterMark() {
         AuditLogRepository repository = mock(AuditLogRepository.class);
         AuditQueryService service = new AuditQueryService(
                 repository, new AuditEventInterpreter(), emptyActorDirectory());
         when(repository.findAll(
-                any(Specification.class), any(Pageable.class)))
+                Mockito.<Specification<AuditLog>>notNull(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
         AuditPageResponse response = service.query(
@@ -189,7 +188,6 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void searchableFiltersUseOnlyTheApprovedNonSensitiveColumns() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
@@ -198,12 +196,12 @@ class AuditQueryServiceTest {
                 "up", "alice", "user", null, null, null,
                 "HP0001", "goods", "HP0001", "database", requestId, "write",
                 null, null, 99L);
-        Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder criteriaBuilder = mock(
                 CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
         Path<UUID> requestIdPath = mock(
-                Path.class, withSettings().extraInterfaces(JpaExpression.class));
-        JpaExpression<String> requestIdText = mock(JpaExpression.class);
+                withSettings().extraInterfaces(JpaExpression.class));
+        JpaExpression<String> requestIdText = mock();
         when(root.<UUID>get("requestId")).thenReturn(requestIdPath);
         when(((JpaExpression<?>) requestIdPath).cast(String.class))
                 .thenReturn(requestIdText);
@@ -231,7 +229,6 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void shortcutTargetsIncludeTheirRequestRouteGroups() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
@@ -242,11 +239,11 @@ class AuditQueryServiceTest {
                 "suppliers", "api/master/suppliers");
 
         routes.forEach((targetType, routeGroup) -> {
-            Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+            Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
             CriteriaBuilder criteriaBuilder = mock(
                     CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
-            Path<String> storedTarget = mock(Path.class);
-            Expression<String> normalizedTarget = mock(Expression.class);
+            Path<String> storedTarget = mock();
+            Expression<String> normalizedTarget = mock();
             when(root.<String>get("targetType")).thenReturn(storedTarget);
             when(criteriaBuilder.lower(storedTarget)).thenReturn(normalizedTarget);
 
@@ -276,7 +273,6 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void mutationOperationKindsCoverDatabaseAndHttpActions() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
@@ -287,11 +283,11 @@ class AuditQueryServiceTest {
                 "write", "insert/update/delete");
 
         expected.forEach((operationKind, directAction) -> {
-            Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+            Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
             CriteriaBuilder criteriaBuilder = mock(
                     CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
-            Path<String> storedAction = mock(Path.class);
-            Expression<String> action = mock(Expression.class);
+            Path<String> storedAction = mock();
+            Expression<String> action = mock();
             when(root.<String>get("action")).thenReturn(storedAction);
             when(criteriaBuilder.lower(storedAction)).thenReturn(action);
 
@@ -309,13 +305,12 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void deleteAndUpdateFiltersRecognizeHistoricalSoftDeleteSnapshots() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
 
         for (String operationKind : List.of("delete", "update")) {
-            Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+            Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
             CriteriaBuilder criteriaBuilder = mock(
                     CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
 
@@ -338,11 +333,10 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void systemActorScopeUsesNullUuidButExcludesAnonymousSecurityEvidence() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
-        Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder criteriaBuilder = mock(
                 CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
 
@@ -355,14 +349,13 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void readOperationIncludesHttpGetsAndExplicitViewEvents() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
-        Root<AuditLog> root = mock(Root.class);
+        Root<AuditLog> root = mock();
         CriteriaBuilder criteriaBuilder = mock(CriteriaBuilder.class);
-        Path<String> storedAction = mock(Path.class);
-        Expression<String> action = mock(Expression.class);
+        Path<String> storedAction = mock();
+        Expression<String> action = mock();
         Predicate httpGet = mock(Predicate.class);
         when(root.<String>get("action")).thenReturn(storedAction);
         when(criteriaBuilder.lower(storedAction)).thenReturn(action);
@@ -375,7 +368,6 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void exportUsesReadableForensicColumnsAndExcludesRawSnapshots() {
         AuditLogRepository repository = mock(AuditLogRepository.class);
         AuditQueryService service = new AuditQueryService(
@@ -402,9 +394,9 @@ class AuditQueryServiceTest {
         log.setRiskLevel("low");
         log.setEventCategory("business");
         log.setCreatedAt(OffsetDateTime.parse("2026-07-31T06:00:00Z"));
-        when(repository.count(any(Specification.class))).thenReturn(1L);
+        when(repository.count(Mockito.<Specification<AuditLog>>notNull())).thenReturn(1L);
         when(repository.findAll(
-                any(Specification.class), any(Pageable.class)))
+                Mockito.<Specification<AuditLog>>notNull(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(log)));
 
         ExportPayload payload = service.export(criteria(null), 100);
@@ -431,9 +423,9 @@ class AuditQueryServiceTest {
         verify(repository).findMaxId();
 
         ArgumentCaptor<Specification<AuditLog>> specificationCaptor =
-                ArgumentCaptor.forClass(Specification.class);
+                ArgumentCaptor.captor();
         verify(repository).count(specificationCaptor.capture());
-        Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder criteriaBuilder = mock(
                 CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
         specificationCaptor.getValue().toPredicate(root, null, criteriaBuilder);
@@ -441,11 +433,10 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void outcomeFilterUsesCompositeMainCodeAndKeepsHttpFailureAuthoritative() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
-        Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
 
         service.outcomeSpecification("success").toPredicate(root, null, cb);
@@ -468,8 +459,8 @@ class AuditQueryServiceTest {
         when(repository.findMaxId()).thenReturn(80L);
         AuditLog succeeded = exportRow("succeeded;mode=generated", 200);
         AuditLog httpFailed = exportRow("success;mode=custom", 500);
-        when(repository.count(any(Specification.class))).thenReturn(2L);
-        when(repository.findAll(any(Specification.class), any(Pageable.class)))
+        when(repository.count(Mockito.<Specification<AuditLog>>notNull())).thenReturn(2L);
+        when(repository.findAll(Mockito.<Specification<AuditLog>>notNull(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(succeeded, httpFailed)));
 
         ExportPayload payload = service.export(criteria(null), 100);
@@ -507,8 +498,8 @@ class AuditQueryServiceTest {
         AuditQueryService service = new AuditQueryService(
                 repository, new AuditEventInterpreter(), emptyActorDirectory());
         when(repository.findMaxId()).thenReturn(90L);
-        when(repository.count(any(Specification.class))).thenReturn(1L);
-        when(repository.findAll(any(Specification.class), any(Pageable.class)))
+        when(repository.count(Mockito.<Specification<AuditLog>>notNull())).thenReturn(1L);
+        when(repository.findAll(Mockito.<Specification<AuditLog>>notNull(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(anonymous)));
 
         ExportPayload payload = service.export(criteria(null), 100);
@@ -530,12 +521,11 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void exportRejectsTheRequestBeforeLoadingRowsWhenOverConfiguredLimit() {
         AuditLogRepository repository = mock(AuditLogRepository.class);
         AuditQueryService service = new AuditQueryService(
                 repository, new AuditEventInterpreter(), emptyActorDirectory());
-        when(repository.count(any(Specification.class))).thenReturn(101L);
+        when(repository.count(Mockito.<Specification<AuditLog>>notNull())).thenReturn(101L);
 
         ApiException error = assertThrows(
                 ApiException.class,
@@ -543,20 +533,19 @@ class AuditQueryServiceTest {
 
         assertTrue(error.getMessage().contains("超过单次导出上限 100 条"));
         verify(repository, never()).findAll(
-                any(Specification.class), any(Pageable.class));
+                Mockito.<Specification<AuditLog>>notNull(), any(Pageable.class));
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void riskFiltersPromoteForcedMediumActionsAndRemoveThemFromLowRisk() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
-        Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder criteria = mock(
                 CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
-        Path<String> storedRisk = mock(Path.class);
-        Path<String> storedAction = mock(Path.class);
-        Expression<String> action = mock(Expression.class);
+        Path<String> storedRisk = mock();
+        Path<String> storedAction = mock();
+        Expression<String> action = mock();
         Predicate storedLow = mock(Predicate.class);
         Predicate storedMedium = mock(Predicate.class);
         Predicate sensitiveAction = mock(Predicate.class);
@@ -587,13 +576,12 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void highAndRiskyFiltersIncludeHistoricalSoftDeletes() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
 
         for (String riskLevel : List.of("high", "risky")) {
-            Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+            Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
             CriteriaBuilder criteria = mock(
                     CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
 
@@ -605,13 +593,12 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void mediumAndCriticalFiltersExcludeHistoricalSoftDeletes() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
 
         for (String riskLevel : List.of("medium", "critical")) {
-            Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+            Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
             CriteriaBuilder criteria = mock(
                     CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
 
@@ -624,15 +611,14 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void categoryFiltersApplySecurityAndPayrollExportOverrides() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
-        Root<AuditLog> root = mock(Root.class);
+        Root<AuditLog> root = mock();
         CriteriaBuilder criteria = mock(CriteriaBuilder.class);
-        Path<String> storedCategory = mock(Path.class);
-        Path<String> storedAction = mock(Path.class);
-        Expression<String> action = mock(Expression.class);
+        Path<String> storedCategory = mock();
+        Path<String> storedAction = mock();
+        Expression<String> action = mock();
         Predicate storedSecurity = mock(Predicate.class);
         Predicate storedExport = mock(Predicate.class);
         Predicate forcedSecurity = mock(Predicate.class);
@@ -680,7 +666,6 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void summaryReturnsEffectiveRiskCountsAndBuildsTrendFromTheSameSpecification() {
         AuditLogRepository repository = mock(AuditLogRepository.class);
         AuditSummaryAggregation aggregation = mock(AuditSummaryAggregation.class);
@@ -695,11 +680,11 @@ class AuditQueryServiceTest {
                         new AuditSummary.DailyPoint(
                                 LocalDate.parse("2026-08-02"), 6, 1)));
         when(aggregation.summarize(
-                any(Specification.class),
-                any(Specification.class),
-                any(Specification.class),
-                any(Specification.class),
-                any(Specification.class),
+                Mockito.<Specification<AuditLog>>notNull(),
+                Mockito.<Specification<AuditLog>>notNull(),
+                Mockito.<Specification<AuditLog>>notNull(),
+                Mockito.<Specification<AuditLog>>notNull(),
+                Mockito.<Specification<AuditLog>>notNull(),
                 eq(LocalDate.parse("2026-08-01")),
                 eq(LocalDate.parse("2026-08-02"))))
                 .thenReturn(expected);
@@ -711,13 +696,13 @@ class AuditQueryServiceTest {
         assertEquals(1, summary.criticalCount());
         assertEquals(2, summary.dailyTrend().size());
         verify(repository).findMaxId();
-        verify(repository, never()).count(any(Specification.class));
+        verify(repository, never()).count(Mockito.<Specification<AuditLog>>notNull());
         verify(aggregation).summarize(
-                any(Specification.class),
-                any(Specification.class),
-                any(Specification.class),
-                any(Specification.class),
-                any(Specification.class),
+                Mockito.<Specification<AuditLog>>notNull(),
+                Mockito.<Specification<AuditLog>>notNull(),
+                Mockito.<Specification<AuditLog>>notNull(),
+                Mockito.<Specification<AuditLog>>notNull(),
+                Mockito.<Specification<AuditLog>>notNull(),
                 eq(LocalDate.parse("2026-08-01")),
                 eq(LocalDate.parse("2026-08-02")));
     }
@@ -754,11 +739,10 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void activityViewUsesExactActorAndExcludesDatabaseDerivedRows() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
-        Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
 
         service.specification(criteria(null)).toPredicate(root, null, cb);
@@ -779,7 +763,6 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void anonymousScopeIsLimitedToIdentityFreeSecurityOrLoginEvidence() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
@@ -789,7 +772,7 @@ class AuditQueryServiceTest {
                 LocalDate.parse("2026-08-01"), LocalDate.parse("2026-08-31"),
                 null, null, true);
         service.validateInvestigationScope(anonymous);
-        Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
 
         service.specification(anonymous).toPredicate(root, null, cb);
@@ -847,9 +830,9 @@ class AuditQueryServiceTest {
                 LocalDate.parse("2026-08-01"), LocalDate.parse("2026-08-31"),
                 null, null, true);
         when(repository.findMaxId()).thenReturn(100L);
-        when(repository.findAll(any(Specification.class), any(Pageable.class)))
+        when(repository.findAll(Mockito.<Specification<AuditLog>>notNull(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
-        when(repository.count(any(Specification.class))).thenReturn(0L);
+        when(repository.count(Mockito.<Specification<AuditLog>>notNull())).thenReturn(0L);
         when(aggregation.summarize(
                 any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new AuditSummary(0, 0, 0, 0, 0, List.of()));
@@ -860,18 +843,17 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void writeOperationIncludesExplicitBusinessEventsByHttpMethod() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
-        Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
 
         service.operationSpecification("write").toPredicate(root, null, cb);
 
             verify(root, atLeastOnce()).get("httpMethod");
         verify(root).get("eventCategory");
-        verify(cb).upper(any(Expression.class));
+        verify(cb).upper(Mockito.<Expression<String>>notNull());
         verify(cb, atLeastOnce()).not(any(Predicate.class));
     }
 
@@ -879,7 +861,7 @@ class AuditQueryServiceTest {
     void authenticationAndExportPostsAreExcludedFromEffectiveWriteCount() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
-        Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
 
         service.operationSpecification("write").toPredicate(root, null, cb);
@@ -890,24 +872,24 @@ class AuditQueryServiceTest {
         // notice/task/approval events enter through the HTTP-method branch.
         verify(root).get("action");
         verify(root).get("httpMethod");
-        verify(cb).like(any(Expression.class), eq("view!_%"), eq('!'));
+        verify(cb).like(Mockito.<Expression<String>>notNull(), eq("view!_%"), eq('!'));
     }
 
     @Test
     void explicitViewNoticeIsClassifiedAsReadAndExcludedFromWriteMethodBranch() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
-        Root<AuditLog> readRoot = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        Root<AuditLog> readRoot = mock(Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder readBuilder = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
         service.operationSpecification("read").toPredicate(readRoot, null, readBuilder);
-        verify(readBuilder).like(any(Expression.class), eq("view!_%"), eq('!'));
+        verify(readBuilder).like(Mockito.<Expression<String>>notNull(), eq("view!_%"), eq('!'));
 
-        Root<AuditLog> writeRoot = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        Root<AuditLog> writeRoot = mock(Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder writeBuilder = mock(
                 CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
         service.operationSpecification("write").toPredicate(writeRoot, null, writeBuilder);
         verify(writeBuilder, atLeastOnce()).not(any(Predicate.class));
-        verify(writeBuilder).like(any(Expression.class), eq("view!_%"), eq('!'));
+        verify(writeBuilder).like(Mockito.<Expression<String>>notNull(), eq("view!_%"), eq('!'));
     }
 
     @Test
@@ -916,14 +898,14 @@ class AuditQueryServiceTest {
         AuditQueryService service = new AuditQueryService(
                 repository, new AuditEventInterpreter(), emptyActorDirectory());
         when(repository.findMaxId()).thenReturn(9L);
-        when(repository.count(any(Specification.class))).thenReturn(10_001L);
+        when(repository.count(Mockito.<Specification<AuditLog>>notNull())).thenReturn(10_001L);
 
         ApiException error = assertThrows(
                 ApiException.class,
                 () -> service.export(criteria(null), 100_000));
 
         assertTrue(error.getMessage().contains("单次导出上限 10000 条"));
-        verify(repository, never()).findAll(any(Specification.class), any(Pageable.class));
+        verify(repository, never()).findAll(Mockito.<Specification<AuditLog>>notNull(), any(Pageable.class));
     }
 
     private static AuditSearchCriteria criteria(String riskLevel) {

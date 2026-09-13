@@ -775,13 +775,20 @@ class _DetailPaneState extends State<_DetailPane> {
       .read(currentPermissionsProvider)
       .contains(Perm.goodsDiscountView);
 
-  List<MasterColumnDef<GoodsListItem>> get _visibleGoodsColumns =>
-      _canViewDiscount
-      ? _goodsColumns
-      : [
-          for (final c in _goodsColumns)
-            if (c.key != 'discount') c,
-        ];
+  /// 售价可见性（goods:price:view，V570）：无授权者（且无 goods:price:edit）列表价格列
+  /// 整列移除；后端同步把 price 置 null。
+  bool get _canViewPrice =>
+      widget.ref
+          .read(currentPermissionsProvider)
+          .contains(Perm.goodsPriceView) ||
+      widget.ref.read(currentPermissionsProvider).contains(Perm.goodsPriceEdit);
+
+  List<MasterColumnDef<GoodsListItem>> get _visibleGoodsColumns => [
+    for (final c in _goodsColumns)
+      if ((c.key != 'discount' || _canViewDiscount) &&
+          (c.key != 'price' || _canViewPrice))
+        c,
+  ];
 
   // ---- 行菜单（右击/长按）：复制/粘贴/启停/删除 + 组件信息 ----------------
 

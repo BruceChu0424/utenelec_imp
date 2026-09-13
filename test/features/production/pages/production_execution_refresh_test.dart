@@ -130,6 +130,7 @@ class _Repository extends ProductionExecutionWorkbenchRepository {
     int size = 50,
     String keyword = '',
     String? status,
+    String? preparationFilter,
     String? workshopDepartmentId,
     String? dateFrom,
     String? dateTo,

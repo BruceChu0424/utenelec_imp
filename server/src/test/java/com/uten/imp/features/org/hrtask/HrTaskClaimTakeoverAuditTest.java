@@ -57,7 +57,7 @@ class HrTaskClaimTakeoverAuditTest {
     void currentOwnerTakeoverIsRecordedAsManualRenew() {
         HrTaskClaim mine = active(me);
         when(repository.findFirstByTaskTypeAndEmployeeIdAndReleasedAtIsNull(
-                "confirm", employeeId)).thenReturn(Optional.of(mine), Optional.of(mine));
+                "confirm", employeeId)).thenReturn(Optional.of(mine)).thenReturn(Optional.of(mine));
 
         assertTrue(service.takeover("confirm", employeeId).claimedByMe());
 
@@ -70,7 +70,7 @@ class HrTaskClaimTakeoverAuditTest {
     void replacingAnotherOwnerWritesOneTakeoverEvent() {
         when(repository.findFirstByTaskTypeAndEmployeeIdAndReleasedAtIsNull(
                 "confirm", employeeId))
-                .thenReturn(Optional.of(active(other)), Optional.empty());
+                .thenReturn(Optional.of(active(other))).thenReturn(Optional.empty());
 
         assertTrue(service.takeover("confirm", employeeId).claimedByMe());
 
@@ -82,7 +82,7 @@ class HrTaskClaimTakeoverAuditTest {
     @Test
     void noActiveOwnerIsRecordedAsClaim() {
         when(repository.findFirstByTaskTypeAndEmployeeIdAndReleasedAtIsNull(
-                "confirm", employeeId)).thenReturn(Optional.empty(), Optional.empty());
+                "confirm", employeeId)).thenReturn(Optional.empty()).thenReturn(Optional.empty());
 
         assertTrue(service.takeover("confirm", employeeId).claimedByMe());
 

@@ -8,7 +8,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
+import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -16,6 +21,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_access_policy.dart';
@@ -33,7 +39,11 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/stock_doc.dart';
+import '../widgets/production_draw_detail_table.dart';
+import '../widgets/warehouse_stock_outbound_detail_table.dart';
 import '../providers/production_draw_count_provider.dart';
+import '../providers/production_return_count_provider.dart';
+import '../../production/providers/production_execution_refresh.dart';
 import '../providers/production_finished_inbound_task_count_provider.dart';
 import '../repositories/stock_doc_repository.dart';
 
@@ -55,11 +65,41 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   bool _loading = false;
   String? _error;
   bool _busy = false;
+  bool _confirmingOutbound = false;
+  String? _outboundReviewToken;
+
+  // 2026-09-12 用户口径「数量在表格里改，出库只弹总结」：DRAW 待出库行的
+  // 「本次出库/行备注」输入由页面持有（_load 后按最新明细重建，随路由销毁）；
+  // 总备注在表格上方单独一个输入框。
+  final Map<String, TextEditingController> _issueQty = {};
+  final Map<String, TextEditingController> _lineRemarks = {};
+  final TextEditingController _issueRemark = TextEditingController();
+  bool get _isOrdinaryOutbound =>
+      widget.docType == StockDocType.otherOut ||
+      widget.docType == StockDocType.finishedOut;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _disposeIssueInputs();
+    _issueRemark.dispose();
+    super.dispose();
+  }
+
+  void _disposeIssueInputs() {
+    for (final controller in _issueQty.values) {
+      controller.dispose();
+    }
+    _issueQty.clear();
+    for (final controller in _lineRemarks.values) {
+      controller.dispose();
+    }
+    _lineRemarks.clear();
   }
 
   bool _allows(DocumentPermissionAction action) => DocumentPermissionCatalog
@@ -94,19 +134,27 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     ref.invalidate(
       documentScopeCapabilityProvider(DocumentDataScope.stockDocument),
     );
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _error = null;
+      _outboundReviewToken = null;
+    });
     try {
       await ref.read(masterNameServiceProvider).ensureLoaded();
-      final d = await ref
-          .read(stockDocRepositoryProvider(widget.docType))
-          .detail(widget.id);
+      final repo = ref.read(stockDocRepositoryProvider(widget.docType));
+      final review = _isOrdinaryOutbound ? await repo.review(widget.id) : null;
+      final d = review?.document ?? await repo.detail(widget.id);
       final goodsIds = d.items
           .map((e) => e.goodsId)
           .whereType<String>()
           .toSet();
       await ref.read(masterNameServiceProvider).loadGoodsDetails(goodsIds);
       if (!mounted) return;
-      setState(() => _d = d);
+      setState(() {
+        _d = d;
+        _outboundReviewToken = review?.reviewToken;
+      });
+      _rebuildIssueInputs();
     } catch (e) {
       if (mounted) {
         context.appError('加载详情失败');
@@ -117,15 +165,68 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     }
   }
 
+  Future<void> _confirmOrdinaryOutbound() async {
+    if (_busy ||
+        _loading ||
+        _confirmingOutbound ||
+        !_canApprove ||
+        _outboundReviewToken == null) {
+      return;
+    }
+    final l10n =
+        Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+        AppLocalizationsZh();
+    final token = _outboundReviewToken!;
+    setState(() => _confirmingOutbound = true);
+    try {
+      final confirmed = await UtenDialog.show(
+        context,
+        title: l10n.warehouseStockOutboundConfirmSingle,
+        confirmLabel: l10n.warehouseStockOutboundConfirmSingle,
+        content: Text(l10n.warehouseStockOutboundConfirmMessage(1)),
+      );
+      if (confirmed != true || !mounted) return;
+      setState(() => _busy = true);
+      await ref
+          .read(stockDocRepositoryProvider(widget.docType))
+          .approveReviewed(widget.id, expectedReviewToken: token);
+      if (!mounted) return;
+      context.appSuccess(l10n.warehouseStockOutboundCompleted(1));
+      bumpListRefresh(ref, widget.docType.refreshKey);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _outboundReviewToken = null);
+        context.appError(
+          e is ApiException ? e.message : l10n.warehouseOutboundBatchUnknown,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _confirmingOutbound = false;
+        });
+      }
+    }
+  }
+
   Future<void> _act(
     String confirm,
     Future<void> Function() fn,
     String ok, {
     bool reviewerResponsibility = false,
+    String? confirmLabel,
   }) async {
     if (_busy) return;
     final c = reviewerResponsibility
-        ? await showUtenReviewerConfirmDialog(context, message: confirm)
+        ? await showUtenReviewerConfirmDialog(
+            context,
+            message: confirm,
+            title: confirmLabel == null ? '确认审核' : '核对退料实收',
+            confirmLabel: confirmLabel ?? '确认审核',
+            actionLabel: confirmLabel ?? '审核',
+          )
         : await showDialog<bool>(
             context: context,
             builder: (ctx) => AlertDialog(
@@ -152,7 +253,11 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       context.appSuccess(ok);
       bumpListRefresh(ref, widget.docType.refreshKey);
       ref.invalidate(warehouseProductionDrawPendingCountProvider);
+      ref.invalidate(warehouseProductionReturnPendingCountProvider);
       ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
+      if (widget.docType == StockDocType.wdraw) {
+        refreshAfterProductionPlanGenerated(ref);
+      }
       await _load();
     } catch (_) {
       if (mounted) context.appError('操作失败');
@@ -161,7 +266,115 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     }
   }
 
-  /// DRAW 出库/取消出库对话框：按行输入本次数量；取消必须说明原因。
+  /// 按最新明细重建「本次出库/行备注」输入（默认=待出库；行备注保持已输入值
+  /// 不易做——重载后明细可能变化，统一重置为空，与旧弹窗每次重开同口径）。
+  void _rebuildIssueInputs() {
+    if (widget.docType != StockDocType.draw || !_canIssue) {
+      _disposeIssueInputs();
+      return;
+    }
+    final detail = _d;
+    if (detail == null) {
+      _disposeIssueInputs();
+      return;
+    }
+    _disposeIssueInputs();
+    for (final item in detail.items) {
+      if (item.remainingQty <= 0 || item.id == null) continue;
+      _issueQty[item.id!] = TextEditingController(
+        text: _quantityInputText(item.remainingQty),
+      );
+      _lineRemarks[item.id!] = TextEditingController();
+    }
+  }
+
+  /// 2026-09-12 用户口径：出库数量/备注在表格里改好，点「出库」只弹**总结**
+  /// 确认（不再在弹窗里改数字、也不再传附件——出库凭证区详情页常驻）。
+  Future<void> _issueFromTable() async {
+    if (_busy || _d == null) return;
+    final detail = _d!;
+    final names = ref.read(masterNameServiceProvider);
+    // 逐行校验（只看待出库行；0 行留给合计拦截）。
+    final body = <Map<String, dynamic>>[];
+    var lineCount = 0;
+    for (final item in detail.items) {
+      if (item.remainingQty <= 0 || item.id == null) continue;
+      final controller = _issueQty[item.id!];
+      if (controller == null) continue;
+      final row = ProductionDrawDetailRow(detail, item);
+      final problem = drawIssueQtyError(row, controller.text);
+      if (problem != null) {
+        context.appError('${names.goods(item.goodsId)}：$problem');
+        return;
+      }
+      final qty = double.tryParse(controller.text.trim()) ?? 0;
+      if (qty <= 0) continue; // 明确填 0 的行跳过（分批出库）
+      body.add({'itemId': item.id, 'qty': qty});
+      lineCount++;
+    }
+    if (body.isEmpty) {
+      context.appError('请先在表格里填写本次出库数量');
+      return;
+    }
+    // 备注合成：总备注在前，行备注（货品：备注）随后，用「；」连接；服务端
+    // 单次出库 remark 上限 200、多轮拼接总长 500，超长在这里就地拦下。
+    final parts = <String>[
+      if (_issueRemark.text.trim().isNotEmpty) _issueRemark.text.trim(),
+      for (final entry in _lineRemarks.entries)
+        if (entry.value.text.trim().isNotEmpty)
+          '${names.goods(detail.items.firstWhere((it) => it.id == entry.key).goodsId)}：${entry.value.text.trim()}',
+    ];
+    final remark = parts.join('；');
+    if (remark.length > 200) {
+      context.appError('备注合计 ${remark.length} 字超过单次出库 200 字上限，请精简总备注或行备注');
+      return;
+    }
+    // 合计（按单位分组，跨单位绝不相加——全站口径）。
+    final byUnit = <String, double>{};
+    for (final line in body) {
+      final item = detail.items.firstWhere((it) => it.id == line['itemId']);
+      final unit = item.unitId == null ? '' : names.unit(item.unitId!);
+      byUnit.update(
+        unit,
+        (sum) => sum + (line['qty'] as double),
+        ifAbsent: () => line['qty'] as double,
+      );
+    }
+    final totalsText = [
+      for (final entry in byUnit.entries)
+        '${_quantityInputText(entry.value)}${entry.key.isEmpty ? '' : ' ${entry.key}'}',
+    ].join(' · ');
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '确认出库（$lineCount 行）',
+      confirmLabel: '确认出库',
+      content: _issueSummaryPoints(totalsText, remark),
+    );
+    if (confirmed != true || !mounted) return;
+    await _executeIssue(body, reverse: false, remark: remark);
+  }
+
+  Widget _issueSummaryPoints(String totalsText, String remark) {
+    final theme = Theme.of(context);
+    final points = <String>[
+      '本次出库 $totalsText；提交后按行核销待出库量并写入库存。',
+      if (remark.isNotEmpty) '备注：$remark',
+      '出库凭证/照片请在页面附件区上传（提交前后均可）。',
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final point in points)
+          Padding(
+            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+            child: Text('· $point', style: theme.textTheme.bodyMedium),
+          ),
+      ],
+    );
+  }
+
+  /// 取消出库对话框（按行输入可退量，必填原因）；正向出库走 _issueFromTable。
   Future<void> _issueDialog({required bool reverse}) async {
     if (_busy || _d == null) return;
     final names = ref.read(masterNameServiceProvider);
@@ -203,6 +416,22 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       context.appError('没有有效的数量');
       return;
     }
+    await _executeIssue(
+      body,
+      reverse: reverse,
+      remark: issueRemark,
+      cancellationReason: cancellationReason,
+    );
+  }
+
+  /// 出库执行段（表格流与取消出库弹窗共用）：幂等键按行issued/delta指纹派生，
+  /// 响应丢失重试复用同键安全重放；成功后重拉详情并失效仓库计数。
+  Future<void> _executeIssue(
+    List<Map<String, dynamic>> body, {
+    required bool reverse,
+    String? remark,
+    String? cancellationReason,
+  }) async {
     final canonical = body
         .map((line) {
           final itemId = line['itemId'] as String;
@@ -225,7 +454,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           widget.id,
           body,
           idempotencyKey,
-          cancellationReason,
+          cancellationReason ?? '',
         );
       } else if (_d!.status == 0) {
         // 首轮出库（出库即审核）同样带备注：此前没传，备注被静默丢弃。
@@ -233,10 +462,10 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           widget.id,
           body,
           idempotencyKey,
-          remark: issueRemark,
+          remark: remark,
         );
       } else {
-        await repo.issue(widget.id, body, idempotencyKey, remark: issueRemark);
+        await repo.issue(widget.id, body, idempotencyKey, remark: remark);
       }
       if (!mounted) return;
       context.appSuccess(reverse ? '已取消出库' : '已出库');
@@ -509,352 +738,440 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     );
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '${widget.docType.label}详情',
-        showBackButton: true,
-      ),
-      body: SafeArea(
-        child: UtenContentContainer.narrow(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-              : _d == null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
-                    child: Text(
-                      _error == null ? '单据不存在' : '加载失败：$_error(可能是无权限或单据已被删除)',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ),
-                )
-              // 2026-09-11 折叠头+表内滚（对齐采购/货品资料页）：上滑先收头部
-              // （提示条/生产链横幅/表头卡/出库凭证），明细标题吸顶后表格内部继续滚。
-              : UtenCollapsingHeaderScrollView(
-                  collapsingHeader: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      0,
-                    ),
-                    // 表头文字框选：只包折叠头（表格自带选择能力，不再套在
-                    // 页面级 SelectionArea 里）。
-                    child: SelectionArea(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          DocumentScopeWriteNotice(
-                            capability: scopeCapability,
-                            ownerEmployeeId: _d!.makerId,
-                            onRetry: () => ref.invalidate(
-                              documentScopeCapabilityProvider(
-                                DocumentDataScope.stockDocument,
-                              ),
-                            ),
+    return PopScope(
+      canPop: !_isOrdinaryOutbound || (!_busy && !_confirmingOutbound),
+      child: Scaffold(
+        appBar: UtenAppBar(
+          title: '${widget.docType.label}详情',
+          showBackButton: true,
+          actions: [
+            if (_isOrdinaryOutbound)
+              UtenAppBarActionButton(
+                label:
+                    (Localizations.of<AppLocalizations>(
+                              context,
+                              AppLocalizations,
+                            ) ??
+                            AppLocalizationsZh())
+                        .commonRefresh,
+                icon: Icons.refresh_rounded,
+                isLoading: _loading,
+                onPressed: _loading || _busy || _confirmingOutbound
+                    ? null
+                    : _load,
+              ),
+          ],
+        ),
+        body: Stack(
+          children: [
+            SafeArea(
+              child: UtenContentContainer(
+                maxWidth: _isOrdinaryOutbound
+                    ? UtenContentContainer.wideMaxWidth
+                    : UtenContentContainer.narrowMaxWidth,
+                center: !_isOrdinaryOutbound,
+                child: _loading
+                    ? const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                      )
+                    : _d == null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(UtenSpacing.s12),
+                          child: Text(
+                            _error == null
+                                ? '单据不存在'
+                                : '加载失败：$_error(可能是无权限或单据已被删除)',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyMedium,
                           ),
-                          if (_d!.productionLinked) ...[
-                            Material(
-                              color: theme.colorScheme.primaryContainer,
-                              borderRadius: UtenRadius.mdAll,
-                              child: Padding(
-                                padding: const EdgeInsets.all(UtenSpacing.s12),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Icon(
-                                      Icons.account_tree_outlined,
-                                      color:
-                                          theme.colorScheme.onPrimaryContainer,
+                        ),
+                      )
+                    // 2026-09-11 折叠头+表内滚（对齐采购/货品资料页）：上滑先收头部
+                    // （提示条/生产链横幅/表头卡/出库凭证），明细标题吸顶后表格内部继续滚。
+                    : UtenCollapsingHeaderScrollView(
+                        collapsingHeader: Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            UtenSpacing.s12,
+                            UtenSpacing.s12,
+                            UtenSpacing.s12,
+                            0,
+                          ),
+                          // 表头文字框选：只包折叠头（表格自带选择能力，不再套在
+                          // 页面级 SelectionArea 里）。
+                          child: SelectionArea(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                DocumentScopeWriteNotice(
+                                  capability: scopeCapability,
+                                  ownerEmployeeId: _d!.makerId,
+                                  onRetry: () => ref.invalidate(
+                                    documentScopeCapabilityProvider(
+                                      DocumentDataScope.stockDocument,
                                     ),
-                                    const SizedBox(width: UtenSpacing.s8),
-                                    Expanded(
-                                      child: Text(
-                                        '生产链自动生成\n'
-                                        '${_d!.restrictionReason ?? '请在对应生产任务中维护'}',
-                                        style: TextStyle(
-                                          color: theme
-                                              .colorScheme
-                                              .onPrimaryContainer,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
-                              ),
-                            ),
-                            const SizedBox(height: UtenSpacing.s12),
-                          ],
-                          Card(
-                            child: Padding(
-                              padding: const EdgeInsets.all(UtenSpacing.s12),
-                              child: UtenFormGrid(
-                                children: [
-                                  _kv('单据号', _d!.billNo, theme),
-                                  _kv('日期', _d!.billDate, theme),
-                                  _kv('制单员', _d!.makerName, theme),
-                                  _kv(
-                                    '制单时间',
-                                    utenFmtIsoTime(_d!.createdAt),
-                                    theme,
-                                  ),
-                                  _kv(
-                                    '仓库',
-                                    names.warehouse(_d!.warehouseId),
-                                    theme,
-                                  ),
-                                  if (widget.docType == StockDocType.transfer)
-                                    _kv(
-                                      '调入仓',
-                                      names.warehouse(_d!.toWarehouseId),
-                                      theme,
-                                    ),
-                                  if (widget.docType == StockDocType.draw) ...[
-                                    _kv(
-                                      '领料车间',
-                                      names.department(_d!.departmentId),
-                                      theme,
-                                    ),
-                                    _kv(
-                                      '出库进度',
-                                      drawIssueStatusLabel(_d!.issueStatus),
-                                      theme,
-                                    ),
-                                  ],
-                                  if (_d!.remark?.isNotEmpty == true)
-                                    _kv('备注', _d!.remark, theme),
-                                  _kv(
-                                    '状态',
-                                    widget.docType == StockDocType.finishedIn &&
-                                            _d!.status == -1 &&
-                                            _d!.finishedInboundDecision ==
-                                                'REJECTED'
-                                        ? '仓库拒收 · 待生产更正'
-                                        : stockStatusLabel(_d!.status),
-                                    theme,
-                                  ),
-                                  if (widget.docType ==
-                                          StockDocType.finishedIn &&
-                                      (_d!
-                                              .finishedInboundVarianceReason
-                                              ?.isNotEmpty ==
-                                          true))
-                                    _kv(
-                                      '差异原因',
-                                      _d!.finishedInboundVarianceReason,
-                                      theme,
-                                    ),
-                                  SourceDocLink(
-                                    label: '生产计划',
-                                    billNo: _d!.planNo,
-                                    onTap: _d!.sourcePlanId == null
-                                        ? null
-                                        : () => context.push(
-                                            RoutePath.productionPlanDetail(
-                                              _d!.sourcePlanId!,
+                                if (_d!.productionLinked) ...[
+                                  Material(
+                                    color: theme.colorScheme.primaryContainer,
+                                    borderRadius: UtenRadius.mdAll,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(
+                                        UtenSpacing.s12,
+                                      ),
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Icon(
+                                            Icons.account_tree_outlined,
+                                            color: theme
+                                                .colorScheme
+                                                .onPrimaryContainer,
+                                          ),
+                                          const SizedBox(width: UtenSpacing.s8),
+                                          Expanded(
+                                            child: Text(
+                                              '生产链自动生成\n'
+                                              '${_d!.restrictionReason ?? '请在对应生产任务中维护'}',
+                                              style: TextStyle(
+                                                color: theme
+                                                    .colorScheme
+                                                    .onPrimaryContainer,
+                                              ),
                                             ),
                                           ),
+                                        ],
+                                      ),
+                                    ),
                                   ),
-                                  SourceDocLink(
-                                    label: '来源报工',
-                                    billNo: _d!.sourceDocNo,
-                                    onTap: _d!.sourceDailyReportId == null
-                                        ? null
-                                        : () => context.push(
-                                            '/production/daily-reports/${_d!.sourceDailyReportId}',
+                                  const SizedBox(height: UtenSpacing.s12),
+                                ],
+                                Card(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(
+                                      UtenSpacing.s12,
+                                    ),
+                                    child: UtenFormGrid(
+                                      children: [
+                                        _kv('单据号', _d!.billNo, theme),
+                                        _kv('日期', _d!.billDate, theme),
+                                        _kv('制单员', _d!.makerName, theme),
+                                        _kv(
+                                          '制单时间',
+                                          utenFmtIsoTime(_d!.createdAt),
+                                          theme,
+                                        ),
+                                        if (widget.docType != StockDocType.draw)
+                                          _kv(
+                                            '仓库',
+                                            names.warehouse(_d!.warehouseId),
+                                            theme,
                                           ),
+                                        if (widget.docType ==
+                                            StockDocType.transfer)
+                                          _kv(
+                                            '调入仓',
+                                            names.warehouse(_d!.toWarehouseId),
+                                            theme,
+                                          ),
+                                        if (_d!.remark?.isNotEmpty == true)
+                                          _kv('备注', _d!.remark, theme),
+                                        _kv(
+                                          '状态',
+                                          widget.docType ==
+                                                      StockDocType.finishedIn &&
+                                                  _d!.status == -1 &&
+                                                  _d!.finishedInboundDecision ==
+                                                      'REJECTED'
+                                              ? '仓库拒收 · 待生产更正'
+                                              : stockStatusLabel(_d!.status),
+                                          theme,
+                                        ),
+                                        if (widget.docType ==
+                                                StockDocType.finishedIn &&
+                                            (_d!
+                                                    .finishedInboundVarianceReason
+                                                    ?.isNotEmpty ==
+                                                true))
+                                          _kv(
+                                            '差异原因',
+                                            _d!.finishedInboundVarianceReason,
+                                            theme,
+                                          ),
+                                        if (widget.docType != StockDocType.draw)
+                                          SourceDocLink(
+                                            label: '生产计划',
+                                            billNo: _d!.planNo,
+                                            onTap: _d!.sourcePlanId == null
+                                                ? null
+                                                : () => context.push(
+                                                    RoutePath.productionPlanDetail(
+                                                      _d!.sourcePlanId!,
+                                                    ),
+                                                  ),
+                                          ),
+                                        if (widget.docType != StockDocType.draw)
+                                          SourceDocLink(
+                                            label: '来源报工',
+                                            billNo: _d!.sourceDocNo,
+                                            onTap:
+                                                _d!.sourceDailyReportId == null
+                                                ? null
+                                                : () => context.push(
+                                                    '/production/daily-reports/${_d!.sourceDailyReportId}',
+                                                  ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                if (widget.docType == StockDocType.draw) ...[
+                                  const SizedBox(height: UtenSpacing.s12),
+                                  // 出库凭证常驻单据详情（2026-09-10）：此前只在出库弹窗内，出完
+                                  // 或没有出库权限的人再也看不到凭证。可管口径与服务端
+                                  // StockDocumentAttachmentAccessPolicy 一致：红冲冻结；草稿=
+                                  // 审核∩出库（出库即审核）；已审=出库权限。弹窗内的同款区保留。
+                                  BusinessAttachmentSection(
+                                    key: const Key('stock-doc-attachments'),
+                                    ownerType: 'STOCK_DOCUMENT',
+                                    ownerId: widget.id,
+                                    canView: _canView,
+                                    canManage:
+                                        _d!.status != -1 &&
+                                        (_d!.status == 1
+                                            ? _canIssue
+                                            : (_canApprove && _canIssue)),
+                                    title: '出库凭证/照片',
+                                    categories: const ['出库凭证', '照片', '其他'],
                                   ),
                                 ],
-                              ),
+                              ],
                             ),
-                          ),
-                          if (widget.docType == StockDocType.draw) ...[
-                            const SizedBox(height: UtenSpacing.s12),
-                            // 出库凭证常驻单据详情（2026-09-10）：此前只在出库弹窗内，出完
-                            // 或没有出库权限的人再也看不到凭证。可管口径与服务端
-                            // StockDocumentAttachmentAccessPolicy 一致：红冲冻结；草稿=
-                            // 审核∩出库（出库即审核）；已审=出库权限。弹窗内的同款区保留。
-                            BusinessAttachmentSection(
-                              key: const Key('stock-doc-attachments'),
-                              ownerType: 'STOCK_DOCUMENT',
-                              ownerId: widget.id,
-                              canView: _canView,
-                              canManage:
-                                  _d!.status != -1 &&
-                                  (_d!.status == 1
-                                      ? _canIssue
-                                      : (_canApprove && _canIssue)),
-                              title: '出库凭证/照片',
-                              categories: const ['出库凭证', '照片', '其他'],
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                  // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
-                  body: Padding(
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 明细区：统一表格样式（与全站报表/主档同款），不再是卡片 ListTile。
-                        Text(
-                          '明细 (${_d!.items.length})',
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(height: UtenSpacing.s8),
-                        Expanded(
-                          child: MasterDataTableView<StockDocItem>(
-                            primary: true,
-                            columns: [
-                              MasterColumnDef(
-                                key: 'goodsCode',
-                                label: '物料编码',
-                                width: 110,
-                                value: (it) =>
-                                    names.goodsInfo(it.goodsId)?.code ?? '—',
+                        // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
+                        body: Padding(
+                          padding: const EdgeInsets.all(UtenSpacing.s12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // 明细区：统一表格样式（与全站报表/主档同款），不再是卡片 ListTile。
+                              Text(
+                                '明细 (${_d!.items.length})',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                              MasterColumnDef(
-                                key: 'goods',
-                                label: '货品名称',
-                                width: 200,
-                                value: (it) => names.goods(it.goodsId),
+                              const SizedBox(height: UtenSpacing.s8),
+                              // 2026-09-12 用户口径「备注上面一个总的，下面每行
+                              // 一个小的」：总备注在这里，行备注在表格「行备注」列。
+                              if (widget.docType == StockDocType.draw &&
+                                  _canIssue &&
+                                  _issueQty.isNotEmpty) ...[
+                                TextField(
+                                  key: const Key('draw-issue-remark'),
+                                  controller: _issueRemark,
+                                  enabled: !_busy,
+                                  maxLength: 200,
+                                  decoration: const InputDecoration(
+                                    labelText: '出库备注(选填)',
+                                    hintText: '随本次出库追加到单据备注留痕',
+                                    counterText: '',
+                                    isDense: true,
+                                  ),
+                                ),
+                                const SizedBox(height: UtenSpacing.s8),
+                              ],
+                              Expanded(
+                                child: widget.docType == StockDocType.draw
+                                    ? ProductionDrawDetailTable(
+                                        documents: [_d!],
+                                        names: names,
+                                        permissions: ref.watch(
+                                          currentPermissionsProvider,
+                                        ),
+                                        superAdmin: ref.watch(
+                                          isSuperAdminProvider,
+                                        ),
+                                        primary: true,
+                                        issueQtyControllers: _canIssue
+                                            ? _issueQty
+                                            : null,
+                                        lineRemarkControllers: _canIssue
+                                            ? _lineRemarks
+                                            : null,
+                                        issueSaving: _busy,
+                                      )
+                                    : widget.docType == StockDocType.otherOut ||
+                                          widget.docType ==
+                                              StockDocType.finishedOut
+                                    ? WarehouseStockOutboundDetailTable(
+                                        documents: [_d!],
+                                        names: names,
+                                        primary: true,
+                                      )
+                                    : MasterDataTableView<StockDocItem>(
+                                        primary: true,
+                                        bottomContentPadding:
+                                            UtenFloatingActionGroup
+                                                .scrollClearance,
+                                        columns: [
+                                          MasterColumnDef(
+                                            key: 'goodsCode',
+                                            label: '物料编码',
+                                            width: 110,
+                                            value: (it) =>
+                                                names
+                                                    .goodsInfo(it.goodsId)
+                                                    ?.code ??
+                                                '—',
+                                          ),
+                                          MasterColumnDef(
+                                            key: 'goods',
+                                            label: '货品名称',
+                                            width: 200,
+                                            value: (it) =>
+                                                names.goods(it.goodsId),
+                                          ),
+                                          MasterColumnDef(
+                                            key: 'series',
+                                            label: '系列',
+                                            width: 80,
+                                            value: (it) =>
+                                                names
+                                                    .goodsInfo(it.goodsId)
+                                                    ?.series ??
+                                                '—',
+                                          ),
+                                          MasterColumnDef(
+                                            key: 'stockPlace',
+                                            label: '库位号',
+                                            width: 80,
+                                            value: (it) =>
+                                                it.place?.trim().isNotEmpty ==
+                                                    true
+                                                ? it.place!
+                                                : names
+                                                          .goodsInfo(it.goodsId)
+                                                          ?.stockPlace ??
+                                                      '—',
+                                          ),
+                                          MasterColumnDef(
+                                            key: 'color',
+                                            label: '颜色',
+                                            width: 80,
+                                            value: (it) =>
+                                                names.color(it.colorId),
+                                          ),
+                                          MasterColumnDef(
+                                            key: 'unit',
+                                            label: '单位',
+                                            width: 64,
+                                            value: (it) =>
+                                                names.unit(it.unitId),
+                                          ),
+                                          MasterColumnDef(
+                                            key: 'weight',
+                                            label: '实际重量',
+                                            width: 90,
+                                            type: 'number',
+                                            value: (it) =>
+                                                it.weight?.toStringAsFixed(2) ??
+                                                '—',
+                                          ),
+                                          if (widget.docType ==
+                                              StockDocType.check) ...[
+                                            MasterColumnDef(
+                                              key: 'bookQty',
+                                              label: '账面数量',
+                                              width: 90,
+                                              type: 'number',
+                                              value: (it) => _quantityInputText(
+                                                it.qty ?? 0,
+                                              ),
+                                            ),
+                                            MasterColumnDef(
+                                              key: 'countQty',
+                                              label: '实盘数量',
+                                              width: 90,
+                                              type: 'number',
+                                              value: (it) => it.countQty
+                                                  ?.toStringAsFixed(1),
+                                            ),
+                                            MasterColumnDef(
+                                              key: 'surplusQty',
+                                              label: '盈亏',
+                                              width: 90,
+                                              type: 'number',
+                                              value: (it) => it.surplusQty
+                                                  ?.toStringAsFixed(1),
+                                            ),
+                                          ] else if (widget.docType ==
+                                              StockDocType.finishedIn) ...[
+                                            MasterColumnDef(
+                                              key: 'reportedQty',
+                                              label: '待点收上限',
+                                              width: 100,
+                                              type: 'number',
+                                              value: (it) =>
+                                                  (it.reportedQty ??
+                                                          it.qty ??
+                                                          0)
+                                                      .toStringAsFixed(2),
+                                            ),
+                                            MasterColumnDef(
+                                              key: 'acceptedQty',
+                                              label: _d!.status == 1
+                                                  ? '仓库实收'
+                                                  : '待点收',
+                                              width: 100,
+                                              type: 'number',
+                                              value: (it) => (it.qty ?? 0)
+                                                  .toStringAsFixed(2),
+                                            ),
+                                          ] else
+                                            MasterColumnDef(
+                                              key: 'qty',
+                                              label: '数量',
+                                              width: 90,
+                                              type: 'number',
+                                              value: (it) => (it.qty ?? 0)
+                                                  .toStringAsFixed(2),
+                                            ),
+                                        ],
+                                        items: _d!.items,
+                                        facets: const {},
+                                        nullCounts: const {},
+                                        filters: const {},
+                                        onFilterChanged: (_, _) {},
+                                        emptyMessage: '暂无明细',
+                                      ),
                               ),
-                              MasterColumnDef(
-                                key: 'series',
-                                label: '系列',
-                                width: 80,
-                                value: (it) =>
-                                    names.goodsInfo(it.goodsId)?.series ?? '—',
-                              ),
-                              MasterColumnDef(
-                                key: 'stockPlace',
-                                label: '库位号',
-                                width: 80,
-                                value: (it) =>
-                                    it.place?.trim().isNotEmpty == true
-                                    ? it.place!
-                                    : names.goodsInfo(it.goodsId)?.stockPlace ??
-                                          '—',
-                              ),
-                              MasterColumnDef(
-                                key: 'color',
-                                label: '颜色',
-                                width: 80,
-                                value: (it) => names.color(it.colorId),
-                              ),
-                              MasterColumnDef(
-                                key: 'unit',
-                                label: '单位',
-                                width: 64,
-                                value: (it) => names.unit(it.unitId),
-                              ),
-                              MasterColumnDef(
-                                key: 'weight',
-                                label: '实际重量',
-                                width: 90,
-                                type: 'number',
-                                value: (it) =>
-                                    it.weight?.toStringAsFixed(2) ?? '—',
-                              ),
-                              if (widget.docType == StockDocType.check) ...[
-                                MasterColumnDef(
-                                  key: 'bookQty',
-                                  label: '账面数量',
-                                  width: 90,
-                                  type: 'number',
-                                  value: (it) =>
-                                      _quantityInputText(it.qty ?? 0),
-                                ),
-                                MasterColumnDef(
-                                  key: 'countQty',
-                                  label: '实盘数量',
-                                  width: 90,
-                                  type: 'number',
-                                  value: (it) =>
-                                      it.countQty?.toStringAsFixed(1),
-                                ),
-                                MasterColumnDef(
-                                  key: 'surplusQty',
-                                  label: '盈亏',
-                                  width: 90,
-                                  type: 'number',
-                                  value: (it) =>
-                                      it.surplusQty?.toStringAsFixed(1),
-                                ),
-                              ] else if (widget.docType ==
-                                  StockDocType.draw) ...[
-                                MasterColumnDef(
-                                  key: 'qty',
-                                  label: '数量',
-                                  width: 90,
-                                  type: 'number',
-                                  value: (it) =>
-                                      (it.qty ?? 0).toStringAsFixed(2),
-                                ),
-                                MasterColumnDef(
-                                  key: 'issuedQty',
-                                  label: '已出库',
-                                  width: 90,
-                                  type: 'number',
-                                  value: (it) =>
-                                      (it.issuedQty ?? 0).toStringAsFixed(2),
-                                ),
-                                MasterColumnDef(
-                                  key: 'remainingQty',
-                                  label: '剩余',
-                                  width: 90,
-                                  type: 'number',
-                                  value: (it) =>
-                                      it.remainingQty.toStringAsFixed(2),
-                                ),
-                              ] else if (widget.docType ==
-                                  StockDocType.finishedIn) ...[
-                                MasterColumnDef(
-                                  key: 'reportedQty',
-                                  label: '待点收上限',
-                                  width: 100,
-                                  type: 'number',
-                                  value: (it) => (it.reportedQty ?? it.qty ?? 0)
-                                      .toStringAsFixed(2),
-                                ),
-                                MasterColumnDef(
-                                  key: 'acceptedQty',
-                                  label: _d!.status == 1 ? '仓库实收' : '待点收',
-                                  width: 100,
-                                  type: 'number',
-                                  value: (it) =>
-                                      (it.qty ?? 0).toStringAsFixed(2),
-                                ),
-                              ] else
-                                MasterColumnDef(
-                                  key: 'qty',
-                                  label: '数量',
-                                  width: 90,
-                                  type: 'number',
-                                  value: (it) =>
-                                      (it.qty ?? 0).toStringAsFixed(2),
-                                ),
                             ],
-                            items: _d!.items,
-                            facets: const {},
-                            nullCounts: const {},
-                            filters: const {},
-                            onFilterChanged: (_, _) {},
-                            emptyMessage: '暂无明细',
                           ),
                         ),
-                      ],
-                    ),
-                  ),
+                      ),
+              ),
+            ),
+            if (_isOrdinaryOutbound && _busy)
+              Positioned.fill(
+                child: UtenBusyOverlay(
+                  title:
+                      (Localizations.of<AppLocalizations>(
+                                context,
+                                AppLocalizations,
+                              ) ??
+                              AppLocalizationsZh())
+                          .warehouseStockOutboundProcessing,
                 ),
+              ),
+          ],
         ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButton: _d == null || _busy ? null : _actions(),
       ),
-      bottomNavigationBar: _d == null || _busy ? null : _actions(theme),
     );
   }
 
@@ -875,14 +1192,11 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     ],
   );
 
-  Widget _actions(ThemeData theme) {
+  Widget _actions() {
     final detail = _d!;
     final children = <Widget>[];
 
     void addAction(Widget action) {
-      if (children.isNotEmpty) {
-        children.add(const SizedBox(width: UtenSpacing.s8));
-      }
       children.add(action);
     }
 
@@ -892,6 +1206,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       if (!_canOpenList) return;
       addAction(
         UtenButton(
+          size: UtenButtonSize.large,
           type: UtenButtonType.secondary,
           onPressed: () => popOrBackTo(
             context,
@@ -909,6 +1224,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           detail.canDelete) {
         addAction(
           UtenButton(
+            size: UtenButtonSize.large,
             type: UtenButtonType.danger,
             icon: Icons.delete_outline,
             onPressed: _delete,
@@ -922,6 +1238,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           detail.canEdit) {
         addAction(
           UtenButton(
+            size: UtenButtonSize.large,
             type: UtenButtonType.secondary,
             icon: Icons.edit_outlined,
             onPressed: () => context.push(
@@ -936,10 +1253,10 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           (detail.productionLinked || _ordinaryWritable)) {
         addAction(
           UtenButton(
+            size: UtenButtonSize.large,
+            type: UtenButtonType.danger,
             icon: Icons.logout_rounded,
-            onPressed: _canApprove && _canIssue
-                ? () => _issueDialog(reverse: false)
-                : null,
+            onPressed: _canApprove && _canIssue ? _issueFromTable : null,
             onDisabledTap: () => context.appWarning(
               '草稿生产领料单只允许“出库即审核”；当前账号需要同时具备审核和出库权限。',
               force: true,
@@ -952,6 +1269,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           (detail.productionLinked || _ordinaryWritable)) {
         addAction(
           UtenButton(
+            size: UtenButtonSize.large,
+            type: UtenButtonType.danger,
             icon:
                 detail.productionLinked &&
                     widget.docType == StockDocType.finishedIn
@@ -961,17 +1280,37 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                 detail.productionLinked &&
                     widget.docType == StockDocType.finishedIn
                 ? _confirmFinishedInboundDialog
+                : _isOrdinaryOutbound
+                ? (_outboundReviewToken == null || _confirmingOutbound
+                      ? null
+                      : _confirmOrdinaryOutbound)
                 : () => _act(
-                    '审核将联动库存，确认？',
+                    widget.docType == StockDocType.wdraw
+                        ? '请逐行核对退料实物、单位和数量。确认本单全部实物已收齐后，系统才增加库存并结清本单退料。数量不符时请返回，由车间撤回后重新提交，确认实收？'
+                        : '审核将联动库存，确认？',
                     () => ref
                         .read(stockDocRepositoryProvider(widget.docType))
                         .approve(widget.id),
-                    '已审核',
+                    widget.docType == StockDocType.wdraw
+                        ? '退料实收已确认，库存与车间台账已更新'
+                        : '已审核',
                     reviewerResponsibility: true,
+                    confirmLabel: widget.docType == StockDocType.wdraw
+                        ? '确认收料'
+                        : null,
                   ),
             child: Text(
               detail.productionLinked &&
                       widget.docType == StockDocType.finishedIn
+                  ? '确认实收并入库'
+                  : _isOrdinaryOutbound
+                  ? (Localizations.of<AppLocalizations>(
+                              context,
+                              AppLocalizations,
+                            ) ??
+                            AppLocalizationsZh())
+                        .warehouseStockOutboundConfirmSingle
+                  : widget.docType == StockDocType.wdraw
                   ? '确认实收并入库'
                   : '审核',
             ),
@@ -986,8 +1325,10 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
         if (anyRemaining && _canIssue) {
           addAction(
             UtenButton(
+              size: UtenButtonSize.large,
+              type: UtenButtonType.danger,
               icon: Icons.logout_rounded,
-              onPressed: () => _issueDialog(reverse: false),
+              onPressed: _issueFromTable,
               child: const Text('出库'),
             ),
           );
@@ -995,6 +1336,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
         if (anyIssued && _canCreate) {
           addAction(
             UtenButton(
+              size: UtenButtonSize.large,
               type: UtenButtonType.tonal,
               icon: Icons.assignment_return_outlined,
               onPressed: () =>
@@ -1006,6 +1348,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
         if (anyIssued && _canReverseIssue) {
           addAction(
             UtenButton(
+              size: UtenButtonSize.large,
               type: UtenButtonType.secondary,
               icon: Icons.undo_rounded,
               onPressed: () => _issueDialog(reverse: true),
@@ -1023,6 +1366,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
             widget.docType == StockDocType.finishedIn;
         addAction(
           UtenButton(
+            size: UtenButtonSize.large,
             type: UtenButtonType.danger,
             icon: Icons.undo_outlined,
             onPressed: () => _act(
@@ -1048,21 +1392,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       addBack();
     }
     if (children.isEmpty) return const SizedBox.shrink();
-    return SafeArea(
-      child: Container(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          border: Border(
-            top: BorderSide(color: theme.colorScheme.outlineVariant),
-          ),
-        ),
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: children,
-        ),
-      ),
-    );
+    return UtenFloatingActionGroup(children: children);
   }
 }
 

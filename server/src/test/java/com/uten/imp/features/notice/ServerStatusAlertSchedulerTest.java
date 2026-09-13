@@ -5,6 +5,7 @@ import com.uten.imp.features.admin.serverstatus.ServerStatusView;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
@@ -38,15 +39,14 @@ class ServerStatusAlertSchedulerTest {
     private final UUID receiver = UUID.randomUUID();
 
     @BeforeEach
-    @SuppressWarnings("unchecked")
     void setUp() {
         status = mock(ServerStatusService.class);
         notices = mock(NoticeService.class);
         jdbc = mock(JdbcTemplate.class);
         // 默认：有一个接收人，且从没发过（不被节流）。
-        when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class)))
+        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<UUID>>notNull(), any(Object[].class)))
                 .thenReturn(List.of(receiver));
-        when(jdbc.query(anyString(), any(RowMapper.class), any(), any()))
+        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<UUID>>notNull(), any(), any()))
                 .thenReturn(List.of(receiver));
         when(jdbc.queryForObject(anyString(), eq(Integer.class), any(), any(), any()))
                 .thenReturn(0);
@@ -153,7 +153,7 @@ class ServerStatusAlertSchedulerTest {
     /** 没有接收人时整轮静默——不抛异常、不影响业务。 */
     @Test
     void staysSilentWithoutReceivers() {
-        when(jdbc.query(anyString(), any(RowMapper.class), any(), any()))
+        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<UUID>>notNull(), any(), any()))
                 .thenReturn(List.of());
         snapshot(new ServerStatusView.Alert("disk-1", "CRITICAL", "危急", ""));
 

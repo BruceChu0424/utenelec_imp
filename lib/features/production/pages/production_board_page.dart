@@ -35,6 +35,7 @@ import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -71,6 +72,9 @@ class ProductionBoardPage extends ConsumerStatefulWidget {
 }
 
 class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
+  /// 顶栏刷新按钮 → 待排产面板整页重拉（列表回第 1 页 + 进行中计数失效）。
+  final ValueNotifier<int> _pendingRefreshTick = ValueNotifier<int>(0);
+
   /// 当前大类分段：pending/progress/history；null = 未选择引导态（不发请求）。
   String? _segment;
 
@@ -79,6 +83,12 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
 
   /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
   UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+
+  @override
+  void dispose() {
+    _pendingRefreshTick.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -109,6 +119,17 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.production),
         ),
+        // 2026-09-12 用户口径：刷新按钮移到右上角顶栏（自动注入的「权限设置」
+        // 左边，actions 先于 PagePermissionAction 渲染）；表格工具条与窄屏
+        // 列表顶部的旧刷新入口随之撤除。
+        actions: [
+          UtenAppBarActionButton(
+            key: const Key('production-pending-refresh'),
+            label: '刷新',
+            icon: Icons.refresh_rounded,
+            onPressed: () => _pendingRefreshTick.value++,
+          ),
+        ],
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
@@ -176,6 +197,7 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
                   'pending' => _PendingPanel(
                     key: const Key('production-board-pending'),
                     keyword: _keyword,
+                    refreshTick: _pendingRefreshTick.value,
                   ),
                   'progress' => ProductionExecutionGroupPanel(
                     key: const Key('production-board-progress'),
@@ -220,10 +242,13 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
 // ═════════════════════════ Tab1 待排产（原调度页） ═════════════════════════
 
 class _PendingPanel extends ConsumerStatefulWidget {
-  const _PendingPanel({super.key, required this.keyword});
+  const _PendingPanel({super.key, required this.keyword, this.refreshTick = 0});
 
   /// 页级搜索关键字（300ms 防抖后的值；变化即重拉）。
   final String keyword;
+
+  /// 顶栏刷新按钮信号（变化即整页刷新：列表回第 1 页 + 进行中计数失效）。
+  final int refreshTick;
 
   @override
   ConsumerState<_PendingPanel> createState() => _PendingPanelState();
@@ -270,6 +295,10 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   @override
   void didUpdateWidget(covariant _PendingPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshTick != widget.refreshTick) {
+      _refreshAll();
+      return;
+    }
     if (oldWidget.keyword != widget.keyword && _hasLoaded) {
       // 关键字改变行的可见集合，与筛选同理：先清空旧选择再重载。
       _selected.clear();
@@ -595,7 +624,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final compact = context.breakpoint.isCompact;
     return Scaffold(
       // 容器（UtenContentContainer.wide）由页面级统一提供，面板不再自套（避免双 gutter）。
       // 2026-09-05 起：交货日期范围筛选与「建议联合分析」按钮下线——排序/状态
@@ -603,14 +631,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       body: Column(
         children: [
           const ProductionFqcReplenishmentBanner(),
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(
-                bottom: compact && _canUseAnalysis ? 96 : 0,
-              ),
-              child: _list(theme),
-            ),
-          ),
+          Expanded(child: _list(theme)),
         ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
@@ -627,15 +648,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     _reload();
   }
 
-  Widget _refreshButton() {
-    return IconButton(
-      key: const Key('production-pending-refresh'),
-      icon: const Icon(Icons.refresh_rounded),
-      tooltip: '刷新',
-      onPressed: _loading ? null : _refreshAll,
-    );
-  }
-
   /// 分页条已改用 MasterDataTableView 内置分页（见 _list）。
 
   Widget _list(ThemeData theme) {
@@ -646,19 +658,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         Expanded(
           child: context.breakpoint.isCompact
               ? Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        right: UtenSpacing.s4,
-                        bottom: UtenSpacing.s4,
-                      ),
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: _refreshButton(),
-                      ),
-                    ),
-                    Expanded(child: _pendingMobileList(theme, rows)),
-                  ],
+                  children: [Expanded(child: _pendingMobileList(theme, rows))],
                 )
               : MasterDataTableView<SchedulePendingRow>(
                   columns: _pendingColumns,
@@ -703,10 +703,10 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                   emptyMessage: widget.keyword.isEmpty && _filters.isEmpty
                       ? '暂无待排产的订单行'
                       : '没有匹配的待排产行',
-                  toolbarActions: [_refreshButton()],
                   // 选择摘要胶囊不驻工具条——右下角悬浮组内已放标准胶囊
                   //（紧邻「新建物料分析」按钮左侧），避免同页两处计数。
                   showSelectionSummary: false,
+                  bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
                   currentPage: _page?.page ?? _pageNo,
                   totalPages: _page?.totalPages ?? 1,
                   onPageChange: (p) {
@@ -757,6 +757,9 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     }
     return ListView.separated(
       key: const Key('production-pending-mobile-list'),
+      padding: EdgeInsets.only(
+        bottom: _canUseAnalysis ? UtenFloatingActionGroup.scrollClearance : 0,
+      ),
       itemCount: rows.length,
       separatorBuilder: (_, _) => const SizedBox(height: UtenSpacing.s8),
       itemBuilder: (_, index) {
@@ -1085,35 +1088,28 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         : '当前选择缺少新建或刷新分析权限，请调整选择';
     return UtenFloatingActionGroup(
       children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_selected.isNotEmpty) ...[
-              UtenSelectionSummaryPill(
-                key: const Key('production-pending-selected-total'),
-                count: _selected.length,
-                onClear: _clearSelection,
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-            ],
-            Tooltip(
-              message: canRun ? '进入物料分析，不会直接生成业务单据' : disabledReason,
-              child: UtenButton(
-                key: const Key('pending-enter-analysis-to-generate'),
-                size: UtenButtonSize.large,
-                type: UtenButtonType.danger,
-                icon: _selected.isEmpty ? Icons.insights_rounded : null,
-                isLoading: _submitting,
-                onPressed: canRun
-                    ? () => _openMaterialAnalysis(allowEmpty: true)
-                    : null,
-                onDisabledTap: canRun
-                    ? null
-                    : () => context.appWarning(disabledReason),
-                child: Text(label),
-              ),
-            ),
-          ],
+        UtenSelectionSummaryPill(
+          key: const Key('production-pending-selected-total'),
+          clearKey: const Key('production-pending-clear-selection'),
+          count: _selected.length,
+          onClear: _selected.isEmpty || _submitting ? null : _clearSelection,
+        ),
+        Tooltip(
+          message: canRun ? '进入物料分析，不会直接生成业务单据' : disabledReason,
+          child: UtenButton(
+            key: const Key('pending-enter-analysis-to-generate'),
+            size: UtenButtonSize.large,
+            type: UtenButtonType.danger,
+            icon: _selected.isEmpty ? Icons.insights_rounded : null,
+            isLoading: _submitting,
+            onPressed: canRun
+                ? () => _openMaterialAnalysis(allowEmpty: true)
+                : null,
+            onDisabledTap: canRun
+                ? null
+                : () => context.appWarning(disabledReason),
+            child: Text(label),
+          ),
         ),
       ],
     );

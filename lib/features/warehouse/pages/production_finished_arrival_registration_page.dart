@@ -15,6 +15,7 @@ import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
@@ -820,88 +821,69 @@ class _ProductionFinishedArrivalRegistrationPageState
                           ),
                         ),
                       ),
-                      const SizedBox(height: UtenSpacing.s24),
+                      ListenableBuilder(
+                        listenable: _grid,
+                        builder: (context, _) => UtenTotalsSummaryBar(
+                          key: const Key('production-finished-arrival-totals'),
+                          density: true,
+                          entries: [
+                            UtenTotalEntry('成品明细', '${_grid.length} 行'),
+                            UtenTotalEntry(
+                              '报工合计',
+                              measurementTotalsText(
+                                _grid.rows.map(
+                                  (row) => MeasuredAmount(
+                                    value: row.item.reportedQty,
+                                    unitId: row.item.unitId,
+                                    unitName: row.item.unitName,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(
+                        height: UtenFloatingActionGroup.scrollClearance,
+                      ),
                     ],
                   ),
                 ),
               ),
       ),
-      bottomNavigationBar: _detail == null
-          ? null
-          : SafeArea(child: _buildBottomBar(theme)),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: _detail == null ? null : _buildBottomBar(theme),
     );
   }
 
   /// 底部：「成品明细 N 行 · 报工合计 Σ(按单位)」合计条 + 取消/登记并送检。
-  Widget _buildBottomBar(ThemeData theme) {
-    final totals = measurementTotalsText(
-      _grid.rows.map(
-        (row) => MeasuredAmount(
-          value: row.item.reportedQty,
-          unitId: row.item.unitId,
-          unitName: row.item.unitName,
+  Widget _buildBottomBar(ThemeData theme) => UtenFloatingActionGroup(
+    children: [
+      UtenButton(
+        type: UtenButtonType.secondary,
+        size: UtenButtonSize.large,
+        onPressed: _saving || _remembering || _reversing
+            ? null
+            : () => _leave(changed: _registrationCompletedThisSession),
+        child: Text(_canRegister ? '取消' : '返回任务'),
+      ),
+      if (_canRegister)
+        UtenButton(
+          key: const Key('production-finished-arrival-submit'),
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          icon: Icons.fact_check_outlined,
+          isLoading: _saving,
+          onPressed: _saving || _suggestionsLoading || _grid.isEmpty
+              ? null
+              : _save,
+          onDisabledTap: _suggestionsLoading
+              ? () => context.appInfo('正在读取该成品仓默认库位，请稍候再提交')
+              : null,
+          child: const Text('登记并送检'),
         ),
-      ),
-    );
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border(
-          top: BorderSide(color: theme.colorScheme.outlineVariant),
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s12,
-        vertical: UtenSpacing.s8,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListenableBuilder(
-            listenable: _grid,
-            builder: (context, _) => UtenTotalsSummaryBar(
-              key: const Key('production-finished-arrival-totals'),
-              density: true,
-              entries: [
-                UtenTotalEntry('成品明细', '${_grid.length} 行'),
-                UtenTotalEntry('报工合计', totals),
-              ],
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              UtenButton(
-                type: UtenButtonType.secondary,
-                size: UtenButtonSize.large,
-                onPressed: _saving || _remembering || _reversing
-                    ? null
-                    : () => _leave(changed: _registrationCompletedThisSession),
-                child: Text(_canRegister ? '取消' : '返回任务'),
-              ),
-              if (_canRegister) ...[
-                const SizedBox(width: UtenSpacing.s12),
-                UtenButton(
-                  key: const Key('production-finished-arrival-submit'),
-                  size: UtenButtonSize.large,
-                  icon: Icons.fact_check_outlined,
-                  isLoading: _saving,
-                  onPressed: _saving || _suggestionsLoading || _grid.isEmpty
-                      ? null
-                      : _save,
-                  onDisabledTap: _suggestionsLoading
-                      ? () => context.appInfo('正在读取该成品仓默认库位，请稍候再提交')
-                      : null,
-                  child: const Text('登记并送检'),
-                ),
-              ],
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+    ],
+  );
 
   void _leave({bool changed = false}) {
     final navigator = Navigator.of(context);

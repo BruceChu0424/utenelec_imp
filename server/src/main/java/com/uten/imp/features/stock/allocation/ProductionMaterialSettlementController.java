@@ -36,6 +36,13 @@ public class ProductionMaterialSettlementController {
         return settlementService.capabilities(planId,executionSegmentId);
     }
 
+    @GetMapping("/plans/{planId}/material-usage-sources")
+    @PreAuthorize("hasAnyAuthority('production_plan:view','stock_doc:view','production_execution:view')")
+    public List<com.uten.imp.features.stock.allocation.dto.ProductionMaterialUsageSource> materialUsageSources(
+            @PathVariable UUID planId, @RequestParam UUID executionSegmentId) {
+        return settlementService.materialUsageSources(planId,executionSegmentId);
+    }
+
     @GetMapping("/plans/{planId}/clearance")
     @PreAuthorize("hasAnyAuthority('production_plan:view','stock_doc:view','production_execution:view')")
     public List<ProductionMaterialClearanceRow> clearance(

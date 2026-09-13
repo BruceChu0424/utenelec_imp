@@ -24,6 +24,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -426,6 +427,7 @@ class _QualityPendingDisposalPageState
             : '所选任务汇总到一个页面：逐行填合格/不合格数量后一次提交报告',
         child: UtenButton(
           key: const Key('quality-batch-approval'),
+          type: UtenButtonType.danger,
           size: UtenButtonSize.large,
           icon: Icons.fact_check_outlined,
           onPressed: count == 0 ? null : () => _openBatchApproval(selectedIds),
@@ -1124,6 +1126,7 @@ class _ProcurementInspectionDetailPageState
     return [
       UtenButton(
         key: const Key('iqc-submit-report'),
+        type: UtenButtonType.danger,
         size: UtenButtonSize.large,
         icon: Icons.fact_check_outlined,
         isLoading: _busyDecision,
@@ -1155,7 +1158,17 @@ class _ProcurementInspectionDetailPageState
           ),
         ],
       ),
-      body: SafeArea(child: _buildBody()),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            _buildBody(),
+            // 2026-09-12 用户口径：提交报告执行期间屏幕中间加载动画
+            //（跟随网络调用本身，失败/完成后撤下）。
+            if (_busyDecision)
+              const Positioned.fill(child: UtenBusyOverlay(title: '正在提交检验报告')),
+          ],
+        ),
+      ),
     );
   }
 

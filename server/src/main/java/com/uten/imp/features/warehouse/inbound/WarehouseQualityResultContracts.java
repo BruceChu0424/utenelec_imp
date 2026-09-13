@@ -89,7 +89,9 @@ public final class WarehouseQualityResultContracts {
             BigDecimal passedBaseQty,
             BigDecimal failedBaseQty,
             BigDecimal warehouseStockedBaseQty,
-            BigDecimal pendingStockBaseQty) {
+            BigDecimal pendingStockBaseQty,
+            @JsonSerialize(using = ToStringSerializer.class) UUID warehouseId,
+            String warehouseName) {
     }
 
     /** 检查不合格产生的实物退回任务（V440 拒收案件在仓库侧的投影）。 */

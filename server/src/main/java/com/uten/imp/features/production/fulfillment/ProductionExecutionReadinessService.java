@@ -121,7 +121,7 @@ public class ProductionExecutionReadinessService
                           ON receipt.id = receipt_item.receipt_id
                          AND receipt.status = 1
                          AND receipt.is_deleted = FALSE
-                         AND receipt.warehouse_id = :warehouseId
+                         AND fn_procurement_received_in_warehouse('PURCHASE',receipt_item.id,:warehouseId)>0
                         JOIN production_material_supply_pegs peg
                           ON peg.supply_type = 'PURCHASE_ORDER_ITEM'
                          AND peg.supply_item_id =
@@ -163,7 +163,7 @@ public class ProductionExecutionReadinessService
                           ON receipt.id = receipt_item.receipt_id
                          AND receipt.status = 1
                          AND receipt.is_deleted = FALSE
-                         AND receipt.warehouse_id = :warehouseId
+                         AND fn_procurement_received_in_warehouse('SUBCONTRACT',receipt_item.id,:warehouseId)>0
                         JOIN production_material_supply_pegs peg
                           ON peg.supply_type =
                                 'SUBCONTRACT_ORDER_ITEM'
@@ -940,6 +940,17 @@ public class ProductionExecutionReadinessService
                         uuid(row[3]), decimal(row[4])))
                 .toList();
         if (demands.isEmpty()) {
+            // A continuation with no incremental material still needs the
+            // workshop's explicit batch command and prior physical issue proof.
+            if (Boolean.TRUE.equals(em.createNativeQuery("""
+                    SELECT EXISTS(SELECT 1 FROM production_execution_segments segment
+                        JOIN production_execution_segment_splits split
+                          ON segment.id IN(split.batch_segment_id,split.remaining_segment_id)
+                        WHERE segment.id=:id AND segment.source_segment_id=split.source_segment_id
+                          AND jsonb_array_length(segment.split_material_snapshot)>0
+                          AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(segment.split_material_snapshot) material
+                              WHERE (material->>'requiredQty')::numeric<>0))
+                    """).setParameter("id",segmentId).getSingleResult())) return;
             throw conflict("执行分段没有物料需求");
         }
 
@@ -1083,8 +1094,7 @@ public class ProductionExecutionReadinessService
                     "提升就绪时执行分段已被并发修改，请刷新后重试");
         }
         ledger.refreshDemandStatuses(touched);
-        drawsByWarehouse.values().forEach(draw ->
-                chainNotice.notifyProductionDrawPending(draw.getId()));
+        // Readiness alone does not submit a warehouse picking task.
         chainNotice.notifyExecutionSegmentReady(
                 segmentId,
                 triggeringReceiptId,
@@ -1098,20 +1108,19 @@ public class ProductionExecutionReadinessService
                 demand.id(), demand.goodsId(), demand.colorId(), demand.requiredQty())).toList();
     }
 
-    private boolean isFullyAvailable(
+    private List<Object[]> availabilityRows(
             UUID warehouseId,
-            List<DemandRow> demands,
+            List<UUID> demandIds,
             UUID analysisId,
-            UUID analysisItemId,
-            boolean explainShortage) {
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+            UUID analysisItemId) {
+        return NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                         SELECT demand.id, scope.id, COALESCE(balance.qty,0), COALESCE(reserved.qty,0),
                                COALESCE(own.qty,0), COALESCE(own.qualified_qty,0),
                                GREATEST(COALESCE(goods.min_qty,0),0)::numeric,
                                (NOT scope.is_defective AND fn_warehouse_same_main(scope.id,:warehouseId)) AS public_allowed,
                                fn_warehouse_same_main(scope.id,:warehouseId) AS may_allocate,
-                               goods.code, goods.name
+                               goods.code, goods.name, scope.name
                         FROM production_material_demands demand
                         JOIN goods ON goods.id = demand.goods_id
                         JOIN warehouses scope ON scope.is_deleted = FALSE
@@ -1198,8 +1207,35 @@ public class ProductionExecutionReadinessService
                         .setParameter("effective", RESERVATION_EFFECTIVE)
                         .setParameter("analysisId", analysisId)
                         .setParameter("analysisItemId", analysisItemId)
-                        .setParameter("demandIds",
-                                demands.stream().map(DemandRow::id).toList()));
+                        .setParameter("demandIds", demandIds));
+    }
+
+    /** Same qualified-source/public-stock quantities used by the formal promotion command. */
+    @Transactional(readOnly = true)
+    public List<BatchAvailability> batchAvailability(UUID warehouseId, List<UUID> demandIds,
+                                                    UUID analysisId, UUID analysisItemId) {
+        if (demandIds.isEmpty()) return List.of();
+        return availabilityRows(warehouseId, demandIds, analysisId, analysisItemId).stream().map(row -> {
+            boolean publicAllowed = Boolean.TRUE.equals(row[7]);
+            BigDecimal owned = publicAllowed ? decimal(row[4]) : decimal(row[5]);
+            BigDecimal physical = decimal(row[2]).subtract(decimal(row[3])).add(owned).max(BigDecimal.ZERO);
+            BigDecimal qualified = decimal(row[5]).max(BigDecimal.ZERO).min(physical);
+            return new BatchAvailability(uuid(row[0]), uuid(row[1]), Objects.toString(row[11], ""),
+                    qualified, publicAllowed && Boolean.TRUE.equals(row[8])
+                            ? physical.subtract(qualified) : BigDecimal.ZERO,
+                    decimal(row[6]), owned.signum() > 0, owned, publicAllowed && Boolean.TRUE.equals(row[8]));
+        }).toList();
+    }
+
+    public record BatchAvailability(UUID demandId, UUID warehouseId, String warehouseName,
+                                    BigDecimal qualifiedQty, BigDecimal publicQty,
+                                    BigDecimal safetyQty, boolean ownedFirst, BigDecimal ownedQty,
+                                    boolean normalWarehouse) {}
+
+    private boolean isFullyAvailable(UUID warehouseId, List<DemandRow> demands,
+                                     UUID analysisId, UUID analysisItemId, boolean explainShortage) {
+        List<Object[]> rows = availabilityRows(warehouseId,
+                demands.stream().map(DemandRow::id).toList(), analysisId, analysisItemId);
         Map<UUID, BigDecimal[]> budgets = new HashMap<>();
         for (Object[] row : rows) {
             boolean publicAllowed = Boolean.TRUE.equals(row[7]);
@@ -1285,18 +1321,7 @@ public class ProductionExecutionReadinessService
                                                peg.allocated_qty
                                                    - peg.consumed_qty
                                                    - peg.released_qty,
-                                                CASE
-                                                    WHEN inspection.id IS NULL
-                                                    THEN receipt_item.qty
-                                                        * COALESCE(
-                                                            receipt_item.unit_rate,
-                                                            1)
-                                                    WHEN inspection.status IN (
-                                                        'PARTIAL', 'RESOLVED')
-                                                    THEN inspection
-                                                        .warehouse_stocked_base_qty
-                                                    ELSE 0
-                                                END
+                                               fn_procurement_received_in_warehouse('PURCHASE',receipt_item.id,:warehouseId)
                                                     - COALESCE((
                                                        SELECT SUM(
                                                            allocation
@@ -1309,6 +1334,8 @@ public class ProductionExecutionReadinessService
                                                              = receipt_item.id
                                                          AND allocation.status
                                                              = 'EFFECTIVE'
+                                                         AND EXISTS(SELECT 1 FROM stock_reservations actual
+                                                             WHERE actual.id=allocation.reservation_id AND actual.warehouse_id=:warehouseId)
                                                    ), 0)
                                            ) AS available_qty,
                                            peg.allocated_qty
@@ -1326,7 +1353,7 @@ public class ProductionExecutionReadinessService
                                       ON receipt.id =
                                          receipt_item.receipt_id
                                      AND receipt.is_deleted = FALSE
-                                      AND receipt.warehouse_id = :warehouseId
+                                      AND fn_procurement_received_in_warehouse('PURCHASE',receipt_item.id,:warehouseId)>0
                                     LEFT JOIN procurement_inspection_items
                                       inspection
                                       ON inspection.receipt_type = 'PURCHASE'
@@ -1356,18 +1383,7 @@ public class ProductionExecutionReadinessService
                                                peg.allocated_qty
                                                    - peg.consumed_qty
                                                    - peg.released_qty,
-                                                CASE
-                                                    WHEN inspection.id IS NULL
-                                                    THEN receipt_item.qty
-                                                        * COALESCE(
-                                                            receipt_item.unit_rate,
-                                                            1)
-                                                    WHEN inspection.status IN (
-                                                        'PARTIAL', 'RESOLVED')
-                                                    THEN inspection
-                                                        .warehouse_stocked_base_qty
-                                                    ELSE 0
-                                                END
+                                               fn_procurement_received_in_warehouse('SUBCONTRACT',receipt_item.id,:warehouseId)
                                                     - COALESCE((
                                                        SELECT SUM(
                                                            allocation
@@ -1380,6 +1396,8 @@ public class ProductionExecutionReadinessService
                                                              = receipt_item.id
                                                          AND allocation.status
                                                              = 'EFFECTIVE'
+                                                         AND EXISTS(SELECT 1 FROM stock_reservations actual
+                                                             WHERE actual.id=allocation.reservation_id AND actual.warehouse_id=:warehouseId)
                                                    ), 0)
                                            ) AS available_qty,
                                            peg.allocated_qty
@@ -1397,7 +1415,7 @@ public class ProductionExecutionReadinessService
                                       ON receipt.id =
                                          receipt_item.receipt_id
                                      AND receipt.is_deleted = FALSE
-                                      AND receipt.warehouse_id = :warehouseId
+                                      AND fn_procurement_received_in_warehouse('SUBCONTRACT',receipt_item.id,:warehouseId)>0
                                     LEFT JOIN procurement_inspection_items
                                       inspection
                                       ON inspection.receipt_type =

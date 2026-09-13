@@ -121,6 +121,15 @@ class SalesDocConfig {
   /// 明细是否可链路引入（决定编辑页是否显示"从上游引入"按钮）。
   bool get hasUpstreamLink => linkToOrderItem || linkToOutItem;
 
+  /// 附件绑定业务 UUID；历史其它出货保持只读历史入口。
+  String? get attachmentOwnerType => switch (type) {
+    SalesDocType.order => 'SALES_ORDER',
+    SalesDocType.quote => 'SALES_QUOTE',
+    SalesDocType.shipment || SalesDocType.customerShipment => 'SALES_SHIPMENT',
+    SalesDocType.returnDoc => 'SALES_RETURN',
+    SalesDocType.otherShipment => null,
+  };
+
   /// 列表刷新信号 key：列表页与其详情/编辑页共享，详情/编辑页操作成功后
   /// bump 此 key，列表页（即便被遮在栈下）收到即重拉，返回不再看到老数据。
   String get refreshKey => 'sales:${type.name}';
@@ -176,7 +185,6 @@ class SalesDocConfig {
     icon: Icons.outbox_outlined,
     permissions: DocumentPermissionCatalog.salesShipment,
     clientRequired: true,
-    hasWarehouse: true,
     hasSettlement: true,
     // 出货币种/税率由来源订单携带，销售端不可改；汇率不属于来源商业条件，草稿不保存，
     // 仅在 SHIPPED 时由财务汇率形成。这里保持隐藏，避免把销售输入误认作立账事实。
@@ -211,7 +219,6 @@ class SalesDocConfig {
     icon: Icons.outbox_outlined,
     permissions: DocumentPermissionCatalog.salesOtherShipment,
     clientRequired: true,
-    hasWarehouse: true,
     hasCurrency: true,
     hasExchangeRate: false,
     hasSettlement: true,

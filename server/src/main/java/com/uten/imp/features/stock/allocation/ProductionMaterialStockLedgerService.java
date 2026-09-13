@@ -129,45 +129,9 @@ public class ProductionMaterialStockLedgerService {
                               ), 0) AS returned_base
                         ) ret ON TRUE
                         LEFT JOIN LATERAL (
-                            SELECT COALESCE(SUM(LEAST(
-                                       source_open.open_base,
-                                       GREATEST(clearance.uncleared_qty, 0)
-                                   )), 0) AS max_return_base
-                            FROM (
-                                SELECT source.demand_id,
-                                       SUM(
-                                           source.qty_base
-                                           - COALESCE((
-                                               SELECT SUM(issue_reverse.qty_base)
-                                               FROM production_material_stock_postings issue_reverse
-                                               WHERE issue_reverse.source_posting_id = source.id
-                                                 AND issue_reverse.posting_type = 'ISSUE_REVERSE'
-                                           ), 0)
-                                           - COALESCE((
-                                               SELECT SUM(good_return.qty_base)
-                                               FROM production_material_stock_postings good_return
-                                               WHERE good_return.source_posting_id = source.id
-                                                 AND good_return.posting_type = 'GOOD_RETURN'
-                                           ), 0)
-                                           + COALESCE((
-                                               SELECT SUM(return_reverse.qty_base)
-                                               FROM production_material_stock_postings good_return
-                                               JOIN production_material_stock_postings return_reverse
-                                                 ON return_reverse.source_posting_id = good_return.id
-                                                AND return_reverse.posting_type = 'GOOD_RETURN_REVERSE'
-                                               WHERE good_return.source_posting_id = source.id
-                                                 AND good_return.posting_type = 'GOOD_RETURN'
-                                           ), 0)
-                                       ) AS open_base
-                                FROM production_material_stock_postings source
-                                WHERE source.stock_document_item_id = item.id
-                                  AND source.posting_type = 'ISSUE'
-                                GROUP BY source.demand_id
-                            ) source_open
-                            JOIN v_production_material_clearance clearance
-                              ON clearance.demand_id = source_open.demand_id
-                            WHERE source_open.open_base > 0
-                              AND clearance.uncleared_qty > 0
+                            SELECT COALESCE(SUM(fn_material_issue_available(source.id,NULL)),0) AS max_return_base
+                            FROM production_material_stock_postings source
+                            WHERE source.stock_document_item_id=item.id AND source.posting_type='ISSUE'
                         ) cap ON TRUE
                         WHERE draw.doc_type = 'DRAW'
                           AND draw.status = 1
@@ -658,7 +622,8 @@ public class ProductionMaterialStockLedgerService {
         UUID sourceItemId = "GOOD_RETURN".equals(postingType)
                 ? line.upstreamItemId()
                 : line.documentItemId();
-        List<Object[]> sources = availableIssuePostings(sourceItemId);
+        List<Object[]> sources = availableIssuePostings(sourceItemId,
+                "GOOD_RETURN".equals(postingType) ? line.documentItemId() : null);
         BigDecimal remaining = line.qtyBase();
         for (Object[] row : sources) {
             if (remaining.signum() <= 0) break;
@@ -772,13 +737,22 @@ public class ProductionMaterialStockLedgerService {
     }
 
     private List<Object[]> availableIssuePostings(UUID sourceItemId) {
+        return availableIssuePostings(sourceItemId, null);
+    }
+
+    private List<Object[]> availableIssuePostings(UUID sourceItemId, UUID returnItemId) {
         return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT p.id,p.demand_id,p.reservation_id,fn_material_issue_unsettled(p.id)
+                SELECT p.id,p.demand_id,p.reservation_id,
+                       fn_material_issue_available(p.id,(SELECT doc_id FROM stock_document_items WHERE id=CAST(:returnItemId AS uuid)))
                 FROM production_material_stock_postings p
                 WHERE p.stock_document_item_id=:itemId AND p.posting_type='ISSUE'
-                  AND fn_material_issue_unsettled(p.id)>0
+                  AND fn_material_issue_available(p.id,(SELECT doc_id FROM stock_document_items WHERE id=CAST(:returnItemId AS uuid)))>0
+                  AND (NOT EXISTS(SELECT 1 FROM production_material_return_request_items request_item
+                         WHERE request_item.stock_document_item_id=CAST(:returnItemId AS uuid))
+                       OR p.id=(SELECT issue_posting_id FROM production_material_return_request_items request_item
+                         WHERE request_item.stock_document_item_id=CAST(:returnItemId AS uuid)))
                 ORDER BY p.created_at,p.id FOR UPDATE OF p
-                """).setParameter("itemId",sourceItemId));
+                """).setParameter("itemId",sourceItemId).setParameter("returnItemId",returnItemId));
     }
     private void validateReturnSource(MaterialLine line) {
         if (line.upstreamItemId() == null) {

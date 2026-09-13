@@ -30,6 +30,7 @@ import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
@@ -793,58 +794,43 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                           ),
                         ),
                       ),
-                      const SizedBox(height: UtenSpacing.s24),
+                      const SizedBox(
+                        height: UtenFloatingActionGroup.scrollClearance,
+                      ),
                     ],
                   ),
                 ),
               ),
       ),
-      bottomNavigationBar: _reports == null
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: _reports == null
           ? null
-          : SafeArea(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  border: Border(
-                    top: BorderSide(
-                      color: Theme.of(context).colorScheme.outlineVariant,
-                    ),
+          : UtenFloatingActionGroup(
+              children: [
+                UtenButton(
+                  type: UtenButtonType.secondary,
+                  size: UtenButtonSize.large,
+                  onPressed: _saving || _remembering
+                      ? null
+                      : () => _leave(changed: _submitted),
+                  child: Text(_canRegister ? '取消' : '返回任务'),
+                ),
+                if (_canRegister && !_submitted)
+                  UtenButton(
+                    key: const Key('production-finished-arrival-batch-submit'),
+                    type: UtenButtonType.danger,
+                    size: UtenButtonSize.large,
+                    icon: Icons.fact_check_outlined,
+                    isLoading: _saving,
+                    onPressed: _saving || _suggestionsLoading || _grid.isEmpty
+                        ? null
+                        : _save,
+                    onDisabledTap: _suggestionsLoading
+                        ? () => context.appInfo('正在读取默认库位，请稍候再提交')
+                        : null,
+                    child: const Text('登记并送检'),
                   ),
-                ),
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    UtenButton(
-                      type: UtenButtonType.secondary,
-                      size: UtenButtonSize.large,
-                      onPressed: _saving || _remembering
-                          ? null
-                          : () => _leave(changed: _submitted),
-                      child: Text(_canRegister ? '取消' : '返回任务'),
-                    ),
-                    if (_canRegister && !_submitted) ...[
-                      const SizedBox(width: UtenSpacing.s12),
-                      UtenButton(
-                        key: const Key(
-                          'production-finished-arrival-batch-submit',
-                        ),
-                        size: UtenButtonSize.large,
-                        icon: Icons.fact_check_outlined,
-                        isLoading: _saving,
-                        onPressed:
-                            _saving || _suggestionsLoading || _grid.isEmpty
-                            ? null
-                            : _save,
-                        onDisabledTap: _suggestionsLoading
-                            ? () => context.appInfo('正在读取默认库位，请稍候再提交')
-                            : null,
-                        child: const Text('登记并送检'),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+              ],
             ),
     );
   }

@@ -246,6 +246,32 @@ class SalesRepository {
     return ShipmentFinanceAuditInfo.fromJson(json);
   }
 
+  /// 批量放行（财务工作台多选）：整批同事务，服务端任一项失败整体回滚。
+  Future<void> financeAuditBatch(
+    List<ShipmentFinanceBatchDecision> items,
+  ) async {
+    await api.post(
+      '$_base/finance-audit-batch',
+      body: {
+        'items': [for (final item in items) item.toJson()],
+      },
+    );
+  }
+
+  /// 批量退回：整批共用同一原因，任一项失败整体回滚。
+  Future<void> rejectShipmentFinanceBatch(
+    List<ShipmentFinanceBatchDecision> items,
+    String reason,
+  ) async {
+    await api.post(
+      '$_base/finance-audit-reject-batch',
+      body: {
+        'items': [for (final item in items) item.toJson()],
+        'reason': reason,
+      },
+    );
+  }
+
   /// 恢复已中止订单（POST /{id}/stopped?stopped=false）。
   /// 中止方向不再从前端调用：后端对已审订单的 stopped=true 就是 cancel，统一走 [cancel]。
   /// @RequestParam 走 query —— 直接把 query 串拼到 URL，dio 以原样发送，Spring 解析。
@@ -373,33 +399,31 @@ class SalesRepository {
 
   /// 批量发货可发行（GET /sales/orders/shippable-lines；SOP §一9，仅 order 类型可用）。
   Future<List<ShippableLine>> shippableLines() async {
-    final json = await api.get('/sales/orders/shippable-lines');
-    return (json as List?)
-            ?.map((e) => ShippableLine.fromJson(e as Map<String, dynamic>))
-            .toList() ??
-        const [];
+    final json = await api.getList('/sales/orders/shippable-lines');
+    return json.map(ShippableLine.fromJson).toList();
   }
 
   /// 批量发货开单（POST /sales/shipments/batch；SOP §一9）：同客户合并一张出货草稿。
   Future<List<SalesDocDetail>> batchShip({
     required String billDate,
+    required String idempotencyKey,
     String? warehouseId,
     String? remark,
+    Map<String, dynamic> header = const {},
     required List<Map<String, dynamic>> lines,
   }) async {
-    final json = await api.post(
+    final json = await api.postList(
       '/sales/shipments/batch',
       body: {
+        ...header,
         'billDate': billDate,
+        'idempotencyKey': idempotencyKey,
         'warehouseId': ?warehouseId,
         'remark': ?remark,
         'lines': lines,
       },
     );
-    return (json as List?)
-            ?.map((e) => SalesDocDetail.fromJson(e as Map<String, dynamic>))
-            .toList() ??
-        const [];
+    return json.map(SalesDocDetail.fromJson).toList();
   }
 }
 

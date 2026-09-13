@@ -2,6 +2,7 @@ package com.uten.imp.features.production.fulfillment;
 
 import com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -36,7 +37,8 @@ class ProductionReadinessReconcilerTest {
     @Test void aBusyPlanDoesNotPreventTheNextIndependentTransaction() {
         ready();
         var first = candidate(1); var second = candidate(2);
-        when(jdbc.query(anyString(), any(RowMapper.class), any(), any())).thenReturn(List.of(first, second));
+        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<ProductionReadinessReconciler.Candidate>>notNull(),
+                any(), any())).thenReturn(List.of(first, second));
         doThrow(new IllegalStateException("busy")).when(footprint).lockPlan(first.planId(), List.of());
         assertThat(service.runBatch()).isEqualTo(2);
         verify(readiness, never()).reconcileWaitingSegment(first.planId(), first.segmentId(), first.warehouseId());
@@ -49,7 +51,8 @@ class ProductionReadinessReconcilerTest {
         ready();
         List<ProductionReadinessReconciler.Candidate> first = IntStream.rangeClosed(1,25).mapToObj(this::candidate).toList();
         List<UUID> cursors = new ArrayList<>(); AtomicInteger calls = new AtomicInteger();
-        when(jdbc.query(anyString(), any(RowMapper.class), any(), any())).thenAnswer(call -> {
+        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<ProductionReadinessReconciler.Candidate>>notNull(),
+                any(), any())).thenAnswer(call -> {
             cursors.add(call.getArgument(2));
             return calls.getAndIncrement() == 0 ? first : List.of(candidate(26));
         });

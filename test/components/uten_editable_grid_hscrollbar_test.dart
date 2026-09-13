@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 
 class _NoteRow extends EditableGridRow {
   final TextEditingController note = TextEditingController();
@@ -43,6 +44,47 @@ Widget _wrap(UtenEditableGrid<_NoteRow> grid) => MaterialApp(
 );
 
 void main() {
+  for (final brightness in Brightness.values) {
+    testWidgets('横滚选中行冻结勾选列不透字 $brightness', (tester) async {
+      final controller = UtenEditableGridController<_NoteRow>(
+        initial: [_NoteRow('底层文字不可透出')],
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(brightness: brightness),
+          home: Scaffold(body: ListView(children: [_grid(controller)])),
+        ),
+      );
+      await tester.pumpAndSettle();
+      controller.selectAll();
+      await tester.pumpAndSettle();
+      var frozen = tester
+          .widgetList<UtenFrozenLeadingColumn>(
+            find.byType(UtenFrozenLeadingColumn),
+          )
+          .where((widget) => widget.cell is ColoredBox)
+          .toList();
+      expect(frozen, isNotEmpty);
+      frozen.last.horizontal.jumpTo(200);
+      await tester.pumpAndSettle();
+      frozen = tester
+          .widgetList<UtenFrozenLeadingColumn>(
+            find.byType(UtenFrozenLeadingColumn),
+          )
+          .where((widget) => widget.cell is ColoredBox)
+          .toList();
+      for (final column in frozen) {
+        expect(
+          (column.cell as ColoredBox).color.a,
+          1,
+          reason: '冻结列必须遮住滚过的物料文字',
+        );
+      }
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      controller.dispose();
+    });
+  }
   testWidgets('内容少：自然横滚条在最后一行下方且有间距', (tester) async {
     final c = UtenEditableGridController<_NoteRow>(
       initial: [_NoteRow('r0'), _NoteRow('r1')],

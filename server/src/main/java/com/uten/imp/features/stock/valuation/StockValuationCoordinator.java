@@ -54,7 +54,7 @@ public class StockValuationCoordinator {
             if(!finished.isEmpty()){
                 if(finished.size()!=1)throw conflict("成品原入库流水不唯一，不能猜测成本撤回");
                 var original=finished.getFirst();
-                return production.withdrawOutput(new InventoryProductionCostPort.Withdrawal(context,(UUID)original.get("execution_segment_id"),pool,
+                return production.withdrawOutput(new InventoryProductionCostPort.Withdrawal(context,material.costScope((UUID)original.get("execution_segment_id")),pool,
                         (UUID)original.get("original_movement"),movement,request.qty(),before));
             }
         }
@@ -119,8 +119,9 @@ public class StockValuationCoordinator {
         // Unpriced physical receipts retain pending cost; absence is never confirmed free inventory.
         MovementValue result=values.receive(new Receive(context,movement,pool,request.qty(),before,actual,actual!=null));
         if(segment!=null){
-            production.registerOutput(segment,pool,new InventoryProductionCostPort.Output(result.valueNodeId(),movement));
-            material.refresh(segment,movement,context.actorUserId());
+            UUID scope=material.costScope(segment);
+            production.registerOutput(scope,pool,new InventoryProductionCostPort.Output(result.valueNodeId(),movement));
+            material.refresh(scope,movement,context.actorUserId());
         }
         return result;
     }

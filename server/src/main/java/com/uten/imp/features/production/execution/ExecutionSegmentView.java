@@ -48,5 +48,10 @@ public record ExecutionSegmentView(
         BigDecimal fqcReplacementAvailableQty,
         BigDecimal fqcReplacementReadyQty,
         long lockVersion,
-        boolean zeroMaterial) {
+        boolean zeroMaterial,
+        boolean drawRequested,
+        boolean canRequestDraw,
+        boolean canSplitBatch,
+        UUID sourceSegmentId,
+        boolean splitReplaced) {
 }

@@ -225,43 +225,29 @@ class _AuditMetricCard extends StatelessWidget {
                   ),
                 ],
               )
-            : SizedBox(
-                height: 82,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 34,
-                          height: 34,
-                          decoration: BoxDecoration(
-                            color: spec.color.withValues(alpha: 0.12),
-                            borderRadius: UtenRadius.mdAll,
-                          ),
-                          child: Icon(spec.icon, size: 19, color: spec.color),
-                        ),
-                        const Spacer(),
-                        if (spec.selected)
-                          Icon(
-                            Icons.check_circle_rounded,
-                            size: 18,
-                            color: spec.color,
-                          ),
-                      ],
+            : Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: spec.color.withValues(alpha: 0.12),
+                      borderRadius: UtenRadius.mdAll,
                     ),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                    child: Icon(spec.icon, size: 21, color: spec.color),
+                  ),
+                  const SizedBox(width: UtenSpacing.s12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Text(
-                            spec.label,
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
+                        Text(
+                          spec.label,
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
+                        const SizedBox(height: UtenSpacing.s4),
                         Text(
                           spec.value?.toString() ?? '—',
                           style: theme.textTheme.headlineSmall?.copyWith(
@@ -272,8 +258,14 @@ class _AuditMetricCard extends StatelessWidget {
                         ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                  if (spec.selected)
+                    Icon(
+                      Icons.check_circle_rounded,
+                      size: 18,
+                      color: spec.color,
+                    ),
+                ],
               ),
       ),
     );
@@ -1059,215 +1051,195 @@ class _AuditListHeader extends StatelessWidget {
   }
 }
 
-class _AuditEventTile extends StatelessWidget {
-  const _AuditEventTile({required this.entry, required this.onTap});
+class _AuditEventTable extends StatelessWidget {
+  const _AuditEventTable({required this.items, required this.onOpen});
 
-  final AuditLogEntry entry;
-  final VoidCallback onTap;
+  final List<AuditLogEntry> items;
+  final ValueChanged<AuditLogEntry> onOpen;
+
+  static String _summary(AuditLogEntry entry) =>
+      AuditEventPresentation.salesViewNarrative(
+        action: entry.action,
+        targetName: entry.targetName,
+      ) ??
+      entry.summary ??
+      '${entry.actionLabel ?? _AdminAuditLogPageState._actionLabel(entry.action)} · ${entry.objectLabel ?? _objectTypeLabel(entry.targetType)}';
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final actor = AuditEventPresentation.actorLabel(
-      actorDisplay: entry.actorDisplay,
-      actorName: entry.actorName,
-      actorAccount: entry.actorAccount,
-    );
-    final department = entry.actorDepartment?.trim();
-    final actorContext = department?.isNotEmpty == true
-        ? '$actor · $department'
-        : actor;
-    final time = _AdminAuditLogPageState._fmtTime(entry.createdAt);
-    final action = entry.actionLabel?.trim().isNotEmpty == true
-        ? entry.actionLabel!.trim()
-        : _AdminAuditLogPageState._actionLabel(entry.action);
-    final object = entry.objectLabel?.trim().isNotEmpty == true
-        ? entry.objectLabel!.trim()
-        : _objectTypeLabel(entry.targetType);
-    final salesViewNarrative = AuditEventPresentation.salesViewNarrative(
-      action: entry.action,
-      targetName: entry.targetName,
-    );
-    final summary =
-        salesViewNarrative ??
-        (entry.summary?.trim().isNotEmpty == true
-            ? entry.summary!
-            : object.isNotEmpty
-            ? '$action · $object'
-            : action);
-    final objectEvidence = auditEventObjectEvidence(entry);
-    final detailBits = <String>[
-      ?objectEvidence,
-      if (entry.pageLabel?.trim().isNotEmpty == true) '位置 ${entry.pageLabel}',
-      if (entry.deviceLabel?.trim().isNotEmpty == true &&
-          entry.deviceLabel != '未提供设备信息')
-        '设备 ${entry.deviceLabel}',
-    ];
-    final failed = _isAuditFailure(entry.result, entry.statusCode);
-    final showRisk = entry.riskLevel != 'low';
-
-    Widget outcomeIndicator() {
-      if (failed) {
-        return _AuditResultBadge(
-          result: entry.result,
-          resultLabel: entry.resultLabel,
-          statusCode: entry.statusCode,
-        );
-      }
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.check_circle_outline_rounded,
-            size: 16,
-            color: theme.colorScheme.primary,
+  Widget build(BuildContext context) => MasterDataTableView<AuditLogEntry>(
+    key: const Key('audit-event-table'),
+    embedded: true,
+    columns: [
+      MasterColumnDef(
+        key: 'summary',
+        label: '操作内容',
+        width: 290,
+        value: _summary,
+        cellBuilderHandlesSemantics: true,
+        cellBuilder: (context, row) => Semantics(
+          button: true,
+          excludeSemantics: true,
+          label:
+              '${AuditEventPresentation.actorLabel(actorDisplay: row.actorDisplay, actorName: row.actorName, actorAccount: row.actorAccount)}，'
+              '在${_AdminAuditLogPageState._fmtTime(row.createdAt)}，${_summary(row)}，'
+              '${_auditOutcomeLabel(row.result, row.resultLabel, row.statusCode)}，点击查看详情',
+          onTap: () => onOpen(row),
+          child: Text(
+            _summary(row),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(width: UtenSpacing.s4),
-          Text(
-            _auditOutcomeLabel(
-              entry.result,
-              entry.resultLabel,
-              entry.statusCode,
-            ),
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      );
-    }
-
-    return Semantics(
-      button: true,
-      excludeSemantics: true,
-      label:
-          '$actor，在$time，$summary，'
-          '${_auditOutcomeLabel(entry.result, entry.resultLabel, entry.statusCode)}，点击查看详情',
-      child: UtenCard(
-        onTap: onTap,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final icon = _AuditRiskIcon(level: entry.riskLevel);
-            final content = Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.person_outline_rounded,
-                      size: 16,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: UtenSpacing.s4),
-                    Expanded(
-                      child: Text(
-                        actorContext,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: UtenSpacing.s4),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.schedule_rounded,
-                      size: 16,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: UtenSpacing.s4),
-                    Expanded(
-                      child: Text(
-                        time,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.w700,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: UtenSpacing.s4),
-                Text(
-                  summary,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    height: 1.45,
-                  ),
-                ),
-                if (detailBits.isNotEmpty) ...[
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    detailBits.join(' · '),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ],
-            );
-            final trailing = Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (showRisk) _AuditRiskBadge(level: entry.riskLevel),
-                if (showRisk) const SizedBox(height: UtenSpacing.s8),
-                outcomeIndicator(),
-              ],
-            );
-            if (constraints.maxWidth < 660) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      icon,
-                      const SizedBox(width: UtenSpacing.s12),
-                      Expanded(child: content),
-                    ],
-                  ),
-                  const SizedBox(height: UtenSpacing.s12),
-                  Row(
-                    children: [
-                      if (showRisk) _AuditRiskBadge(level: entry.riskLevel),
-                      if (showRisk) const SizedBox(width: UtenSpacing.s8),
-                      outcomeIndicator(),
-                      const Spacer(),
-                      const Icon(Icons.chevron_right_rounded),
-                    ],
-                  ),
-                ],
-              );
-            }
-            return Row(
-              children: [
-                icon,
-                const SizedBox(width: UtenSpacing.s16),
-                Expanded(child: content),
-                const SizedBox(width: UtenSpacing.s16),
-                trailing,
-                const SizedBox(width: UtenSpacing.s8),
-                const Icon(Icons.chevron_right_rounded),
-              ],
-            );
-          },
         ),
       ),
-    );
-  }
+      MasterColumnDef(
+        key: 'time',
+        label: '北京时间',
+        width: 190,
+        value: (row) => _AdminAuditLogPageState._fmtTime(row.createdAt),
+      ),
+      MasterColumnDef(
+        key: 'actor',
+        label: '操作人',
+        width: 150,
+        value: (row) => AuditEventPresentation.actorLabel(
+          actorDisplay: row.actorDisplay,
+          actorName: row.actorName,
+          actorAccount: row.actorAccount,
+        ),
+      ),
+      MasterColumnDef(
+        key: 'object',
+        label: '业务对象',
+        width: 230,
+        value: (row) => auditEventObjectEvidence(row) ?? '—',
+      ),
+      MasterColumnDef(
+        key: 'outcome',
+        label: '结果',
+        width: 120,
+        value: (row) =>
+            _auditOutcomeLabel(row.result, row.resultLabel, row.statusCode),
+      ),
+      MasterColumnDef(
+        key: 'risk',
+        label: '风险',
+        width: 100,
+        value: (row) => _riskLabel(row.riskLevel),
+        cellBuilder: (_, row) => _AuditRiskBadge(level: row.riskLevel),
+      ),
+      MasterColumnDef(
+        key: 'department',
+        label: '部门',
+        width: 140,
+        value: (row) => row.actorDepartment ?? '—',
+      ),
+      MasterColumnDef(
+        key: 'device',
+        label: '设备',
+        width: 190,
+        value: (row) => row.deviceLabel ?? '未提供设备信息',
+      ),
+      MasterColumnDef(
+        key: 'change',
+        label: '变化摘要',
+        width: 300,
+        value: (row) => row.changeSummary ?? '—',
+      ),
+    ],
+    items: items,
+    facets: const {},
+    nullCounts: const {},
+    filters: const {},
+    onFilterChanged: (_, _) {},
+    onRowTap: onOpen,
+    rowKeyOf: (row) => row.id.toString(),
+    emptyMessage: '当前范围内没有审计事件',
+  );
+}
+
+class _AuditSessionTable extends StatelessWidget {
+  const _AuditSessionTable({required this.sessions, required this.onOpen});
+
+  final List<AuditSessionSummary> sessions;
+  final ValueChanged<AuditSessionSummary> onOpen;
+
+  @override
+  Widget build(BuildContext context) =>
+      MasterDataTableView<AuditSessionSummary>(
+        key: const Key('audit-session-table'),
+        embedded: true,
+        columns: [
+          const MasterColumnDef(
+            key: 'actor',
+            label: '操作人',
+            width: 170,
+            value: auditSessionActor,
+          ),
+          MasterColumnDef(
+            key: 'login',
+            label: '登录时间 (北京时间)',
+            width: 200,
+            value: (row) => auditBeijingTime(row.loginAt, fallback: '开始时间未知'),
+          ),
+          const MasterColumnDef(
+            key: 'status',
+            label: '会话状态',
+            width: 130,
+            value: auditSessionStatusLabel,
+          ),
+          MasterColumnDef(
+            key: 'device',
+            label: '设备',
+            width: 210,
+            value: (row) => row.deviceLabel ?? '未提供设备信息',
+          ),
+          MasterColumnDef(
+            key: 'operations',
+            label: '人工操作',
+            width: 110,
+            type: 'number',
+            value: (row) => '${row.operationCount}',
+          ),
+          MasterColumnDef(
+            key: 'failures',
+            label: '失败操作',
+            width: 110,
+            type: 'number',
+            value: (row) => '${row.failureCount}',
+          ),
+          MasterColumnDef(
+            key: 'postLogout',
+            label: '退出后操作',
+            width: 130,
+            type: 'number',
+            value: (row) => '${row.postLogoutCount}',
+          ),
+          MasterColumnDef(
+            key: 'logout',
+            label: '退出 / 最后活动',
+            width: 210,
+            value: (row) => auditBeijingTime(
+              row.logoutAt ?? row.lastActivityAt ?? row.firstActivityAt,
+              fallback: '暂无活动时间',
+            ),
+          ),
+          MasterColumnDef(
+            key: 'credential',
+            label: '凭证状态',
+            width: 170,
+            value: (row) => row.refreshCredentialStatusLabel ?? '—',
+          ),
+        ],
+        items: sessions,
+        facets: const {},
+        nullCounts: const {},
+        filters: const {},
+        onFilterChanged: (_, _) {},
+        onRowTap: onOpen,
+        rowKeyOf: (row) => row.sessionId,
+        rowWidgetKeyOf: (row) => ValueKey('audit-session-${row.sessionId}'),
+        emptyMessage: '当前范围内没有登录会话',
+      );
 }
 
 String _shortId(String value) => value.length <= 13

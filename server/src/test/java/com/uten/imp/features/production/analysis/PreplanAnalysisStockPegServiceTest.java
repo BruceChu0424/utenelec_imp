@@ -30,6 +30,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 class PreplanAnalysisStockPegServiceTest {
 
+    private interface OriginHooks extends ObjectProvider<PreplanOriginEntitlementHook> {}
+
     @Test
     void receiptReverseFailsAsBusinessConflictAfterPegWasTransferredToAPlan() {
         EntityManager em = mock(EntityManager.class);
@@ -42,7 +44,7 @@ class PreplanAnalysisStockPegServiceTest {
                 mock(SecurityContextCurrentUser.class),
                 mock(InventoryMutationLock.class),
                 mock(PreplanStockEntitlementService.class),
-                mock(ObjectProvider.class));
+                mock(OriginHooks.class));
 
         ApiException error = assertThrows(ApiException.class, () ->
                 service.releaseForReceipt("SUBCONTRACT", UUID.randomUUID()));
@@ -66,7 +68,7 @@ class PreplanAnalysisStockPegServiceTest {
                 mock(SecurityContextCurrentUser.class),
                 mock(InventoryMutationLock.class),
                 mock(PreplanStockEntitlementService.class),
-                mock(ObjectProvider.class));
+                mock(OriginHooks.class));
         UUID stockDocumentId = UUID.randomUUID();
 
         ApiException error = assertThrows(ApiException.class, () ->
@@ -110,7 +112,7 @@ class PreplanAnalysisStockPegServiceTest {
                 mock(SecurityContextCurrentUser.class),
                 mock(InventoryMutationLock.class),
                 mock(PreplanStockEntitlementService.class),
-                mock(ObjectProvider.class));
+                mock(OriginHooks.class));
 
         ApiException error = assertThrows(ApiException.class, () ->
                 service.releaseForSupplyItems(
@@ -162,7 +164,7 @@ class PreplanAnalysisStockPegServiceTest {
                 em, mock(TxSessionVars.class),
                 mock(SecurityContextCurrentUser.class), inventoryLock,
                 mock(PreplanStockEntitlementService.class),
-                mock(ObjectProvider.class));
+                mock(OriginHooks.class));
 
         service.attributeInspectionPass(
                 "PURCHASE", UUID.randomUUID(), UUID.randomUUID(),
@@ -212,7 +214,7 @@ class PreplanAnalysisStockPegServiceTest {
                 mock(SecurityContextCurrentUser.class),
                 mock(InventoryMutationLock.class),
                 mock(PreplanStockEntitlementService.class),
-                mock(ObjectProvider.class));
+                mock(OriginHooks.class));
 
         service.pegFinishedInbound(
                 UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
@@ -239,7 +241,7 @@ class PreplanAnalysisStockPegServiceTest {
                 mock(SecurityContextCurrentUser.class),
                 mock(InventoryMutationLock.class),
                 mock(PreplanStockEntitlementService.class),
-                mock(ObjectProvider.class));
+                mock(OriginHooks.class));
 
         ApiException error = assertThrows(ApiException.class, () ->
                 service.releaseForAnalysis(
@@ -289,7 +291,7 @@ class PreplanAnalysisStockPegServiceTest {
                 em, mock(TxSessionVars.class),
                 mock(SecurityContextCurrentUser.class),
                 mock(InventoryMutationLock.class), entitlement,
-                mock(ObjectProvider.class));
+                mock(OriginHooks.class));
 
         ApiException error = assertThrows(ApiException.class, () ->
                 service.releaseForReceipt("PURCHASE", UUID.randomUUID()));
@@ -315,7 +317,7 @@ class PreplanAnalysisStockPegServiceTest {
                 mock(SecurityContextCurrentUser.class),
                 mock(InventoryMutationLock.class),
                 mock(PreplanStockEntitlementService.class),
-                mock(ObjectProvider.class));
+                mock(OriginHooks.class));
 
         BigDecimal attributed = service.legacyAttributed(
                 UUID.randomUUID(), "PURCHASE_REQUEST_ITEM", UUID.randomUUID());
@@ -346,7 +348,7 @@ class PreplanAnalysisStockPegServiceTest {
                         em, mock(TxSessionVars.class),
                         mock(SecurityContextCurrentUser.class),
                         inventoryLock, entitlement,
-                        mock(ObjectProvider.class));
+                        mock(OriginHooks.class));
 
         ApiException error = assertThrows(ApiException.class, () ->
                 service.releaseForAnalysis(
@@ -363,9 +365,8 @@ class PreplanAnalysisStockPegServiceTest {
 
     @Test
     void replayedSourceOriginDoesNotAdvancePartialPriorityTwice() {
-        @SuppressWarnings("unchecked")
         ObjectProvider<PreplanOriginEntitlementHook> hooks =
-                mock(ObjectProvider.class);
+                mock(OriginHooks.class);
         PreplanAnalysisStockPegService service =
                 new PreplanAnalysisStockPegService(
                         mock(EntityManager.class), mock(TxSessionVars.class),
@@ -382,9 +383,8 @@ class PreplanAnalysisStockPegServiceTest {
 
     @Test
     void replayedBorrowerOriginDoesNotAttemptSecondPriorityTransferOrConflict() {
-        @SuppressWarnings("unchecked")
         ObjectProvider<PreplanOriginEntitlementHook> hooks =
-                mock(ObjectProvider.class);
+                mock(OriginHooks.class);
         PreplanAnalysisStockPegService service =
                 new PreplanAnalysisStockPegService(
                         mock(EntityManager.class), mock(TxSessionVars.class),
@@ -412,7 +412,7 @@ class PreplanAnalysisStockPegServiceTest {
                         mock(SecurityContextCurrentUser.class),
                         mock(InventoryMutationLock.class),
                         mock(PreplanStockEntitlementService.class),
-                        mock(ObjectProvider.class));
+                        mock(OriginHooks.class));
 
         BigDecimal attributed = service.exactAttributed(allocationId);
 

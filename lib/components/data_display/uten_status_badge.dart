@@ -51,13 +51,20 @@ class UtenStatusBadge extends StatelessWidget {
             Icon(icon, size: iconSize, color: colors.$2),
             const SizedBox(width: 4),
           ],
-          Text(
-            label,
-            style: TextStyle(
-              color: colors.$2,
-              fontSize: textSize,
-              fontWeight: FontWeight.w600,
-              height: 1.3,
+          Flexible(
+            child: Tooltip(
+              message: label,
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: colors.$2,
+                  fontSize: textSize,
+                  fontWeight: FontWeight.w600,
+                  height: 1.3,
+                ),
+              ),
             ),
           ),
         ],

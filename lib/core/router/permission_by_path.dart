@@ -124,7 +124,8 @@ List<String>? requiredAnyPermFor(String location) {
       location.startsWith('/finance/sales-order-confirmations/')) {
     return const [Perm.salesOrderFinanceView];
   }
-  if (routePath == RouteName.financeSalesShipmentAudit) {
+  if (routePath == RouteName.financeSalesShipmentAudit ||
+      location.startsWith('${RouteName.financeSalesShipmentAudit}/')) {
     return const [Perm.financeShipmentAudit];
   }
   if (location == RouteName.financeArrivalExceptions ||
@@ -565,7 +566,9 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.productionProgress) {
     return const [Perm.productionExecutionOverview];
   }
-  if (location == RouteName.productionWorkshopTasks) {
+  if (routePath == RouteName.productionWorkshopTasks ||
+      routePath == RouteName.productionBatchDraw ||
+      routePath == RouteName.productionDrawRequest) {
     return const [Perm.productionExecutionView];
   }
   if (location == RouteName.productionMaterialAnalysis) {
@@ -665,6 +668,12 @@ List<String>? requiredAnyPermFor(String location) {
 /// Most routes use [requiredAnyPermFor]. This second contract is reserved for
 /// compound operations where one permission must not imply another.
 List<String> requiredAllPermsFor(String location) {
+  if ({
+    RouteName.productionDrawRequest,
+    RouteName.productionBatchDraw,
+  }.contains(Uri.tryParse(location)?.path ?? location)) {
+    return const [Perm.productionExecutionView, Perm.productionExecutionStart];
+  }
   if (location == '/employee/onboarding') {
     return const [
       Perm.employeeCreate,

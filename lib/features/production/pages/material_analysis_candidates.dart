@@ -347,6 +347,8 @@ abstract class _MaterialAnalysisCandidatesState
               idOf: (line) =>
                   (line.remainingQty ?? 0) > 0 ? line.salesOrderItemId : null,
               selectedIds: _sourceQtyControllers.keys.toSet(),
+              showSelectionSummary: false,
+              bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
               onSelectedIdsChanged: (ids) => _replaceCandidateIds(ids, lines),
               facets: const {},
               nullCounts: const {},
@@ -390,7 +392,31 @@ abstract class _MaterialAnalysisCandidatesState
 
   Widget? _candidateFloatingAction() {
     if (!_canManage) return null;
-    return UtenFloatingActionGroup(children: [_candidateStartButton()]);
+    return UtenFloatingActionGroup(
+      children: [
+        UtenSelectionSummaryPill(
+          key: const Key('material-analysis-candidate-selected-total'),
+          clearKey: const Key('material-analysis-candidate-clear-selection'),
+          count: _selectedAnalysisSourceCount,
+          onClear: _selectedAnalysisSourceCount == 0 || _busy
+              ? null
+              : _clearCandidateSelection,
+        ),
+        _candidateStartButton(),
+      ],
+    );
+  }
+
+  void _clearCandidateSelection() {
+    if (_busy) return;
+    setState(() {
+      for (final controller in _sourceQtyControllers.values) {
+        controller.dispose();
+      }
+      _sourceQtyControllers.clear();
+      _selectedCandidateLabels.clear();
+      _manualSources.clear();
+    });
   }
 
   Widget _compactCandidateBody(
@@ -443,7 +469,9 @@ abstract class _MaterialAnalysisCandidatesState
         const SliverToBoxAdapter(child: SizedBox(height: UtenSpacing.s8)),
         SliverToBoxAdapter(child: _compactSelectedSourceSummary(theme)),
       ],
-      const SliverToBoxAdapter(child: SizedBox(height: 96)),
+      const SliverToBoxAdapter(
+        child: SizedBox(height: UtenFloatingActionGroup.scrollClearance),
+      ),
     ],
   );
 
@@ -1111,6 +1139,9 @@ abstract class _MaterialAnalysisCandidatesState
           const SizedBox(height: UtenSpacing.s4),
           Expanded(
             child: ListView.builder(
+              padding: const EdgeInsets.only(
+                bottom: UtenFloatingActionGroup.scrollClearance,
+              ),
               itemCount: entries.length,
               itemBuilder: (_, index) {
                 final entry = entries[index];

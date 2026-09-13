@@ -1,5 +1,6 @@
 package com.uten.imp.features.operations.workbench;
 
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.analysis.MaterialAnalysisService;
 import com.uten.imp.features.production.analysis.SubcontractMakeTaskService;
@@ -195,7 +196,7 @@ class SubcontractPreparationPaginationPostgresTest {
                     .setParameter("exception", "").setParameter("keyword", "").setParameter("keywordLike", "%%")
                     .setParameter("date_from", null).setParameter("date_to", null)
                     .setParameter("offset", 0L).setParameter("limit", 50);
-            return String.join("\n", query.getResultList().stream().map(Object::toString).toList());
+            return String.join("\n", NativeQueryResults.typedRows(query,String.class));
         });
         assertThat(plan).contains("idx_subcontract_make_pending")
                 .doesNotContain("Seq Scan on preplan_subcontract_make_tasks");

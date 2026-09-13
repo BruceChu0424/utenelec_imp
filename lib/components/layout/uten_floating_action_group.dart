@@ -20,6 +20,10 @@ class UtenFloatingActionGroup extends StatelessWidget {
   /// 记得在调用点传高度；用 min 而非 tight，超大字号下按钮文案换行仍能长高。
   static const double controlHeight = 52;
 
+  /// 正文末尾的可滚动留白，可把末行完整滚到悬浮操作组上方。
+  /// 包含两行按钮、底部安全区及额外阅读空间；详情和编辑页共用。
+  static const double scrollClearance = 200;
+
   @override
   Widget build(BuildContext context) {
     if (children.isEmpty) return const SizedBox.shrink();

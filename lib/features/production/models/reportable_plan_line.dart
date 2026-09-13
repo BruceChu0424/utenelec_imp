@@ -14,6 +14,7 @@ class ReportablePlanLine {
     required this.planNo,
     required this.goodsId,
     required this.maxReportQty,
+    this.planId,
     this.executionSegmentId,
     this.executionSegmentSalesAllocationId,
     this.executionSegmentCode,
@@ -52,6 +53,7 @@ class ReportablePlanLine {
   });
 
   final String planItemId;
+  final String? planId;
   final String? executionSegmentId;
   final String? executionSegmentSalesAllocationId;
   final String? executionSegmentCode;
@@ -114,6 +116,7 @@ class ReportablePlanLine {
     Map<String, dynamic> json,
   ) => ReportablePlanLine(
     planItemId: json['planItemId'] as String,
+    planId: json['planId'] as String?,
     executionSegmentId: json['executionSegmentId'] as String?,
     executionSegmentSalesAllocationId:
         json['executionSegmentSalesAllocationId'] as String?,

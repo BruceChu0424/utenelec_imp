@@ -216,7 +216,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             List<Object[]> claimants = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                         SELECT allocation.id, allocation.analysis_id,
                                allocation.analysis_material_id,
-                               allocation.allocated_qty, analysis.status,
+                               fn_preplan_allocation_admitted_qty(allocation.id), analysis.status,
                                action.operation_type, action.status
                         FROM preplan_supply_action_allocations allocation
                         JOIN preplan_supply_actions action
@@ -235,8 +235,8 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         WHERE allocation.external_item_id = :externalItemId
                           AND material.goods_id = :goodsId
                           AND material.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
-                        ORDER BY CASE WHEN action.operation_type =
-                                      'SHARED_FUTURE_CLAIM' THEN 1 ELSE 0 END,
+                        ORDER BY CASE action.operation_type WHEN 'FUTURE_TRANSFER' THEN -1
+                                      WHEN 'SHARED_FUTURE_CLAIM' THEN 1 ELSE 0 END,
                                  action.created_at, action.id,
                                  allocation.created_at, allocation.id
                         FOR UPDATE OF action, allocation
@@ -466,13 +466,16 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                             line.planItemId(), stockDocumentId, line.stockDocumentItemId());
                 }
             }
-            // Only output beyond the original node's admitted requirement remains public.
+            // Output beyond original demand plus recorded reallocation make responsibility remains public.
         }
     }
 
     private BigDecimal directMakeCapacity(UUID analysisId, UUID childId, UUID materialId, UUID currentDocument) {
         return decimal(em.createNativeQuery("""
-                SELECT GREATEST(LEAST(child.requested_qty,material.required_qty)-COALESCE((
+                WITH budget AS (
+                SELECT child.requested_qty,material.required_qty,
+                    fn_preplan_direct_make_admitted_qty(child.id,material.id) AS admitted_qty,
+                    COALESCE((
                     SELECT SUM(exact.qty) FROM preplan_analysis_stock_exact_pegs exact
                     JOIN stock_document_items stock_item ON stock_item.id=exact.source_stock_document_item_id
                     JOIN stock_documents document ON document.id=stock_item.doc_id
@@ -480,12 +483,23 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     JOIN production_plans plan ON plan.id=plan_item.plan_id
                     WHERE exact.source_receipt_type='MAKE' AND plan.material_analysis_item_id=child.id
                       AND NOT document.is_deleted AND (document.status=1 OR document.id=:currentDocument)
-                ),0),0)
+                ),0) AS attributed_qty,
+                    COALESCE((SELECT SUM(LEAST(proof.qty,relation.qty-relation.priority_fulfilled_qty))
+                        FROM (SELECT reallocation_id,SUM(qty) AS qty
+                              FROM preplan_reallocation_make_supplements
+                              WHERE child_analysis_item_id=child.id AND source_analysis_material_id=material.id
+                              GROUP BY reallocation_id) proof
+                        JOIN preplan_material_reallocations relation ON relation.id=proof.reallocation_id
+                        WHERE relation.status IN ('OPEN','PARTIAL')),0) AS outstanding_supplement_qty
                 FROM production_material_analysis_items child
                 JOIN production_material_analysis_materials material ON material.id=child.parent_analysis_material_id
                   AND material.analysis_id=child.analysis_id AND material.active
                 WHERE child.id=:child AND child.analysis_id=:analysis AND child.source_type='MAKE_COMPONENT'
                   AND NOT child.is_deleted AND material.id=:material
+                )
+                SELECT LEAST(GREATEST(admitted_qty-attributed_qty,0),
+                    GREATEST(LEAST(requested_qty,required_qty)-attributed_qty,0)+outstanding_supplement_qty)
+                FROM budget
                 """).setParameter("analysis",analysisId).setParameter("child",childId)
                 .setParameter("material",materialId).setParameter("currentDocument",currentDocument).getSingleResult());
     }
@@ -832,7 +846,21 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     private List<PreparedPlanTransfer> transferToPlanDemands(
             UUID analysisId, UUID planId, UUID warehouseId,
             List<DemandSlice> demands, UUID actorId, boolean explicitActor) {
-        tx.bind();
+        return selectPlanDemandTransfers(analysisId,planId,warehouseId,demands,actorId,explicitActor,true,null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PreviewPlanTransfer> previewPlanDemandTransfers(UUID analysisId,UUID planId,
+                                                               UUID warehouseId,List<DemandSlice> demands) {
+        List<PreviewPlanTransfer> preview=new ArrayList<>();
+        selectPlanDemandTransfers(analysisId,planId,warehouseId,demands,null,false,false,preview);
+        return List.copyOf(preview);
+    }
+
+    private List<PreparedPlanTransfer> selectPlanDemandTransfers(UUID analysisId,UUID planId,UUID warehouseId,
+            List<DemandSlice> demands,UUID actorId,boolean explicitActor,boolean write,List<PreviewPlanTransfer> preview) {
+        if(write)tx.bind();
         if (analysisId == null || planId == null || warehouseId == null
                 || demands == null || demands.isEmpty()) {
             return List.of();
@@ -873,9 +901,9 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         List<PreparedPlanTransfer> prepared = new ArrayList<>();
         Map<UUID, BigDecimal> preparedByEntitlementLot = new HashMap<>();
         Map<TransferDimension, BigDecimal> transferableByDimension = new HashMap<>();
+        Map<UUID,Boolean> qualifiedByReservation=new HashMap<>();
         for (DemandSlice demand : orderedDemands) {
-            inventoryLock.lock(new InventoryKey(
-                    demand.goodsId(), demand.colorId()));
+            if(write)inventoryLock.lock(new InventoryKey(demand.goodsId(), demand.colorId()));
             BigDecimal remaining = demand.requiredQty();
             List<UUID> materialIds = NativeQueryResults.typedRows(
                     em.createNativeQuery("""
@@ -900,7 +928,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 List<PreplanStockEntitlementService.AvailableLot> lots =
                         entitlement.listAvailableBeneficiaryLotsForProduction(
                                 analysisId, materialId, warehouseId,
-                                demand.goodsId(), demand.colorId(), true);
+                                demand.goodsId(), demand.colorId(), write);
                 for (PreplanStockEntitlementService.AvailableLot lot : lots) {
                     if (remaining.signum() <= 0) break;
                     BigDecimal alreadyPrepared = preparedByEntitlementLot
@@ -914,7 +942,11 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                                     analysisId, analysisItemId, warehouseId, dimension));
                     BigDecimal take = available.min(remaining).min(budget);
                     if (take.signum() <= 0) continue;
-                    consumeForFormalize(lot.stockReservationId(), take, actorId, explicitActor);
+                    if(write)consumeForFormalize(lot.stockReservationId(), take, actorId, explicitActor);
+                    if(preview!=null)preview.add(new PreviewPlanTransfer(demand.demandId(),lot.warehouseId(),take,
+                            qualifiedByReservation.computeIfAbsent(lot.stockReservationId(),reservationId->Boolean.TRUE.equals(
+                                    em.createNativeQuery("SELECT fn_preplan_reservation_has_qualified_origin(:id)")
+                                            .setParameter("id",reservationId).getSingleResult())),true));
                     transferableByDimension.put(dimension, budget.subtract(take));
                     prepared.add(new PreparedPlanTransfer(
                             lot.entitlementEventId(), lot.stockReservationId(),
@@ -959,8 +991,8 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                                       WHERE event.stock_reservation_id =
                                           reservation.id)
                                 ORDER BY reservation.created_at, reservation.id
-                                FOR UPDATE OF reservation
-                                """)
+                                %s
+                                """.formatted(write?"FOR UPDATE OF reservation":""))
                                 .setParameter("effective", STATUS_EFFECTIVE)
                                 .setParameter("ownerType", OWNER_TYPE)
                                 .setParameter("analysisId", analysisId)
@@ -977,7 +1009,8 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     BigDecimal take = decimal(row[1]).max(BigDecimal.ZERO)
                             .min(remaining).min(budget);
                     if (take.signum() <= 0) continue;
-                    consumeForFormalize((UUID) row[0], take, actorId, explicitActor);
+                    if(write)consumeForFormalize((UUID) row[0], take, actorId, explicitActor);
+                    if(preview!=null)preview.add(new PreviewPlanTransfer(demand.demandId(),(UUID)row[2],take,false,false));
                     transferableByDimension.put(dimension, budget.subtract(take));
                     remaining = remaining.subtract(take);
                 }

@@ -47,6 +47,7 @@ String workbenchRouteFor(
     actionRoute == '/finance/sales-order-changes'
         ? '/finance/sales-order-changes'
         : '/finance/sales-order-confirmations',
+  'SALES_SHIPMENT_PENDING_FINANCE_AUDIT' => RouteName.financeSalesShipmentAudit,
   'PROCUREMENT_FINANCE_SUBMITTED' ||
   'PROCUREMENT_FINANCE_CHANGE_SUBMITTED' => '/finance/procurement-approvals',
   'PROCUREMENT_IQC_PENDING' => RouteName.qualityTaskCenter,

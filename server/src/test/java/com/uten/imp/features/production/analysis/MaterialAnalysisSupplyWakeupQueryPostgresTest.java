@@ -42,10 +42,11 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
     private static MaterialAnalysisSupplyWakeupService service;
     private static UUID unit,actor,maker;
     private static String lastSql;
-    // Frozen pre-change dimension bodies: whitespace only is normalized. All UNION/legacy conditions stay intact.
+    // V563 adds actual stock-in warehouses to the receiving suggestion. Freeze that
+    // reviewed expansion while retaining all approval/reversal/legacy conditions.
     private static final Map<String,String> DIMENSION_HASHES=Map.of(
-            "purchaseTargets","38e5b797bed8d0ce7b224a64e12d00cff58b9cd6037ee0788f7c15311806e28b",
-            "subcontractTargets","bb2178d63b2bea3526f7a2cc86b2d9f37251feaccbaf538b92e35e0ea04cf53c");
+            "purchaseTargets","2abe25c3f7c4a5b9eab595480ad2382c63834c581f56017804494e745365f422",
+            "subcontractTargets","011776d0b58a9efd1b450b4c1636f5b01ffb3f50106a053184dbe42fade143ea");
     // Independent, pre-change selector. This is intentionally not constructed from the new candidate filter.
     private static final String OLD_SELECTOR="""
             SELECT analysis.id, analysis.maker_id
@@ -222,7 +223,7 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
         var actual=(List<MaterialAnalysisSupplyWakeupService.AnalysisTarget>)selector.invoke(service,arguments);
         String current=lastSql;
         String dimension=dimension(current).replaceAll("\\s+"," ").trim();
-        if (DIMENSION_HASHES.containsKey(method)) assertEquals(DIMENSION_HASHES.get(method),HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(dimension.getBytes(StandardCharsets.UTF_8))),"source UNION predicates are unchanged");
+        if (DIMENSION_HASHES.containsKey(method)) assertEquals(DIMENSION_HASHES.get(method),HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(dimension.getBytes(StandardCharsets.UTF_8))),"reviewed actual-warehouse source UNION predicates are unchanged");
         var oldRows=(List<Object[]>)bind(em.createNativeQuery(oldQuery(current)),params).getResultList();
         var old=oldRows.stream().map(row->new MaterialAnalysisSupplyWakeupService.AnalysisTarget((UUID)row[0],(UUID)row[1])).toList();
         assertEquals(old,actual,"old/new UUID and maker results, including ordering");
@@ -292,7 +293,7 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
     }
     private static UUID finished(UUID warehouse,UUID goods,UUID color,int status){UUID id=UUID.randomUUID();String bill="CR20260908"+NUMBERS.incrementAndGet();db.update("INSERT INTO stock_documents(id,doc_type,bill_no,bill_date,warehouse_id,status) VALUES (?,'FINISHED_IN',?,DATE '2026-09-08',?,?)",id,bill,warehouse,status);db.update("INSERT INTO stock_document_items(id,doc_id,bill_type,bill_no,bill_date,line_no,goods_id,color_id,unit_id,unit_rate,qty,base_qty,goods_snapshot_source) VALUES (gen_random_uuid(),?,'FINISHED_IN',?,DATE '2026-09-08',1,?,?,?,1,10,10,'MASTER_AT_SAVE')",id,bill,goods,color,unit);return id;}
     private static UUID goods(){UUID id=UUID.randomUUID();db.update("INSERT INTO goods(id,code,name,unit_id,code_sequence) VALUES (?,?,'wakeup goods',?,(SELECT coalesce(max(code_sequence),0)+1 FROM goods))",id,"WU-G-"+id,unit);return id;}
-    private static UUID warehouse(UUID parent){UUID id=UUID.randomUUID();db.update("INSERT INTO warehouses(id,code,name,parent_id) VALUES (?,?,'wakeup warehouse',?)",id,"WU-W-"+id,parent);return id;}
+    private static UUID warehouse(UUID parent){UUID id=UUID.randomUUID();db.update("INSERT INTO warehouses(id,code,name,parent_id,status) VALUES (?,?,'wakeup warehouse',?,'使用')",id,"WU-W-"+id,parent);return id;}
     private static Connection connection() throws Exception{return DriverManager.getConnection(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword());}
     private static void execute(Connection connection,String sql,Object...params) throws Exception{try(var query=connection.prepareStatement(sql)){for(int i=0;i<params.length;i++)query.setObject(i+1,params[i]);query.execute();}}
     private record Receipt(UUID id,UUID inspection){}

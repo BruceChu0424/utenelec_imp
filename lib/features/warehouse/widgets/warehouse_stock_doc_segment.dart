@@ -16,7 +16,11 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -28,6 +32,7 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/stock_doc.dart';
 import '../repositories/stock_doc_repository.dart';
+import '../pages/warehouse_stock_batch_outbound_page.dart';
 
 /// 状态小类分段值：真实单据状态（status 非空）或历史单据哨兵。
 class _StockSegSeg {
@@ -53,9 +58,13 @@ class WarehouseStockDocSegment extends ConsumerStatefulWidget {
     this.keyword = '',
     this.createLabel,
     this.refreshTick = 0,
+    this.pendingReturnCount,
+    this.productionReturnRequests = false,
   });
 
   final StockDocType docType;
+  final int? pendingReturnCount;
+  final bool productionReturnRequests;
 
   /// 任务中心页级搜索框的关键字（300ms 防抖后的值）。
   final String keyword;
@@ -74,6 +83,16 @@ class WarehouseStockDocSegment extends ConsumerStatefulWidget {
 class _WarehouseStockDocSegmentState
     extends ConsumerState<WarehouseStockDocSegment> {
   final _list = PagedListController<StockDocListItem>();
+  final Set<String> _selectedIds = {};
+
+  bool get _isOutbound =>
+      widget.docType == StockDocType.otherOut ||
+      widget.docType == StockDocType.finishedOut;
+  bool get _canBatchOutbound =>
+      _isOutbound &&
+      _seg?.history == false &&
+      _seg?.status == 0 &&
+      ref.read(currentPermissionsProvider).contains(Perm.stockDocApprove);
 
   /// 当前选中分段；null = 未选择引导态（不发请求）。
   _StockSegSeg? _seg;
@@ -94,6 +113,7 @@ class _WarehouseStockDocSegmentState
   @override
   void initState() {
     super.initState();
+    _list.keyword = widget.keyword;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(masterNameServiceProvider).ensureLoaded();
     });
@@ -111,6 +131,14 @@ class _WarehouseStockDocSegmentState
     if (oldWidget.keyword != widget.keyword ||
         oldWidget.refreshTick != widget.refreshTick ||
         oldWidget.docType != widget.docType) {
+      _selectedIds.clear();
+      _list.keyword = widget.keyword;
+      if (oldWidget.docType != widget.docType) {
+        _list.page = null;
+        _seg = null;
+        _issueStatus = null;
+        _historyTime = const UtenHistoryTimeValue.none();
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) => _reload(1));
     }
   }
@@ -125,16 +153,15 @@ class _WarehouseStockDocSegmentState
   Future<PagedResult<StockDocListItem>> _fetch() {
     final seg = _seg!;
     final range = seg.history ? _historyTime.range : null;
-    final showIssue =
-        !seg.history &&
-        (widget.docType == StockDocType.draw ||
-            widget.docType == StockDocType.wdraw);
+    final showIssue = !seg.history && widget.docType == StockDocType.draw;
     final sort = _list.sortKey == 'total' ? null : _list.sortKey;
     return ref
         .read(stockDocRepositoryProvider(widget.docType))
         .list(
           page: _list.pageNum,
           filter: StockDocFilter(
+            productionReturnRequests:
+                widget.productionReturnRequests && !seg.history ? true : null,
             keyword: _list.normalizedKeyword,
             status: seg.history ? null : seg.status,
             issueStatus: showIssue ? _issueStatus : null,
@@ -149,8 +176,39 @@ class _WarehouseStockDocSegmentState
   }
 
   Future<void> _reload([int? page, bool silent = false]) {
+    _selectedIds.clear();
     if (!_shouldLoad) return Future.value();
     return _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+  }
+
+  Future<void> _openBatch() async {
+    if (!_canBatchOutbound ||
+        _list.loading ||
+        _list.error != null ||
+        _selectedIds.isEmpty) {
+      return;
+    }
+    final ids = (_list.page?.items ?? const <StockDocListItem>[])
+        .where((d) => d.status == 0 && !d.closed && _selectedIds.contains(d.id))
+        .map((d) => d.id)
+        .toList();
+    if (ids.isEmpty) return;
+    if (ids.length == 1) {
+      await context.push(
+        RoutePath.stockDocDetail(widget.docType.code, ids.single),
+      );
+      if (mounted) await _reload();
+      return;
+    }
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => WarehouseStockBatchOutboundPage(
+          docType: widget.docType,
+          documentIds: ids,
+        ),
+      ),
+    );
+    if (mounted) await _reload();
   }
 
   void _selectSeg(_StockSegSeg seg) {
@@ -223,7 +281,14 @@ class _WarehouseStockDocSegmentState
         key: 'status',
         label: '状态',
         width: 100,
-        value: (it) => stockStatusLabel(it.status),
+        value: (it) => widget.docType == StockDocType.wdraw
+            ? switch (it.status) {
+                0 => '待仓库收料',
+                1 => '仓库已收料',
+                -1 => '已红冲',
+                _ => stockStatusLabel(it.status),
+              }
+            : stockStatusLabel(it.status),
       ),
       if (isDraw)
         MasterColumnDef(
@@ -238,14 +303,17 @@ class _WarehouseStockDocSegmentState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n =
+        Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+        AppLocalizationsZh();
+    ref.watch(currentPermissionsProvider);
     ref.watch(masterNameServiceProvider);
     // 详情/编辑页保存、审核、红冲成功都会 bump 本 docType 的 tick，据此重拉。
     ref.listen(listRefreshTickProvider(widget.docType.refreshKey), (_, _) {
       _reload();
     });
-    final showIssueStatus =
-        widget.docType == StockDocType.draw ||
-        widget.docType == StockDocType.wdraw;
+    final showIssueStatus = widget.docType == StockDocType.draw;
+    final isReturn = widget.docType == StockDocType.wdraw;
     final seg = _seg;
     return ListenableBuilder(
       listenable: _list,
@@ -267,11 +335,22 @@ class _WarehouseStockDocSegmentState
                 segmentsKey: Key(
                   'stock-doc-segment-status-${widget.docType.code}',
                 ),
-                segments: const [
-                  UtenFilterSegment(value: _StockSegSeg.stage(0), label: '草稿'),
-                  UtenFilterSegment(value: _StockSegSeg.stage(1), label: '已审'),
-                  UtenFilterSegment(value: _StockSegSeg.stage(-1), label: '红冲'),
+                segments: [
                   UtenFilterSegment(
+                    value: const _StockSegSeg.stage(0),
+                    label: isReturn ? '待仓库收料' : '草稿',
+                    count: isReturn ? widget.pendingReturnCount : null,
+                    countForm: UtenSegmentCountForm.actionable,
+                  ),
+                  UtenFilterSegment(
+                    value: const _StockSegSeg.stage(1),
+                    label: isReturn ? '仓库已收料' : '已审',
+                  ),
+                  const UtenFilterSegment(
+                    value: _StockSegSeg.stage(-1),
+                    label: '红冲',
+                  ),
+                  const UtenFilterSegment(
                     value: _StockSegSeg.history(),
                     label: '历史单据',
                   ),
@@ -365,6 +444,46 @@ class _WarehouseStockDocSegmentState
                   : seg.history && _historyTime.isNone
                   ? const UtenHistoryTimePlaceholder()
                   : MasterDataTableView<StockDocListItem>(
+                      key: Key(
+                        'stock-doc-segment-table-${widget.docType.code}',
+                      ),
+                      selectable: _canBatchOutbound,
+                      rowKeyOf: (d) => d.id,
+                      idOf: (d) =>
+                          !_list.loading &&
+                              _list.error == null &&
+                              d.status == 0 &&
+                              !d.closed
+                          ? d.id
+                          : null,
+                      selectedIds: _selectedIds,
+                      onSelectedIdsChanged: (next) => setState(() {
+                        _selectedIds
+                          ..clear()
+                          ..addAll(next);
+                      }),
+                      batchActionsBuilder: !_canBatchOutbound
+                          ? null
+                          : (_, ids) => [
+                              UtenButton(
+                                key: Key(
+                                  'stock-doc-batch-outbound-${widget.docType.code}',
+                                ),
+                                type: UtenButtonType.danger,
+                                size: UtenButtonSize.large,
+                                icon: Icons.outbound_outlined,
+                                onPressed:
+                                    ids.isEmpty ||
+                                        _list.loading ||
+                                        _list.error != null
+                                    ? null
+                                    : _openBatch,
+                                child: Text(l10n.warehouseStockOutboundAction),
+                              ),
+                            ],
+                      bottomContentPadding: _canBatchOutbound
+                          ? UtenFloatingActionGroup.scrollClearance
+                          : 0,
                       columns: _columns(),
                       items: _list.page?.items ?? const [],
                       facets: const {},

@@ -13,6 +13,7 @@ import com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPage;
 import com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryService;
 import com.uten.imp.features.production.schedule.ProductionScheduleService;
 import com.uten.imp.features.profilechange.ProfileChangeReviewService;
+import com.uten.imp.application.port.SalesDocumentReadScopePort;
 import com.uten.imp.features.visitor.VisitorHrApprovalService;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -42,7 +43,7 @@ import java.util.UUID;
  * 权限决定「能不能看这类东西」，部门决定「该不该在你的工作台上出现」。
  * 部门取当前用户主部门、**兼职部门**及各自全部祖先（递归 CTE，见
  * {@link #departmentContext}，与通知侧 ReviewNoticeAudience 的 memberships 同口径），
- * 超管旁路。此前人事与财务两块漏了部门这一半，任何被授予相应权限码的人
+ * 超管与个人加授均不绕过部门展示条件。任何被授予相应权限码的人
  * 都会看到别部门的待办（用户 2026-09-12 反馈）。通知分区例外：它本来就是
  * 「发给本人的未读」，天然按人收敛，不需要也不应该再按部门筛。
  *
@@ -65,6 +66,7 @@ public class DashboardOverviewService {
     private final ProfileChangeReviewService profileChangeReviewService;
     private final NoticeService noticeService;
     private final AuditService auditService;
+    private final SalesDocumentReadScopePort salesAccess;
 
     // Deliberately no encompassing transaction: each workbench query owns its
     // read transaction, so one failed partition cannot poison the aggregate.
@@ -126,7 +128,7 @@ public class DashboardOverviewService {
             List<MetricCard> metrics,
             List<TodoCard> todos) {
         if (!can(user, "production_plan:view")
-                || !belongsTo(user, department, "PRODUCTION")) return;
+                || !belongsTo(department, "PRODUCTION")) return;
         Map<String, Long> counts = productionScheduleService.pendingCount();
         long count = counts.getOrDefault("count", 0L);
         long overdue = counts.getOrDefault("overdue", 0L);
@@ -160,17 +162,17 @@ public class DashboardOverviewService {
     private void addFulfillmentCards(
             AuthUser user, DepartmentContext department, List<TodoCard> todos) {
         if (can(user, "stock_doc:view")
-                && belongsTo(user, department, "WAREHOUSE")) {
+                && belongsTo(department, "WAREHOUSE")) {
             addFulfillmentTodoSafely(user, todos, "WAREHOUSE", "warehouse",
-                    "项仓库备料任务待处理", "/operations/workbench/warehouse");
+                    "项仓库备料任务待处理", "/warehouse/tasks/draw");
         }
         if (canAny(user, "purchase_request:view", "purchase_order:view")
-                && belongsTo(user, department, "PURCHASE")) {
+                && belongsTo(department, "PURCHASE")) {
             addFulfillmentTodoSafely(user, todos, "PURCHASE", "purchase",
                     "项采购任务待处理", "/operations/workbench/purchase");
         }
-        if (hasPermissionPrefix(user, "subcontract_")
-                && belongsTo(user, department, "SUBCONTRACT")) {
+        if (canAny(user, "subcontract_application:view", "subcontract_order:view")
+                && belongsTo(department, "SUBCONTRACT")) {
             addFulfillmentTodoSafely(user, todos, "SUBCONTRACT", "subcontract",
                     "项委外任务待处理", "/operations/workbench/subcontract");
         }
@@ -287,45 +289,28 @@ public class DashboardOverviewService {
                 false));
     }
 
-    /**
-     * 人事待办：**权限 + 本部门**（2026-09-12）。
-     *
-     * <p>此前只看权限码，于是任何被授予 {@code visitor:approve} / {@code profile:review}
-     * 的人——哪怕在生产车间——都会在自己的工作台上看到人事待办。用户原话：
-     * 「不是有权限就展示，就得需要你是这个部门，只展示这个部门的内容」。
-     * 现在走 {@link #belongsToOrNamed}：**在本部门树内，或被个人点名加授**。
-     * 后半段是 ADR-027 明确设计的跨部门备份路径，不能被部门过滤掐断。
-     *
-     * <p>注意：权限仍然是必要条件，部门只是**再收一道**。没权限的人本来就看不到，
-     * 加部门不会放宽任何东西，只会收窄。
-     */
+    /** 工作台只展示本人任职部门的待办，跨部门业务授权仍由目标页面控制。 */
     private void addPeopleCards(
             AuthUser user, DepartmentContext department, List<TodoCard> todos) {
         if (can(user, "visitor:approve")
-                && belongsToOrNamed(user, department, "HR", "visitor:approve")) {
+                && belongsTo(department, "HR")) {
             long count = visitorApprovalService.pendingCount();
             addCountTodo(todos, "visitor-approval", count,
                     "访客申请待审批", "/visitor-approval", "PEOPLE");
         }
         if (can(user, "profile:review")
-                && belongsToOrNamed(user, department, "HR", "profile:review")) {
+                && belongsTo(department, "HR")) {
             long count = profileChangeReviewService.pendingCount();
             addCountTodo(todos, "profile-review", count,
                     "员工资料变更待审核", "/hr/profile-changes", "PEOPLE");
         }
     }
 
-    /**
-     * 财务待办：**权限 + 本部门**（2026-09-12，同 {@link #addPeopleCards} 的理由）。
-     *
-     * <p>报销审批/付款/工资复核此前只看权限码，销售或生产口的人一旦被授予这些码，
-     * 工作台上就会冒出财务待办。现在收敛到「财务部门 或 被点名加授」——
-     * 与 ADR-027 的审批资格口径一致，不会把跨部门的备份审批人挡在门外。
-     */
+    /** 部门归属与处理权限必须同时满足。 */
     private void addFinanceTodos(
             AuthUser user, DepartmentContext department, List<TodoCard> todos) {
         if (can(user, "expense:approve")
-                && belongsToOrNamed(user, department, "FINANCE", "expense:approve")) {
+                && belongsTo(department, "FINANCE")) {
             long count = count("""
                     SELECT COUNT(*) FROM expense_claims
                     WHERE status IN ('SUBMITTED', 'REVIEWING')
@@ -334,7 +319,7 @@ public class DashboardOverviewService {
                     "报销申请待审批", "/expense/approval", "FINANCE");
         }
         if (can(user, "expense:pay")
-                && belongsToOrNamed(user, department, "FINANCE", "expense:pay")) {
+                && belongsTo(department, "FINANCE")) {
             long count = count("""
                     SELECT COUNT(*) FROM expense_claims WHERE status = 'APPROVED'
                     """);
@@ -342,7 +327,7 @@ public class DashboardOverviewService {
                     "已审批报销待付款", "/expense/approval", "FINANCE");
         }
         if (can(user, "payroll:review")
-                && belongsToOrNamed(user, department, "FINANCE", "payroll:review")) {
+                && belongsTo(department, "FINANCE")) {
             long count = count("""
                     SELECT COUNT(*) FROM payroll_batches WHERE status = 'SUBMITTED'
                     """);
@@ -354,12 +339,19 @@ public class DashboardOverviewService {
     private void addSalesCards(
             AuthUser user, DepartmentContext department, List<MetricCard> metrics) {
         if (!can(user, "sales_order:view")
-                || !belongsTo(user, department, "SALES")) return;
-        long active = count("""
-                SELECT COUNT(*) FROM sales_orders
-                WHERE is_deleted = false AND status = 1
-                  AND is_closed = false AND is_stopped = false
-                """);
+                || !belongsTo(department, "SALES")) return;
+        var scope = salesAccess.nativeReadScope("o.owner_employee_id", "dashboardOwners");
+        String predicate = scope.predicate();
+        if (!scope.owners().isEmpty()) {
+            predicate = predicate.replace(":" + scope.parameterName(),
+                    String.join(",", java.util.Collections.nCopies(scope.owners().size(), "?")));
+        }
+        Long result = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM sales_orders o
+                WHERE o.is_deleted = false AND o.status = 1
+                  AND o.is_closed = false AND o.is_stopped = false AND
+                """ + predicate, Long.class, scope.owners().toArray());
+        long active = result == null ? 0 : result;
         metrics.add(new MetricCard(
                 "sales-active",
                 "执行中订单",
@@ -528,59 +520,8 @@ public class DashboardOverviewService {
         return false;
     }
 
-    private static boolean hasPermissionPrefix(AuthUser user, String prefix) {
-        return user.isSuperAdmin()
-                || user.getPermissions().stream().anyMatch(p -> p.startsWith(prefix));
-    }
-
-    private static boolean belongsTo(
-            AuthUser user, DepartmentContext department, String audienceTag) {
-        return user.isSuperAdmin() || department.audienceTags().contains(audienceTag);
-    }
-
-    /**
-     * 部门归属判定的**正确形态**：在本部门树内，<b>或</b>被个人点名加授该权限。
-     *
-     * <p>后半段不能省。ADR-027 把财务审批设计成「财务部门树 <b>OR</b> 跨部门个人点名加授
-     * （不限部门）」的混合队列（实现见
-     * {@code WorkflowReviewerEligibility}：递归部门子树 ∪ 兼职部门 ∪
-     * {@code user_permission_overrides}）。若工作台只按部门一刀切，被点名的**备份审批人**
-     * 会在自己的工作台上看不到该待办——把一条刻意设计的兜底路径悄悄掐断。
-     *
-     * <p>这也正好对上用户 2026-09-12 的诉求：他要挡的是「部门/角色权限矩阵顺带给了我
-     * 这个码，于是别部门的活也堆到我这」，不是「有人专门点名让我办」。
-     *
-     * @param permission 该待办对应的动作权限码；个人加授按这个码查
-     */
-    private boolean belongsToOrNamed(
-            AuthUser user,
-            DepartmentContext department,
-            String audienceTag,
-            String permission) {
-        if (belongsTo(user, department, audienceTag)) return true;
-        return namedIndividually(user, permission);
-    }
-
-    /** 是否被 {@code user_permission_overrides} 个人点名加授（ALLOW 且生效）。 */
-    private boolean namedIndividually(AuthUser user, String permission) {
-        if (user.getId() == null) return false;
-        try {
-            Long hit = jdbc.queryForObject("""
-                    SELECT count(*)
-                    FROM user_permission_overrides override
-                    JOIN permissions permission ON permission.id = override.permission_id
-                    WHERE override.user_id = ? AND override.active = TRUE
-                      AND override.effect = 'ALLOW'
-                      AND permission.code = ? AND permission.active = TRUE
-                    """, Long.class, user.getId(), permission);
-            return hit != null && hit > 0;
-        } catch (RuntimeException unavailable) {
-            // 查不动时**放行**：宁可多显示一条自己有权限办的待办，
-            // 也不要因为一次查询抖动让备份审批人漏掉活。
-            log.warn("个人加授判定失败，按放行处理: permission={}, error={}",
-                    permission, unavailable.toString());
-            return true;
-        }
+    private static boolean belongsTo(DepartmentContext department, String audienceTag) {
+        return department.audienceTags().contains(audienceTag);
     }
 
     private record DepartmentContext(

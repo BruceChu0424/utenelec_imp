@@ -41,7 +41,6 @@ import '../models/sales_doc.dart';
 import '../models/sales_order_progress.dart';
 import '../providers/sales_completion_count_provider.dart';
 import '../repositories/sales_repository.dart';
-import '../widgets/sales_batch_ship_panel.dart';
 
 /// 阶段分段值：真实阶段（stage 非空）或历史记录哨兵（全部订单入历史）。
 class _ProgressSeg {
@@ -239,9 +238,9 @@ class _SalesOrderProgressPageState
     }
   }
 
-  /// 去发货：复用批量发货面板（选可发行 + 改数量，审核后 shipped_qty↑/状态推进）。
-  Future<void> _ship() async {
-    await showSalesBatchShipPanel(context, ref);
+  /// 单个订单的发货入口先核对该单的产品进度，再选择本次发货产品。
+  Future<void> _ship(SalesOrderProgressRow row) async {
+    await context.push(RoutePath.salesOrderProgressDetail(row.orderId));
     if (mounted) {
       await _load(_page);
       _loadStageCounts();
@@ -286,7 +285,7 @@ class _SalesOrderProgressPageState
         UtenMenuItem(
           label: '去发货',
           icon: Icons.local_shipping_outlined,
-          onTap: _ship,
+          onTap: () => _ship(r),
         ),
       ],
     ];
@@ -338,9 +337,7 @@ class _SalesOrderProgressPageState
                 children: [
                   // 阶段行（统一分段卡）：财务驳回/待排产/生产中/可发货
                   // + 搜索 + 末尾历史记录（全部订单按时间查阅）。
-                  // 计数形态：只有「财务驳回」是销售自己要改单重报的待办（与
-                  // salesAttentionCountProvider 同源）→ 红徽章；待排产/生产中/
-                  // 可发货下一步是生产与仓库在办，是进度监控数 → 中性括号。
+                  // 驳回待修改、可分批发货待销售开单，共用持久待办口径。
                   UtenFilterToolbar<_ProgressSeg>(
                     segmentsKey: const Key('sales-order-progress-stages'),
                     segments: [
@@ -354,7 +351,7 @@ class _SalesOrderProgressPageState
                           value: _ProgressSeg.stage(stage),
                           label: salesProgressStageLabel(stage),
                           count: _stageCounts?[stage],
-                          countForm: stage == 'REJECTED'
+                          countForm: stage == 'REJECTED' || stage == 'SHIPPABLE'
                               ? UtenSegmentCountForm.actionable
                               : UtenSegmentCountForm.browsing,
                         ),

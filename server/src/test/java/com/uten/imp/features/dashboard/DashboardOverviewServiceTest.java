@@ -7,6 +7,8 @@ import com.uten.imp.features.notice.NoticeService;
 import com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryService;
 import com.uten.imp.features.production.schedule.ProductionScheduleService;
 import com.uten.imp.features.profilechange.ProfileChangeReviewService;
+import com.uten.imp.application.port.SalesDocumentReadScopePort;
+import com.uten.imp.security.DocumentAccessPolicy;
 import com.uten.imp.features.visitor.VisitorHrApprovalService;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -50,6 +52,7 @@ class DashboardOverviewServiceTest {
     private FulfillmentWorkbenchQueryService fulfillmentWorkbench;
     private NoticeService noticeService;
     private AuditService auditService;
+    private SalesDocumentReadScopePort salesAccess;
     // 提成字段（2026-09-12）：部门门控的正向用例需要给它们喂非零计数，
     // 否则 addCountTodo 的 count<=0 早退会让「应该出现」的断言恒假。
     private VisitorHrApprovalService visitorApprovalService;
@@ -67,6 +70,7 @@ class DashboardOverviewServiceTest {
         fulfillmentWorkbench = mock(FulfillmentWorkbenchQueryService.class);
         noticeService = mock(NoticeService.class);
         auditService = mock(AuditService.class);
+        salesAccess = mock(SalesDocumentReadScopePort.class);
         visitorApprovalService = mock(VisitorHrApprovalService.class);
         profileChangeReviewService = mock(ProfileChangeReviewService.class);
         employeeId = UUID.randomUUID();
@@ -90,7 +94,8 @@ class DashboardOverviewServiceTest {
                 visitorApprovalService,
                 profileChangeReviewService,
                 noticeService,
-                auditService);
+                auditService,
+                salesAccess);
     }
 
     @Test
@@ -140,7 +145,7 @@ class DashboardOverviewServiceTest {
 
     @ParameterizedTest
     @CsvSource({
-            "SUB_WH,stock_doc:view,WAREHOUSE,仓库任务正在自动恢复,/operations/workbench/warehouse",
+            "SUB_WH,stock_doc:view,WAREHOUSE,仓库任务正在自动恢复,/warehouse/tasks/draw",
             "SUB_PURCHASE,purchase_request:view,PURCHASE,采购任务正在自动恢复,/operations/workbench/purchase",
             "QA_OUT,subcontract_order:view,SUBCONTRACT,委外任务正在自动恢复,/operations/workbench/subcontract"
     })
@@ -302,6 +307,32 @@ class DashboardOverviewServiceTest {
         assertThat(result.intelligence()).isEmpty();
     }
 
+    @Test
+    void salesMetricUsesTheSameOwnerScopeAsSalesDocuments() {
+        configureDepartment("DEPT_SALES", Set.of("sales_order:view"));
+        when(salesAccess.nativeReadScope("o.owner_employee_id", "dashboardOwners"))
+                .thenReturn(new DocumentAccessPolicy.NativeReadScope(
+                        "(o.owner_employee_id IS NULL OR o.owner_employee_id IN (:dashboardOwners))",
+                        "dashboardOwners", Set.of(employeeId)));
+        when(jdbc.queryForObject(contains("o.owner_employee_id IN (?)"),
+                eq(Long.class), eq(employeeId))).thenReturn(2L);
+
+        assertThat(service.overview().metrics()).singleElement()
+                .satisfies(metric -> {
+                    assertThat(metric.id()).isEqualTo("sales-active");
+                    assertThat(metric.value()).isEqualTo("2");
+                });
+        verify(jdbc).queryForObject(contains("o.owner_employee_id IN (?)"),
+                eq(Long.class), eq(employeeId));
+    }
+
+    @Test
+    void subcontractReportPermissionAloneDoesNotExposeTaskOverview() {
+        configureDepartment("QA_OUT", Set.of("subcontract_report:view"));
+        assertThat(service.overview().todos()).isEmpty();
+        verifyNoInteractions(fulfillmentWorkbench);
+    }
+
     private void configurePurchaseDepartment(Set<String> permissions) {
         configureDepartment("SUB_PURCHASE", permissions);
     }
@@ -343,13 +374,9 @@ class DashboardOverviewServiceTest {
                 .doesNotContain(todoId);
     }
 
-    /**
-     * ADR-027 的跨部门备份路径不能被部门过滤掐断：被 user_permission_overrides
-     * **个人点名加授**的人，即便不在财务部门，工作台也必须照常给他这条待办。
-     * 否则备份审批人会在自己的工作台上看不到活，而这条兜底路径是刻意设计的。
-     */
+    /** 个人点名授予处理权限，不改变工作台所属部门的展示条件。 */
     @Test
-    void individuallyNamedApproverStillSeesTodoOutsideTheDepartment() {
+    void individuallyNamedApproverDoesNotSurfaceOtherDepartmentsTodo() {
         configureDepartment("DEPT_PROD", Set.of("expense:approve"));
         when(jdbc.queryForObject(anyString(), eq(Long.class))).thenReturn(4L);
         when(jdbc.queryForObject(
@@ -358,8 +385,8 @@ class DashboardOverviewServiceTest {
 
         assertThat(service.overview().todos())
                 .extracting(DashboardOverviewDto.TodoCard::id)
-                .as("被点名加授的备份审批人不该被部门过滤挡掉")
-                .contains("expense-approval");
+                .as("个人加授保留业务授权，但不改变工作台所属部门")
+                .doesNotContain("expense-approval");
     }
 
     /** 反向：在本部门 + 有权限时照常出现（不能为了收窄把正主也挡掉）。 */
@@ -383,17 +410,30 @@ class DashboardOverviewServiceTest {
                 .contains("expense-approval");
     }
 
-    /** 超管旁路：与生产/履约/销售三块同口径，不因新增部门门控而丢失全局视角。 */
     @Test
-    void superAdminKeepsCrossDepartmentVisibility() {
+    void superAdminOnlySeesOwnDepartmentsOverview() {
         when(user.isSuperAdmin()).thenReturn(true);
-        when(visitorApprovalService.pendingCount()).thenReturn(2L);
+        when(noticeService.pendingTodos(eq(8))).thenReturn(List.of());
         when(jdbc.queryForObject(anyString(), eq(Long.class))).thenReturn(3L);
-        configureDepartment("DEPT_PROD", Set.of("visitor:approve", "expense:approve"));
+        configureDepartment("DEPT_FIN", Set.of());
 
-        assertThat(service.overview().todos())
-                .extracting(DashboardOverviewDto.TodoCard::id)
-                .contains("visitor-approval", "expense-approval");
+        DashboardOverviewDto result = service.overview();
+        assertThat(result.todos()).extracting(DashboardOverviewDto.TodoCard::id)
+                .contains("expense-approval")
+                .doesNotContain("visitor-approval", "production-pending", "fulfillment-warehouse");
+        verifyNoInteractions(fulfillmentWorkbench, visitorApprovalService);
+    }
+
+    @Test
+    void unassignedSuperAdminDoesNotQueryDepartmentWork() {
+        when(user.isSuperAdmin()).thenReturn(true);
+        when(user.getEmployeeId()).thenReturn(null);
+        when(noticeService.pendingTodos(eq(8))).thenReturn(List.of());
+        DashboardOverviewDto result = service.overview();
+        assertThat(result.todos()).isEmpty();
+        assertThat(result.metrics()).extracting(DashboardOverviewDto.MetricCard::id)
+                .containsOnly("notice-unread");
+        verifyNoInteractions(fulfillmentWorkbench, visitorApprovalService);
     }
 
     /**

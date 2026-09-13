@@ -279,4 +279,38 @@ void main() {
     expect(find.text('你有 5 项工资批次待复核'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+  testWidgets(
+    'desktop todos share a horizontal row instead of a vertical list',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        host(
+          DashboardTodoLane(
+            todos: [
+              todo(id: 'a'),
+              todo(id: 'b'),
+              todo(id: 'c'),
+            ],
+            departmentName: '仓库',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final first = tester.getTopLeft(
+        find.byKey(const ValueKey('dashboard-todo-a')),
+      );
+      final second = tester.getTopLeft(
+        find.byKey(const ValueKey('dashboard-todo-b')),
+      );
+      final third = tester.getTopLeft(
+        find.byKey(const ValueKey('dashboard-todo-c')),
+      );
+      expect(first.dy, second.dy);
+      expect(second.dy, third.dy);
+      expect(first.dx, lessThan(second.dx));
+      expect(second.dx, lessThan(third.dx));
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

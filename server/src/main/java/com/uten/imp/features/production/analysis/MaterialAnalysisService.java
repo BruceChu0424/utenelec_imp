@@ -1572,7 +1572,7 @@ public class MaterialAnalysisService {
                     cancelled_at = now(),
                     cancellation_reason = '下游单据已删除、红冲或中止，刷新物料分析时自动失效',
                     updated_at = now()
-                WHERE action.analysis_id = :analysisId
+                WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND NOT fn_preplan_action_has_shared_claims(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
                   AND action.status IN ('CREATED','IN_PROGRESS')
                   AND (
                     (action.external_document_type = 'PURCHASE_REQUEST' AND NOT EXISTS (
@@ -1624,7 +1624,7 @@ public class MaterialAnalysisService {
                     updated_at = now()
                 FROM v_preplan_buy_action_slice_progress progress
                 WHERE action.id = progress.action_id
-                  AND action.analysis_id = :analysisId
+                  AND action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND NOT fn_preplan_action_has_shared_claims(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
                   AND action.status IN ('CREATED','IN_PROGRESS','DONE')
                   AND action.external_document_type = 'PURCHASE_REQUEST'
                   AND action.safety_replenishment_qty > 0
@@ -1658,7 +1658,7 @@ public class MaterialAnalysisService {
                     cancelled_at = now(),
                     cancellation_reason = '到货质检存在不合格且原采购需求已无在途，需重新通知补采',
                     updated_at = now()
-                WHERE action.analysis_id = :analysisId
+                WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND NOT fn_preplan_action_has_shared_claims(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
                   AND action.status IN ('CREATED','IN_PROGRESS','DONE')
                   AND action.external_document_type = 'PURCHASE_REQUEST'
                   AND action.safety_replenishment_qty = 0
@@ -1786,7 +1786,7 @@ public class MaterialAnalysisService {
                     cancelled_at = now(),
                     cancellation_reason = '到货质检存在不合格且原委外需求已无在途，需重新通知补委外',
                     updated_at = now()
-                WHERE action.analysis_id = :analysisId
+                WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND NOT fn_preplan_action_has_shared_claims(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
                   AND action.status IN ('CREATED','IN_PROGRESS','DONE')
                   AND action.external_document_type = 'SUBCONTRACT_APPLICATION'
                   AND EXISTS (
@@ -1911,7 +1911,7 @@ public class MaterialAnalysisService {
                 SET status = 'IN_PROGRESS', updated_at = now()
                 FROM v_preplan_buy_action_slice_progress progress
                 WHERE action.id = progress.action_id
-                  AND action.analysis_id = :analysisId
+                  AND action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
                   AND action.status IN ('CREATED','DONE')
                   AND action.external_document_type = 'PURCHASE_REQUEST'
                   AND action.safety_replenishment_qty > 0
@@ -1926,7 +1926,7 @@ public class MaterialAnalysisService {
         em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'IN_PROGRESS', updated_at = now()
-                WHERE action.analysis_id = :analysisId
+                WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
                   AND action.status IN ('CREATED','DONE')
                   AND action.external_document_type = 'PURCHASE_REQUEST'
                   AND action.safety_replenishment_qty = 0
@@ -1989,7 +1989,7 @@ public class MaterialAnalysisService {
         em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'IN_PROGRESS', updated_at = now()
-                WHERE action.analysis_id = :analysisId
+                WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
                   AND action.status IN ('CREATED','DONE')
                   AND action.external_document_type = 'SUBCONTRACT_APPLICATION'
                   AND action.requested_qty > COALESCE((
@@ -2051,7 +2051,7 @@ public class MaterialAnalysisService {
         em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'IN_PROGRESS', updated_at = now()
-                WHERE action.analysis_id = :analysisId
+                WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
                   AND action.status IN ('CREATED','DONE')
                   AND action.external_document_type IN (
                       'PREPLAN_MAKE_TASK','SUBCONTRACT_MAKE_TASK')
@@ -2089,7 +2089,7 @@ public class MaterialAnalysisService {
                 SET status = 'DONE', updated_at = now()
                 FROM v_preplan_buy_action_slice_progress progress
                 WHERE action.id = progress.action_id
-                  AND action.analysis_id = :analysisId
+                  AND action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
                   AND action.status IN ('CREATED','IN_PROGRESS')
                   AND action.external_document_type = 'PURCHASE_REQUEST'
                   AND action.safety_replenishment_qty > 0
@@ -2102,7 +2102,7 @@ public class MaterialAnalysisService {
         em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'DONE', updated_at = now()
-                WHERE action.analysis_id = :analysisId
+                WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
                   AND action.status IN ('CREATED','IN_PROGRESS')
                   AND action.external_document_type = 'PURCHASE_REQUEST'
                   AND action.safety_replenishment_qty = 0
@@ -2151,7 +2151,7 @@ public class MaterialAnalysisService {
         em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'DONE', updated_at = now()
-                WHERE action.analysis_id = :analysisId
+                WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
                   AND action.status IN ('CREATED','IN_PROGRESS')
                   AND action.external_document_type = 'SUBCONTRACT_APPLICATION'
                   AND action.requested_qty <= COALESCE((
@@ -2199,7 +2199,7 @@ public class MaterialAnalysisService {
         em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'DONE', updated_at = now()
-                WHERE action.analysis_id = :analysisId
+                WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
                   AND action.status IN ('CREATED','IN_PROGRESS')
                   AND action.external_document_type IN (
                       'PREPLAN_MAKE_TASK','SUBCONTRACT_MAKE_TASK')
@@ -2229,6 +2229,21 @@ public class MaterialAnalysisService {
                             ),0), 0) = 0
                   )
                 """).setParameter("analysisId", analysisId).executeUpdate();
+        em.createNativeQuery("""
+                UPDATE preplan_supply_actions action
+                SET status=CASE WHEN action.operation_type='FUTURE_TRANSFER' AND fn_preplan_action_admitted_qty(action.id)=0 THEN 'CANCELLED'
+                    WHEN fn_preplan_action_received_qty(action.id)>=fn_preplan_action_admitted_qty(action.id) THEN 'DONE'
+                    ELSE 'IN_PROGRESS' END,
+                    cancelled_by=CASE WHEN action.operation_type='FUTURE_TRANSFER' AND fn_preplan_action_admitted_qty(action.id)=0 THEN :actor ELSE cancelled_by END,
+                    cancelled_at=CASE WHEN action.operation_type='FUTURE_TRANSFER' AND fn_preplan_action_admitted_qty(action.id)=0 THEN now() ELSE cancelled_at END,
+                    cancellation_reason=CASE WHEN action.operation_type='FUTURE_TRANSFER' AND fn_preplan_action_admitted_qty(action.id)=0 THEN '未实收在途份额已撤销' ELSE cancellation_reason END
+                WHERE action.analysis_id=:analysis AND action.status<>'CANCELLED'
+                  AND (fn_preplan_action_has_future_transfer(action.id) OR action.operation_type='SHARED_FUTURE_CLAIM')
+                  AND action.status IS DISTINCT FROM (CASE
+                    WHEN action.operation_type='FUTURE_TRANSFER' AND fn_preplan_action_admitted_qty(action.id)=0 THEN 'CANCELLED'
+                    WHEN fn_preplan_action_received_qty(action.id)>=fn_preplan_action_admitted_qty(action.id) THEN 'DONE'
+                    ELSE 'IN_PROGRESS' END)
+                """).setParameter("analysis",analysisId).setParameter("actor",actorId).executeUpdate();
     }
 
     /**
@@ -2965,7 +2980,16 @@ public class MaterialAnalysisService {
                          THEN GREATEST(COALESCE(segment.planned_qty,plan_item.qty)
                            - CASE WHEN segment.id IS NULL THEN COALESCE(plan_item.iqty,0)
                                ELSE COALESCE(finished.qty,0) END,0)
-                           * COALESCE(segment.product_unit_rate,plan_item.unit_rate,1) ELSE NULL END
+                           * COALESCE(segment.product_unit_rate,plan_item.unit_rate,1)
+                         WHEN source.source_type='SUBCONTRACT_MAKE' AND EXISTS(
+                             SELECT 1 FROM preplan_reallocation_make_supplements supplement WHERE supplement.child_analysis_item_id=source.id)
+                         THEN GREATEST(COALESCE(segment.planned_qty,plan_item.qty)
+                             -CASE WHEN segment.id IS NULL THEN COALESCE(plan_item.iqty,0) ELSE COALESCE(finished.qty,0) END,0)
+                             *COALESCE(segment.product_unit_rate,plan_item.unit_rate,1)
+                         ELSE NULL END,
+                       CASE WHEN source.source_type='SUBCONTRACT_MAKE' AND EXISTS(
+                           SELECT 1 FROM preplan_reallocation_make_supplements supplement WHERE supplement.child_analysis_item_id=source.id)
+                         THEN source.id ELSE NULL END
                 FROM production_material_demands demand
                 JOIN production_plans plan ON plan.id=demand.plan_id
                   AND plan.material_analysis_id=:analysisId
@@ -2996,14 +3020,54 @@ public class MaterialAnalysisService {
                   AND material.unit_id=demand.unit_id
                 WHERE demand.is_deleted=FALSE AND demand.status NOT IN ('RELEASED','REVERSED')
                 GROUP BY demand.id,material.analysis_item_id,material.node_key,material.path,
-                         source.source_type,segment.id,segment.planned_qty,segment.product_unit_rate,
+                         source.id,source.source_type,segment.id,segment.planned_qty,segment.product_unit_rate,
                          plan_item.qty,plan_item.iqty,plan_item.unit_rate,finished.qty
                 ORDER BY demand.id,material.path,material.node_key
                 """).setParameter("analysisId", analysisId)
                 .setParameter("warehouseId", warehouseId));
-        return rows.stream().map(row -> new FormalMaterialCoverage(
-                uuid(row[0]), uuid(row[1]), string(row[2]), decimal(row[3]),
-                row[4]==null ? null : decimal(row[4]))).toList();
+        Set<UUID> subcontractChildren=rows.stream().filter(row->row.length>5 && row[5]!=null)
+                .map(row->uuid(row[5])).collect(Collectors.toSet());
+        Map<UUID,BigDecimal> preparedUnreturned=subcontractPreparationUnreturnedOutput(subcontractChildren);
+        Map<String,BigDecimal> reservedFutureByNode=new HashMap<>();
+        for(Object[] row:rows) if(row.length>5 && row[5]!=null) {
+            reservedFutureByNode.merge(row[5]+"|"+row[1]+"|"+row[2],decimal(row[4]),BigDecimal::add);
+        }
+        return rows.stream().map(row -> {
+            UUID group=row.length>5 ? uuid(row[5]) : null;
+            BigDecimal remainingOutput=group==null ? row[4]==null ? null : decimal(row[4])
+                    : preparedUnreturned.getOrDefault(group,BigDecimal.ZERO)
+                        .add(reservedFutureByNode.getOrDefault(group+"|"+row[1]+"|"+row[2],BigDecimal.ZERO));
+            return new FormalMaterialCoverage(uuid(row[0]),uuid(row[1]),string(row[2]),decimal(row[3]),remainingOutput,group);
+        }).toList();
+    }
+
+    /** Qualified final subcontract returns retire prior preparation coverage;
+     * current beneficiary reallocations must not change this physical history. */
+    private Map<UUID,BigDecimal> subcontractPreparationUnreturnedOutput(Set<UUID> childIds) {
+        if(childIds.isEmpty()) return Map.of();
+        Map<UUID,BigDecimal> result=new HashMap<>();
+        for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT task.preparation_item_id,GREATEST(task.produced_qty-COALESCE((
+                    SELECT SUM(fn_subcontract_order_source_share(item.id,source.application_item_id,
+                        GREATEST(COALESCE((SELECT SUM(CASE WHEN inspection.id IS NULL
+                                THEN receipt_item.qty*COALESCE(receipt_item.unit_rate,1)
+                            WHEN inspection.status IN ('PARTIAL','RESOLVED') THEN inspection.warehouse_stocked_base_qty ELSE 0 END)
+                            FROM subcontract_receipt_items receipt_item
+                            JOIN subcontract_receipts receipt ON receipt.id=receipt_item.receipt_id
+                                AND receipt.status=1 AND NOT receipt.is_deleted
+                            LEFT JOIN procurement_inspection_items inspection ON inspection.receipt_type='SUBCONTRACT'
+                                AND inspection.receipt_item_id=receipt_item.id
+                            WHERE receipt_item.order_item_id=item.id AND NOT receipt_item.is_deleted),0)
+                            -COALESCE(item.returned_qty,0)*COALESCE(item.unit_rate,1),0)))
+                    FROM preplan_subcontract_make_task_batches batch
+                    JOIN subcontract_order_item_sources source ON source.application_item_id=batch.application_item_id
+                    JOIN subcontract_order_items item ON item.id=source.order_item_id AND NOT item.is_deleted
+                    JOIN subcontract_orders document ON document.id=item.order_id AND document.status=1 AND NOT document.is_deleted
+                    WHERE batch.task_id=task.id),0),0)
+                FROM preplan_subcontract_make_tasks task
+                WHERE task.preparation_item_id IN (:childIds) AND task.status='ACTIVE'
+                """).setParameter("childIds",childIds))) result.put(uuid(row[0]),decimal(row[1]));
+        return result;
     }
 
     private Map<String,List<BigDecimal>> plannedMaterialBatches(UUID analysisId) {
@@ -3050,6 +3114,7 @@ public class MaterialAnalysisService {
         Map<String, BomNode> byKey = nodes.stream().collect(Collectors.toMap(
                 MaterialAnalysisService::nodeAllocationKey, node -> node));
         Map<UUID, BigDecimal> usedByDemand = new HashMap<>();
+        Map<String,BigDecimal> usedByPreparationGroup=new HashMap<>();
         Map<String, BigDecimal> secured = new LinkedHashMap<>();
         for (FormalMaterialCoverage row : coverage) {
             String key = row.analysisItemId() + "|" + row.nodeKey();
@@ -3058,7 +3123,10 @@ public class MaterialAnalysisService {
             BigDecimal headroom = node.snapshotRequiredQty()
                     .subtract(secured.getOrDefault(key, BigDecimal.ZERO)).max(BigDecimal.ZERO);
             if (row.remainingParentOutputQty()!=null) {
-                headroom = headroom.min(node.requiredForSingleParentOutput(row.remainingParentOutputQty()));
+                BigDecimal requirement=node.requiredForSingleParentOutput(row.remainingParentOutputQty());
+                if(row.preparationGroupId()!=null) requirement=requirement.subtract(usedByPreparationGroup.getOrDefault(
+                        row.preparationGroupId()+"|"+key,BigDecimal.ZERO)).max(BigDecimal.ZERO);
+                headroom = headroom.min(requirement);
             }
             BigDecimal available = row.coveredQty()
                     .subtract(usedByDemand.getOrDefault(row.demandId(), BigDecimal.ZERO))
@@ -3067,6 +3135,8 @@ public class MaterialAnalysisService {
             if (take.signum() <= 0) continue;
             secured.merge(key, take, BigDecimal::add);
             usedByDemand.merge(row.demandId(), take, BigDecimal::add);
+            if(row.preparationGroupId()!=null) usedByPreparationGroup.merge(
+                    row.preparationGroupId()+"|"+key,take,BigDecimal::add);
         }
         // Formal reservations are already absent from public stock, and issued
         // quantities are no longer in stock at all. Never debit the pool again.
@@ -3075,9 +3145,12 @@ public class MaterialAnalysisService {
 
     record FormalMaterialCoverage(
             UUID demandId, UUID analysisItemId, String nodeKey, BigDecimal coveredQty,
-            BigDecimal remainingParentOutputQty) {
+            BigDecimal remainingParentOutputQty, UUID preparationGroupId) {
         FormalMaterialCoverage(UUID demandId, UUID analysisItemId, String nodeKey, BigDecimal coveredQty) {
-            this(demandId,analysisItemId,nodeKey,coveredQty,null);
+            this(demandId,analysisItemId,nodeKey,coveredQty,null,null);
+        }
+        FormalMaterialCoverage(UUID demandId, UUID analysisItemId, String nodeKey, BigDecimal coveredQty,BigDecimal remainingParentOutputQty) {
+            this(demandId,analysisItemId,nodeKey,coveredQty,remainingParentOutputQty,null);
         }
     }
 
@@ -3979,7 +4052,7 @@ public class MaterialAnalysisService {
         List<MaterialRow> materialRows = loadMaterialRows(analysisId);
         SharedFutureIndex sharedFuture = sharedFutureSupply(
                 analysisId, header.warehouseId(), materialRows);
-        Map<UUID, BigDecimal> claimedFuture = sharedFutureClaimedByMaterial(analysisId);
+        Map<UUID, ClaimedFutureState> claimedFuture = sharedFutureClaimedByMaterial(analysisId);
         Map<UUID, BigDecimal> activeFuture = activeFutureCoverageByMaterial(analysisId);
         Map<UUID, SourceLine> sourcesById = sources.stream().collect(
                 Collectors.toMap(SourceLine::analysisItemId, source -> source));
@@ -4051,6 +4124,18 @@ public class MaterialAnalysisService {
         Map<UUID, List<BorrowRef>> borrowRefs = activeBorrowRefsByMaterial(analysisId);
         Map<UUID, CrossProjection> crossProjections =
                 crossReallocationProjections(analysisId);
+        boolean hasPriority = crossProjections.values().stream().anyMatch(cross -> cross.priorityPendingQty().signum()>0);
+        var makeSupplementReader = new PreplanReallocationMakeSupplement(em);
+        Map<UUID, PreplanReallocationMakeSupplement.Allowance> makeSupplementAllowances = hasPriority
+                ? makeSupplementReader.read(analysisId) : Map.of();
+        // Legacy action-backed MAKE and its child quota describe the same
+        // unfinished production. Read its actual source progress and count it once.
+        var makeSupplementCoverage = new MaterialAnalysisSupplyCoverageReader(em).read(analysisId,
+                materialRows.stream().filter(row -> makeSupplementAllowances.containsKey(row.id()))
+                        .map(row -> new MaterialAnalysisSupplyCoverageReader.Group(
+                                row.actionGroupKey(),row.confirmedRoute(),List.of(row.id()))).toList());
+        Set<UUID> supplementedChildren = !crossProjections.isEmpty()
+                ? makeSupplementReader.supplementedChildren(analysisId) : Set.of();
         Map<UUID, BigDecimal> exactPegged = exactPeggedByMaterial(
                 analysisId, header.warehouseId());
         Map<UUID, BigDecimal> subcontractHandoffFuture =
@@ -4107,12 +4192,16 @@ public class MaterialAnalysisService {
                                     row.id(), BigDecimal.ZERO),
                             borrowedIn, borrowedOut, rowBorrows, cross, requirement,
                             shared,
-                            claimedFuture.getOrDefault(row.id(), BigDecimal.ZERO),
+                            claimedFuture.getOrDefault(row.id(), ClaimedFutureState.NONE).claimedQty(),
                             activeFuture.getOrDefault(row.id(), BigDecimal.ZERO),
                             selectedWarehouses.totalAvailableQty(),
                             selectedWarehouses.otherTransferableQty(),
                             lineFlowStages.get(row.id()),
-                            anchorChildByParentLine.get(row.id()), mainSafety);
+                            anchorChildByParentLine.get(row.id()), mainSafety,
+                            makeSupplementAllowances.getOrDefault(row.id(),PreplanReallocationMakeSupplement.Allowance.NONE),
+                            makeSupplementCoverage.active(row.actionGroupKey(),row.confirmedRoute())
+                                    .add(makeSupplementCoverage.replacement(row.actionGroupKey(),row.confirmedRoute())),
+                            claimedFuture.getOrDefault(row.id(),ClaimedFutureState.NONE).pendingQty());
                 })
                 .toList();
         Map<UUID, String> planningBlocks = planningBlockedReasons(sources);
@@ -4122,12 +4211,15 @@ public class MaterialAnalysisService {
                     ? BigDecimal.ONE
                     : source.readyNowQty().divide(remaining, 4, RoundingMode.DOWN)
                         .min(BigDecimal.ONE);
-            return source.toView(
-                    ratio,
-                    productIdsWithMaterialChildren.contains(source.analysisItemId()),
-                    productPlanStates.getOrDefault(
-                            source.analysisItemId(), ProductPlanState.NONE),
-                    planningBlocks.get(source.analysisItemId()));
+            ProductPlanState planState=productPlanStates.getOrDefault(source.analysisItemId(),ProductPlanState.NONE);
+            if(supplementedChildren.contains(source.analysisItemId()) && remaining.signum()>0
+                    && "COMPLETED".equals(planState.status())) {
+                planState=new ProductPlanState("NOT_STARTED",planState.planId(),planState.planNo(),
+                        planState.plannedQty(),planState.inboundQty(),planExecutionProgressRatio(source.requestedQty(),planState.inboundQty()),
+                        planState.reportedQty(),planState.zeroMaterial(),planState.workshopName(),planState.responsibleName());
+            }
+            return source.toView(ratio,productIdsWithMaterialChildren.contains(source.analysisItemId()),
+                    planState,planningBlocks.get(source.analysisItemId()));
         }).toList();
         UUID fqcRecoveryAuthorizationId = fqcRecoveryAuthorizationId(analysisId);
         boolean fqcReplenishmentOnly = fqcRecoveryAuthorizationId != null;
@@ -5035,7 +5127,7 @@ public class MaterialAnalysisService {
                            allocation.external_item_id,
                            material.goods_id, material.color_id, material.unit_id,
                            SUM(GREATEST(
-                               allocation.allocated_qty - COALESCE((
+                               fn_preplan_allocation_admitted_qty(allocation.id) - COALESCE((
                                    SELECT SUM(claim.claimed_qty)
                                    FROM preplan_subcontract_requirement_supply_claims
                                         claim
@@ -5642,8 +5734,11 @@ public class MaterialAnalysisService {
                 .setParameter("goodsIds", uuidArrayText(goodsIds)))) {
             MaterialDimension dimension = new MaterialDimension(
                     uuid(row[1]), uuid(row[2]), uuid(row[3]));
+            // This index represents the selected planning scope, not a physical
+            // receiving location. Old leaf-scoped supply must remain visible to
+            // a new main-scoped analysis; actual stock-in keeps its real leaf UUID.
             WarehouseMaterialDimension key = new WarehouseMaterialDimension(
-                    uuid(row[0]), dimension);
+                    warehouseId, dimension);
             String route = string(row[4]);
             UUID documentMakerId = uuid(row[13]);
             boolean reveal = "BUY".equals(route)
@@ -5670,11 +5765,15 @@ public class MaterialAnalysisService {
                 || scope.visibleOwners().contains(ownerEmployeeId);
     }
 
-    private Map<UUID, BigDecimal> sharedFutureClaimedByMaterial(UUID analysisId) {
-        Map<UUID, BigDecimal> result = new LinkedHashMap<>();
+    private Map<UUID, ClaimedFutureState> sharedFutureClaimedByMaterial(UUID analysisId) {
+        Map<UUID, ClaimedFutureState> result = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT allocation.analysis_material_id,
-                       SUM(allocation.allocated_qty)::numeric
+                       SUM(allocation.allocated_qty)::numeric,
+                       SUM(
+                           GREATEST(allocation.allocated_qty
+                               -fn_preplan_allocation_received_qty(allocation.id),0)
+                           )::numeric
                 FROM preplan_supply_action_allocations allocation
                 JOIN preplan_supply_actions action ON action.id = allocation.action_id
                 WHERE action.analysis_id = :analysisId
@@ -5682,9 +5781,13 @@ public class MaterialAnalysisService {
                   AND action.status <> 'CANCELLED'
                 GROUP BY allocation.analysis_material_id
                 """).setParameter("analysisId", analysisId))) {
-            result.put(uuid(row[0]), decimal(row[1]));
+            result.put(uuid(row[0]),new ClaimedFutureState(decimal(row[1]),decimal(row[2])));
         }
         return Map.copyOf(result);
+    }
+
+    private record ClaimedFutureState(BigDecimal claimedQty,BigDecimal pendingQty) {
+        static final ClaimedFutureState NONE=new ClaimedFutureState(BigDecimal.ZERO,BigDecimal.ZERO);
     }
 
     private Map<UUID, BigDecimal> activeFutureCoverageByMaterial(UUID analysisId) {
@@ -5705,14 +5808,16 @@ public class MaterialAnalysisService {
                       AND progress.demand_future_qty > 0
                 ), coverage AS (
                     SELECT allocation.analysis_material_id,
-                           GREATEST(allocation.allocated_qty
+                           CASE WHEN fn_preplan_action_has_future_transfer(action.id) OR fn_preplan_action_has_shared_claim_history(action.id) THEN fn_preplan_future_allocation_pending_qty(allocation.id)
+                           WHEN action.operation_type='SHARED_FUTURE_CLAIM' THEN fn_preplan_shared_allocation_pending_qty(allocation.id)
+                           ELSE GREATEST(fn_preplan_allocation_admitted_qty(allocation.id)
                              - fn_preplan_allocation_effective_exact_qty(allocation.id)
                              - COALESCE((SELECT SUM(CASE WHEN output.event_kind='FULFILL'
                                       THEN output.qty_base ELSE -output.qty_base END)
                                  FROM preplan_root_output_events output
                                  JOIN preplan_analysis_stock_exact_pegs exact
                                    ON exact.stock_reservation_id=output.source_reservation_id
-                                 WHERE exact.supply_action_allocation_id=allocation.id),0),0)::numeric AS qty
+                                 WHERE exact.supply_action_allocation_id=allocation.id),0),0) END::numeric AS qty
                     FROM preplan_supply_action_allocations allocation
                     JOIN preplan_supply_actions action
                       ON action.id = allocation.action_id
@@ -6139,8 +6244,8 @@ public class MaterialAnalysisService {
         if (fqcReplenishmentOnly) {
             return List.of("VIEW", "FQC_REPLENISHMENT_CONFIRM");
         }
-        if (!access.canWrite(header.makerId(), scopeForAnalysis(header))) return List.of("VIEW");
-        List<String> result = new ArrayList<>(List.of("VIEW"));
+        if (!access.canWrite(header.makerId(), scopeForAnalysis(header))) return List.of("VIEW", "VIEW_FUTURE_TRANSFERS");
+        List<String> result = new ArrayList<>(List.of("VIEW", "VIEW_FUTURE_TRANSFERS"));
         if (!"CANCELLED".equals(header.status()) && rootSupply != null
                 && access.hasAuthority("production_material_analysis:notify")
                 && rootSupply.hasReversibleExistingOutput(analysisId)) {
@@ -6884,7 +6989,10 @@ public class MaterialAnalysisService {
             BigDecimal approvedInboundQty,
             BigDecimal availableQty,
             LocalDate expectedDate,
-            List<SharedFutureSupplyRef> refs) {
+            List<SharedFutureSupplyRef> refs, BigDecimal lateAvailableQty) {
+        SharedFutureAggregate(BigDecimal approvedInboundQty,BigDecimal availableQty,LocalDate expectedDate,List<SharedFutureSupplyRef> refs) {
+            this(approvedInboundQty,availableQty,expectedDate,refs,BigDecimal.ZERO);
+        }
         static final SharedFutureAggregate ZERO = new SharedFutureAggregate(
                 BigDecimal.ZERO.setScale(4), BigDecimal.ZERO.setScale(4),
                 null, List.of());
@@ -6931,17 +7039,19 @@ public class MaterialAnalysisService {
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             BigDecimal available = actionableRoute ? matching.stream()
                     .filter(ref -> !ref.sourceIsCurrentAnalysis())
-                    .filter(ref -> needDate == null
-                            || ref.expectedDate() != null
-                            && !ref.expectedDate().isAfter(needDate))
+                    .filter(ref -> ref.expectedDate() != null
+                            && (needDate == null || !ref.expectedDate().isAfter(needDate)))
                     .map(SharedFutureSupplyRef::availableToClaimQty)
                     .reduce(BigDecimal.ZERO, BigDecimal::add)
                     : BigDecimal.ZERO;
+            BigDecimal late=actionableRoute ? matching.stream().filter(ref->!ref.sourceIsCurrentAnalysis())
+                    .filter(ref->ref.expectedDate()==null || needDate!=null && ref.expectedDate().isAfter(needDate))
+                    .map(SharedFutureSupplyRef::availableToClaimQty).reduce(BigDecimal.ZERO,BigDecimal::add) : BigDecimal.ZERO;
             LocalDate expected = matching.stream()
                     .map(SharedFutureSupplyRef::expectedDate)
                     .filter(Objects::nonNull).min(LocalDate::compareTo).orElse(null);
             return new SharedFutureAggregate(
-                    approved, available, expected, List.copyOf(matching));
+                    approved, available, expected, List.copyOf(matching),late);
         }
     }
 
@@ -7382,7 +7492,9 @@ public class MaterialAnalysisService {
                             BigDecimal selectedOtherWarehouseTransferableQty,
                             String flowStage,
                             UUID planAnchorAnalysisLineId,
-                            MainWarehouseSafetySummary mainSafety) {
+                            MainWarehouseSafetySummary mainSafety,
+                            PreplanReallocationMakeSupplement.Allowance makeSupplement,
+                            BigDecimal makeSupplementOpenSupply, BigDecimal sharedFuturePendingQty) {
             List<String> notified = references.stream().map(DownstreamReference::route)
                     .distinct().sorted().toList();
             BigDecimal demandGap = unboundDemandSupplyGap(
@@ -7418,7 +7530,9 @@ public class MaterialAnalysisService {
                     selectedOtherWarehouseTransferableQty,
                     sharedFuture.expectedDate(), sharedFuture.refs(),
                     flowStage, planAnchorAnalysisLineId,
-                    mainSafety.publicAvailable(), mainSafety.openSupply(), mainSafety.gap());
+                    mainSafety.publicAvailable(), mainSafety.openSupply(), mainSafety.gap(),
+                    makeSupplement.additional(demandGap,makeSupplementOpenSupply),
+                    sharedFuturePendingQty,sharedFuture.lateAvailableQty());
         }
 
         String actionGroupKey() {

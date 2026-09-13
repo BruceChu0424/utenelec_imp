@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_hub_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_hub_page.dart';
 import 'package:uten_imp/features/warehouse/providers/warehouse_quality_result_count_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 Widget _app(Widget page, Set<String> permissions) {
   return ProviderScope(
     overrides: [
+      sharedPreferencesProvider.overrideWithValue(_preferences),
       currentPermissionsProvider.overrideWithValue(permissions),
       isSuperAdminProvider.overrideWithValue(false),
       warehouseQualityResultPendingCountProvider.overrideWith((ref) async => 0),
@@ -23,14 +26,20 @@ Widget _app(Widget page, Set<String> permissions) {
   );
 }
 
+late SharedPreferences _preferences;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   testWidgets('purchase hub hides every page without its view permission', (
     tester,
   ) async {
     await tester.pumpWidget(
       _app(const PurchaseHubPage(), const {Perm.purchaseRequestView}),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('计划下达的采购申请'), findsOneWidget);
     expect(find.text('采购订货单'), findsNothing);
@@ -45,7 +54,7 @@ void main() {
     await tester.pumpWidget(
       _app(const WarehouseHubPage(), const {Perm.stockView}),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('即时库存'), findsOneWidget);
     expect(find.text('货架目视化清单'), findsOneWidget);
@@ -62,7 +71,7 @@ void main() {
     await tester.pumpWidget(
       _app(const WarehouseHubPage(), const {Perm.stockDocView}),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.text('出库任务中心'), findsOneWidget);
     expect(find.text('入库任务中心'), findsOneWidget);
     expect(find.text('生产领料任务中心'), findsOneWidget);
@@ -80,17 +89,17 @@ void main() {
     await tester.pumpWidget(
       _app(const WarehouseHubPage(), const {Perm.warehouseIqcStockInView}),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.text('品质部检查结果'), findsOneWidget);
 
     await tester.pumpWidget(
       _app(const WarehouseHubPage(), const {Perm.warehouseIqcReturnView}),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.text('品质部检查结果'), findsOneWidget);
 
     await tester.pumpWidget(_app(const WarehouseHubPage(), const {}));
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.text('品质部检查结果'), findsNothing);
   });
 }

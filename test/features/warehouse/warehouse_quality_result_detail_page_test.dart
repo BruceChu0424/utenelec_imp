@@ -180,8 +180,12 @@ void main() {
         expect(find.text(header), findsOneWidget, reason: '缺列 $header');
       }
       // 必填列表头带红 *（如「货品库位 *」），用包含匹配。
-      expect(find.textContaining('货品库位'), findsOneWidget);
-      expect(find.textContaining('待入库余量 / 本次实收'), findsOneWidget);
+      expect(find.textContaining('实际库位'), findsWidgets);
+      expect(find.textContaining('本次实收'), findsWidgets);
+      expect(find.text('合格待入量'), findsOneWidget);
+      expect(find.textContaining('目标叶仓'), findsWidgets);
+      expect(find.text('供应商 / 委外商'), findsOneWidget);
+      expect(find.text('单位'), findsOneWidget);
       // 逐行判定（图标旁判定文案始终在场，不只靠颜色）。
       expect(find.byIcon(Icons.check_circle), findsOneWidget);
       // 黄色警告图标出现三次：单人兼任提示横幅 + 部分合格判定随 2 个切片行出现。
@@ -511,6 +515,8 @@ Map<String, dynamic> _sliceJson(
   num remaining,
 ) => {
   'passEventId': passEventId,
+  'warehouseId': 'warehouse-1',
+  'warehouseName': '原料仓',
   'inspectionItemId': inspectionItemId,
   'goodsId': goodsId,
   'goodsCode': goodsCode,

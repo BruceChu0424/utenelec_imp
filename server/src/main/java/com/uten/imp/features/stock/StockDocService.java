@@ -19,6 +19,8 @@ import com.uten.imp.features.stock.dto.FinishedInboundBatchConfirmRequest;
 import com.uten.imp.features.stock.dto.FinishedInboundBatchConfirmResponse;
 import com.uten.imp.features.stock.dto.FinishedInboundConfirmRequest;
 import com.uten.imp.features.stock.dto.StockDocDetail;
+import com.uten.imp.features.stock.dto.StockDocOutboundReview;
+import com.uten.imp.features.stock.dto.StockDocReviewedApproveRequest;
 import com.uten.imp.features.stock.dto.StockDocIssueBatchRequest;
 import com.uten.imp.features.stock.dto.StockDocIssueBatchResponse;
 import com.uten.imp.features.stock.dto.StockDocIssueRequest;
@@ -142,12 +144,21 @@ public class StockDocService {
                     "仓库实物单据不提供成本排序，请在财务或库存价值报表中查看");
         }
         var readScope = access.scope();
+        boolean returnTaskReadable = access.hasAuthority("stock_doc:view")
+                && productionStockTaskAccess.canAccessWarehouseTasks();
         Specification<StockDocument> spec = (Root<StockDocument> root,
                                              jakarta.persistence.criteria.CriteriaQuery<?> q,
                                              CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
-            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
+            Predicate ownerReadable = access.readablePredicate(root, cb, "makerId", readScope);
+            ps.add(returnTaskReadable ? cb.or(ownerReadable,
+                    cb.and(cb.equal(root.get("docType"), "WDRAW"),
+                        cb.isTrue(cb.function("fn_is_production_material_return_request", Boolean.class, root.get("id")))))
+                    : ownerReadable);
+            ps.add(cb.or(cb.notEqual(root.get("docType"), "DRAW"),
+                    cb.isTrue(cb.function("fn_production_draw_requested",
+                            Boolean.class, root.get("id")))));
             if (f.docType() != null && !f.docType().isBlank()) {
                 ps.add(cb.equal(root.get("docType"), f.docType()));
             }
@@ -159,7 +170,16 @@ public class StockDocService {
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             if (f.departmentId() != null) ps.add(cb.equal(root.get("departmentId"), f.departmentId()));
-            if (f.issueStatus() != null) ps.add(cb.equal(root.get("issueStatus"), f.issueStatus()));
+            if (f.issueStatus() != null) {
+                ps.add(cb.equal(root.get("issueStatus"), f.issueStatus()));
+                if ("DRAW".equals(f.docType()) && f.issueStatus() < 2) {
+                    ps.add(cb.isTrue(cb.function("fn_production_draw_pending", Boolean.class, root.get("id"))));
+                }
+            }
+            if (Boolean.TRUE.equals(f.productionReturnRequests())) {
+                ps.add(cb.equal(root.get("docType"), "WDRAW"));
+                ps.add(cb.isTrue(cb.function("fn_is_production_material_return_request",Boolean.class,root.get("id"))));
+            }
             return cb.and(ps.toArray(new Predicate[0]));
         };
         Pageable pageable = Pageables.of(page, size,
@@ -175,6 +195,9 @@ public class StockDocService {
     @Transactional(readOnly = true)
     public StockDocDetail detail(UUID id) {
         StockDocument d = requireDoc(id);
+        if ("DRAW".equals(d.getDocType()) && !productionDrawRequested(id)) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "仓库单据不存在");
+        }
         boolean productionTaskReadable = isProductionLinked(d.getId())
                 && productionStockTaskAccess.canAccessWarehouseTasks()
                 && (access.hasAuthority("stock_doc:view")
@@ -188,6 +211,18 @@ public class StockDocService {
         List<StockDocItemDto> items = itemRepo.findByDocIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
         return toDetail(d, items);
+    }
+
+    /** A short lock makes the rendered rows and review token one consistent snapshot. */
+    @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public StockDocOutboundReview reviewOutbound(UUID id) {
+        StockDocument document = requireDocForUpdate(id);
+        StockDocDetail reviewed = detail(id); // Existing read/object scope and cost masking.
+        StockDocOutboundReviewFingerprint.requireOutboundType(document);
+        String token = StockDocOutboundReviewFingerprint.of(document,
+                itemRepo.findByDocIdOrderByLineNoAsc(id));
+        return new StockDocOutboundReview(reviewed, token);
     }
 
     // ===== CRUD =====
@@ -585,6 +620,21 @@ public class StockDocService {
         return approveInternal(id, false, false);
     }
 
+    /** Check the reviewed revision after acquiring the original mutation/document locks. */
+    @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:approve')")
+    public StockDocDetail approveReviewed(UUID id, StockDocReviewedApproveRequest request) {
+        prelockProductionDocument(id);
+        StockDocument document = requireDocForUpdate(id);
+        requireOperationWritable(document, "stock_doc:approve", "无权审核此仓库单据");
+        StockDocOutboundReviewFingerprint.requireOutboundType(document);
+        StockDocOutboundReviewFingerprint.requireUnchanged(
+                request == null ? null : request.expectedReviewToken(), document,
+                itemRepo.findByDocIdOrderByLineNoAsc(id));
+        // The document lock is held through the existing approval and stock transaction.
+        return approveInternal(id, false, false);
+    }
+
     private StockDocDetail approveInternal(
             UUID id,
             boolean warehouseQuantityConfirmed,
@@ -803,6 +853,7 @@ public class StockDocService {
             throw new ApiException(
                     ErrorCode.CONFLICT, "只有草稿生产领料单可以直接出库");
         }
+        requireProductionDrawRequested(id);
         mutationGuard.verifyUnchanged();
         approveInternal(id, false, true);
         return issue(id, req);
@@ -898,9 +949,10 @@ public class StockDocService {
             StockDocument document = requireDocForUpdate(id);
             String billNo = document.getBillNo();
             try {
+                requireProductionDrawRequested(id);
                 // 剩余量在行锁之后计算：并发的单张出库/取消出库已被串行化。
                 List<StockDocIssueRequest.Line> lines =
-                        remainingIssueLines(itemRepo.findByDocIdOrderByLineNoAsc(id));
+                        requestedIssueLines(itemRepo.findByDocIdOrderByLineNoAsc(id));
                 String childKey = batchChildIdempotencyKey(actorUserId, batchKey, id);
                 if (lines.isEmpty()) {
                     if (issueEventExists(id, childKey)) replayed++;
@@ -968,6 +1020,27 @@ public class StockDocService {
         return lines;
     }
 
+    private List<StockDocIssueRequest.Line> requestedIssueLines(List<StockDocumentItem> items) {
+        List<StockDocIssueRequest.Line> lines = new ArrayList<>();
+        for (StockDocumentItem item : items) {
+            BigDecimal remaining = requestedDrawQuantity(item.getId())
+                    .subtract(item.getIssuedQty() == null ? BigDecimal.ZERO : item.getIssuedQty());
+            if (remaining.signum() > 0) {
+                var line = new StockDocIssueRequest.Line();
+                line.setItemId(item.getId());
+                line.setQty(remaining);
+                lines.add(line);
+            }
+        }
+        return lines;
+    }
+
+    private BigDecimal requestedDrawQuantity(UUID itemId) {
+        Object value = em.createNativeQuery("SELECT fn_production_draw_item_requested_qty(:itemId)")
+                .setParameter("itemId", itemId).getSingleResult();
+        return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString());
+    }
+
     /** 不装载实体的单据头读取（bill_no, doc_type, status）；不存在/已删 → NOT_FOUND。 */
     private Object[] batchDocumentHeader(UUID id) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
@@ -1004,6 +1077,7 @@ public class StockDocService {
         StockDocument d = requireDrawForIssue(id);
         requireOperationWritable(
                 d, "stock_doc:issue", "无权发出此生产领料单");
+        requireProductionDrawRequested(id);
         // 生产链 DRAW：出库即审核口径下必须能证明「已审关联计划 + 逐行唯一执行
         // 工单映射」；手工单（isProductionLinked=false）没有这些事实，不套用
         // 生产侧校验（其可发性由台账层 lockPackageForDraw 的计划包守卫统一收口）。
@@ -1018,6 +1092,13 @@ public class StockDocService {
             return detail(id);
         }
         mutationGuard.verifyUnchanged();
+        for (StockDocIssueRequest.Line line : req.getLines()) {
+            StockDocumentItem item = findItem(items, line.getItemId());
+            BigDecimal alreadyIssued = item.getIssuedQty() == null ? BigDecimal.ZERO : item.getIssuedQty();
+            if (line.getQty().add(alreadyIssued).compareTo(requestedDrawQuantity(item.getId())) > 0) {
+                throw new ApiException(ErrorCode.CONFLICT, "本次出库超过车间已申请的剩余数量，请刷新后核对");
+            }
+        }
         lockInventory(items);
         ProductionMaterialStockLedgerService.PostingResult posted =
                 productionMaterialLedger.issue(
@@ -1047,6 +1128,20 @@ public class StockDocService {
         chainNotice.notifyProductionDrawIssued(
                 d.getId(), req.getIdempotencyKey());
         return detail(id);
+    }
+
+    private boolean productionDrawRequested(UUID documentId) {
+        return Boolean.TRUE.equals(em.createNativeQuery(
+                        "SELECT fn_production_draw_requested(:documentId)")
+                .setParameter("documentId", documentId)
+                .getSingleResult());
+    }
+
+    private void requireProductionDrawRequested(UUID documentId) {
+        if (!productionDrawRequested(documentId)) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "车间尚未提交领料申请，请先在我的车间任务中确认领料汇总");
+        }
     }
 
     /** 追加出库备注到单据 remark（幂等：整条相同才视为重复，见 {@link #mergeIssueRemark}）。 */
@@ -1209,7 +1304,6 @@ public class StockDocService {
         }
         var mutationGuard = lockProductionDocuments(List.of(id));
         StockDocument d = requireDrawForIssue(id);
-        boolean wasFullyIssued = d.getIssueStatus() == ISSUE_FULL;
         requireOperationWritable(
                 d, "stock_doc:reverse_issue", "无权取消此生产领料单出库");
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
@@ -1243,10 +1337,8 @@ public class StockDocService {
             itemRepo.save(item);
         }
         recomputeIssueStatus(d, itemRepo.findByDocIdOrderByLineNoAsc(id));
-        if (wasFullyIssued && d.getIssueStatus() != ISSUE_FULL) {
-            chainNotice.notifyProductionDrawIssueReversed(
-                    d.getId(), req.getIdempotencyKey());
-        }
+        chainNotice.notifyProductionDrawIssueReversed(
+                d.getId(), req.getIdempotencyKey());
         return detail(id);
     }
 
@@ -3175,7 +3267,8 @@ public class StockDocService {
                 it.getExecutionSegmentId(),
                 it.getExecutionSegmentSalesAllocationId(),
                 it.getSourceDailyReportItemId(), it.getSourceDocNo(), it.getRemark(),
-                it.getBillDate(), it.getIssuedQty(), false);
+                it.getBillDate(), it.getIssuedQty(), false,
+                "DRAW".equals(it.getBillType()) ? requestedDrawQuantity(it.getId()) : null);
     }
 
     private StockDocDetail toDetail(StockDocument d, List<StockDocItemDto> items) {
@@ -3240,7 +3333,7 @@ public class StockDocService {
                 item.getSurplusQty(), item.getCountQty(), item.getPlace(), item.getUpstreamItemId(),
                 item.getExecutionSegmentId(), item.getExecutionSegmentSalesAllocationId(),
                 item.getSourceDailyReportItemId(), item.getSourceDocNo(), item.getRemark(),
-                item.getBillDate(), item.getIssuedQty(), true);
+                item.getBillDate(), item.getIssuedQty(), true, item.getRequestedQty());
     }
 
     /** 经 plan_draw_links 反查本单据关联的生产计划 id（DRAW/FINISHED_IN 溯源跳转用；多计划取单号最早一张）。 */

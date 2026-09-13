@@ -30,6 +30,7 @@ import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -542,7 +543,9 @@ class _WarehouseArrivalBatchReceiptPageState
                 child: _buildForm(context, theme, canRegister),
               ),
       ),
-      bottomNavigationBar: _lines.isEmpty
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _lines.isEmpty
           ? null
           : _buildBottomBar(theme, canRegister),
     );
@@ -982,42 +985,28 @@ class _WarehouseArrivalBatchReceiptPageState
   );
 
   Widget _buildBottomBar(ThemeData theme, bool canRegister) {
-    // 合计不再挂底部操作条（2026-09-11 用户口径：明细表下方已有合计条，
-    // 底部再报一遍是重复），这里只剩取消 / 登记并送检。
-    return SafeArea(
-      child: Container(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          border: Border(
-            top: BorderSide(color: theme.colorScheme.outlineVariant),
-          ),
+    // 2026-09-12 用户口径「跟其他页面一样，悬浮的在右下角」：吸底操作条改
+    // UtenFloatingActionGroup（与品质批量审批页同款），只剩取消 / 登记并送检
+    //（合计在明细表下方的合计条，不在操作条重复）。
+    return UtenFloatingActionGroup(
+      children: [
+        UtenButton(
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
+          onPressed: _saving ? null : () => context.pop(),
+          child: const Text('取消'),
         ),
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            UtenButton(
-              type: UtenButtonType.secondary,
-              size: UtenButtonSize.large,
-              onPressed: _saving ? null : () => context.pop(),
-              child: const Text('取消'),
-            ),
-            const SizedBox(width: UtenSpacing.s12),
-            UtenButton(
-              key: const Key('warehouse-arrival-batch-submit'),
-              // 「点了就往下走一步」的主动作统一红底白字（全站口径）。
-              type: UtenButtonType.danger,
-              size: UtenButtonSize.large,
-              isLoading: _saving,
-              icon: Icons.fact_check_outlined,
-              onPressed: !canRegister || _saving || _lines.isEmpty
-                  ? null
-                  : _save,
-              child: const Text('登记并送检'),
-            ),
-          ],
+        UtenButton(
+          key: const Key('warehouse-arrival-batch-submit'),
+          // 「点了就往下走一步」的主动作统一红底白字（全站口径）。
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          isLoading: _saving,
+          icon: Icons.fact_check_outlined,
+          onPressed: !canRegister || _saving || _lines.isEmpty ? null : _save,
+          child: const Text('登记并送检'),
         ),
-      ),
+      ],
     );
   }
 

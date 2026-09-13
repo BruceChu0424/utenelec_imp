@@ -11,6 +11,7 @@ import com.uten.imp.features.admin.workflow.WorkflowReviewerEligibility;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
@@ -87,7 +88,7 @@ class ProcurementFinanceReconfirmationDecisionTest {
         when(row.getLong("version")).thenReturn(1L);
         when(row.getString("snapshot_hash")).thenReturn(mismatched ? "old-hash" : HashUtil.sha256(json));
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        when(jdbc.query(anyString(), any(RowMapper.class), eq("PURCHASE"), eq(orderId)))
+        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<?>>notNull(), eq("PURCHASE"), eq(orderId)))
                 .thenAnswer(invocation -> List.of(((RowMapper<?>) invocation.getArgument(1)).mapRow(row, 0)));
         when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
         when(jdbc.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(0L);

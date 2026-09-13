@@ -119,14 +119,18 @@ class BusinessDataResetLastResult {
       );
 }
 
-bool isBusinessDataResetOutcomeUncertain(ApiException error) =>
-    error is NetworkException ||
-    error is NetworkTimeoutException ||
-    error.httpStatus == 502 ||
-    error.httpStatus == 504 ||
-    error.code == 'SESSION_CHANGED' ||
-    error.code == 'SESSION_STATE_UNAVAILABLE' ||
-    error.code == 'RESET_PENDING_CONFIRMATION';
+bool isBusinessDataResetOutcomeUncertain(ApiException error) {
+  final status = error.httpStatus;
+  // A commit can succeed before the server loses its connection or response.
+  // Neither a 5xx nor an INTERNAL error proves that this command rolled back.
+  return error is NetworkException ||
+      error is NetworkTimeoutException ||
+      (status != null && status >= 500 && status < 600) ||
+      error.code == 'INTERNAL' ||
+      error.code == 'SESSION_CHANGED' ||
+      error.code == 'SESSION_STATE_UNAVAILABLE' ||
+      error.code == 'RESET_PENDING_CONFIRMATION';
+}
 
 class BusinessDataResetPendingException extends ApiException {
   BusinessDataResetPendingException()

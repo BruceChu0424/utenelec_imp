@@ -15,5 +15,10 @@ public record StockDocQueryFilter(
         LocalDate dateFrom,
         LocalDate dateTo,
         UUID departmentId,
-        Short issueStatus) {
+        Short issueStatus,
+        Boolean productionReturnRequests) {
+    public StockDocQueryFilter(String docType, String keyword, UUID warehouseId, Short status,
+                              LocalDate dateFrom, LocalDate dateTo, UUID departmentId, Short issueStatus) {
+        this(docType,keyword,warehouseId,status,dateFrom,dateTo,departmentId,issueStatus,null);
+    }
 }

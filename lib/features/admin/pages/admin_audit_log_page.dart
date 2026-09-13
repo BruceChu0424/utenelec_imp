@@ -12,11 +12,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
+import 'admin_audit_session_detail_page.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/audit/device_audit_store.dart';
 import '../../../core/network/api_client.dart';
@@ -559,27 +563,12 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   }
 
   Future<void> _pickActor() async {
-    final width = MediaQuery.sizeOf(context).width;
-    final AuditActorOption? picked;
-    if (width < 720) {
-      picked = await showModalBottomSheet<AuditActorOption>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        builder: (_) => const FractionallySizedBox(
-          heightFactor: 0.9,
-          child: AuditActorPicker(),
-        ),
-      );
-    } else {
-      picked = await showDialog<AuditActorOption>(
-        context: context,
-        builder: (_) => const Dialog(
-          clipBehavior: Clip.antiAlias,
-          child: SizedBox(width: 640, height: 640, child: AuditActorPicker()),
-        ),
-      );
-    }
+    final picked = await showUtenAdaptivePanel<AuditActorOption>(
+      context: context,
+      drawerWidth: 640,
+      compactHeightFactor: 0.95,
+      builder: (_) => const AuditActorPicker(),
+    );
     if (picked == null || !mounted) return;
     setState(() {
       _selectedActor = picked;
@@ -874,15 +863,16 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
             enabled: _canLoad && _snapshotId != null,
             label: viewportWidth < 600 ? '导出' : '导出当前结果',
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
-            onPressed: _canLoad ? _refresh : null,
+          UtenAppBarActionButton(
+            icon: Icons.refresh_rounded,
+            label: '刷新',
+            isLoading: _activeLoading,
+            onPressed: _canLoad && !_activeLoading ? _refresh : null,
           ),
         ],
       ),
       body: SafeArea(
-        child: UtenContentContainer(
+        child: UtenContentContainer.wide(
           child: LayoutBuilder(
             builder: (context, constraints) {
               final scrollView = RefreshIndicator(
@@ -1105,24 +1095,24 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                         ),
                       )
                     else if (_canLoad && _sessionMode)
-                      SliverList.separated(
-                        itemCount: sessions.length,
-                        separatorBuilder: (_, _) =>
-                            const SizedBox(height: UtenSpacing.s8),
-                        itemBuilder: (context, index) {
-                          final session = sessions[index];
-                          return AuditSessionCard(
-                            key: ValueKey(session.sessionId),
-                            session: session,
-                            onOpen: () => context.push(
-                              RoutePath.adminAuditSession(
-                                session.sessionId,
-                                snapshotAuditId: _sessionPage!.snapshotAuditId,
-                              ),
-                              extra: session,
-                            ),
-                          );
-                        },
+                      SliverToBoxAdapter(
+                        child: _AuditSessionTable(
+                          sessions: sessions,
+                          onOpen: (session) => showUtenAdaptivePanel<void>(
+                            context: context,
+                            drawerWidth: 1080,
+                            compactHeightFactor: 0.96,
+                            builder: (panelContext) =>
+                                AdminAuditSessionDetailPage(
+                                  sessionId: session.sessionId,
+                                  initialSummary: session,
+                                  routeSnapshotAuditId:
+                                      _sessionPage!.snapshotAuditId,
+                                  onClose: () =>
+                                      Navigator.of(panelContext).pop(),
+                                ),
+                          ),
+                        ),
                       ),
                     if (_canLoad &&
                         _sessionMode &&
@@ -1156,13 +1146,10 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                         child: _AuditEmptyCard(onAdjustScope: _clearScope),
                       )
                     else if (_canLoad && !_sessionMode)
-                      SliverList.separated(
-                        itemCount: items.length,
-                        separatorBuilder: (_, _) =>
-                            const SizedBox(height: UtenSpacing.s8),
-                        itemBuilder: (context, index) => _AuditEventTile(
-                          entry: items[index],
-                          onTap: () => _openDetail(items[index]),
+                      SliverToBoxAdapter(
+                        child: _AuditEventTable(
+                          items: items,
+                          onOpen: _openDetail,
                         ),
                       ),
                     if (_canLoad &&

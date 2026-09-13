@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_edit_page.dart';
@@ -12,6 +13,85 @@ import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 void main() {
+  testWidgets(
+    'selected order products prefill partial shipment and save without warehouse',
+    (tester) async {
+      final api = await _pumpEditor(
+        tester,
+        type: SalesDocType.shipment,
+        initialOrderId: 'source-order',
+        initialOrderItems: 'source-line:7.5',
+        detail: _prefillOrder,
+      );
+      expect(_dropdownWithLabel('仓库'), findsNothing);
+      expect(find.text('库位号'), findsNothing);
+      final quantity = find.byWidgetPredicate(
+        (widget) => widget is TextField && widget.controller?.text == '7.5',
+      );
+      expect(quantity, findsOneWidget);
+      await tester.enterText(quantity, '3');
+      await tester.pump();
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      final body = api.batchBodies.single;
+      expect(body.containsKey('warehouseId'), isFalse);
+      expect(body['idempotencyKey'], isNotEmpty);
+      expect(body['sellerId'], 'seller-1');
+      expect(body['settlementMethodId'], 'settlement-net30');
+      expect(body['lines'], [
+        {'orderItemId': 'source-line', 'qty': '3'},
+      ]);
+      expect(api.lastPutBody, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'unconfirmed multi-shipment creation retries identical intent and then shows created documents',
+    (tester) async {
+      final api = await _pumpEditor(
+        tester,
+        type: SalesDocType.shipment,
+        initialOrderId: 'source-order',
+        initialOrderItems: 'source-line:7.5',
+        detail: _prefillOrder,
+        failBatchOnce: true,
+        batchCount: 2,
+      );
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      expect(find.text('重试确认开单'), findsOneWidget);
+      expect(
+        tester.widget<PopScope>(find.byType(PopScope).first).canPop,
+        isFalse,
+      );
+      await tester.tap(find.text('重试确认开单'));
+      await tester.pumpAndSettle();
+      expect(api.batchBodies, hasLength(2));
+      expect(api.batchBodies.first, api.batchBodies.last);
+      expect(find.text('已生成 2 张出货单'), findsOneWidget);
+      expect(find.text('SH-0'), findsOneWidget);
+      expect(find.text('SH-1'), findsOneWidget);
+      expect(find.text('仓库'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'stale product availability blocks prefill with a recovery message',
+    (tester) async {
+      final api = await _pumpEditor(
+        tester,
+        type: SalesDocType.shipment,
+        initialOrderId: 'source-order',
+        initialOrderItems: 'source-line:11',
+        detail: _prefillOrder,
+      );
+      expect(find.textContaining('可发数量已变化'), findsOneWidget);
+      expect(find.text('保存'), findsNothing);
+      expect(api.batchBodies, isEmpty);
+    },
+  );
   testWidgets(
     'direct customer edit retains exact decimals and stable row revision',
     (tester) async {
@@ -365,12 +445,20 @@ Future<_EditorApi> _pumpEditor(
   required SalesDocType type,
   String? id,
   Map<String, dynamic>? detail,
+  String? initialOrderId,
+  String? initialOrderItems,
+  bool failBatchOnce = false,
+  int batchCount = 1,
   Size size = const Size(1600, 1200),
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
-  final api = _EditorApi(detail);
+  final api = _EditorApi(
+    detail,
+    failBatchOnce: failBatchOnce,
+    batchCount: batchCount,
+  );
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -388,7 +476,12 @@ Future<_EditorApi> _pumpEditor(
           routes: [
             GoRoute(
               path: '/edit',
-              builder: (_, _) => SalesDocEditPage(docType: type, id: id),
+              builder: (_, _) => SalesDocEditPage(
+                docType: type,
+                id: id,
+                initialOrderId: initialOrderId,
+                initialOrderItems: initialOrderItems,
+              ),
             ),
             GoRoute(
               path: '/:rest(.*)',
@@ -420,10 +513,14 @@ class _TestSessionNotifier extends SessionNotifier {
 }
 
 class _EditorApi extends ApiClient {
-  _EditorApi(this.detail) : super(Dio());
+  _EditorApi(this.detail, {this.failBatchOnce = false, this.batchCount = 1})
+    : super(Dio());
 
   final Map<String, dynamic>? detail;
   Map<String, dynamic>? lastPutBody;
+  final bool failBatchOnce;
+  final int batchCount;
+  final batchBodies = <Map<String, dynamic>>[];
 
   @override
   Future<Map<String, dynamic>> get(
@@ -447,6 +544,34 @@ class _EditorApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path.endsWith('/plan-progress') && detail?['id'] == 'source-order') {
+      return [
+        {
+          'orderItemId': 'source-line',
+          'qty': 1000,
+          'shippableQty': 10,
+          'pendingShipmentQty': 0,
+        },
+      ];
+    }
+    return const [];
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> postList(
+    String path, {
+    Object? body,
+  }) async {
+    if (path == '/sales/shipments/batch') {
+      batchBodies.add(Map<String, dynamic>.from(body! as Map));
+      if (failBatchOnce && batchBodies.length == 1) {
+        throw NetworkTimeoutException();
+      }
+      return [
+        for (var i = 0; i < batchCount; i++)
+          {'id': 'shipment-$i', 'billNo': 'SH-$i', 'items': <Object>[]},
+      ];
+    }
     return const [];
   }
 
@@ -456,3 +581,23 @@ class _EditorApi extends ApiClient {
     return detail ?? const {'id': 'saved-order', 'items': <Object>[]};
   }
 }
+
+const _prefillOrder = {
+  'id': 'source-order',
+  'status': 1,
+  'writable': true,
+  'financeConfirmed': true,
+  'clientId': 'client-1',
+  'sellerId': 'seller-1',
+  'settlementMethodId': 'settlement-net30',
+  'items': [
+    {
+      'id': 'source-line',
+      'goodsId': 'goods-1',
+      'qty': 1000,
+      'price': 2,
+      'unitId': 'unit-box',
+      'unitRate': 1,
+    },
+  ],
+};

@@ -130,7 +130,7 @@ public class SalesOrderRevisionService {
         if (node.isObject()) {
             if (node.has("label")) return display(node.path("label"));
             List<String> fields = new ArrayList<>();
-            node.fields().forEachRemaining(field -> fields.add(field.getKey() + ": " + display(field.getValue())));
+            node.properties().forEach(field -> fields.add(field.getKey() + ": " + display(field.getValue())));
             return String.join("；", fields);
         }
         return node.asText();

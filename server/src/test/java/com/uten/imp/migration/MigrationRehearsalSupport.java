@@ -19,13 +19,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 final class MigrationRehearsalSupport {
 
     // 迁移头（新增迁移**必须**同步这两个常量，否则整组迁移演练/引导兼容性用例全红）。
-    // V558 optimizes sparse reset storage work; V544 is unused: 516 migrations.
+    // V564-V569 preserve physical quantities and explicit present/future material ownership;
+    // V570 adds goods price visibility; V571 forwards the later V569 enhancements
+    // while preserving the V569 checksum already applied to existing databases.
     // 同一条耦合的另外两处：ops/reset_business_data.sql 的 fail-closed 白名单，
     // 以及它的两份契约测试——BusinessDataResetSqlContractTest
     // #resetScriptAllowlistCoversTheCurrentMigrationHead 会从迁移目录算出真实头再比对，
     // 漏改时直接告诉你该补哪一行。
-    static final String CURRENT_HEAD_VERSION = "558";
-    static final int CURRENT_MIGRATION_COUNT = 516;
+    static final String CURRENT_HEAD_VERSION = "572";
+    static final int CURRENT_MIGRATION_COUNT = 530;
 
     /** Reviewed post-V238 system/evidence row-count mutations on pre-existing tables. */
     private static final Set<String> EXPECTED_ROW_COUNT_MUTATIONS = Set.of(

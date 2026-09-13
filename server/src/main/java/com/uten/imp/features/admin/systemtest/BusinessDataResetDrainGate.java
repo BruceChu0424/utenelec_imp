@@ -55,17 +55,26 @@ public class BusinessDataResetDrainGate {
         }
         phase = Phase.DRAINING;
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
-        while (inFlight > 0) {
-            long remaining = deadline - System.nanoTime();
-            if (remaining <= 0) {
+        boolean resetStarted = false;
+        try {
+            while (inFlight > 0) {
+                long remaining = deadline - System.nanoTime();
+                if (remaining <= 0) {
+                    return false;
+                }
+                TimeUnit.NANOSECONDS.timedWait(this, remaining);
+            }
+            phase = Phase.RESETTING;
+            resetStarted = true;
+            return true;
+        } finally {
+            // The caller owns endReset only after a successful drain. In
+            // particular, an interrupted wait must not leave all APIs blocked.
+            if (!resetStarted) {
                 phase = Phase.IDLE;
                 notifyAll();
-                return false;
             }
-            TimeUnit.NANOSECONDS.timedWait(this, remaining);
         }
-        phase = Phase.RESETTING;
-        return true;
     }
 
     /** 清空结束（成功或失败）后放行流量。 */

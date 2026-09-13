@@ -2,21 +2,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../models/production_material_usage_source.dart';
+import '../models/production_material_return.dart';
 
 class ProductionMaterialCapabilities {
   const ProductionMaterialCapabilities({
     this.canSettle = false,
     this.canReverse = false,
     this.canClose = false,
+    this.canRequestReturn = false,
   });
   final bool canSettle;
   final bool canReverse;
   final bool canClose;
+  final bool canRequestReturn;
   factory ProductionMaterialCapabilities.fromJson(Map<String, dynamic> json) =>
       ProductionMaterialCapabilities(
         canSettle: json['canSettle'] == true,
         canReverse: json['canReverse'] == true,
         canClose: json['canClose'] == true,
+        canRequestReturn: json['canRequestReturn'] == true,
       );
 }
 
@@ -41,7 +46,13 @@ class ProductionMaterialClearanceRow {
     this.executionSegmentId,
     this.executionSegmentCode,
     this.unitName,
-  });
+    this.pendingReturnQty = 0,
+    double? availableToSettleQty,
+  }) : availableToSettleQty =
+           availableToSettleQty ??
+           (unclearedQty > pendingReturnQty
+               ? unclearedQty - pendingReturnQty
+               : 0);
 
   final String planId;
   final String demandId;
@@ -63,6 +74,8 @@ class ProductionMaterialClearanceRow {
   final double legalWipQty;
   final double maxReturnQty;
   final double unclearedQty;
+  final double pendingReturnQty;
+  final double availableToSettleQty;
   final bool canClose;
 
   factory ProductionMaterialClearanceRow.fromJson(Map<String, dynamic> json) {
@@ -86,6 +99,13 @@ class ProductionMaterialClearanceRow {
       legalWipQty: number('legalWipQty'),
       maxReturnQty: number('maxReturnQty'),
       unclearedQty: number('unclearedQty'),
+      pendingReturnQty: number('pendingReturnQty'),
+      availableToSettleQty: json['availableToSettleQty'] == null
+          ? (number('unclearedQty') - number('pendingReturnQty')).clamp(
+              0,
+              double.infinity,
+            )
+          : number('availableToSettleQty'),
       canClose: json['canClose'] == true,
     );
   }
@@ -110,6 +130,7 @@ class ProductionMaterialSettlementSource {
     this.createdBy,
     this.executionSegmentId,
     this.executionSegmentCode,
+    this.unitName,
   });
 
   final String postingId;
@@ -129,6 +150,7 @@ class ProductionMaterialSettlementSource {
   final String? createdBy;
   final String? executionSegmentId;
   final String? executionSegmentCode;
+  final String? unitName;
 
   factory ProductionMaterialSettlementSource.fromJson(
     Map<String, dynamic> json,
@@ -152,6 +174,7 @@ class ProductionMaterialSettlementSource {
       createdBy: json['createdBy'] as String?,
       executionSegmentId: json['executionSegmentId'] as String?,
       executionSegmentCode: json['executionSegmentCode'] as String?,
+      unitName: json['unitName'] as String?,
     );
   }
 }
@@ -181,6 +204,19 @@ class ProductionMaterialRepository {
   ProductionMaterialRepository(this.api);
 
   final ApiClient api;
+
+  Future<List<ProductionMaterialUsageSource>> materialUsageSources(
+    String planId, {
+    required String executionSegmentId,
+  }) async {
+    final rows = await api.getList(
+      '/stock/production-materials/plans/$planId/material-usage-sources',
+      query: {'executionSegmentId': executionSegmentId},
+    );
+    return rows
+        .map(ProductionMaterialUsageSource.fromJson)
+        .toList(growable: false);
+  }
 
   Future<ProductionMaterialCapabilities> capabilities(
     String planId, {
@@ -258,6 +294,53 @@ class ProductionMaterialRepository {
     );
     return list.map(ProductionMaterialClearanceRow.fromJson).toList();
   }
+
+  String _returnsPath(String planId) =>
+      '/stock/production-materials/plans/$planId/return-requests';
+
+  Future<List<ProductionMaterialReturnSource>> returnSources(
+    String planId, {
+    String? executionSegmentId,
+  }) async => (await api.getList(
+    '${_returnsPath(planId)}/sources',
+    query: {'executionSegmentId': ?executionSegmentId},
+  )).map(ProductionMaterialReturnSource.fromJson).toList();
+
+  Future<List<ProductionMaterialReturnDocument>> returnRequests(
+    String planId, {
+    String? executionSegmentId,
+  }) async => (await api.getList(
+    _returnsPath(planId),
+    query: {'executionSegmentId': ?executionSegmentId},
+  )).map(ProductionMaterialReturnDocument.fromJson).toList();
+
+  Future<List<ProductionMaterialReturnDocument>> requestReturn(
+    String planId, {
+    required String idempotencyKey,
+    required List<Map<String, dynamic>> items,
+    String? executionSegmentId,
+    String? reason,
+  }) async => (await api.postList(
+    _returnsPath(planId),
+    body: {
+      'idempotencyKey': idempotencyKey,
+      'executionSegmentId': ?executionSegmentId,
+      'reason': ?reason,
+      'items': items,
+    },
+  )).map(ProductionMaterialReturnDocument.fromJson).toList();
+
+  Future<ProductionMaterialReturnDocument> cancelReturn(
+    String planId,
+    String documentId, {
+    required String idempotencyKey,
+    required String reason,
+  }) async => ProductionMaterialReturnDocument.fromJson(
+    await api.post(
+      '${_returnsPath(planId)}/$documentId/cancel',
+      body: {'idempotencyKey': idempotencyKey, 'reason': reason},
+    ),
+  );
 }
 
 final productionMaterialRepositoryProvider =

@@ -2,8 +2,16 @@
 
 import contextlib
 import copy
+import hashlib
 import io
+import json
+import os
 from pathlib import Path
+import re
+import shutil
+import subprocess
+import tempfile
+import textwrap
 import unittest
 import urllib.error
 import urllib.parse
@@ -224,6 +232,17 @@ class ReleaseGateTest(unittest.TestCase):
 
 
 class ReleaseWorkflowContractTest(unittest.TestCase):
+    def test_application_identity_and_browser_metadata_share_the_release_checkout(self):
+        workflow = (ROOT / ".github/workflows/simple-release.yml").read_text(encoding="utf-8")
+        build = workflow.split("      - name: Build Flutter Web\n", 1)[1].split("      - name:", 1)[0]
+        self.assertIn('--dart-define="APP_VERSION=$VERSION"', build)
+        self.assertIn('--dart-define="APP_BUILD_ID=$GITHUB_SHA"', build)
+        self.assertIn("node --test web/update_check.test.cjs", build)
+        assembly = workflow.split("      - name: Assemble release directory\n", 1)[1].split("      - name:", 1)[0]
+        self.assertIn('stamp-web \\\n            --web-root dist/web --version "$VERSION" --commit "$GITHUB_SHA"', assembly)
+        self.assertLess(assembly.index("stamp-web"), assembly.index("sha256sum > SHA256SUMS"))
+        self.assertNotIn("publishedAt", assembly)
+
     def test_guard_runs_before_build_and_again_before_credentials_are_exposed(self):
         workflow = (ROOT / ".github/workflows/simple-release.yml").read_text(encoding="utf-8")
         guard = "python3 .github/scripts/release_gate.py --sha"
@@ -248,6 +267,63 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
             content = (ROOT / ".github/workflows" / filename).read_text(encoding="utf-8")
             self.assertIn("name: " + name + "\n", content)
             self.assertIn("branches: [main]", content)
+
+
+@unittest.skipUnless(os.name == "posix", "release assembly uses the Linux CI environment")
+class SimpleReleaseWebAssemblyTest(unittest.TestCase):
+    version = "v2026.09.12-4"
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        for directory in ("server/target", "build/web", "deploy/release"):
+            (self.root / directory).mkdir(parents=True)
+        for jar in ("uten-imp-server-0.1.0.jar", "uten-imp-migrator.jar"):
+            (self.root / "server/target" / jar).write_bytes(b"fixture jar\n")
+        shutil.copyfile(ROOT / "web/index.html", self.root / "build/web/index.html")
+        shutil.copyfile(ROOT / "deploy/release/release_tools.py", self.root / "deploy/release/release_tools.py")
+        # This is the actual pinned Flutter 3.44.2 package output, before stamping.
+        (self.root / "build/web/version.json").write_bytes(
+            b'{"app_name":"uten_imp","version":"0.1.0","build_number":"1","package_name":"uten_imp"}'
+        )
+        workflow = (ROOT / ".github/workflows/simple-release.yml").read_text(encoding="utf-8")
+        block = workflow.split("      - name: Assemble release directory\n", 1)[1].split("      - name:", 1)[0]
+        self.assembly = textwrap.dedent(block.split("        run: |\n", 1)[1])
+
+    def assemble(self):
+        return subprocess.run(
+            ["bash", "-c", self.assembly], cwd=self.root,
+            env={**os.environ, "VERSION": self.version, "GITHUB_SHA": SHA},
+            check=False, capture_output=True, text=True, timeout=30,
+        )
+
+    def test_actual_assembly_stamps_browser_identity_before_the_signed_inventory(self):
+        result = self.assemble()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        dist = self.root / "dist"
+        metadata = json.loads((dist / "web/version.json").read_text(encoding="utf-8"))
+        self.assertEqual({"commitSha": SHA, "product": "uten-imp", "releaseSequence": 20260912004,
+                          "schemaVersion": 1, "version": self.version}, metadata)
+        index = (dist / "web/index.html").read_text(encoding="utf-8")
+        self.assertNotIn("__UTEN_RELEASE_VERSION__", index)
+        self.assertEqual([self.version], re.findall(r'<meta name="uten-release-version" content="([^"]+)">', index))
+        self.assertIn('src="update_check.js"', index)
+        checksums = dict(line.split("  ", 1)[::-1]
+                         for line in (dist / "SHA256SUMS").read_text().splitlines())
+        actual = {"./" + path.relative_to(dist).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+                  for path in dist.rglob("*") if path.is_file() and path.name != "SHA256SUMS"}
+        self.assertEqual(actual, checksums)
+        self.assertFalse(any(path.name.startswith(".uten-web-release") for path in dist.rglob("*")))
+
+    def test_unreviewed_web_metadata_blocks_assembly_before_checksums(self):
+        (self.root / "build/web/version.json").write_text(
+            json.dumps({"version": self.version, "commit": SHA, "publishedAt": "old format"})
+        )
+        result = self.assemble()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("differs from the reviewed Flutter", result.stderr)
+        self.assertFalse((self.root / "dist/SHA256SUMS").exists())
 
 
 if __name__ == "__main__":

@@ -180,6 +180,23 @@ class MaterialAnalysisServiceBehaviorTest {
     }
 
     @Test
+    void returnedSubcontractPreparationCannotCoverNewWaitingInputsAndOpenCoverageIsSharedOnce() {
+        UUID itemId=UUID.randomUUID(),child=UUID.randomUUID();
+        var node=bomNode(itemId,UUID.randomUUID(),UUID.randomUUID(),"component","10",
+                "START","PER_UNIT","1","1",true);
+        var returned=MaterialAnalysisService.planFormalCoverage(List.of(
+                new MaterialAnalysisService.FormalMaterialCoverage(UUID.randomUUID(),itemId,
+                        "component",bd("10"),BigDecimal.ZERO,child)),List.of(node));
+        assertThat(returned.securedTotal(itemId+"|component")).isZero();
+        var reserved=MaterialAnalysisService.planFormalCoverage(List.of(
+                new MaterialAnalysisService.FormalMaterialCoverage(UUID.randomUUID(),itemId,
+                        "component",bd("10"),bd("4"),child),
+                new MaterialAnalysisService.FormalMaterialCoverage(UUID.randomUUID(),itemId,
+                        "component",bd("4"),bd("4"),child)),List.of(node));
+        assertThat(reserved.securedTotal(itemId+"|component")).isEqualByComparingTo("4");
+    }
+
+    @Test
     void siblingWarehousesKeepTheirOwnSafetyFloorAndCannotLendExactPriority() {
         UUID itemId=UUID.randomUUID();
         UUID warehouseA=UUID.randomUUID();
@@ -2215,11 +2232,25 @@ class MaterialAnalysisServiceBehaviorTest {
                 warehouseId, dimension, "BUY", LocalDate.of(2026, 9, 15));
         assertThat(buy.approvedInboundQty()).isEqualByComparingTo("3000");
         assertThat(buy.availableQty()).isEqualByComparingTo("500");
+        assertThat(buy.lateAvailableQty()).isEqualByComparingTo("1000");
         assertThat(buy.refs()).extracting(SharedFutureSupplyRef::route)
                 .containsOnly("BUY");
         var subcontractOnly = index.forMaterial(
                 warehouseId, dimension, "SUBCONTRACT", LocalDate.of(2026, 9, 15));
         assertThat(subcontractOnly.availableQty()).isEqualByComparingTo("1000");
+    }
+
+    @Test
+    void unknownPublicEtaRequiresExplicitAcceptanceEvenWithoutAnOriginalPlanDate() {
+        UUID warehouse=UUID.randomUUID();
+        var dimension=new MaterialAnalysisService.MaterialDimension(UUID.randomUUID(),null,UUID.randomUUID());
+        var source=new SharedFutureSupplyRef("BUY",bd("900"),bd("900"),null,null,null,null,null,false);
+        var index=new MaterialAnalysisService.SharedFutureIndex(Map.of(
+                new MaterialAnalysisService.WarehouseMaterialDimension(warehouse,dimension),
+                MaterialAnalysisService.SharedFutureAggregate.ZERO.plus(source)));
+        var view=index.forMaterial(warehouse,dimension,"BUY",null);
+        assertThat(view.availableQty()).isZero();assertThat(view.lateAvailableQty()).isEqualByComparingTo("900");
+        assertThat(view.refs()).containsExactly(source);
     }
 
     private static MaterialView material(
@@ -2251,7 +2282,8 @@ class MaterialAnalysisServiceBehaviorTest {
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, List.of(), null, null,
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO);
     }
 
     private static MaterialAnalysisService.MaterialRow materialRow(

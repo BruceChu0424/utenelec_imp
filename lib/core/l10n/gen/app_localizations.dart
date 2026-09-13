@@ -5962,7 +5962,7 @@ abstract class AppLocalizations {
   /// No description provided for @productionMaterialRecheckReady.
   ///
   /// In zh, this message translates to:
-  /// **'物料已齐套，已按实际子仓生成领料单。请仓库发料完成后开工。'**
+  /// **'物料已齐套，请在「我的车间任务」勾选并提交领料；仓库发料完成后再开工。'**
   String get productionMaterialRecheckReady;
 
   /// No description provided for @productionMaterialRecheckWaiting.
@@ -6726,6 +6726,1000 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'操作类型 · 业务对象 · 事件类型'**
   String get auditFiltersTitle;
+
+  /// No description provided for @warehouseOutboundBatchAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量{action}'**
+  String warehouseOutboundBatchAction(String action);
+
+  /// No description provided for @warehouseOutboundBatchReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售出库批量核对'**
+  String get warehouseOutboundBatchReview;
+
+  /// No description provided for @warehouseOutboundBatchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请逐项核对所选单据的货品、数量、单位、仓库与建议库位；确认后办理当前作业阶段。'**
+  String get warehouseOutboundBatchHint;
+
+  /// No description provided for @warehouseOutboundBatchConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认对所选 {count} 张单据执行{action}？'**
+  String warehouseOutboundBatchConfirm(String action, int count);
+
+  /// No description provided for @warehouseOutboundBatchStopped.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量作业已停止，请返回刷新核对后重新选择未完成任务。'**
+  String get warehouseOutboundBatchStopped;
+
+  /// No description provided for @warehouseOutboundBatchUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'未收到明确回执，请返回刷新核对当前状态后再处理。'**
+  String get warehouseOutboundBatchUnknown;
+
+  /// No description provided for @warehouseOutboundBatchStale.
+  ///
+  /// In zh, this message translates to:
+  /// **'任务状态或允许动作已变化，请刷新后重新核对。'**
+  String get warehouseOutboundBatchStale;
+
+  /// No description provided for @warehouseOutboundBatchEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'所选任务已不可办理，请返回刷新任务列表。'**
+  String get warehouseOutboundBatchEmpty;
+
+  /// No description provided for @warehouseOutboundBatchResult.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理结果'**
+  String get warehouseOutboundBatchResult;
+
+  /// No description provided for @warehouseOutboundBatchDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已完成'**
+  String get warehouseOutboundBatchDone;
+
+  /// No description provided for @warehouseOutboundBatchPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'未处理'**
+  String get warehouseOutboundBatchPending;
+
+  /// No description provided for @warehouseOutboundBatchFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'失败，请核对'**
+  String get warehouseOutboundBatchFailed;
+
+  /// No description provided for @warehouseOutboundBatchSelection.
+  ///
+  /// In zh, this message translates to:
+  /// **'已选 {count} 张单据'**
+  String warehouseOutboundBatchSelection(int count);
+
+  /// No description provided for @warehouseOutboundBatchSelect.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先选择可办理任务'**
+  String get warehouseOutboundBatchSelect;
+
+  /// No description provided for @warehouseOutboundBatchReason.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理说明'**
+  String get warehouseOutboundBatchReason;
+
+  /// No description provided for @warehouseOutboundBatchReasonRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写具体说明'**
+  String get warehouseOutboundBatchReasonRequired;
+
+  /// No description provided for @warehouseOutboundBillNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'出货单号'**
+  String get warehouseOutboundBillNo;
+
+  /// No description provided for @warehouseOutboundClient.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户'**
+  String get warehouseOutboundClient;
+
+  /// No description provided for @warehouseOutboundWarehouse.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库'**
+  String get warehouseOutboundWarehouse;
+
+  /// No description provided for @warehouseOutboundStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库作业'**
+  String get warehouseOutboundStatus;
+
+  /// No description provided for @warehouseOutboundLineNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'行号'**
+  String get warehouseOutboundLineNo;
+
+  /// No description provided for @warehouseOutboundGoodsCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品编码'**
+  String get warehouseOutboundGoodsCode;
+
+  /// No description provided for @warehouseOutboundGoodsName.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品名称'**
+  String get warehouseOutboundGoodsName;
+
+  /// No description provided for @warehouseOutboundPlaceHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前建议库位'**
+  String get warehouseOutboundPlaceHint;
+
+  /// No description provided for @warehouseOutboundColor.
+  ///
+  /// In zh, this message translates to:
+  /// **'颜色'**
+  String get warehouseOutboundColor;
+
+  /// No description provided for @warehouseOutboundUnit.
+  ///
+  /// In zh, this message translates to:
+  /// **'单位'**
+  String get warehouseOutboundUnit;
+
+  /// No description provided for @warehouseOutboundQuantity.
+  ///
+  /// In zh, this message translates to:
+  /// **'出货数量'**
+  String get warehouseOutboundQuantity;
+
+  /// No description provided for @warehouseOutboundWeight.
+  ///
+  /// In zh, this message translates to:
+  /// **'重量'**
+  String get warehouseOutboundWeight;
+
+  /// No description provided for @warehouseOutboundParcelQuantity.
+  ///
+  /// In zh, this message translates to:
+  /// **'件数'**
+  String get warehouseOutboundParcelQuantity;
+
+  /// No description provided for @warehouseOutboundCartonCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'箱数'**
+  String get warehouseOutboundCartonCount;
+
+  /// No description provided for @warehouseOutboundClientProductCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户产品号'**
+  String get warehouseOutboundClientProductCode;
+
+  /// No description provided for @warehouseOutboundClientModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户型号'**
+  String get warehouseOutboundClientModel;
+
+  /// No description provided for @warehouseOutboundSourceOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源订单'**
+  String get warehouseOutboundSourceOrder;
+
+  /// No description provided for @warehouseOutboundStartPicking.
+  ///
+  /// In zh, this message translates to:
+  /// **'开始拣货'**
+  String get warehouseOutboundStartPicking;
+
+  /// No description provided for @warehouseOutboundFinishPicking.
+  ///
+  /// In zh, this message translates to:
+  /// **'拣货完成'**
+  String get warehouseOutboundFinishPicking;
+
+  /// No description provided for @warehouseOutboundHandOver.
+  ///
+  /// In zh, this message translates to:
+  /// **'交接出库'**
+  String get warehouseOutboundHandOver;
+
+  /// No description provided for @warehouseOutboundRestorePending.
+  ///
+  /// In zh, this message translates to:
+  /// **'恢复待拣货'**
+  String get warehouseOutboundRestorePending;
+
+  /// No description provided for @warehouseStockOutboundTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量出库详情'**
+  String get warehouseStockOutboundTitle;
+
+  /// No description provided for @warehouseStockOutboundAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量出库'**
+  String get warehouseStockOutboundAction;
+
+  /// No description provided for @warehouseStockOutboundConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认批量出库'**
+  String get warehouseStockOutboundConfirm;
+
+  /// No description provided for @warehouseStockOutboundConfirmMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认对所选 {count} 张单据按表内数量出库？\n每张单据独立审核并扣减实际仓库库存，记录当前员工的审核责任。发生异常时停止后续操作，已成功单据保留结果。'**
+  String warehouseStockOutboundConfirmMessage(int count);
+
+  /// No description provided for @warehouseStockOutboundHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对货品、出库数量、单位和实际仓库。同一单据的明细一同勾选、整单出库；如需改量，请先返回编辑草稿。'**
+  String get warehouseStockOutboundHint;
+
+  /// No description provided for @warehouseStockOutboundLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'出库详情加载失败，请重试。'**
+  String get warehouseStockOutboundLoadFailed;
+
+  /// No description provided for @warehouseStockOutboundCompleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已完成 {count} 张单据出库'**
+  String warehouseStockOutboundCompleted(int count);
+
+  /// No description provided for @warehouseStockOutboundDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已出库'**
+  String get warehouseStockOutboundDone;
+
+  /// No description provided for @warehouseStockOutboundUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前不可办理'**
+  String get warehouseStockOutboundUnavailable;
+
+  /// No description provided for @warehouseStockOutboundProcessing.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在确认出库'**
+  String get warehouseStockOutboundProcessing;
+
+  /// No description provided for @warehouseStockOutboundBillNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'出库单号'**
+  String get warehouseStockOutboundBillNo;
+
+  /// No description provided for @warehouseStockOutboundPlace.
+  ///
+  /// In zh, this message translates to:
+  /// **'实际库位'**
+  String get warehouseStockOutboundPlace;
+
+  /// No description provided for @warehouseStockOutboundQuantity.
+  ///
+  /// In zh, this message translates to:
+  /// **'出库数量'**
+  String get warehouseStockOutboundQuantity;
+
+  /// No description provided for @warehouseStockOutboundSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源单据'**
+  String get warehouseStockOutboundSource;
+
+  /// No description provided for @warehouseStockOutboundRemark.
+  ///
+  /// In zh, this message translates to:
+  /// **'备注'**
+  String get warehouseStockOutboundRemark;
+
+  /// No description provided for @warehouseSubcontractOutboundBatchTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量出库详情'**
+  String get warehouseSubcontractOutboundBatchTitle;
+
+  /// No description provided for @warehouseSubcontractOutboundBatchAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量出库'**
+  String get warehouseSubcontractOutboundBatchAction;
+
+  /// No description provided for @warehouseSubcontractOutboundBatchConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认批量出库'**
+  String get warehouseSubcontractOutboundBatchConfirm;
+
+  /// No description provided for @warehouseSubcontractOutboundReviewHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请逐行核对本次出库数量、重量和实际仓库，再确认出库。'**
+  String get warehouseSubcontractOutboundReviewHint;
+
+  /// No description provided for @warehouseSubcontractOutboundBatchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'明细按整张出库单勾选，本次数量可改小分批出库。各单独立保存并审核，保留已完成结果；发生异常时暂停，核实后继续尚未执行的单据。'**
+  String get warehouseSubcontractOutboundBatchHint;
+
+  /// No description provided for @warehouseSubcontractOutboundDocuments.
+  ///
+  /// In zh, this message translates to:
+  /// **'单据信息'**
+  String get warehouseSubcontractOutboundDocuments;
+
+  /// No description provided for @warehouseSubcontractOutboundLines.
+  ///
+  /// In zh, this message translates to:
+  /// **'出库明细'**
+  String get warehouseSubcontractOutboundLines;
+
+  /// No description provided for @warehouseSubcontractOutboundOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源订单'**
+  String get warehouseSubcontractOutboundOrder;
+
+  /// No description provided for @warehouseSubcontractOutboundSupplier.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外商'**
+  String get warehouseSubcontractOutboundSupplier;
+
+  /// No description provided for @warehouseSubcontractOutboundWarehouse.
+  ///
+  /// In zh, this message translates to:
+  /// **'发出仓'**
+  String get warehouseSubcontractOutboundWarehouse;
+
+  /// No description provided for @warehouseSubcontractOutboundWorker.
+  ///
+  /// In zh, this message translates to:
+  /// **'经办人'**
+  String get warehouseSubcontractOutboundWorker;
+
+  /// No description provided for @warehouseSubcontractOutboundDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'出库日期'**
+  String get warehouseSubcontractOutboundDate;
+
+  /// No description provided for @warehouseSubcontractOutboundDeliveryDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'交货日期'**
+  String get warehouseSubcontractOutboundDeliveryDate;
+
+  /// No description provided for @warehouseSubcontractOutboundGoods.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品'**
+  String get warehouseSubcontractOutboundGoods;
+
+  /// No description provided for @warehouseSubcontractOutboundColor.
+  ///
+  /// In zh, this message translates to:
+  /// **'颜色'**
+  String get warehouseSubcontractOutboundColor;
+
+  /// No description provided for @warehouseSubcontractOutboundUnit.
+  ///
+  /// In zh, this message translates to:
+  /// **'单位'**
+  String get warehouseSubcontractOutboundUnit;
+
+  /// No description provided for @warehouseSubcontractOutboundPlanned.
+  ///
+  /// In zh, this message translates to:
+  /// **'计划数量'**
+  String get warehouseSubcontractOutboundPlanned;
+
+  /// No description provided for @warehouseSubcontractOutboundPrepared.
+  ///
+  /// In zh, this message translates to:
+  /// **'已备齐'**
+  String get warehouseSubcontractOutboundPrepared;
+
+  /// No description provided for @warehouseSubcontractOutboundIssued.
+  ///
+  /// In zh, this message translates to:
+  /// **'已出库'**
+  String get warehouseSubcontractOutboundIssued;
+
+  /// No description provided for @warehouseSubcontractOutboundAvailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次最多'**
+  String get warehouseSubcontractOutboundAvailable;
+
+  /// No description provided for @warehouseSubcontractOutboundQuantity.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次出库'**
+  String get warehouseSubcontractOutboundQuantity;
+
+  /// No description provided for @warehouseSubcontractOutboundWeight.
+  ///
+  /// In zh, this message translates to:
+  /// **'实际重量'**
+  String get warehouseSubcontractOutboundWeight;
+
+  /// No description provided for @warehouseSubcontractOutboundPlace.
+  ///
+  /// In zh, this message translates to:
+  /// **'库位'**
+  String get warehouseSubcontractOutboundPlace;
+
+  /// No description provided for @warehouseSubcontractOutboundStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理结果'**
+  String get warehouseSubcontractOutboundStatus;
+
+  /// No description provided for @warehouseSubcontractOutboundPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'待出库'**
+  String get warehouseSubcontractOutboundPending;
+
+  /// No description provided for @warehouseSubcontractOutboundDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已出库'**
+  String get warehouseSubcontractOutboundDone;
+
+  /// No description provided for @warehouseSubcontractOutboundPaused.
+  ///
+  /// In zh, this message translates to:
+  /// **'已暂停，请核实'**
+  String get warehouseSubcontractOutboundPaused;
+
+  /// No description provided for @warehouseSubcontractOutboundUncertain.
+  ///
+  /// In zh, this message translates to:
+  /// **'回执尚未确定，请刷新核实后再继续。'**
+  String get warehouseSubcontractOutboundUncertain;
+
+  /// No description provided for @warehouseSubcontractOutboundChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'单据已被修改或处理，请返回刷新后重新选择。'**
+  String get warehouseSubcontractOutboundChanged;
+
+  /// No description provided for @warehouseSubcontractOutboundSelectRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请至少选择一项出库任务。'**
+  String get warehouseSubcontractOutboundSelectRequired;
+
+  /// No description provided for @warehouseSubcontractOutboundSelectionLimit.
+  ///
+  /// In zh, this message translates to:
+  /// **'每批最多选择 50 项任务。'**
+  String get warehouseSubcontractOutboundSelectionLimit;
+
+  /// No description provided for @warehouseSubcontractOutboundWarehouseRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择发出仓。'**
+  String get warehouseSubcontractOutboundWarehouseRequired;
+
+  /// No description provided for @warehouseSubcontractOutboundQuantityInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次出库数量必须大于 0 且不能超过本次最多数量。'**
+  String get warehouseSubcontractOutboundQuantityInvalid;
+
+  /// No description provided for @warehouseSubcontractOutboundWeightInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'实际重量须为空或大于 0 的数字。'**
+  String get warehouseSubcontractOutboundWeightInvalid;
+
+  /// No description provided for @warehouseSubcontractOutboundLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'出库详情加载失败，请重试。'**
+  String get warehouseSubcontractOutboundLoadFailed;
+
+  /// No description provided for @warehouseSubcontractOutboundConfirmResponsibility.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认后，系统将以当前登录员工记录本次出库审核责任。'**
+  String get warehouseSubcontractOutboundConfirmResponsibility;
+
+  /// No description provided for @warehouseSubcontractOutboundSubcontractEffects.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核后，目标件从所选仓库实际出库并交委外商加工；回厂后仍需登记和品质检查。'**
+  String get warehouseSubcontractOutboundSubcontractEffects;
+
+  /// No description provided for @warehouseSubcontractOutboundBatchResult.
+  ///
+  /// In zh, this message translates to:
+  /// **'已完成 {done} 项，共 {total} 项。'**
+  String warehouseSubcontractOutboundBatchResult(int done, int total);
+
+  /// No description provided for @warehouseSubcontractOutboundContinue.
+  ///
+  /// In zh, this message translates to:
+  /// **'继续未执行项'**
+  String get warehouseSubcontractOutboundContinue;
+
+  /// No description provided for @warehouseSubcontractOutboundVerify.
+  ///
+  /// In zh, this message translates to:
+  /// **'核实处理结果'**
+  String get warehouseSubcontractOutboundVerify;
+
+  /// No description provided for @warehouseSubcontractOutboundSelectAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'全选出库明细'**
+  String get warehouseSubcontractOutboundSelectAll;
+
+  /// No description provided for @warehouseSubcontractOutboundDraft.
+  ///
+  /// In zh, this message translates to:
+  /// **'出库草稿'**
+  String get warehouseSubcontractOutboundDraft;
+
+  /// No description provided for @warehouseSubcontractOutboundRemark.
+  ///
+  /// In zh, this message translates to:
+  /// **'备注'**
+  String get warehouseSubcontractOutboundRemark;
+
+  /// No description provided for @warehouseSubcontractOutboundNoLines.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前没有可出库明细'**
+  String get warehouseSubcontractOutboundNoLines;
+
+  /// No description provided for @warehouseSubcontractOutboundLegacyParent.
+  ///
+  /// In zh, this message translates to:
+  /// **'历史父件'**
+  String get warehouseSubcontractOutboundLegacyParent;
+
+  /// No description provided for @warehouseStockOutboundConfirmSingle.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认出库'**
+  String get warehouseStockOutboundConfirmSingle;
+
+  /// No description provided for @warehouseStockOutboundSeries.
+  ///
+  /// In zh, this message translates to:
+  /// **'系列'**
+  String get warehouseStockOutboundSeries;
+
+  /// No description provided for @warehouseSubcontractOutboundDraftsGenerated.
+  ///
+  /// In zh, this message translates to:
+  /// **'出库草稿已生成，请重新核对各张单据的实际仓库和数量，再确认出库。'**
+  String get warehouseSubcontractOutboundDraftsGenerated;
+
+  /// No description provided for @warehouseSubcontractOutboundPrepareDrafts.
+  ///
+  /// In zh, this message translates to:
+  /// **'生成草稿并核对'**
+  String get warehouseSubcontractOutboundPrepareDrafts;
+
+  /// No description provided for @warehouseOutboundBatchDocuments.
+  ///
+  /// In zh, this message translates to:
+  /// **'单据信息'**
+  String get warehouseOutboundBatchDocuments;
+
+  /// No description provided for @warehouseOutboundBatchLines.
+  ///
+  /// In zh, this message translates to:
+  /// **'出库明细'**
+  String get warehouseOutboundBatchLines;
+
+  /// No description provided for @warehouseOutboundBatchBillDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'业务日期'**
+  String get warehouseOutboundBatchBillDate;
+
+  /// No description provided for @warehouseOutboundBatchWorker.
+  ///
+  /// In zh, this message translates to:
+  /// **'经办人'**
+  String get warehouseOutboundBatchWorker;
+
+  /// No description provided for @warehouseOutboundBatchMaker.
+  ///
+  /// In zh, this message translates to:
+  /// **'制单员'**
+  String get warehouseOutboundBatchMaker;
+
+  /// No description provided for @warehouseOutboundBatchCreatedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'制单时间'**
+  String get warehouseOutboundBatchCreatedAt;
+
+  /// No description provided for @warehouseOutboundBatchUpdatedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'作业更新'**
+  String get warehouseOutboundBatchUpdatedAt;
+
+  /// No description provided for @warehouseSubcontractOutboundDocumentRemark.
+  ///
+  /// In zh, this message translates to:
+  /// **'单据备注'**
+  String get warehouseSubcontractOutboundDocumentRemark;
+
+  /// No description provided for @warehouseSubcontractOutboundLineRemark.
+  ///
+  /// In zh, this message translates to:
+  /// **'明细备注'**
+  String get warehouseSubcontractOutboundLineRemark;
+
+  /// No description provided for @warehouseSubcontractOutboundWarehouseSyncHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'默认带出原出库单的实际仓库。同一出库单的所有明细共用发出仓，修改后同步更新。'**
+  String get warehouseSubcontractOutboundWarehouseSyncHint;
+
+  /// No description provided for @warehouseSubcontractOutboundDocumentRemarkHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'同一出库单共用此备注，修改后在该单所有明细同步显示。单行说明填写在明细备注中。'**
+  String get warehouseSubcontractOutboundDocumentRemarkHint;
+
+  /// No description provided for @productionBatchTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'分批生产领料'**
+  String get productionBatchTitle;
+
+  /// No description provided for @productionBatchPermission.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前账号没有安排车间分批领料的权限'**
+  String get productionBatchPermission;
+
+  /// No description provided for @productionBatchSelectTask.
+  ///
+  /// In zh, this message translates to:
+  /// **'请从我的车间任务选择待料工单'**
+  String get productionBatchSelectTask;
+
+  /// No description provided for @productionBatchInvalidQuantity.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入大于 0 的数量，最多 4 位小数'**
+  String get productionBatchInvalidQuantity;
+
+  /// No description provided for @productionBatchPreviewFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'可生产批量核对失败，请重试'**
+  String get productionBatchPreviewFailed;
+
+  /// No description provided for @productionBatchReplay.
+  ///
+  /// In zh, this message translates to:
+  /// **'本批已安排，未重复生成任务'**
+  String get productionBatchReplay;
+
+  /// No description provided for @productionBatchSubmittedReuse.
+  ///
+  /// In zh, this message translates to:
+  /// **'已安排本批 {quantity} {unit}，沿用前批已领物料，可回车间任务开工'**
+  String productionBatchSubmittedReuse(String quantity, String unit);
+
+  /// No description provided for @productionBatchSubmitted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已提交本批 {quantity} {unit} 领料；剩余 {remaining} {unit} 留待后续安排'**
+  String productionBatchSubmitted(
+    String quantity,
+    String unit,
+    String remaining,
+  );
+
+  /// No description provided for @productionBatchUncertain.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂未确认本批提交结果，请用“{action}”继续确认。当前批量和汇总已保留。'**
+  String productionBatchUncertain(String action);
+
+  /// No description provided for @productionBatchRejected.
+  ///
+  /// In zh, this message translates to:
+  /// **'{message}。请重新核对本批数量和领料汇总。'**
+  String productionBatchRejected(String message);
+
+  /// No description provided for @productionBatchRetryRequest.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试本批领料'**
+  String get productionBatchRetryRequest;
+
+  /// No description provided for @productionBatchRetryArrange.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试本批安排'**
+  String get productionBatchRetryArrange;
+
+  /// No description provided for @productionBatchConfirmRequest.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认本批领料'**
+  String get productionBatchConfirmRequest;
+
+  /// No description provided for @productionBatchConfirmArrange.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认本批生产'**
+  String get productionBatchConfirmArrange;
+
+  /// No description provided for @productionBatchSubmitting.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在提交本批安排'**
+  String get productionBatchSubmitting;
+
+  /// No description provided for @productionBatchSubmittingHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在核对本批数量和物料来源，请稍候。'**
+  String get productionBatchSubmittingHint;
+
+  /// No description provided for @productionBatchProductFallback.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产产品待确认'**
+  String get productionBatchProductFallback;
+
+  /// No description provided for @productionBatchPlan.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产计划'**
+  String get productionBatchPlan;
+
+  /// No description provided for @productionBatchWorkOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产工单'**
+  String get productionBatchWorkOrder;
+
+  /// No description provided for @productionBatchOriginal.
+  ///
+  /// In zh, this message translates to:
+  /// **'任务待生产'**
+  String get productionBatchOriginal;
+
+  /// No description provided for @productionBatchOriginalHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前工单的待生产数量'**
+  String get productionBatchOriginalHint;
+
+  /// No description provided for @productionBatchReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前可齐套上限'**
+  String get productionBatchReady;
+
+  /// No description provided for @productionBatchReadyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅按现有合格实物计算'**
+  String get productionBatchReadyHint;
+
+  /// No description provided for @productionBatchSelected.
+  ///
+  /// In zh, this message translates to:
+  /// **'本批已核对量'**
+  String get productionBatchSelected;
+
+  /// No description provided for @productionBatchSelectedHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认后安排的本批数量'**
+  String get productionBatchSelectedHint;
+
+  /// No description provided for @productionBatchRemaining.
+  ///
+  /// In zh, this message translates to:
+  /// **'安排后剩余'**
+  String get productionBatchRemaining;
+
+  /// No description provided for @productionBatchRemainingHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'留待后续安排'**
+  String get productionBatchRemainingHint;
+
+  /// No description provided for @productionBatchUnitUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'单位待确认'**
+  String get productionBatchUnitUnknown;
+
+  /// No description provided for @productionBatchSetup.
+  ///
+  /// In zh, this message translates to:
+  /// **'本批生产安排'**
+  String get productionBatchSetup;
+
+  /// No description provided for @productionBatchQuantity.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次生产数量'**
+  String get productionBatchQuantity;
+
+  /// No description provided for @productionBatchQuantityHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'最多可安排 {quantity} {unit}。修改后需重新核对领料汇总，再确认提交。'**
+  String productionBatchQuantityHint(String quantity, String unit);
+
+  /// No description provided for @productionBatchReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新核对领料汇总'**
+  String get productionBatchReview;
+
+  /// No description provided for @productionBatchReviewReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'本批已核对'**
+  String get productionBatchReviewReady;
+
+  /// No description provided for @productionBatchNeedsReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'数量已修改，需重新核对'**
+  String get productionBatchNeedsReview;
+
+  /// No description provided for @productionBatchNeedsReviewHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'下方为上次核对的明细，重新核对后才能确认本批。'**
+  String get productionBatchNeedsReviewHint;
+
+  /// No description provided for @productionBatchNoKit.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂不能安排本批'**
+  String get productionBatchNoKit;
+
+  /// No description provided for @productionBatchNoKitHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'现有物料尚不能配齐一个生产批次，请等待实际入库后重新核对'**
+  String get productionBatchNoKitHint;
+
+  /// No description provided for @productionBatchReuse.
+  ///
+  /// In zh, this message translates to:
+  /// **'本批无需新增领料'**
+  String get productionBatchReuse;
+
+  /// No description provided for @productionBatchReuseHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'本批沿用前批已领物料，无需再次领料；确认后回车间任务开工。'**
+  String get productionBatchReuseHint;
+
+  /// No description provided for @productionBatchFlow.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认本批领料 → 仓库发齐 → 车间开工'**
+  String get productionBatchFlow;
+
+  /// No description provided for @productionBatchRemainingText.
+  ///
+  /// In zh, this message translates to:
+  /// **'本批安排后，剩余 {quantity} {unit} 留待后续安排。'**
+  String productionBatchRemainingText(String quantity, String unit);
+
+  /// No description provided for @productionBatchAllRemaining.
+  ///
+  /// In zh, this message translates to:
+  /// **'本批包含当前工单全部待生产数量。'**
+  String get productionBatchAllRemaining;
+
+  /// No description provided for @productionBatchMaterials.
+  ///
+  /// In zh, this message translates to:
+  /// **'本批领料明细'**
+  String get productionBatchMaterials;
+
+  /// No description provided for @productionBatchMaterialCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'{lines} 行物料 · {warehouses} 个领料仓'**
+  String productionBatchMaterialCount(int lines, int warehouses);
+
+  /// No description provided for @productionBatchWarehouse.
+  ///
+  /// In zh, this message translates to:
+  /// **'实际领料仓'**
+  String get productionBatchWarehouse;
+
+  /// No description provided for @productionBatchGoodsCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'物料编码'**
+  String get productionBatchGoodsCode;
+
+  /// No description provided for @productionBatchGoodsName.
+  ///
+  /// In zh, this message translates to:
+  /// **'物料名称'**
+  String get productionBatchGoodsName;
+
+  /// No description provided for @productionBatchColor.
+  ///
+  /// In zh, this message translates to:
+  /// **'颜色'**
+  String get productionBatchColor;
+
+  /// No description provided for @productionBatchUnit.
+  ///
+  /// In zh, this message translates to:
+  /// **'领料单位'**
+  String get productionBatchUnit;
+
+  /// No description provided for @productionBatchMaterialQuantity.
+  ///
+  /// In zh, this message translates to:
+  /// **'本批领料数量'**
+  String get productionBatchMaterialQuantity;
+
+  /// No description provided for @productionBatchMaterialQuantityHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅为本批需要新增领取的数量，按本行单位和实际仓库办理。'**
+  String get productionBatchMaterialQuantityHint;
+
+  /// No description provided for @productionBatchNoAdditionalMaterials.
+  ///
+  /// In zh, this message translates to:
+  /// **'本批无需新增领料，沿已有物料来源安排生产'**
+  String get productionBatchNoAdditionalMaterials;
+
+  /// No description provided for @productionBatchConfirmedSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'本批 {quantity} {unit}'**
+  String productionBatchConfirmedSummary(String quantity, String unit);
 }
 
 class _AppLocalizationsDelegate

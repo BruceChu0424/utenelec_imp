@@ -10,6 +10,7 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
@@ -171,9 +172,11 @@ class _QualityInspectionRecordsPageState
   }
 
   Future<void> _openDetail(QualityInspectionRecord record) async {
-    await showDialog<void>(
+    await showUtenAdaptivePanel<void>(
       context: context,
-      builder: (_) => _QualityInspectionRecordDetailDialog(record: record),
+      drawerWidth: 960,
+      compactHeightFactor: 0.95,
+      builder: (_) => _QualityInspectionRecordDetailPanel(record: record),
     );
   }
 
@@ -664,18 +667,18 @@ class _InspectionRecordCard extends StatelessWidget {
   }
 }
 
-class _QualityInspectionRecordDetailDialog extends ConsumerStatefulWidget {
-  const _QualityInspectionRecordDetailDialog({required this.record});
+class _QualityInspectionRecordDetailPanel extends ConsumerStatefulWidget {
+  const _QualityInspectionRecordDetailPanel({required this.record});
 
   final QualityInspectionRecord record;
 
   @override
-  ConsumerState<_QualityInspectionRecordDetailDialog> createState() =>
-      _QualityInspectionRecordDetailDialogState();
+  ConsumerState<_QualityInspectionRecordDetailPanel> createState() =>
+      _QualityInspectionRecordDetailPanelState();
 }
 
-class _QualityInspectionRecordDetailDialogState
-    extends ConsumerState<_QualityInspectionRecordDetailDialog> {
+class _QualityInspectionRecordDetailPanelState
+    extends ConsumerState<_QualityInspectionRecordDetailPanel> {
   QualityInspectionRecord? _record;
   bool _loading = true;
   String? _error;
@@ -720,44 +723,42 @@ class _QualityInspectionRecordDetailDialogState
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    return AlertDialog(
+    return Column(
       key: ValueKey('quality-inspection-record-${widget.record.recordId}'),
-      insetPadding: EdgeInsets.symmetric(
-        horizontal: size.width < 600 ? UtenSpacing.s12 : UtenSpacing.s40,
-        vertical: UtenSpacing.s24,
-      ),
-      title: const Text('检测记录详情'),
-      // 内容盒子给死宽高（不是 maxWidth/maxHeight）：AlertDialog 会给 content 套
-      // IntrinsicWidth 向下求固有尺寸，而表格内部有 LayoutBuilder——它不支持被求
-      // 固有尺寸，会直接抛异常。定尺寸盒子在这一层就能答出固有尺寸，求值链不会再
-      // 钻进表格。两个尺寸都会被弹窗可用空间夹住，故这里只需给出上限值；本弹层四段
-      // 明细恒高于一屏，固定高度不会留白。
-      content: SizedBox(
-        width: size.width < 760 ? size.width : 760,
-        height: size.height * 0.72,
-        child: _loading
-            ? const SizedBox(
-                height: 360,
-                child: Center(
-                  child: CircularProgressIndicator(strokeWidth: 2.5),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s16),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '检测记录详情',
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
-              )
-            : _error != null
-            ? SizedBox(
-                height: 360,
-                child: UtenEmpty.error(
+              ),
+              UtenAppBarActionButton(
+                label: '关闭',
+                icon: Icons.close_rounded,
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
+              : _error != null
+              ? UtenEmpty.error(
                   message: _error,
                   actionLabel: '重新加载',
                   onAction: _load,
+                )
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(UtenSpacing.s16),
+                  child: _buildDetail(_record!),
                 ),
-              )
-            : SingleChildScrollView(child: _buildDetail(_record!)),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('关闭'),
         ),
       ],
     );

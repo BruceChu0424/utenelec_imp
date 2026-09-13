@@ -54,6 +54,7 @@ import '../../features/finance/pages/finance_procurement_approval_tasks_page.dar
 import '../../features/finance/pages/finance_sales_order_confirmation_page.dart';
 import '../../features/finance/pages/finance_sales_order_review_page.dart';
 import '../../features/finance/pages/finance_sales_shipment_audit_page.dart';
+import '../../features/finance/pages/finance_sales_shipment_audit_review_page.dart';
 import '../../features/finance/pages/finance_reconciliation_page.dart';
 import '../../features/finance/pages/finance_report_table_page.dart';
 import '../../features/finance/pages/finance_ar_ap_overview_page.dart';
@@ -108,6 +109,7 @@ import '../../features/quality/pages/production_fqc_inspections_page.dart';
 import '../../features/quality/models/quality_inspection_record.dart';
 import '../../shared/models/procurement_inbound.dart';
 import '../../features/warehouse/pages/stock_doc_detail_page.dart';
+import '../../features/warehouse/pages/production_draw_batch_issue_page.dart';
 import '../../features/warehouse/pages/stock_doc_edit_page.dart';
 import '../../features/warehouse/pages/stock_doc_list_page.dart';
 import '../../features/warehouse/config/warehouse_report_config.dart';
@@ -983,6 +985,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'warehouse-production-finished-inbound-tasks',
             builder: (_, _) => const ProductionFinishedInboundTasksPage(),
           ),
+          GoRoute(
+            path: RouteName.warehouseProductionDrawBatchIssue,
+            name: 'warehouse-production-draw-batch-issue',
+            builder: (_, state) => ProductionDrawBatchIssuePage(
+              documentIds: (state.uri.queryParameters['documentIds'] ?? '')
+                  .split(',')
+                  .map((id) => id.trim())
+                  .where((id) => id.isNotEmpty)
+                  .toList(),
+            ),
+          ),
           // 待点收多选「批量全量点收入库」页（2026-09-12 弹窗改页）。
           GoRoute(
             path: RouteName.warehouseProductionFinishedBatchStockIn,
@@ -1131,7 +1144,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.warehouseOutboundTasks,
             name: 'warehouse-outbound-tasks',
-            builder: (_, _) => const WarehouseOutboundTaskCenterPage(),
+            builder: (_, state) => WarehouseOutboundTaskCenterPage(
+              initialSection: state.uri.queryParameters['section'],
+              initialView: state.uri.queryParameters['view'],
+            ),
           ),
           GoRoute(
             path: RouteName.warehouseInboundTasks,
@@ -1236,6 +1252,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             redirect: _rejectUnknownSalesDoc,
             builder: (_, s) => SalesDocEditPage(
               docType: SalesDocType.byPath(s.pathParameters['seg']!),
+              initialOrderId: s.uri.queryParameters['sourceOrderId'],
+              initialOrderItems: s.uri.queryParameters['orderItems'],
             ),
           ),
           GoRoute(
@@ -1402,6 +1420,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.financeSalesShipmentAudit,
             name: 'finance-sales-shipment-audit',
             builder: (_, _) => const FinanceSalesShipmentAuditPage(),
+          ),
+          GoRoute(
+            path: RouteName.financeSalesShipmentAuditReview,
+            name: 'finance-sales-shipment-audit-review',
+            builder: (_, state) => FinanceSalesShipmentAuditReviewPage(
+              id: state.pathParameters['id']!,
+            ),
           ),
           GoRoute(
             path: RouteName.financeArrivalExceptions,

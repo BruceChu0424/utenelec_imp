@@ -10,14 +10,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/subcontract_outbound.dart';
+import '../pages/warehouse_subcontract_outbound_batch_page.dart';
 import '../repositories/warehouse_subcontract_outbound_repository.dart';
+import '../navigation/warehouse_subcontract_outbound_navigation.dart';
 
 class WarehouseSubcontractOutboundWorkbench extends ConsumerStatefulWidget {
   const WarehouseSubcontractOutboundWorkbench({
@@ -52,6 +59,24 @@ class _WarehouseSubcontractOutboundWorkbenchState
   String? _error;
   int _requestVersion = 0;
   String _keyword = '';
+  Set<String> _selectedIds = {};
+  bool _openingBatch = false;
+
+  bool get _canExecute {
+    final permissions = ref.read(currentPermissionsProvider);
+    return [
+      Perm.subcontractOutboundView,
+      Perm.subcontractOutboundExecute,
+      Perm.subcontractMaterialIssueView,
+      Perm.subcontractMaterialIssueEdit,
+      Perm.subcontractMaterialIssueApprove,
+    ].every(permissions.contains);
+  }
+
+  bool _selectable(OutboundTask task) =>
+      task.draftId != null ||
+      task.readyOutboundQty > 0 ||
+      task.readyLineCount > 0;
 
   @override
   void initState() {
@@ -89,6 +114,11 @@ class _WarehouseSubcontractOutboundWorkbenchState
       setState(() {
         _result = result;
         _loading = false;
+        final availableIds = result.items
+            .where(_selectable)
+            .map((item) => item.planId)
+            .toSet();
+        _selectedIds = _selectedIds.intersection(availableIds);
       });
       ref.invalidate(warehouseSubcontractOutboundCountProvider);
     } on ApiException catch (error) {
@@ -107,17 +137,58 @@ class _WarehouseSubcontractOutboundWorkbenchState
   }
 
   Future<void> _openTask(OutboundTask task) async {
-    // 拣货页保存/审核成功会 pop(true)：重载列表，任务即时反映最新剩余量。
-    final done = await context.push<bool>(
-      '/warehouse/subcontract-outbound/${task.planId}',
-    );
-    if (done == true && mounted) {
+    if (_loading || _openingBatch) return;
+    // 保存返回时补刷列表；出仓成功会定位任务中心，由父页刷新。
+    final version = _requestVersion;
+    await context.push<bool>('/warehouse/subcontract-outbound/${task.planId}');
+    await WidgetsBinding.instance.endOfFrame;
+    if (mounted && _requestVersion == version) {
       await _load(_result?.page ?? 1);
+    }
+  }
+
+  Future<void> _openBatch(Set<String> ids) async {
+    if (_loading || _openingBatch || !_canExecute || ids.isEmpty) return;
+    final l10n =
+        Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+        AppLocalizationsZh();
+    if (ids.length > 50) {
+      context.appWarning(l10n.warehouseSubcontractOutboundSelectionLimit);
+      return;
+    }
+    setState(() => _openingBatch = true);
+    final version = _requestVersion;
+    try {
+      final completed = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (batchContext) => WarehouseSubcontractOutboundBatchPage(
+            planIds: ids.toList(),
+            onCompleted: () => Navigator.of(batchContext).pop(true),
+          ),
+        ),
+      );
+      if (mounted) {
+        setState(() => _selectedIds = {});
+        if (completed == true && !widget.embedded) {
+          returnToSubcontractOutboundTasks(context);
+        } else {
+          await WidgetsBinding.instance.endOfFrame;
+          if (mounted && _requestVersion == version) {
+            await _load(_result?.page ?? 1);
+          }
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _openingBatch = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
+    final l10n =
+        Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+        AppLocalizationsZh();
     final result =
         _result ??
         const PagedResult<OutboundTask>(
@@ -157,6 +228,33 @@ class _WarehouseSubcontractOutboundWorkbenchState
             filters: const {},
             onFilterChanged: (_, _) {},
             onRowTap: _openTask,
+            selectable: _canExecute,
+            idOf: (task) => _selectable(task) ? task.planId : null,
+            rowKeyOf: (task) => task.planId,
+            selectedIds: _selectedIds,
+            onSelectedIdsChanged: (ids) {
+              if (!_loading && !_openingBatch) {
+                setState(() => _selectedIds = ids);
+              }
+            },
+            preserveSelectionOnContextMenu: true,
+            batchActionsBuilder: !_canExecute
+                ? null
+                : (context, ids) => [
+                    UtenButton(
+                      key: const Key('subcontract-outbound-batch-action'),
+                      type: UtenButtonType.danger,
+                      size: UtenButtonSize.large,
+                      icon: Icons.outbound_outlined,
+                      isLoading: _openingBatch,
+                      onPressed: ids.isEmpty || _loading || _openingBatch
+                          ? null
+                          : () => _openBatch(ids),
+                      child: Text(
+                        '${l10n.warehouseSubcontractOutboundBatchAction} (${ids.length})',
+                      ),
+                    ),
+                  ],
             rowMenuBuilder: (item) => [
               UtenMenuItem(
                 label: '进入目标件拣货出仓',

@@ -103,6 +103,7 @@ class StockDocItem {
     this.place,
     this.remark,
     this.issuedQty,
+    this.requestedQty,
     this.unitRate,
     this.upstreamItemId,
     this.executionSegmentId,
@@ -135,8 +136,12 @@ class StockDocItem {
   /// 已出库量（仅 DRAW 领料行；qty−issuedQty=剩余可出）
   final double? issuedQty;
 
+  /// 累计车间申请量，原需求仍保留在 qty。
+  final double? requestedQty;
+
   /// 剩余可出数量（仅 DRAW）
-  double get remainingQty => (qty ?? 0) - (issuedQty ?? 0);
+  double get remainingQty =>
+      ((requestedQty ?? qty ?? 0) - (issuedQty ?? 0)).clamp(0, double.infinity);
 
   factory StockDocItem.fromJson(Map<String, dynamic> json) => StockDocItem(
     id: json['id'] as String?,
@@ -155,6 +160,7 @@ class StockDocItem {
     place: json['place'] as String?,
     remark: json['remark'] as String?,
     issuedQty: (json['issuedQty'] as num?)?.toDouble(),
+    requestedQty: (json['requestedQty'] as num?)?.toDouble(),
     unitRate: (json['unitRate'] as num?)?.toDouble(),
     upstreamItemId: json['upstreamItemId'] as String?,
     sourceDocNo: json['sourceDocNo'] as String?,

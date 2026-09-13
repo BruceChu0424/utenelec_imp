@@ -1,12 +1,13 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空(支持至 V558；保留主档、人事、权限与治理证据)
+-- 本地/测试库业务数据一键清空(支持至 V572；保留主档、人事、权限与治理证据)
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
 --       干净测试起点。只允许在可丢弃的本地/测试库停写后运行。
 --
 -- 唯一范围事实：
---   · V552 当前目录：CLEAR 269 张、PRESERVE 96 张（V547/V548 三张新表已计入；
+--   · V572 当前目录：CLEAR 276 张、PRESERVE 96 张；V560三张退料事实表、V561一张分批谱系表、V568一张让料补自制事实表、V569两张在途转拨事实表；V562至V567仅补列、函数、索引与守卫，V570仅新增权限与默认授权，V571前向补齐在途规则且不增加表，V572只补审计触发器不增加表。
+--   · V552 历史目录：CLEAR 269 张、PRESERVE 96 张（V547/V548 三张新表已计入；
 --     V549–V551 只改函数/视图，V552 只加权限码与默认授权）；下列历史说明用于旧版本兼容。
 --   · V547 新增品质检查单头/明细两张（CLEAR 266→268），V548 新增送检登记撤回记录
 --     一张（CLEAR 268→269）；均随 FQC/登记事实清空，目录版本对由发布时统一登记。
@@ -263,6 +264,9 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('preplan_analysis_stock_exact_pegs', 'CLEAR'),
 ('preplan_make_entitlement_delegations', 'CLEAR'),
 ('preplan_material_reallocations', 'CLEAR'),
+('preplan_reallocation_make_supplements', 'CLEAR'),
+('preplan_future_supply_transfers', 'CLEAR'),
+('preplan_future_supply_transfer_cancellations', 'CLEAR'),
 ('preplan_stock_entitlement_events', 'CLEAR'),
 ('preplan_supply_action_allocations', 'CLEAR'),
 ('preplan_public_supply_events', 'CLEAR'),
@@ -638,6 +642,10 @@ SELECT optional.table_name, optional.disposition
 FROM (VALUES
 ('sales_shipment_submission_events', 'CLEAR'),
 ('production_material_movement_links', 'CLEAR'),
+('production_material_return_requests', 'CLEAR'),
+('production_material_return_request_items', 'CLEAR'),
+('production_material_return_request_cancellations', 'CLEAR'),
+('production_execution_segment_splits', 'CLEAR'),
 ('stock_value_acquisition_sources', 'CLEAR'),
 ('stock_value_position_transfers', 'CLEAR'),
 ('stock_value_production_cost_dirty', 'CLEAR'),
@@ -946,10 +954,27 @@ BEGIN
         -- V557 records batch identity on existing quality events; no new business tables.
         (557, 515),
         -- V558 avoids empty-table storage recreation while retaining exact reset semantics.
-        (558, 516)
+        (558, 516),
+        (559, 517),
+        (560, 518),
+        (561, 519),
+        (562, 520),
+        (563, 521),
+        (564, 522),
+        (565, 523),
+        (566, 524),
+        (567, 525),
+        (568, 526),
+        (569, 527),
+        -- V570 只新增一个权限码（goods:price:view）并给既有部门默认授权，
+        -- 不新增业务表；CLEAR 维持既有张数。
+        (570, 528),
+        (571, 529),
+        -- V572 审计触发器 sweep：只补 trg_audit_*，不新增表。
+        (572, 530)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V558完整目录（V544 跳号），当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V572完整目录（V544 跳号），当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 
@@ -1061,6 +1086,13 @@ BEGIN
     FROM (VALUES
             ('sales_shipment_submission_events', 511),
             ('production_material_movement_links', 514),
+            ('production_material_return_requests', 560),
+            ('production_material_return_request_items', 560),
+            ('production_material_return_request_cancellations', 560),
+            ('production_execution_segment_splits', 561),
+            ('preplan_reallocation_make_supplements', 568),
+            ('preplan_future_supply_transfers', 569),
+            ('preplan_future_supply_transfer_cancellations', 569),
             ('stock_value_acquisition_sources', 517),
             ('stock_value_position_transfers', 517),
             ('stock_value_production_cost_dirty', 517),
@@ -1092,7 +1124,7 @@ BEGIN
     END IF;
     SELECT count(*) INTO current_operational_table_count
     FROM reset_business_table_policy
-    WHERE table_name IN ('sales_shipment_submission_events','production_material_movement_links','stock_value_acquisition_sources','stock_value_position_transfers','stock_value_production_cost_dirty','stock_value_production_cost_inputs','stock_value_production_cost_objects','stock_value_production_cost_outputs','stock_value_production_cost_revisions','stock_value_production_cost_shares','stock_value_production_cost_tasks','procurement_iqc_consideration_reversals','procurement_iqc_consideration_review_approvals','procurement_iqc_credit_case_allocations','procurement_iqc_credit_documents','procurement_iqc_credit_slices','procurement_iqc_funding_settlements','procurement_iqc_funding_slices','procurement_iqc_quality_consideration_parts','procurement_iqc_stock_consideration_parts','procurement_receipt_consideration_parts','subcontract_receipt_material_consumptions','production_fqc_inspection_sheets','production_fqc_inspection_sheet_items','production_finished_arrival_registration_reversals');
+    WHERE table_name IN ('preplan_future_supply_transfers','preplan_future_supply_transfer_cancellations','preplan_reallocation_make_supplements','production_material_return_requests','production_material_return_request_items','production_material_return_request_cancellations','production_execution_segment_splits','sales_shipment_submission_events','production_material_movement_links','stock_value_acquisition_sources','stock_value_position_transfers','stock_value_production_cost_dirty','stock_value_production_cost_inputs','stock_value_production_cost_objects','stock_value_production_cost_outputs','stock_value_production_cost_revisions','stock_value_production_cost_shares','stock_value_production_cost_tasks','procurement_iqc_consideration_reversals','procurement_iqc_consideration_review_approvals','procurement_iqc_credit_case_allocations','procurement_iqc_credit_documents','procurement_iqc_credit_slices','procurement_iqc_funding_settlements','procurement_iqc_funding_slices','procurement_iqc_quality_consideration_parts','procurement_iqc_stock_consideration_parts','procurement_receipt_consideration_parts','subcontract_receipt_material_consumptions','production_fqc_inspection_sheets','production_fqc_inspection_sheet_items','production_finished_arrival_registration_reversals');
 
     -- V459 新增兼职部门表（PRESERVE 95→96，组织与权限治理数据）。
     IF (applied_max_version <= 458 AND preserve_count <> 95)

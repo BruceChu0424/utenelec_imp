@@ -48,6 +48,7 @@ class WarehouseTaskCenterScaffold extends ConsumerStatefulWidget {
     required this.bodyBuilder,
     this.trailingBuilder,
     this.onResume,
+    this.initialSegment,
   });
 
   /// 本页路由常量（onPageResume 注册用；无路由上下文时同样安全）。
@@ -69,6 +70,7 @@ class WarehouseTaskCenterScaffold extends ConsumerStatefulWidget {
 
   /// 返回本页时重拉计数 provider（分段徽章/上级 hub 角标用）。
   final VoidCallback? onResume;
+  final String? initialSegment;
 
   @override
   ConsumerState<WarehouseTaskCenterScaffold> createState() =>
@@ -83,12 +85,24 @@ class _WarehouseTaskCenterScaffoldState
   String? _myLocation;
   int _refreshTick = 0;
 
-  /// onPageResume 首次触发是「进入本页」的导航结算，不是返回——跳过一次。
-  bool _resumeArmed = false;
+  @override
+  void initState() {
+    super.initState();
+    _segment =
+        widget.segments.any((segment) => segment.value == widget.initialSegment)
+        ? widget.initialSegment
+        : null;
+  }
 
   @override
   void didUpdateWidget(WarehouseTaskCenterScaffold oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.initialSegment != oldWidget.initialSegment &&
+        widget.segments.any(
+          (segment) => segment.value == widget.initialSegment,
+        )) {
+      _segment = widget.initialSegment;
+    }
     // 权限变化导致当前分段被移除时，回到未选择引导态（保持「不预选」范式）。
     if (_segment != null && !widget.segments.any((s) => s.value == _segment)) {
       _segment = null;
@@ -99,10 +113,7 @@ class _WarehouseTaskCenterScaffoldState
   Widget build(BuildContext context) {
     _myLocation ??= currentLocationOr(context, widget.location);
     ref.onPageResume(_myLocation!, () {
-      if (!_resumeArmed) {
-        _resumeArmed = true;
-        return;
-      }
+      // onPageResume already excludes first entry; every actual return refreshes.
       setState(() => _refreshTick++);
       widget.onResume?.call();
     });

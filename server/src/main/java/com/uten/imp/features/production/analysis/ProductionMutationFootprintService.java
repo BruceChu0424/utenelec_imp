@@ -168,7 +168,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                        source.available_to_claim_qty,source.expected_date
                 FROM v_preplan_public_surplus_source_state source
                 JOIN production_material_analyses analysis ON analysis.id=:analysisId
-                  AND analysis.is_deleted=FALSE AND analysis.warehouse_id=source.warehouse_id
+                  AND analysis.is_deleted=FALSE AND fn_warehouse_same_main(analysis.warehouse_id,source.warehouse_id)
                 WHERE source.source_analysis_id<>analysis.id
                   AND source.available_to_claim_qty>0 AND source.claim_external_item_id IS NOT NULL
                   AND source.external_document_type IN ('PURCHASE_REQUEST','SUBCONTRACT_APPLICATION')

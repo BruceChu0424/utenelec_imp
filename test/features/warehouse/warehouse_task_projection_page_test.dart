@@ -189,6 +189,8 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
     String id, {
     required String targetStatus,
     String? reason,
+    String? warehouseId,
+    Map<String, String>? stockPlaces,
   }) async => _salesDetail;
 }
 

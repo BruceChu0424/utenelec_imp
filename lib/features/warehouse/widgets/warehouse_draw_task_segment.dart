@@ -13,7 +13,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
@@ -21,6 +20,7 @@ import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
@@ -61,7 +61,7 @@ class _WarehouseDrawTaskSegmentState
   /// 跨页选择集合：翻页保留（表格从不自行清空），切换分段/关键字时重置。
   final Set<String> _selectedIds = <String>{};
 
-  /// 本分段生命周期内加载过的行（行键 → 行）：跨页确认框列单号、判草稿。
+  /// 本分段生命周期内加载过的行(行键 → 行)：跨页详情取单据 UUID、判草稿。
   final Map<String, WarehouseDrawTask> _knownTasks =
       <String, WarehouseDrawTask>{};
   Map<String, int> _statusCounts = const {};
@@ -181,57 +181,22 @@ class _WarehouseDrawTaskSegmentState
       );
       return;
     }
-    final ignored = _selectedIds.length - tasks.length;
-    // 备注输入框的控制器由弹窗自己持有（随路由销毁）；在 showDialog 返回后立刻
-    // dispose 会撞上退场动画期间的重建。
-    final remark = await showDialog<String>(
-      context: context,
-      builder: (_) => _BatchIssueConfirmDialog(
-        billNos: tasks.map((t) => t.actionDocNo).toList(),
-        ignored: ignored,
-      ),
-    );
-    if (remark == null || !mounted) return;
     setState(() => _batchIssuing = true);
     try {
-      final result = await ref
-          .read(productionDrawTaskRepositoryProvider)
-          .issueFullBatch(
-            idempotencyKey: const Uuid().v4(),
-            docIds: tasks.map((t) => t.actionDocId!).toList(),
-            reason: remark.isEmpty ? null : remark,
-          );
+      final ids = tasks.map((task) => task.actionDocId!).toSet().toList()
+        ..sort();
+      final changed = await context.push<bool>(
+        Uri(
+          path: RouteName.warehouseProductionDrawBatchIssue,
+          queryParameters: {'documentIds': ids.join(',')},
+        ).toString(),
+      );
       if (!mounted) return;
-      if (result.replayed) {
-        context.appInfo('本批此前已完成（${result.replayedCount} 张领料单），未重复出库');
-      } else {
-        context.appSuccess(
-          result.skippedCount > 0
-              ? '已出库 ${result.issuedCount} 张领料单（${result.skippedCount} 张已出完自动跳过）'
-              : '已出库 ${result.issuedCount} 张领料单',
-        );
-      }
-      setState(() => _selectedIds.clear());
-      await _load(1);
-    } on ApiException catch (error) {
-      if (mounted) context.appError(_batchFailureMessage(error));
-    } catch (_) {
-      if (mounted) context.appError('批量出库失败，请稍后重试');
+      if (changed == true) _selectedIds.clear();
+      await _load(_result?.page ?? 1);
     } finally {
       if (mounted) setState(() => _batchIssuing = false);
     }
-  }
-
-  /// 服务端逐单错误已带单号（「领料单 X：原因」）；422 参数校验（如超过 50 张）
-  /// 的顶层 message 只是「参数校验失败」，改取字段级说明。
-  static String _batchFailureMessage(ApiException error) {
-    final fields = error.fieldErrors;
-    if (fields != null &&
-        fields.isNotEmpty &&
-        fields.first.message.isNotEmpty) {
-      return fields.first.message;
-    }
-    return error.message;
   }
 
   Future<void> _openTask(WarehouseDrawTask task) async {
@@ -292,24 +257,13 @@ class _WarehouseDrawTaskSegmentState
           child: UtenFilterToolbar<String>(
             segmentsKey: const Key('warehouse-draw-task-status'),
             // 子分类计数：与列表同源的单据归组口径（待完成=READY+PARTIAL；
-            // 已领取为终态不传 count）。形态按「同一批活不在一行里红两遍」——
-            // 「待完成」是总量段挂红徽章，它的两个细分切片走中性括号。
+            // 已领取为终态不传 count)。未领与部分领取统一归入待完成。
             segments: [
               UtenFilterSegment(
                 value: _kOpenAnyStatus,
                 label: '待完成',
                 count: _statusCounts['OPEN_ANY'],
                 countForm: UtenSegmentCountForm.actionable,
-              ),
-              UtenFilterSegment(
-                value: 'READY_TO_PICK',
-                label: '待备料 / 待领取',
-                count: _statusCounts['READY_TO_PICK'],
-              ),
-              UtenFilterSegment(
-                value: 'PARTIAL',
-                label: '部分领取',
-                count: _statusCounts['PARTIAL'],
               ),
               const UtenFilterSegment(value: 'DONE', label: '已领取'),
             ],
@@ -445,80 +399,4 @@ class _WarehouseDrawTaskSegmentState
       value: (task) => task.dueDate,
     ),
   ];
-}
-
-/// 批量出库确认框：列出单号 + 统一备注（选填 ≤200 字）。
-/// 返回 null=取消；返回字符串（可为空）=确认，内容为去空白后的统一备注。
-class _BatchIssueConfirmDialog extends StatefulWidget {
-  const _BatchIssueConfirmDialog({
-    required this.billNos,
-    required this.ignored,
-  });
-
-  final List<String> billNos;
-
-  /// 勾选中不可出库（无可见领料单 / 已领完）而被忽略的项数。
-  final int ignored;
-
-  @override
-  State<_BatchIssueConfirmDialog> createState() =>
-      _BatchIssueConfirmDialogState();
-}
-
-class _BatchIssueConfirmDialogState extends State<_BatchIssueConfirmDialog> {
-  final TextEditingController _remark = TextEditingController();
-
-  @override
-  void dispose() {
-    _remark.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text('批量出库（${widget.billNos.length} 张领料单）'),
-      content: SizedBox(
-        width: 420,
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            Text(
-              '将按剩余量全额出库：${widget.billNos.join('、')}。'
-              '草稿单出库即审核；出库在同一事务完成，任一单失败整批回滚。',
-            ),
-            if (widget.ignored > 0) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              Text('另有 ${widget.ignored} 项勾选不是可出库的领料单，已自动忽略。'),
-            ],
-            const SizedBox(height: UtenSpacing.s8),
-            TextField(
-              key: const Key('warehouse-draw-batch-remark'),
-              controller: _remark,
-              maxLength: 200,
-              minLines: 1,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: '统一备注(选填)',
-                hintText: '随本批每张领料单追加到单据备注留痕',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-      ),
-      actionsAlignment: MainAxisAlignment.center,
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          key: const Key('warehouse-draw-batch-confirm'),
-          onPressed: () => Navigator.of(context).pop(_remark.text.trim()),
-          child: const Text('确认出库'),
-        ),
-      ],
-    );
-  }
 }

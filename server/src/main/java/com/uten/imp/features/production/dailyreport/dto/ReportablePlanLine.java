@@ -49,5 +49,6 @@ public record ReportablePlanLine(
         UUID fqcSourceInspectionId,
         UUID fqcSourceReportItemId,
         String fqcSourceReportNo,
-        boolean fqcRecoveryRequiresMaterial) {
+        boolean fqcRecoveryRequiresMaterial,
+        UUID planId) {
 }

@@ -212,7 +212,7 @@ public class ProcurementIqcStockInService {
         for (PreparedConfirmation item : prepared) {
             if (item.existing() != null) continue;
             for (NormalizedItem line : item.batch().command().items()) {
-                actualWarehouses.add(item.locked().get(line.passEventId()).warehouseId());
+                actualWarehouses.add(line.warehouseId());
             }
         }
         for (UUID warehouseId : actualWarehouses) {
@@ -292,6 +292,7 @@ public class ProcurementIqcStockInService {
         for (PassSlice slice : passSlices(type, receiptId, true)) {
             locked.put(slice.passEventId(), slice);
         }
+        List<NormalizedItem> resolvedItems = new ArrayList<>();
         for (NormalizedItem item : command.items()) {
             PassSlice slice = locked.get(item.passEventId());
             if (slice == null || slice.remainingBaseQty().signum() <= 0) {
@@ -303,9 +304,16 @@ public class ProcurementIqcStockInService {
             if (item.baseQty().compareTo(slice.remainingBaseQty()) > 0) {
                 throw conflict("本次入库数量不得超过品质放行待入库余量");
             }
+            UUID actualWarehouse = item.warehouseId() != null ? item.warehouseId() : slice.warehouseId();
+            if (actualWarehouse == null) {
+                throw validation("请选择「" + slice.goodsName() + "」的实际入库仓库；原收货记录未指定仓库");
+            }
+            resolvedItems.add(new NormalizedItem(item.passEventId(),item.baseQty(),item.expectedRemainingBaseQty(),
+                    item.place(),actualWarehouse));
         }
         return new PreparedConfirmation(new NormalizedBatch(type, receiptId,
-                splitSubcontractMaterialBatches(type, command)), null, locked);
+                splitSubcontractMaterialBatches(type, new NormalizedCommand(command.idempotencyKey(),command.requestHash(),
+                        List.copyOf(resolvedItems)))), null, locked);
     }
 
     private ConfirmResult confirmOne(
@@ -364,7 +372,7 @@ public class ProcurementIqcStockInService {
             stockService.recordMovementWithId(movementId,new StockService.MovementRequest(
                     now, movementType(type), sourceDocType(type),
                     receiptId, stockInItemId,
-                    slice.goodsId(), slice.colorId(), slice.warehouseId(),
+                    slice.goodsId(), slice.colorId(), item.warehouseId(),
                     StockService.DIR_IN, item.baseQty(),
                     slice.unitId(), slice.unitRate(), amount,
                     "仓库确认 IQC 合格品入库；库位：" + item.place(),
@@ -375,7 +383,7 @@ public class ProcurementIqcStockInService {
             preplanAnalysisPeg.attributeInspectionStockIn(
                     type, receiptId, slice.inspectionItemId(),
                     slice.passEventId(), stockInItemId,
-                    item.baseQty(), slice.warehouseId());
+                    item.baseQty(), item.warehouseId());
         }
         recalculateOrderClosure(type, receiptId);
         // 已全部入库的品质放行切片：撤回「待仓库入库」居中行动卡（仍有余量
@@ -410,13 +418,13 @@ public class ProcurementIqcStockInService {
                 BigDecimal take=left.min((BigDecimal)part[1]);if(take.signum()<=0)continue;
                 UUID root=(UUID)part[0];if(root==null)throw conflict("委外入库缺少原回厂材料批次，请核对补回来源");
                 if(previous!=null&&!previous.equals(root)){
-                    result.add(new NormalizedItem(item.passEventId(),groupQty,remaining,item.place()));
+                    result.add(new NormalizedItem(item.passEventId(),groupQty,remaining,item.place(),item.warehouseId()));
                     remaining=remaining.subtract(groupQty);groupQty=BigDecimal.ZERO;
                 }
                 previous=root;groupQty=groupQty.add(take);left=left.subtract(take);
             }
             if(left.signum()!=0)throw conflict("合格入库的原回厂材料份额不足，请刷新后重试");
-            if(groupQty.signum()>0)result.add(new NormalizedItem(item.passEventId(),groupQty,remaining,item.place()));
+            if(groupQty.signum()>0)result.add(new NormalizedItem(item.passEventId(),groupQty,remaining,item.place(),item.warehouseId()));
         }
         if(result.size()>100)throw conflict("本次委外入库涉及超过100个原材料批次，请减少本次选择的任务后分批确认");
         return new NormalizedCommand(command.idempotencyKey(),command.requestHash(),List.copyOf(result));
@@ -436,13 +444,15 @@ public class ProcurementIqcStockInService {
             UUID batchId, OffsetDateTime confirmedAt,
             UUID actorUserId, UUID actorEmployeeId) {
         Map<PlaceLearnDimension, LinkedHashSet<String>> places = new LinkedHashMap<>();
+        Map<UUID,LinkedHashSet<String>> goodsPlaces = new LinkedHashMap<>();
         for (NormalizedItem item : command.items()) {
             PassSlice slice = locked.get(item.passEventId());
             places.computeIfAbsent(
                     new PlaceLearnDimension(
-                            slice.warehouseId(), slice.goodsId(), slice.colorId()),
+                            item.warehouseId(), slice.goodsId(), slice.colorId()),
                     ignored -> new LinkedHashSet<>())
                     .add(item.place());
+            goodsPlaces.computeIfAbsent(slice.goodsId(),ignored->new LinkedHashSet<>()).add(item.place());
         }
         for (Map.Entry<PlaceLearnDimension, LinkedHashSet<String>> entry
                 : places.entrySet()) {
@@ -452,8 +462,10 @@ public class ProcurementIqcStockInService {
             String place = entry.getValue().iterator().next();
             learnWarehousePreference(
                     entry.getKey(), place, batchId, confirmedAt, actorUserId, actorEmployeeId);
-            learnGoodsMasterPlace(entry.getKey().goodsId(), place, actorUserId);
         }
+        goodsPlaces.forEach((goodsId,candidates)->{
+            if(candidates.size()==1)learnGoodsMasterPlace(goodsId,candidates.iterator().next(),actorUserId);
+        });
     }
 
     private void learnWarehousePreference(
@@ -561,7 +573,7 @@ public class ProcurementIqcStockInService {
                 .setParameter("inspectionItemId", slice.inspectionItemId())
                 .setParameter("passEventId", slice.passEventId())
                 .setParameter("movementId", movementId)
-                .setParameter("warehouseId", slice.warehouseId())
+                .setParameter("warehouseId", item.warehouseId())
                 .setParameter("goodsId", slice.goodsId())
                 .setParameter("colorId", slice.colorId())
                 .setParameter("expectedRemaining", item.expectedRemainingBaseQty())
@@ -646,10 +658,11 @@ public class ProcurementIqcStockInService {
                                COALESCE(purchase_order.bill_no,
                                         subcontract_order.bill_no),
                                COALESCE(goods.unit_id, inspection.unit_id),
-                               event.actor_employee_id
+                               event.actor_employee_id,source_warehouse.name
                         FROM procurement_inspection_events event
                         JOIN procurement_inspection_items inspection
                           ON inspection.id = event.inspection_item_id
+                        LEFT JOIN warehouses source_warehouse ON source_warehouse.id=inspection.warehouse_id
                         LEFT JOIN LATERAL (
                             SELECT COALESCE(SUM(item.base_qty), 0) AS stocked_qty
                             FROM procurement_iqc_stock_in_batch_items item
@@ -701,7 +714,7 @@ public class ProcurementIqcStockInService {
                 decimal(row[16]), decimal(row[17]), str(row[18]),
                 offsetDateTime(row[19]), str(row[20]), str(row[21]), str(row[22]),
                 str(row[23]), str(row[24]), str(row[25]), str(row[26]), str(row[27]),
-                uuid(row[28]), uuid(row[29])))
+                uuid(row[28]), uuid(row[29]),str(row[30])))
                 .toList();
     }
 
@@ -718,7 +731,7 @@ public class ProcurementIqcStockInService {
                 slice.stockedForReleaseBaseQty(), slice.remainingBaseQty(),
                 allocation.weight(), slice.weightUnitId(), slice.weightUnitName(),
                 slice.placeHint(), slice.releaseNote(), slice.releasedBy(),
-                slice.releasedAt(), inboundAllocations(expectedAllocations));
+                slice.releasedAt(), inboundAllocations(expectedAllocations),slice.warehouseId(),slice.warehouseName());
     }
 
     private Allocation allocation(PassSlice slice) {
@@ -737,12 +750,13 @@ public class ProcurementIqcStockInService {
                                color.name, COALESCE(base_unit.name, source_unit.name),
                                item.base_qty, item.weight, weight_unit.name,
                                item.place_snapshot, employee.full_name,
-                               batch.confirmed_at
+                               batch.confirmed_at,item.warehouse_id,actual_warehouse.name
                         FROM procurement_iqc_stock_in_batch_items item
                         JOIN procurement_iqc_stock_in_batches batch
                           ON batch.id = item.batch_id
                         JOIN procurement_inspection_items inspection
                           ON inspection.id = item.inspection_item_id
+                        LEFT JOIN warehouses actual_warehouse ON actual_warehouse.id=item.warehouse_id
                         LEFT JOIN goods ON goods.id = item.goods_id
                         LEFT JOIN colors color ON color.id = item.color_id
                         LEFT JOIN units source_unit
@@ -778,7 +792,7 @@ public class ProcurementIqcStockInService {
                     str(row[4]), str(row[5]), str(row[6]), str(row[7]),
                     decimal(row[8]), nullableDecimal(row[9]), str(row[10]),
                     str(row[11]), str(row[12]), offsetDateTime(row[13]),
-                    actualByItem.getOrDefault(stockInItemId, List.of()));
+                    actualByItem.getOrDefault(stockInItemId, List.of()),uuid(row[14]),str(row[15]));
         }).toList();
     }
 
@@ -875,16 +889,28 @@ public class ProcurementIqcStockInService {
             if (place.isEmpty() || place.length() > 100) {
                 throw validation("实际库位必须为 1 至 100 个字符");
             }
-            items.add(new NormalizedItem(raw.passEventId(), quantity, expected, place));
+            items.add(new NormalizedItem(raw.passEventId(), quantity, expected, place,raw.warehouseId()));
         }
         items.sort(Comparator.comparing(item -> item.passEventId().toString()));
         List<String> fingerprint = new ArrayList<>();
         fingerprint.add("receiptType=" + receiptType);
         fingerprint.add("receiptId=" + receiptId);
+        boolean explicitWarehouse=items.stream().anyMatch(item->item.warehouseId()!=null);
+        if(explicitWarehouse)fingerprint.add("IQC_STOCK_IN_EXPLICIT_WAREHOUSE_V2");
         for (NormalizedItem item : items) {
-            fingerprint.add(item.passEventId() + "|" + item.baseQty().toPlainString()
-                    + "|" + item.expectedRemainingBaseQty().toPlainString()
-                    + "|" + item.place());
+            if(explicitWarehouse) {
+                String id=item.passEventId().toString();
+                // CanonicalFingerprint length-prefixes every independent field.
+                // Free-form places cannot impersonate another field or a legacy command.
+                fingerprint.add("quantity:"+id+"="+item.baseQty().toPlainString());
+                fingerprint.add("remaining:"+id+"="+item.expectedRemainingBaseQty().toPlainString());
+                fingerprint.add("place:"+id+"="+item.place());
+                fingerprint.add("warehouse:"+id+"="+(item.warehouseId()==null?"<SOURCE>":item.warehouseId()));
+            } else {
+                // Retain the exact pre-V563 identity for already committed legacy requests.
+                fingerprint.add(item.passEventId() + "|" + item.baseQty().toPlainString()
+                        + "|" + item.expectedRemainingBaseQty().toPlainString()+ "|" + item.place());
+            }
         }
         return new NormalizedCommand(
                 key, CanonicalFingerprint.sha256(fingerprint), List.copyOf(items));
@@ -1031,15 +1057,19 @@ public class ProcurementIqcStockInService {
 
     private static com.uten.imp.common.concurrency.ProcurementMutationLocks.StockInRef lockRef(
             String type,UUID receiptId,NormalizedCommand command) {
+        Map<UUID,UUID> warehouses=new LinkedHashMap<>();
+        command.items().stream().filter(item->item.warehouseId()!=null)
+                .forEach(item->warehouses.put(item.passEventId(),item.warehouseId()));
         return new com.uten.imp.common.concurrency.ProcurementMutationLocks.StockInRef(type,receiptId,
-                command.items().stream().map(NormalizedItem::passEventId).toList());
+                command.items().stream().map(NormalizedItem::passEventId).toList(),warehouses);
     }
 
     private record NormalizedItem(
             UUID passEventId,
             BigDecimal baseQty,
             BigDecimal expectedRemainingBaseQty,
-            String place) {
+            String place,
+            UUID warehouseId) {
     }
 
     private record NormalizedCommand(
@@ -1096,6 +1126,7 @@ public class ProcurementIqcStockInService {
             String releasedBy,
             String sourceOrderNo,
             UUID displayUnitId,
-            UUID releasedByEmployeeId) {
+            UUID releasedByEmployeeId,
+            String warehouseName) {
     }
 }

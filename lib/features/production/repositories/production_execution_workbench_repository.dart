@@ -59,6 +59,7 @@ class ProductionExecutionWorkbenchRepository {
     int size = 50,
     String keyword = '',
     String? status,
+    String? preparationFilter,
     String? workshopDepartmentId,
     String? dateFrom,
     String? dateTo,
@@ -70,6 +71,8 @@ class ProductionExecutionWorkbenchRepository {
         'size': size,
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
         if (status?.isNotEmpty == true) 'status': status,
+        if (preparationFilter?.isNotEmpty == true)
+          'preparationFilter': preparationFilter,
         if (workshopDepartmentId?.isNotEmpty == true)
           'workshopDepartmentId': workshopDepartmentId,
         if (dateFrom?.isNotEmpty == true) 'dateFrom': dateFrom,

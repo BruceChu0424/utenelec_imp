@@ -130,12 +130,40 @@ public class MaterialAnalysisController {
                 id, materialLineId, keyword, page, size);
     }
 
+    @GetMapping("/{id}/materials/{materialLineId}/cross-reallocation-sources")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:cross_reallocate')")
+    public PageResponse<CrossReallocationSourceCandidate> crossReallocationSources(
+            @PathVariable UUID id,
+            @PathVariable UUID materialLineId,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return stockReallocationService.sources(id, materialLineId, keyword, page, size);
+    }
+
     @PostMapping("/{id}/cross-reallocations")
     @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:cross_reallocate')")
     public AnalysisView createCrossReallocation(
             @PathVariable UUID id,
-            @Valid @RequestBody CrossReallocationRequest request) {
-        return stockReallocationService.create(id, request);
+            @Valid @RequestBody CrossReallocationRequest request,
+            @RequestParam(defaultValue = "false") boolean returnTarget) {
+        return returnTarget
+                ? stockReallocationService.createReturningTarget(id, request)
+                : stockReallocationService.create(id, request);
+    }
+
+    @GetMapping("/{id}/cross-reallocations/{reallocationId}/replenishment-preview")
+    @PreAuthorize("hasAuthority('production_material_analysis:view')")
+    public CrossReallocationReplenishmentView crossReallocationReplenishmentPreview(
+            @PathVariable UUID id, @PathVariable UUID reallocationId) {
+        return stockReallocationService.replenishmentPreview(id, reallocationId);
+    }
+
+    @GetMapping("/{id}/cross-reallocation-replenishment-preview")
+    @PreAuthorize("hasAuthority('production_material_analysis:view')")
+    public CrossReallocationReplenishmentView crossReallocationReplenishmentForCommand(
+            @PathVariable UUID id, @RequestParam String idempotencyKey) {
+        return stockReallocationService.replenishmentPreviewForCommand(id, idempotencyKey);
     }
 
     @PostMapping("/{id}/cross-reallocations/{reallocationId}/revoke")

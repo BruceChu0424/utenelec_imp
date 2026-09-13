@@ -57,6 +57,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * covers V322-V324 contextual generations plus explicit leader assignments.
  * V530 preserves the later noise exclusions, repairs only the known V503
  * INSERT-only shape and covers the actual value/source/custody business tables.
+ * V572 repeats that fail-closed walk for the V560/V561/V568/V569 return/split/
+ * transfer tables that reached the schema without row-level auditing.
  * This test deliberately
  * does not pretend to execute PostgreSQL trigger DDL. Instead it verifies the
  * part that can be proven without Docker: critical tables existed before the
@@ -68,9 +70,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AuditTriggerCoverageMigrationContractTest {
 
     private static final Path MIGRATION_ROOT = Path.of("src/main/resources/db/migration");
-    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 530;
+    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 572;
     private static final Path LATEST_FULL_AUDIT_SWEEP =
-            MIGRATION_ROOT.resolve("V530__refresh_audit_trigger_coverage.sql");
+            MIGRATION_ROOT.resolve("V572__refresh_audit_trigger_coverage.sql");
     private static final Path LATEST_AUDIT_HARDENING =
             MIGRATION_ROOT.resolve("V185__audit_soft_delete_and_redaction_hardening.sql");
     private static final Pattern MIGRATION_FILE =

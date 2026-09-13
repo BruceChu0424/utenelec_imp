@@ -9,7 +9,11 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.datasource.DataSourceUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -49,8 +53,8 @@ import java.util.UUID;
  *       app.audit_request_id），主档归零 UPDATE 的审计触发器把行归到实际点击的
  *       超管本人；</li>
  *   <li>调用 {@code business_data_reset()}（单事务），函数内任一校验失败即整体回滚，
- *       UT900 类拒绝映射 409 供发起人按提示处理；成功后清理内部存储遗留临时文件并写显式
- *       审计事件（含物理删除文件数），供 {@link #lastResult()} 在重登后回显。</li>
+ *       UT900 类拒绝映射 409 供发起人按提示处理；完成审计回执与清空在同一事务提交，
+ *       供 {@link #lastResult()} 在重登后回显；成功后清理内部存储遗留临时文件。</li>
  * </ol>
  */
 @Service
@@ -75,6 +79,7 @@ public class BusinessDataResetService {
     static final String AUDIT_ACTION = "business_data_reset";
 
     private final DataSource dataSource;
+    private final PlatformTransactionManager transactionManager;
     private final BusinessDataResetFeatureGate featureGate;
     private final BusinessDataResetDrainGate drainGate;
     private final AuditService auditService;
@@ -138,27 +143,11 @@ public class BusinessDataResetService {
             long deletionsBefore = attachmentReset.succeededDeletionCount();
             purgeBusinessAttachments(operatorId, operatorAccount);
             long deletedFiles = Math.max(0L, attachmentReset.succeededDeletionCount() - deletionsBefore);
-            result = runReset(operatorId, operatorAccount, deletedFiles);
+            result = runReset(operatorId, operatorAccount, deletedFiles, attemptId);
         } finally {
             drainGate.endReset();
         }
         cleanupScratchQuietly();
-        try {
-            auditService.logExplicit(
-                    operatorId,
-                    operatorAccount,
-                    AUDIT_ACTION,
-                    "system_test",
-                    attemptId == null ? null : attemptId.toString(),
-                    "cleared_tables=" + result.clearedTableCount()
-                            + ",cleared_rows=" + result.clearedRows()
-                            + ",preserved_tables=" + result.preservedTableCount()
-                            + ",epoch=" + result.authorizationEpochAfter()
-                            + ",deleted_attachment_files=" + result.deletedAttachmentFiles());
-        } catch (RuntimeException auditFailure) {
-            // 审计落库失败不改变清空结果本身，但必须留下日志证据。
-            log.error("business_data_reset 审计事件写入失败", auditFailure);
-        }
         return result;
     }
 
@@ -326,28 +315,47 @@ public class BusinessDataResetService {
         return values;
     }
 
-    private Result runReset(UUID operatorId, String operatorAccount, long deletedAttachmentFiles) {
-        try (Connection connection = dataSource.getConnection()) {
-            boolean originalAutoCommit = connection.getAutoCommit();
-            connection.setAutoCommit(false);
-            try {
-                Result result = runInTransaction(connection, operatorId, operatorAccount, deletedAttachmentFiles);
-                connection.commit();
-                return result;
-            } catch (Exception ex) {
+    private Result runReset(
+            UUID operatorId, String operatorAccount, long deletedAttachmentFiles, UUID attemptId) {
+        // JpaTransactionManager exposes its physical connection through the
+        // same DataSource. The function and the existing JPA audit writer must
+        // commit together, before the caller releases the drain gate.
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        try {
+            return transaction.execute(status -> {
+                Connection connection = DataSourceUtils.getConnection(dataSource);
                 try {
-                    connection.rollback();
-                } catch (SQLException rollbackFailure) {
-                    log.error("业务数据清空回滚失败", rollbackFailure);
+                    Result result = runInTransaction(
+                            connection, operatorId, operatorAccount, deletedAttachmentFiles);
+                    auditService.logCommitted(
+                            operatorId,
+                            operatorAccount,
+                            AUDIT_ACTION,
+                            "system_test",
+                            attemptId == null ? null : attemptId.toString(),
+                            "cleared_tables=" + result.clearedTableCount()
+                                    + ",cleared_rows=" + result.clearedRows()
+                                    + ",preserved_tables=" + result.preservedTableCount()
+                                    + ",epoch=" + result.authorizationEpochAfter()
+                                    + ",deleted_attachment_files=" + result.deletedAttachmentFiles());
+                    return result;
+                } catch (SQLException ex) {
+                    throw asApiException(ex);
+                } finally {
+                    DataSourceUtils.releaseConnection(connection, dataSource);
                 }
-                throw asApiException(ex);
-            } finally {
-                connection.setAutoCommit(originalAutoCommit);
-            }
-        } catch (SQLException ex) {
-            throw new ApiException(
-                    ErrorCode.INTERNAL,
-                    "业务数据清空无法建立数据库连接：" + ex.getMessage());
+            });
+        } catch (ApiException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            // A lost commit acknowledgement can follow a committed reset.
+            // Its receipt is atomic, so require reconciliation instead of
+            // claiming rollback or encouraging another destructive request.
+            ApiException uncertain = new ApiException(ErrorCode.INTERNAL,
+                    "业务数据清空未确认完成，请重新登录核对本次结果（事务提交或完成回执写入失败）");
+            uncertain.initCause(ex);
+            throw uncertain;
         }
     }
 

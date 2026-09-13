@@ -1,13 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/finance/pages/finance_hub_page.dart';
 import 'package:uten_imp/features/procurement_iqc_rejection/repositories/procurement_iqc_rejection_repository.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_hub_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+
+late SharedPreferences _preferences;
 
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   testWidgets('finance hub shows IQC credit task only with exact view', (
     tester,
   ) async {
@@ -51,6 +59,7 @@ void main() {
 
 Widget _app(Widget page, Set<String> permissions) => ProviderScope(
   overrides: [
+    sharedPreferencesProvider.overrideWithValue(_preferences),
     currentPermissionsProvider.overrideWithValue(permissions),
     isSuperAdminProvider.overrideWithValue(false),
     procurementIqcRejectionOpenCountProvider.overrideWith((ref) async => 2),

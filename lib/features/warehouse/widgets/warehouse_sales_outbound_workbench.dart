@@ -11,16 +11,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/warehouse_sales_outbound.dart';
+import '../pages/warehouse_sales_outbound_batch_page.dart';
 import '../providers/warehouse_sales_outbound_count_provider.dart';
 import '../repositories/warehouse_sales_outbound_repository.dart';
+import 'warehouse_sales_outbound_table_columns.dart';
 
 /// 状态小类分段值：真实作业状态或历史单据哨兵。
 class _SalesOutboundSeg {
@@ -71,6 +76,8 @@ class _WarehouseSalesOutboundWorkbenchState
   bool _loading = false;
   String? _error;
   String _keyword = '';
+  bool _searchPending = false;
+  final Set<String> _selectedIds = {};
 
   /// 当前选中分段；null = 未选择引导态（不发请求）。
   _SalesOutboundSeg? _seg;
@@ -99,18 +106,22 @@ class _WarehouseSalesOutboundWorkbenchState
     if (oldWidget.keyword != widget.keyword ||
         oldWidget.refreshTick != widget.refreshTick) {
       _keyword = widget.keyword;
+      _selectedIds.clear();
+      _loading = _shouldLoad;
+      ++_requestVersion;
       WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
     }
   }
 
   Future<void> _load(int page) async {
-    if (!_shouldLoad) return;
+    if (!mounted || !_shouldLoad) return;
     final version = ++_requestVersion;
     final seg = _seg!;
     final range = seg.history ? _historyTime.range : null;
     setState(() {
       _loading = true;
       _error = null;
+      _selectedIds.clear();
     });
     try {
       final result = await ref
@@ -148,15 +159,32 @@ class _WarehouseSalesOutboundWorkbenchState
 
   void _applySearch(String value) {
     final keyword = value.trim();
-    if (keyword == _keyword) return;
-    setState(() => _keyword = keyword);
+    if (keyword == _keyword && !_searchPending) return;
+    setState(() {
+      _keyword = keyword;
+      _searchPending = false;
+    });
     _load(1);
+  }
+
+  void _onSearchInput(String value) {
+    if (value.trim() == _keyword && !_searchPending) return;
+    setState(() {
+      _keyword = value.trim();
+      _searchPending = true;
+      _selectedIds.clear();
+      ++_requestVersion;
+    });
   }
 
   void _selectSeg(_SalesOutboundSeg seg) {
     if (seg == _seg) return;
     setState(() {
       _seg = seg;
+      _selectedIds.clear();
+      _result = null;
+      _error = null;
+      ++_requestVersion;
       if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
     });
     if (!seg.history || !_historyTime.isNone) _load(1);
@@ -166,6 +194,79 @@ class _WarehouseSalesOutboundWorkbenchState
     if (value == _historyTime) return;
     setState(() => _historyTime = value);
     _load(1);
+  }
+
+  WarehouseSalesOutboundAction? get _batchAction => switch (_seg?.status) {
+    WarehouseSalesOutboundStatus.pendingPick =>
+      WarehouseSalesOutboundAction.startPicking,
+    WarehouseSalesOutboundStatus.picking =>
+      WarehouseSalesOutboundAction.finishPicking,
+    WarehouseSalesOutboundStatus.picked =>
+      WarehouseSalesOutboundAction.handOver,
+    WarehouseSalesOutboundStatus.exception =>
+      WarehouseSalesOutboundAction.restorePending,
+    _ => null,
+  };
+
+  bool _canSelect(WarehouseSalesOutboundSummary item) =>
+      !_loading &&
+      !_searchPending &&
+      _error == null &&
+      _batchAction != null &&
+      item.warehouseWorkStatus == _seg?.status &&
+      warehouseSalesOutboundPrimaryAction(item) == _batchAction;
+
+  Future<void> _openBatch(Set<String> ids) async {
+    final action = _batchAction;
+    if (_loading || action == null) return;
+    final targets = (_result?.items ?? const <WarehouseSalesOutboundSummary>[])
+        .where((item) => ids.contains(item.id) && _canSelect(item))
+        .toList();
+    if (targets.isEmpty || targets.length != ids.length) return;
+    if (targets.length == 1) {
+      await _openDetail(targets.single);
+      return;
+    }
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) =>
+            WarehouseSalesOutboundBatchPage(targets: targets, action: action),
+      ),
+    );
+    if (!mounted) return;
+    await _load(_result?.page ?? 1);
+  }
+
+  Future<void> _openDetail(WarehouseSalesOutboundSummary item) async {
+    if (_loading || _searchPending || _error != null) return;
+    await context.push(
+      '/warehouse/sales-outbound/${Uri.encodeComponent(item.id)}',
+    );
+    if (mounted) await _load(_result?.page ?? 1);
+  }
+
+  List<Widget> _batchActions(BuildContext context, Set<String> ids) {
+    final action = _batchAction;
+    if (action == null) return const [];
+    final l10n =
+        Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+        AppLocalizationsZh();
+    return [
+      UtenButton(
+        key: const Key('warehouse-sales-outbound-open-batch'),
+        type: UtenButtonType.danger,
+        size: UtenButtonSize.large,
+        icon: Icons.fact_check_outlined,
+        onPressed: _loading || _error != null || ids.isEmpty
+            ? null
+            : () => _openBatch(ids),
+        child: Text(
+          l10n.warehouseOutboundBatchAction(
+            warehouseSalesOutboundActionLabel(l10n, action),
+          ),
+        ),
+      ),
+    ];
   }
 
   @override
@@ -225,9 +326,22 @@ class _WarehouseSalesOutboundWorkbenchState
                   nullCounts: const {},
                   filters: const {},
                   onFilterChanged: (_, _) {},
-                  onRowTap: (item) => context.push(
-                    '/warehouse/sales-outbound/${Uri.encodeComponent(item.id)}',
-                  ),
+                  onRowTap: _openDetail,
+                  selectable: _batchAction != null,
+                  idOf: (item) => _canSelect(item) ? item.id : null,
+                  rowKeyOf: (item) => item.id,
+                  selectedIds: _selectedIds,
+                  onSelectedIdsChanged: (ids) {
+                    if (_loading || _searchPending || _error != null) return;
+                    setState(
+                      () => _selectedIds
+                        ..clear()
+                        ..addAll(ids),
+                    );
+                  },
+                  batchActionsBuilder: _batchAction == null
+                      ? null
+                      : _batchActions,
                   isLoading: _loading && _result == null,
                   loadingMore: _loading && _result != null,
                   error: result.items.isEmpty ? _error : null,
@@ -281,7 +395,7 @@ class _WarehouseSalesOutboundWorkbenchState
       onSelectionChanged: _selectSeg,
       searchHint: widget.embedded ? null : '搜索出货单号 / 客户 / 仓库',
       initialSearchValue: widget.embedded ? null : _keyword,
-      onSearchInputChanged: widget.embedded ? null : (_) => _requestVersion++,
+      onSearchInputChanged: widget.embedded ? null : _onSearchInput,
       onSearchChanged: widget.embedded ? null : _applySearch,
       trailing: Semantics(
         liveRegion: true,

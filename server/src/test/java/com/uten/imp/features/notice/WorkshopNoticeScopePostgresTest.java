@@ -64,7 +64,7 @@ class WorkshopNoticeScopePostgresTest {
     private ReviewNoticeAudience audience;
 
     @BeforeAll
-    static void start() {
+    static void start() throws Exception {
         DB.start();
         jdbc=new JdbcTemplate(new DriverManagerDataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword()));
         // NoticeAcknowledgment：findVisiblePendingManualNotices（人工通知登录弹窗）的 JPQL 引用，
@@ -101,12 +101,32 @@ class WorkshopNoticeScopePostgresTest {
         jdbc.execute("CREATE TABLE warehouses(id uuid PRIMARY KEY,parent_id uuid,name text)");
         jdbc.execute("CREATE TABLE stock_documents(id uuid PRIMARY KEY,bill_no text,warehouse_id uuid,doc_type text,is_deleted boolean,status int,created_at timestamptz)");
         jdbc.execute("CREATE TABLE production_planning_package_documents(document_id uuid,execution_segment_id uuid,document_type text)");
+        jdbc.execute("CREATE TABLE production_execution_segment_events(action text,draw_document_ids uuid[],draw_item_quantities jsonb)");
+        jdbc.execute("CREATE TABLE stock_document_items(id uuid,doc_id uuid,qty numeric DEFAULT 1,issued_qty numeric DEFAULT 0,is_deleted boolean DEFAULT false)");
+        jdbc.execute("CREATE TABLE production_material_stock_postings(stock_document_item_id uuid,posting_type text)");
+        jdbc.execute("ALTER TABLE production_execution_segments ADD COLUMN notice_fixture_issued boolean NOT NULL DEFAULT TRUE");
+        // This fixture has no execution splits. Full split guards and borrowed
+        // material prerequisites are covered by ProductionExecutionBatchEndToEndTest.
+        jdbc.execute("CREATE FUNCTION fn_split_batch_empty_issued(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE'");
+        // Load the authoritative read predicate; full migration/event guards are
+        // exercised separately in production request integration tests.
+        String migration=java.nio.file.Files.readString(java.nio.file.Path.of(
+                "src/main/resources/db/migration/V559__production_workshop_draw_request.sql"));
+        int functionStart=migration.indexOf("CREATE OR REPLACE FUNCTION fn_production_draw_requested(");
+        int functionEnd=migration.indexOf("\n$$;",functionStart)+4;
+        assertThat(functionStart).isGreaterThanOrEqualTo(0);
+        assertThat(functionEnd).isGreaterThan(functionStart);
+        jdbc.execute(migration.substring(functionStart,functionEnd));
+        String quantitiesMigration = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "src/main/resources/db/migration/V564__production_draw_requested_quantities.sql"));
+        jdbc.execute(quantitiesMigration.substring(quantitiesMigration.indexOf("CREATE FUNCTION fn_production_draw_item_requested_qty("),
+                quantitiesMigration.indexOf("CREATE FUNCTION fn_guard_production_draw_quantities(")));
         jdbc.execute("""
                 CREATE VIEW v_production_execution_workbench_segments AS
                 SELECT id AS segment_id,segment_code,'PLAN-01'::text AS plan_no,'P01'::text AS product_code,
                     '产品'::text AS product_name,NULL::text AS product_color_name,'件'::text AS product_unit_name,
                     planned_qty,status AS segment_status,'KIT_READY'::text AS material_status,
-                    'PREPARED'::text AS preparation_status,TRUE AS issued,
+                    'PREPARED'::text AS preparation_status,notice_fixture_issued AS issued,
                     workshop_department_id,'实际车间A'::text AS workshop_name,
                     responsible_employee_id,'指定负责'::text AS responsible_employee_name
                 FROM production_execution_segments
@@ -124,6 +144,8 @@ class WorkshopNoticeScopePostgresTest {
     void open() {
         jdbc.execute("DELETE FROM notice_user_states");
         jdbc.execute("DELETE FROM notices");
+        jdbc.execute("DELETE FROM production_execution_segment_events");
+        jdbc.execute("UPDATE production_execution_segments SET notice_fixture_issued=TRUE");
         jdbc.update("UPDATE employees SET status='active' WHERE id=?",ACTORS.get(0).employee());
         jdbc.update("UPDATE employees SET department_id=? WHERE id=?",CHILD,ACTORS.get(0).employee());
         jdbc.update("UPDATE employees SET status='resigned' WHERE id=?",ACTORS.get(8).employee());
@@ -134,6 +156,54 @@ class WorkshopNoticeScopePostgresTest {
     }
     @AfterEach void close() { if(em!=null)em.close(); }
     @AfterAll static void stop() { if(factory!=null)factory.close(); DB.stop(); }
+
+    @Test
+    void delayedReadyEventCannotRecreateWorkshopCardAfterRequestWasSubmitted() {
+        jdbc.update("UPDATE production_execution_segments SET notice_fixture_issued=FALSE WHERE id=?",TASK_A);
+        jdbc.update("INSERT INTO production_execution_segment_events(action,draw_document_ids) VALUES ('DRAW_REQUEST',ARRAY[?,?]::uuid[])",id(301),id(302));
+        NoticeService notice=mock(NoticeService.class);
+        UserAccountRepository users=mock(UserAccountRepository.class);
+
+        chain(notice,users,mock(PermissionResolver.class)).deliverOutboxEvent(
+                ChainNoticeService.EVENT_SEGMENT_READY,TASK_A,
+                new ObjectMapper().createObjectNode()
+                        .put("triggeringReceiptId",id(401).toString()).put("sourceType","PURCHASE"));
+
+        verify(notice).resolveReviewNotices("PRODUCTION_EXECUTION_SEGMENT",TASK_A,"STATE_CHANGED");
+        verifyNoMoreInteractions(notice);
+        verifyNoInteractions(users);
+    }
+
+    @Test
+    void pendingDrawNoticesUseTheRequestGateBeforeListCountAndPopupPagination() {
+        Actor actor=ACTORS.get(0);
+        Notice requested=persist(actor.user(),TASK_A,"important");
+        Notice unrequested=persist(actor.user(),TASK_B,"urgent");
+        em.getTransaction().begin();
+        for (Notice notice:List.of(requested,unrequested)) {
+            notice.setSourceEvent(ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING);
+            notice.setAggregateKind("STOCK_DOCUMENT");
+        }
+        requested.setAggregateId(id(301));
+        unrequested.setAggregateId(id(303));
+        em.getTransaction().commit();
+        var scope=audience.workshopScope(actor.auth());
+        assertThat(notices.findVisible(actor.user(),false,scope,PageRequest.of(0,1))).isEmpty();
+        assertThat(notices.countVisibleUnread(actor.user(),scope)).isZero();
+        assertThatThrownBy(() -> service(actor.auth()).getById(requested.getId()))
+                .isInstanceOf(ApiException.class);
+        assertThat(notices.findVisiblePendingReviews(actor.user(),
+                List.of(ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING),scope,PageRequest.of(0,1))).isEmpty();
+
+        jdbc.update("INSERT INTO production_execution_segment_events(action,draw_document_ids) VALUES ('DRAW_REQUEST',ARRAY[?]::uuid[])",id(301));
+
+        assertThat(notices.findVisible(actor.user(),false,scope,PageRequest.of(0,1)))
+                .extracting(Notice::getId).containsExactly(requested.getId());
+        assertThat(notices.countVisibleUnread(actor.user(),scope)).isEqualTo(1);
+        assertThat(notices.findVisiblePendingReviews(actor.user(),
+                List.of(ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING),scope,PageRequest.of(0,1)))
+                .extracting(Notice::getId).containsExactly(requested.getId());
+    }
 
     @Test
     void currentReceiversIncludeActualWorkshopSecondaryManagerAndResponsibleButNotViewOnlyOrPlanner() {

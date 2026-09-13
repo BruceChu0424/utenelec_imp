@@ -881,7 +881,7 @@ public class ProductionExecutionPackageCommandService {
                 .setParameter("drawId", document.getId())
                 .setParameter("actorId", currentUser.requireId())
                 .executeUpdate();
-        chainNotice.notifyProductionDrawPending(document.getId());
+        // Complete-kit reservation remains internal until the workshop requests these DRAWs.
         return new MrpGenerateResult(
                 document.getId(), document.getBillNo(), lineNo, List.of());
     }

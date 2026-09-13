@@ -1084,7 +1084,12 @@ class _ProductionPlanDetailPageState
               : _detail == null
               ? const SizedBox.shrink()
               : ListView(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
+                  padding: const EdgeInsets.fromLTRB(
+                    UtenSpacing.s12,
+                    UtenSpacing.s12,
+                    UtenSpacing.s12,
+                    UtenFloatingActionGroup.scrollClearance,
+                  ),
                   children: [
                     // 越权/只读提示永远压在最顶：它决定了下面所有按钮点不点得动。
                     DocumentScopeWriteNotice(

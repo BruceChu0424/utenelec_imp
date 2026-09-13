@@ -184,9 +184,10 @@ class WarehouseArrivalExceptionStockInBatchServiceTest {
         RecordingTransactionManager transactions = new RecordingTransactionManager();
         ProxyFactory proxyFactory = new ProxyFactory(fixture.service());
         proxyFactory.setProxyTargetClass(true);
-        proxyFactory.addAdvice(new TransactionInterceptor(
-                transactions,
-                new AnnotationTransactionAttributeSource()));
+        TransactionInterceptor transactionInterceptor = new TransactionInterceptor();
+        transactionInterceptor.setTransactionManager(transactions);
+        transactionInterceptor.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
+        proxyFactory.addAdvice(transactionInterceptor);
         WarehouseArrivalExceptionStockInBatchService transactional =
                 (WarehouseArrivalExceptionStockInBatchService) proxyFactory.getProxy();
 

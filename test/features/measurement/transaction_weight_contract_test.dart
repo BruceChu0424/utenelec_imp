@@ -39,15 +39,20 @@ void main() {
     // （过磅/收发料）仍保留重量录入。
     // 2026-09-05 补充：仓库「登记实际到货」页同样下线实称重量列（走单位的
     // 计量维度：重量型单位实收数量本身即重量），保存不再提交 weight；
-    // 过磅（stock）/生产日报仍保留重量录入与校验。
-    for (final grid in [stockGrid, dailyGrid]) {
-      expect(grid, contains("key: 'weight'"));
-      expect(grid, contains("label: '实际重量'"));
-    }
-    for (final grid in [purchaseGrid, salesGrid]) {
+    // 过磅（stock）保留重量录入。2026-09-12 生产日报同样按用户要求撤出新建
+    // 表格的重量列，历史重量仍回填、复制、校验并随原单提交，不能被静默清零。
+    expect(stockGrid, contains("key: 'weight'"));
+    expect(stockGrid, contains("label: '实际重量'"));
+    for (final grid in [purchaseGrid, salesGrid, dailyGrid]) {
       expect(grid, isNot(contains("key: 'weight'")));
       expect(grid, isNot(contains("label: '实际重量'")));
     }
+    expect(dailyGrid, contains('c.weight.text = weight.text;'));
+    expect(
+      dailyEdit,
+      contains("row.weight.text = it.weight?.toString() ?? '';"),
+    );
+    expect(dailyEdit, contains("'weight': ?weight"));
     for (final edit in [stockEdit, purchaseEdit, salesEdit, dailyEdit]) {
       expect(edit, contains("'weight'"));
       expect(edit, contains('实际重量必须大于 0'));

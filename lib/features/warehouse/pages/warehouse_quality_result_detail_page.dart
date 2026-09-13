@@ -32,6 +32,7 @@ import '../repositories/warehouse_iqc_stock_in_repository.dart';
 import '../repositories/warehouse_quality_result_repository.dart';
 import '../widgets/warehouse_quality_merged_table.dart';
 import '../widgets/warehouse_quality_slice_table.dart';
+import '../widgets/warehouse_quality_stock_in_warehouse_picker.dart';
 import '../widgets/warehouse_inbound_allocation_view.dart';
 
 /// 品质检查结果详情（完整页面，非弹窗）：上方单据信息卡，随后**合并明细表**——
@@ -100,7 +101,7 @@ class _WarehouseQualityResultDetailPageState
   Future<void> _load({bool preserveInputs = false}) async {
     final version = ++_requestVersion;
     final snapshots = preserveInputs
-        ? {for (final draft in _drafts) draft.slice.passEventId: draft.snapshot}
+        ? {for (final draft in _drafts) draft.snapshotKey: draft.snapshot}
         : const <String, WarehouseQualitySliceSnapshot>{};
     setState(() => _loading = true);
     try {
@@ -115,14 +116,25 @@ class _WarehouseQualityResultDetailPageState
             receiptTypeValue: detail.receiptType.apiValue,
             receiptId: detail.receiptId,
             receiptNo: detail.billNo,
-            snapshot: snapshots[slice.passEventId],
+            canConfirm: detail.canConfirm,
+            snapshot:
+                snapshots['${detail.receiptType.apiValue}:${detail.receiptId}:${slice.passEventId}'],
           ),
       ];
+      final List<WarehouseQualityMergedRow> nextRows;
+      try {
+        nextRows = warehouseQualityRowsForDetail(detail, nextDrafts);
+      } catch (_) {
+        for (final draft in nextDrafts) {
+          draft.dispose();
+        }
+        rethrow;
+      }
       final previous = _drafts;
       setState(() {
         _detail = detail;
         _drafts = nextDrafts;
-        _grid.replaceAll(_buildRows(detail, nextDrafts));
+        _grid.replaceAll(nextRows);
         _loading = false;
         _error = null;
       });
@@ -146,42 +158,32 @@ class _WarehouseQualityResultDetailPageState
     }
   }
 
-  /// 合并明细表行集：每条检查明细行 × 它的待入库放行切片——有待入库切片的行
-  /// 按切片逐行展开（可勾选办理），无切片的行单行只读展示。
-  static List<WarehouseQualityMergedRow> _buildRows(
-    WarehouseQualityResultDetail detail,
-    List<WarehouseQualitySliceDraft> drafts,
-  ) {
-    final byLine = <String, List<WarehouseQualitySliceDraft>>{};
-    for (final draft in drafts) {
-      byLine.putIfAbsent(draft.slice.inspectionItemId, () => []).add(draft);
+  Future<void> _pickWarehouse(WarehouseQualitySliceDraft draft) async {
+    if (_saving || _loading || !_canConfirm || !draft.canConfirm) return;
+    try {
+      final picked = await pickWarehouseQualityStockInWarehouse(
+        context,
+        ref,
+        draft,
+      );
+      if (picked == null || !mounted || !_drafts.contains(draft)) return;
+      setState(() {
+        draft.selectWarehouse(id: picked.id, name: picked.label);
+      });
+    } catch (_) {
+      if (mounted) context.appError('仓库资料加载失败，请重试');
     }
-    final rows = <WarehouseQualityMergedRow>[];
-    for (final line in detail.lines) {
-      final slices = byLine[line.inspectionItemId] ?? const [];
-      if (slices.isEmpty) {
-        rows.add(WarehouseQualityMergedRow(line: line));
-        continue;
-      }
-      for (var i = 0; i < slices.length; i++) {
-        rows.add(
-          WarehouseQualityMergedRow(
-            line: line,
-            draft: slices[i],
-            sliceOrdinal: i + 1,
-            sliceTotal: slices.length,
-          ),
-        );
-      }
-    }
-    return rows;
   }
 
   Future<void> _confirmStockIn() async {
-    if (_saving || !_canConfirm) return;
+    if (_saving || _loading || !_canConfirm) return;
     final selected = _drafts.where((draft) => draft.selected).toList();
     if (selected.isEmpty) {
       context.appWarning('请至少勾选一条品质放行明细');
+      return;
+    }
+    if (selected.length > 100) {
+      context.appWarning('每张收货单单次最多确认 100 条放行明细，请分批办理');
       return;
     }
     for (final draft in selected) {
@@ -191,15 +193,7 @@ class _WarehouseQualityResultDetailPageState
         return;
       }
     }
-    final items = [
-      for (final draft in selected)
-        WarehouseIqcStockInConfirmItem(
-          passEventId: draft.slice.passEventId,
-          baseQty: double.parse(draft.quantity.text.trim()),
-          expectedRemainingBaseQty: draft.slice.remainingBaseQty,
-          place: draft.place.text.trim(),
-        ),
-    ];
+    final items = [for (final draft in selected) draft.toConfirmItem()];
     final fingerprint = warehouseQualitySliceFingerprint(items);
     final key = businessIdempotencyKey('warehouse-iqc-stock-in', fingerprint);
     final ownRelease = _detail?.containsOwnRelease == true;
@@ -211,7 +205,9 @@ class _WarehouseQualityResultDetailPageState
           quantity: double.parse(draft.quantity.text.trim()),
           unitName: draft.slice.unitName,
           sourceOrderNo: draft.slice.sourceOrderNo,
-          allocations: draft.slice.expectedAllocations,
+          allocations: draft.usesSuggestedWarehouse
+              ? draft.slice.expectedAllocations
+              : const [],
         ),
     ];
     final approved = await showWarehouseInboundAllocationConfirmDialog(
@@ -372,7 +368,7 @@ class _WarehouseQualityResultDetailPageState
           0,
           UtenSpacing.s16,
           0,
-          UtenSpacing.s24,
+          UtenFloatingActionGroup.scrollClearance,
         ),
         children: [
           _headerCard(detail),
@@ -467,20 +463,6 @@ class _WarehouseQualityResultDetailPageState
                     SizedBox(
                       width: width,
                       child: _InfoTile(
-                        label: '供应商 / 委外商',
-                        value: detail.supplierName ?? '—',
-                      ),
-                    ),
-                    SizedBox(
-                      width: width,
-                      child: _InfoTile(
-                        label: '目标仓库',
-                        value: detail.warehouseName ?? '—',
-                      ),
-                    ),
-                    SizedBox(
-                      width: width,
-                      child: _InfoTile(
                         label: '品质结论',
                         value:
                             '合格 ${detail.passedLineCount} 行 · 不合格 '
@@ -507,10 +489,6 @@ class _WarehouseQualityResultDetailPageState
                             : '无',
                       ),
                     ),
-                    const SizedBox(
-                      width: 200,
-                      child: _InfoTile(label: '商业字段', value: '本页不提供'),
-                    ),
                   ],
                 );
               },
@@ -532,11 +510,11 @@ class _WarehouseQualityResultDetailPageState
           '检查结果与待入库明细',
           _canConfirm
               ? '勾选本次要点收的放行切片（默认全额，可改小做部分入库），'
-                    '实际库位必填；不合格行请在下方登记实物退回。'
+                    '目标叶仓与实际库位必填；不合格行请在下方登记实物退回。'
               : '当前为只读查看；入库确认需要 IQC 待入库查看 + 确认入库权限。',
         ),
         const SizedBox(height: UtenSpacing.s8),
-        if (detail.lines.isEmpty)
+        if (_grid.rows.isEmpty)
           const UtenEmpty(
             icon: Icons.fact_check_outlined,
             message: '暂无检查明细',
@@ -546,8 +524,9 @@ class _WarehouseQualityResultDetailPageState
           WarehouseQualityMergedTable(
             controller: _grid,
             editable: _canConfirm,
-            saving: _saving,
+            saving: _saving || _loading,
             onChanged: () => setState(() {}),
+            onPickWarehouse: _pickWarehouse,
           ),
       ],
     );
@@ -664,6 +643,7 @@ class _WarehouseQualityResultDetailPageState
                   Text(
                     [
                       '入库 ${_qty(item.baseQty, item.unitName)}',
+                      '实际仓库 ${item.warehouseName ?? item.warehouseId ?? '历史未记录'}',
                       '实际库位 ${item.place}',
                       '确认人 ${item.confirmedBy ?? '—'}',
                       '确认时间 ${warehouseQualityDateTime(item.confirmedAt)}',
@@ -709,7 +689,7 @@ class _WarehouseQualityResultDetailPageState
         UtenSelectionSummaryPill(
           count: selected,
           clearKey: const Key('warehouse-quality-detail-clear-selection'),
-          onClear: selected == 0
+          onClear: selected == 0 || _saving || _loading
               ? null
               : () => setState(() {
                   for (final draft in _drafts) {
@@ -723,7 +703,9 @@ class _WarehouseQualityResultDetailPageState
           size: UtenButtonSize.large,
           icon: Icons.move_to_inbox_rounded,
           isLoading: _saving,
-          onPressed: _saving || selected == 0 ? null : _confirmStockIn,
+          onPressed: _saving || _loading || selected == 0
+              ? null
+              : _confirmStockIn,
           child: Text(selected == 0 ? '确认入库' : '确认入库($selected)'),
         ),
       ],

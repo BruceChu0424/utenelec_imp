@@ -445,6 +445,9 @@ void main() {
   });
 
   for (final error in [
+    ApiException('INTERNAL', 'commit response interrupted', httpStatus: 500),
+    ApiException('SERVICE_UNAVAILABLE', 'server unavailable', httpStatus: 503),
+    ApiException('INTERNAL', 'commit response interrupted'),
     ApiException('INTERNAL', 'gateway timeout', httpStatus: 504),
     ApiException('INTERNAL', 'bad gateway', httpStatus: 502),
     ApiException('SESSION_CHANGED', '登录状态已切换，本次旧请求结果已忽略', httpStatus: 409),

@@ -112,6 +112,94 @@ class ProcurementIqcStockInBatchExecutionTest {
         verifyNoInteractions(f.stock, f.consideration, f.production, f.peg, f.warehouses);
     }
 
+    @Test
+    void subcontractStockInUsesExplicitActualWarehouseThroughoutItsPhysicalFacts() {
+        Fixture f=new Fixture();
+        BatchConfirmEntry seed=f.entry(1,"subcontract-selected-warehouse","2");
+        UUID actual=UUID.randomUUID();
+        ConfirmItem original=seed.items().getFirst();
+        ConfirmRequest request=new ConfirmRequest(seed.idempotencyKey(),List.of(new ConfirmItem(
+                original.passEventId(),original.baseQty(),original.expectedRemainingBaseQty(),original.place(),actual)));
+        f.service.confirm("SUBCONTRACT",seed.receiptId(),request);
+        assertThat(f.movements).singleElement().satisfies(movement->{
+            assertThat(movement.warehouseId()).isEqualTo(actual);
+            assertThat(movement.sourceDocType()).isEqualTo("SUBCONTRACT_RECEIPT");
+        });
+        assertThat(f.stockItemWarehouses).containsExactly(actual);
+        verify(f.warehouses).requireActiveLeafWarehouse(actual,"入库仓库");
+        verify(f.peg).attributeInspectionStockIn(eq("SUBCONTRACT"),eq(seed.receiptId()),any(),
+                eq(original.passEventId()),any(),eq(new BigDecimal("2.0000")),eq(actual));
+        assertThat(f.slices.get(seed.receiptId())[2]).isEqualTo(WAREHOUSE);
+    }
+
+    @Test
+    void oneReceiptCanPostTwoPassSlicesIntoDifferentExplicitLeafWarehouses() {
+        Fixture f=new Fixture();
+        BatchConfirmEntry first=f.entry(1,"two-warehouses-one-receipt","2");
+        BatchConfirmEntry second=f.entry(2,"extra-slice-row","3");
+        f.additionalSlices.put(first.receiptId(),List.<Object[]>of(f.slices.remove(second.receiptId())));
+        UUID left=UUID.randomUUID(),right=UUID.randomUUID();
+        ConfirmItem a=first.items().getFirst(),b=second.items().getFirst();
+        f.service.confirm("PURCHASE",first.receiptId(),new ConfirmRequest(first.idempotencyKey(),List.of(
+                new ConfirmItem(a.passEventId(),a.baseQty(),a.expectedRemainingBaseQty(),"LEFT-1",left),
+                new ConfirmItem(b.passEventId(),b.baseQty(),b.expectedRemainingBaseQty(),"RIGHT-1",right))));
+        assertThat(f.stockItemWarehouses).containsExactlyInAnyOrder(left,right);
+        assertThat(f.movements).extracting(StockService.MovementRequest::warehouseId).containsExactlyInAnyOrder(left,right);
+        verify(f.production).afterInspectionStockInConfirmed(argThat(batches->batches.size()==1));
+    }
+
+    @Test
+    void missingSourceAndSelectionNeverDefaultsToAReceiptOrAnotherWarehouse() {
+        Fixture f=new Fixture();
+        BatchConfirmEntry entry=f.entry(1,"missing-warehouse-selection","2");
+        f.slices.get(entry.receiptId())[2]=null;
+        assertThatThrownBy(()->f.service.confirm("PURCHASE",entry.receiptId(),
+                new ConfirmRequest(entry.idempotencyKey(),entry.items())))
+                .isInstanceOf(ApiException.class).hasMessageContaining("实际入库仓库");
+        assertThat(f.writeSql).isEmpty();
+        verifyNoInteractions(f.stock,f.production,f.peg);
+    }
+
+    @Test
+    void changingTheActualWarehouseIsADifferentIdempotentCommand() {
+        Fixture f=new Fixture();
+        BatchConfirmEntry entry=f.entry(1,"warehouse-hash-replay","2");
+        ConfirmItem item=entry.items().getFirst();
+        ConfirmRequest before=new ConfirmRequest(entry.idempotencyKey(),List.of(new ConfirmItem(
+                item.passEventId(),item.baseQty(),item.expectedRemainingBaseQty(),item.place(),WAREHOUSE)));
+        Object normalized=ReflectionTestUtils.invokeMethod(f.service,"normalize","PURCHASE",entry.receiptId(),before);
+        String hash=ReflectionTestUtils.invokeMethod(normalized,"requestHash");
+        f.existing.put(entry.idempotencyKey(),new Object[]{UUID.randomUUID(),hash,1,OffsetDateTime.now()});
+        ConfirmRequest changed=new ConfirmRequest(entry.idempotencyKey(),List.of(new ConfirmItem(
+                item.passEventId(),item.baseQty(),item.expectedRemainingBaseQty(),item.place(),UUID.randomUUID())));
+        assertThatThrownBy(()->f.service.confirm("PURCHASE",entry.receiptId(),changed))
+                .isInstanceOf(ApiException.class).hasMessageContaining("幂等键");
+        assertThat(f.writeSql).isEmpty();
+        verifyNoInteractions(f.stock,f.production,f.peg,f.warehouses);
+    }
+
+    @Test
+    void legacyPlaceTextCannotImpersonateAnExplicitWarehouseInTheRequestHash() {
+        Fixture f=new Fixture();
+        BatchConfirmEntry entry=f.entry(1,"warehouse-field-collision","2");
+        ConfirmItem item=entry.items().getFirst();
+        UUID actual=UUID.randomUUID();
+        ConfirmRequest legacy=new ConfirmRequest(entry.idempotencyKey(),List.of(new ConfirmItem(
+                item.passEventId(),item.baseQty(),item.expectedRemainingBaseQty(),"A|warehouseId="+actual)));
+        ConfirmRequest explicit=new ConfirmRequest(entry.idempotencyKey(),List.of(new ConfirmItem(
+                item.passEventId(),item.baseQty(),item.expectedRemainingBaseQty(),"A",actual)));
+        Object legacyNormalized=ReflectionTestUtils.invokeMethod(f.service,"normalize","PURCHASE",entry.receiptId(),legacy);
+        Object explicitNormalized=ReflectionTestUtils.invokeMethod(f.service,"normalize","PURCHASE",entry.receiptId(),explicit);
+        String legacyHash=ReflectionTestUtils.invokeMethod(legacyNormalized,"requestHash");
+        String explicitHash=ReflectionTestUtils.invokeMethod(explicitNormalized,"requestHash");
+        assertThat(explicitHash).isNotEqualTo(legacyHash);
+        f.existing.put(entry.idempotencyKey(),new Object[]{UUID.randomUUID(),legacyHash,1,OffsetDateTime.now()});
+        assertThatThrownBy(()->f.service.confirm("PURCHASE",entry.receiptId(),explicit))
+                .isInstanceOf(ApiException.class).hasMessageContaining("幂等键");
+        assertThat(f.writeSql).isEmpty();
+        verifyNoInteractions(f.stock,f.production,f.peg,f.warehouses);
+    }
+
     private static class Fixture {
         final EntityManager em = mock(EntityManager.class);
         final StockService stock = mock(StockService.class);
@@ -123,10 +211,12 @@ class ProcurementIqcStockInBatchExecutionTest {
         final WarehouseScopeService warehouses = mock(WarehouseScopeService.class);
         final PreplanInboundAllocationReadPort allocations = mock(PreplanInboundAllocationReadPort.class);
         final Map<UUID, Object[]> slices = new HashMap<>();
+        final Map<UUID,List<Object[]>> additionalSlices = new HashMap<>();
         final Map<String, Object[]> existing = new HashMap<>();
         final List<UUID> readSlices = new ArrayList<>();
         final List<String> writeSql = new ArrayList<>();
         final List<StockService.MovementRequest> movements = new ArrayList<>();
+        final List<UUID> stockItemWarehouses = new ArrayList<>();
         final ProcurementIqcStockInService service;
         boolean productionAdvanced;
 
@@ -140,6 +230,7 @@ class ProcurementIqcStockInBatchExecutionTest {
             service.setInboundAllocationRead(allocations);
             ReflectionTestUtils.setField(service, "warehouseScopes", warehouses);
             when(locks.stockIn(any())).thenReturn(guard);
+            doAnswer(call->{productionAdvanced=true;return null;}).when(production).afterInspectionStockInConfirmed(anyList());
             when(em.createNativeQuery(anyString())).thenAnswer(call -> query(call.getArgument(0)));
             when(allocations.actualForBatches(any())).thenAnswer(call -> {
                 assertThat(productionAdvanced).as("actual result must include final production state").isTrue();
@@ -162,7 +253,7 @@ class ProcurementIqcStockInBatchExecutionTest {
                     BigDecimal.ONE, quantity, new BigDecimal("10"), null, null, quantity, BigDecimal.ZERO,
                     quantity, new BigDecimal("10"), null, BigDecimal.ZERO, quantity, "合格",
                     OffsetDateTime.now(), "G001", "货品", null, "件", null, "A1", "检验员", "PO001", unit,
-                    UUID.randomUUID()});
+                    UUID.randomUUID(),"原建议仓"});
             return new BatchConfirmEntry("PURCHASE", receipt, key,
                     List.of(new ConfirmItem(event, quantity, quantity, "A1")));
         }
@@ -181,7 +272,12 @@ class ProcurementIqcStockInBatchExecutionTest {
                 if (sql.contains("SELECT event.id,")) {
                     UUID receipt = (UUID) params.get("receiptId");
                     readSlices.add(receipt);
-                    return java.util.Collections.singletonList(slices.get(receipt));
+                    List<Object[]> result=new ArrayList<>();result.add(slices.get(receipt));
+                    result.addAll(additionalSlices.getOrDefault(receipt,List.of()));return result;
+                }
+                if(sql.contains("FROM procurement_iqc_quality_consideration_parts quality")) {
+                    Object[] slice=slices.values().stream().filter(value->value[0].equals(params.get("event"))).findFirst().orElseThrow();
+                    return List.<Object[]>of(new Object[]{UUID.randomUUID(),slice[17]});
                 }
                 if (sql.contains("SELECT receipt.bill_no, receipt.bill_date")) {
                     return java.util.Collections.singletonList(new Object[]{"PR001", LocalDate.now(),
@@ -189,7 +285,11 @@ class ProcurementIqcStockInBatchExecutionTest {
                 }
                 return List.of();
             });
-            when(query.executeUpdate()).thenAnswer(call -> { writeSql.add(sql); return 1; });
+            when(query.executeUpdate()).thenAnswer(call -> {
+                writeSql.add(sql);
+                if(sql.contains("INSERT INTO procurement_iqc_stock_in_batch_items("))stockItemWarehouses.add((UUID)params.get("warehouseId"));
+                return 1;
+            });
             return query;
         }
     }

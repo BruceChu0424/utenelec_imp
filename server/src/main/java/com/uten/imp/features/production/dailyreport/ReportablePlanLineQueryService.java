@@ -60,6 +60,7 @@ public class ReportablePlanLineQueryService {
             ), reportable AS (
                 SELECT
                     i.id AS plan_item_id,
+                    p.id AS plan_id,
                     segment.id AS execution_segment_id,
                     sales_allocation.id
                         AS execution_segment_sales_allocation_id,
@@ -475,7 +476,8 @@ public class ReportablePlanLineQueryService {
                         rs.getObject("fqc_source_inspection_id", UUID.class),
                         rs.getObject("fqc_source_report_item_id", UUID.class),
                         rs.getString("fqc_source_report_no"),
-                        rs.getBoolean("fqc_recovery_requires_material")),
+                        rs.getBoolean("fqc_recovery_requires_material"),
+                        rs.getObject("plan_id", UUID.class)),
                 dataArgs.toArray());
 
         int totalPages = total == 0 ? 0 : (int) ((total + size - 1) / size);

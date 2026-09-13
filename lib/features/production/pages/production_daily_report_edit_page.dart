@@ -22,6 +22,7 @@ import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/buttons/uten_drafts_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -386,6 +387,7 @@ class _ProductionDailyReportEditPageState
     if (!mounted) return;
     setState(() {
       row
+        ..planId = source.planId
         ..planItemId = source.planItemId
         ..executionSegmentId = source.executionSegmentId
         ..executionSegmentSalesAllocationId =
@@ -419,9 +421,22 @@ class _ProductionDailyReportEditPageState
     });
   }
 
+  Future<void> _openSource(DailyGridRow row) async {
+    final planId = row.planId;
+    final segmentId = row.executionSegmentId;
+    if (planId == null || segmentId == null) return;
+    await context.push(
+      Uri(
+        path: RoutePath.productionPlanDetail(planId),
+        queryParameters: {'executionSegmentId': segmentId},
+      ).toString(),
+    );
+  }
+
   void _clearSource(DailyGridRow row) {
     setState(() {
       row
+        ..planId = null
         ..planItemId = null
         ..executionSegmentId = null
         ..executionSegmentSalesAllocationId = null
@@ -711,7 +726,7 @@ class _ProductionDailyReportEditPageState
                       UtenSpacing.s12,
                       UtenSpacing.s12,
                       UtenSpacing.s12,
-                      UtenSpacing.s12 + 88,
+                      UtenFloatingActionGroup.scrollClearance,
                     ),
                     children: [
                       Card(
@@ -826,7 +841,7 @@ class _ProductionDailyReportEditPageState
                             const SizedBox(width: UtenSpacing.s8),
                             Expanded(
                               child: Text(
-                                '计量口径：填写本次实际完工申报量；需要重量统计的成品同时填写实称总重量。'
+                                '计量口径：填写本次实际完工申报量。'
                                 '审核后先由仓库登记成品仓和库位并送检；'
                                 '只有品质通过且仓库最终点收的数量才会增加库存与完成率。'
                                 '疑似不良也应按实际完工事实申报，由品质登记通过、返工、报废或拒收。',
@@ -876,6 +891,13 @@ class _ProductionDailyReportEditPageState
                           context: context,
                           onPickGoods: _pickGoods,
                           onPickSource: _pickSource,
+                          onOpenSource:
+                              ref.watch(isSuperAdminProvider) ||
+                                  ref
+                                      .watch(currentPermissionsProvider)
+                                      .contains(Perm.productionPlanView)
+                              ? _openSource
+                              : null,
                           onClearSource: _clearSource,
                           colorEntries: names.colorEntries,
                           unitEntries: names.unitEntries,

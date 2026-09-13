@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
@@ -16,6 +18,79 @@ import 'package:uten_imp/features/warehouse/repositories/procurement_inspection_
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
+  testWidgets(
+    'compact grouped tables preserve edits and clear selection from floating controls',
+    (tester) async {
+      final iqc = _Iqc();
+      await _pump(tester, iqc, 1, size: const Size(375, 812));
+      expect(
+        find.byKey(const Key('batch-approval-iqc-table-receipt-1')),
+        findsOneWidget,
+      );
+      expect(find.byType(CheckboxListTile), findsNothing);
+      final action = find.byKey(const Key('batch-approval-submit-report'));
+      expect(tester.widget<UtenButton>(action).type, UtenButtonType.danger);
+      expect(
+        find.ancestor(
+          of: action,
+          matching: find.byType(UtenFloatingActionGroup),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.getRect(action).bottom, lessThanOrEqualTo(812));
+      await tester.tap(find.byKey(const Key('batch-approval-clear-selection')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('batch-approval-pass-receipt-1')),
+            )
+            .enabled,
+        isFalse,
+      );
+      await tester.tap(action);
+      await tester.pumpAndSettle();
+      expect(iqc.sent, isEmpty);
+      expect(
+        find.byKey(const Key('inspection-report-confirm-submit')),
+        findsNothing,
+      );
+      final groupCheck = find.byKey(
+        const Key('batch-approval-receipt-check-receipt-1'),
+      );
+      await tester.tap(groupCheck);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('batch-approval-pass-receipt-1')),
+            )
+            .enabled,
+        isTrue,
+      );
+      await tester.tap(groupCheck);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('batch-approval-pass-receipt-1')),
+            )
+            .enabled,
+        isFalse,
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('batch-approval-pass-receipt-1')),
+            )
+            .controller!
+            .text,
+        '5',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'canceling report confirmation leaves an editable draft and sends nothing',
     (tester) async {
@@ -244,8 +319,9 @@ Future<void> _pump(
   _Iqc iqc,
   int count, {
   bool settle = true,
+  Size size = const Size(1400, 1000),
 }) async {
-  await tester.binding.setSurfaceSize(const Size(1400, 1000));
+  await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();

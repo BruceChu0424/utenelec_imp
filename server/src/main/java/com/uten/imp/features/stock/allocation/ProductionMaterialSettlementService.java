@@ -70,15 +70,49 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                            SELECT 1 FROM v_production_material_clearance clearance
                            JOIN production_material_demands demand ON demand.id=clearance.demand_id
                            WHERE demand.execution_segment_id=segment.id
-                             AND clearance.issued_qty>0 AND clearance.uncleared_qty>0)
+                             AND clearance.issued_qty>0 AND clearance.uncleared_qty>
+                                 COALESCE((SELECT SUM(fn_material_issue_pending_return(issue.id,NULL))
+                                     FROM production_material_stock_postings issue
+                                     WHERE issue.demand_id=demand.id AND issue.posting_type='ISSUE'),0)),
+                       EXISTS (
+                           SELECT 1 FROM production_material_demands demand
+                           JOIN production_material_stock_postings issue ON issue.demand_id=demand.id
+                           WHERE demand.execution_segment_id=segment.id AND issue.posting_type='ISSUE'
+                             AND fn_material_issue_pending_return(issue.id,NULL)>0)
                 FROM production_execution_segments segment
                 WHERE segment.id IN (:segments) AND segment.is_deleted=FALSE
                 """).setParameter("segments", segmentIds.stream().distinct().sorted().toList());
         Map<UUID, UsageFlags> result = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
-            result.put((UUID) row[0], new UsageFlags(Boolean.TRUE.equals(row[1]), Boolean.TRUE.equals(row[2])));
+            boolean available = Boolean.TRUE.equals(row[2]);
+            result.put((UUID) row[0], new UsageFlags(Boolean.TRUE.equals(row[1]),available,
+                    Boolean.TRUE.equals(row[3]),available));
         }
         return Map.copyOf(result);
+    }
+
+    @Transactional(readOnly=true)
+    public List<com.uten.imp.features.stock.allocation.dto.ProductionMaterialUsageSource> materialUsageSources(
+            UUID planId, UUID executionSegmentId) {
+        if (executionSegmentId==null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请选择准确车间任务");
+        taskAccess.readable(planId,executionSegmentId);
+        var scope=taskAccess.readable(planId,null);
+        List<Object[]> sources=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT segment.id,segment.segment_code
+                FROM fn_production_material_usage_source_segments(:segmentId) source
+                JOIN production_execution_segments segment ON segment.id=source.segment_id
+                WHERE segment.plan_id=:planId AND NOT segment.is_deleted
+                ORDER BY (segment.id=:segmentId) DESC,segment.segment_no,segment.id
+                """).setParameter("segmentId",executionSegmentId).setParameter("planId",planId));
+        List<com.uten.imp.features.stock.allocation.dto.ProductionMaterialUsageSource> visible=new ArrayList<>();
+        for(Object[] row:sources) {
+            UUID sourceSegment=(UUID)row[0];
+            if(!scope.all()&&!scope.segmentIds().contains(sourceSegment))continue;
+            var capabilities=taskAccess.capabilities(planId,sourceSegment);
+            visible.add(new com.uten.imp.features.stock.allocation.dto.ProductionMaterialUsageSource(
+                    sourceSegment,(String)row[1],!sourceSegment.equals(executionSegmentId),true,capabilities.canSettle()));
+        }
+        return List.copyOf(visible);
     }
 
     @Transactional(readOnly=true)
@@ -123,7 +157,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                                COALESCE(reversal.reversed_qty, 0),
                                posting.qty_base
                                    - COALESCE(reversal.reversed_qty, 0),
-                               event.reason, event.created_at, event.created_by
+                               event.reason, event.created_at, event.created_by, demand_unit.name
                         FROM production_material_settlement_postings posting
                         JOIN production_material_settlement_events event
                           ON event.id = posting.event_id
@@ -134,6 +168,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                         LEFT JOIN production_execution_segments segment
                           ON segment.id = demand.execution_segment_id
                         LEFT JOIN colors color ON color.id = demand.color_id
+                        LEFT JOIN units demand_unit ON demand_unit.id = demand.unit_id
                         LEFT JOIN LATERAL (
                             SELECT SUM(child.qty_base) AS reversed_qty
                             FROM production_material_settlement_postings child
@@ -158,7 +193,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                         (UUID) row[8], (String) row[9], (String) row[10],
                         decimal(row[11]), decimal(row[12]), decimal(row[13]),
                         (String) row[14], offsetDateTime(row[15]),
-                        (UUID) row[16]))
+                        (UUID) row[16], (String) row[17]))
                 .toList();
     }
 
@@ -308,8 +343,8 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                         .setParameter("id",line.sourcePostingId()));
             }else{
                 sources=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                        SELECT id,fn_material_issue_unsettled(id) FROM production_material_stock_postings
-                        WHERE demand_id=:id AND posting_type='ISSUE' AND fn_material_issue_unsettled(id)>0
+                        SELECT id,fn_material_issue_available(id,NULL) FROM production_material_stock_postings
+                        WHERE demand_id=:id AND posting_type='ISSUE' AND fn_material_issue_available(id,NULL)>0
                         ORDER BY created_at,id FOR UPDATE
                         """).setParameter("id",line.demandId()));
             }
@@ -411,8 +446,9 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                                c.required_qty, c.issued_qty, c.returned_qty,
                                c.confirmed_consumed_qty, c.approved_loss_qty,
                                c.legal_wip_qty,
-                               GREATEST(c.uncleared_qty, 0),
-                               c.uncleared_qty, c.can_close, demand_unit.name
+                               GREATEST(c.uncleared_qty - COALESCE(pending.qty,0), 0),
+                               c.uncleared_qty, c.can_close, demand_unit.name,
+                               COALESCE(pending.qty,0), GREATEST(c.uncleared_qty - COALESCE(pending.qty,0),0)
                         FROM v_production_material_clearance c
                         JOIN production_material_demands demand
                           ON demand.id = c.demand_id
@@ -420,6 +456,11 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                           ON segment.id = demand.execution_segment_id
                         JOIN goods g ON g.id = c.goods_id
                         LEFT JOIN units demand_unit ON demand_unit.id = demand.unit_id
+                        LEFT JOIN LATERAL (
+                            SELECT SUM(fn_material_issue_pending_return(issue.id,NULL)) qty
+                            FROM production_material_stock_postings issue
+                            WHERE issue.demand_id=demand.id AND issue.posting_type='ISSUE'
+                        ) pending ON TRUE
                         LEFT JOIN colors color ON color.id = c.color_id
                         WHERE c.plan_id = :planId
                         """ + (scope.all() ? "" : " AND demand.execution_segment_id IN (:segments)")
@@ -434,7 +475,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                         decimal(row[9]), decimal(row[10]), decimal(row[11]),
                         decimal(row[12]), decimal(row[13]), decimal(row[14]),
                         decimal(row[15]), decimal(row[16]),
-                        Boolean.TRUE.equals(row[17]), (String) row[18]))
+                        Boolean.TRUE.equals(row[17]), (String) row[18], decimal(row[19]), decimal(row[20])))
                 .toList();
     }
 

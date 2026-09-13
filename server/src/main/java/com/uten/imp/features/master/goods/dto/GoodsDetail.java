@@ -96,6 +96,9 @@ public class GoodsDetail {
     // ===== 折扣可见性（goods:discount:view；未授权时 discount 置 null 且 discountMasked=true，前端隐藏折扣字段） =====
     private boolean discountMasked;
 
+    // ===== 售价可见性（goods:price:view，V570；未授权时 price 置 null 且 priceMasked=true，前端隐藏价格字段/列） =====
+    private boolean priceMasked;
+
     // ===== 即时库存（聚合 stock_balances，仅参与核算仓库；详情展示+关联仓库） =====
     private BigDecimal stockQty;                 // 各参与核算仓库余量合计
     private List<GoodsStockRow> stockByWarehouse; // 按仓库（×颜色）展开

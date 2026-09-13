@@ -17,10 +17,10 @@ void main() {
       );
       await tester.enterText(hot, '12');
       await tester.pump();
-      expect(find.text('1 项已修改'), findsOneWidget);
+      expect(find.text('保存 1 项改动'), findsOneWidget);
       await tester.enterText(hot, '6');
       await tester.pump();
-      expect(find.text('所有设置保持当前值'), findsOneWidget);
+      expect(find.text('保存改动'), findsOneWidget);
       final publisher = tester.widget<TextFormField>(
         find.byKey(const ValueKey('system-setting-celebration.publisher_name')),
       );
@@ -45,7 +45,7 @@ void main() {
         ),
         '60',
       );
-      await tester.tap(find.text('保存改动'));
+      await tester.tap(find.byKey(const ValueKey('system-settings-save')));
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.byType(AlertDialog), findsOneWidget);
       await tester.enterText(
@@ -80,7 +80,7 @@ void main() {
       find.byKey(const ValueKey('system-setting-audit_hot_retention_months')),
       '0',
     );
-    await tester.tap(find.text('保存改动'));
+    await tester.tap(find.byKey(const ValueKey('system-settings-save')));
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsNothing);
     expect(repo.batchCalls, 0);

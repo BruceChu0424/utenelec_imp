@@ -6,7 +6,7 @@
 //     （默认合格 = 剩余待检、不合格 = 0），提交走 decide-batch（每单一事务）；
 //   - FQC 自制产成品区：V547 按品质检查单分组（组头三态复选，镜像 IQC 收货单组），
 //     无检查单的历史任务单列；勾选任务 = 全部合格（既有 pass-all 语义）；
-//   - 底部 UtenBottomActionBar：UtenSelectionSummaryPill（已选计数唯一出处，✕ 一键清空）
+//   - 右下角 UtenFloatingActionGroup：UtenSelectionSummaryPill（已选计数唯一出处，✕ 一键清空）
 //     + 说明文案 + 提交报告；总结确认弹窗（仿计划部下达采购）后执行。
 import 'package:flutter/material.dart';
 import '../presentation/procurement_inspection_guidance.dart';
@@ -18,9 +18,10 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -29,6 +30,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/providers/warehouse_quality_result_count_provider.dart';
 import '../../warehouse/repositories/procurement_inspection_repository.dart';
@@ -491,27 +493,34 @@ class _QualityBatchApprovalPageState
         body: SafeArea(
           child: _loading
               ? const UtenSkeletonList()
-              : AbsorbPointer(
-                  absorbing: _submitting,
-                  child: UtenContentContainer.wide(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(
-                          child: AbsorbPointer(
-                            absorbing: _submission != null,
-                            child: ExcludeFocus(
-                              excluding: _submission != null,
-                              child: _buildBody(theme),
-                            ),
+              : Stack(
+                  children: [
+                    AbsorbPointer(
+                      absorbing: _submitting,
+                      child: UtenContentContainer.wide(
+                        child: AbsorbPointer(
+                          absorbing: _submission != null,
+                          child: ExcludeFocus(
+                            excluding: _submission != null,
+                            child: _buildBody(theme),
                           ),
                         ),
-                        _buildBottomBar(theme),
-                      ],
+                      ),
                     ),
-                  ),
+                    // 2026-09-12 用户口径「点了像卡住」：提交报告执行期间屏幕
+                    // 中间给加载动画（跟随网络调用本身，失败/完成后撤下）。
+                    if (_submitting)
+                      const Positioned.fill(
+                        child: UtenBusyOverlay(
+                          title: '正在提交检验报告',
+                          description: '按收货单逐张原子提交，已确认部分不会重复发送。',
+                        ),
+                      ),
+                  ],
                 ),
         ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButton: _loading ? null : _buildBottomBar(theme),
       ),
     );
   }
@@ -537,8 +546,24 @@ class _QualityBatchApprovalPageState
       );
     }
     return ListView(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
+      padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s12,
+        UtenSpacing.s12,
+        UtenSpacing.s12,
+        UtenFloatingActionGroup.scrollClearance,
+      ),
       children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
+          child: Text(
+            _submission == null
+                ? '按单核对检验明细，合格部分提交后转仓库待入库。'
+                : '已确认 ${_submission!.completedReceiptCount} 单；重试原报告核对未完成部分。需修改请返回待检重新读取。',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
         if (groups.any((group) => group.loadError != null) ||
             sheetGroups.any((group) => group.loadError != null))
           Align(
@@ -552,6 +577,8 @@ class _QualityBatchApprovalPageState
           ),
         for (final group in groups) ...[
           _receiptHeader(theme, group),
+          // 组头与下方表格/错误行留间距（2026-09-12 用户口径：现在贴在一起）。
+          const SizedBox(height: UtenSpacing.s8),
           if (group.loadError != null)
             Padding(
               padding: const EdgeInsets.all(UtenSpacing.s8),
@@ -563,11 +590,12 @@ class _QualityBatchApprovalPageState
               ),
             )
           else
-            for (final row in group.rows) _iqcRowTile(theme, row),
+            _iqcTable(group),
           const SizedBox(height: UtenSpacing.s12),
         ],
         for (final group in sheetGroups) ...[
           _sheetHeader(theme, group),
+          const SizedBox(height: UtenSpacing.s8),
           if (group.loadError != null)
             Padding(
               padding: const EdgeInsets.all(UtenSpacing.s8),
@@ -589,19 +617,18 @@ class _QualityBatchApprovalPageState
               ),
             )
           else
-            for (final inspection in group.inspections)
-              _fqcRowTile(theme, inspection),
+            _fqcTable(group.inspections, tableKey: group.sheet.id),
           const SizedBox(height: UtenSpacing.s12),
         ],
         if (looseFqc.isNotEmpty) ...[
           Text(
-            '自制产成品 · 无检查单（勾选 = 全部合格）',
+            '自制产成品 · 无检查单 (勾选即全部合格)',
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: UtenSpacing.s4),
-          for (final inspection in looseFqc) _fqcRowTile(theme, inspection),
+          _fqcTable(looseFqc, tableKey: 'legacy'),
         ],
       ],
     );
@@ -631,8 +658,8 @@ class _QualityBatchApprovalPageState
             tristate: true,
             onChanged: ids.isEmpty
                 ? null
-                : (next) => setState(() {
-                    if (next != false) {
+                : (_) => setState(() {
+                    if (value != true) {
                       _selectedFqcIds.addAll(ids);
                     } else {
                       _selectedFqcIds.removeAll(ids);
@@ -657,8 +684,12 @@ class _QualityBatchApprovalPageState
 
   Widget _receiptHeader(ThemeData theme, _IqcReceiptGroup group) {
     final pending = group.rows.where((row) => !row.completed).toList();
-    final allSelected =
-        pending.isNotEmpty && pending.every((row) => row.selected);
+    final selected = pending.where((row) => row.selected).length;
+    final bool? allSelected = selected == 0
+        ? false
+        : selected == pending.length
+        ? true
+        : null;
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: UtenSpacing.s8,
@@ -668,13 +699,16 @@ class _QualityBatchApprovalPageState
       child: Row(
         children: [
           Checkbox(
+            key: ValueKey(
+              'batch-approval-receipt-check-${group.receipt.receiptId}',
+            ),
             value: allSelected,
             tristate: true,
             onChanged: pending.isEmpty
                 ? null
-                : (value) => setState(() {
+                : (_) => setState(() {
                     for (final row in pending) {
-                      row.selected = value != false;
+                      row.selected = allSelected != true;
                     }
                   }),
           ),
@@ -694,154 +728,216 @@ class _QualityBatchApprovalPageState
     );
   }
 
-  Widget _iqcRowTile(ThemeData theme, _EditableIqcRow row) {
-    final remaining = row.item.remainingBaseQty ?? 0;
-    return ListenableBuilder(
-      listenable: Listenable.merge([row.pass, row.fail]),
-      builder: (context, child) => CheckboxListTile(
-        value: row.selected,
-        controlAffinity: ListTileControlAffinity.leading,
-        onChanged: row.completed
-            ? null
-            : (value) => setState(() => row.selected = value ?? false),
-        title: Text(
-          [
-            row.item.goodsName,
-            row.item.goodsCode,
-            row.item.colorName,
-          ].where((text) => text?.isNotEmpty == true).join(' · '),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Text(
-          row.completed
-              ? '本次报告已确认提交'
-              : '剩余待检 ${_fmt(remaining)} ${inspectionQuantityUnit(context, row.item)}',
-        ),
-        secondary: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 140,
-              child: TextField(
-                key: Key('batch-approval-pass-${row.item.id}'),
-                controller: row.pass,
-                enabled: row.selected && _submission == null,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                textAlign: TextAlign.right,
-                decoration: UtenInputDecoration(
-                  InputDecoration(
-                    labelText: '合格数量',
-                    isDense: true,
-                    error: row.validate() == null
-                        ? null
-                        : UtenFieldMessage.error(row.validate()!),
-                  ),
-                  info: inspectionQuantityHint(context, row.item, passed: true),
-                ),
-              ),
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            SizedBox(
-              width: 140,
-              child: TextField(
-                key: Key('batch-approval-fail-${row.item.id}'),
-                controller: row.fail,
-                enabled: row.selected && _submission == null,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                textAlign: TextAlign.right,
-                decoration: UtenInputDecoration(
-                  InputDecoration(
-                    labelText: '不合格数量',
-                    isDense: true,
-                    error: row.validate() == null
-                        ? null
-                        : UtenFieldMessage.error(row.validate()!),
-                  ),
-                  info: inspectionQuantityHint(
-                    context,
-                    row.item,
-                    passed: false,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _fqcRowTile(ThemeData theme, ProductionFqcInspection inspection) {
-    return CheckboxListTile(
-      value: _selectedFqcIds.contains(inspection.id),
-      controlAffinity: ListTileControlAffinity.leading,
-      onChanged: (value) => setState(() {
-        if (value == true) {
-          _selectedFqcIds.add(inspection.id);
-        } else {
-          _selectedFqcIds.remove(inspection.id);
-        }
-      }),
-      title: Text(
-        '报工 ${inspection.reportNo ?? inspection.id}'
-        '${inspection.planNo == null ? '' : ' · 计划 ${inspection.planNo}'}',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        '${inspection.goodsName ?? ''}'
-        '${inspection.colorName?.isNotEmpty == true ? '(${inspection.colorName})' : ''}'
-        ' · 待检 ${fqcQtyText(inspection.remainingQty)}'
-        '${inspection.unitName ?? ''}'
-        '${inspection.place == null ? '' : ' · 库位 ${inspection.place}'}'
-        ' · 勾选即全部合格',
-      ),
-    );
-  }
-
-  /// 吸底操作栏：已选计数只由 [UtenSelectionSummaryPill] 呈现（全站口径，
-  /// 页面不再自摆「已选 N 项」纯文字），说明文案降级为 bodySmall。
-  Widget _buildBottomBar(ThemeData theme) {
-    final selectedCount = _selectedCount;
-    return UtenBottomActionBar(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      child: Row(
-        children: [
-          UtenSelectionSummaryPill(
-            key: const Key('batch-approval-selected-count'),
-            count: selectedCount,
-            onClear: selectedCount == 0 || _submission != null
-                ? null
-                : _clearSelection,
+  Widget _iqcTable(_IqcReceiptGroup group) =>
+      MasterDataTableView<_EditableIqcRow>(
+        key: ValueKey('batch-approval-iqc-table-${group.receipt.receiptId}'),
+        embedded: true,
+        showSelectionSummary: false,
+        columns: [
+          MasterColumnDef(
+            key: 'goods',
+            label: '货品',
+            width: 190,
+            value: (row) => [
+              row.item.goodsName,
+              row.item.goodsCode,
+            ].whereType<String>().join(' '),
           ),
-          const SizedBox(width: UtenSpacing.s12),
-          Expanded(
-            child: Text(
-              _submission == null
-                  ? '提交后合格部分转仓库待入库'
-                  : '已确认 ${_submission!.completedReceiptCount} 单；重试原报告核对未完成部分。需修改请返回待检重新读取',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
+          MasterColumnDef(
+            key: 'pass',
+            label: '合格数量',
+            width: 150,
+            type: 'number',
+            info: inspectionQuantityColumnHint(context, passed: true),
+            value: (row) => row.pass.text,
+            cellBuilder: (context, row) => _iqcQuantityField(row, passed: true),
           ),
-          const SizedBox(width: UtenSpacing.s12),
-          UtenButton(
-            key: const Key('batch-approval-submit-report'),
-            isLoading: _submitting,
-            icon: Icons.fact_check_outlined,
-            onPressed: _submitting || _confirming ? null : _submitReport,
-            child: Text(_submission == null ? '提交报告' : '重试原报告'),
+          MasterColumnDef(
+            key: 'fail',
+            label: '不合格数量',
+            width: 150,
+            type: 'number',
+            info: inspectionQuantityColumnHint(context, passed: false),
+            value: (row) => row.fail.text,
+            cellBuilder: (context, row) =>
+                _iqcQuantityField(row, passed: false),
+          ),
+          MasterColumnDef(
+            key: 'remaining',
+            label: '剩余待检',
+            width: 110,
+            type: 'number',
+            value: (row) => _fmt(row.item.remainingBaseQty ?? 0),
+          ),
+          MasterColumnDef(
+            key: 'unit',
+            label: '验收单位',
+            width: 190,
+            value: (row) => inspectionQuantityUnitCell(context, row.item),
+          ),
+          MasterColumnDef(
+            key: 'color',
+            label: '颜色',
+            width: 100,
+            value: (row) => row.item.colorName ?? '—',
+          ),
+          MasterColumnDef(
+            key: 'source',
+            label: '来源订货单',
+            width: 160,
+            value: (row) => row.item.sourceOrderNo ?? '—',
+          ),
+          MasterColumnDef(
+            key: 'status',
+            label: '本次报告',
+            width: 190,
+            value: (row) => row.completed ? '本次报告已确认提交' : '待提交',
           ),
         ],
+        items: group.rows,
+        facets: const {},
+        nullCounts: const {},
+        filters: const {},
+        onFilterChanged: (_, _) {},
+        selectable: true,
+        idOf: (row) => row.completed ? null : row.item.id,
+        selectedIds: {
+          for (final row in group.rows)
+            if (row.selected && !row.completed) row.item.id,
+        },
+        onSelectedIdsChanged: (next) => setState(() {
+          for (final row in group.rows) {
+            if (!row.completed) row.selected = next.contains(row.item.id);
+          }
+        }),
+        emptyMessage: '本单已无待检明细',
+      );
+
+  Widget _iqcQuantityField(_EditableIqcRow row, {required bool passed}) =>
+      ListenableBuilder(
+        listenable: Listenable.merge([row.pass, row.fail]),
+        builder: (context, _) => Semantics(
+          textField: true,
+          label: '${row.item.goodsName ?? '明细'} ${passed ? '合格数量' : '不合格数量'}',
+          child: TextField(
+            key: Key(
+              'batch-approval-${passed ? 'pass' : 'fail'}-${row.item.id}',
+            ),
+            controller: passed ? row.pass : row.fail,
+            enabled: row.selected && !row.completed && _submission == null,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            textAlign: TextAlign.right,
+            decoration: UtenInputDecoration(
+              InputDecoration(
+                isDense: true,
+                error: row.validate() == null
+                    ? null
+                    : UtenFieldMessage.error(row.validate()!),
+              ),
+            ),
+          ),
+        ),
+      );
+
+  Widget _fqcTable(
+    List<ProductionFqcInspection> inspections, {
+    required String tableKey,
+  }) => MasterDataTableView<ProductionFqcInspection>(
+    key: ValueKey('batch-approval-fqc-table-$tableKey'),
+    embedded: true,
+    showSelectionSummary: false,
+    columns: [
+      MasterColumnDef(
+        key: 'goods',
+        label: '货品',
+        width: 220,
+        value: (row) =>
+            [row.goodsName, row.goodsCode].whereType<String>().join(' '),
       ),
+      MasterColumnDef(
+        key: 'quantity',
+        label: '本次合格',
+        width: 110,
+        type: 'number',
+        info: '勾选本行表示将本行剩余待检数量全部判定合格。',
+        value: (row) => fqcQtyText(row.remainingQty),
+      ),
+      MasterColumnDef(
+        key: 'unit',
+        label: '单位',
+        width: 80,
+        value: (row) => row.unitName ?? '—',
+      ),
+      MasterColumnDef(
+        key: 'color',
+        label: '颜色',
+        width: 100,
+        value: (row) => row.colorName ?? '—',
+      ),
+      MasterColumnDef(
+        key: 'report',
+        label: '来源报工单',
+        width: 170,
+        value: (row) => row.reportNo ?? row.id,
+      ),
+      MasterColumnDef(
+        key: 'plan',
+        label: '生产计划',
+        width: 150,
+        value: (row) => row.planNo ?? '—',
+      ),
+      MasterColumnDef(
+        key: 'warehouse',
+        label: '实际成品仓',
+        width: 150,
+        value: (row) => row.warehouseName ?? '—',
+      ),
+      MasterColumnDef(
+        key: 'place',
+        label: '库位',
+        width: 120,
+        value: (row) => row.place ?? '—',
+      ),
+    ],
+    items: inspections,
+    facets: const {},
+    nullCounts: const {},
+    filters: const {},
+    onFilterChanged: (_, _) {},
+    selectable: true,
+    idOf: (row) => row.id,
+    selectedIds: _selectedFqcIds.intersection(
+      inspections.map((row) => row.id).toSet(),
+    ),
+    onSelectedIdsChanged: (next) => setState(() {
+      _selectedFqcIds.removeAll(inspections.map((row) => row.id));
+      _selectedFqcIds.addAll(next);
+    }),
+    emptyMessage: '本单已无待检明细',
+  );
+
+  Widget _buildBottomBar(ThemeData theme) {
+    final selectedCount = _selectedCount;
+    return UtenFloatingActionGroup(
+      children: [
+        UtenSelectionSummaryPill(
+          key: const Key('batch-approval-selected-count'),
+          clearKey: const Key('batch-approval-clear-selection'),
+          count: selectedCount,
+          onClear: selectedCount == 0 || _submission != null || _submitting
+              ? null
+              : _clearSelection,
+        ),
+        UtenButton(
+          key: const Key('batch-approval-submit-report'),
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          isLoading: _submitting,
+          icon: Icons.fact_check_outlined,
+          onPressed: _submitting || _confirming ? null : _submitReport,
+          child: Text(_submission == null ? '提交报告' : '重试原报告'),
+        ),
+      ],
     );
   }
 }

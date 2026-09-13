@@ -359,7 +359,11 @@ PagePermissionScope? _productionScopeFor(List<String> segments) {
     case 'material-analysis':
       return segments.length == 2 ? _materialAnalysisScope : null;
     case 'workshop-tasks':
-      return segments.length == 2 ? _productionWorkshopTasksScope : null;
+      return segments.length == 2 ||
+              (segments.length == 3 &&
+                  {'draw-request', 'batch-draw'}.contains(segments[2]))
+          ? _productionWorkshopTasksScope
+          : null;
     case 'material-analyses':
       if (segments.length == 2) return _materialAnalysisHistoryScope;
       return segments.length == 4 && segments[3] == 'summary'
@@ -394,7 +398,8 @@ PagePermissionScope? _financeScopeFor(String path, List<String> segments) {
       _isDescendant(path, '/finance/sales-order-confirmations')) {
     return _salesFinanceScope;
   }
-  if (path == '/finance/sales-shipment-audits') {
+  if (path == '/finance/sales-shipment-audits' ||
+      _isDescendant(path, '/finance/sales-shipment-audits')) {
     return _financeShipmentAuditScope;
   }
   if (path == '/finance/procurement-arrival-exceptions' ||

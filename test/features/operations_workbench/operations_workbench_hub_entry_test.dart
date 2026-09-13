@@ -2,14 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_hub_page.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_hub_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_hub_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+
+late SharedPreferences _preferences;
 
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   testWidgets('purchase task center card opens its workbench', (tester) async {
     final router = _router(
       hubPath: RouteName.purchase,
@@ -26,6 +34,7 @@ void main() {
             Perm.purchaseRequestView,
           }),
           isSuperAdminProvider.overrideWithValue(false),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
         ],
         child: MaterialApp.router(
           routerConfig: router,
@@ -66,6 +75,7 @@ void main() {
         overrides: [
           currentPermissionsProvider.overrideWithValue({Perm.stockDocView}),
           isSuperAdminProvider.overrideWithValue(false),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
         ],
         child: MaterialApp.router(
           routerConfig: router,
@@ -111,6 +121,7 @@ void main() {
             Perm.subcontractOutboundView,
           }),
           isSuperAdminProvider.overrideWithValue(false),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
         ],
         child: MaterialApp.router(
           routerConfig: router,
@@ -165,6 +176,7 @@ void main() {
         overrides: [
           currentPermissionsProvider.overrideWithValue(const <String>{}),
           isSuperAdminProvider.overrideWithValue(false),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
         ],
         child: MaterialApp.router(
           routerConfig: router,
@@ -196,6 +208,7 @@ void main() {
         overrides: [
           currentPermissionsProvider.overrideWithValue(const <String>{}),
           isSuperAdminProvider.overrideWithValue(false),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
         ],
         child: MaterialApp.router(
           routerConfig: router,

@@ -14,6 +14,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -117,12 +121,22 @@ public class WarehouseSalesOutboundProjectionService {
 
     private WarehouseSalesOutboundDetail toDetail(ShipmentDetail source) {
         NameDirectory names = new NameDirectory(entityManager);
+        List<?> modes=entityManager.createNativeQuery("SELECT warehouse_chosen_at_pick FROM sales_shipments WHERE id=:id")
+                .setParameter("id",source.getId()).getResultList();
+        boolean chosenAtPick=!modes.isEmpty() && Boolean.TRUE.equals(modes.getFirst());
+        Map<UUID,String> stockPlaces=new HashMap<>();
+        for(Object[] row:com.uten.imp.common.util.NativeQueryResults.objectArrayRows(entityManager.createNativeQuery("""
+                SELECT entry.key::uuid,entry.value FROM sales_shipment_warehouse_events event
+                CROSS JOIN LATERAL jsonb_each_text(event.line_stock_places) entry
+                WHERE event.id=(SELECT latest.id FROM sales_shipment_warehouse_events latest
+                    WHERE latest.shipment_id=:id AND latest.to_status='PICKING' ORDER BY latest.occurred_at DESC,latest.id DESC LIMIT 1)
+                """).setParameter("id",source.getId())))stockPlaces.put((UUID)row[0],(String)row[1]);
         List<String> allowedTargets = source.isCanManageWarehouseWork()
                 ? SalesShipmentService.allowedWarehouseTransitionTargets(
                         source.getWarehouseWorkStatus())
                 : List.of();
         List<WarehouseSalesOutboundLine> lines = source.getItems().stream()
-                .map(item -> toLine(item, names))
+                .map(item -> toLine(item, names,stockPlaces.get(item.getId())))
                 .toList();
         return new WarehouseSalesOutboundDetail(
                 source.getId(),
@@ -143,12 +157,14 @@ public class WarehouseSalesOutboundProjectionService {
                 source.getHandedOverAt(),
                 source.getWarehouseExceptionReason(),
                 allowedTargets,
-                lines);
+                lines,
+                chosenAtPick && allowedTargets.contains("PICKING"),
+                allowedTargets.contains("PICKING")?warehouseOptions(source,chosenAtPick):List.of());
     }
 
     private WarehouseSalesOutboundLine toLine(
             ShipmentItemDto source,
-            NameDirectory names) {
+            NameDirectory names,String actualStockPlace) {
         GoodsIdentity goods = names.goods(source.getGoodsId());
         return new WarehouseSalesOutboundLine(
                 source.getId(),
@@ -167,7 +183,100 @@ public class WarehouseSalesOutboundProjectionService {
                 source.getCartonCount(),
                 source.getClientNo(),
                 source.getClientModel(),
-                source.getSourceDocNo());
+                source.getSourceDocNo(),actualStockPlace);
+    }
+
+    private List<WarehouseSalesOutboundWarehouseOption> warehouseOptions(ShipmentDetail source,boolean chosenAtPick) {
+        // Sales detail intentionally hides order lineage from warehouse-only
+        // actors. Inventory eligibility must still use the persisted source;
+        // only quantities, never the hidden order identities, are returned.
+        List<UUID> ownIds=com.uten.imp.common.util.NativeQueryResults.typedRows(entityManager.createNativeQuery("""
+                SELECT DISTINCT order_item_id FROM sales_shipment_items
+                WHERE shipment_id=:id AND NOT is_deleted AND order_item_id IS NOT NULL ORDER BY order_item_id
+                """).setParameter("id",source.getId()),UUID.class);
+        if(ownIds.isEmpty())ownIds=List.of(new UUID(0,0));
+        List<Object[]> rows=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(entityManager.createNativeQuery("""
+                WITH RECURSIVE active_wh AS (
+                    SELECT id,name FROM warehouses WHERE parent_id IS NULL AND NOT is_deleted AND status='使用'
+                    UNION ALL SELECT child.id,child.name FROM warehouses child JOIN active_wh parent ON parent.id=child.parent_id
+                        WHERE NOT child.is_deleted AND child.status='使用'
+                )
+                SELECT warehouse.id,warehouse.name,item.id,item.order_item_id,item.goods_id,item.color_id,
+                       COALESCE(item.unit_rate,1)::numeric,item.qty::numeric,
+                       LEAST(GREATEST(COALESCE(balance.qty,0)-GREATEST(COALESCE(goods.min_qty::numeric,0),0)-COALESCE(other_reserved.qty,0)-COALESCE(active.qty,0),0),global_budget.qty)::numeric,
+                       GREATEST(COALESCE(own.qty,0)-COALESCE(active_order.qty,0),0)::numeric
+                FROM active_wh warehouse JOIN warehouses physical ON physical.id=warehouse.id
+                JOIN sales_shipment_items item ON item.shipment_id=:shipment AND NOT item.is_deleted
+                JOIN goods ON goods.id=item.goods_id
+                LEFT JOIN stock_balances balance ON balance.warehouse_id=warehouse.id AND balance.goods_id=item.goods_id
+                    AND balance.color_id IS NOT DISTINCT FROM item.color_id
+                LEFT JOIN LATERAL (
+                    SELECT sum(reservation.qty-reservation.consumed_qty-reservation.released_qty) qty FROM stock_reservations reservation
+                    WHERE reservation.warehouse_id=warehouse.id AND reservation.goods_id=item.goods_id
+                      AND reservation.color_id IS NOT DISTINCT FROM item.color_id AND NOT reservation.is_deleted AND reservation.status=0
+                      AND (reservation.order_item_id IS NULL OR reservation.order_item_id NOT IN (:ownIds))
+                ) other_reserved ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT sum(other_item.qty*COALESCE(other_item.unit_rate,1)) qty FROM sales_shipment_items other_item
+                    JOIN sales_shipments other ON other.id=other_item.shipment_id
+                    WHERE other.id<>:shipment AND other.warehouse_id=warehouse.id AND other.status=0
+                      AND NOT other.is_deleted AND NOT other.rejected AND NOT other_item.is_deleted
+                      AND other.warehouse_work_status IN('PICKING','PICKED') AND other.shipment_kind<>'DIRECT_CUSTOMER'
+                      AND other_item.goods_id=item.goods_id AND other_item.color_id IS NOT DISTINCT FROM item.color_id
+                      AND (other_item.order_item_id IS NULL OR other_item.order_item_id IN (:ownIds))
+                ) active ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT sum(reservation.qty-reservation.consumed_qty-reservation.released_qty) qty FROM stock_reservations reservation
+                    WHERE (reservation.warehouse_id IS NULL OR reservation.warehouse_id=warehouse.id)
+                      AND reservation.order_item_id=item.order_item_id AND reservation.goods_id=item.goods_id
+                      AND reservation.color_id IS NOT DISTINCT FROM item.color_id AND NOT reservation.is_deleted AND reservation.status=0
+                ) own ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT sum(other_item.qty*COALESCE(other_item.unit_rate,1)) qty FROM sales_shipment_items other_item
+                    JOIN sales_shipments other ON other.id=other_item.shipment_id
+                    WHERE other.id<>:shipment AND other.warehouse_id=warehouse.id AND other.status=0 AND NOT other.is_deleted
+                      AND NOT other.rejected AND NOT other_item.is_deleted AND other.warehouse_work_status IN('PICKING','PICKED')
+                      AND other_item.order_item_id=item.order_item_id
+                ) active_order ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT GREATEST(COALESCE((SELECT sum(GREATEST(global_stock.qty-GREATEST(COALESCE(goods.min_qty::numeric,0),0),0))
+                        FROM stock_balances global_stock WHERE global_stock.goods_id=item.goods_id AND global_stock.color_id IS NOT DISTINCT FROM item.color_id),0)
+                      -COALESCE((SELECT sum(reservation.qty-reservation.consumed_qty-reservation.released_qty) FROM stock_reservations reservation
+                        WHERE reservation.goods_id=item.goods_id AND reservation.color_id IS NOT DISTINCT FROM item.color_id
+                          AND reservation.status=0 AND NOT reservation.is_deleted
+                          AND (reservation.order_item_id IS NULL OR reservation.order_item_id NOT IN (:ownIds))),0)
+                      -COALESCE((SELECT sum(other_item.qty*COALESCE(other_item.unit_rate,1)) FROM sales_shipment_items other_item
+                        JOIN sales_shipments other ON other.id=other_item.shipment_id WHERE other.id<>:shipment AND other.status=0
+                          AND NOT other.is_deleted AND NOT other.rejected AND NOT other_item.is_deleted
+                          AND other.warehouse_work_status IN('PICKING','PICKED') AND other.shipment_kind<>'DIRECT_CUSTOMER'
+                          AND other_item.goods_id=item.goods_id AND other_item.color_id IS NOT DISTINCT FROM item.color_id
+                          AND (other_item.order_item_id IS NULL OR other_item.order_item_id IN (:ownIds))),0),0)::numeric qty
+                ) global_budget ON TRUE
+                WHERE physical.is_accountable AND NOT EXISTS(SELECT 1 FROM warehouses child WHERE child.parent_id=warehouse.id AND NOT child.is_deleted)
+                  AND (:choose OR warehouse.id=CAST(:warehouse AS uuid))
+                  AND EXISTS(SELECT 1 FROM stock_balances present WHERE present.warehouse_id=warehouse.id AND present.qty>0
+                    AND present.goods_id IN(SELECT goods_id FROM sales_shipment_items WHERE shipment_id=:shipment AND NOT is_deleted))
+                ORDER BY warehouse.name,warehouse.id,item.line_no,item.id
+                """).setParameter("shipment",source.getId()).setParameter("ownIds",ownIds)
+                .setParameter("choose",chosenAtPick).setParameter("warehouse",source.getWarehouseId()));
+        Map<UUID,List<WarehouseSalesOutboundWarehouseOption.Line>> lines=new LinkedHashMap<>();
+        Map<UUID,String> names=new HashMap<>();
+        Map<String,BigDecimal> physicalRemaining=new HashMap<>(),orderRemaining=new HashMap<>();
+        for(Object[] row:rows) {
+            UUID warehouse=(UUID)row[0],orderItem=(UUID)row[3];
+            String physicalKey=warehouse+"|"+row[4]+"|"+row[5],orderKey=warehouse+"|"+orderItem;
+            BigDecimal rate=(BigDecimal)row[6],required=(BigDecimal)row[7];
+            BigDecimal available=physicalRemaining.computeIfAbsent(physicalKey,key->(BigDecimal)row[8]);
+            if(orderItem!=null)available=available.min(orderRemaining.computeIfAbsent(orderKey,key->(BigDecimal)row[9]));
+            BigDecimal taken=required.multiply(rate).min(available);
+            physicalRemaining.computeIfPresent(physicalKey,(key,remaining)->remaining.subtract(taken));
+            if(orderItem!=null)orderRemaining.computeIfPresent(orderKey,(key,remaining)->remaining.subtract(taken));
+            lines.computeIfAbsent(warehouse,key->new ArrayList<>()).add(new WarehouseSalesOutboundWarehouseOption.Line(
+                    (UUID)row[2],available.divide(rate,4,RoundingMode.DOWN),required));
+            names.put(warehouse,(String)row[1]);
+        }
+        return lines.entrySet().stream().map(entry->new WarehouseSalesOutboundWarehouseOption(entry.getKey(),names.get(entry.getKey()),
+                entry.getValue().stream().allMatch(line->line.availableQty().compareTo(line.requiredQty())>=0),List.copyOf(entry.getValue()))).toList();
     }
 
     private static String normalize(String value) {

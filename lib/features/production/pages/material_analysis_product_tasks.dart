@@ -320,10 +320,13 @@ abstract class _MaterialAnalysisProductTasksState
       final isRootLine =
           material.isRootSupply ||
           rootProductLineIds.contains(material.materialLineId);
-      if (isRootLine && material.confirmedRoute == MaterialSupplyRoute.make) {
+      final supplement = material.hasPriorityMakeSupplement;
+      if (isRootLine &&
+          material.confirmedRoute == MaterialSupplyRoute.make &&
+          !supplement) {
         continue;
       }
-      if (material.shortageQty <= 0) continue;
+      if (material.shortageQty <= 0 && !supplement) continue;
       final route = material.confirmedRoute;
       final isMakeCandidate = route == MaterialSupplyRoute.make;
       final isSubcontractCandidate =
@@ -338,9 +341,15 @@ abstract class _MaterialAnalysisProductTasksState
             target.status?.toUpperCase() != 'CANCELLED',
       );
       final existingChild = _taskChildProductOf(material);
-      if (hasActiveTask ||
-          existingChild != null ||
-          _hasUnlinkedIssuedPlan(material)) {
+      final futureRemainder =
+          (material.sharedFuturePendingQty ?? 0) > 0 &&
+          material.additionalSupplyRecommendationKnown &&
+          material.additionalSupplyRecommendedQty > 0 &&
+          !_hasIssuedMakeOwnership(material);
+      if (!supplement &&
+          ((hasActiveTask && !futureRemainder) ||
+              existingChild != null ||
+              _hasUnlinkedIssuedPlan(material))) {
         continue;
       }
 
@@ -756,6 +765,7 @@ abstract class _MaterialAnalysisProductTasksState
   // Only successful workshop issuance returns true to close its bucket after
   // the result dialog. Procurement/subcontract actions always keep their page.
   Future<bool> _executeBucketAction(_BucketActionRequest request) async {
+    // 遮罩挂在 _notifyRoute 的纯网络段（数量确认弹窗之后），见 supply_actions。
     switch (request.type) {
       case _BucketActionType.buy:
         await _notifyRoute(
@@ -1019,6 +1029,8 @@ abstract class _MaterialAnalysisProductTasksState
     final delegatedOwner = _delegatedOwnerLabel(material);
     final delegatedChildStatus = _delegatedChildStatusLabel(material);
     final detailFacts = <String>[
+      if (material.hasPriorityMakeSupplement)
+        '让料后可补自制 ${_qty(material.priorityMakeSupplementQty)}（已扣除已有补供）',
       if (coverage != null) '本批需求 ${_qty(material.requiredQty)}',
       if (coverage != null)
         '合格库存保障 ${_qty(coverage.covered)}/'
@@ -1115,7 +1127,8 @@ abstract class _MaterialAnalysisProductTasksState
           const SizedBox(height: UtenSpacing.s4),
           // 2026-08-18 起路线选择与建议不再放在详情里：路线操作收进右侧
           // 操作区（采用建议 / 更换路线按钮），详情只保留高级字段与路径。
-          if (!group.actionable) _inactiveNodeHint(theme, material),
+          if (!group.actionable && !material.hasPriorityMakeSupplement)
+            _inactiveNodeHint(theme, material),
           _nodeBorrowSection(theme, material),
         ],
       ),
@@ -1202,6 +1215,22 @@ abstract class _MaterialAnalysisProductTasksState
       );
     }
     final material = group.representative;
+    if (material.hasPriorityMakeSupplement) {
+      return _StatusView(
+        '让料后待补自制 ${_qty(material.priorityMakeSupplementQty)}',
+        Icons.factory_outlined,
+        theme.colorScheme.tertiary,
+        facetKey: 'pendingIssue',
+      );
+    }
+    if ((material.sharedFuturePendingQty ?? 0) > 0) {
+      return _StatusView(
+        '公共已认领未实收 ${_qty(material.sharedFuturePendingQty)} · 尚需下达 ${_qty(material.additionalSupplyRecommendedQty)}',
+        Icons.schedule_outlined,
+        theme.colorScheme.secondary,
+        facetKey: 'inTransit',
+      );
+    }
     // 2026-09-06 统一流程阶段优先：已下达/链路中的行显示真实停在哪一步。
     // 锚点模型下已转生产的行 requiredQty 常为 0——不能因此退化为
     // 「本批需求已转入生产计划」这类通用文案，进度必须与具体单据对应。
@@ -1467,8 +1496,16 @@ abstract class _MaterialAnalysisProductTasksState
 
   /// 「层级 N」徽章：与路线角标同款小胶囊，颜色取层级色板（与整卡阶梯
   /// 缩进、状态栏底色共用同一色板，三处冗余表达层级）。
-  Widget _factChip(ThemeData theme, IconData icon, String label) => Container(
+  Widget _factChip(
+    ThemeData theme,
+    IconData icon,
+    String label, {
+    double? height,
+  }) => Container(
     constraints: const BoxConstraints(maxWidth: 280),
+    // 指定 height（如顶部与「主仓库」字段等高）时内容垂直居中。
+    height: height,
+    alignment: height == null ? null : Alignment.center,
     padding: const EdgeInsets.symmetric(
       horizontal: UtenSpacing.s8,
       vertical: UtenSpacing.s8,

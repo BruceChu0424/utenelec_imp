@@ -10,6 +10,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/buttons/uten_back_button.dart';
+import 'package:uten_imp/features/admin/pages/admin_audit_session_detail_page.dart';
+import 'package:uten_imp/features/admin/widgets/audit_query_scope.dart';
 import 'package:uten_imp/components/data_display/uten_status_badge.dart';
 import 'package:uten_imp/core/audit/device_audit_store.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -304,13 +307,33 @@ void main() {
       );
       await _scrollAuditPageUntilVisible(tester, sessionCard);
       expect(sessionCard, findsOneWidget);
-      expect(find.text('查看会话时间线'), findsOneWidget);
+      expect(find.byKey(const Key('audit-session-table')), findsOneWidget);
       expect(
         find.byKey(const ValueKey('audit-session-event-42')),
         findsNothing,
       );
       expect(repository.sessionEventCalls, isEmpty);
       expect(repository.detailCalls, 0);
+
+      await tester.tapAt(tester.getTopLeft(sessionCard) + const Offset(80, 24));
+      await tester.pumpAndSettle();
+      expect(find.byType(AdminAuditSessionDetailPage), findsOneWidget);
+      expect(
+        tester.getRect(find.byType(AdminAuditSessionDetailPage)).right,
+        1200,
+      );
+      expect(
+        tester.getRect(find.byType(AdminAuditSessionDetailPage)).left,
+        greaterThan(0),
+      );
+      expect(repository.sessionEventCalls, hasLength(1));
+      expect(repository.sessionEventCalls.single['snapshotAuditId'], 9001);
+      await tester.tap(find.byType(UtenBackButton).last);
+      await tester.pumpAndSettle();
+      expect(find.byType(AdminAuditSessionDetailPage), findsNothing);
+      expect(find.byKey(const Key('audit-session-table')), findsOneWidget);
+      expect(repository.sessionCalls, hasLength(1));
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -702,7 +725,7 @@ void main() {
     expect(repository.actorCalls, 1);
 
     final field = find.descendant(
-      of: find.byType(Dialog),
+      of: find.byType(AuditActorPicker),
       matching: find.byType(TextField),
     );
     await tester.enterText(field, '计');

@@ -105,7 +105,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                 WHERE analysis.id <> :sourceAnalysisId
                   AND analysis.is_deleted = FALSE
                   AND analysis.status IN ('ACTIVE', 'PARTIALLY_PLANNED')
-                  AND analysis.warehouse_id = :warehouseId
+                  AND fn_warehouse_same_main(analysis.warehouse_id, :warehouseId)
                   AND material.active = TRUE
                   AND material.depth = 1
                   AND material.control_stage NOT IN ('SHIP', 'REFERENCE')
@@ -157,6 +157,172 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                 .toList();
         int totalPages = (int) ((total + safeSize - 1) / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
+    }
+
+    /** Discover donors from the deficient plan without enumerating analyses in the client. */
+    @Transactional(readOnly = true)
+    public PageResponse<CrossReallocationSourceCandidate> sources(
+            UUID targetAnalysisId, UUID targetMaterialLineId,
+            String keyword, int page, int size) {
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        Endpoint target = endpoint(targetAnalysisId, targetMaterialLineId, false);
+        OwnerVisibility.OwnerScope scope = access.scope();
+        access.requireWritable(target.makerId(), "无权为该物料分析调入材料", scope);
+        validateSourceEndpoint(target);
+        if (target.shortageQty().signum() <= 0
+                || (!scope.seeAll() && scope.visibleOwners().isEmpty())) {
+            return new PageResponse<>(List.of(), safePage, safeSize, 0, 0);
+        }
+        String normalized = normalizeKeyword(keyword);
+        String ownerPredicate = scope.seeAll()
+                ? "analysis.maker_id IS NOT NULL"
+                : "analysis.maker_id IN (:visibleOwners)";
+        String keywordPredicate = normalized == null ? "" : """
+                AND (LOWER(COALESCE(item.source_ref, '')) LIKE :keyword
+                     OR LOWER(COALESCE(product.code, '')) LIKE :keyword
+                     OR LOWER(COALESCE(product.name, '')) LIKE :keyword
+                     OR LOWER(analysis.id::text) LIKE :keyword)
+                """;
+        // Correlate the exact same origin/RESTORE ancestry used by create(). No
+        // formal reservation, received reallocation or claimed future supply qualifies.
+        String originalLots = PreplanStockEntitlementService.AVAILABLE_ORIGINAL_LOTS_SQL
+                .replace(":analysisId", "analysis.id")
+                .replace(":materialId", "material.id");
+        String fromAndWhere = """
+                FROM production_material_analysis_materials material
+                JOIN production_material_analyses analysis ON analysis.id = material.analysis_id
+                JOIN production_material_analysis_items item
+                  ON item.id = material.analysis_item_id AND item.analysis_id = analysis.id
+                 AND item.is_deleted = FALSE
+                JOIN warehouses warehouse ON warehouse.id = analysis.warehouse_id
+                LEFT JOIN goods product ON product.id = item.goods_id
+                JOIN LATERAL (
+                    SELECT SUM(original.remaining_qty) AS qty FROM (
+                """ + originalLots + """
+                    ) original
+                ) lendable ON lendable.qty > 0
+                WHERE analysis.id <> :targetAnalysisId
+                  AND analysis.is_deleted = FALSE
+                  AND analysis.status IN ('ACTIVE', 'PARTIALLY_PLANNED')
+                  AND fn_warehouse_same_main(analysis.warehouse_id, :warehouseId)
+                  AND material.active = TRUE AND material.depth = 1
+                  AND material.control_stage NOT IN ('SHIP', 'REFERENCE')
+                  AND material.goods_id = :goodsId
+                  AND material.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
+                  AND material.unit_id = :unitId
+                  AND material.allocated_available_qty > 0
+                  AND NOT EXISTS (
+                      SELECT 1 FROM preplan_material_reallocations relation
+                      WHERE relation.status IN ('OPEN', 'PARTIAL')
+                        AND (relation.from_analysis_material_id IN (material.id, :targetMaterialId)
+                             OR relation.to_analysis_material_id IN (material.id, :targetMaterialId)))
+                  AND NOT EXISTS (
+                      SELECT 1 FROM production_material_analysis_borrows borrow
+                      WHERE borrow.status = 'ACTIVE'
+                        AND (borrow.from_material_id IN (material.id, :targetMaterialId)
+                             OR borrow.to_material_id IN (material.id, :targetMaterialId)))
+                  AND %s
+                """.formatted(ownerPredicate) + keywordPredicate;
+        Query countQuery = em.createNativeQuery("SELECT COUNT(*) " + fromAndWhere);
+        bindSourceCandidateQuery(countQuery, target, scope, normalized);
+        long total = ((Number) countQuery.getSingleResult()).longValue();
+        if (total == 0) return new PageResponse<>(List.of(), safePage, safeSize, 0, 0);
+        Query rowsQuery = em.createNativeQuery("""
+                SELECT analysis.id, analysis.version, analysis.fingerprint,
+                       material.id, analysis.warehouse_id, warehouse.name,
+                       item.delivery_date,
+                       LEAST(lendable.qty, material.allocated_available_qty),
+                       item.source_ref, product.code, product.name
+                """ + fromAndWhere + """
+                ORDER BY item.delivery_date DESC NULLS LAST, analysis.updated_at,
+                         analysis.id, material.id
+                """)
+                .setFirstResult((safePage - 1) * safeSize).setMaxResults(safeSize);
+        bindSourceCandidateQuery(rowsQuery, target, scope, normalized);
+        List<CrossReallocationSourceCandidate> items = NativeQueryResults.objectArrayRows(rowsQuery)
+                .stream().map(row -> new CrossReallocationSourceCandidate(
+                        uuid(row[0]), ((Number) row[1]).longValue(), string(row[2]),
+                        uuid(row[3]), uuid(row[4]), string(row[5]), analysisLabel(uuid(row[0])),
+                        firstNonBlank(string(row[8]), displayLabel(string(row[9]), string(row[10]))),
+                        localDate(row[6]), decimal(row[7]), target.shortageQty())).toList();
+        return new PageResponse<>(items, safePage, safeSize, total,
+                (int) ((total + safeSize - 1) / safeSize));
+    }
+
+    private static void bindSourceCandidateQuery(Query query, Endpoint target,
+            OwnerVisibility.OwnerScope scope, String keyword) {
+        query.setParameter("targetAnalysisId", target.analysisId())
+                .setParameter("targetMaterialId", target.materialId())
+                .setParameter("warehouseId", target.warehouseId())
+                .setParameter("goodsId", target.goodsId())
+                .setParameter("colorId", target.colorId())
+                .setParameter("unitId", target.unitId());
+        bindScopeAndKeyword(query, scope, keyword);
+    }
+
+    @Transactional(readOnly = true)
+    public CrossReallocationReplenishmentView replenishmentPreviewForCommand(
+            UUID sourceAnalysisId, String idempotencyKey) {
+        List<UUID> ids = NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT id FROM preplan_material_reallocations
+                WHERE from_analysis_id=:source AND created_by=:actor AND idempotency_key=:key
+                """).setParameter("source",sourceAnalysisId).setParameter("actor",currentUser.requireId())
+                .setParameter("key",idempotencyKey),UUID.class);
+        if(ids.size()!=1) throw new ApiException(ErrorCode.NOT_FOUND,"未找到本次调料记录，请刷新后核对");
+        return replenishmentPreview(sourceAnalysisId,ids.getFirst());
+    }
+
+    @Transactional(readOnly = true)
+    public CrossReallocationReplenishmentView replenishmentPreview(UUID sourceAnalysisId,UUID reallocationId) {
+        ReallocationHeader relation=reallocation(reallocationId,false);
+        if(!sourceAnalysisId.equals(relation.fromAnalysisId())) throw new ApiException(ErrorCode.NOT_FOUND,"让料记录不存在");
+        Endpoint source=endpoint(sourceAnalysisId,relation.fromMaterialId(),false);
+        access.requireWritable(source.makerId(),"只能为有权维护的原计划补供",access.scope());
+        AnalysisView view=analysisService.detailInternal(sourceAnalysisId,false);
+        MaterialView material=view.flatMaterials().stream()
+                .filter(row->row.materialLineId().equals(relation.fromMaterialId())).findFirst().orElse(null);
+        String route=material==null ? null : material.sourceConfirmed();
+        boolean open=List.of("OPEN","PARTIAL").contains(relation.status());
+        BigDecimal pending=open ? relation.qty().subtract(relation.priorityFulfilledQty()).max(BigDecimal.ZERO) : BigDecimal.ZERO;
+        boolean preparation=material!=null && "SUBCONTRACT".equals(route) && Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS(SELECT 1 FROM goods_bom_items bom JOIN goods child ON child.id=bom.component_goods_id
+                    AND NOT child.is_deleted AND NOT COALESCE(child.auto_created,FALSE)
+                    WHERE bom.goods_id=:goods AND NOT bom.is_deleted)
+                """).setParameter("goods",material.goodsId()).getSingleResult());
+        String operation="MAKE".equals(route) ? "ISSUE_WORKSHOP_PLANS" : "NOTIFY_SUPPLY";
+        BigDecimal remaining=BigDecimal.ZERO;
+        UUID childId=null;
+        if(material!=null) {
+            if("MAKE".equals(route)) {
+                ProductView child=view.products().stream().filter(product->product.analysisLineId().equals(material.planAnchorAnalysisLineId()))
+                        .findFirst().orElse(null);
+                BigDecimal childRemaining=child==null ? BigDecimal.ZERO : child.remainingQty();
+                remaining=material.priorityMakeSupplementQty().add(childRemaining).min(pending);
+                if(child!=null && material.priorityMakeSupplementQty().signum()==0 && childRemaining.signum()>0) childId=child.analysisLineId();
+            } else remaining=material.additionalSupplyRecommendedQty().min(pending);
+        }
+        boolean canExecute=remaining.signum()>0 && ("MAKE".equals(route)
+                ? view.allowedActions().contains("GENERATE_PLAN") : view.allowedActions().contains("NOTIFY_SUPPLY"));
+        boolean knownRoute=route!=null && List.of("BUY","MAKE","SUBCONTRACT").contains(route);
+        String blocked=!open ? "这笔让料已补齐或已关闭，无需重复补供"
+                : material==null ? "原计划物料节点已变化，请打开原计划核对"
+                : !knownRoute ? "请先在原计划确认合法供料路线"
+                : remaining.signum()<=0 ? "已有补供责任覆盖待补量，请从原计划跟进现有任务"
+                : !canExecute ? "当前账号没有原计划对应补供操作权限" : null;
+        boolean over=canExecute && ("BUY".equals(route) || "SUBCONTRACT".equals(route) && !preparation)
+                && access.hasAuthority("production_material_analysis:over_supply");
+        return new CrossReallocationReplenishmentView(relation.id(),view,relation.fromMaterialId(),relation.toAnalysisId(),
+                relation.qty(),pending,remaining,relation.qty().min(remaining),route,
+                knownRoute && canExecute ? List.of(route) : List.of(),operation,over,preparation,childId,
+                material!=null && "BUY".equals(route) ? material.mainWarehouseSafetyReplenishmentGapQty() : BigDecimal.ZERO,blocked);
+    }
+
+    @Transactional
+    public AnalysisView createReturningTarget(
+            UUID sourceAnalysisId, CrossReallocationRequest request) {
+        create(sourceAnalysisId, request);
+        return analysisService.detailInternal(request.targetAnalysisId(), false);
     }
 
     @Transactional
@@ -372,6 +538,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                        qty, priority_fulfilled_qty, status, lock_version
                 FROM preplan_material_reallocations
                 WHERE status IN ('OPEN', 'PARTIAL')
+                  AND fn_warehouse_same_main(warehouse_id, :warehouseId)
                   AND (
                       (from_analysis_id = :analysisId
                        AND from_analysis_material_id = :materialId)
@@ -382,6 +549,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                 ORDER BY created_at, id
                 FOR UPDATE
                 """)
+                .setParameter("warehouseId", lot.warehouseId())
                 .setParameter("analysisId", lot.beneficiaryAnalysisId())
                 .setParameter("materialId", lot.beneficiaryAnalysisMaterialId()));
         if (rows.isEmpty()) return;
@@ -527,15 +695,24 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
         if (source.analysisId().equals(target.analysisId())) {
             throw validation("跨计划让料不能选择同一物料分析");
         }
-        if (!Objects.equals(source.warehouseId(), target.warehouseId())
+        if (!sameMainWarehouse(source.warehouseId(), target.warehouseId())
                 || !Objects.equals(source.goodsId(), target.goodsId())
                 || !Objects.equals(source.colorId(), target.colorId())
                 || !Objects.equals(source.unitId(), target.unitId())) {
-            throw validation("只能在同仓库、同货品、同颜色和同基本单位之间让料");
+            throw validation("只能在同仓库、同货品、同颜色和同基本单位之间让料（仓库按同主仓范围核对）");
         }
         if (target.shortageQty().signum() <= 0) {
             throw conflict("接受计划已经没有该物料缺口");
         }
+    }
+
+    private boolean sameMainWarehouse(UUID sourceWarehouseId, UUID targetWarehouseId) {
+        return Objects.equals(sourceWarehouseId, targetWarehouseId)
+                || Boolean.TRUE.equals(em.createNativeQuery(
+                        "SELECT fn_warehouse_same_main(:sourceWarehouseId, :targetWarehouseId)")
+                        .setParameter("sourceWarehouseId", sourceWarehouseId)
+                        .setParameter("targetWarehouseId", targetWarehouseId)
+                        .getSingleResult());
     }
 
     private void requireNoOpenEndpointRelation(UUID sourceMaterialId, UUID targetMaterialId) {

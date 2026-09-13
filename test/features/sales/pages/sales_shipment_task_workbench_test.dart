@@ -128,8 +128,12 @@ void main() {
       size: const Size(375, 812),
     );
 
+    // 2026-09-12 起财务模式大小屏统一响应式表格（多选/批量/双击进审核详情）。
+    expect(
+      find.byKey(const Key('finance-shipment-audit-table')),
+      findsOneWidget,
+    );
     expect(find.text('暂无待财务审核的出货单'), findsOneWidget);
-    expect(find.textContaining('等待财务逐张人工放行'), findsOneWidget);
   });
 }
 
@@ -198,6 +202,8 @@ class _OutboundGateway implements WarehouseSalesOutboundGateway {
     String id, {
     required String targetStatus,
     String? reason,
+    String? warehouseId,
+    Map<String, String>? stockPlaces,
   }) => throw UnimplementedError();
 }
 

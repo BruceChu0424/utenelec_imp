@@ -805,10 +805,10 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
         when(query.executeUpdate()).thenAnswer(invocation -> {
             String jdbcSql = sql[0]
                     .replace(":receiptType", "?")
-                    .replace(":orderItemId", "?");
+                    .replace(":sourceId", "?");
             try (PreparedStatement update = connection.prepareStatement(jdbcSql)) {
                 update.setString(1, params.get("receiptType").toString());
-                update.setObject(2, params.get("orderItemId"));
+                update.setObject(2, params.get("sourceId"));
                 return update.executeUpdate();
             }
         });

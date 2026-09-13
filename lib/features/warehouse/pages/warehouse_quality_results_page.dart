@@ -560,7 +560,7 @@ class _WarehouseQualityResultsPageState
     ),
     MasterColumnDef(
       key: 'warehouseName',
-      label: '目标仓库',
+      label: '收货参考仓',
       width: 130,
       value: (task) => task.warehouseName ?? '—',
     ),

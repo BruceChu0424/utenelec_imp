@@ -24,7 +24,7 @@ import java.util.Map;
  * </pre>
  * 其中「对象级归属谓词」直接复用各模块 {@link DocumentAccessPolicy#nativeReadScope} 的产物
  * （超管 / {@code *:view:all} → {@code 1=1}；否则 {@code 归属列 IS NULL OR 归属列 IN (:owners)}），
- * 因此 hub 徽章与对应列表页「草稿」段永远同口径。
+ * 生产自动单另按真实来源排除，避免与仓库待领/待点收任务重复计数。
  *
  * <p>两条额外规则：
  * <ul>
@@ -40,9 +40,8 @@ import java.util.Map;
  * <p>21 条 count 都是走 {@code (status, is_deleted, 归属列)} 索引的廉价聚合，放在同一个只读
  * 事务里一次往返返回，不做 N+1 的行级展开。
  *
- * <p><b>呈现约束</b>：本服务产出的全部数字都是「浏览型计数」（我还有多少张没提交），
- * 前端渲染成中性括号数字且不进上层待办累加；真正的「需要我处理」待办走各模块自己的
- * 待办计数端点。见 {@code docs/00-项目准则/14-徽章与计数口径.md}。
+ * <p><b>呈现约束</b>：手工草稿使用通知徽章并参与待办合计；生产自动单已有
+ * 对应任务入口，通过来源函数排除。见 {@code docs/00-项目准则/14-徽章与计数口径.md}。
  */
 @Service
 public class DocumentDraftCountQueryService {
@@ -91,7 +90,7 @@ public class DocumentDraftCountQueryService {
             "subcontract_order:view", null);
     static final DraftSource STOCK_DOCUMENT = new DraftSource(
             "stock_documents", "o.maker_id", "stock_doc", "stock_doc:view:all",
-            "stock_doc:view", null);
+            "stock_doc:view", "NOT fn_is_production_linked_stock_document(o.id)");
 
     // 生产计划与生产日报共用 production_plan 归属范围（见 ProductionDocumentAccessPolicy），
     // 但各自有独立的 :view 权限码。

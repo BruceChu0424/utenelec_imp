@@ -1,6 +1,12 @@
 // 生产领料任务中心 · 待领任务分段：子分类徽章 / 批量出库权限门控 / 跨页勾选 /
 // 重放与单号错误提示契约（2026-09-10）。
 import 'package:dio/dio.dart';
+import 'package:go_router/go_router.dart';
+import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/features/warehouse/pages/production_draw_batch_issue_page.dart';
+import 'package:uten_imp/features/warehouse/models/stock_doc.dart';
+import 'package:uten_imp/features/warehouse/repositories/stock_doc_repository.dart';
+import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,6 +30,29 @@ class _FakeRepository extends ProductionDrawTaskRepository {
   final Map<int, List<WarehouseDrawTask>> pages = {};
   Map<String, int> counts = const {};
   Object? countsError;
+  final batchKeys = <String>[];
+  late final router = GoRouter(
+    routes: [
+      GoRoute(
+        path: '/',
+        builder: (_, _) => Consumer(
+          builder: (context, ref, _) => Scaffold(
+            body: WarehouseDrawTaskSegment(
+              refreshTick: ref.watch(_refreshTickProvider),
+            ),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: RouteName.warehouseProductionDrawBatchIssue,
+        builder: (_, state) => ProductionDrawBatchIssuePage(
+          documentIds: (state.uri.queryParameters['documentIds'] ?? '').split(
+            ',',
+          ),
+        ),
+      ),
+    ],
+  );
   List<String>? batchDocIds;
   String? batchReason;
   WarehouseDrawBatchIssueResult Function(List<String> docIds)? onBatch;
@@ -60,6 +89,7 @@ class _FakeRepository extends ProductionDrawTaskRepository {
     required List<String> docIds,
     String? reason,
   }) async {
+    batchKeys.add(idempotencyKey);
     batchDocIds = List.of(docIds);
     batchReason = reason;
     final handler = onBatch;
@@ -100,6 +130,42 @@ WarehouseDrawTask _task(
 
 late SharedPreferences _prefs;
 
+final _refreshTickProvider = Provider<int>((ref) => 0);
+
+class _FakeNames extends MasterNameService {
+  _FakeNames() : super(ApiClient(Dio()));
+  @override
+  Future<void> ensureLoaded() async {}
+  @override
+  Future<void> loadGoodsDetails(Iterable<String> ids) async {}
+  @override
+  String goods(String? id) => '货品$id';
+  @override
+  String warehouse(String? id) => '主仓';
+}
+
+class _FakeStockRepository extends StockDocRepository {
+  _FakeStockRepository(this.tasks) : super(ApiClient(Dio()), StockDocType.draw);
+  final _FakeRepository tasks;
+  @override
+  Future<StockDocDetail> detail(String id) async {
+    final task = tasks.pages.values
+        .expand((rows) => rows)
+        .firstWhere((row) => row.actionDocId == id);
+    return StockDocDetail(
+      id: id,
+      docType: 'DRAW',
+      billNo: task.actionDocNo,
+      warehouseId: 'warehouse',
+      departmentId: 'workshop',
+      status: int.parse(task.actionDocStatus!),
+      planNo: task.planNo,
+      issueStatus: 0,
+      items: [StockDocItem(id: 'line-$id', goodsId: id, qty: 5, issuedQty: 0)],
+    );
+  }
+}
+
 Widget _app(
   _FakeRepository repo,
   Set<String> permissions, {
@@ -108,10 +174,16 @@ Widget _app(
   overrides: [
     sharedPreferencesProvider.overrideWithValue(_prefs),
     productionDrawTaskRepositoryProvider.overrideWithValue(repo),
+    stockDocRepositoryProvider(
+      StockDocType.draw,
+    ).overrideWithValue(_FakeStockRepository(repo)),
+    masterNameServiceProvider.overrideWithValue(_FakeNames()),
     currentPermissionsProvider.overrideWithValue(permissions),
     isSuperAdminProvider.overrideWithValue(false),
+    _refreshTickProvider.overrideWithValue(refreshTick),
   ],
-  child: MaterialApp(
+  child: MaterialApp.router(
+    routerConfig: repo.router,
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
     locale: const Locale('zh'),
@@ -126,7 +198,6 @@ Widget _app(
         ),
       ],
     ),
-    home: Scaffold(body: WarehouseDrawTaskSegment(refreshTick: refreshTick)),
   ),
 );
 
@@ -169,37 +240,43 @@ void main() {
   // 计数形态（docs/00-项目准则/14-徽章与计数口径.md）：「待完成」是这批活的总量段
   // → 红徽章；它的两个细分切片（待备料/待领取、部分领取）走中性括号，
   // 同一批活不在一行里红两遍。
-  testWidgets('sub-segment counts render the server breakdown in both forms', (
-    tester,
-  ) async {
-    final repo = _FakeRepository()
-      ..pages[1] = [_task('a'), _task('b'), _task('c', status: 'PARTIAL')]
-      ..counts = const {'OPEN_ANY': 3, 'READY_TO_PICK': 2, 'PARTIAL': 1};
-    await _pump(tester, repo, _approverIssuer);
+  testWidgets(
+    'pending segment covers all unfinished work without duplicate categories',
+    (tester) async {
+      final repo = _FakeRepository()
+        ..pages[1] = [_task('a'), _task('b'), _task('c', status: 'PARTIAL')]
+        ..counts = const {'OPEN_ANY': 3, 'READY_TO_PICK': 2, 'PARTIAL': 1};
+      await _pump(tester, repo, _approverIssuer);
 
-    // 总量段：红徽章，数字不带括号。
-    expect(
-      find.descendant(of: _segments(), matching: find.text('3')),
-      findsOneWidget,
-      reason: '「待完成」总量挂红徽章',
-    );
-    expect(
-      find.descendant(
-        of: _segments(),
-        matching: find.byType(UtenNotificationBadge),
-      ),
-      findsOneWidget,
-      reason: '整条子分类行只有一个红徽章',
-    );
-    // 细分切片：中性括号。
-    for (final count in const ['(2)', '(1)']) {
+      // 总量段：红徽章，数字不带括号。
       expect(
-        find.descendant(of: _segments(), matching: find.text(count)),
+        find.descendant(of: _segments(), matching: find.text('3')),
         findsOneWidget,
-        reason: '细分切片 $count 用中性括号',
+        reason: '「待完成」总量挂红徽章',
       );
-    }
-  });
+      expect(
+        find.descendant(
+          of: _segments(),
+          matching: find.byType(UtenNotificationBadge),
+        ),
+        findsOneWidget,
+        reason: '整条子分类行只有一个红徽章',
+      );
+      expect(
+        find.descendant(of: _segments(), matching: find.text('待备料 / 待领取')),
+        findsNothing,
+      );
+      expect(find.text('部分领取'), findsOneWidget, reason: '仅表格行状态显示部分领取');
+      expect(
+        find.descendant(of: _segments(), matching: find.text('部分领取')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: _segments(), matching: find.text('(2)')),
+        findsNothing,
+      );
+    },
+  );
 
   testWidgets('breakdown failure clears badges instead of keeping stale ones', (
     tester,
@@ -264,7 +341,12 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(_batchButton());
       await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(
+        find.byKey(const Key('production-draw-detail-table')),
+        findsOneWidget,
+      );
+      expect(repo.batchDocIds, isNull, reason: '进入详情只读取，不触发实际出库');
       await tester.tap(find.byKey(const Key('warehouse-draw-batch-confirm')));
       await tester.pumpAndSettle();
 
@@ -300,8 +382,15 @@ void main() {
 
       await tester.tap(_batchButton());
       await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsOneWidget);
-      expect(find.textContaining('LL-a、LL-b、LL-c'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(
+        find.byKey(const Key('production-draw-detail-table')),
+        findsOneWidget,
+      );
+      expect(repo.batchDocIds, isNull, reason: '进入详情只读取，不触发实际出库');
+      for (final bill in ['LL-a', 'LL-b', 'LL-c']) {
+        expect(find.text(bill), findsOneWidget);
+      }
       await tester.enterText(
         find.byKey(const Key('warehouse-draw-batch-remark')),
         '夜班统一发料',
@@ -332,6 +421,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('领料单 LL-a：本仓剩余可领数量不足'), findsOneWidget);
+    repo.onBatch = null;
+    await tester.tap(find.byKey(const Key('warehouse-draw-batch-confirm')));
+    await tester.pumpAndSettle();
+    expect(repo.batchKeys, hasLength(2));
+    expect(repo.batchKeys.first, repo.batchKeys.last, reason: '同样明细和备注重试复用幂等键');
   });
 
   testWidgets('422 field message replaces the generic validation text', (
@@ -385,4 +479,30 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.batchDocIds, ['b']);
   });
+
+  for (final viewport in const [Size(375, 812), Size(844, 390)]) {
+    testWidgets(
+      'batch detail stays operable at $viewport without issuing on entry',
+      (tester) async {
+        final repo = _FakeRepository()..pages[1] = [_task('a')];
+        await _pump(tester, repo, _approverIssuer);
+        await tester.tap(_rowCheckbox(0));
+        await tester.pumpAndSettle();
+        await tester.tap(_batchButton());
+        await tester.pumpAndSettle();
+        tester.view.physicalSize = viewport;
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('production-draw-detail-table')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('warehouse-draw-batch-confirm')),
+          findsOneWidget,
+        );
+        expect(repo.batchDocIds, isNull);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }

@@ -643,7 +643,7 @@ class ProductionMaterialAnalysisScalePostgresTest {
             }
             if (operation.equals("analysis.preview.initial") && result instanceof AnalysisView view) {
                 row.put("nonNullResponseBytes", json.copy()
-                        .setSerializationInclusion(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                        .setDefaultPropertyInclusion(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
                         .writeValueAsBytes(view).length);
                 row.put("responseFieldBytes", Map.of(
                         "products", json.writeValueAsBytes(view.products()).length,
@@ -801,7 +801,7 @@ class ProductionMaterialAnalysisScalePostgresTest {
                 "Rows Removed by Filter","Rows Removed by Index Recheck","Plan Rows","Planning Time","Execution Time",
                 "Shared Hit Blocks","Shared Read Blocks","Shared Dirtied Blocks","Shared Written Blocks","Temp Read Blocks","Temp Written Blocks",
                 "JIT","Functions","Options","Timing","Generation","Inlining","Optimization","Emission","Total","Expressions","Deforming");
-        node.fields().forEachRemaining(entry -> { if (keys.contains(entry.getKey())) result.put(entry.getKey(),safePlan(entry.getValue())); });
+        node.properties().forEach(entry -> { if (keys.contains(entry.getKey())) result.put(entry.getKey(),safePlan(entry.getValue())); });
         if (node.has("Node Type")) result.put("Index Restricted",
                 !node.path("Index Cond").asText().isBlank() || !node.path("Recheck Cond").asText().isBlank());
         return result;

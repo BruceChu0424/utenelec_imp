@@ -14,7 +14,8 @@ import org.springframework.stereotype.Component;
  * 操作级 authority 可旁路归属限制。
  */
 @Component
-public class SalesDocumentAccessPolicy extends DocumentAccessPolicy {
+public class SalesDocumentAccessPolicy extends DocumentAccessPolicy
+        implements com.uten.imp.application.port.SalesDocumentReadScopePort {
 
     public static final String SCOPE = "sales";
     public static final String VIEW_ALL = "sales:view:all";
@@ -22,5 +23,10 @@ public class SalesDocumentAccessPolicy extends DocumentAccessPolicy {
     public SalesDocumentAccessPolicy(OwnerVisibility ownerVisibility,
                                      SecurityContextCurrentUser currentUser) {
         super(SCOPE, VIEW_ALL, ownerVisibility, currentUser);
+    }
+
+    @Override
+    public NativeReadScope nativeReadScope(String ownerColumn, String parameterName) {
+        return super.nativeReadScope(ownerColumn, parameterName);
     }
 }

@@ -517,6 +517,12 @@ abstract class _MaterialAnalysisMaterialTableState
           ? path.publicSurplusRemainingQty
           : max,
     );
+    final lateRemaining = group.paths.fold<double>(
+      0,
+      (max, path) => path.lateSharedFutureAvailableQty > max
+          ? path.lateSharedFutureAvailableQty
+          : max,
+    );
     return _canClaimSharedFuture &&
         group.actionable &&
         _planningBlockForGroup(group) == null &&
@@ -524,7 +530,7 @@ abstract class _MaterialAnalysisMaterialTableState
         !_dirtyRouteGroups.contains(group.key) &&
         routeEligible &&
         material.actionGroupKey?.isNotEmpty == true &&
-        publicRemaining > 0 &&
+        (publicRemaining > 0 || lateRemaining > 0) &&
         recommended > 0;
   }
 
@@ -679,6 +685,18 @@ abstract class _MaterialAnalysisMaterialTableState
           }
           if (row.kind == _MaterialTableRowKind.orphan) {
             return theme.colorScheme.errorContainer.withValues(alpha: 0.35);
+          }
+          if (_futureProgressFor(row).outgoing > 0) {
+            return _crossReallocationSourceColor(theme).withValues(alpha: 0.10);
+          }
+          if (row.material?.crossReallocationRefs.any(
+                (allocation) =>
+                    allocation.isOutbound &&
+                    !allocation.isReversed &&
+                    !allocation.isCancelled,
+              ) ==
+              true) {
+            return _crossReallocationSourceColor(theme).withValues(alpha: 0.10);
           }
           if (row.kind == _MaterialTableRowKind.product) {
             return theme.colorScheme.primaryContainer.withValues(alpha: 0.28);
@@ -1003,7 +1021,7 @@ abstract class _MaterialAnalysisMaterialTableState
       width: 138,
       type: 'number',
       info:
-          '还缺数量扣除「在途未到」后，建议本次新下单的数量（可改小分批）。'
+          '还缺数量扣除已安排且仍有效的未合格入库供给后，建议本次新下单的数量（可改小分批）。'
           '仓库现货已够的行显示 0，仍可按富余量下单。',
       value: (row) => _qty(_materialTableAdditionalRecommendedQty(row)),
       cellBuilderHandlesSemantics: true,
@@ -1020,7 +1038,7 @@ abstract class _MaterialAnalysisMaterialTableState
       width: 140,
       type: 'number',
       info:
-          '已下单采购/委外、还在路上没到货入库的数量；到货并验收合格后自动'
+          '已安排采购/委外但尚未合格入库的数量；待到货、待检或合格待入库以来源任务为准，实收合格后'
           '补进可用量（已锚定本批，非公共现货）。',
       value: (row) => _qty(_materialTableInboundQty(row)),
       cellBuilderHandlesSemantics: true,
@@ -1031,6 +1049,30 @@ abstract class _MaterialAnalysisMaterialTableState
             )
           : _materialTableInboundCell(theme, row),
     ),
+    if (_analysis?.materials.any(
+          (material) => (material.sharedFuturePendingQty ?? 0) > 0,
+        ) ==
+        true)
+      MasterColumnDef(
+        key: 'sharedFuturePendingQty',
+        label: '公共认领未实收',
+        width: 130,
+        type: 'number',
+        info:
+            '从公共余量认领且尚未实际合格入库的数量，也保留失败来源的未兑现承诺；仍需补多少看建议下达。其他计划专属份额另见在途调拨，不计现货或立即可开工量。',
+        value: (row) => _qty(
+          row.aggregate == null
+              ? row.material?.sharedFuturePendingQty
+              : row.aggregate!.paths.every(
+                  (path) => path.sharedFuturePendingQty != null,
+                )
+              ? row.aggregate!.paths.fold<double>(
+                  0,
+                  (sum, path) => sum + path.sharedFuturePendingQty!,
+                )
+              : null,
+        ),
+      ),
     MasterColumnDef(
       key: 'status',
       label: _l10n.materialProgress,
@@ -1047,7 +1089,94 @@ abstract class _MaterialAnalysisMaterialTableState
             )
           : _materialTableStatusCell(theme, row),
     ),
+    if (_analysis?.allowedActions.contains('VIEW_FUTURE_TRANSFERS') == true &&
+        (_futureTransferRecords.isNotEmpty || _futureTransferError != null))
+      MasterColumnDef(
+        key: 'futureTransfers',
+        label: '在途调拨',
+        width: 285,
+        info: '其他计划专属在途的调整记录。待入数量不计现货，尚需新下达的数量仍看建议下达列。',
+        value: _futureProgressText,
+        cellBuilder: (context, row) {
+          if (row.product != null || row.contextOnly) return const Text('—');
+          final scope = MasterDataTableCellScope.maybeOf(context);
+          final color = scope?.selected == true
+              ? scope?.foregroundColor
+              : _crossReallocationSourceColor(theme);
+          final text = _futureProgressText(row);
+          return Tooltip(
+            message: _futureTransferError ?? '$text\n点击查看精确来源、已实收和可撤未收份额',
+            child: InkWell(
+              onTap: _busy
+                  ? null
+                  : _futureTransferError != null
+                  ? () => unawaited(_refreshFutureTransfers(_analysis!))
+                  : _futureProgressFor(row).hasRecords
+                  ? () => _openMaterialTableRow(row)
+                  : null,
+              child: Semantics(
+                label: '在途调拨进度 $text',
+                button: true,
+                child: Row(
+                  children: [
+                    if (_futureTransferError != null) ...[
+                      Icon(Icons.refresh, size: 18, color: color),
+                      const SizedBox(width: UtenSpacing.s4),
+                    ],
+                    Expanded(
+                      child: Text(
+                        text,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: color,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
   ];
+
+  MaterialFutureTransferProgress _futureProgressFor(_MaterialTableRow row) {
+    if (_futureTransferReadScope != _routeMemoryScopeKey()) {
+      return MaterialFutureTransferProgress.empty;
+    }
+    final ids =
+        (row.aggregate?.paths.map((path) => path.materialLineId) ??
+                [if (row.material != null) row.material!.materialLineId])
+            .toSet();
+    return MaterialFutureTransferProgress.fromRecords(
+      _analysis?.analysisId ?? '',
+      ids,
+      ids.expand(
+        (id) =>
+            _futureTransferByMaterial[id] ??
+            const <MaterialFutureTransferRecord>[],
+      ),
+    );
+  }
+
+  String _futureProgressText(_MaterialTableRow row) {
+    if (row.product != null || row.contextOnly) return '—';
+    final progress = _futureProgressFor(row);
+    if (!progress.hasRecords) {
+      return _futureTransferError != null ? '进度待核对 · 点击重试' : '—';
+    }
+    final parts = <String>[
+      if (progress.hasSupplyWarning) '供给不足 · 请核对',
+      if (progress.outgoing > 0)
+        '已调出 ${_qty(progress.outgoing)} · 对方已入 ${_qty(progress.receivedOutgoing)} / 未实收 ${_qty(progress.outstandingOutgoing)}',
+      if (progress.incoming > 0)
+        '已调入 ${_qty(progress.incoming)} · 已入 ${_qty(progress.receivedIncoming)} / 未实收 ${_qty(progress.outstandingIncoming)}',
+    ];
+    final text = parts.isEmpty ? '在途调拨已撤销' : parts.join('；');
+    return _futureTransferError != null ? '$text（上次记录，待核对）' : text;
+  }
 
   Key _materialTableRowWidgetKey(_MaterialTableRow row) {
     // 分页补的祖先行用带页号的键；表头筛选保留的上下文行保持原 widget key。
@@ -1520,7 +1649,27 @@ abstract class _MaterialAnalysisMaterialTableState
         : row.aggregate!.paths
               .map((path) => path.publicSurplusApprovedInboundQty)
               .fold<double>(0, (max, value) => value > max ? value : max);
-    final message = recommended <= 0
+    final pending = row.aggregate == null
+        ? material?.sharedFuturePendingQty
+        : row.aggregate!.paths.every(
+            (path) => path.sharedFuturePendingQty != null,
+          )
+        ? row.aggregate!.paths.fold<double>(
+            0,
+            (sum, path) => sum + path.sharedFuturePendingQty!,
+          )
+        : null;
+    final late = row.aggregate == null
+        ? material?.lateSharedFutureAvailableQty ?? 0
+        : row.aggregate!.paths.fold<double>(
+            0,
+            (max, path) => path.lateSharedFutureAvailableQty > max
+                ? path.lateSharedFutureAvailableQty
+                : max,
+          );
+    final message = pending != null && pending > 0
+        ? '公共已认领未实收 ${_qty(pending)}；尚需下达 ${_qty(recommended)}'
+        : recommended <= 0
         ? claimed > 0
               ? '已采用 ${_qty(claimed)}；公共在途余量 ${_qty(remaining)}；本节点无需另补'
               : currentPublic > 0
@@ -1538,6 +1687,8 @@ abstract class _MaterialAnalysisMaterialTableState
         : remaining > 0
         ? '可采用 ${_qty(remaining)}；采用后仍需另补 '
               '${_qty(recommended - remaining)}'
+        : late > 0
+        ? '晚到或交期待确认供给 ${_qty(late)}，可明确接受后认领；当前尚需下达 ${_qty(recommended)}'
         : '暂无公共在途可采用；当前建议另补 ${_qty(recommended)}';
     final sourceSummary = refs.isEmpty
         ? null
@@ -1775,6 +1926,7 @@ abstract class _MaterialAnalysisMaterialTableState
     }
     if (row.product != null &&
         row.material?.isRootSupply == true &&
+        row.material?.hasPriorityMakeSupplement != true &&
         _materialDisplayRoute(group) == MaterialSupplyRoute.make) {
       return [
         UtenMenuItem(
@@ -1807,6 +1959,22 @@ abstract class _MaterialAnalysisMaterialTableState
           icon: Icons.info_outline_rounded,
           onTap: () => _showMaterialTableDetails(group),
         ),
+        if (group.representative.hasPriorityMakeSupplement && _canGenerate)
+          UtenMenuItem(
+            label: '让料后补自制',
+            icon: Icons.factory_outlined,
+            enabled:
+                !_busy &&
+                _isExecutableSupplyGroup(group, MaterialSupplyRoute.make),
+            onTap: () async {
+              setState(
+                () => _selectedPlanLineIds.add(
+                  group.representative.materialLineId,
+                ),
+              );
+              await _openBucketDetail(_AnalysisBucket.workshop);
+            },
+          ),
         const UtenMenuDivider(),
         UtenMenuItem(
           label: '采用公共在途',
@@ -1867,82 +2035,104 @@ abstract class _MaterialAnalysisMaterialTableState
     }
   }
 
+  @override
   Future<void> _showMaterialTableDetails(
     _MaterialGroup group,
   ) => showDialog<void>(
     context: context,
-    builder: (dialogContext) {
-      final theme = Theme.of(dialogContext);
-      final material = group.representative;
-      final row = _MaterialTableRow(
-        kind: _MaterialTableRowKind.material,
-        key: group.key,
-        sequence: '',
-        depth: 0,
-        material: material,
-        group: group,
-      );
-      return AlertDialog(
-        title: Text(material.goodsName ?? material.goodsCode ?? '物料详情'),
-        content: SizedBox(
-          width: 720,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _nodeDetails(theme, group),
-                if (material.notifiedTargets.any(
-                  (target) => target.isRootOutput,
-                ))
-                  _rootOutputHistory(dialogContext, material),
-                const SizedBox(height: UtenSpacing.s12),
-                Text(
-                  _l10n.materialWarehouseFacts,
-                  style: theme.textTheme.titleSmall,
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                Wrap(
-                  spacing: UtenSpacing.s16,
-                  runSpacing: UtenSpacing.s8,
-                  children: [
-                    Text(
-                      '${_l10n.materialExactStock}: ${_qty(_materialTableExactQty(row))}',
+    builder: (dialogContext) => ValueListenableBuilder<int>(
+      valueListenable: materialDetailRevision,
+      builder: (dialogContext, _, _) {
+        final theme = Theme.of(dialogContext);
+        final currentGroup = _analysis == null
+            ? null
+            : _analysisIndexes(
+                _analysis!,
+              ).groupsByLine[group.representative.materialLineId];
+        final displayedGroup = currentGroup ?? group;
+        final material = displayedGroup.representative;
+        final row = _MaterialTableRow(
+          kind: _MaterialTableRowKind.material,
+          key: group.key,
+          sequence: '',
+          depth: 0,
+          material: material,
+          group: displayedGroup,
+        );
+        return AlertDialog(
+          title: Text(material.goodsName ?? material.goodsCode ?? '物料详情'),
+          content: SizedBox(
+            width: 720,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _nodeDetails(theme, displayedGroup),
+                  if (material.notifiedTargets.any(
+                    (target) => target.isRootOutput,
+                  ))
+                    _rootOutputHistory(dialogContext, material),
+                  const SizedBox(height: UtenSpacing.s12),
+                  Text(
+                    _l10n.materialWarehouseFacts,
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: UtenSpacing.s8),
+                  Wrap(
+                    spacing: UtenSpacing.s16,
+                    runSpacing: UtenSpacing.s8,
+                    children: [
+                      Text(
+                        '${_l10n.materialExactStock}: ${_qty(_materialTableExactQty(row))}',
+                      ),
+                      Text(
+                        '${_l10n.materialPublicStock}: ${_materialTablePublicAvailableQty(row)}',
+                      ),
+                      Text(
+                        '${_l10n.materialClaimedSupply}: ${_qty(_materialTableSharedFutureClaimedQty(row))}',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: UtenSpacing.s8),
+                  _materialTableSharedFutureCell(theme, row),
+                  if (_canClaimMaterialSharedFuture(displayedGroup))
+                    UtenButton(
+                      key: ValueKey(
+                        'material-detail-claim-shared-${material.materialLineId}',
+                      ),
+                      type: UtenButtonType.tonal,
+                      icon: Icons.call_received_rounded,
+                      onPressed: _busy
+                          ? null
+                          : () => _claimSharedFuture({displayedGroup.key}),
+                      child: const Text('采用公共在途'),
                     ),
-                    Text(
-                      '${_l10n.materialPublicStock}: ${_materialTablePublicAvailableQty(row)}',
-                    ),
-                    Text(
-                      '${_l10n.materialClaimedSupply}: ${_qty(_materialTableSharedFutureClaimedQty(row))}',
-                    ),
+                  if (material.sharedFutureSupplyRefs.isNotEmpty) ...[
+                    const SizedBox(height: UtenSpacing.s12),
+                    _sharedFutureSourcesPanel(theme, material),
                   ],
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                _materialTableSharedFutureCell(theme, row),
-                if (material.sharedFutureSupplyRefs.isNotEmpty) ...[
-                  const SizedBox(height: UtenSpacing.s12),
-                  _sharedFutureSourcesPanel(theme, material),
+                  if (material.notifiedTargets.any(
+                    (target) =>
+                        target.actionId?.trim().isNotEmpty == true &&
+                        target.status?.toUpperCase() != 'CANCELLED' &&
+                        target.status?.toUpperCase() != 'DONE',
+                  )) ...[
+                    const SizedBox(height: UtenSpacing.s12),
+                    _cancellableActionsPanel(dialogContext, theme, material),
+                  ],
                 ],
-                if (material.notifiedTargets.any(
-                  (target) =>
-                      target.actionId?.trim().isNotEmpty == true &&
-                      target.status?.toUpperCase() != 'CANCELLED' &&
-                      target.status?.toUpperCase() != 'DONE',
-                )) ...[
-                  const SizedBox(height: UtenSpacing.s12),
-                  _cancellableActionsPanel(dialogContext, theme, material),
-                ],
-              ],
+              ),
             ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('关闭'),
-          ),
-        ],
-      );
-    },
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('关闭'),
+            ),
+          ],
+        );
+      },
+    ),
   );
 
   bool get _canRevokeRootOutput =>
@@ -2082,6 +2272,25 @@ abstract class _MaterialAnalysisMaterialTableState
     ),
   );
 
+  String? _supplyOperationType(String? actionId) => _analysis?.supplyActions
+      .where((action) => action.actionId == actionId)
+      .firstOrNull
+      ?.operationType;
+
+  bool _isSharedFutureClaimAction(String? actionId) =>
+      _supplyOperationType(actionId) == 'SHARED_FUTURE_CLAIM';
+
+  bool _canCancelSpecificAction(String? actionId) {
+    if (!_canCancelAction || actionId == null) return false;
+    final operation = _supplyOperationType(actionId);
+    if (operation == 'FUTURE_TRANSFER') return false;
+    return _permissions.contains(
+      operation == 'SHARED_FUTURE_CLAIM'
+          ? Perm.productionMaterialAnalysisClaimSharedFuture
+          : Perm.productionMaterialAnalysisNotify,
+    );
+  }
+
   Widget _cancellableActionsPanel(
     BuildContext dialogContext,
     ThemeData theme,
@@ -2120,14 +2329,14 @@ abstract class _MaterialAnalysisMaterialTableState
               children: [
                 Expanded(
                   child: Text(
-                    '${target.target?.label ?? '供给'} · '
+                    '${_isSharedFutureClaimAction(target.actionId) ? '公共认领' : target.target?.label ?? '供给'} · '
                     '${target.status ?? '状态待回传'} · '
                     '分配 ${_qty(target.allocatedQty)} · '
                     '${target.documentNo?.trim().isNotEmpty == true ? target.documentNo! : '来源单号受权限保护'}',
                     style: theme.textTheme.bodySmall,
                   ),
                 ),
-                if (_canCancelAction)
+                if (_canCancelSpecificAction(target.actionId))
                   TextButton.icon(
                     key: ValueKey(
                       'material-table-cancel-action-${target.actionId}',
@@ -2152,6 +2361,8 @@ abstract class _MaterialAnalysisMaterialTableState
                           ? AppLocalizations.of(
                               dialogContext,
                             ).materialNotificationReversalReconcile
+                          : _isSharedFutureClaimAction(target.actionId)
+                          ? '撤回认领'
                           : '撤回',
                     ),
                   ),
@@ -2188,23 +2399,28 @@ abstract class _MaterialAnalysisMaterialTableState
       context.appInfo('所选物料当前没有可采用的公共在途，请刷新后重试');
       return;
     }
-    final confirmed = await _confirmSharedFutureClaim(eligibleGroups);
-    if (confirmed != true || !mounted) return;
-    final chunks = _chunked(eligible);
+    final draft = await _confirmSharedFutureClaim(eligibleGroups);
+    if (draft == null || !mounted) return;
+    final byKey = {
+      for (final quantity in draft.quantities)
+        quantity.actionGroupKey: quantity,
+    };
+    final chosen = byKey.keys.toList()..sort();
+    final chunks = _chunked(chosen);
     var current = analysis;
     var completed = 0;
     setState(() {
       _claimingSharedFuture = true;
       _bulkOperationLabel = '正在采用公共在途';
       _bulkOperationCompleted = 0;
-      _bulkOperationTotal = eligible.length;
+      _bulkOperationTotal = chosen.length;
     });
     try {
       for (final chunk in chunks) {
         final idempotencyKey = businessIdempotencyKey(
           'material-analysis-claim-shared-future',
           '${current.analysisId}|${current.version}|${current.fingerprint}|'
-              '${chunk.join(',')}',
+              '${draft.allowLateSupply}|${chunk.map((key) => byKey[key]!.toJson()).join('|')}',
         );
         current = await ref
             .read(productionPlanRepositoryProvider)
@@ -2212,6 +2428,8 @@ abstract class _MaterialAnalysisMaterialTableState
               analysis: current,
               idempotencyKey: idempotencyKey,
               actionGroupKeys: chunk,
+              quantities: [for (final key in chunk) byKey[key]!],
+              allowLateSupply: draft.allowLateSupply,
             );
         completed += chunk.length;
         if (mounted) setState(() => _bulkOperationCompleted = completed);
@@ -2222,7 +2440,7 @@ abstract class _MaterialAnalysisMaterialTableState
         _clearBulkOperation();
         _applyAnalysis(current);
       });
-      context.appSuccess('已采用公共在途，分析已按权威供给重新计算');
+      context.appSuccess('已认领公共供给，尚需下达量已更新；实际合格入库前仍不计现货或可开工量');
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -2241,124 +2459,68 @@ abstract class _MaterialAnalysisMaterialTableState
       if (!mounted) return;
       context.appError(
         completed > 0
-            ? '已采用 $completed/${eligible.length} 项；余下项目未执行，请按最新结果重新选择。'
+            ? '已采用 $completed/${chosen.length} 项；余下项目未执行，请按最新结果重新选择。'
             : productionErrorMessage(error, fallback: '采用失败，请刷新后重新选择'),
         force: true,
       );
     }
   }
 
-  Future<bool?> _confirmSharedFutureClaim(List<_MaterialGroup> groups) {
-    final totalsByUnit = <String, double>{};
-    final entries =
-        <({String label, String unit, double take, double after})>[];
-    final remainingByPool = <String, double>{};
+  Future<MaterialSharedFutureClaimDraft?> _confirmSharedFutureClaim(
+    List<_MaterialGroup> groups,
+  ) {
+    final byAction = <String, List<ProductionMaterialAnalysisMaterial>>{};
     for (final group in groups) {
-      final material = group.representative;
-      final poolKey = [
-        _analysis?.warehouseId,
-        material.goodsId,
-        material.colorId,
-        material.unitId,
-        material.confirmedRoute?.wireName,
-      ].whereType<String>().join('|');
-      final available = group.paths.fold<double>(
-        0,
-        (max, path) => path.publicSurplusRemainingQty > max
-            ? path.publicSurplusRemainingQty
-            : max,
-      );
-      remainingByPool.update(
-        poolKey,
-        (current) => available > current ? available : current,
-        ifAbsent: () => available,
-      );
+      final action = group.representative.actionGroupKey;
+      if (action != null) {
+        byAction.putIfAbsent(action, () => []).addAll(group.paths);
+      }
     }
-    for (final group in groups) {
-      final material = group.representative;
-      final poolKey = [
-        _analysis?.warehouseId,
-        material.goodsId,
-        material.colorId,
-        material.unitId,
-        material.confirmedRoute?.wireName,
-      ].whereType<String>().join('|');
-      final recommended = group.paths.fold<double>(
-        0,
-        (sum, path) => sum + path.additionalSupplyRecommendedQty,
-      );
-      final publicRemaining = remainingByPool[poolKey] ?? 0;
-      final take = publicRemaining < recommended
-          ? publicRemaining
-          : recommended;
-      final after = publicRemaining - take;
-      remainingByPool[poolKey] = after;
-      final unit = material.unitName?.trim().isNotEmpty == true
-          ? material.unitName!
-          : '未标单位';
-      totalsByUnit.update(unit, (value) => value + take, ifAbsent: () => take);
-      entries.add((
-        label: material.goodsName ?? material.goodsCode ?? '未命名物料',
-        unit: unit,
-        take: take,
-        after: after,
-      ));
-    }
-    return showDialog<bool>(
+    return showDialog<MaterialSharedFutureClaimDraft>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('确认采用公共在途（${groups.length} 项）'),
-        content: SizedBox(
-          width: 640,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                '采用后会把跨分析未来供给认领给本分析的节点需求；不会新建或修改来源采购/委外单。'
-                '实际入库并质检合格前不算现货或当前可开工。'
-                '同 SKU 多条路径共享同一个公共在途池，下表已按稳定任务顺序逐条扣减，不会重复显示同一份余量。',
+      builder: (_) => MaterialSharedFutureClaimDialog(
+        rows: [
+          for (final entry in byAction.entries)
+            MaterialSharedFutureClaimRow(
+              actionGroupKey: entry.key,
+              poolKey: [
+                _analysis?.warehouseId,
+                entry.value.first.goodsId,
+                entry.value.first.colorId,
+                entry.value.first.unitId,
+                entry.value.first.confirmedRoute?.wireName,
+              ].join('|'),
+              label:
+                  entry.value.first.goodsName ??
+                  entry.value.first.goodsCode ??
+                  '物料',
+              unit: entry.value.first.unitName ?? '未标单位',
+              needQty: entry.value.fold(
+                0,
+                (sum, material) =>
+                    sum + material.additionalSupplyRecommendedQty,
               ),
-              const SizedBox(height: UtenSpacing.s12),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 320),
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: entries.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (_, index) {
-                    final entry = entries[index];
-                    return ListTile(
-                      title: Text(entry.label),
-                      subtitle: Text(
-                        '建议采用 ${_qty(entry.take)} ${entry.unit}；'
-                        '采用后公共预计剩 ${_qty(entry.after)} ${entry.unit}',
-                      ),
-                    );
-                  },
-                ),
+              timelyQty: entry.value.fold(
+                0,
+                (max, material) => material.publicSurplusRemainingQty > max
+                    ? material.publicSurplusRemainingQty
+                    : max,
               ),
-              const SizedBox(height: UtenSpacing.s12),
-              Text(
-                '本次合计：${totalsByUnit.entries.map((entry) => '${_qty(entry.value)} ${entry.key}').join('；')}',
-                style: Theme.of(
-                  dialogContext,
-                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
+              lateQty: entry.value.fold(
+                0,
+                (max, material) => material.lateSharedFutureAvailableQty > max
+                    ? material.lateSharedFutureAvailableQty
+                    : max,
               ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('返回检查'),
-          ),
-          FilledButton.icon(
-            key: const Key('material-table-confirm-claim-shared'),
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            icon: const Icon(Icons.call_received_rounded),
-            label: const Text('确认采用'),
-          ),
+              sources: entry.value
+                  .expand((material) => material.sharedFutureSupplyRefs)
+                  .where(
+                    (source) =>
+                        !source.sourceIsCurrentAnalysis &&
+                        source.availableToClaimQty > 0,
+                  )
+                  .toList(),
+            ),
         ],
       ),
     );
@@ -2420,8 +2582,13 @@ abstract class _MaterialAnalysisMaterialTableState
 
   Future<bool> _cancelMaterialAction(String actionId) async {
     final analysis = _analysis;
-    if (analysis == null || !_canCancelAction || _busy) return false;
-    final reason = await _promptCancellationReason('撤回供给任务');
+    if (analysis == null || !_canCancelSpecificAction(actionId) || _busy) {
+      return false;
+    }
+    final sharedClaim = _isSharedFutureClaimAction(actionId);
+    final reason = await _promptCancellationReason(
+      sharedClaim ? '撤回公共认领（不撤回原采购 / 委外单）' : '撤回供给任务',
+    );
     if (reason == null || !mounted) return false;
     final idempotencyKey = businessIdempotencyKey(
       'material-analysis-cancel-action',
@@ -2442,7 +2609,9 @@ abstract class _MaterialAnalysisMaterialTableState
         _cancellingAction = false;
         _applyAnalysis(view);
       });
-      context.appSuccess('供给任务已撤回，分析已按最新事实重算');
+      context.appSuccess(
+        sharedClaim ? '公共认领已撤回，原供给单保留；分析已按最新事实重算' : '供给任务已撤回，分析已按最新事实重算',
+      );
       return true;
     } catch (error) {
       if (!mounted) return false;

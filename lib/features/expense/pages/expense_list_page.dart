@@ -15,6 +15,8 @@
 // 窄屏表格横向滚动即可
 
 import 'package:flutter/material.dart';
+
+import '../../../components/layout/uten_floating_action_group.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -67,6 +69,7 @@ class ExpenseListPage extends ConsumerWidget {
             return createAction.emptyState(topSpacing: 80);
           }
           return MasterDataTableView<ExpenseClaim>(
+            bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
             key: const Key('expense-list-table'),
             columns: _columns,
             items: claims,

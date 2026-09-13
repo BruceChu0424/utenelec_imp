@@ -74,15 +74,15 @@ public class FulfillmentWorkbenchQueryService {
                     CASE WHEN COUNT(DISTINCT v.goods_id) = 1
                          THEN SUM(v.allocated_qty) END AS allocated_qty,
                     CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                         THEN SUM(v.fulfilled_qty) END AS fulfilled_qty,
+                         THEN SUM(request.fulfilled_qty) END AS fulfilled_qty,
                     CASE WHEN COUNT(DISTINCT v.goods_id) = 1
                          THEN SUM(v.supply_pegged_qty) END AS supply_pegged_qty,
                     CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                         THEN SUM(v.open_qty) END AS open_qty,
-                    CASE WHEN COUNT(*) FILTER (WHERE v.open_qty > 0) = 0
+                         THEN SUM(request.open_qty) END AS open_qty,
+                    CASE WHEN COUNT(*) FILTER (WHERE request.open_qty > 0) = 0
                          THEN 'DONE'
                          WHEN COUNT(*) FILTER (
-                                  WHERE v.task_status <> 'READY_TO_PICK') > 0
+                                  WHERE request.fulfilled_qty > 0) > 0
                          THEN 'PARTIAL'
                          ELSE 'READY_TO_PICK' END::text AS task_status,
                     MIN(v.need_date) AS need_date,
@@ -95,14 +95,21 @@ public class FulfillmentWorkbenchQueryService {
                     NULL::UUID AS action_item_id,
                     MAX(v.action_doc_status) AS action_doc_status,
                     COUNT(DISTINCT v.goods_id) AS goods_count,
-                    COUNT(*) FILTER (WHERE v.open_qty > 0) AS open_line_count,
+                    COUNT(*) FILTER (WHERE request.open_qty > 0) AS open_line_count,
                     COALESCE(
                         ARRAY_AGG(v.action_item_id::TEXT ORDER BY v.action_item_id)
                             FILTER (WHERE v.action_item_id IS NOT NULL),
                         ARRAY[]::TEXT[]
                     ) AS action_item_ids
              FROM v_fulfillment_workbench_actions v
+             JOIN stock_document_items draw_item ON draw_item.id=v.action_item_id AND NOT draw_item.is_deleted
+             CROSS JOIN LATERAL (SELECT
+               COALESCE(draw_item.issued_qty,0)*COALESCE(draw_item.unit_rate,1) AS fulfilled_qty,
+               GREATEST(fn_production_draw_item_requested_qty(draw_item.id)-COALESCE(draw_item.issued_qty,0),0)
+                 *COALESCE(draw_item.unit_rate,1) AS open_qty) request
              WHERE v.department = 'WAREHOUSE'
+               AND fn_production_draw_requested(v.action_doc_id)
+               AND fn_production_draw_item_requested_qty(draw_item.id)>0
              GROUP BY v.department, COALESCE(v.action_doc_id, v.task_id))
             """;
 
@@ -423,6 +430,7 @@ public class FulfillmentWorkbenchQueryService {
                         SELECT DISTINCT COALESCE(action_doc_id, task_id)
                         FROM v_fulfillment_workbench_actions
                         WHERE department = :department AND open_qty > 0
+                          AND fn_production_draw_pending(action_doc_id)
                     ) documents
                     """);
         query.setParameter("department", department);

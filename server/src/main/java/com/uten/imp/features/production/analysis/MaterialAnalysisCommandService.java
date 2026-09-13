@@ -364,11 +364,13 @@ public class MaterialAnalysisCommandService {
                 view.version(), view.fingerprint(), request.idempotencyKey(),
                 null, List.of(), request.actionGroupKeys(), List.of());
         List<ActionGroup> groups = selectedGroups(view, selector);
+        Map<String,SharedFutureClaimQuantity> requestedQuantities=sharedFutureQuantities(request,groups);
         Set<UUID> subcontractBomParents = activeBomParentIds(groups.stream()
                 .filter(group -> "SUBCONTRACT".equals(group.route()))
                 .map(group -> group.dimension().goodsId()).toList());
         var coverage = supplyCoverage(analysisId, groups);
         List<UUID> createdIds = new ArrayList<>();
+        List<Map<String,String>> acceptedLateSources=new ArrayList<>();
         for (ActionGroup group : groups) {
             if (!Set.of("BUY", "SUBCONTRACT").contains(group.route())) {
                 throw validation("只有采购或叶子委外物料可以采用公共在途");
@@ -379,12 +381,22 @@ public class MaterialAnalysisCommandService {
             }
             BigDecimal existingOpen = activeOpenActionQty(coverage, group);
             BigDecimal needed = group.demandRequiredQty().subtract(existingOpen)
+                    .subtract(cancelledIqcReplacementInFlight(coverage,group))
                     .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING);
+            SharedFutureClaimQuantity quantity=requestedQuantities.get(group.groupKey());
+            if(quantity!=null) {
+                if(quantity.qty().compareTo(needed)>0) throw conflict("本次认领数量超过尚未被有效供给覆盖的需求，请刷新后重试");
+                needed=quantity.qty();
+            }
             if (needed.signum() <= 0) continue;
 
             List<SharedFutureSource> initial = sharedFutureSources(
-                    analysisId, group);
-            if (initial.isEmpty()) continue;
+                    analysisId, group,request.allowLateSupply()).stream()
+                    .filter(source->quantity==null || quantity.sourceActionId()==null || quantity.sourceActionId().equals(source.actionId())).toList();
+            if (initial.isEmpty()) {
+                if(quantity!=null) throw conflict("所选公共在途已不可认领；晚到或交期未明确的来源须明确确认后再采用");
+                continue;
+            }
             List<UUID> sourceIds = initial.stream().map(SharedFutureSource::actionId)
                     .distinct().sorted().toList();
             em.createNativeQuery("""
@@ -392,7 +404,8 @@ public class MaterialAnalysisCommandService {
                     WHERE id IN (SELECT unnest(CAST(string_to_array(:ids, ',') AS uuid[]))) ORDER BY id FOR UPDATE
                     """).setParameter("ids", sourceIds.stream().map(UUID::toString).collect(Collectors.joining(","))).getResultList();
             List<SharedFutureSource> sources = sharedFutureSources(
-                    analysisId, group);
+                    analysisId, group,request.allowLateSupply()).stream()
+                    .filter(source->quantity==null || quantity.sourceActionId()==null || quantity.sourceActionId().equals(source.actionId())).toList();
             for (SharedFutureSource source : sources) {
                 if (needed.signum() <= 0) break;
                 BigDecimal take = needed.min(source.availableQty())
@@ -449,8 +462,13 @@ public class MaterialAnalysisCommandService {
                 allocateClaim(actionId, analysisId, group.materials(), take,
                         source.externalItemId());
                 createdIds.add(actionId);
+                if(source.expectedDate()==null || group.needDate()!=null && source.expectedDate().isAfter(group.needDate())) {
+                    acceptedLateSources.add(Map.of("claimActionId",actionId.toString(),"sourceActionId",source.actionId().toString(),
+                            "expectedDate",Objects.toString(source.expectedDate(),""),"originalNeedDate",Objects.toString(group.needDate(),"")));
+                }
                 needed = needed.subtract(take);
             }
+            if(quantity!=null && needed.signum()>0) throw conflict("公共在途余量已变化，本次认领未生效，请核对数量后重试");
         }
         if (createdIds.isEmpty()) {
             throw conflict("当前没有可采用的同仓、同路线、按期公共在途余量");
@@ -458,27 +476,28 @@ public class MaterialAnalysisCommandService {
         analysisService.refreshLocked(analysisId);
         recordCommand(analysisId, OP_CLAIM_SHARED_FUTURE,
                 request.idempotencyKey(), requestHash,
-                Map.of("actionIds", List.copyOf(createdIds)));
+                Map.of("actionIds",List.copyOf(createdIds),"allowLateSupply",request.allowLateSupply(),
+                        "acceptedLateSources",List.copyOf(acceptedLateSources)));
         return analysisService.detailInternal(analysisId, false);
     }
 
     private List<SharedFutureSource> sharedFutureSources(
-            UUID analysisId, ActionGroup group) {
+            UUID analysisId, ActionGroup group,boolean allowLateSupply) {
         return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT source_action_id, available_to_claim_qty, expected_date,
                        claim_external_item_id, external_document_type,
                        external_document_id, external_document_no
                 FROM v_preplan_public_surplus_source_state
                 WHERE source_analysis_id <> :analysisId
-                  AND warehouse_id = :warehouseId
+                  AND fn_warehouse_same_main(warehouse_id, :warehouseId)
                   AND goods_id = :goodsId
                   AND color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
                   AND unit_id = :unitId
                   AND route = :route
                   AND available_to_claim_qty > 0
                   AND claim_external_item_id IS NOT NULL
-                  AND (CAST(:needDate AS date) IS NULL
-                       OR expected_date <= CAST(:needDate AS date))
+                  AND (:allowLateSupply=TRUE OR (expected_date IS NOT NULL AND
+                       (CAST(:needDate AS date) IS NULL OR expected_date <= CAST(:needDate AS date))))
                 ORDER BY expected_date, created_at, source_action_id
                 """)
                 .setParameter("analysisId", analysisId)
@@ -487,7 +506,7 @@ public class MaterialAnalysisCommandService {
                 .setParameter("colorId", group.dimension().colorId())
                 .setParameter("unitId", group.dimension().unitId())
                 .setParameter("route", group.route())
-                .setParameter("needDate", group.needDate())).stream()
+                .setParameter("needDate", group.needDate()).setParameter("allowLateSupply",allowLateSupply)).stream()
                 .map(row -> new SharedFutureSource(
                         (UUID) row[0], decimal(row[1]),
                         MaterialAnalysisService.date(row[2]),
@@ -755,8 +774,8 @@ public class MaterialAnalysisCommandService {
      * 下达车间的候选锚点（2026-09-05 简化）：按操作组只补建「剩余缺口」的
      * MAKE_COMPONENT 锚点行——不建 preplan action、不委托权益、不展开子树，
      * 物料行保持原位（计划员照常在采购/委外桶下达）。已有锚点只消费其
-     * remainingQty，不从仍存在的物理缺口再次增加来源需求；数量变化由明确
-     * 的来源变更处理。新锚点才按当前缺口建立需求。
+     * remainingQty，不从普通物理缺口再次增加来源需求；明确来源变更及V568
+     * 有让料事实/净补供额度的追加责任例外，均保留独立证据。新锚点才按当前缺口建立需求。
      */
     private boolean ensureWorkshopChildAnchors(
             UUID analysisId, AnalysisView view, List<UUID> makeLineIds) {
@@ -777,6 +796,12 @@ public class MaterialAnalysisCommandService {
                 ProductView anchor = products.get(anchorId);
                 if (anchor == null || !"MAKE_COMPONENT".equals(anchor.sourceType())) {
                     throw conflict("物料节点的计划锚点来源不一致，请刷新后核对路线");
+                }
+                MaterialView material=group.materials().getFirst();
+                if(material.priorityMakeSupplementQty().signum()>0) {
+                    new PreplanReallocationMakeSupplement(em).append(analysisId,material.materialLineId(),anchorId,
+                            material.priorityMakeSupplementQty(),currentUser.requireId());
+                    changed=true;
                 }
                 continue;
             }
@@ -1483,14 +1508,14 @@ public class MaterialAnalysisCommandService {
         UUID representative = action.group().materials().getFirst().materialLineId();
         UUID warehouseId = selectedWarehouse(analysisId);
         UUID actorId = currentUser.requireId();
-        List<Object[]> existing = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+        List<UUID> existing = NativeQueryResults.typedRows(em.createNativeQuery("""
                 SELECT id FROM preplan_subcontract_make_tasks
                 WHERE analysis_id = :analysisId
                   AND analysis_material_id = :materialId
                   AND status = 'ACTIVE'
                 FOR UPDATE
                 """).setParameter("analysisId", analysisId)
-                .setParameter("materialId", representative));
+                .setParameter("materialId", representative), UUID.class);
         BigDecimal requiredQty = action.demandQty();
         UUID taskId;
         if (existing.isEmpty()) {
@@ -1518,7 +1543,7 @@ public class MaterialAnalysisCommandService {
                     .setParameter("actorId", actorId)
                     .executeUpdate();
         } else {
-            taskId = (UUID) existing.getFirst()[0];
+            taskId = existing.getFirst();
             // 任务需求量始终与任务行的 requested_qty 同步（重下达只增不减）。
             em.createNativeQuery("""
                     UPDATE preplan_subcontract_make_tasks task
@@ -1540,7 +1565,7 @@ public class MaterialAnalysisCommandService {
     private UUID createOrIncrementSubcontractMakeDemand(UUID analysisId, ActionDraft action) {
         UUID representative = action.group().materials().getFirst().materialLineId();
         List<Object[]> existing = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT id, source_type
+                SELECT id, source_type, requested_qty
                 FROM production_material_analysis_items
                 WHERE analysis_id = :analysisId
                   AND source_type IN ('MAKE_COMPONENT', 'SUBCONTRACT_MAKE')
@@ -1566,6 +1591,11 @@ public class MaterialAnalysisCommandService {
                     .setParameter("needDate", action.group().needDate())
                     .setParameter("actorId", currentUser.requireId())
                     .setParameter("id", itemId).executeUpdate();
+            MaterialView material=action.group().materials().getFirst();
+            BigDecimal attributed=material.priorityMakeSupplementQty().min(action.demandQty());
+            if(attributed.signum()>0) new PreplanReallocationMakeSupplement(em).recordExistingIncrease(
+                    analysisId,representative,itemId,attributed,decimal(existing.getFirst()[2]),
+                    decimal(existing.getFirst()[2]).add(action.demandQty()),currentUser.requireId());
             return itemId;
         }
         UUID itemId = UUID.randomUUID();
@@ -2014,6 +2044,9 @@ public class MaterialAnalysisCommandService {
         UUID documentId = (UUID) row[5];
         boolean sharedFutureClaim = "SHARED_FUTURE_CLAIM".equals(
                 Objects.toString(row[6], "SUPPLY"));
+        if("FUTURE_TRANSFER".equals(Objects.toString(row[6],"SUPPLY"))) {
+            throw conflict("专属在途调整请在转拨记录中撤销未实收份额，不能撤销原供给单据");
+        }
         if (sharedFutureClaim) {
             // A claim reuses another action's document.  Cancelling it releases only
             // this analysis allocation/entitlement; the source document is immutable.
@@ -2281,6 +2314,19 @@ public class MaterialAnalysisCommandService {
         return PlanningPackageFingerprint.sha256(parts);
     }
 
+    private static Map<String,SharedFutureClaimQuantity> sharedFutureQuantities(ClaimSharedFutureRequest request,List<ActionGroup> groups) {
+        if(request.quantities()==null || request.quantities().isEmpty()) return Map.of();
+        Set<String> groupKeys=groups.stream().map(ActionGroup::groupKey).collect(Collectors.toSet());
+        Map<String,SharedFutureClaimQuantity> result=new HashMap<>();
+        for(SharedFutureClaimQuantity quantity:request.quantities()) {
+            if(quantity==null || !groupKeys.contains(quantity.actionGroupKey()) || quantity.qty()==null || quantity.qty().signum()<=0
+                    || quantity.qty().scale()>4 || quantity.qty().precision()-quantity.qty().scale()>14
+                    || result.putIfAbsent(quantity.actionGroupKey(),quantity)!=null) throw validation("公共在途认领数量必须逐项对应本次选择，不得重复或超出数量精度");
+        }
+        if(result.size()!=groupKeys.size()) throw validation("请为每个所选物料填写本次认领数量");
+        return Map.copyOf(result);
+    }
+
     private static String claimSharedFutureHash(
             UUID analysisId, ClaimSharedFutureRequest request) {
         List<String> parts = new ArrayList<>(List.of(
@@ -2288,6 +2334,9 @@ public class MaterialAnalysisCommandService {
                 Long.toString(request.version()), request.fingerprint()));
         request.actionGroupKeys().stream().distinct().sorted()
                 .forEach(value -> parts.add("GROUP|" + value));
+        if(request.quantities()!=null) request.quantities().stream().sorted(Comparator.comparing(SharedFutureClaimQuantity::actionGroupKey))
+                .forEach(quantity->parts.add("QUANTITY|"+quantity.actionGroupKey()+"|"+canonicalOptionalQuantity(quantity.qty())+"|"+Objects.toString(quantity.sourceActionId(),"AUTO")));
+        if(request.allowLateSupply()) parts.add("ALLOW_LATE_SUPPLY|true");
         return PlanningPackageFingerprint.sha256(parts);
     }
 

@@ -3100,7 +3100,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get productionMaterialRecheck => '重新核对备料';
 
   @override
-  String get productionMaterialRecheckReady => '物料已齐套，已按实际子仓生成领料单。请仓库发料完成后开工。';
+  String get productionMaterialRecheckReady =>
+      '物料已齐套，请在「我的车间任务」勾选并提交领料；仓库发料完成后再开工。';
 
   @override
   String get productionMaterialRecheckWaiting =>
@@ -3518,4 +3519,542 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get auditFiltersTitle => '操作类型 · 业务对象 · 事件类型';
+
+  @override
+  String warehouseOutboundBatchAction(String action) {
+    return '批量$action';
+  }
+
+  @override
+  String get warehouseOutboundBatchReview => '销售出库批量核对';
+
+  @override
+  String get warehouseOutboundBatchHint =>
+      '请逐项核对所选单据的货品、数量、单位、仓库与建议库位；确认后办理当前作业阶段。';
+
+  @override
+  String warehouseOutboundBatchConfirm(String action, int count) {
+    return '确认对所选 $count 张单据执行$action？';
+  }
+
+  @override
+  String get warehouseOutboundBatchStopped => '批量作业已停止，请返回刷新核对后重新选择未完成任务。';
+
+  @override
+  String get warehouseOutboundBatchUnknown => '未收到明确回执，请返回刷新核对当前状态后再处理。';
+
+  @override
+  String get warehouseOutboundBatchStale => '任务状态或允许动作已变化，请刷新后重新核对。';
+
+  @override
+  String get warehouseOutboundBatchEmpty => '所选任务已不可办理，请返回刷新任务列表。';
+
+  @override
+  String get warehouseOutboundBatchResult => '处理结果';
+
+  @override
+  String get warehouseOutboundBatchDone => '已完成';
+
+  @override
+  String get warehouseOutboundBatchPending => '未处理';
+
+  @override
+  String get warehouseOutboundBatchFailed => '失败，请核对';
+
+  @override
+  String warehouseOutboundBatchSelection(int count) {
+    return '已选 $count 张单据';
+  }
+
+  @override
+  String get warehouseOutboundBatchSelect => '请先选择可办理任务';
+
+  @override
+  String get warehouseOutboundBatchReason => '处理说明';
+
+  @override
+  String get warehouseOutboundBatchReasonRequired => '请填写具体说明';
+
+  @override
+  String get warehouseOutboundBillNo => '出货单号';
+
+  @override
+  String get warehouseOutboundClient => '客户';
+
+  @override
+  String get warehouseOutboundWarehouse => '仓库';
+
+  @override
+  String get warehouseOutboundStatus => '仓库作业';
+
+  @override
+  String get warehouseOutboundLineNo => '行号';
+
+  @override
+  String get warehouseOutboundGoodsCode => '货品编码';
+
+  @override
+  String get warehouseOutboundGoodsName => '货品名称';
+
+  @override
+  String get warehouseOutboundPlaceHint => '当前建议库位';
+
+  @override
+  String get warehouseOutboundColor => '颜色';
+
+  @override
+  String get warehouseOutboundUnit => '单位';
+
+  @override
+  String get warehouseOutboundQuantity => '出货数量';
+
+  @override
+  String get warehouseOutboundWeight => '重量';
+
+  @override
+  String get warehouseOutboundParcelQuantity => '件数';
+
+  @override
+  String get warehouseOutboundCartonCount => '箱数';
+
+  @override
+  String get warehouseOutboundClientProductCode => '客户产品号';
+
+  @override
+  String get warehouseOutboundClientModel => '客户型号';
+
+  @override
+  String get warehouseOutboundSourceOrder => '来源订单';
+
+  @override
+  String get warehouseOutboundStartPicking => '开始拣货';
+
+  @override
+  String get warehouseOutboundFinishPicking => '拣货完成';
+
+  @override
+  String get warehouseOutboundHandOver => '交接出库';
+
+  @override
+  String get warehouseOutboundRestorePending => '恢复待拣货';
+
+  @override
+  String get warehouseStockOutboundTitle => '批量出库详情';
+
+  @override
+  String get warehouseStockOutboundAction => '批量出库';
+
+  @override
+  String get warehouseStockOutboundConfirm => '确认批量出库';
+
+  @override
+  String warehouseStockOutboundConfirmMessage(int count) {
+    return '确认对所选 $count 张单据按表内数量出库？\n每张单据独立审核并扣减实际仓库库存，记录当前员工的审核责任。发生异常时停止后续操作，已成功单据保留结果。';
+  }
+
+  @override
+  String get warehouseStockOutboundHint =>
+      '核对货品、出库数量、单位和实际仓库。同一单据的明细一同勾选、整单出库；如需改量，请先返回编辑草稿。';
+
+  @override
+  String get warehouseStockOutboundLoadFailed => '出库详情加载失败，请重试。';
+
+  @override
+  String warehouseStockOutboundCompleted(int count) {
+    return '已完成 $count 张单据出库';
+  }
+
+  @override
+  String get warehouseStockOutboundDone => '已出库';
+
+  @override
+  String get warehouseStockOutboundUnavailable => '当前不可办理';
+
+  @override
+  String get warehouseStockOutboundProcessing => '正在确认出库';
+
+  @override
+  String get warehouseStockOutboundBillNo => '出库单号';
+
+  @override
+  String get warehouseStockOutboundPlace => '实际库位';
+
+  @override
+  String get warehouseStockOutboundQuantity => '出库数量';
+
+  @override
+  String get warehouseStockOutboundSource => '来源单据';
+
+  @override
+  String get warehouseStockOutboundRemark => '备注';
+
+  @override
+  String get warehouseSubcontractOutboundBatchTitle => '批量出库详情';
+
+  @override
+  String get warehouseSubcontractOutboundBatchAction => '批量出库';
+
+  @override
+  String get warehouseSubcontractOutboundBatchConfirm => '确认批量出库';
+
+  @override
+  String get warehouseSubcontractOutboundReviewHint =>
+      '请逐行核对本次出库数量、重量和实际仓库，再确认出库。';
+
+  @override
+  String get warehouseSubcontractOutboundBatchHint =>
+      '明细按整张出库单勾选，本次数量可改小分批出库。各单独立保存并审核，保留已完成结果；发生异常时暂停，核实后继续尚未执行的单据。';
+
+  @override
+  String get warehouseSubcontractOutboundDocuments => '单据信息';
+
+  @override
+  String get warehouseSubcontractOutboundLines => '出库明细';
+
+  @override
+  String get warehouseSubcontractOutboundOrder => '来源订单';
+
+  @override
+  String get warehouseSubcontractOutboundSupplier => '委外商';
+
+  @override
+  String get warehouseSubcontractOutboundWarehouse => '发出仓';
+
+  @override
+  String get warehouseSubcontractOutboundWorker => '经办人';
+
+  @override
+  String get warehouseSubcontractOutboundDate => '出库日期';
+
+  @override
+  String get warehouseSubcontractOutboundDeliveryDate => '交货日期';
+
+  @override
+  String get warehouseSubcontractOutboundGoods => '货品';
+
+  @override
+  String get warehouseSubcontractOutboundColor => '颜色';
+
+  @override
+  String get warehouseSubcontractOutboundUnit => '单位';
+
+  @override
+  String get warehouseSubcontractOutboundPlanned => '计划数量';
+
+  @override
+  String get warehouseSubcontractOutboundPrepared => '已备齐';
+
+  @override
+  String get warehouseSubcontractOutboundIssued => '已出库';
+
+  @override
+  String get warehouseSubcontractOutboundAvailable => '本次最多';
+
+  @override
+  String get warehouseSubcontractOutboundQuantity => '本次出库';
+
+  @override
+  String get warehouseSubcontractOutboundWeight => '实际重量';
+
+  @override
+  String get warehouseSubcontractOutboundPlace => '库位';
+
+  @override
+  String get warehouseSubcontractOutboundStatus => '处理结果';
+
+  @override
+  String get warehouseSubcontractOutboundPending => '待出库';
+
+  @override
+  String get warehouseSubcontractOutboundDone => '已出库';
+
+  @override
+  String get warehouseSubcontractOutboundPaused => '已暂停，请核实';
+
+  @override
+  String get warehouseSubcontractOutboundUncertain => '回执尚未确定，请刷新核实后再继续。';
+
+  @override
+  String get warehouseSubcontractOutboundChanged => '单据已被修改或处理，请返回刷新后重新选择。';
+
+  @override
+  String get warehouseSubcontractOutboundSelectRequired => '请至少选择一项出库任务。';
+
+  @override
+  String get warehouseSubcontractOutboundSelectionLimit => '每批最多选择 50 项任务。';
+
+  @override
+  String get warehouseSubcontractOutboundWarehouseRequired => '请选择发出仓。';
+
+  @override
+  String get warehouseSubcontractOutboundQuantityInvalid =>
+      '本次出库数量必须大于 0 且不能超过本次最多数量。';
+
+  @override
+  String get warehouseSubcontractOutboundWeightInvalid => '实际重量须为空或大于 0 的数字。';
+
+  @override
+  String get warehouseSubcontractOutboundLoadFailed => '出库详情加载失败，请重试。';
+
+  @override
+  String get warehouseSubcontractOutboundConfirmResponsibility =>
+      '确认后，系统将以当前登录员工记录本次出库审核责任。';
+
+  @override
+  String get warehouseSubcontractOutboundSubcontractEffects =>
+      '审核后，目标件从所选仓库实际出库并交委外商加工；回厂后仍需登记和品质检查。';
+
+  @override
+  String warehouseSubcontractOutboundBatchResult(int done, int total) {
+    return '已完成 $done 项，共 $total 项。';
+  }
+
+  @override
+  String get warehouseSubcontractOutboundContinue => '继续未执行项';
+
+  @override
+  String get warehouseSubcontractOutboundVerify => '核实处理结果';
+
+  @override
+  String get warehouseSubcontractOutboundSelectAll => '全选出库明细';
+
+  @override
+  String get warehouseSubcontractOutboundDraft => '出库草稿';
+
+  @override
+  String get warehouseSubcontractOutboundRemark => '备注';
+
+  @override
+  String get warehouseSubcontractOutboundNoLines => '当前没有可出库明细';
+
+  @override
+  String get warehouseSubcontractOutboundLegacyParent => '历史父件';
+
+  @override
+  String get warehouseStockOutboundConfirmSingle => '确认出库';
+
+  @override
+  String get warehouseStockOutboundSeries => '系列';
+
+  @override
+  String get warehouseSubcontractOutboundDraftsGenerated =>
+      '出库草稿已生成，请重新核对各张单据的实际仓库和数量，再确认出库。';
+
+  @override
+  String get warehouseSubcontractOutboundPrepareDrafts => '生成草稿并核对';
+
+  @override
+  String get warehouseOutboundBatchDocuments => '单据信息';
+
+  @override
+  String get warehouseOutboundBatchLines => '出库明细';
+
+  @override
+  String get warehouseOutboundBatchBillDate => '业务日期';
+
+  @override
+  String get warehouseOutboundBatchWorker => '经办人';
+
+  @override
+  String get warehouseOutboundBatchMaker => '制单员';
+
+  @override
+  String get warehouseOutboundBatchCreatedAt => '制单时间';
+
+  @override
+  String get warehouseOutboundBatchUpdatedAt => '作业更新';
+
+  @override
+  String get warehouseSubcontractOutboundDocumentRemark => '单据备注';
+
+  @override
+  String get warehouseSubcontractOutboundLineRemark => '明细备注';
+
+  @override
+  String get warehouseSubcontractOutboundWarehouseSyncHint =>
+      '默认带出原出库单的实际仓库。同一出库单的所有明细共用发出仓，修改后同步更新。';
+
+  @override
+  String get warehouseSubcontractOutboundDocumentRemarkHint =>
+      '同一出库单共用此备注，修改后在该单所有明细同步显示。单行说明填写在明细备注中。';
+
+  @override
+  String get productionBatchTitle => '分批生产领料';
+
+  @override
+  String get productionBatchPermission => '当前账号没有安排车间分批领料的权限';
+
+  @override
+  String get productionBatchSelectTask => '请从我的车间任务选择待料工单';
+
+  @override
+  String get productionBatchInvalidQuantity => '请输入大于 0 的数量，最多 4 位小数';
+
+  @override
+  String get productionBatchPreviewFailed => '可生产批量核对失败，请重试';
+
+  @override
+  String get productionBatchReplay => '本批已安排，未重复生成任务';
+
+  @override
+  String productionBatchSubmittedReuse(String quantity, String unit) {
+    return '已安排本批 $quantity $unit，沿用前批已领物料，可回车间任务开工';
+  }
+
+  @override
+  String productionBatchSubmitted(
+    String quantity,
+    String unit,
+    String remaining,
+  ) {
+    return '已提交本批 $quantity $unit 领料；剩余 $remaining $unit 留待后续安排';
+  }
+
+  @override
+  String productionBatchUncertain(String action) {
+    return '暂未确认本批提交结果，请用“$action”继续确认。当前批量和汇总已保留。';
+  }
+
+  @override
+  String productionBatchRejected(String message) {
+    return '$message。请重新核对本批数量和领料汇总。';
+  }
+
+  @override
+  String get productionBatchRetryRequest => '重试本批领料';
+
+  @override
+  String get productionBatchRetryArrange => '重试本批安排';
+
+  @override
+  String get productionBatchConfirmRequest => '确认本批领料';
+
+  @override
+  String get productionBatchConfirmArrange => '确认本批生产';
+
+  @override
+  String get productionBatchSubmitting => '正在提交本批安排';
+
+  @override
+  String get productionBatchSubmittingHint => '正在核对本批数量和物料来源，请稍候。';
+
+  @override
+  String get productionBatchProductFallback => '生产产品待确认';
+
+  @override
+  String get productionBatchPlan => '生产计划';
+
+  @override
+  String get productionBatchWorkOrder => '生产工单';
+
+  @override
+  String get productionBatchOriginal => '任务待生产';
+
+  @override
+  String get productionBatchOriginalHint => '当前工单的待生产数量';
+
+  @override
+  String get productionBatchReady => '当前可齐套上限';
+
+  @override
+  String get productionBatchReadyHint => '仅按现有合格实物计算';
+
+  @override
+  String get productionBatchSelected => '本批已核对量';
+
+  @override
+  String get productionBatchSelectedHint => '确认后安排的本批数量';
+
+  @override
+  String get productionBatchRemaining => '安排后剩余';
+
+  @override
+  String get productionBatchRemainingHint => '留待后续安排';
+
+  @override
+  String get productionBatchUnitUnknown => '单位待确认';
+
+  @override
+  String get productionBatchSetup => '本批生产安排';
+
+  @override
+  String get productionBatchQuantity => '本次生产数量';
+
+  @override
+  String productionBatchQuantityHint(String quantity, String unit) {
+    return '最多可安排 $quantity $unit。修改后需重新核对领料汇总，再确认提交。';
+  }
+
+  @override
+  String get productionBatchReview => '重新核对领料汇总';
+
+  @override
+  String get productionBatchReviewReady => '本批已核对';
+
+  @override
+  String get productionBatchNeedsReview => '数量已修改，需重新核对';
+
+  @override
+  String get productionBatchNeedsReviewHint => '下方为上次核对的明细，重新核对后才能确认本批。';
+
+  @override
+  String get productionBatchNoKit => '暂不能安排本批';
+
+  @override
+  String get productionBatchNoKitHint => '现有物料尚不能配齐一个生产批次，请等待实际入库后重新核对';
+
+  @override
+  String get productionBatchReuse => '本批无需新增领料';
+
+  @override
+  String get productionBatchReuseHint => '本批沿用前批已领物料，无需再次领料；确认后回车间任务开工。';
+
+  @override
+  String get productionBatchFlow => '确认本批领料 → 仓库发齐 → 车间开工';
+
+  @override
+  String productionBatchRemainingText(String quantity, String unit) {
+    return '本批安排后，剩余 $quantity $unit 留待后续安排。';
+  }
+
+  @override
+  String get productionBatchAllRemaining => '本批包含当前工单全部待生产数量。';
+
+  @override
+  String get productionBatchMaterials => '本批领料明细';
+
+  @override
+  String productionBatchMaterialCount(int lines, int warehouses) {
+    return '$lines 行物料 · $warehouses 个领料仓';
+  }
+
+  @override
+  String get productionBatchWarehouse => '实际领料仓';
+
+  @override
+  String get productionBatchGoodsCode => '物料编码';
+
+  @override
+  String get productionBatchGoodsName => '物料名称';
+
+  @override
+  String get productionBatchColor => '颜色';
+
+  @override
+  String get productionBatchUnit => '领料单位';
+
+  @override
+  String get productionBatchMaterialQuantity => '本批领料数量';
+
+  @override
+  String get productionBatchMaterialQuantityHint =>
+      '仅为本批需要新增领取的数量，按本行单位和实际仓库办理。';
+
+  @override
+  String get productionBatchNoAdditionalMaterials => '本批无需新增领料，沿已有物料来源安排生产';
+
+  @override
+  String productionBatchConfirmedSummary(String quantity, String unit) {
+    return '本批 $quantity $unit';
+  }
 }

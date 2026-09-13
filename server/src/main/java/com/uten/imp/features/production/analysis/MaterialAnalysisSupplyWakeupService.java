@@ -102,9 +102,14 @@ public class MaterialAnalysisSupplyWakeupService {
         // UUID arrays avoid IN () for a one-type batch, and bind each receipt to
         // its document type. Resolved siblings retain the old rejection wakeup.
         return analysisTargets(candidateQuery("""
-                    SELECT DISTINCT inspection.warehouse_id,
+                    SELECT DISTINCT actual.warehouse_id,
                            inspection.goods_id, inspection.color_id
                     FROM procurement_inspection_items inspection
+                    CROSS JOIN LATERAL (
+                        SELECT inspection.warehouse_id WHERE inspection.warehouse_id IS NOT NULL
+                        UNION SELECT stock.warehouse_id FROM procurement_iqc_stock_in_batch_items stock
+                        WHERE stock.inspection_item_id=inspection.id
+                    ) actual
                     WHERE (
                         (inspection.receipt_type = 'PURCHASE'
                          AND inspection.receipt_id = ANY(CAST(string_to_array(:purchaseReceiptIds, ',') AS uuid[]))
@@ -184,9 +189,14 @@ public class MaterialAnalysisSupplyWakeupService {
     private List<AnalysisTarget> purchaseTargets(
             UUID receiptId, boolean includeLegacyFallback) {
         return analysisTargets(candidateQuery("""
-                    SELECT DISTINCT inspection.warehouse_id,
+                    SELECT DISTINCT actual.warehouse_id,
                            inspection.goods_id, inspection.color_id
                     FROM procurement_inspection_items inspection
+                    CROSS JOIN LATERAL (
+                        SELECT inspection.warehouse_id WHERE inspection.warehouse_id IS NOT NULL
+                        UNION SELECT stock.warehouse_id FROM procurement_iqc_stock_in_batch_items stock
+                        WHERE stock.inspection_item_id=inspection.id
+                    ) actual
                     JOIN purchase_receipts receipt
                       ON receipt.id = inspection.receipt_id
                      AND receipt.is_deleted = FALSE
@@ -224,9 +234,14 @@ public class MaterialAnalysisSupplyWakeupService {
     private List<AnalysisTarget> subcontractTargets(
             UUID receiptId, boolean includeLegacyFallback) {
         return analysisTargets(candidateQuery("""
-                    SELECT DISTINCT inspection.warehouse_id,
+                    SELECT DISTINCT actual.warehouse_id,
                            inspection.goods_id, inspection.color_id
                     FROM procurement_inspection_items inspection
+                    CROSS JOIN LATERAL (
+                        SELECT inspection.warehouse_id WHERE inspection.warehouse_id IS NOT NULL
+                        UNION SELECT stock.warehouse_id FROM procurement_iqc_stock_in_batch_items stock
+                        WHERE stock.inspection_item_id=inspection.id
+                    ) actual
                     JOIN subcontract_receipts receipt
                       ON receipt.id = inspection.receipt_id
                      AND receipt.is_deleted = FALSE

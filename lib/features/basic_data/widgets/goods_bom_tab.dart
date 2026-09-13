@@ -430,10 +430,6 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
           onToggle: r.node.loading ? null : () => _toggle(r.node),
           ancestorContinuations: r.ancestorContinuations,
           isLastChild: r.isLastChild,
-          foregroundColor:
-              _selected != null && r.node.item.id == _selected!.node.item.id
-              ? Colors.white
-              : null,
         ),
       ),
       // 已审列（V256）：审计标记为服务端持久数据，对所有人可见（✓ + 行变绿）；

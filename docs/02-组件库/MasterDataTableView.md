@@ -40,7 +40,7 @@
   新增可选 `height:` 覆盖最小高度参与对齐（全站默认 44/52 不变，弹窗/页面主按钮不受影响）。
   调用方往工具条放按钮时也应传 `height: UtenTableToolbar.controlHeight` 保持同条等高。
 - **单击选中、双击打开（全 App 列表页统一交互契约，2026-08-12）**：单击行 = 只选中
-  （该行高亮淡主色/rowColor 加深，滚动时常驻，翻页/重查换对象后自然失效），**绝不打开**；
+  （该行淡绿高亮 = primaryContainer 35%，2026-09-13 起全站表格统一选中色，与 UtenEditableGrid 同款；滚动时常驻，翻页/重查换对象后自然失效），**绝不打开**；
   双击行 = 触发 `onRowTap`（报表→跳源头单据；主档→详情：货品为整页路由 `/basicinfo/goods/:id`，
   其余主档为详情弹窗）。可选 `onSelectionChanged(item)`
   上抛单击选中项——BOM 组装页签据此定「添加组件」默认父级。可选 `isSelected(item)` 谓词走
@@ -156,8 +156,8 @@ MasterDataTableView<T>(
   selectedIds: selectedIds,            // 调用方持有的唯一选中真值
   onSelectedIdsChanged: (next) {},     // 行勾选与表头三态全选统一回交新 Set
   rowColor: (item) => Color?,           // 行底色（如货品按状态：使用=浅蓝/禁用=浅红）；
-                                        // null=透明。单击选中自动加深加亮（提高不透明度），
-                                        // 无底色行维持 primary 0.10 高亮
+                                        // null=透明。选中行统一淡绿底（primaryContainer 35%），
+                                        // 文字/网格线/行内输入框保持常态色，不再随选中态变色
   isLoading / error / onRetry / emptyMessage,
   loadingMore: false,        // true 时表体末尾追加转圈行（配合 onLoadMore 自动加载）
   onLoadMore: () {},         // 竖向滚动临近底部回调；更多页判断在调用方

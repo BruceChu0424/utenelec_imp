@@ -794,15 +794,12 @@ class _ProductionExecutionBatchPageState
                     context,
                   ).colorScheme.errorContainer.withValues(alpha: 0.25),
                   cellBuilder: (context, row) {
-                    final scope = MasterDataTableCellScope.maybeOf(context);
                     final quantity = Text(
                       _number(row.qty),
                       textAlign: TextAlign.right,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w700,
-                        color: scope?.selected == true
-                            ? scope!.foregroundColor
-                            : Theme.of(context).colorScheme.error,
+                        color: Theme.of(context).colorScheme.error,
                         fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     );
@@ -818,9 +815,7 @@ class _ProductionExecutionBatchPageState
                           Text(
                             row.unitName ?? '—',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: scope?.selected == true
-                                  ? scope!.foregroundColor
-                                  : theme.colorScheme.onSurfaceVariant,
+                              color: theme.colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ],

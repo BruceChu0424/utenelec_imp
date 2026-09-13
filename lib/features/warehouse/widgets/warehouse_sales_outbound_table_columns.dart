@@ -194,9 +194,6 @@ warehouseSalesOutboundTableColumns({
             key: ValueKey('sales-picking-place-${row.line.id}'),
             controller: controller,
             enabled: editingEnabled,
-            style: TextStyle(
-              color: MasterDataTableCellScope.maybeOf(context)?.foregroundColor,
-            ),
             maxLength: 200,
             decoration: const UtenInputDecoration(
               InputDecoration(

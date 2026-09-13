@@ -16,7 +16,7 @@ import 'package:uten_imp/shared/providers/master_name_provider.dart';
 void main() {
   for (final route in ['BUY', 'SUBCONTRACT']) {
     testWidgets(
-      '$route issued selection uses white text in every light-mode cell',
+      '$route issued selection keeps normal cell colors on the light tint',
       (tester) async {
         final analysis = _analysis();
         analysis['flatMaterials'] = [
@@ -43,11 +43,11 @@ void main() {
         final issued = find.descendant(of: first, matching: find.text('4'));
         final shortageBefore = tester.widget<Text>(shortage).style?.color;
         final issuedBefore = tester.widget<Text>(issued).style?.color;
-        expect(shortageBefore, isNot(Colors.white));
-        expect(issuedBefore, isNot(Colors.white));
 
         await tester.tap(find.text('第一条已下达物料'));
         await tester.pumpAndSettle();
+        // 2026-09-13 全站表格选中口径：选中行淡绿底 + 常态字色——语义色
+        // （缺口红/绿、说明灰）在选中前后保持一致，不再翻白。
         final selectedTexts = find.descendant(
           of: first,
           matching: find.byType(Text),
@@ -57,10 +57,13 @@ void main() {
           final text = element.widget as Text;
           expect(
             text.style?.color ?? DefaultTextStyle.of(element).style.color,
-            Colors.white,
-            reason: 'Selected $route cell ${text.data} must remain readable',
+            isNot(Colors.white),
+            reason:
+                'Selected $route cell ${text.data} must stay normal-colored',
           );
         }
+        expect(tester.widget<Text>(shortage).style?.color, shortageBefore);
+        expect(tester.widget<Text>(issued).style?.color, issuedBefore);
 
         await tester.tap(find.text('第二条已下达物料'));
         await tester.pumpAndSettle();
@@ -73,8 +76,8 @@ void main() {
           final text = element.widget as Text;
           expect(
             text.style?.color ?? DefaultTextStyle.of(element).style.color,
-            Colors.white,
-            reason: 'The newly selected row must also use white text',
+            isNot(Colors.white),
+            reason: 'The newly selected row must also keep normal colors',
           );
         }
         expect(tester.takeException(), isNull);
@@ -180,13 +183,13 @@ void main() {
         const ValueKey('material-analysis-bucket-submit-qty-action-partial'),
       ),
     );
-    expect(selectedQuantity.style?.color, Colors.white);
-    expect(selectedQuantity.decoration?.suffixStyle?.color, Colors.white);
-    expect(selectedQuantity.decoration?.hintStyle?.color, Colors.white);
-    expect(
-      selectedQuantity.decoration?.fillColor,
-      Colors.white.withValues(alpha: 0.12),
-    );
+    // 2026-09-13 全站表格选中口径：选中行不再给输入框垫浅底/改字色——
+    // 输入框走全站默认样式（白底 + 常态字色），选中前后完全一致。
+    expect(selectedQuantity.style?.color, isNot(Colors.white));
+    expect(selectedQuantity.decoration?.suffixStyle?.color, isNull);
+    expect(selectedQuantity.decoration?.hintStyle?.color, isNull);
+    expect(selectedQuantity.decoration?.fillColor, isNull);
+    expect(selectedQuantity.decoration?.filled, isNull);
     expect(
       find.byKey(const Key('material-analysis-bucket-action-buy')),
       findsOneWidget,

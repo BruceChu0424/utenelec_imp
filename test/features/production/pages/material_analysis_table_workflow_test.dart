@@ -48,7 +48,8 @@ void main() {
       final tree = tester.widget<UtenTreeTableCell>(
         find.byKey(const ValueKey('material-table-tree-MATERIAL|m-1')),
       );
-      expect(tree.foregroundColor, Colors.black);
+      // 2026-09-13 起树格不再随选中/未选中强制字色（走主题默认）。
+      expect(tree.foregroundColor, isNull);
       await tester.tap(_route('m-1'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('采购').last);
@@ -63,13 +64,14 @@ void main() {
         reason: 'A dropdown change is a draft, not a write.',
       );
       expect(find.text('确认路线(1)'), findsOneWidget);
+      // 2026-09-13 全站表格选中口径：选中行淡绿底+常态字色，树格不再切白字。
       expect(
         tester
             .widget<UtenTreeTableCell>(
               find.byKey(const ValueKey('material-table-tree-MATERIAL|m-1')),
             )
             .foregroundColor,
-        Colors.white,
+        isNull,
       );
       await tester.tap(
         find.byKey(const Key('material-analysis-create-routes')),
@@ -194,7 +196,7 @@ void main() {
       final tree = tester.widget<UtenTreeTableCell>(
         find.byKey(const ValueKey('material-table-tree-MATERIAL|m-1')),
       );
-      expect(tree.foregroundColor, Colors.white);
+      expect(tree.foregroundColor, isNull);
       final checkbox = find.descendant(
         of: find.byKey(const ValueKey('material-table-row-m-1')),
         matching: find.byType(Checkbox),

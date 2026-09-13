@@ -275,9 +275,6 @@ class ProductionDrawDetailTable extends StatelessWidget {
     }
     return TextButton(
       style: TextButton.styleFrom(
-        foregroundColor: MasterDataTableCellScope.maybeOf(
-          context,
-        )?.foregroundColor,
         alignment: Alignment.centerLeft,
         padding: EdgeInsets.zero,
       ),

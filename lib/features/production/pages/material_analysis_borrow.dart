@@ -21,15 +21,11 @@ class MaterialAnalysisBorrowBadgeContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scope = MasterDataTableCellScope.maybeOf(context);
-    final foreground = scope?.selected == true
-        ? scope?.foregroundColor ?? color
-        : color;
     return ExcludeSemantics(
       child: Text.rich(
         TextSpan(
           style: theme.textTheme.labelMedium?.copyWith(
-            color: foreground,
+            color: color,
             fontWeight: FontWeight.w700,
           ),
           children: [
@@ -37,7 +33,7 @@ class MaterialAnalysisBorrowBadgeContent extends StatelessWidget {
               alignment: PlaceholderAlignment.middle,
               child: Padding(
                 padding: const EdgeInsets.only(right: UtenSpacing.s4),
-                child: Icon(icon, size: 16, color: foreground),
+                child: Icon(icon, size: 16, color: color),
               ),
             ),
             TextSpan(text: label),

@@ -11,9 +11,10 @@ void main() {
         final scopes = <String, MasterDataTableCellScope>{};
         final textColors = <String, Color?>{};
         final iconColors = <String, Color?>{};
+        final theme = ThemeData(brightness: Brightness.light);
         await tester.pumpWidget(
           MaterialApp(
-            theme: ThemeData(brightness: Brightness.light),
+            theme: theme,
             home: Scaffold(
               body: StatefulBuilder(
                 builder: (context, setState) => SizedBox(
@@ -61,17 +62,32 @@ void main() {
         await tester.tap(find.text('First'));
         await tester.pumpAndSettle();
         expect(scopes['First']!.selected, isTrue);
-        expect(scopes['First']!.foregroundColor, Colors.white);
-        expect(textColors['First'], Colors.white);
-        expect(iconColors['First'], Colors.white);
+        // 2026-09-13 全站表格选中口径：选中行淡绿底（primaryContainer 35%，
+        // 与新建销售出货单的编辑网格同款）+ 常态字色——不再深绿底白字，
+        // 行内自绘内容无需随选中态变色。
+        final bodyColor = theme.textTheme.bodySmall!.color;
+        expect(scopes['First']!.foregroundColor, bodyColor);
+        expect(textColors['First'], bodyColor);
+        expect(iconColors['First'], bodyColor);
+        final selectedTint = theme.colorScheme.primaryContainer.withValues(
+          alpha: 0.35,
+        );
+        expect(
+          find.byWidgetPredicate(
+            (widget) => widget is ColoredBox && widget.color == selectedTint,
+          ),
+          findsOneWidget,
+        );
         expect(scopes['Second']!.selected, isFalse);
         expect(selectedIds, selectable ? {'First'} : isEmpty);
+        // 选中/未选中字色一致（对比度不再依赖选中态翻转）。
+        expect(textColors['Second'], bodyColor);
 
         await tester.tap(find.text('Second'));
         await tester.pumpAndSettle();
         expect(scopes['Second']!.selected, isTrue);
         expect(scopes['First']!.selected, selectable);
-        if (!selectable) expect(textColors['First'], isNot(Colors.white));
+        expect(textColors['Second'], bodyColor);
         expect(tester.takeException(), isNull);
       },
     );

@@ -1953,6 +1953,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     TextStyle textStyle,
   ) {
     final column = widget.columns[columnIndex];
+    // 选中行整行淡绿底（primaryContainer 35%，与新建销售出货单的编辑网格同款，
+    // 2026-09-13 全站统一口径），文字保持常态深色——语义底色（cellColor）在选中
+    // 行上让位给统一选中色，保证选中行读作一个整体。
     final cellColor = selected ? null : column.cellColor?.call(context, item);
     final Color? onCellColor = cellColor == null
         ? null
@@ -1962,13 +1965,14 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final cellStyle = onCellColor != null
         ? textStyle.copyWith(color: onCellColor)
         : textStyle;
-    final lineColor = selected ? Colors.white : theme.colorScheme.outline;
     return Container(
       width: _widths[columnIndex],
-      // 列间竖线：逐格勾勒单元格右边界；选中行用白色竖线。
+      // 列间竖线：逐格勾勒单元格右边界。
       decoration: BoxDecoration(
         color: cellColor,
-        border: Border(right: BorderSide(color: lineColor, width: 0.5)),
+        border: Border(
+          right: BorderSide(color: theme.colorScheme.outline, width: 0.5),
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(
@@ -1995,18 +1999,17 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     } else {
       selected = identical(item, _selectedItem);
     }
-    // 行底色：调用方可按行数据着色（货品按状态）；选中统一高亮为深绿底 + 白字 + 白线。
+    // 行底色：调用方可按行数据着色（货品按状态）；选中统一淡绿底（primaryContainer
+    // 35%，与新建销售出货单的编辑网格同款，2026-09-13 全站统一口径）——文字与
+    // 网格线保持常态色，行内输入框也无需再为选中态做任何变色适配。
     final base = widget.rowColor?.call(item);
     final Color rowBg = selected
-        ? UtenColors.deepGreen
+        ? theme.colorScheme.primaryContainer.withValues(alpha: 0.35)
         : (base ?? Colors.transparent);
-    // 选中行的网格线/字体统一改白，保证在深绿底上清晰可读。
-    final lineColor = selected ? Colors.white : theme.colorScheme.outline;
-    final textStyle = (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
-      color: selected ? Colors.white : null,
-    );
+    final lineColor = theme.colorScheme.outline;
+    final textStyle = theme.textTheme.bodySmall ?? const TextStyle();
     // 多选前导勾选格（合成单元格，不进列宽机制）。
-    // **行内这一份不能自带底色**：它要跟整行同底（斑马纹/选中深绿/行语义色都由外层
+    // **行内这一份不能自带底色**：它要跟整行同底（选中淡绿/行语义色都由外层
     // ColoredBox 统一给），而且 DecoratedBox 的边框画在子节点之前——自带不透明底会把
     // 行底那条分隔线在这 48px 里盖掉（2026-09-11 用户截图：首列底色不一样、行线断了）。
     final selectionCheckbox = Center(
@@ -2030,9 +2033,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     );
     // 横滚时钉在视口左缘的那一份副本（[UtenFrozenLeadingColumn]）：它浮在数据格之上，
     // **必须**自带与本行一致的不透明底 + 右线 + 行底线，否则下面的数据格会透上来、
-    // 行线也会在这一段断开。
+    // 行线也会在这一段断开。选中淡绿与行语义色都可能是半透明色，先压到 surface
+    // 上取实底（与 UtenEditableGrid 冻结列同款处理）。
     final frozenSelectionCell = ColoredBox(
-      color: rowBg == Colors.transparent ? theme.colorScheme.surface : rowBg,
+      color: rowBg == Colors.transparent
+          ? theme.colorScheme.surface
+          : Color.alphaBlend(rowBg, theme.colorScheme.surface),
       child: DecoratedBox(
         decoration: BoxDecoration(
           border: Border(

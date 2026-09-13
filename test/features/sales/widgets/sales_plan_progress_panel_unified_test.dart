@@ -1,8 +1,9 @@
-// 产品进度面板统一悬浮模式（2026-09-12 版式统一）：
+// 产品进度面板统一悬浮模式（2026-09-12 版式统一；2026-09-13 修订）：
 // 宿主传入 SalesShipmentActionScope 后，面板不再渲染「全选可发产品/去发货/
-// 刷新产品进度」工具条与说明文字；表格新增「本次发货数量」可编辑列（默认=本次
-// 可发）；行单击只切换勾选不弹窗（弹窗只由「查看进度」触发）；右下悬浮按钮经
-// scope.createShipment 走同一套数量校验与跳转。本文件锁定以上契约。
+// 刷新产品进度」工具条与说明文字；表格只展示「本次可发」（不再提供「本次发货
+// 数量」输入列——数量在出货单明细里填写）；行单击只切换勾选不弹窗（弹窗只由
+// 「查看进度」触发）；右下悬浮按钮经 scope.createShipment 按可发量预填跳转。
+// 本文件锁定以上契约。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,7 +17,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
   testWidgets(
-    'unified mode hides legacy toolbar, prefills ship qty, taps select only, and ships typed quantities',
+    'unified mode hides legacy toolbar, shows available only, and ships available quantities',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1500, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -78,12 +79,10 @@ void main() {
       expect(find.text('刷新产品进度'), findsNothing);
       expect(find.textContaining('已产按合格入库计算'), findsNothing);
 
-      // 新增「本次发货数量」列，默认填入本次可发。
-      expect(find.text('本次发货数量'), findsOneWidget);
-      final qtyField = tester.widget<TextField>(
-        find.byKey(const ValueKey('sales-progress-ship-qty-order-item-1')),
-      );
-      expect(qtyField.controller!.text, '1.25');
+      // 2026-09-13：不再提供「本次发货数量」输入列，只展示「本次可发」。
+      expect(find.text('本次可发'), findsOneWidget);
+      expect(find.text('本次发货数量'), findsNothing);
+      expect(find.byType(TextField), findsNothing);
 
       // 悬浮桥就绪：可发货、尚未勾选。
       expect(scope.shippingEnabled, isTrue);
@@ -102,11 +101,7 @@ void main() {
       await tester.tap(find.text('关闭'));
       await tester.pumpAndSettle();
 
-      // 修改本次发货数量为 1，再勾选第二行（默认 5）批量发货。
-      await tester.enterText(
-        find.byKey(const ValueKey('sales-progress-ship-qty-order-item-1')),
-        '1',
-      );
+      // 勾选第二行批量发货：数量=各自本次可发（出货单里再调整）。
       await tester.tap(find.text('产品丙'));
       await tester.pumpAndSettle();
       expect(scope.selectedCount, 2);
@@ -116,7 +111,7 @@ void main() {
       expect(openedCount, 1);
       expect(opened?.queryParameters, {
         'sourceOrderId': 'order-1',
-        'orderItems': 'order-item-1:1,order-item-3:5',
+        'orderItems': 'order-item-1:1.25,order-item-3:5',
       });
       await tester.tap(find.text('返回产品进度'));
       await shipping;
@@ -129,7 +124,7 @@ void main() {
   );
 
   testWidgets(
-    'unified mode blocks invalid ship quantities without navigating',
+    'zero-available rows cannot be selected and shipping them is blocked',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1500, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -178,36 +173,16 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('产品甲'));
-      await tester.pumpAndSettle();
 
-      // 超过本次可发：拒绝开单。
-      await tester.enterText(
-        find.byKey(const ValueKey('sales-progress-ship-qty-order-item-1')),
-        '99',
-      );
+      // 可发为 0 的行：idOf 返回 null，行单击不进入勾选集。
+      await tester.tap(find.text('产品乙'));
+      await tester.pumpAndSettle();
+      expect(scope.selectedCount, 0);
+
+      // 未勾选任何可发行时发起：不跳转、不报错。
       expect(await scope.createShipment(), isFalse);
       await tester.pumpAndSettle();
       expect(find.text('返回产品进度'), findsNothing);
-
-      // 非正数：拒绝开单。
-      await tester.enterText(
-        find.byKey(const ValueKey('sales-progress-ship-qty-order-item-1')),
-        '0',
-      );
-      expect(await scope.createShipment(), isFalse);
-      await tester.pumpAndSettle();
-
-      // 修正回可发范围内即可正常发起。
-      await tester.enterText(
-        find.byKey(const ValueKey('sales-progress-ship-qty-order-item-1')),
-        '1',
-      );
-      final shipping = scope.createShipment();
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('返回产品进度'));
-      await shipping;
-      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     },
   );

@@ -203,8 +203,8 @@ class _SalesOrderProgressDetailPageState
   // ============================ 右下悬浮操作组 ============================
 
   /// 全站详情/批量页统一口径：业务动作收进右下 UtenFloatingActionGroup——
-  /// 「已选 N 项」胶囊 + 红色「去发货(N)」（面板经 scope 驱动），
-  /// 「修改订单」（可修订时），驳回单另有「取消订单」。
+  /// 「已选 N 项」胶囊 + 「修改订单」（可修订时）+ 驳回单「取消订单」，
+  /// 红色「去发货(N)」放最右（面板经 scope 驱动，2026-09-13 用户口径）。
   Widget _floatingActions() {
     return ListenableBuilder(
       listenable: _shipmentActions,
@@ -227,21 +227,6 @@ class _SalesOrderProgressDetailPageState
                     ? _shipmentActions.clearSelection
                     : null,
               ),
-            if (shipping)
-              UtenButton(
-                key: const Key('sales-progress-create-shipment'),
-                type: UtenButtonType.danger,
-                size: UtenButtonSize.large,
-                icon: Icons.local_shipping_outlined,
-                isLoading: busy,
-                onPressed: count > 0 && !busy
-                    ? () => _shipmentActions.createShipment()
-                    : null,
-                onDisabledTap: count == 0
-                    ? () => context.appWarning('请先勾选要发货的产品')
-                    : null,
-                child: Text(count > 0 ? '去发货($count)' : '去发货'),
-              ),
             if (canEdit)
               UtenButton(
                 key: const Key('sales-order-progress-edit'),
@@ -258,6 +243,21 @@ class _SalesOrderProgressDetailPageState
                 icon: Icons.cancel_outlined,
                 onPressed: busy ? null : _cancelRejectedOrder,
                 child: Text(_cancelBusy ? '取消中…' : '取消订单'),
+              ),
+            if (shipping)
+              UtenButton(
+                key: const Key('sales-progress-create-shipment'),
+                type: UtenButtonType.danger,
+                size: UtenButtonSize.large,
+                icon: Icons.local_shipping_outlined,
+                isLoading: busy,
+                onPressed: count > 0 && !busy
+                    ? () => _shipmentActions.createShipment()
+                    : null,
+                onDisabledTap: count == 0
+                    ? () => context.appWarning('请先勾选要发货的产品')
+                    : null,
+                child: Text(count > 0 ? '去发货($count)' : '去发货'),
               ),
           ],
         );

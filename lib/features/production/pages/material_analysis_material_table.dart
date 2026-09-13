@@ -592,12 +592,10 @@ abstract class _MaterialAnalysisMaterialTableState
     });
   }
 
-  Color _materialTableForeground(ThemeData theme, _MaterialTableRow row) =>
-      _materialRowSelected(row)
-      ? Colors.white
-      : theme.brightness == Brightness.light
-      ? Colors.black
-      : theme.colorScheme.onSurface;
+  /// 物料表树格/路线格的常态字色（选中行统一淡绿底+常态字色，2026-09-13 起不再
+  /// 随选中切白字）。
+  Color _materialTableForeground(ThemeData theme) =>
+      theme.colorScheme.onSurface;
 
   Widget _materialAnalysisTable(
     ThemeData theme,
@@ -1001,13 +999,10 @@ abstract class _MaterialAnalysisMaterialTableState
         // 一眼看出「这里已经不缺了」；无缺口数据（产品行/参考行）保持中性。
         // 颜色走语义 token 明暗配对（_shortageTextColor），桶详情缺口列同口径。
         final shortage = _materialTableShortageQty(row);
-        final color = _materialRowSelected(row)
-            ? Colors.white
-            : _shortageTextColor(theme, shortage);
         return Text(
           _qty(shortage),
           style: theme.textTheme.bodyMedium?.copyWith(
-            color: color,
+            color: _shortageTextColor(theme, shortage),
             fontWeight: FontWeight.w800,
           ),
         );
@@ -1025,12 +1020,8 @@ abstract class _MaterialAnalysisMaterialTableState
           '仓库现货已够的行显示 0，仍可按富余量下单。',
       value: (row) => _qty(_materialTableAdditionalRecommendedQty(row)),
       cellBuilderHandlesSemantics: true,
-      cellBuilder: (_, row) => _materialRowSelected(row)
-          ? Text(
-              _qty(_materialTableAdditionalRecommendedQty(row)),
-              style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white),
-            )
-          : _materialTableSupplyRecommendationCell(theme, row),
+      cellBuilder: (_, row) =>
+          _materialTableSupplyRecommendationCell(theme, row),
     ),
     MasterColumnDef(
       key: 'inboundQty',
@@ -1042,12 +1033,7 @@ abstract class _MaterialAnalysisMaterialTableState
           '补进可用量（已锚定本批，非公共现货）。',
       value: (row) => _qty(_materialTableInboundQty(row)),
       cellBuilderHandlesSemantics: true,
-      cellBuilder: (_, row) => _materialRowSelected(row)
-          ? Text(
-              _qty(_materialTableInboundQty(row)),
-              style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white),
-            )
-          : _materialTableInboundCell(theme, row),
+      cellBuilder: (_, row) => _materialTableInboundCell(theme, row),
     ),
     if (_analysis?.materials.any(
           (material) => (material.sharedFuturePendingQty ?? 0) > 0,
@@ -1082,12 +1068,7 @@ abstract class _MaterialAnalysisMaterialTableState
           '入库）；点击状态可看全程明细。',
       value: _materialTableStatusText,
       cellBuilderHandlesSemantics: true,
-      cellBuilder: (_, row) => _materialRowSelected(row)
-          ? Text(
-              _materialTableStatusText(row) ?? '—',
-              style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white),
-            )
-          : _materialTableStatusCell(theme, row),
+      cellBuilder: (_, row) => _materialTableStatusCell(theme, row),
     ),
     if (_analysis?.allowedActions.contains('VIEW_FUTURE_TRANSFERS') == true &&
         (_futureTransferRecords.isNotEmpty || _futureTransferError != null))
@@ -1099,10 +1080,7 @@ abstract class _MaterialAnalysisMaterialTableState
         value: _futureProgressText,
         cellBuilder: (context, row) {
           if (row.product != null || row.contextOnly) return const Text('—');
-          final scope = MasterDataTableCellScope.maybeOf(context);
-          final color = scope?.selected == true
-              ? scope?.foregroundColor
-              : _crossReallocationSourceColor(theme);
+          final color = _crossReallocationSourceColor(theme);
           final text = _futureProgressText(row);
           return Tooltip(
             message: _futureTransferError ?? '$text\n点击查看精确来源、已实收和可撤未收份额',
@@ -1298,7 +1276,6 @@ abstract class _MaterialAnalysisMaterialTableState
             aggregate.paths.length,
           ),
       ].join(' · '),
-      foregroundColor: _materialTableForeground(theme, row),
       hasChildren: row.hasChildren,
       // 未展开时圆底右下角叠「N」徽章（当前投影可见子件数）；汇总行副标题
       // 已有「N 来源」，不再叠徽章。
@@ -1375,7 +1352,7 @@ abstract class _MaterialAnalysisMaterialTableState
     final route = _materialTableRoute(row);
     final groups = _materialRowGroups(row);
     final editable = _canRoute && !_busy && groups.isNotEmpty;
-    final foreground = _materialTableForeground(theme, row);
+    final foreground = _materialTableForeground(theme);
     if (!editable) {
       return Text(
         _materialTableRouteText(row) ?? '—',

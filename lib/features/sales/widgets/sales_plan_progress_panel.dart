@@ -8,15 +8,14 @@
 // 在「订单进度详情页」中作为产品进度区使用（弹窗已下线，见该页文档）。
 //
 // 2026-09-12 交互改版（与全站批量页统一口径）：
-// - 表格在「本次可发」后新增「本次发货数量」列（可发货时），默认填入本次可发、
-//   允许下调修改，去发货按该列数量开单（出货页仍做 ≤可发 终校验）；
 // - 行单击只切换勾选，不再弹进度弹窗——弹窗只由「查看进度」列按钮触发；
 // - 宿主传入 [SalesShipmentActionScope] 时进入统一悬浮模式：面板内不再渲染
 //   「全选可发产品/去发货/刷新」工具条与说明文字，勾选数与去发货动作经 scope
 //   交给宿主页渲染到右下 UtenFloatingActionGroup（订单进度详情页）；不传 scope
 //   的旧宿主（销售订货单详情页）继续用面板自带工具条，行为不变。
+// 2026-09-13 面板不再提供「本次发货数量」输入列：只展示「本次可发」，去发货
+//   按可发量预填跳转出货页，实际发货数量在出货单明细里填写（出货页终校验 ≤可发）。
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -138,10 +137,6 @@ class _SalesPlanProgressPanelState
     extends ConsumerState<SalesPlanProgressPanel> {
   late Future<List<OrderPlanProgressLine>> _future;
   final _selected = <String>{};
-
-  /// 每行「本次发货数量」输入（key=orderItemId，仅可发>0 的行建立）。
-  /// 默认填入本次可发，允许下调；去发货按该列数量开单（出货页仍做终校验）。
-  final _qtyControllers = <String, TextEditingController>{};
   List<OrderPlanProgressLine>? _lines;
   bool _navigating = false;
 
@@ -178,10 +173,6 @@ class _SalesPlanProgressPanelState
   @override
   void dispose() {
     widget.shipmentActions?._unbind();
-    for (final controller in _qtyControllers.values) {
-      controller.dispose();
-    }
-    _qtyControllers.clear();
     super.dispose();
   }
 
@@ -201,29 +192,6 @@ class _SalesPlanProgressPanelState
     if (_selected.isEmpty) return;
     setState(() => _selected.clear());
     _syncScope();
-  }
-
-  /// 数据到达/变化后同步每行数量输入：新建缺的（默认=本次可发），清掉消失行。
-  /// 不覆盖已存在的控制器——用户改过的数量在同一次数据下应当保留。
-  void _syncQtyControllers(List<OrderPlanProgressLine> lines) {
-    final shippableIds = {
-      for (final line in lines)
-        if ((line.shippableQty ?? 0) > 0) line.orderItemId,
-    };
-    final removed = _qtyControllers.keys
-        .where((id) => !shippableIds.contains(id))
-        .toList(growable: false);
-    for (final id in removed) {
-      _qtyControllers.remove(id)?.dispose();
-    }
-    for (final line in lines) {
-      final available = line.shippableQty ?? 0;
-      if (available <= 0) continue;
-      _qtyControllers.putIfAbsent(
-        line.orderItemId,
-        () => TextEditingController(text: _fmt(available)),
-      );
-    }
   }
 
   bool get _canShipEffective {
@@ -259,8 +227,8 @@ class _SalesPlanProgressPanelState
     }
   }
 
-  /// 校验所选行的「本次发货数量」并跳转新建出货页。
-  /// 返回 true=已发起跳转；校验不过时顶部提示并返回 false。
+  /// 按所选行的「本次可发」预填并跳转新建出货页（实际发货数量在出货单明细里
+  /// 填写，出货页仍做 ≤可发 终校验）。返回 true=已发起跳转。
   Future<bool> _createShipment() async {
     if (_navigating || !_canShipEffective || _selected.isEmpty) return false;
     final lines = _lines;
@@ -270,22 +238,9 @@ class _SalesPlanProgressPanelState
           ..sort((a, b) => a.orderItemId.compareTo(b.orderItemId));
     final entries = <String>[];
     for (final line in selected) {
-      final name = line.goodsName ?? line.goodsCode ?? '产品';
       final available = line.shippableQty ?? 0;
       if (available <= 0) continue;
-      final controller = _qtyControllers[line.orderItemId];
-      final quantity = controller == null
-          ? available
-          : double.tryParse(controller.text.trim());
-      if (quantity == null || !quantity.isFinite || quantity <= 0) {
-        context.appWarning('「$name」的本次发货数量需为大于 0 的数字');
-        return false;
-      }
-      if (quantity > available + 0.000001) {
-        context.appWarning('「$name」本次发货数量不能超过本次可发 ${_fmt(available)}');
-        return false;
-      }
-      entries.add('${line.orderItemId}:${_fmt(quantity)}');
+      entries.add('${line.orderItemId}:${_fmt(available)}');
     }
     if (entries.isEmpty) {
       context.appWarning('请先勾选本次可发数量大于 0 的产品');
@@ -316,7 +271,7 @@ class _SalesPlanProgressPanelState
     }
   }
 
-  /// 旧宿主自带工具条的「去发货」：走同一套数量校验与跳转。
+  /// 旧宿主自带工具条的「去发货」：与悬浮模式同一条跳转路径。
   Future<void> _openShipment() async {
     await _createShipment();
   }
@@ -344,13 +299,11 @@ class _SalesPlanProgressPanelState
         }
         final lines = snap.data!;
         _lines = lines;
-        _syncQtyControllers(lines);
         _syncScope(shippingEnabled: canShip);
         return _ProgressList(
           lines: lines,
           canShip: canShip,
           unifiedFloating: widget.shipmentActions != null,
-          qtyControllerOf: (id) => _qtyControllers[id],
           selected: _selected,
           busy: _navigating || snap.connectionState == ConnectionState.waiting,
           onRefresh: _refresh,
@@ -384,7 +337,6 @@ class _ProgressList extends ConsumerWidget {
     required this.onCreate,
     required this.onRefresh,
     required this.unifiedFloating,
-    required this.qtyControllerOf,
   });
 
   final List<OrderPlanProgressLine> lines;
@@ -397,9 +349,6 @@ class _ProgressList extends ConsumerWidget {
 
   /// 统一悬浮模式：不渲染面板工具条与说明文字（去发货在宿主右下悬浮组）。
   final bool unifiedFloating;
-
-  /// 行「本次发货数量」输入控制器（面板 State 持有，key=orderItemId）。
-  final TextEditingController? Function(String orderItemId)? qtyControllerOf;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -463,7 +412,7 @@ class _ProgressList extends ConsumerWidget {
             ],
           ),
           Text(
-            '已产按合格入库计算，可发量已扣除正在办理的出货。勾选产品后可调整本次发货数量，保存后仍由财务放行。',
+            '已产按合格入库计算，可发量已扣除正在办理的出货。勾选产品后点「去发货」，本次发货数量在出货单中填写，保存后仍由财务放行。',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -545,65 +494,17 @@ class _ProgressList extends ConsumerWidget {
             label: '本次可发',
             width: 110,
             type: 'number',
-            info: '可用于新建出货单的合格实物量，已扣除正在办理的出货。',
+            info: '可用于新建出货单的合格实物量，已扣除正在办理的出货；实际发货数量在出货单中填写。',
             value: (line) => _fmt(line.shippableQty),
             cellBuilder: (context, line) => Text(
               _fmt(line.shippableQty),
               textAlign: TextAlign.right,
               style: TextStyle(
                 fontWeight: FontWeight.w700,
-                color:
-                    MasterDataTableCellScope.maybeOf(context)?.selected == true
-                    ? MasterDataTableCellScope.maybeOf(context)?.foregroundColor
-                    : theme.colorScheme.error,
+                color: theme.colorScheme.error,
               ),
             ),
           ),
-          if (canShip)
-            MasterColumnDef(
-              key: 'shipQty',
-              label: '本次发货数量',
-              width: 150,
-              type: 'number',
-              info: '默认填入本次可发数量，可下调修改；实际发货数量以出货单保存为准。',
-              value: (line) => _fmt(line.shippableQty),
-              cellBuilder: (context, line) {
-                final controller = qtyControllerOf?.call(line.orderItemId);
-                if (controller == null) {
-                  return Text(
-                    '—',
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                      color: MasterDataTableCellScope.maybeOf(
-                        context,
-                      )?.foregroundColor,
-                    ),
-                  );
-                }
-                return TextField(
-                  key: ValueKey('sales-progress-ship-qty-${line.orderItemId}'),
-                  controller: controller,
-                  enabled: !busy,
-                  textAlign: TextAlign.right,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                  ],
-                  style: TextStyle(
-                    color: MasterDataTableCellScope.maybeOf(
-                      context,
-                    )?.foregroundColor,
-                  ),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    hintText: '默认本次可发',
-                    counterText: '',
-                  ),
-                );
-              },
-            ),
           MasterColumnDef(
             key: 'pending',
             label: '办理中',
@@ -638,11 +539,6 @@ class _ProgressList extends ConsumerWidget {
               onPressed: busy
                   ? null
                   : () => _showLineProgress(context, theme, line, canViewPlan),
-              style: TextButton.styleFrom(
-                foregroundColor: MasterDataTableCellScope.maybeOf(
-                  context,
-                )?.foregroundColor,
-              ),
               child: const Text('查看进度'),
             ),
           ),
@@ -772,40 +668,13 @@ class _ProgressList extends ConsumerWidget {
                 _num(theme, '剩余', _remaining(l.qty, l.shippedQty)),
               ],
             ),
-            if (canShip &&
-                showSelection &&
-                (l.shippableQty ?? 0) > 0 &&
-                qtyControllerOf?.call(l.orderItemId) != null) ...[
+            if (canShip && showSelection && (l.shippableQty ?? 0) > 0) ...[
               const SizedBox(height: UtenSpacing.s8),
-              Row(
-                children: [
-                  Text(
-                    '本次发货数量',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  SizedBox(
-                    width: 160,
-                    child: TextField(
-                      key: ValueKey('sales-progress-ship-qty-${l.orderItemId}'),
-                      controller: qtyControllerOf!(l.orderItemId),
-                      enabled: !busy,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                      ],
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        hintText: '默认本次可发',
-                        counterText: '',
-                      ),
-                    ),
-                  ),
-                ],
+              Text(
+                '发货数量在「去发货」打开的出货单中填写',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
             const SizedBox(height: UtenSpacing.s8),

@@ -755,11 +755,6 @@ class _MaterialAnalysisBucketPageState
       TextButton.icon(
         key: ValueKey('material-bucket-supply-details-${row.id}'),
         icon: const Icon(Icons.inventory_2_outlined, size: 16),
-        style: TextButton.styleFrom(
-          foregroundColor: MasterDataTableCellScope.maybeOf(
-            cellContext,
-          )?.foregroundColor,
-        ),
         onPressed: _actionsLocked || _supplyGroupsForRow(row).isEmpty
             ? null
             : () => _openSupplyDetails(row),
@@ -2270,8 +2265,6 @@ class _MaterialAnalysisBucketPageState
           final group = row.group;
           if (group == null) return const SizedBox.shrink();
           final theme = Theme.of(context);
-          final cellScope = MasterDataTableCellScope.maybeOf(context);
-          final selected = cellScope?.selected ?? false;
           final shortage = group.representative.shortageQty;
           // 说明挂列头 ⓘ（info 字段），格内不再逐行 Tooltip（2026-09-09 口径）；
           // key 供测试/语义锚定「物理缺口」单元格。
@@ -2281,9 +2274,7 @@ class _MaterialAnalysisBucketPageState
             child: Text(
               host._qty(shortage),
               style: theme.textTheme.bodySmall?.copyWith(
-                color: selected
-                    ? cellScope?.foregroundColor
-                    : host._shortageTextColor(theme, shortage),
+                color: host._shortageTextColor(theme, shortage),
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -2372,12 +2363,8 @@ class _MaterialAnalysisBucketPageState
     final group = row.group;
     if (group == null) return const SizedBox.shrink();
     final defaultValue = _host._residualSubmitQty(group, route);
-    // 选中行整行深绿底+白字（表格统一高亮）：自绘的只读文字/输入框必须跟随
-    // 白字口径——TextField 的显式 style 会盖掉环境 DefaultTextStyle，深色文字
-    // 铺在深绿底上不可见（2026-09-06 用户反馈「选中后下达数量看不见」）。
-    final cellScope = MasterDataTableCellScope.maybeOf(context);
-    final selected = cellScope?.selected ?? false;
-    final selectedColor = cellScope?.foregroundColor ?? Colors.white;
+    // 选中行统一淡绿底+常态字色（2026-09-13 全站表格口径）：输入框走全站默认
+    // 白底/深字，不再随选中态改字色或垫浅底。
     if (!_rowQtyEditable(row)) {
       final issued = _taskFilter == _PreparationTaskFilter.issued;
       return Align(
@@ -2387,9 +2374,7 @@ class _MaterialAnalysisBucketPageState
               ? _host._qty(_issuedSubmitQty(group, route))
               : _host._qty(defaultValue),
           style: theme.textTheme.bodySmall?.copyWith(
-            color: selected
-                ? selectedColor
-                : theme.colorScheme.onSurfaceVariant,
+            color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
       );
@@ -2408,23 +2393,10 @@ class _MaterialAnalysisBucketPageState
         enabled: !_actionsLocked,
         textAlign: TextAlign.right,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: selected ? selectedColor : null,
-        ),
-        cursorColor: selected ? selectedColor : null,
+        style: theme.textTheme.bodySmall,
         decoration: UtenInputDecoration(
           InputDecoration(
             isDense: true,
-            // 全站输入框主题默认白底（filled+fillColor=surface）：选中行是深绿底
-            // +白字，若输入框仍画白底，白字压白底不可见（2026-09-06 用户反馈）。
-            // 选中时改为 12% 半透明白叠加，输入区保持深色、白字清晰。
-            filled: selected,
-            fillColor: selected ? Colors.white.withValues(alpha: 0.12) : null,
-            enabledBorder: selected ? InputBorder.none : null,
-            disabledBorder: selected ? InputBorder.none : null,
-            focusedBorder: selected ? InputBorder.none : null,
-            hintStyle: selected ? TextStyle(color: selectedColor) : null,
-            suffixStyle: selected ? TextStyle(color: selectedColor) : null,
             hintText: '默认 ${_host._qty(defaultValue)}',
             suffixText: unit?.isEmpty == true ? null : unit,
           ),

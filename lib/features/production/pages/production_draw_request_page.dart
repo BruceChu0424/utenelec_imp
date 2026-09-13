@@ -404,132 +404,127 @@ class _ProductionDrawRequestPageState
     ),
   );
 
-  Widget _summaryTable(
-    ProductionDrawRequestPreview preview,
-  ) => MasterDataTableView<ProductionDrawRequestSummary>(
-    key: const Key('production-draw-request-summary-table'),
-    primary: true,
-    selectable: true,
-    idOf: (row) => row.identity,
-    rowKeyOf: (row) => row.identity,
-    selectedIds: _selected,
-    onSelectedIdsChanged: (next) {
-      if (_saving || _uncertain || _rejected) return;
-      setState(() {
-        _selected
-          ..clear()
-          ..addAll(next);
-      });
-    },
-    bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
-    facets: const {},
-    nullCounts: const {},
-    filters: const {},
-    onFilterChanged: (_, _) {},
-    columns: [
-      MasterColumnDef(
-        key: 'warehouse',
-        label: '领料仓库',
-        width: 170,
-        value: (row) => _label(row.warehouseName),
-      ),
-      MasterColumnDef(
-        key: 'goodsCode',
-        label: '物料编码',
-        width: 130,
-        value: (row) => _label(row.goodsCode),
-      ),
-      MasterColumnDef(
-        key: 'goodsName',
-        label: '物料名称',
-        width: 210,
-        value: (row) => _label(row.goodsName),
-      ),
-      MasterColumnDef(
-        key: 'color',
-        label: '颜色',
-        width: 100,
-        value: (row) => _label(row.colorName),
-      ),
-      MasterColumnDef(
-        key: 'unit',
-        label: '单位',
-        width: 75,
-        value: (row) => _label(row.unitName),
-      ),
-      MasterColumnDef(
-        key: 'qty',
-        label: '待申请量',
-        width: 110,
-        type: 'number',
-        value: (row) => _quantity(row.qty),
-      ),
-      MasterColumnDef(
-        key: 'requestQty',
-        label: '应领数量',
-        info: '本次提交仓库的数量，可分批填写。其余数量保留待申请，不修改原任务和需求。',
-        width: 170,
-        type: 'number',
-        value: (row) => _quantities[row.identity]?.text,
-        cellBuilderHandlesSemantics: true,
-        cellBuilder: (context, row) => TextField(
-          key: ValueKey('production-draw-quantity-${row.identity}'),
-          controller: _quantities[row.identity],
-          enabled:
-              !_saving &&
-              !_uncertain &&
-              !_rejected &&
-              _selected.contains(row.identity),
-          textAlign: TextAlign.right,
-          style: TextStyle(
-            color: MasterDataTableCellScope.maybeOf(context)?.foregroundColor,
+  Widget _summaryTable(ProductionDrawRequestPreview preview) =>
+      MasterDataTableView<ProductionDrawRequestSummary>(
+        key: const Key('production-draw-request-summary-table'),
+        primary: true,
+        selectable: true,
+        idOf: (row) => row.identity,
+        rowKeyOf: (row) => row.identity,
+        selectedIds: _selected,
+        onSelectedIdsChanged: (next) {
+          if (_saving || _uncertain || _rejected) return;
+          setState(() {
+            _selected
+              ..clear()
+              ..addAll(next);
+          });
+        },
+        bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+        facets: const {},
+        nullCounts: const {},
+        filters: const {},
+        onFilterChanged: (_, _) {},
+        columns: [
+          MasterColumnDef(
+            key: 'warehouse',
+            label: '领料仓库',
+            width: 170,
+            value: (row) => _label(row.warehouseName),
           ),
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: UtenInputDecoration(
-            InputDecoration(
-              labelText: '本次领料',
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 8,
-                vertical: 8,
+          MasterColumnDef(
+            key: 'goodsCode',
+            label: '物料编码',
+            width: 130,
+            value: (row) => _label(row.goodsCode),
+          ),
+          MasterColumnDef(
+            key: 'goodsName',
+            label: '物料名称',
+            width: 210,
+            value: (row) => _label(row.goodsName),
+          ),
+          MasterColumnDef(
+            key: 'color',
+            label: '颜色',
+            width: 100,
+            value: (row) => _label(row.colorName),
+          ),
+          MasterColumnDef(
+            key: 'unit',
+            label: '单位',
+            width: 75,
+            value: (row) => _label(row.unitName),
+          ),
+          MasterColumnDef(
+            key: 'qty',
+            label: '待申请量',
+            width: 110,
+            type: 'number',
+            value: (row) => _quantity(row.qty),
+          ),
+          MasterColumnDef(
+            key: 'requestQty',
+            label: '应领数量',
+            info: '本次提交仓库的数量，可分批填写。其余数量保留待申请，不修改原任务和需求。',
+            width: 170,
+            type: 'number',
+            value: (row) => _quantities[row.identity]?.text,
+            cellBuilderHandlesSemantics: true,
+            cellBuilder: (context, row) => TextField(
+              key: ValueKey('production-draw-quantity-${row.identity}'),
+              controller: _quantities[row.identity],
+              enabled:
+                  !_saving &&
+                  !_uncertain &&
+                  !_rejected &&
+                  _selected.contains(row.identity),
+              textAlign: TextAlign.right,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
               ),
-              error: _quantityErrors[row.identity] == null
-                  ? null
-                  : UtenFieldMessage.error(_quantityErrors[row.identity]!),
+              decoration: UtenInputDecoration(
+                InputDecoration(
+                  labelText: '本次领料',
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
+                  error: _quantityErrors[row.identity] == null
+                      ? null
+                      : UtenFieldMessage.error(_quantityErrors[row.identity]!),
+                ),
+                info: '最多 ${_quantity(row.qty)} ${_label(row.unitName)}',
+              ),
+              onChanged: (_) => setState(() {
+                final error = _quantityError(row);
+                if (error == null) {
+                  _quantityErrors.remove(row.identity);
+                } else {
+                  _quantityErrors[row.identity] = error;
+                }
+              }),
             ),
-            info: '最多 ${_quantity(row.qty)} ${_label(row.unitName)}',
           ),
-          onChanged: (_) => setState(() {
-            final error = _quantityError(row);
-            if (error == null) {
-              _quantityErrors.remove(row.identity);
-            } else {
-              _quantityErrors[row.identity] = error;
-            }
-          }),
-        ),
-      ),
-      MasterColumnDef(
-        key: 'sources',
-        label: '任务来源',
-        width: 180,
-        value: (row) => _sourcesLabel(preview, row),
-        cellBuilder: (context, row) => TextButton(
-          style: TextButton.styleFrom(
-            foregroundColor: MasterDataTableCellScope.maybeOf(
-              context,
-            )?.foregroundColor,
-            padding: EdgeInsets.zero,
-            alignment: Alignment.centerLeft,
+          MasterColumnDef(
+            key: 'sources',
+            label: '任务来源',
+            width: 180,
+            value: (row) => _sourcesLabel(preview, row),
+            cellBuilder: (context, row) => TextButton(
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                alignment: Alignment.centerLeft,
+              ),
+              onPressed: () => _showSources(preview, row),
+              child: Text(_sourcesLabel(preview, row)),
+            ),
           ),
-          onPressed: () => _showSources(preview, row),
-          child: Text(_sourcesLabel(preview, row)),
-        ),
-      ),
-    ],
-    items: preview.summaries,
-    emptyMessage: '暂无领料汇总',
-  );
+        ],
+        items: preview.summaries,
+        emptyMessage: '暂无领料汇总',
+      );
 
   String _sourcesLabel(
     ProductionDrawRequestPreview preview,

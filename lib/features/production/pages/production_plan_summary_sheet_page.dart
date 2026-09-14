@@ -170,6 +170,7 @@ class _ProductionPlanSummarySheetPageState
       _MakeRow(
         label: product.goodsName ?? product.goodsCode ?? '未命名',
         code: product.goodsCode,
+        colorName: product.colorName,
         unit: product.unitName,
         requiredQty: product.requestedQty,
         readyQty: product.readyNowQty,
@@ -219,6 +220,7 @@ class _ProductionPlanSummarySheetPageState
       groups[key] = _SupplyRow(
         label: material.goodsName ?? material.goodsCode ?? '未命名物料',
         code: material.goodsCode,
+        colorName: material.colorName,
         spec: material.spec,
         unit: material.unitName,
         requiredQty: (existing?.requiredQty ?? 0) + material.requiredQty,
@@ -603,13 +605,25 @@ class _ProductionPlanSummarySheetPageState
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _sectionTitle('一、自制件(按组件安排车间生产)'),
-        _tableHeader(const ['产品 / 组件', '本批需求', '可生产', '默认车间', '状态', '来源']),
+        // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+        _tableHeader(const [
+          '产品 / 组件名称',
+          '编号',
+          '颜色',
+          '本批需求',
+          '可生产',
+          '默认车间',
+          '状态',
+          '来源',
+        ]),
         if (rows.isEmpty)
           _emptyRow('本批没有自制件')
         else
           for (final row in rows)
             _tableRow([
-              '${row.label}${row.code == null ? '' : '\n${row.code}'}',
+              row.label,
+              row.code ?? '',
+              row.colorName ?? '',
               '${_qty(row.requiredQty)}${row.unit ?? ''}',
               '${_qty(row.readyQty)}${row.unit ?? ''}',
               row.workshop?.isNotEmpty == true ? row.workshop! : '待指定',
@@ -625,14 +639,25 @@ class _ProductionPlanSummarySheetPageState
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _sectionTitle(title),
-        _tableHeader(const ['物料', '需求', '本批已分配', '缺口', '状态']),
+        _tableHeader(const [
+          '物料名称',
+          '编号',
+          '颜色',
+          '规格',
+          '需求',
+          '本批已分配',
+          '缺口',
+          '状态',
+        ]),
         if (rows.isEmpty)
           _emptyRow('本批没有${docLabel == '采购申请' ? '采购' : '委外'}缺料')
         else
           for (final row in rows)
             _tableRow([
-              '${row.label}${row.code == null ? '' : '\n${row.code}'}'
-                  '${row.spec == null ? '' : ' · ${row.spec}'}',
+              row.label,
+              row.code ?? '',
+              row.colorName ?? '',
+              row.spec ?? '',
               '${_qty(row.requiredQty)}${row.unit ?? ''}',
               _qty(row.allocatedQty),
               _qty(row.shortageQty),
@@ -872,11 +897,22 @@ class _ProductionPlanSummarySheetPageState
           ],
           _pdfSectionTitle('一、自制件(按组件安排车间生产)'),
           _pdfTable(
-            const ['产品 / 组件', '本批需求', '可生产', '默认车间', '状态', '来源'],
+            const [
+              '产品 / 组件名称',
+              '编号',
+              '颜色',
+              '本批需求',
+              '可生产',
+              '默认车间',
+              '状态',
+              '来源',
+            ],
             [
               for (final row in _makeRows)
                 [
-                  '${row.label}${row.code == null ? '' : '\n${row.code}'}',
+                  row.label,
+                  row.code ?? '',
+                  row.colorName ?? '',
                   '${_qty(row.requiredQty)}${row.unit ?? ''}',
                   '${_qty(row.readyQty)}${row.unit ?? ''}',
                   row.workshop?.isNotEmpty == true ? row.workshop! : '待指定',
@@ -888,13 +924,13 @@ class _ProductionPlanSummarySheetPageState
           pw.SizedBox(height: 10),
           _pdfSectionTitle('二、采购件(通知采购部)'),
           _pdfTable(
-            const ['物料', '需求', '本批已分配', '缺口', '状态'],
+            const ['物料名称', '编号', '颜色', '规格', '需求', '本批已分配', '缺口', '状态'],
             [for (final row in buyRows) _pdfSupplyCells(row)],
           ),
           pw.SizedBox(height: 10),
           _pdfSectionTitle('三、委外件(通知委外商)'),
           _pdfTable(
-            const ['物料', '需求', '本批已分配', '缺口', '状态'],
+            const ['物料名称', '编号', '颜色', '规格', '需求', '本批已分配', '缺口', '状态'],
             [for (final row in subcontractRows) _pdfSupplyCells(row)],
           ),
           pw.SizedBox(height: 24),
@@ -915,8 +951,10 @@ class _ProductionPlanSummarySheetPageState
   }
 
   List<String> _pdfSupplyCells(_SupplyRow row) => [
-    '${row.label}${row.code == null ? '' : '\n${row.code}'}'
-        '${row.spec == null ? '' : ' · ${row.spec}'}',
+    row.label,
+    row.code ?? '',
+    row.colorName ?? '',
+    row.spec ?? '',
     '${_qty(row.requiredQty)}${row.unit ?? ''}',
     _qty(row.allocatedQty),
     _qty(row.shortageQty),
@@ -1003,6 +1041,7 @@ class _MakeRow {
   const _MakeRow({
     required this.label,
     this.code,
+    this.colorName,
     this.unit,
     required this.requiredQty,
     required this.readyQty,
@@ -1013,6 +1052,7 @@ class _MakeRow {
 
   final String label;
   final String? code;
+  final String? colorName;
   final String? unit;
   final double requiredQty;
   final double readyQty;
@@ -1025,6 +1065,7 @@ class _SupplyRow {
   const _SupplyRow({
     required this.label,
     this.code,
+    this.colorName,
     this.spec,
     this.unit,
     required this.requiredQty,
@@ -1035,6 +1076,7 @@ class _SupplyRow {
 
   final String label;
   final String? code;
+  final String? colorName;
   final String? spec;
   final String? unit;
   final double requiredQty;

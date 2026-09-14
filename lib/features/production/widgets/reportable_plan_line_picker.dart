@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
@@ -282,13 +283,37 @@ class _ReportablePlanLineSheetState
                 item.fqcRecoveryLabel ??
                 (item.isFqcRecovery ? 'FQC恢复' : '正常生产'),
           ),
+          // 2026-09-14 用户口径：产品列同时给名称+编号+颜色。选错报工对象会把
+          // 完工量记到别的货上，而同名不同色/不同编号在本系统极普遍；本表没有
+          // 独立的编号/颜色列，三属性全部合进身份格（规格保留在副行末尾）。
+          // 旧写法把规格塞进 '\n'，而表格单元格是单行省略——规格根本看不到。
+          // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列；
+          // 规格没有独立列，仍留在名称格副行。
           MasterColumnDef(
             key: 'goods',
-            label: '产品',
-            width: 190,
-            value: (item) =>
-                '${item.goodsName ?? item.goodsCode ?? '未命名'}'
-                '${item.goodsSpec == null ? '' : '\n${item.goodsSpec}'}',
+            label: '产品名称',
+            width: 200,
+            value: (item) => item.goodsName ?? item.goodsCode ?? '未命名',
+            cellBuilderHandlesSemantics: true,
+            cellBuilder: (_, item) => UtenGoodsIdentityCell(
+              name: item.goodsName,
+              spec: item.goodsSpec,
+              emptyPlaceholder: '未命名',
+            ),
+          ),
+          MasterColumnDef(
+            key: 'goodsCode',
+            label: '编号',
+            width: 130,
+            value: (item) => UtenGoodsAttributeCell.text(item.goodsCode),
+            cellBuilder: (_, item) => UtenGoodsAttributeCell(item.goodsCode),
+          ),
+          MasterColumnDef(
+            key: 'colorName',
+            label: '颜色',
+            width: 96,
+            value: (item) => UtenGoodsAttributeCell.text(item.colorName),
+            cellBuilder: (_, item) => UtenGoodsAttributeCell(item.colorName),
           ),
           MasterColumnDef(
             key: 'order',

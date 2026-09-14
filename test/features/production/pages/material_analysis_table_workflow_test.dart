@@ -30,10 +30,11 @@ const _permissions = {
 
 void main() {
   testWidgets(
-    'table keeps eight decision columns and creates only chosen routes',
+    'table keeps the eleven decision columns and creates only chosen routes',
     (tester) async {
       final harness = await _pump(tester);
-      expect(find.text('表头设置 8/8'), findsOneWidget);
+      // 2026-09-14：编号 / 颜色 / 单位从身份格副行拆成独立列（8 → 11）。
+      expect(find.text('表头设置 11/11'), findsOneWidget);
       expect(find.text('处理'), findsNothing);
       expect(find.text('确认路线(0)'), findsOneWidget);
       expect(

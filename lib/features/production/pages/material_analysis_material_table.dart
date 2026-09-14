@@ -502,8 +502,11 @@ abstract class _MaterialAnalysisMaterialTableState
     final analysis = _analysis;
     final material = group.representative;
     final route = material.confirmedRoute;
+    // 2026-09-13 起自制（车间）物料也可采用公共在途；叶子委外限制保留
+    // （我方供料 BOM 的委外件不能吃公共超量在途，服务端同口径）。
     final routeEligible =
         route == MaterialSupplyRoute.buy ||
+        route == MaterialSupplyRoute.make ||
         (route == MaterialSupplyRoute.subcontract &&
             analysis != null &&
             !_hasProductionBomChildren(material, analysis));
@@ -959,6 +962,28 @@ abstract class _MaterialAnalysisMaterialTableState
       cellBuilderHandlesSemantics: true,
       cellBuilder: (_, row) => _materialTableIdentityCell(theme, row),
     ),
+    // 2026-09-14 用户口径：编号 / 颜色 / 单位从身份格副行提升为独立列，
+    // 紧跟「物料名称」。同名不同色/不同单位的行在这里一眼分得开，也能各自
+    // 排序、筛选、导出（原副行只是一串 · 连起来的文本）。三列全站统一：
+    // 主表与「下达采购 / 下达委外 / 下达车间」三个分桶详情用同一组列定义。
+    MasterColumnDef(
+      key: 'goodsCode',
+      label: '编号',
+      width: 130,
+      value: _materialTableCodeText,
+    ),
+    MasterColumnDef(
+      key: 'colorName',
+      label: '颜色',
+      width: 96,
+      value: _materialTableColorText,
+    ),
+    MasterColumnDef(
+      key: 'unitName',
+      label: '单位',
+      width: 76,
+      value: _materialTableUnitText,
+    ),
     MasterColumnDef(
       key: 'route',
       label: _l10n.materialRoute,
@@ -977,13 +1002,29 @@ abstract class _MaterialAnalysisMaterialTableState
       info: '按本批产品数量 × 单件用量算出的总需求量。',
       value: (row) => _qty(_materialTableRequiredQty(row)),
     ),
+    // 2026-09-14 用户口径：原「已备数量」= 分配给本批的合格量，恒等于
+    //「需要数量 − 还缺数量」，与右边的缺口列完全冗余，看不出任何新事实。
+    // 改为「可用数量」= 该物料此刻在所选仓库里真正还能动用的现货，够不够
+    // 需求用绿/红标出（与分桶详情「仓库余量」同一口径与配色）。
     MasterColumnDef(
-      key: 'allocatedAvailableQty',
-      label: _l10n.materialAllocated,
+      key: 'availableQty',
+      label: '可用数量',
       width: 100,
       type: 'number',
-      info: _l10n.materialPreparedQuantityHint,
-      value: (row) => _qty(_materialTableAllocatedQty(row)),
+      info:
+          '该物料此刻在所选仓库里还可动用的现货量（不含在途、待检）。'
+          '够本批需求=绿、不够=红；即使够货也不跳过流程，仍可按富余量下单。',
+      value: (row) => _qty(_materialTableAvailableQty(row)),
+      cellColor: (_, row) {
+        final available = _materialTableAvailableQty(row);
+        final required = _materialTableRequiredQty(row);
+        if (available == null || required == null || required <= 0) return null;
+        return available >= required
+            ? (theme.brightness == Brightness.dark
+                  ? UtenColors.successOnDark
+                  : UtenColors.successText)
+            : theme.colorScheme.error;
+      },
     ),
     MasterColumnDef(
       key: 'shortageQty',
@@ -1173,14 +1214,6 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   String? _materialTableIdentityText(_MaterialTableRow row) {
-    String? codeOf() => switch (row.kind) {
-      _MaterialTableRowKind.product => row.product?.goodsCode,
-      _MaterialTableRowKind.aggregate => row.aggregate?.goodsCode,
-      _MaterialTableRowKind.material ||
-      _MaterialTableRowKind.aggregatePath => row.material?.goodsCode,
-      _MaterialTableRowKind.orphan => null,
-    };
-    final code = codeOf()?.trim();
     final name = switch (row.kind) {
       _MaterialTableRowKind.product =>
         row.product?.goodsName ?? row.product?.goodsCode ?? '未命名产品',
@@ -1190,10 +1223,33 @@ abstract class _MaterialAnalysisMaterialTableState
         row.material?.goodsName ?? row.material?.goodsCode ?? '未命名物料',
       _MaterialTableRowKind.orphan => '未归属产品的 BOM 节点',
     };
-    return code?.isNotEmpty == true
-        ? '${row.sequence} $name $code'
-        : '${row.sequence} $name';
+    // 2026-09-14 用户口径：编号 / 颜色 / 单位拆成独立列（见
+    // [_materialTableCodeText] 等），身份列只剩名称——级联号 P1/P1.1 也一并
+    // 去掉（层级由缩进 + 连接线表达）。导出仍「看到什么导出什么」：三列各自
+    // 有自己的 value，不再挤进这一列。
+    return name;
   }
+
+  // 三列的取值优先级与 2026-09-14 之前身份格副行完全一致：编号/颜色以产品行
+  // 自身为准（产品行同时挂着根供给物料），单位以物料行为准（根供给行记的是
+  // 基本单位，产品行记的是来源单位——副行一直显示前者，拆列后不能悄悄换口径）。
+  String? _materialTableCodeText(_MaterialTableRow row) =>
+      (row.product?.goodsCode ??
+              row.aggregate?.goodsCode ??
+              row.material?.goodsCode)
+          ?.trim();
+
+  String? _materialTableColorText(_MaterialTableRow row) =>
+      (row.product?.colorName ??
+              row.aggregate?.colorName ??
+              row.material?.colorName)
+          ?.trim();
+
+  String? _materialTableUnitText(_MaterialTableRow row) =>
+      (row.material?.unitName ??
+              row.product?.unitName ??
+              row.aggregate?.unitName)
+          ?.trim();
 
   /// 第一列身份格（2026-09-04 收敛）：不再显示 BOM 路径与「组件 N 级」文案，
   /// 统一「P几 + 名字」一行、编号第二行；层级仍由缩进/连接线/级联序号表达。
@@ -1250,32 +1306,22 @@ abstract class _MaterialAnalysisMaterialTableState
         material?.goodsName ??
         material?.goodsCode ??
         '未命名物料';
-    final code =
-        (product?.goodsCode ?? aggregate?.goodsCode ?? material?.goodsCode)
-            ?.trim();
     return UtenTreeTableCell(
       key: ValueKey('material-table-tree-${row.key}'),
       toggleKey: ValueKey('material-table-toggle-${row.key}'),
       depth: row.depth,
-      sequence: row.sequence,
+      // 2026-09-14 用户口径：名称前不再挂级联号，最底层不再画圆点；
+      // 编号 / 颜色 / 单位已各自成列（就排在本列右边）。
+      sequence: '',
       sequenceInline: true,
+      showLeafMarker: false,
       title: title,
-      subtitle: [
-        if (code?.isNotEmpty == true) code!,
-        if ((product?.colorName ?? aggregate?.colorName ?? material?.colorName)
-                ?.isNotEmpty ==
-            true)
-          (product?.colorName ?? aggregate?.colorName ?? material?.colorName)!,
-        if ((material?.unitName ?? product?.unitName ?? aggregate?.unitName)
-                ?.isNotEmpty ==
-            true)
-          (material?.unitName ?? product?.unitName ?? aggregate?.unitName)!,
-        if (aggregate != null)
-          _l10n.materialAggregateSources(
-            aggregate.productCount,
-            aggregate.paths.length,
-          ),
-      ].join(' · '),
+      subtitle: aggregate == null
+          ? null
+          : _l10n.materialAggregateSources(
+              aggregate.productCount,
+              aggregate.paths.length,
+            ),
       hasChildren: row.hasChildren,
       // 未展开时圆底右下角叠「N」徽章（当前投影可见子件数）；汇总行副标题
       // 已有「N 来源」，不再叠徽章。
@@ -1441,14 +1487,16 @@ abstract class _MaterialAnalysisMaterialTableState
             row.aggregate?.totalRequired ??
             row.material?.requiredQty;
 
-  double? _materialTableAllocatedQty(_MaterialTableRow row) => row.contextOnly
-      ? null
-      : row.aggregate != null
-      ? row.aggregate!.paths.fold<double>(
-          0,
-          (sum, material) => sum + material.allocatedAvailableQty,
-        )
-      : row.material?.allocatedAvailableQty;
+  /// 「可用数量」：该物料此刻在所选仓库还能动用的现货。
+  ///
+  /// 聚合行（按物料汇总/同货多路径）取代表行的仓库余量而不是各路径求和——
+  /// 同一货品在多条 BOM 路径下看到的是**同一个仓库池**，求和会把一份库存
+  /// 重复计量成 N 份。产品行没有自己的物料现货，显示「—」。
+  double? _materialTableAvailableQty(_MaterialTableRow row) {
+    if (row.contextOnly) return null;
+    final material = row.material ?? row.aggregate?.representative;
+    return material?.availableQty;
+  }
 
   double? _materialTableExactQty(_MaterialTableRow row) => row.contextOnly
       ? null
@@ -1665,7 +1713,7 @@ abstract class _MaterialAnalysisMaterialTableState
         ? '可采用 ${_qty(remaining)}；采用后仍需另补 '
               '${_qty(recommended - remaining)}'
         : late > 0
-        ? '晚到或交期待确认供给 ${_qty(late)}，可明确接受后认领；当前尚需下达 ${_qty(recommended)}'
+        ? '晚到/交期未明确供给 ${_qty(late)}（默认接受）；当前尚需下达 ${_qty(recommended)}'
         : '暂无公共在途可采用；当前建议另补 ${_qty(recommended)}';
     final sourceSummary = refs.isEmpty
         ? null
@@ -2012,7 +2060,6 @@ abstract class _MaterialAnalysisMaterialTableState
     }
   }
 
-  @override
   Future<void> _showMaterialTableDetails(
     _MaterialGroup group,
   ) => showDialog<void>(
@@ -2111,6 +2158,50 @@ abstract class _MaterialAnalysisMaterialTableState
       },
     ),
   );
+
+  /// 「物料 / 调拨」的简化选择器入口：三个调入按钮 + 完整详情。
+  /// 子弹窗返回后由选择器自行刷新可调来源数量。
+  @override
+  Future<void> _showTransferLauncher(_MaterialGroup group) async {
+    final analysis = _analysis;
+    if (analysis == null) return;
+    final material = group.representative;
+    await showMaterialTransferLauncher(
+      context: context,
+      repository: ref.read(productionPlanRepositoryProvider),
+      analysis: analysis,
+      material: material,
+      qtyText: _qty,
+      spotEnabled: !_busy && _canCrossReallocateIn(material),
+      futureEnabled: !_busy && _canFutureTransferIn(material),
+      claimEnabled: !_busy && _canClaimMaterialSharedFuture(group),
+      sharedSourceCount: () {
+        final current = _analysis;
+        if (current == null) return 0;
+        final indexes = _analysisIndexes(current);
+        final fresh = indexes.groupsByLine[material.materialLineId];
+        final representative = (fresh ?? group).representative;
+        final refCount = representative.sharedFutureSupplyRefs
+            .where((ref) => ref.availableToClaimQty > 0)
+            .length;
+        if (refCount > 0) return refCount;
+        // 明细来源受权限保护或未展开时，按公共余量/晚到池是否有量兜底为 1，
+        // 避免把可用入口误置灰。
+        final pool = representative.publicSurplusRemainingQty +
+            representative.lateSharedFutureAvailableQty;
+        return pool > 0 ? 1 : 0;
+      },
+      onSpotReceive: () =>
+          _showCrossReallocationDialog(material, receiveIntoCurrent: true),
+      onFutureReceive: () => _showCrossReallocationDialog(
+        material,
+        receiveIntoCurrent: true,
+        futureTransfer: true,
+      ),
+      onClaimShared: () => _claimSharedFuture({group.key}),
+      onOpenFullDetails: () => _showMaterialTableDetails(group),
+    );
+  }
 
   bool get _canRevokeRootOutput =>
       _permissions.contains(Perm.productionMaterialAnalysisView) &&

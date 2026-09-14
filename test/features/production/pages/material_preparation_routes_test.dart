@@ -130,7 +130,9 @@ void main() {
         matching: find.text('7'),
       );
       expect(physicalShortage, findsOneWidget);
-      expect(find.text('3'), findsOneWidget);
+      // 2026-09-14：「已备数量」列撤除（恒等于 需求 − 缺口，与缺口列完全冗余），
+      // 原来靠它露出的 allocatedAvailableQty=3 不再单独成格；本用例真正要守的是
+      // 缺口按物理口径显示 7、不被公共超量订单冲成 6。
       expect(find.text('6'), findsNothing);
       expect(tester.takeException(), isNull);
     });

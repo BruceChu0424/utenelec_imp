@@ -82,7 +82,9 @@ void main() {
         await tester.tap(find.text('已下达 (1)'));
         await tester.pumpAndSettle();
         expect(find.text('车间已收到 · 等待物料'), findsOneWidget);
-        expect(find.text('根产品 1(P-1)'), findsOneWidget);
+        // 2026-09-14 起货品身份格拆两行：主行名称、副行「编号 · 颜色」。
+        expect(find.text('根产品 1'), findsWidgets);
+        expect(find.text('P-1'), findsWidgets);
         expect(tester.takeException(), isNull);
       },
     );

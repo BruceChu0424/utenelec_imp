@@ -147,6 +147,14 @@ public class Goods extends SoftDeletableEntity {
     private BigDecimal lostRate;        // LostRate
     private Double cap;                 // CAP (DOUBLE PRECISION)
 
+    // ===== 采购批量口径（V575；软约束，只影响下达采购的默认数量，服务端不硬拦） =====
+    /** 最小起订量（供应商 MOQ，基本单位）。NULL=未登记；0=已确认无起订量。 */
+    @Column(name = "min_order_qty", precision = 18, scale = 4)
+    private BigDecimal minOrderQty;
+    /** 订货倍数/整包装量（基本单位，整箱 50 存 50）。NULL=无倍数要求；0 由服务端归一为 NULL。 */
+    @Column(name = "order_multiple_qty", precision = 18, scale = 4)
+    private BigDecimal orderMultipleQty;
+
     // ===== 物理属性 =====
     private String material;            // Material
     private BigDecimal thickness;       // Thickness

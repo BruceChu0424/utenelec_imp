@@ -37,6 +37,8 @@ class GoodsListItem {
     this.autoCreated = false,
     this.stockQty,
     this.stockPlace,
+    this.minOrderQty,
+    this.orderMultipleQty,
   });
 
   final String id;
@@ -71,6 +73,10 @@ class GoodsListItem {
 
   final String? stockPlace; // 库位号（goods.stock_place；选择器拣货/上架指引）
 
+  // ===== 采购批量口径（V575；软约束，下达采购按此预填默认数量，可人工改） =====
+  final double? minOrderQty; // 最小起订量（供应商 MOQ，基本单位）；null=未登记，0=已确认无起订量
+  final double? orderMultipleQty; // 订货倍数/整包装量（基本单位，整箱 50 即 50）；null=无倍数要求
+
   factory GoodsListItem.fromJson(Map<String, dynamic> json) => GoodsListItem(
     id: json['id'] as String,
     code: json['code'] as String?,
@@ -100,7 +106,20 @@ class GoodsListItem {
     autoCreated: json['autoCreated'] as bool? ?? false,
     stockQty: (json['stockQty'] as num?)?.toDouble(),
     stockPlace: json['stockPlace'] as String?,
+    // 后端 NUMERIC(18,4)，Jackson 可能发 int 或 double；统一走 num? 再 toDouble。
+    minOrderQty: (json['minOrderQty'] as num?)?.toDouble(),
+    orderMultipleQty: (json['orderMultipleQty'] as num?)?.toDouble(),
   );
+}
+
+/// 采购批量数量（最小起订量 / 订货倍数）的展示文本。
+///
+/// 后端存 NUMERIC(18,4)，但起订量和整箱倍数绝大多数是整数：500 应显示「500」
+/// 而不是「500.0」。非整数保留有效小数位，去掉补齐的 0。null → null（显「—」）。
+String? goodsQtyText(double? v) {
+  if (v == null) return null;
+  if (v == v.roundToDouble()) return v.toStringAsFixed(0);
+  return v.toStringAsFixed(4).replaceFirst(RegExp(r'0+$'), '');
 }
 
 /// 货品详情（列表字段 + 关键业务字段，够看即可）。
@@ -174,6 +193,8 @@ class GoodsDetail {
     this.version,
     this.quantityUnitLocked = false,
     this.writable = false,
+    this.minOrderQty,
+    this.orderMultipleQty,
   });
 
   final String id;
@@ -261,6 +282,10 @@ class GoodsDetail {
   final String? stockPlace; // 库位号（仓库摆放位置）
   final int? version; // 乐观锁版本（编辑时原样回传）
 
+  // ===== 采购批量口径（V575；软约束，下达采购按此预填默认数量，采购员可改） =====
+  final double? minOrderQty; // 最小起订量（供应商 MOQ，基本单位）；null=未登记，0=已确认无起订量
+  final double? orderMultipleQty; // 订货倍数/整包装量（基本单位，整箱 50 即 50）；null=无倍数要求
+
   factory GoodsDetail.fromJson(Map<String, dynamic> json) => GoodsDetail(
     id: json['id'] as String,
     code: json['code'] as String?,
@@ -337,6 +362,9 @@ class GoodsDetail {
     stockPlace: json['stockPlace'] as String?,
     version: (json['version'] as num?)?.toInt(),
     quantityUnitLocked: json['quantityUnitLocked'] == true,
+    // 后端 NUMERIC(18,4)，Jackson 可能发 int 或 double；统一走 num? 再 toDouble。
+    minOrderQty: (json['minOrderQty'] as num?)?.toDouble(),
+    orderMultipleQty: (json['orderMultipleQty'] as num?)?.toDouble(),
   );
 }
 

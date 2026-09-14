@@ -3779,6 +3779,20 @@ class AppLocalizationsKo extends AppLocalizations {
   String get warehouseSubcontractOutboundDeliveryDate => 'Delivery date';
 
   @override
+  String get warehouseSubcontractOutboundGoodsName => 'Goods name';
+
+  @override
+  String get warehouseSubcontractOutboundGoodsCode => 'Code';
+
+  @override
+  String get warehouseSubcontractOutboundLegacyParentName =>
+      'Historical parent goods name';
+
+  @override
+  String get warehouseSubcontractOutboundLegacyParentCode =>
+      'Parent goods code';
+
+  @override
   String get warehouseSubcontractOutboundGoods => 'Goods';
 
   @override

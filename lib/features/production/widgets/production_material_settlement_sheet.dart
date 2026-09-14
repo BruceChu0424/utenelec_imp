@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -219,17 +220,20 @@ class _MaterialSettlementSheetState
     if (!_settlementUncertain) {
       final lines = <ProductionMaterialSettlementLine>[];
       var requiresReason = false;
+      // 待登记材料常有几十行：越量行先收集再统一提示。逐行 return 只暴露第一处，
+      // 用户改完再提交才知道第二处，本页又没有行级红框可指，只能靠汇总文案讲清。
+      final overLimit = <String>[];
       for (final row in _grid.rows) {
         final consumed = _positive(row.consumed.text);
         final loss = _positive(row.loss.text);
         final wip = _positive(row.wip.text);
         final total = consumed + loss + wip;
         if (total > row.source.availableToSettleQty + 0.0000001) {
-          context.appError(
+          overLimit.add(
             '${row.source.goodsName ?? row.source.goodsCode ?? '物料'} '
             '本次登记 ${_number(total)}，超过可继续登记 ${_number(row.source.availableToSettleQty)} ${row.source.unitName ?? ''}',
           );
-          return;
+          continue;
         }
         if (consumed > 0) {
           lines.add(
@@ -260,6 +264,13 @@ class _MaterialSettlementSheetState
             ),
           );
         }
+      }
+      if (overLimit.isNotEmpty) {
+        context.appError(
+          '以下 ${overLimit.length} 行超过可继续登记数量，请改小后再提交：'
+          '${_joinRowIssues(overLimit)}',
+        );
+        return;
       }
       if (lines.isEmpty) {
         context.appWarning('请填写本次实际消耗、批准损耗或在制占用数量');
@@ -911,30 +922,48 @@ class _MaterialSettlementSheetState
   }
 
   List<EditableGridColumn<_SettlementGridRow>> _columns() => [
+    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。登记
+    // 实耗时认错同名不同色的料会把消耗记到别的物料上，颜色不能只在台账里看。
+    // 单位另有独立列；子计划号不是货品属性，跟在名称下面单独一行。
     EditableGridColumn(
       key: 'material',
-      label: '物料',
-      width: 220,
+      label: '物料名称',
+      width: 200,
       cellBuilder: (context, row) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            row.source.goodsName ?? row.source.goodsCode ?? '未命名物料',
-            style: const TextStyle(fontWeight: FontWeight.w600),
+          UtenGoodsIdentityCell(
+            name: row.source.goodsName,
+            emptyPlaceholder: '未命名物料',
           ),
-          Text(
-            [
-              row.source.goodsCode,
-              row.source.executionSegmentCode,
-              row.source.colorName,
-              row.source.unitName == null
-                  ? '单位待核实'
-                  : '单位：${row.source.unitName}',
-            ].where((value) => value?.isNotEmpty == true).join(' · '),
-            style: Theme.of(context).textTheme.labelSmall,
-          ),
+          if (row.source.executionSegmentCode?.isNotEmpty == true)
+            Text(
+              '子计划 ${row.source.executionSegmentCode}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
         ],
       ),
+    ),
+    EditableGridColumn(
+      key: 'goodsCode',
+      label: '编号',
+      width: 130,
+      filterValueOf: (row) => row.source.goodsCode,
+      cellBuilder: (context, row) =>
+          UtenGoodsAttributeCell(row.source.goodsCode),
+    ),
+    EditableGridColumn(
+      key: 'colorName',
+      label: '颜色',
+      width: 96,
+      filterValueOf: (row) => row.source.colorName,
+      cellBuilder: (context, row) =>
+          UtenGoodsAttributeCell(row.source.colorName),
     ),
     EditableGridColumn(
       key: 'unit',
@@ -1149,6 +1178,14 @@ class _MaterialSettlementSheetState
         ),
     ],
   );
+}
+
+/// 批量校验的行问题清单：最多列前 8 条，其余折成「等 N 行」——顶部通知里
+/// 几十条会刷屏，前几条足够定位，改完再提交剩下的还会继续提示。
+String _joinRowIssues(List<String> issues) {
+  const limit = 8;
+  final shown = issues.take(limit).join('；');
+  return issues.length <= limit ? shown : '$shown 等 ${issues.length} 行';
 }
 
 double _positive(String text) {

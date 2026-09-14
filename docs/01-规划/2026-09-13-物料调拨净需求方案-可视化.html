@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>物料调拨 × 委外/自制多层 · 融合定稿一图读懂</title>
+<style>
+  :root{
+    --teal50:#F0FDFA; --teal100:#CCFBF1; --teal200:#99F6E4; --teal400:#2DD4BF;
+    --teal500:#14B8A6; --teal600:#0D9488; --teal700:#0F766E; --teal800:#115E59; --teal900:#134E4A;
+    --bg:#F5F7FA; --surface:#FFFFFF; --low:#F8FAFC; --line:#E2E8F0;
+    --t1:#0F172A; --t2:#475569; --t3:#94A3B8;
+    --amber:#B45309; --amberBg:#FEF3C7; --amberLine:#FCD34D;
+    --red:#B91C1C; --redBg:#FEE2E2; --green:#15803D; --greenBg:#DCFCE7;
+    --blue:#1D4ED8; --blueBg:#DBEAFE; --violet:#6D28D9; --violetBg:#EDE9FE;
+    --shadow:0 1px 2px rgba(15,23,42,.05),0 8px 24px rgba(15,23,42,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;background:var(--bg);color:var(--t1);line-height:1.65;padding:32px 20px 80px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px;margin:0 auto}
+  header.hero{background:linear-gradient(135deg,var(--teal800),var(--teal600));color:#fff;border-radius:18px;padding:30px 34px;box-shadow:var(--shadow);margin-bottom:26px}
+  header.hero .kicker{font-size:13px;letter-spacing:2px;opacity:.85;text-transform:uppercase}
+  header.hero h1{font-size:25px;margin:6px 0 10px;font-weight:700}
+  header.hero p{font-size:14.5px;opacity:.95;max-width:920px}
+  .tagrow{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap}
+  .tag{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.25);padding:3px 11px;border-radius:999px;font-size:12.5px}
+  section{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:24px 26px;margin-bottom:22px;box-shadow:var(--shadow)}
+  h2{font-size:18px;color:var(--teal800);display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  h2 .no{background:var(--teal700);color:#fff;width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:none}
+  .sub{color:var(--t2);font-size:13.5px;margin-bottom:18px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media(max-width:880px){.grid2,.grid3{grid-template-columns:1fr}}
+  .card{border:1px solid var(--line);border-radius:12px;padding:16px;background:var(--low)}
+  .card h3{font-size:14.5px;margin-bottom:8px}
+  .card p,.card li{font-size:13px;color:var(--t2)}
+  .card ul{padding-left:18px}.card li{margin-bottom:4px}
+  /* arbitration */
+  .versus{display:grid;grid-template-columns:1fr 56px 1fr;align-items:stretch;gap:0}
+  @media(max-width:880px){.versus{grid-template-columns:1fr}.versus .mid{transform:rotate(90deg);height:34px}}
+  .versus .side{border:1px solid var(--line);border-radius:12px;padding:15px;background:var(--low)}
+  .versus .side.a{border-top:3px solid var(--blue)}
+  .versus .side.b{border-top:3px solid var(--violet)}
+  .versus .side h4{font-size:13.5px;margin-bottom:7px}
+  .versus .side.a h4{color:var(--blue)}.versus .side.b h4{color:var(--violet)}
+  .versus .side li{font-size:12.6px;color:var(--t2);margin-left:17px;margin-bottom:4px}
+  .versus .mid{display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--teal600);font-weight:700}
+  .couple{margin-top:16px;border:1px solid var(--teal200);background:var(--teal50);border-radius:12px;padding:15px 17px}
+  .couple h4{color:var(--teal800);font-size:14px;margin-bottom:9px}
+  .chain{display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:12.6px}
+  .chain .b{background:#fff;border:1px solid var(--teal200);border-radius:8px;padding:6px 10px;color:var(--t1)}
+  .chain .ar{color:var(--teal600);font-weight:700}
+  .badges{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .bd{font-size:12px;padding:3px 10px;border-radius:999px;font-weight:600}
+  .bd.r{background:var(--redBg);color:var(--red)}.bd.g{background:var(--greenBg);color:var(--green)}
+  /* facts */
+  table{width:100%;border-collapse:collapse;font-size:12.8px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--teal800);color:#fff;font-weight:600;font-size:12.5px}
+  tbody tr:nth-child(even){background:var(--low)}
+  code{background:#F1F5F9;border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-family:Consolas,monospace;font-size:11.8px;color:var(--teal800)}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap}
+  .p-yes{background:var(--greenBg);color:var(--green)}.p-no{background:var(--redBg);color:var(--red)}
+  .p-new{background:var(--blueBg);color:var(--blue)}.p-warn{background:var(--amberBg);color:var(--amber)}
+  /* two lenses */
+  .card.plan{border-top:3px solid var(--teal600)}.card.phys{border-top:3px solid var(--amber)}
+  .formula{background:var(--teal900);color:#E6FFFA;border-radius:12px;padding:15px 18px;font-family:Consolas,monospace;font-size:13.5px;line-height:2.05;margin-top:12px}
+  .formula b{color:var(--teal200)}
+  .qtiles{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  @media(max-width:880px){.qtiles{grid-template-columns:repeat(2,1fr)}}
+  .q{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:12px;text-align:center}
+  .q .sym{font-size:22px;font-weight:700;color:var(--teal700)}.q .nm{font-size:12.5px;font-weight:600;margin:3px 0}.q .ds{font-size:11.5px;color:var(--t3);line-height:1.45}
+  /* P0 changeset */
+  .p0{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  @media(max-width:1000px){.p0{grid-template-columns:1fr 1fr}}
+  @media(max-width:640px){.p0{grid-template-columns:1fr}}
+  .task{border:1px solid var(--line);border-radius:11px;padding:13px;background:var(--low);position:relative}
+  .task .k{font-size:11px;font-weight:700;color:#fff;background:var(--teal700);border-radius:6px;padding:2px 8px;display:inline-block;margin-bottom:7px}
+  .task h5{font-size:13px;margin-bottom:5px;color:var(--teal900)}
+  .task p{font-size:11.8px;color:var(--t2);line-height:1.5}
+  .task.lock{border-color:var(--teal400);background:var(--teal50)}
+  .samebatch{margin-top:13px;background:var(--redBg);border:1px dashed #FCA5A5;color:var(--red);border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600}
+  /* stages */
+  .stages{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  @media(max-width:880px){.stages{grid-template-columns:1fr}}
+  .st{border-radius:11px;padding:13px;border:1px solid var(--line);background:var(--low)}
+  .st .n{font-weight:700;color:var(--teal700);font-size:13px}.st p{font-size:12.3px;color:var(--t2);margin-top:5px}
+  /* timeline */
+  .tl{display:grid;grid-template-columns:repeat(4,1fr);gap:0}
+  @media(max-width:880px){.tl{grid-template-columns:1fr}}
+  .phase{padding:0 14px;position:relative}
+  .phase:not(:last-child)::after{content:"→";position:absolute;right:-7px;top:6px;color:var(--teal500);font-weight:700;font-size:18px;z-index:2}
+  @media(max-width:880px){.phase:not(:last-child)::after{content:"↓";right:50%;top:auto;bottom:-14px}}
+  .phase .ph{background:var(--teal700);color:#fff;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:700;margin-bottom:8px}
+  .phase h4{font-size:13.5px;margin-bottom:5px;color:var(--teal800)}.phase p{font-size:12.3px;color:var(--t2)}
+  .note{background:var(--teal50);border:1px dashed var(--teal400);border-radius:11px;padding:12px 15px;font-size:12.8px;color:var(--teal900);margin-top:14px}
+  .decide{counter-reset:d;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:880px){.decide{grid-template-columns:1fr}}
+  .decide .d{border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:12.8px;color:var(--t2);background:var(--low)}
+  .decide .d b{color:var(--t1)}
+  footer{color:var(--t3);font-size:12px;text-align:center;margin-top:26px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="kicker">融合定稿 · 生产物料分析 / 物料调拨 / 委外 / 自制</div>
+    <h1>两份方案的仲裁结论：一个硬币的两面，P0 必须同批上线</h1>
+    <p>净需求模型（甲）解决"下层按多少备料"，WIP 落地修复（乙）解决"在途能不能调进来、深层能不能让料"。
+      逐行核实代码后确认：<b>只上乙不上甲会多备料，只上甲不上乙会空转</b>——它们是同一个变更的两半。</p>
+    <div class="tagrow"><span class="tag">评审定稿 2026-09-13</span><span class="tag">未改业务代码</span><span class="tag">事实已逐行核实</span><span class="tag">最新迁移 V573 → V574/V575</span></div>
+  </header>
+
+  <!-- 仲裁 -->
+  <section>
+    <h2><span class="no">1</span>两份方案各看到一半（仲裁）</h2>
+    <div class="sub">不矛盾、互补，但各有盲点；融合后才完整。</div>
+    <div class="versus">
+      <div class="side a"><h4>甲 · 净需求模型（对、乙漏）</h4><ul>
+        <li>子件应按父件<b>净产出（扣已确认在途）</b>展开，现状只扣现货 → 在途抵了父件，下层仍多备</li>
+        <li>双口径分离：计划口径减在途、实物开工只认合格入库</li>
+        <li>在途失败/撤销要<b>回补</b>被净掉的下层未下达需求</li>
+      </ul></div>
+      <div class="mid">+</div>
+      <div class="side b"><h4>乙 · WIP 落地修复（对、甲漏）</h4><ul>
+        <li>Java 已放开跨路线在途调入，<b>DB 触发器还锁着 → 现在落库必报错</b></li>
+        <li>现货让料被 <code>depth=1</code> 锁死，深层父件让不了料</li>
+        <li>有子层委外当来源被容量函数清零；MOQ/子层处置链其实早已设计</li>
+      </ul></div>
+    </div>
+    <div class="couple">
+      <h4>为什么必须同批（强耦合链）</h4>
+      <div class="chain">
+        <span class="b">放开在途调入到自制/有子层委外（乙）</span><span class="ar">→</span>
+        <span class="b">父件缺口被未入库在途部分覆盖</span><span class="ar">→</span>
+        <span class="b">下层必须按父净产出 N 展开（甲）</span><span class="ar">→</span>
+        <span class="b">在途黄了回补未下达下层（甲）</span><span class="ar">→</span>
+        <span class="b">现货让料放开全深度才能同样净抵（乙）</span>
+      </div>
+      <div class="badges">
+        <span class="bd r">只上乙：下层多备料（数据错）</span>
+        <span class="bd r">只上甲：在途调不进、深层让不了（空转）</span>
+        <span class="bd g">同批：既不积压也不断料</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 已核实现状 -->
+  <section>
+    <h2><span class="no">2</span>已逐行核实的现状（不是推测）</h2>
+    <table>
+      <thead><tr><th>位置</th><th>现状</th><th>影响</th></tr></thead>
+      <tbody>
+        <tr><td><code>V571 L135</code> 触发器</td><td><code>target.confirmed_route IS DISTINCT FROM source_action.route</code></td><td>采购在途→自制目标被拒；L132 来源限 BUY/SUBCONTRACT</td></tr>
+        <tr><td>Java 在途转移服务 L41/86</td><td>目标白名单已含 MAKE；新 action 沿用来源路线取号</td><td>服务层半放开，与 DB 不一致 → <span class="pill p-no">落库必报错</span></td></tr>
+        <tr><td>现货让料 SQL L110/209 + Java L687</td><td>三处 <code>depth=1</code> 限制</td><td>深层子件行不能现货让料</td></tr>
+        <tr><td>容量函数 V571 L93-94</td><td>有 BOM 子层的 SUBCONTRACT 容量恒 0</td><td>有子层委外不能当在途来源</td></tr>
+        <tr><td>净需求展开 ≥2 层</td><td>子件按父 <code>shortageQty</code>（只扣现货）展开</td><td>在途抵父件后下层仍按整件备 <span class="pill p-warn">多备</span></td></tr>
+        <tr><td>activeFutureCoverage（已现成）</td><td>已按物料行算好有效在途 F</td><td>子树净算改造可直接复用，工作量小</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 双口径 -->
+  <section>
+    <h2><span class="no">3</span>统一模型：双口径 + 五个量</h2>
+    <div class="grid2">
+      <div class="card plan"><h3>计划口径（备多少 / 还要不要下单）</h3><p>计入合格现货 <b>+ 已确认在途</b>；驱动净需求、子件展开。</p></div>
+      <div class="card phys"><h3>实物口径（能不能领料/开工）</h3><p><b>只认合格入库</b>；在途不算，不提前 READY/开工（现状门禁不动）。</p></div>
+    </div>
+    <div class="qtiles" style="margin-top:14px">
+      <div class="q"><div class="sym">G</div><div class="nm">毛需求</div><div class="ds">父净产出×单耗</div></div>
+      <div class="q"><div class="sym">S</div><div class="nm">现货</div><div class="ds">合格库存+精确+现货调入</div></div>
+      <div class="q"><div class="sym">F</div><div class="nm">已确认在途</div><div class="ds">批准在外单+转入+认领</div></div>
+      <div class="q"><div class="sym">N</div><div class="nm">计划净需求</div><div class="ds">下层按它展开</div></div>
+      <div class="q"><div class="sym">P</div><div class="nm">物理缺口</div><div class="ds">开工只认它</div></div>
+    </div>
+    <div class="formula">
+      <b>N</b> = max(0, G − S − F)　·　<b>P</b> = max(0, G − S)　·　子件毛需求 = <b>父 N × 单耗</b><br>
+      铁律：① 父 N=0 → 整枝未下达需求归零；② 只缩"未下达量"，<b>已下达单冻结不回流</b>；③ 在途未入库不提前开工
+    </div>
+  </section>
+
+  <!-- P0 变更集 -->
+  <section>
+    <h2><span class="no">4</span>P0 一个不可拆变更集（同批开发、同批测试、同批上线）</h2>
+    <div class="p0">
+      <div class="task lock"><span class="k">P0.1 解锁</span><h5>跨路线在途调入</h5><p>V574 触发器目标改白名单 BUY/SUBCONTRACT/MAKE；Java 排除锚点/前置自制行、SHIP 段</p></div>
+      <div class="task lock"><span class="k">P0.2 净算</span><h5>子树按父 N 展开</h5><p>投影加 F/N；父产出由 shortageQty 改为净产出（复用 activeFuture）；执行门禁仍用 P</p></div>
+      <div class="task lock"><span class="k">P0.3 回补</span><h5>在途失败/撤销</h5><p>按谱系恢复父 N 与下层未下达需求；已下达部分只提示不改</p></div>
+      <div class="task lock"><span class="k">P0.4 全深度</span><h5>现货让料删 depth=1</h5><p>删 SQL 两处 + Java 一处；borrow 维持 depth=1；守恒测试锁定</p></div>
+      <div class="task lock"><span class="k">P0.5 委外来源</span><h5>容量改外部未回厂</h5><p>去子层清零；前置自制不计入；拿不稳先只开"订单批准后"</p></div>
+    </div>
+    <div class="samebatch">⚠ P0.1 与 P0.2 强绑定：放开调入入口的同一批，必须把子树净算与回补一起上，否则要么报错、要么下层需求数字错。</div>
+  </section>
+
+  <!-- 调入矩阵 -->
+  <section>
+    <h2><span class="no">5</span>三种调入 × 对子树影响（定稿）</h2>
+    <table>
+      <thead><tr><th>调入</th><th>减 N</th><th>减 P</th><th>下层未下达需求</th><th>失败/边界</th></tr></thead>
+      <tbody>
+        <tr><td>现货让料（全深度）</td><td><span class="pill p-yes">是</span></td><td><span class="pill p-yes">是</span></td><td><span class="pill p-yes">立即按 N 缩减</span></td><td>原计划优先待补</td></tr>
+        <tr><td>专属在途转入</td><td><span class="pill p-yes">firm 是</span></td><td><span class="pill p-no">否</span></td><td><span class="pill p-new">按 N 缩减（新增）</span></td><td>入库才减 P；失败回补</td></tr>
+        <tr><td>公共在途认领</td><td><span class="pill p-yes">firm 是</span></td><td><span class="pill p-no">否</span></td><td><span class="pill p-new">按 N 缩减（新增）</span></td><td>带 BOM 委外不吃公共超量</td></tr>
+      </tbody>
+    </table>
+    <div class="note">硬边界：只能调入"最终件"。锚点/前置自制行（MAKE_COMPONENT、SUBCONTRACT_MAKE）、自制在制、委外前置半成品、委外商处的料，一律不能当调入目标或来源；跨主仓走真实调拨单。</div>
+  </section>
+
+  <!-- 委外来源三阶段 -->
+  <section>
+    <h2><span class="no">6</span>有子层委外当"在途来源"的容量三阶段（最难项）</h2>
+    <div class="stages">
+      <div class="st"><div class="n">① 通知委外前</div><p>无外部订单 → 容量 = <b>0</b>，不可转出（自制半成品绝不能算可转量）</p></div>
+      <div class="st"><div class="n">② 订单批准后·回厂前</div><p>容量 = 外部订单批准量 − 已回厂 − 已转出（可转）</p></div>
+      <div class="st"><div class="n">③ 回厂合格后</div><p>转为现货权益走现货让料，在途容量递减到 0</p></div>
+    </div>
+    <div class="note">灰度兜底：若"仅外部未回厂"容量口径真库测不稳，本期先只开放阶段②，①与自制中一律不可转。</div>
+  </section>
+
+  <!-- MOQ + 路线图 -->
+  <section>
+    <h2><span class="no">7</span>MOQ 与分期路线（务实，不做过度设计）</h2>
+    <div class="grid2" style="margin-bottom:16px">
+      <div class="card"><h3>P1 · MOQ（V575，仅采购）</h3><ul>
+        <li>货品主档只加两字段：最小起订量、订货倍数（POQ/EOQ 后置）</li>
+        <li>默认量 = 取整到倍数( max(N, 起订量) )，<b>软约束可手改</b></li>
+        <li>富余走既有公共超量通道，他计划认领不重买</li>
+      </ul></div>
+      <div class="card"><h3>"买100备10000"结论</h3><ul>
+        <li>同料分析内合并净需求，<b>一次</b>下单、不每层重买</li>
+        <li>100 进精确账、9900 进公共池</li>
+        <li>待拍板：无超量权限者遇 MOQ 抬量怎么落（建议只填 N 并提示）</li>
+      </ul></div>
+    </div>
+    <div class="tl">
+      <div class="phase"><div class="ph">P0</div><h4>修通+防错数（同批）</h4><p>解锁跨路线、子树净算、失败回补、全深度让料、委外来源</p></div>
+      <div class="phase"><div class="ph">P1</div><h4>MOQ 主档</h4><p>两字段、采购桶默认抬量、reset 白名单</p></div>
+      <div class="phase"><div class="ph">P2</div><h4>文档/ADR</h4><p>09 总纲、ADR-049 追加、页面与迁移 README</p></div>
+      <div class="phase"><div class="ph">P3</div><h4>后置</h4><p>行动消息、POQ/EOQ、跨分析合并、ATP 交期</p></div>
+    </div>
+  </section>
+
+  <!-- 拍板 -->
+  <section>
+    <h2><span class="no">8</span>待你拍板（定稿后即开工）</h2>
+    <div class="decide">
+      <div class="d"><b>1.</b> 是否认可 P0 五件套作为一个不可拆变更集同批上线？（最关键）</div>
+      <div class="d"><b>2.</b> 委外来源是否接受"拿不稳先只开订单批准后"的灰度？</div>
+      <div class="d"><b>3.</b> 无 over_supply 权限遇 MOQ 抬量：(a)只填N并提示【建议】还是 (b)自动公共化？</div>
+      <div class="d"><b>4.</b> 起订量/整包装按货品，还是按"供应商×货品"不同值？</div>
+      <div class="d"><b>5.</b> 行动消息/ATP 是否同意后置到 P3？</div>
+    </div>
+  </section>
+
+  <footer>配套：融合定稿方案.md（含 22 种情形矩阵、迁移 V574/V575、testcontainers 验收矩阵、性能与留白）｜ 净需求推导底稿见甲方案（已标注被吸收）</footer>
+</div>
+</body>
+</html>

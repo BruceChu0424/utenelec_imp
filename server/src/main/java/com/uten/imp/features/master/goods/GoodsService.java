@@ -507,6 +507,9 @@ public class GoodsService {
                 new ExportColumn("unitName", "单位", ExportColumn.TEXT),
                 new ExportColumn("sourceType", "来源", ExportColumn.TEXT),
                 new ExportColumn("price", "价格", ExportColumn.MONEY),
+                // 采购批量口径（V575）：供应商 MOQ / 整箱倍数，采购据此抬量、取整。
+                new ExportColumn("minOrderQty", "最小起订量", ExportColumn.NUMBER),
+                new ExportColumn("orderMultipleQty", "订货倍数", ExportColumn.NUMBER),
                 new ExportColumn("status", "状态", ExportColumn.TEXT));
         List<Map<String, Object>> rows = new ArrayList<>();
         int pageSize = 100;
@@ -532,6 +535,8 @@ public class GoodsService {
                 row.put("unitName", g.getUnitName());
                 row.put("sourceType", g.getSourceType());
                 row.put("price", g.getPrice());
+                row.put("minOrderQty", g.getMinOrderQty());
+                row.put("orderMultipleQty", g.getOrderMultipleQty());
                 row.put("status", g.getStatus());
                 rows.add(row);
             }
@@ -971,6 +976,14 @@ public class GoodsService {
         applyMWeightUnitReference(req, g);
         g.setPack(req.getPack());
         g.setPieces(req.getPieces());
+        // 采购批量口径（V575）：最小起订量原样落库（0 是「已确认无起订量」的有效登记）；
+        // 订货倍数 0 视同未设——它要参与「向上取整到倍数」的除法，0 无意义且会除零，
+        // 这里归一成 null，DB 的 goods_order_policy_qty_chk 只做兜底。
+        g.setMinOrderQty(req.getMinOrderQty());
+        g.setOrderMultipleQty(
+                req.getOrderMultipleQty() == null
+                        || req.getOrderMultipleQty().signum() == 0
+                        ? null : req.getOrderMultipleQty());
         g.setStatus(req.getStatus());
         applyColorReference(req, g);
         // Used units were checked before apply. Preserve their exact UUID and
@@ -1102,7 +1115,8 @@ public class GoodsService {
                 g.getSeries(), g.getStockPlace(),
                 g.getThicknessUnit() == null ? null : g.getThicknessUnit().getId(),
                 g.getMWeightUnit() == null ? null : g.getMWeightUnit().getId(),
-                g.isQuantityUnitLocked(), canWrite(g));
+                g.isQuantityUnitLocked(), canWrite(g),
+                g.getMinOrderQty(), g.getOrderMultipleQty());
         // 成本可见性（goods:cost:view）：未授权清空 18 个成本字段 + 置 costMasked（前端隐藏成本 Tab）
         if (!costMasker.canView()) {
             d.setSourceE(null); d.setMachiningE(null); d.setIncidentalE(null); d.setLacquerE(null);
@@ -1149,7 +1163,8 @@ public class GoodsService {
                 g.getCategory() == null ? null : g.getCategory().getId(),
                 g.isAutoCreated(),
                 stockByGoods.getOrDefault(g.getId(), BigDecimal.ZERO),
-                g.getStockPlace());
+                g.getStockPlace(),
+                g.getMinOrderQty(), g.getOrderMultipleQty());
     }
 
     private MaterialCategory requireCategory(UUID id) {

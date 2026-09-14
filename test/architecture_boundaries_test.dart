@@ -51,6 +51,11 @@ void main() {
     'production->basic_data',
     'production->department',
     'production->employee',
+    // 2026-09-14（ADR-081 §7.2）：「父件+下层一起下单」的已下单子件分支——
+    // 采购申请未分解时把追加量并入原申请明细，唯一 sanctioned 写入口是采购侧
+    // V477 端点（PUT /purchase/requests/{id}/items/{itemId}/qty，守卫与权限由
+    // 该端点自裁），前端只能复用 purchaseRepositoryProvider 调它，不开新写路径。
+    'production->purchase',
     // 2026-08-29：待排产「一键转发研发」随 BOM 缺失口径下线（ADR-057），
     // production 不再依赖 rd_task。
     'production->report',

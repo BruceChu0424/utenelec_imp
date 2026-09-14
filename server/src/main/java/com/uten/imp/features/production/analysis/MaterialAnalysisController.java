@@ -74,6 +74,25 @@ public class MaterialAnalysisController {
         return queryService.lastRoutesPerGoods(ids);
     }
 
+    /**
+     * 物料行 → 下游采购 / 委外申请的联动状态（ADR-081 下层办齐「已下单子件」
+     * 分支）：materialLineIds 为逗号分隔 UUID。mode=ADJUSTABLE 表示申请还停在
+     * 申请态、可直接把追加量并入同一张申请（V477 口径）；ORDERED 表示已分解出
+     * 订货单 / 委外申请，追加量走 notify 超量通道另立追加申请。
+     */
+    @GetMapping("/{id}/supply-links")
+    @PreAuthorize("hasAuthority('production_material_analysis:view')")
+    public java.util.List<MaterialAnalysisService.SupplyLinkView> supplyLinks(
+            @PathVariable UUID id, @RequestParam String materialLineIds) {
+        java.util.Set<UUID> ids = RequestUuidSets.commaSeparated(materialLineIds, "物料行 ID");
+        if (ids.size() > RequestLimits.LOOKUP_IDS) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "物料行 ID 数量必须为 1-" + RequestLimits.LOOKUP_IDS);
+        }
+        return queryService.supplyLinks(id, ids);
+    }
+
     /** Learned defaults used only to prefill a new planning draft. */
     @GetMapping("/default-workshops")
     @PreAuthorize("hasAuthority('production_material_analysis:view')")

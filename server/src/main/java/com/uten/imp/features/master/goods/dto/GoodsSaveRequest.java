@@ -54,6 +54,13 @@ public class GoodsSaveRequest {
     private Integer mWeightUnitLegacyId;   // 旧库单重单位主键快照；不能单独建立关系
     private String pack;         // Pack 包装
     private Integer pieces;      // Pieces 件数
+    // ===== 采购批量口径（V575；软约束，只决定下达采购的默认数量，服务端不硬拦） =====
+    /** 最小起订量（供应商 MOQ，基本单位）；留空=未登记，0=已确认无起订量。 */
+    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
+    private BigDecimal minOrderQty;
+    /** 订货倍数/整包装量（基本单位，整箱 50 填 50）；留空或 0=无倍数要求（服务端归一为 null）。 */
+    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
+    private BigDecimal orderMultipleQty;
     private String status;       // Status（使用/禁用）
     private UUID colorId;
     private Integer colorLegacyId;  // MColorID 旧库快照；颜色下拉只提交 colorId UUID

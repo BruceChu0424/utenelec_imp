@@ -959,15 +959,30 @@ abstract class _MaterialAnalysisCandidatesState
       width: 150,
       value: (line) => line.orderNo,
     ),
+    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
     MasterColumnDef(
-      key: 'goods',
-      label: '产品 / 规格',
-      width: 250,
-      value: (line) => [
-        line.goodsCode,
-        line.goodsName,
-        line.spec,
-      ].whereType<String>().where((value) => value.isNotEmpty).join(' · '),
+      key: 'goodsName',
+      label: '产品名称',
+      width: 200,
+      value: (line) => line.goodsName,
+    ),
+    MasterColumnDef(
+      key: 'goodsCode',
+      label: '编号',
+      width: 130,
+      value: (line) => line.goodsCode,
+    ),
+    MasterColumnDef(
+      key: 'colorName',
+      label: '颜色',
+      width: 96,
+      value: (line) => line.colorName,
+    ),
+    MasterColumnDef(
+      key: 'spec',
+      label: '规格',
+      width: 150,
+      value: (line) => line.spec,
     ),
     MasterColumnDef(
       key: 'remainingQty',

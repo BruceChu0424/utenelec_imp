@@ -36,6 +36,67 @@ void main() {
     semantics.dispose();
   });
 
+  // 2026-09-14 物料分析系表格口径（ADR-081 §4）：级联号传空串即不渲染徽标、
+  // showLeafMarker:false 关掉叶子圆点；两者都只作用于显式传参的宿主。
+  testWidgets('empty sequence drops the badge and keeps the title first', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 420,
+            child: UtenTreeTableCell(
+              depth: 2,
+              sequence: '',
+              sequenceInline: true,
+              title: '安装螺钉包组件',
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('安装螺钉包组件'), findsOneWidget);
+    expect(find.textContaining('P1'), findsNothing);
+  });
+
+  testWidgets('showLeafMarker:false drops the leaf dot but keeps alignment', (
+    tester,
+  ) async {
+    Widget cell(bool marker) => MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 420,
+          child: UtenTreeTableCell(
+            depth: 2,
+            sequence: '',
+            title: '螺钉',
+            showLeafMarker: marker,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpWidget(cell(true));
+    final withDot = tester.getSize(find.byType(UtenTreeTableCell));
+    expect(
+      find.descendant(
+        of: find.byType(UtenTreeTableCell),
+        matching: find.byType(Container),
+      ),
+      findsWidgets,
+    );
+    await tester.pumpWidget(cell(false));
+    // 占位宽度不变（名称列在各层级仍对齐），只是不画那枚圆点。
+    expect(tester.getSize(find.byType(UtenTreeTableCell)), withDot);
+    expect(
+      find.descendant(
+        of: find.byType(UtenTreeTableCell),
+        matching: find.byType(Container),
+      ),
+      findsNothing,
+    );
+  });
+
   testWidgets(
     'childCount badge is announced while collapsed and dropped once expanded',
     (tester) async {

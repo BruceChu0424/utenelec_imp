@@ -296,10 +296,14 @@ Future<void> _choose(WidgetTester tester, String id, String label) async {
 }
 
 Future<void> _select(WidgetTester tester, String id) async {
-  final checkbox = find.descendant(
-    of: find.byKey(ValueKey('material-table-row-$id')),
-    matching: find.byType(Checkbox),
-  );
+  // 表格进入横滚后前导勾选格会多渲染一份「钉在视口左缘」的副本
+  // （UtenFrozenLeadingColumn），两份共享同一 onChanged，取第一份即可。
+  final checkbox = find
+      .descendant(
+        of: find.byKey(ValueKey('material-table-row-$id')),
+        matching: find.byType(Checkbox),
+      )
+      .first;
   await tester.ensureVisible(checkbox);
   await tester.tap(checkbox);
   await tester.pumpAndSettle();

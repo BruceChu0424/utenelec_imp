@@ -1172,6 +1172,22 @@ class ProductionPlanRepository {
     return ProductionMaterialGenerateResult.fromJson(json);
   }
 
+  /// 物料行 → 下游采购 / 委外申请联动（ADR-081 下层办齐「已下单子件」）：
+  /// 基础需求已下过单的行，超产追加量按申请进度分两路——ADJUSTABLE 直接
+  /// 并入同一张申请（明细数量改大，V477 口径），ORDERED 走 notify 超量通道
+  /// 另立追加申请。只查传入的行，一次拉回。
+  Future<List<MaterialAnalysisSupplyLink>> materialAnalysisSupplyLinks(
+    String analysisId,
+    Set<String> materialLineIds,
+  ) async {
+    if (materialLineIds.isEmpty) return const [];
+    final rows = await api.getList(
+      '$_materialAnalysesBase/$analysisId/supply-links', // ENDPOINT
+      query: {'materialLineIds': materialLineIds.join(',')},
+    );
+    return [for (final item in rows) MaterialAnalysisSupplyLink.fromJson(item)];
+  }
+
   // ───────────────────────── 调度工作台（业务链 · 排产段 V90） ─────────────────────────
 
   /// 待排产订单行（服务端分页；交货升序，urgent=距交货 ≤3 天）。
@@ -1437,6 +1453,8 @@ class ScheduleBomComponent {
     this.code,
     this.name,
     this.spec,
+    this.colorId,
+    this.colorName,
     this.perQty,
     this.needQty,
     this.onhand,
@@ -1446,6 +1464,8 @@ class ScheduleBomComponent {
   final String? code;
   final String? name;
   final String? spec;
+  final String? colorId;
+  final String? colorName;
   final double? perQty;
   final double? needQty;
   final double? onhand;
@@ -1457,6 +1477,8 @@ class ScheduleBomComponent {
         code: j['code'] as String?,
         name: j['name'] as String?,
         spec: j['spec'] as String?,
+        colorId: j['colorId'] as String?,
+        colorName: j['colorName'] as String?,
         perQty: (j['perQty'] as num?)?.toDouble(),
         needQty: (j['needQty'] as num?)?.toDouble(),
         onhand: (j['onhand'] as num?)?.toDouble(),

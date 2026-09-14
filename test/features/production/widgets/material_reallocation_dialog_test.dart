@@ -243,7 +243,6 @@ Future<void> _pumpLauncher(
                 sourceAnalysis: _sourceAnalysis,
                 sourceMaterial: _sourceMaterial,
                 sourceProductLabel: '来源计划产品',
-                sourcePathLabel: '来源计划产品 / 共享电机',
                 qtyText: _qty,
                 receiveIntoCurrent: receiveIntoCurrent,
               ),

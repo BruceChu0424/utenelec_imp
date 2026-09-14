@@ -339,6 +339,96 @@ public class MaterialAnalysisService {
     public record LastRoutePerGoods(UUID colorId, UUID unitId, String route, String reason) {}
 
     /**
+     * 物料行 → 下游采购 / 委外申请的联动状态（ADR-081 下层办齐「已下单子件」
+     * 分支）：基础需求已下过单的行，超产多出来的量怎么办取决于申请走到哪一步——
+     *
+     * <ul>
+     *   <li>ADJUSTABLE：采购申请仍停在申请态（已审核、明细既无已订货量也无待
+     *       财务审核占用，与 V477 adjustItemQty 的守卫同口径），可以直接把申请
+     *       明细数量改大，把追加量并入同一张申请；</li>
+     *   <li>ORDERED：申请已分解出订货单（或委外申请——委外侧没有 sanctioned
+     *       的改量入口），追加量走 notify 超量通道生成追加申请；</li>
+     *   <li>NONE：没有仍有效的下游申请（或从未下过单），按普通行处理。</li>
+     * </ul>
+     *
+     * <p>每行取最近一条未撤销 action（DISTINCT ON + created_at DESC）；申请
+     * 被删除的链路视为不存在。只读。</p>
+     */
+    @Transactional(readOnly = true)
+    public java.util.List<SupplyLinkView> supplyLinks(
+            UUID analysisId, java.util.Set<UUID> materialLineIds) {
+        if (materialLineIds.isEmpty()) {
+            return java.util.List.of();
+        }
+        var query = em.createNativeQuery("""
+                SELECT DISTINCT ON (allocation.analysis_material_id)
+                       allocation.analysis_material_id, action.route,
+                       action.external_document_type, action.external_document_id,
+                       action.external_document_no, allocation.external_item_id,
+                       request.status, COALESCE(item.qty, 0), COALESCE(item.ordered_qty, 0),
+                       (SELECT COALESCE(SUM(oi.qty), 0)
+                          FROM procurement_order_approval_cases approval
+                          JOIN purchase_orders po
+                            ON approval.order_type = 'PURCHASE'
+                           AND approval.order_id = po.id AND approval.status = 'PENDING'
+                          JOIN purchase_order_items oi ON oi.order_id = po.id
+                         WHERE po.status = 0 AND po.is_deleted = FALSE
+                           AND oi.is_deleted = FALSE
+                           AND oi.request_item_id = allocation.external_item_id)
+                FROM preplan_supply_action_allocations allocation
+                JOIN preplan_supply_actions action ON action.id = allocation.action_id
+                LEFT JOIN purchase_requests request
+                  ON request.id = action.external_document_id
+                 AND action.external_document_type = 'PURCHASE_REQUEST'
+                 AND request.is_deleted = FALSE
+                LEFT JOIN purchase_request_items item ON item.id = allocation.external_item_id
+                LEFT JOIN subcontract_applications application
+                  ON application.id = action.external_document_id
+                 AND action.external_document_type = 'SUBCONTRACT_APPLICATION'
+                 AND application.is_deleted = FALSE
+                WHERE action.analysis_id = :analysisId
+                  AND allocation.analysis_material_id IN (SELECT unnest(CAST(string_to_array(:lineIds, ',') AS uuid[])))
+                  AND action.route IN ('BUY', 'SUBCONTRACT')
+                  AND action.external_document_type IN ('PURCHASE_REQUEST', 'SUBCONTRACT_APPLICATION')
+                  AND action.status <> 'CANCELLED'
+                  AND (request.id IS NOT NULL OR application.id IS NOT NULL)
+                ORDER BY allocation.analysis_material_id, action.created_at DESC, action.id DESC
+                """);
+        query.setParameter("analysisId", analysisId);
+        query.setParameter("lineIds", uuidArrayText(materialLineIds));
+        java.util.List<SupplyLinkView> result = new java.util.ArrayList<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
+            UUID lineId = (UUID) row[0];
+            String route = (String) row[1];
+            String documentType = (String) row[2];
+            UUID documentId = (UUID) row[3];
+            String documentNo = (String) row[4];
+            UUID itemId = (UUID) row[5];
+            Short requestStatus = row[6] == null ? null : Short.valueOf(((Number) row[6]).shortValue());
+            java.math.BigDecimal itemQty = decimal(row[7]);
+            java.math.BigDecimal orderedQty = decimal(row[8]);
+            java.math.BigDecimal pendingQty = decimal(row[9]);
+            boolean purchaseAdjustable = "BUY".equals(route)
+                    && "PURCHASE_REQUEST".equals(documentType)
+                    && requestStatus != null && requestStatus == 1
+                    && itemId != null
+                    && itemQty.signum() > 0
+                    && orderedQty.signum() == 0
+                    && pendingQty.signum() == 0;
+            String mode = purchaseAdjustable ? "ADJUSTABLE" : "ORDERED";
+            result.add(new SupplyLinkView(lineId, route, mode, documentType,
+                    documentId, documentNo, itemId, itemQty, orderedQty));
+        }
+        return result;
+    }
+
+    /** 一条物料行与它下游申请的联动状态（mode ∈ ADJUSTABLE/ORDERED，见 {@link #supplyLinks}）。 */
+    public record SupplyLinkView(
+            UUID materialLineId, String route, String mode, String documentType,
+            UUID documentId, String documentNo, UUID documentItemId,
+            java.math.BigDecimal itemQty, java.math.BigDecimal orderedQty) {}
+
+    /**
      * 物料分析分页列表：按关键字/状态/来源筛选，结果按 maker_id 行级隔离，仅返回当前用户有权可见的分析。
      */
     @Transactional(readOnly = true)
@@ -424,7 +514,15 @@ public class MaterialAnalysisService {
                            string_agg(DISTINCT source.source_type, chr(31)) AS source_types,
                            string_agg(DISTINCT COALESCE(
                                NULLIF(btrim(source.source_ref),''), sales_order.bill_no), chr(31)) AS source_refs,
-                           string_agg(DISTINCT concat_ws(' ', goods.code, goods.name), chr(31)) AS product_labels,
+                           -- 产品身份标签「名称 (编号 · 颜色)」：与 UtenGoodsIdentityCell.text
+                           -- 同一排版，且同名不同色的两行不会被 DISTINCT 并成一条。
+                           string_agg(DISTINCT
+                               COALESCE(NULLIF(goods.name, ''), NULLIF(goods.code, ''), '未命名货品')
+                               || COALESCE(' (' || NULLIF(concat_ws(' · ',
+                                   CASE WHEN NULLIF(goods.name, '') IS NULL
+                                        THEN NULL ELSE NULLIF(goods.code, '') END,
+                                   NULLIF(product_color.name, '')), '') || ')', ''),
+                               chr(31)) AS product_labels,
                            COALESCE(SUM(source.requested_qty),0) AS requested_qty,
                            COALESCE(SUM(source.submitted_qty),0) AS submitted_qty,
                            COALESCE(SUM(source.approved_qty),0) AS approved_qty,
@@ -434,6 +532,10 @@ public class MaterialAnalysisService {
                            COALESCE(SUM(source.ready_by_date_qty),0) AS ready_by_date_qty
                     FROM production_material_analysis_items source
                     JOIN goods goods ON goods.id = source.goods_id
+                    -- 行色优先、主档色兜底（同 BOM 快照读取器的既有解析方式）。
+                    LEFT JOIN colors product_color
+                      ON product_color.id = COALESCE(source.color_id, goods.color_id)
+                     AND product_color.is_deleted = FALSE
                     LEFT JOIN sales_order_items sales_item ON sales_item.id = source.sales_order_item_id
                     LEFT JOIN sales_orders sales_order ON sales_order.id = sales_item.order_id
                     WHERE source.analysis_id = analysis.id AND source.is_deleted = FALSE
@@ -2277,6 +2379,10 @@ public class MaterialAnalysisService {
         Set<String> delegatedMakeNodes = Set.of();
         Map<String, BigDecimal> subcontractTakeoverByNode =
                 loadSubcontractTakeoverByNode(analysisId);
+        // 子层展开基准的输入：父件已被外部最终件在途覆盖的量，以及父件已经
+        // 承诺由我方制造的量。两条语句都按 analysis_id 一次取回。
+        Map<String, ParentSupplyCommitment> parentSupply =
+                parentSupplyCommitments(analysisId);
         // V307 精确到货归属：先在扣除安全库存后的真实可分配池内，为原供应
         // 分摊行锁定 secured coverage；同分析兄弟产品只能看到扣除后的共享池。
         // 没有 exact 子账的历史 V298 预留仍留在共享池，维持兼容语义。
@@ -2298,7 +2404,7 @@ public class MaterialAnalysisService {
             AllocationProjection baseline = computeAllocationProjection(
                     sources, nodes, exactStock, externalHardCommitments,
                     effectiveRoutes, delegatedMakeNodes,
-                    subcontractTakeoverByNode, exactTuning.fresh());
+                    subcontractTakeoverByNode, parentSupply, exactTuning.fresh());
             BorrowPlanOutcome outcome = BorrowTuning.plan(borrows, baseline.allocations());
             borrowTuning = outcome.tuning();
             borrowEffective = outcome.effectiveByBorrow();
@@ -2311,7 +2417,7 @@ public class MaterialAnalysisService {
         AllocationProjection projection = computeAllocationProjection(
                 sources, nodes, tunedStock, externalHardCommitments,
                 effectiveRoutes, delegatedMakeNodes,
-                subcontractTakeoverByNode, tuning);
+                subcontractTakeoverByNode, parentSupply, tuning);
         if (!borrows.isEmpty()) {
             persistBorrowEffectiveQuantities(borrowEffective);
         }
@@ -2376,7 +2482,9 @@ public class MaterialAnalysisService {
             }
             String nodeKey = nodeAllocationKey(node);
             // V458/ADR-062 修订一②：有子层级的委外件与自制完全同构——下层未齐套时
-            // lower_level_pending=TRUE（进「暂不可安排」），齐套前禁止「下达委外」。
+            // lower_level_pending=TRUE（进「暂不可安排」）。
+            // 2026-09-13 更正：ADR-071 之后计划侧不再有任何齐套门禁，这个标记
+            // 只是给计划员看的诊断信号，不阻断「下达委外/下达车间」。
             String effectiveRoute = effectiveRoutes.getOrDefault(
                     nodeKey, node.suggestion());
             boolean lowerPending = node.hasChildren()
@@ -2654,17 +2762,6 @@ public class MaterialAnalysisService {
     }
 
     /**
-     * MAKE nodes already promoted to a dedicated MAKE_COMPONENT analysis item.
-     * Their descendants are owned by that child item and must not remain an
-     * actionable duplicate in the parent's diagnostic tree.
-     */
-    private Set<String> loadDelegatedMakeNodes(UUID analysisId) {
-        return loadDelegatedRequirementOwners(analysisId).keySet().stream()
-                .map(MaterialNodeIdentity::allocationKey)
-                .collect(Collectors.toUnmodifiableSet());
-    }
-
-    /**
      * V447 parent-output quantities whose recursive SUBCONTRACT descendants
      * are owned by an independent preparation analysis.  The parent demand
      * itself remains in the source analysis until the subcontracted item
@@ -2689,44 +2786,6 @@ public class MaterialAnalysisService {
             BigDecimal previous = result.putIfAbsent(key, decimal(row[2]));
             if (previous != null) {
                 result.put(key, previous.add(decimal(row[2])));
-            }
-        }
-        return Map.copyOf(result);
-    }
-
-    /**
-     * Exact MAKE ownership relation for the read model. The child is resolved
-     * exclusively through {@code parent_analysis_material_id}; goods identity
-     * is deliberately not used because the same goods can occur on multiple
-     * independent BOM paths.
-     */
-    private Map<MaterialNodeIdentity, DelegatedRequirementOwner>
-            loadDelegatedRequirementOwners(UUID analysisId) {
-        Map<MaterialNodeIdentity, DelegatedRequirementOwner> result =
-                new LinkedHashMap<>();
-        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT parent_material.id,
-                       parent_material.analysis_item_id,
-                       parent_material.node_key,
-                       child.id, child.source_ref, child.requested_qty
-                FROM production_material_analysis_items child
-                JOIN production_material_analysis_materials parent_material
-                  ON parent_material.id = child.parent_analysis_material_id
-                 AND parent_material.analysis_id = child.analysis_id
-                WHERE child.analysis_id = :analysisId
-                  AND child.source_type IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE')
-                  AND child.is_deleted = FALSE
-                  AND parent_material.active = TRUE
-                ORDER BY parent_material.analysis_item_id,
-                         parent_material.node_key, child.id
-                """).setParameter("analysisId", analysisId))) {
-            MaterialNodeIdentity parent = new MaterialNodeIdentity(
-                    uuid(row[1]), string(row[2]));
-            DelegatedRequirementOwner owner = new DelegatedRequirementOwner(
-                    uuid(row[0]), uuid(row[3]), string(row[4]), decimal(row[5]));
-            DelegatedRequirementOwner previous = result.putIfAbsent(parent, owner);
-            if (previous != null && !previous.equals(owner)) {
-                throw conflict("同一自制节点存在多个有效子件需求，请先修复物料分析归属");
             }
         }
         return Map.copyOf(result);
@@ -3387,6 +3446,7 @@ public class MaterialAnalysisService {
             Map<String, String> effectiveRoutes,
             Set<String> delegatedMakeNodes,
             Map<String, BigDecimal> subcontractTakeoverByNode,
+            Map<String, ParentSupplyCommitment> parentSupply,
             BorrowTuning tuning) {
         Map<UUID, List<BomNode>> directBySource = nodes.stream()
                 .filter(node -> node.depth() == 1)
@@ -3414,7 +3474,7 @@ public class MaterialAnalysisService {
                 sources, nodes,
                 subtractCommitments(stockAfterSafety, externalHardCommitments),
                 effectiveRoutes, delegatedMakeNodes,
-                subcontractTakeoverByNode, tuning, fixedDirectAllocations);
+                subcontractTakeoverByNode, parentSupply, tuning, fixedDirectAllocations);
         List<BomNode> adjustedNodes = nestedDiagnostic.nodes();
         nestedDiagnostic.nodeAllocations().forEach((key, allocation) -> {
             if (!fixedDirectAllocations.containsKey(key)) {
@@ -3490,7 +3550,7 @@ public class MaterialAnalysisService {
             Map<String, BigDecimal> subcontractTakeoverByNode,
             BorrowTuning tuning) {
         return allocateNestedDiagnostics(sources, nodes, rawStock, effectiveRoutes,
-                delegatedMakeNodes, subcontractTakeoverByNode, tuning, Map.of());
+                delegatedMakeNodes, subcontractTakeoverByNode, Map.of(), tuning, Map.of());
     }
 
     private static NestedDiagnosticPlan allocateNestedDiagnostics(
@@ -3500,6 +3560,7 @@ public class MaterialAnalysisService {
             Map<String, String> effectiveRoutes,
             Set<String> delegatedMakeNodes,
             Map<String, BigDecimal> subcontractTakeoverByNode,
+            Map<String, ParentSupplyCommitment> parentSupply,
             BorrowTuning tuning,
             Map<String, NodeAllocation> fixedDirectAllocations) {
         Map<MaterialDimension, BigDecimal> pool = new LinkedHashMap<>();
@@ -3554,7 +3615,12 @@ public class MaterialAnalysisService {
                         && !delegatedMakeNodes.contains(parentKey);
                 boolean undelegatedMake = "MAKE".equals(parentRoute)
                         && !delegatedMakeNodes.contains(parentKey);
-                BigDecimal parentOutput = parent.shortageQty();
+                // 子件毛需求跟随父件「还要自己产出多少」：
+                //   计划产出 = max(已承诺内部制造量, 物理缺口 - 外部最终件在途)
+                // 外部在途到货即可顶上，不必为它备料；已下达的自制/前置自制
+                // 是冻结承诺，必须保留其原料，否则车间会断料。
+                BigDecimal parentOutput = parentPlannedOutput(
+                        parent, parentSupply.get(parentKey));
                 if (suppliedSubcontract) {
                     parentOutput = parentOutput.subtract(
                             subcontractTakeoverByNode.getOrDefault(
@@ -3601,6 +3667,20 @@ public class MaterialAnalysisService {
                 .toList();
         return new NestedDiagnosticPlan(
                 List.copyOf(adjustedNodes), Map.copyOf(allocations));
+    }
+
+    /**
+     * 父节点的计划产出量：在物理缺口里扣掉已被外部最终件在途覆盖的部分，
+     * 再以「已承诺由我方制造的量」托底（托底值本身不超过物理缺口，避免
+     * 历史累加的锚点数量把下层需求抬高到缺口以上）。
+     */
+    private static BigDecimal parentPlannedOutput(
+            NodeAllocation parent, ParentSupplyCommitment supply) {
+        BigDecimal shortage = parent.shortageQty();
+        if (supply == null) return shortage;
+        BigDecimal netted = shortage.subtract(supply.externalFutureQty())
+                .max(BigDecimal.ZERO);
+        return netted.max(supply.internalCommittedQty().min(shortage));
     }
 
     private static int diagnosticAllocationPriority(BomNode node) {
@@ -5498,7 +5578,8 @@ public class MaterialAnalysisService {
                        m.safety_stock_qty, m.inbound_qty,
                        m.shortage_qty, m.expected_ready_date, m.source_suggestion,
                        m.confirmed_route, m.route_reason,
-                       m.lower_level_pending
+                       m.lower_level_pending,
+                       g.min_order_qty, g.order_multiple_qty
                 FROM production_material_analysis_materials m
                 JOIN goods g ON g.id = m.goods_id
                 JOIN units u ON u.id = m.unit_id
@@ -5790,9 +5871,21 @@ public class MaterialAnalysisService {
         static final ClaimedFutureState NONE=new ClaimedFutureState(BigDecimal.ZERO,BigDecimal.ZERO);
     }
 
-    private Map<UUID, BigDecimal> activeFutureCoverageByMaterial(UUID analysisId) {
-        Map<UUID, BigDecimal> result = new LinkedHashMap<>();
-        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+    /**
+     * 有效在途覆盖的公共取数。coverage 的每一行都带 supply_kind：
+     * <ul>
+     *   <li>EXTERNAL：真正来自外部的最终件供给——已下单未实收的采购/委外
+     *       份额、跨计划转入的专属在途、公共在途认领，以及 IQC 失败后重新
+     *       欠货的切片。它们到货即可直接冲减本节点需求，<b>不需要</b>本节点
+     *       再展开下层原料。</li>
+     *   <li>INTERNAL：本节点「已承诺由我方制造」的量——委外件的前置自制
+     *       任务，以及历史遗留的自制备料动作。它们的物理来源恰恰要靠下层
+     *       原料去产出，<b>绝不能</b>用来缩减下层需求。</li>
+     * </ul>
+     * 两类相加等于历史口径，所以「尚需下达量」的计算保持不变；只有子层
+     * 展开基准需要区分二者（见 allocateNestedDiagnostics）。
+     */
+    private static final String ACTIVE_FUTURE_COVERAGE_SQL = """
                 WITH action_future AS (
                     SELECT action.id AS action_id,
                            progress.demand_future_qty AS future_qty
@@ -5808,6 +5901,8 @@ public class MaterialAnalysisService {
                       AND progress.demand_future_qty > 0
                 ), coverage AS (
                     SELECT allocation.analysis_material_id,
+                           CASE WHEN action.external_document_type = 'PREPLAN_MAKE_TASK'
+                                THEN 'INTERNAL' ELSE 'EXTERNAL' END AS supply_kind,
                            CASE WHEN fn_preplan_action_has_future_transfer(action.id) OR fn_preplan_action_has_shared_claim_history(action.id) THEN fn_preplan_future_allocation_pending_qty(allocation.id)
                            WHEN action.operation_type='SHARED_FUTURE_CLAIM' THEN fn_preplan_shared_allocation_pending_qty(allocation.id)
                            ELSE GREATEST(fn_preplan_allocation_admitted_qty(allocation.id)
@@ -5825,12 +5920,12 @@ public class MaterialAnalysisService {
                       AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
                       AND action.external_document_type IS DISTINCT FROM 'SUBCONTRACT_MAKE_TASK'
                     UNION ALL
-                    SELECT task.analysis_material_id,
+                    SELECT task.analysis_material_id, 'INTERNAL',
                            GREATEST(task.required_qty-task.notified_qty,0)::numeric
                     FROM preplan_subcontract_make_tasks task
                     WHERE task.analysis_id=:analysisId AND task.status='ACTIVE'
                     UNION ALL
-                    SELECT allocation.analysis_material_id,
+                    SELECT allocation.analysis_material_id, 'EXTERNAL',
                            LEAST(allocation.allocated_qty,
                                future.future_qty * allocation.allocated_qty
                                    / NULLIF(action.requested_qty,0))::numeric
@@ -5839,12 +5934,72 @@ public class MaterialAnalysisService {
                     JOIN preplan_supply_action_allocations allocation
                       ON allocation.action_id = action.id
                 )
+                """;
+
+    private Map<UUID, BigDecimal> activeFutureCoverageByMaterial(UUID analysisId) {
+        Map<UUID, BigDecimal> result = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery(
+                ACTIVE_FUTURE_COVERAGE_SQL + """
                 SELECT analysis_material_id, SUM(qty)::numeric
                 FROM coverage
                 GROUP BY analysis_material_id
                 """).setParameter("analysisId", analysisId))) {
             result.put(uuid(row[0]), decimal(row[1]));
         }
+        return Map.copyOf(result);
+    }
+
+    /**
+     * 子层展开基准的两个输入，按节点键（analysis_item_id|node_key）给出：
+     * 父件已被外部最终件在途覆盖的量，以及父件已承诺由我方制造的量。
+     * 两条语句都按 analysis_id 一次取回，不引入逐行查询。
+     *
+     * <p><b>内部承诺取「锚点总量」而不是「还没做完的量」，这一点不要改。</b>
+     * 下层子件的正式计划覆盖（formalMaterialCoverage）对前置自制是按「已产出
+     * 未回厂」封顶的，也就是说：已经为完工部分领掉的料，在委外件回厂之前
+     * 一直挂在同一批子件行上当覆盖（ADR-062）。所以子件的毛需求也必须包含
+     * 那部分已完工的量——一旦这里改成 required − produced，毛需求缩了而覆盖
+     * 没缩，缺口会被算小，车间反而少备料。</p>
+     */
+    private Map<String, ParentSupplyCommitment> parentSupplyCommitments(UUID analysisId) {
+        Map<String, BigDecimal> external = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery(
+                ACTIVE_FUTURE_COVERAGE_SQL + """
+                SELECT material.analysis_item_id || '|' || material.node_key,
+                       SUM(coverage.qty)::numeric
+                FROM coverage
+                JOIN production_material_analysis_materials material
+                  ON material.id = coverage.analysis_material_id
+                 AND material.active = TRUE
+                WHERE coverage.supply_kind = 'EXTERNAL'
+                GROUP BY 1
+                """).setParameter("analysisId", analysisId))) {
+            external.put(string(row[0]), decimal(row[1]));
+        }
+        Map<String, BigDecimal> internal = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT parent.analysis_item_id || '|' || parent.node_key,
+                       SUM(child.requested_qty)::numeric
+                FROM production_material_analysis_items child
+                JOIN production_material_analysis_materials parent
+                  ON parent.id = child.parent_analysis_material_id
+                 AND parent.analysis_id = child.analysis_id
+                 AND parent.active = TRUE
+                WHERE child.analysis_id = :analysisId
+                  AND child.source_type IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE')
+                  AND child.is_deleted = FALSE
+                GROUP BY 1
+                """).setParameter("analysisId", analysisId))) {
+            internal.put(string(row[0]), decimal(row[1]));
+        }
+        if (external.isEmpty() && internal.isEmpty()) return Map.of();
+        Map<String, ParentSupplyCommitment> result = new LinkedHashMap<>();
+        for (String key : new LinkedHashSet<>(external.keySet())) {
+            result.put(key, new ParentSupplyCommitment(external.get(key),
+                    internal.getOrDefault(key, BigDecimal.ZERO)));
+        }
+        internal.forEach((key, qty) -> result.computeIfAbsent(key,
+                ignored -> new ParentSupplyCommitment(BigDecimal.ZERO, qty)));
         return Map.copyOf(result);
     }
 
@@ -6036,7 +6191,10 @@ public class MaterialAnalysisService {
                                  reallocation.to_analysis_id
                              AND released_event.beneficiary_analysis_material_id =
                                  reallocation.to_analysis_material_id
-                       ), 0), 0) AS current_effective_qty
+                       ), 0), 0) AS current_effective_qty,
+                       COALESCE(reallocation_creator_employee.full_name,
+                                reallocation_creator.login_account) AS created_by_name,
+                       reallocation.created_at
                 FROM preplan_material_reallocations reallocation
                 JOIN production_material_analyses source_analysis
                   ON source_analysis.id = reallocation.from_analysis_id
@@ -6052,6 +6210,10 @@ public class MaterialAnalysisService {
                 JOIN production_material_analysis_items target_item
                   ON target_item.id = target_material.analysis_item_id
                 LEFT JOIN goods target_goods ON target_goods.id = target_item.goods_id
+                LEFT JOIN users reallocation_creator
+                  ON reallocation_creator.id = reallocation.created_by
+                LEFT JOIN employees reallocation_creator_employee
+                  ON reallocation_creator_employee.id = reallocation_creator.employee_id
                 WHERE reallocation.from_analysis_id = :analysisId
                    OR reallocation.to_analysis_id = :analysisId
                 ORDER BY reallocation.created_at, reallocation.id
@@ -6094,7 +6256,8 @@ public class MaterialAnalysisService {
                     counterpartProduct, qty, currentEffective,
                     fulfilled, open, string(row[8]),
                     canRevoke, blocked,
-                    replenishments.getOrDefault(id, List.of()));
+                    replenishments.getOrDefault(id, List.of()),
+                    string(row[21]), offsetDateTime(row[22]));
             UUID materialId = outgoing ? uuid(row[2]) : uuid(row[4]);
             refs.computeIfAbsent(materialId, ignored -> new ArrayList<>()).add(ref);
         }
@@ -6444,7 +6607,15 @@ public class MaterialAnalysisService {
     private Map<UUID, List<DownstreamReference>> downstreamReferences(UUID analysisId) {
         Map<UUID, List<DownstreamReference>> result = new HashMap<>();
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT allocation.analysis_material_id, action.id, action.route,
+                SELECT allocation.analysis_material_id, action.id,
+                       -- 跨路线调入（专属在途转拨 / 公共在途认领）沿用来源路线
+                       -- 落动作，但它冲减的是「目标行自己那条路线」的待下达量。
+                       -- 分桶归属与桶内已下达量都读这个 route，所以这里按目标行
+                       -- 已确认路线归位；来源单据类型与单号保持原样，进度链路
+                       -- 仍然显示真实的采购/委外单。
+                       CASE WHEN action.operation_type IN ('FUTURE_TRANSFER','SHARED_FUTURE_CLAIM')
+                            THEN COALESCE(target_material.confirmed_route, action.route)
+                            ELSE action.route END,
                        action.status, action.external_document_type,
                        action.external_document_id, action.external_document_no,
                        allocation.allocated_qty,
@@ -6455,6 +6626,8 @@ public class MaterialAnalysisService {
                                              WHERE reversal.batch_id=batch.id))
                 FROM preplan_supply_action_allocations allocation
                 JOIN preplan_supply_actions action ON action.id = allocation.action_id
+                JOIN production_material_analysis_materials target_material
+                  ON target_material.id = allocation.analysis_material_id
                 WHERE action.analysis_id = :id
                 ORDER BY action.created_at, action.id, allocation.id
                 """).setParameter("id", analysisId));
@@ -6737,6 +6910,11 @@ public class MaterialAnalysisService {
                 : value instanceof BigDecimal number ? number : new BigDecimal(value.toString());
     }
 
+    /** 可空数值列：未维护时保持 null，不能当 0 用（0 与「没填」语义不同）。 */
+    static BigDecimal optionalDecimal(Object value) {
+        return value == null ? null : decimal(value);
+    }
+
     static String decimalText(BigDecimal value) {
         return value == null ? "0" : value.stripTrailingZeros().toPlainString();
     }
@@ -6916,6 +7094,22 @@ public class MaterialAnalysisService {
         private void consume(BigDecimal qty) {
             remaining = remaining.subtract(qty).max(BigDecimal.ZERO);
         }
+    }
+
+    /**
+     * 父节点的两类已承诺供给，决定它「还要自己产出多少」，进而决定下层毛需求。
+     *
+     * @param externalFutureQty   已被外部最终件在途覆盖的量（采购/委外在途、
+     *                            跨计划转入、公共认领、失败重开切片）。这部分
+     *                            到货即可直接顶上，父件不必为它准备下层原料。
+     * @param internalCommittedQty 已承诺由我方制造的量（已下达车间的自制锚点、
+     *                            委外件的前置自制任务）。这部分的物理来源就是
+     *                            下层原料，已下达即冻结，绝不能被在途挤掉。
+     */
+    record ParentSupplyCommitment(
+            BigDecimal externalFutureQty, BigDecimal internalCommittedQty) {
+        static final ParentSupplyCommitment NONE = new ParentSupplyCommitment(
+                BigDecimal.ZERO, BigDecimal.ZERO);
     }
 
     record NodeAllocation(BigDecimal allocatedQty, BigDecimal shortageQty) {
@@ -7459,7 +7653,8 @@ public class MaterialAnalysisService {
             BigDecimal safetyStockQty, BigDecimal inboundQty, BigDecimal shortageQty,
             LocalDate expectedReadyDate, String suggestion, String confirmedRoute,
             String routeReason,
-            boolean lowerLevelPending) {
+            boolean lowerLevelPending,
+            BigDecimal minOrderQty, BigDecimal orderMultipleQty) {
         static MaterialRow from(Object[] row) {
             return new MaterialRow(uuid(row[0]), uuid(row[1]), string(row[2]),
                     uuid(row[3]), string(row[4]), string(row[5]), string(row[6]),
@@ -7471,7 +7666,8 @@ public class MaterialAnalysisService {
                     decimal(row[23]), decimal(row[24]), decimal(row[25]),
                     decimal(row[26]), decimal(row[27]), decimal(row[28]),
                     decimal(row[29]), date(row[30]), string(row[31]), string(row[32]),
-                    string(row[33]), Boolean.TRUE.equals(row[34]));
+                    string(row[33]), Boolean.TRUE.equals(row[34]),
+                    optionalDecimal(row[35]), optionalDecimal(row[36]));
         }
         MaterialDimension dimension() {
             return new MaterialDimension(goodsId, colorId, unitId);
@@ -7526,6 +7722,7 @@ public class MaterialAnalysisService {
                     sharedFuture.availableQty(), sharedFutureClaimedQty,
                     demandGap.subtract(activeFutureCoverageQty)
                             .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING),
+                    minOrderQty, orderMultipleQty,
                     selectedWarehousesAvailableQty,
                     selectedOtherWarehouseTransferableQty,
                     sharedFuture.expectedDate(), sharedFuture.refs(),

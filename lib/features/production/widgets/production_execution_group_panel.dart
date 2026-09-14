@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../core/router/route_names.dart';
@@ -184,15 +185,39 @@ class _ProductionExecutionGroupPanelState
         row.salesOrderHasMore,
       ),
     ),
+    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+    // 同名不同色、同名不同编号的分析批次光看名称分不开。**注意**：这三条
+    // preview 各自是本组「前三项聚合」，列与列之间**不是逐项对齐**的——
+    // 编号列第 2 个不一定对应名称列第 2 个（列头 ⓘ 已写明），别据此配对。
     MasterColumnDef(
       key: 'productName',
-      label: '产品',
-      width: 210,
-      value: (row) => _preview(
-        row.productNamePreview,
-        row.productCount,
-        row.productHasMore,
-      ),
+      label: '产品名称',
+      width: 200,
+      info: '本组前几个产品的名称汇总；与右侧编号/颜色列各自独立聚合，不逐项对应。',
+      value: (row) => _productNameLine(row) ?? '—',
+      cellBuilderHandlesSemantics: true,
+      cellBuilder: (_, row) =>
+          UtenGoodsIdentityCell(name: _productNameLine(row)),
+    ),
+    MasterColumnDef(
+      key: 'productCode',
+      label: '编号',
+      width: 130,
+      info: '本组前几个产品的编号汇总，与名称列不逐项对应。',
+      value: (row) =>
+          UtenGoodsAttributeCell.text(_blankToNull(row.productCodePreview)),
+      cellBuilder: (_, row) =>
+          UtenGoodsAttributeCell(_blankToNull(row.productCodePreview)),
+    ),
+    MasterColumnDef(
+      key: 'productColor',
+      label: '颜色',
+      width: 96,
+      info: '本组前几个产品的颜色汇总，与名称列不逐项对应。',
+      value: (row) =>
+          UtenGoodsAttributeCell.text(_blankToNull(row.productColorPreview)),
+      cellBuilder: (_, row) =>
+          UtenGoodsAttributeCell(_blankToNull(row.productColorPreview)),
     ),
     // 顶层产品完工进度：只统计参与分析的销售下单产品（多张销售单联合
     // 分析也按根产品行聚合），子层自制/委外的完工不冒充顶层进度。
@@ -232,6 +257,20 @@ String _preview(String? value, int count, bool hasMore) {
   if (text == null || text.isEmpty) return '—';
   return hasMore ? '$text · 共 $count 项' : text;
 }
+
+String? _blankToNull(String? value) {
+  final text = value?.trim();
+  return text == null || text.isEmpty ? null : text;
+}
+
+/// 产品身份主行：名称预览 +「共 N 项」（预览截断时提示还有更多产品）。
+/// 名称全空时返回 null——身份格会把编号顶到主行，不显示占位词。
+String? _productNameLine(ProductionExecutionWorkbenchGroup row) {
+  final text = _blankToNull(row.productNamePreview);
+  if (text == null) return null;
+  return row.productHasMore ? '$text · 共 ${row.productCount} 项' : text;
+}
+
 
 class _GroupStatusBadge extends StatelessWidget {
   const _GroupStatusBadge({required this.row});

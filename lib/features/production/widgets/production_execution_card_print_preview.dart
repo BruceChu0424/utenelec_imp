@@ -586,8 +586,11 @@ class _ProductionExecutionCardPrintDialogState
                   dataRowMinHeight: 40,
                   dataRowMaxHeight: 56,
                   columns: const [
-                    DataColumn(label: Text('物料编号 / 名称')),
-                    DataColumn(label: Text('规格 / 颜色')),
+                    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+                    DataColumn(label: Text('物料名称')),
+                    DataColumn(label: Text('编号')),
+                    DataColumn(label: Text('颜色')),
+                    DataColumn(label: Text('规格')),
                     DataColumn(label: Text('单位')),
                     DataColumn(label: Text('用量口径')),
                     DataColumn(numeric: true, label: Text('需求数量')),
@@ -599,22 +602,10 @@ class _ProductionExecutionCardPrintDialogState
                     for (final material in card.materials)
                       DataRow(
                         cells: [
-                          DataCell(
-                            Text(
-                              [
-                                material.goodsCode,
-                                material.goodsName,
-                              ].where(_present).join(' · '),
-                            ),
-                          ),
-                          DataCell(
-                            Text(
-                              [
-                                material.spec,
-                                material.colorName,
-                              ].where(_present).join(' · '),
-                            ),
-                          ),
+                          DataCell(Text(_value(material.goodsName))),
+                          DataCell(Text(_value(material.goodsCode))),
+                          DataCell(Text(_value(material.colorName))),
+                          DataCell(Text(_value(material.spec))),
                           DataCell(Text(_value(material.unitName))),
                           DataCell(
                             Text(
@@ -995,8 +986,10 @@ pw.Widget _pdfMaterialTable(ProductionWorkCard card) {
   }
   const headers = [
     '序号',
-    '物料编号 / 名称',
-    '规格 / 颜色',
+    '物料名称',
+    '编号',
+    '颜色',
+    '规格',
     '单位',
     '用量口径',
     '需求数量',
@@ -1007,15 +1000,17 @@ pw.Widget _pdfMaterialTable(ProductionWorkCard card) {
   return pw.Table(
     border: pw.TableBorder.all(width: 0.45, color: PdfColors.grey700),
     columnWidths: const {
-      0: pw.FixedColumnWidth(32),
+      0: pw.FixedColumnWidth(28),
       1: pw.FlexColumnWidth(2.4),
-      2: pw.FlexColumnWidth(1.8),
-      3: pw.FixedColumnWidth(42),
-      4: pw.FixedColumnWidth(112),
-      5: pw.FixedColumnWidth(62),
-      6: pw.FixedColumnWidth(62),
-      7: pw.FixedColumnWidth(54),
-      8: pw.FixedColumnWidth(62),
+      2: pw.FlexColumnWidth(1.5),
+      3: pw.FixedColumnWidth(44),
+      4: pw.FlexColumnWidth(1.8),
+      5: pw.FixedColumnWidth(38),
+      6: pw.FixedColumnWidth(96),
+      7: pw.FixedColumnWidth(56),
+      8: pw.FixedColumnWidth(56),
+      9: pw.FixedColumnWidth(46),
+      10: pw.FixedColumnWidth(56),
     },
     children: [
       pw.TableRow(
@@ -1034,18 +1029,10 @@ pw.Widget _pdfMaterialTable(ProductionWorkCard card) {
         pw.TableRow(
           children: [
             _pdfCell('${index + 1}', center: true),
-            _pdfCell(
-              [
-                card.materials[index].goodsCode,
-                card.materials[index].goodsName,
-              ].where(_present).join(' / '),
-            ),
-            _pdfCell(
-              [
-                card.materials[index].spec,
-                card.materials[index].colorName,
-              ].where(_present).join(' / '),
-            ),
+            _pdfCell(_value(card.materials[index].goodsName)),
+            _pdfCell(_value(card.materials[index].goodsCode)),
+            _pdfCell(_value(card.materials[index].colorName)),
+            _pdfCell(_value(card.materials[index].spec)),
             _pdfCell(_value(card.materials[index].unitName), center: true),
             _pdfCell(
               formatProductionWorkCardMaterialUsage(card.materials[index]),

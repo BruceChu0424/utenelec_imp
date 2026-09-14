@@ -43,7 +43,8 @@ void main() {
         find.byKey(const Key('material-table-confirm-claim-shared')),
       );
       await tester.pumpAndSettle();
-      expect(result?.allowLateSupply, isFalse);
+      // 2026-09-13 起晚到/交期未明确默认接受，不再有显式勾选。
+      expect(result?.allowLateSupply, isTrue);
       expect(result?.quantities.map((row) => row.toJson()), [
         {'actionGroupKey': 'a', 'qty': 400.0},
         {'actionGroupKey': 'b', 'qty': 500.0},
@@ -52,7 +53,7 @@ void main() {
   );
 
   testWidgets(
-    'late 900 requires explicit acceptance and stays a future commitment at 375px',
+    'late 900 is accepted by default and stays a future commitment at 375px',
     (tester) async {
       MaterialSharedFutureClaimDraft? result;
       await _pump(
@@ -78,24 +79,10 @@ void main() {
             )
             .controller
             ?.text,
-        '0',
-      );
-      await tester.tap(
-        find.byKey(const Key('material-table-confirm-claim-shared')),
-      );
-      await tester.pumpAndSettle();
-      expect(result, isNull);
-      await tester.tap(find.byKey(const Key('shared-future-accept-late')));
-      await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<TextField>(
-              find.byKey(const ValueKey('shared-future-claim-qty-a')),
-            )
-            .controller
-            ?.text,
         '900',
+        reason: '晚到份额默认计入可认领池并预填',
       );
+      expect(find.byKey(const Key('shared-future-accept-late')), findsNothing);
       await tester.tap(
         find.byKey(const Key('material-table-confirm-claim-shared')),
       );

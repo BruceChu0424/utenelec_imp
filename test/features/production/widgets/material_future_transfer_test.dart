@@ -30,14 +30,15 @@ void main() {
         find.byKey(const Key('future-transfer-candidate-allocation-2')),
         findsOneWidget,
       );
+      // 自动匹配会勾选两个来源；只保留 allocation-2，验证逐笔数量与提交。
       await tester.tap(
-        find.byKey(const Key('future-transfer-candidate-allocation-2')),
+        find.byKey(const Key('future-transfer-candidate-allocation-1')),
       );
       await tester.pumpAndSettle();
       expect(
         tester
             .widget<TextFormField>(
-              find.byKey(const Key('cross-reallocation-qty')),
+              find.byKey(const Key('future-transfer-qty-allocation-2')),
             )
             .controller!
             .text,
@@ -61,29 +62,24 @@ void main() {
   );
 
   testWidgets(
-    'private future late acceptance at 375px is explicit and uncertain transfer freezes same intent',
+    'private future late supply is accepted by default and uncertain transfer freezes same intent',
     (tester) async {
       final repo = _Repository(late: true, failCreate: true);
       await _pumpPicker(tester, repo, size: const Size(375, 812));
+      // 自动勾选了两个晚到来源；只留 allocation-1（晚到默认接受，无确认勾选）。
       await tester.tap(
-        find.byKey(const Key('future-transfer-candidate-allocation-1')),
+        find.byKey(const Key('future-transfer-candidate-allocation-2')),
       );
       await tester.pumpAndSettle();
+      expect(find.byKey(const Key('future-transfer-accept-late')), findsNothing);
       await tester.enterText(
         find.byKey(const Key('cross-reallocation-reason')),
         '同意延后供给',
       );
       await tester.tap(find.byKey(const Key('cross-reallocation-confirm')));
       await tester.pumpAndSettle();
-      expect(repo.creates, isEmpty);
-      await tester.ensureVisible(
-        find.byKey(const Key('future-transfer-accept-late')),
-      );
-      await tester.tap(find.byKey(const Key('future-transfer-accept-late')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('cross-reallocation-confirm')));
-      await tester.pumpAndSettle();
       expect(repo.creates, hasLength(1));
+      expect(repo.creates.first['late'], isTrue);
       expect(
         tester
             .widget<UtenButton>(
@@ -95,7 +91,7 @@ void main() {
       expect(
         tester
             .widget<TextFormField>(
-              find.byKey(const Key('cross-reallocation-qty')),
+              find.byKey(const Key('future-transfer-qty-allocation-1')),
             )
             .enabled,
         isFalse,
@@ -292,7 +288,6 @@ Future<void> _pumpPicker(
               sourceAnalysis: _view,
               sourceMaterial: _material,
               sourceProductLabel: '接受计划 B',
-              sourcePathLabel: '手机 / 面板',
               qtyText: (qty) => qty?.toStringAsFixed(0) ?? '—',
               futureTransfer: true,
               onCompleted: onCompleted,

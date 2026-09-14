@@ -247,6 +247,61 @@ abstract class _MaterialAnalysisSupplyActionsState
     }
   }
 
+  /// 分桶详情里就地改供料方式（2026-09-14 用户口径「下达车间/委外/采购里面
+  /// 供应方式也可以改变，改变了自动换到其他地方」）。
+  ///
+  /// 桶归属只认服务端的 `confirmed_route`，所以「换桶」必须真的写一次路线确认；
+  /// 主表那条「改下拉 → 勾选 → 确认路线(N)」的批量通道保持不变，这里只是给
+  /// 单行加一个显式的即时确认入口——弹窗点名「本行会从 X 桶移到 Y 桶」，
+  /// 仍然是人明确确认，不是自动保存（ADR-070 §2.3）。确认后的路线同时成为
+  /// 该货品/颜色/单位的上次路线记忆，下次默认带出它。
+  Future<bool> _confirmRouteChange(
+    _MaterialGroup group,
+    MaterialSupplyRoute route,
+  ) async {
+    if (_busy) return false;
+    if (!_canRoute) {
+      context.appWarning('没有确认物料路线权限');
+      return false;
+    }
+    if (!_canEditMaterialRoute(group)) {
+      context.appWarning('本行已有下游行动或已被阻断，供料方式不可改');
+      return false;
+    }
+    final material = group.representative;
+    final name = material.goodsName ?? material.goodsCode ?? '该物料';
+    final current = material.confirmedRoute;
+    final ok = await UtenDialog.show(
+      context,
+      title: '改变供料方式',
+      content: Text(
+        '把「$name」的供料方式'
+        '${current == null ? '确认为' : '从「${current.label}」改为'}'
+        '「${route.label}」？\n\n'
+        '确认后本行会立刻离开当前入口，出现在「下达${route.label}」里'
+        '（有自制子层的委外件会进「下达车间」先做前置自制）。'
+        '这次选择会记为该货品的上次路线，下次默认带出。',
+      ),
+      confirmLabel: '确认并换桶',
+    );
+    if (ok != true || !mounted) return false;
+    setState(() {
+      _routeDraft[group.key] = route;
+      _dirtyRouteGroups.add(group.key);
+      _invalidateBucketRowsCache();
+    });
+    await _saveRoutes(onlyGroupKeys: {group.key});
+    if (!mounted) return false;
+    final analysis = _analysis;
+    if (analysis == null) return false;
+    for (final current in _materialGroups(analysis)) {
+      if (current.key == group.key) {
+        return current.representative.confirmedRoute == route;
+      }
+    }
+    return false;
+  }
+
   /// Dropdown changes are local. Only selected task identities are submitted.
   Future<void> _createSelectedRoutes() async {
     if (_loadingRouteMemory) {
@@ -339,6 +394,59 @@ abstract class _MaterialAnalysisSupplyActionsState
     final residual =
         _groupDemandSupplyGapQty(group) - _openSubmittedQty(group, route);
     return residual > 0 ? residual : 0;
+  }
+
+  /// 下达数量的默认值。采购桶在「还需安排量」之上，按货品主档的最小起订量
+  /// 与订货倍数向上抬一次：`向上取整到倍数( max(还需安排量, 最小起订量) )`。
+  ///
+  /// 这是**软约束**：抬出来的富余部分走既有公共备货通道，计划员可以改小，
+  /// 服务端不硬拦。还需安排量为 0 时不抬量——没有需求就不该因为起订量凭空
+  /// 下单。委外与车间桶不抬量（它们会产生下层责任，数量必须与需求一致）。
+  double _defaultSubmitQty(_MaterialGroup group, MaterialSupplyRoute route) {
+    final residual = _residualSubmitQty(group, route);
+    if (route != MaterialSupplyRoute.buy || residual <= 0) return residual;
+    // 抬出来的富余是公共备货，没有超量下达权限的人填了也提交不了。
+    // 这种情况下只填净需求，由「起订量提示」告诉他要找有权限的人。
+    if (!_canOverSupply) return residual;
+    return _raiseToOrderPolicy(
+      residual,
+      group.representative.minOrderQty,
+      group.representative.orderMultipleQty,
+    );
+  }
+
+  /// 起订量抬量提示：默认值被抬高时告诉计划员抬到了多少、富余多少。
+  /// 没有超量下达权限时提示「低于起订量」，不静默降级。
+  String? _orderPolicyHint(_MaterialGroup group, MaterialSupplyRoute route) {
+    if (route != MaterialSupplyRoute.buy) return null;
+    final residual = _residualSubmitQty(group, route);
+    if (residual <= 0) return null;
+    final minOrderQty = group.representative.minOrderQty;
+    final multiple = group.representative.orderMultipleQty;
+    final raised = _raiseToOrderPolicy(residual, minOrderQty, multiple);
+    if (raised <= residual + 0.0001) return null;
+    if (!_canOverSupply) {
+      return '本次 ${_qty(residual)} 低于起订量 ${_qty(minOrderQty ?? 0)}，'
+          '需由有超量下达权限的人抬量';
+    }
+    return '已按起订量与整包装抬至 ${_qty(raised)}，'
+        '富余 ${_qty(raised - residual)} 归公共备货';
+  }
+
+  /// 起订量与整包装的取整规则，单独抽出以便复用与单测。
+  static double _raiseToOrderPolicy(
+    double quantity,
+    double? minOrderQty,
+    double? orderMultipleQty,
+  ) {
+    var target = quantity;
+    if (minOrderQty != null && minOrderQty > target) target = minOrderQty;
+    if (orderMultipleQty != null && orderMultipleQty > 0) {
+      final batches = (target / orderMultipleQty).ceil();
+      target = batches * orderMultipleQty;
+    }
+    // 数量统一保留 4 位小数，避免二进制浮点误差写进下达数量。
+    return double.parse(target.toStringAsFixed(4));
   }
 
   bool _hasIssuedMakeOwnership(ProductionMaterialAnalysisMaterial material) =>
@@ -586,27 +694,36 @@ abstract class _MaterialAnalysisSupplyActionsState
   /// 建 SUBCONTRACT_MAKE 前置自制任务后**留在本页**，已可生产的委外子件自动
   /// 勾选并预填「最多可生产量」，员工核对后点底部「安排子件生产」进入计划
   /// 向导；同批无子层委外件仍由服务端立即合并生成委外申请并通知委外部。
-  Future<void> _arrangeSubcontractProduction({
+  ///
+  /// [silent] = 父件段由「一起下单」弹窗编排（ADR-081，2026-09-14 弹窗前置）：
+  /// 只做 notify，跳过两段式自动勾选与总结提示（下层由弹窗接手），返回是否
+  /// 提交成功。
+  Future<bool> _arrangeSubcontractProduction({
     Set<String>? onlyGroupKeys,
     Map<String, String>? qtyByActionGroupKey,
+    bool silent = false,
   }) async {
     final analysis = _analysis;
-    if (analysis == null || !_canNotify || _notifyingRoute != null) return;
+    if (analysis == null || !_canNotify || _notifyingRoute != null) {
+      return false;
+    }
     final groups = onlyGroupKeys != null
         ? _executableSupplyGroups(MaterialSupplyRoute.subcontract)
               .where((group) => onlyGroupKeys.contains(group.key))
               .toList(growable: false)
         : const <_MaterialGroup>[];
     if (groups.isEmpty) {
-      context.appInfo('请先勾选要下达的委外件');
-      return;
+      if (!silent) context.appInfo('请先勾选要下达的委外件');
+      return false;
     }
     final view = await _notifyRoute(
       MaterialSupplyRoute.subcontract,
       onlyGroupKeys: {for (final group in groups) group.key},
       qtyByActionGroupKey: qtyByActionGroupKey,
+      silent: silent,
     );
-    if (!mounted || view == null) return;
+    if (!mounted || view == null) return false;
+    if (silent) return true;
     final requestedLineIds = {
       for (final group in groups) group.representative.materialLineId,
     };
@@ -635,14 +752,16 @@ abstract class _MaterialAnalysisSupplyActionsState
       }
     });
     // 全部为无子层时 _notifyRoute 的「合并为 N 张委外申请」提示已足够。
-    if (created == 0) return;
-    final parts = <String>[
-      _l10n.materialPreparedChildCreated(created),
-      if (readySelected > 0) _l10n.materialPreparedChildNext,
-      if (waiting > 0) '$waiting 个子件状态已变化，请刷新后核对',
-      if (needPermission > 0) _l10n.materialPreparedChildNeedPlanner,
-    ];
-    context.appSuccess(parts.join('；'));
+    if (created > 0) {
+      final parts = <String>[
+        _l10n.materialPreparedChildCreated(created),
+        if (readySelected > 0) _l10n.materialPreparedChildNext,
+        if (waiting > 0) '$waiting 个子件状态已变化，请刷新后核对',
+        if (needPermission > 0) _l10n.materialPreparedChildNeedPlanner,
+      ];
+      context.appSuccess(parts.join('；'));
+    }
+    return true;
   }
 
   /// 该分析节点在当前快照内是否还有下层节点（与服务端「有子层级委外件」
@@ -700,10 +819,14 @@ abstract class _MaterialAnalysisSupplyActionsState
     return targets;
   }
 
+  /// [silent] = 调用方已经做过一次总结确认、并会自己汇报结果（下层办齐编排，
+  /// ADR-081）：跳过本函数的数量确认弹窗与成功提示，避免一次一键下单连弹三层
+  /// 确认、连报三条成功。失败提示与 409 恢复照旧。
   Future<ProductionMaterialAnalysisView?> _notifyRoute(
     MaterialSupplyRoute route, {
     Set<String>? onlyGroupKeys,
     Map<String, String>? qtyByActionGroupKey,
+    bool silent = false,
   }) async {
     final analysis = _analysis;
     if (analysis == null || !_canNotify || _notifyingRoute != null) {
@@ -734,12 +857,14 @@ abstract class _MaterialAnalysisSupplyActionsState
       quantities = await _resolveSubcontractQuantities(
         groups,
         qtyByActionGroupKey,
+        silent: silent,
       );
     } else {
       quantities = await _resolveSupplyQuantities(
         route,
         targets,
         qtyByActionGroupKey,
+        silent: silent,
       );
     }
     if (quantities == null || !mounted) return null;
@@ -840,7 +965,7 @@ abstract class _MaterialAnalysisSupplyActionsState
                     '${batches.length} 张委外申请并通知委外部；有子层已转前置自制，入库后自动通知',
               MaterialSupplyRoute.make => '自制备料任务已创建（${groups.length} 条）',
             };
-      context.appSuccess(message);
+      if (!silent) context.appSuccess(message);
       return current;
     } catch (error) {
       if (!mounted) return null;
@@ -900,8 +1025,9 @@ abstract class _MaterialAnalysisSupplyActionsState
   ///（此前有子层路径不弹任何确认直接下达）。
   Future<List<MaterialSupplyQuantityInput>?> _resolveSubcontractQuantities(
     List<_MaterialGroup> groups,
-    Map<String, String>? qtyByActionGroupKey,
-  ) async {
+    Map<String, String>? qtyByActionGroupKey, {
+    bool silent = false,
+  }) async {
     const route = MaterialSupplyRoute.subcontract;
     final childGroups = groups
         .where((group) => _analysisMaterialHasChildren(group.representative))
@@ -934,16 +1060,19 @@ abstract class _MaterialAnalysisSupplyActionsState
       for (final entry in childEntries) entry.maxQty,
       ...leaf.quantities,
     ];
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => MaterialSupplySubmitConfirmDialog(
-        route: route,
-        entries: entries,
-        quantities: quantities,
-        qtyText: _qty,
-      ),
-    );
-    if (confirmed != true) return null;
+    final confirmed =
+        silent ||
+        await showDialog<bool>(
+              context: context,
+              builder: (_) => MaterialSupplySubmitConfirmDialog(
+                route: route,
+                entries: entries,
+                quantities: quantities,
+                qtyText: _qty,
+              ),
+            ) ==
+            true;
+    if (!confirmed) return null;
     return [
       for (var i = 0; i < entries.length; i++)
         entries[i].toInput(
@@ -967,25 +1096,29 @@ abstract class _MaterialAnalysisSupplyActionsState
   /// MAKE 因父树尚无 delegated_qty 只允许全量，走 [_fullResidualSupplyQuantities]。
   Future<List<MaterialSupplyQuantityInput>?> _resolveSupplyQuantities(
     MaterialSupplyRoute route,
-    List<_SupplyNotificationTarget> targets, [
-    Map<String, String>? qtyByActionGroupKey,
-  ]) async {
+    List<_SupplyNotificationTarget> targets,
+    Map<String, String>? qtyByActionGroupKey, {
+    bool silent = false,
+  }) async {
     final adjudicated = _adjudicateSupplyQuantities(
       route,
       targets,
       qtyByActionGroupKey,
     );
     if (adjudicated == null) return null;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => MaterialSupplySubmitConfirmDialog(
-        route: route,
-        entries: adjudicated.entries,
-        quantities: adjudicated.quantities,
-        qtyText: _qty,
-      ),
-    );
-    if (confirmed != true) return null;
+    final confirmed =
+        silent ||
+        await showDialog<bool>(
+              context: context,
+              builder: (_) => MaterialSupplySubmitConfirmDialog(
+                route: route,
+                entries: adjudicated.entries,
+                quantities: adjudicated.quantities,
+                qtyText: _qty,
+              ),
+            ) ==
+            true;
+    if (!confirmed) return null;
     return [
       for (var i = 0; i < adjudicated.entries.length; i++)
         adjudicated.entries[i].toInput(

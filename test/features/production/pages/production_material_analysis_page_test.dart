@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
@@ -678,8 +679,8 @@ void main() {
       // 2026-09-04 改版口径：主页面不再渲染产品大卡片，两个用户来源产品
       // 都应出现在「可安排生产」分桶详情页的表格行里。
       await _openBucketDetail(tester, 'workshop');
-      expect(find.text('测试产品(P-1)'), findsOneWidget);
-      expect(find.text('第二测试产品(P-2)'), findsOneWidget);
+      expect(find.text('测试产品'), findsOneWidget);
+      expect(find.text('第二测试产品'), findsOneWidget);
     },
   );
 
@@ -913,7 +914,7 @@ void main() {
       // 「暂不可安排」桶断言产品被阻断，轮询后在「可安排生产」桶断言解除。
       await _openBucketDetail(tester, 'workshop', stateFilter: '需处理');
       // 产品列展示「名称（编码）」。
-      expect(find.text('测试产品(P-1)'), findsOneWidget);
+      expect(find.text('测试产品'), findsOneWidget);
       await _closeBucketDetail(tester);
 
       await tester.pump(const Duration(seconds: 45));
@@ -921,8 +922,8 @@ void main() {
 
       expect(detailReads, 2);
       await _openBucketDetail(tester, 'workshop');
-      expect(find.text('测试产品(P-1)'), findsOneWidget);
-      expect(find.text('第二测试产品(P-2)'), findsOneWidget);
+      expect(find.text('测试产品'), findsOneWidget);
+      expect(find.text('第二测试产品'), findsOneWidget);
       await _closeBucketDetail(tester);
 
       expect(
@@ -1995,7 +1996,7 @@ void main() {
     expect(_bucketRowCheckboxValue(tester, '自制子件A'), isTrue);
     await _closeBucketDetail(tester);
     await _openBucketDetail(tester, 'workshop', stateFilter: '需处理');
-    expect(find.text('顶级插座(P-1)'), findsOneWidget);
+    expect(find.text('顶级插座'), findsOneWidget);
   });
 
   testWidgets(
@@ -2262,7 +2263,7 @@ void main() {
       await _closeBucketDetail(tester);
 
       await _openBucketDetail(tester, 'workshop', stateFilter: '需处理');
-      expect(find.text('测试产品(P-1)'), findsOneWidget);
+      expect(find.text('测试产品'), findsOneWidget);
       // 暂不可安排桶只读：无任何勾选框与计划输入。
       expect(find.byType(Checkbox), findsNothing);
       await _closeBucketDetail(tester);
@@ -2289,7 +2290,7 @@ void main() {
       expect(find.text('第二测试产品'), findsOneWidget);
       await _closeBucketDetail(tester);
       await _openBucketDetail(tester, 'workshop', stateFilter: '需处理');
-      expect(find.text('测试产品(P-1)'), findsOneWidget);
+      expect(find.text('测试产品'), findsOneWidget);
       await _closeBucketDetail(tester);
       semantics.dispose();
       expect(tester.takeException(), isNull);
@@ -2317,8 +2318,8 @@ void main() {
     expect(find.text('待自制壳体'), findsNothing);
     await _closeBucketDetail(tester);
     await _openBucketDetail(tester, 'workshop');
-    expect(find.text('测试产品(P-1)'), findsOneWidget);
-    expect(find.text('第二测试产品(P-2)'), findsOneWidget);
+    expect(find.text('测试产品'), findsOneWidget);
+    expect(find.text('第二测试产品'), findsOneWidget);
   });
 
   for (final net in <double?>[null, 0, 2]) {
@@ -3535,9 +3536,9 @@ void main() {
     );
 
     await _openBucketDetail(tester, 'workshop', stateFilter: '需处理');
-    expect(find.text('批量产品 1(BULK-1)'), findsOneWidget);
-    await _scrollBucketRowVisible(tester, '批量产品 61(BULK-61)');
-    expect(find.text('批量产品 61(BULK-61)'), findsOneWidget);
+    expect(find.text('批量产品 1'), findsOneWidget);
+    await _scrollBucketRowVisible(tester, '批量产品 61');
+    expect(find.text('批量产品 61'), findsOneWidget);
     expect(
       find.byKey(const Key('material-analysis-show-more-products')),
       findsNothing,
@@ -5011,7 +5012,7 @@ void main() {
     // Pending tasks keep blockers in the same route; an unrelated ready product has no blocker.
     await _openBucketDetail(tester, 'workshop');
     final readyRow = find
-        .ancestor(of: find.text('第二测试产品(P-2)'), matching: find.byType(Row))
+        .ancestor(of: find.text('第二测试产品'), matching: find.byType(Row))
         .first;
     expect(
       find.descendant(of: readyRow, matching: find.textContaining('缺料')),
@@ -5525,11 +5526,8 @@ void main() {
         find.descendant(of: row, matching: find.text('物料 / 调拨')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(
-          const ValueKey('material-detail-claim-shared-future-material'),
-        ),
-      );
+      // 2026-09-13 起先进简化选择器，公共在途走第三个按钮。
+      await tester.tap(find.byKey(const Key('transfer-launcher-claim')));
       await tester.pumpAndSettle();
       final claimQty = find.byKey(
         const ValueKey('shared-future-claim-qty-future-action'),
@@ -5551,8 +5549,13 @@ void main() {
         reason:
             'public surplus does not take the original owner share and needs no donor replacement order',
       );
+      // 认领口径在完整详情里核对：从选择器进入完整详情再逐层关闭。
+      await tester.tap(find.byKey(const Key('transfer-launcher-full-details')));
+      await tester.pumpAndSettle();
       expect(find.textContaining('公共已认领未实收 900'), findsWidgets);
       await _closeMaterialTableDetails(tester);
+      await tester.tap(find.byKey(const Key('transfer-launcher-close')));
+      await tester.pumpAndSettle();
       expect(
         tester.widget<TextField>(quantity).controller?.text,
         '100',
@@ -5660,16 +5663,18 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      final entry = find.byKey(
-        const Key('material-private-future-receive-future-material'),
-      );
-      await tester.ensureVisible(entry);
-      await tester.tap(entry);
+      // 2026-09-13 起先进简化选择器；在途调入走第二个按钮，弹窗自动勾选来源。
+      await tester.tap(find.byKey(const Key('transfer-launcher-future')));
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('future-transfer-candidate-allocation-exact')),
+      expect(
+        tester
+            .widget<TextFormField>(
+              find.byKey(const Key('future-transfer-qty-allocation-exact')),
+            )
+            .controller!
+            .text,
+        '900',
       );
-      await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const Key('cross-reallocation-reason')),
         '加急计划采用九百份专属供给',
@@ -5715,6 +5720,130 @@ void main() {
         harness.requests.where((request) => request.path.endsWith('/notify')),
         isEmpty,
       );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'workshop product transfers external in-transit into its root supply; zero sources grey out',
+    (tester) async {
+      // 车间桶的行是产品（柜）：物料/调拨应能选中根供给行（柜本身）做在途
+      // 调入，剩余仍走原下达车间流程；0 来源按钮置灰（2026-09-13 口径）。
+      final initial = _workshopRootTransferJson();
+      final after = _workshopRootTransferJson(transferred: true);
+      final source = {
+        'sourceAnalysisId': 'analysis-W',
+        'sourceLabel': '原计划 W',
+        'sourceMaterialId': 'material-W',
+        'sourceVersion': 7,
+        'sourceFingerprint': 'f' * 64,
+        'warehouseId': 'warehouse-1',
+        'warehouseName': '主仓',
+      };
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1600, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisNotify,
+          Perm.productionMaterialAnalysisCrossReallocate,
+          Perm.productionMaterialAnalysisClaimSharedFuture,
+        },
+        analysisJson: initial,
+        responseOverride: (request) {
+          if (request.path.endsWith('/cross-reallocation-sources')) {
+            return {
+              'items': <Map<String, dynamic>>[],
+              'page': 1,
+              'size': 1,
+              'total': 0,
+              'totalPages': 0,
+            };
+          }
+          if (request.path.endsWith('/future-transfer-sources')) {
+            return [
+              {
+                'sourceAllocationId': 'alloc-w',
+                ...source,
+                'availableQty': 400,
+                'receivedQty': 0,
+                'targetVersion': 3,
+                'targetFingerprint': initial['fingerprint'],
+                'targetUncoveredQty': 1000,
+                'documentNo': 'PO-2026-001',
+                'documentId': 'order-w',
+                'documentRoute': 'PURCHASE',
+              },
+            ];
+          }
+          if (request.path.endsWith('/future-transfers')) {
+            return request.method == 'POST' ? after : <Object>[];
+          }
+          if (request.path.endsWith('/future-transfer-replenishment-preview')) {
+            return {
+              'sourceAnalysis': source,
+              'sourceMaterialLineId': 'material-W',
+              'targetAnalysisId': 'analysis-1',
+              'transferredQty': 400,
+              'priorityPendingQty': 400,
+              'remainingSupplementQty': 400,
+              'defaultQty': 400,
+              'route': 'BUY',
+              'allowedRoutes': ['BUY'],
+              'operation': 'NOTIFY_SUPPLY',
+              'canOverSupply': true,
+            };
+          }
+          return null;
+        },
+      );
+      await _openBucketDetail(tester, 'workshop');
+      final transferEntry = find.text('物料 / 调拨');
+      await tester.ensureVisible(transferEntry);
+      await tester.tap(transferEntry);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('material-transfer-launcher')), findsOneWidget);
+      final spotButton = tester.widget<UtenButton>(
+        find.byKey(const Key('transfer-launcher-spot')),
+      );
+      expect(spotButton.onPressed, isNull, reason: '0 个来源须置灰不可点');
+      expect(find.textContaining('从其他计划已入库中调入（0 个来源）'), findsOneWidget);
+      expect(
+        tester
+            .widget<UtenButton>(find.byKey(const Key('transfer-launcher-claim')))
+            .onPressed,
+        isNull,
+        reason: '公共在途无可用来源同样置灰',
+      );
+      await tester.tap(find.byKey(const Key('transfer-launcher-future')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextFormField>(
+              find.byKey(const Key('future-transfer-qty-alloc-w')),
+            )
+            .controller!
+            .text,
+        '400',
+        reason: '自动勾选根供给行（柜）的来源并预填数量',
+      );
+      await tester.enterText(
+        find.byKey(const Key('cross-reallocation-reason')),
+        '柜加急，先用其他计划在途',
+      );
+      await tester.tap(find.byKey(const Key('cross-reallocation-confirm')));
+      await tester.pumpAndSettle();
+      final create = harness.requests.singleWhere(
+        (request) =>
+            request.method == 'POST' &&
+            request.path.endsWith('/future-transfers'),
+      );
+      expect((create.data as Map)['sourceAllocationId'], 'alloc-w');
+      expect((create.data as Map)['qty'], 400);
+      expect((create.data as Map)['allowLateSupply'], isTrue);
+      await tester.tap(find.text('稍后补供'));
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     },
   );
@@ -6985,6 +7114,151 @@ void main() {
       );
     },
   );
+
+  /// 起订量/订货倍数只改采购桶「下达数量」的默认值：
+  /// 默认 = 向上取整到倍数(max(还需安排量, 起订量))，富余归公共备货。
+  Map<String, dynamic> buyOrderPolicyAnalysis({
+    required num recommended,
+    num? minOrderQty,
+    num? orderMultipleQty,
+  }) {
+    final analysis = _buySelectionAnalysisJson()
+      ..['allowedActions'] = const ['NOTIFY_SUPPLY', 'OVER_SUPPLY'];
+    final materials = (analysis['flatMaterials'] as List<dynamic>)
+        .cast<Map<String, dynamic>>();
+    final first = materials.singleWhere(
+      (material) => material['materialLineId'] == 'buy-line-1',
+    );
+    first
+      ..['requiredQty'] = recommended
+      ..['allocatedAvailableQty'] = 0
+      ..['availableQty'] = 0
+      ..['shortageQty'] = recommended
+      ..['demandSupplyGapQty'] = recommended
+      ..['additionalSupplyRecommendedQty'] = recommended
+      ..['minOrderQty'] = minOrderQty
+      ..['orderMultipleQty'] = orderMultipleQty
+      ..['warehouseBreakdown'] = [
+        {
+          'warehouseId': 'warehouse-1',
+          'publicAvailableQty': 0,
+          'openSafetySupplyQty': 0,
+          'safetyReplenishmentGapQty': 0,
+        },
+      ];
+    for (final material in materials.skip(1)) {
+      material
+        ..['actionable'] = false
+        ..['shortageQty'] = 0
+        ..['demandSupplyGapQty'] = 0;
+    }
+    return analysis;
+  }
+
+  testWidgets('起订量与整包装把采购默认下达量抬到 150 并说明富余去向', (tester) async {
+    // 只需 100，供应商起订 120、整箱 50 → 向上取整到 150，富余 50 归公共备货。
+    final harness = await _pumpPage(
+      tester,
+      size: const Size(1200, 900),
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+        Perm.productionMaterialAnalysisNotify,
+        Perm.productionMaterialAnalysisOverSupply,
+      },
+      allowedActions: const ['NOTIFY_SUPPLY', 'OVER_SUPPLY'],
+      analysisJson: buyOrderPolicyAnalysis(
+        recommended: 100,
+        minOrderQty: 120,
+        orderMultipleQty: 50,
+      ),
+    );
+
+    await _openBucketDetail(tester, 'buy');
+    final qty = find.byKey(
+      const ValueKey('material-analysis-bucket-submit-qty-buy-action-1'),
+    );
+    expect(tester.widget<TextField>(qty).controller!.text, '150');
+    expect(
+      find.byKey(
+        const ValueKey('material-analysis-bucket-order-policy-buy-action-1'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('已按起订量与整包装抬至 150'), findsOneWidget);
+    expect(find.textContaining('富余 50 归公共备货'), findsOneWidget);
+
+    await _tapBucketRowCheckbox(tester, '采购件一');
+    await tester.tap(find.text('提交采购需求(1)'));
+    await tester.pumpAndSettle();
+    expect(find.text('本批需求 100 + 公共超量备货 50'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('supply-submit-confirm')));
+    await tester.pumpAndSettle();
+
+    final notify = harness.requests.singleWhere(
+      (request) => request.path.endsWith('/notify'),
+    );
+    expect((notify.data! as Map<String, dynamic>)['quantities'], [
+      {
+        'actionGroupKey': 'buy-action-1',
+        'qty': 100.0,
+        'safetyReplenishmentQty': 0.0,
+        'publicExtraQty': 50.0,
+      },
+    ]);
+  });
+
+  testWidgets('没有超量下达权限时不抬量，只提示低于起订量', (tester) async {
+    await _pumpPage(
+      tester,
+      size: const Size(1200, 900),
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+        Perm.productionMaterialAnalysisNotify,
+      },
+      allowedActions: const ['NOTIFY_SUPPLY'],
+      analysisJson: buyOrderPolicyAnalysis(
+        recommended: 100,
+        minOrderQty: 120,
+        orderMultipleQty: 50,
+      ),
+    );
+
+    await _openBucketDetail(tester, 'buy');
+    final qty = find.byKey(
+      const ValueKey('material-analysis-bucket-submit-qty-buy-action-1'),
+    );
+    expect(tester.widget<TextField>(qty).controller!.text, '100');
+    expect(find.textContaining('低于起订量 120'), findsOneWidget);
+  });
+
+  testWidgets('未维护起订量与订货倍数时默认值保持净需求且不出提示', (tester) async {
+    await _pumpPage(
+      tester,
+      size: const Size(1200, 900),
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+        Perm.productionMaterialAnalysisNotify,
+        Perm.productionMaterialAnalysisOverSupply,
+      },
+      allowedActions: const ['NOTIFY_SUPPLY', 'OVER_SUPPLY'],
+      analysisJson: buyOrderPolicyAnalysis(recommended: 100),
+    );
+
+    await _openBucketDetail(tester, 'buy');
+    final qty = find.byKey(
+      const ValueKey('material-analysis-bucket-submit-qty-buy-action-1'),
+    );
+    expect(tester.widget<TextField>(qty).controller!.text, '100');
+    expect(
+      find.byKey(
+        const ValueKey('material-analysis-bucket-order-policy-buy-action-1'),
+      ),
+      findsNothing,
+    );
+  });
 
   testWidgets('BUY over-order splits exact demand 500 from public extra 1500', (
     tester,
@@ -8606,11 +8880,75 @@ Map<String, dynamic> _failedFutureClaimJson() {
   return analysis;
 }
 
+/// 车间桶场景：产品（柜）+ 根供给行（level 0，MAKE 路线）待在途调入。
+/// transferred=true 为调入 400 后的服务端回包（建议补供量 1000→600）。
+Map<String, dynamic> _workshopRootTransferJson({bool transferred = false}) {
+  final json = _analysisJson(const [
+    'NOTIFY_SUPPLY',
+    'GENERATE_PLAN',
+    'CROSS_REALLOCATE',
+    'CLAIM_SHARED_FUTURE',
+    'VIEW_FUTURE_TRANSFERS',
+  ]);
+  final product = Map<String, dynamic>.from(
+    (json['products'] as List).first as Map,
+  );
+  product.addAll({
+    'readyNowQty': 0,
+    'readyStartQty': 0,
+    'readyFinishQty': 0,
+    'readyShipQty': 0,
+    'requestedQty': 1000,
+    'remainingQty': 1000,
+    'maxSchedulableQty': 1000,
+    'canSchedule': true,
+    'rootMaterialLineId': 'root-cabinet',
+  });
+  json['products'] = [product];
+  json['version'] = transferred ? 4 : 3;
+  json['flatMaterials'] = [
+    {
+      ..._routeMaterial(
+        id: 'root-cabinet',
+        nodeKey: 'root-node',
+        actionGroupKey: 'root-action',
+        goodsCode: 'CAB',
+        goodsName: '柜',
+        route: 'MAKE',
+        controlStage: 'START',
+      ),
+      'level': 0,
+      'nodeRole': 'ROOT_SUPPLY',
+      'path': const ['柜'],
+      'requiredQty': 1000,
+      'shortageQty': 1000,
+      'demandSupplyGapQty': 1000,
+      'allocatedAvailableQty': 0,
+      'availableQty': 0,
+      'exactPeggedQty': 0,
+      'inboundQty': 0,
+      'additionalSupplyRecommendedQty': transferred ? 600 : 1000,
+      'status': 'SHORTAGE',
+    },
+    // 根供给行之外再放一个直接子件：验证产品行点「物料 / 调拨」直达
+    // 根供给（柜）的选择器，而不是先弹物料选择框。
+    _routeMaterial(
+      id: 'comp-panel',
+      nodeKey: 'node-comp-panel',
+      actionGroupKey: 'comp-action',
+      goodsCode: 'PANEL',
+      goodsName: '面板',
+      route: 'BUY',
+      controlStage: 'START',
+    ),
+  ];
+  return json;
+}
+
 Map<String, dynamic> _futureCoverageAnalysisJson(
   String route, {
   required bool claimed,
-}) {
-  final json = _analysisJson(const [
+}) {  final json = _analysisJson(const [
     'NOTIFY_SUPPLY',
     'GENERATE_PLAN',
     'CLAIM_SHARED_FUTURE',

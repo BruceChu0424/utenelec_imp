@@ -81,7 +81,22 @@
 
 ---
 
-## 五、示例代码
+## 五、滚动条口径（2026-09-14 全站统一）
+
+本组件向子树注入 `UtenInnerScrollActiveScope`（`ValueNotifier<bool>`：外层头部是否已收完）：
+
+- **表格上滑置顶之前**（外层收头部阶段）**不显示上下滚动条**；
+- **进入表体内滚后**再显示——显示的就是 `MasterDataTableView` 自带的表内竖向滚动条（thumb 大小/位置与表体内容对应，不是页面级滚动条）；
+- 下滚把头部拉回（脱离内滚阶段）后滚动条再次隐藏；
+- 外层无可滚量（无折叠头 / 头部本就装得下）时视为恒处于内滚阶段，滚动条常显；
+- 紧凑回退分支（整页滚 + body 定高内滚）复用同一判定：「收完」= 整页滚到底（表格盒占满视口）；
+- 不在本组件内的独立表格查不到 scope，竖向滚动条维持常显（本就无外滚阶段）。
+
+实现：组件持有/复用外层 `ScrollController`，`pixels >= maxScrollExtent - 0.5`（或 maxScrollExtent≈0）即判「收完」；`MasterDataTableView` 经 `UtenInnerScrollActiveScope.maybeOf` 读取并门控其竖向 `Scrollbar` 的 `thumbVisibility`。
+
+---
+
+## 六、示例代码
 
 **主档详情面板（对齐货品 / 模具 / 客户 / 供应商 分类页）：**
 
@@ -133,7 +148,7 @@ return Padding(
 
 ---
 
-## 六、实现要点 / 避坑
+## 七、实现要点 / 避坑
 
 - **为什么用 `NestedScrollView`**：它是 Flutter 原生的「外层先收、内层后滚，反向内层先回顶、外层再展开」协调机制，与诉求逐条吻合；`floatHeaderSlivers:false` = 平滑跟手。**不要**改用 `SliverFillRemaining`（它不会做这种「先收后滚」的交接）或 `UtenEditableGrid` 的 rect 量测浮层（那是单视图内吸顶，不跨两个滚动视图）。
 - **`body` 必须用注入的 `PrimaryScrollController`**：`NestedScrollView` 给 `body` 注入 inner controller，`body` 的可滚动件必须用 `primary:true`（不传自己的 controller）才能被协调。`MasterDataTableView` 传 `primary:true` 即满足。
@@ -143,6 +158,7 @@ return Padding(
 
 ---
 
-**最后更新**：2026-09-11 · 接入范围扩大到单据详情页（销售 / 委外 / 钱流 / 仓库单据、生产日报、仓库实物历史、仓库销售出库作业）；组件新增「矮视口」与「被头部挤扁」两条紧凑回退触发线 + body 挤扁哨兵（`compactHeightBreakpoint`）。回归测试夹具见 `test/support/collapsing_header_harness.dart`（折叠断言 + 1280x900 / 390x844 / 844x390 三视口 × textScale 1.5 不溢出）。
+**最后更新**：2026-09-14 · 新增滚动条口径（§五）：外层收头部阶段不显示上下滚动条，进入表体内滚后再显示表内滚动条（`UtenInnerScrollActiveScope` 注入 + `MasterDataTableView` 门控）。
+此前：2026-09-11 · 接入范围扩大到单据详情页（销售 / 委外 / 钱流 / 仓库单据、生产日报、仓库实物历史、仓库销售出库作业）；组件新增「矮视口」与「被头部挤扁」两条紧凑回退触发线 + body 挤扁哨兵（`compactHeightBreakpoint`）。回归测试夹具见 `test/support/collapsing_header_harness.dart`（折叠断言 + 1280x900 / 390x844 / 844x390 三视口 × textScale 1.5 不溢出）。
 此前：2026-08-17 · 接入范围扩大到任务/单据页：任务工作台（采购 / 委外 / 仓库，expanded 断点——概览卡收起、筛选行 + 选中操作条吸顶）、订单进度查询（指标卡收起、`ListView(primary: true)` 内滚、分页条常驻底部）、采购 / 仓库 / 销售（订货单）单据列表页（KPI / 统计卡条收起，标题行吸顶，表格 `primary: true` 经 `UtenListTwoPane` 内滚）。
 此前：2026-08-14 · 新增组件。货品 / 模具 / 客户 / 供应商 四个分类详情页接入（卡片折叠 + 搜索行吸顶 + 表格内滚）。扁平主档页（颜色 / 单位 / 仓库 / 币种 / 账户）顶部仅一行搜索条、本就吸顶，不接入。

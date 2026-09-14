@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
@@ -112,22 +113,43 @@ class _ReturnRequestSheetState extends ConsumerState<_ReturnRequestSheet> {
         return;
       }
       final items = <Map<String, dynamic>>[];
+      // 一批可退明细常有十几行：问题行先收集、循环走完再一次说清，逐行 return
+      // 只暴露第一处。数量写得不成数与超过可退量是两类毛病（一类改写法、一类
+      // 改大小），分开汇总；判定口径与逐行拦截时完全一致，只是换了暴露方式。
+      final malformed = <String>[];
+      final overAvailable = <String>[];
       for (final row in _grid.rows) {
         if (row.qty.text.trim().isEmpty) continue;
         final qty = double.tryParse(row.qty.text.trim());
         if (qty == null ||
             !qty.isFinite ||
             qty < 0 ||
-            (qty * 10000 - (qty * 10000).roundToDouble()).abs() > .0000001 ||
-            qty > row.source.availableQty + .0000001) {
-          context.appError(
-            '${row.source.goodsName}本次退料须在 0 至 ${_number(row.source.availableQty)} ${row.source.unitName}之间',
+            (qty * 10000 - (qty * 10000).roundToDouble()).abs() > .0000001) {
+          malformed.add(_rowLabel(row));
+          continue;
+        }
+        if (qty > row.source.availableQty + .0000001) {
+          overAvailable.add(
+            '${_rowLabel(row)}填 ${_number(qty)}，可退 ${_number(row.source.availableQty)} ${row.source.unitName}',
           );
-          return;
+          continue;
         }
         if (qty > 0) {
           items.add({'issuePostingId': row.source.issuePostingId, 'qty': qty});
         }
+      }
+      if (malformed.isNotEmpty || overAvailable.isNotEmpty) {
+        context.appError(
+          [
+            if (malformed.isNotEmpty)
+              '以下 ${malformed.length} 行退料数量填写不合法（不能为负，最多 4 位小数），'
+                  '请改正后再提交：${_joinRowIssues(malformed)}',
+            if (overAvailable.isNotEmpty)
+              '以下 ${overAvailable.length} 行本次退料超过可退数量，'
+                  '请改小后再提交：${_joinRowIssues(overAvailable)}',
+          ].join('\n'),
+        );
+        return;
       }
       if (items.isEmpty) {
         context.appWarning('请填写本次实际退仓数量');
@@ -314,20 +336,47 @@ class _ReturnRequestSheetState extends ConsumerState<_ReturnRequestSheet> {
       width: 145,
       cellBuilder: (_, row) => Text(row.source.warehouseName),
     ),
+    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。退错
+    // 同名不同色的料会把库存加到别的货上，三属性必须同屏且能各自筛。后端对
+    // 缺失颜色回落成 '—'，占位词不进单元（_omitPlaceholder 转 null）；原领料
+    // 单号不是货品属性，跟在名称下面单独一行。
     EditableGridColumn(
       key: 'material',
-      label: '物料 / 原领料单',
-      width: 240,
+      label: '物料名称 / 原领料单',
+      width: 200,
       cellBuilder: (context, row) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(row.source.goodsName),
+          UtenGoodsIdentityCell(
+            name: _omitPlaceholder(row.source.goodsName),
+          ),
           Text(
-            '${row.source.goodsCode} · ${row.source.colorName} · ${row.source.drawNo}',
-            style: Theme.of(context).textTheme.labelSmall,
+            '领料单 ${row.source.drawNo}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
+    ),
+    EditableGridColumn(
+      key: 'goodsCode',
+      label: '编号',
+      width: 130,
+      filterValueOf: (row) => _omitPlaceholder(row.source.goodsCode),
+      cellBuilder: (context, row) =>
+          UtenGoodsAttributeCell(_omitPlaceholder(row.source.goodsCode)),
+    ),
+    EditableGridColumn(
+      key: 'colorName',
+      label: '颜色',
+      width: 96,
+      filterValueOf: (row) => _omitPlaceholder(row.source.colorName),
+      cellBuilder: (context, row) =>
+          UtenGoodsAttributeCell(_omitPlaceholder(row.source.colorName)),
     ),
     EditableGridColumn(
       key: 'unit',
@@ -382,11 +431,30 @@ class _ReturnRequestSheetState extends ConsumerState<_ReturnRequestSheet> {
   ];
 }
 
+/// 汇总文案里的行标识：同一物料可能来自多张领料单（表里就是两行），只报货品名
+/// 找不到是哪一行，故与「物料 / 原领料单」列同口径带上领料单号。
+String _rowLabel(_ReturnRow row) =>
+    '${row.source.goodsName}（领料单 ${row.source.drawNo}）';
+
+/// 批量校验的行问题清单：最多列前 8 条，其余折成「等 N 行」——顶部通知里十几条
+/// 会刷屏，前几条足够定位，改完再提交剩下的还会继续提示。
+String _joinRowIssues(List<String> issues) {
+  const limit = 8;
+  final shown = issues.take(limit).join('；');
+  return issues.length <= limit ? shown : '$shown 等 ${issues.length} 行';
+}
+
 bool _responseUncertain(ApiException error) =>
     error is NetworkException ||
     error is NetworkTimeoutException ||
     error.code == 'INTERNAL' ||
     (error.httpStatus != null && error.httpStatus! >= 500);
+
+/// 后端把缺失的编号/颜色回落成 '—'；身份格不显示占位词，统一转回 null。
+String? _omitPlaceholder(String? value) {
+  final text = value?.trim();
+  return text == null || text.isEmpty || text == '—' ? null : text;
+}
 
 String _number(double value) => value
     .toStringAsFixed(4)

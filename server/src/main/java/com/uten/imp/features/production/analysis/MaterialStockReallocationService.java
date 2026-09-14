@@ -107,7 +107,10 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                   AND analysis.status IN ('ACTIVE', 'PARTIALLY_PLANNED')
                   AND fn_warehouse_same_main(analysis.warehouse_id, :warehouseId)
                   AND material.active = TRUE
-                  AND material.depth = 1
+                  -- 2026-09-13 起让料不再只限第 1 层：深层子件（自制件、
+                  -- 委外件的下层组件）同样可以跨计划互让。第 0 层根供给行
+                  -- 仍走自己的根产出交付通道，不进让料。
+                  AND material.depth >= 1
                   AND material.control_stage NOT IN ('SHIP', 'REFERENCE')
                   AND material.goods_id = :goodsId
                   AND material.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
@@ -206,7 +209,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                   AND analysis.is_deleted = FALSE
                   AND analysis.status IN ('ACTIVE', 'PARTIALLY_PLANNED')
                   AND fn_warehouse_same_main(analysis.warehouse_id, :warehouseId)
-                  AND material.active = TRUE AND material.depth = 1
+                  AND material.active = TRUE AND material.depth >= 1
                   AND material.control_stage NOT IN ('SHIP', 'REFERENCE')
                   AND material.goods_id = :goodsId
                   AND material.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
@@ -332,6 +335,8 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
         if (sourceAnalysisId.equals(request.targetAnalysisId())) {
             throw validation("接受计划必须是另一份物料分析");
         }
+        // 业务原因 2026-09-13 起可选：空/缺省写空串，保留去空格与长度上限。
+        String reason = normalizedReason(request.reason());
         var guard = mutationLocks.acquire(() -> mutationFootprints.forAnalyses(
                 List.of(sourceAnalysisId, request.targetAnalysisId())));
         Map<UUID, MaterialAnalysisService.AnalysisHeader> headers = lockHeaders(
@@ -424,7 +429,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                 .setParameter("colorId", source.colorId())
                 .setParameter("unitId", source.unitId())
                 .setParameter("qty", qty)
-                .setParameter("reason", request.reason().strip())
+                .setParameter("reason", reason)
                 .setParameter("key", request.idempotencyKey())
                 .setParameter("requestHash", requestHash)
                 .setParameter("sourceVersion", request.sourceVersion())
@@ -682,7 +687,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                         MaterialAnalysisService.STATUS_PARTIAL)
                 .contains(source.status())
                 || source.warehouseId() == null || !source.active()
-                || source.depth() != 1
+                || source.depth() < 1
                 || MaterialAnalysisService.STAGE_SHIP.equals(source.controlStage())
                 || MaterialAnalysisService.STAGE_REFERENCE.equals(source.controlStage())) {
             throw conflict("该物料节点当前不能跨计划让料");
@@ -765,7 +770,17 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                 request.targetAnalysisId().toString(),
                 request.targetMaterialLineId().toString(),
                 request.qty().stripTrailingZeros().toPlainString(),
-                request.reason().strip()));
+                normalizedReason(request.reason())));
+    }
+
+    /** 业务原因 2026-09-13 起可选：空/缺省写空串，保留去空格与长度上限。 */
+    private static String normalizedReason(String reason) {
+        if (reason == null) return "";
+        String stripped = reason.strip();
+        if (stripped.length() > 1000) {
+            throw validation("业务原因不能超过 1000 字");
+        }
+        return stripped;
     }
 
     private static String revokeHash(

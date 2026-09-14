@@ -5542,13 +5542,13 @@ abstract class AppLocalizations {
   /// No description provided for @materialIdentityByMaterial.
   ///
   /// In zh, this message translates to:
-  /// **'物料 / 来源'**
+  /// **'物料名称'**
   String get materialIdentityByMaterial;
 
   /// No description provided for @materialIdentityByProduct.
   ///
   /// In zh, this message translates to:
-  /// **'产品 / BOM 层级'**
+  /// **'物料名称'**
   String get materialIdentityByProduct;
 
   /// No description provided for @materialRoute.
@@ -5596,7 +5596,7 @@ abstract class AppLocalizations {
   /// No description provided for @materialToSupply.
   ///
   /// In zh, this message translates to:
-  /// **'建议下单'**
+  /// **'下单数量'**
   String get materialToSupply;
 
   /// No description provided for @materialFutureSupply.
@@ -7116,6 +7116,30 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'交货日期'**
   String get warehouseSubcontractOutboundDeliveryDate;
+
+  /// No description provided for @warehouseSubcontractOutboundGoodsName.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品名称'**
+  String get warehouseSubcontractOutboundGoodsName;
+
+  /// No description provided for @warehouseSubcontractOutboundGoodsCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'编号'**
+  String get warehouseSubcontractOutboundGoodsCode;
+
+  /// No description provided for @warehouseSubcontractOutboundLegacyParentName.
+  ///
+  /// In zh, this message translates to:
+  /// **'历史父件名称'**
+  String get warehouseSubcontractOutboundLegacyParentName;
+
+  /// No description provided for @warehouseSubcontractOutboundLegacyParentCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'父件编号'**
+  String get warehouseSubcontractOutboundLegacyParentCode;
 
   /// No description provided for @warehouseSubcontractOutboundGoods.
   ///

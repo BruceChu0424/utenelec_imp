@@ -2859,10 +2859,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get materialByMaterial => '按物料汇总';
 
   @override
-  String get materialIdentityByMaterial => '物料 / 来源';
+  String get materialIdentityByMaterial => '物料名称';
 
   @override
-  String get materialIdentityByProduct => '产品 / BOM 层级';
+  String get materialIdentityByProduct => '物料名称';
 
   @override
   String get materialRoute => '供应方式';
@@ -2889,7 +2889,7 @@ class AppLocalizationsZh extends AppLocalizations {
       '跟踪下单、财务审批、收货、检验与入库进度；双击行查看明细。下达后仍保留实物缺口，合格入库后更新。';
 
   @override
-  String get materialToSupply => '建议下单';
+  String get materialToSupply => '下单数量';
 
   @override
   String get materialFutureSupply => '在途未到';
@@ -3728,6 +3728,18 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get warehouseSubcontractOutboundDeliveryDate => '交货日期';
+
+  @override
+  String get warehouseSubcontractOutboundGoodsName => '货品名称';
+
+  @override
+  String get warehouseSubcontractOutboundGoodsCode => '编号';
+
+  @override
+  String get warehouseSubcontractOutboundLegacyParentName => '历史父件名称';
+
+  @override
+  String get warehouseSubcontractOutboundLegacyParentCode => '父件编号';
 
   @override
   String get warehouseSubcontractOutboundGoods => '货品';

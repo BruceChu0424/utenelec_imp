@@ -40,32 +40,41 @@ class MaterialReallocationCompletion {
   final bool futureTransfer;
 }
 
-/// 打开跨计划让料工作区。紧凑屏使用安全区底部抽屉，中大屏使用居中弹窗。
-/// 返回服务端最新来源分析；取消返回 null。
+/// 打开跨计划调拨工作区。紧凑屏使用安全区底部抽屉，中大屏使用居中弹窗。
+///
+/// 让出模式（默认）为当前计划的现货寻找接受方；调入模式检索其它计划的
+/// 现货（receiveIntoCurrent）或专属在途（futureTransfer）。加载后自动
+/// 匹配最合适的来源并预填数量；在途模式可多选来源逐笔提交（现货受
+/// 「一个节点仅一条未补齐关系」约束，保持单选）。返回服务端最新来源
+/// 分析；取消返回 null。
 Future<ProductionMaterialAnalysisView?> showMaterialReallocationDialog({
   required BuildContext context,
   required ProductionPlanRepository repository,
   required ProductionMaterialAnalysisView sourceAnalysis,
   required ProductionMaterialAnalysisMaterial sourceMaterial,
   required String sourceProductLabel,
-  required String sourcePathLabel,
   required String Function(double?) qtyText,
   ValueChanged<ProductionMaterialAnalysisView>? onSourceRebased,
   ValueChanged<MaterialReallocationCompletion>? onCompleted,
   bool receiveIntoCurrent = false,
   bool futureTransfer = false,
+  void Function(MaterialReallocationEndpointCandidate candidate)?
+  onOpenSourcePlan,
+  void Function(MaterialReallocationEndpointCandidate candidate)?
+  onOpenSourceDocument,
 }) {
   final body = _MaterialReallocationDialogBody(
     repository: repository,
     sourceAnalysis: sourceAnalysis,
     sourceMaterial: sourceMaterial,
     sourceProductLabel: sourceProductLabel,
-    sourcePathLabel: sourcePathLabel,
     qtyText: qtyText,
     onSourceRebased: onSourceRebased,
     onCompleted: onCompleted,
     receiveIntoCurrent: receiveIntoCurrent || futureTransfer,
     futureTransfer: futureTransfer,
+    onOpenSourcePlan: onOpenSourcePlan,
+    onOpenSourceDocument: onOpenSourceDocument,
   );
   if (context.breakpoint.isCompact) {
     return showModalBottomSheet<ProductionMaterialAnalysisView>(
@@ -108,12 +117,13 @@ class _MaterialReallocationDialogBody extends StatefulWidget {
     required this.sourceAnalysis,
     required this.sourceMaterial,
     required this.sourceProductLabel,
-    required this.sourcePathLabel,
     required this.qtyText,
     this.onSourceRebased,
     this.onCompleted,
     this.receiveIntoCurrent = false,
     this.futureTransfer = false,
+    this.onOpenSourcePlan,
+    this.onOpenSourceDocument,
   });
 
   final bool receiveIntoCurrent;
@@ -122,10 +132,13 @@ class _MaterialReallocationDialogBody extends StatefulWidget {
   final ProductionMaterialAnalysisView sourceAnalysis;
   final ProductionMaterialAnalysisMaterial sourceMaterial;
   final String sourceProductLabel;
-  final String sourcePathLabel;
   final String Function(double?) qtyText;
   final ValueChanged<ProductionMaterialAnalysisView>? onSourceRebased;
   final ValueChanged<MaterialReallocationCompletion>? onCompleted;
+  final void Function(MaterialReallocationEndpointCandidate candidate)?
+  onOpenSourcePlan;
+  final void Function(MaterialReallocationEndpointCandidate candidate)?
+  onOpenSourceDocument;
 
   @override
   State<_MaterialReallocationDialogBody> createState() =>
@@ -143,19 +156,30 @@ class _MaterialReallocationDialogBodyState
   late ProductionMaterialAnalysisView _sourceAnalysis;
   late ProductionMaterialAnalysisMaterial _sourceMaterial;
   final List<MaterialReallocationEndpointCandidate> _candidates = [];
+  final Map<String, MaterialReallocationEndpointCandidate> _byIdentity = {};
   MaterialReallocationEndpointCandidate? _target;
+
+  /// 在途多选：已勾选来源及其数量输入（按候选标识索引）。
+  final Set<String> _selectedIds = {};
+  final Map<String, TextEditingController> _selectedQtyControllers = {};
+
   int _page = 0;
   int _totalPages = 0;
+  int _spotPage = 0;
+  int _spotTotalPages = 0;
+  int _futurePage = 0;
+  int _futureTotalPages = 0;
   int _loadEpoch = 0;
   bool _loading = true;
   bool _loadingMore = false;
   bool _submitting = false;
   bool _uncertain = false;
-  bool _allowLate = false;
   bool get _locked => _submitting || _uncertain;
   bool _dirty = false;
   bool _allowPop = false;
   bool _showValidation = false;
+  int _batchDone = 0;
+  int _batchTotal = 0;
   String? _loadError;
   String? _submitError;
 
@@ -172,12 +196,16 @@ class _MaterialReallocationDialogBodyState
     _searchController.dispose();
     _qtyController.dispose();
     _reasonController.dispose();
+    for (final controller in _selectedQtyControllers.values) {
+      controller.dispose();
+    }
     _candidateScrollController.dispose();
     super.dispose();
   }
 
   String get _counterpartRole => widget.receiveIntoCurrent ? '供料计划' : '接受计划';
   String get _currentRole => widget.receiveIntoCurrent ? '接受计划' : '让出计划';
+  bool get _multiSelect => widget.futureTransfer;
 
   double get _maxQty {
     final target = _target;
@@ -186,6 +214,23 @@ class _MaterialReallocationDialogBodyState
         ? target.sourceLendableQty
         : target.shortageQty;
   }
+
+  /// 调入模式的本计划待补数：优先物理缺口，无缺口时用建议补供量
+  /// （在途调入入口即按该口径放开）。
+  double get _remainingNeed {
+    if (!widget.receiveIntoCurrent) {
+      return _sourceMaterial.allocatedAvailableQty;
+    }
+    return _sourceMaterial.shortageQty > 0
+        ? _sourceMaterial.shortageQty
+        : _sourceMaterial.additionalSupplyRecommendedQty;
+  }
+
+  bool get _hasMorePages => widget.futureTransfer
+      ? _futurePage < _futureTotalPages
+      : widget.receiveIntoCurrent
+      ? _spotPage < _spotTotalPages
+      : _page < _totalPages;
 
   bool _sameCandidate(
     MaterialReallocationEndpointCandidate left,
@@ -211,7 +256,7 @@ class _MaterialReallocationDialogBodyState
   }) async {
     if (_uncertain) return;
     final epoch = ++_loadEpoch;
-    final nextPage = reset ? 1 : _page + 1;
+    final keyword = _searchController.text;
     final selected = preserveSelection ? _target : null;
     setState(() {
       if (reset) {
@@ -222,30 +267,41 @@ class _MaterialReallocationDialogBodyState
       }
     });
     try {
-      final page = widget.futureTransfer
-          ? await widget.repository.materialFutureTransferSources(
-              targetAnalysisId: _sourceAnalysis.analysisId,
-              targetMaterialId: _sourceMaterial.materialLineId,
-              page: nextPage,
-              keyword: _searchController.text,
-            )
-          : widget.receiveIntoCurrent
+      // 每种入口只查自己的一路候选：让出查接受方、现货调入查供料方、
+      // 在途调入查专属份额。加载后自动匹配最合适的来源并预填数量。
+      final spotPage = widget.receiveIntoCurrent && !widget.futureTransfer
           ? await widget.repository.materialCrossReallocationSources(
               targetAnalysisId: _sourceAnalysis.analysisId,
               targetMaterialLineId: _sourceMaterial.materialLineId,
-              page: nextPage,
-              keyword: _searchController.text,
+              page: reset ? 1 : _spotPage + 1,
+              keyword: keyword,
             )
-          : await widget.repository.materialCrossReallocationCandidates(
+          : null;
+      final futurePage = widget.futureTransfer
+          ? await widget.repository.materialFutureTransferSources(
+              targetAnalysisId: _sourceAnalysis.analysisId,
+              targetMaterialId: _sourceMaterial.materialLineId,
+              page: reset ? 1 : _futurePage + 1,
+              keyword: keyword,
+            )
+          : null;
+      final candidatePage = !widget.receiveIntoCurrent
+          ? await widget.repository.materialCrossReallocationCandidates(
               sourceAnalysisId: _sourceAnalysis.analysisId,
               sourceMaterialLineId: _sourceMaterial.materialLineId,
-              page: nextPage,
-              keyword: _searchController.text,
-            );
+              page: reset ? 1 : _page + 1,
+              keyword: keyword,
+            )
+          : null;
       if (!mounted || epoch != _loadEpoch) return;
       setState(() {
         if (reset) _candidates.clear();
-        for (final candidate in page.items) {
+        final incoming = <MaterialReallocationEndpointCandidate>[
+          if (spotPage != null) ...spotPage.items,
+          if (futurePage != null) ...futurePage.items,
+          if (candidatePage != null) ...candidatePage.items,
+        ];
+        for (final candidate in incoming) {
           final index = _candidates.indexWhere(
             (existing) => _sameCandidate(existing, candidate),
           );
@@ -255,8 +311,19 @@ class _MaterialReallocationDialogBodyState
             _candidates.add(candidate);
           }
         }
-        _page = page.page;
-        _totalPages = page.totalPages;
+        if (spotPage != null) {
+          _spotPage = spotPage.page;
+          _spotTotalPages = spotPage.totalPages;
+        }
+        if (futurePage != null) {
+          _futurePage = futurePage.page;
+          _futureTotalPages = futurePage.totalPages;
+        }
+        if (candidatePage != null) {
+          _page = candidatePage.page;
+          _totalPages = candidatePage.totalPages;
+        }
+        _rebuildIdentityIndex();
         _loading = false;
         _loadingMore = false;
         _loadError = null;
@@ -266,7 +333,15 @@ class _MaterialReallocationDialogBodyState
           );
           _target = matches.isEmpty ? null : matches.first;
           if (_target == null) {
-            _submitError = '原$_counterpartRole已不再符合让料条件，请重新选择；数量和原因已保留。';
+            _submitError = '原$_counterpartRole已不再符合调拨条件，请重新选择；数量和原因已保留。';
+          }
+        } else if (_target == null && !_multiSelect) {
+          _autoSelectBest();
+        }
+        if (_multiSelect) {
+          _pruneMissingSelections();
+          if (selected == null && _selectedIds.isEmpty && reset) {
+            _autoSelectCovering();
           }
         }
       });
@@ -283,27 +358,146 @@ class _MaterialReallocationDialogBodyState
     }
   }
 
+  void _rebuildIdentityIndex() {
+    _byIdentity
+      ..clear()
+      ..addEntries(
+        _candidates.map(
+          (candidate) => MapEntry(_candidateIdentity(candidate), candidate),
+        ),
+      );
+  }
+
+  /// 多选模式下清理已消失的勾选；数量输入保留到弹窗销毁，避免动画切换
+  /// 期间释放仍被旧行引用的控制器。
+  void _pruneMissingSelections() {
+    final vanished = _selectedIds
+        .where((identity) => !_byIdentity.containsKey(identity))
+        .toList();
+    _selectedIds.removeAll(vanished);
+    if (vanished.isNotEmpty && _submitError == null) {
+      _submitError = '部分原$_counterpartRole已不再符合条件，已自动取消勾选；请核对后提交。';
+    }
+  }
+
+  double _coverageOf(MaterialReallocationEndpointCandidate candidate) =>
+      candidate.sourceLendableQty < candidate.shortageQty
+      ? candidate.sourceLendableQty
+      : candidate.shortageQty;
+
+  /// 自动判断最合适的来源（单选模式）：现货优先于在途、可覆盖缺口
+  /// 更多者优先、交期更早者优先、在途避免晚到或交期不明。
+  void _autoSelectBest() {
+    MaterialReallocationEndpointCandidate? best;
+    for (final candidate in _candidates) {
+      if (!_candidateHasCas(candidate)) continue;
+      if (best == null || _preferredOver(candidate, best)) best = candidate;
+    }
+    if (best == null) return;
+    _target = best;
+    _qtyController.text = widget.qtyText(_maxQty);
+  }
+
+  /// 自动判断（在途多选）：按优先级依次勾选来源直到覆盖本计划待补数。
+  void _autoSelectCovering() {
+    final ordered = [..._candidates.where(_candidateHasCas)]
+      ..sort((left, right) => _preferredOver(left, right) ? -1 : 1);
+    var remaining = _remainingNeed;
+    for (final candidate in ordered) {
+      if (remaining <= 0) break;
+      final take = _coverageOf(candidate) < remaining
+          ? _coverageOf(candidate)
+          : remaining;
+      if (take <= 0) continue;
+      final identity = _candidateIdentity(candidate);
+      _selectedIds.add(identity);
+      _selectedQtyControllers.putIfAbsent(
+        identity,
+        () => TextEditingController(text: widget.qtyText(take)),
+      );
+      remaining -= take;
+    }
+  }
+
+  bool _preferredOver(
+    MaterialReallocationEndpointCandidate candidate,
+    MaterialReallocationEndpointCandidate incumbent,
+  ) {
+    final candidateFuture = candidate is MaterialFutureTransferSource;
+    final incumbentFuture = incumbent is MaterialFutureTransferSource;
+    if (candidateFuture != incumbentFuture) return incumbentFuture;
+    if (candidateFuture && incumbentFuture) {
+      final candidateLate = candidate.lateOrUnknown;
+      final incumbentLate = incumbent.lateOrUnknown;
+      if (candidateLate != incumbentLate) return incumbentLate;
+    }
+    final coverage = _coverageOf(candidate);
+    final incumbentCoverage = _coverageOf(incumbent);
+    if (coverage != incumbentCoverage) return coverage > incumbentCoverage;
+    final date = candidate.deliveryDate?.trim() ?? '';
+    final incumbentDate = incumbent.deliveryDate?.trim() ?? '';
+    if (date.isEmpty != incumbentDate.isEmpty) return incumbentDate.isEmpty;
+    if (date.isNotEmpty && date != incumbentDate) {
+      return date.compareTo(incumbentDate) < 0;
+    }
+    return false;
+  }
+
   void _onSearchChanged(String _) {
     unawaited(_loadCandidates(reset: true));
   }
 
   void _selectCandidate(String? identity) {
     if (_locked) return;
-    MaterialReallocationEndpointCandidate? selected;
-    for (final candidate in _candidates) {
-      if (_candidateIdentity(candidate) == identity) {
-        selected = candidate;
-        break;
-      }
-    }
+    final selected = identity == null ? null : _byIdentity[identity];
     if (selected == null || !_candidateHasCas(selected)) return;
     setState(() {
       _target = selected;
       _dirty = true;
       _submitError = null;
       _qtyController.text = widget.qtyText(_maxQty);
-      _allowLate = false;
     });
+  }
+
+  void _toggleCandidate(String? identity) {
+    if (_locked || identity == null) return;
+    final candidate = _byIdentity[identity];
+    if (candidate == null || !_candidateHasCas(candidate)) return;
+    setState(() {
+      if (_selectedIds.contains(identity)) {
+        _selectedIds.remove(identity);
+      } else {
+        _selectedIds.add(identity);
+        _selectedQtyControllers.putIfAbsent(
+          identity,
+          () => TextEditingController(
+            text: widget.qtyText(_defaultMultiQty(candidate, identity)),
+          ),
+        );
+      }
+      _dirty = true;
+      _submitError = null;
+    });
+  }
+
+  /// 手动勾选时的默认数量：本计划待补数扣除其它已勾选来源后，该来源
+  /// 还能贡献多少。
+  double _defaultMultiQty(
+    MaterialReallocationEndpointCandidate candidate,
+    String identity,
+  ) {
+    var taken = 0.0;
+    for (final other in _selectedIds) {
+      if (other == identity) continue;
+      taken +=
+          double.tryParse(_selectedQtyControllers[other]?.text.trim() ?? '') ??
+          0;
+    }
+    final remaining = (_remainingNeed - taken)
+        .clamp(0.0, _remainingNeed)
+        .toDouble();
+    final coverage = _coverageOf(candidate);
+    return coverage < remaining ? coverage : remaining;
   }
 
   String _candidateIdentity(MaterialReallocationEndpointCandidate candidate) =>
@@ -313,30 +507,54 @@ class _MaterialReallocationDialogBodyState
 
   String? _validateQty(String? raw) {
     final qty = double.tryParse(raw?.trim() ?? '');
-    if (qty == null || !qty.isFinite || qty <= 0) return '请输入大于 0 的让料数量';
+    if (qty == null || !qty.isFinite || qty <= 0) return '请输入大于 0 的调拨数量';
     if (!RegExp(r'^\d+(\.\d{1,4})?$').hasMatch(raw?.trim() ?? '')) {
       return '数量最多支持 4 位小数';
     }
-    if (_target is MaterialFutureTransferSource &&
-        (_target! as MaterialFutureTransferSource).lateOrUnknown &&
-        !_allowLate) {
-      return '请先明确接受晚到或交期未明确的供给';
-    }
     if (qty > _maxQty) {
-      return '最多可让 ${widget.qtyText(_maxQty)}'
-          '(不超过服务端权威可让量和接受计划缺口)';
+      return '最多可调 ${widget.qtyText(_maxQty)}（不超过服务端权威可调量和本计划缺口）';
     }
     return null;
   }
 
+  String? _validateMultiQty(
+    MaterialFutureTransferSource candidate,
+    String? raw,
+  ) {
+    final qty = double.tryParse(raw?.trim() ?? '');
+    if (qty == null || !qty.isFinite || qty <= 0) return '请输入大于 0 的数量';
+    if (!RegExp(r'^\d+(\.\d{1,4})?$').hasMatch(raw?.trim() ?? '')) {
+      return '数量最多支持 4 位小数';
+    }
+    final max = candidate.availableQty < candidate.targetUncoveredQty
+        ? candidate.availableQty
+        : candidate.targetUncoveredQty;
+    if (qty > max) {
+      return '最多可调 ${widget.qtyText(max)}（不超过该来源可调量和本计划缺口）';
+    }
+    return null;
+  }
+
+  /// 业务原因 2026-09-13 起选填：仅保留长度上限。
   String? _validateReason(String? raw) {
     final reason = raw?.trim() ?? '';
-    if (reason.length < 2) return '请填写至少 2 个字的业务原因';
     if (reason.length > 1000) return '业务原因不能超过 1000 个字';
     return null;
   }
 
+  double get _selectedTotal => _selectedIds.fold(0, (sum, identity) {
+    return sum +
+        (double.tryParse(
+              _selectedQtyControllers[identity]?.text.trim() ?? '',
+            ) ??
+            0);
+  });
+
   Future<void> _submit() async {
+    if (_multiSelect) {
+      await _submitBatch();
+      return;
+    }
     final target = _target;
     if (target == null || _submitting) return;
     setState(() {
@@ -346,8 +564,9 @@ class _MaterialReallocationDialogBodyState
     if (_formKey.currentState?.validate() != true) return;
     final qty = double.parse(_qtyController.text.trim());
     final reason = _reasonController.text.trim();
+    final isFuture = target is MaterialFutureTransferSource;
     final key = businessIdempotencyKey(
-      widget.futureTransfer
+      isFuture
           ? 'material-analysis-private-future-transfer'
           : widget.receiveIntoCurrent
           ? 'material-analysis-cross-reallocation-receive'
@@ -361,21 +580,20 @@ class _MaterialReallocationDialogBodyState
         target.version,
         target.fingerprint,
         target.materialLineId,
-        if (target is MaterialFutureTransferSource) target.sourceAllocationId,
-        if (widget.futureTransfer) _allowLate,
+        if (isFuture) target.sourceAllocationId,
         qty,
         reason,
       ].join('|'),
     );
     setState(() => _submitting = true);
     try {
-      final view = widget.futureTransfer
+      final view = isFuture
           ? await widget.repository.createMaterialFutureTransfer(
               targetAnalysis: _sourceAnalysis,
               targetMaterialId: _sourceMaterial.materialLineId,
-              source: target as MaterialFutureTransferSource,
+              source: target,
               qty: qty,
-              allowLateSupply: _allowLate,
+              allowLateSupply: true,
               reason: reason,
               idempotencyKey: key,
             )
@@ -416,7 +634,7 @@ class _MaterialReallocationDialogBodyState
               ? target.displayAnalysisLabel
               : widget.sourceProductLabel,
           idempotencyKey: key,
-          futureTransfer: widget.futureTransfer,
+          futureTransfer: isFuture,
         ),
       );
       _finish(view);
@@ -436,9 +654,156 @@ class _MaterialReallocationDialogBodyState
               (error.httpStatus ?? 0) >= 500;
           _submitError = _uncertain
               ? '暂未确认调拨结果，原来源、数量和请求已保留，请同键重试确认。'
-              : productionErrorMessage(error, fallback: '跨计划让料失败，请重试');
+              : productionErrorMessage(error, fallback: '跨计划调拨失败，请重试');
         });
       }
+    }
+  }
+
+  /// 在途多选：逐笔提交，每笔独立幂等键；成功一笔就用服务端返回的接收方
+  /// 快照重基版本，再提交下一笔。失败时保留剩余勾选，同键重试不重复调入。
+  Future<void> _submitBatch() async {
+    if (_submitting) return;
+    setState(() {
+      _showValidation = true;
+      _submitError = null;
+    });
+    if (_formKey.currentState?.validate() != true) return;
+    final entries = <(String, MaterialFutureTransferSource, double)>[];
+    for (final identity in _selectedIds.toList()) {
+      final candidate = _byIdentity[identity];
+      if (candidate is! MaterialFutureTransferSource) continue;
+      final qty = double.tryParse(
+        _selectedQtyControllers[identity]?.text.trim() ?? '',
+      );
+      if (qty == null || qty <= 0) continue;
+      entries.add((identity, candidate, qty));
+    }
+    if (entries.isEmpty) return;
+    final total = _selectedTotal;
+    if (total > _remainingNeed + 0.00005) {
+      setState(() {
+        _submitError =
+            '合计调入 ${widget.qtyText(total)} 超过本计划待补 ${widget.qtyText(_remainingNeed)}，请调小数量';
+      });
+      return;
+    }
+    final reason = _reasonController.text.trim();
+    setState(() {
+      _submitting = true;
+      _batchDone = 0;
+      _batchTotal = entries.length;
+    });
+    ProductionMaterialAnalysisView? lastView;
+    try {
+      for (final (identity, candidate, qty) in entries) {
+        final key = businessIdempotencyKey(
+          'material-analysis-private-future-transfer',
+          [
+            _sourceAnalysis.analysisId,
+            _sourceAnalysis.version,
+            _sourceAnalysis.fingerprint,
+            _sourceMaterial.materialLineId,
+            candidate.analysisId,
+            candidate.version,
+            candidate.fingerprint,
+            candidate.materialLineId,
+            candidate.sourceAllocationId,
+            qty,
+            reason,
+          ].join('|'),
+        );
+        final view = await widget.repository.createMaterialFutureTransfer(
+          targetAnalysis: _sourceAnalysis,
+          targetMaterialId: _sourceMaterial.materialLineId,
+          source: candidate,
+          qty: qty,
+          allowLateSupply: true,
+          reason: reason,
+          idempotencyKey: key,
+        );
+        if (!mounted) return;
+        widget.onCompleted?.call(
+          MaterialReallocationCompletion(
+            sourceAnalysisId: candidate.analysisId,
+            sourceMaterialLineId: candidate.materialLineId,
+            targetAnalysisId: _sourceAnalysis.analysisId,
+            targetMaterialLineId: _sourceMaterial.materialLineId,
+            quantity: qty,
+            sourceLabel: candidate.displayAnalysisLabel,
+            idempotencyKey: key,
+            futureTransfer: true,
+          ),
+        );
+        lastView = view;
+        _rebaseFromView(view);
+        setState(() {
+          _batchDone++;
+          _selectedIds.remove(identity);
+        });
+      }
+      _finish(lastView);
+    } catch (error) {
+      if (!mounted) return;
+      if (error is ApiException && error.code == 'CONFLICT') {
+        await _recoverConflictBatch(error, entries.length);
+      } else {
+        // 与单笔同样的未知回执口径：冻结数量/来源/原因，重试沿用原幂等键。
+        setState(() {
+          _submitting = false;
+          _uncertain =
+              error is! ApiException ||
+              error is NetworkException ||
+              error is NetworkTimeoutException ||
+              error.code == 'INTERNAL' ||
+              (error.httpStatus ?? 0) >= 500;
+          if (_uncertain) {
+            _submitError =
+                '已提交 $_batchDone/${entries.length} 笔；剩余结果未知，'
+                '已冻结数量和来源，请同键重试确认，不会重复调入。';
+          } else {
+            _submitError =
+                '已提交 $_batchDone/${entries.length} 笔；余下未提交。'
+                '（${productionErrorMessage(error, fallback: '请重试')}）';
+          }
+        });
+      }
+    }
+  }
+
+  void _rebaseFromView(ProductionMaterialAnalysisView view) {
+    _sourceAnalysis = view;
+    for (final material in view.materials) {
+      if (material.materialLineId == _sourceMaterial.materialLineId) {
+        _sourceMaterial = material;
+        break;
+      }
+    }
+    widget.onSourceRebased?.call(view);
+  }
+
+  Future<void> _recoverConflictBatch(ApiException conflict, int planned) async {
+    try {
+      final latest = await widget.repository.materialAnalysisDetail(
+        _sourceAnalysis.analysisId,
+      );
+      if (!mounted) return;
+      _rebaseFromView(latest);
+      await _loadCandidates(reset: true, preserveSelection: true);
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _submitError =
+            '库存或计划状态已变化，已提交 $_batchDone/$planned 笔；剩余来源已按最新候选刷新，数量保留，请核对后再次确认。';
+      });
+    } catch (reloadError) {
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _submitError =
+            '${conflict.message}；加载最新计划失败：'
+            '${productionErrorMessage(reloadError, fallback: '请稍后重试')}';
+      });
     }
   }
 
@@ -482,9 +847,9 @@ class _MaterialReallocationDialogBodyState
     if (_dirty) {
       final discard = await UtenDialog.show(
         context,
-        title: '放弃未提交的让料内容？',
-        content: const Text('已填写的接受计划、数量和业务原因不会保存。'),
-        confirmLabel: '放弃并关闭',
+        title: widget.receiveIntoCurrent ? '放弃未提交的调入内容？' : '放弃未提交的让料内容？',
+        content: const Text('已选择的来源、数量和业务原因不会保存。'),
+        confirmLabel: '放弃并返回',
       );
       if (discard != true || !mounted) return;
     }
@@ -502,6 +867,9 @@ class _MaterialReallocationDialogBodyState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final hasSelection = _multiSelect
+        ? _selectedIds.isNotEmpty
+        : _target != null;
     return PopScope<ProductionMaterialAnalysisView?>(
       canPop: _allowPop,
       onPopInvokedWithResult: (didPop, _) {
@@ -519,33 +887,20 @@ class _MaterialReallocationDialogBodyState
               const Divider(height: 1),
               _sourceSummary(theme),
               const Divider(height: 1),
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final horizontal = constraints.maxWidth >= 760;
-                    final candidates = _candidatePanel(theme);
-                    final form = _formPanel(theme);
-                    if (horizontal) {
-                      return Row(
-                        children: [
-                          Expanded(flex: 11, child: candidates),
-                          const VerticalDivider(width: 1),
-                          Expanded(flex: 9, child: form),
-                        ],
-                      );
-                    }
-                    return Column(
-                      children: [
-                        Expanded(flex: 5, child: candidates),
-                        const Divider(height: 1),
-                        Expanded(flex: 6, child: form),
-                      ],
-                    );
-                  },
+              Expanded(child: _candidatePanel(theme)),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                transitionBuilder: (child, animation) => SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, 1),
+                    end: Offset.zero,
+                  ).animate(animation),
+                  child: child,
                 ),
+                child: hasSelection
+                    ? _selectionPanel(theme)
+                    : const SizedBox(width: double.infinity),
               ),
-              const Divider(height: 1),
-              _actions(theme),
             ],
           ),
         ),
@@ -555,27 +910,38 @@ class _MaterialReallocationDialogBodyState
 
   Widget _header(ThemeData theme) => Padding(
     padding: const EdgeInsets.fromLTRB(
-      UtenSpacing.s20,
+      UtenSpacing.s12,
       UtenSpacing.s12,
       UtenSpacing.s8,
       UtenSpacing.s12,
     ),
     child: Row(
       children: [
+        IconButton(
+          tooltip: '返回',
+          onPressed: _locked ? null : _requestClose,
+          icon: const Icon(Icons.arrow_back_rounded),
+        ),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                widget.futureTransfer ? '调整其他计划专属在途' : '跨计划让料',
+                widget.futureTransfer
+                    ? '调入其他计划在途'
+                    : widget.receiveIntoCurrent
+                    ? '从其他计划调入'
+                    : '跨计划让料',
                 style: theme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
               ),
               Text(
                 widget.futureTransfer
-                    ? '专属份额改给本计划；原计划缺口另行补供，未实收前不计现货。'
-                    : '让出后原计划进入优先待补；接受计划无需返还。',
+                    ? '已自动匹配可调入的专属在途；可多选，到货并检验合格后生效。'
+                    : widget.receiveIntoCurrent
+                    ? '已自动匹配可调入的现货来源；确认后立即生效。'
+                    : '让出后本计划优先待补；接受计划无需返还。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -583,51 +949,71 @@ class _MaterialReallocationDialogBodyState
             ],
           ),
         ),
-        IconButton(
-          tooltip: '关闭跨计划让料',
-          onPressed: _locked ? null : _requestClose,
-          icon: const Icon(Icons.close_rounded),
-        ),
       ],
     ),
   );
 
-  Widget _sourceSummary(ThemeData theme) => Semantics(
-    container: true,
-    label:
-        '$_currentRole：${widget.sourceProductLabel}，'
-        '${_sourceMaterial.goodsName ?? _sourceMaterial.goodsCode ?? '物料'}，'
-        '${widget.receiveIntoCurrent ? '当前缺口' : '现货覆盖'} '
-        '${widget.qtyText(widget.receiveIntoCurrent ? _sourceMaterial.shortageQty : _sourceMaterial.allocatedAvailableQty)}',
-    child: Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      color: theme.colorScheme.surfaceContainerLow,
-      child: Wrap(
-        spacing: UtenSpacing.s16,
-        runSpacing: UtenSpacing.s4,
+  Widget _sourceSummary(ThemeData theme) {
+    final receiving = widget.receiveIntoCurrent;
+    final label = receiving
+        ? (_sourceMaterial.shortageQty > 0 ? '本计划缺口 ' : '尚需补供 ')
+        : '现货覆盖 ';
+    final qty = receiving
+        ? (_sourceMaterial.shortageQty > 0
+              ? _sourceMaterial.shortageQty
+              : _sourceMaterial.additionalSupplyRecommendedQty)
+        : _sourceMaterial.allocatedAvailableQty;
+    final numberColor = receiving
+        ? theme.colorScheme.error
+        : theme.colorScheme.primary;
+    final needQty = Text.rich(
+      TextSpan(
+        style: theme.textTheme.titleSmall,
         children: [
-          Text(
-            '$_currentRole：${widget.sourceProductLabel}',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
+          TextSpan(text: label),
+          TextSpan(
+            text: widget.qtyText(qty),
+            style: TextStyle(
+              color: numberColor,
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
             ),
           ),
-          Text('路径：${widget.sourcePathLabel}'),
-          Text(
-            '物料：${_sourceMaterial.goodsName ?? _sourceMaterial.goodsCode ?? '未命名物料'}',
-          ),
-          Text(
-            widget.futureTransfer
-                ? '本计划物理缺口：${widget.qtyText(_sourceMaterial.shortageQty)}；尚需安排 ${widget.qtyText(_sourceMaterial.additionalSupplyRecommendedQty)}'
-                : widget.receiveIntoCurrent
-                ? '本计划缺口：${widget.qtyText(_sourceMaterial.shortageQty)}'
-                : '现货覆盖：${widget.qtyText(_sourceMaterial.allocatedAvailableQty)}',
-          ),
+          if (_sourceMaterial.unitName?.trim().isNotEmpty == true)
+            TextSpan(text: ' ${_sourceMaterial.unitName!.trim()}'),
         ],
       ),
-    ),
-  );
+    );
+    return Semantics(
+      container: true,
+      label:
+          '$_currentRole：${widget.sourceProductLabel}，'
+          '${_sourceMaterial.goodsName ?? _sourceMaterial.goodsCode ?? '物料'}，'
+          '$label${widget.qtyText(qty)}',
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        color: theme.colorScheme.surfaceContainerLow,
+        child: Wrap(
+          spacing: UtenSpacing.s16,
+          runSpacing: UtenSpacing.s4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              '$_currentRole：${widget.sourceProductLabel}',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            Text(
+              '物料：${_sourceMaterial.goodsName ?? _sourceMaterial.goodsCode ?? '未命名物料'}',
+            ),
+            needQty,
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _candidatePanel(ThemeData theme) => Padding(
     padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -679,13 +1065,131 @@ class _MaterialReallocationDialogBodyState
         key: const Key('cross-reallocation-candidates-empty'),
         icon: Icons.inventory_2_outlined,
         text: widget.futureTransfer
-            ? '没有可调整的其他计划专属在途。仅可选尚未实收、仍有可调整份额的正式来源；公共余量请使用“采用公共在途”。'
+            ? '暂无可调入的其他计划专属在途。\n'
+                  '只有已批准、未实收且仍有份额的来源可调；公共余量请从「从公共在途中调入」采用。'
             : widget.receiveIntoCurrent
-            ? '没有可调入的其它计划现货。\n'
-                  '供料计划须在同主仓范围、同货品/颜色/单位，持有尚未正式预留的原始合格库存；已有未补齐让料或分析内调配的节点须先完成或撤销。\n'
-                  '已正式预留、已领或在制的料受保护。若旧计划尚未领料，可从原计划详情按原取消流程解除正式占用，权益恢复后再调入。已下达但仍等待物料的计划可以参与让料。'
-            : '没有可接受这批料的其它计划。\n'
-                  '候选必须同主仓范围、同货品/颜色/单位，并且仍有真实缺口。',
+            ? '暂无可调入的其他计划现货。\n'
+                  '同主仓、同货品/颜色/单位且未被正式预留的现货才会出现；已有未补齐的调入关系时须先完成或撤销。'
+            : '没有符合条件的其它计划。\n'
+                  '候选须同主仓范围、同货品/颜色/单位，且仍有真实缺口。',
+      );
+    }
+    return ListView.separated(
+      key: const Key('cross-reallocation-candidates-list'),
+      controller: _candidateScrollController,
+      itemCount: _candidates.length + (_hasMorePages ? 1 : 0),
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        if (index == _candidates.length) {
+          return Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s8),
+            child: UtenButton(
+              key: const Key('cross-reallocation-load-more'),
+              size: UtenButtonSize.large,
+              type: UtenButtonType.ghost,
+              isLoading: _loadingMore,
+              isExpanded: true,
+              onPressed: _loadingMore || _locked
+                  ? null
+                  : () => _loadCandidates(reset: false),
+              child: Text('加载更多$_counterpartRole'),
+            ),
+          );
+        }
+        return _candidateTile(theme, _candidates[index]);
+      },
+    );
+  }
+
+  Widget _candidateTile(
+    ThemeData theme,
+    MaterialReallocationEndpointCandidate candidate,
+  ) {
+    final identity = _candidateIdentity(candidate);
+    final enabled = _candidateHasCas(candidate) && !_locked;
+    final isFuture = candidate is MaterialFutureTransferSource;
+    if (!_candidateHasCas(candidate)) {
+      return ListTile(
+        key: ValueKey('candidate-stale-$identity'),
+        dense: true,
+        title: const Text('候选快照已失效，请重新加载'),
+      );
+    }
+    final secondaryDetails = <String>[
+      if (candidate.productLabel?.trim().isNotEmpty == true)
+        candidate.productLabel!.trim(),
+      if (isFuture && candidate.documentNo?.trim().isNotEmpty == true)
+        candidate.documentNo!.trim(),
+      if (candidate.deliveryDate?.trim().isNotEmpty == true)
+        '${isFuture ? '预计到货' : '交期'} ${candidate.deliveryDate}',
+    ];
+    // 主行与选择框同排垂直居中：来源名大字在左，可调数量加粗着色居右，
+    // 货品名/单号/交期合并为一行小字副行。
+    final title = Row(
+      children: [
+        Expanded(
+          child: Text(
+            candidate.displayAnalysisLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        const SizedBox(width: UtenSpacing.s8),
+        Text(
+          '${isFuture ? '可调' : '可让'} ${widget.qtyText(candidate.sourceLendableQty)}',
+          style: theme.textTheme.titleSmall?.copyWith(
+            color: theme.colorScheme.primary,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        if (widget.onOpenSourcePlan != null)
+          IconButton(
+            key: ValueKey('candidate-jump-plan-$identity'),
+            tooltip: '查看来源计划',
+            visualDensity: VisualDensity.compact,
+            iconSize: 20,
+            onPressed: () => widget.onOpenSourcePlan!(candidate),
+            icon: const Icon(Icons.open_in_new_rounded),
+          ),
+        if (widget.onOpenSourceDocument != null &&
+            isFuture &&
+            candidate.documentId?.trim().isNotEmpty == true)
+          IconButton(
+            key: ValueKey('candidate-jump-doc-$identity'),
+            tooltip: '查看来源采购/委外单',
+            visualDensity: VisualDensity.compact,
+            iconSize: 20,
+            onPressed: () => widget.onOpenSourceDocument!(candidate),
+            icon: const Icon(Icons.receipt_long_outlined),
+          ),
+      ],
+    );
+    final subtitle = secondaryDetails.isEmpty
+        ? null
+        : Text(
+            secondaryDetails.join(' · '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          );
+    if (_multiSelect) {
+      return CheckboxListTile(
+        key: ValueKey('future-transfer-candidate-$identity'),
+        value: _selectedIds.contains(identity),
+        onChanged: enabled ? (_) => _toggleCandidate(identity) : null,
+        dense: true,
+        controlAffinity: ListTileControlAffinity.leading,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s8,
+          vertical: UtenSpacing.s4,
+        ),
+        title: title,
+        subtitle: subtitle,
       );
     }
     return RadioGroup<String>(
@@ -693,240 +1197,341 @@ class _MaterialReallocationDialogBodyState
       onChanged: (value) {
         if (!_locked) _selectCandidate(value);
       },
-      child: ListView.separated(
-        key: const Key('cross-reallocation-candidates-list'),
-        controller: _candidateScrollController,
-        itemCount: _candidates.length + (_page < _totalPages ? 1 : 0),
-        separatorBuilder: (_, _) => const Divider(height: 1),
-        itemBuilder: (context, index) {
-          if (index == _candidates.length) {
-            return Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s8),
-              child: UtenButton(
-                key: const Key('cross-reallocation-load-more'),
-                size: UtenButtonSize.large,
-                type: UtenButtonType.ghost,
-                isLoading: _loadingMore,
-                isExpanded: true,
-                onPressed: _loadingMore || _locked
-                    ? null
-                    : () => _loadCandidates(reset: false),
-                child: Text('加载更多$_counterpartRole'),
-              ),
-            );
-          }
-          final candidate = _candidates[index];
-          final enabled = _candidateHasCas(candidate) && !_locked;
-          final details = [
-            if (candidate.productLabel?.trim().isNotEmpty == true)
-              candidate.productLabel!.trim(),
-            if (candidate.pathLabel?.trim().isNotEmpty == true)
-              candidate.pathLabel!.trim(),
-            '${widget.receiveIntoCurrent ? '该计划' : '本计划'}可让 ${widget.qtyText(candidate.sourceLendableQty)}',
-            '${widget.receiveIntoCurrent ? '本计划' : '对方'}${widget.futureTransfer ? '尚需安排' : '缺'} ${widget.qtyText(candidate.shortageQty)}',
-            if (candidate.deliveryDate?.trim().isNotEmpty == true)
-              '交期 ${candidate.deliveryDate}',
-            if (candidate.warehouseName?.trim().isNotEmpty == true)
-              candidate.warehouseName!.trim(),
-            if (candidate is MaterialFutureTransferSource) candidate.stageLabel,
-            if (candidate is MaterialFutureTransferSource &&
-                candidate.lateOrUnknown)
-              '晚到或交期待确认，须明确接受',
-          ];
-          return Semantics(
-            selected: _target != null && _sameCandidate(_target!, candidate),
-            label: '${candidate.displayAnalysisLabel}，${details.join('，')}',
-            child: RadioListTile<String>(
-              key: ValueKey(
-                candidate is MaterialFutureTransferSource
-                    ? 'future-transfer-candidate-${candidate.sourceAllocationId}'
-                    : 'cross-reallocation-candidate-${candidate.analysisId}-${candidate.materialLineId}',
-              ),
-              value: _candidateIdentity(candidate),
-              enabled: enabled,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: UtenSpacing.s8,
-                vertical: UtenSpacing.s4,
-              ),
-              title: Text(
-                candidate.displayAnalysisLabel,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              subtitle: Text(
-                _candidateHasCas(candidate)
-                    ? details.join(' · ')
-                    : '候选快照已失效，请重新加载',
-              ),
-            ),
-          );
-        },
+      child: RadioListTile<String>(
+        key: ValueKey(
+          isFuture
+              ? 'future-transfer-candidate-${candidate.sourceAllocationId}'
+              : 'cross-reallocation-candidate-${candidate.analysisId}-${candidate.materialLineId}',
+        ),
+        value: identity,
+        enabled: enabled,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s8,
+          vertical: UtenSpacing.s4,
+        ),
+        title: title,
+        subtitle: subtitle,
       ),
     );
   }
 
-  Widget _formPanel(ThemeData theme) {
-    final target = _target;
-    if (target == null) {
-      return _messageState(
-        theme,
-        key: const Key('cross-reallocation-target-prompt'),
-        icon: Icons.touch_app_outlined,
-        text: '先选择一份$_counterpartRole，再填写让料数量和业务原因。',
-      );
-    }
-    final parsedQty = double.tryParse(_qtyController.text.trim());
-    return Form(
-      key: _formKey,
-      autovalidateMode: _showValidation
-          ? AutovalidateMode.onUserInteraction
-          : AutovalidateMode.disabled,
-      child: ListView(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        children: [
-          Text(
-            _counterpartRole,
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          Text(
-            target.displayAnalysisLabel,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
+  /// 底部滑入填写条：列表占满主体，点选来源后从底部滑出数量/原因/确认，
+  /// 避免左右两栏互相挤压（2026-09-13 布局改版）。
+  /// 底部滑入填写条：列表占满主体，点选来源后从底部滑出数量/原因/确认，
+  /// 避免左右两栏互相挤压（2026-09-13 布局改版）。
+  Widget _selectionPanel(ThemeData theme) {
+    final rows =
+        <
+          ({
+            Key key,
+            String label,
+            String sub,
+            TextEditingController controller,
+            String? Function(String?) validator,
+          })
+        >[];
+    if (_multiSelect) {
+      for (final identity in _selectedIds.toList()) {
+        final candidate = _byIdentity[identity];
+        if (candidate is! MaterialFutureTransferSource) continue;
+        rows.add((
+          key: Key('future-transfer-qty-$identity'),
+          label: candidate.displayAnalysisLabel,
+          sub: [
+            if (candidate.documentNo?.trim().isNotEmpty == true)
+              candidate.documentNo!.trim(),
+            '可调 ${widget.qtyText(candidate.availableQty)}',
+          ].join(' · '),
+          controller:
+              _selectedQtyControllers[identity] ?? TextEditingController(),
+          validator: (raw) => _validateMultiQty(candidate, raw),
+        ));
+      }
+    } else {
+      final target = _target!;
+      rows.add((
+        key: const Key('cross-reallocation-qty'),
+        label: target.displayAnalysisLabel,
+        sub: [
           if (target.productLabel?.trim().isNotEmpty == true)
-            Text(target.productLabel!, style: theme.textTheme.bodyMedium),
-          const SizedBox(height: UtenSpacing.s12),
-          if (target is MaterialFutureTransferSource && target.lateOrUnknown)
-            CheckboxListTile(
-              key: const Key('future-transfer-accept-late'),
-              contentPadding: EdgeInsets.zero,
-              title: const Text('接受晚到或交期未明确供给'),
-              value: _allowLate,
-              onChanged: _locked
-                  ? null
-                  : (value) => setState(() {
-                      _allowLate = value ?? false;
-                      _dirty = true;
-                    }),
+            target.productLabel!.trim(),
+          '可${widget.receiveIntoCurrent ? '调入' : '让出'} ${widget.qtyText(target.sourceLendableQty)}',
+        ].join(' · '),
+        controller: _qtyController,
+        validator: _validateQty,
+      ));
+    }
+    // 只选一个来源（含在途多选模式下仅勾一个）时：数量与业务原因严格同行；
+    // 多个来源时逐来源数量成行，业务原因与数量列对齐成右栏。
+    final single = rows.length == 1;
+    Widget qtyField(
+      TextEditingController controller,
+      Key key,
+      String? Function(String?) validator,
+    ) => SizedBox(
+      width: 220,
+      child: TextFormField(
+        errorBuilder: utenTextFieldErrorBuilder,
+        key: key,
+        controller: controller,
+        ignorePointers: false,
+        enabled: !_locked,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        validator: validator,
+        onChanged: (_) => setState(() {
+          _dirty = true;
+          _submitError = null;
+        }),
+        decoration: UtenInputDecoration(
+          InputDecoration(
+            label: fieldLabel(
+              widget.receiveIntoCurrent ? '调入数量' : '让料数量',
+              theme,
             ),
-          TextFormField(
-            errorBuilder: utenTextFieldErrorBuilder,
-            key: const Key('cross-reallocation-qty'),
-            controller: _qtyController,
-            ignorePointers: false,
-            enabled: !_locked,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            textInputAction: TextInputAction.next,
-            validator: _validateQty,
-            onChanged: (_) => setState(() {
-              _dirty = true;
-              _submitError = null;
-            }),
-            decoration: UtenInputDecoration(
-              InputDecoration(
-                label: fieldLabel(
-                  widget.futureTransfer ? '调整在途份额' : '让料数量',
-                  theme,
-                  info:
-                      '服务端可让 ${widget.qtyText(target.sourceLendableQty)} · '
-                      '接受计划缺 ${widget.qtyText(target.shortageQty)} · 最多 ${widget.qtyText(_maxQty)}',
-                ),
-                suffixText: _sourceMaterial.unitName,
-              ),
+            suffixText: _sourceMaterial.unitName,
+          ),
+        ),
+      ),
+    );
+    final scrollContent = <Widget>[
+      if (_multiSelect)
+        Text(
+          '已选 ${rows.length} 个来源 · 合计 ${widget.qtyText(_selectedTotal)}'
+          ' · 待补 ${widget.qtyText(_remainingNeed)}',
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      if (_submitting && _multiSelect)
+        Padding(
+          padding: const EdgeInsets.only(top: UtenSpacing.s4),
+          child: Text(
+            '正在提交 第 ${_batchDone + 1}/$_batchTotal 笔…',
+            key: const Key('future-transfer-batch-progress'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: UtenSpacing.s12),
-          TextFormField(
-            errorBuilder: utenTextFieldErrorBuilder,
-            key: const Key('cross-reallocation-reason'),
-            controller: _reasonController,
-            ignorePointers: false,
-            enabled: !_locked,
-            minLines: 2,
-            maxLines: 4,
-            maxLength: 1000,
-            validator: _validateReason,
-            onChanged: (_) => setState(() {
-              _dirty = true;
-              _submitError = null;
-            }),
-            decoration: UtenInputDecoration(
-              InputDecoration(
-                label: fieldLabel(
-                  '业务原因(必填)',
-                  theme,
-                  info: '例如：客户订单加急，本批现货先给该计划。',
+        ),
+      if (single)
+        Padding(
+          padding: const EdgeInsets.only(top: UtenSpacing.s8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                rows.first.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
                 ),
-                alignLabelWithHint: true,
               ),
-            ),
-          ),
-          if (parsedQty != null && parsedQty > 0) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Semantics(
-              key: const Key('cross-reallocation-impact'),
-              container: true,
-              label: widget.futureTransfer
-                  ? '原计划减少专属在途 ${widget.qtyText(parsedQty)}，接受计划新增未来供给，尚未实收、不计现货或开工量'
-                  : '让料影响：${widget.receiveIntoCurrent ? '供料计划' : '当前计划'}优先待补 ${widget.qtyText(parsedQty)}，'
-                        '接受计划缺口减少 ${widget.qtyText(parsedQty)}，无需返还',
-              child: Container(
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.tertiaryContainer,
-                  borderRadius: UtenRadius.mdAll,
-                  border: Border.all(color: theme.colorScheme.outlineVariant),
+              Text(
+                rows.first.sub,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '确认后的影响',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
+              ),
+            ],
+          ),
+        ),
+      // 数量与业务原因同行：左数量、右原因（单选一行；多选逐来源数量、原因整行）。
+      if (single)
+        Padding(
+          padding: const EdgeInsets.only(top: UtenSpacing.s8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              qtyField(rows.first.controller, rows.first.key, rows.first.validator),
+              const SizedBox(width: UtenSpacing.s12),
+              Expanded(child: _reasonField(theme)),
+            ],
+          ),
+        )
+      else ...[
+        for (final row in rows)
+          Padding(
+            padding: const EdgeInsets.only(
+              top: UtenSpacing.s8,
+              bottom: UtenSpacing.s4,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        row.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
+                      Text(
+                        row.sub,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: UtenSpacing.s12),
+                qtyField(row.controller, row.key, row.validator),
+              ],
+            ),
+          ),
+        // 多来源时业务原因与数量输入列对齐（右栏），保持两栏网格视觉一致。
+        Padding(
+          padding: const EdgeInsets.only(top: UtenSpacing.s8),
+          child: Row(
+            children: [
+              const Spacer(),
+              SizedBox(width: 220, child: _reasonField(theme)),
+            ],
+          ),
+        ),
+      ],
+      const SizedBox(height: UtenSpacing.s4),
+      _impactLine(theme),
+      if (_submitError != null)
+        Semantics(
+          liveRegion: true,
+          child: Text(
+            _submitError!,
+            key: const Key('cross-reallocation-submit-error'),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.error,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+    ];
+    return Material(
+      key: const Key('cross-reallocation-selection-panel'),
+      color: theme.colorScheme.surfaceContainerLow,
+      child: Form(
+        key: _formKey,
+        autovalidateMode: _showValidation
+            ? AutovalidateMode.onUserInteraction
+            : AutovalidateMode.disabled,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 360),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
+                  children: scrollContent,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                child: Row(
+                  children: [
+                    UtenButton(
+                      key: const Key('cross-reallocation-cancel'),
+                      size: UtenButtonSize.large,
+                      type: UtenButtonType.ghost,
+                      onPressed: _locked ? null : _requestClose,
+                      child: const Text('返回'),
                     ),
-                    const SizedBox(height: UtenSpacing.s4),
-                    Text(
-                      '• ${widget.receiveIntoCurrent ? '供料计划' : '当前计划'}让出 ${widget.qtyText(parsedQty)}，并标记优先待补。',
-                    ),
-                    Text(
-                      widget.futureTransfer
-                          ? '• 接受计划新增已安排未来供给 ${widget.qtyText(parsedQty)}；物理缺口在实际合格入库后再减少。'
-                          : '• 接受计划缺口减少 ${widget.qtyText(parsedQty)}，无需返还。',
-                    ),
-                    Text(
-                      widget.futureTransfer
-                          ? '• 未实收份额可按正式记录撤销；原计划需补供时另行确认，不自动下单。'
-                          : '• 双方后续符合条件的合格入库，会优先补齐让出计划。',
+                    const Spacer(),
+                    UtenButton(
+                      key: const Key('cross-reallocation-confirm'),
+                      size: UtenButtonSize.large,
+                      isLoading: _submitting,
+                      onPressed: _submitting ? null : _submit,
+                      child: Text(
+                        _uncertain
+                            ? '重试确认调拨'
+                            : _multiSelect
+                            ? '确认调入（${rows.length} 笔）'
+                            : widget.receiveIntoCurrent
+                            ? '确认调入'
+                            : '确认让料',
+                      ),
                     ),
                   ],
                 ),
               ),
-            ),
-          ],
-          if (_submitError != null) ...[
-            const SizedBox(height: UtenSpacing.s12),
-            Semantics(
-              liveRegion: true,
-              child: Text(
-                _submitError!,
-                key: const Key('cross-reallocation-submit-error'),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.error,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
+
+  /// 确认影响的单行摘要（替代旧的两栏大卡片）。
+  Widget _impactLine(ThemeData theme) {
+    final qty = _multiSelect
+        ? _selectedTotal
+        : double.tryParse(_qtyController.text.trim()) ?? 0;
+    if (qty <= 0) return const SizedBox.shrink();
+    final qtyText = widget.qtyText(qty);
+    final (
+      text,
+      semantics,
+    ) = _multiSelect || _target is MaterialFutureTransferSource
+        ? (
+            '共调入 $qtyText 在途份额；到货并检验合格后缺口才减少，未实收前可撤销。',
+            '共调入 $qtyText 未来供给，尚未实收、不计现货',
+          )
+        : widget.receiveIntoCurrent
+        ? (
+            '供料计划让出 $qtyText 并优先待补；本计划缺口立即减少 $qtyText，无需返还。',
+            '供料计划让出 $qtyText 并优先待补，本计划缺口立即减少 $qtyText，无需返还',
+          )
+        : (
+            '本计划让出 $qtyText 并优先待补；接受计划无需返还。',
+            '当前计划让出 $qtyText 并优先待补，接受计划缺口减少 $qtyText，无需返还',
+          );
+    return Semantics(
+      key: const Key('cross-reallocation-impact'),
+      container: true,
+      label: semantics,
+      child: Text(
+        text,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+
+  Widget _reasonField(ThemeData theme) => TextFormField(
+    errorBuilder: utenTextFieldErrorBuilder,
+    key: const Key('cross-reallocation-reason'),
+    controller: _reasonController,
+    ignorePointers: false,
+    enabled: !_locked,
+    minLines: 1,
+    maxLines: 3,
+    maxLength: 1000,
+    validator: _validateReason,
+    onChanged: (_) => setState(() {
+      _dirty = true;
+      _submitError = null;
+    }),
+    decoration: UtenInputDecoration(
+      InputDecoration(
+        label: fieldLabel('业务原因(选填)', theme),
+        alignLabelWithHint: true,
+        // maxLength 默认计数器会占一行把框顶高，统一压掉（限制仍生效）。
+        counterText: '',
+      ),
+    ),
+  );
 
   Widget _messageState(
     ThemeData theme, {
@@ -956,54 +1561,6 @@ class _MaterialReallocationDialogBodyState
           ],
         ],
       ),
-    ),
-  );
-
-  Widget _actions(ThemeData theme) => Padding(
-    padding: const EdgeInsets.all(UtenSpacing.s12),
-    child: LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < 520;
-        final cancel = UtenButton(
-          key: const Key('cross-reallocation-cancel'),
-          size: UtenButtonSize.large,
-          type: UtenButtonType.ghost,
-          isExpanded: compact,
-          onPressed: _locked ? null : _requestClose,
-          child: const Text('取消'),
-        );
-        final confirm = UtenButton(
-          key: const Key('cross-reallocation-confirm'),
-          size: UtenButtonSize.large,
-          isExpanded: compact,
-          isLoading: _submitting,
-          onPressed: _target == null || _submitting ? null : _submit,
-          child: Text(
-            _uncertain
-                ? '重试确认调拨'
-                : widget.futureTransfer
-                ? '确认调整在途'
-                : '确认让料',
-          ),
-        );
-        if (compact) {
-          return Row(
-            children: [
-              Expanded(child: cancel),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(child: confirm),
-            ],
-          );
-        }
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            cancel,
-            const SizedBox(width: UtenSpacing.s8),
-            confirm,
-          ],
-        );
-      },
     ),
   );
 }

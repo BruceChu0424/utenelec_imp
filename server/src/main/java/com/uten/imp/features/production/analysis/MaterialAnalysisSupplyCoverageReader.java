@@ -76,6 +76,12 @@ final class MaterialAnalysisSupplyCoverageReader {
                                 "BUY".equals(kind) ? "request_item_id" : "application_item_id"),
                         analysisId, keys, kind, "BUY".equals(kind) ? "PURCHASE" : "SUBCONTRACT", replacementByKey);
             }
+            // 2026-09-13 跨路线调入：外部在途按「来源路线」落动作，目标行可以是
+            // 另一条路线。上面三条按路线分桶的语句都以 action.route = 本路线 取数，
+            // 会漏掉这些动作；漏掉就意味着调入后可下达余量不减、重复备料。
+            // 这里把同一操作组下「路线不同的在途调入动作」补回本路线已覆盖量，
+            // 与上面互斥（那边 route = 本路线，这边 route <> 本路线），不重复计。
+            readQuantities(CROSS_ROUTE_INBOUND_SQL, analysisId, keys, kind, null, activeByKey);
         }
         Map<Key, BigDecimal> active = new LinkedHashMap<>();
         keysByGroup.forEach((key, aliases) -> active.put(key, aliases.stream()
@@ -96,6 +102,26 @@ final class MaterialAnalysisSupplyCoverageReader {
             into.merge(new Key((String) row[0], route), (BigDecimal) row[1], BigDecimal::add);
         }
     }
+
+    /**
+     * 跨路线调入（专属在途转拨 / 公共在途认领）对本操作组的已覆盖量。
+     * 动作沿用来源路线落库，因此必须按操作组、跨路线单独汇总一次；数量口径
+     * 与 BUY_SQL/EXTERNAL_SQL 里的同名分支一致（尚未兑现的待实收份额）。
+     */
+    private static final String CROSS_ROUTE_INBOUND_SQL = """
+                SELECT action.action_group_key, COALESCE(SUM(GREATEST(CASE
+                    WHEN action.operation_type = 'FUTURE_TRANSFER'
+                        THEN fn_preplan_future_action_pending_qty(action.id)
+                    ELSE fn_preplan_shared_action_pending_qty(action.id)
+                END, 0)), 0)
+                FROM preplan_supply_actions action
+                WHERE action.analysis_id = :analysisId
+                  AND action.action_group_key IN (:groupKeys)
+                  AND action.operation_type IN ('FUTURE_TRANSFER','SHARED_FUTURE_CLAIM')
+                  AND action.route <> :route
+                  AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
+                GROUP BY action.action_group_key
+                """;
 
     private static final String BUY_SQL = """
                     SELECT action.action_group_key, COALESCE(SUM(LEAST(

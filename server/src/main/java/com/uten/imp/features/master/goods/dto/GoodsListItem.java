@@ -46,6 +46,9 @@ public class GoodsListItem {
     private boolean autoCreated;  // 迁移兜底占位货品标记（auto_created 列）
     private BigDecimal stockQty;  // 即时库存合计（聚合 stock_balances，仅参与核算仓库；列表展示用）
     private String stockPlace;    // 库位号（goods.stock_place；单据选品/拣货指引，选择器展示用）
+    // ===== 采购批量口径（V575；软约束，列表/导出展示用，下达采购按此预填默认数量） =====
+    private BigDecimal minOrderQty;      // 最小起订量（供应商 MOQ，基本单位）
+    private BigDecimal orderMultipleQty; // 订货倍数/整包装量（基本单位，整箱 50 即 50）
 
     /** Keep the public JSON key stable across Jackson/JavaBeans versions. */
     @JsonProperty("cNumber")

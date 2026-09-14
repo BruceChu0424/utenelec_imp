@@ -28,6 +28,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -1110,6 +1111,9 @@ class _ProductionWorkshopTasksPageState
       width: 170,
       value: (task) => task.workshopName,
     ),
+    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+    // 读侧本来就返回 productCode，只是界面一直没用——同名不同编号的产品在
+    // 车间任务里分不开，报工会报到别的段上。
     MasterColumnDef(
       key: 'name',
       label: '产品名称',
@@ -1117,10 +1121,18 @@ class _ProductionWorkshopTasksPageState
       value: (task) => task.productName,
     ),
     MasterColumnDef(
+      key: 'productCode',
+      label: '编号',
+      width: 130,
+      value: (task) => UtenGoodsAttributeCell.text(task.productCode),
+      cellBuilder: (_, task) => UtenGoodsAttributeCell(task.productCode),
+    ),
+    MasterColumnDef(
       key: 'color',
-      label: '产品颜色',
-      width: 120,
-      value: (task) => task.productColorName,
+      label: '颜色',
+      width: 100,
+      value: (task) => UtenGoodsAttributeCell.text(task.productColorName),
+      cellBuilder: (_, task) => UtenGoodsAttributeCell(task.productColorName),
     ),
     MasterColumnDef(
       key: 'qty',

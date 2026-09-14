@@ -242,7 +242,7 @@ class _MaterialAnalysisBucketPageState
     if (controller == null) {
       controller = TextEditingController(
         text: _bucketQtyText(
-          _host._residualSubmitQty(group, _bucket.supplyRoute!),
+          _host._defaultSubmitQty(group, _bucket.supplyRoute!),
         ),
       );
       _submitQtyControllers[key] = controller;
@@ -570,8 +570,28 @@ class _MaterialAnalysisBucketPageState
   /// Keep the bucket visible through submission, error recovery and results.
   /// The parent orchestrates the command; progress is broadcast to this route.
   /// [_running] also guards the interval occupied by confirmation/result dialogs.
+  ///
+  /// 2026-09-14（ADR-081 修订）：有下层待办时走 [_submitWithCascade] ——弹窗
+  /// **前置**（先把父件 + 下层一起列出来，点「一键下单」才按序提交父件与
+  /// 下层），本方法退化为「没有下层待办」的直接提交路径。
   Future<void> _run(_BucketActionRequest request) async {
     if (_running) return;
+    final issued = await _executeAndRefresh(request);
+    // Only a successful workshop submission may return after its result
+    // dialog closes. A conflict/error stays on the page for inspection.
+    if (!mounted || !issued || ModalRoute.of(context)?.isCurrent != true) {
+      return;
+    }
+    Navigator.of(context).pop();
+  }
+
+  /// 提交 + 原地刷新（不退出本页）。[silent] = 父件段由「一起下单」弹窗编排
+  /// （ADR-081）：跳过成功提示与生成结果弹层，由弹窗在最后统一汇报，避免
+  /// 一次一键下单弹出多层结果。返回是否下达成功。
+  Future<bool> _executeAndRefresh(
+    _BucketActionRequest request, {
+    bool silent = false,
+  }) async {
     final before = _host._analysis;
     var issued = false;
     // 2026-09-11：下达车间**不再先 pop 回物料分析再加载**。原来是「关掉本页 →
@@ -586,7 +606,7 @@ class _MaterialAnalysisBucketPageState
     };
     setState(() => _running = true);
     try {
-      issued = await _host._executeBucketAction(request);
+      issued = await _host._executeBucketAction(request, silent: silent);
     } finally {
       if (mounted) {
         // Cancelled confirmations and rejected requests leave the authoritative
@@ -618,12 +638,33 @@ class _MaterialAnalysisBucketPageState
             _running = false;
           });
         }
-        // Only a successful workshop submission may return after its result
-        // dialog closes. A conflict/error stays on the page for inspection.
-        if (issued && ModalRoute.of(context)?.isCurrent == true) {
-          Navigator.of(context).pop();
-        }
       }
+    }
+    return issued;
+  }
+
+  /// 弹窗前置提交（ADR-081 修订，2026-09-14 用户口径）：所选行还有没下单的
+  /// 下层时，**先**弹「父件 + 下层一起下单」——树顶是本次要下达的件，下层
+  /// 数量按本批数量算好可改，点「一键下单」才按序提交父件与下层（此前是父件
+  /// 先落库、成功后才补弹下层，用户看到的是「还没确认就把父件下了」）。
+  /// 没有待办下层时保持原路直接提交（不打扰）。
+  Future<void> _submitWithCascade(
+    _BucketActionRequest request,
+    List<_ChildCascadeSeed> seeds,
+  ) async {
+    if (_running) return;
+    final rows = _host._pendingChildCascadeRows(seeds);
+    if (rows == null) {
+      await _run(request);
+      return;
+    }
+    final done = await _host._showChildCascadeDialog(
+      seeds: seeds,
+      initialRows: rows,
+      parentAction: () => _executeAndRefresh(request, silent: true),
+    );
+    if (done && mounted && ModalRoute.of(context)?.isCurrent == true) {
+      Navigator.of(context).pop();
     }
   }
 
@@ -635,11 +676,16 @@ class _MaterialAnalysisBucketPageState
     final product = row.product;
     final analysis = _host._analysis;
     if (product == null || analysis == null) return const [];
-    final materials = [..._host._depth1MaterialsFor(product)];
-    if (materials.isEmpty) {
-      final root = _host._rootSupplyMaterialOf(product);
-      if (root != null) materials.add(root);
-    }
+    // 车间桶的行是产品（如待生产的柜）：物料/调拨既可选产品本身（根供给
+    // 行——把其它计划已下达的外部供给调进来冲减自制量），也可选其直接
+    // 子件；调入只改覆盖数量，下达车间流程不变（2026-09-13 口径）。
+    final root = _host._rootSupplyMaterialOf(product);
+    final materials = [
+      ?root,
+      ..._host
+          ._depth1MaterialsFor(product)
+          .where((material) => material.materialLineId != root?.materialLineId),
+    ];
     final indexes = _host._analysisIndexes(analysis);
     return [
       for (final material in materials)
@@ -661,50 +707,68 @@ class _MaterialAnalysisBucketPageState
       if (_bucket.supplyRoute != null && before != null)
         for (final group in _host._materialGroups(before))
           if (group.representative.actionGroupKey != null)
-            group.representative.actionGroupKey!: _host._residualSubmitQty(
+            group.representative.actionGroupKey!: _host._defaultSubmitQty(
               group,
               _bucket.supplyRoute!,
             ),
     };
-    final group = groups.length == 1
-        ? groups.single
-        : await showDialog<_MaterialGroup>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('选择需要查看或调拨的物料'),
-              content: SizedBox(
-                width: 600,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (final group in groups)
-                        ListTile(
-                          title: Text(
-                            group.representative.goodsName ??
-                                group.representative.goodsCode ??
-                                '物料',
-                          ),
-                          subtitle: Text(
-                            '需求 ${_host._qty(group.representative.requiredQty)} · 物理缺口 ${_host._qty(group.representative.shortageQty)}',
-                          ),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => Navigator.of(context).pop(group),
-                        ),
-                    ],
-                  ),
-                ),
+    // 2026-09-13：车间桶的产品行（如待生产的柜）点「物料 / 调拨」直达
+    // 根供给行的调拨选择器，不再先弹物料选择；根供给行缺失时才回退选择框。
+    final isProductRow =
+        row.product != null &&
+        row.group == null &&
+        row.candidate?.group == null;
+    final _MaterialGroup group;
+    if (isProductRow) {
+      group = groups.firstWhere(
+        (group) => group.representative.isRootSupply,
+        orElse: () => groups.first,
+      );
+    } else if (groups.length == 1) {
+      group = groups.single;
+    } else {
+      final selected = await showDialog<_MaterialGroup>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('选择需要查看或调拨的物料'),
+          content: SizedBox(
+            width: 600,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final group in groups)
+                    ListTile(
+                      title: Text(
+                        group.representative.goodsName ??
+                            group.representative.goodsCode ??
+                            '物料',
+                      ),
+                      subtitle: Text(
+                        '需求 ${_host._qty(group.representative.requiredQty)} · 物理缺口 ${_host._qty(group.representative.shortageQty)}',
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).pop(group),
+                    ),
+                ],
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('关闭'),
-                ),
-              ],
             ),
-          );
-    if (group == null || !mounted) return;
-    await _host._showMaterialTableDetails(group);
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('关闭'),
+            ),
+          ],
+        ),
+      );
+      if (selected == null) return;
+      group = selected;
+    }
+    if (!mounted) return;
+    // 2026-09-13 起「物料 / 调拨」先进简化选择器（三个调入入口+完整详情），
+    // 供给明细与记录留在完整详情里。
+    await _host._showTransferLauncher(group);
     if (!mounted || identical(before, _host._analysis)) return;
     final current = _host._analysis!;
     // Material work changes the remaining supply amount. Retain staff choices
@@ -713,12 +777,15 @@ class _MaterialAnalysisBucketPageState
       for (final group in _host._materialGroups(current))
         group.representative.actionGroupKey: group,
     };
+    // 2026-09-14：只刷新「仍等于旧默认值」的格子。用户手填的数字一律保留——
+    // 原先把超过上限的手填值一并改写回 max，用户填的超量会被静默吃掉，
+    // 看起来像「有时允许超量、有时不允许」。超限与否交给提交前的校验点名。
     for (final entry in _submitQtyControllers.entries) {
       final next = currentGroups[entry.key];
       if (next == null || _bucket.supplyRoute == null) continue;
       final max = _host._residualSubmitQty(next, _bucket.supplyRoute!);
       final qty = double.tryParse(entry.value.text);
-      if (qty == oldMaterialDefaults[entry.key] || (qty ?? 0) > max) {
+      if (qty == oldMaterialDefaults[entry.key]) {
         entry.value.text = _bucketQtyText(max);
       }
     }
@@ -737,8 +804,8 @@ class _MaterialAnalysisBucketPageState
                 : _host._residualSubmitQty(candidate!.group!, candidate.route));
         if (max == null) continue;
         final qty = double.tryParse(planRow.qty.text);
-        if (qty == double.tryParse(oldPlanDefaults[planRow.id] ?? '') ||
-            (qty ?? 0) > max) {
+        // 同上：手填值（含刻意填的超量）保留，只跟随旧默认值刷新。
+        if (qty == double.tryParse(oldPlanDefaults[planRow.id] ?? '')) {
           planRow.qty.text = _host._qty(max);
         }
       }
@@ -769,6 +836,162 @@ class _MaterialAnalysisBucketPageState
     cellBuilderHandlesSemantics: true,
     cellBuilder: (context, row) => _supplyDetailsButton(context, row),
   );
+
+  // ===== 与主表统一的身份四列：物料名称 / 编号 / 颜色 / 单位 =====
+  // 2026-09-14 用户口径「三个入口的列表也用这样的形式，都统一，不要物料分析
+  // 页面的表头一种、其他的不一样」。原先分桶详情把编号/规格/颜色塞在身份格里
+  // （格式与主表副行各不相同），现在与主表同一组独立列，顺序也一致。
+
+  /// 本行的物料事实来源：物料组 → 候选物料 → 产品的根供给行。
+  ProductionMaterialAnalysisMaterial? _rowMaterial(_BucketRow row) {
+    final group = row.group ?? row.candidate?.group;
+    if (group != null) return group.representative;
+    final material = row.candidate?.material;
+    if (material != null) return material;
+    final product = row.product;
+    return product == null ? null : _host._rootSupplyMaterialOf(product);
+  }
+
+  String? _rowGoodsName(_BucketRow row) {
+    final product = row.product;
+    if (product != null) return product.goodsName ?? product.goodsCode;
+    final material = _rowMaterial(row);
+    return material?.goodsName ?? material?.goodsCode;
+  }
+
+  String? _rowGoodsCode(_BucketRow row) =>
+      (row.product?.goodsCode ?? _rowMaterial(row)?.goodsCode)?.trim();
+
+  String? _rowColorName(_BucketRow row) =>
+      (row.product?.colorName ?? _rowMaterial(row)?.colorName)?.trim();
+
+  String? _rowUnitName(_BucketRow row) =>
+      (row.product?.unitName ?? _rowMaterial(row)?.unitName)?.trim();
+
+  String? _rowSpec(_BucketRow row) =>
+      (row.product?.spec ?? _rowMaterial(row)?.spec)?.trim();
+
+  List<MasterColumnDef<_BucketRow>> _identityColumns() => [
+    MasterColumnDef<_BucketRow>(
+      key: 'goods',
+      label: '物料名称',
+      width: 220,
+      value: _rowGoodsName,
+      cellBuilderHandlesSemantics: true,
+      cellBuilder: (context, row) => UtenGoodsIdentityCell(
+        name: _rowGoodsName(row) ?? row.id,
+        // 编号/颜色已各自成列，身份格只补规格（它没有独立列，丢了就看不到）。
+        spec: _rowSpec(row),
+      ),
+    ),
+    MasterColumnDef<_BucketRow>(
+      key: 'goodsCode',
+      label: '编号',
+      width: 130,
+      value: _rowGoodsCode,
+    ),
+    MasterColumnDef<_BucketRow>(
+      key: 'colorName',
+      label: '颜色',
+      width: 96,
+      value: _rowColorName,
+    ),
+    MasterColumnDef<_BucketRow>(
+      key: 'unitName',
+      label: '单位',
+      width: 76,
+      value: _rowUnitName,
+    ),
+  ];
+
+  /// 本行改路线时作用的操作组（产品行走它的根供给行）。
+  _MaterialGroup? _rowRouteGroup(_BucketRow row) {
+    final group = row.group ?? row.candidate?.group;
+    if (group != null) return group;
+    final product = row.product;
+    final analysis = _host._analysis;
+    if (product == null || analysis == null) return null;
+    final root = _host._rootSupplyMaterialOf(product);
+    return root == null
+        ? null
+        : _host._analysisIndexes(analysis).groupsByLine[root.materialLineId];
+  }
+
+  /// 供应方式列（2026-09-14）：三个入口都能就地改，确认后本行自动换到对应
+  /// 入口；已下达 / 已有下游行动的行只读显示。
+  MasterColumnDef<_BucketRow> _routeColumn() => MasterColumnDef<_BucketRow>(
+    key: 'route',
+    label: _host._l10n.materialRoute,
+    width: 132,
+    info:
+        '这批物料怎么准备：采购 = 向供应商买；委外 = 发给加工商加工；'
+        '自制 = 自己车间生产。在这里改并确认后，本行会立刻移到对应的入口，'
+        '同时记为该货品下次的默认供料方式。',
+    value: (row) {
+      final group = _rowRouteGroup(row);
+      return group == null ? null : _host._draftRoute(group).label;
+    },
+    cellBuilderHandlesSemantics: true,
+    cellBuilder: (context, row) => _routeCell(context, row),
+  );
+
+  Widget _routeCell(BuildContext context, _BucketRow row) {
+    final theme = Theme.of(context);
+    final group = _rowRouteGroup(row);
+    if (group == null) return const Text('—');
+    final current = _host._draftRoute(group);
+    final editable =
+        !_actionsLocked &&
+        _host._canRoute &&
+        _host._canEditMaterialRoute(group);
+    if (!editable) {
+      return Text(
+        current.label,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      );
+    }
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<MaterialSupplyRoute>(
+        key: ValueKey('material-bucket-route-${row.id}'),
+        value: current,
+        isExpanded: true,
+        isDense: true,
+        dropdownColor: theme.colorScheme.surface,
+        items: [
+          for (final option in MaterialSupplyRoute.values)
+            DropdownMenuItem(
+              value: option,
+              child: Text(
+                option.label,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+            ),
+        ],
+        onChanged: (next) => _changeRoute(row, group, next),
+      ),
+    );
+  }
+
+  Future<void> _changeRoute(
+    _BucketRow row,
+    _MaterialGroup group,
+    MaterialSupplyRoute? next,
+  ) async {
+    if (next == null || next == _host._draftRoute(group)) return;
+    final moved = await _host._confirmRouteChange(group, next);
+    if (!mounted) return;
+    // 换桶后本页行集要跟着变：桶投影按 confirmed_route 算，宿主 setState
+    // 不会重建本页。计划表同样重建，避免留下一行已经不属于车间桶的输入。
+    if (moved && _usesPlanGrid) _buildPlanRows();
+    setState(() {
+      _selectedIds.remove(row.id);
+      _pageNo = 1;
+    });
+  }
 
   bool get _hasWriteAction => _canAct;
 
@@ -815,10 +1038,34 @@ class _MaterialAnalysisBucketPageState
           ),
         );
       case _AnalysisBucket.subcontract:
-        _run(
-          _BucketActionRequest.subcontract(
-            allowedIds,
-            qtyByActionGroupKey: qtyByActionGroupKey,
+        // 有子层级的委外件下达后，它的下层料仍要接着办（ADR-081 弹窗前置）；
+        // 无子层委外件是叶子，构建不出下层行，自动走原路直接提交。
+        // 数量口径：有子层委外 notify 按全量剩余（服务端 2026-09-06 守恒
+        // 决定，不可改量），种子驱动量同取全量剩余，保证下层数学与实际下达一致。
+        final seeds = <_ChildCascadeSeed>[
+          for (final row in allowedRows)
+            if (row.group != null &&
+                _host._analysisMaterialHasChildren(row.group!.representative))
+              _ChildCascadeSeed(
+                label:
+                    row.group!.representative.goodsName ??
+                    row.group!.representative.goodsCode ??
+                    row.id,
+                batchQty: _host._residualSubmitQty(
+                  row.group!,
+                  MaterialSupplyRoute.subcontract,
+                ),
+                materialLineId: row.group!.representative.materialLineId,
+                unitName: row.group!.representative.unitName,
+              ),
+        ];
+        unawaited(
+          _submitWithCascade(
+            _BucketActionRequest.subcontract(
+              allowedIds,
+              qtyByActionGroupKey: qtyByActionGroupKey,
+            ),
+            seeds,
           ),
         );
       case _AnalysisBucket.workshop:
@@ -834,7 +1081,18 @@ class _MaterialAnalysisBucketPageState
   /// 创建生产计划前校验：数量、车间、负责人逐行齐备（产品行与候选行同一
   /// 张表单，第一处错误点名提示）。数量上限=该行剩余需求——齐不齐料是车间
   /// 侧的事（ADR-71），计划侧不再按库存卡量。
+  /// 最近一次校验收集的「本批数量 > 需求」行（名称、需求量、本批量）：
+  /// 超量下达不再拦截，但提交前必须弹二次确认把超出部分的去向说清。
+  final List<(String name, double demand, double qty)> _overQtyRows = [];
+
   String? _validatePlanRows(List<_BucketPlanRow> rows) {
+    // 违规行一次性全部点名、同类归一条：原先循环内第一处就 return，一批几十行
+    // 时改完一行再提交才暴露下一行——「没填车间 / 没填负责人」恰恰是整批一起缺
+    // 的典型，用户观感就是「怎么老是报错、有时才提醒」。
+    final badQty = <String>[];
+    final noWorkshop = <String>[];
+    final noWorker = <String>[];
+    _overQtyRows.clear();
     for (final row in rows) {
       final product = row.origin.product;
       final candidate = row.origin.candidate;
@@ -847,7 +1105,8 @@ class _MaterialAnalysisBucketPageState
       final raw = row.qty.text.trim();
       final qty = double.tryParse(raw);
       if (raw.isEmpty || qty == null || !qty.isFinite || qty <= 0) {
-        return '「$name」本批生产数量必须大于 0';
+        badQty.add('「$name」');
+        continue;
       }
       final candidateGroup = candidate?.group;
       final max =
@@ -855,24 +1114,45 @@ class _MaterialAnalysisBucketPageState
           (candidateGroup != null && candidate != null
               ? _host._residualSubmitQty(candidateGroup, candidate.route)
               : null);
+      // 2026-09-14 修订二：生产超量下达对**所有行**放开（用户口径「填大于需求
+      // 的量要能下单」）。超出部分的记账由服务端分账：非销售来源单张计划
+      // submitted+surplus 分账（V577）；销售订单来源顶层行拆成「订单行 + 无销售
+      // 来源的公共备货单」两张计划，销售守恒不动。超量必须过二次确认弹窗
+      // （_overQtyPlanRows 把去向说清），不是静默放行。
       if (max != null && qty > max) {
-        return '「$name」本批生产数量不能超过剩余需求 '
-            '${_host._qty(max)} 个';
+        _overQtyRows.add((name, max, qty));
       }
       if (row.departmentId.value == null || row.departmentId.value!.isEmpty) {
-        return '「$name」尚未选择生产车间（有默认车间的已自动带出，请核对）';
+        noWorkshop.add('「$name」');
+        continue;
       }
       if (row.workerId.value == null || row.workerId.value!.isEmpty) {
-        return '「$name」尚未选择负责人';
+        noWorker.add('「$name」');
       }
     }
-    return null;
+    final problems = <String>[
+      if (badQty.isNotEmpty) _planRowIssue(badQty, '本批生产数量必须大于 0'),
+      if (noWorkshop.isNotEmpty)
+        _planRowIssue(noWorkshop, '尚未选择生产车间（有默认车间的已自动带出，请核对）'),
+      if (noWorker.isNotEmpty) _planRowIssue(noWorker, '尚未选择负责人'),
+    ];
+    return problems.isEmpty ? null : problems.join('\n');
+  }
+
+  /// 同类违规汇总成一句；最多列前 8 行，其余折成「等 N 行」——顶部通知只有
+  /// 三行可用，几十行全列出来会把提示刷没。
+  String _planRowIssue(List<String> labels, String issue) {
+    const maxShown = 8;
+    final shown = labels.take(maxShown).join('、');
+    final rest = labels.length - maxShown;
+    return '以下 ${labels.length} 行$issue：$shown'
+        '${rest > 0 ? ' 等 $rest 行' : ''}';
   }
 
   /// 2026-09-05 用户口径（ADR-71）：右下角只有一个「创建生产计划(N)」——
   /// 所有自制行（顶层/子件/候选）统一填「本批数量+生产车间+负责人」后
   /// 单次原子下发：服务端一个事务完成建子件任务+出计划+可选审核。
-  void _submitCreateProductionPlans() {
+  Future<void> _submitCreateProductionPlans() async {
     final selected = _selectedPlanRows;
     if (selected.isEmpty) {
       context.appInfo('请先勾选要创建生产计划的行');
@@ -882,6 +1162,32 @@ class _MaterialAnalysisBucketPageState
     if (error != null) {
       context.appError(error);
       return;
+    }
+    // 超量下达不要权限，但必须让人知道多做的那部分会发生什么：超出量按公共
+    // 备货产出记账（入库后进公共库存供其他计划认领），而**下层物料需求不会
+    // 跟着变大**——服务端的子件需求按本需求与物理缺口算，多做那部分的料要计划
+    // 员另行安排。这句必须说清楚，否则车间到领料时才发现缺料。
+    if (_overQtyRows.isNotEmpty) {
+      final over = [
+        for (final row in _overQtyRows)
+          '· 「${row.$1}」需求 ${_host._qty(row.$2)} → 本批 ${_host._qty(row.$3)}'
+              '（超出 ${_host._qty(row.$3 - row.$2)}）',
+      ];
+      final ok = await UtenDialog.show(
+        context,
+        title: '确认超量下达车间',
+        content: Text(
+          '以下 ${over.length} 行填写的本批数量超出当前需求：\n'
+          '${over.join('\n')}\n\n'
+          '超出部分按公共备货产出记账：完工入库后进公共库存，其他计划可以直接用，'
+          '不占本次需求的精确账；销售订单来源的行会自动拆成「订单内的量 + 一张公共'
+          '备货计划」两单下达，订单侧数量不受影响。\n'
+          '注意：超出部分的下层物料需求不会自动变大，可在下一步「跟父件一起下单」'
+          '里把多做的料一并下单。',
+        ),
+        confirmLabel: '确认超量下达',
+      );
+      if (ok != true || !mounted) return;
     }
     final productDrafts = <_BucketPlanDraft>[
       for (final row in selected.where((row) => row.isProduct))
@@ -911,11 +1217,33 @@ class _MaterialAnalysisBucketPageState
       context.appInfo('所选候选当前不可创建，请刷新后重试');
       return;
     }
-    _run(
+    // 下层办齐弹窗前置（ADR-081 修订）：种子只带 ID + 本批数量——父件提交后
+    // 分析快照整体换一份，现在抓到的 product/material 对象立刻过期。
+    final seeds = <_ChildCascadeSeed>[
+      for (final row in selected)
+        _ChildCascadeSeed(
+          label:
+              row.origin.product?.goodsName ??
+              row.origin.product?.goodsCode ??
+              row.origin.candidate?.material.goodsName ??
+              row.origin.candidate?.material.goodsCode ??
+              row.id,
+          batchQty: double.parse(row.qty.text.trim()),
+          analysisLineId: row.isProduct ? row.id : null,
+          materialLineId: row.isProduct
+              ? null
+              : row.origin.candidate?.material.materialLineId,
+          unitName:
+              row.origin.product?.unitName ??
+              row.origin.candidate?.material.unitName,
+        ),
+    ];
+    await _submitWithCascade(
       _BucketActionRequest.createProductionPlans(
         candidateInputs: candidateInputs,
         planDrafts: productDrafts,
       ),
+      seeds,
     );
   }
 
@@ -955,6 +1283,19 @@ class _MaterialAnalysisBucketPageState
         icon: Icons.numbers_rounded,
         onPressed: editable ? () => _batchSetPlanQty(controller) : null,
         child: Text('批量设数量($total)'),
+      ),
+      // 2026-09-14：三项「清空」原先只在行右键菜单里，而计划表的数量格是 TextField、
+      // 右键会被输入框自带菜单吃掉，等于页面上没有入口（用户：填错了改不回来）。
+      // 补这颗可见按钮，走与右键「清空全部可填内容」同一实现，不另起一套行为。
+      UtenButton(
+        key: const Key('material-analysis-bucket-batch-clear'),
+        type: UtenButtonType.tonal,
+        size: UtenButtonSize.large,
+        icon: Icons.cleaning_services_outlined,
+        onPressed: editable
+            ? () => _clearPlanRowsAll(controller.selectedRows)
+            : null,
+        child: Text('清空可填内容($total)'),
       ),
       UtenButton(
         key: const Key('material-analysis-bucket-action-ready'),
@@ -1036,14 +1377,21 @@ class _MaterialAnalysisBucketPageState
         icon: Icons.cleaning_services_outlined,
         enabled: editable,
         destructive: true,
-        onTap: () => setState(() {
-          for (final row in selected) {
-            row.qty.clear();
-            _clearPlanRowAssignment(row);
-          }
-        }),
+        onTap: () => _clearPlanRowsAll(selected),
       ),
     ];
+  }
+
+  /// 整组清空可填内容（本批数量 + 车间/负责人）：行右键「清空全部可填内容」与操作条
+  /// 「清空可填内容」共用同一实现，两个入口不允许长出两套行为。
+  void _clearPlanRowsAll(List<_BucketPlanRow> rows) {
+    if (rows.isEmpty) return;
+    setState(() {
+      for (final row in rows) {
+        row.qty.clear();
+        _clearPlanRowAssignment(row);
+      }
+    });
   }
 
   void _clearPlanRowAssignment(_BucketPlanRow row) {
@@ -1717,7 +2065,7 @@ class _MaterialAnalysisBucketPageState
     final group = row.group;
     if (group == null) return;
     _submitQtyControllerOf(group).text = _bucketQtyText(
-      _host._residualSubmitQty(group, _bucket.supplyRoute!),
+      _host._defaultSubmitQty(group, _bucket.supplyRoute!),
     );
   }
 
@@ -1880,31 +2228,56 @@ class _MaterialAnalysisBucketPageState
             ),
           ),
         ),
+        // 2026-09-14 用户口径：与主表和另外两个入口统一——物料名称 / 编号 /
+        // 颜色 / 单位四列，顺序一致；编号与颜色不再挤在身份格副行里。
         EditableGridColumn<_BucketPlanRow>(
           key: 'goods',
-          label: '货品',
-          width: 200,
+          label: '物料名称',
+          width: 220,
           // 2026-09-11：货品列表头快速筛选，桶标签=货品名（无名用物料编码）。
+          // filterValueOf 仍只按货品名分桶（筛选桶要的是"同一种货"，带编号会
+          // 把同货不同行拆成 N 个桶）。
           filterValueOf: _planRowGoodsLabel,
-          textOf: (row) {
-            final product = row.origin.product;
-            if (product != null) {
-              return product.goodsName ??
-                  product.goodsCode ??
-                  product.analysisLineId;
-            }
-            final material = row.origin.candidate!.material;
-            return material.goodsName ?? material.goodsCode ?? '';
-          },
-          cellBuilder: (context, row) => Text(
-            row.origin.product != null
-                ? (row.origin.product!.goodsName ??
-                      row.origin.product!.goodsCode ??
-                      '未命名产品')
-                : (row.origin.candidate!.material.goodsName ??
-                      row.origin.candidate!.material.goodsCode ??
-                      ''),
+          textOf: (row) => _rowGoodsName(row.origin) ?? '',
+          cellBuilder: (context, row) => UtenGoodsIdentityCell(
+            name: _rowGoodsName(row.origin) ?? row.id,
+            spec: _rowSpec(row.origin),
           ),
+        ),
+        EditableGridColumn<_BucketPlanRow>(
+          key: 'goodsCode',
+          label: '编号',
+          width: 130,
+          filterValueOf: (row) => _rowGoodsCode(row.origin),
+          textOf: (row) => _rowGoodsCode(row.origin) ?? '',
+          cellBuilder: (context, row) => Text(_rowGoodsCode(row.origin) ?? '—'),
+        ),
+        EditableGridColumn<_BucketPlanRow>(
+          key: 'colorName',
+          label: '颜色',
+          width: 96,
+          filterValueOf: (row) => _rowColorName(row.origin),
+          cellBuilder: (context, row) => Text(_rowColorName(row.origin) ?? '—'),
+        ),
+        EditableGridColumn<_BucketPlanRow>(
+          key: 'unitName',
+          label: '单位',
+          width: 76,
+          filterValueOf: (row) => _rowUnitName(row.origin),
+          cellBuilder: (context, row) => Text(_rowUnitName(row.origin) ?? '—'),
+        ),
+        EditableGridColumn<_BucketPlanRow>(
+          key: 'route',
+          label: _host._l10n.materialRoute,
+          width: 132,
+          headerInfo:
+              '在这里改并确认后，本行会立刻离开下达车间、出现在对应的入口，'
+              '同时记为该货品下次的默认供料方式。',
+          filterValueOf: (row) {
+            final group = _rowRouteGroup(row.origin);
+            return group == null ? null : _host._draftRoute(group).label;
+          },
+          cellBuilder: (context, row) => _routeCell(context, row.origin),
         ),
         EditableGridColumn<_BucketPlanRow>(
           key: 'requiredQty',
@@ -1949,6 +2322,7 @@ class _MaterialAnalysisBucketPageState
             listenable: row.qty,
             isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
             child: TextField(
+              key: ValueKey('material-analysis-bucket-qty-${row.id}'),
               controller: row.qty,
               readOnly: !_host._canGenerate,
               textAlign: TextAlign.right,
@@ -2167,28 +2541,8 @@ class _MaterialAnalysisBucketPageState
               _host._qty(row.group?.representative.sharedFuturePendingQty),
           info: '从公共余量认领的未实收供给；其他计划专属调入另见物料详情。实际合格入库前不增加现货，本次下达只补剩余未安排量。',
         ),
-      MasterColumnDef<_BucketRow>(
-        key: 'goods',
-        label: '物料',
-        width: 200,
-        value: (row) {
-          final m = row.group?.representative;
-          if (m == null) return null;
-          final spec = m.spec?.trim();
-          return spec?.isNotEmpty == true
-              ? '${m.goodsName ?? m.goodsCode ?? m.materialLineId}（$spec）'
-              : m.goodsName ?? m.goodsCode ?? m.materialLineId;
-        },
-      ),
-      MasterColumnDef<_BucketRow>(
-        key: 'color',
-        label: '颜色',
-        width: 90,
-        value: (row) {
-          final name = row.group?.representative.colorName?.trim();
-          return (name == null || name.isEmpty) ? '—' : name;
-        },
-      ),
+      ..._identityColumns(),
+      _routeColumn(),
       MasterColumnDef<_BucketRow>(
         key: 'path',
         label: 'BOM 路径',
@@ -2205,29 +2559,9 @@ class _MaterialAnalysisBucketPageState
         value: (row) => host._qty(row.group?.representative.requiredQty),
         info: '本批生产需要的总量（按产品数量 × 单件用量算出）。',
       ),
-      MasterColumnDef<_BucketRow>(
-        key: 'unit',
-        label: '单位',
-        width: 70,
-        value: (row) => row.group?.representative.unitName?.trim(),
-      ),
-      MasterColumnDef<_BucketRow>(
-        key: 'arrivedQty',
-        label: host._l10n.materialAllocated,
-        width: 100,
-        type: 'number',
-        value: (row) {
-          final group = row.group;
-          if (group == null) return null;
-          // 服务端分配已包含本批可用的精确到货，不能再次叠加。
-          final arrived = group.paths.fold<double>(
-            0,
-            (sum, material) => sum + material.allocatedAvailableQty,
-          );
-          return host._qty(arrived);
-        },
-        info: host._l10n.materialPreparedQuantityHint,
-      ),
+      // 2026-09-14 用户口径：原「已备数量」（= 分配给本批的合格量）恒等于
+      // 「需求量 − 缺口」，与右侧缺口列完全冗余；本页右边已有「仓库余量」
+      // 承载真实可动用现货，故该列整列撤除，不再占位。
       // 仓库余量（2026-09-06 用户口径）：仓库里该维度还可用的现货池。
       // 够需求（>=需求量）标绿、不够标红——即使够货也不跳过采购/委外流程，
       // 计划员仍可在桶内按富余量下单（超量部分走公共富余，不绑定本需求）。
@@ -2300,13 +2634,66 @@ class _MaterialAnalysisBucketPageState
             ? null
             : _taskFilter == _PreparationTaskFilter.issued
             ? host._qty(_issuedSubmitQty(row.group!, route))
-            : host._qty(host._residualSubmitQty(row.group!, route)),
+            : host._qty(host._defaultSubmitQty(row.group!, route)),
         info:
             '未下达行：本次要下达的数量（默认 = 缺口 − 已在途，可改小分批）；'
-            '已下达行：已实际下达给下游单据的量。',
+            '采购行若货品维护了最小起订量或订货倍数，默认值会按它向上抬，'
+            '富余部分归公共备货（需超量下达权限，可改小）；'
+            '已下达行：只统计绑定本需求的分摊量——超量下单的公共备货部分见'
+            '右侧「订单总量」列。',
         cellBuilderHandlesSemantics: true,
         cellBuilder: (context, row) => _submitQtyCell(context, row, route),
       ),
+      // 超量下单（需求 1000 实下 2000）时「下达数量」只显示绑定本需求的 1000，
+      // 用户看不到这张单到底下了多少。补一列订单总量（= 需求分摊 + 公共备货 +
+      // 公共安全补库），只在本段真有超量时出现，不改任何账本口径。
+      if (_hasIssuedOrderSurplus(route))
+        MasterColumnDef<_BucketRow>(
+          key: 'issuedOrderTotalQty',
+          label: '订单总量',
+          width: 150,
+          type: 'number',
+          value: (row) => row.group == null
+              ? null
+              : host._qty(_issuedOrderTotal(row.group!, route)?.total),
+          info:
+              '本行已下达单据的下单总量（= 绑定本需求的量 + 公共备货 + 公共安全补库）。'
+              '与左侧「下达数量」的差额归公共池，不占本分析的精确账，其他计划可认领。',
+          cellBuilder: (context, row) {
+            final group = row.group;
+            final totals = group == null
+                ? null
+                : _issuedOrderTotal(group, route);
+            if (totals == null) {
+              return const Align(
+                alignment: Alignment.centerRight,
+                child: Text('—'),
+              );
+            }
+            final theme = Theme.of(context);
+            final demand = totals.total - totals.surplus;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  host._qty(totals.total),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (totals.surplus > 0.0001)
+                  Text(
+                    '本需求 ${host._qty(demand)} + 公共 '
+                    '${host._qty(totals.surplus)}',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
       if (_taskFilter == _PreparationTaskFilter.issued)
         MasterColumnDef<_BucketRow>(
           key: 'supplyProgress',
@@ -2351,6 +2738,76 @@ class _MaterialAnalysisBucketPageState
     return sum;
   }
 
+  /// 行动 id → 权威数量快照（服务端 supplyActions 投影）。每次重建 columns
+  /// 时建一次即可：分析视图整体替换，缓存与视图同生命周期。
+  Map<String, MaterialAnalysisSupplyAction>? _supplyActionIndexCache;
+  ProductionMaterialAnalysisView? _supplyActionIndexOwner;
+
+  Map<String, MaterialAnalysisSupplyAction> get _supplyActionsById {
+    final analysis = _host._analysis;
+    if (!identical(analysis, _supplyActionIndexOwner)) {
+      _supplyActionIndexOwner = analysis;
+      _supplyActionIndexCache = {
+        for (final action
+            in analysis?.supplyActions ??
+                const <MaterialAnalysisSupplyAction>[])
+          if (action.actionId.isNotEmpty) action.actionId: action,
+      };
+    }
+    return _supplyActionIndexCache ?? const {};
+  }
+
+  /// 已下达段每行「订单总量 / 公共备货量」：按 actionId 关联到服务端行动快照，
+  /// total = requested + safety + public_surplus（服务端已算好 totalRequestedQty），
+  /// surplus = 公共备货 + 公共安全补库（都不绑定本需求，ADR-070 §2.7）。
+  ///
+  /// 同一 action 会分摊到同组多条 BOM 路径，**必须按 actionId 去重**否则翻倍；
+  /// 非 SUPPLY 行动（在途调入 / 公共认领）只搬在途份额、没有自己的订单量，跳过。
+  ({double total, double surplus})? _issuedOrderTotal(
+    _MaterialGroup group,
+    MaterialSupplyRoute route,
+  ) {
+    final index = _supplyActionsById;
+    if (index.isEmpty) return null;
+    final counted = <String>{};
+    var total = 0.0;
+    var surplus = 0.0;
+    var matched = false;
+    for (final path in group.paths) {
+      for (final target in path.notifiedTargets) {
+        if (target.target != route) continue;
+        if (target.status == 'CANCELLED') continue;
+        final actionId = target.actionId;
+        if (actionId == null || !counted.add(actionId)) continue;
+        final action = index[actionId];
+        if (action == null) continue;
+        final operation = action.operationType?.trim().toUpperCase();
+        if (operation != null &&
+            operation.isNotEmpty &&
+            operation != 'SUPPLY') {
+          continue;
+        }
+        matched = true;
+        total += action.totalRequestedQty;
+        surplus += action.publicSurplusQty + action.safetyReplenishmentQty;
+      }
+    }
+    return matched ? (total: total, surplus: surplus) : null;
+  }
+
+  /// 本桶「已下达」段是否存在超出本需求的下单量（公共备货/安全补库）。
+  /// 没有超量时不出「订单总量」列——它会与「下达数量」同值，纯噪音。
+  bool _hasIssuedOrderSurplus(MaterialSupplyRoute route) {
+    if (_taskFilter != _PreparationTaskFilter.issued) return false;
+    for (final row in _host._bucketRows(_bucket)) {
+      final group = row.group;
+      if (group == null) continue;
+      final totals = _issuedOrderTotal(group, route);
+      if (totals != null && totals.surplus > 0.0001) return true;
+    }
+    return false;
+  }
+
   /// 「下达数量」单元格：可编辑行（未下达段 + actionGroupKey 提交单元）给
   /// 数字输入框（默认=缺口全量，可改小分批/超量）；已下达段只读显示
   /// 已实际下达的量（路线匹配的分摊合计）；其余只读行显示默认量。
@@ -2362,7 +2819,8 @@ class _MaterialAnalysisBucketPageState
     final theme = Theme.of(context);
     final group = row.group;
     if (group == null) return const SizedBox.shrink();
-    final defaultValue = _host._residualSubmitQty(group, route);
+    final defaultValue = _host._defaultSubmitQty(group, route);
+    final orderPolicyHint = _host._orderPolicyHint(group, route);
     // 选中行统一淡绿底+常态字色（2026-09-13 全站表格口径）：输入框走全站默认
     // 白底/深字，不再随选中态改字色或垫浅底。
     if (!_rowQtyEditable(row)) {
@@ -2380,9 +2838,10 @@ class _MaterialAnalysisBucketPageState
       );
     }
     final unit = group.representative.unitName?.trim();
-    return Semantics(
+    final field = Semantics(
       label:
-          '下达数量${unit == null ? '' : '（$unit）'}，默认 ${_host._qty(defaultValue)}',
+          '下达数量${unit == null ? '' : '（$unit）'}，默认 ${_host._qty(defaultValue)}'
+          '${orderPolicyHint == null ? '' : '，$orderPolicyHint'}',
       textField: true,
       child: TextField(
         key: ValueKey(
@@ -2404,6 +2863,30 @@ class _MaterialAnalysisBucketPageState
         ),
       ),
     );
+    if (orderPolicyHint == null) return field;
+    // 起订量抬量说明贴在输入框下方一行，不另开浮层：计划员一眼看到
+    // 「抬到多少、富余多少归公共备货」，不必去猜默认值为什么变大。
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        field,
+        Padding(
+          padding: const EdgeInsets.only(top: UtenSpacing.s2),
+          child: Text(
+            orderPolicyHint,
+            key: ValueKey(
+              'material-analysis-bucket-order-policy-'
+              '${group.representative.actionGroupKey}',
+            ),
+            textAlign: TextAlign.right,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   /// 产品/候选列（车间桶已下达/需处理表）。
@@ -2415,21 +2898,8 @@ class _MaterialAnalysisBucketPageState
     final issued = _taskFilter == _PreparationTaskFilter.issued;
     return [
       _supplyDetailsColumn(),
-      MasterColumnDef<_BucketRow>(
-        key: 'goods',
-        label: '产品',
-        width: 200,
-        value: (row) {
-          if (row.product != null) {
-            final code = row.product!.goodsCode?.trim();
-            final name = row.product!.goodsName ?? '';
-            return code?.isNotEmpty == true ? '$name($code)' : name;
-          }
-          final m = row.candidate?.material;
-          if (m == null) return null;
-          return m.goodsName ?? m.goodsCode ?? m.materialLineId;
-        },
-      ),
+      ..._identityColumns(),
+      _routeColumn(),
       MasterColumnDef<_BucketRow>(
         key: 'requestedQty',
         label: '需求量',

@@ -166,13 +166,15 @@ abstract class _MaterialAnalysisBorrowState
 
   /// 跨计划让料复用同一物料维度预检，但不受分析内借用的“已下达”门禁限制：
   /// 服务端会以两份分析的当前快照和精确 entitlement 再次校验。
+  /// 2026-09-13 起不再限制层级：深层子件（自制件、委外件的下层组件）同样
+  /// 可以跨计划让出与调入；第 0 层根供给行仍走自己的根产出交付通道。
   bool _canCrossReallocateOut(ProductionMaterialAnalysisMaterial material) {
     if (!_canCrossReallocate ||
         _busy ||
         !_hasResolvedMaterialSource(material)) {
       return false;
     }
-    if (material.level != 1) return false;
+    if (material.level < 1) return false;
     if (material.requiredQty <= 0 || material.allocatedAvailableQty <= 0) {
       return false;
     }
@@ -186,7 +188,8 @@ abstract class _MaterialAnalysisBorrowState
         !_hasResolvedMaterialSource(material)) {
       return false;
     }
-    if (material.level != 1 ||
+    // 2026-09-13 起深层子件行也能调入现货（与让出端同口径）。
+    if (material.level < 1 ||
         material.requiredQty <= 0 ||
         material.shortageQty <= 0) {
       return false;
@@ -195,6 +198,10 @@ abstract class _MaterialAnalysisBorrowState
     return stage != 'SHIP' && stage != 'REFERENCE';
   }
 
+  /// 「调入其他计划专属在途」入口预检：仍有建议补供量时，可把其他计划
+  /// 已下单未实收的外部在途（采购/委外份额）调给本计划——采购、委外、
+  /// 车间三种路线均可（按同主仓、同货品/颜色/单位匹配，不看子层级），
+  /// 调入后剩余量仍可再次下达。弹窗自动匹配来源。
   bool _canFutureTransferIn(ProductionMaterialAnalysisMaterial material) =>
       _canCrossReallocate &&
       !_busy &&
@@ -202,7 +209,8 @@ abstract class _MaterialAnalysisBorrowState
       material.requiredQty > 0 &&
       material.additionalSupplyRecommendedQty > 0 &&
       (material.confirmedRoute == MaterialSupplyRoute.buy ||
-          material.confirmedRoute == MaterialSupplyRoute.subcontract);
+          material.confirmedRoute == MaterialSupplyRoute.subcontract ||
+          material.confirmedRoute == MaterialSupplyRoute.make);
 
   /// 可调入路径：同一物料（货品+颜色+单位）、其它产品、直接组件层、
   /// 仍有缺口、无在途任务。客户端只列候选，数量与合法性由服务端复核。
@@ -276,22 +284,60 @@ abstract class _MaterialAnalysisBorrowState
         ? product!.sourceRef!.trim()
         : '当前计划产品';
     setState(() => _borrowing = true);
+    final completions = <MaterialReallocationCompletion>[];
     try {
-      MaterialReallocationCompletion? completed;
       final view = await showMaterialReallocationDialog(
         context: context,
         repository: ref.read(productionPlanRepositoryProvider),
         sourceAnalysis: analysis,
         sourceMaterial: material,
         sourceProductLabel: productLabel,
-        sourcePathLabel: _pathLabel(material),
         qtyText: _qty,
         receiveIntoCurrent: receiveIntoCurrent,
         futureTransfer: futureTransfer,
-        onCompleted: (result) => completed = result,
+        onCompleted: completions.add,
         onSourceRebased: (latest) {
           if (!mounted) return;
           setState(() => _applyAnalysis(latest));
+        },
+        onOpenSourcePlan: _permissions.contains(
+          Perm.productionMaterialAnalysisView,
+        )
+            ? (candidate) {
+                context.push(
+                  RouteName.productionMaterialAnalysis,
+                  extra: ProductionMaterialAnalysisSeed(
+                    analysisId: candidate.analysisId,
+                    analysisVersion: candidate.version,
+                    warehouseId: candidate is MaterialFutureTransferSource
+                        ? candidate.warehouseId
+                        : (candidate is MaterialCrossReallocationSourceCandidate
+                              ? candidate.warehouseId
+                              : null),
+                  ),
+                );
+              }
+            : null,
+        onOpenSourceDocument: (candidate) {
+          if (candidate is! MaterialFutureTransferSource) return;
+          final documentId = candidate.documentId?.trim();
+          final route = candidate.documentRoute?.trim().toUpperCase();
+          if (documentId == null || documentId.isEmpty) return;
+          if (route == 'PURCHASE') {
+            if (_permissions.contains(Perm.purchaseOrderView)) {
+              context.push(RoutePath.purchaseDocDetail('orders', documentId));
+            } else {
+              context.appInfo('当前账号无采购单查看权限');
+            }
+          } else if (route == 'SUBCONTRACT') {
+            if (_permissions.contains(Perm.subcontractOrderView)) {
+              context.push(
+                RoutePath.subcontractDocDetail('orders', documentId),
+              );
+            } else {
+              context.appInfo('当前账号无委外单查看权限');
+            }
+          }
         },
       );
       if (!mounted) return;
@@ -300,15 +346,15 @@ abstract class _MaterialAnalysisBorrowState
         if (view != null) _applyAnalysis(view);
       });
       if (view != null) {
+        final result = completions.isNotEmpty ? completions.last : null;
         context.appSuccess(
-          futureTransfer
-              ? '专属在途份额已调整；当前仅增加已安排供给，实际合格入库后才减少物理缺口'
+          result?.futureTransfer == true
+              ? '在途份额已调整 ${completions.length} 笔；到货并检验合格后缺口才会减少'
               : receiveIntoCurrent
-              ? '跨计划调入已生效；供料计划保留需求并优先待补，本计划可继续按剩余缺口备料'
+              ? '调入已生效；供料计划保留需求并优先待补，本计划可继续按剩余缺口备料'
               : '跨计划让料已生效；本计划已标记优先待补，可继续按剩余缺口下达采购、委外或车间',
         );
-        final result = completed;
-        if (result != null) {
+        if (completions.length == 1 && result != null) {
           await _showPriorityReplenishment(
             sourceAnalysisId: result.sourceAnalysisId,
             sourceMaterialLineId: result.sourceMaterialLineId,
@@ -316,8 +362,8 @@ abstract class _MaterialAnalysisBorrowState
             futureTransfer: result.futureTransfer,
             sourceLabel: result.sourceLabel,
           );
-        } else {
-          context.appInfo('调料已生效；补供关联尚未返回，请从让料记录继续为原计划补供。');
+        } else if (completions.length > 1) {
+          context.appInfo('本次共调入 ${completions.length} 个来源；如需为某个来源计划补供，请在调拨记录里逐笔办理。');
         }
       }
     } finally {
@@ -625,6 +671,20 @@ abstract class _MaterialAnalysisBorrowState
         : '已让料 ${_qty(allocation.qty)} 件 · 接受计划 $counterpart';
   }
 
+  /// 经办人与办理时间；服务端未返回时静默省略。
+  String _crossReallocationOperatorLine(
+    MaterialCrossReallocationRef allocation,
+  ) {
+    final operator = allocation.createdByName?.trim();
+    final at = allocation.createdAt?.trim();
+    final parts = <String>[
+      if (operator?.isNotEmpty == true) '经办 $operator',
+      if (at != null && at.isNotEmpty)
+        '办理 ${at.replaceFirst(RegExp(r'T.*'), '').split('.').first}',
+    ];
+    return parts.join(' · ');
+  }
+
   String _crossReallocationExplanation(
     MaterialCrossReallocationRef allocation,
   ) {
@@ -757,6 +817,16 @@ abstract class _MaterialAnalysisBorrowState
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
+                  if (_crossReallocationOperatorLine(allocation)
+                      .isNotEmpty) ...[
+                    const SizedBox(height: UtenSpacing.s2),
+                    Text(
+                      _crossReallocationOperatorLine(allocation),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                   if (allocation.reason?.trim().isNotEmpty == true) ...[
                     const SizedBox(height: UtenSpacing.s4),
                     Text('业务原因：${allocation.reason}'),

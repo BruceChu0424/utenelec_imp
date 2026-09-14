@@ -432,17 +432,18 @@ class _ProductionDrawRequestPageState
             width: 170,
             value: (row) => _label(row.warehouseName),
           ),
-          MasterColumnDef(
-            key: 'goodsCode',
-            label: '物料编码',
-            width: 130,
-            value: (row) => _label(row.goodsCode),
-          ),
+          // 2026-09-14 全站列序统一：名称 → 编号 → 颜色。
           MasterColumnDef(
             key: 'goodsName',
             label: '物料名称',
-            width: 210,
+            width: 200,
             value: (row) => _label(row.goodsName),
+          ),
+          MasterColumnDef(
+            key: 'goodsCode',
+            label: '编号',
+            width: 130,
+            value: (row) => _label(row.goodsCode),
           ),
           MasterColumnDef(
             key: 'color',

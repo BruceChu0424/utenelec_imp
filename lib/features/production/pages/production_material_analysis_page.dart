@@ -8,6 +8,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
@@ -20,6 +21,7 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../features/basic_data/models/master_facet.dart';
 import '../../../core/network/api_exception.dart';
@@ -53,7 +55,10 @@ import '../models/production_work_card.dart';
 import '../providers/material_analysis_warehouse_prefs_provider.dart';
 import '../providers/production_execution_refresh.dart';
 import '../repositories/production_repository.dart';
+import '../../purchase/models/purchase_doc.dart';
+import '../../purchase/repositories/purchase_repository.dart';
 import '../widgets/material_reallocation_dialog.dart';
+import '../widgets/material_transfer_launcher.dart';
 import '../widgets/material_priority_replenishment_dialog.dart';
 import '../widgets/material_shared_future_claim_dialog.dart';
 import '../widgets/material_future_transfer_history.dart';
@@ -68,6 +73,7 @@ part 'material_analysis_bom_tree.dart';
 part 'material_analysis_borrow.dart';
 part 'material_analysis_bucket_detail.dart';
 part 'material_analysis_candidates.dart';
+part 'material_analysis_child_cascade.dart';
 part 'material_analysis_plan_actions.dart';
 part 'material_analysis_product_tasks.dart';
 part 'material_analysis_material_table.dart';
@@ -570,8 +576,25 @@ abstract class _MaterialAnalysisPageBase
     ProductionMaterialAnalysisProduct product,
   );
   bool _hasResolvedMaterialSource(ProductionMaterialAnalysisMaterial material);
-  Future<void> _showMaterialTableDetails(_MaterialGroup group);
+
+  /// 「物料 / 调拨」简化选择器（三个调入入口+完整详情）；
+  /// 实现见 material_analysis_material_table.dart。
+  Future<void> _showTransferLauncher(_MaterialGroup group);
   String _analysisDynamicProjectionKey(ProductionMaterialAnalysisView view);
+
+  /// 父件 + 下层一起下单（ADR-081，2026-09-14 修订为弹窗前置：提交父件之前
+  /// 先弹窗，一键下单里按序提交父件与下层）；实现见 material_analysis_child_cascade.dart。
+  /// [_pendingChildCascadeRows] = 预构建下层行（无可勾选行返回 null，
+  /// 调用方走原路直接提交）。
+  List<_ChildCascadeRow>? _pendingChildCascadeRows(
+    List<_ChildCascadeSeed> seeds,
+  );
+
+  Future<bool> _showChildCascadeDialog({
+    required List<_ChildCascadeSeed> seeds,
+    required List<_ChildCascadeRow> initialRows,
+    Future<bool> Function()? parentAction,
+  });
   Widget _nodeBorrowSection(
     ThemeData theme,
     ProductionMaterialAnalysisMaterial material,
@@ -1549,7 +1572,7 @@ abstract class _MaterialAnalysisPageBase
 
 /// 继承链的最终实现类：保持测试与 createState 引用的原私有名。
 class _ProductionMaterialAnalysisPageState
-    extends _MaterialAnalysisMaterialTableState {
+    extends _MaterialAnalysisChildCascadeState {
   /// 顶部「主仓库」字段实测高度（更新时间事实框与之等高，2026-09-12 用户口径）。
   final GlobalKey _warehouseFieldMeasureKey = GlobalKey();
   double? _factChipHeight;

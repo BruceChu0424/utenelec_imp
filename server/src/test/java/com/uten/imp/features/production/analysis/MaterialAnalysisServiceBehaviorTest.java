@@ -1263,10 +1263,12 @@ class MaterialAnalysisServiceBehaviorTest {
         for (String parentStock : List.of("0", "0.5", "1")) {
             Object projection = invokePrivate(service, "computeAllocationProjection",
                     new Class<?>[]{List.class, List.class, Map.class, Map.class,
-                            Map.class, Set.class, Map.class, MaterialAnalysisService.BorrowTuning.class},
+                            Map.class, Set.class, Map.class, Map.class,
+                            MaterialAnalysisService.BorrowTuning.class},
                     sources, List.of(parent, child, direct),
                     Map.of(child.dimension(), bd("1"), parent.dimension(), bd(parentStock)),
-                    Map.of(), Map.of(), Set.of(), Map.of(), MaterialAnalysisService.BorrowTuning.NONE);
+                    Map.of(), Map.of(), Set.of(), Map.of(), Map.of(),
+                    MaterialAnalysisService.BorrowTuning.NONE);
             Map<String, MaterialAnalysisService.NodeAllocation> allocations = invokePrivate(
                     projection, "allocations", new Class<?>[]{});
 
@@ -1294,10 +1296,12 @@ class MaterialAnalysisServiceBehaviorTest {
 
         Object projection = invokePrivate(service, "computeAllocationProjection",
                 new Class<?>[]{List.class, List.class, Map.class, Map.class,
-                        Map.class, Set.class, Map.class, MaterialAnalysisService.BorrowTuning.class},
+                        Map.class, Set.class, Map.class, Map.class,
+                        MaterialAnalysisService.BorrowTuning.class},
                 List.of(allocationSource(itemId, UUID.randomUUID(), unitId, 0, "1")),
                 List.of(parent, child, missing), Map.of(parent.dimension(), bd("1")),
-                Map.of(), Map.of(), Set.of(), Map.of(), MaterialAnalysisService.BorrowTuning.NONE);
+                Map.of(), Map.of(), Set.of(), Map.of(), Map.of(),
+                MaterialAnalysisService.BorrowTuning.NONE);
         Map<String, MaterialAnalysisService.NodeAllocation> allocations = invokePrivate(
                 projection, "allocations", new Class<?>[]{});
 
@@ -1337,9 +1341,10 @@ class MaterialAnalysisServiceBehaviorTest {
                     Map.of(exactKey, bd("1")), Map.of(child.dimension(), bd("1")));
             Object projection = invokePrivate(service, "computeAllocationProjection",
                     new Class<?>[]{List.class, List.class, Map.class, Map.class,
-                            Map.class, Set.class, Map.class, MaterialAnalysisService.BorrowTuning.class},
+                            Map.class, Set.class, Map.class, Map.class,
+                            MaterialAnalysisService.BorrowTuning.class},
                     sources, List.of(parent, child, direct), Map.of(child.dimension(), bd("1")),
-                    Map.of(), Map.of(), Set.of(), Map.of(), tuning);
+                    Map.of(), Map.of(), Set.of(), Map.of(), Map.of(), tuning);
             Map<String, MaterialAnalysisService.NodeAllocation> allocations = invokePrivate(
                     projection, "allocations", new Class<?>[]{});
 
@@ -1998,7 +2003,9 @@ class MaterialAnalysisServiceBehaviorTest {
                         7L, "b".repeat(64),
                         "SRC-A", "P-A", "产品A",
                         "SRC-B", "P-B", "产品B",
-                        false, currentEffective
+                        false, currentEffective,
+                        // row[21]/row[22]：让料记录的经办人与办理时间（只读展示列）
+                        "张三", java.time.OffsetDateTime.parse("2026-09-13T08:00:00Z")
                 };
         Object[] formalized = row.apply(
                 formalizedMaterialId, new BigDecimal("4"));
@@ -2115,6 +2122,85 @@ class MaterialAnalysisServiceBehaviorTest {
                 .thenAnswer(invocation -> invocation.getArgument(1));
         org.springframework.test.util.ReflectionTestUtils.setField(service, "draftPreparationAccess", preparationAccess);
         return service;
+    }
+
+    // ===== 子件按父件「计划产出」展开（2026-09-13） =====================
+    // 父件的物理缺口里，凡是已被外部最终件在途顶上的部分都不需要再备下层料；
+    // 但已经承诺由我方制造的部分（已下达车间的自制锚点、委外件的前置自制
+    // 任务）必须保住它的原料，否则车间会断料。
+
+    /** 展开基准辅助：跑一次投影并返回指定节点的需求量。 */
+    private BigDecimal childRequirementWithParentSupply(
+            String parentExternalFuture, String parentInternalCommitted,
+            String parentStock) {
+        UUID unitId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+        var parent = diagnosticNode(itemId, UUID.randomUUID(), unitId,
+                "parent", null, 1, "100", "1", "MAKE", true);
+        var child = diagnosticNode(itemId, UUID.randomUUID(), unitId,
+                "parent/child", "parent", 2, "0", "1", "BUY", false);
+        MaterialAnalysisService service = service(
+                mock(EntityManager.class), mock(ProductionDocumentAccessPolicy.class));
+        Object projection = invokePrivate(service, "computeAllocationProjection",
+                new Class<?>[]{List.class, List.class, Map.class, Map.class,
+                        Map.class, Set.class, Map.class, Map.class,
+                        MaterialAnalysisService.BorrowTuning.class},
+                List.of(allocationSource(itemId, UUID.randomUUID(), unitId, 0, "100")),
+                List.of(parent, child),
+                Map.of(parent.dimension(), bd(parentStock)),
+                Map.of(), Map.of(), Set.of(), Map.of(),
+                Map.of(itemId + "|parent", new MaterialAnalysisService.ParentSupplyCommitment(
+                        bd(parentExternalFuture), bd(parentInternalCommitted))),
+                MaterialAnalysisService.BorrowTuning.NONE);
+        List<MaterialAnalysisService.BomNode> nodes = invokePrivate(
+                projection, "nodes", new Class<?>[]{});
+        return nodes.stream()
+                .filter(node -> node.nodeKey().equals("parent/child"))
+                .findFirst().orElseThrow().snapshotRequiredQty();
+    }
+
+    @Test
+    void externalFutureSupplyOnTheParentShrinksTheChildRequirement() {
+        // 父件缺 100，其中 60 已由别的计划的采购在途转入 → 只需为剩下的 40 备料。
+        assertThat(childRequirementWithParentSupply("60", "0", "0"))
+                .isEqualByComparingTo("40");
+    }
+
+    @Test
+    void fullyCoveredParentZeroesTheWholeSubtree() {
+        // 父件缺口被在途全额覆盖 → 整棵子树的未下达需求归零。
+        assertThat(childRequirementWithParentSupply("100", "0", "0"))
+                .isEqualByComparingTo("0");
+    }
+
+    @Test
+    void alreadyIssuedInternalProductionKeepsItsChildRequirement() {
+        // 100 全部已下达车间，事后又调入 60 在途：已下达是冻结承诺，
+        // 车间那 100 件的料一件都不能少，否则开不了工。
+        assertThat(childRequirementWithParentSupply("60", "100", "0"))
+                .isEqualByComparingTo("100");
+    }
+
+    @Test
+    void partiallyIssuedInternalProductionTakesTheHigherOfTheTwoBases() {
+        // 调入在途 60、已下达车间 40 → 净做 40，与已下达量一致。
+        assertThat(childRequirementWithParentSupply("60", "40", "0"))
+                .isEqualByComparingTo("40");
+    }
+
+    @Test
+    void internalCommitmentNeverExceedsThePhysicalGap() {
+        // 锚点数量是累加的，可能高于当前物理缺口（父件已有现货 30）。
+        // 托底值必须被缺口封顶，不能把下层需求抬到缺口以上。
+        assertThat(childRequirementWithParentSupply("0", "500", "30"))
+                .isEqualByComparingTo("70");
+    }
+
+    @Test
+    void spotStockIsNettedBeforeExternalFutureSupply() {
+        // 现货 30 先冲缺口（100-30=70），在途 60 再冲 → 净做 10。
+        assertThat(childRequirementWithParentSupply("60", "0", "30"))
+                .isEqualByComparingTo("10");
     }
 
     private static MaterialAnalysisService.SourceLine allocationSource(
@@ -2280,6 +2366,8 @@ class MaterialAnalysisServiceBehaviorTest {
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 List.of(), List.of(), List.of(),
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                // additionalSupplyRecommendedQty 之后是货品起订量与订货倍数（未维护）
+                null, null,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, List.of(), null, null,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
@@ -2302,7 +2390,7 @@ class MaterialAnalysisServiceBehaviorTest {
                 BigDecimal.ONE, bd("10"), BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, shortage, null,
                 "BUY", "BUY", null,
-                false);
+                false, null, null);
     }
 
     private static MaterialAnalysisService.MaterialRow requirementRow(
@@ -2327,7 +2415,7 @@ class MaterialAnalysisServiceBehaviorTest {
                 true, true, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE,
                 bd(required), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, bd(shortage), null,
-                suggestion, confirmedRoute, null, false);
+                suggestion, confirmedRoute, null, false, null, null);
     }
 
     private static Query query(List<?> rows) {

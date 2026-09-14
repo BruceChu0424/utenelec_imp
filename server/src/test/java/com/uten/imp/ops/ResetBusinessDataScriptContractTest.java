@@ -64,7 +64,8 @@ class ResetBusinessDataScriptContractTest {
         // V547 adds two FQC inspection-sheet tables; V548 adds the arrival
         // registration reversal ledger (CLEAR 266→269, 362→365).
         // V560 three return request facts, V561 batch lineage, V568 reallocation supplements.
-        assertThat(policy).hasSize(372);
+        // V579 party contact/address/activity tables (372→375, 96→99 PRESERVE).
+        assertThat(policy).hasSize(375);
         assertThat(policy.values().stream().filter("CLEAR"::equals).count())
                 .isEqualTo(276);
         assertThat(policy).containsEntry("production_material_return_requests", "CLEAR");
@@ -78,8 +79,11 @@ class ResetBusinessDataScriptContractTest {
         assertThat(policy).containsEntry("production_fqc_inspection_sheet_items", "CLEAR");
         assertThat(policy).containsEntry(
                 "production_finished_arrival_registration_reversals", "CLEAR");
+        assertThat(policy).containsEntry("party_contact_methods", "PRESERVE");
+        assertThat(policy).containsEntry("party_addresses", "PRESERVE");
+        assertThat(policy).containsEntry("party_activity_records", "PRESERVE");
         assertThat(policy.values().stream().filter("PRESERVE"::equals).count())
-                .isEqualTo(96);
+                .isEqualTo(99);
 
         // V463：订货行多来源锚定的两张分配表随业务数据清空。
         assertThat(policy).containsEntry(
@@ -303,7 +307,11 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(562, 520)")
                 .contains("(563, 521)")
                 .contains("(572, 530)")
-                .contains("V507/469、V508/470及V511至V572完整目录")
+                .contains("(573, 531)")
+                .contains("(574, 532)")
+                .contains("(575, 533)")
+                .contains("(577, 534)")
+                .contains("V507/469、V508/470及V511至V577完整目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")

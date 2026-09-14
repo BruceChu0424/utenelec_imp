@@ -3,6 +3,7 @@ package com.uten.imp.features.production.analysis;
 import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -13,12 +14,13 @@ public final class PreplanFutureSupplyTransfer {
                          String route,UUID warehouseId,String warehouseName,UUID goodsId,String goodsCode,String goodsName,
                          UUID colorId,UUID unitId,String unitName,BigDecimal availableQty,BigDecimal receivedQty,
                          LocalDate expectedDate,LocalDate targetNeedDate,boolean lateOrUnknown,String stage,
-                         long sourceVersion,String sourceFingerprint,long targetVersion,String targetFingerprint,BigDecimal targetUncoveredQty) {}
+                         long sourceVersion,String sourceFingerprint,long targetVersion,String targetFingerprint,BigDecimal targetUncoveredQty,
+                         String documentNo,UUID documentId,String documentRoute) {}
     public record Create(@NotNull UUID sourceAllocationId,@NotNull UUID targetMaterialId,
                          @NotNull @DecimalMin("0.0001") @Digits(integer=14,fraction=4) BigDecimal qty,
                          @NotNull Long sourceVersion,@NotBlank String sourceFingerprint,
                          @NotNull Long targetVersion,@NotBlank String targetFingerprint,
-                         boolean allowLateSupply,@NotBlank @Size(min=2,max=1000) String reason,
+                         boolean allowLateSupply,@Size(max=1000) String reason,
                          @NotBlank @Size(min=8,max=128) String idempotencyKey) {}
     public record Cancel(@NotNull @DecimalMin("0.0001") @Digits(integer=14,fraction=4) BigDecimal qty,
                          @NotNull Long sourceVersion,@NotBlank String sourceFingerprint,
@@ -36,7 +38,8 @@ public final class PreplanFutureSupplyTransfer {
                            long sourceVersion,String sourceFingerprint,long targetVersion,String targetFingerprint,
                            boolean canCancel,String reason,String direction,String blockedReason,BigDecimal cancelableQty,
                            BigDecimal cancelRestoreToSourceQty,BigDecimal cancelPublicReleaseQty,
-                           BigDecimal sourceSupplyShortfallQty,String supplyWarning) {
+                           BigDecimal sourceSupplyShortfallQty,String supplyWarning,
+                           String createdByName,OffsetDateTime createdAt) {
         @com.fasterxml.jackson.annotation.JsonProperty("transferId") public UUID transferId(){return id;}
     }
 }

@@ -117,7 +117,19 @@ public class GoodsImportService {
         for (String a : new String[]{"单位", "基本单位"}) putAlias(a, "unitName");
         putAlias("来源", "sourceType");
         for (String a : new String[]{"价格", "单价"}) putAlias(a, "price");
+        // 采购批量口径（V575）：供应商报价单/整箱表常用这几种叫法，一并认。
+        // normKey 不做大小写归一，MOQ/moq 两种写法都登记。
+        for (String a : new String[]{"最小起订量", "起订量", "最小订量", "MOQ", "moq"}) {
+            putAlias(a, "minOrderQty");
+        }
+        for (String a : new String[]{"订货倍数", "整箱数量", "整包装量", "包装倍数"}) putAlias(a, "orderMultipleQty");
         putAlias("状态", "status");
+        // 后模镶件编号（V457）：导出一直在写这一列，DTO 也开放编辑，
+        // 但此前没登记别名 → 未识别表头被静默丢弃，导出改完再导入会把
+        // 用户填的值悄悄吃掉。这里按可编辑文本列接线。
+        for (String a : new String[]{"后模镶件编号", "后模镶件", "镶件编号"}) {
+            putAlias(a, "rearInsertCode");
+        }
         // 导出有但 DTO 未开放编辑——识别但忽略其值（不报「无法识别」）。
         for (String a : new String[]{"客户型号", "备注"}) putAlias(a, "ignored");
     }
@@ -125,6 +137,9 @@ public class GoodsImportService {
     private static void putAlias(String alias, String key) {
         HEADER_ALIASES.put(normKey(alias), key);
     }
+
+    /** 与 goods.rear_insert_code varchar(100)、GoodsSaveRequest 的 @Size(max=100) 对齐。 */
+    private static final int REAR_INSERT_CODE_MAX = 100;
 
     private static final Set<String> VALID_SOURCE_TYPES = Set.of("自制", "采购", "委外");
     private static final Set<String> VALID_STATUSES = Set.of("使用", "禁用");
@@ -168,6 +183,15 @@ public class GoodsImportService {
             }
             if (r.name == null || r.name.isEmpty()) {
                 errors.add(new GoodsImportError(r.rowNum, "货品名称", "货品名称不能为空"));
+            }
+            // 后模镶件编号是标识符，不是描述：超长截断会得到一个「看着正常、
+            // 实际指错镶件」的编号，比让用户改表格更危险。列宽 varchar(100)
+            // 与 DTO 的 @Size(max=100) 一致，这里在检测期就按行报错。
+            if (r.rearInsertCode != null
+                    && r.rearInsertCode.length() > REAR_INSERT_CODE_MAX) {
+                errors.add(new GoodsImportError(r.rowNum, "后模镶件编号",
+                        "后模镶件编号不能超过 " + REAR_INSERT_CODE_MAX + " 个字符，当前 "
+                                + r.rearInsertCode.length() + " 个"));
             }
             CategoryPathPlan category = null;
             if (r.categorySegments == null || r.categorySegments.isEmpty()) {
@@ -265,8 +289,11 @@ public class GoodsImportService {
             req.setModel(emptyToNull(r.model));
             req.setSpec(emptyToNull(r.spec));
             req.setMaterial(emptyToNull(r.material));
+            req.setRearInsertCode(emptyToNull(r.rearInsertCode));
             req.setSourceType(emptyToNull(r.sourceType));
             req.setPrice(r.price);
+            req.setMinOrderQty(r.minOrderQty);
+            req.setOrderMultipleQty(r.orderMultipleQty);
             req.setStatus(emptyToNull(r.status));
             // Runtime relationships are UUID-only. legacy_id is never used to
             // resolve or write an imported goods relationship.
@@ -485,11 +512,17 @@ public class GoodsImportService {
                 pr.model = trim(str(row, col.get("model")));
                 pr.spec = trim(str(row, col.get("spec")));
                 pr.material = trim(str(row, col.get("material")));
+                pr.rearInsertCode = trim(str(row, col.get("rearInsertCode")));
                 pr.colorName = normKey(str(row, col.get("colorName")));
                 pr.unitName = normKey(str(row, col.get("unitName")));
                 pr.sourceType = normKey(str(row, col.get("sourceType")));
                 pr.status = trim(str(row, col.get("status")));
                 pr.price = parsePrice(str(row, col.get("price")), pr.rowNum, headerErrors);
+                // 采购批量口径（V575）：负数按无效数字报错，不静默取绝对值。
+                pr.minOrderQty = parseQty(
+                        str(row, col.get("minOrderQty")), "最小起订量", pr.rowNum, headerErrors);
+                pr.orderMultipleQty = parseQty(
+                        str(row, col.get("orderMultipleQty")), "订货倍数", pr.rowNum, headerErrors);
                 pr.categorySegments = splitCategory(str(row, col.get("categoryPath")));
                 rows.add(pr);
             }
@@ -541,6 +574,28 @@ public class GoodsImportService {
             return new BigDecimal(cleaned);
         } catch (NumberFormatException e) {
             errors.add(new GoodsImportError(rowNum, "价格", "价格「" + raw + "」不是有效数字"));
+            return null;
+        }
+    }
+
+    /**
+     * 采购批量数量列（最小起订量 / 订货倍数）：可空、非负。
+     *
+     * <p>与 {@link #parsePrice} 的区别：不剥非数字字符（起订量单元格不会带货币符号，
+     * 真出现「500个」这种写法要让用户看见错误而不是被静默读成 500），负数直接报错。
+     */
+    private BigDecimal parseQty(String raw, String label, int rowNum,
+                                List<GoodsImportError> errors) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            BigDecimal v = new BigDecimal(raw.trim());
+            if (v.signum() < 0) {
+                errors.add(new GoodsImportError(rowNum, label, label + "「" + raw + "」不能为负数"));
+                return null;
+            }
+            return v;
+        } catch (NumberFormatException e) {
+            errors.add(new GoodsImportError(rowNum, label, label + "「" + raw + "」不是有效数字"));
             return null;
         }
     }
@@ -821,11 +876,14 @@ public class GoodsImportService {
         String model;
         String spec;
         String material;
+        String rearInsertCode;       // 后模镶件编号（V457）
         String colorName;
         String unitName;
         String sourceType;
         String status;
         BigDecimal price;
+        BigDecimal minOrderQty;      // 最小起订量（V575）
+        BigDecimal orderMultipleQty; // 订货倍数（V575）
         List<String> categorySegments;
     }
 

@@ -32,6 +32,8 @@ class MaterialSharedFutureClaimDraft {
     required this.allowLateSupply,
   });
   final List<MaterialSharedFutureClaimQuantity> quantities;
+
+  /// 2026-09-13 起晚到/交期未明确的公共供给默认接受，不再弹显式勾选。
   final bool allowLateSupply;
 }
 
@@ -50,7 +52,6 @@ class _MaterialSharedFutureClaimDialogState
   final _selected = <String>{};
   final _sources = <String, String?>{};
   final _errors = <String, String>{};
-  bool _late = false;
   String? _error;
 
   @override
@@ -76,10 +77,11 @@ class _MaterialSharedFutureClaimDialogState
     super.dispose();
   }
 
+  /// 公共池可认领量：按期 + 晚到/交期未明确（后者默认接受）。
   Map<String, double> _poolLimits() {
     final limits = <String, double>{};
     for (final row in widget.rows) {
-      final total = row.timelyQty + (_late ? row.lateQty : 0);
+      final total = row.timelyQty + row.lateQty;
       limits.update(
         row.poolKey,
         (old) => total > old ? total : old,
@@ -87,26 +89,6 @@ class _MaterialSharedFutureClaimDialogState
       );
     }
     return limits;
-  }
-
-  void _changeLate(bool value) {
-    setState(() {
-      _late = value;
-      _errors.clear();
-      final remaining = _poolLimits();
-      for (final row in widget.rows) {
-        final controller = _controllers[row.actionGroupKey]!;
-        var quantity = double.tryParse(controller.text) ?? 0;
-        if (_late && quantity == 0) {
-          final available = remaining[row.poolKey] ?? 0;
-          quantity = available < row.needQty ? available : row.needQty;
-          controller.text = _qty(quantity);
-        }
-        if (_selected.contains(row.actionGroupKey)) {
-          remaining[row.poolKey] = (remaining[row.poolKey] ?? 0) - quantity;
-        }
-      }
-    });
   }
 
   void _confirm() {
@@ -130,9 +112,7 @@ class _MaterialSharedFutureClaimDialogState
         continue;
       }
       if (quantity > (remaining[row.poolKey] ?? 0) + .000001) {
-        errors[row.actionGroupKey] = _late
-            ? '同一公共来源池的合计认领量不足，请减少本行或其它行数量'
-            : '按期公共供给不足；可减少数量，或明确接受晚到/交期待确认来源';
+        errors[row.actionGroupKey] = '同一公共来源池的合计认领量不足，请减少数量';
         continue;
       }
       final sourceId = _sources[row.actionGroupKey];
@@ -165,140 +145,160 @@ class _MaterialSharedFutureClaimDialogState
     });
     if (errors.isNotEmpty || result.isEmpty) return;
     Navigator.of(context).pop(
-      MaterialSharedFutureClaimDraft(
-        quantities: result,
-        allowLateSupply: _late,
-      ),
+      MaterialSharedFutureClaimDraft(quantities: result, allowLateSupply: true),
     );
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text('确认采用公共在途（${widget.rows.length} 项）'),
-    content: SizedBox(
-      width: 640,
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              '认领未来供给后，剩余缺口仍可继续下单。只有实际合格入库后才计入现货和当前齐套；未到货、待检及待入库请按来源任务实际进度办理。',
-            ),
-            if (widget.rows.any((row) => row.lateQty > 0))
-              CheckboxListTile(
-                key: const Key('shared-future-accept-late'),
-                contentPadding: EdgeInsets.zero,
-                title: const Text('接受晚到或交期未明确供给'),
-                subtitle: const Text('计划日期保持原值，认领不表示现在可以领料或开工。'),
-                value: _late,
-                onChanged: (value) => _changeLate(value ?? false),
-              ),
-            for (final row in widget.rows)
-              Padding(
-                padding: const EdgeInsets.only(top: UtenSpacing.s12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(row.label),
-                      subtitle: Text(
-                        '尚需供给 ${_qty(row.needQty)} ${row.unit} · 按期可采用 ${_qty(row.timelyQty)}${row.lateQty > 0 ? ' · 晚到/交期待确认 ${_qty(row.lateQty)}' : ''}',
-                      ),
-                      value: _selected.contains(row.actionGroupKey),
-                      onChanged: (selected) => setState(() {
-                        if (selected == true) {
-                          _selected.add(row.actionGroupKey);
-                        } else {
-                          _selected.remove(row.actionGroupKey);
-                        }
-                      }),
-                    ),
-                    TextField(
-                      key: ValueKey(
-                        'shared-future-claim-qty-${row.actionGroupKey}',
-                      ),
-                      controller: _controllers[row.actionGroupKey],
-                      enabled: _selected.contains(row.actionGroupKey),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: UtenInputDecoration(
-                        InputDecoration(
-                          labelText: '本次认领数量',
-                          suffixText: row.unit,
-                          error: _errors[row.actionGroupKey] == null
-                              ? null
-                              : UtenFieldMessage.error(
-                                  _errors[row.actionGroupKey]!,
-                                ),
-                        ),
-                        info: '可只认领部分数量。多条同物料路径共享来源余量，不能重复认领同一份供给。',
-                      ),
-                    ),
-                    if (row.sources.any(
-                      (source) => source.sourceActionId != null,
-                    )) ...[
-                      const SizedBox(height: UtenSpacing.s8),
-                      DropdownButtonFormField<String>(
-                        isExpanded: true,
-                        initialValue: _sources[row.actionGroupKey] ?? '',
-                        decoration: const UtenInputDecoration(
-                          InputDecoration(labelText: '来源'),
-                          info: '按已展示的正式来源选择；实际可认领量和日期在提交时再次核对。',
-                        ),
-                        items: [
-                          const DropdownMenuItem<String>(
-                            value: '',
-                            child: Text('按供给到期顺序采用'),
-                          ),
-                          for (final source in {
-                            for (final source in row.sources)
-                              if (source.sourceActionId != null)
-                                source.sourceActionId!: source,
-                          }.values)
-                            DropdownMenuItem(
-                              value: source.sourceActionId,
-                              child: Text(
-                                '${source.documentNo ?? '来源单号受权限保护'} · ${source.expectedDate ?? '交期待确认'}',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                        ],
-                        onChanged: !_selected.contains(row.actionGroupKey)
-                            ? null
-                            : (value) => setState(
-                                () => _sources[row.actionGroupKey] =
-                                    value?.isEmpty == true ? null : value,
-                              ),
-                      ),
-                    ],
-                  ],
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AlertDialog(
+      title: const Text('从公共在途中调入'),
+      content: SizedBox(
+        width: 640,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '认领后剩余缺口仍可继续下单；实际合格入库后才计入现货。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-            if (_error != null)
-              Text(
-                _error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-          ],
+              for (final row in widget.rows)
+                Padding(
+                  padding: const EdgeInsets.only(top: UtenSpacing.s12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(
+                          row.label,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        subtitle: Text.rich(
+                          TextSpan(
+                            style: theme.textTheme.bodyMedium,
+                            children: [
+                              const TextSpan(text: '尚需供给 '),
+                              TextSpan(
+                                text: _qty(row.needQty),
+                                style: TextStyle(
+                                  color: theme.colorScheme.error,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              TextSpan(text: ' ${row.unit} · 可采用 '),
+                              TextSpan(
+                                text: _qty(row.timelyQty + row.lateQty),
+                                style: TextStyle(
+                                  color: theme.colorScheme.primary,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        value: _selected.contains(row.actionGroupKey),
+                        onChanged: (selected) => setState(() {
+                          if (selected == true) {
+                            _selected.add(row.actionGroupKey);
+                          } else {
+                            _selected.remove(row.actionGroupKey);
+                          }
+                        }),
+                      ),
+                      TextField(
+                        key: ValueKey(
+                          'shared-future-claim-qty-${row.actionGroupKey}',
+                        ),
+                        controller: _controllers[row.actionGroupKey],
+                        enabled: _selected.contains(row.actionGroupKey),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: UtenInputDecoration(
+                          InputDecoration(
+                            labelText: '本次认领数量',
+                            suffixText: row.unit,
+                            // 全站口径：错误提示走 UtenFieldMessage，留在字段内，
+                            // 不用裸 errorText（见字段消息来源契约测试）。
+                            error: _errors[row.actionGroupKey] == null
+                                ? null
+                                : UtenFieldMessage.error(
+                                    _errors[row.actionGroupKey]!,
+                                  ),
+                          ),
+                          info: '可只认领部分数量；同物料路径共享来源余量，不能重复认领。',
+                        ),
+                      ),
+                      if (row.sources.any(
+                        (source) => source.sourceActionId != null,
+                      )) ...[
+                        const SizedBox(height: UtenSpacing.s8),
+                        DropdownButtonFormField<String>(
+                          isExpanded: true,
+                          initialValue: _sources[row.actionGroupKey] ?? '',
+                          decoration: const UtenInputDecoration(
+                            InputDecoration(labelText: '指定来源（可选）'),
+                          ),
+                          items: [
+                            const DropdownMenuItem<String>(
+                              value: '',
+                              child: Text('按供给到期顺序采用'),
+                            ),
+                            for (final source in {
+                              for (final source in row.sources)
+                                if (source.sourceActionId != null)
+                                  source.sourceActionId!: source,
+                            }.values)
+                              DropdownMenuItem(
+                                value: source.sourceActionId,
+                                child: Text(
+                                  '${source.documentNo ?? '来源单号受权限保护'} · ${source.expectedDate ?? '交期待确认'}',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                          ],
+                          onChanged: !_selected.contains(row.actionGroupKey)
+                              ? null
+                              : (value) => setState(
+                                  () => _sources[row.actionGroupKey] =
+                                      value?.isEmpty == true ? null : value,
+                                ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              if (_error != null)
+                Text(
+                  _error!,
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
+            ],
+          ),
         ),
       ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.of(context).pop(),
-        child: const Text('返回检查'),
-      ),
-      FilledButton.icon(
-        key: const Key('material-table-confirm-claim-shared'),
-        onPressed: _confirm,
-        icon: const Icon(Icons.call_received_rounded),
-        label: const Text('确认采用'),
-      ),
-    ],
-  );
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('返回'),
+        ),
+        FilledButton.icon(
+          key: const Key('material-table-confirm-claim-shared'),
+          onPressed: _confirm,
+          icon: const Icon(Icons.call_received_rounded),
+          label: const Text('确认采用'),
+        ),
+      ],
+    );
+  }
 }
 
 String _qty(double quantity) =>

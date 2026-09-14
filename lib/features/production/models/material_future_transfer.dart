@@ -23,6 +23,9 @@ class MaterialFutureTransferSource
     this.warehouseName,
     this.goodsCode,
     this.goodsName,
+    this.documentNo,
+    this.documentId,
+    this.documentRoute,
   });
   final String sourceAllocationId;
   final String sourceAnalysisId;
@@ -45,6 +48,11 @@ class MaterialFutureTransferSource
   final String? warehouseName;
   final String? goodsCode;
   final String? goodsName;
+
+  /// 来源外部单据（采购单/委外单）的单号与 ID，用于展示与跳转；可能为空。
+  final String? documentNo;
+  final String? documentId;
+  final String? documentRoute;
   @override
   String get analysisId => sourceAnalysisId;
   @override
@@ -91,6 +99,9 @@ class MaterialFutureTransferSource
         warehouseName: json['warehouseName'] as String?,
         goodsCode: json['goodsCode'] as String?,
         goodsName: json['goodsName'] as String?,
+        documentNo: json['documentNo'] as String?,
+        documentId: json['documentId'] as String?,
+        documentRoute: json['documentRoute'] as String?,
       );
 }
 
@@ -124,6 +135,8 @@ class MaterialFutureTransferRecord {
     this.supplyWarning,
     this.blockedReason,
     this.reason,
+    this.createdByName,
+    this.createdAt,
   });
   final String id;
   final String sourceAllocationId;
@@ -157,6 +170,10 @@ class MaterialFutureTransferRecord {
       (remainingQty - cancelPublicReleaseQty).clamp(0, remainingQty);
   final String? blockedReason;
   final String? reason;
+
+  /// 经办人与办理时间；用于记录展示，不影响业务判断。
+  final String? createdByName;
+  final String? createdAt;
   bool get outbound => direction == 'OUT';
   String get statusLabel => switch (status) {
     'WAITING_RECEIPT' => '尚未实收',
@@ -198,5 +215,7 @@ class MaterialFutureTransferRecord {
         supplyWarning: json['supplyWarning'] as String?,
         blockedReason: json['blockedReason'] as String?,
         reason: json['reason'] as String?,
+        createdByName: json['createdByName'] as String?,
+        createdAt: json['createdAt'] as String?,
       );
 }

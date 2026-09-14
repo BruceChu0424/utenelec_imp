@@ -14,8 +14,10 @@ void main() {
       await _open(tester, fixture, width: 900);
       expect(find.text('待登记材料（2 项）'), findsOneWidget);
       expect(find.text('3 项'), findsOneWidget);
-      expect(find.text('单位：件'), findsOneWidget);
-      expect(find.text('单位：千克'), findsOneWidget);
+      // 2026-09-14：物料身份格不再重复展示单位（同表已有独立「单位」列）。
+      // 本用例守的是「混合单位按各自需求单位显示」，改为直接断言单位列取值。
+      expect(find.text('件'), findsWidgets);
+      expect(find.text('千克'), findsWidgets);
       expect(
         find.byKey(const ValueKey('material-consume-cleared')),
         findsNothing,

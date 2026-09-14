@@ -16,7 +16,7 @@ import static org.mockito.Mockito.*;
 
 class MaterialAnalysisSupplyCoverageReaderTest {
     @Test
-    void fiveHundredPurchaseGroupsUseThreeReadsIncludingRejectionCoverage() {
+    void fiveHundredPurchaseGroupsUseFourReadsIncludingRejectionAndCrossRouteCoverage() {
         EntityManager em = mock(EntityManager.class);
         Query empty = query(List.of());
         when(em.createNativeQuery(anyString())).thenReturn(empty);
@@ -26,7 +26,9 @@ class MaterialAnalysisSupplyCoverageReaderTest {
 
         var coverage = new MaterialAnalysisSupplyCoverageReader(em).read(UUID.randomUUID(), groups);
 
-        verify(em, times(3)).createNativeQuery(anyString());
+        // 历史别名、本路线在途、IQC 补货在途、跨路线调入——四条固定语句，
+        // 与操作组数量无关（500 组仍然是 4 次读）。
+        verify(em, times(4)).createNativeQuery(anyString());
         assertThat(coverage.active()).hasSize(500);
         assertThat(coverage.active().values()).allSatisfy(qty -> assertThat(qty).isZero());
     }
@@ -41,7 +43,8 @@ class MaterialAnalysisSupplyCoverageReaderTest {
                 new Object[]{"legacy", new BigDecimal("3")}));
         Query replacement = query(List.of(new Object[]{"current", new BigDecimal("4")},
                 new Object[]{"legacy", new BigDecimal("7")}));
-        when(em.createNativeQuery(anyString())).thenReturn(aliases, active, replacement);
+        Query crossRoute = query(List.of());
+        when(em.createNativeQuery(anyString())).thenReturn(aliases, active, replacement, crossRoute);
 
         var coverage = new MaterialAnalysisSupplyCoverageReader(em).read(UUID.randomUUID(), List.of(
                 new MaterialAnalysisSupplyCoverageReader.Group("current", "BUY", List.of(material))));
@@ -59,7 +62,9 @@ class MaterialAnalysisSupplyCoverageReaderTest {
         Query external = query(java.util.Collections.singletonList(new Object[]{"sc", new BigDecimal("2")}));
         Query preparation = query(java.util.Collections.singletonList(new Object[]{"sc", new BigDecimal("5")}));
         Query replacement = query(java.util.Collections.singletonList(new Object[]{"sc", new BigDecimal("3")}));
-        when(em.createNativeQuery(anyString())).thenReturn(aliases, external, preparation, replacement);
+        Query crossRoute = query(java.util.Collections.emptyList());
+        when(em.createNativeQuery(anyString()))
+                .thenReturn(aliases, external, preparation, replacement, crossRoute);
 
         var coverage = new MaterialAnalysisSupplyCoverageReader(em).read(UUID.randomUUID(), List.of(
                 new MaterialAnalysisSupplyCoverageReader.Group("sc", "SUBCONTRACT", List.of(UUID.randomUUID()))));
@@ -67,7 +72,7 @@ class MaterialAnalysisSupplyCoverageReaderTest {
         assertThat(coverage.active("sc", "SUBCONTRACT")).isEqualByComparingTo("7");
         assertThat(coverage.replacement("sc", "SUBCONTRACT")).isEqualByComparingTo("3");
         assertThat(coverage.active("sc", "BUY")).isZero();
-        verify(em, times(4)).createNativeQuery(anyString());
+        verify(em, times(5)).createNativeQuery(anyString());
     }
 
     private static Query query(List<Object[]> rows) {

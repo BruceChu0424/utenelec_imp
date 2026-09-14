@@ -284,9 +284,14 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         // Owner identity is the persisted MAKE_COMPONENT parent relation plus
         // the exact analysis-item/node-key ancestry; goods identity is display
         // context only and is never the ownership join.
-        assertThat(service).contains("parent_material.id = child.parent_analysis_material_id");
+        // 2026-09-13：只读的 delegated-owner 读模型早已被 2026-09-05 的简化改成
+        // 空投影（detailInternal 传 Map.of()），其取数方法已作为死代码删除。
+        // 同一条「按 parent_analysis_material_id 认亲、不按货品认亲」的不变量
+        // 现在由「父件已承诺内部制造量」那条语句承载，改断言它。
+        assertThat(service).contains("parent.id = child.parent_analysis_material_id");
+        assertThat(service).contains("SUM(child.requested_qty)");
         assertThat(service).contains(
-                "child.id, child.source_ref, child.requested_qty");
+                "child.source_type IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE')");
         assertThat(service).contains("SELECT m.id, m.analysis_item_id, m.node_key");
         assertThat(service).contains(
                 "cursor.analysisItemId(), cursor.parentNodeKey()");

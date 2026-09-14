@@ -244,8 +244,9 @@ class MaterialWorkshopAnchorEndToEndTest {
         assertEquals("ACTIVE",material(first,material).requirementState());
         assertEquals(0,count("SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=? AND route='MAKE'",c.analysis()));
 
-        assertThrows(ApiException.class,()->issue(c,material,"10000","wrong-cumulative",true));
-        assertQuotaAndPlans(c,anchor,"10000",1);
+        // 增量口径仍然成立：剩余 4000 时误填累计量 10000，**锚点 requested_qty 不会被抬成
+        // 16000**——4000 归本需求、6000 记公共备货产出（V577）。超量本身自 2026-09-14 起合法
+        // （用户口径：生产可超量下达，超出部分是公共的），前端提交前会逐行点名二次确认。
         AnalysisView current=analyses.detail(c.analysis());
         var request=request(c,current,material,"4000","second",true);
         var second=commands.issueWorkshopPlans(c.analysis(),request);
@@ -253,6 +254,9 @@ class MaterialWorkshopAnchorEndToEndTest {
         assertTrue(replay.replayed());assertEquals(second.plans().getFirst().planId(),replay.plans().getFirst().planId());
         assertQuotaAndPlans(c,anchor,"10000",2);
         qty("0",product(analyses.detail(c.analysis()),anchor).remainingQty());
+        // 需求全部转计划后该行不再可排产（canSchedule 资格闸，早于数量校验）：
+        // V577 放开的是「本批数量可以超出剩余需求」，不是「已办结的任务行还能再下达」。
+        // 纯粹为了多备货的生产属于另立备货任务，不从已办结的子件行复活。
         assertThrows(ApiException.class,()->issue(c,material,"1","new-key-after-full",true));
         assertQuotaAndPlans(c,anchor,"10000",2);
     }
@@ -446,20 +450,40 @@ class MaterialWorkshopAnchorEndToEndTest {
         assertEquals(2,count("SELECT count(DISTINCT line_priority) FROM production_material_analysis_items WHERE analysis_id=? AND source_type='MAKE_COMPONENT' AND is_deleted=FALSE",c.analysis()));
     }
 
-    /** 一行超过剩余需求：整批回滚——无 MAKE_COMPONENT 残留、无计划、版本不变；回滚后同候选可正常下达。 */
-    @Test void overQuantityLineRollsBackTheWholeBatchWithoutAnchorResidue(){
-        Case c=create("anchor-rollback",true);UUID first=c.materials().get(0),second=c.materials().get(1);
+    /**
+     * V577：子件锚点行的本批数量可以超出剩余需求，超出部分按「公共备货产出」单独记账。
+     *
+     * <p>守的是拆账本身——计划行数量 = 全量；关联行 submitted_qty 只记归本需求的那部分、
+     * public_surplus_qty 记超出部分；**锚点的 requested_qty 一个字节不动**（抬需求会污染
+     * growMakeAnchorQuotasAfterSourcePreview 的配额算法并与来源对账脱钩，见 V577 说明）。
+     * 用户口径（2026-09-14）：「生产是可以超出数量下达的，超出部分就是公共的，其他计划可以占用」。
+     */
+    @Test void overQuantityLineSplitsPublicSurplusWithoutTouchingDemand(){
+        Case c=create("anchor-over-qty",true);UUID first=c.materials().get(0),second=c.materials().get(1);
         AnalysisView view=analyses.detail(c.analysis());
-        var request=issueRequest(c.analysis(),view,c.world(),"over",line(first,"6000"),line(second,"20000"));
-        assertThrows(ApiException.class,()->commands.issueWorkshopPlans(c.analysis(),request));
-        assertEquals(0,count("SELECT count(*) FROM production_material_analysis_items WHERE analysis_id=? AND source_type='MAKE_COMPONENT' AND is_deleted=FALSE",c.analysis()));
-        assertEquals(0,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
+        commands.issueWorkshopPlans(c.analysis(),
+                issueRequest(c.analysis(),view,c.world(),"over",line(first,"6000"),line(second,"20000")));
         AnalysisView after=analyses.detail(c.analysis());
-        assertNull(material(after,first).planAnchorAnalysisLineId());assertNull(material(after,second).planAnchorAnalysisLineId());
-        assertEquals(view.version(),after.version());
-        issue(c,first,"6000","after-rollback",true);
-        assertEquals(1,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
-        assertNotNull(material(analyses.detail(c.analysis()),first).planAnchorAnalysisLineId());
+        UUID overAnchor=material(after,second).planAnchorAnalysisLineId();
+        assertNotNull(overAnchor);
+        // 锚点需求仍是建锚时的全量剩余需求（10000），没有被本批的 20000 抬高。
+        qty("10000",product(after,overAnchor).requestedQty());
+        Object[] link=db.queryForObject(
+                "SELECT submitted_qty,public_surplus_qty FROM production_material_analysis_plan_links"
+                        +" WHERE analysis_id=? AND analysis_item_id=?",
+                (rs,i)->new Object[]{rs.getBigDecimal(1),rs.getBigDecimal(2)},c.analysis(),overAnchor);
+        qty("10000",(BigDecimal)link[0]);
+        qty("10000",(BigDecimal)link[1]);
+        // 计划行数量 = 归需求 + 公共备货产出；两笔之和必须与计划一致（V577 触发器对账）。
+        qty("20000",db.queryForObject(
+                "SELECT item.qty FROM production_plan_items item JOIN production_plans plan ON plan.id=item.plan_id"
+                        +" WHERE plan.material_analysis_id=? AND plan.material_analysis_item_id=? AND item.is_deleted=FALSE",
+                BigDecimal.class,c.analysis(),overAnchor));
+        // 未超量的那行照旧全额归需求，不受影响。
+        UUID exactAnchor=material(after,first).planAnchorAnalysisLineId();
+        qty("0",db.queryForObject("SELECT public_surplus_qty FROM production_material_analysis_plan_links"
+                +" WHERE analysis_id=? AND analysis_item_id=?",BigDecimal.class,c.analysis(),exactAnchor));
+        assertEquals(2,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
     }
 
     private static IssueWorkshopPlansRequest.IssuePlanLine line(UUID material,String qty){
@@ -625,6 +649,53 @@ class MaterialWorkshopAnchorEndToEndTest {
     private static ProductView product(AnalysisView view,UUID id){return view.products().stream().filter(p->p.analysisLineId().equals(id)).findFirst().orElseThrow();}
     private int count(String sql,UUID id){return db.queryForObject(sql,Integer.class,id);}
     private static void qty(String expected,BigDecimal actual){assertEquals(0,new BigDecimal(expected).compareTo(actual));}
+
+    /**
+     * 2026-09-14 修订二：销售订单来源顶层行超量下达不再拒绝（用户口径「填大于
+     * 需求的量要能下单，超出部分就是公共的」）。本批 13000 > 订单剩余 10000 时
+     * 拆成**两张**计划：单 A 销售行 1:1 分摊 10000（订单守恒不动），单 B 无销售
+     * 来源的公共备货行 3000（link 记 submitted=0 + surplus=3000）。两张单各自
+     * 恰一条明细，分别满足 fn_sync_material_analysis_plan_link_qty 的单行对账。
+     */
+    @Test void salesTopOverQuantitySplitsIntoOrderPlanAndPublicSurplusPlan(){
+        Case c=create("sales-top-over",false,true,"10000");
+        AnalysisView view=analyses.detail(c.analysis());
+        ProductView top=view.products().stream().filter(p->p.salesOrderItemId()!=null).findFirst().orElseThrow();
+        qty("10000",top.remainingQty());
+        var result=commands.issueWorkshopPlans(c.analysis(),new IssueWorkshopPlansRequest(
+                view.version(),view.fingerprint(),"issue-"+c.analysis()+"-over",
+                c.world().warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null,top.analysisLineId(),
+                        new BigDecimal("13000"),null,null,null,null,null,null,null))));
+        assertEquals(2,result.plans().size());
+        assertEquals(2,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=? AND is_deleted=FALSE",c.analysis()));
+        // 计划分账：一张 submitted=10000/surplus=0，一张 submitted=0/surplus=3000。
+        var links=db.queryForList("SELECT submitted_qty,public_surplus_qty FROM production_material_analysis_plan_links WHERE analysis_id=? ORDER BY submitted_qty DESC",c.analysis());
+        assertEquals(2,links.size());
+        qty("10000",(BigDecimal)links.get(0).get("submitted_qty"));
+        qty("0",(BigDecimal)links.get(0).get("public_surplus_qty"));
+        qty("0",(BigDecimal)links.get(1).get("submitted_qty"));
+        qty("3000",(BigDecimal)links.get(1).get("public_surplus_qty"));
+        // 销售侧只排产 10000：带销售来源的计划行恰好合计 10000，备货行不带
+        // 销售来源、不进任何分摊。
+        qty("10000",db.queryForObject("""
+                SELECT COALESCE(SUM(pi.qty),0) FROM production_plan_items pi
+                JOIN production_plans p ON p.id=pi.plan_id
+                WHERE p.material_analysis_id=? AND pi.is_deleted=FALSE AND pi.sales_order_item_id IS NOT NULL
+                """,BigDecimal.class,c.analysis()));
+        qty("3000",db.queryForObject("""
+                SELECT COALESCE(SUM(pi.qty),0) FROM production_plan_items pi
+                JOIN production_plans p ON p.id=pi.plan_id
+                WHERE p.material_analysis_id=? AND pi.is_deleted=FALSE AND pi.sales_order_item_id IS NULL
+                """,BigDecimal.class,c.analysis()));
+        qty("10000",db.queryForObject("""
+                SELECT COALESCE(SUM(l.allocated_qty),0) FROM plan_order_item_links l
+                WHERE l.order_item_id=?
+                """,BigDecimal.class,c.salesItem()));
+        // 分析任务的 submitted 仍按需求记账（10000，不是 13000）。
+        AnalysisView after=analyses.detail(c.analysis());
+        qty("10000",product(after,top.analysisLineId()).submittedQty());
+    }
     private record Case(FullChainEndToEndTest.World world,UUID analysis,UUID root,String sourceRef,List<UUID> materials,
                         UUID planner,UUID salesOrder,UUID salesItem,UUID salesActor,UUID financeActor){}
 }

@@ -20,14 +20,15 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 
 void main() {
-  testWidgets('下达车间页「类型」「货品」有表头筛选，且能收敛行', (tester) async {
+  testWidgets('下达车间页「类型」「物料名称」有表头筛选，且能收敛行', (tester) async {
     await _pump(tester);
     await _openWorkshopBucket(tester);
 
-    // 五个可筛选列：类型 / 货品 / 生产车间 / 负责人 / 状态。
-    expect(find.byType(GridHeaderFilterCell), findsNWidgets(5));
+    // 2026-09-14 身份四列拆开 + 供应方式列后，可筛选列为九个：
+    // 类型 / 物料名称 / 编号 / 颜色 / 单位 / 供应方式 / 生产车间 / 负责人 / 状态。
+    expect(find.byType(GridHeaderFilterCell), findsNWidgets(9));
     expect(_headerFilter('类型'), findsOneWidget);
-    expect(_headerFilter('货品'), findsOneWidget);
+    expect(_headerFilter('物料名称'), findsOneWidget);
 
     // 三行：甲产品(自制候选) / 乙子件(自制子件) / 甲产品(自制候选)。
     expect(find.text('甲产品'), findsNWidgets(2));
@@ -48,7 +49,7 @@ void main() {
     await tester.tap(find.text('所有'));
     await tester.pumpAndSettle();
 
-    await tester.tap(_headerFilter('货品'));
+    await tester.tap(_headerFilter('物料名称'));
     await tester.pumpAndSettle();
     expect(find.text('甲产品（2）'), findsOneWidget);
     expect(find.text('乙子件（1）'), findsOneWidget);

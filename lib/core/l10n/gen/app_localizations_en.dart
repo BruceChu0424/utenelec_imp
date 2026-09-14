@@ -2930,10 +2930,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialByMaterial => 'By material';
 
   @override
-  String get materialIdentityByMaterial => 'Material / source';
+  String get materialIdentityByMaterial => 'Material name';
 
   @override
-  String get materialIdentityByProduct => 'Product / BOM hierarchy';
+  String get materialIdentityByProduct => 'Material name';
 
   @override
   String get materialRoute => 'Supply method';
@@ -2960,7 +2960,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Track ordering, finance approval, arrival, inspection and stock-in. Double-click for details. Physical shortage remains after issue and updates after qualified stock-in.';
 
   @override
-  String get materialToSupply => 'Suggested order';
+  String get materialToSupply => 'Order quantity';
 
   @override
   String get materialFutureSupply => 'In transit';
@@ -3857,6 +3857,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get warehouseSubcontractOutboundDeliveryDate => 'Delivery date';
+
+  @override
+  String get warehouseSubcontractOutboundGoodsName => 'Goods name';
+
+  @override
+  String get warehouseSubcontractOutboundGoodsCode => 'Code';
+
+  @override
+  String get warehouseSubcontractOutboundLegacyParentName =>
+      'Historical parent goods name';
+
+  @override
+  String get warehouseSubcontractOutboundLegacyParentCode =>
+      'Parent goods code';
 
   @override
   String get warehouseSubcontractOutboundGoods => 'Goods';

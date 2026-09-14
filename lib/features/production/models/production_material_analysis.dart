@@ -49,6 +49,55 @@ class MaterialRouteMemory {
   }
 }
 
+/// 一条物料行与它下游采购 / 委外申请的联动状态（ADR-081 下层办齐「已下单
+/// 子件」分支）。基础需求已下过单的行，超产多出来的量按申请进度分两路：
+/// [adjustable] = 申请仍停在申请态（已审核、未分解出订货单），追加量直接
+/// 并入同一张申请（把明细数量改大，V477 sanctioned 入口）；否则已分解出
+/// 订货单 / 委外申请，追加量走 notify 超量通道另立追加申请。
+class MaterialAnalysisSupplyLink {
+  const MaterialAnalysisSupplyLink({
+    required this.materialLineId,
+    required this.route,
+    required this.mode,
+    required this.documentType,
+    required this.documentId,
+    required this.documentNo,
+    this.documentItemId,
+    this.itemQty = 0,
+    this.orderedQty = 0,
+  });
+
+  final String materialLineId;
+  final MaterialSupplyRoute? route;
+
+  /// ADJUSTABLE = 可并入申请调量；ORDERED = 已分解，按追加另立。
+  final String mode;
+  final String documentType;
+  final String documentId;
+  final String documentNo;
+  final String? documentItemId;
+
+  /// 该申请明细当前数量（并入模式的展示口径：原量 → 原量 + 追加量）。
+  final double itemQty;
+  final double orderedQty;
+
+  bool get adjustable => mode == 'ADJUSTABLE' && documentItemId != null;
+
+  static MaterialAnalysisSupplyLink fromJson(Map<String, dynamic> json) {
+    return MaterialAnalysisSupplyLink(
+      materialLineId: (json['materialLineId'] as String).trim(),
+      route: MaterialSupplyRoute.fromWire(json['route']),
+      mode: json['mode'] as String? ?? 'ORDERED',
+      documentType: json['documentType'] as String? ?? '',
+      documentId: json['documentId'] as String? ?? '',
+      documentNo: json['documentNo'] as String? ?? '',
+      documentItemId: json['documentItemId'] as String?,
+      itemQty: (json['itemQty'] as num?)?.toDouble() ?? 0,
+      orderedQty: (json['orderedQty'] as num?)?.toDouble() ?? 0,
+    );
+  }
+}
+
 /// 服务端权威的逐 BOM 路径需求激活状态。
 ///
 /// `requiredQty == 0` 不能再被客户端统一解释成“无需补货”：它可能是上级
@@ -1052,6 +1101,8 @@ class ProductionMaterialAnalysisMaterial {
     this.sharedFuturePendingQty,
     this.lateSharedFutureAvailableQty = 0,
     this.additionalSupplyRecommendedQty = 0,
+    this.minOrderQty,
+    this.orderMultipleQty,
     this.additionalSupplyRecommendationKnown = false,
     this.selectedWarehousesAvailableQty = 0,
     this.selectedOtherWarehouseTransferableQty = 0,
@@ -1149,6 +1200,12 @@ class ProductionMaterialAnalysisMaterial {
   final double lateSharedFutureAvailableQty;
   final double additionalSupplyRecommendedQty;
   final bool additionalSupplyRecommendationKnown;
+
+  /// 货品主档的最小起订量与订货倍数（整箱/整包）。只用于把采购桶的
+  /// 「下达数量」默认值向上抬，是软约束：计划员可以改小，服务端不硬拦。
+  /// 未维护时为 null（与 0 语义不同：0 表示问过供应商、确实没有起订门槛）。
+  final double? minOrderQty;
+  final double? orderMultipleQty;
 
   /// Availability across the explicitly checked warehouses. Reference only:
   /// it never raises readyNow or creates an entitlement outside the primary.
@@ -1284,6 +1341,8 @@ class ProductionMaterialAnalysisMaterial {
         _double(json['additionalSupplyRecommendedQty']) ?? 0,
     additionalSupplyRecommendationKnown:
         json['additionalSupplyRecommendedQty'] != null,
+    minOrderQty: _double(json['minOrderQty']),
+    orderMultipleQty: _double(json['orderMultipleQty']),
     selectedWarehousesAvailableQty:
         _double(json['selectedWarehousesAvailableQty']) ?? 0,
     selectedOtherWarehouseTransferableQty:
@@ -1557,6 +1616,7 @@ class MaterialCrossReallocationSourceCandidate
     required this.sourceVersion,
     required this.sourceFingerprint,
     required this.sourceMaterialLineId,
+    this.warehouseId,
     this.analysisLabel,
     this.productLabel,
     this.warehouseName,
@@ -1569,6 +1629,9 @@ class MaterialCrossReallocationSourceCandidate
   final int sourceVersion;
   final String sourceFingerprint;
   final String sourceMaterialLineId;
+
+  /// 供料计划的主仓范围；用于跳转来源计划详情时的种子。
+  final String? warehouseId;
   final String? analysisLabel;
   @override
   final String? productLabel;
@@ -1602,6 +1665,7 @@ class MaterialCrossReallocationSourceCandidate
     sourceVersion: _int(json['sourceVersion']) ?? 0,
     sourceFingerprint: _string(json['sourceFingerprint']) ?? '',
     sourceMaterialLineId: _string(json['sourceMaterialLineId']) ?? '',
+    warehouseId: _string(json['warehouseId']),
     analysisLabel: _string(json['analysisLabel']),
     productLabel: _string(json['productLabel']),
     warehouseName: _string(json['warehouseName']),
@@ -1686,6 +1750,8 @@ class MaterialCrossReallocationRef {
     this.canRevoke = false,
     this.revokeBlockedReason,
     this.replenishmentRefs = const [],
+    this.createdByName,
+    this.createdAt,
   });
 
   final String id;
@@ -1705,6 +1771,10 @@ class MaterialCrossReallocationRef {
   final bool canRevoke;
   final String? revokeBlockedReason;
   final List<MaterialPriorityReplenishmentRef> replenishmentRefs;
+
+  /// 经办人与办理时间；用于记录展示，不影响业务判断。
+  final String? createdByName;
+  final String? createdAt;
 
   bool get isInbound => direction.trim().toUpperCase() == 'IN';
   bool get isOutbound => !isInbound;
@@ -1745,6 +1815,8 @@ class MaterialCrossReallocationRef {
       json['replenishmentRefs'],
       MaterialPriorityReplenishmentRef.fromJson,
     ),
+    createdByName: _string(json['createdByName']),
+    createdAt: _string(json['createdAt']),
   );
 }
 

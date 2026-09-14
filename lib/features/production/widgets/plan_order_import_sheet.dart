@@ -371,17 +371,24 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
               MasterDataTableView<ScheduleBomComponent>(
                 embedded: true,
                 columns: [
+                  // 2026-09-14 全站列序统一：名称 → 编号 → 颜色 → …
+                  MasterColumnDef(
+                    key: 'name',
+                    label: '物料名称',
+                    width: 190,
+                    value: (item) => item.name,
+                  ),
                   MasterColumnDef(
                     key: 'code',
-                    label: '物料编码',
+                    label: '编号',
                     width: 130,
                     value: (item) => item.code,
                   ),
                   MasterColumnDef(
-                    key: 'name',
-                    label: '物料名称',
-                    width: 180,
-                    value: (item) => item.name,
+                    key: 'colorName',
+                    label: '颜色',
+                    width: 96,
+                    value: (item) => item.colorName ?? '—',
                   ),
                   MasterColumnDef(
                     key: 'spec',

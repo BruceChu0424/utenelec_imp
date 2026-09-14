@@ -322,6 +322,8 @@ class _ProductionMaterialAnalysisHistoryPageState
       width: 250,
       value: _sourceSummary,
     ),
+    // productLabels 由服务端按「名称 (编号 · 颜色)」拼好（与 UtenGoodsIdentityCell.text
+    // 同排版），这里只负责把一条分析的多个产品连起来，不再二次拼装身份。
     MasterColumnDef(
       key: 'product',
       label: '产品',

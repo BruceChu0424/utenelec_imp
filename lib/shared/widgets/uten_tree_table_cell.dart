@@ -27,7 +27,13 @@ class UtenTreeTableCell extends StatelessWidget {
     this.ancestorContinuations = const [],
     this.isLastChild = false,
     this.childCount,
+    this.showLeafMarker = true,
   });
+
+  /// 叶子行（无下级）是否画那枚小圆点。2026-09-14 用户口径：物料分析主表与
+  /// 三个分桶详情的最底层不要圆点——层级已由缩进 + 连接线表达，一列密密麻麻
+  /// 的圆点只是噪音。占位宽度仍保留，名称列在各层级对齐不变。
+  final bool showLeafMarker;
 
   /// 下级数量（可选）：未展开时在展开按钮右下角叠一枚「N」小徽章，让"这行
   /// 还有子层"一眼可见；展开后不显示。懒加载宿主（展开前不知数量）不传。
@@ -117,9 +123,16 @@ class UtenTreeTableCell extends StatelessWidget {
             child: CustomPaint(
               painter: _TreeGuidePainter(
                 depth: visualDepth,
+                // 2026-09-14 用户口径「浅色时候看不清，颜色深点；深色模式下
+                // 浅点」：原来两种明暗都取 outlineVariant——白底上它几乎与
+                // 表格网格线同色。改成按明暗两档对称调：浅色用 onSurfaceVariant
+                // 七成不透明（明显能看出层级走向，又不至于抢名称），深色用四成
+                // （深底上线条本就更跳，压下去才不刺眼）。
                 color:
                     foregroundColor?.withValues(alpha: 0.35) ??
-                    colors.outlineVariant,
+                    colors.onSurfaceVariant.withValues(
+                      alpha: theme.brightness == Brightness.dark ? 0.40 : 0.70,
+                    ),
                 ancestorContinuations: ancestorContinuations,
                 isLastChild: isLastChild,
               ),
@@ -169,7 +182,8 @@ class UtenTreeTableCell extends StatelessWidget {
                       ),
                     ),
                   )
-                : ExcludeSemantics(
+                : showLeafMarker
+                ? ExcludeSemantics(
                     child: Center(
                       child: Container(
                         width: 8,
@@ -181,7 +195,8 @@ class UtenTreeTableCell extends StatelessWidget {
                         ),
                       ),
                     ),
-                  ),
+                  )
+                : const SizedBox.shrink(),
           ),
           const SizedBox(width: UtenSpacing.s4),
           Expanded(
@@ -196,8 +211,13 @@ class UtenTreeTableCell extends StatelessWidget {
                     if (sequenceInline)
                       Row(
                         children: [
-                          sequenceChip(theme),
-                          const SizedBox(width: UtenSpacing.s4),
+                          // 级联号（P1 / P1.1）是可选的：物料分析主表与分桶详情
+                          // 2026-09-14 起传空串不再显示——层级由缩进+连接线表达，
+                          // 名称前挂一串编号反而把货品名挤到后面。
+                          if (sequence.trim().isNotEmpty) ...[
+                            sequenceChip(theme),
+                            const SizedBox(width: UtenSpacing.s4),
+                          ],
                           Expanded(
                             child: Text(
                               title,
@@ -214,8 +234,10 @@ class UtenTreeTableCell extends StatelessWidget {
                     else ...[
                       Row(
                         children: [
-                          sequenceChip(theme),
-                          const SizedBox(width: UtenSpacing.s4),
+                          if (sequence.trim().isNotEmpty) ...[
+                            sequenceChip(theme),
+                            const SizedBox(width: UtenSpacing.s4),
+                          ],
                           Text(
                             effectiveLevelLabel,
                             style: theme.textTheme.labelSmall?.copyWith(

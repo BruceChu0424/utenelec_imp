@@ -156,7 +156,10 @@ class _MaterialFutureTransferHistoryState
                 Text(
                   '已实收 ${_qty(record.receivedQty)} · 待实收 ${_qty(record.remainingQty)} · 已撤销 ${_qty(record.cancelledQty)}',
                 ),
-                Text('预计到货：${record.expectedDate ?? '交期尚未明确'}'),
+                Text(
+                  '预计到货：${record.expectedDate ?? '交期尚未明确'}'
+                  '${_operatorLine(record)}',
+                ),
                 if (record.sourceSupplyShortfallQty > 0 ||
                     record.supplyWarning?.isNotEmpty == true)
                   Text(
@@ -208,6 +211,18 @@ class _MaterialFutureTransferHistoryState
 
 String _qty(double value) =>
     value.toStringAsFixed(4).replaceFirst(RegExp(r'\.?0+$'), '');
+
+/// 经办人与办理时间；服务端未返回时静默省略。
+String _operatorLine(MaterialFutureTransferRecord record) {
+  final operator = record.createdByName?.trim();
+  final at = record.createdAt?.trim();
+  final parts = [
+    if (operator?.isNotEmpty == true) '经办 $operator',
+    if (at != null && at.isNotEmpty)
+      '办理 ${at.replaceFirst(RegExp(r'T.*'), '').split('.').first}',
+  ];
+  return parts.isEmpty ? '' : ' · ${parts.join(' ')}';
+}
 
 class _CancelFutureTransferDialog extends StatefulWidget {
   const _CancelFutureTransferDialog({

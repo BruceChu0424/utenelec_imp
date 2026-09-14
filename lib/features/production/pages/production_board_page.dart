@@ -28,6 +28,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -941,16 +942,32 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       sortable: true,
       value: (r) => r.orderBillNo,
     ),
+    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色**各占一列**。
+    // 同名不同色/不同编号的成品在本系统极其普遍（同一款插面有「自制·白色」和
+    // 「委外·香槟金」两条），只给名称调度员会直接排错货；但拼成一格又不能各自
+    // 排序筛选。规格没有独立列，仍留在名称格副行。
     MasterColumnDef(
       key: 'goodsName',
       label: '货品名称',
       width: 200,
-      value: (r) {
-        final name = r.goodsName ?? r.goodsCode ?? '—';
-        return (r.spec != null && r.spec!.isNotEmpty)
-            ? '$name · ${r.spec}'
-            : name;
-      },
+      value: (r) => r.goodsName ?? r.goodsCode ?? '—',
+      cellBuilderHandlesSemantics: true,
+      cellBuilder: (_, r) =>
+          UtenGoodsIdentityCell(name: r.goodsName, spec: r.spec),
+    ),
+    MasterColumnDef(
+      key: 'goodsCode',
+      label: '编号',
+      width: 130,
+      value: (r) => UtenGoodsAttributeCell.text(r.goodsCode),
+      cellBuilder: (_, r) => UtenGoodsAttributeCell(r.goodsCode),
+    ),
+    MasterColumnDef(
+      key: 'colorName',
+      label: '颜色',
+      width: 96,
+      value: (r) => UtenGoodsAttributeCell.text(r.colorName),
+      cellBuilder: (_, r) => UtenGoodsAttributeCell(r.colorName),
     ),
     MasterColumnDef(
       key: 'unit',

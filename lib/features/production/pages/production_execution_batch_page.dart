@@ -770,18 +770,25 @@ class _ProductionExecutionBatchPageState
               key: const Key('execution-batch-material-table'),
               primary: true,
               columns: [
-                if (!compact)
-                  MasterColumnDef(
-                    key: 'code',
-                    label: l10n.productionBatchGoodsCode,
-                    width: 130,
-                    value: (row) => row.goodsCode,
-                  ),
+                // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布，
+                // 紧凑/非紧凑两种模式同序（不再把编号挪到数量之后）。
                 MasterColumnDef(
                   key: 'name',
                   label: l10n.productionBatchGoodsName,
                   width: compact ? 160 : 240,
                   value: (row) => row.goodsName,
+                ),
+                MasterColumnDef(
+                  key: 'code',
+                  label: l10n.productionBatchGoodsCode,
+                  width: 130,
+                  value: (row) => row.goodsCode,
+                ),
+                MasterColumnDef(
+                  key: 'color',
+                  label: l10n.productionBatchColor,
+                  width: 110,
+                  value: (row) => row.colorName,
                 ),
                 MasterColumnDef(
                   key: 'qty',
@@ -823,13 +830,6 @@ class _ProductionExecutionBatchPageState
                     );
                   },
                 ),
-                if (compact)
-                  MasterColumnDef(
-                    key: 'code',
-                    label: l10n.productionBatchGoodsCode,
-                    width: 130,
-                    value: (row) => row.goodsCode,
-                  ),
                 if (!compact)
                   MasterColumnDef(
                     key: 'unit',
@@ -842,12 +842,6 @@ class _ProductionExecutionBatchPageState
                   label: l10n.productionBatchWarehouse,
                   width: 190,
                   value: (row) => row.warehouseName,
-                ),
-                MasterColumnDef(
-                  key: 'color',
-                  label: l10n.productionBatchColor,
-                  width: 110,
-                  value: (row) => row.colorName,
                 ),
               ],
               items: preview.summaries,

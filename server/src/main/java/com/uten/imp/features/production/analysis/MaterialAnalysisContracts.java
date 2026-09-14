@@ -272,7 +272,7 @@ public final class MaterialAnalysisContracts {
             @NotNull UUID targetMaterialLineId,
             @NotNull @DecimalMin(value = "0.0001")
             @Digits(integer = 14, fraction = 4) BigDecimal qty,
-            @NotBlank @Size(min = 2, max = 1000) String reason,
+            @Size(max = 1000) String reason,
             @NotBlank @Size(min = 8, max = 128) String idempotencyKey) {
     }
 
@@ -363,7 +363,9 @@ public final class MaterialAnalysisContracts {
             String reason,
             boolean canRevoke,
             String revokeBlockedReason,
-            List<ReplenishmentRef> replenishmentRefs) {
+            List<ReplenishmentRef> replenishmentRefs,
+            String createdByName,
+            OffsetDateTime createdAt) {
     }
 
 
@@ -541,6 +543,7 @@ public final class MaterialAnalysisContracts {
             int sourceCount,
             List<String> sourceTypes,
             List<String> sourceRefs,
+            /** 每个产品一条身份标签「名称 (编号 · 颜色)」，服务端已按同一排版拼好。 */
             List<String> productLabels,
             BigDecimal requestedQty,
             BigDecimal submittedQty,
@@ -613,6 +616,10 @@ public final class MaterialAnalysisContracts {
             BigDecimal publicSurplusRemainingQty,
             BigDecimal sharedFutureClaimedQty,
             BigDecimal additionalSupplyRecommendedQty,
+            /** 货品主档的最小起订量，未维护时为空。 */
+            BigDecimal minOrderQty,
+            /** 货品主档的订货倍数（整箱/整包），未维护时为空。 */
+            BigDecimal orderMultipleQty,
             BigDecimal selectedWarehousesAvailableQty,
             BigDecimal selectedOtherWarehouseTransferableQty,
             LocalDate publicSurplusExpectedDate,

@@ -7,6 +7,7 @@
 // productionGridColumns：与 salesGridColumns 同形（货品点选 / 颜色单位只读 / 数量 numeric）。
 import 'package:flutter/material.dart';
 
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../shared/providers/master_name_provider.dart';
 
@@ -120,9 +121,13 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
     ),
     EditableGridColumn<ProductionGridRow>(
       key: 'goods',
-      label: '货品',
-      width: 220,
+      label: '货品名称',
+      width: 200,
       required: true,
+      // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色**各占一列**，
+      // 不把编号拼进名称格。这里只放名称；编号见紧随其后的「编号」列，颜色和
+      // 单位本表本来就有独立列。注意「产品编号」列是计划行号（后端分配），
+      // 不是货品编号，不能顶替。
       textOf: (r) => r.goods?.name ?? '',
       listenableOf: (r) => r.goodsNotifier,
       cellBuilder: (context, row) => RequiredCellFrame(
@@ -137,14 +142,16 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
                 Expanded(
                   child: ValueListenableBuilder<GoodsOption?>(
                     valueListenable: row.goodsNotifier,
-                    builder: (context, g, _) => Text(
-                      g?.name ?? '点击选择',
-                      style: TextStyle(
-                        color: g == null
-                            ? Theme.of(context).colorScheme.onSurfaceVariant
-                            : Theme.of(context).colorScheme.onSurface,
-                      ),
-                    ),
+                    builder: (context, g, _) => g == null
+                        ? Text(
+                            '点击选择',
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                          )
+                        : UtenGoodsIdentityCell(name: g.name),
                   ),
                 ),
                 const Icon(Icons.search_rounded, size: 16),
@@ -152,6 +159,17 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
             ),
           ),
         ),
+      ),
+    ),
+    EditableGridColumn<ProductionGridRow>(
+      key: 'goodsCode',
+      label: '编号',
+      width: 130,
+      textOf: (r) => r.goods?.code ?? '',
+      listenableOf: (r) => r.goodsNotifier,
+      cellBuilder: (context, row) => ValueListenableBuilder<GoodsOption?>(
+        valueListenable: row.goodsNotifier,
+        builder: (context, goods, _) => UtenGoodsAttributeCell(goods?.code),
       ),
     ),
     EditableGridColumn<ProductionGridRow>(

@@ -345,6 +345,18 @@ class UtenEditableGridController<T extends EditableGridRow>
     notifyListeners();
   }
 
+  /// 视图级换行（**不 dispose**）：行对象与其控制器归调用方所有，用于
+  /// 「树展开 / 折叠只切换可见子集」——隐藏行稍后原样放回，用户已填内容
+  /// 不丢。选中集不自动清理：隐藏行的选中态由调用方一并撤掉，保证
+  /// 「看到的勾选 = 提交的内容」。
+  void swapRows(List<T> rows) {
+    _rows
+      ..clear()
+      ..addAll(rows);
+    _total.reattachTo(_rows);
+    notifyListeners();
+  }
+
   void clear() {
     for (final r in _rows) {
       r.dispose();
@@ -532,6 +544,7 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     this.onColumnSettingsChanged,
     this.showSelectAllToggle = true,
     this.showRemoveRowsAction = true,
+    this.showInlineRemoveAction = false,
   }) : assert(
          !showAddRow || createBlankRow != null,
          'showAddRow=true 必须提供 createBlankRow（「添加行」按钮需要构造空行）',
@@ -645,8 +658,27 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
   /// 菜单里（与「统一设置条款」同一收敛思路：常驻按钮与行菜单重复时留行菜单）。
   final bool showRemoveRowsAction;
 
+  /// 每行末尾是否渲染一个常驻的「移出本次操作」按钮（⊖）。
+  ///
+  /// 2026-09-14：到货登记/成品送检登记把移出收到行右键菜单后，宽屏桌面上
+  /// 页面零线索（提示文案只在窄屏出现，且用户最自然的右键位置是可编辑单元格，
+  /// 弹的是浏览器/输入框自带菜单），用户直接判定「不能删除部分行」。
+  ///
+  /// 仅在 `showAddRow=false` 且提供了 [onRemoveRows] 时生效；点击走与批量移出
+  /// 完全相同的确认与回调（[removeRowsDialogTitle] / [removeRowsMessageBuilder] /
+  /// [removeRowsConfirmLabel]），绝不降级成 controller 直删。不可选的行
+  /// （[canSelectRow] 为 false）只留空位，保持列宽对齐。
+  final bool showInlineRemoveAction;
+
   /// 是否渲染行首选选列。
   bool get _showSelect => showAddRow || selectable;
+
+  /// 行内移出列是否启用（表级判定，决定表头占位与总宽）。
+  bool get _inlineRemoveColumn =>
+      showInlineRemoveAction && !showAddRow && onRemoveRows != null;
+
+  /// 行末操作列（删除/移出）是否占位。
+  bool get _showRowActionColumn => showRowDelete || _inlineRemoveColumn;
 
   @override
   State<UtenEditableGrid<T>> createState() => _UtenEditableGridState<T>();
@@ -1250,7 +1282,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   double get _totalWidth =>
       (widget._showSelect ? _selectColWidth : 0) +
       _visibleColumnIndices.fold(0.0, (sum, index) => sum + _widths[index]) +
-      (widget.showRowDelete ? _deleteColWidth : 0);
+      (widget._showRowActionColumn ? _deleteColWidth : 0);
 
   @override
   void dispose() {
@@ -1582,6 +1614,11 @@ class _UtenEditableGridState<T extends EditableGridRow>
     BorderSide divider,
     List<int> visibleColumnIndices,
   ) {
+    // 行内「移出本次操作」：走与批量移出同一条确认+回调，行不可选时只占位。
+    final inlineRemove =
+        widget._inlineRemoveColumn &&
+        widget.selectionEnabled &&
+        (widget.canSelectRow?.call(row) ?? true);
     final cell = _DataRow<T>(
       index: i,
       row: row,
@@ -1592,12 +1629,22 @@ class _UtenEditableGridState<T extends EditableGridRow>
       isSelected: _rowIsSelected(row),
       onSelect: _rowOnSelect(row),
       rowTint: widget.rowColor?.call(row),
-      showDelete: widget.showRowDelete,
+      showDelete: widget._showRowActionColumn,
       deleteColWidth: _deleteColWidth,
       divider: divider,
-      confirmDelete: widget.confirmDelete,
+      // 行内移出的确认框由 _confirmBatchDelete 统一弹（文案与批量一致），
+      // 这里不再叠一层「删除后不可撤销」。
+      confirmDelete: inlineRemove ? false : widget.confirmDelete,
       deleteConfirmLabel: widget.deleteConfirmLabel,
-      onDelete: () => widget.controller.removeAt(i),
+      deleteIcon: inlineRemove
+          ? Icons.remove_circle_outline_rounded
+          : Icons.close_rounded,
+      deleteTooltip: inlineRemove ? widget.removeRowsActionLabel : '删除该行',
+      onDelete: widget.showRowDelete && !inlineRemove
+          ? () => widget.controller.removeAt(i)
+          : (inlineRemove
+                ? () => _confirmBatchDelete(context, victims: [row])
+                : null),
       // 行首勾选列横滚时钉在视口左缘（与表头全选格同款）。
       frozenSelectionScroll: _bodyH,
     );
@@ -2015,7 +2062,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
                             ),
                           ),
                         ),
-                      if (widget.showRowDelete)
+                      if (widget._showRowActionColumn)
                         SizedBox(
                           width: _deleteColWidth,
                           child: DecoratedBox(
@@ -2152,6 +2199,8 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
     required this.deleteColWidth,
     required this.divider,
     required this.onDelete,
+    this.deleteIcon = Icons.close_rounded,
+    this.deleteTooltip = '删除该行',
     this.showSelect = false,
     this.selectColWidth = 44,
     this.isSelected = false,
@@ -2169,7 +2218,11 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
   final bool showDelete;
   final double deleteColWidth;
   final BorderSide divider;
-  final VoidCallback onDelete;
+
+  /// null = 该行不提供行末动作（只占位，保持列宽对齐）。
+  final VoidCallback? onDelete;
+  final IconData deleteIcon;
+  final String deleteTooltip;
 
   /// 批量模式：行首选中框。
   final bool showSelect;
@@ -2282,23 +2335,25 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
                   width: deleteColWidth,
                   child: DecoratedBox(
                     decoration: BoxDecoration(border: Border(right: divider)),
-                    child: IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 18),
-                      tooltip: '删除该行',
-                      onPressed: () async {
-                        if (confirmDelete) {
-                          final ok = await UtenDialog.show(
-                            context,
-                            title: deleteConfirmLabel,
-                            content: const Text('删除后不可撤销，确认删除？'),
-                            confirmLabel: '删除',
-                            danger: true,
-                          );
-                          if (ok != true) return;
-                        }
-                        onDelete();
-                      },
-                    ),
+                    child: onDelete == null
+                        ? const SizedBox.shrink()
+                        : IconButton(
+                            icon: Icon(deleteIcon, size: 18),
+                            tooltip: deleteTooltip,
+                            onPressed: () async {
+                              if (confirmDelete) {
+                                final ok = await UtenDialog.show(
+                                  context,
+                                  title: deleteConfirmLabel,
+                                  content: const Text('删除后不可撤销，确认删除？'),
+                                  confirmLabel: '删除',
+                                  danger: true,
+                                );
+                                if (ok != true) return;
+                              }
+                              onDelete!();
+                            },
+                          ),
                   ),
                 ),
             ],

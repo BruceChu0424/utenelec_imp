@@ -36,16 +36,19 @@ public class PreplanFutureSupplyTransferService {
     public List<Source> sources(UUID targetAnalysis,UUID targetMaterial) {
         requireAuthority();var target=header(targetAnalysis);requireWritable(target);
         MaterialView material=material(analyses.detailInternal(targetAnalysis,false),targetMaterial);
-        if(!Set.of("BUY","SUBCONTRACT").contains(Objects.toString(material.sourceConfirmed(),"")))return List.of();
+        // 2026-09-13 起调入方放开到采购/委外/自制（车间）：外部在途按同主仓、
+        // 同货品/颜色/单位匹配，不再要求与目标路线一致，也不看子层级。
+        // 目标行形态不变量与 V574 库侧守卫逐条对齐，避免「列出来却存不进去」。
+        if(!eligibleTarget(material))return List.of();
         LocalDate need=needDate(targetMaterial);
         List<Source> result=new ArrayList<>();
         for(Object[] row:rows(SOURCE_SQL+"""
                 AND allocation.analysis_id<>:target AND source_material.goods_id=:goods
                 AND source_material.color_id IS NOT DISTINCT FROM CAST(:color AS uuid) AND source_material.unit_id=:unit
-                AND action.route=:route AND fn_warehouse_same_main(analysis.warehouse_id,:warehouse)
+                AND action.route IN ('BUY','SUBCONTRACT') AND fn_warehouse_same_main(analysis.warehouse_id,:warehouse)
                 ORDER BY eta.expected_date NULLS LAST,allocation.created_at,allocation.id
                 """,Map.of("target",targetAnalysis,"goods",material.goodsId(),"color",nullable(material.colorId()),
-                        "unit",material.unitId(),"route",material.sourceConfirmed(),"warehouse",target.warehouseId()))) {
+                        "unit",material.unitId(),"warehouse",target.warehouseId()))) {
             if(!access.canWrite(uuid(row[4]),access.scope()) || decimal(row[13]).signum()<=0)continue;
             result.add(source(row,need,target.version(),target.fingerprint(),material.additionalSupplyRecommendedQty()));
         }
@@ -55,10 +58,11 @@ public class PreplanFutureSupplyTransferService {
     @Transactional
     public AnalysisView create(UUID targetAnalysis,Create request) {
         requireAuthority();validate(request.qty(),request.reason(),request.idempotencyKey());tx.bind();
+        String reason=normalizedReason(request.reason());
         String hash=fingerprint(List.of("FUTURE-TRANSFER",targetAnalysis.toString(),request.sourceAllocationId().toString(),
                 request.targetMaterialId().toString(),positive(request.qty()).toPlainString(),Objects.toString(request.sourceVersion(),""),
                 Objects.toString(request.sourceFingerprint(),""),Objects.toString(request.targetVersion(),""),Objects.toString(request.targetFingerprint(),""),
-                Boolean.toString(request.allowLateSupply()),request.reason().strip()));
+                Boolean.toString(request.allowLateSupply()),reason));
         lockKey("CREATE",request.idempotencyKey());
         var prior=rows("SELECT id,request_hash,target_analysis_id,source_analysis_id FROM preplan_future_supply_transfers WHERE created_by=:actor AND idempotency_key=:key",
                 Map.of("actor",user.requireId(),"key",request.idempotencyKey()));
@@ -75,9 +79,14 @@ public class PreplanFutureSupplyTransferService {
         analyses.refreshLocked(sourceAnalysis);analyses.refreshLocked(targetAnalysis);
         Object[] source=sourceRow(request.sourceAllocationId());
         MaterialView target=material(analyses.detailInternal(targetAnalysis,false),request.targetMaterialId());
+        // 外部在途按货品维度流转：来源必须是另一计划的采购/委外份额，目标
+        // 可以是采购、委外或自制（车间）物料；同货品、颜色、单位即可。
         if(sourceAnalysis.equals(targetAnalysis) || !Objects.equals(uuid(source[8]),target.goodsId())
                 || !Objects.equals(uuid(source[11]),target.colorId()) || !Objects.equals(uuid(source[12]),target.unitId())
-                || !Objects.equals(source[5],target.sourceConfirmed()))throw invalid("只能调整另一计划同货品、颜色、单位及路线的专属在途");
+                || !Set.of("BUY","SUBCONTRACT").contains(Objects.toString(source[5],"")))
+            throw invalid("只能调整另一计划同货品、颜色、单位的外部在途（采购或委外份额）");
+        if(!eligibleTarget(target))
+            throw invalid("目标物料必须是已确认采购/委外/自制路线、且不在参考或发货段的生效需求行");
         LocalDate need=needDate(request.targetMaterialId()),eta=date(source[15]);
         if(need!=null && (eta==null || eta.isAfter(need)) && !request.allowLateSupply())throw conflict("供给交期晚于目标需期或尚未确定，请明确确认后再采用");
         BigDecimal qty=positive(request.qty());
@@ -97,10 +106,13 @@ public class PreplanFutureSupplyTransferService {
                 .setParameter("external",source[18]).setParameter("qty",qty).setParameter("sourceVersion",request.sourceVersion())
                 .setParameter("sourceFingerprint",request.sourceFingerprint()).setParameter("targetVersion",request.targetVersion())
                 .setParameter("targetFingerprint",request.targetFingerprint()).setParameter("eta",eta).setParameter("need",need)
-                .setParameter("late",request.allowLateSupply()).setParameter("reason",request.reason().strip()).setParameter("key",request.idempotencyKey())
+                .setParameter("late",request.allowLateSupply()).setParameter("reason",reason).setParameter("key",request.idempotencyKey())
                 .setParameter("hash",hash).setParameter("actor",user.requireId()).executeUpdate();
+        // 新动作沿用来源路线（外部在途本身是采购/委外份额）；代次序列按
+        // (analysis, group, route) 取号，跨路线调入（如自制目标）时也按来源
+        // 路线取号，避免与同组既有动作撞唯一索引。
         Number generation=(Number)em.createNativeQuery("SELECT COALESCE(max(generation),0)+1 FROM preplan_supply_actions WHERE analysis_id=:id AND action_group_key=:group AND route=:route")
-                .setParameter("id",targetAnalysis).setParameter("group",target.actionGroupKey()).setParameter("route",target.sourceConfirmed()).getSingleResult();
+                .setParameter("id",targetAnalysis).setParameter("group",target.actionGroupKey()).setParameter("route",text(source[5])).getSingleResult();
         em.createNativeQuery("""
                 INSERT INTO preplan_supply_actions(id,analysis_id,warehouse_id,goods_id,color_id,unit_id,need_date,route,requested_qty,status,
                     external_document_type,external_document_id,external_document_no,operation_type,claim_source_action_id,
@@ -188,31 +200,33 @@ public class PreplanFutureSupplyTransferService {
             SELECT allocation.id,allocation.analysis_id,allocation.analysis_material_id,source_item.source_ref,analysis.maker_id,
                    action.route,analysis.warehouse_id,warehouse.name,action.goods_id,goods.code,goods.name,action.color_id,action.unit_id,
                    fn_preplan_future_source_available_qty(allocation.id),fn_preplan_allocation_received_qty(allocation.id),eta.expected_date,
-                   analysis.version,analysis.fingerprint,allocation.external_item_id,action.id,unit.name
+                   analysis.version,analysis.fingerprint,allocation.external_item_id,action.id,unit.name,
+                   eta.bill_no,eta.header_id,eta.doc_route
             FROM preplan_supply_action_allocations allocation JOIN preplan_supply_actions action ON action.id=allocation.action_id
             JOIN production_material_analyses analysis ON analysis.id=allocation.analysis_id AND NOT analysis.is_deleted AND analysis.status<>'CANCELLED'
             JOIN production_material_analysis_materials source_material ON source_material.id=allocation.analysis_material_id AND source_material.active
             JOIN production_material_analysis_items source_item ON source_item.id=source_material.analysis_item_id
             JOIN goods ON goods.id=action.goods_id LEFT JOIN units unit ON unit.id=action.unit_id LEFT JOIN warehouses warehouse ON warehouse.id=analysis.warehouse_id
             LEFT JOIN LATERAL (
-                SELECT min(expected_date) expected_date FROM (
-                    SELECT COALESCE(item.deliver_date,header.deliver_date) expected_date FROM purchase_order_item_sources link
+                SELECT expected_date,bill_no,header_id,doc_route FROM (
+                    SELECT COALESCE(item.deliver_date,header.deliver_date) expected_date,header.bill_no,header.id header_id,'PURCHASE' doc_route
+                    FROM purchase_order_item_sources link
                     JOIN purchase_order_items item ON item.id=link.order_item_id AND NOT item.is_deleted
                     JOIN purchase_orders header ON header.id=item.order_id AND header.status=1 AND NOT header.is_deleted
                     WHERE action.route='BUY' AND link.request_item_id=allocation.external_item_id
                       AND ((NOT header.is_closed AND fn_procurement_order_source_remaining_qty('PURCHASE',item.id,link.request_item_id)>0)
                            OR fn_procurement_order_source_pending_qty('PURCHASE',item.id,link.request_item_id)>0)
                     UNION ALL
-                    SELECT COALESCE(item.deliver_date,header.deliver_date) FROM subcontract_order_item_sources link
+                    SELECT COALESCE(item.deliver_date,header.deliver_date),header.bill_no,header.id,'SUBCONTRACT'
+                    FROM subcontract_order_item_sources link
                     JOIN subcontract_order_items item ON item.id=link.order_item_id AND NOT item.is_deleted
                     JOIN subcontract_orders header ON header.id=item.order_id AND header.status=1 AND NOT header.is_deleted
                     WHERE action.route='SUBCONTRACT' AND link.application_item_id=allocation.external_item_id
                       AND ((NOT header.is_closed AND fn_procurement_order_source_remaining_qty('SUBCONTRACT',item.id,link.application_item_id)>0)
                            OR fn_procurement_order_source_pending_qty('SUBCONTRACT',item.id,link.application_item_id)>0)
-                ) dates
+                ) dates ORDER BY expected_date NULLS LAST LIMIT 1
             ) eta ON TRUE
             WHERE action.operation_type='SUPPLY' AND action.status<>'CANCELLED' AND action.route IN('BUY','SUBCONTRACT')
-              AND (action.route='BUY' OR NOT EXISTS(SELECT 1 FROM goods_bom_items bom WHERE bom.goods_id=action.goods_id AND NOT bom.is_deleted))
             """;
     private static final String STATE_SQL="""
             SELECT state.id,state.source_allocation_id,state.source_analysis_id,state.source_material_id,source_item.source_ref,
@@ -220,7 +234,8 @@ public class PreplanFutureSupplyTransferService {
                    state.qty,state.cancelled_qty,state.received_qty,state.remaining_qty,state.status,state.expected_date,state.target_need_date,state.allow_late_supply,
                    a.version,a.fingerprint,b.version,b.fingerprint,a.maker_id,b.maker_id,state.reason,
                    GREATEST(fn_preplan_public_source_private_open_qty(allocation.action_id,allocation.external_item_id)
-                       -fn_preplan_external_expected_qty(allocation.action_id,allocation.external_item_id),0)::numeric
+                       -fn_preplan_external_expected_qty(allocation.action_id,allocation.external_item_id),0)::numeric,
+                   COALESCE(creator_employee.full_name,creator.login_account),state.created_at
             FROM v_preplan_future_supply_transfer_state state JOIN preplan_supply_action_allocations allocation ON allocation.id=state.source_allocation_id
             JOIN preplan_supply_actions action ON action.id=allocation.action_id
             JOIN production_material_analyses a ON a.id=state.source_analysis_id JOIN production_material_analyses b ON b.id=state.target_analysis_id
@@ -228,10 +243,12 @@ public class PreplanFutureSupplyTransferService {
             JOIN production_material_analysis_items source_item ON source_item.id=source_material.analysis_item_id
             JOIN production_material_analysis_materials target_material ON target_material.id=state.target_material_id
             JOIN production_material_analysis_items target_item ON target_item.id=target_material.analysis_item_id
+            JOIN users creator ON creator.id=state.created_by
+            LEFT JOIN employees creator_employee ON creator_employee.id=creator.employee_id
             """;
     private Object[] sourceRow(UUID id){var rows=rows(SOURCE_SQL+" AND allocation.id=:id",Map.of("id",id));if(rows.size()!=1)throw conflict("原专属在途来源不存在或已失效");return rows.getFirst();}
     private Object[] state(UUID id){var rows=rows(STATE_SQL+" WHERE state.id=:id",Map.of("id",id));if(rows.size()!=1)throw new ApiException(ErrorCode.NOT_FOUND,"在途归属调整不存在");return rows.getFirst();}
-    private Source source(Object[] row,LocalDate need,long targetVersion,String targetFingerprint,BigDecimal targetUncovered){LocalDate eta=date(row[15]);return new Source(uuid(row[0]),uuid(row[1]),uuid(row[2]),text(row[3]),text(row[5]),uuid(row[6]),text(row[7]),uuid(row[8]),text(row[9]),text(row[10]),uuid(row[11]),uuid(row[12]),text(row[20]),decimal(row[13]),decimal(row[14]),eta,need,need!=null&&(eta==null||eta.isAfter(need)),decimal(row[14]).signum()>0?"PARTIAL_STOCK_IN":"IN_TRANSIT_OR_PENDING_STOCK_IN",((Number)row[16]).longValue(),text(row[17]),targetVersion,targetFingerprint,targetUncovered);}
+    private Source source(Object[] row,LocalDate need,long targetVersion,String targetFingerprint,BigDecimal targetUncovered){LocalDate eta=date(row[15]);return new Source(uuid(row[0]),uuid(row[1]),uuid(row[2]),text(row[3]),text(row[5]),uuid(row[6]),text(row[7]),uuid(row[8]),text(row[9]),text(row[10]),uuid(row[11]),uuid(row[12]),text(row[20]),decimal(row[13]),decimal(row[14]),eta,need,need!=null&&(eta==null||eta.isAfter(need)),decimal(row[14]).signum()>0?"PARTIAL_STOCK_IN":"IN_TRANSIT_OR_PENDING_STOCK_IN",((Number)row[16]).longValue(),text(row[17]),targetVersion,targetFingerprint,targetUncovered,text(row[21]),uuid(row[22]),text(row[23]));}
     private Transfer transfer(Object[] row,UUID context,Map<UUID,AnalysisView> sourceViews){
         boolean authorized=access.hasAuthority("production_material_analysis:cross_reallocate")
                 &&access.canWrite(uuid(row[21]),access.scope())&&access.canWrite(uuid(row[22]),access.scope());
@@ -242,7 +259,8 @@ public class PreplanFutureSupplyTransferService {
         String blocked=canCancel?null:decimal(row[12]).signum()<=0?"没有尚未实收的可撤销份额":"缺少双方调整权限";
         BigDecimal shortfall=decimal(row[24]);
         return new Transfer(uuid(row[0]),uuid(row[1]),uuid(row[2]),uuid(row[3]),text(row[4]),uuid(row[5]),uuid(row[6]),text(row[7]),text(row[8]),decimal(row[9]),decimal(row[10]),decimal(row[11]),decimal(row[12]),text(row[13]),date(row[14]),date(row[15]),Boolean.TRUE.equals(row[16]),((Number)row[17]).longValue(),text(row[18]),((Number)row[19]).longValue(),text(row[20]),canCancel,text(row[23]),context.equals(row[2])?"OUT":"IN",blocked,cancelable,restored,cancelable.subtract(restored),shortfall,
-                shortfall.signum()>0?"原外单的预计供给不足，请跟进补供或撤销尚未实收的转拨份额":null);
+                shortfall.signum()>0?"原外单的预计供给不足，请跟进补供或撤销尚未实收的转拨份额":null,
+                text(row[25]),MaterialAnalysisService.offsetDateTime(row[26]));
     }
     private BigDecimal restorableQty(Object[] row,AnalysisView sourceView){
         return decimal(row[12]).min(material(sourceView,uuid(row[3])).additionalSupplyRecommendedQty()).max(BigDecimal.ZERO);
@@ -257,7 +275,28 @@ public class PreplanFutureSupplyTransferService {
     private LocalDate needDate(UUID material){return date(em.createNativeQuery("SELECT source.delivery_date FROM production_material_analysis_materials material JOIN production_material_analysis_items source ON source.id=material.analysis_item_id WHERE material.id=:id").setParameter("id",material).getSingleResult());}
     private List<Object[]> rows(String sql,Map<String,?> parameters){var query=em.createNativeQuery(sql);parameters.forEach((key,value)->query.setParameter(key,value==Null.VALUE?null:value));return NativeQueryResults.objectArrayRows(query);}
     private void lockKey(String operation,String key){em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key,569))").setParameter("key",user.requireId()+":"+operation+":"+key).getSingleResult();}
-    private static void validate(BigDecimal qty,String reason,String key){positive(qty);if(reason==null||reason.strip().length()<2||reason.length()>1000||key==null||!key.matches("[A-Za-z0-9._:-]{8,128}"))throw invalid("请填写有效数量、原因及幂等键");}
+    private static void validate(BigDecimal qty,String reason,String key){positive(qty);normalizedReason(reason);if(key==null||!key.matches("[A-Za-z0-9._:-]{8,128}"))throw invalid("请填写有效数量及幂等键");}
+
+    /**
+     * 调入目标行形态不变量，与 V574 的 fn_guard_preplan_future_transfer 一一对应：
+     * 路线已确认为三条主路线之一，且不是只作参考或发货段的行（这两段不产生
+     * 需要外部供给的净需求）。列表与写入共用同一判定，不会出现「能选不能存」。
+     */
+    private static boolean eligibleTarget(MaterialView material){
+        return TARGET_ROUTES.contains(Objects.toString(material.sourceConfirmed(),""))
+                && !EXCLUDED_TARGET_STAGES.contains(Objects.toString(material.controlStage(),""));
+    }
+
+    private static final Set<String> TARGET_ROUTES=Set.of("BUY","SUBCONTRACT","MAKE");
+    private static final Set<String> EXCLUDED_TARGET_STAGES=Set.of("SHIP","REFERENCE");
+
+    /** 业务原因 2026-09-13 起可选：空/缺省写空串，保留去空格与长度上限。 */
+    private static String normalizedReason(String reason){
+        if(reason==null)return "";
+        String stripped=reason.strip();
+        if(stripped.length()>1000)throw invalid("业务原因不能超过 1000 字");
+        return stripped;
+    }
     private static BigDecimal positive(BigDecimal qty){if(qty==null||qty.signum()<=0)throw invalid("数量必须大于0");try{return qty.setScale(4,RoundingMode.UNNECESSARY);}catch(ArithmeticException e){throw invalid("数量最多4位小数");}}
     private enum Null { VALUE }
     private static Object nullable(Object value){return value==null?Null.VALUE:value;}

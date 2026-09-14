@@ -273,7 +273,15 @@ class BusinessDataResetSqlContractTest {
                 .contains("(570, 528)")
                 .contains("(571, 529)")
                 .contains("(572, 530)")
-                .contains("V507/469、V508/470及V511至V572完整目录");
+                // V573 放宽原因 CHECK、V574 跨路线在途调入与两条索引、
+                // V575 货品起订量与订货倍数：三者都不新增业务表（530→533）。
+                .contains("(573, 531)")
+                .contains("(574, 532)")
+                .contains("(575, 533)")
+                // V577 下达车间超量的公共备货产出分账：只给计划关联行加一列 +
+                // 改一个触发器，不新增业务表（533→534）。V576 由并行分支占用。
+                .contains("(577, 534)")
+                .contains("V507/469、V508/470及V511至V577完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);
@@ -407,6 +415,8 @@ class BusinessDataResetSqlContractTest {
                 .contains("CURRENT_HEAD_VERSION = \"" + head + "\"")
                 .contains("CURRENT_MIGRATION_COUNT = " + count);
 
+        // 连带项：PreplanFutureTransferForwardMigrationPostgresTest 断言「从 V569
+        // 升到目录头只跑 V569 之后的迁移」，它的条数常量同样要随新迁移 +1。
         // 第四处：迁移总览文档的「当前正式目录」。
         // LegacyMigrationSafetyContractTest 会拿上面那两个常量去比对这一行，
         // 所以文档漏改一样让 CI 后端整轮挂——2026-09-12 又栽了一次。

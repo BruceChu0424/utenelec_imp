@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -90,6 +91,9 @@ class _ProductionDailyReportDetailPageState
           .whereType<String>()
           .toSet();
       await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
+      // 货品列要显示编号，名称若早已被搜索缓存则 loadGoodsNames 会跳过详情，
+      // 这里补一次详情（编号）确保身份三属性齐全。
+      await ref.read(masterNameServiceProvider).loadGoodsDetails(goodsIds);
       await ref.read(masterNameServiceProvider).loadEmployeeNames(d.workerIds);
       if (!mounted) return;
       setState(() {
@@ -349,18 +353,38 @@ class _ProductionDailyReportDetailPageState
           child: MasterDataTableView<ProductionDailyReportItem>(
             primary: true,
             columns: [
+              // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+              // 同名不同编号的货品（自制/委外两条同名成品）在日报里必须分得开，
+              // 否则审核时会认错货。单位没有独立列，仍留在名称格副行。
               MasterColumnDef(
                 key: 'goods',
-                label: '货品',
-                width: 240,
-                value: (it) {
-                  final sub = [
-                    names.color(it.colorId),
-                    names.unit(it.unitId),
-                  ].where((s) => s != '—').join(' · ');
-                  return '${names.goods(it.goodsId)}'
-                      '${sub.isEmpty ? '' : '($sub)'}';
-                },
+                label: '货品名称',
+                width: 200,
+                value: (it) => _dictText(names.goods(it.goodsId)) ?? '—',
+                cellBuilderHandlesSemantics: true,
+                cellBuilder: (_, it) => UtenGoodsIdentityCell(
+                  name: _dictText(names.goods(it.goodsId)),
+                  unit: _dictText(names.unit(it.unitId)),
+                ),
+              ),
+              MasterColumnDef(
+                key: 'goodsCode',
+                label: '编号',
+                width: 130,
+                value: (it) => UtenGoodsAttributeCell.text(
+                  names.goodsInfo(it.goodsId)?.code,
+                ),
+                cellBuilder: (_, it) =>
+                    UtenGoodsAttributeCell(names.goodsInfo(it.goodsId)?.code),
+              ),
+              MasterColumnDef(
+                key: 'colorName',
+                label: '颜色',
+                width: 96,
+                value: (it) =>
+                    UtenGoodsAttributeCell.text(_dictText(names.color(it.colorId))),
+                cellBuilder: (_, it) =>
+                    UtenGoodsAttributeCell(_dictText(names.color(it.colorId))),
               ),
               MasterColumnDef(
                 key: 'qty',
@@ -491,6 +515,13 @@ class _ProductionDailyReportDetailPageState
       ),
     );
   }
+}
+
+/// 字典解析结果转身份格入参：MasterNameService 未命中时返回 '—'，
+/// 身份格约定「没有就不显示」，占位符要还原成 null。
+String? _dictText(String? value) {
+  final trimmed = value?.trim();
+  return trimmed == null || trimmed.isEmpty || trimmed == '—' ? null : trimmed;
 }
 
 class _KV {

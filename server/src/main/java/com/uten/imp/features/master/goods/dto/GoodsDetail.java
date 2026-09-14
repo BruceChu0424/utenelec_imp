@@ -114,6 +114,10 @@ public class GoodsDetail {
     /** Object scope only; each action still requires its own functional authority. */
     private boolean writable;
 
+    // ===== 采购批量口径（V575；软约束，只决定下达采购的默认数量，服务端不硬拦） =====
+    private BigDecimal minOrderQty;      // 最小起订量（供应商 MOQ，基本单位）；null=未登记，0=已确认无起订量
+    private BigDecimal orderMultipleQty; // 订货倍数/整包装量（基本单位，整箱 50 即 50）；null=无倍数要求
+
     @JsonProperty("mWeight")
     public BigDecimal getMWeight() {
         return mWeight;

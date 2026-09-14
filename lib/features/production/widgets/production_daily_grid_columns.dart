@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../shared/providers/master_name_provider.dart';
 
@@ -132,9 +133,12 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
   return [
     EditableGridColumn<DailyGridRow>(
       key: 'goods',
-      label: '货品',
-      width: 220,
+      label: '货品名称',
+      width: 200,
       required: true,
+      // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色**各占一列**。
+      // 报工行多由来源子任务冻结带入，同名不同色/不同编号的货品只看名称会报到
+      // 别的货上；这里只放名称，编号见下一列，颜色/单位本表本来就有独立列。
       textOf: (r) => r.goods?.name ?? '',
       listenableOf: (r) => r.goodsNotifier,
       cellBuilder: (context, row) => RequiredCellFrame(
@@ -149,14 +153,16 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                 Expanded(
                   child: ValueListenableBuilder<GoodsOption?>(
                     valueListenable: row.goodsNotifier,
-                    builder: (context, g, _) => Text(
-                      g?.name ?? '点击选择',
-                      style: TextStyle(
-                        color: g == null
-                            ? Theme.of(context).colorScheme.onSurfaceVariant
-                            : Theme.of(context).colorScheme.onSurface,
-                      ),
-                    ),
+                    builder: (context, g, _) => g == null
+                        ? Text(
+                            '点击选择',
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                          )
+                        : UtenGoodsIdentityCell(name: g.name),
                   ),
                 ),
                 const Icon(Icons.search_rounded, size: 16),
@@ -164,6 +170,17 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
             ),
           ),
         ),
+      ),
+    ),
+    EditableGridColumn<DailyGridRow>(
+      key: 'goodsCode',
+      label: '编号',
+      width: 130,
+      textOf: (r) => r.goods?.code ?? '',
+      listenableOf: (r) => r.goodsNotifier,
+      cellBuilder: (context, row) => ValueListenableBuilder<GoodsOption?>(
+        valueListenable: row.goodsNotifier,
+        builder: (context, goods, _) => UtenGoodsAttributeCell(goods?.code),
       ),
     ),
     EditableGridColumn<DailyGridRow>(

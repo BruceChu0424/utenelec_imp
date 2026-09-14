@@ -372,8 +372,11 @@ public class MaterialAnalysisCommandService {
         List<UUID> createdIds = new ArrayList<>();
         List<Map<String,String>> acceptedLateSources=new ArrayList<>();
         for (ActionGroup group : groups) {
-            if (!Set.of("BUY", "SUBCONTRACT").contains(group.route())) {
-                throw validation("只有采购或叶子委外物料可以采用公共在途");
+            // 2026-09-13 起自制（车间）物料也可采用公共在途：到达的合格供给
+            // 直接冲减本计划自制需求，剩余仍走原下达车间流程；
+            // 「我方供料 BOM 委外件」限制继续保留。
+            if (!Set.of("BUY", "SUBCONTRACT", "MAKE").contains(group.route())) {
+                throw validation("只有采购、委外或自制物料可以采用公共在途");
             }
             if ("SUBCONTRACT".equals(group.route())
                     && subcontractBomParents.contains(group.dimension().goodsId())) {
@@ -411,8 +414,15 @@ public class MaterialAnalysisCommandService {
                 BigDecimal take = needed.min(source.availableQty())
                         .setScale(4, RoundingMode.DOWN);
                 if (take.signum() <= 0) continue;
+                // 认领动作沿用「来源路线」：公共在途本身是采购/委外份额，
+                // 目标行可以是采购、委外或自制。代次按 (分析, 操作组, 路线)
+                // 取号，跨路线认领与目标同组的自制动作不会撞唯一索引，
+                // 也让 fn_validate_preplan_shared_future_claim 的来源身份
+                // 校验（来源与认领动作同路线、同单据）继续成立。
+                String claimRoute = Objects.requireNonNullElse(
+                        source.sourceRoute(), group.route());
                 ActionSequence sequence = nextActionSequence(
-                        analysisId, group.groupKey(), group.route());
+                        analysisId, group.groupKey(), claimRoute);
                 UUID actionId = UUID.randomUUID();
                 String businessKey = PlanningPackageFingerprint.sha256(List.of(
                         "PREPLAN-SHARED-FUTURE-CLAIM-V1", analysisId.toString(),
@@ -445,7 +455,7 @@ public class MaterialAnalysisCommandService {
                         .setParameter("colorId", group.dimension().colorId())
                         .setParameter("unitId", group.dimension().unitId())
                         .setParameter("needDate", group.needDate())
-                        .setParameter("route", group.route())
+                        .setParameter("route", claimRoute)
                         .setParameter("qty", take)
                         .setParameter("documentType", source.documentType())
                         .setParameter("documentId", source.documentId())
@@ -471,7 +481,7 @@ public class MaterialAnalysisCommandService {
             if(quantity!=null && needed.signum()>0) throw conflict("公共在途余量已变化，本次认领未生效，请核对数量后重试");
         }
         if (createdIds.isEmpty()) {
-            throw conflict("当前没有可采用的同仓、同路线、按期公共在途余量");
+            throw conflict("当前没有可采用的同主仓、按期公共在途余量");
         }
         analysisService.refreshLocked(analysisId);
         recordCommand(analysisId, OP_CLAIM_SHARED_FUTURE,
@@ -486,14 +496,14 @@ public class MaterialAnalysisCommandService {
         return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT source_action_id, available_to_claim_qty, expected_date,
                        claim_external_item_id, external_document_type,
-                       external_document_id, external_document_no
+                       external_document_id, external_document_no, route
                 FROM v_preplan_public_surplus_source_state
                 WHERE source_analysis_id <> :analysisId
                   AND fn_warehouse_same_main(warehouse_id, :warehouseId)
                   AND goods_id = :goodsId
                   AND color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
                   AND unit_id = :unitId
-                  AND route = :route
+                  AND route IN ('BUY','SUBCONTRACT')
                   AND available_to_claim_qty > 0
                   AND claim_external_item_id IS NOT NULL
                   AND (:allowLateSupply=TRUE OR (expected_date IS NOT NULL AND
@@ -505,13 +515,13 @@ public class MaterialAnalysisCommandService {
                 .setParameter("goodsId", group.dimension().goodsId())
                 .setParameter("colorId", group.dimension().colorId())
                 .setParameter("unitId", group.dimension().unitId())
-                .setParameter("route", group.route())
                 .setParameter("needDate", group.needDate()).setParameter("allowLateSupply",allowLateSupply)).stream()
                 .map(row -> new SharedFutureSource(
                         (UUID) row[0], decimal(row[1]),
                         MaterialAnalysisService.date(row[2]),
                         (UUID) row[3], Objects.toString(row[4], null),
-                        (UUID) row[5], Objects.toString(row[6], null)))
+                        (UUID) row[5], Objects.toString(row[6], null),
+                        Objects.toString(row[7], null)))
                 .toList();
     }
 
@@ -718,30 +728,59 @@ public class MaterialAnalysisCommandService {
                     throw conflict(product.scheduleBlockedReason() == null
                             ? "当前产品不可排产" : product.scheduleBlockedReason());
                 }
-                if (line.qty().compareTo(product.remainingQty()) > 0) {
-                    throw validation("「" + product.goodsName() + "」生成数量 "
-                            + line.qty().stripTrailingZeros().toPlainString()
-                            + " 超过剩余需求 "
-                            + product.remainingQty().stripTrailingZeros().toPlainString());
+                // 超量下达（2026-09-14 用户口径「生产是可以超出数量下达的，
+                // 超出部分就是公共的，其他计划可以占用」）：本批数量拆成
+                // 「归本需求的量」+「公共备货产出量」两笔——前者照旧占
+                // submitted_qty（V234 的 submitted+approved<=requested 守恒不动，
+                // 锚点配额增长算法 growMakeAnchorQuotas 也不被污染），后者单独
+                // 记在计划关联行的 public_surplus_qty 上，不绑定任何需求：产出
+                // 入库后就是公共库存，其他计划可以直接用。
+                BigDecimal demandQty = line.qty().min(product.remainingQty());
+                BigDecimal surplusQty = line.qty().subtract(demandQty);
+                // 2026-09-14 修订（用户口径「销售来源也允许超量，超出部分就是
+                // 公共的」）：销售订单来源顶层行超量不再拒绝，而是**拆成两张
+                // 计划单**——单 A 是原样的销售行（1:1 分摊 demandQty，销售守恒
+                // 「排产量 ≤ 订单未满足」与「分摊合计 = 计划数量」原样成立）；
+                // 单 B 是无销售来源的备货行（surplusQty，link 记 submitted=0 +
+                // surplus=全部）。两张单各自恰好一条明细，分别满足
+                // fn_sync_material_analysis_plan_link_qty 的「单行对账」形状，
+                // 触发器零改动。非销售来源仍走单张计划 + link 分账（V577 原样）。
+                List<WorkshopPlanSegment> segments;
+                if (surplusQty.signum() <= 0 || product.salesOrderItemId() == null) {
+                    segments = List.of(
+                            new WorkshopPlanSegment(line.qty(), product, surplusQty));
+                } else {
+                    segments = new ArrayList<>();
+                    if (demandQty.signum() > 0) {
+                        segments.add(new WorkshopPlanSegment(
+                                demandQty, product, BigDecimal.ZERO));
+                    }
+                    segments.add(new WorkshopPlanSegment(
+                            surplusQty, stockTopForPublicSurplus(product, surplusQty),
+                            surplusQty));
                 }
-                PlanQuantity quantity = new PlanQuantity(lineId, line.qty(),
-                        line.billDate(), line.deliveryDate(), line.departmentId(),
-                        line.workshopName(), line.workerId(), line.teamDepartmentId(),
-                        line.productNo());
-                validatePlanSchedule(quantity, defaults);
-                // 客观齐套结论只决定 READY/WAITING，不再拦截：缺料批次进 WAITING，
-                // 车间侧等料（执行段齐套后自动提升）。
-                PlanDetail plan = createDraftPlan(analysisId, product, quantity, defaults);
-                ProductionPlanningDraftView draft = savePlanningDraft(
-                        analysisId, product, plan, quantity, defaults,
-                        request.warehouseId());
-                PlanningPackageResult applied = null;
-                if (request.approveNow()) {
-                    planService.approve(plan.getId());
-                    applied = planningPackages.currentResult(plan.getId()).orElseThrow(() ->
-                            conflict("生产计划已审核但正式计划包未生成，事务已回滚"));
+                for (WorkshopPlanSegment segment : segments) {
+                    PlanQuantity quantity = new PlanQuantity(lineId, segment.qty(),
+                            line.billDate(), line.deliveryDate(), line.departmentId(),
+                            line.workshopName(), line.workerId(), line.teamDepartmentId(),
+                            line.productNo());
+                    validatePlanSchedule(quantity, defaults);
+                    // 客观齐套结论只决定 READY/WAITING，不再拦截：缺料批次进 WAITING，
+                    // 车间侧等料（执行段齐套后自动提升）。
+                    PlanDetail plan = createDraftPlan(
+                            analysisId, segment.product(), quantity, defaults,
+                            segment.linkSurplusQty());
+                    ProductionPlanningDraftView draft = savePlanningDraft(
+                            analysisId, segment.product(), plan, quantity, defaults,
+                            request.warehouseId());
+                    PlanningPackageResult applied = null;
+                    if (request.approveNow()) {
+                        planService.approve(plan.getId());
+                        applied = planningPackages.currentResult(plan.getId()).orElseThrow(() ->
+                                conflict("生产计划已审核但正式计划包未生成，事务已回滚"));
+                    }
+                    generated.add(toGenerated(plan, draft, applied));
                 }
-                generated.add(toGenerated(plan, draft, applied));
             }
         }
         MaterialAnalysisService.AnalysisHeader postPlanHeader =
@@ -754,6 +793,43 @@ public class MaterialAnalysisCommandService {
                 Map.of("planIds", generated.stream().map(GeneratedPlan::planId).toList()));
         return new GenerateResult(analysisService.detailInternal(analysisId, false), false,
                 List.copyOf(generated));
+    }
+
+    /** 一次下达里要出的一张计划单：数量 + 承载它的产品身份 + link 的公共备货量。 */
+    private record WorkshopPlanSegment(
+            BigDecimal qty, ProductView product, BigDecimal linkSurplusQty) {}
+
+    /**
+     * 销售顶层行超量部分的承载身份：剥掉销售来源（salesOrderItemId/No、客户），
+     * 需求量改记为本段自己的数量——它是一张无销售来源的「公共备货产出」单，
+     * 不进任何销售分摊与订单侧 planned_qty；产出入库后按 link 的
+     * public_surplus_qty 进公共库存。
+     */
+    private ProductView stockTopForPublicSurplus(ProductView product, BigDecimal qty) {
+        return new ProductView(
+                product.analysisLineId(), product.sourceType(), product.sourceRef(),
+                product.sourceReason(), null, null, null,
+                product.orderDate(), product.deliveryDate(), null,
+                product.goodsId(), product.goodsCode(), product.goodsName(),
+                product.spec(), product.colorId(), product.colorName(),
+                product.unitId(), product.unitName(), product.unitRate(),
+                qty, product.submittedQty(), product.approvedQty(),
+                product.remainingQty(), product.allocationPriority(),
+                product.canSchedule(), product.maxSchedulableQty(),
+                product.scheduleBlockedReason(), product.readyNowQty(),
+                product.readyByDateQty(), product.readyStartQty(),
+                product.readyFinishQty(), product.readyShipQty(),
+                product.readinessRatio(), product.hasProductionMaterialChildren(),
+                product.parentAnalysisLineId(), product.parentGoodsName(),
+                product.planExecutionStatus(), product.latestPlanId(),
+                product.latestPlanNo(), product.planExecutionPlannedQty(),
+                product.planExecutionInboundQty(),
+                product.planExecutionProgressRatio(),
+                product.planExecutionReportedQty(),
+                product.planExecutionZeroMaterial(),
+                product.planExecutionWorkshopName(),
+                product.planExecutionResponsibleName(),
+                product.rootMaterialLineId());
     }
 
     private Set<UUID> workshopSourceIds(UUID analysisId, IssueWorkshopPlansRequest request) {
@@ -1735,9 +1811,13 @@ public class MaterialAnalysisCommandService {
         }
     }
 
+    /**
+     * @param publicSurplusQty 本批中超出该任务行剩余需求、按公共备货产出记账的量
+     *                         （不占 submitted_qty，不绑定任何需求；0 = 无超量）
+     */
     private PlanDetail createDraftPlan(
             UUID analysisId, ProductView product, PlanQuantity quantity,
-            PlanScheduleDefaults defaults) {
+            PlanScheduleDefaults defaults, BigDecimal publicSurplusQty) {
         BigDecimal qty = quantity.qty();
         LocalDate billDate = itemBillDate(quantity, defaults);
         LocalDate deliveryDate = itemDeliveryDate(quantity, defaults);
@@ -1795,20 +1875,23 @@ public class MaterialAnalysisCommandService {
                 .setParameter("planId", plan.getId()).executeUpdate();
         ProductionPlan managedPlan = em.find(ProductionPlan.class, plan.getId());
         em.refresh(managedPlan);
+        // 计划量 = 归本需求的量 + 公共备货产出量。只有前者写进 submitted_qty
+        // （分析需求守恒），后者单列，V577 的触发器按两者之和与计划行数量对账。
         em.createNativeQuery("""
                 INSERT INTO production_material_analysis_plan_links (
                     id, analysis_id, analysis_item_id, plan_id,
-                    submitted_qty, allocation_status, created_by
+                    submitted_qty, public_surplus_qty, allocation_status, created_by
                 ) VALUES (
                     :id, :analysisId, :analysisItemId, :planId,
-                    :qty, 'SUBMITTED', :actorId
+                    :qty, :surplusQty, 'SUBMITTED', :actorId
                 )
                 """)
                 .setParameter("id", UUID.randomUUID())
                 .setParameter("analysisId", analysisId)
                 .setParameter("analysisItemId", product.analysisLineId())
                 .setParameter("planId", plan.getId())
-                .setParameter("qty", qty)
+                .setParameter("qty", qty.subtract(publicSurplusQty))
+                .setParameter("surplusQty", publicSurplusQty)
                 .setParameter("actorId", currentUser.requireId()).executeUpdate();
         return plan;
     }
@@ -2431,6 +2514,6 @@ public class MaterialAnalysisCommandService {
     private record SharedFutureSource(
             UUID actionId, BigDecimal availableQty, LocalDate expectedDate,
             UUID externalItemId, String documentType,
-            UUID documentId, String documentNo) {
+            UUID documentId, String documentNo, String sourceRoute) {
     }
 }

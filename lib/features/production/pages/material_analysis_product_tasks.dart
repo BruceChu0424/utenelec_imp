@@ -764,7 +764,12 @@ abstract class _MaterialAnalysisProductTasksState
   /// 动作完成后详情页按最新快照刷新行集。
   // Only successful workshop issuance returns true to close its bucket after
   // the result dialog. Procurement/subcontract actions always keep their page.
-  Future<bool> _executeBucketAction(_BucketActionRequest request) async {
+  // [silent] = 父件段由「一起下单」弹窗编排（ADR-081）：成功提示与结果弹层
+  // 由弹窗统一汇报，避免一次一键下单连弹多层结果。
+  Future<bool> _executeBucketAction(
+    _BucketActionRequest request, {
+    bool silent = false,
+  }) async {
     // 遮罩挂在 _notifyRoute 的纯网络段（数量确认弹窗之后），见 supply_actions。
     switch (request.type) {
       case _BucketActionType.buy:
@@ -772,11 +777,13 @@ abstract class _MaterialAnalysisProductTasksState
           MaterialSupplyRoute.buy,
           onlyGroupKeys: request.groupKeys,
           qtyByActionGroupKey: request.qtyByActionGroupKey,
+          silent: silent,
         );
       case _BucketActionType.subcontractOnly:
         await _arrangeSubcontractProduction(
           onlyGroupKeys: request.groupKeys,
           qtyByActionGroupKey: request.qtyByActionGroupKey,
+          silent: silent,
         );
       case _BucketActionType.createProductionPlans:
         // 2026-09-05 ADR-071：车间桶单按钮「创建生产计划」——所有自制行
@@ -786,6 +793,7 @@ abstract class _MaterialAnalysisProductTasksState
         return _issueWorkshopPlans(
           candidateInputs: request.candidateInputs,
           planDrafts: request.planDrafts,
+          silent: silent,
         );
     }
     return false;
@@ -794,9 +802,12 @@ abstract class _MaterialAnalysisProductTasksState
   /// 下达车间（ADR-071）：把分桶页收集的行输入交给服务端原子执行。数量/
   /// 车间/负责人在分桶页已校验；这里组幂等键、处理 409 冲突恢复并展示
   /// 生成结果（计划单/领料单一屏）。齐不齐料由车间侧执行段自行判断等待。
+  /// [silent] = 下层办齐编排在调用（ADR-081）：跳过成功提示与生成结果弹层，
+  /// 由编排方在最后统一汇报，避免一次一键下单弹出多层结果。
   Future<bool> _issueWorkshopPlans({
     List<_BucketCandidatePlanInput>? candidateInputs,
     List<_BucketPlanDraft>? planDrafts,
+    bool silent = false,
   }) async {
     final analysis = _analysis;
     final warehouseId = _warehouseId;
@@ -863,6 +874,7 @@ abstract class _MaterialAnalysisProductTasksState
       refreshAfterProductionPlanGenerated(ref);
       final plans = result.plans;
       final approved = plans.any((plan) => plan.status == 'APPROVED');
+      if (silent) return true;
       context.appSuccess(
         approved
             ? plans.any((plan) => plan.drawDocuments.isNotEmpty)

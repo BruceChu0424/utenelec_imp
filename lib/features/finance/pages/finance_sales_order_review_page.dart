@@ -458,10 +458,10 @@ class _FinanceSalesOrderReviewPageState
                   )
                 : _review == null
                 ? const SizedBox.shrink()
-                // 2026-09-15 表格宽度口径（用户反馈）：整页收进 UtenContentContainer.narrow
-                // ——卡片区与产品明细表同宽、窄幅居中，对齐销售订货单详情页；滚动仍为
-                // 折叠头+表内滚：上滑先收卡片区，明细标题吸顶后再在表格内部滚。
-                : UtenContentContainer.narrow(
+                // 2026-09-15 表格宽度口径二修（用户反馈）：上午收进 narrow(1120) 后两侧
+                // 大留白，弃 narrow 改默认容器（1600 钳制），对齐新建销售订货单页；
+                // 滚动仍为折叠头+表内滚：上滑先收卡片区，明细标题吸顶后在表格内部滚。
+                : UtenContentContainer(
                     child: UtenCollapsingHeaderScrollView(
                       collapsingHeader: Padding(
                         padding: const EdgeInsets.fromLTRB(

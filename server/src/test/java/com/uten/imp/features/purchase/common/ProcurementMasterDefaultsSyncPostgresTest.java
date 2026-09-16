@@ -116,8 +116,10 @@ class ProcurementMasterDefaultsSyncPostgresTest {
         assertThat(supplierSettlement(supplier)).isEqualTo(settlementActive);
         assertThat(supplierShadow(supplier)).isEqualTo(settlementLegacy(settlementActive));
 
-        // ③ 停用字典保值：单头记着停用结账方式时不能写也不能炸；币种/税率照常记。
-        UUID order3 = purchaseOrder(supplier, goods, settlementDisabled, null, null);
+        // ③ 空条款保值：单头结账方式/币种/税率为空的订单不覆盖供应商默认
+        //（停用字典场景由 ClientDefaultTermsSyncPostgresTest 同款锁覆盖——订单表
+        // 侧触发器直接拒绝停用字典落库，写回服务永远见不到这种行）。
+        UUID order3 = purchaseOrder(supplier, goods, null, null, null);
         inTx(() -> sync.syncFromPurchaseOrder(order3));
         assertThat(supplierSettlement(supplier)).isEqualTo(settlementActive);
         assertThat(supplierCurrency(supplier)).isEqualTo(currency);
@@ -217,7 +219,7 @@ class ProcurementMasterDefaultsSyncPostgresTest {
                     id, order_id, goods_id, qty, price, is_deleted,
                     bill_no, bill_date, goods_snapshot_source)
                 VALUES (?, ?, ?, 10, 12.500000, false,
-                        ?, DATE '2026-09-15', 'GOODS')
+                        ?, DATE '2026-09-15', 'MASTER_AT_SAVE')
                 """, UUID.randomUUID(), orderId, goodsId,
                 "POI-SYNC-" + orderId.toString().substring(0, 8));
         return orderId;
@@ -237,7 +239,7 @@ class ProcurementMasterDefaultsSyncPostgresTest {
                     id, order_id, goods_id, qty, price, is_deleted,
                     bill_no, bill_date, goods_snapshot_source)
                 VALUES (?, ?, ?, 8, 45.000000, false,
-                        ?, DATE '2026-09-15', 'GOODS')
+                        ?, DATE '2026-09-15', 'MASTER_AT_SAVE')
                 """, UUID.randomUUID(), orderId, goodsId,
                 "SCI-SYNC-" + orderId.toString().substring(0, 8));
         return orderId;

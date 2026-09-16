@@ -215,6 +215,8 @@ class GoodsDetail {
     this.owningWarehouseName,
     this.owningWorkshopId,
     this.owningWorkshopName,
+    this.defaultPurchasePrice,
+    this.defaultSubcontractPrice,
   });
 
   final String id;
@@ -316,6 +318,10 @@ class GoodsDetail {
   final String? owningWorkshopId; // null=尚未学习
   final String? owningWorkshopName; // 展示名；部门已软删或未解析时为 null
 
+  // ===== 采购/委外单价 (V593；由订单保存自动写回，只读展示) =====
+  final double? defaultPurchasePrice;
+  final double? defaultSubcontractPrice;
+
   factory GoodsDetail.fromJson(Map<String, dynamic> json) => GoodsDetail(
     id: json['id'] as String,
     code: json['code'] as String?,
@@ -399,6 +405,9 @@ class GoodsDetail {
     owningWarehouseName: json['owningWarehouseName'] as String?,
     owningWorkshopId: json['owningWorkshopId'] as String?,
     owningWorkshopName: json['owningWorkshopName'] as String?,
+    defaultPurchasePrice: (json['defaultPurchasePrice'] as num?)?.toDouble(),
+    defaultSubcontractPrice: (json['defaultSubcontractPrice'] as num?)
+        ?.toDouble(),
   );
 }
 

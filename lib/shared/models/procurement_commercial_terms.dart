@@ -9,6 +9,10 @@ class ProcurementLastTerms {
     this.currencyId,
     this.exchangeRate,
     this.taxRate,
+    // V593：货品主档默认单价（采购=purchasePrice / 委外=subcontractPrice），
+    // 随 /last-terms 一起带回，订货行单价预填用。
+    this.purchasePrice,
+    this.subcontractPrice,
   });
 
   factory ProcurementLastTerms.fromJson(Map<String, dynamic> json) =>
@@ -18,6 +22,8 @@ class ProcurementLastTerms {
         currencyId: json['currencyId'] as String?,
         exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
         taxRate: (json['taxRate'] as num?)?.toDouble(),
+        purchasePrice: (json['purchasePrice'] as num?)?.toDouble(),
+        subcontractPrice: (json['subcontractPrice'] as num?)?.toDouble(),
       );
 
   final String? supplierId;
@@ -25,4 +31,6 @@ class ProcurementLastTerms {
   final String? currencyId;
   final double? exchangeRate;
   final double? taxRate;
+  final double? purchasePrice;
+  final double? subcontractPrice;
 }

@@ -159,9 +159,9 @@ class _Content extends ConsumerWidget {
     return Column(
       children: [
         Expanded(
-          // narrow 容器：compact 提供 gutter，medium+ 把内容钳到 1120 居中；
+          // 2026-09-15 宽度口径（用户反馈）：弃 narrow（1120 两侧大留白）改默认容器；
           // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
-          child: UtenContentContainer.narrow(
+          child: UtenContentContainer(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(
                 0,

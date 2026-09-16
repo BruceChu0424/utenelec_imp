@@ -992,6 +992,9 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
           '订货倍数',
           withUnit(goodsQtyText(d.orderMultipleQty), d.unitId, d.unitLegacyId),
         ),
+        // V593 单一事实源两价：订货行价预填；每次保存采购/委外单自动写回最新价。
+        MasterDetailRow('采购单价', d.defaultPurchasePrice?.toString()),
+        MasterDetailRow('委外单价', d.defaultSubcontractPrice?.toString()),
       ]),
       _DetailSection('库存', [
         // 所属仓库 (V587)：货品平时归哪个仓管，不是下面那几行的单据落点仓。

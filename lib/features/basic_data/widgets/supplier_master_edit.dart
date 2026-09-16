@@ -9,6 +9,8 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../employee/widgets/department_employee_picker.dart';
+import '../models/currency_node.dart';
+import 'client_master_edit.dart' show loadClientCurrencies;
 import '../models/reference_method_option.dart';
 import '../models/supplier_node.dart';
 import '../repositories/reference_method_repository.dart';
@@ -54,8 +56,9 @@ List<MasterFieldDef> buildSupplierFields(
   BuildContext context,
   Map<String, String> iv,
   List<ReferenceMethodOption> settlementMethods,
-  WidgetRef ref,
-) => [
+  WidgetRef ref, {
+  List<CurrencyListItem> currencies = const [],
+}) => [
   ...const <MasterFieldDef>[
     MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
     MasterFieldDef(
@@ -162,6 +165,10 @@ Future<void> showSupplierMasterEdit(
 }) async {
   final settlementMethods = await loadSupplierSettlementMethods(context, ref);
   if (!context.mounted || settlementMethods == null) return;
+  // V593 默认币种下拉；加载失败不阻断编辑（只是该项没有选项）。
+  final currencies =
+      await loadClientCurrencies(context, ref) ?? const <CurrencyListItem>[];
+  if (!context.mounted) return;
   if (d.defaultSettlementMethodId != null &&
       !settlementMethods.any(
         (method) => method.id == d.defaultSettlementMethodId,
@@ -194,6 +201,8 @@ Future<void> showSupplierMasterEdit(
     'initTotal': d.initTotal?.toString() ?? '',
     'tday': d.tday?.toString() ?? '',
     'defaultSettlementMethodId': d.defaultSettlementMethodId ?? '',
+    'defaultCurrencyId': d.defaultCurrencyId ?? '',
+    'defaultTaxRate': d.defaultTaxRate?.toString() ?? '',
     'status': d.status ?? '',
     'remark': d.remark ?? '',
   };
@@ -201,7 +210,13 @@ Future<void> showSupplierMasterEdit(
   await showMasterEditDialog(
     context: context,
     title: '编辑供应商', // TODO(l10n): 补 arb
-    fields: buildSupplierFields(context, iv, settlementMethods, ref),
+    fields: buildSupplierFields(
+      context,
+      iv,
+      settlementMethods,
+      ref,
+      currencies: currencies,
+    ),
     initialValues: iv,
     fixedValues: {
       'categoryId': d.categoryId ?? fallbackCategoryId,

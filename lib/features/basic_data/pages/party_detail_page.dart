@@ -427,6 +427,8 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage> {
         _kv(theme, '运输方式', d.shipVia),
         _kv(theme, '法人', d.legalPerson),
         _kv(theme, '默认结算方式', d.defaultSettlementMethodName),
+        _kv(theme, '默认币种', d.defaultCurrencyName),
+        _kv(theme, '默认税率', d.defaultTaxRate?.toString()),
         _kv(theme, '期初应付', d.initTotal?.toString()),
         _kv(theme, '结算天数', d.tday?.toString()),
         _kv(theme, '开户行', d.bank),

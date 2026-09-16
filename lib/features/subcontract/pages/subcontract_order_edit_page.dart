@@ -501,6 +501,12 @@ class _SubcontractOrderEditPageState
           r.markTermsAutofilled('tax', r.taxRate.text);
           changed = true;
         }
+        // V593 货品默认委外加工单价：行价空位时预填（主档列，每次下单自动写回最新）。
+        if (r.price.text.trim().isEmpty && terms.subcontractPrice != null) {
+          r.price.text = terms.subcontractPrice.toString();
+          r.markTermsAutofilled('price', r.price.text);
+          changed = true;
+        }
       }
       changed = _applyTermDefaults(r) || changed;
     }

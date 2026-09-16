@@ -148,8 +148,8 @@ class _DetailContent extends ConsumerWidget {
               ref.invalidate(payrollDetailProvider(slip.id));
               await ref.read(payrollDetailProvider(slip.id).future);
             },
-            // narrow 容器：compact 提供 gutter，medium+ 把内容钳到 1120 居中
-            child: UtenContentContainer.narrow(
+            // 2026-09-15 宽度口径（用户反馈）：弃 narrow（1120 两侧大留白）改默认容器
+            child: UtenContentContainer(
               child: ListView(
                 // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
                 padding: const EdgeInsets.fromLTRB(

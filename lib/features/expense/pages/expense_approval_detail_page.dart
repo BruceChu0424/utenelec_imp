@@ -183,7 +183,9 @@ class _ExpenseApprovalDetailPageState
           message: '加载失败：$e',
           onAction: () => ref.invalidate(expenseDetailProvider(widget.claimId)),
         ),
-        data: (claim) => UtenContentContainer.narrow(
+        // 2026-09-15 宽度口径（用户反馈）：弃 narrow（1120 两侧大留白），
+        // 改默认容器对齐新建销售订货单页。
+        data: (claim) => UtenContentContainer(
           child: SingleChildScrollView(
             // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
             padding: const EdgeInsets.fromLTRB(

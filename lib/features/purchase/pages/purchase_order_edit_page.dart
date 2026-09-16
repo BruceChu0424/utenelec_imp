@@ -506,6 +506,12 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
           r.markTermsAutofilled('tax', r.taxRate.text);
           changed = true;
         }
+        // V593 货品默认采购单价：行价空位时预填（主档列，每次下单自动写回最新）。
+        if (r.price.text.trim().isEmpty && terms.purchasePrice != null) {
+          r.price.text = terms.purchasePrice.toString();
+          r.markTermsAutofilled('price', r.price.text);
+          changed = true;
+        }
       }
       changed = _applyTermDefaults(r) || changed;
     }

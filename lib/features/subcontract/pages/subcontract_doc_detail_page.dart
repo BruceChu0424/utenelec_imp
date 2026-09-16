@@ -473,7 +473,9 @@ class _SubcontractDocDetailPageState
         ),
       ),
       body: SafeArea(
-        child: UtenContentContainer.narrow(
+        // 2026-09-15 宽度口径（用户反馈）：详情页弃 narrow（1120 两侧大留白），
+        // 改默认容器对齐新建销售订货单页。
+        child: UtenContentContainer(
           child: _loading
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
               : _error != null

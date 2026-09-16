@@ -132,6 +132,9 @@ class SupplierDetail {
     this.ownerEmployeeName,
     this.defaultSettlementMethodId,
     this.defaultSettlementMethodName,
+    this.defaultCurrencyId,
+    this.defaultCurrencyName,
+    this.defaultTaxRate,
   });
 
   final String id;
@@ -168,6 +171,11 @@ class SupplierDetail {
   final String? defaultSettlementMethodId; // 默认结算方式 UUID（V452）
   final String? defaultSettlementMethodName;
 
+  /// 默认条款（V593 单一事实源；下单自动写回）。
+  final String? defaultCurrencyId;
+  final String? defaultCurrencyName;
+  final double? defaultTaxRate;
+
   factory SupplierDetail.fromJson(Map<String, dynamic> json) => SupplierDetail(
     id: json['id'] as String,
     code: json['code'] as String?,
@@ -202,6 +210,9 @@ class SupplierDetail {
     ownerEmployeeName: json['ownerEmployeeName'] as String?,
     defaultSettlementMethodId: json['defaultSettlementMethodId'] as String?,
     defaultSettlementMethodName: json['defaultSettlementMethodName'] as String?,
+    defaultCurrencyId: json['defaultCurrencyId'] as String?,
+    defaultCurrencyName: json['defaultCurrencyName'] as String?,
+    defaultTaxRate: (json['defaultTaxRate'] as num?)?.toDouble(),
   );
 }
 

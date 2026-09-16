@@ -43,8 +43,11 @@ class ChainNoticeOutboxEventTest {
         UUID shipment=UUID.randomUUID();JdbcTemplate jdbc=mock(JdbcTemplate.class);
         NoticeService notice=mock(NoticeService.class);UserAccountRepository users=mock(UserAccountRepository.class);
         BusinessEventPublisher outbox=mock(BusinessEventPublisher.class);
-        when(jdbc.queryForList(contains("SELECT bill_no,shipment_kind,owner_employee_id,review_revision"),eq(shipment)))
-                .thenReturn(List.of(Map.of("bill_no","XC-REV2","shipment_kind","DIRECT_CUSTOMER","owner_employee_id",UUID.randomUUID(),"review_revision",2L)));
+        // V578 起这条 SELECT 多带一个 maker_id（归属人不可达时回退投递给制单人），
+        // stub 的匹配串与返回列要跟着走，否则 mock 落空、方法直接 return，
+        // 测试会以「zero interactions」的形式红，看起来像发布逻辑没了。
+        when(jdbc.queryForList(contains("SELECT bill_no,shipment_kind,owner_employee_id,maker_id,review_revision"),eq(shipment)))
+                .thenReturn(List.of(Map.of("bill_no","XC-REV2","shipment_kind","DIRECT_CUSTOMER","owner_employee_id",UUID.randomUUID(),"maker_id",UUID.randomUUID(),"review_revision",2L)));
         ChainNoticeService service=service(notice,users,mock(PermissionResolver.class),mock(UserRoleRepository.class),jdbc,outbox);
         service.notifyShipmentFinanceRejected(shipment,"当前退回原因");
         verify(outbox).publishOnce(ChainNoticeService.EVENT_DIRECT_SHIPMENT_FINANCE_REJECTED,"SALES_SHIPMENT",shipment,

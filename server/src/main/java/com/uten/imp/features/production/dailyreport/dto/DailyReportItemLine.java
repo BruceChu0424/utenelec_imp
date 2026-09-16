@@ -41,4 +41,13 @@ public class DailyReportItemLine {
     private String clientName;
     private String sourceDocNo;
     private String remark;
+
+    /**
+     * 产出去向(V584)：WAREHOUSE(默认，送仓库)或 WORKSHOP(班组自检后直送同车间上层工单)。
+     * 不传按 WAREHOUSE 处理，老客户端行为不变。
+     */
+    private String destination;
+
+    /** 直送的接收需求(V585)：destination=WORKSHOP 时必填，服务端再校验同车间同货品。 */
+    private UUID directTransferDemandId;
 }

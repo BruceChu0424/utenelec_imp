@@ -340,26 +340,45 @@ class MasterEditFormState extends State<MasterEditForm> {
         ],
       );
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (var i = 0; i < fields.length; i += 2)
-          Padding(
-            padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: _field(fields[i])),
-                const SizedBox(width: UtenSpacing.s12),
-                Expanded(
-                  child: i + 1 < fields.length
-                      ? _field(fields[i + 1])
-                      : const SizedBox.shrink(),
-                ),
+    // 2026-09-14：列数按容器实际宽度自适应（每列约 260 宽，1-4 列），
+    // 屏幕越大一行显示越多，不再固定两列。
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final colCount = (constraints.maxWidth ~/ 260).clamp(1, 4);
+        if (colCount == 1) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final f in fields) ...[
+                _field(f),
+                const SizedBox(height: UtenSpacing.s12),
               ],
-            ),
-          ),
-      ],
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = 0; i < fields.length; i += colCount)
+              Padding(
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (var c = 0; c < colCount; c++) ...[
+                      if (c > 0) const SizedBox(width: UtenSpacing.s12),
+                      Expanded(
+                        child: i + c < fields.length
+                            ? _field(fields[i + c])
+                            : const SizedBox.shrink(),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -497,8 +516,10 @@ Future<void> showMasterEditDialog({
     builder: (ctx) => Dialog(
       shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
       child: ConstrainedBox(
+        // 2026-09-14：弹窗宽度随屏幕放缩（原固定 560 太小，一行固定两列）；
+        // 大屏最宽 900，表单网格列数在 _fieldGrid 里按实际宽度自适应。
         constraints: BoxConstraints(
-          maxWidth: 560,
+          maxWidth: (MediaQuery.sizeOf(ctx).width * 0.92).clamp(560.0, 900.0),
           maxHeight: MediaQuery.sizeOf(ctx).height * 0.88,
         ),
         child: body,

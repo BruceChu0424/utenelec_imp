@@ -364,11 +364,12 @@ class MaterialAnalysisSupplyProgressServiceTest {
             }
             if (sql.contains("FROM subcontract_material_plans p")) {
                 if (sql.contains("pi.flow_mode = 'LEGACY_BOM_COMPONENT'")) {
+                    // 末位是 V581 新增的 COMPONENT_OUTBOUND 行数（本夹具为 0）。
                     return subcontractPlanExists
                             ? rows(new Object[]{1L, 0L, 1L, 0L, 1L, 0L, 0L,
-                                    new BigDecimal("10"), new BigDecimal("10"), 0L})
+                                    new BigDecimal("10"), new BigDecimal("10"), 0L, 0L})
                             : rows(new Object[]{0L, 0L, 0L, 0L, 0L, 0L, 0L,
-                                    BigDecimal.ZERO, BigDecimal.ZERO, 0L});
+                                    BigDecimal.ZERO, BigDecimal.ZERO, 0L, 0L});
                 }
                 if (!subcontractPlanExists) {
                     return rows(new Object[]{BigDecimal.ZERO, BigDecimal.ZERO,

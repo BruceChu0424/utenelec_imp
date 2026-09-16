@@ -1129,6 +1129,7 @@ class _ProductionPlanDetailPageState
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _detail == null ? null : _actions(theme),
     );
   }

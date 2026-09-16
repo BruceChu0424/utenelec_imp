@@ -25,6 +25,8 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/page_permission_action.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../models/goods_node.dart';
 import '../providers/color_unit_dict.dart';
 import '../repositories/goods_repository.dart';
@@ -283,6 +285,20 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
       const MasterFieldDef(key: 'material', label: '材质', group: '规格'),
       const MasterFieldDef(key: 'series', label: '系列', group: '规格'),
       const MasterFieldDef(key: 'stockPlace', label: '库位号', group: '规格'),
+      // 所属仓库 (V587)：货品平时归哪个仓管的主档归属，不是单据落点仓，也不是
+      // 物料分析的分析范围仓。选择面板与字典加载见 [_pickOwningWarehouse]。
+      MasterFieldDef(
+        key: 'owningWarehouseId',
+        label: '所属仓库',
+        type: MasterFieldType.custom,
+        group: '规格',
+        customBuilder: (ctx) => _OwningWarehousePickerField(
+          initialValue: ctx.initialValue,
+          initialDisplay: _detail?.owningWarehouseName,
+          onChanged: ctx.onChanged,
+          onPick: _pickOwningWarehouse,
+        ),
+      ),
       MasterFieldDef(
         key: 'thickness',
         label: '厚度',
@@ -407,7 +423,42 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
         type: MasterFieldType.integer,
         group: '商务',
       ),
+      // 采购批量口径（V575）：软约束，只决定下达采购时的默认数量，采购员可改。
+      const MasterFieldDef(
+        key: 'minOrderQty',
+        label: '最小起订量',
+        type: MasterFieldType.money,
+        group: '采购',
+        hint: '供应商最小起订量，下达采购时按它抬量',
+      ),
+      const MasterFieldDef(
+        key: 'orderMultipleQty',
+        label: '订货倍数',
+        type: MasterFieldType.money,
+        group: '采购',
+        hint: '整箱/整包数量，下达采购时向上取整到它的倍数',
+      ),
     ];
+  }
+
+  /// 打开仓库选择面板选「所属仓库」(V587)。
+  ///
+  /// 仓库字典按需加载：只有真点开这个字段才拉一次，不让只看基本信息的人白拉一趟
+  /// 主档字典 (ensureWarehousesLoaded 自带缓存，重复点不会重复请求)。
+  /// allowParent: true —— 归属是主档事实不是过账落点，V476 的叶子仓约束不适用。
+  Future<WarehousePickerResult?> _pickOwningWarehouse(
+    String? currentWarehouseId,
+  ) async {
+    final names = ref.read(masterNameServiceProvider);
+    await names.ensureWarehousesLoaded();
+    if (!mounted) return null;
+    return showUtenWarehousePickerPanel(
+      context,
+      hierarchy: names.warehouseHierarchy,
+      initialWarehouseId: currentWarehouseId,
+      title: '选择所属仓库', // TODO(l10n): 补 arb
+      allowParent: true,
+    );
   }
 
   Map<String, String> _initialValues() {
@@ -426,6 +477,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
       'material': d.material ?? '',
       'series': d.series ?? '',
       'stockPlace': d.stockPlace ?? '',
+      'owningWarehouseId': d.owningWarehouseId ?? '',
       'thickness': s(d.thickness),
       'mWeight': s(d.mWeight),
       'colorId': d.colorId ?? '',
@@ -436,6 +488,10 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
       'pack': d.pack ?? '',
       'unitId': d.unitId ?? '',
       'pieces': s(d.pieces),
+      // 起订量/倍数绝大多数是整数：回填「500」而不是「500.0」，免得用户每次
+      // 进编辑都要手动擦掉尾巴。
+      'minOrderQty': goodsQtyText(d.minOrderQty) ?? '',
+      'orderMultipleQty': goodsQtyText(d.orderMultipleQty) ?? '',
     };
   }
 
@@ -925,7 +981,24 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
         MasterDetailRow('单位', d.unitName),
         MasterDetailRow('件数', s(d.pieces)),
       ]),
+      // 采购批量口径（V575）：软约束，只是下达采购的默认数量依据，采购员可改。
+      // 空 = 供应商无该项要求，按净需求原样下达。
+      _DetailSection('采购', [
+        MasterDetailRow(
+          '最小起订量',
+          withUnit(goodsQtyText(d.minOrderQty), d.unitId, d.unitLegacyId),
+        ),
+        MasterDetailRow(
+          '订货倍数',
+          withUnit(goodsQtyText(d.orderMultipleQty), d.unitId, d.unitLegacyId),
+        ),
+      ]),
       _DetailSection('库存', [
+        // 所属仓库 (V587)：货品平时归哪个仓管，不是下面那几行的单据落点仓。
+        // V590 起任何入库自动回写为最新入库仓。
+        MasterDetailRow('所属仓库', d.owningWarehouseName),
+        // 归属生产车间 (V590)：最近一次排产确认/车间改派自动学习回写，只读。
+        MasterDetailRow('归属车间', d.owningWorkshopName),
         MasterDetailRow('库存量(合计)', s(d.stockQty)),
         if (d.stockByWarehouse.any((row) => row.weight != null))
           MasterDetailRow(
@@ -1047,6 +1120,95 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
           textAlign: TextAlign.center,
         ),
       ),
+    );
+  }
+}
+
+/// 所属仓库选择字段 (V587，货品编辑表单「规格」组)：点开仓库侧滑面板选一个仓，
+/// 表单值提交仓库 UUID (owningWarehouseId)，展示为面板给出的「主仓-子仓」层级名。
+/// 清除 = 提交 null，后端据此把归属清空 (不带这个键才是「不动」)。
+///
+/// 自持本地值的理由同 [MouldPickerField]：MasterEditForm 的 customBuilder 每次
+/// onChanged 后都用同一份静态 ctx.initialValue 重建，不自己记账就会被冲回旧值。
+class _OwningWarehousePickerField extends StatefulWidget {
+  const _OwningWarehousePickerField({
+    required this.initialValue,
+    required this.initialDisplay,
+    required this.onChanged,
+    required this.onPick,
+  });
+
+  /// 表单提交值 (仓库 UUID 或空串/null)。
+  final String? initialValue;
+
+  /// 只读展示文案 (详情下发的 owningWarehouseName)。
+  final String? initialDisplay;
+
+  /// 回写提交值 (owningWarehouseId 字段，UUID 字符串或 null)。
+  final void Function(dynamic value) onChanged;
+
+  /// 拉起仓库选择面板 (由宿主提供，字典加载也在那边)；取消返回 null。
+  final Future<WarehousePickerResult?> Function(String? currentWarehouseId)
+  onPick;
+
+  @override
+  State<_OwningWarehousePickerField> createState() =>
+      _OwningWarehousePickerFieldState();
+}
+
+class _OwningWarehousePickerFieldState
+    extends State<_OwningWarehousePickerField> {
+  late final TextEditingController _ctl;
+  String? _warehouseId;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialValue?.trim();
+    _warehouseId = (initial == null || initial.isEmpty) ? null : initial;
+    _ctl = TextEditingController(text: widget.initialDisplay ?? '');
+  }
+
+  @override
+  void dispose() {
+    _ctl.dispose();
+    super.dispose();
+  }
+
+  void _set(String? id, String display) {
+    setState(() {
+      _warehouseId = id;
+      _ctl.text = display;
+    });
+    widget.onChanged(id);
+  }
+
+  Future<void> _pick() async {
+    final picked = await widget.onPick(_warehouseId);
+    if (picked == null || !mounted) return;
+    // 「全部」哨兵只在查询口径 (includeAll) 出现，这里没开；真出现按清空处理。
+    _set(picked.isAll ? null : picked.id, picked.isAll ? '' : picked.label);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasValue = _warehouseId != null || _ctl.text.isNotEmpty;
+    return TextField(
+      key: const ValueKey('goods-owning-warehouse'),
+      controller: _ctl,
+      readOnly: true,
+      decoration: InputDecoration(
+        labelText: '所属仓库',
+        hintText: '点击选择这批货平时归哪个仓管',
+        suffixIcon: hasValue
+            ? IconButton(
+                icon: const Icon(Icons.close_rounded, size: 18),
+                tooltip: '清除',
+                onPressed: () => _set(null, ''),
+              )
+            : const Icon(Icons.chevron_right_rounded),
+      ),
+      onTap: _pick,
     );
   }
 }

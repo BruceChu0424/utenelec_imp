@@ -37,6 +37,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -72,6 +73,20 @@ import '../repositories/subcontract_repository.dart';
 import '../services/subcontract_save_workflow.dart';
 import '../widgets/subcontract_grid_columns.dart';
 import '../widgets/subcontract_link_picker.dart';
+
+/// 批量校验提示：把同一类违规的**全部**行汇总成一句话。
+///
+/// 条目多时只列前 8 行再折成「等 N 行」——刷屏的提示和只报第一行一样没法用。
+String _rowIssueMessage(
+  List<String> rowLabels,
+  String issue, {
+  required String action,
+}) {
+  const shownMax = 8;
+  final shown = rowLabels.take(shownMax).join('、');
+  final more = rowLabels.length > shownMax ? '等 ${rowLabels.length} 行' : '';
+  return '以下 ${rowLabels.length} 行$issue，$action：$shown$more';
+}
 
 class SubcontractOrderEditPage extends ConsumerStatefulWidget {
   const SubcontractOrderEditPage({
@@ -113,6 +128,9 @@ class _SubcontractOrderEditPageState
 
   final _grid = UtenEditableGridController<SubcontractGridRow>();
   final _scrollCtl = ScrollController();
+
+  /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
+  final _gridPinned = ValueNotifier<bool>(false);
   bool _saving = false;
   bool _loading = false;
   bool _orderSourceReady = true;
@@ -132,6 +150,7 @@ class _SubcontractOrderEditPageState
 
   @override
   void dispose() {
+    _gridPinned.dispose();
     _billNo.dispose();
     _remark.dispose();
     _pendingFiles.dispose();
@@ -753,33 +772,78 @@ class _SubcontractOrderEditPageState
       context.appError('请至少添加一条明细');
       return;
     }
-    // 行级条款完整性：委外商/结算方式/币种必填，汇率>0，税率 0-100。
-    for (final r in rows) {
-      if (r.supplierId == null) {
-        context.appError('${r.goods!.name} 未选择委外商；可勾选多行统一设置');
-        return;
-      }
-      if (r.settlementMethodId == null) {
-        context.appError('${r.goods!.name} 未选择结算方式；可勾选多行统一设置');
-        return;
-      }
-      if (r.currencyId == null) {
-        context.appError('${r.goods!.name} 未选择币种；可勾选多行统一设置');
-        return;
-      }
+    // 行级条款完整性：委外商/结算方式/币种必填，汇率>0，税率 0-100；
+    // 数量>0、单价合法、填了实际重量则>0。
+    // 判定条件不变，只改暴露方式：一批几十行时逐行 return 只说第一处，用户改一行
+    // 提交一次、被同一批问题反复拦下；这里按问题类别把**全部**违规行收齐后一次说完。
+    final missingSupplier = <String>[];
+    final missingSettlement = <String>[];
+    final missingCurrency = <String>[];
+    final badRate = <String>[];
+    // 税率按校验器给出的具体原因（未填/格式/越界）分组，改法不同不能合并成一句。
+    final taxIssues = <String, List<String>>{};
+    final badQty = <String>[];
+    final badPrice = <String>[];
+    final badWeight = <String>[];
+    final gridRows = _grid.rows;
+    // 行标识用用户看得见的行序 + 货品名（明细表不显示 UUID，报 id 等于没报）。
+    String labelOf(int i, SubcontractGridRow r) =>
+        '第 ${i + 1} 行（${r.goods!.name ?? r.goods!.code ?? '该货品'}）';
+    for (var i = 0; i < gridRows.length; i++) {
+      final r = gridRows[i];
+      if (r.goods == null) continue;
+      final label = labelOf(i, r);
+      if (r.supplierId == null) missingSupplier.add(label);
+      if (r.settlementMethodId == null) missingSettlement.add(label);
+      if (r.currencyId == null) missingCurrency.add(label);
       final rate = double.tryParse(r.exchangeRate.text.trim());
-      if (rate == null || rate <= 0) {
-        context.appError('${r.goods!.name} 的汇率必须大于 0');
-        return;
-      }
+      if (rate == null || rate <= 0) badRate.add(label);
       final taxError = validateSubcontractTaxRate(
         r.taxRate.text,
         required: true,
       );
       if (taxError != null) {
-        context.appError('${r.goods!.name}：$taxError');
-        return;
+        taxIssues.putIfAbsent(taxError, () => []).add(label);
       }
+      final qty = double.tryParse(r.qty.text) ?? 0;
+      if (qty <= 0) badQty.add(label);
+      // 2026-09 起订货允许超过申请剩余量（超委外备货）：不再校验 qty ≤ maxQty。
+      final priceError = validateSubcontractOrderPrice(
+        docType: SubcontractDocType.order,
+        goodsName: r.goods!.name ?? r.goods!.code ?? '该货品',
+        priceText: r.price.text,
+      );
+      if (priceError != null) badPrice.add(label);
+      final weightText = r.weight.text.trim();
+      final weight = weightText.isEmpty ? null : double.tryParse(weightText);
+      if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
+        badWeight.add(label);
+      }
+    }
+    // 与采购订货单同口径：指路必须落到真实入口（批量条款只在行右键菜单里）。
+    const batchHint = '请补齐后再提交（可勾选多行后右键「统一设置条款」）';
+    final rowIssues = <String>[
+      if (missingSupplier.isNotEmpty)
+        _rowIssueMessage(missingSupplier, '未选择委外商', action: batchHint),
+      if (missingSettlement.isNotEmpty)
+        _rowIssueMessage(missingSettlement, '未选择结算方式', action: batchHint),
+      if (missingCurrency.isNotEmpty)
+        _rowIssueMessage(missingCurrency, '未选择币种', action: batchHint),
+      if (badRate.isNotEmpty)
+        _rowIssueMessage(badRate, '的汇率不是大于 0 的数字', action: '请改正后再提交'),
+      for (final entry in taxIssues.entries)
+        _rowIssueMessage(entry.value, '的税率不合要求', action: entry.key),
+      if (badQty.isNotEmpty)
+        _rowIssueMessage(badQty, '的数量不是大于 0 的数字', action: '请改正后再提交'),
+      if (badPrice.isNotEmpty)
+        _rowIssueMessage(badPrice, '的委外单价无效（须为不小于 0 的数字）', action: '请改正后再提交'),
+      if (badWeight.isNotEmpty)
+        _rowIssueMessage(badWeight, '的实际重量必须大于 0', action: '请改正后再提交'),
+    ];
+    if (rowIssues.isNotEmpty) {
+      // 不同类别分行列出，混成一句会让人看不清到底要改哪几处。
+      context.appError(rowIssues.join('\n'));
+      return;
     }
     // 编辑既有单：一单一套条款（行条款必须全一致）。
     if (!_isCreate && rows.map(_comboKey).toSet().length != 1) {
@@ -788,36 +852,27 @@ class _SubcontractOrderEditPageState
     }
     final settlementEntries = await _settlementEntries();
     if (!mounted) return;
-    for (final r in rows) {
+    final stoppedSettlement = <String>[];
+    for (var i = 0; i < gridRows.length; i++) {
+      final r = gridRows[i];
+      if (r.goods == null) continue;
       if (!settlementEntries.containsKey(r.settlementMethodId)) {
-        context.appError('${r.goods!.name} 的结算方式已停用，请重新选择');
-        return;
+        stoppedSettlement.add(labelOf(i, r));
       }
     }
+    if (stoppedSettlement.isNotEmpty) {
+      context.appError(
+        _rowIssueMessage(stoppedSettlement, '的结算方式已停用', action: '请重新选择后再提交'),
+      );
+      return;
+    }
+    // 逐行校验已全部通过，这里只组装提交体。
     final itemsBody = <Map<String, dynamic>>[];
     for (final r in rows) {
       final qty = double.tryParse(r.qty.text) ?? 0;
-      if (qty <= 0) {
-        context.appError('${r.goods!.name} 的数量必须大于 0');
-        return;
-      }
-      // 2026-09 起订货允许超过申请剩余量（超委外备货）：不再校验 qty ≤ maxQty。
-      final priceError = validateSubcontractOrderPrice(
-        docType: SubcontractDocType.order,
-        goodsName: r.goods!.name ?? r.goods!.code ?? '该货品',
-        priceText: r.price.text,
-      );
-      if (priceError != null) {
-        context.appError(priceError);
-        return;
-      }
       final price = double.tryParse(r.price.text)!;
       final weightText = r.weight.text.trim();
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
-      if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
-        context.appError('${r.goods!.name} 的实际重量必须大于 0');
-        return;
-      }
       final rate = double.tryParse(r.exchangeRate.text.trim())!;
       final tax = double.tryParse(r.taxRate.text.trim())!;
       final remarkText = r.remark.text.trim();
@@ -994,6 +1049,7 @@ class _SubcontractOrderEditPageState
       // 底部固定操作条 2026-09-11 撤除（全站同改）：改右下角悬浮「取消 / 保存」；
       // 加载中不出按钮，避免数据没就位就能点保存。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _loading
           ? null
           : UtenEditFloatingActions(
@@ -1008,10 +1064,12 @@ class _SubcontractOrderEditPageState
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-            : UtenContentContainer(
-                child: Scrollbar(
-                  controller: _scrollCtl,
-                  thumbVisibility: true,
+            : UtenGridPageScrollbar(
+                pinned: _gridPinned,
+                controller: _scrollCtl,
+                // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
+                // 恒在屏幕最右，不随限宽容器/列宽漂移。
+                child: UtenContentContainer(
                   child: ListView(
                     controller: _scrollCtl,
                     // 底部多留一个悬浮组的高度，最后一行明细不被「取消/保存」压住。
@@ -1152,6 +1210,32 @@ class _SubcontractOrderEditPageState
                       const SizedBox(height: UtenSpacing.s12),
                       // 「明细 (N)」标题行 2026-09-11 撤除；同日「从上游引入」也并入
                       // 明细表工具条，与「表头设置」同排同高（不再单独占一行）。
+                      // 2026-09-14：与采购订货单同改——「统一设置条款」只挂行右键菜单，
+                      // 而条款格是输入框/下拉，右键会被输入框自带菜单吃掉，等于零可见
+                      // 入口。补这行常驻提示指明入口；不加窄屏门控（宽屏桌面同样看不见）。
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline_rounded,
+                              size: 18,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: UtenSpacing.s8),
+                            Expanded(
+                              child: Text(
+                                '勾选多行后在选中行上右键（触屏长按）可「统一设置条款」，'
+                                '一次写全套委外商、结算方式、币种、汇率、税率（留空的保持原值）；'
+                                '右键请点在非输入框的位置，例如行首复选框或货品名称一列。',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                       // 列显隐/排序持久化（本页固定订货模式，单桶即可；账号级）。
                       Builder(
                         builder: (_) {
@@ -1160,6 +1244,7 @@ class _SubcontractOrderEditPageState
                           )['order'];
                           return UtenEditableGrid<SubcontractGridRow>(
                             controller: _grid,
+                            stickyHeaderPinned: _gridPinned,
                             showColumnSettings: true,
                             initialColumnOrder: columnPrefs?.order,
                             initialHiddenColumnKeys: columnPrefs?.hidden,
@@ -1221,7 +1306,6 @@ class _SubcontractOrderEditPageState
                             footer: EditableGridTotalsBar<SubcontractGridRow>(
                               key: const Key('subcontract-order-edit-totals'),
                               controller: _grid,
-                              showDivider: false,
                               watchOf: (row) => [row.qty],
                               entriesBuilder: (rows) {
                                 final currencyIds = rows

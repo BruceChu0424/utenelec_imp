@@ -856,6 +856,12 @@ class _DetailPaneState extends State<_DetailPane> {
       'paper': d.paper,
       'pack': d.pack,
       'pieces': d.pieces,
+      // 采购批量口径（V575）：与其他字段同口径全量回传，避免粘贴/状态切换清空。
+      'minOrderQty': d.minOrderQty,
+      'orderMultipleQty': d.orderMultipleQty,
+      // 所属仓库 (V587)：本 body 是整体覆盖式回传，漏带这一键在启停/复制/粘贴
+      // 时就会把刚登记的归属丢掉，故与其他字段同口径原样带回。
+      'owningWarehouseId': d.owningWarehouseId,
       // 成本字段全量回传（后端 apply 全量覆盖语义，缺字段会被清 null）。
       'sourceE': d.sourceE,
       'machiningE': d.machiningE,
@@ -1894,31 +1900,18 @@ class _DetailPaneState extends State<_DetailPane> {
   /// 颜色/单位优先显示 UUID 关系解析出的名称；只有历史 UUID 缺失时才回显 legacy #id；价格作为末列。
   static final _goodsColumns = <MasterColumnDef<GoodsListItem>>[
     MasterColumnDef(
+      key: 'name',
+      label: '货品名称',
+      width: 200,
+      value: (g) => g.name,
+    ),
+    MasterColumnDef(
       key: 'code',
       label: '编号',
       width: 120,
       sortable: true, // 全局唯一显示号但不是关系 id；高基数值用搜索，表头提供排序
       value: (g) => g.code,
     ),
-    MasterColumnDef(
-      key: 'series',
-      label: '系列',
-      width: 90,
-      value: (g) => g.series,
-    ),
-    MasterColumnDef(
-      key: 'model',
-      label: '型号',
-      width: 120,
-      value: (g) => g.model,
-    ),
-    MasterColumnDef(
-      key: 'name',
-      label: '货品名称',
-      width: 200,
-      value: (g) => g.name,
-    ),
-    MasterColumnDef(key: 'spec', label: '规格', width: 150, value: (g) => g.spec),
     MasterColumnDef(
       key: 'colorLegacyId',
       label: '主颜色',
@@ -1930,6 +1923,40 @@ class _DetailPaneState extends State<_DetailPane> {
               ? null
               : '#${g.colorLegacyId}'),
     ),
+    MasterColumnDef(
+      key: 'series',
+      label: '系列',
+      width: 90,
+      value: (g) => g.series,
+    ),
+    // 所属仓库 (V587)：货品平时归哪个仓管的主档归属，不是单据落点仓。
+    // 这里只读展示，改归属在货品详情页的「基本信息」里做。
+    MasterColumnDef(
+      key: 'owningWarehouse',
+      label: '所属仓库',
+      width: 120,
+      info:
+          '货品平时归哪个仓管的主档归属，不是单据落点仓，也不是物料分析的分析范围仓。'
+          '任何入库都会自动把它更新为最新入库仓。',
+      value: (g) => g.owningWarehouseName,
+    ),
+    // 归属生产车间 (V590)：最近一次排产确认/车间改派自动学习回写，只读展示。
+    MasterColumnDef(
+      key: 'owningWorkshop',
+      label: '归属车间',
+      width: 120,
+      info:
+          '这个货品归哪个生产车间生产。最近一次排产确认或车间改派会自动记住，'
+          '下次下达车间默认带出。',
+      value: (g) => g.owningWorkshopName,
+    ),
+    MasterColumnDef(
+      key: 'model',
+      label: '型号',
+      width: 120,
+      value: (g) => g.model,
+    ),
+    MasterColumnDef(key: 'spec', label: '规格', width: 150, value: (g) => g.spec),
     MasterColumnDef(
       key: 'paper',
       label: '备注',
@@ -1999,6 +2026,21 @@ class _DetailPaneState extends State<_DetailPane> {
       width: 100,
       type: 'number',
       value: (g) => g.stockQty?.toStringAsFixed(2),
+    ),
+    // 采购批量口径（V575）：空=供应商无该项要求，按净需求原样下达。
+    MasterColumnDef(
+      key: 'minOrderQty',
+      label: '最小起订量',
+      width: 100,
+      type: 'number',
+      value: (g) => goodsQtyText(g.minOrderQty),
+    ),
+    MasterColumnDef(
+      key: 'orderMultipleQty',
+      label: '订货倍数',
+      width: 90,
+      type: 'number',
+      value: (g) => goodsQtyText(g.orderMultipleQty),
     ),
   ];
 }

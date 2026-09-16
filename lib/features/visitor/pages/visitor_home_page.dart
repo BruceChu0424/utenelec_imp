@@ -77,6 +77,7 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
           ),
         ],
       ),
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.go(RouteName.visitorApply),
         backgroundColor: Theme.of(context).colorScheme.primary,

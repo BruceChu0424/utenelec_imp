@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'
+    show FilteringTextInputFormatter, TextInputFormatter;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -37,8 +39,10 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/editable_grid_column_prefs.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../../../shared/widgets/uten_tree_row_projection.dart';
 import '../../../shared/widgets/uten_tree_table_cell.dart';
 import '../../basic_data/models/goods_node.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -55,6 +59,7 @@ import '../models/production_work_card.dart';
 import '../providers/material_analysis_warehouse_prefs_provider.dart';
 import '../providers/production_execution_refresh.dart';
 import '../repositories/production_repository.dart';
+import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../../purchase/models/purchase_doc.dart';
 import '../../purchase/repositories/purchase_repository.dart';
 import '../widgets/material_reallocation_dialog.dart';
@@ -433,6 +438,21 @@ abstract class _MaterialAnalysisPageBase
 
   bool get _planSubmissionInProgress => _generating;
 
+  /// 当前把整页按住的那个操作叫什么（给禁用态的 tooltip 用）。
+  String? get _busyLabel {
+    if (_previewingAnalysis) return '刷新分析';
+    if (_savingRoutes) return '确认物料路线';
+    if (_savingPriorities) return '调整优先级';
+    if (_cancellingAnalysis) return '取消分析';
+    if (_cancellingAction) return '撤销下达';
+    if (_claimingSharedFuture) return '认领公共在途';
+    if (_borrowing) return '调拨物料';
+    if (_generating) return '创建生产计划';
+    final route = _notifyingRoute;
+    if (route != null) return '下达${route.label}';
+    return null;
+  }
+
   /// 下达进行中的遮罩（不可关闭）。放在基类是因为**分桶详情页也要用同一份**——
   /// 2026-09-11 起下达车间不再先 pop 回宿主页，进度画在分桶页自己身上。
   Widget _planSubmissionOverlay(ThemeData theme) {
@@ -582,11 +602,15 @@ abstract class _MaterialAnalysisPageBase
   Future<void> _showTransferLauncher(_MaterialGroup group);
   String _analysisDynamicProjectionKey(ProductionMaterialAnalysisView view);
 
-  /// 父件 + 下层一起下单（ADR-081，2026-09-14 修订为弹窗前置：提交父件之前
-  /// 先弹窗，一键下单里按序提交父件与下层）；实现见 material_analysis_child_cascade.dart。
-  /// [_pendingChildCascadeRows] = 预构建下层行（无可勾选行返回 null，
-  /// 调用方走原路直接提交）。
-  List<_ChildCascadeRow>? _pendingChildCascadeRows(
+  /// 父件 + 下层一起下单（ADR-081，2026-09-14 修订为**整页前置**：提交父件
+  /// 之前先进页面核对，一键下单里按序提交父件与下层）；实现见
+  /// material_analysis_child_cascade.dart。
+  ///
+  /// [_pendingChildCascadeRows] = 预构建下层行。返回值里的 [rows] 为空表示
+  /// 不需要进级联页（调用方走原路直接提交），[note] 非空时调用方要把这句
+  /// 如实告诉用户——「下层都已下过单」和「下层全被权限/路线挡住」都不能静默
+  /// 跳过，否则父件落库了用户还以为下层也办妥了。
+  ({List<_ChildCascadeRow> rows, String? note}) _pendingChildCascadeRows(
     List<_ChildCascadeSeed> seeds,
   );
 
@@ -1727,7 +1751,11 @@ class _ProductionMaterialAnalysisPageState
               IconButton(
                 key: const Key('material-analysis-cancel'),
                 constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                tooltip: '取消分析',
+                // 禁用时也要说清为什么（2026-09-14 用户口径「取消分析按钮点击
+                // 没有反应」）：一个点不动又不解释的图标，用户只会当它坏了。
+                tooltip: _busy
+                    ? '正在执行「${_busyLabel ?? '上一个操作'}」，结束后才能取消分析'
+                    : '取消分析',
                 onPressed: _busy ? null : _cancelCurrentAnalysis,
                 icon: _cancellingAnalysis
                     ? const SizedBox.square(
@@ -1769,6 +1797,12 @@ class _ProductionMaterialAnalysisPageState
               builder: (context, message, _) => message != null
                   ? Positioned.fill(
                       child: UtenBusyOverlay(
+                        // 2026-09-15 起确认路线也走这条通道，key 泛化为「页面
+                        // 级长动作遮罩」（测试锁定用，分桶页那份同 key 不同路由
+                        // 不会同时挂载）。
+                        semanticsKey: const Key(
+                          'material-analysis-action-busy',
+                        ),
                         title: message,
                         description: '同一事务内批量处理所选行，完成后自动刷新。',
                       ),
@@ -1918,6 +1952,7 @@ class _ProductionMaterialAnalysisPageState
               ),
             ],
           ),
+          ..._linkedSalesOrdersSection(theme, analysis),
           const SizedBox(height: UtenSpacing.s8),
           Container(
             key: const Key('material-analysis-next-step'),
@@ -1990,6 +2025,105 @@ class _ProductionMaterialAnalysisPageState
         ],
       ),
     );
+  }
+
+  /// 顶部卡片「关联销售订单」区块(ADR-088)。
+  ///
+  /// 口径：**本张分析的来源行**去重后的订单集合(与服务端 salesCandidates 同一过滤：
+  /// 排除 MAKE_COMPONENT / SUBCONTRACT_MAKE 这类子层锚点行)。注意与「进行中」列表
+  /// 那一列「关联订单」不是同一口径——那一列还并进了执行段的销售分摊，跨分摊/让单
+  /// 会带进不属于本分析来源的订单，数量可能比这里多。
+  ///
+  /// 点订单编号进的是**专用只读货品清单页**，不是销售订单详情：计划员只需要核对
+  /// 订了些什么货，不该看到价格与编辑动作。
+  List<Widget> _linkedSalesOrdersSection(
+    ThemeData theme,
+    ProductionMaterialAnalysisView analysis,
+  ) {
+    final orders = _linkedSalesOrders(analysis);
+    if (orders.isEmpty) return const [];
+    return [
+      const SizedBox(height: UtenSpacing.s8),
+      Align(
+        key: const Key('material-analysis-linked-sales-orders'),
+        alignment: Alignment.centerLeft,
+        child: Wrap(
+          spacing: UtenSpacing.s8,
+          runSpacing: UtenSpacing.s8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(right: UtenSpacing.s4),
+              child: Text(
+                '关联销售订单 ${orders.length}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            for (final order in orders)
+              ConstrainedBox(
+                // 联合分析可能挂几十张订单：每个 chip 硬封宽 + 省略号，
+                // 靠 Wrap 换行；窄屏 375 下也不会把顶部卡片撑溢出。
+                constraints: const BoxConstraints(maxWidth: 260),
+                child: ActionChip(
+                  key: ValueKey('linked-sales-order-${order.orderId}'),
+                  avatar: Icon(
+                    Icons.receipt_long_outlined,
+                    size: 18,
+                    color: theme.colorScheme.primary,
+                  ),
+                  label: Text(
+                    order.clientName == null
+                        ? order.billNo
+                        : '${order.billNo} · ${order.clientName}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  tooltip: '查看该订单的货品清单(只读)',
+                  onPressed: () => context.push(
+                    RoutePath.productionAnalysisSalesOrder(
+                      analysis.analysisId,
+                      order.orderId,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  /// 来源行去重出的订单列表(按单号升序，稳定顺序)。
+  List<({String orderId, String billNo, String? clientName})>
+  _linkedSalesOrders(ProductionMaterialAnalysisView analysis) {
+    const childSourceTypes = {'MAKE_COMPONENT', 'SUBCONTRACT_MAKE'};
+    final byId =
+        <String, ({String orderId, String billNo, String? clientName})>{};
+    for (final product in analysis.products) {
+      if (childSourceTypes.contains(product.sourceType)) continue;
+      final orderId = product.orderId?.trim();
+      final billNo = product.orderNo?.trim();
+      if (orderId == null || orderId.isEmpty) continue;
+      if (billNo == null || billNo.isEmpty) continue;
+      byId.putIfAbsent(
+        orderId,
+        () => (
+          orderId: orderId,
+          billNo: billNo,
+          clientName: product.clientName?.trim().isEmpty ?? true
+              ? null
+              : product.clientName!.trim(),
+        ),
+      );
+    }
+    // List.sort 不保证稳定：单号可能重复(历史导入/跨年重号)，复合 key 保证顺序确定。
+    return byId.values.toList()..sort((left, right) {
+      final byBillNo = left.billNo.compareTo(right.billNo);
+      return byBillNo != 0 ? byBillNo : left.orderId.compareTo(right.orderId);
+    });
   }
 
   String _nextStepText(ProductionMaterialAnalysisView analysis) {

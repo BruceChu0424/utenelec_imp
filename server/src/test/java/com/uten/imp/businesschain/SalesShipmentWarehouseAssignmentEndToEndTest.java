@@ -39,7 +39,7 @@ class SalesShipmentWarehouseAssignmentEndToEndTest {
     @BeforeEach void setup(){fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);}
     @AfterEach void logout(){org.springframework.security.core.context.SecurityContextHolder.clearContext();}
 
-    @Test void salesCanRequestTenOfAThousandWithoutAWarehouseAndWarehousePicksAfterFinance() {
+    @Test void salesCanRequestTenOfAThousandWithoutAWarehouseAndWarehouseConfirmsOutboundAfterFinance() {
         var w=fixture.seedWorld("sales-physical-pick");fixture.loginAs(w.superAdminUserId());
         ReflectionTestUtils.invokeMethod(fixture,"putDirectTargetStock",w,w.goodsE(),"10");
         UUID order=fixture.createApprovedOrder(w,w.goodsE(),"1000","100");
@@ -48,43 +48,38 @@ class SalesShipmentWarehouseAssignmentEndToEndTest {
         assertNotNull(request);request.setWarehouseId(null);
         var draft=shipments.create(request);assertNull(draft.getWarehouseId());
         String frozen=db.queryForObject("SELECT commercial_snapshot::text FROM sales_shipment_submission_events WHERE shipment_id=?",String.class,draft.getId());
-        var picking=new WarehouseWorkTransitionRequest();picking.setTargetStatus("PICKING");picking.setWarehouseId(w.warehouseId());
-        picking.setStockPlaces(List.of(new WarehouseWorkTransitionRequest.StockPlace(draft.getItems().getFirst().getId(),"A-02-03")));
-        assertThrows(ApiException.class,()->shipments.transitionWarehouseWork(draft.getId(),picking));
+        var outbound=new WarehouseWorkTransitionRequest();outbound.setTargetStatus("SHIPPED");outbound.setWarehouseId(w.warehouseId());
+        outbound.setStockPlaces(List.of(new WarehouseWorkTransitionRequest.StockPlace(draft.getItems().getFirst().getId(),"A-02-03")));
+        assertThrows(ApiException.class,()->shipments.transitionWarehouseWork(draft.getId(),outbound));
         assertThrows(ApiException.class,()->warehouse.detail(draft.getId()));
         ReflectionTestUtils.invokeMethod(fixture,"confirmShipmentFinance",draft.getId());
         UUID warehouseUser=fixture.createUserWithPerms(w,"physical-picker","sales_shipment:warehouse-work");fixture.loginAs(warehouseUser);
         var task=warehouse.detail(draft.getId());assertTrue(task.canSelectWarehouse());
         var option=task.warehouseOptions().stream().filter(value->value.warehouseId().equals(w.warehouseId())).findFirst().orElseThrow();
         assertTrue(option.canFulfill());qty("10",option.lines().getFirst().availableQty());
-        var missing=new WarehouseWorkTransitionRequest();missing.setTargetStatus("PICKING");
+        var missing=new WarehouseWorkTransitionRequest();missing.setTargetStatus("SHIPPED");
         assertThrows(ApiException.class,()->warehouse.transition(draft.getId(),missing));
         UUID wrongWarehouse=UUID.randomUUID();
         db.update("INSERT INTO warehouses(id,code,name,status,is_accountable) VALUES(?,?,?,'使用',TRUE)",wrongWarehouse,"EMPTY-"+wrongWarehouse,"没有本批库存的仓");
-        picking.setWarehouseId(wrongWarehouse);
-        assertThrows(ApiException.class,()->warehouse.transition(draft.getId(),picking));
+        outbound.setWarehouseId(wrongWarehouse);
+        assertThrows(ApiException.class,()->warehouse.transition(draft.getId(),outbound));
+        // 整事务回滚：错仓被拒后既不落仓、也不推状态。
         assertNull(db.queryForObject("SELECT warehouse_id FROM sales_shipments WHERE id=?",UUID.class,draft.getId()));
-        picking.setWarehouseId(w.warehouseId());
-        var picked=warehouse.transition(draft.getId(),picking);
-        assertEquals("PICKING",picked.warehouseWorkStatus());assertEquals(w.warehouseId(),picked.warehouseId());
-        assertEquals("A-02-03",picked.lines().getFirst().actualStockPlace());assertFalse(picked.canSelectWarehouse());
+        assertEquals("PENDING_PICK",db.queryForObject("SELECT warehouse_work_status FROM sales_shipments WHERE id=?",String.class,draft.getId()));
+        outbound.setWarehouseId(w.warehouseId());
+        var shipped=warehouse.transition(draft.getId(),outbound);
+        assertEquals("SHIPPED",shipped.warehouseWorkStatus());assertEquals(w.warehouseId(),shipped.warehouseId());
+        assertEquals("A-02-03",shipped.lines().getFirst().actualStockPlace());assertFalse(shipped.canSelectWarehouse());
         assertEquals(frozen,db.queryForObject("SELECT fn_customer_shipment_commercial_snapshot(?)",String.class,draft.getId()));
         assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("UPDATE sales_shipments SET warehouse_id=? WHERE id=?",wrongWarehouse,draft.getId()));
-        assertThrows(ApiException.class,()->warehouse.transition(draft.getId(),picking));
-        var exception=new WarehouseWorkTransitionRequest();exception.setTargetStatus("EXCEPTION");exception.setReason("核对实际库位后重新安排");
-        warehouse.transition(draft.getId(),exception);exception.setTargetStatus("PENDING_PICK");exception.setReason("已完成退拣，重新核对本次库位");
-        warehouse.transition(draft.getId(),exception);
-        picking.setStockPlaces(List.of(new WarehouseWorkTransitionRequest.StockPlace(draft.getItems().getFirst().getId(),"A-02-04")));
-        warehouse.transition(draft.getId(),picking);
-        var next=new WarehouseWorkTransitionRequest();next.setTargetStatus("PICKED");warehouse.transition(draft.getId(),next);
-        next.setTargetStatus("SHIPPED");var shipped=warehouse.transition(draft.getId(),next);
-        assertEquals("SHIPPED",shipped.warehouseWorkStatus());assertEquals("A-02-04",shipped.lines().getFirst().actualStockPlace());
         qty("10",db.queryForObject("SELECT shipped_qty FROM sales_order_items WHERE id=?",BigDecimal.class,orderItem));
         qty("0",db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=?",BigDecimal.class,w.warehouseId(),w.goodsE()));
         assertEquals(frozen,db.queryForObject("SELECT commercial_snapshot::text FROM sales_shipment_submission_events WHERE shipment_id=?",String.class,draft.getId()));
-        assertEquals(2,db.queryForObject("SELECT count(*) FROM sales_shipment_warehouse_events WHERE shipment_id=? AND to_status='PICKING' AND warehouse_id=?",Integer.class,draft.getId(),w.warehouseId()));
+        // 一步式：实仓与库位证据只挂在那一条确认出库事件上，且没有任何 PICKING 事件。
+        assertEquals(1,db.queryForObject("SELECT count(*) FROM sales_shipment_warehouse_events WHERE shipment_id=? AND to_status='SHIPPED' AND warehouse_id=?",Integer.class,draft.getId(),w.warehouseId()));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM sales_shipment_warehouse_events WHERE shipment_id=? AND to_status IN ('PICKING','PICKED','EXCEPTION')",Integer.class,draft.getId()));
         qty("1000",db.queryForObject("SELECT amount_original FROM ar_ap_ledger WHERE source_doc_type='SALES_SHIPMENT' AND source_doc_id=?",BigDecimal.class,draft.getId()));
-        assertThrows(ApiException.class,()->warehouse.transition(draft.getId(),next));
+        assertThrows(ApiException.class,()->warehouse.transition(draft.getId(),outbound));
     }
 
     @Test void freeCustomerShipmentCanUseAnUnassignedWarehouseAndAnEmptyLocationWithoutCreatingReceivables() {
@@ -94,11 +89,9 @@ class SalesShipmentWarehouseAssignmentEndToEndTest {
         assertNotNull(request);request.setWarehouseId(null);
         var draft=shipments.create(request);shipments.confirmSales(draft.getId(),0L);
         ReflectionTestUtils.invokeMethod(fixture,"confirmShipmentFinance",draft.getId());
-        var picking=new WarehouseWorkTransitionRequest();picking.setTargetStatus("PICKING");picking.setWarehouseId(w.warehouseId());
-        picking.setStockPlaces(List.of(new WarehouseWorkTransitionRequest.StockPlace(draft.getItems().getFirst().getId(),"")));
-        warehouse.transition(draft.getId(),picking);
-        var next=new WarehouseWorkTransitionRequest();next.setTargetStatus("PICKED");warehouse.transition(draft.getId(),next);
-        next.setTargetStatus("SHIPPED");warehouse.transition(draft.getId(),next);
+        var outbound=new WarehouseWorkTransitionRequest();outbound.setTargetStatus("SHIPPED");outbound.setWarehouseId(w.warehouseId());
+        outbound.setStockPlaces(List.of(new WarehouseWorkTransitionRequest.StockPlace(draft.getItems().getFirst().getId(),"")));
+        warehouse.transition(draft.getId(),outbound);
         assertFalse(db.queryForObject("SELECT ar_posted FROM sales_shipments WHERE id=?",Boolean.class,draft.getId()));
         assertEquals("",warehouse.detail(draft.getId()).lines().getFirst().actualStockPlace());
         qty("0",db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=?",BigDecimal.class,w.warehouseId(),w.goodsB()));
@@ -128,11 +121,11 @@ class SalesShipmentWarehouseAssignmentEndToEndTest {
         UUID item=db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?",UUID.class,order);
         UUID shipment=fixture.createShipment(w,item,w.goodsE(),"5");
         ReflectionTestUtils.invokeMethod(fixture,"confirmShipmentFinance",shipment);
-        var picking=new WarehouseWorkTransitionRequest();picking.setTargetStatus("PICKING");picking.setWarehouseId(UUID.randomUUID());
+        var picking=new WarehouseWorkTransitionRequest();picking.setTargetStatus("SHIPPED");picking.setWarehouseId(UUID.randomUUID());
         assertThrows(ApiException.class,()->shipments.transitionWarehouseWork(shipment,picking));
         assertEquals(w.warehouseId(),db.queryForObject("SELECT warehouse_id FROM sales_shipments WHERE id=?",UUID.class,shipment));
         assertFalse(warehouse.detail(shipment).canSelectWarehouse());
-        picking.setWarehouseId(null);assertEquals("PICKING",warehouse.transition(shipment,picking).warehouseWorkStatus());
+        picking.setWarehouseId(null);assertEquals("SHIPPED",warehouse.transition(shipment,picking).warehouseWorkStatus());
     }
 
     @Test void warehouseOptionsProtectOtherOrdersGlobalReservationsAndKeepFractionalStockExact() {
@@ -146,14 +139,14 @@ class SalesShipmentWarehouseAssignmentEndToEndTest {
         ReflectionTestUtils.invokeMethod(fixture,"confirmShipmentFinance",draft.getId());
         var option=warehouse.detail(draft.getId()).warehouseOptions().stream().filter(value->value.warehouseId().equals(w.warehouseId())).findFirst().orElseThrow();
         assertFalse(option.canFulfill());qty("0.6000",option.lines().getFirst().availableQty());
-        var picking=new WarehouseWorkTransitionRequest();picking.setTargetStatus("PICKING");picking.setWarehouseId(w.warehouseId());
+        var picking=new WarehouseWorkTransitionRequest();picking.setTargetStatus("SHIPPED");picking.setWarehouseId(w.warehouseId());
         assertThrows(ApiException.class,()->warehouse.transition(draft.getId(),picking));
         qty("3",db.queryForObject("SELECT reserved_qty FROM sales_order_items WHERE order_id=?",BigDecimal.class,order));
         qty("3.7500",db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=?",BigDecimal.class,w.warehouseId(),w.goodsB()));
         assertEquals(0,db.queryForObject("SELECT count(*) FROM stock_reservations WHERE source_doc_type='SALES_SHIPMENT' AND source_doc_id=?",Integer.class,draft.getId()));
     }
 
-    @Test void pickingCannotUseOneOrderLinesSameGoodsReservationToCoverAnotherLinesDifferentWarehouse() {
+    @Test void outboundCannotUseOneOrderLinesSameGoodsReservationToCoverAnotherLinesDifferentWarehouse() {
         var w=fixture.seedWorld("sales-exact-pick-source");fixture.loginAs(w.superAdminUserId());
         UUID otherWarehouse=UUID.randomUUID();
         db.update("INSERT INTO warehouses(id,code,name,status,is_accountable) VALUES(?,?,?,'使用',TRUE)",otherWarehouse,"SOURCE-"+otherWarehouse,"第二行真实来源仓");
@@ -173,7 +166,7 @@ class SalesShipmentWarehouseAssignmentEndToEndTest {
         assertNotNull(request);assertNotNull(second);request.setWarehouseId(null);request.setItems(List.of(request.getItems().getFirst(),second.getItems().getFirst()));
         UUID shipment=shipments.create(request).getId();ReflectionTestUtils.invokeMethod(fixture,"confirmShipmentFinance",shipment);
         assertTrue(warehouse.detail(shipment).warehouseOptions().stream().noneMatch(value->value.canFulfill()));
-        var picking=new WarehouseWorkTransitionRequest();picking.setTargetStatus("PICKING");picking.setWarehouseId(w.warehouseId());
+        var picking=new WarehouseWorkTransitionRequest();picking.setTargetStatus("SHIPPED");picking.setWarehouseId(w.warehouseId());
         assertThrows(ApiException.class,()->warehouse.transition(shipment,picking));
         assertNull(db.queryForObject("SELECT warehouse_id FROM sales_shipments WHERE id=?",UUID.class,shipment));
         assertEquals("PENDING_PICK",db.queryForObject("SELECT warehouse_work_status FROM sales_shipments WHERE id=?",String.class,shipment));

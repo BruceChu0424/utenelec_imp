@@ -62,6 +62,16 @@ public class SubcontractMaterialPlanService
 
     private static final short ISSUE_DRAFT = 0;
 
+    /**
+     * 该流向发出去的是**子件**而不是订货目标件：V304 历史 LEGACY 行与
+     * V581 的 COMPONENT_OUTBOUND 共用这一物理形态（父件=目标件、goods=子件、
+     * bom_unit_qty=冻结单耗），凡是按「发出物身份」分组或折算的地方都要认它。
+     */
+    private static boolean issuesComponent(Object flowMode) {
+        String value = Objects.toString(flowMode, "");
+        return "LEGACY_BOM_COMPONENT".equals(value) || "COMPONENT_OUTBOUND".equals(value);
+    }
+
     private final EntityManager em;
     private final JdbcTemplate jdbc;
     private final DocNumberService docNumberService;
@@ -78,6 +88,13 @@ public class SubcontractMaterialPlanService
             List<PendingLine> lines) {
     }
 
+    /**
+     * 计划行待插草案。{@code goodsId/colorId/unitId/plannedBaseQty} 描述的是
+     * **实际要发出去的那件东西**：目标件流向发目标件本身；V581 的
+     * {@code COMPONENT_OUTBOUND} 发的是目标件那唯一的叶子子件，此时
+     * {@code parentGoodsId/parentColorId} 才是订货目标件，{@code bomUnitQty}
+     * 记「每 1 个目标件订货单位消耗多少子件基本量」。
+     */
     record PendingLine(UUID id, UUID orderItemId, UUID goodsId, UUID colorId,
                        UUID unitId, BigDecimal orderUnitRate,
                        BigDecimal plannedBaseQty, String flowMode,
@@ -85,7 +102,25 @@ public class SubcontractMaterialPlanService
                        UUID suggestedWarehouseId,
                        boolean bomHasChildren, String bomFingerprint,
                        UUID preparationAnalysisId, UUID preparationAnalysisItemId,
-                       UUID prepareTaskId) {
+                       UUID prepareTaskId,
+                       UUID parentGoodsId, UUID parentColorId,
+                       BigDecimal bomUnitQty) {
+
+        /** 目标件流向：父件即子件即订货货品，冻结单耗就是订货换算率（V436 口径）。 */
+        PendingLine(UUID id, UUID orderItemId, UUID goodsId, UUID colorId,
+                    UUID unitId, BigDecimal orderUnitRate,
+                    BigDecimal plannedBaseQty, String flowMode,
+                    String preparationStatus, BigDecimal preparedBaseQty,
+                    UUID suggestedWarehouseId,
+                    boolean bomHasChildren, String bomFingerprint,
+                    UUID preparationAnalysisId, UUID preparationAnalysisItemId,
+                    UUID prepareTaskId) {
+            this(id, orderItemId, goodsId, colorId, unitId, orderUnitRate,
+                    plannedBaseQty, flowMode, preparationStatus, preparedBaseQty,
+                    suggestedWarehouseId, bomHasChildren, bomFingerprint,
+                    preparationAnalysisId, preparationAnalysisItemId, prepareTaskId,
+                    goodsId, colorId, orderUnitRate);
+        }
     }
 
     // ==================== 链路钩子（订货 Service 同事务调用） ====================
@@ -133,9 +168,9 @@ public class SubcontractMaterialPlanService
                             ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
                     """,
                     line.id(), planId, line.orderItemId(), lineNo++,
-                    line.goodsId(), line.colorId(),
+                    line.parentGoodsId(), line.parentColorId(),
                     line.goodsId(), line.colorId(), line.unitId(),
-                    line.orderUnitRate(), line.plannedBaseQty(),
+                    line.bomUnitQty(), line.plannedBaseQty(),
                     line.flowMode(), line.preparationStatus(),
                     line.preparedBaseQty(), line.suggestedWarehouseId(),
                     line.bomHasChildren(), line.bomFingerprint(),
@@ -169,11 +204,38 @@ public class SubcontractMaterialPlanService
     /** Orders are locked by the caller; lock stock before any preparation/task reservation. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void lockOrderInventoryDimensions(UUID orderId) {
+        // V581：COMPONENT_OUTBOUND 占的是**子件**库存，批准事务必须把子件货色
+        // 一并纳入同一次排序加锁，否则会与 reserveDraft 的二次加锁交叉死锁。
         List<Object[]> dimensions = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT DISTINCT inventory_item.goods_id, inventory_item.color_id
-                FROM subcontract_order_items inventory_item
-                WHERE inventory_item.order_id=:orderId AND inventory_item.is_deleted=FALSE
-                ORDER BY inventory_item.goods_id, inventory_item.color_id NULLS FIRST
+                SELECT DISTINCT goods_id, color_id FROM (
+                    SELECT inventory_item.goods_id, inventory_item.color_id
+                    FROM subcontract_order_items inventory_item
+                    WHERE inventory_item.order_id=:orderId AND inventory_item.is_deleted=FALSE
+                    UNION
+                    SELECT edge.component_goods_id, edge.color_id
+                    FROM subcontract_order_items inventory_item
+                    JOIN goods_bom_items edge ON edge.goods_id=inventory_item.goods_id
+                     AND edge.is_deleted=FALSE
+                    JOIN goods child ON child.id=edge.component_goods_id
+                     AND child.is_deleted=FALSE
+                     AND COALESCE(child.auto_created,FALSE)=FALSE
+                    WHERE inventory_item.order_id=:orderId AND inventory_item.is_deleted=FALSE
+                      AND edge.consumption_basis='PER_UNIT'
+                      AND edge.control_stage IN ('START','ASSEMBLY','FINISH')
+                      AND (SELECT COUNT(*) FROM goods_bom_items only_edge
+                           JOIN goods only_child ON only_child.id=only_edge.component_goods_id
+                            AND only_child.is_deleted=FALSE
+                            AND COALESCE(only_child.auto_created,FALSE)=FALSE
+                           WHERE only_edge.goods_id=inventory_item.goods_id
+                             AND only_edge.is_deleted=FALSE)=1
+                      AND NOT EXISTS (SELECT 1 FROM goods_bom_items grand
+                           JOIN goods grand_child ON grand_child.id=grand.component_goods_id
+                            AND grand_child.is_deleted=FALSE
+                            AND COALESCE(grand_child.auto_created,FALSE)=FALSE
+                           WHERE grand.goods_id=edge.component_goods_id
+                             AND grand.is_deleted=FALSE)
+                ) dimension
+                ORDER BY goods_id, color_id NULLS FIRST
                 """).setParameter("orderId",orderId));
         inventoryLock.lockAll(dimensions.stream()
                 .map(row -> new InventoryKey((UUID)row[0],(UUID)row[1]))
@@ -285,16 +347,53 @@ public class SubcontractMaterialPlanService
             // V458：订货行能追溯到委外前置自制账本批次时，说明自制在下单前
             // 已完成（produced ≥ notified ≥ planned），批准即待出仓。
             PreparedLineage prepared = preparedLineage(orderItemId);
+            boolean partiallyPrepared = false;
             if(prepared==null){
                 DirectPreparedLineage direct=directPreparedLineage(orderItemId);
                 BigDecimal own=direct==null?BigDecimal.ZERO:planned.min(direct.qty());
                 if(own.signum()>0){
+                    partiallyPrepared = true;
                     pendingLines.add(new PendingLine(UUID.randomUUID(),orderItemId,goodsId,colorId,baseUnitId,orderUnitRate,
                             own,"PREPARED_OUTBOUND","READY_OUTBOUND",own,(UUID)item[7],true,bom.fingerprint(),
                             direct.analysisId(),direct.analysisItemId(),null));
                     planned=planned.subtract(own);
                     if(planned.signum()==0)continue;
                 }
+            }
+            // V581：目标件只有一个叶子子件时不先自制，直接把那个子件发给委外商，
+            // 委外商加工后交回目标件。整条订货明细只出一条 COMPONENT 行——不做
+            // 「先吃目标件现货 DIRECT + 余量另走」的拆分：回厂消费按货色分组
+            // 逐组扣满，混行会两组都扣不够而把单据永久卡死（V581 迁移里另有
+            // subcontract_component_outbound_exclusive_guard 兜底）。
+            // partiallyPrepared：本明细已经拿现货目标件出了一条 PREPARED 行，
+            // 剩余量不能再落 COMPONENT——同一订货明细混两种发出物，回厂消费按
+            // 货色分组逐组扣满会两组都扣不够，把单据永久卡死（V581 的
+            // subcontract_component_outbound_exclusive_guard 也会直接拒 INSERT）。
+            SoleComponent sole = prepared == null && !partiallyPrepared
+                    ? soleOutboundComponent(goodsId) : null;
+            if (sole != null) {
+                BigDecimal componentUnitQty = orderUnitRate.multiply(sole.bomQty())
+                        .setScale(6, RoundingMode.HALF_UP);
+                BigDecimal componentPlanned = orderQty.multiply(componentUnitQty)
+                        .setScale(4, RoundingMode.HALF_UP);
+                if (componentUnitQty.signum() > 0 && componentPlanned.signum() > 0) {
+                    // 建议仓刻意留空：批准事务里 createDraftForPlan 会对**有仓**的
+                    // 草稿立即 reserveDraft，而这类件的子件通常还在采购路上——
+                    // 占不上就会把整张订货的财务批准顶回去，与「先下单、等子件到货
+                    // 再由仓库发料」的业务顺序冲突。仓库选定实际叶仓保存草稿时
+                    // 才建专属预留，那一刻的库存校验就是这条链的齐套门禁。
+                    pendingLines.add(new PendingLine(
+                            UUID.randomUUID(), orderItemId,
+                            sole.goodsId(), sole.colorId(), sole.unitId(),
+                            orderUnitRate, componentPlanned,
+                            "COMPONENT_OUTBOUND", "READY_OUTBOUND", componentPlanned,
+                            null, true, bom.fingerprint(),
+                            null, null, null,
+                            goodsId, colorId, componentUnitQty));
+                    continue;
+                }
+                // 单耗小到 round6 归零：不能用 0 冻结单耗发料（回厂永远倒扣不出量），
+                // 按既有口径回落前置自制。
             }
             boolean makeFirst = bom.hasChildren() && prepared == null;
             boolean preparedOutbound = prepared != null;
@@ -624,7 +723,7 @@ public class SubcontractMaterialPlanService
                     SELECT DISTINCT plan_item_id
                     FROM subcontract_material_issue_items
                     WHERE issue_id = ? AND plan_item_id IS NOT NULL)
-                  AND flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                  AND flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
                   AND issued_qty = planned_qty
                   AND preparation_status = 'READY_OUTBOUND'
                 """, issueId);
@@ -640,7 +739,7 @@ public class SubcontractMaterialPlanService
                 JOIN subcontract_material_plan_items plan_item
                   ON plan_item.id = issue_item.plan_item_id
                  AND plan_item.flow_mode IN (
-                     'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                     'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
                  AND plan_item.is_deleted = FALSE
                 WHERE issue_item.issue_id = ?
                   AND issue_item.plan_item_id IS NOT NULL
@@ -684,17 +783,17 @@ public class SubcontractMaterialPlanService
             BigDecimal qty = decimal(line[1]);
             reversedNewFlow = reversedNewFlow
                     || List.of("DIRECT_OUTBOUND", "MAKE_THEN_OUTBOUND",
-                            "PREPARED_OUTBOUND")
+                            "PREPARED_OUTBOUND", "COMPONENT_OUTBOUND")
                     .contains(Objects.toString(line[2], ""));
             int updated = jdbc.update("""
                     UPDATE subcontract_material_plan_items
                     SET preparation_status = CASE
-                            WHEN flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                            WHEN flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
                              AND preparation_status = 'OUTBOUND_COMPLETE'
                              AND GREATEST(issued_qty - ?, 0) < planned_qty
                             THEN 'READY_OUTBOUND' ELSE preparation_status END,
                         preparation_version = CASE
-                            WHEN flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                            WHEN flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
                             THEN preparation_version + 1 ELSE preparation_version END,
                         issued_qty = GREATEST(issued_qty - ?, 0), updated_at = now()
                     WHERE id = ? AND is_deleted = FALSE
@@ -743,7 +842,7 @@ public class SubcontractMaterialPlanService
                        SUM(CASE WHEN pi.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                             THEN GREATEST(ii.at_supplier_qty+COALESCE(ii.compensated_qty,0)-ii.consumed_qty-ii.returned_qty-ii.wasted_qty,0)*ii.unit_rate / ?
                             ELSE GREATEST(ii.at_supplier_qty+COALESCE(ii.compensated_qty,0)-ii.consumed_qty-ii.returned_qty-ii.wasted_qty,0) / NULLIF(ii.frozen_unit_qty,0) END),
-                       BOOL_OR((pi.flow_mode IS NULL OR pi.flow_mode='LEGACY_BOM_COMPONENT')
+                       BOOL_OR((pi.flow_mode IS NULL OR pi.flow_mode IN ('LEGACY_BOM_COMPONENT','COMPONENT_OUTBOUND'))
                            AND GREATEST(ii.at_supplier_qty-ii.returned_qty,0)>0
                            AND COALESCE(ii.frozen_unit_qty,0)<=0)
                 FROM subcontract_material_issue_items ii
@@ -864,13 +963,15 @@ public class SubcontractMaterialPlanService
                 orderItemId, orderId);
         BigDecimal targetOrderQty=jdbc.queryForObject("SELECT qty FROM subcontract_order_items WHERE id=?",BigDecimal.class,orderItemId);
         Map<String,List<Object[]>> groups=new LinkedHashMap<>();
-        for(Object[] line:lines) groups.computeIfAbsent("LEGACY_BOM_COMPONENT".equals(line[4])
+        // 发子件的两种流向（V304 LEGACY 与 V581 COMPONENT_OUTBOUND）按子件分组，
+        // 换算因子取各自冻结单耗；发目标件的三种流向共用订货换算率。
+        for(Object[] line:lines) groups.computeIfAbsent(issuesComponent(line[4])
                 ? "COMPONENT:"+line[6]+":"+line[7] : "TARGET",ignored->new ArrayList<>()).add(line);
         Map<UUID,BigDecimal> reductions=new LinkedHashMap<>();
         for(var group:groups.values()) {
-            BigDecimal factor="LEGACY_BOM_COMPONENT".equals(group.getFirst()[4])
+            BigDecimal factor=issuesComponent(group.getFirst()[4])
                     ? decimal(group.getFirst()[8]) : orderUnitRate;
-            if(factor.signum()<=0 || group.stream().anyMatch(line -> "LEGACY_BOM_COMPONENT".equals(line[4])
+            if(factor.signum()<=0 || group.stream().anyMatch(line -> issuesComponent(line[4])
                     && decimal(line[8]).compareTo(decimal(group.getFirst()[8]))!=0))
                 throw new ApiException(ErrorCode.CONFLICT,"历史同子料的冻结单耗不一致，不能自动改量");
             BigDecimal target=targetOrderQty.multiply(factor).setScale(4,RoundingMode.HALF_UP)
@@ -918,9 +1019,9 @@ public class SubcontractMaterialPlanService
             } else {
                 jdbc.update("""
                         UPDATE subcontract_material_plan_items SET planned_qty=?,
-                            prepared_qty=CASE WHEN flow_mode IN ('DIRECT_OUTBOUND','PREPARED_OUTBOUND','LEGACY_BOM_COMPONENT')
+                            prepared_qty=CASE WHEN flow_mode IN ('DIRECT_OUTBOUND','PREPARED_OUTBOUND','LEGACY_BOM_COMPONENT','COMPONENT_OUTBOUND')
                                 THEN ? ELSE LEAST(prepared_qty,?) END,
-                            preparation_status=CASE WHEN flow_mode IN ('DIRECT_OUTBOUND','PREPARED_OUTBOUND')
+                            preparation_status=CASE WHEN flow_mode IN ('DIRECT_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
                                 AND issued_qty=? THEN 'OUTBOUND_COMPLETE' ELSE preparation_status END,
                             preparation_version=preparation_version+1,updated_at=now()
                         WHERE id=?
@@ -1015,20 +1116,30 @@ public class SubcontractMaterialPlanService
                 "SELECT MAX(line_no) FROM subcontract_material_plan_items WHERE plan_id = ?",
                 Integer.class, planId);
         int lineNo = (maxLineNo == null ? 0 : maxLineNo) + 1;
-        Boolean hasChildren = jdbc.queryForObject("""
-                SELECT (EXISTS (
-                    SELECT 1 FROM goods_bom_items child
-                    JOIN goods child_goods ON child_goods.id = child.goods_id
-                    WHERE child.parent_goods_id = ?
-                      AND COALESCE(child.is_deleted, FALSE) = FALSE
-                      AND COALESCE(child_goods.is_deleted, FALSE) = FALSE
-                      AND COALESCE(child_goods.active, TRUE) = TRUE))
-                """, Boolean.class, goodsId);
-        boolean children = Boolean.TRUE.equals(hasChildren);
+        // 批准后增量：按当前 BOM 事实重判流向。原实现查的是 goods_bom_items
+        // 根本不存在的 parent_goods_id/goods.active 两列（真库必 42703），
+        // 且 INSERT 漏了 bom_snapshot_chk 要求的 preparation_bom_fingerprint，
+        // 这条路径今天走不通；V581 顺手按批准同款口径修好。
+        BomSnapshot bom = currentBomSnapshot(goodsId);
+        SoleComponent sole = soleOutboundComponent(goodsId);
+        boolean children = bom.hasChildren();
         UUID lineId = UUID.randomUUID();
         UUID unitId = (UUID) item.get("unit_id");
         UUID colorId = (UUID) item.get("color_id");
         UUID suggestedWarehouse = (UUID) item.get("suggested_warehouse");
+        BigDecimal frozenRate = orderUnitRate == null ? BigDecimal.ONE : orderUnitRate;
+        BigDecimal componentUnitQty = sole == null ? null
+                : frozenRate.multiply(sole.bomQty()).setScale(6, RoundingMode.HALF_UP);
+        // increase 已是目标件基本量；子件量 = 目标件基本量 × 每基本单位单耗
+        //（与批准路径的 orderQty × bom_unit_qty 恒等，但不必再除一次换算率）。
+        BigDecimal componentIncrease = sole == null ? null
+                : increase.multiply(sole.bomQty()).setScale(4, RoundingMode.HALF_UP);
+        boolean component = componentUnitQty != null && componentUnitQty.signum() > 0
+                && componentIncrease != null && componentIncrease.signum() > 0;
+        String flowMode = component ? "COMPONENT_OUTBOUND"
+                : children ? "MAKE_THEN_OUTBOUND" : "DIRECT_OUTBOUND";
+        boolean makeFirst = "MAKE_THEN_OUTBOUND".equals(flowMode);
+        BigDecimal plannedQty = component ? componentIncrease : increase;
         jdbc.update("""
                 INSERT INTO subcontract_material_plan_items(
                     id, plan_id, order_item_id, line_no,
@@ -1037,21 +1148,24 @@ public class SubcontractMaterialPlanService
                     bom_unit_qty, planned_qty, issued_qty,
                     flow_mode, preparation_status, prepared_qty,
                     preparation_warehouse_id, preparation_version,
-                    bom_has_children_snapshot,
+                    bom_has_children_snapshot, preparation_bom_fingerprint,
                     created_by, updated_by)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0,
-                        ?, ?, ?, ?, 0, ?, ?, ?)
+                        ?, ?, ?, ?, 0, ?, ?, ?, ?)
                 """,
                 lineId, planId, orderItemId, lineNo,
-                goodsId, colorId, goodsId, colorId, unitId,
-                orderUnitRate == null ? BigDecimal.ONE : orderUnitRate,
-                increase,
-                children ? "MAKE_THEN_OUTBOUND" : "DIRECT_OUTBOUND",
-                children ? "ACTION_REQUIRED" : "READY_OUTBOUND",
-                children ? BigDecimal.ZERO : increase,
+                goodsId, colorId,
+                component ? sole.goodsId() : goodsId,
+                component ? sole.colorId() : colorId,
+                component ? sole.unitId() : unitId,
+                component ? componentUnitQty : frozenRate,
+                plannedQty,
+                flowMode,
+                makeFirst ? "ACTION_REQUIRED" : "READY_OUTBOUND",
+                makeFirst ? BigDecimal.ZERO : plannedQty,
                 suggestedWarehouse,
-                children, actorUser, actorUser);
-        if (children) {
+                children, bom.fingerprint(), actorUser, actorUser);
+        if (makeFirst) {
             chainNotice.notifySubcontractPrepareShortage(lineId);
             orderPreparation.autoStartPlanLinePreparation(lineId);
         } else {
@@ -1091,7 +1205,7 @@ public class SubcontractMaterialPlanService
                         preparation_version = preparation_version + 1,
                         updated_at = now()
                     WHERE plan_id = ? AND flow_mode IN (
-                        'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                        'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
                     """, planId);
         }
     }
@@ -1349,14 +1463,15 @@ public class SubcontractMaterialPlanService
                        plan_item.flow_mode, plan_item.preparation_status,
                        plan_item.preparation_warehouse_id,
                        plan_item.bom_has_children_snapshot,
-                       plan_item.preparation_bom_fingerprint
+                       plan_item.preparation_bom_fingerprint,
+                       plan_item.parent_goods_id
                 FROM subcontract_material_issue_items issue_item
                 JOIN subcontract_material_issues issue
                   ON issue.id = issue_item.issue_id
                  AND issue.status = 0 AND issue.is_deleted = FALSE
                 JOIN subcontract_material_plan_items plan_item
                   ON plan_item.id = issue_item.plan_item_id
-                 AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                 AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
                  AND plan_item.is_deleted = FALSE
                 WHERE issue_item.issue_id = :issueId
                 ORDER BY plan_item.id, issue_item.id
@@ -1380,6 +1495,19 @@ public class SubcontractMaterialPlanService
                         || !Objects.equals(row[9], currentBom.fingerprint())) {
                     throw new ApiException(ErrorCode.CONFLICT,
                             "委外目标件 BOM 已在审批后变化，必须受控重评准备路线，禁止按旧结构出仓");
+                }
+            } else if ("COMPONENT_OUTBOUND".equals(flowMode)) {
+                // V581：指纹记的是**目标件**的 BOM（本行 goods_id 已经是子件），
+                // 且指纹覆盖不到「子件后来自己长出 BOM」——必须再判一次唯一叶子子件。
+                UUID parentGoodsId = (UUID) row[10];
+                BomSnapshot currentBom = currentBomSnapshot(parentGoodsId);
+                SoleComponent sole = soleOutboundComponent(parentGoodsId);
+                if (!Objects.equals(row[8], currentBom.hasChildren())
+                        || !Objects.equals(row[9], currentBom.fingerprint())
+                        || sole == null || !goodsId.equals(sole.goodsId())) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "委外目标件 BOM 已在审批后变化（不再是「只有一个叶子子件」，或子件已换），"
+                                    + "必须受控重评准备路线，禁止按旧结构发料");
                 }
             }
             if (qty.signum() <= 0) {
@@ -1448,15 +1576,20 @@ public class SubcontractMaterialPlanService
                             """).setParameter("warehouseId", warehouseId)
                     .setParameter("goodsId", goodsId).setParameter("colorId", colorId));
             if (balances.isEmpty() || decimal(balances.getFirst()[1]).compareTo(qty) < 0) {
+                // V581：COMPONENT 发的是子件，缺的也是子件——这正是「等子件采购
+                // 入库后仓库才发得出去」那道天然门禁，文案要说清缺的是哪件东西。
                 throw new ApiException(ErrorCode.CONFLICT,
-                        "目标仓合格可动用库存不足，不能占用本次委外目标件");
+                        "COMPONENT_OUTBOUND".equals(flowMode)
+                                ? "待发子件在该仓的合格可动用库存不足，请等子件采购/生产入库后再发料"
+                                : "目标仓合格可动用库存不足，不能占用本次委外目标件");
             }
             int warehouseUpdated = em.createNativeQuery("""
                     UPDATE subcontract_material_plan_items
                     SET preparation_warehouse_id = :warehouseId,
                         preparation_version = preparation_version + 1,
                         updated_at = now(), updated_by = :actorId
-                    WHERE id = :id AND flow_mode = 'DIRECT_OUTBOUND'
+                    WHERE id = :id
+                      AND flow_mode IN ('DIRECT_OUTBOUND','COMPONENT_OUTBOUND')
                       AND preparation_status = 'READY_OUTBOUND'
                     """).setParameter("warehouseId", warehouseId)
                     .setParameter("actorId", actorId).setParameter("id", planItemId)
@@ -1511,7 +1644,7 @@ public class SubcontractMaterialPlanService
                 FROM subcontract_material_issue_items issue_item
                 JOIN subcontract_material_plan_items plan_item
                   ON plan_item.id = issue_item.plan_item_id
-                 AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                 AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
                 WHERE issue_item.issue_id = :issueId
                 ORDER BY plan_item.id, issue_item.id
                 """).setParameter("issueId", issueId).getResultList();
@@ -1696,7 +1829,8 @@ public class SubcontractMaterialPlanService
                                WHERE pi.preparation_status = 'CANCELLED'
                                   OR pi.flow_mode NOT IN (
                                       'LEGACY_BOM_COMPONENT','DIRECT_OUTBOUND',
-                                      'MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                                      'MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND',
+                                      'COMPONENT_OUTBOUND')
                                   OR pi.preparation_status NOT IN (
                                       'LEGACY_READY','ACTION_REQUIRED',
                                       'IN_PREPARATION','WAITING_FQC',
@@ -1946,7 +2080,7 @@ public class SubcontractMaterialPlanService
                     preparation_version = preparation_version + 1,
                     updated_at = now(), updated_by = ?
                 WHERE plan_id = ? AND flow_mode IN (
-                    'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                    'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
                   AND preparation_status <> 'OUTBOUND_COMPLETE'
                 """, currentUser.requireId(), planId);
     }
@@ -2198,6 +2332,43 @@ public class SubcontractMaterialPlanService
         }
     }
 
+    /**
+     * V581：目标件是否「只有一个叶子子件」。是则委外直接发那个子件，不先自制。
+     *
+     * <p>判据与迁移 V581 的 {@code fn_guard_subcontract_target_quantity_basis_insert}
+     * COMPONENT 分支逐字同口径，任一条不满足返回 {@code null}（回落既有
+     * MAKE_THEN_OUTBOUND，不是报错）：
+     * <ol>
+     *   <li>活动 BOM 边恰好 1 条（活动 = 边未删 + 子件未删 + 子件不是 auto_created 占位）；</li>
+     *   <li>该边 {@code consumption_basis='PER_UNIT'}——PER_PACKAGE/FIXED_BATCH 带取整，
+     *       压不成一个标量冻结单耗；</li>
+     *   <li>该边 {@code control_stage} 是真实投入阶段（SHIP/REFERENCE 只是参考料）；</li>
+     *   <li>该子件自身没有活动 BOM 边（真正的一层）。</li>
+     * </ol>
+     */
+    private SoleComponent soleOutboundComponent(UUID goodsId) {
+        // 判据本体在 V581 的 fn_subcontract_sole_component_goods，Java 只取
+        // 那条唯一边的身份与单耗——判据不在两处各写一遍，避免日后漂移。
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT edge.component_goods_id, edge.color_id, child.unit_id, edge.qty
+                FROM goods_bom_items edge
+                JOIN goods child ON child.id = edge.component_goods_id
+                 AND child.is_deleted = FALSE
+                 AND COALESCE(child.auto_created, FALSE) = FALSE
+                WHERE edge.goods_id = :goodsId AND edge.is_deleted = FALSE
+                  AND fn_subcontract_sole_component_goods(CAST(:goodsId AS uuid))
+                """).setParameter("goodsId", goodsId));
+        if (rows.size() != 1) {
+            return null;
+        }
+        Object[] row = rows.getFirst();
+        BigDecimal bomQty = decimal(row[3]);
+        if (bomQty.signum() <= 0 || row[2] == null) {
+            return null;
+        }
+        return new SoleComponent((UUID) row[0], (UUID) row[1], (UUID) row[2], bomQty);
+    }
+
     private BomSnapshot currentBomSnapshot(UUID goodsId) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT bom.id, bom.component_goods_id, bom.color_id, bom.qty
@@ -2262,5 +2433,10 @@ public class SubcontractMaterialPlanService
     }
 
     private record BomSnapshot(boolean hasChildren, String fingerprint) {
+    }
+
+    /** V581：目标件唯一的叶子子件（发外物），{@code bomQty} 是每 1 个目标件基本单位的单耗。 */
+    private record SoleComponent(UUID goodsId, UUID colorId, UUID unitId,
+                                 BigDecimal bomQty) {
     }
 }

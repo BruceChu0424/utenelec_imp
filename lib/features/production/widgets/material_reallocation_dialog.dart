@@ -1346,7 +1346,11 @@ class _MaterialReallocationDialogBodyState
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              qtyField(rows.first.controller, rows.first.key, rows.first.validator),
+              qtyField(
+                rows.first.controller,
+                rows.first.key,
+                rows.first.validator,
+              ),
               const SizedBox(width: UtenSpacing.s12),
               Expanded(child: _reasonField(theme)),
             ],

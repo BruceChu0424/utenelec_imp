@@ -259,6 +259,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
 
     return Scaffold(
       appBar: UtenAppBar(title: l10n.employeeTitle, showBackButton: true),
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: canCreate
           ? FloatingActionButton.extended(
               icon: const Icon(Icons.person_add_rounded),

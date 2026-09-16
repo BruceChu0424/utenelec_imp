@@ -438,11 +438,24 @@ class _ProcurementIqcRejectionListPageState
       width: 200,
       value: (item) => item.supplierName,
     ),
+    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
     MasterColumnDef(
-      key: 'goods',
-      label: '不合格货品',
-      width: 240,
-      value: (item) => item.goodsLabel,
+      key: 'goodsName',
+      label: '不合格货品名称',
+      width: 200,
+      value: (item) => item.goodsName ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'goodsCode',
+      label: '编号',
+      width: 130,
+      value: (item) => item.goodsCode ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'colorName',
+      label: '颜色',
+      width: 96,
+      value: (item) => item.colorName ?? '—',
     ),
     MasterColumnDef(
       key: 'failedQty',

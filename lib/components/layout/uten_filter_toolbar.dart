@@ -23,7 +23,8 @@
 //   · 分段计数**永不**登记进 lib/shared/badges/todo_badge_registry.dart（累加只认入口）。
 // - 搜索框：全平台唯一组件 UtenSearchBar（胶囊圆角 + 清除 + 300ms 防抖）；
 // - 响应式：宽屏一行（分段 | 搜索 | 行尾有界右对齐，超宽自动换行），窄屏
-//   （< [compactBreakpoint]）分段横向滚动一行 + 搜索换行；
+//   （< [compactBreakpoint]）分段放得下照常显示、放不下自动收成一颗「分类」
+//   下拉按钮（带待办红徽章总量，点开下拉选分类——2026-09-14 起小屏不再左右拖）；
 // - 纯分类无搜索的页面只传 [segments]（searchHint 不传即不渲染搜索框）；
 // - 纯搜索+行尾的页面（筛选下沉到列头/下拉，如即时库存）不传 [segments]
 //   （2026-09-10 起 segments/selected/onSelectionChanged 均可省略）。
@@ -34,6 +35,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/uten_tokens.dart';
+import '../feedback/uten_notification_badge.dart';
 import '../feedback/uten_segment_badge_label.dart';
 import '../inputs/uten_search_bar.dart';
 
@@ -175,10 +177,23 @@ class UtenFilterToolbar<T> extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < compactBreakpoint) {
+          // 2026-09-14 小屏口径：分段条放不下时不再左右拖动（小屏拖分类太
+          // 不合适），收成一颗「分类」下拉按钮——带待办红徽章总量，点开下拉
+          // 选分类；放得下仍显示分段（小屏两三段的页面不受影响）。
+          final collapse =
+              button != null && !_segmentsFit(context, constraints.maxWidth);
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (button != null) _SegmentsScrollArea(child: button),
+              if (collapse)
+                _CompactCategoryField<T>(
+                  segments: segments,
+                  selected: selected,
+                  enabled: enabled,
+                  onSelected: onSelectionChanged,
+                ),
+              if (!collapse && button != null)
+                _SegmentsScrollArea(child: button),
               if (search != null) ...[
                 if (button != null) const SizedBox(height: UtenSpacing.s8),
                 search,
@@ -221,6 +236,151 @@ class UtenFilterToolbar<T> extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  /// 估算分段条按自然宽度铺开是否放得下（小屏是否收成「分类」下拉的判定）。
+  ///
+  /// 文字宽度用 TextPainter 实测（含字号缩放）；分段内边距/徽章/容器留白取
+  /// 常量近似——刻意略偏高估：宁可早一步收下拉，也不能让分段条溢出黄黑条。
+  bool _segmentsFit(BuildContext context, double maxWidth) {
+    final theme = Theme.of(context);
+    final style = theme.textTheme.titleSmall ?? const TextStyle();
+    final scaler = MediaQuery.textScalerOf(context);
+    var total = 12.0; // 容器 padding 4×2 + 分段间隔线 + 余量
+    for (final segment in segments) {
+      final label = TextPainter(
+        text: TextSpan(text: segment.label, style: style),
+        textScaler: scaler,
+        textDirection: TextDirection.ltr,
+      )..layout();
+      var width = label.width + 36; // 未选 14×2 / 选中 20×2，取偏高
+      final count = segment.count;
+      if (count != null) {
+        if (segment.countForm == UtenSegmentCountForm.browsing) {
+          final digits = TextPainter(
+            text: TextSpan(text: ' ($count)', style: style),
+            textScaler: scaler,
+            textDirection: TextDirection.ltr,
+          )..layout();
+          width += digits.width;
+        } else if (count > 0) {
+          width += 34; // 红徽章 + 与文字的间距
+        }
+      }
+      total += width;
+    }
+    return total <= maxWidth;
+  }
+}
+
+/// 小屏「分类」下拉按钮：分段条放不下时的替位形态（2026-09-14 用户口径，
+/// 小屏左右拖分类不合适）。按钮文案显示当前选中的分类（未选显示「分类」），
+/// 右侧带待办红徽章总量（所有 actionable 分段计数之和，无则不渲染）；
+/// 点开下拉逐项展示分类与计数（复用 UtenSegmentBadgeLabel 的计数口径），
+/// 选中项打勾。
+class _CompactCategoryField<T> extends StatelessWidget {
+  const _CompactCategoryField({
+    required this.segments,
+    required this.selected,
+    required this.enabled,
+    this.onSelected,
+  });
+
+  final List<UtenFilterSegment<T>> segments;
+  final Set<T> selected;
+  final bool enabled;
+  final ValueChanged<T>? onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final selectedSegments = segments
+        .where((segment) => selected.contains(segment.value))
+        .toList();
+    final label = selectedSegments.length == 1
+        ? selectedSegments.single.label
+        : '分类';
+    final actionableTotal = segments
+        .where(
+          (segment) => segment.countForm == UtenSegmentCountForm.actionable,
+        )
+        .fold<int>(0, (sum, segment) => sum + (segment.count ?? 0));
+    return PopupMenuButton<T>(
+      enabled: enabled && onSelected != null,
+      initialValue: selectedSegments.length == 1
+          ? selectedSegments.single.value
+          : null,
+      position: PopupMenuPosition.under,
+      constraints: const BoxConstraints(minWidth: 260),
+      onSelected: onSelected,
+      itemBuilder: (context) => [
+        for (final segment in segments)
+          PopupMenuItem<T>(
+            value: segment.value,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 26,
+                  child: selected.contains(segment.value)
+                      ? Icon(
+                          Icons.check_rounded,
+                          size: 18,
+                          color: theme.colorScheme.primary,
+                        )
+                      : null,
+                ),
+                Expanded(
+                  child: UtenSegmentBadgeLabel(
+                    label: segment.label,
+                    count: segment.count,
+                    countForm: segment.countForm,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+      child: Opacity(
+        opacity: enabled ? 1 : 0.55,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 44),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.category_outlined,
+                size: 18,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+              ),
+              if (actionableTotal > 0) ...[
+                UtenNotificationBadge(count: actionableTotal),
+                const SizedBox(width: UtenSpacing.s8),
+              ],
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 20,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

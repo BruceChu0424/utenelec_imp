@@ -34,6 +34,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
@@ -76,6 +77,20 @@ String purchaseSaveActionLabel(
   PurchaseDocType.request => '保存',
 };
 
+/// 批量校验提示：把同一类违规的**全部**行汇总成一句话。
+///
+/// 条目多时只列前 8 行再折成「等 N 行」——刷屏的提示和只报第一行一样没法用。
+String _rowIssueMessage(
+  List<String> rowLabels,
+  String issue, {
+  required String action,
+}) {
+  const shownMax = 8;
+  final shown = rowLabels.take(shownMax).join('、');
+  final more = rowLabels.length > shownMax ? '等 ${rowLabels.length} 行' : '';
+  return '以下 ${rowLabels.length} 行$issue，$action：$shown$more';
+}
+
 class PurchaseDocEditPage extends ConsumerStatefulWidget {
   const PurchaseDocEditPage({super.key, required this.docType, this.id});
   final PurchaseDocType docType;
@@ -114,6 +129,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
 
   final _grid = UtenEditableGridController<PurchaseGridRow>();
   final _scrollCtl = ScrollController();
+
+  /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
+  final _gridPinned = ValueNotifier<bool>(false);
   bool _saving = false;
   bool _loading = false;
   // 制单信息（服务端权威，只读展示）
@@ -128,6 +146,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
 
   @override
   void dispose() {
+    _gridPinned.dispose();
     _billNo.dispose();
     _remark.dispose();
     _rate.dispose();
@@ -474,27 +493,42 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       exchangeRate = parsedRate;
       taxRate = parsedTax;
     }
+    // 判定条件不变，只改暴露方式：逐行 return 时一批几十行只暴露第一处违规，
+    // 用户改一行提交一次；这里按类别把**全部**违规行收齐，循环结束一次说完。
+    final badQty = <String>[];
+    final overQty = <String>[];
+    final badWeight = <String>[];
+    // 行标识用用户看得见的行序 + 货品名（明细表不显示 UUID，报 id 等于没报）。
+    String labelOf(int i, PurchaseGridRow r) =>
+        '第 ${i + 1} 行（${r.goods!.name ?? r.goods!.code ?? '该货品'}）';
     final itemsBody = <Map<String, dynamic>>[];
-    for (final r in rows) {
+    for (var i = 0; i < rows.length; i++) {
+      final r = rows[i];
       if (r.goods == null) continue;
+      var rowOk = true;
       final qty = double.tryParse(r.qty.text) ?? 0;
       if (qty <= 0) {
-        context.appError('${r.goods!.name} 的数量必须大于 0');
-        return;
+        badQty.add(labelOf(i, r));
+        rowOk = false;
       }
       if (widget.docType != PurchaseDocType.receipt &&
           r.maxQty != null &&
           qty > r.maxQty! + 0.0000001) {
-        context.appError('${r.goods!.name} 的数量不能超过上游剩余量 ${r.maxQty}');
-        return;
+        // 剩余量随行不同，必须逐行带出来，否则用户不知道各行该改到多少。
+        overQty.add(
+          '第 ${i + 1} 行（${r.goods!.name ?? r.goods!.code ?? '该货品'}，'
+          '上游剩余 ${r.maxQty}）',
+        );
+        rowOk = false;
       }
       final price = double.tryParse(r.price.text);
       final weightText = r.weight.text.trim();
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
       if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
-        context.appError('${r.goods!.name} 的实际重量必须大于 0');
-        return;
+        badWeight.add(labelOf(i, r));
+        rowOk = false;
       }
+      if (!rowOk) continue;
       final remarkText = r.remark.text.trim();
       itemsBody.add({
         'goodsId': r.goods!.id,
@@ -513,6 +547,19 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         'weight': ?weight,
         if (remarkText.isNotEmpty) 'remark': remarkText,
       });
+    }
+    final rowIssues = <String>[
+      if (badQty.isNotEmpty)
+        _rowIssueMessage(badQty, '的数量不是大于 0 的数字', action: '请改正后再提交'),
+      if (overQty.isNotEmpty)
+        _rowIssueMessage(overQty, '的数量超出上游剩余量', action: '请改小后再提交'),
+      if (badWeight.isNotEmpty)
+        _rowIssueMessage(badWeight, '的实际重量必须大于 0', action: '请改正后再提交'),
+    ];
+    if (rowIssues.isNotEmpty) {
+      // 不同类别分行列出，混成一句会让人看不清到底要改哪几处。
+      context.appError(rowIssues.join('\n'));
+      return;
     }
     // 单据号后端自动生成（DocNumberService），不再随 body 提交。
     final body = <String, dynamic>{
@@ -615,10 +662,12 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-            : UtenContentContainer(
-                child: Scrollbar(
-                  controller: _scrollCtl,
-                  thumbVisibility: true,
+            : UtenGridPageScrollbar(
+                pinned: _gridPinned,
+                controller: _scrollCtl,
+                // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
+                // 恒在屏幕最右，不随限宽容器/列宽漂移。
+                child: UtenContentContainer(
                   child: ListView(
                     controller: _scrollCtl,
                     // 底部多留一个悬浮动作组的高度，否则明细表最后一行被「取消/保存」压住。
@@ -854,6 +903,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                           )[widget.docType.name];
                           return UtenEditableGrid<PurchaseGridRow>(
                             controller: _grid,
+                            stickyHeaderPinned: _gridPinned,
                             showColumnSettings: true,
                             initialColumnOrder: columnPrefs?.order,
                             initialHiddenColumnKeys: columnPrefs?.hidden,
@@ -881,7 +931,6 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                             footer: EditableGridTotalsBar<PurchaseGridRow>(
                               key: const Key('purchase-edit-totals'),
                               controller: _grid,
-                              showDivider: false,
                               watchOf: (row) => [row.qty],
                               entriesBuilder: (rows) => [
                                 utenQuantityTotalEntry(
@@ -925,6 +974,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       ),
       // 加载中不给保存入口（表单还没填回来，此时保存会把空值提交上去）。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _loading
           ? null
           : UtenEditFloatingActions(

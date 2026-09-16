@@ -346,6 +346,7 @@ class _WarehouseQualityResultDetailPageState
       ),
       body: SafeArea(child: _body()),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: detail != null && _canConfirm && _drafts.isNotEmpty
           ? _floatingActions()
           : null,

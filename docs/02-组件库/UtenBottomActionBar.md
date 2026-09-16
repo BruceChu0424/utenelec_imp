@@ -5,7 +5,22 @@
 
 ## 一、用途
 
-详情页 / 表单页的**底部固定操作栏**。上方内容可滚动，主操作按钮固定吸底、常驻可见。
+**底部弹层 / 侧滑面板的页脚操作栏**（选货底部弹窗、侧滑筛选面板等弹层内部）。
+
+> **2026-09-14 口径变更：全屏页面不再用本组件。** 页面级底部固定操作条已全线
+> 退役，统一改为 Scaffold 右下角悬浮操作组（`UtenFloatingActionGroup` + large
+> 按钮；编辑页用 `UtenEditFloatingActions`）——大小/高度/禁用态全站一致，
+> 滚动内容底部以 `UtenFloatingActionGroup.scrollClearance` 让位，末行不会被
+> 按钮遮挡。本组件仅保留给**弹层内**的页脚（弹层没有 Scaffold FAB 可用）。
+>
+> **2026-09-15 口径：右下角按钮没有入场动画。** 凡传 `floatingActionButton:` 的
+> Scaffold 必须同时传
+> `floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation`。
+> 详情/审核页的动作组要等数据回来才建(`_detail == null ? null : _actions()`)，
+> Scaffold 会当成「FAB 从无到有」按默认 `scaling` 缩放淡入——销售订货单审核后进
+> 详情页，四个按钮先缩后弹。用户口径是全站取消。闸门：
+> [`test/floating_action_entrance_animation_gate_test.dart`](../../test/floating_action_entrance_animation_gate_test.dart)
+> 按文件比对两个具名参数的出现次数，新页面漏配即红。
 
 **解决什么问题：**
 - 之前 `expense_detail` / `payroll_detail` / `expense_new` 各自手写一遍

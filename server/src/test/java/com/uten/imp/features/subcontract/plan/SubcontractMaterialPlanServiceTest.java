@@ -52,6 +52,10 @@ class SubcontractMaterialPlanServiceTest {
     private static final UUID DIRECT_GOODS_ID = UUID.randomUUID();
     private static final UUID MAKE_GOODS_ID = UUID.randomUUID();
     private static final UUID COMPONENT_GOODS_ID = UUID.randomUUID();
+    private static final UUID SOLE_ITEM_ID = UUID.randomUUID();
+    private static final UUID SOLE_GOODS_ID = UUID.randomUUID();
+    private static final UUID SOLE_BASE_UNIT_ID = UUID.randomUUID();
+    private static final UUID COMPONENT_UNIT_ID = UUID.randomUUID();
     private static final UUID DIRECT_BASE_UNIT_ID = UUID.randomUUID();
     private static final UUID MAKE_BASE_UNIT_ID = UUID.randomUUID();
     private static final UUID DOCUMENT_UNIT_ID = UUID.randomUUID();
@@ -71,6 +75,8 @@ class SubcontractMaterialPlanServiceTest {
     private List<Object[]> issueRows;
     private List<Object[]> remainingRows;
     private Map<UUID, List<Object[]>> bomRowsByGoods;
+    /** V581：货品 → 其唯一叶子子件行 [component_goods_id, color_id, unit_id, qty]；空=不是该形态。 */
+    private Map<UUID, List<Object[]>> soleComponentRowsByGoods;
     private Map<UUID, BigDecimal> availableBaseByGoods;
 
     @BeforeEach
@@ -87,6 +93,7 @@ class SubcontractMaterialPlanServiceTest {
         issueRows = List.of();
         remainingRows = List.of();
         bomRowsByGoods = Map.of();
+        soleComponentRowsByGoods = Map.of();
         availableBaseByGoods = Map.of();
         stubNativeQueriesBySql();
         // 直下单销售式供货：按货品 stub 全局可用量（未设置的货品视为 0=全缺）。
@@ -436,6 +443,61 @@ class SubcontractMaterialPlanServiceTest {
         change.verifyNoMoreInteractions();
     }
 
+    /**
+     * V581：目标件只有一个叶子子件时，批准落的是**发子件**的
+     * COMPONENT_OUTBOUND 行——父件仍是订货目标件，goods/unit 换成那颗子件，
+     * 冻结单耗 = 订货换算率 × BOM 单耗，计划量 = 订货量 × 冻结单耗。
+     * 仓库随即拿到出仓草稿（发的是子件），不再要求先自制。
+     */
+    @Test
+    void approvalWithSoleLeafComponentPlansComponentOutboundAndNotifiesWarehouse() {
+        BigDecimal orderQty = new BigDecimal("7");
+        BigDecimal orderUnitRate = new BigDecimal("2");
+        BigDecimal bomQty = new BigDecimal("3");
+        BigDecimal componentUnitQty = new BigDecimal("6.000000");
+        BigDecimal plannedComponentQty = new BigDecimal("42.0000");
+        UUID planItemId = UUID.randomUUID();
+        orderRows = rows(new Object[]{ORDER_ID, "EO-SOLE", SUPPLIER_ID, null});
+        orderItemRows = rows(new Object[]{
+                SOLE_ITEM_ID, SOLE_GOODS_ID, null, orderQty, 1,
+                orderUnitRate, DOCUMENT_UNIT_ID, WAREHOUSE_ID});
+        goodsRows = rows(new Object[]{
+                SOLE_GOODS_ID, "FG-S", "单一子件委外目标件",
+                SOLE_BASE_UNIT_ID, "C-01"});
+        bomRowsByGoods = Map.of(SOLE_GOODS_ID, rows(new Object[]{
+                UUID.randomUUID(), COMPONENT_GOODS_ID, null, bomQty}));
+        soleComponentRowsByGoods = Map.of(SOLE_GOODS_ID, rows(new Object[]{
+                COMPONENT_GOODS_ID, null, COMPONENT_UNIT_ID, bomQty}));
+        remainingRows = rows(new Object[]{
+                planItemId, SOLE_ITEM_ID, SOLE_GOODS_ID, null,
+                COMPONENT_GOODS_ID, COMPONENT_UNIT_ID, componentUnitQty,
+                plannedComponentQty, plannedComponentQty, null, null,
+                "COMPONENT_OUTBOUND"});
+
+        service.createPlanOnApproval(ORDER_ID);
+
+        ArgumentCaptor<UUID> insertedPlanItemId = ArgumentCaptor.forClass(UUID.class);
+        verify(jdbc).update(
+                planItemInsertSql(),
+                insertedPlanItemId.capture(), any(UUID.class), eq(SOLE_ITEM_ID), eq(1),
+                eq(SOLE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(COMPONENT_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(COMPONENT_UNIT_ID), eq(componentUnitQty), eq(plannedComponentQty),
+                eq("COMPONENT_OUTBOUND"), eq("READY_OUTBOUND"), eq(plannedComponentQty),
+                // 建议仓留空：批准时不占子件库存，否则子件还没到货就把财审顶回去。
+                ArgumentMatchers.<UUID>isNull(), eq(true), fingerprint(),
+                ArgumentMatchers.<UUID>isNull(), ArgumentMatchers.<UUID>isNull(),
+                eq(ACTOR_ID), eq(ACTOR_ID));
+        // 出仓明细发的是子件，父件仍记目标件（回厂按冻结单耗倒扣要靠这对身份）。
+        verify(issueItemRepo).save(ArgumentMatchers.argThat(item ->
+                COMPONENT_GOODS_ID.equals(item.getGoodsId())
+                        && SOLE_GOODS_ID.equals(item.getParentGoodsId())
+                        && COMPONENT_UNIT_ID.equals(item.getUnitId())
+                        && item.getQty().compareTo(plannedComponentQty) == 0));
+        verify(chainNotice).notifySubcontractOutboundReady(insertedPlanItemId.getValue());
+        verify(chainNotice, never()).notifySubcontractPrepareShortage(any());
+    }
+
     private void stubNativeQueriesBySql() {
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
@@ -477,6 +539,11 @@ class SubcontractMaterialPlanServiceTest {
         }
         if (sql.contains("FROM goods WHERE id IN")) {
             return goodsRows;
+        }
+        if (sql.contains("fn_subcontract_sole_component_goods")) {
+            // V581：判据本体在数据库函数里，聚焦单测按夹具给「是/不是」。
+            return soleComponentRowsByGoods.getOrDefault(
+                    parameters.get("goodsId"), List.of());
         }
         if (sql.contains("FROM goods_bom_items bom")) {
             return bomRowsByGoods.getOrDefault(parameters.get("goodsId"), List.of());

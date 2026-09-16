@@ -199,8 +199,11 @@ void main() {
             _workbenchRepository(),
           ),
           // 车间报工三码俱全也不在看板出现报工入口（报工统一在车间任务页）。
+          // overview 是「进行中」分段的服务端读权限(execution-workbench 列表端点
+          // @PreAuthorize 同码)；ADR-088 起前端也按这一码门控，缺码显示权限引导。
           currentPermissionsProvider.overrideWithValue(const {
             Perm.productionExecutionView,
+            Perm.productionExecutionOverview,
             Perm.productionDailyReportView,
             Perm.productionDailyReportCreate,
           }),

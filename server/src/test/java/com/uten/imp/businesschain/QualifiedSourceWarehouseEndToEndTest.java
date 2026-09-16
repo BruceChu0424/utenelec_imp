@@ -281,11 +281,18 @@ class QualifiedSourceWarehouseEndToEndTest {
         fixture.insertGoods(parent,"MAKE-P-"+parent,"父件原需求","自制",w.unitId(),w.unitLegacy());
         fixture.insertGoods(child,"MAKE-C-"+child,"原树子件",subcontract?"委外":"自制",w.unitId(),w.unitLegacy());
         fixture.insertBom(parent,child,"1");
-        if(subcontract){fixture.insertGoods(leaf,"MAKE-L-"+leaf,"前置底层子件","自制",w.unitId(),w.unitLegacy());fixture.insertBom(child,leaf,"1");}
+        if(subcontract){
+            fixture.insertGoods(leaf,"MAKE-L-"+leaf,"前置底层子件","自制",w.unitId(),w.unitLegacy());fixture.insertBom(child,leaf,"1");
+            // V581 起「只有一个叶子子件」的委外件属 COMPONENT_OUTBOUND 委外下达，issue-plans
+            // 明确拒收；本用例测「有自制子层的委外件下车间」，挂第二颗采购叶子(已备 100 库存)
+            // 让夹具落回前置自制一类（同 MaterialWorkshopAnchorEndToEndTest#createMixed 的做法）。
+            fixture.insertBom(child,w.goodsD(),"1");
+        }
         var view=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"make-preview-"+parent,
                 List.of(new PreviewItem("OTHER",null,parent,null,w.unitId(),"make-source-"+parent,"原树实际自制来源",BusinessTime.today().plusDays(10),BigDecimal.ONE))));
         view=analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"make-routes-"+parent,
-                view.flatMaterials().stream().map(m->new RouteDecision(m.materialLineId(),m.actionGroupKey(),subcontract&&m.goodsId().equals(child)?"SUBCONTRACT":"MAKE",null)).toList()));
+                view.flatMaterials().stream().map(m->new RouteDecision(m.materialLineId(),m.actionGroupKey(),
+                        m.goodsId().equals(w.goodsD())?"BUY":subcontract&&m.goodsId().equals(child)?"SUBCONTRACT":"MAKE",null)).toList()));
         UUID parentAnalysis=view.products().getFirst().analysisLineId();
         List<IssueWorkshopPlansRequest.IssuePlanLine> lines=new java.util.ArrayList<>();
         if(subcontract){UUID leafId=leaf;UUID material=view.flatMaterials().stream().filter(m->m.goodsId().equals(leafId)).map(MaterialView::materialLineId).findFirst().orElseThrow();

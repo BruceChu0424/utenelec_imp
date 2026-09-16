@@ -118,6 +118,14 @@ public class GoodsDetail {
     private BigDecimal minOrderQty;      // 最小起订量（供应商 MOQ，基本单位）；null=未登记，0=已确认无起订量
     private BigDecimal orderMultipleQty; // 订货倍数/整包装量（基本单位，整箱 50 即 50）；null=无倍数要求
 
+    // ===== 所属仓库 (V587；主档归属仓，不是单据落点仓，也不是物料分析范围仓) =====
+    private UUID owningWarehouseId;      // 这批货平时归哪个仓管；null=未登记归属
+    private String owningWarehouseName;  // 展示名；仓库已软删或未解析时为 null
+
+    // ===== 归属生产车间 (V590；只读展示，由排产确认/改派自动学习回写) =====
+    private UUID owningWorkshopId;       // null=尚未学习
+    private String owningWorkshopName;   // 展示名；部门已软删或未解析时为 null
+
     @JsonProperty("mWeight")
     public BigDecimal getMWeight() {
         return mWeight;

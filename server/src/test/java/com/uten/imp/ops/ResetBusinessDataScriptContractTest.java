@@ -65,9 +65,11 @@ class ResetBusinessDataScriptContractTest {
         // registration reversal ledger (CLEAR 266→269, 362→365).
         // V560 three return request facts, V561 batch lineage, V568 reallocation supplements.
         // V579 party contact/address/activity tables (372→375, 96→99 PRESERVE).
-        assertThat(policy).hasSize(375);
+        // V586 把 V583 报工实耗表与 V584 车间直送三张表补登记进清库策略
+        // (375→379，CLEAR 276→280)；四张都是纯业务事实，随系统测试清空。
+        assertThat(policy).hasSize(379);
         assertThat(policy.values().stream().filter("CLEAR"::equals).count())
-                .isEqualTo(276);
+                .isEqualTo(280);
         assertThat(policy).containsEntry("production_material_return_requests", "CLEAR");
         assertThat(policy).containsEntry("production_material_return_request_items", "CLEAR");
         assertThat(policy).containsEntry("production_material_return_request_cancellations", "CLEAR");
@@ -79,6 +81,16 @@ class ResetBusinessDataScriptContractTest {
         assertThat(policy).containsEntry("production_fqc_inspection_sheet_items", "CLEAR");
         assertThat(policy).containsEntry(
                 "production_finished_arrival_registration_reversals", "CLEAR");
+        // V583 报工同页登记的实际用料，V584 车间内部直送单/行/撤回：都是纯业务
+        // 事实，清库时随报工、领料与库存事实一起清空（登记见 V586）。
+        assertThat(policy).containsEntry(
+                "production_daily_report_material_usages", "CLEAR");
+        assertThat(policy).containsEntry(
+                "production_workshop_direct_transfers", "CLEAR");
+        assertThat(policy).containsEntry(
+                "production_workshop_direct_transfer_items", "CLEAR");
+        assertThat(policy).containsEntry(
+                "production_workshop_direct_transfer_reversals", "CLEAR");
         assertThat(policy).containsEntry("party_contact_methods", "PRESERVE");
         assertThat(policy).containsEntry("party_addresses", "PRESERVE");
         assertThat(policy).containsEntry("party_activity_records", "PRESERVE");
@@ -311,7 +323,19 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(574, 532)")
                 .contains("(575, 533)")
                 .contains("(577, 534)")
-                .contains("V507/469、V508/470及V511至V577完整目录")
+                .contains("(578, 535)")
+                .contains("(579, 536)")
+                .contains("(580, 537)")
+                .contains("(581, 538)")
+                .contains("(582, 539)")
+                .contains("(583, 540)")
+                .contains("(584, 541)")
+                .contains("(585, 542)")
+                .contains("(586, 543)")
+                .contains("(587, 544)")
+                .contains("(588, 545)")
+                .contains("(589, 546)")
+                .contains("V507/469、V508/470及V511至V589完整目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")

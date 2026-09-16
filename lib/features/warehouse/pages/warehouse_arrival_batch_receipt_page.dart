@@ -30,6 +30,7 @@ import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
@@ -61,6 +62,20 @@ import '../widgets/warehouse_autofill_text_field.dart';
 import '../widgets/warehouse_arrival_source_field.dart';
 import '../repositories/procurement_inbound_repository.dart';
 
+/// 批量校验提示：把同一类违规的**全部**行汇总成一句话。
+///
+/// 条目多时只列前 8 条再折成「等 N 行」——刷屏的提示和只报第一行一样没法用。
+String _rowIssueMessage(
+  List<String> rowLabels,
+  String issue, {
+  required String action,
+}) {
+  const shownMax = 8;
+  final shown = rowLabels.take(shownMax).join('、');
+  final more = rowLabels.length > shownMax ? '等 ${rowLabels.length} 行' : '';
+  return '以下 ${rowLabels.length} 行$issue，$action：$shown$more';
+}
+
 class WarehouseArrivalBatchReceiptPage extends ConsumerStatefulWidget {
   const WarehouseArrivalBatchReceiptPage({
     super.key,
@@ -83,6 +98,9 @@ class _WarehouseArrivalBatchReceiptPageState
     extends ConsumerState<WarehouseArrivalBatchReceiptPage> {
   final _remark = TextEditingController();
   final _scrollCtl = ScrollController();
+
+  /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
+  final _gridPinned = ValueNotifier<bool>(false);
   final _lineGrid = UtenEditableGridController<_BatchArrivalLine>();
   final Map<String, UtenEmployeePickerItem> _empCache = {};
 
@@ -122,6 +140,7 @@ class _WarehouseArrivalBatchReceiptPageState
     _remark.dispose();
     _scrollCtl.dispose();
     _lineGrid.dispose();
+    _gridPinned.dispose();
     super.dispose();
   }
 
@@ -358,16 +377,30 @@ class _WarehouseArrivalBatchReceiptPageState
       context.appError('没有可登记明细，请返回任务中心刷新');
       return;
     }
-    for (final line in _lines) {
+    // 明细整表扫完再报：原先首个违规就 return，批量几十行时用户补一行提交一次，
+    // 观感像「怎么老是报错」。判定条件不变，只把问题按类别各汇总成一条。
+    final badQty = <String>[];
+    final missingWarehouse = <String>[];
+    for (var index = 0; index < _lines.length; index++) {
+      final line = _lines[index];
+      final label =
+          '第 ${index + 1} 行（${line.prefill.orderBillNo} ${line.item.goodsName}）';
       final qty = double.tryParse(line.qty.text.trim()) ?? 0;
-      if (qty <= 0) {
-        context.appError('${line.item.goodsName} 的本次实收必须大于 0');
-        return;
-      }
+      if (qty <= 0) badQty.add(label);
       if (line.warehouseId == null || line.warehouseId!.isEmpty) {
-        context.appError('请为 ${line.item.goodsName} 选择入库仓库');
-        return;
+        missingWarehouse.add(label);
       }
+    }
+    final rowIssues = <String>[
+      if (badQty.isNotEmpty)
+        _rowIssueMessage(badQty, '的本次实收不是大于 0 的数字', action: '请改正后再提交'),
+      if (missingWarehouse.isNotEmpty)
+        _rowIssueMessage(missingWarehouse, '未选择入库仓库', action: '请补齐后再提交'),
+    ];
+    if (rowIssues.isNotEmpty) {
+      // 不同类别分行列出，混成一句会让人看不清到底要改哪几处。
+      context.appError(rowIssues.join('\n'));
+      return;
     }
     // 采购收货单必须有采购员（批量页取订货负责人预填，不可编辑）。
     final missingPurchaser = _lines
@@ -572,10 +605,12 @@ class _WarehouseArrivalBatchReceiptPageState
   }
 
   Widget _buildForm(BuildContext context, ThemeData theme, bool canRegister) {
-    return UtenContentContainer(
-      child: Scrollbar(
-        controller: _scrollCtl,
-        thumbVisibility: true,
+    return UtenGridPageScrollbar(
+      pinned: _gridPinned,
+      controller: _scrollCtl,
+      // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
+      // 恒在屏幕最右，不随限宽容器/列宽漂移。
+      child: UtenContentContainer(
         child: ListView(
           controller: _scrollCtl,
           padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -623,10 +658,21 @@ class _WarehouseArrivalBatchReceiptPageState
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
+            const SizedBox(height: UtenSpacing.s4),
+            // 2026-09-14：本批可以只登记一部分——原先移出只在行右键菜单里，
+            // 页面零提示，用户判定「不能删除部分」。
+            Text(
+              '本次不收的货品点行末 ⊖ 移出本次登记（也可勾选多行后右键批量移出）；'
+              '移出不删除订货明细、不写库存，这些行仍留在待登记送检。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
             const SizedBox(height: UtenSpacing.s8),
             UtenEditableGrid<_BatchArrivalLine>(
               key: const Key('warehouse-arrival-batch-lines-grid'),
               controller: _lineGrid,
+              stickyHeaderPinned: _gridPinned,
               columns: _lineColumns,
               createBlankRow: () => throw UnsupportedError('明细由所选预计到货任务固定带入'),
               showAddRow: false,
@@ -646,6 +692,8 @@ class _WarehouseArrivalBatchReceiptPageState
               // 2026-09-12 再补右键菜单显式批量入口（与产成品登记页统一口径）。
               showSelectAllToggle: false,
               showRemoveRowsAction: false,
+              // 2026-09-14：行末常驻 ⊖（走同一条「移出本次登记」确认与回调）。
+              showInlineRemoveAction: true,
               rowMenuExtraBuilder: canRegister && !_saving
                   ? (context, selected) => [
                       UtenMenuItem(
@@ -759,19 +807,36 @@ class _WarehouseArrivalBatchReceiptPageState
       textOf: (line) => line.prefill.orderType.label,
       cellBuilder: (context, line) => Text(line.prefill.orderType.label),
     ),
+    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
+    // 不再拼「名称(编号)」——拼串不能各自筛选，列窄时编号先被省略号吃掉。
     EditableGridColumn(
       key: 'goods',
-      label: '货品',
-      width: 210,
-      filterValueOf: (line) =>
-          _bucketOrNull('${line.item.goodsName}(${line.item.goodsCode})'),
-      textOf: (line) => '${line.item.goodsName}(${line.item.goodsCode})',
+      label: '货品名称',
+      width: 200,
+      filterValueOf: (line) => _bucketOrNull(line.item.goodsName),
+      textOf: (line) => line.item.goodsName,
       cellBuilder: (context, line) => Tooltip(
-        message: '${line.item.goodsName}(${line.item.goodsCode})',
+        message: line.item.goodsName,
         child: Text(
-          '${line.item.goodsName}(${line.item.goodsCode})',
+          line.item.goodsName,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    ),
+    EditableGridColumn(
+      key: 'goodsCode',
+      label: '编号',
+      width: 140,
+      textOf: (line) => line.goodsCode.text,
+      listenableOf: (line) => line.goodsCode,
+      cellBuilder: (context, line) => Semantics(
+        textField: true,
+        label: '${line.item.goodsName} 物料编码',
+        child: WarehouseAutofillTextField(
+          controller: line.goodsCode,
+          source: '编码来自货品资料，请核对本次到货',
+          enabled: !_saving,
         ),
       ),
     ),
@@ -945,22 +1010,6 @@ class _WarehouseArrivalBatchReceiptPageState
         ),
       ),
     ),
-    EditableGridColumn(
-      key: 'goodsCode',
-      label: '物料编码',
-      width: 140,
-      textOf: (line) => line.goodsCode.text,
-      listenableOf: (line) => line.goodsCode,
-      cellBuilder: (context, line) => Semantics(
-        textField: true,
-        label: '${line.item.goodsName} 物料编码',
-        child: WarehouseAutofillTextField(
-          controller: line.goodsCode,
-          source: '编码来自货品资料，请核对本次到货',
-          enabled: !_saving,
-        ),
-      ),
-    ),
   ];
 
   /// 明细表下方的合计条（全站统一 UtenTotalsSummaryBar 口径）：数量严格按单位
@@ -968,7 +1017,6 @@ class _WarehouseArrivalBatchReceiptPageState
   Widget _lineTotalsBar() => UtenTotalsSummaryBar(
     key: const Key('warehouse-arrival-batch-totals'),
     density: true,
-    showDivider: false,
     entries: [
       UtenTotalEntry('明细', '${_lines.length} 行'),
       utenQuantityTotalEntry(

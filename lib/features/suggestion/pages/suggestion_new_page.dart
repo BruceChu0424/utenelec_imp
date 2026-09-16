@@ -10,7 +10,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_toast.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -48,10 +48,16 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage> {
       body: Column(
         children: [
           Expanded(
-            // 表单页全断点窄版收敛（1120），避免宽屏表单被拉得过长
+            // 表单页全断点窄版收敛（1120），避免宽屏表单被拉得过长；
+            // 底部留出右下悬浮操作组的高度。
             child: UtenContentContainer.narrow(
               child: ListView(
-                padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+                padding: const EdgeInsets.fromLTRB(
+                  0,
+                  UtenSpacing.s16,
+                  0,
+                  UtenFloatingActionGroup.scrollClearance,
+                ),
                 children: [
                   // 类别
                   Text(
@@ -160,15 +166,19 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage> {
               ),
             ),
           ),
-          UtenBottomActionBar(
-            child: UtenButton(
-              isExpanded: true,
-              size: UtenButtonSize.large,
-              isLoading: _isSubmitting,
-              icon: Icons.send_rounded,
-              onPressed: _isSubmitting ? null : _submit,
-              child: const Text('提交建议'),
-            ),
+        ],
+      ),
+      // 2026-09-14 UI 统一口径：吸底提交按钮改右下悬浮组（按钮已是 large）。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: UtenFloatingActionGroup(
+        children: [
+          UtenButton(
+            size: UtenButtonSize.large,
+            isLoading: _isSubmitting,
+            icon: Icons.send_rounded,
+            onPressed: _isSubmitting ? null : _submit,
+            child: const Text('提交建议'),
           ),
         ],
       ),

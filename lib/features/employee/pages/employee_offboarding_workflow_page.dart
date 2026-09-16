@@ -15,7 +15,7 @@ import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -356,41 +356,47 @@ class _EmployeeOffboardingWorkflowPageState
             children: [
               _identityCard(),
               Expanded(
-                child: Stepper(
-                  currentStep: _step,
-                  controlsBuilder: (_, _) => const SizedBox.shrink(),
-                  onStepTapped: (step) {
-                    if (step < _step) setState(() => _step = step);
-                  },
-                  steps: _steps(),
+                // 底部让位右下悬浮操作组：Stepper 内滚的末尾内容可完整滚到按钮上方。
+                child: Padding(
+                  padding: const EdgeInsets.only(
+                    bottom:
+                        UtenFloatingActionGroup.controlHeight + UtenSpacing.s32,
+                  ),
+                  child: Stepper(
+                    currentStep: _step,
+                    controlsBuilder: (_, _) => const SizedBox.shrink(),
+                    onStepTapped: (step) {
+                      if (step < _step) setState(() => _step = step);
+                    },
+                    steps: _steps(),
+                  ),
                 ),
               ),
             ],
           ),
         ),
-        bottomNavigationBar: UtenBottomActionBar(
-          child: Wrap(
-            alignment: WrapAlignment.end,
-            spacing: UtenSpacing.s8,
-            runSpacing: UtenSpacing.s8,
-            children: [
-              if (_step > 0)
-                UtenButton(
-                  type: UtenButtonType.secondary,
-                  onPressed: _submitting ? null : _backOrClose,
-                  child: const Text('上一步'),
-                ),
+        // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组（大小/高度/禁用态
+        // 全站统一）；Stepper 内容长时自带内滚，末步内容不被按钮遮挡。
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+        floatingActionButton: UtenFloatingActionGroup(
+          children: [
+            if (_step > 0)
               UtenButton(
-                key: const ValueKey('employee-offboarding-next'),
-                type: _step == 3
-                    ? UtenButtonType.danger
-                    : UtenButtonType.primary,
-                isLoading: _submitting || _previewLoading,
-                onPressed: _submitting || _previewLoading ? null : _next,
-                child: Text(_step == 3 ? '确认办理离职' : '下一步'),
+                type: UtenButtonType.secondary,
+                size: UtenButtonSize.large,
+                onPressed: _submitting ? null : _backOrClose,
+                child: const Text('上一步'),
               ),
-            ],
-          ),
+            UtenButton(
+              key: const ValueKey('employee-offboarding-next'),
+              type: _step == 3 ? UtenButtonType.danger : UtenButtonType.primary,
+              size: UtenButtonSize.large,
+              isLoading: _submitting || _previewLoading,
+              onPressed: _submitting || _previewLoading ? null : _next,
+              child: Text(_step == 3 ? '确认办理离职' : '下一步'),
+            ),
+          ],
         ),
       ),
     );

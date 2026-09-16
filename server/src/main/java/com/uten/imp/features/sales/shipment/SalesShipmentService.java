@@ -137,11 +137,18 @@ public class SalesShipmentService {
                 if (!customerShipmentPolicy.can(CustomerShipmentPolicy.DIRECT,"view")) ps.add(cb.notEqual(root.get("shipmentKind"),CustomerShipmentPolicy.DIRECT));
                 if (!customerShipmentPolicy.can(CustomerShipmentPolicy.ORDER,"view")) ps.add(cb.equal(root.get("shipmentKind"),CustomerShipmentPolicy.DIRECT));
             }
-            if (Short.valueOf((short)0).equals(f.financeAudit())) {
+            boolean rejectedOnly = Boolean.TRUE.equals(f.financeRejected());
+            if (Short.valueOf((short)0).equals(f.financeAudit()) && !rejectedOnly) {
                 ps.add(cb.notEqual(root.get("shipmentKind"),"LEGACY"));
                 ps.add(cb.isFalse(root.get("financeRejected")));
                 ps.add(cb.or(cb.lt(root.get("financeGateVersion"),2),cb.and(
                         cb.isNotNull(root.get("salesConfirmedAt")),cb.equal(root.get("salesConfirmedRevision"),root.get("reviewRevision")))));
+            }
+            // V578：财务「已退回」看板——被退回且尚未重新提交的单据集中展示，
+            // 财务可在这里进入详情「撤回退回」，销售可看到退回待处理的全量。
+            if (rejectedOnly) {
+                ps.add(cb.notEqual(root.get("shipmentKind"),"LEGACY"));
+                ps.add(cb.isTrue(root.get("financeRejected")));
             }
             ps.add(accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
@@ -211,8 +218,11 @@ public class SalesShipmentService {
 
     /**
      * 仓库待出库计数（出库任务中心 / 工作台角标）：财务已放行、未驳回、未删除，
-     * 且仓库作业仍可推进（待拣/拣货中/已拣待交接/异常/历史遗留待办）——已交接出库、
-     * 已取消、已红冲不计。与 list() 使用同一读范围与谓词口径，只聚合未完结任务。
+     * 且仓库尚未确认出库（待出库/历史遗留待办）——已出库、已取消、已红冲不计。
+     * 与 list() 使用同一读范围与谓词口径，只聚合未完结任务。
+     *
+     * <p>谓词须与 V582 重建的部分索引 {@code idx_sales_shipments_warehouse_pending}
+     * 保持逐值一致，否则 60s 轮询的计数查询用不上该索引。</p>
      */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_shipment:warehouse-work')")
@@ -228,10 +238,7 @@ public class SalesShipmentService {
             ps.add(cb.isFalse(root.get("rejected")));
             ps.add(root.get("warehouseWorkStatus").in(
                     SalesShipment.WORK_LEGACY_PENDING,
-                    SalesShipment.WORK_PENDING_PICK,
-                    SalesShipment.WORK_PICKING,
-                    SalesShipment.WORK_PICKED,
-                    SalesShipment.WORK_EXCEPTION));
+                    SalesShipment.WORK_PENDING_PICK));
             return cb.and(ps.toArray(new Predicate[0]));
         };
         return shipmentRepo.count(spec);
@@ -313,7 +320,7 @@ public class SalesShipmentService {
      * 逐行硬校验：订单行必须当前仍有可发预留（reserved>0）且本次数量不超预留；
      * 归属隔离与订单列表同口径（不可见归属的行直接拒绝）。
      * 草稿占用订单的可发分配额度，但不重复减少 ATP、也不扣在手；
-     * 仓库开始拣货才进入实物作业边界，交接出库时再消费预留并扣库存。
+     * 仓库确认出库才进入实物作业边界，并在同一事务消费预留、扣库存。
      */
     @Transactional
     @PreAuthorize("hasAuthority('sales_shipment:create')")
@@ -465,7 +472,7 @@ public class SalesShipmentService {
         }
         if (!isEditableState(s)) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "仓库已开始拣货或单据处于异常处理，出货单不可直接编辑");
+                    "出货单已确认出库或已不是待出库草稿，不可直接编辑");
         }
         requireExpectedRevision(s,req.getExpectedRevision());
         taskClaims.requireNoActiveClaim(CustomerShipmentPolicy.CLAIM_TYPE,id.toString());
@@ -523,7 +530,7 @@ public class SalesShipmentService {
         if (!SalesShipment.WORK_PENDING_PICK.equals(s.getWarehouseWorkStatus())
                 && !SalesShipment.WORK_CANCELLED.equals(s.getWarehouseWorkStatus())) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "仓库作业已开始或仍在异常处理；须先完成退拣并恢复待拣货，才可删除");
+                    "出货单已确认出库，不可删除；纠错请走销售退货");
         }
         String fromStatus = s.getWarehouseWorkStatus();
         revokeForCommercialChange(s,"销售取消未出库发货");
@@ -553,7 +560,19 @@ public class SalesShipmentService {
         requireExpectedRevision(s,expectedRevision);
         taskClaims.requireNoActiveClaim(CustomerShipmentPolicy.CLAIM_TYPE,id.toString());
         if (customerShipmentPolicy.salesConfirmed(s) && !s.isFinanceRejected()) return detail(id);
-        if (s.isFinanceRejected()) throw new ApiException(ErrorCode.CONFLICT,"财务已退回，请先修改并保存后再确认");
+        if (s.isFinanceRejected()) {
+            // V578：退回原因与出货内容无关时（如客户资料问题），销售无需假改单——
+            // 允许原样重新提交。修订号+1 形成新一轮提交事实，财务重新走一遍审核；
+            // 财务若坚持要求改单可再次退回。
+            s.setReviewRevision(s.getReviewRevision()+1);
+            s.setFinanceRejected(false);
+            s.setFinanceRejectionReason(null);
+            reviewSnapshots.submit(s);
+            shipmentRepo.saveAndFlush(s);
+            chainNotice.resolveReviewNotices("SALES_SHIPMENT",id,"SALES_RESUBMITTED");
+            chainNotice.notifyShipmentPendingFinanceAudit(id);
+            return detail(id);
+        }
         List<SalesShipmentItem> items=itemRepo.findByShipmentIdOrderByLineNoAsc(id);
         directCommercial.validateStored(s,items);
         if (!customerShipmentPolicy.direct(s)) assertStoredOrderLinks(s,items,true);
@@ -692,6 +711,35 @@ public class SalesShipmentService {
             results.add(financeAuditReject(item.id(), item.toDecision(reason)));
         }
         return results;
+    }
+
+    /**
+     * 撤回退回（V578）：财务发现退回原因与出货内容无关（如客户货款分类未维护、
+     * 自己误退）时，把单据收回财务待审队列，避免「财务找不到、销售改不了」的悬空态。
+     * 仅作用于未放行且仓库未作业的退回单；销售确认事实保留，无需销售重走确认。
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_shipment_audit')")
+    public Map<String, Object> financeRejectReverse(UUID id) {
+        tx.bind();
+        SalesShipment s = requireWritableShipmentForUpdate(id, FINANCE_AUDIT_AUTHORITY);
+        requireFinanceAuditEditableState(s);
+        taskClaims.requireNoActiveClaim(CustomerShipmentPolicy.CLAIM_TYPE,id.toString());
+        if (!s.isFinanceRejected()) {
+            throw new ApiException(ErrorCode.BUSINESS, "该出货单没有被退回，无需撤回");
+        }
+        if (s.getFinanceAudit() != null && s.getFinanceAudit() == 1) {
+            throw new ApiException(ErrorCode.BUSINESS, "已放行的出货单不能撤回退回");
+        }
+        Map<String, Object> info = financeAuditInfo(s);
+        appendFinanceReleaseEvent(s, "REJECT_REVOKED", currentUser.requireId(),
+                OffsetDateTime.now(), info, null, "财务撤回退回，恢复待审");
+        s.setFinanceRejected(false);
+        s.setFinanceRejectionReason(null);
+        shipmentRepo.saveAndFlush(s);
+        chainNotice.resolveReviewNotices("SALES_SHIPMENT",id,"FINANCE_REJECT_REVOKED");
+        chainNotice.notifyShipmentPendingFinanceAudit(id);
+        return financeAuditInfo(s);
     }
 
     private void requireFinanceDecision(SalesShipment s,
@@ -935,7 +983,15 @@ public class SalesShipmentService {
         return new BigDecimal(value.toString());
     }
 
-    /** 仓库作业状态机：在出货草稿上推进 待拣→拣货中→已拣/异常 等目标态，按目标态分别设防（开始拣货前必须已财务审核+明细非空+拣货容量足够；登记异常必填原因）；LEGACY_PENDING 是只读迁移异常，只能人工核对后重建当前两审任务。 */
+    /**
+     * 仓库一步确认出库（V582）：财务放行后的 {@code PENDING_PICK} 草稿由仓库在同一
+     * 事务里核对实际发货仓与逐行库位、证明本仓可发，随后 {@code approveLocked} 扣库存、
+     * 消费预留、回写销售订单并立唯一正式 AR，直接落到 {@code SHIPPED}。
+     *
+     * <p>原「开始拣货 → 拣货完成 → 交接出库」三段与 EXCEPTION 退拣回路已整体删除：
+     * 中间态既不占库存也不产生会计事实，只是把同一批校验拆成三次点击。
+     * {@code LEGACY_PENDING} 仍是只读迁移异常，只能人工核对后重建当前两审任务。</p>
+     */
     @Transactional
     @PreAuthorize("hasAuthority('sales_shipment:warehouse-work')")
     public ShipmentDetail transitionWarehouseWork(
@@ -948,9 +1004,7 @@ public class SalesShipmentService {
                 || s.isRejected()) {
             throw new ApiException(ErrorCode.BUSINESS, "仅有效待出库草稿可执行仓库作业");
         }
-        // Every warehouse transition, including exception registration and recovery,
-        // belongs to a finance-released physical task. Deep command calls must not
-        // bypass the task-list release filter.
+        // 确认出库属于财务已放行的实物任务；深层命令调用不得绕过任务列表的放行过滤。
         assertFinanceAudited(s);
         String current = s.getWarehouseWorkStatus();
         if (SalesShipment.WORK_LEGACY_PENDING.equals(current)) {
@@ -965,102 +1019,47 @@ public class SalesShipmentService {
         UUID actor = currentUser.requireEmployeeId();
         List<SalesShipmentItem> items =
                 itemRepo.findByShipmentIdOrderByLineNoAsc(id);
-        Map<UUID,String> stockPlaces=Map.of();
-        if (!SalesShipment.WORK_PICKING.equals(target)
-                && ((req.getWarehouseId()!=null && !req.getWarehouseId().equals(s.getWarehouseId()))
-                    || (req.getStockPlaces()!=null && !req.getStockPlaces().isEmpty()))) {
-            throw new ApiException(ErrorCode.CONFLICT,"实际仓库与库位只在开始拣货时核对，已拣货任务须先退拣");
+        requireWarehouseTransition(
+                current, SalesShipment.WORK_PENDING_PICK, target);
+        if (items.isEmpty()) {
+            throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可确认出库");
         }
-
-        switch (target) {
-            case SalesShipment.WORK_PICKING -> {
-                requireWarehouseTransition(
-                        current, SalesShipment.WORK_PENDING_PICK, target);
-                if (items.isEmpty()) {
-                    throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可开始拣货");
-                }
-                lockStoredOrderTargets(items);
-                assertStoredOrderLinks(
-                        s, items, true, WAREHOUSE_WORK_AUTHORITY);
-                assertStoredShipmentPolicy(items);
-                assertFinanceAudited(s);
-                if (s.isWarehouseChosenAtPick() && req.getWarehouseId()==null) {
-                    throw new ApiException(ErrorCode.VALIDATION_FAILED,"请仓库人员确认本次实际出货仓");
-                }
-                if(req.getWarehouseId()!=null) {
-                    if(!s.isWarehouseChosenAtPick() && !req.getWarehouseId().equals(s.getWarehouseId()))
-                        throw new ApiException(ErrorCode.CONFLICT,"该出货单已按原来源仓完成财审，请按原仓核对；需要换仓时先撤回重审");
-                    if(warehouseScopes!=null)warehouseScopes.requireActiveLeafWarehouse(req.getWarehouseId(),"实际出货仓");
-                    s.setWarehouseId(req.getWarehouseId());
-                }
-                if(s.getWarehouseId()==null)throw new ApiException(ErrorCode.VALIDATION_FAILED,"请选择实际出货仓");
-                stockPlaces=warehouseStockPlaces(req,items);
-                // Queries below may flush the managed header. Keep the physical
-                // selection and its transition atomic before any such flush.
-                s.setWarehouseWorkStatus(SalesShipment.WORK_PICKING);
-                s.setPickingStartedAt(now);
-                s.setPickingStartedBy(actor);
-                directCommercial.validateStored(s,items);
-                if (CustomerShipmentPolicy.direct(s)) customerInventory.reservePicking(id,s.getWarehouseId(),s.getReviewRevision(),customerInventoryLines(items));
-                else assertWarehousePickCapacity(s, items);
-                s.setWarehouseExceptionReason(null);
-            }
-            case SalesShipment.WORK_PICKED -> {
-                requireWarehouseTransition(
-                        current, SalesShipment.WORK_PICKING, target);
-                s.setPickedAt(now);
-                s.setPickedBy(actor);
-            }
-            case SalesShipment.WORK_EXCEPTION -> {
-                if (current == null || !Set.of(
-                        SalesShipment.WORK_PENDING_PICK,
-                        SalesShipment.WORK_PICKING,
-                        SalesShipment.WORK_PICKED).contains(current)) {
-                    throw new ApiException(ErrorCode.CONFLICT,
-                            "当前仓库状态不可登记异常：" + current);
-                }
-                if (reason.isBlank()) {
-                    throw new ApiException(
-                            ErrorCode.VALIDATION_FAILED, "仓库异常必须填写原因");
-                }
-                s.setWarehouseExceptionReason(reason);
-            }
-            case SalesShipment.WORK_PENDING_PICK -> {
-                requireWarehouseTransition(
-                        current, SalesShipment.WORK_EXCEPTION, target);
-                if (reason.isBlank()) {
-                    throw new ApiException(
-                            ErrorCode.VALIDATION_FAILED, "恢复待拣货必须填写处理说明");
-                }
-                s.setWarehouseExceptionReason(null);
-                if (CustomerShipmentPolicy.direct(s)) customerInventory.releaseUnpicked(id);
-                s.setPickingStartedAt(null);
-                s.setPickingStartedBy(null);
-                s.setPickedAt(null);
-                s.setPickedBy(null);
-            }
-            case SalesShipment.WORK_SHIPPED -> {
-                requireWarehouseTransition(
-                        current, SalesShipment.WORK_PICKED, target);
-                s.setHandedOverAt(now);
-                s.setHandedOverBy(actor);
-                s.setWarehouseWorkUpdatedAt(now);
-                s.setWarehouseWorkUpdatedBy(actor);
-                recordWarehouseEvent(
-                        s, current, target, null, actor, now);
-                return approveLocked(s, WAREHOUSE_WORK_AUTHORITY);
-            }
-            default -> throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "仓库目标状态仅支持开始拣货、拣货完成、异常、恢复或交接出库");
+        lockStoredOrderTargets(items);
+        assertStoredOrderLinks(s, items, true, WAREHOUSE_WORK_AUTHORITY);
+        assertStoredShipmentPolicy(items);
+        assertFinanceAudited(s);
+        if (s.isWarehouseChosenAtPick() && req.getWarehouseId()==null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"请仓库人员确认本次实际出货仓");
         }
-        s.setWarehouseWorkStatus(target);
+        if(req.getWarehouseId()!=null) {
+            if(!s.isWarehouseChosenAtPick() && !req.getWarehouseId().equals(s.getWarehouseId()))
+                throw new ApiException(ErrorCode.CONFLICT,"该出货单已按原来源仓完成财审，请按原仓核对；需要换仓时先撤回重审");
+            if(warehouseScopes!=null)warehouseScopes.requireActiveLeafWarehouse(req.getWarehouseId(),"实际出货仓");
+            s.setWarehouseId(req.getWarehouseId());
+        }
+        if(s.getWarehouseId()==null)throw new ApiException(ErrorCode.VALIDATION_FAILED,"请选择实际出货仓");
+        Map<UUID,String> stockPlaces=warehouseStockPlaces(req,items);
+        directCommercial.validateStored(s,items);
+        // 实物分配边界：先证明本仓真的发得出（扣安全库存、其它硬预留、来源承诺），
+        // 再由 approveLocked 在同一事务真正扣账。两段共用同一批 goods/color 互斥锁，
+        // 并发的第二张单会排队后按已扣减的余额重算，不存在"都校验通过再一起扣"的窗口。
+        if (CustomerShipmentPolicy.direct(s)) customerInventory.reservePicking(id,s.getWarehouseId(),s.getReviewRevision(),customerInventoryLines(items));
+        else assertWarehousePickCapacity(s, items);
+        s.setWarehouseExceptionReason(null);
+        s.setHandedOverAt(now);
+        s.setHandedOverBy(actor);
         s.setWarehouseWorkUpdatedAt(now);
         s.setWarehouseWorkUpdatedBy(actor);
-        shipmentRepo.save(s);
-        recordWarehouseEvent(s, current, target, reason, actor, now,stockPlaces);
-        if(SalesShipment.WORK_PICKING.equals(target)) chainNotice.resolveReviewNotices("SALES_SHIPMENT",id,"WAREHOUSE_STARTED");
-        return detail(id);
+        // 出库事件必须先于 approveLocked 写入：V582 的实仓取证按 handed_over_by/at
+        // 与本条 SHIPPED 事件逐字段比对，库位证据也挂在这条事件上。
+        // warehouse_work_status 只能由 approveLocked 末尾与 status=1 一起落盘——
+        // 中途任何一次 flush 把它提前写成 SHIPPED，都会撞 V511「已出库事实不可变」闸。
+        recordWarehouseEvent(
+                s, current, SalesShipment.WORK_SHIPPED, reason, actor, now, stockPlaces);
+        ShipmentDetail shipped = approveLocked(s, WAREHOUSE_WORK_AUTHORITY);
+        // 「待出库」待办到此办结（原来挂在开始拣货那一跳）。
+        chainNotice.resolveReviewNotices("SALES_SHIPMENT", id, "WAREHOUSE_SHIPPED");
+        return shipped;
     }
 
     private static void requireWarehouseTransition(
@@ -1072,47 +1071,20 @@ public class SalesShipmentService {
         }
     }
 
+    /**
+     * 一步式拓扑：只认 {@code PENDING_PICK → SHIPPED}。旧客户端或旧脚本重放
+     * PICKING/PICKED/EXCEPTION 等目标态时按 VALIDATION_FAILED 明确拒绝，
+     * 不做静默兼容——它们对应的实物与会计语义已经不存在。
+     */
     static void validateWarehouseTransition(
             String current, String target, String reason) {
-        String safeReason = reason == null ? "" : reason.trim();
-        switch (target) {
-            case SalesShipment.WORK_PICKING ->
-                    requireWarehouseTransition(
-                            current, SalesShipment.WORK_PENDING_PICK, target);
-            case SalesShipment.WORK_PICKED ->
-                    requireWarehouseTransition(
-                            current, SalesShipment.WORK_PICKING, target);
-            case SalesShipment.WORK_EXCEPTION -> {
-                if (!Set.of(
-                        SalesShipment.WORK_PENDING_PICK,
-                        SalesShipment.WORK_PICKING,
-                        SalesShipment.WORK_PICKED).contains(current)) {
-                    throw new ApiException(
-                            ErrorCode.CONFLICT,
-                            "当前仓库状态不可登记异常：" + current);
-                }
-                if (safeReason.isBlank()) {
-                    throw new ApiException(
-                            ErrorCode.VALIDATION_FAILED,
-                            "仓库异常必须填写原因");
-                }
-            }
-            case SalesShipment.WORK_PENDING_PICK -> {
-                requireWarehouseTransition(
-                        current, SalesShipment.WORK_EXCEPTION, target);
-                if (safeReason.isBlank()) {
-                    throw new ApiException(
-                            ErrorCode.VALIDATION_FAILED,
-                            "恢复待拣货必须填写退拣或异常处理说明");
-                }
-            }
-            case SalesShipment.WORK_SHIPPED ->
-                    requireWarehouseTransition(
-                            current, SalesShipment.WORK_PICKED, target);
-            default -> throw new ApiException(
+        if (!SalesShipment.WORK_SHIPPED.equals(target)) {
+            throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "仓库目标状态仅支持开始拣货、拣货完成、异常、恢复或交接出库");
+                    "仓库目标状态仅支持确认出库（SHIPPED）");
         }
+        requireWarehouseTransition(
+                current, SalesShipment.WORK_PENDING_PICK, target);
     }
 
     /**
@@ -1124,25 +1096,14 @@ public class SalesShipmentService {
      */
     public static List<String> allowedWarehouseTransitionTargets(String current) {
         if (SalesShipment.WORK_PENDING_PICK.equals(current)) {
-            return List.of(SalesShipment.WORK_PICKING, SalesShipment.WORK_EXCEPTION);
-        }
-        if (SalesShipment.WORK_PICKING.equals(current)) {
-            return List.of(SalesShipment.WORK_PICKED, SalesShipment.WORK_EXCEPTION);
-        }
-        if (SalesShipment.WORK_PICKED.equals(current)) {
-            return List.of(SalesShipment.WORK_SHIPPED, SalesShipment.WORK_EXCEPTION);
-        }
-        if (SalesShipment.WORK_EXCEPTION.equals(current)) {
-            return List.of(SalesShipment.WORK_PENDING_PICK);
+            return List.of(SalesShipment.WORK_SHIPPED);
         }
         return List.of();
     }
 
     /**
-     * Starting a pick is the physical-allocation boundary. Pending drafts only
-     * reserve order capacity; this check serializes the inventory dimension
-     * and proves the selected warehouse can cover this task after safety stock,
-     * other orders' reservations and already-started tasks.
+     * 确认出库是实物分配边界。待出库草稿只占订单额度、不占库存；本检查串行化
+     * 库存维度，并证明所选仓在扣除安全库存与其它订单硬预留后仍能覆盖本单。
      */
     private void assertWarehousePickCapacity(
             SalesShipment shipment, List<SalesShipmentItem> items) {
@@ -1214,36 +1175,12 @@ public class SalesShipmentService {
             BigDecimal otherReservations =
                     scalarDecimal(otherReservationQuery);
 
-            String activeOwnPredicate = ownIds.isEmpty()
-                    ? "si.order_item_id IS NULL"
-                    : "(si.order_item_id IS NULL OR si.order_item_id IN (:ownIds))";
-            jakarta.persistence.Query activeQuery = em.createNativeQuery("""
-                    SELECT COALESCE(SUM(
-                        si.qty * COALESCE(NULLIF(si.unit_rate,0),1)),0)
-                    FROM sales_shipment_items si
-                    JOIN sales_shipments s ON s.id = si.shipment_id
-                    WHERE s.id <> :shipmentId
-                      AND s.warehouse_id = :wid
-                      AND s.status = 0
-                      AND COALESCE(s.rejected,false) = false
-                      AND COALESCE(s.is_deleted,false) = false
-                      AND COALESCE(si.is_deleted,false) = false
-                      AND s.warehouse_work_status IN ('PICKING','PICKED')
-                      AND s.shipment_kind <> 'DIRECT_CUSTOMER'
-                      AND si.goods_id = :gid
-                      AND si.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)
-                      """ + " AND " + activeOwnPredicate)
-                    .setParameter("shipmentId", shipment.getId())
-                    .setParameter("wid", shipment.getWarehouseId())
-                    .setParameter("gid", key.goodsId())
-                    .setParameter("cid", key.colorId());
-            if (!ownIds.isEmpty()) activeQuery.setParameter("ownIds", ownIds);
-            BigDecimal activeSameOrUnlinked = scalarDecimal(activeQuery);
-
+            // V582：一步式没有"已开拣但未出账"的中间态——其它草稿要么还在待出库
+            // （不占库存，由上面的硬预留覆盖），要么已确认出库（stock_balances 已扣）。
+            // 原来减去 warehouse_work_status IN ('PICKING','PICKED') 的在途量已随三态删除。
             BigDecimal movable = onHand
                     .subtract(safety)
                     .subtract(otherReservations)
-                    .subtract(activeSameOrUnlinked)
                     .max(BigDecimal.ZERO);
             List<UUID> globalOwners=ownIds.isEmpty()?List.of(new UUID(0,0)):List.copyOf(ownIds);
             BigDecimal globalBudget=scalarDecimal(em.createNativeQuery("""
@@ -1253,20 +1190,14 @@ public class SalesShipmentService {
                       -COALESCE((SELECT sum(reservation.qty-reservation.consumed_qty-reservation.released_qty) FROM stock_reservations reservation
                         WHERE reservation.goods_id=:gid AND reservation.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)
                           AND reservation.status=0 AND NOT reservation.is_deleted
-                          AND (reservation.order_item_id IS NULL OR reservation.order_item_id NOT IN (:ownIds))),0)
-                      -COALESCE((SELECT sum(other_item.qty*COALESCE(other_item.unit_rate,1)) FROM sales_shipment_items other_item
-                        JOIN sales_shipments other ON other.id=other_item.shipment_id WHERE other.id<>:shipmentId AND other.status=0
-                          AND NOT other.is_deleted AND NOT other.rejected AND NOT other_item.is_deleted
-                          AND other.warehouse_work_status IN('PICKING','PICKED') AND other.shipment_kind<>'DIRECT_CUSTOMER'
-                          AND other_item.goods_id=:gid AND other_item.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)
-                          AND (other_item.order_item_id IS NULL OR other_item.order_item_id IN (:ownIds))),0),0)::numeric
+                          AND (reservation.order_item_id IS NULL OR reservation.order_item_id NOT IN (:ownIds))),0),0)::numeric
                     """).setParameter("gid",key.goodsId()).setParameter("cid",key.colorId())
-                    .setParameter("ownIds",globalOwners).setParameter("shipmentId",shipment.getId()));
+                    .setParameter("ownIds",globalOwners));
             movable=movable.min(globalBudget);
             if (entry.getValue().compareTo(movable) > 0) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "出货仓可拣库存不足(已扣安全库存、其它硬预留和在拣任务)：可拣 "
+                        "出货仓可出库存不足(已扣安全库存与其它硬预留)：可出 "
                                 + movable.stripTrailingZeros().toPlainString()
                                 + "，本单需要 "
                                 + entry.getValue().stripTrailingZeros().toPlainString());
@@ -1291,33 +1222,15 @@ public class SalesShipmentService {
                         .setParameter("gid", key.goodsId())
                         .setParameter("cid", key.colorId())
                         .setParameter("wid", shipment.getWarehouseId()));
-                BigDecimal ownActive = scalarDecimal(em.createNativeQuery("""
-                        SELECT COALESCE(SUM(
-                            si.qty * COALESCE(NULLIF(si.unit_rate,0),1)),0)
-                        FROM sales_shipment_items si
-                        JOIN sales_shipments s ON s.id = si.shipment_id
-                        WHERE s.id <> :shipmentId
-                          AND s.warehouse_id = :wid
-                          AND s.status = 0
-                          AND COALESCE(s.rejected,false) = false
-                          AND COALESCE(s.is_deleted,false) = false
-                          AND COALESCE(si.is_deleted,false) = false
-                          AND s.warehouse_work_status IN ('PICKING','PICKED')
-                          AND si.order_item_id IN (:ownIds)
-                          AND si.goods_id = :gid
-                          AND si.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)
-                        """).setParameter("shipmentId", shipment.getId())
-                        .setParameter("wid", shipment.getWarehouseId())
-                        .setParameter("ownIds", List.of(ownOrderItem))
-                        .setParameter("gid", key.goodsId())
-                        .setParameter("cid", key.colorId()));
+                // 同一订单行的其它出货单：一步式下要么尚未确认（对本事务不可见且被
+                // goods/color 互斥锁串行化），要么已确认——consumeForOrderItem 已经扣过
+                // consumed_qty，eligible 自动变小。无需再减"在拣任务"占用。
                 BigDecimal need = linkedRequested
-                        .getOrDefault(ownOrderItem, BigDecimal.ZERO)
-                        .add(ownActive);
+                        .getOrDefault(ownOrderItem, BigDecimal.ZERO);
                 if (eligible.compareTo(need) < 0) {
                     throw new ApiException(
                             ErrorCode.CONFLICT,
-                            "订单硬预留不在当前出货仓或已由其它在拣任务占用");
+                            "订单硬预留不在当前出货仓或已被消耗");
                 }
             }
         }
@@ -1397,7 +1310,7 @@ public class SalesShipmentService {
                         shipment.getWarehouseWorkStatus())) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "财务审核或反审只允许在仓库开始拣货前；已开始作业须先退拣并恢复待拣货");
+                    "财务审核或反审只允许在仓库确认出库前；已出库的单据不可再审核或反审");
         }
     }
 
@@ -1456,7 +1369,7 @@ public class SalesShipmentService {
         }
         throw new ApiException(
                 ErrorCode.CONFLICT,
-                "当前出货单须由仓库依次完成开始拣货、拣货完成、交接出库");
+                "当前出货单须由仓库在出库任务中心确认出库");
     }
 
     private ShipmentDetail approveLocked(
@@ -1833,7 +1746,7 @@ public class SalesShipmentService {
         requireFinanceAuditClearedForMutation(s);
         if (!SalesShipment.WORK_PENDING_PICK.equals(s.getWarehouseWorkStatus())) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "仓库作业已开始或仍在异常处理；须先完成退拣并恢复待拣货，才可驳回释放订单预留");
+                    "出货单已确认出库，不可驳回释放订单预留");
         }
         List<SalesShipmentItem> items = itemRepo.findByShipmentIdOrderByLineNoAsc(id);
         lockStoredOrderTargets(items);
@@ -2608,7 +2521,7 @@ public class SalesShipmentService {
                 || storedItems.size() != authoritativeItems.size()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "出货商业条款与已审订货单不一致，请退回待拣货并重新生成");
+                    "出货商业条款与已审订货单不一致，请由财务反审后重新生成");
         }
         for (int i = 0; i < storedItems.size(); i++) {
             SalesShipmentItem stored = storedItems.get(i);

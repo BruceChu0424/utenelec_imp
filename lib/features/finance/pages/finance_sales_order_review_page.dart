@@ -19,9 +19,13 @@ import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -424,139 +428,172 @@ class _FinanceSalesOrderReviewPageState
         leading: UtenBackButton(onPressed: _leaveReview),
       ),
       body: SafeArea(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-            : _error != null
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(UtenSpacing.s16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _error!,
-                        style: TextStyle(color: theme.colorScheme.error),
+        child: Stack(
+          children: [
+            _loading
+                ? const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  )
+                : _error != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(UtenSpacing.s16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _error!,
+                            style: TextStyle(color: theme.colorScheme.error),
+                          ),
+                          const SizedBox(height: UtenSpacing.s12),
+                          UtenButton(
+                            type: UtenButtonType.secondary,
+                            icon: Icons.refresh_rounded,
+                            onPressed: _load,
+                            child: const Text('重试'),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: UtenSpacing.s12),
-                      UtenButton(
-                        type: UtenButtonType.secondary,
-                        icon: Icons.refresh_rounded,
-                        onPressed: _load,
-                        child: const Text('重试'),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            : _review == null
-            ? const SizedBox.shrink()
-            : UtenContentContainer.narrow(
-                child: ListView(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  children: [
-                    if (_canConfirm &&
-                        !_review!.financeConfirmed &&
-                        !_review!.financeRejected &&
-                        _reviewClaim?.isReady != true) ...[
-                      FinanceReviewClaimNotice(
-                        claim: _reviewClaim,
-                        onRetry: _busy ? null : _load,
-                      ),
-                      const SizedBox(height: UtenSpacing.s12),
-                    ],
-                    _statusStrip(theme, _review!),
-                    const SizedBox(height: UtenSpacing.s12),
-                    _clientFinanceCard(theme, _review!),
-                    const SizedBox(height: UtenSpacing.s12),
-                    _orderCard(theme, _review!),
-                    if (canViewMoneySummary) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      SalesOrderMoneySummaryCard(salesOrderId: widget.id),
-                    ],
-                    const SizedBox(height: UtenSpacing.s12),
-                    if (_review!.commercialChanges.isNotEmpty) ...[
-                      _commercialChangesCard(theme, _review!),
-                      const SizedBox(height: UtenSpacing.s16),
-                    ],
-                    if (_review!.qtyChanges.isNotEmpty) ...[
-                      _qtyChangesCard(theme, _review!),
-                      const SizedBox(height: UtenSpacing.s12),
-                    ],
-                    _itemsCard(theme, _review!),
-                    // 销售在订单上上传的合同/确认件（2026-09-09）：财务确认前
-                    // 可直接查看（图片/PDF/文本内嵌预览），不再切回销售详情页。
-                    const SizedBox(height: UtenSpacing.s12),
-                    BusinessAttachmentSection(
-                      ownerType: 'SALES_ORDER',
-                      ownerId: _review!.orderId,
-                      // 前端展示门=attachment:view；行级可读性由服务端策略复核。
-                      canView: ref
-                          .watch(currentPermissionsProvider)
-                          .contains(Perm.attachmentView),
-                      canManage: false,
-                      title: '销售附件（合同/客户确认/图片）',
                     ),
-                    if (_review!.financeRejected) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      _rejectRecordCard(theme, _review!),
-                    ],
-                  ],
-                ),
-              ),
-      ),
-      bottomNavigationBar:
-          _review == null ||
-              _review!.financeConfirmed ||
-              _review!.financeRejected ||
-              !_canConfirm
-          ? null
-          : SafeArea(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
-                  border: Border(
-                    top: BorderSide(color: theme.colorScheme.outlineVariant),
-                  ),
-                ),
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                child: _busy
-                    ? const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2.5),
-                          ),
-                          SizedBox(width: UtenSpacing.s12),
-                          Text('正在处理，请稍候…'),
-                        ],
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          UtenButton(
-                            key: const Key('finance-review-reject'),
-                            type: UtenButtonType.danger,
-                            icon: Icons.undo_rounded,
-                            onPressed: _reviewClaim?.isReady == true
-                                ? _reject
-                                : null,
-                            child: const Text('驳回'),
-                          ),
-                          const SizedBox(width: UtenSpacing.s12),
-                          UtenButton(
-                            key: const Key('finance-review-confirm'),
-                            icon: Icons.fact_check_outlined,
-                            onPressed: _reviewClaim?.isReady == true
-                                ? _confirm
-                                : null,
-                            child: const Text('确认通过'),
-                          ),
-                        ],
+                  )
+                : _review == null
+                ? const SizedBox.shrink()
+                // 2026-09-15 表格宽度口径（用户反馈）：整页收进 UtenContentContainer.narrow
+                // ——卡片区与产品明细表同宽、窄幅居中，对齐销售订货单详情页；滚动仍为
+                // 折叠头+表内滚：上滑先收卡片区，明细标题吸顶后再在表格内部滚。
+                : UtenContentContainer.narrow(
+                    child: UtenCollapsingHeaderScrollView(
+                      collapsingHeader: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (_canConfirm &&
+                                !_review!.financeConfirmed &&
+                                !_review!.financeRejected &&
+                                _reviewClaim?.isReady != true) ...[
+                              FinanceReviewClaimNotice(
+                                claim: _reviewClaim,
+                                onRetry: _busy ? null : _load,
+                              ),
+                              const SizedBox(height: UtenSpacing.s12),
+                            ],
+                            _statusStrip(theme, _review!),
+                            const SizedBox(height: UtenSpacing.s12),
+                            _clientFinanceCard(theme, _review!),
+                            const SizedBox(height: UtenSpacing.s12),
+                            _orderCard(theme, _review!),
+                            if (canViewMoneySummary) ...[
+                              const SizedBox(height: UtenSpacing.s12),
+                              SalesOrderMoneySummaryCard(
+                                salesOrderId: widget.id,
+                              ),
+                            ],
+                            const SizedBox(height: UtenSpacing.s12),
+                            if (_review!.commercialChanges.isNotEmpty) ...[
+                              _commercialChangesCard(theme, _review!),
+                              const SizedBox(height: UtenSpacing.s16),
+                            ],
+                            if (_review!.qtyChanges.isNotEmpty) ...[
+                              _qtyChangesCard(theme, _review!),
+                              const SizedBox(height: UtenSpacing.s12),
+                            ],
+                            // 销售在订单上上传的合同/确认件（2026-09-09）：财务确认前
+                            // 可直接查看（图片/PDF/文本内嵌预览），不再切回销售详情页。
+                            BusinessAttachmentSection(
+                              ownerType: 'SALES_ORDER',
+                              ownerId: _review!.orderId,
+                              // 前端展示门=attachment:view；行级可读性由服务端策略复核。
+                              canView: ref
+                                  .watch(currentPermissionsProvider)
+                                  .contains(Perm.attachmentView),
+                              canManage: false,
+                              title: '销售附件（合同/客户确认/图片）',
+                            ),
+                            if (_review!.financeRejected) ...[
+                              const SizedBox(height: UtenSpacing.s12),
+                              _rejectRecordCard(theme, _review!),
+                            ],
+                          ],
+                        ),
                       ),
-              ),
-            ),
+                      body: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenFloatingActionGroup.controlHeight +
+                              UtenSpacing.s32,
+                        ),
+                        child: _itemsCard(theme, _review!),
+                      ),
+                    ),
+                  ),
+            // 处理中屏幕中央加载动画（对齐出货财审专页口径：按钮 isLoading 同步
+            // 转圈，不再用固定底栏占位）。
+            if (_busy)
+              const Positioned.fill(child: UtenBusyOverlay(title: '正在处理，请稍候')),
+          ],
+        ),
+      ),
+      // 2026-09-14 UI 统一口径：底部吸底双决策改右下悬浮组（UtenFloatingActionGroup，
+      // 与出货财审专页/确认列表同款）；大小/高度/禁用态全站统一。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _review == null ? null : _floatingActions(),
+    );
+  }
+
+  /// 右下悬浮操作组：待确认=驳回(红)+确认通过；已确认/已驳回/无权限=只留返回。
+  /// 未完成审核认领时按钮置灰（点击提示原因），认领就绪才可提交决定。
+  Widget _floatingActions() {
+    final claimReady = _reviewClaim?.isReady == true;
+    final canDecide =
+        _canConfirm && !_review!.financeConfirmed && !_review!.financeRejected;
+    if (!canDecide) {
+      return UtenFloatingActionGroup(
+        children: [
+          UtenButton(
+            key: const Key('finance-review-back'),
+            type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
+            icon: Icons.arrow_back_rounded,
+            onPressed: _leaveReview,
+            child: const Text('返回'),
+          ),
+        ],
+      );
+    }
+    return UtenFloatingActionGroup(
+      children: [
+        UtenButton(
+          key: const Key('finance-review-reject'),
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          icon: Icons.undo_rounded,
+          onPressed: claimReady && !_busy ? _reject : null,
+          onDisabledTap: claimReady
+              ? null
+              : () => context.appWarning('请先完成审核认领，再驳回'),
+          child: const Text('驳回'),
+        ),
+        UtenButton(
+          key: const Key('finance-review-confirm'),
+          size: UtenButtonSize.large,
+          icon: Icons.fact_check_outlined,
+          isLoading: _busy,
+          onPressed: claimReady && !_busy ? _confirm : null,
+          onDisabledTap: claimReady
+              ? null
+              : () => context.appWarning('请先完成审核认领，再确认'),
+          child: const Text('确认通过'),
+        ),
+      ],
     );
   }
 
@@ -903,7 +940,10 @@ class _FinanceSalesOrderReviewPageState
     );
   }
 
-  /// 产品明细：保持全局统一表格（MasterDataTableView 嵌入模式），不另造样式。
+  /// 产品明细：保持全局统一表格（MasterDataTableView），2026-09-15 起随折叠容器
+  /// 内滚（primary 拾取联动控制器）——标题钉在 body 顶，表格占满剩余高度内部滚动，
+  /// 合计条走 summaryBar 槽位 + summaryBarInline（表内脚注：跟在最后一行数据
+  /// 之下随表体滚动，不再钉在表体外的底部）。
   Widget _itemsCard(ThemeData theme, SalesOrderFinanceReview r) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -915,97 +955,120 @@ class _FinanceSalesOrderReviewPageState
           ),
         ),
         const SizedBox(height: UtenSpacing.s8),
-        MasterDataTableView<SalesOrderFinanceReviewLine>(
-          embedded: true,
-          columns: [
-            MasterColumnDef(
-              key: 'goods',
-              label: '货品',
-              width: 240,
-              value: (it) {
-                final base = [
-                  if (it.goodsCode != null) it.goodsCode!,
-                  if (it.goodsName != null) it.goodsName!,
-                ].join(' · ');
-                final model = it.clientModel;
-                final suffix = [
-                  if (it.colorName != null) it.colorName!,
-                  if (it.unitName != null) it.unitName!,
-                ].join(' · ');
-                final head = suffix.isEmpty ? base : '$base($suffix)';
-                return (model != null && model.isNotEmpty)
-                    ? '$head · 客型 $model'
-                    : head;
-              },
-            ),
-            MasterColumnDef(
-              key: 'qty',
-              label: '数量',
-              width: 90,
-              type: 'number',
-              value: (it) => _trimNum(it.qty),
-            ),
-            // 实际重量列已下线（2026-09-04：单位已表达重量，销售订单编辑不再录入）。
-            MasterColumnDef(
-              key: 'price',
-              label: '单价',
-              width: 110,
-              type: 'money',
-              value: (it) => _trimNum(it.price),
-            ),
-            MasterColumnDef(
-              key: 'discount',
-              label: '折扣',
-              width: 80,
-              type: 'number',
-              value: (it) => _trimNum(it.discount),
-            ),
-            MasterColumnDef(
-              key: 'amount',
-              label: '金额(${_currencyLabel(r)})',
-              width: 120,
-              type: 'money',
-              value: (it) => _trimNum(it.amountOriginal),
-            ),
-            MasterColumnDef(
-              key: 'remark',
-              label: '备注',
-              width: 160,
-              value: (it) =>
-                  (it.remark?.isNotEmpty ?? false) ? it.remark : null,
-            ),
-          ],
-          items: r.items,
-          facets: const {},
-          nullCounts: const {},
-          filters: const {},
-          onFilterChanged: (_, _) {},
-          emptyMessage: '(无明细)',
-        ),
-        if (r.items.isNotEmpty)
-          UtenTotalsSummaryBar(
-            density: true,
-            entries: [
-              // 合计数量按单位分组（不同单位绝不相加）：多单位显示「12 个 · 3 箱」。
-              UtenTotalEntry(
-                '合计数量',
-                measurementTotalsText(
-                  r.items.map(
-                    (it) => MeasuredAmount(
-                      value: double.tryParse(it.qty ?? '') ?? 0,
-                      unitId: it.unitId,
-                      unitName: it.unitName,
-                    ),
-                  ),
-                ),
+        Expanded(
+          child: MasterDataTableView<SalesOrderFinanceReviewLine>(
+            primary: true,
+            bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+            columns: [
+              // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
+              // 不再拼成「编号 · 名称(颜色 · 单位)」一长串。
+              MasterColumnDef(
+                key: 'goods',
+                label: '货品名称',
+                width: 200,
+                value: (it) => it.goodsName ?? it.goodsCode ?? '—',
               ),
-              UtenTotalEntry(
-                '合计金额(${_currencyLabel(r)})',
-                _money(r.totalOriginal),
-                danger: true,
+              MasterColumnDef(
+                key: 'goodsCode',
+                label: '编号',
+                width: 130,
+                value: (it) => UtenGoodsAttributeCell.text(it.goodsCode),
+                cellBuilder: (_, it) => UtenGoodsAttributeCell(it.goodsCode),
+              ),
+              MasterColumnDef(
+                key: 'colorName',
+                label: '颜色',
+                width: 96,
+                value: (it) => UtenGoodsAttributeCell.text(it.colorName),
+                cellBuilder: (_, it) => UtenGoodsAttributeCell(it.colorName),
+              ),
+              MasterColumnDef(
+                key: 'unitName',
+                label: '单位',
+                width: 80,
+                value: (it) => UtenGoodsAttributeCell.text(it.unitName),
+                cellBuilder: (_, it) => UtenGoodsAttributeCell(it.unitName),
+              ),
+              MasterColumnDef(
+                key: 'clientModel',
+                label: '客型',
+                width: 110,
+                value: (it) => UtenGoodsAttributeCell.text(it.clientModel),
+                cellBuilder: (_, it) => UtenGoodsAttributeCell(it.clientModel),
+              ),
+              MasterColumnDef(
+                key: 'qty',
+                label: '数量',
+                width: 90,
+                type: 'number',
+                value: (it) => _trimNum(it.qty),
+              ),
+              // 实际重量列已下线（2026-09-04：单位已表达重量，销售订单编辑不再录入）。
+              MasterColumnDef(
+                key: 'price',
+                label: '单价',
+                width: 110,
+                type: 'money',
+                value: (it) => _trimNum(it.price),
+              ),
+              MasterColumnDef(
+                key: 'discount',
+                label: '折扣',
+                width: 80,
+                type: 'number',
+                value: (it) => _trimNum(it.discount),
+              ),
+              MasterColumnDef(
+                key: 'amount',
+                label: '金额(${_currencyLabel(r)})',
+                width: 120,
+                type: 'money',
+                value: (it) => _trimNum(it.amountOriginal),
+              ),
+              MasterColumnDef(
+                key: 'remark',
+                label: '备注',
+                width: 160,
+                value: (it) =>
+                    (it.remark?.isNotEmpty ?? false) ? it.remark : null,
               ),
             ],
+            items: r.items,
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+            emptyMessage: '(无明细)',
+            // 2026-09-15 用户口径：合计条属于表格那一块——渲染进表体滚动内容
+            // 末尾（最后一行数据之下），不钉在表体外/按钮上方。
+            summaryBar: r.items.isNotEmpty
+                ? UtenTotalsSummaryBar(
+                    density: true,
+                    entries: [
+                      // 合计数量按单位分组（不同单位绝不相加）：多单位显示「12 个 · 3 箱」。
+                      UtenTotalEntry(
+                        '合计数量',
+                        measurementTotalsText(
+                          r.items.map(
+                            (it) => MeasuredAmount(
+                              value: double.tryParse(it.qty ?? '') ?? 0,
+                              unitId: it.unitId,
+                              unitName: it.unitName,
+                            ),
+                          ),
+                        ),
+                      ),
+                      UtenTotalEntry(
+                        '合计金额(${_currencyLabel(r)})',
+                        _money(r.totalOriginal),
+                        danger: true,
+                      ),
+                    ],
+                  )
+                : null,
+            summaryBarInline: true,
           ),
+        ),
       ],
     );
   }

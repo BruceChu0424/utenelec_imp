@@ -147,6 +147,6 @@ class GoodsCategoryRootScopeTest {
                 categoryId, roots, keyword, Set.of(),
                 null, null, null, null, null, null, null, null,
                 null, null, null,
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null);
     }
 }

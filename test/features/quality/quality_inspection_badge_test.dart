@@ -353,7 +353,7 @@ void main() {
     // go_router 的 push 在测试环境不同步 routeInformationProvider，
     // 以页面内容断言导航结果：明细表打开、任务表格退场。
     expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsOneWidget);
-    expect(find.text('测试物料A(G0001)'), findsOneWidget);
+    expect(find.text('测试物料A'), findsOneWidget);
     expect(find.text('CJ20260822000001'), findsOneWidget);
     expect(find.byKey(const ValueKey('row:receipt-1')), findsNothing);
 
@@ -396,7 +396,7 @@ void main() {
       findsNothing,
     );
     expect(find.textContaining('原单1箱 = 24个'), findsWidgets);
-    await _selectRow(tester, '盒装零件(G0001)');
+    await _selectRow(tester, '盒装零件');
     await tester.enterText(pass, '24');
     await tester.enterText(
       find.byKey(const Key('iqc-report-fail-inspection-item-1')),
@@ -417,7 +417,7 @@ void main() {
     final repository = _dispositionRepository();
     await _pumpInspectionDetailPage(tester, repository);
 
-    await _selectRow(tester, '测试物料(G0001)');
+    await _selectRow(tester, '测试物料');
     // 行内默认：合格=剩余 5、不合格=0。
     expect(
       find.byKey(const Key('iqc-report-pass-inspection-item-1')),
@@ -454,7 +454,7 @@ void main() {
     final repository = _dispositionRepository();
     await _pumpInspectionDetailPage(tester, repository);
 
-    await _selectRow(tester, '测试物料(G0001)');
+    await _selectRow(tester, '测试物料');
     await tester.enterText(
       find.byKey(const Key('iqc-report-pass-inspection-item-1')),
       '0',
@@ -495,9 +495,9 @@ void main() {
     final repository = _twoItemDispositionRepository();
     await _pumpInspectionDetailPage(tester, repository);
 
-    await tester.tap(find.text('测试物料A(G0001)'));
+    await tester.tap(find.text('测试物料A'));
     await tester.pump();
-    await tester.tap(find.text('测试物料B(G0002)'));
+    await tester.tap(find.text('测试物料B'));
     await tester.pumpAndSettle();
     expect(find.byType(UtenSelectionSummaryPill), findsOneWidget);
     expect(find.text('已选 2 项'), findsWidgets);
@@ -529,14 +529,14 @@ void main() {
     final repository = _twoItemDispositionRepository();
     await _pumpInspectionDetailPage(tester, repository);
 
-    await _selectRow(tester, '测试物料A(G0001)');
+    await _selectRow(tester, '测试物料A');
     await _submitReport(tester);
     await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
     await tester.pumpAndSettle();
 
     expect(repository.decideBatchCalls, hasLength(1));
     expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsOneWidget);
-    expect(find.text('测试物料B(G0002)'), findsOneWidget);
+    expect(find.text('测试物料B'), findsOneWidget);
     expect(find.text('CJ20260822000001'), findsOneWidget);
   });
 
@@ -546,7 +546,7 @@ void main() {
       final repository = _dispositionRepository();
       await _pumpInspectionDetailPage(tester, repository);
 
-      await _selectRow(tester, '测试物料(G0001)');
+      await _selectRow(tester, '测试物料');
       await _submitReport(tester);
       await tester.tap(
         find.byKey(const Key('inspection-report-confirm-submit')),

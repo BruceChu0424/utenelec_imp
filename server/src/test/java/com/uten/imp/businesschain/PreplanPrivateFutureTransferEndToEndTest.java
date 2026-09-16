@@ -197,7 +197,80 @@ class PreplanPrivateFutureTransferEndToEndTest {
         finally {org.springframework.security.core.context.SecurityContextHolder.clearContext();}
     }
 
+    // ===== 跨路线在途调入（2026-09-13，V574） ==============================
+    // 外部在途是「最终件」，谁缺谁用：另一份计划已下单未实收的采购份额，
+    // 可以调给本计划的自制（车间）物料，只冲减数量，不改变车间归属。
+
+    @Test void purchaseInTransitCanBeTransferredIntoAWorkshopTargetAndCutsOnlyItsRemainingIssue() {
+        var c=scenario("cross-route-make");
+        AnalysisView a=preview(c,"A","100");
+        var original=order(c,a,"100",BusinessTime.today().plusDays(2));
+        // B 计划把同一个货品确认为「自制（车间）」路线。
+        AnalysisView b=previewWithRoute(c,"B","100","MAKE");
+        var bm=material(b,c.material());
+        assertEquals("MAKE",bm.sourceConfirmed());
+        qty("100",bm.additionalSupplyRecommendedQty());
+
+        var candidate=transfers.sources(b.analysisId(),bm.materialLineId()).getFirst();
+        qty("100",candidate.availableQty());
+        assertEquals("BUY",candidate.route());
+        b=transfers.create(b.analysisId(),request(candidate,bm.materialLineId(),"40",
+                "cross-route-transfer-"+b.analysisId(),false));
+
+        // 计划口径：车间还需安排 60；实物口径：缺口仍是 100（货没到，不能提前开工）。
+        var after=material(analyses.detail(b.analysisId()),c.material());
+        qty("60",after.additionalSupplyRecommendedQty());
+        qty("100",after.demandSupplyGapQty());
+        qty("0",after.exactPeggedQty());
+        // 让出方自己也要补回让出去的 40（它原本只订了刚好 100）。
+        qty("40",material(analyses.detail(a.analysisId()),c.material()).additionalSupplyRecommendedQty());
+
+        // 动作沿用来源路线落库（它确实是一张采购单的份额）……
+        assertEquals("BUY",db.queryForObject(
+                "SELECT route FROM preplan_supply_actions WHERE analysis_id=? AND operation_type='FUTURE_TRANSFER'",
+                String.class,b.analysisId()));
+        // ……但分桶归属跟着目标行走，自制件不会跑到采购桶里去。
+        assertTrue(after.notifiedTargets().contains("MAKE"));
+        assertFalse(after.notifiedTargets().contains("BUY"));
+
+        // 合格入库后才变成实物供给。
+        receive(c,original.item(),"100","cross-route");
+        qty("40",material(analyses.detail(b.analysisId()),c.material()).exactPeggedQty());
+    }
+
+    @Test void publicInTransitCanBeClaimedByAWorkshopTargetAcrossRoutes() {
+        var c=scenario("cross-route-claim");
+        AnalysisView a=preview(c,"A","100");
+        order(c,a,"1000",BusinessTime.today().plusDays(2));
+        AnalysisView e=previewWithRoute(c,"E","300","MAKE");
+        var em=material(e,c.material());
+        e=commands.claimSharedFuture(e.analysisId(),new ClaimSharedFutureRequest(
+                e.version(),e.fingerprint(),"cross-route-claim-"+e.analysisId(),
+                List.of(em.actionGroupKey())));
+        qty("0",material(analyses.detail(e.analysisId()),c.material()).additionalSupplyRecommendedQty());
+        assertEquals("BUY",db.queryForObject(
+                "SELECT route FROM preplan_supply_actions WHERE analysis_id=? AND operation_type='SHARED_FUTURE_CLAIM'",
+                String.class,e.analysisId()));
+        assertTrue(material(analyses.detail(e.analysisId()),c.material())
+                .notifiedTargets().contains("MAKE"));
+    }
+
     private Scenario scenario(String label){var w=fixture.seedWorld(label);fixture.loginAs(w.superAdminUserId());UUID product=UUID.randomUUID(),material=UUID.randomUUID();fixture.insertGoods(product,"FUT-P-"+product,"在途归属产品","自制",w.unitId(),w.unitLegacy());fixture.insertGoods(material,"FUT-M-"+material,"在途归属材料","采购",w.unitId(),w.unitLegacy());fixture.insertBom(product,material,"1");db.update("UPDATE goods SET default_supplier_id=? WHERE id=?",w.supplierId(),material);return new Scenario(w,product,material);}
+    /** 与 preview 相同，只是显式指定该物料的确认路线（用于跨路线调入用例）。 */
+    private AnalysisView previewWithRoute(Scenario c,String label,String quantity,String route){
+        fixture.loginAs(c.world().superAdminUserId());
+        var view=analyses.preview(new PreviewRequest(null,null,null,c.world().warehouseId(),
+                "future-preview-"+c.product()+label,
+                List.of(new PreviewItem("OTHER",null,c.product(),null,c.world().unitId(),
+                        "future-"+c.product()+label,"跨路线在途调入",
+                        BusinessTime.today().plusDays(10),new BigDecimal(quantity)))));
+        return analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),
+                "future-route-"+view.analysisId(),
+                view.flatMaterials().stream().filter(MaterialView::actionable)
+                        .map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),
+                                row.goodsId().equals(c.material())?route:"MAKE",null)).toList()));
+    }
+
     private AnalysisView preview(Scenario c,String label,String quantity){fixture.loginAs(c.world().superAdminUserId());String route="委外".equals(db.queryForObject("SELECT source_type FROM goods WHERE id=?",String.class,c.material()))?"SUBCONTRACT":"BUY";var view=analyses.preview(new PreviewRequest(null,null,null,c.world().warehouseId(),"future-preview-"+c.product()+label,List.of(new PreviewItem("OTHER",null,c.product(),null,c.world().unitId(),"future-"+c.product()+label,"私有在途与公共在途独立",BusinessTime.today().plusDays(10),new BigDecimal(quantity)))));return analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"future-route-"+view.analysisId(),view.flatMaterials().stream().filter(MaterialView::actionable).map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.goodsId().equals(c.material())?route:"MAKE",null)).toList()));}
     private Ordered order(Scenario c,AnalysisView view,String quantity,LocalDate eta){
         var material=material(view,c.material());commands.notifySupply(view.analysisId(),new NotifyRequest(view.version(),view.fingerprint(),"future-notify-"+view.analysisId(),"BUY",List.of(material.materialLineId()),List.of(),null));

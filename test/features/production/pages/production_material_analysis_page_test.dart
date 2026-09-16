@@ -1363,6 +1363,7 @@ void main() {
         ..['availableQty'] = 0
         ..['shortageQty'] = 1000
         ..['demandSupplyGapQty'] = 0
+        ..['additionalSupplyRecommendedQty'] = 0
         ..['safetyStockQty'] = 100000
         ..['mainWarehousePublicAvailableQty'] = 0
         ..['mainWarehouseOpenSafetySupplyQty'] = 0
@@ -1600,6 +1601,9 @@ void main() {
           findsNothing,
         );
         expect(find.text('物料存放位置'), findsNothing);
+        // V590 单一事实源口径：所属仓库列只读货品主档（任何入库自动回写），
+        // 不再从 warehouseBreakdown 实时推导——本夹具货品未登记归属且无入库
+        // 事件，界面不露仓库名。
         expect(find.text('成品仓库'), findsNothing);
         expect(find.text('轨道车间'), findsNothing);
         final main = tester.widget<UtenDropdownField>(
@@ -2024,7 +2028,7 @@ void main() {
       expect(find.text('等待下达车间'), findsWidgets);
       await _tapBucketRowCheckbox(tester, '待自制壳体');
       expect(_bucketRowCheckboxValue(tester, '待自制壳体'), isTrue);
-      expect(find.text('创建生产计划(1)'), findsOneWidget);
+      expect(find.textContaining(RegExp(r'创建生产计划.*\(1\)')), findsOneWidget);
       final bucketTable = find.byWidgetPredicate(
         (widget) => widget is UtenEditableGrid<EditableGridRow>,
       );
@@ -2068,7 +2072,7 @@ void main() {
       expect(find.text('待自制壳体'), findsOneWidget);
       expect(find.text('等待下发委外'), findsWidgets);
       await _tapBucketRowCheckbox(tester, '待自制壳体');
-      expect(find.text('下达委外(1)'), findsOneWidget);
+      expect(find.textContaining(RegExp(r'下达委外.*\(1\)')), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -2098,7 +2102,7 @@ void main() {
       expect(find.textContaining('本批需求待通知'), findsOneWidget);
       await _tapBucketRowCheckbox(tester, '待自制壳体');
       expect(_bucketRowCheckboxValue(tester, '待自制壳体'), isTrue);
-      expect(find.text('下达委外(1)'), findsOneWidget);
+      expect(find.textContaining(RegExp(r'下达委外.*\(1\)')), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -2157,7 +2161,7 @@ void main() {
     expect(find.text('等待下达车间'), findsWidgets);
     await _tapBucketRowCheckbox(tester, '待自制壳体');
     expect(_bucketRowCheckboxValue(tester, '待自制壳体'), isTrue);
-    expect(find.text('创建生产计划(1)'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'创建生产计划.*\(1\)')), findsOneWidget);
   });
 
   testWidgets('non-actionable MAKE remains read-only in the waiting bucket', (
@@ -2445,6 +2449,10 @@ void main() {
           'allocatedQty': 4,
         },
       ];
+      // 前置自制台账建起来后，服务端的有效在途覆盖把这 4 全吃掉，
+      // 「还可下达」随之归零（ACTIVE_FUTURE_COVERAGE_SQL 里
+      // preplan_subcontract_make_tasks 的 required_qty − notified_qty 那一支）。
+      parent['additionalSupplyRecommendedQty'] = 0;
       final harness = await _pumpPage(
         tester,
         size: const Size(1600, 1000),
@@ -2804,7 +2812,7 @@ void main() {
       // 委外路线同样在桶详情页勾选批量下达（V458：有子层由服务端转前置自制）。
       await _openBucketDetail(tester, 'subcontract');
       await _tapBucketRowCheckbox(tester, '共享紧固件');
-      expect(find.text('下达委外(1)'), findsOneWidget);
+      expect(find.textContaining(RegExp(r'下达委外.*\(1\)')), findsOneWidget);
     },
   );
 
@@ -2934,6 +2942,77 @@ void main() {
       {'actionGroupKey': 'action-material-path-1', 'route': 'MAKE'},
     ]);
   });
+
+  testWidgets(
+    'route confirmation shows the action busy overlay while saving is in flight',
+    (tester) async {
+      // 2026-09-15 用户口径「点了在等没反馈像卡住」：确认路线是分批网络提交，
+      // 期间必须有全屏加载遮罩（UtenBusyOverlay），请求结束后撤下。
+      final routesGate = Completer<void>();
+      final json = _analysisJson(const ['CONFIRM_ROUTES']);
+      json['flatMaterials'] = [
+        _materialJson(
+          id: 'material-path-1',
+          level: 2,
+          path: ['测试产品', '组件 A', '共享紧固件'],
+          routeConfirmed: false,
+        ),
+      ];
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisRoute,
+        },
+        allowedActions: const ['CONFIRM_ROUTES'],
+        analysisJson: json,
+        responseOverride: (request) async {
+          if (request.method == 'PUT' && request.path.endsWith('/routes')) {
+            await routesGate.future;
+            return _analysisJson(const [
+              'CONFIRM_ROUTES',
+            ], routeConfirmed: true);
+          }
+          return null;
+        },
+      );
+      await _chooseMaterialRoute(
+        tester,
+        'material-path-1',
+        '自制',
+        confirm: false,
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('material-analysis-create-routes')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(
+        find.byKey(const Key('material-analysis-action-busy')),
+        findsOneWidget,
+      );
+      expect(find.text('正在确认物料路线'), findsOneWidget);
+
+      routesGate.complete();
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('material-analysis-action-busy')),
+        findsNothing,
+      );
+      final routeRequest = harness.requests.singleWhere(
+        (request) => request.method == 'PUT',
+      );
+      expect((routeRequest.data as Map<String, dynamic>)['decisions'], [
+        {'actionGroupKey': 'action-material-path-1', 'route': 'MAKE'},
+      ]);
+    },
+  );
 
   testWidgets(
     'allowedActions VIEW blocks every server write despite local permissions',
@@ -4508,7 +4587,12 @@ void main() {
           final first = materials.firstWhere(
             (material) => material['materialLineId'] == 'buy-line-1',
           );
-          // 服务端权威投影：在途 5（分摊量来自 preplan_supply_action_allocations）。
+          // 服务端权威投影：在途 5（分摊量来自 preplan_supply_action_allocations），
+          // 「还可下达」随之由 8 降到 3。两者必须一起改——服务端的
+          // `additionalSupplyRecommendedQty` 就是 max(0, 缺口 − 有效在途覆盖)，
+          // 只改 downstreamReferences 会造出一个真实服务端不可能返回的快照
+          // （2026-09-15：界面已改为以该字段为唯一主口径）。
+          first['additionalSupplyRecommendedQty'] = 3;
           first['downstreamReferences'] = [
             {
               'route': 'BUY',
@@ -5803,7 +5887,10 @@ void main() {
       await tester.ensureVisible(transferEntry);
       await tester.tap(transferEntry);
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('material-transfer-launcher')), findsOneWidget);
+      expect(
+        find.byKey(const Key('material-transfer-launcher')),
+        findsOneWidget,
+      );
       final spotButton = tester.widget<UtenButton>(
         find.byKey(const Key('transfer-launcher-spot')),
       );
@@ -5811,7 +5898,9 @@ void main() {
       expect(find.textContaining('从其他计划已入库中调入（0 个来源）'), findsOneWidget);
       expect(
         tester
-            .widget<UtenButton>(find.byKey(const Key('transfer-launcher-claim')))
+            .widget<UtenButton>(
+              find.byKey(const Key('transfer-launcher-claim')),
+            )
             .onPressed,
         isNull,
         reason: '公共在途无可用来源同样置灰',
@@ -6439,10 +6528,21 @@ void main() {
       await tester.tap(layoutToggle);
       await tester.pumpAndSettle();
       // Zero-demand delegated rows do not inflate material aggregate counts.
+      //
+      // 2026-09-15：这条断言原来直接在「全部」视图里判 findsNothing，而全部
+      // 视图本就显示所有节点——它能绿只是因为该行恰好被挤到视口之外（列宽
+      // 或行高一变就翻红，本轮树形列改动就踩到了）。改为在「只看缺料」视图
+      // 里断言，才是它真正要守的口径：零需求的已转交行不算缺料。
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-view-shortage')),
+      );
+      await tester.pumpAndSettle();
       expect(
         find.byKey(const ValueKey('material-aggregate-goods-delegated||个')),
         findsNothing,
       );
+      await tester.tap(find.byKey(const ValueKey('material-bom-view-all')));
+      await tester.pumpAndSettle();
       final byProduct = find.byKey(
         const ValueKey('material-bom-layout-product'),
       );
@@ -6698,7 +6798,7 @@ void main() {
         const Key('material-analysis-bucket-action-ready'),
       );
       expect(generate, findsOneWidget);
-      expect(find.text('创建生产计划(1)'), findsOneWidget);
+      expect(find.textContaining(RegExp(r'创建生产计划.*\(1\)')), findsOneWidget);
 
       // 点生成：数量已默认、车间未选 → 校验拦截，不发起任何计划请求、
       // 留在分桶页（toast 在无通知宿主的 harness 里不渲染，以请求与
@@ -7150,7 +7250,8 @@ void main() {
       material
         ..['actionable'] = false
         ..['shortageQty'] = 0
-        ..['demandSupplyGapQty'] = 0;
+        ..['demandSupplyGapQty'] = 0
+        ..['additionalSupplyRecommendedQty'] = 0;
     }
     return analysis;
   }
@@ -7289,7 +7390,8 @@ void main() {
       material
         ..['actionable'] = false
         ..['shortageQty'] = 0
-        ..['demandSupplyGapQty'] = 0;
+        ..['demandSupplyGapQty'] = 0
+        ..['additionalSupplyRecommendedQty'] = 0;
     }
 
     final harness = await _pumpPage(
@@ -8019,14 +8121,29 @@ class _FakeDepartmentRepository implements DepartmentRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-/// 点可安排桶计划行的「生产车间」格（空态「点击选择」），在右侧滑窗里点选
-/// 车间（单选点行即选定返回）；负责人由车间经理自动带出（黄标提醒核对）。
+/// 点可安排桶计划行的「生产车间」格，在右侧滑窗里点选车间（单选点行即选定
+/// 返回）；负责人由车间经理自动带出（黄标提醒核对）。
+///
+/// 按**单元格 key** 定位，不按空态文案「点击选择」：同一行里不止一个 picker 格
+/// 用这句占位(2026-09-15 加的「所属仓库」列就排在生产车间之前)，按文案取
+/// `.first` 会点开隔壁那个面板。
 Future<void> _pickBucketRowWorkshop(
   WidgetTester tester,
   Finder row,
   String workshopName,
 ) async {
-  final cell = find.descendant(of: row, matching: find.text('点击选择')).first;
+  final cell = find
+      .descendant(
+        of: row,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget.key is ValueKey<String> &&
+              (widget.key as ValueKey<String>).value.startsWith(
+                'material-analysis-bucket-workshop-',
+              ),
+        ),
+      )
+      .first;
   await tester.ensureVisible(cell);
   await tester.pumpAndSettle();
   await tester.tap(cell);
@@ -8805,6 +8922,10 @@ Map<String, dynamic> _priorityMakeSupplementAnalysisJson({
     'requiredQty': subcontract ? 8 : 0,
     'shortageQty': 4,
     'demandSupplyGapQty': subcontract ? 4 : 0,
+    // 服务端的「还可下达」= max(0, 缺口 − 有效在途覆盖)，必须与缺口一起改；
+    // 只改 demandSupplyGapQty 会留下一个真实服务端不可能返回的快照
+    // （界面以该字段为唯一主口径，2026-09-15）。
+    'additionalSupplyRecommendedQty': subcontract ? 4 : 0,
     'priorityPendingQty': 4,
     'crossReallocatedOutQty': 4,
     'actionable': subcontract,
@@ -8948,7 +9069,8 @@ Map<String, dynamic> _workshopRootTransferJson({bool transferred = false}) {
 Map<String, dynamic> _futureCoverageAnalysisJson(
   String route, {
   required bool claimed,
-}) {  final json = _analysisJson(const [
+}) {
+  final json = _analysisJson(const [
     'NOTIFY_SUPPLY',
     'GENERATE_PLAN',
     'CLAIM_SHARED_FUTURE',
@@ -9241,6 +9363,10 @@ Map<String, dynamic> _requirementStateMaterial({
   'availableQty': 0,
   'shortageQty': shortageQty,
   'demandSupplyGapQty': demandSupplyGapQty,
+  // 服务端的「还可下达」= max(0, 缺口 − 有效在途覆盖)：本夹具没有在途，
+  // 所以与缺口同值。不能沿用 _routeMaterial 的默认 8——那是真实服务端
+  // 不可能给出的组合（2026-09-15 起界面以该字段为唯一主口径）。
+  'additionalSupplyRecommendedQty': demandSupplyGapQty,
   'requirementState': state,
   'actionable': actionable,
   if (delegated) 'delegatedToAnalysisLineId': 'make-child-owner-12345678',

@@ -89,4 +89,21 @@ public class SupplierSaveRequest {
 
     /** 乐观锁版本（编辑时回传详情读到的 version；新建忽略。不符即 409）。 */
     private Long version;
+
+    /** 默认币种（V593）；presence 语义同结账方式：不带键=不动。 */
+    private UUID defaultCurrencyId;
+    private boolean defaultCurrencyReferencePresent;
+
+    @com.fasterxml.jackson.annotation.JsonSetter("defaultCurrencyId")
+    public void setDefaultCurrencyReference(UUID value) {
+        defaultCurrencyId = value;
+        defaultCurrencyReferencePresent = true;
+    }
+
+    public boolean hasDefaultCurrencyReference() {
+        return defaultCurrencyReferencePresent;
+    }
+
+    /** 默认税率（V593）；null=保持原值。 */
+    private java.math.BigDecimal defaultTaxRate;
 }

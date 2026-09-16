@@ -1620,7 +1620,7 @@
     }
   },
   "warehouseOutboundBatchReview": "销售出库批量核对",
-  "warehouseOutboundBatchHint": "请逐项核对所选单据的货品、数量、单位、仓库与建议库位；确认后办理当前作业阶段。",
+  "warehouseOutboundBatchHint": "请逐项核对所选单据的货品、数量、单位、仓库与实际库位；确认后一次性出库。",
   "warehouseOutboundBatchConfirm": "确认对所选 {count} 张单据执行{action}？",
   "@warehouseOutboundBatchConfirm": {
     "placeholders": {
@@ -1650,7 +1650,7 @@
   },
   "warehouseOutboundBatchSelect": "请先选择可办理任务",
   "warehouseOutboundBatchReason": "处理说明",
-  "warehouseOutboundBatchReasonRequired": "请填写具体说明",
+  "warehouseOutboundConfirmShipment": "确认出库",
   "warehouseOutboundBillNo": "出货单号",
   "warehouseOutboundClient": "客户",
   "warehouseOutboundWarehouse": "仓库",
@@ -1668,10 +1668,6 @@
   "warehouseOutboundClientProductCode": "客户产品号",
   "warehouseOutboundClientModel": "客户型号",
   "warehouseOutboundSourceOrder": "来源订单",
-  "warehouseOutboundStartPicking": "开始拣货",
-  "warehouseOutboundFinishPicking": "拣货完成",
-  "warehouseOutboundHandOver": "交接出库",
-  "warehouseOutboundRestorePending": "恢复待拣货",
   "warehouseStockOutboundTitle": "批量出库详情",
   "warehouseStockOutboundAction": "批量出库",
   "warehouseStockOutboundConfirm": "确认批量出库",

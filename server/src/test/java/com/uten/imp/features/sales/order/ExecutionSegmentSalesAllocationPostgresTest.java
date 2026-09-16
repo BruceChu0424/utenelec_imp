@@ -222,7 +222,7 @@ class ExecutionSegmentSalesAllocationPostgresTest {
                 null, null, null, null, em, null, null, null, null,
                 mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
                 mock(SalesOrderRevisionService.class),
-                org.mockito.Mockito.mock(com.uten.imp.features.sales.SalesMutationFootprintService.class));
+                org.mockito.Mockito.mock(com.uten.imp.features.sales.SalesMutationFootprintService.class), null);
         UUID orderItemId = UUID.randomUUID();
         SalesOrderItem item = new SalesOrderItem();
         item.setQty(new BigDecimal("10"));

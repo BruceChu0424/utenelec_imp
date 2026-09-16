@@ -8,6 +8,21 @@ import 'package:uten_imp/features/operations_workbench/models/operations_workben
 import 'package:uten_imp/features/operations_workbench/pages/operations_workbench_page.dart';
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
 
+/// 选中工具条分段：分段铺得开时直接点；小屏放不下时工具条收成「分类」下拉
+/// 按钮（2026-09-14 起不再左右拖），先点开下拉再点目标菜单项。
+Future<void> _selectSegment(WidgetTester tester, String label) async {
+  final segment = find.text(label);
+  if (tester.any(segment)) {
+    await tester.tap(segment);
+    await tester.pump();
+    return;
+  }
+  await tester.tap(find.text('分类'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(label).last);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets(
     'purchase batch action requires every selected request item link',
@@ -79,7 +94,7 @@ void main() {
 
       // 新范式：默认不选阶段（只拉一次概览徽章），点「申请待分解」段后才
       // 加载任务列表，勾选/批量门禁都建立在阶段选中之后。
-      await tester.tap(find.text('申请待分解'));
+      await _selectSegment(tester, '申请待分解');
       await tester.pumpAndSettle();
 
       expect(find.text('采购任务工作台'), findsOneWidget);
@@ -206,7 +221,7 @@ void main() {
 
       // 新阶段段交互（UtenFilterToolbar）：默认不选段只拉概览徽章，
       // 点「申请待分解」段后才加载任务列表。
-      await tester.tap(find.text('申请待分解'));
+      await _selectSegment(tester, '申请待分解');
       await tester.pumpAndSettle();
 
       // 归组行：货品列显示“N 种物料 · N 行”摘要、单据号列显示申请号，
@@ -302,7 +317,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('财务已通过'));
+      await _selectSegment(tester, '财务已通过');
       await tester.pumpAndSettle();
 
       expect(find.text('8 种物料 · 8 行'), findsOneWidget);
@@ -367,7 +382,7 @@ void main() {
 
     // 默认未选阶段 → 无任务卡。点「申请待分解」段触发的加载同样被网关挂起，
     // 手动放行后内容才出现（刷新语义与新范式下的首次列表加载一致）。
-    await tester.tap(find.text('申请待分解'));
+    await _selectSegment(tester, '申请待分解');
     await tester.pump();
     gateway.completeRefresh();
     await tester.pumpAndSettle();
@@ -441,14 +456,14 @@ void main() {
       expect(gateway.exceptions, [null]);
 
       // 先选「申请待分解」阶段段，任务列表才加载。
-      await tester.tap(find.text('申请待分解'));
+      await _selectSegment(tester, '申请待分解');
       await tester.pumpAndSettle();
       expect(gateway.statuses.last, 'WAITING_ORDER');
       expect(gateway.exceptions.last, isNull);
 
       // 阶段内点异常小类「逾期缺料」：带异常参数重新加载，阶段筛选保留；
       // 「全部逾期」（OVERDUE_ANY 聚合段）2026-09-03 起不再显示。
-      await tester.tap(find.text('逾期缺料'));
+      await _selectSegment(tester, '逾期缺料');
       await tester.pumpAndSettle();
 
       expect(gateway.exceptions.last, 'OVERDUE_SHORTAGE');
@@ -507,7 +522,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // 默认不选阶段：先点「申请待分解」段加载任务卡，再断言脱敏与权限隐藏。
-      await tester.tap(find.text('申请待分解'));
+      await _selectSegment(tester, '申请待分解');
       await tester.pumpAndSettle();
 
       expect(find.text('无权查看关联单据'), findsOneWidget);
@@ -573,7 +588,7 @@ void main() {
         findsNothing,
       );
 
-      await tester.tap(find.text('待备料 / 待领取'));
+      await _selectSegment(tester, '待备料 / 待领取');
       await tester.pumpAndSettle();
 
       expect(
@@ -657,18 +672,25 @@ void main() {
 
         // 默认不选阶段：仅一次概览请求（status=null）。
         expect(gateway.statuses, [null]);
-        await tester.tap(find.text(scenario.stageLabel));
+        await _selectSegment(tester, scenario.stageLabel);
         await tester.pumpAndSettle();
 
         expect(gateway.statuses.last, scenario.status);
         expect(tester.takeException(), isNull);
-        // 阶段段保持单选选中（零计数不使分段失效），引导占位消失。
-        final stageRow = tester.widget<SegmentedButton<dynamic>>(
-          find.byKey(
-            Key('operations-workbench-stages-${scenario.department.apiValue}'),
-          ),
+        // 阶段段保持单选选中（零计数不使分段失效），引导占位消失。小屏下
+        // 分段条收成「分类」下拉（2026-09-14 起），选中态改从两种形态断言：
+        // 铺开的 SegmentedButton 或收起后按钮上的选中标签。
+        final stageRow = find.byKey(
+          Key('operations-workbench-stages-${scenario.department.apiValue}'),
         );
-        expect(stageRow.selected.length, 1);
+        if (tester.any(stageRow)) {
+          expect(
+            tester.widget<SegmentedButton<dynamic>>(stageRow).selected.length,
+            1,
+          );
+        } else {
+          expect(find.text(scenario.stageLabel), findsOneWidget);
+        }
         expect(find.text('在上方选择阶段后开始办理'), findsNothing);
       },
     );
@@ -699,9 +721,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // 异常小类行在选中阶段后才出现：先点「申请待分解」，再点「逾期缺料」。
-    await tester.tap(find.text('申请待分解'));
+    await _selectSegment(tester, '申请待分解');
     await tester.pumpAndSettle();
-    await tester.tap(find.text('逾期缺料'));
+    await _selectSegment(tester, '逾期缺料');
     await tester.pumpAndSettle();
 
     expect(gateway.exceptions.last, 'OVERDUE_SHORTAGE');
@@ -744,21 +766,21 @@ void main() {
     expect(find.text('逾期缺料'), findsNothing);
 
     // 点「申请待分解」阶段段：单选生效，异常小类行解锁出现。
-    await tester.tap(find.text('申请待分解'));
+    await _selectSegment(tester, '申请待分解');
     await tester.pumpAndSettle();
     expect(gateway.statuses.last, 'WAITING_ORDER');
     expect(gateway.exceptions.last, isNull);
     expect(find.text('逾期缺料'), findsOneWidget);
 
     // 阶段内点异常段「逾期缺料」：异常与阶段组合（状态筛选保留）。
-    await tester.tap(find.text('逾期缺料'));
+    await _selectSegment(tester, '逾期缺料');
     await tester.pumpAndSettle();
     expect(gateway.statuses.last, 'WAITING_ORDER');
     expect(gateway.exceptions.last, 'OVERDUE_SHORTAGE');
     expect(tester.takeException(), isNull);
 
     // 切换到另一阶段段：阶段单选切换，且异常小类重置（不沿用上一个异常）。
-    await tester.tap(find.text('等待财务审核'));
+    await _selectSegment(tester, '等待财务审核');
     await tester.pumpAndSettle();
     expect(gateway.statuses.last, 'ORDER_PENDING_APPROVAL');
     expect(gateway.exceptions.last, isNull);
@@ -797,7 +819,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // 点「申请待分解」：此后该网关返回的概览不再带任何 statusCounts。
-      await tester.tap(find.text('申请待分解'));
+      await _selectSegment(tester, '申请待分解');
       await tester.pumpAndSettle();
       expect(gateway.statuses, [null, 'WAITING_ORDER']);
 
@@ -815,7 +837,7 @@ void main() {
       expect(find.text('在上方选择阶段后开始办理'), findsNothing);
 
       // 阶段段在「选项缺失」的刷新后仍可继续切换。
-      await tester.tap(find.text('等待财务审核'));
+      await _selectSegment(tester, '等待财务审核');
       await tester.pumpAndSettle();
       expect(gateway.statuses.last, 'ORDER_PENDING_APPROVAL');
     },

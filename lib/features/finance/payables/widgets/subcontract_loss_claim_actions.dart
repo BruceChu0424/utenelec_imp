@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
+import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
@@ -359,28 +360,27 @@ class _LossDecisionEditorState extends ConsumerState<_LossDecisionEditor> {
           ],
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              UtenButton(
-                type: UtenButtonType.secondary,
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('取消'),
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              UtenButton(
-                icon: _disputed
-                    ? Icons.report_problem_outlined
-                    : Icons.fact_check_outlined,
-                onPressed: _submit,
-                child: Text(_disputed ? '提交争议' : '提交责任决定'),
-              ),
-            ],
+      // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组，按钮统一 large。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: UtenFloatingActionGroup(
+        children: [
+          UtenButton(
+            type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
           ),
-        ),
+          UtenButton(
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
+            icon: _disputed
+                ? Icons.report_problem_outlined
+                : Icons.fact_check_outlined,
+            onPressed: _submit,
+            child: Text(_disputed ? '提交争议' : '提交责任决定'),
+          ),
+        ],
       ),
     );
   }
@@ -690,15 +690,19 @@ class _OffsetTargetPickerState extends ConsumerState<_OffsetTargetPicker> {
                 );
               },
             ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: UtenButton(
+      // 2026-09-14 UI 统一口径：吸底操作按钮改右下悬浮组，统一 large。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: UtenFloatingActionGroup(
+        children: [
+          UtenButton(
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
             icon: Icons.check_rounded,
             onPressed: _loading ? null : _confirm,
             child: Text('确认选择 (${_selected.length})'),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -987,15 +991,19 @@ class _LossFulfillmentEditorState
           ],
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: UtenButton(
+      // 2026-09-14 UI 统一口径：吸底操作按钮改右下悬浮组，统一 large。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: UtenFloatingActionGroup(
+        children: [
+          UtenButton(
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
             icon: Icons.verified_outlined,
             onPressed: _submit,
             child: const Text('确认履约'),
           ),
-        ),
+        ],
       ),
     );
   }

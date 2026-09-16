@@ -2,6 +2,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/filter_segment_tap.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -319,7 +321,7 @@ void main() {
     await tester.pump();
     expect(_taskTable(tester).selectedIds, {_inspectionId});
 
-    await tester.tap(find.text('已决定').first);
+    await selectFilterSegment(tester, '已决定');
     await tester.pumpAndSettle();
     expect(api.listQueries.last['status'], 'RESOLVED');
     expect(api.listQueries.last['page'], 1);
@@ -328,13 +330,13 @@ void main() {
     expect(_taskTable(tester).selectable, isFalse);
     expect(find.text('RB-RESOLVED'), findsOneWidget);
 
-    await tester.tap(find.text('已取消').first);
+    await selectFilterSegment(tester, '已取消');
     await tester.pumpAndSettle();
     expect(api.listQueries.last['status'], 'CANCELLED');
     expect(api.listQueries.last['page'], 1);
     expect(find.text('RB-CANCELLED'), findsOneWidget);
 
-    await tester.tap(find.text('全部').first);
+    await selectFilterSegment(tester, '全部');
     await tester.pumpAndSettle();
     expect(api.listQueries.last['status'], 'ALL');
     expect(api.listQueries.last['page'], 1);

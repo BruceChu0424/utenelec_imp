@@ -19,7 +19,8 @@ class EditableGridTotalsBar<T extends EditableGridRow> extends StatefulWidget {
     required this.entriesBuilder,
     this.watchOf,
     this.density = true,
-    this.showDivider = true,
+    // 2026-09-15 用户口径：合计条顶部分隔线全站退役（与 UtenTotalsSummaryBar 同步）。
+    this.showDivider = false,
   });
 
   final UtenEditableGridController<T> controller;

@@ -370,6 +370,10 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('stock_document_items', 'CLEAR'),
 ('stock_documents', 'CLEAR'),
 ('stock_movements', 'CLEAR'),
+('production_daily_report_material_usages', 'CLEAR'),
+('production_workshop_direct_transfer_items', 'CLEAR'),
+('production_workshop_direct_transfer_reversals', 'CLEAR'),
+('production_workshop_direct_transfers', 'CLEAR'),
 ('stock_reservations', 'CLEAR'),
 ('subcontract_application_items', 'CLEAR'),
 ('subcontract_applications', 'CLEAR'),
@@ -487,11 +491,15 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('organization_permission_leader_assignments', 'PRESERVE'),
 ('password_history', 'PRESERVE'),
 ('payment_styles', 'PRESERVE'),
+-- V579 客户/供应商联系方式·地址·跟进记录三张子表：随主档保留(与迁移里的
+-- 运行时 business_data_reset() 补丁同口径，都是 PRESERVE)。
+('party_activity_records', 'PRESERVE'),
+('party_addresses', 'PRESERVE'),
+('party_contact_methods', 'PRESERVE'),
 ('permission_surface_permissions', 'PRESERVE'),
 ('permission_surfaces', 'PRESERVE'),
 ('permissions', 'PRESERVE'),
 ('positions', 'PRESERVE'),
-('production_goods_workshop_preferences', 'PRESERVE'),
 ('production_product_no_sequences', 'CLEAR'),
 ('profile_change_requests', 'PRESERVE'),
 ('refresh_tokens', 'PRESERVE'),
@@ -981,10 +989,61 @@ BEGIN
         -- V577 只给 production_material_analysis_plan_links 加一列并改一个触发器
         -- （下达车间超量的公共备货产出分账），不新增业务表，CLEAR 维持既有张数。
         -- V576 由并行的财务主档改造分支占用，本分支顺延取号，合并后需重算本表。
-        (577, 534)
+        (577, 534),
+        -- V578 只扩财审事件类型 CHECK，不加表；V579 新增三张 party 子表；
+        -- V580 只放宽计划关联行对账(公共备货单可不带销售来源)，不加表
+        -- (全部 PRESERVE，CLEAR 维持既有张数)，并给运行时清空函数打 PRESERVE 补丁。
+        (578, 535),
+        (579, 536),
+        (580, 537),
+        -- V581 只扩 subcontract_material_plan_items 的 flow_mode 白名单与四个
+        -- 既有守卫(委外「单一叶子子件」直接发料出仓)，不新增业务表，
+        -- CLEAR 维持既有张数。
+        (581, 538),
+        -- V582 只收窄 sales_shipments.warehouse_work_status 取值(仓库一步确认出库)
+        -- 并重建配套触发器/索引/视图，不新增业务表，CLEAR 维持既有张数。
+        (582, 539),
+        -- V583 新增 production_daily_report_material_usages(报工同页登记实际用料，CLEAR)
+        -- 并给日报加收尾退仓意愿列、给结算事件加日报来源列。
+        (583, 540),
+        -- V584 新增车间直送三张表(CLEAR)：direct_transfers / _items / _reversals，
+        -- 并给仓库加线边仓标记、给报工行加产出去向、给 FQC 加检验种类。
+        (584, 541),
+        -- V585 只加报工行的接收需求列、种一个审核权限码并登记权限面，不新增业务表。
+        (585, 542),
+        -- V586 只把 V583 报工实耗表与 V584 车间直送三张表补登记进清库策略
+        -- (fail-closed 清单漏登记会让整包 ops 测试红)，不新增业务表；
+        -- 版本对的第二个数是**迁移文件条数**，本迁移本身让它 542→543。
+        (586, 543),
+        -- V587 只给货品主档加「所属仓库」一列(owning_warehouse_id -> warehouses)，
+        -- 不新增业务表；goods 已登记为 PRESERVE，清库分类不变，条数 543→544。
+        (587, 544),
+        -- V588 只放宽两个守卫函数(销售顶层超量下达不拆单：一张计划的数量=
+        -- 归需求量+公共备货产出、分摊只认归需求量；采购/委外申请允许
+        -- 需求片+公共超量片合并成一条明细)，不新增业务表，
+        -- 清库分类不变，条数 544→545。
+        (588, 545),
+        -- V589 委外前置自制跟量：只放宽 fn_guard_preplan_public_surplus_shape
+        -- 与 SUBCONTRACT_MAKE_TASK 批次行 allocation 锚，不新增业务表，
+        -- 清库分类不变，条数 545→546。
+        (589, 546),
+        -- V590 货品归属「仓库/生产车间」单一事实源：货品表加归属车间/归属车间
+        -- 负责人两列，production_goods_workshop_preferences 整表废弃删除
+        -- (PRESERVE 96→95，数据搬进货品表随 goods 继续保留)；条数 546→547。
+        (590, 547),
+        -- V591 存量归属回填：只 UPDATE goods(仓库/车间从既有事实种上)，
+        -- 不新增业务表；条数 547→548。
+        (591, 548),
+        -- V592 客户默认销售条款：clients 加默认货运策略/默认币种两列并从
+        -- 最近订单回填（结账方式复用既有列），不新增业务表；条数 548→549。
+        (592, 549),
+        -- V593 采购/委外链主档默认值：货品加采购/委外两价列、供应商加默认
+        -- 币种/税率列并从最近订单回填（结账方式复用既有列，成对过 V452 触发器）；
+        -- 不新增业务表；条数 549→550。
+        (593, 550)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V577完整目录（V544、V576 跳号），当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V593完整目录(V544、V576 跳号)，当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 
@@ -1125,7 +1184,11 @@ BEGIN
             ('subcontract_receipt_material_consumptions', 522),
             ('production_fqc_inspection_sheets', 547),
             ('production_fqc_inspection_sheet_items', 547),
-            ('production_finished_arrival_registration_reversals', 548)
+            ('production_finished_arrival_registration_reversals', 548),
+            ('production_daily_report_material_usages', 583),
+            ('production_workshop_direct_transfers', 584),
+            ('production_workshop_direct_transfer_items', 584),
+            ('production_workshop_direct_transfer_reversals', 584)
     ) AS required(table_name, introduced_version)
     WHERE (to_regclass(format('public.%I', required.table_name)) IS NOT NULL)
         IS DISTINCT FROM (applied_max_version >= required.introduced_version);
@@ -1134,11 +1197,14 @@ BEGIN
     END IF;
     SELECT count(*) INTO current_operational_table_count
     FROM reset_business_table_policy
-    WHERE table_name IN ('preplan_future_supply_transfers','preplan_future_supply_transfer_cancellations','preplan_reallocation_make_supplements','production_material_return_requests','production_material_return_request_items','production_material_return_request_cancellations','production_execution_segment_splits','sales_shipment_submission_events','production_material_movement_links','stock_value_acquisition_sources','stock_value_position_transfers','stock_value_production_cost_dirty','stock_value_production_cost_inputs','stock_value_production_cost_objects','stock_value_production_cost_outputs','stock_value_production_cost_revisions','stock_value_production_cost_shares','stock_value_production_cost_tasks','procurement_iqc_consideration_reversals','procurement_iqc_consideration_review_approvals','procurement_iqc_credit_case_allocations','procurement_iqc_credit_documents','procurement_iqc_credit_slices','procurement_iqc_funding_settlements','procurement_iqc_funding_slices','procurement_iqc_quality_consideration_parts','procurement_iqc_stock_consideration_parts','procurement_receipt_consideration_parts','subcontract_receipt_material_consumptions','production_fqc_inspection_sheets','production_fqc_inspection_sheet_items','production_finished_arrival_registration_reversals');
+    WHERE table_name IN ('preplan_future_supply_transfers','preplan_future_supply_transfer_cancellations','preplan_reallocation_make_supplements','production_material_return_requests','production_material_return_request_items','production_material_return_request_cancellations','production_execution_segment_splits','sales_shipment_submission_events','production_material_movement_links','stock_value_acquisition_sources','stock_value_position_transfers','stock_value_production_cost_dirty','stock_value_production_cost_inputs','stock_value_production_cost_objects','stock_value_production_cost_outputs','stock_value_production_cost_revisions','stock_value_production_cost_shares','stock_value_production_cost_tasks','procurement_iqc_consideration_reversals','procurement_iqc_consideration_review_approvals','procurement_iqc_credit_case_allocations','procurement_iqc_credit_documents','procurement_iqc_credit_slices','procurement_iqc_funding_settlements','procurement_iqc_funding_slices','procurement_iqc_quality_consideration_parts','procurement_iqc_stock_consideration_parts','procurement_receipt_consideration_parts','subcontract_receipt_material_consumptions','production_fqc_inspection_sheets','production_fqc_inspection_sheet_items','production_finished_arrival_registration_reversals','production_daily_report_material_usages','production_workshop_direct_transfers','production_workshop_direct_transfer_items','production_workshop_direct_transfer_reversals');
 
     -- V459 新增兼职部门表（PRESERVE 95→96，组织与权限治理数据）。
+    -- V579 新增客户/供应商联系方式·地址·跟进记录三张子表(PRESERVE 96→99，
+    -- 随主档保留；它们是主档的一部分，不是业务流水)。
     IF (applied_max_version <= 458 AND preserve_count <> 95)
-       OR (applied_max_version >= 459 AND preserve_count <> 96)
+       OR (applied_max_version BETWEEN 459 AND 578 AND preserve_count <> 96)
+       OR (applied_max_version >= 579 AND preserve_count <> 99)
        OR NOT (
            (v446_business_table_count = 0
                 AND v447_business_table_count = 0

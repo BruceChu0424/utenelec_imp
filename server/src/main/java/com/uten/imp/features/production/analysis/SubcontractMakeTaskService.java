@@ -396,6 +396,20 @@ public class SubcontractMakeTaskService {
     private CreatedBatch createApplicationBatch(
             LockedTask task, BigDecimal qty, String idempotencyKey,
             UUID employeeId, UUID actorUserId) {
+        // V589（2026-09-15）：前置自制可承接车间腿超量（required = 归需求量 +
+        // 公共备货产出）。每批通知的申请明细是整批数量（一条），action 与
+        // allocation 只锁「归需求量」的部分——需求侧先消费（此前通知量先抵
+        // 扣需求量），余下的是公共备货：action 记 requested=需求份 +
+        // public_surplus=公共份，公共供给捕获按「合并明细同件超量」口径处理。
+        BigDecimal demandTotal = decimal(em.createNativeQuery("""
+                SELECT requested_qty FROM production_material_analysis_items
+                WHERE id = :itemId AND is_deleted = FALSE
+                """).setParameter("itemId", task.preparationItemId()).getSingleResult());
+        BigDecimal demandNotifiedBefore = task.notifiedQty().min(demandTotal);
+        BigDecimal demandPart = qty.min(
+                demandTotal.subtract(demandNotifiedBefore).max(BigDecimal.ZERO))
+                .max(BigDecimal.ZERO).setScale(4, java.math.RoundingMode.CEILING);
+        BigDecimal publicPart = qty.subtract(demandPart);
         // 每批通知建立独立的 SUBCONTRACT action 锚定申请：任务 action 的
         // (action_id, analysis_material_id) 唯一 allocation 已在任务外部化时占用，
         // 复用同一 action 会撞唯一键；新 action 以 CREATED+external 直接 INSERT
@@ -442,14 +456,16 @@ public class SubcontractMakeTaskService {
         em.createNativeQuery("""
                 INSERT INTO preplan_supply_actions (
                     id, analysis_id, warehouse_id, goods_id, color_id, unit_id,
-                    need_date, route, requested_qty, status,
+                    need_date, route, requested_qty, public_surplus_qty,
+                    public_surplus_external_item_id, status,
                     idempotency_key, action_group_key, request_business_key,
                     generation, predecessor_action_id, request_hash,
                     external_document_type, external_document_id,
                     external_document_no, created_by)
                 VALUES (
                     :id, :analysisId, :warehouseId, :goodsId, :colorId, :unitId,
-                    :needDate, 'SUBCONTRACT', :qty, 'CREATED',
+                    :needDate, 'SUBCONTRACT', :demandPart, :publicPart,
+                    :publicItemId, 'CREATED',
                     :idempotencyKey, :actionGroupKey, :businessKey,
                     :generation, :predecessorId, :requestHash,
                     'SUBCONTRACT_APPLICATION', :documentId,
@@ -462,7 +478,10 @@ public class SubcontractMakeTaskService {
                 .setParameter("colorId", task.colorId())
                 .setParameter("unitId", task.unitId())
                 .setParameter("needDate", task.needDate())
-                .setParameter("qty", qty)
+                .setParameter("demandPart", demandPart)
+                .setParameter("publicPart", publicPart)
+                .setParameter("publicItemId",
+                        publicPart.signum() > 0 ? line.applicationItemId() : null)
                 .setParameter("idempotencyKey", actionIdempotency)
                 .setParameter("actionGroupKey", actionGroupKey)
                 .setParameter("businessKey", businessKey)
@@ -473,23 +492,28 @@ public class SubcontractMakeTaskService {
                 .setParameter("documentNo", result.billNo())
                 .setParameter("actorId", actorUserId)
                 .executeUpdate();
-        UUID allocationId = UUID.randomUUID();
-        em.createNativeQuery("""
-                INSERT INTO preplan_supply_action_allocations (
-                    id, analysis_id, action_id, analysis_material_id,
-                    allocated_qty, external_item_id, created_by)
-                VALUES (
-                    :id, :analysisId, :actionId, :materialId,
-                    :qty, :externalItemId, :actorId)
-                """)
-                .setParameter("id", allocationId)
-                .setParameter("analysisId", task.analysisId())
-                .setParameter("actionId", notifyActionId)
-                .setParameter("materialId", task.analysisMaterialId())
-                .setParameter("qty", qty)
-                .setParameter("externalItemId", line.applicationItemId())
-                .setParameter("actorId", actorUserId)
-                .executeUpdate();
+        UUID allocationId = null;
+        if (demandPart.signum() > 0) {
+            // 纯公共批不建需求 allocation（allocated_qty 有 >0 CHECK，
+            // V589 已放开批次行的 allocation 锚可空）。
+            allocationId = UUID.randomUUID();
+            em.createNativeQuery("""
+                    INSERT INTO preplan_supply_action_allocations (
+                        id, analysis_id, action_id, analysis_material_id,
+                        allocated_qty, external_item_id, created_by)
+                    VALUES (
+                        :id, :analysisId, :actionId, :materialId,
+                        :qty, :externalItemId, :actorId)
+                    """)
+                    .setParameter("id", allocationId)
+                    .setParameter("analysisId", task.analysisId())
+                    .setParameter("actionId", notifyActionId)
+                    .setParameter("materialId", task.analysisMaterialId())
+                    .setParameter("qty", demandPart)
+                    .setParameter("externalItemId", line.applicationItemId())
+                    .setParameter("actorId", actorUserId)
+                    .executeUpdate();
+        }
         UUID batchId = UUID.randomUUID();
         em.createNativeQuery("""
                 INSERT INTO preplan_subcontract_make_task_batches (

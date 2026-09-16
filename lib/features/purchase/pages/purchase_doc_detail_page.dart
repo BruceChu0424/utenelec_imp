@@ -12,11 +12,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
@@ -289,6 +291,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           .whereType<String>()
           .toSet();
       await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
+      // 明细身份列要显示货品编号：名称可能来自搜索缓存（只有名称没有编号），
+      // 再补一次详情才拿得到 code/库位号。
+      await ref.read(masterNameServiceProvider).loadGoodsDetails(goodsIds);
       if (!mounted) return;
       setState(() {
         _detail = d;
@@ -683,13 +688,23 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
                   ),
                   // body：明细标题行（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
                   body: Padding(
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    // 底部让位右下悬浮操作组：末行可滚出按钮区。
+                    padding: const EdgeInsets.fromLTRB(
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenFloatingActionGroup.controlHeight + UtenSpacing.s32,
+                    ),
                     child: _itemsCard(theme, names),
                   ),
                 ),
         ),
       ),
-      bottomNavigationBar: _detail == null || _busy ? null : _actions(theme),
+      // 2026-09-14 UI 统一口径：底部吸底操作条改右下悬浮组，大小/高度/禁用态
+      // 与全站一致。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _detail == null || _busy ? null : _actions(theme),
     );
   }
 
@@ -875,10 +890,37 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
             columns: [
               MasterColumnDef(
                 key: 'goods',
-                label: '货品',
-                width: 220,
-                value: (it) =>
-                    '${names.goods(it.goodsId)}(${names.color(it.colorId)} · ${names.unit(it.unitId)})',
+                label: '货品名称',
+                // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+                // 同名不同色、同名不同编号在本系统极普遍，只看名称会认错货；拼成
+                // 一格又不能各自排序筛选。单位没有独立列，仍留在名称格副行。
+                width: 200,
+                value: (it) => _dictText(names.goods(it.goodsId)) ?? '—',
+                cellBuilderHandlesSemantics: true,
+                cellBuilder: (context, it) => UtenGoodsIdentityCell(
+                  name: _dictText(names.goods(it.goodsId)),
+                  unit: _dictText(names.unit(it.unitId)),
+                ),
+              ),
+              MasterColumnDef(
+                key: 'goodsCode',
+                label: '编号',
+                width: 130,
+                value: (it) => UtenGoodsAttributeCell.text(
+                  names.goodsInfo(it.goodsId)?.code,
+                ),
+                cellBuilder: (context, it) =>
+                    UtenGoodsAttributeCell(names.goodsInfo(it.goodsId)?.code),
+              ),
+              MasterColumnDef(
+                key: 'colorName',
+                label: '颜色',
+                width: 96,
+                value: (it) => UtenGoodsAttributeCell.text(
+                  _dictText(names.color(it.colorId)),
+                ),
+                cellBuilder: (context, it) =>
+                    UtenGoodsAttributeCell(_dictText(names.color(it.colorId))),
               ),
               // 收货/退货实物单据：库位号（主档带出，上架/拣货指引）。
               if (widget.docType == PurchaseDocType.receipt ||
@@ -1022,11 +1064,14 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
             nullCounts: const {},
             filters: const {},
             onFilterChanged: (_, _) {},
+            // 右下悬浮操作组让位：末行可滚出按钮区。
+            bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
             emptyMessage: '暂无明细',
+            // 明细下合计条（全站统一 summaryBar 槽位口径）：数量按单位分组，
+            // 金额受商务金额门控；由表格统一挂在表体下方。
+            summaryBar: items.isNotEmpty ? _totalsBar(names, items) : null,
           ),
         ),
-        // 明细下合计条（全站统一口径）：数量按单位分组，金额受商务金额门控。
-        if (items.isNotEmpty) _totalsBar(names, items),
       ],
     );
   }
@@ -1046,6 +1091,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     return UtenTotalsSummaryBar(
       key: const Key('purchase-detail-totals'),
       density: true,
+      compact: true,
       entries: [
         utenQuantityTotalEntry(
           items.map(
@@ -1199,6 +1245,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         addAction(
           UtenButton(
             key: const Key('purchase-request-generate-order'),
+            size: UtenButtonSize.large,
             icon: Icons.add_shopping_cart_rounded,
             isLoading: _openingOrder,
             onPressed:
@@ -1218,6 +1265,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         addAction(
           UtenButton(
             type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
             onPressed: () => popOrBackTo(context, defaultPath: _listPath),
             child: const Text('返回列表'),
           ),
@@ -1230,6 +1278,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         addAction(
           UtenButton(
             type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
             icon: Icons.delete_outline,
             onPressed: _delete,
             child: const Text('删除'),
@@ -1240,6 +1289,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         addAction(
           UtenButton(
             type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
             icon: Icons.edit_outlined,
             onPressed: () => context.push(
               RoutePath.purchaseDocEdit(_cfg.type.pathSegment, widget.id),
@@ -1256,6 +1306,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         addAction(
           UtenButton(
             type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
             icon: Icons.block_outlined,
             onPressed: _cancelOrder,
             child: const Text('取消订单'),
@@ -1269,6 +1320,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           approval?.canSubmit == true) {
         addAction(
           UtenButton(
+            size: UtenButtonSize.large,
             icon: Icons.send_outlined,
             onPressed: _submitFinance,
             child: Text(approval?.isRejected == true ? '重新提交财务' : '提交财务审核'),
@@ -1282,6 +1334,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           UtenButton(
             key: const Key('purchase-order-change-qty'),
             type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
             icon: Icons.edit_note_outlined,
             onPressed: _changeQty,
             child: Text(AppLocalizations.of(context).orderChangeQtyButton),
@@ -1292,6 +1345,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         addAction(
           UtenButton(
             type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
             icon: Icons.undo_outlined,
             onPressed: _reverse,
             child: const Text('红冲'),
@@ -1302,6 +1356,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         addAction(
           UtenButton(
             type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
             onPressed: () =>
                 popOrBackTo(context, defaultPath: _defaultBackPath),
             child: Text(_returnLabel),
@@ -1313,6 +1368,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         children.add(
           UtenButton(
             type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
             icon: Icons.delete_outline,
             onPressed: _delete,
             child: const Text('删除'),
@@ -1326,6 +1382,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         children.add(
           UtenButton(
             type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
             icon: Icons.edit_outlined,
             onPressed: () => context.push(
               RoutePath.purchaseDocEdit(_cfg.type.pathSegment, widget.id),
@@ -1340,6 +1397,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         }
         children.add(
           UtenButton(
+            size: UtenButtonSize.large,
             icon: Icons.check_circle_outline,
             onPressed: _approveDocument,
             child: const Text('审核'),
@@ -1350,6 +1408,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         children.add(
           UtenButton(
             type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
             onPressed: () => popOrBackTo(context, defaultPath: _listPath),
             child: const Text('返回列表'),
           ),
@@ -1359,6 +1418,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       children.add(
         UtenButton(
           type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
           icon: Icons.undo_outlined,
           onPressed: _reverse,
           child: const Text('红冲'),
@@ -1368,30 +1428,27 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       children.add(
         UtenButton(
           type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
           onPressed: () => popOrBackTo(context, defaultPath: _listPath),
           child: const Text('返回列表'),
         ),
       );
     }
     if (children.isEmpty) return const SizedBox.shrink();
-    return SafeArea(
-      child: Container(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          border: Border(
-            top: BorderSide(color: theme.colorScheme.outlineVariant),
-          ),
-        ),
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: children,
-        ),
-      ),
+    // 2026-09-14 UI 统一口径：底部吸底操作条改右下悬浮组（UtenFloatingActionGroup），
+    // 按钮统一 large 尺寸；SizedBox 间距占位是历史写法，这里过滤掉（组自带 8px 间距）。
+    return UtenFloatingActionGroup(
+      children: children.where((child) => child is! SizedBox).toList(),
     );
   }
 }
 
+/// 字典未命中时 MasterNameService 返回「—」：身份格不显示这类占位词，统一转 null
+/// （组件会自然省略该项）。
+String? _dictText(String value) => value == '—' ? null : value;
+
+/// 明细货品身份文本（名称 + 编号 · 颜色 · 单位）：与格内渲染同源，
+/// 排序/筛选/导出/语义标签和眼睛看到的一致。
 class _KV {
   const _KV(this.label, this.value, {this.badge});
   final String label;

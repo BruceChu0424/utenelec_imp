@@ -115,9 +115,12 @@ void main() {
       await tester.tap(find.text('待排产'));
       await tester.pumpAndSettle();
 
-      expect(find.text('可生产量'), findsOneWidget);
-      expect(find.text('3(30%)'), findsOneWidget);
-      expect(find.text('未分析'), findsWidgets);
+      // ADR-088：待排产段只剩「尚未被活动分析承接的量」，齐套率属于「进行中」
+      // 那张分析，本段不再有「可生产量 / 预计可生产」两列，改挂「已分析」指路列。
+      expect(find.text('可生产量'), findsNothing);
+      expect(find.text('预计可生产'), findsNothing);
+      expect(find.text('已分析'), findsOneWidget);
+      expect(find.text('待分析'), findsWidgets);
 
       final checkboxes = find.byType(Checkbox);
       expect(checkboxes, findsNWidgets(3));
@@ -335,7 +338,7 @@ void main() {
       );
       expect(
         container.read(appNotificationProvider).last.message,
-        '该行尚未分析；请勾选后点右下角「联合分析所选 N 项」',
+        '该行的缺口还没有分析承接；请勾选后点右下角「联合分析所选 N 项」',
       );
     },
   );
@@ -392,6 +395,9 @@ ProductionPlanRepository _repository(
                       'readinessRatio': 0.3,
                       if (activeFirst) 'materialAnalysisId': 'analysis-a',
                       if (activeFirst) 'materialAnalysisVersion': 2,
+                      // ADR-088：带活动分析的行一定是「部分承接」行——全量承接的
+                      // 行服务端已经不返回了，所以这里同时给出已承接量。
+                      if (activeFirst) 'analysisCoveredQty': 6,
                       'materialAnalyzedAt': '2026-08-08T10:00:00Z',
                       'deliverDate': '2026-08-20',
                     },

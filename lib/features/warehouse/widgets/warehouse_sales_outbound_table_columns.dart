@@ -16,35 +16,20 @@ class WarehouseSalesOutboundTableRow {
   String get key => '${detail.header.id}:${line.id}';
 }
 
+/// 服务端 `allowedWarehouseTargets` 才是权威：待出库任务只提供「确认出库」一个动作。
 WarehouseSalesOutboundAction? warehouseSalesOutboundPrimaryAction(
   WarehouseSalesOutboundSummary item,
 ) {
-  final action = switch (item.warehouseWorkStatus) {
-    WarehouseSalesOutboundStatus.pendingPick =>
-      WarehouseSalesOutboundAction.startPicking,
-    WarehouseSalesOutboundStatus.picking =>
-      WarehouseSalesOutboundAction.finishPicking,
-    WarehouseSalesOutboundStatus.picked =>
-      WarehouseSalesOutboundAction.handOver,
-    WarehouseSalesOutboundStatus.exception =>
-      WarehouseSalesOutboundAction.restorePending,
-    _ => null,
-  };
-  return action != null && item.allows(action) ? action : null;
+  const action = WarehouseSalesOutboundAction.confirmShipment;
+  return item.allows(action) ? action : null;
 }
 
 String warehouseSalesOutboundActionLabel(
   AppLocalizations l10n,
   WarehouseSalesOutboundAction action,
 ) => switch (action) {
-  WarehouseSalesOutboundAction.startPicking =>
-    l10n.warehouseOutboundStartPicking,
-  WarehouseSalesOutboundAction.finishPicking =>
-    l10n.warehouseOutboundFinishPicking,
-  WarehouseSalesOutboundAction.handOver => l10n.warehouseOutboundHandOver,
-  WarehouseSalesOutboundAction.restorePending =>
-    l10n.warehouseOutboundRestorePending,
-  WarehouseSalesOutboundAction.reportException => action.label,
+  WarehouseSalesOutboundAction.confirmShipment =>
+    l10n.warehouseOutboundConfirmShipment,
 };
 
 /// The API has no optimistic version token. Re-read before sending a command
@@ -144,6 +129,13 @@ warehouseSalesOutboundTableColumns({
       (r) => r.line.lineNumber?.toString(),
       type: 'number',
     ),
+    // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
+    column(
+      'goodsName',
+      l10n.warehouseOutboundGoodsName,
+      210,
+      (r) => r.line.goodsName,
+    ),
     column(
       'goodsCode',
       l10n.warehouseOutboundGoodsCode,
@@ -151,10 +143,10 @@ warehouseSalesOutboundTableColumns({
       (r) => r.line.goodsCode,
     ),
     column(
-      'goodsName',
-      l10n.warehouseOutboundGoodsName,
-      210,
-      (r) => r.line.goodsName,
+      'colorName',
+      l10n.warehouseOutboundColor,
+      96,
+      (r) => r.line.colorName,
     ),
     column(
       'quantity',
@@ -213,13 +205,6 @@ warehouseSalesOutboundTableColumns({
         '实际库位号',
         150,
         (row) => row.line.actualStockPlace,
-      ),
-    if (has((line) => line.colorName))
-      column(
-        'colorName',
-        l10n.warehouseOutboundColor,
-        96,
-        (r) => r.line.colorName,
       ),
     if (has((line) => line.weight))
       column(

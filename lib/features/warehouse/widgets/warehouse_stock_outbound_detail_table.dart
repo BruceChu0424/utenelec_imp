@@ -71,6 +71,13 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
           width: 170,
           value: (r) => r.document.billNo ?? '—',
         ),
+        // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
+        MasterColumnDef(
+          key: 'goods',
+          label: l10n.warehouseOutboundGoodsName,
+          width: 220,
+          value: (r) => names.goods(r.item.goodsId),
+        ),
         MasterColumnDef(
           key: 'goodsCode',
           label: l10n.warehouseOutboundGoodsCode,
@@ -78,10 +85,10 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
           value: (r) => names.goodsInfo(r.item.goodsId)?.code ?? '—',
         ),
         MasterColumnDef(
-          key: 'goods',
-          label: l10n.warehouseOutboundGoodsName,
-          width: 220,
-          value: (r) => names.goods(r.item.goodsId),
+          key: 'color',
+          label: l10n.warehouseOutboundColor,
+          width: 90,
+          value: (r) => names.color(r.item.colorId),
         ),
         MasterColumnDef(
           key: 'warehouse',
@@ -107,12 +114,6 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
           label: l10n.warehouseOutboundPlaceHint,
           width: 135,
           value: (r) => names.goodsInfo(r.item.goodsId)?.stockPlace ?? '—',
-        ),
-        MasterColumnDef(
-          key: 'color',
-          label: l10n.warehouseOutboundColor,
-          width: 90,
-          value: (r) => names.color(r.item.colorId),
         ),
         MasterColumnDef(
           key: 'unit',

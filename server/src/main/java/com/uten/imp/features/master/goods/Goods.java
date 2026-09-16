@@ -7,6 +7,7 @@ import com.uten.imp.features.master.materialcategory.MaterialCategory;
 import com.uten.imp.features.master.mould.Mould;
 import com.uten.imp.features.master.supplier.Supplier;
 import com.uten.imp.features.master.unit.Unit;
+import com.uten.imp.features.master.warehouse.Warehouse;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -91,6 +92,40 @@ public class Goods extends SoftDeletableEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "secondary_supplier_id")
     private Supplier secondarySupplier;
+
+    /**
+     * 所属仓库 (V587)：这批货平时归哪个仓管的主档归属。
+     *
+     * <p>不是单据落点仓 (各单据自带 warehouse_id)，也不是物料分析的分析范围仓，
+     * 因此命名一律 owningWarehouse/owning_warehouse_id，绝不写成 warehouseId。
+     * 可空 (未登记归属)；不限叶子仓，只要求仓库存在且未软删。
+     * V590 起由任何入库自动回写为最新入库仓（StockService 过账内核收口）。
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owning_warehouse_id")
+    private Warehouse owningWarehouse;
+
+    /**
+     * 归属生产车间 (V590)：这批货平时归哪个车间生产。
+     * 由最近一次排产确认/车间改派自动学习回写（原 production_goods_workshop_preferences
+     * 学习语义搬入），V591 已按历史执行段做存量回填；不手工维护。
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owning_workshop_department_id")
+    private com.uten.imp.features.org.department.Department owningWorkshop;
+
+    /** V590 归属车间负责人（与车间一起学习的最近一次人工选择）。 */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owning_responsible_employee_id")
+    private com.uten.imp.features.org.employee.Employee owningResponsibleEmployee;
+
+    /** 采购单价（V593 单一事实源）：新建采购订货单行价预填；每次保存采购单写回最新行价。 */
+    @Column(name = "default_purchase_price", precision = 18, scale = 6)
+    private java.math.BigDecimal defaultPurchasePrice;
+
+    /** 委外加工单价（V593 单一事实源）：新建委外订货单行价预填；每次保存委外单写回最新行价。 */
+    @Column(name = "default_subcontract_price", precision = 18, scale = 6)
+    private java.math.BigDecimal defaultSubcontractPrice;
 
     @Column(name = "unit_legacy_id")
     private Integer unitLegacyId;       // UnitID

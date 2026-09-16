@@ -111,6 +111,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     private final com.uten.imp.application.port.ProcurementReviewCancellationPort reviewCancellation;
     private final com.uten.imp.application.port.ProcurementOrderSourceRevisionPort sourceRevision;
     private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
+    private final com.uten.imp.features.purchase.common.ProcurementMasterDefaultsSyncService masterDefaultsSync;
 
     /** Spring injects this in production; direct-construction tests fail closed. */
     @Autowired
@@ -219,6 +220,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         o.setStatus(STATUS_DRAFT);
         mutationLocks.expectCreatedOrder(orderType(),o.getId());
         orderRepo.save(o);
+        masterDefaultsSync.syncFromPurchaseOrder(o.getId());
         orderRepo.flush();
         mutationLocks.registerCreatedOrder(orderType(),o.getId());
         List<OrderItemDto> items = saveItems(o, req.getItems());
@@ -349,8 +351,20 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             return Map.of();
         }
         Map<UUID, UUID> result = new LinkedHashMap<>();
-        for (Object[] row : itemRepo.findLastSupplierPerGoods(goodsIds)) {
+        // V593 主档优先：货品资料上绑定的默认供应商（每次下单自动写回最新）。
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery(
+                """
+                SELECT g.id, g.default_supplier_id
+                FROM goods g
+                WHERE g.id IN (:ids)
+                  AND g.default_supplier_id IS NOT NULL
+                  AND g.is_deleted = false
+                """).setParameter("ids", goodsIds))) {
             result.put((UUID) row[0], (UUID) row[1]);
+        }
+        // 无主档绑定的货品回落最近订单推导（回填前的老数据）。
+        for (Object[] row : itemRepo.findLastSupplierPerGoods(goodsIds)) {
+            result.putIfAbsent((UUID) row[0], (UUID) row[1]);
         }
         return result;
     }
@@ -366,21 +380,59 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             return Map.of();
         }
         Map<UUID, LastTermsPerGoods> result = new LinkedHashMap<>();
-        for (Object[] row : itemRepo.findLastTermsPerGoods(goodsIds)) {
+        // V593 主档优先：货品绑定的默认供应商 + 该供应商主档默认条款
+        //（币种/税率/结账方式，每次下单写回）+ 货品默认采购单价。汇率取币种现行汇率。
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery(
+                """
+                SELECT g.id, g.default_supplier_id,
+                       sup.default_settlement_method_id,
+                       sup.default_currency_id,
+                       cur.exchange_rate,
+                       sup.default_tax_rate,
+                       g.default_purchase_price
+                FROM goods g
+                LEFT JOIN suppliers sup
+                  ON sup.id = g.default_supplier_id
+                 AND sup.is_deleted = false
+                 AND sup.is_internal_workshop = false
+                LEFT JOIN currencies cur ON cur.id = sup.default_currency_id
+                WHERE g.id IN (:ids)
+                  AND g.default_supplier_id IS NOT NULL
+                  AND g.is_deleted = false
+                """).setParameter("ids", goodsIds))) {
             result.put((UUID) row[0], new LastTermsPerGoods(
                     (UUID) row[1], (UUID) row[2], (UUID) row[3],
-                    (BigDecimal) row[4], (BigDecimal) row[5]));
+                    (BigDecimal) row[4], (BigDecimal) row[5], (BigDecimal) row[6]));
+        }
+        // 无主档绑定的货品回落最近订单推导（单价有主档默认则优先带上）。
+        Map<UUID, BigDecimal> masterPrices = new LinkedHashMap<>();
+        for (var entry : result.entrySet()) {
+            if (entry.getValue().purchasePrice() != null) {
+                masterPrices.put(entry.getKey(), entry.getValue().purchasePrice());
+            }
+        }
+        for (Object[] row : itemRepo.findLastTermsPerGoods(goodsIds)) {
+            UUID goodsId = (UUID) row[0];
+            if (result.containsKey(goodsId)) continue;
+            result.put(goodsId, new LastTermsPerGoods(
+                    (UUID) row[1], (UUID) row[2], (UUID) row[3],
+                    (BigDecimal) row[4], (BigDecimal) row[5],
+                    masterPrices.get(goodsId)));
         }
         return result;
     }
 
-    /** 行级条款学习记忆视图（/last-terms 返回体；金额口径字段见 purchase_orders 头）。 */
+    /**
+     * 行级条款学习记忆视图（/last-terms 返回体；金额口径字段见 purchase_orders 头）。
+     * V593 起含 purchasePrice=货品默认采购单价（主档列，行价预填）。
+     */
     public record LastTermsPerGoods(
             UUID supplierId,
             UUID settlementMethodId,
             UUID currencyId,
             BigDecimal exchangeRate,
-            BigDecimal taxRate) {}
+            BigDecimal taxRate,
+            BigDecimal purchasePrice) {}
 
     @Transactional
     @PreAuthorize("hasAuthority('purchase_order:edit')")
@@ -400,7 +452,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         itemRepo.flush();
         List<OrderItemDto> items = saveItems(o, req.getItems());
         applyTotals(o, items);
-        return toDetail(o, items);
+                masterDefaultsSync.syncFromPurchaseOrder(o.getId());
+return toDetail(o, items);
     }
 
     @Transactional

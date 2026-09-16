@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../components/layout/uten_h_scroll_area.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
@@ -277,7 +278,9 @@ class _SubcontractLossClaimDetailPanelState
           : _error != null
           ? _errorBody()
           : _detailBody(),
-      bottomNavigationBar: _detail == null ? null : _actions(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _detail == null ? null : _actions(),
     );
   }
 
@@ -402,7 +405,10 @@ class _SubcontractLossClaimDetailPanelState
       child: UtenHScrollArea(
         child: DataTable(
           columns: [
-            const DataColumn(label: Text('材料')),
+            // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+            const DataColumn(label: Text('材料名称')),
+            const DataColumn(label: Text('编号')),
+            const DataColumn(label: Text('颜色')),
             const DataColumn(label: Text('实际损耗'), numeric: true),
             const DataColumn(label: Text('允许损耗'), numeric: true),
             const DataColumn(label: Text('超耗'), numeric: true),
@@ -416,9 +422,9 @@ class _SubcontractLossClaimDetailPanelState
             for (final line in lines)
               DataRow(
                 cells: [
-                  DataCell(
-                    Text(line.goodsLabel.isEmpty ? '—' : line.goodsLabel),
-                  ),
+                  DataCell(Text(line.goodsName ?? '—')),
+                  DataCell(Text(line.goodsCode ?? '—')),
+                  DataCell(Text(line.colorName ?? '—')),
                   DataCell(Text(line.actualLossQty ?? '—')),
                   DataCell(Text(line.allowedLossQty ?? '—')),
                   DataCell(Text(line.excessLossQty ?? '—')),
@@ -570,39 +576,27 @@ class _SubcontractLossClaimDetailPanelState
     final review = _canReview && detail.summary.canReview;
     final reverse = _canReverse && detail.summary.canReverse;
     if (!review && !reverse) return null;
-    return SafeArea(
-      child: Container(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          border: Border(
-            top: BorderSide(
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
+    // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组，按钮统一 large。
+    return UtenFloatingActionGroup(
+      children: [
+        if (reverse)
+          UtenButton(
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
+            icon: Icons.undo_outlined,
+            isLoading: _writing,
+            onPressed: _writing ? null : _reverse,
+            child: const Text('反转责任决定'),
           ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (reverse)
-              UtenButton(
-                type: UtenButtonType.danger,
-                icon: Icons.undo_outlined,
-                isLoading: _writing,
-                onPressed: _writing ? null : _reverse,
-                child: const Text('反转责任决定'),
-              ),
-            if (review && reverse) const SizedBox(width: UtenSpacing.s8),
-            if (review)
-              UtenButton(
-                icon: Icons.fact_check_outlined,
-                isLoading: _writing,
-                onPressed: _writing ? null : _decide,
-                child: const Text('责任决定'),
-              ),
-          ],
-        ),
-      ),
+        if (review)
+          UtenButton(
+            size: UtenButtonSize.large,
+            icon: Icons.fact_check_outlined,
+            isLoading: _writing,
+            onPressed: _writing ? null : _decide,
+            child: const Text('责任决定'),
+          ),
+      ],
     );
   }
 }

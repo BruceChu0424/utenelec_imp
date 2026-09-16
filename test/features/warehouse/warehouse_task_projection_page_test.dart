@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/filter_segment_tap.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -43,7 +45,7 @@ void main() {
     await tester.pumpAndSettle();
     // 2026-09-03 分类范式：状态行默认不选（未选不发请求），
     // 先选「待拣货」段再断言表格列。
-    await tester.tap(find.text('待拣货').last);
+    await selectFilterSegment(tester, '待出库');
     await tester.pumpAndSettle();
 
     final table = tester
@@ -79,7 +81,7 @@ void main() {
     expect(find.text('当前建议库位'), findsOneWidget);
     expect(find.text('A01-01'), findsWidgets);
     expect(
-      find.byKey(const Key('warehouse-sales-outbound-action-PICKING')),
+      find.byKey(const Key('warehouse-sales-outbound-action-SHIPPED')),
       findsOneWidget,
     );
     _expectNoCommercialText();
@@ -249,7 +251,7 @@ final WarehouseSalesOutboundDetail _salesDetail =
       'clientName': '示例客户',
       'warehouseName': '成品仓',
       'warehouseWorkStatus': 'PENDING_PICK',
-      'allowedWarehouseTargets': ['PICKING', 'EXCEPTION'],
+      'allowedWarehouseTargets': ['SHIPPED'],
       'totalLocal': '999999.99',
       'currencyCode': 'USD-SECRET',
       'lines': [

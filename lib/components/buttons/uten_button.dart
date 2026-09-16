@@ -182,7 +182,9 @@ class UtenButton extends StatelessWidget {
       UtenButtonType.secondary => (
         colorScheme.surfaceContainerHigh,
         colorScheme.onSurface,
-        null,
+        // 2026-09-15 用户口径：普通动作按钮（取消/返回/进度追踪这类 secondary）
+        // 全站统一带边框——与悬浮组按钮同语言，实底按钮不再「裸」在页面上。
+        colorScheme.outline,
       ),
       UtenButtonType.tonal => (
         colorScheme.primaryContainer,

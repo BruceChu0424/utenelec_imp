@@ -480,7 +480,18 @@ public final class MaterialAnalysisContracts {
             boolean planExecutionZeroMaterial,
             String planExecutionWorkshopName,
             String planExecutionResponsibleName,
-            UUID rootMaterialLineId) {
+            UUID rootMaterialLineId,
+            /**
+             * V587 货品主档的「所属仓库」(这批货平时归哪个仓管)。
+             * 既不是单据落点仓，也不是本次分析的范围仓 (warehouseIds)；未登记为 null。
+             */
+            UUID owningWarehouseId,
+            String owningWarehouseName,
+            /**
+             * V590 货品主档的「归属生产车间」：最近一次排产确认/车间改派学习回写。
+             */
+            UUID owningWorkshopId,
+            String owningWorkshopName) {
         public ProductView(
             UUID analysisLineId,
             String sourceType,
@@ -524,7 +535,7 @@ public final class MaterialAnalysisContracts {
             BigDecimal planExecutionPlannedQty,
             BigDecimal planExecutionInboundQty,
             BigDecimal planExecutionProgressRatio) {
-            this(analysisLineId, sourceType, sourceRef, sourceReason, salesOrderItemId, salesOrderId, salesOrderNo, orderDate, deliveryDate, clientName, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, unitRate, requestedQty, submittedQty, approvedQty, remainingQty, allocationPriority, canSchedule, maxSchedulableQty, scheduleBlockedReason, readyNowQty, readyByDateQty, readyStartQty, readyFinishQty, readyShipQty, readinessRatio, hasProductionMaterialChildren, parentAnalysisLineId, parentGoodsName, planExecutionStatus, latestPlanId, latestPlanNo, planExecutionPlannedQty, planExecutionInboundQty, planExecutionProgressRatio, BigDecimal.ZERO, false, null, null, null);
+            this(analysisLineId, sourceType, sourceRef, sourceReason, salesOrderItemId, salesOrderId, salesOrderNo, orderDate, deliveryDate, clientName, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, unitRate, requestedQty, submittedQty, approvedQty, remainingQty, allocationPriority, canSchedule, maxSchedulableQty, scheduleBlockedReason, readyNowQty, readyByDateQty, readyStartQty, readyFinishQty, readyShipQty, readinessRatio, hasProductionMaterialChildren, parentAnalysisLineId, parentGoodsName, planExecutionStatus, latestPlanId, latestPlanNo, planExecutionPlannedQty, planExecutionInboundQty, planExecutionProgressRatio, BigDecimal.ZERO, false, null, null, null, null, null, null, null);
         }
     }
 
@@ -631,7 +642,29 @@ public final class MaterialAnalysisContracts {
             BigDecimal mainWarehouseSafetyReplenishmentGapQty,
             BigDecimal priorityMakeSupplementQty,
             BigDecimal sharedFuturePendingQty,
-            BigDecimal lateSharedFutureAvailableQty) {
+            BigDecimal lateSharedFutureAvailableQty,
+            /**
+             * V581 委外发出物形态。目前只有两种取值：
+             * {@code "COMPONENT_OUTBOUND"} 表示该委外件的活动 BOM 恰好只有一个
+             * PER_UNIT 投入的叶子子件——不先自制，仓库直接把那个子件发给委外商，
+             * 委外商加工后交回目标件；{@code null} 表示其余所有情况（无子层的纯
+             * 外协、需要先自制的有子层件、非委外路线，以及旧服务端）。
+             *
+             * <p>客户端拿 null 一律按旧口径（有子层 ⇒ 先自制）回退，不得把 null
+             * 当成 COMPONENT_OUTBOUND。
+             */
+            String subcontractOutboundForm,
+            /**
+             * V587 货品主档的「所属仓库」(这批货平时归哪个仓管)。
+             * 既不是单据落点仓，也不是本次分析的范围仓 (warehouseIds)；未登记为 null。
+             */
+            UUID owningWarehouseId,
+            String owningWarehouseName,
+            /**
+             * V590 货品主档的「归属生产车间」：最近一次排产确认/车间改派学习回写。
+             */
+            UUID owningWorkshopId,
+            String owningWorkshopName) {
         @JsonProperty("nodeRole")
         public String nodeRole() {
             return level == 0 ? "ROOT_SUPPLY" : "BOM_COMPONENT";

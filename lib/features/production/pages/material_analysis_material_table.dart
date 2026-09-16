@@ -8,12 +8,6 @@ enum _MaterialTableRowKind {
   orphan,
 }
 
-typedef _MaterialTreePosition = ({
-  String sequence,
-  List<bool> ancestorContinuations,
-  bool isLastChild,
-});
-
 final class _MaterialTableRow {
   const _MaterialTableRow({
     required this.kind,
@@ -42,6 +36,11 @@ final class _MaterialTableRow {
   final _MaterialGroup? group;
   final _MaterialAggregate? aggregate;
   final bool hasChildren;
+
+  /// 层级连线用的祖先链与末位标记。**由 `utenTreeProjection` 按最终渲染序
+  /// 统一推导**（[_withTree]），不要在本文件里另建一棵树再 DFS 一遍——
+  /// 2026-09-15 之前这里是自建的「深度 − 1 相对」口径，与画笔差一级，
+  /// 末位子件的竖线永远不收口，而级联页同一棵料却画得对。
   final List<bool> ancestorContinuations;
   final bool isLastChild;
 
@@ -57,6 +56,27 @@ final class _MaterialTableRow {
 
   /// 分页补祖先行（与表头筛选保留的上下文行区分：后者保留原 widget key）。
   bool get isPageContext => key.startsWith('PAGE_CONTEXT|');
+
+  /// 套上共享树投影的连线信息。[hasChildren] / [childCount] **不由投影接管**：
+  /// 折叠起来的分支在渲染序里没有子行，但展开箭头与「N」徽章必须照旧显示，
+  /// 这两个值仍按全量子件数算。
+  _MaterialTableRow _withTree(UtenTreeRowProjection tree) => _MaterialTableRow(
+    kind: kind,
+    key: key,
+    sequence: sequence,
+    depth: depth,
+    product: product,
+    material: material,
+    group: group,
+    aggregate: aggregate,
+    hasChildren: hasChildren,
+    ancestorContinuations: tree.ancestorContinuations,
+    isLastChild: tree.isLastChild,
+    contextOnly: contextOnly,
+    rootAnalysisLineId: rootAnalysisLineId,
+    parentMaterialLineId: parentMaterialLineId,
+    childCount: childCount,
+  );
 
   _MaterialTableRow asPageContext(int page) => _MaterialTableRow(
     kind: kind,
@@ -193,7 +213,7 @@ abstract class _MaterialAnalysisMaterialTableState
         ),
       );
       if (_collapsedBomProducts.contains(product.analysisLineId)) continue;
-      final positions = _materialTreePositions(
+      final sequences = _materialTreeSequences(
         nodes,
         parentIds: presentation.parentIdsByMaterial,
       );
@@ -203,7 +223,6 @@ abstract class _MaterialAnalysisMaterialTableState
       )) {
         final group = indexes.groupsByLine[material.materialLineId];
         if (group == null) continue;
-        final position = positions[material.materialLineId];
         final childCount = childCounts[material.materialLineId];
         result.add(
           _MaterialTableRow(
@@ -211,7 +230,7 @@ abstract class _MaterialAnalysisMaterialTableState
             key: 'MATERIAL|${material.materialLineId}',
             sequence:
                 'P${productIndex + 1}.'
-                '${position?.sequence ?? material.level}',
+                '${sequences[material.materialLineId] ?? material.level}',
             depth:
                 (presentation.depthByMaterial[material.materialLineId] ??
                         material.level)
@@ -227,8 +246,6 @@ abstract class _MaterialAnalysisMaterialTableState
             contextOnly: projection.contextOnlyMaterialIds.contains(
               material.materialLineId,
             ),
-            ancestorContinuations: position?.ancestorContinuations ?? const [],
-            isLastChild: position?.isLastChild ?? false,
           ),
         );
       }
@@ -252,7 +269,7 @@ abstract class _MaterialAnalysisMaterialTableState
           depth: 0,
         ),
       );
-      final positions = _materialTreePositions(
+      final sequences = _materialTreeSequences(
         unassigned,
         parentIds: presentation.parentIdsByMaterial,
       );
@@ -266,13 +283,12 @@ abstract class _MaterialAnalysisMaterialTableState
       )) {
         final group = indexes.groupsByLine[material.materialLineId];
         if (group == null) continue;
-        final position = positions[material.materialLineId];
         final childCount = childCounts[material.materialLineId];
         result.add(
           _MaterialTableRow(
             kind: _MaterialTableRowKind.material,
             key: 'ORPHAN_MATERIAL|${material.materialLineId}',
-            sequence: position?.sequence ?? '?',
+            sequence: sequences[material.materialLineId] ?? '?',
             depth:
                 (presentation.depthByMaterial[material.materialLineId] ??
                         material.level)
@@ -288,13 +304,27 @@ abstract class _MaterialAnalysisMaterialTableState
             contextOnly: projection.contextOnlyMaterialIds.contains(
               material.materialLineId,
             ),
-            ancestorContinuations: position?.ancestorContinuations ?? const [],
-            isLastChild: position?.isLastChild ?? false,
           ),
         );
       }
     }
-    return result;
+    return _withSharedTreeProjection(result);
+  }
+
+  /// 统一套上共享树投影：连线的祖先链 / 末位标记一律由**最终渲染序**推导
+  /// （`utenTreeProjection`），与级联页、货品 BOM 是同一个函数、同一套口径。
+  /// 各视图只负责把行按父子相邻排好，不再各自算一遍树几何。
+  List<_MaterialTableRow> _withSharedTreeProjection(
+    List<_MaterialTableRow> rows,
+  ) {
+    final tree = utenTreeProjection<_MaterialTableRow>(
+      rows,
+      depthOf: (row) => row.depth,
+    );
+    return [
+      for (var index = 0; index < rows.length; index++)
+        rows[index]._withTree(tree[index]),
+    ];
   }
 
   /// 汇总视图：桶按全部聚合行聚合（不含路径行）；表头筛选作用于聚合行，
@@ -336,17 +366,21 @@ abstract class _MaterialAnalysisMaterialTableState
             depth: 1,
             material: material,
             group: group,
-            isLastChild: pathIndex == aggregate.paths.length - 1,
           ),
         );
       }
     }
-    return result;
+    return _withSharedTreeProjection(result);
   }
 
-  /// Stable hierarchical numbers independent of the current branch-collapse
-  /// state. Legacy cycles/orphans are appended once and never recurse forever.
-  Map<String, _MaterialTreePosition> _materialTreePositions(
+  /// 与折叠状态无关的稳定级联编号（1 / 1.1 / 1.1.2）。历史环与孤儿节点补在
+  /// 末尾，只访问一次、不会无限递归。
+  ///
+  /// **只产出编号**：连线的祖先链与末位标记 2026-09-15 起一律由
+  /// [_withSharedTreeProjection] 按渲染序统一推导——这里曾经顺带算过一份，
+  /// 但它的排序比较器与真正决定行序的 [_orderedBomNodes]（先比 level）不同，
+  /// 兄弟顺序一旦不一致，收口的肘线就会画在中间某行上。
+  Map<String, String> _materialTreeSequences(
     List<ProductionMaterialAnalysisMaterial> nodes, {
     required Map<String, String?> parentIds,
   }) {
@@ -374,37 +408,24 @@ abstract class _MaterialAnalysisMaterialTableState
     for (final values in children.values) {
       values.sort(compare);
     }
-    final result = <String, _MaterialTreePosition>{};
+    final result = <String, String>{};
     final visited = <String>{};
-    void visit(
-      ProductionMaterialAnalysisMaterial node,
-      String sequence,
-      List<bool> ancestorContinuations,
-      bool isLastChild,
-    ) {
+    void visit(ProductionMaterialAnalysisMaterial node, String sequence) {
       if (!visited.add(node.materialLineId)) return;
-      result[node.materialLineId] = (
-        sequence: sequence,
-        ancestorContinuations: List.unmodifiable(ancestorContinuations),
-        isLastChild: isLastChild,
-      );
-      final nodeKey = node.materialLineId;
-      final values = children[nodeKey] ?? const [];
+      result[node.materialLineId] = sequence;
+      final values = children[node.materialLineId] ?? const [];
       for (var index = 0; index < values.length; index++) {
-        visit(values[index], '$sequence.${index + 1}', [
-          ...ancestorContinuations,
-          !isLastChild,
-        ], index == values.length - 1);
+        visit(values[index], '$sequence.${index + 1}');
       }
     }
 
     for (var index = 0; index < roots.length; index++) {
-      visit(roots[index], '${index + 1}', const [], index == roots.length - 1);
+      visit(roots[index], '${index + 1}');
     }
     for (final node in nodes.where(
       (candidate) => !visited.contains(candidate.materialLineId),
     )) {
-      visit(node, '?${result.length + 1}', const [], true);
+      visit(node, '?${result.length + 1}');
     }
     return result;
   }
@@ -504,6 +525,8 @@ abstract class _MaterialAnalysisMaterialTableState
     final route = material.confirmedRoute;
     // 2026-09-13 起自制（车间）物料也可采用公共在途；叶子委外限制保留
     // （我方供料 BOM 的委外件不能吃公共超量在途，服务端同口径）。
+    // V581 的单一子件委外**同样受限**——它也是我方供料，多出来的量会凭空产生
+    // 一份无人负责的子件需求。所以这里判的是 BOM 形状，不是「要不要先自制」。
     final routeEligible =
         route == MaterialSupplyRoute.buy ||
         route == MaterialSupplyRoute.make ||
@@ -723,6 +746,10 @@ abstract class _MaterialAnalysisMaterialTableState
   // covered/blocked/inactive 或流程阶段键（[ProductionFlowStage.key]），汇总行
   // aggregateCovered/aggregatePartial/aggregateUncovered。文案带数量/百分比的
   // 行只按键进桶，桶标签是中文短标签（[MasterFacetBucket.label]）。
+  //
+  // 所属仓库(V587)的桶键直接就是仓库名, 没登记归属的行落「未登记」一桶; 取值走
+  // 宿主的 owningWarehouseFilterValue, 与单元格显示同一份真相(含本次会话改过的
+  // 覆盖值)。
 
   /// 表头筛选状态（key=列 key，value=稳定桶键；null/移除=清除）。
   final Map<String, String?> _materialTableFilters = {};
@@ -735,7 +762,9 @@ abstract class _MaterialAnalysisMaterialTableState
   @override
   bool get _hasActiveMaterialTableFilters =>
       _materialTableFilterValue('route') != null ||
-      _materialTableFilterValue('status') != null;
+      _materialTableFilterValue('status') != null ||
+      _materialTableFilterValue('owningWarehouse') != null ||
+      _materialTableFilterValue('owningWorkshop') != null;
 
   /// 投影/行缓存键：表头筛选值 + 路线草稿/脏组/学习记忆代际（路线桶与路线
   /// 筛选随下拉草稿变化）+ 视图排布。
@@ -751,6 +780,12 @@ abstract class _MaterialAnalysisMaterialTableState
         '${entry.key}:${entry.value.wireName}',
     ]..sort();
     final dirty = _dirtyRouteGroups.toList()..sort();
+    // 所属仓库的本地覆盖也要进签名: 改完只 setState 而签名不变的话, 行缓存与
+    // BOM 投影会原样复用, 新仓库名和新筛选桶都不会出现在界面上。
+    final owningWarehouses = [
+      for (final entry in _owningWarehouseNameOverrides.entries)
+        '${entry.key}:${entry.value ?? ''}',
+    ]..sort();
     return [
       _bomAggregateByMaterial.toString(),
       filters.join(','),
@@ -758,6 +793,7 @@ abstract class _MaterialAnalysisMaterialTableState
       dirty.join(','),
       '$_routeMemoryGeneration',
       '${_rememberedRouteDimensions.length}',
+      owningWarehouses.join(','),
     ].join('|');
   }
 
@@ -805,6 +841,30 @@ abstract class _MaterialAnalysisMaterialTableState
 
   String _materialTableRouteFacetLabel(String key) =>
       MaterialSupplyRoute.fromWire(key)?.label ?? _l10n.materialMixedRoutes;
+
+  /// 所属仓库列桶键 = 仓库名(没登记的落「未登记」一桶), 与单元格显示同一口径,
+  /// 取值一律走宿主助手。只读上下文行与取不到货品身份的行不进桶——桶里没有的
+  /// 值, 筛选也选不出来。
+  String? _materialTableOwningWarehouseFacetKey(_MaterialTableRow row) {
+    if (row.contextOnly) return null;
+    final owning = _materialTableOwningWarehouseRef(row);
+    final goodsId = owning.goodsId;
+    if (goodsId == null || goodsId.isEmpty) return null;
+    return owningWarehouseFilterValue(goodsId, owning.owningWarehouseName);
+  }
+
+  /// 归属车间列(V590)桶键 = 车间名；还没学过车间(未排产过)的行落「未学习」桶。
+  String? _materialTableOwningWorkshopFacetKey(_MaterialTableRow row) {
+    if (row.contextOnly) return null;
+    final owning = _materialTableOwningWarehouseRef(row);
+    final goodsId = owning.goodsId;
+    if (goodsId == null || goodsId.isEmpty) return null;
+    final name = _materialTableOwningWorkshopText(row)?.trim();
+    if (name == null || name.isEmpty || name == '—') {
+      return _MaterialAnalysisProductTasksState.owningWorkshopUnsetLabel;
+    }
+    return name;
+  }
 
   /// 进度列桶键与标签（与 [_materialTableStatusText]/[_materialTableStatusCell]
   /// 同一分支顺序，只是把文案换成有限枚举键）。
@@ -868,22 +928,44 @@ abstract class _MaterialAnalysisMaterialTableState
         _materialTableStatusFacet(row)?.key != statusFilter) {
       return false;
     }
+    final owningWarehouseFilter = _materialTableFilterValue('owningWarehouse');
+    if (owningWarehouseFilter != null &&
+        _materialTableOwningWarehouseFacetKey(row) != owningWarehouseFilter) {
+      return false;
+    }
+    final owningWorkshopFilter = _materialTableFilterValue('owningWorkshop');
+    if (owningWorkshopFilter != null &&
+        _materialTableOwningWorkshopFacetKey(row) != owningWorkshopFilter) {
+      return false;
+    }
     return true;
   }
 
-  /// 进度/路线列的筛选桶：稳定键 + 中文标签 + 计数；空值行不进桶。
+  /// 进度/路线/所属仓库列的筛选桶：稳定键 + 中文标签 + 计数；空值行不进桶。
   /// 排序：路线按 自制/采购/委外/路线不一；进度按枚举表顺序，流程阶段键在后
-  /// 按标签排。
+  /// 按标签排；所属仓库按仓库名, 「未登记」沉底。
   @override
   Map<String, List<MasterFacetBucket>> _materialTableFacetsOf(
     Iterable<_MaterialTableRow> rows,
   ) {
     final routeCounts = <String, int>{};
     final statusCounts = <String, ({int count, String label})>{};
+    final owningWarehouseCounts = <String, int>{};
+    final owningWorkshopCounts = <String, int>{};
     for (final row in rows) {
       final routeKey = _materialTableRouteFacetKey(row);
       if (routeKey != null) {
         routeCounts[routeKey] = (routeCounts[routeKey] ?? 0) + 1;
+      }
+      final owningWarehouseKey = _materialTableOwningWarehouseFacetKey(row);
+      if (owningWarehouseKey != null) {
+        owningWarehouseCounts[owningWarehouseKey] =
+            (owningWarehouseCounts[owningWarehouseKey] ?? 0) + 1;
+      }
+      final owningWorkshopKey = _materialTableOwningWorkshopFacetKey(row);
+      if (owningWorkshopKey != null) {
+        owningWorkshopCounts[owningWorkshopKey] =
+            (owningWorkshopCounts[owningWorkshopKey] ?? 0) + 1;
       }
       final status = _materialTableStatusFacet(row);
       if (status != null) {
@@ -909,6 +991,23 @@ abstract class _MaterialAnalysisMaterialTableState
         if (byRank != 0) return byRank;
         return statusCounts[a]!.label.compareTo(statusCounts[b]!.label);
       });
+    const unsetLabel =
+        _MaterialAnalysisProductTasksState.owningWarehouseUnsetLabel;
+    final owningWarehouseKeys = owningWarehouseCounts.keys.toList()
+      ..sort((a, b) {
+        // 仓库名按名字排; 「未登记」是缺失态, 永远沉底, 不跟真仓库名混在中间。
+        if (a == unsetLabel) return b == unsetLabel ? 0 : 1;
+        if (b == unsetLabel) return -1;
+        return a.compareTo(b);
+      });
+    const workshopUnset =
+        _MaterialAnalysisProductTasksState.owningWorkshopUnsetLabel;
+    final owningWorkshopKeys = owningWorkshopCounts.keys.toList()
+      ..sort((a, b) {
+        if (a == workshopUnset) return b == workshopUnset ? 0 : 1;
+        if (b == workshopUnset) return -1;
+        return a.compareTo(b);
+      });
     return {
       'route': [
         for (final key in routeKeys)
@@ -925,6 +1024,16 @@ abstract class _MaterialAnalysisMaterialTableState
             count: statusCounts[key]!.count,
             label: statusCounts[key]!.label,
           ),
+      ],
+      // 桶键就是仓库名, 不另给 label(display 会回落到 value)。
+      'owningWarehouse': [
+        for (final key in owningWarehouseKeys)
+          MasterFacetBucket(value: key, count: owningWarehouseCounts[key]!),
+      ],
+      // 归属车间(V590)同款：桶键=车间名, 「未学习」沉底。
+      'owningWorkshop': [
+        for (final key in owningWorkshopKeys)
+          MasterFacetBucket(value: key, count: owningWorkshopCounts[key]!),
       ],
     };
   }
@@ -960,6 +1069,9 @@ abstract class _MaterialAnalysisMaterialTableState
       width: 360,
       value: _materialTableIdentityText,
       cellBuilderHandlesSemantics: true,
+      // 树列自己吃满整行高度：同一行里只要别的列换了两行，这一格若被竖向
+      // 居中收缩，层级竖线就接不到上下行（2026-09-15）。
+      fillsCellHeight: true,
       cellBuilder: (_, row) => _materialTableIdentityCell(theme, row),
     ),
     // 2026-09-14 用户口径：编号 / 颜色 / 单位从身份格副行提升为独立列，
@@ -993,6 +1105,31 @@ abstract class _MaterialAnalysisMaterialTableState
           '这批物料怎么准备：采购 = 向供应商买；委外 = 发给加工商加工；'
           '自制 = 自己车间生产。带下层物料的可选路线更多。',
       cellBuilder: (_, row) => _materialTableRouteCell(theme, row),
+    ),
+    // 2026-09-15 用户口径（V590 收敛）: 所属仓库 = 货品主档 goods.
+    // owning_warehouse_id 的**单一事实源**——任何入库(采购/委外/完工/调拨/退料/
+    // 盘盈/手工单)自动回写为最新入库仓(StockService 内核收口), Excel 回填只填
+    // 空; 全站展示(物料分析/即时库存/货品资料)一律读它。点单元格可直接改主档。
+    MasterColumnDef(
+      key: 'owningWarehouse',
+      label: '所属仓库',
+      width: 132,
+      value: _materialTableOwningWarehouseText,
+      info:
+          '这个货品归哪个仓管。任何入库都会自动把它更新为最新入库仓（与即时库存'
+          '同一事实源）；点单元格可直接改主档。',
+      cellBuilder: (_, row) => _materialTableOwningWarehouseCell(theme, row),
+    ),
+    // 归属生产车间(V590): 最近一次排产确认/车间改派自动学习回写, 只读展示;
+    // 车间桶下计划格里的「生产车间」输入就是它的学习入口。
+    MasterColumnDef(
+      key: 'owningWorkshop',
+      label: '归属车间',
+      width: 120,
+      value: _materialTableOwningWorkshopText,
+      info:
+          '这个货品归哪个生产车间生产。最近一次排产确认或车间改派会自动记住，'
+          '下次下达车间默认带出。',
     ),
     MasterColumnDef(
       key: 'requiredQty',
@@ -1315,6 +1452,10 @@ abstract class _MaterialAnalysisMaterialTableState
       sequence: '',
       sequenceInline: true,
       showLeafMarker: false,
+      // 连线要跨过宿主给每个数据格的纵向内边距，否则行与行之间空出 2×8px，
+      // 整列看着像虚线（2026-09-15：这里原来没传，默认 0，与级联页观感不同的
+      // 一大来源）。数值取自表格组件自己公开的常量，不在调用点抄魔数。
+      guideBleed: MasterDataTableView.cellVerticalPadding,
       title: title,
       subtitle: aggregate == null
           ? null
@@ -1476,6 +1617,106 @@ abstract class _MaterialAnalysisMaterialTableState
           autofillMessage: '主档来源为空，请核对',
         ),
       ],
+    );
+  }
+
+  // ===== 所属仓库列(V587) =====
+
+  /// 本行代表的货品身份与它在快照里的所属仓库。
+  ///
+  /// 优先级与编号/颜色列一致(产品行以产品自身为准, 汇总行取代表路径, 其余取物料
+  /// 行); **三个值必须取自同一个对象**——分开各取各的, 就会出现「A 货的 id 配
+  /// B 货的仓库名」, 点一下改到别的货品头上。
+  ({String? goodsId, String? owningWarehouseId, String? owningWarehouseName})
+  _materialTableOwningWarehouseRef(_MaterialTableRow row) {
+    final product = row.product;
+    if (product != null) {
+      return (
+        goodsId: product.goodsId,
+        owningWarehouseId: product.owningWarehouseId,
+        owningWarehouseName: product.owningWarehouseName,
+      );
+    }
+    final material = row.aggregate?.representative ?? row.material;
+    return (
+      goodsId: material?.goodsId,
+      owningWarehouseId: material?.owningWarehouseId,
+      owningWarehouseName: material?.owningWarehouseName,
+    );
+  }
+
+  /// 列文本(也是列宽测算/导出/无障碍的回退真值): 本次会话改过的值优先于快照,
+  /// 没登记归属显示「—」。V590 起归属仓由任何入库自动回写(单一事实源)。
+  String? _materialTableOwningWarehouseText(_MaterialTableRow row) {
+    final owning = _materialTableOwningWarehouseRef(row);
+    final snapshot = owning.owningWarehouseName;
+    final name = owningWarehouseNameOf(owning.goodsId, snapshot)?.trim();
+    return name == null || name.isEmpty ? '—' : name;
+  }
+
+  /// 归属生产车间列文本(V590): 货品主档 owning_workshop_department_id,
+  /// 最近一次排产确认/车间改派自动学习回写; 未学习过显示「—」。
+  String? _materialTableOwningWorkshopText(_MaterialTableRow row) {
+    final workshop =
+        row.product?.owningWorkshopName ??
+        (row.aggregate?.representative ?? row.material)?.owningWorkshopName;
+    return workshop == null || workshop.trim().isEmpty ? '—' : workshop.trim();
+  }
+
+  /// 所属仓库格: 有货品身份的行点开仓库面板直接改主档; 只读上下文行与取不到
+  /// 货品的行(孤儿节点、缺 goodsId 的聚合行)退化为纯文本, 不做成点不动的假按钮。
+  /// V590 起改完之外的每一次入库也会自动把它回写成最新入库仓。
+  Widget _materialTableOwningWarehouseCell(
+    ThemeData theme,
+    _MaterialTableRow row,
+  ) {
+    final foreground = _materialTableForeground(theme);
+    final text = _materialTableOwningWarehouseText(row) ?? '—';
+    final label = Text(
+      text,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.bodyMedium?.copyWith(color: foreground),
+    );
+    final goodsId = _materialTableOwningWarehouseRef(row).goodsId;
+    if (row.contextOnly || goodsId == null || goodsId.isEmpty) return label;
+    return Tooltip(
+      message: '$text\n点击改这个货品的所属仓库(货品主档归属, 不是本次分析范围仓, 也不是入库落点仓)',
+      child: InkWell(
+        key: ValueKey('material-owning-warehouse-${row.key}'),
+        onTap: _busy ? null : () => unawaited(_editOwningWarehouse(row)),
+        child: Semantics(
+          label: '所属仓库 $text',
+          button: true,
+          child: Row(
+            children: [
+              Expanded(child: label),
+              Icon(
+                Icons.edit_outlined,
+                size: 16,
+                color: foreground.withValues(alpha: 0.6),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 点格子改所属仓库: 面板与写回都在宿主助手里(它自己 setState 并落覆盖表),
+  /// 本页只负责把行换算成货品身份。
+  ///
+  /// 传宿主 State 的 context 而不是单元格的 —— 面板开着时这一行可能因翻页/
+  /// 虚拟滚动被回收, 那时再拿单元格的 context 弹提示就炸了。
+  Future<void> _editOwningWarehouse(_MaterialTableRow row) async {
+    final owning = _materialTableOwningWarehouseRef(row);
+    final goodsId = owning.goodsId;
+    if (goodsId == null || goodsId.isEmpty) return;
+    final current = owningWarehouseIdOf(goodsId, owning.owningWarehouseId);
+    await pickOwningWarehouse(
+      context,
+      goodsId: goodsId,
+      currentWarehouseId: current,
     );
   }
 
@@ -2187,7 +2428,8 @@ abstract class _MaterialAnalysisMaterialTableState
         if (refCount > 0) return refCount;
         // 明细来源受权限保护或未展开时，按公共余量/晚到池是否有量兜底为 1，
         // 避免把可用入口误置灰。
-        final pool = representative.publicSurplusRemainingQty +
+        final pool =
+            representative.publicSurplusRemainingQty +
             representative.lateSharedFutureAvailableQty;
         return pool > 0 ? 1 : 0;
       },

@@ -92,11 +92,12 @@ public class MaterialAnalysisCommandService {
      */
     @Transactional
     public AnalysisView notifySupply(UUID analysisId, NotifyRequest request) {
-        return notifySupplyInternal(analysisId, request, false);
+        return notifySupplyInternal(analysisId, request, false, null);
     }
 
     private AnalysisView notifySupplyInternal(
-            UUID analysisId, NotifyRequest request, boolean allocationCurrent) {
+            UUID analysisId, NotifyRequest request, boolean allocationCurrent,
+            Map<UUID, BigDecimal> arrangeQtyByMaterialLine) {
         tx.bind();
         var mutationGuard = lockAnalysisInventoryDimensions(analysisId);
         MaterialAnalysisService.AnalysisHeader header = analysisService.headerAfterPrelock(analysisId);
@@ -122,10 +123,16 @@ public class MaterialAnalysisCommandService {
                 throw validation("自制路线请直接「创建生产计划」下达车间，不再单独创建子件任务");
             }
         }
-        if (rootSupply != null && rootSupply.fulfillExisting(analysisId,
+        // 现货交接：根供给行上已有可分配现货时，这一次下达就是「把它交接过去」，
+        // 不建任何 supply action——这是一条正当的零 action 成功路径，下面那道
+        // 「一条都没建就回 409」的闸必须放它过去。
+        boolean rootStockHandled = rootSupply != null
+                && rootSupply.fulfillExisting(analysisId,
                 groups.stream().flatMap(group -> group.materials().stream())
                         .filter(material -> "ROOT_SUPPLY".equals(material.nodeRole()))
-                        .map(MaterialView::materialLineId).toList(), request.idempotencyKey())) {
+                        .map(MaterialView::materialLineId).toList(),
+                request.idempotencyKey());
+        if (rootStockHandled) {
             analysisService.refreshLocked(analysisId);
             view = analysisService.detailInternal(analysisId, false);
             groups = selectedGroups(view, request);
@@ -137,9 +144,17 @@ public class MaterialAnalysisCommandService {
                         .collect(Collectors.toSet()));
         Map<String, SupplyQuantityInput> quantityInputs =
                 quantityInputs(view, request, groups);
-        Set<UUID> subcontractBomParents = activeBomParentIds(groups.stream()
+        List<UUID> subcontractGoodsIds = groups.stream()
                 .filter(group -> "SUBCONTRACT".equals(group.route()))
-                .map(group -> group.dimension().goodsId()).toList());
+                .map(group -> group.dimension().goodsId()).toList();
+        Set<UUID> subcontractBomParents = activeBomParentIds(subcontractGoodsIds);
+        // V581：有子层里再分一刀——「只有一个叶子子件」的委外件直接发那个子件出去，
+        // 不建前置自制任务，因此它和无子层叶子走同一条「出委外申请」通道。
+        Set<UUID> subcontractSoleComponents =
+                soleComponentSubcontractGoodsIds(subcontractGoodsIds);
+        Set<UUID> subcontractMakeFirst = subcontractBomParents.stream()
+                .filter(goodsId -> !subcontractSoleComponents.contains(goodsId))
+                .collect(Collectors.toSet());
         var coverage = supplyCoverage(analysisId, groups);
         List<ActionPlan> plans = new ArrayList<>();
         for (ActionGroup group : groups) {
@@ -156,9 +171,12 @@ public class MaterialAnalysisCommandService {
             SupplyQuantityInput input = quantityInputs.get(group.groupKey());
             BigDecimal demandQty = delta;
             BigDecimal publicExtraQty = BigDecimal.ZERO.setScale(4);
+            // 「本次必须整量接管」只对真正会创建下层责任的行成立：自制，以及
+            // 需要先自制目标件的委外件。V581 的单一子件委外只是一张普通委外
+            // 订货，可分批下达。
             boolean createsChildOwnership = "MAKE".equals(group.route())
                     || ("SUBCONTRACT".equals(group.route())
-                        && subcontractBomParents.contains(group.dimension().goodsId()));
+                        && subcontractMakeFirst.contains(group.dimension().goodsId()));
             if (input != null) {
                 BigDecimal requested = input.qty().setScale(4, RoundingMode.CEILING);
                 if (createsChildOwnership && requested.compareTo(delta) != 0) {
@@ -187,6 +205,34 @@ public class MaterialAnalysisCommandService {
                         throw validation("自制或有子层委外的子件任务不能创建公共超量备货；"
                                 + "额外数量尚未形成下层材料需求，请分开处理");
                     }
+                    // V581：单一子件委外虽然可分批，但它仍是「我方供料」的带 BOM 件，
+                    // 公共备货超量会凭空多出一份无人负责的子件需求——数据库
+                    // preplan_public_surplus_subcontract_leaf_guard 同口径拒绝，
+                    // 这里先给出可读文案，不让请求跑到 23514。
+                    if ("SUBCONTRACT".equals(group.route())
+                            && subcontractBomParents.contains(group.dimension().goodsId())) {
+                        throw validation("「" + groupLabel(group)
+                                + "」是我方供料的委外件（要发子件给委外商），"
+                                + "不能创建公共超量备货；多做的量请另立需求");
+                    }
+                }
+            } else if (arrangeQtyByMaterialLine != null) {
+                // V589（2026-09-15）：下达车间（issue-plans）对「需先自制目标件」
+                // 的委外行带来车间腿超量——台账 required = 归需求量 + 超量如实
+                // 承接（顶层要做 5000，委外件就要加工 5000）。不需要 over_supply
+                // 权限，也不受「有子层委外禁公共备货」限制：下层物料由级联页
+                // 一并下单背书，与车间超量（V577）同一口径。人工「下达委外」
+                // 通道（input != null）不经过这里，仍整量接管、仍禁公共超量。
+                BigDecimal arrangeQty = group.materials().stream()
+                        .map(material -> arrangeQtyByMaterialLine.get(
+                                material.materialLineId()))
+                        .filter(Objects::nonNull)
+                        .reduce(BigDecimal.ZERO, BigDecimal::max);
+                if (arrangeQty.signum() > 0
+                        && arrangeQty.subtract(delta).signum() > 0
+                        && createsChildOwnership) {
+                    publicExtraQty = arrangeQty.subtract(delta)
+                            .setScale(4, RoundingMode.CEILING);
                 }
             }
             SafetySnapshot safety = groupSafetySnapshot(group.materials());
@@ -311,7 +357,7 @@ public class MaterialAnalysisCommandService {
         // SUBCONTRACT 合并生成一张委外申请；明细行仍逐 action 锚定（撤回/绑定粒度不变），
         // 订货侧照旧按供应商分组拆订货单。MAKE 与委外前置自制保持逐条任务。
         PreparedExternalDocuments prepared =
-                prepareExternalDocuments(analysisId, created, subcontractBomParents);
+                prepareExternalDocuments(analysisId, created, subcontractMakeFirst);
         for (ActionDraft action : created) {
             createExternalDocument(analysisId, action, prepared);
         }
@@ -327,6 +373,11 @@ public class MaterialAnalysisCommandService {
                     prepared.subcontractApplication().applicationId(),
                     "SUBCONTRACT_APPLICATION");
         }
+        // 「一条 action 都没建」在服务端是**合法结局**，不能一律回 409：
+        // 现货交接（rootStockHandled）、V466 原订单补货在途已覆盖、幂等回放
+        // 都会走到这里。客户端要的是「这次到底有没有产生新的下达」——那由
+        // 它按返回快照的 version/fingerprint 是否变化自行判定（只有真的建了东西
+        // 才会 refreshLocked 换版本），不改本端点的成功语义（2026-09-15）。
         if (!created.isEmpty()) {
             // 2026-09-05 简化：子件行不再接管原子树需求、不迁移 exact 权益
             // （物料行保持原位单一份数据，计划侧不搬家）；旧模式遗留的委托
@@ -639,14 +690,18 @@ public class MaterialAnalysisCommandService {
         for (MaterialView material : preArrange.flatMaterials()) {
             goodsByMaterialLine.putIfAbsent(material.materialLineId(), material.goodsId());
         }
+        List<UUID> subcontractCandidateGoods = request.lines().stream()
+                .map(IssueWorkshopPlansRequest.IssuePlanLine::materialLineId)
+                .filter(java.util.Objects::nonNull)
+                .filter(id -> "SUBCONTRACT".equals(candidateRoutes.get(id)))
+                .map(goodsByMaterialLine::get)
+                .filter(java.util.Objects::nonNull)
+                .distinct().toList();
         java.util.Set<UUID> goodsWithMakeChildren = new java.util.HashSet<>(
-                activeBomParentIds(request.lines().stream()
-                                .map(IssueWorkshopPlansRequest.IssuePlanLine::materialLineId)
-                                .filter(java.util.Objects::nonNull)
-                                .filter(id -> "SUBCONTRACT".equals(candidateRoutes.get(id)))
-                                .map(goodsByMaterialLine::get)
-                                .filter(java.util.Objects::nonNull)
-                                .distinct().toList()));
+                activeBomParentIds(subcontractCandidateGoods));
+        // V581：只有一个叶子子件的委外件不进车间——它直接发子件给委外商。
+        goodsWithMakeChildren.removeAll(
+                soleComponentSubcontractGoodsIds(subcontractCandidateGoods));
         for (IssueWorkshopPlansRequest.IssuePlanLine line : request.lines()) {
             if (line.materialLineId() == null) continue;
             String route = candidateRoutes.get(line.materialLineId());
@@ -662,7 +717,8 @@ public class MaterialAnalysisCommandService {
             }
             UUID goodsId = goodsByMaterialLine.get(line.materialLineId());
             if (goodsId == null || !goodsWithMakeChildren.contains(goodsId)) {
-                throw validation("无自制子层的委外件请走委外下达，不能直接建生产计划");
+                throw validation("无自制子层、或只有一个叶子子件（直接发子件给委外商）的委外件"
+                        + "请走委外下达，不能直接建生产计划");
             }
             subcontractLines.add(line.materialLineId());
         }
@@ -673,10 +729,20 @@ public class MaterialAnalysisCommandService {
                 && ensureWorkshopChildAnchors(analysisId, preArrange, makeLines);
         AnalysisView view = preArrange;
         if (!subcontractLines.isEmpty()) {
+            // V589：把候选行的「本次数量」带给 ARRANGE——车间腿超量时台账与
+            // 行动按「归需求量 + 公共备货产出」承接（用户口径：顶层做 5000，
+            // 委外件就要加工 5000）。
+            Map<UUID, BigDecimal> arrangeQty = new HashMap<>();
+            for (IssueWorkshopPlansRequest.IssuePlanLine line : request.lines()) {
+                if (line.materialLineId() != null && line.qty() != null
+                        && subcontractLines.contains(line.materialLineId())) {
+                    arrangeQty.merge(line.materialLineId(), line.qty(), BigDecimal::max);
+                }
+            }
             view = notifySupplyInternal(analysisId, new NotifyRequest(
                     preArrange.version(), preArrange.fingerprint(),
                     request.idempotencyKey() + "-ARRANGE", "SUBCONTRACT",
-                    subcontractLines, null, null), !anchorsChanged);
+                    subcontractLines, null, null), !anchorsChanged, arrangeQty);
             anchorsChanged = false;
         }
         // 2) 以最新快照逐行生成计划：产品行直接用行 id，候选行解析到刚建/既有子件行。
@@ -737,28 +803,15 @@ public class MaterialAnalysisCommandService {
                 // 入库后就是公共库存，其他计划可以直接用。
                 BigDecimal demandQty = line.qty().min(product.remainingQty());
                 BigDecimal surplusQty = line.qty().subtract(demandQty);
-                // 2026-09-14 修订（用户口径「销售来源也允许超量，超出部分就是
-                // 公共的」）：销售订单来源顶层行超量不再拒绝，而是**拆成两张
-                // 计划单**——单 A 是原样的销售行（1:1 分摊 demandQty，销售守恒
-                // 「排产量 ≤ 订单未满足」与「分摊合计 = 计划数量」原样成立）；
-                // 单 B 是无销售来源的备货行（surplusQty，link 记 submitted=0 +
-                // surplus=全部）。两张单各自恰好一条明细，分别满足
-                // fn_sync_material_analysis_plan_link_qty 的「单行对账」形状，
-                // 触发器零改动。非销售来源仍走单张计划 + link 分账（V577 原样）。
-                List<WorkshopPlanSegment> segments;
-                if (surplusQty.signum() <= 0 || product.salesOrderItemId() == null) {
-                    segments = List.of(
-                            new WorkshopPlanSegment(line.qty(), product, surplusQty));
-                } else {
-                    segments = new ArrayList<>();
-                    if (demandQty.signum() > 0) {
-                        segments.add(new WorkshopPlanSegment(
-                                demandQty, product, BigDecimal.ZERO));
-                    }
-                    segments.add(new WorkshopPlanSegment(
-                            surplusQty, stockTopForPublicSurplus(product, surplusQty),
-                            surplusQty));
-                }
+                // 2026-09-15 修订（用户口径「多余的不要单独列一张单，直接合并」）：
+                // 销售订单来源顶层行超量不再拆成两张计划单，与非销售来源同一形状
+                // ——一张计划、link 记 submitted=归需求量 + surplus=超量。销售侧
+                // 守恒改由「分摊只认 submitted」保证：审核时 plan_order_item_links
+                // 的容量与执行段销售分摊都只覆盖归本需求的量（ProductionPlanService
+                // / ProductionExecutionPackageCommandService / DB 断言触发器同步
+                // 放宽），「排产量 ≤ 订单未满足」原样成立。
+                List<WorkshopPlanSegment> segments = List.of(
+                        new WorkshopPlanSegment(line.qty(), product, surplusQty));
                 for (WorkshopPlanSegment segment : segments) {
                     PlanQuantity quantity = new PlanQuantity(lineId, segment.qty(),
                             line.billDate(), line.deliveryDate(), line.departmentId(),
@@ -798,39 +851,6 @@ public class MaterialAnalysisCommandService {
     /** 一次下达里要出的一张计划单：数量 + 承载它的产品身份 + link 的公共备货量。 */
     private record WorkshopPlanSegment(
             BigDecimal qty, ProductView product, BigDecimal linkSurplusQty) {}
-
-    /**
-     * 销售顶层行超量部分的承载身份：剥掉销售来源（salesOrderItemId/No、客户），
-     * 需求量改记为本段自己的数量——它是一张无销售来源的「公共备货产出」单，
-     * 不进任何销售分摊与订单侧 planned_qty；产出入库后按 link 的
-     * public_surplus_qty 进公共库存。
-     */
-    private ProductView stockTopForPublicSurplus(ProductView product, BigDecimal qty) {
-        return new ProductView(
-                product.analysisLineId(), product.sourceType(), product.sourceRef(),
-                product.sourceReason(), null, null, null,
-                product.orderDate(), product.deliveryDate(), null,
-                product.goodsId(), product.goodsCode(), product.goodsName(),
-                product.spec(), product.colorId(), product.colorName(),
-                product.unitId(), product.unitName(), product.unitRate(),
-                qty, product.submittedQty(), product.approvedQty(),
-                product.remainingQty(), product.allocationPriority(),
-                product.canSchedule(), product.maxSchedulableQty(),
-                product.scheduleBlockedReason(), product.readyNowQty(),
-                product.readyByDateQty(), product.readyStartQty(),
-                product.readyFinishQty(), product.readyShipQty(),
-                product.readinessRatio(), product.hasProductionMaterialChildren(),
-                product.parentAnalysisLineId(), product.parentGoodsName(),
-                product.planExecutionStatus(), product.latestPlanId(),
-                product.latestPlanNo(), product.planExecutionPlannedQty(),
-                product.planExecutionInboundQty(),
-                product.planExecutionProgressRatio(),
-                product.planExecutionReportedQty(),
-                product.planExecutionZeroMaterial(),
-                product.planExecutionWorkshopName(),
-                product.planExecutionResponsibleName(),
-                product.rootMaterialLineId());
-    }
 
     private Set<UUID> workshopSourceIds(UUID analysisId, IssueWorkshopPlansRequest request) {
         Set<UUID> sourceIds = request.lines().stream()
@@ -1329,7 +1349,7 @@ public class MaterialAnalysisCommandService {
      */
     private PreparedExternalDocuments prepareExternalDocuments(
             UUID analysisId, List<ActionDraft> created,
-            Set<UUID> subcontractBomParents) {
+            Set<UUID> subcontractMakeFirst) {
         UUID employeeId = currentUser.requireEmployeeId();
         // 来源单据展示可读标签（计划前物料分析 + 分析日期），不再把分析 UUID 暴露给单据号/备注；
         // 谱系回溯改走 materialAnalysisId，与展示解耦。analyzed_at 实时查（refreshLocked 会推进）。
@@ -1363,21 +1383,37 @@ public class MaterialAnalysisCommandService {
         for (ActionDraft action : created) {
             LocalDate needDate = action.group().needDate();
             if ("BUY".equals(action.group().route())) {
-                if (action.demandQty().signum() > 0) {
+                if (action.demandQty().signum() > 0
+                        && action.publicExtraQty().signum() > 0) {
+                    // 2026-09-15 用户口径「直接显示下达 5000，不是 1000 一条 4000 一条」：
+                    // 需求片与公共超量片合成一条申请明细。锁定面不动——allocation
+                    // 仍只分摊需求片，coverage/撤回按 action.requested_qty 走，
+                    // 公共片经 markCreated 的 public_surplus_external_item_id 指回
+                    // 同一条明细（fn_preplan_direct_overorder_capacity 的「需求件
+                    // 同件超量」口径原生支持该形态）。
                     buyLines.add(new ProductionPurchaseRequestFacade.DraftLine(
                             action.actionId(), action.group().dimension().goodsId(),
                             action.group().dimension().colorId(),
-                            action.group().dimension().unitId(), action.demandQty(),
-                            needDate, "生产需求精确备料"));
-                }
-                if (action.publicExtraQty().signum() > 0) {
-                    buyLines.add(new ProductionPurchaseRequestFacade.DraftLine(
-                            action.publicSurplusSliceId(),
-                            action.group().dimension().goodsId(),
-                            action.group().dimension().colorId(),
                             action.group().dimension().unitId(),
-                            action.publicExtraQty(), needDate,
-                            "主动公共备货(不绑定来源物料分析)"));
+                            action.demandQty().add(action.publicExtraQty()),
+                            needDate, "生产需求精确备料+主动公共备货"));
+                } else {
+                    if (action.demandQty().signum() > 0) {
+                        buyLines.add(new ProductionPurchaseRequestFacade.DraftLine(
+                                action.actionId(), action.group().dimension().goodsId(),
+                                action.group().dimension().colorId(),
+                                action.group().dimension().unitId(), action.demandQty(),
+                                needDate, "生产需求精确备料"));
+                    }
+                    if (action.publicExtraQty().signum() > 0) {
+                        buyLines.add(new ProductionPurchaseRequestFacade.DraftLine(
+                                action.publicSurplusSliceId(),
+                                action.group().dimension().goodsId(),
+                                action.group().dimension().colorId(),
+                                action.group().dimension().unitId(),
+                                action.publicExtraQty(), needDate,
+                                "主动公共备货(不绑定来源物料分析)"));
+                    }
                 }
                 if (action.safetyQty().signum() > 0) {
                     buyLines.add(new ProductionPurchaseRequestFacade.DraftLine(
@@ -1388,23 +1424,34 @@ public class MaterialAnalysisCommandService {
                 }
                 purchaseNeedDate = earliest(purchaseNeedDate, needDate);
             } else if ("SUBCONTRACT".equals(action.group().route())
-                    && !subcontractBomParents.contains(action.group().dimension().goodsId())) {
+                    && !subcontractMakeFirst.contains(action.group().dimension().goodsId())) {
                 subcontractLeafActionIds.add(action.actionId());
-                if (action.demandQty().signum() > 0) {
+                if (action.demandQty().signum() > 0
+                        && action.publicExtraQty().signum() > 0) {
+                    // 同 BUY：需求片与公共超量片合成一条委外申请明细（2026-09-15）。
                     subcontractLines.add(new ProductionSubcontractRequestPort.DraftLine(
                             action.actionId(), action.group().dimension().goodsId(),
                             action.group().dimension().colorId(),
-                            action.group().dimension().unitId(), action.demandQty(),
-                            needDate, "计划前物料分析委外备料"));
-                }
-                if (action.publicExtraQty().signum() > 0) {
-                    subcontractLines.add(new ProductionSubcontractRequestPort.DraftLine(
-                            action.publicSurplusSliceId(),
-                            action.group().dimension().goodsId(),
-                            action.group().dimension().colorId(),
                             action.group().dimension().unitId(),
-                            action.publicExtraQty(), needDate,
-                            "主动公共委外备货(不绑定来源物料分析)"));
+                            action.demandQty().add(action.publicExtraQty()),
+                            needDate, "计划前物料分析委外备料+主动公共委外备货"));
+                } else {
+                    if (action.demandQty().signum() > 0) {
+                        subcontractLines.add(new ProductionSubcontractRequestPort.DraftLine(
+                                action.actionId(), action.group().dimension().goodsId(),
+                                action.group().dimension().colorId(),
+                                action.group().dimension().unitId(), action.demandQty(),
+                                needDate, "计划前物料分析委外备料"));
+                    }
+                    if (action.publicExtraQty().signum() > 0) {
+                        subcontractLines.add(new ProductionSubcontractRequestPort.DraftLine(
+                                action.publicSurplusSliceId(),
+                                action.group().dimension().goodsId(),
+                                action.group().dimension().colorId(),
+                                action.group().dimension().unitId(),
+                                action.publicExtraQty(), needDate,
+                                "主动公共委外备货(不绑定来源物料分析)"));
+                    }
                 }
                 subcontractNeedDate = earliest(subcontractNeedDate, needDate);
             }
@@ -1449,7 +1496,10 @@ public class MaterialAnalysisCommandService {
             UUID publicSurplusItemId = action.publicExtraQty().signum() > 0
                     ? Optional.ofNullable(bySlice.get(action.publicSurplusSliceId()))
                             .map(ProductionPurchaseRequestFacade.DraftLineResult::requestItemId)
-                            .orElseThrow(() -> conflict("采购申请缺少主动公共备货明细"))
+                            // 合并明细形态（2026-09-15）：公共片与需求片同一条申请行。
+                            .orElseGet(() -> Optional.ofNullable(bySlice.get(action.actionId()))
+                                    .map(ProductionPurchaseRequestFacade.DraftLineResult::requestItemId)
+                                    .orElseThrow(() -> conflict("采购申请缺少主动公共备货明细")))
                     : null;
             markCreated(action.actionId(), "PURCHASE_REQUEST", result.requestId(),
                     result.billNo(), demandItemId, safetyItemId,
@@ -1480,7 +1530,13 @@ public class MaterialAnalysisCommandService {
                             .filter(candidate -> action.publicSurplusSliceId()
                                     .equals(candidate.demandId()))
                             .findFirst()
-                            .orElseThrow(() -> conflict("委外申请缺少主动公共备货明细"))
+                            // 合并明细形态（2026-09-15）：公共片与需求片同一条申请行。
+                            .orElseGet(() -> result.lines().stream()
+                                    .filter(candidate -> action.actionId()
+                                            .equals(candidate.demandId()))
+                                    .findFirst()
+                                    .orElseThrow(() -> conflict(
+                                            "委外申请缺少主动公共备货明细")))
                     : null;
             markCreated(action.actionId(), "SUBCONTRACT_APPLICATION",
                     result.applicationId(), result.billNo(),
@@ -1592,7 +1648,8 @@ public class MaterialAnalysisCommandService {
                 FOR UPDATE
                 """).setParameter("analysisId", analysisId)
                 .setParameter("materialId", representative), UUID.class);
-        BigDecimal requiredQty = action.demandQty();
+        BigDecimal requiredQty = action.demandQty()
+                .add(Optional.ofNullable(action.publicExtraQty()).orElse(BigDecimal.ZERO));
         UUID taskId;
         if (existing.isEmpty()) {
             taskId = UUID.randomUUID();
@@ -1620,13 +1677,24 @@ public class MaterialAnalysisCommandService {
                     .executeUpdate();
         } else {
             taskId = existing.getFirst();
-            // 任务需求量始终与任务行的 requested_qty 同步（重下达只增不减）。
+            // 任务需求量 = 任务行需求量（重下达只增不减）+ 仍未撤销的前置自制
+            // 行动带来的公共备货产出（V589：车间腿超量由台账如实承接）。
             em.createNativeQuery("""
                     UPDATE preplan_subcontract_make_tasks task
-                    SET required_qty = item.requested_qty,
+                    SET required_qty = item.requested_qty + COALESCE(surplus.total, 0),
                         version = task.version + 1,
                         updated_by = :actorId, updated_at = now()
                     FROM production_material_analysis_items item
+                    LEFT JOIN LATERAL (
+                        SELECT SUM(action.public_surplus_qty) AS total
+                        FROM preplan_supply_actions action
+                        JOIN preplan_supply_action_allocations allocation
+                          ON allocation.action_id = action.id
+                         AND allocation.analysis_material_id = task.analysis_material_id
+                        WHERE action.analysis_id = task.analysis_id
+                          AND action.external_document_type = 'SUBCONTRACT_MAKE_TASK'
+                          AND action.status <> 'CANCELLED'
+                    ) surplus ON TRUE
                     WHERE task.id = :taskId
                       AND item.id = task.preparation_item_id
                     """)
@@ -1741,6 +1809,31 @@ public class MaterialAnalysisCommandService {
                  AND child.is_deleted = FALSE
                  AND COALESCE(child.auto_created, FALSE) = FALSE
                 WHERE bom.goods_id IN (:goodsIds) AND bom.is_deleted = FALSE
+                """, UUID.class).setParameter("goodsIds", distinctGoodsIds), UUID.class));
+    }
+
+    /**
+     * V581：「只有一个叶子子件」的委外货品——这类件不先自制，直接把那个子件
+     * 发给委外商，委外商加工后交回目标件。
+     *
+     * <p>判据与 {@code SubcontractMaterialPlanService.soleOutboundComponent} 及
+     * 迁移 V581 的 {@code fn_guard_subcontract_target_quantity_basis_insert}
+     * 逐字同口径：活动边恰好 1 条、该边 PER_UNIT 且是真实投入阶段、子件自身
+     * 没有活动边。任一条不满足就不在本集合里，按既有「先自制再发外」处理。
+     *
+     * <p>与 {@link #activeBomParentIds} 一样，同批只发一次查询。
+     */
+    Set<UUID> soleComponentSubcontractGoodsIds(Collection<UUID> goodsIds) {
+        List<UUID> distinctGoodsIds = goodsIds.stream()
+                .filter(java.util.Objects::nonNull).distinct().sorted().toList();
+        if (distinctGoodsIds.isEmpty()) return Set.of();
+        // 判据本体是 V581 的 fn_subcontract_sole_component_goods（与订货批准侧
+        // 共用同一个函数），这里只做一次批量过滤，不再抄一遍判据。
+        return Set.copyOf(NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT goods.id
+                FROM goods
+                WHERE goods.id IN (:goodsIds)
+                  AND fn_subcontract_sole_component_goods(goods.id)
                 """, UUID.class).setParameter("goodsIds", distinctGoodsIds), UUID.class));
     }
 

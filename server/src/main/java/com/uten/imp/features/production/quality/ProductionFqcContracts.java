@@ -88,6 +88,7 @@ public final class ProductionFqcContracts {
             int activeCount,
             String pendingQtyText,
             String reportNos,
+            /** 一单多货品的身份摘要，每项形如「名称 (编号 · 颜色)」，多项以「、」连接。 */
             String goodsSummary,
             String status,
             OffsetDateTime createdAt) {

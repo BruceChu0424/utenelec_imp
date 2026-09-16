@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -200,58 +201,39 @@ class WarehouseQualityMergedTable extends StatelessWidget {
           );
         },
       ),
+      // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+      // 同名不同色的检查行经常上下挨着排（自制白色与委外香槟金是两条不同的
+      // 放行行），只看名称会点错行放行。切片序号仍挂在名称右侧；筛选桶按各列
+      // 自己的值分（编号/颜色列因此也能单独筛）。
       EditableGridColumn(
         key: 'goods',
         label: '货品名称',
-        width: 220,
-        filterValueOf: (row) =>
-            row.line.goodsLabel.trim().isEmpty ? null : row.line.goodsLabel,
-        cellBuilder: (context, row) {
-          final label = row.line.goodsLabel;
-          final chip = row.sliceTotal > 1;
-          if (!chip) {
-            return Tooltip(
-              message: label,
-              child: Text(
-                label.isEmpty ? '未命名货品' : label,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            );
-          }
-          // 同一明细行拆成多个放行切片时标注序号，避免误读为重复货品。
-          return Wrap(
-            spacing: UtenSpacing.s6,
-            runSpacing: UtenSpacing.s2,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text(
-                label.isEmpty ? '未命名货品' : label,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s6,
-                  vertical: 1,
-                ),
-                decoration: BoxDecoration(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.primary.withValues(alpha: 0.10),
-                  borderRadius: UtenRadius.smAll,
-                ),
-                child: Text(
-                  '切片 ${row.sliceOrdinal}/${row.sliceTotal}',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
+        width: 200,
+        filterValueOf: (row) => row.line.goodsName,
+        cellBuilder: (context, row) => Tooltip(
+          message: _goodsIdentityText(row) ?? '未命名货品',
+          child: UtenGoodsIdentityCell(
+            name: row.line.goodsName,
+            emptyPlaceholder: '未命名货品',
+            trailing: row.sliceTotal > 1 ? _sliceChip(context, row) : null,
+          ),
+        ),
+      ),
+      EditableGridColumn(
+        key: 'goodsCode',
+        label: '编号',
+        width: 130,
+        filterValueOf: (row) => row.line.goodsCode,
+        cellBuilder: (context, row) =>
+            UtenGoodsAttributeCell(row.line.goodsCode),
+      ),
+      EditableGridColumn(
+        key: 'colorName',
+        label: '颜色',
+        width: 96,
+        filterValueOf: (row) => row.line.colorName,
+        cellBuilder: (context, row) =>
+            UtenGoodsAttributeCell(row.line.colorName),
       ),
       EditableGridColumn(
         key: 'unit',
@@ -361,6 +343,34 @@ class WarehouseQualityMergedTable extends StatelessWidget {
       ),
     ];
   }
+
+  /// 货品身份文本（名称 + 编号 · 颜色）：筛选桶名与 Tooltip 共用同一个来源。
+  static String? _goodsIdentityText(WarehouseQualityMergedRow row) =>
+      UtenGoodsIdentityCell.text(
+        name: row.line.goodsName,
+        code: row.line.goodsCode,
+        color: row.line.colorName,
+      );
+
+  /// 同一明细行拆成多个放行切片时标注序号，避免误读为重复货品。
+  Widget _sliceChip(BuildContext context, WarehouseQualityMergedRow row) =>
+      Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s6,
+          vertical: 1,
+        ),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.10),
+          borderRadius: UtenRadius.smAll,
+        ),
+        child: Text(
+          '切片 ${row.sliceOrdinal}/${row.sliceTotal}',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: Theme.of(context).colorScheme.primary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
 
   Widget _warehouseCell(BuildContext context, WarehouseQualityMergedRow row) {
     final draft = row.draft;

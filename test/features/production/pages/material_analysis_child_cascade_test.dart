@@ -1,17 +1,24 @@
-// 「父件 + 下层一起下单」弹窗（ADR-081，2026-09-14 修订为弹窗前置）。
+// 「父件 + 下层一起下单」整页（ADR-081，2026-09-14 修订三见 ADR §八）。
 //
 // 场景：成品A 本批需求 10，计划员按 20 下达（超产 10）。它的 BOM 是
 //   成品A ─┬─ 外购件B  单件用 2（采购）
 //          └─ 半成品C  单件用 1（自制）
 //                └─ 外购件D  单件用 3（采购，孙层）
-// 断言四件事：
-//  1. 点「创建生产计划」后**先**弹「跟父件一起办」弹窗（父件还没提交），
+// 断言：
+//  1. 点「创建生产计划」后**直接进整页**（父件还没提交、此刻零网络写），
 //     树顶是本次要下达的件，按 BOM 自顶向下列出子层 / 孙层，数量按**本批 20**
 //     而不是快照需求 10 算出来；
 //  2. 一键下单按序提交：父件 issue-plans → 采购 notify BUY → 自制 issue-plans；
 //  3. 下单数量按行内填写值提交，不是默认的剩余需求；
-//  4. 基础需求已下过单的下层行：申请未分解的把追加量并入原申请（明细数量
-//     改大，V477），已分解的问过「追加」后走 notify 超量通道另立追加申请。
+//  4. 折叠分支撤掉的勾选在展开时原样恢复（不再静默少下单）；
+//  5. 树顶那一行不画多选框，改它的数量下层第一次按键就跟着重算；
+//  6. 树顶数量被清空时当场拦下，不按旧值提交父件；
+//  7. 列集合守在定稿那一组(需求 / 还缺数量 / 下单数量 …),多余列不回潮；
+//  8. 基础需求已下过单的下层行：申请未分解的把追加量并入原申请（明细数量
+//     改大，V477）；已分解出下游单据的、以及需求已全部转成计划的自制行，
+//     本页**不可勾选**，状态列如实写明该去哪儿办。
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -41,7 +48,9 @@ void main() {
 
     // 只勾选产品行（半成品C 那条自制候选留给下层办齐弹窗处理）。
     await _tapRowCheckbox(tester, '成品A');
-    await tester.tap(find.textContaining('创建生产计划('));
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-ready')),
+    );
     await tester.pumpAndSettle();
     // 超量二次确认。
     await tester.tap(find.text('确认超量下达'));
@@ -53,7 +62,7 @@ void main() {
       find.byKey(const Key('material-analysis-child-cascade-dialog')),
       findsOneWidget,
     );
-    expect(find.text('下层还没下单，跟父件一起办'), findsOneWidget);
+    expect(find.text('父件 + 下层一起下单'), findsOneWidget);
     expect(
       harness.writes.where((r) => r.path.endsWith('/issue-plans')),
       isEmpty,
@@ -66,15 +75,15 @@ void main() {
     expect(_inDialog('外购件B'), findsOneWidget);
     expect(_inDialog('半成品C'), findsOneWidget);
     expect(_inDialog('外购件D'), findsOneWidget);
-    // 收起「半成品C」分支：孙层外购件D 隐藏（勾选随之撤掉），再展开原样回来
-    // ——展开不自动恢复勾选（所见勾选=提交内容），补勾 D 后整批照常提交。
+    // 收起「半成品C」分支：孙层外购件D 隐藏、勾选随之撤掉（所见勾选=提交内容）；
+    // 再展开时**原样恢复**勾选（2026-09-14：原来撤了就没了，折叠看一眼再展开
+    // 就会静默少下单，用户还会以为一键下单按钮坏了）。
     await tester.tap(find.byKey(const Key('cascade-toggle-m-c')));
     await tester.pumpAndSettle();
     expect(_inDialog('外购件D'), findsNothing);
     await tester.tap(find.byKey(const Key('cascade-toggle-m-c')));
     await tester.pumpAndSettle();
     expect(_inDialog('外购件D'), findsOneWidget);
-    await _tapRowCheckbox(tester, '外购件D');
 
     // 数量按本批 20 算：B=20×2=40、C=20×1=20、D=20×3=60。
     expect(_qtyOf(tester, 'm-b'), '40');
@@ -138,7 +147,9 @@ void main() {
     await tester.enterText(_bucketQty('p1'), '20');
     await tester.pumpAndSettle();
     await _tapRowCheckbox(tester, '成品A');
-    await tester.tap(find.textContaining('创建生产计划('));
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-ready')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('确认超量下达'));
     await tester.pumpAndSettle();
@@ -151,6 +162,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('PR-0001（未分解）'), findsOneWidget);
     expect(find.textContaining('已下单 PO-0002'), findsOneWidget);
+    // 自制候选：需求已全转计划，本页不下单，状态如实写明去处。
+    expect(find.textContaining('本批需求已全部转成生产计划'), findsOneWidget);
 
     await tester.tap(
       find.byKey(const Key('material-analysis-child-cascade-submit')),
@@ -165,10 +178,12 @@ void main() {
       ),
       findsOneWidget,
     );
+    // 已分解出下游单据的行本页不下单：分析侧的提交单元已不可执行，勾了也只会
+    // 在采购段被整段挡住。弹窗如实指到能办的地方去。
     expect(
       find.descendant(
         of: confirmDialog,
-        matching: find.textContaining('按「追加」另立申请'),
+        matching: find.textContaining('本页不下单，请到下游模块追加'),
       ),
       findsOneWidget,
     );
@@ -182,35 +197,25 @@ void main() {
     expect(adjust, hasLength(1));
     expect(adjust.single.data, {'qty': 40.0});
 
-    // 已分解的 D 不再走普通下单通道，而是 notify 超量通道的追加申请：
-    // 基础需求 30 已下过单（余量 0），本批毛需求 60 → 追加 30 全进公共备货。
+    // 已分解的 D 不再从本页下单（它的提交单元在分析侧已不可执行），
+    // 因此这一批里没有任何采购 notify。
     final notify = harness.writes
         .where((request) => request.path.endsWith('/notify'))
         .toList();
-    expect(notify, hasLength(1));
-    final quantities =
-        (notify.single.data as Map<String, dynamic>)['quantities'] as List;
-    expect(
-      quantities
-          .cast<Map<String, dynamic>>()
-          .map(
-            (row) =>
-                '${row['actionGroupKey']}=${row['qty']}+${row['publicExtraQty']}',
-          )
-          .toSet(),
-      {'ag-d=0.0+30.0'},
-    );
+    expect(notify, isEmpty);
 
-    // 半成品C 是自制候选：照常走 issue-plans（父件 + 下层各一次）。
+    // 半成品C 的本批需求已全部转成计划（还可下达 0），只剩超产多出来的量：
+    // 服务端的排产资格闸早于数量校验，必拒 400/409，一拒就把整条一键下单
+    // 卡在车间段。所以它在本页**不可勾选**，只剩父件那一次 issue-plans。
     final issue = harness.writes
         .where((request) => request.path.endsWith('/issue-plans'))
         .toList();
-    expect(issue, hasLength(2));
-    final cascadeLines =
-        (issue.last.data as Map<String, dynamic>)['lines'] as List;
+    expect(issue, hasLength(1));
+    final parentLines =
+        (issue.single.data as Map<String, dynamic>)['lines'] as List;
     expect(
-      (cascadeLines.single as Map<String, dynamic>)['materialLineId'],
-      'm-c',
+      (parentLines.single as Map<String, dynamic>)['analysisLineId'],
+      'p1',
     );
   });
 
@@ -242,19 +247,452 @@ void main() {
     ]);
   });
 
+  testWidgets('树顶父件行没有多选框，且改它的数量下层立刻跟着重算', (tester) async {
+    await _pump(tester);
+    await _openWorkshopBucket(tester);
+    await tester.enterText(_bucketQty('p1'), '10');
+    await tester.pumpAndSettle();
+    await _tapRowCheckbox(tester, '成品A');
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-ready')),
+    );
+    await tester.pumpAndSettle();
+
+    // 用户口径「父类应该默认没有多选框」：树顶那一行整格不渲染 Checkbox
+    // （不是画一个点不动的灰框——那会被读成权限不足 / 数据有问题）。
+    final seedRow = find.ancestor(
+      of: _inDialog('成品A'),
+      matching: find.byType(UtenFrozenLeadingColumn),
+    );
+    expect(
+      find.descendant(of: seedRow, matching: find.byType(Checkbox)),
+      findsNothing,
+    );
+    // 子层行照常有勾选框。
+    final childRow = find.ancestor(
+      of: _inDialog('外购件B'),
+      matching: find.byType(UtenFrozenLeadingColumn),
+    );
+    expect(
+      find.descendant(of: childRow, matching: find.byType(Checkbox)),
+      findsWidgets,
+    );
+
+    // 默认：B=10×2=20、C=10×1=10、D=10×3=30。
+    expect(_qtyOf(tester, 'm-b'), '20');
+    expect(_qtyOf(tester, 'm-d'), '30');
+
+    // 改树顶数量 → 下层**第一次按键就**跟着重算（原来控制器监听早于
+    // onChanged 置 qtyTouched，第一次输入被整个吞掉）。
+    await tester.enterText(
+      find.byKey(const ValueKey('material-analysis-child-cascade-qty-root-1')),
+      '30',
+    );
+    await tester.pumpAndSettle();
+    expect(_qtyOf(tester, 'm-b'), '60');
+    expect(_qtyOf(tester, 'm-d'), '90');
+  });
+
+  testWidgets('树顶数量被清空时不按旧数量提交，而是当场拦下', (tester) async {
+    final harness = await _pump(tester);
+    await _openWorkshopBucket(tester);
+    await tester.enterText(_bucketQty('p1'), '10');
+    await tester.pumpAndSettle();
+    await _tapRowCheckbox(tester, '成品A');
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-ready')),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('material-analysis-child-cascade-qty-root-1')),
+      '',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('material-analysis-child-cascade-submit')),
+    );
+    await tester.pumpAndSettle();
+    // 一行都不许提交，页面也不许关：原来 seed.batchQty 保留上一次的合法值，
+    // 守卫直接放行，父件按一个界面上根本不存在的数量落库。
+    //（错误提示走全局顶部通知 provider，不在本页组件树里，故只断事实。）
+    expect(
+      harness.writes.where((r) => r.path.endsWith('/issue-plans')),
+      isEmpty,
+    );
+    expect(harness.writes.where((r) => r.path.endsWith('/notify')), isEmpty);
+    expect(
+      find.byKey(const Key('material-analysis-child-cascade-dialog')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('级联页表头与外面那张表一致，不多塞列', (tester) async {
+    await _pump(tester);
+    await _openWorkshopBucket(tester);
+    await tester.enterText(_bucketQty('p1'), '10');
+    await tester.pumpAndSettle();
+    await _tapRowCheckbox(tester, '成品A');
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-ready')),
+    );
+    await tester.pumpAndSettle();
+
+    // 2026-09-14 用户口径「表头应该和外面的一样，不要添加这么多没用的」：
+    // 与分桶详情那张表同一组列，外加本页结构上必需的两列(下达去向 / 还缺数量)
+    // ——没有它们就说不清「这行该走哪条路、还能下多少」。
+    // 2026-09-15 追加「所属仓库」(V587)：货品主档归属，三张表同一列同一份真相。
+    // 必填列的表头带红星(RichText)，用包含匹配而不是全等。
+    for (final label in [
+      '物料名称',
+      '编号',
+      '颜色',
+      '单位',
+      '供料路线',
+      '所属仓库',
+      '下达去向',
+      '需求数量',
+      '还缺数量',
+      '下单数量',
+      '生产车间',
+      '负责人',
+      '状态',
+    ]) {
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('material-analysis-child-cascade-dialog')),
+          matching: find.textContaining(label),
+        ),
+        findsWidgets,
+        reason: '缺少「$label」列',
+      );
+    }
+    // 这些是一轮过度添加后按用户要求撤掉的，别再回来。
+    // 2026-09-15 追加「本批要用」：它与「需求数量」只差一个超产量，摆在表上
+    // 要用户自己做减法，用户明确要求删掉（字段仍在，只是不出列）。
+    // 「还可下达」同批改名为「还缺数量」，旧名不该再出现在表头。
+    for (final label in [
+      '可用数量',
+      '缺口',
+      '在途未入库',
+      '单位耗用',
+      '公共认领未实收',
+      '来自',
+      '本批要用',
+      '还可下达',
+    ]) {
+      expect(_inDialog(label), findsNothing, reason: '「$label」列是多余的，不该出现');
+    }
+  });
+
+  testWidgets('没有采购分解权限时，「并入已有申请」只读提示而不是提交后 403', (tester) async {
+    final harness = await _pump(
+      tester,
+      childrenAlreadyOrdered: true,
+      withPurchaseAdjustPermission: false,
+    );
+    await _openWorkshopBucket(tester);
+    await tester.enterText(_bucketQty('p1'), '20');
+    await tester.pumpAndSettle();
+    await _tapRowCheckbox(tester, '成品A');
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-ready')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认超量下达'));
+    await tester.pumpAndSettle();
+    await tester.pumpAndSettle();
+
+    // 端点要 purchase_request:view + purchase_order:decompose，计划员通常没有。
+    // 不先判一下就会：勾上、弹窗承诺「并入原申请」、一提交 403，并把整条
+    // 一键下单卡在这一段（父件那时已经落库）。
+    expect(find.textContaining('需要采购申请查看 + 订货分解权限'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const Key('material-analysis-child-cascade-submit')),
+    );
+    await tester.pumpAndSettle();
+    if (find.text('一键下单').evaluate().isNotEmpty) {
+      await tester.tap(find.text('一键下单'));
+    } else {
+      await tester.tap(find.text('只下达父件'));
+    }
+    await tester.pumpAndSettle();
+    // 一次采购申请调量都不该发出去。
+    expect(
+      harness.writes.where((r) => r.path.endsWith('/items/pri-1/qty')),
+      isEmpty,
+    );
+  });
+
   testWidgets('下层无需再下单时不弹弹窗，父件直接按原路提交', (tester) async {
     await _pump(tester, childrenAlreadyOrdered: true);
     await _openWorkshopBucket(tester);
     await tester.enterText(_bucketQty('p1'), '10');
     await tester.pumpAndSettle();
     await _tapRowCheckbox(tester, '成品A');
-    await tester.tap(find.textContaining('创建生产计划('));
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-ready')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('留在物料分析'));
     await tester.pumpAndSettle();
     expect(
       find.byKey(const Key('material-analysis-child-cascade-dialog')),
       findsNothing,
+    );
+  });
+
+  // V581：只有一个叶子子件的委外件**不进车间**——父件走 notify SUBCONTRACT，
+  // 那颗子件仍要我方备出来，所以照样进「跟父件一起办」整页。
+  testWidgets('单一叶子子件的委外件：父件走下达委外，子件仍进一起办', (tester) async {
+    final harness = await _pump(tester, soleComponentSubcontract: true);
+    final entry = find.byKey(const Key('material-analysis-entry-subcontract'));
+    await tester.ensureVisible(entry);
+    await tester.pumpAndSettle();
+    await tester.tap(entry);
+    await tester.pumpAndSettle();
+    await _tapRowCheckbox(tester, '成品A');
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-subcontract')),
+    );
+    await tester.pumpAndSettle();
+
+    // 进了整页（因为那颗子件还没下单），而不是直接提交。
+    expect(
+      find.byKey(const Key('material-analysis-child-cascade-dialog')),
+      findsOneWidget,
+    );
+    expect(harness.writes, isEmpty);
+    expect(_inDialog('外购件B'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const Key('material-analysis-child-cascade-submit')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('一键下单'));
+    await tester.pumpAndSettle();
+
+    final paths = harness.writes.map((write) => write.path).toList();
+    // 父件段必须是 notify（委外申请），绝不能是 issue-plans（建生产计划）。
+    expect(
+      paths.where((path) => path.endsWith('/issue-plans')),
+      isEmpty,
+      reason: '单一子件委外不先自制，不该出现生产计划',
+    );
+    expect(paths.where((path) => path.endsWith('/notify')), isNotEmpty);
+    final targets = harness.writes
+        .where((write) => write.path.endsWith('/notify'))
+        .map((write) => (write.data as Map)['target'])
+        .toList();
+    expect(targets, contains('SUBCONTRACT'));
+    expect(targets, contains('BUY'));
+  });
+
+  // 2026-09-15 用户反馈 3：树顶（父件）那一行也要有生产车间与负责人，且要有
+  // 相应限制。此前 `needsWorkshop` 硬写 `!isSeed`、`_canAssignWorkshop` 还要
+  // `ownsInput`（树顶恒为 false），整格被一句「车间在上一页已经填过」封死——
+  // 那句话对「下达委外」入口根本不成立，而车间入口的值也只是看不见地带过去。
+  testWidgets('树顶父件行显示并回写生产车间与负责人，父件段按它提交', (tester) async {
+    final harness = await _pump(tester);
+    await _openWorkshopBucket(tester);
+    await _tapRowCheckbox(tester, '成品A');
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-ready')),
+    );
+    await tester.pumpAndSettle();
+
+    // 树顶行不再是灰 '—'：上一页选的车间/负责人落在它自己的格子里，且可点重选。
+    expect(
+      find.byKey(const Key('material-analysis-child-cascade-workshop-root-1')),
+      findsOneWidget,
+      reason: '树顶的车间格是可点的选择器，不是死的 —',
+    );
+    expect(
+      find.byKey(const Key('material-analysis-child-cascade-worker-root-1')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const Key('material-analysis-child-cascade-submit')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('一键下单'));
+    await tester.pumpAndSettle();
+
+    final issue = harness.writes
+        .where((request) => request.path.endsWith('/issue-plans'))
+        .toList();
+    expect(issue, isNotEmpty);
+    final parent =
+        ((issue.first.data as Map<String, dynamic>)['lines'] as List).single
+            as Map<String, dynamic>;
+    expect(parent['analysisLineId'], 'p1');
+    expect(parent['departmentId'], 'dept-1');
+    expect(parent['workerId'], 'emp-1');
+  });
+
+  // 2026-09-15 用户反馈 2 最直接的根因：分桶页那个「下达委外(N)」红按钮点下去
+  // 只是打开了本页，父件一个字节都没提交；而本页的返回箭头与右下角按钮都
+  // 直接 pop，零提示——用户当然以为已经下达了，回头看那行还在「未下达」。
+  testWidgets('父件尚未提交时退出必须确认，确认后一个写请求都不发', (tester) async {
+    final harness = await _pump(tester);
+    await _openWorkshopBucket(tester);
+    await _tapRowCheckbox(tester, '成品A');
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-ready')),
+    );
+    await tester.pumpAndSettle();
+
+    // 按钮文案说实话：这一步不是「稍后再办下层」，是整次下达作废。
+    expect(find.text('放弃本次下达'), findsWidgets);
+    await tester.tap(
+      find.byKey(const Key('material-analysis-child-cascade-discard')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('放弃本次下达？'), findsOneWidget);
+
+    // 取消 → 留在本页，什么都没丢。
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('material-analysis-child-cascade-dialog')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const Key('material-analysis-child-cascade-discard')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('放弃本次下达'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('material-analysis-child-cascade-dialog')),
+      findsNothing,
+    );
+    expect(harness.writes, isEmpty, reason: '放弃就是一个写请求都不发');
+  });
+
+  // 2026-09-15 用户口径「点了下达没反馈像卡住」：一键下单是多段网络提交，
+  // 跑批期间本页必须盖全屏加载遮罩——级联页是 opaque 整页，宿主页/分桶页
+  // Stack 里那份遮罩被盖住根本不会 build。父件段挂起时遮罩在场、标题跟着
+  // 车间段（planSubmissionProgress）走；跑完自动撤下。
+  testWidgets('一键下单跑批期间整页盖全屏加载遮罩，跑完自动撤下', (tester) async {
+    final issueGate = Completer<void>();
+    final harness = await _pump(
+      tester,
+      writeGate: (request) async {
+        if (request.path.endsWith('/issue-plans')) {
+          await issueGate.future;
+        }
+      },
+    );
+    await _openWorkshopBucket(tester);
+    await _tapRowCheckbox(tester, '成品A');
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-ready')),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('material-analysis-child-cascade-submit')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('一键下单'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('material-analysis-child-cascade-busy')),
+      findsOneWidget,
+    );
+    // 父件段走 issue-plans：车间段标题（无审核权限 → 不带「并审核」）。
+    expect(find.text('正在生成生产计划'), findsOneWidget);
+
+    issueGate.complete();
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('material-analysis-child-cascade-busy')),
+      findsNothing,
+    );
+    expect(
+      harness.writes.where((request) => request.path.endsWith('/issue-plans')),
+      isNotEmpty,
+    );
+  });
+
+  // 2026-09-15 用户反馈 2：委外子层级物料数 >= 1 时要走自制，下达之后「下达
+  // 车间」里应该自动出现对应的、已下达的前置自制任务。此前服务端 notify 只
+  // 建台账与分析行、不出计划，前端编排也没有把它接上，于是那件东西只会静静
+  // 躺在「下达车间 / 未下达」里，用户看到的就是「下达了，什么都没发生」。
+  testWidgets('有自制子层的委外件：父件 notify 之后，前置自制任务自动下达车间', (tester) async {
+    final harness = await _pump(tester, makeFirstSubcontract: true);
+    final entry = find.byKey(const Key('material-analysis-entry-subcontract'));
+    await tester.ensureVisible(entry);
+    await tester.pumpAndSettle();
+    await tester.tap(entry);
+    await tester.pumpAndSettle();
+    await _tapRowCheckbox(tester, '成品A');
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-subcontract')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('material-analysis-child-cascade-dialog')),
+      findsOneWidget,
+    );
+    expect(harness.writes, isEmpty, reason: '进页之前零网络写');
+
+    // 有自制子层的委外件在服务端强制整量接管，所以树顶那格数量是只读的，
+    // 不再给一个填了也会被丢弃的输入框。
+    expect(
+      find.byKey(const Key('material-analysis-child-cascade-qty-root-1')),
+      findsNothing,
+    );
+    // 但它**要**车间与负责人——真正需要车间的正是随后建出来的前置自制任务。
+    expect(
+      find.byKey(const Key('material-analysis-child-cascade-workshop-root-1')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const Key('material-analysis-child-cascade-submit')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('一键下单'));
+    await tester.pumpAndSettle();
+
+    final paths = harness.writes.map((write) => write.path).toList();
+    final notifyTargets = harness.writes
+        .where((write) => write.path.endsWith('/notify'))
+        .map((write) => (write.data as Map)['target'])
+        .toList();
+    expect(notifyTargets.first, 'SUBCONTRACT', reason: '父件段先建前置自制台账');
+    expect(notifyTargets, contains('BUY'), reason: '下层外购件同批下达采购');
+
+    // 关键：台账建完立刻按树顶填的车间/负责人把锚点下达车间，锚点因此进入
+    // 「下达车间 / 已下达」，而不是躺在未下达里等人发现。
+    final issue = harness.writes
+        .where((write) => write.path.endsWith('/issue-plans'))
+        .toList();
+    expect(issue, hasLength(1));
+    final line =
+        ((issue.single.data as Map<String, dynamic>)['lines'] as List).single
+            as Map<String, dynamic>;
+    expect(line['analysisLineId'], 'sc-make-1');
+    expect(line['departmentId'], 'dept-1');
+    expect(line['workerId'], 'emp-1');
+    expect(
+      paths.indexOf(issue.single.path),
+      greaterThan(0),
+      reason: '前置自制排产必须排在父件 notify 之后',
     );
   });
 }
@@ -305,13 +743,43 @@ Future<void> _openWorkshopBucket(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// 写请求之后把快照版本推进一版（`analysis` 直接返回的与 issue-plans 包在
+/// `{'analysis': ...}` 里的两种形状都要覆盖）。
+Object? _bumpVersion(Object? data, int writes) {
+  if (writes <= 0) return data;
+  if (data is Map<String, dynamic> && data['version'] is int) {
+    return {
+      ...data,
+      'version': (data['version'] as int) + writes,
+      'fingerprint': 'a' * 63 + '$writes',
+    };
+  }
+  if (data is Map<String, dynamic> && data['analysis'] is Map) {
+    return {
+      ...data,
+      'analysis': _bumpVersion(
+        (data['analysis'] as Map).cast<String, dynamic>(),
+        writes,
+      ),
+    };
+  }
+  return data;
+}
+
 class _Harness {
   final List<RequestOptions> writes = [];
+
+  /// 有子层委外的父件段已经 notify 过（假后端据此换快照，见 [_pump]）。
+  bool subcontractNotified = false;
 }
 
 Future<_Harness> _pump(
   WidgetTester tester, {
   bool childrenAlreadyOrdered = false,
+  bool withPurchaseAdjustPermission = true,
+  bool soleComponentSubcontract = false,
+  bool makeFirstSubcontract = false,
+  Future<void> Function(RequestOptions request)? writeGate,
 }) async {
   tester.view.physicalSize = const Size(1800, 1400);
   tester.view.devicePixelRatio = 1;
@@ -321,11 +789,28 @@ Future<_Harness> _pump(
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
-      onRequest: (request, handler) {
+      onRequest: (request, handler) async {
         if (request.method != 'GET') harness.writes.add(request);
-        final analysis = _analysis(
-          childrenAlreadyOrdered: childrenAlreadyOrdered,
-        );
+        // 写请求闸门（测试用）：挂起指定请求，让「在途」状态可观察——
+        // 加载遮罩 / 进度卡这类只在网络段存在的 UI 必须能被这样锁住。
+        if (writeGate != null && request.method != 'GET') {
+          await writeGate(request);
+        }
+        // 最小状态机：notify 成功之后快照要真的换一版（多出前置自制锚点行）。
+        // 不这么做就只能证明「请求发出去了」，证明不了「下达完之后该行落在
+        // 哪个桶、车间里有没有对应的任务」——用户反馈 2 的正题恰恰在这里。
+        if (makeFirstSubcontract &&
+            request.method != 'GET' &&
+            request.path.endsWith('/notify')) {
+          harness.subcontractNotified = true;
+        }
+        final analysis = makeFirstSubcontract
+            ? _makeFirstSubcontractAnalysis(
+                afterNotify: harness.subcontractNotified,
+              )
+            : soleComponentSubcontract
+            ? _soleComponentSubcontractAnalysis()
+            : _analysis(childrenAlreadyOrdered: childrenAlreadyOrdered);
         final data = switch (request.path) {
           '/master/warehouses/dict' => [
             {'id': 'warehouse-1', 'name': '主仓'},
@@ -388,7 +873,10 @@ Future<_Harness> _pump(
           Response<dynamic>(
             requestOptions: request,
             statusCode: 200,
-            data: data,
+            // 真实服务端只有**真的写了东西**才会重建快照（version/fingerprint
+            // 换一版）；界面据此判断「这次到底有没有产生下达」。假后端必须照做，
+            // 否则每次写都被判成「什么都没发生」（2026-09-15）。
+            data: _bumpVersion(data, harness.writes.length),
           ),
         );
       },
@@ -415,6 +903,15 @@ Future<_Harness> _pump(
           Perm.productionMaterialAnalysisNotify,
           Perm.productionMaterialAnalysisGenerate,
           Perm.productionMaterialAnalysisOverSupply,
+          // 「并入已有采购申请」走采购侧 sanctioned 入口
+          // （PUT /purchase/requests/{id}/items/{itemId}/qty，要
+          // purchase_request:view + purchase_order:decompose）。计划员通常
+          // 没有这两个权限——本用例演的是**兼有**采购权限的账号；不给的话
+          // 该行按「需采购分解权限」只读展示，见同文件末尾的权限用例。
+          if (withPurchaseAdjustPermission) ...[
+            Perm.purchaseRequestView,
+            Perm.purchaseOrderDecompose,
+          ],
         }),
       ],
       child: const MaterialApp(
@@ -453,6 +950,127 @@ class _WarehousePrefs extends MaterialAnalysisWarehousePrefsNotifier {
   void update(MaterialAnalysisWarehousePrefs value) {
     state = value.normalized();
   }
+}
+
+/// V581 变体：成品A 改成「只有一个叶子子件」的委外件——树顶走委外下达
+/// （notify SUBCONTRACT），那颗子件仍要我方采购出来，所以仍进「跟父件一起办」。
+Map<String, dynamic> _soleComponentSubcontractAnalysis() {
+  final analysis = Map<String, dynamic>.from(
+    _analysis(childrenAlreadyOrdered: false),
+  );
+  analysis['products'] = [
+    {
+      ...(analysis['products'] as List).first as Map<String, dynamic>,
+      'canSchedule': false,
+    },
+  ];
+  analysis['flatMaterials'] = [
+    _material(
+      id: 'root-1',
+      name: '成品A',
+      goodsId: 'g-a',
+      level: 0,
+      nodeKey: 'root',
+      perProductQty: 1,
+      requiredQty: 10,
+      route: 'SUBCONTRACT',
+      nodeRole: 'ROOT_SUPPLY',
+      actionGroupKey: 'ag-root',
+      subcontractOutboundForm: 'COMPONENT_OUTBOUND',
+      actionable: true,
+    ),
+    _material(
+      id: 'm-b',
+      name: '外购件B',
+      goodsId: 'g-b',
+      level: 1,
+      nodeKey: 'nb',
+      perProductQty: 2,
+      requiredQty: 20,
+      route: 'BUY',
+      actionGroupKey: 'ag-b',
+    ),
+  ];
+  return analysis;
+}
+
+/// 有自制子层的委外件（ADR-062「先自制、后通知委外」）：成品A 路线为委外，
+/// BOM 上还有我方要备的外购件B，且**不是** V581 的单一子件形态，因此服务端
+/// notify 时建的是「前置自制任务台账 + SUBCONTRACT_MAKE 分析产品行」。
+///
+/// [afterNotify] = 父件段提交之后的快照：多出那条锚点产品行，并把它挂回原
+/// 物料行（planAnchorAnalysisLineId）。真实服务端就是这么换版本的；不模拟这
+/// 一步就永远测不出「下达完委外，车间里有没有对应的已下达」。
+Map<String, dynamic> _makeFirstSubcontractAnalysis({
+  required bool afterNotify,
+}) {
+  final analysis = Map<String, dynamic>.from(
+    _analysis(childrenAlreadyOrdered: false),
+  );
+  final product = Map<String, dynamic>.from(
+    (analysis['products'] as List).first as Map<String, dynamic>,
+  )..['canSchedule'] = false;
+  analysis['products'] = [
+    product,
+    if (afterNotify)
+      {
+        'analysisLineId': 'sc-make-1',
+        'sourceType': 'SUBCONTRACT_MAKE',
+        'goodsId': 'g-a',
+        'goodsCode': 'A-001',
+        'goodsName': '成品A(委外自制)',
+        'unitName': '件',
+        'requestedQty': 10,
+        'remainingQty': 10,
+        'readyNowQty': 0,
+        'canSchedule': true,
+        'sourceRef': '委外自制 2026-09-15 abcd',
+      },
+  ];
+  analysis['flatMaterials'] = [
+    _material(
+      id: 'root-1',
+      name: '成品A',
+      goodsId: 'g-a',
+      level: 0,
+      nodeKey: 'root',
+      perProductQty: 1,
+      requiredQty: 10,
+      route: 'SUBCONTRACT',
+      nodeRole: 'ROOT_SUPPLY',
+      actionGroupKey: 'ag-root',
+      actionable: true,
+    )..addAll(
+      afterNotify
+          ? {
+              'planAnchorAnalysisLineId': 'sc-make-1',
+              'notifiedTargets': [
+                {
+                  'target': 'SUBCONTRACT',
+                  'documentType': 'SUBCONTRACT_MAKE_TASK',
+                  'documentId': 'sc-make-1',
+                  'status': 'CREATED',
+                  'allocatedQty': 10,
+                },
+              ],
+              // 台账建起来后服务端的有效在途覆盖吃掉这 10，行离开「未下达」。
+              'additionalSupplyRecommendedQty': 0,
+            }
+          : const <String, Object?>{},
+    ),
+    _material(
+      id: 'm-b',
+      name: '外购件B',
+      goodsId: 'g-b',
+      level: 1,
+      nodeKey: 'nb',
+      perProductQty: 2,
+      requiredQty: 20,
+      route: 'BUY',
+      actionGroupKey: 'ag-b',
+    ),
+  ];
+  return analysis;
 }
 
 Map<String, dynamic> _analysis({required bool childrenAlreadyOrdered}) => {
@@ -558,7 +1176,10 @@ Map<String, dynamic> _material({
   String? parentNodeKey,
   String nodeRole = 'BOM_COMPONENT',
   bool covered = false,
+  String? subcontractOutboundForm,
+  bool? actionable,
 }) => {
+  'subcontractOutboundForm': subcontractOutboundForm,
   'materialLineId': id,
   'analysisLineId': 'p1',
   'nodeRole': nodeRole,
@@ -569,7 +1190,8 @@ Map<String, dynamic> _material({
   'goodsName': name,
   'unitName': '件',
   'level': level,
-  'actionable': level > 0,
+  // 服务端口径：根供给行 depth=0 恒 actionable；子件按缺口。
+  'actionable': actionable ?? level > 0,
   'actionGroupKey': actionGroupKey,
   'materialKey': goodsId,
   'perProductQty': perProductQty,
@@ -579,6 +1201,10 @@ Map<String, dynamic> _material({
   'allocatedAvailableQty': covered ? requiredQty : 0,
   'shortageQty': covered ? 0 : requiredQty,
   'demandSupplyGapQty': covered ? 0 : requiredQty,
+  // 服务端恒定下发的「还可下达」（= max(0, 缺口 − 有效在途覆盖)），界面以它为
+  // 唯一主口径。本夹具没有在途，所以与缺口同值——不带这个字段就只会跑到
+  // 真实服务端永不执行的那条回退分支上。
+  'additionalSupplyRecommendedQty': covered ? 0 : requiredQty,
   'sourceSuggestion': route,
   'sourceConfirmed': route,
   'routeConfirmed': true,

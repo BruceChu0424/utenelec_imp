@@ -111,6 +111,7 @@ public class SalesOrderService {
     private final TaskClaimService taskClaim;
     private final SalesOrderRevisionService revisions;
     private final com.uten.imp.features.sales.SalesMutationFootprintService mutationFootprint;
+    private final com.uten.imp.features.master.client.ClientDefaultTermsSyncService clientDefaultTermsSync;
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_order:view')")
@@ -355,6 +356,15 @@ public class SalesOrderService {
      */
     @Transactional(readOnly = true)
     public LastTermsForClient lastTermsForClient(UUID clientId) {
+        // V592 单一事实源：优先读客户表默认条款（基础资料可维护 + 每次下单自动写回）。
+        // 客户行三项全空时回落最近一张订单（回填前的老数据兜底）。
+        var client = em.find(com.uten.imp.features.master.client.Client.class, clientId);
+        if (client != null && (client.getDefaultSettlementMethodId() != null
+                || client.getDefaultShipmentPolicy() != null
+                || client.getDefaultCurrencyId() != null)) {
+            return new LastTermsForClient(client.getDefaultSettlementMethodId(),
+                    client.getDefaultShipmentPolicy(), client.getDefaultCurrencyId());
+        }
         var rows = orderRepo.findLastTermsByClientId(clientId, PageRequest.of(0, 1));
         if (rows.isEmpty()) {
             return null;
@@ -845,6 +855,7 @@ public class SalesOrderService {
         o.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         o.setStatus(STATUS_DRAFT);
         orderRepo.save(o);
+        clientDefaultTermsSync.syncOnOrderTerms(o.getClientId(), o.getSettlementMethodId(), o.getShipmentPolicy(), o.getCurrencyId());
         // 普通开单的单价只取货品主档；报价转单则只取已审核报价明细快照。
         // 两条路径都不把 OrderItemLine.price / amount* 当成客户端权威。
         List<SalesQuoteItem> quoteItems =
@@ -910,6 +921,7 @@ public class SalesOrderService {
             if (revisions.record(id, before)) {
                 o.setFinanceReviewRevision(o.getFinanceReviewRevision() + 1);
                 orderRepo.save(o);
+        clientDefaultTermsSync.syncOnOrderTerms(o.getClientId(), o.getSettlementMethodId(), o.getShipmentPolicy(), o.getCurrencyId());
                 orderRepo.flush();
             }
             // 已审核订单修改后自动重新送财务；驳回修订继续由销售检查草稿后自行审核。

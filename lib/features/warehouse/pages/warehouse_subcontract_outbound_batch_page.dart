@@ -724,12 +724,14 @@ class _WarehouseSubcontractOutboundBatchPageState
           ],
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
         floatingActionButton: _loading || _error != null
             ? null
             : UtenFloatingActionGroup(
                 children: [
                   UtenButton(
                     type: UtenButtonType.secondary,
+                    size: UtenButtonSize.large,
                     onPressed: _saving || _confirming
                         ? null
                         : () => Navigator.of(context).pop(_changed),
@@ -742,6 +744,7 @@ class _WarehouseSubcontractOutboundBatchPageState
                   ))
                     UtenButton(
                       type: UtenButtonType.secondary,
+                      size: UtenButtonSize.large,
                       isLoading: _saving,
                       onPressed: _saving ? null : _verify,
                       child: Text(l10n.warehouseSubcontractOutboundVerify),

@@ -102,24 +102,12 @@ class _ProductionWorkshopTasksPageState
         permissions.contains(Perm.productionDailyReportCreate);
   }
 
-  bool get _canRegisterMaterialUsage =>
-      ref.read(isSuperAdminProvider) ||
-      ref
-          .read(currentPermissionsProvider)
-          .contains(Perm.productionMaterialSettle);
-
+  /// 2026-09-14(V583)起本页不再登记实际用料：实耗随报工在生产日报页一起填。
+  /// 这里只剩只读台账与退料进度，标签也只剩这两种。
   String _materialUsageLabel(ProductionExecutionWorkbenchSegment task) {
     final l10n = AppLocalizations.of(context);
     if (task.hasPendingReturn && !task.hasAvailableMaterial) return '查看退料进度';
-    // 2026-09-12 用户口径：「登记实际用料」只在生产中分类出现；等待物料行即便
-    // 带未登记标记，也只给只读「查看物料使用情况」。
-    final canRegister =
-        _status == 'IN_PROGRESS' &&
-        _canRegisterMaterialUsage &&
-        (task.hasUnregisteredMaterial || task.hasSharedMaterialActivity);
-    return canRegister
-        ? l10n.productionMaterialRegisterUsage
-        : l10n.productionMaterialViewUsage;
+    return l10n.productionMaterialViewUsage;
   }
 
   /// 当前分类是否「等待物料」（未开工段：等料 + 齐套可开工）。
@@ -608,12 +596,16 @@ class _ProductionWorkshopTasksPageState
         ref,
         planId: task.planId,
         executionSegmentId: materialSegmentId,
-        canSettle:
-            _status == 'IN_PROGRESS' &&
-            sourceCanSettle &&
-            (admin || permissions.contains(Perm.productionMaterialSettle)),
+        // V583：实耗登记搬到生产日报页(报工时物料子行一起填)，本页只读台账。
+        // 只留查看与冲销/撤回，避免两处都能记账、数字互相打架。
+        canSettle: false,
         canReverse:
             admin || permissions.contains(Perm.productionMaterialReverse),
+        // 退仓申请虽然不再从这里发起，但已提交的退料单必须还能撤回：数量填错了
+        // 仓库改不了，只能撤回重提。
+        canRequestReturn:
+            sourceCanSettle &&
+            (admin || permissions.contains(Perm.productionMaterialSettle)),
         // Closing changes a whole plan; a workshop task only grants its exact material rows.
         canClose: false,
       );

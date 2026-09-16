@@ -6,6 +6,7 @@
 // 修复：页面重写 shellAfterCategorySaved 自增 _detailEpoch，以 ValueKey
 // 重挂右栏。本测试锁死该行为，防止其它分类页（模具/供应商/新增页）漏接钩子。
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dio/dio.dart';
@@ -14,10 +15,13 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/models/client_node.dart';
+import 'package:uten_imp/features/basic_data/models/party_directory_models.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/pages/client_category_page.dart';
 import 'package:uten_imp/features/basic_data/repositories/client_category_repository.dart';
+import 'package:uten_imp/features/basic_data/pages/party_detail_page.dart';
 import 'package:uten_imp/features/basic_data/repositories/client_repository.dart';
+import 'package:uten_imp/features/basic_data/repositories/party_directory_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -68,12 +72,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('信用额度 / 旧库 Credit 快照'), findsOneWidget);
 
+      // 双击行 → 客户详情整页（2026-09-14 起替代 560 宽弹窗）。
       final legacyRow = find.text('旧库客户');
       await tester.tap(legacyRow);
       await tester.pump(const Duration(milliseconds: 80));
       await tester.tap(legacyRow);
       await tester.pumpAndSettle();
-      expect(find.text('旧库 Credit 快照（只读）'), findsOneWidget);
+      expect(find.text('客户详情'), findsOneWidget);
 
       final edit = find.widgetWithText(UtenButton, '编辑').hitTestable();
       expect(edit, findsOneWidget);
@@ -109,6 +114,21 @@ Future<void> _pumpPage(
   final preferences = await SharedPreferences.getInstance();
   await tester.binding.setSurfaceSize(const Size(1440, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
+  // 2026-09-14：客户双击改为路由跳转详情整页——测试须包 GoRouter
+  //（/basicinfo/client/:id 指向 PartyDetailPage，假目录仓库返回空子表）。
+  final router = GoRouter(
+    initialLocation: '/',
+    routes: [
+      GoRoute(path: '/', builder: (_, _) => const ClientCategoryPage()),
+      GoRoute(
+        path: '/basicinfo/client/:id',
+        builder: (_, state) => PartyDetailPage(
+          partyType: 'client',
+          id: state.pathParameters['id']!,
+        ),
+      ),
+    ],
+  );
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -121,11 +141,14 @@ Future<void> _pumpPage(
         }),
         clientCategoryRepositoryProvider.overrideWithValue(categories),
         clientRepositoryProvider.overrideWithValue(clients),
+        clientDirectoryRepositoryProvider.overrideWithValue(
+          _FakePartyDirectoryRepository(),
+        ),
       ],
-      child: const MaterialApp(
+      child: MaterialApp.router(
+        routerConfig: router,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: ClientCategoryPage(),
       ),
     ),
   );
@@ -300,6 +323,59 @@ class _FakeClientRepository implements ClientRepository {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// 详情整页子表（联系方式/地址/跟进记录）假仓库：全部为空，专注本测试口径。
+class _FakePartyDirectoryRepository implements PartyDirectoryRepository {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
+  @override
+  PartyDirectoryType get type => PartyDirectoryType.client;
+
+  @override
+  Future<List<PartyContactMethod>> contactMethods(String partyId) async => [];
+
+  @override
+  Future<void> addContactMethod(
+    String partyId, {
+    required String kind,
+    required String value,
+    bool primary = false,
+    String? remark,
+  }) async {}
+
+  @override
+  Future<void> deleteContactMethod(String partyId, String contactId) async {}
+
+  @override
+  Future<List<PartyAddress>> addresses(String partyId) async => [];
+
+  @override
+  Future<void> addAddress(
+    String partyId, {
+    required String kind,
+    required String address,
+    bool defaultAddress = false,
+    String? remark,
+  }) async {}
+
+  @override
+  Future<void> deleteAddress(String partyId, String addressId) async {}
+
+  @override
+  Future<List<PartyActivityRecord>> activityRecords(String partyId) async => [];
+
+  @override
+  Future<void> addActivityRecord(
+    String partyId, {
+    required String kind,
+    required String content,
+    int scoreDelta = 0,
+  }) async {}
+
+  @override
+  Future<int?> creditScore(String partyId) async => null;
 }
 
 class _ReferenceApi extends ApiClient {

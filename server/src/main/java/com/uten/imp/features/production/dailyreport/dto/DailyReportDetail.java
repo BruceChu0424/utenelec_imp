@@ -32,6 +32,10 @@ public class DailyReportDetail {
     private boolean canceled;
     private String sourceDocNo;
     private List<DailyReportItemDto> items;
+    /** 报工同页登记的本次实际用料(V583)；历史日报为空列表。 */
+    private List<DailyReportMaterialUsageDto> materialUsages;
+    /** 收尾余料退仓意愿；审核时先结实耗再按剩余可退量生成退料单。 */
+    private boolean surplusReturnRequested;
     /** 制单员姓名（服务端按 maker_id 解析：employees 直查 + users 历史数据兼容）。 */
     private String makerName;
     /** 制单时间（审计 created_at，创建后不可变）。 */

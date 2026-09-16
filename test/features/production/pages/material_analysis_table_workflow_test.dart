@@ -30,11 +30,18 @@ const _permissions = {
 
 void main() {
   testWidgets(
-    'table keeps the eleven decision columns and creates only chosen routes',
+    'table keeps the twelve decision columns and creates only chosen routes',
     (tester) async {
       final harness = await _pump(tester);
       // 2026-09-14：编号 / 颜色 / 单位从身份格副行拆成独立列（8 → 11）。
-      expect(find.text('表头设置 11/11'), findsOneWidget);
+      // 2026-09-15(V587)：供料路线后加「所属仓库」列(11 -> 12)。
+      // 2026-09-15(V589/V590 批次)：所属仓库后加「所属车间」列，表尾再加
+      // 「状态」「在途调拨」两列（12 → 15）。
+      // 2026-09-14：编号 / 颜色 / 单位从身份格副行拆成独立列（8 → 11）。
+      // 2026-09-15(V587)：供料路线后加「所属仓库」列(11 -> 12)。
+      // 2026-09-15(V590 批次)：所属仓库后再加「所属车间」列(12 -> 13)；
+      // 「状态」「在途调拨」为条件列，空数据视口不进表头设置清单。
+      expect(find.text('表头设置 13/13'), findsOneWidget);
       expect(find.text('处理'), findsNothing);
       expect(find.text('确认路线(0)'), findsOneWidget);
       expect(

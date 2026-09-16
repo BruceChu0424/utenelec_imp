@@ -12,7 +12,7 @@ import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/input/china_input_formatters.dart';
@@ -240,7 +240,13 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
         children: [
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+              // 底部留出右下悬浮操作组的高度；水平 gutter 由容器提供
+              padding: const EdgeInsets.fromLTRB(
+                0,
+                UtenSpacing.s16,
+                0,
+                UtenFloatingActionGroup.scrollClearance,
+              ),
               // 表单窄收敛（全断点）：水平 gutter 由容器提供
               child: UtenContentContainer.narrow(
                 child: Column(
@@ -417,17 +423,21 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
               ),
             ),
           ),
-          UtenBottomActionBar(
-            child: UtenButton(
-              onPressed: _submitting ? null : _submit,
-              isLoading: _submitting,
-              isExpanded: true,
-              size: UtenButtonSize.large,
-              child: Text(
-                _submitting
-                    ? l10n.visitorApplySubmitting
-                    : l10n.visitorApplySubmit,
-              ),
+        ],
+      ),
+      // 2026-09-14 UI 统一口径：吸底提交按钮改右下悬浮组（按钮已是 large）。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: UtenFloatingActionGroup(
+        children: [
+          UtenButton(
+            onPressed: _submitting ? null : _submit,
+            isLoading: _submitting,
+            size: UtenButtonSize.large,
+            child: Text(
+              _submitting
+                  ? l10n.visitorApplySubmitting
+                  : l10n.visitorApplySubmit,
             ),
           ),
         ],

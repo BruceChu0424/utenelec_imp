@@ -69,6 +69,8 @@ class _SalesShipmentTaskWorkbenchState
   int _requestGeneration = 0;
 
   int? _financeAudit;
+  // V578：「已退回」专段——被财务退回待销售处理的单据集中可见，避免两侧失联。
+  bool _financeRejected = false;
   String? _warehouseWorkStatus;
 
   // ===== 财务批量审批（仅 financeAudit 模式；仓库模式恒空）=====
@@ -93,13 +95,12 @@ class _SalesShipmentTaskWorkbenchState
 
   String get _emptyMessage {
     if (_isFinance) {
+      if (_financeRejected) return '暂无被退回的出货单';
       return _financeAudit == 1 ? '暂无已财务审核的出货单' : '暂无待财务审核的出货单';
     }
     return switch (_warehouseWorkStatus) {
-      SalesWarehouseWorkStatus.pendingPick => '暂无待拣货销售出货',
-      SalesWarehouseWorkStatus.picking => '暂无拣货中销售出货',
-      SalesWarehouseWorkStatus.picked => '暂无已拣货待交接销售出货',
-      SalesWarehouseWorkStatus.exception => '暂无仓库异常销售出货',
+      SalesWarehouseWorkStatus.pendingPick => '暂无待出库销售出货',
+      SalesWarehouseWorkStatus.shipped => '暂无已出库销售出货',
       _ => '暂无财务已放行的销售出货',
     };
   }
@@ -155,6 +156,7 @@ class _SalesShipmentTaskWorkbenchState
               // 两个专页都是“当前人工任务”，历史已出库/红冲仍从销售历史页查。
               status: kSalesStatusDraft,
               financeAudit: _financeAudit,
+              financeRejected: _financeRejected ? true : null,
               warehouseWorkStatus: _isFinance
                   ? SalesWarehouseWorkStatus.pendingPick
                   : _warehouseWorkStatus,
@@ -366,7 +368,7 @@ class _SalesShipmentTaskWorkbenchState
               children: [
                 const UtenReviewerResponsibilityNotice(
                   actionLabel: '批量出货财务审核',
-                  description: '确认后，系统将以此登录员工记录整批放行责任；放行仅开放仓库作业，应收在交接出库后生成。',
+                  description: '确认后，系统将以此登录员工记录整批放行责任；放行仅开放仓库作业，应收在仓库确认出库后生成。',
                   compact: true,
                 ),
                 const SizedBox(height: UtenSpacing.s12),
@@ -751,7 +753,7 @@ class _SalesShipmentTaskWorkbenchState
     final theme = Theme.of(context);
     final description = _isFinance
         ? '默认只看待审核。双击进入审核详情逐张核对客户货款类型、应收、铺底和可用预收(真实已审到账)后再人工放行；也可多选后批量放行/退回（整批原子提交）。'
-        : '固定只看财务已放行的出货。仓库按待拣、拣货、已拣和异常推进；交接出库后才正式扣库存并形成应收。';
+        : '固定只看财务已放行的出货。仓库核对后一步确认出库，届时才正式扣库存并形成应收。';
     return Semantics(
       container: true,
       label: '$_title，共 $total 笔。$description',
@@ -853,7 +855,9 @@ class _SalesShipmentTaskWorkbenchState
               Padding(
                 padding: const EdgeInsets.only(top: UtenSpacing.s4),
                 child: Text(
-                  '共 ${_result?.total ?? 0} 笔 · 单击选择，双击打开审核详情',
+                  _financeRejected
+                      ? '共 ${_result?.total ?? 0} 笔 · 已退回销售处理；双击进入可「撤回退回」恢复审核'
+                      : '共 ${_result?.total ?? 0} 笔 · 单击选择，双击打开审核详情',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -869,30 +873,33 @@ class _SalesShipmentTaskWorkbenchState
     spacing: UtenSpacing.s4,
     runSpacing: UtenSpacing.s4,
     children: [
-      _financeChip('待审核', 0),
-      _financeChip('已审核', 1),
-      _financeChip('全部', null),
+      _financeChip('待审核', 0, rejected: false),
+      _financeChip('已退回', 0, rejected: true),
+      _financeChip('已审核', 1, rejected: false),
+      _financeChip('全部', null, rejected: false),
     ],
   );
 
-  Widget _financeChip(String label, int? value) => ChoiceChip(
-    label: Text(label),
-    selected: _financeAudit == value,
-    onSelected: (_) {
-      setState(() => _financeAudit = value);
-      _clearSelection();
-      _load(1);
-    },
-  );
+  Widget _financeChip(String label, int? value, {required bool rejected}) =>
+      ChoiceChip(
+        label: Text(label),
+        selected: _financeAudit == value && _financeRejected == rejected,
+        onSelected: (_) {
+          setState(() {
+            _financeAudit = value;
+            _financeRejected = rejected;
+          });
+          _clearSelection();
+          _load(1);
+        },
+      );
 
   Widget _warehouseChips() => Wrap(
     spacing: UtenSpacing.s4,
     runSpacing: UtenSpacing.s4,
     children: [
-      _warehouseChip('待拣货', SalesWarehouseWorkStatus.pendingPick),
-      _warehouseChip('拣货中', SalesWarehouseWorkStatus.picking),
-      _warehouseChip('已拣货', SalesWarehouseWorkStatus.picked),
-      _warehouseChip('异常', SalesWarehouseWorkStatus.exception),
+      _warehouseChip('待出库', SalesWarehouseWorkStatus.pendingPick),
+      _warehouseChip('已出库', SalesWarehouseWorkStatus.shipped),
     ],
   );
 
@@ -977,7 +984,12 @@ class _SalesShipmentTaskWorkbenchState
       key: 'financeAudit',
       label: '财务审核',
       width: 120,
-      value: (item) => salesShipmentFinanceAuditLabel(item.financeAudit),
+      value: (item) => item.shipmentWorkflow.financeRejected
+          ? '已退回销售'
+          : salesShipmentFinanceAuditLabel(item.financeAudit),
+      cellColor: (context, item) => item.shipmentWorkflow.financeRejected
+          ? Theme.of(context).colorScheme.errorContainer
+          : null,
     ),
     MasterColumnDef(
       key: 'warehouseWorkStatus',

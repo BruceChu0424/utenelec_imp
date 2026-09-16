@@ -54,9 +54,25 @@ MasterColumnDef<Row>(
 - `showLeafMarker`（2026-09-14）：叶子行是否画那枚小圆点，默认 true；物料分析主表、三个分桶详情与下层办齐弹窗传 false；
 - `childCount`（2026-09-10）：可选下级数量；未展开时在圆底右下角叠「N」徽章，Tooltip「展开 N 个下级」、Semantics「展开 X 的 N 个下级」，展开后不显示。宿主按**当前可见投影**传（筛选/视图切换后重算），懒加载宿主（展开前不知数量）不传即无徽章；
 
-- `ancestorContinuations[i] == false` 时第 i 级竖线断开（该祖先已无后续兄弟）；
-  缺省保守连画；构造见调用方的行拍平逻辑（`material_analysis_material_table.dart`）；
-- `maxVisualDepth` 只封缩进宽度，真实深度仍由序号与标签表达。
+- `ancestorContinuations`（2026-09-15 起是**硬契约**）：长度恒等于 `depth`，
+  `[i]` = **深度 i 的祖先**后面还有没有同深度的兄弟。`[0]`（深度 0 的祖先）的竖线
+  落在槽 −1、永远画不出来，但必须占位，否则整串索引错开一格。长度不足时按
+  「祖先仍有兄弟」保守连画，不静默抹掉层级线。
+  **唯一权威构造方式是 `utenTreeProjection`**（`lib/shared/widgets/uten_tree_row_projection.dart`）——
+  输入是**最终渲染序**（扁平 DFS），输出连线 / 末位标记 / 直接子数 / 子树范围。
+  不要在宿主里另写一套推导：2026-09-14 到 09-15 之间主表自建了一份「深度 − 1 相对」
+  口径的列表，与画笔差一级，末位子件的竖线永远不收口，而同一棵料在级联页却画得对；
+- `guideBleed`（2026-09-14 新增，2026-09-15 补进本文）：连线相对单元格上下各溢出
+  多少像素，用来**跨过宿主表格给每个数据格的纵向内边距**。缺省 0 = 独立使用。
+  表格宿主一律传表格组件自己公开的常量，不要抄魔数：
+  `MasterDataTableView.cellVerticalPadding`（8）/ `UtenEditableGrid.cellVerticalPadding`（4）。
+  漏传的后果是行与行之间恒定空出 2× 内边距，整列连线看着像虚线；
+- 树列还必须在列定义上开 `fillsCellHeight: true`（两个表格组件都支持）：同一行里
+  只要别的列换了两行，树格若被竖向居中收缩，连线就接不到上下行——这一段差值是
+  运行期量出来的，任何常量 `guideBleed` 都补不准；
+- `maxVisualDepth` 只封缩进宽度，真实深度仍由序号与标签表达。默认值
+  `UtenTreeTableCell.defaultMaxVisualDepth` = 10（与物料分析的 BOM 展开上限同源），
+  调用点一律不传；确需更浅的宿主再显式覆盖并写明理由。
 
 ## 四、边界与口径
 

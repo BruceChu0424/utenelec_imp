@@ -82,7 +82,9 @@ abstract final class RouteName {
   static const String basicinfoGoodsDetail = '/basicinfo/goods/:id';
   static const String basicinfoMould = '/basicinfo/mould';
   static const String basicinfoClient = '/basicinfo/client';
+  static const String basicinfoClientDetail = '/basicinfo/client/:id';
   static const String basicinfoSupplier = '/basicinfo/supplier';
+  static const String basicinfoSupplierDetail = '/basicinfo/supplier/:id';
   static const String basicinfoColor = '/basicinfo/color';
   static const String basicinfoUnit = '/basicinfo/unit';
   static const String basicinfoCurrency = '/basicinfo/currency';
@@ -317,7 +319,7 @@ abstract final class RouteName {
   static const String warehouseSalesOutbound = '/warehouse/sales-outbound';
 
   // —— 仓库任务中心三页（2026-09-01 重组；静态段 tasks 须先于 /warehouse/:code）——
-  /// 出库任务中心：销售出库（待拣/拣货/已拣/异常/已出库历史）+ 委外出仓（任务/出仓
+  /// 出库任务中心：销售出库（待出库/已出库历史）+ 委外出仓（任务/出仓
   /// 历史）+ 其它出库 + 产成品出库（各自新建/历史）。
   static const String warehouseOutboundTasks = '/warehouse/tasks/outbound';
 
@@ -495,6 +497,8 @@ abstract final class RoutePath {
   static String suggestionDetail(String id) => '/suggestion/$id';
   static String websiteInquiryDetail(String id) => '/webinquiry/$id';
   static String employeeDetail(String id) => '/employee/$id';
+  static String basicinfoClientDetail(String id) => '/basicinfo/client/$id';
+  static String basicinfoSupplierDetail(String id) => '/basicinfo/supplier/$id';
   static String employeeEdit(String id) => '/employee/$id/edit';
 
   /// 采购单据：新建 / 详情 / 编辑。[doc] = requests|orders|receipts|returns。
@@ -603,6 +607,13 @@ abstract final class RoutePath {
   /// 生产计划单 / 日报表：新建 / 详情 / 编辑。
   static String productionMaterialAnalysisSummary(String analysisId) =>
       '/production/material-analyses/$analysisId/summary';
+
+  /// 物料分析关联销售订货单的只读货品清单(ADR-088)。
+  /// 专用只读页，**不是**销售订单详情：无价格、无任何编辑动作。
+  static String productionAnalysisSalesOrder(
+    String analysisId,
+    String orderId,
+  ) => '/production/material-analyses/$analysisId/sales-orders/$orderId';
   static String productionPlanNew() => '/production/plans/new';
   static String productionPlanDetail(String id) => '/production/plans/$id';
   static String productionPlanEdit(String id) => '/production/plans/$id/edit';

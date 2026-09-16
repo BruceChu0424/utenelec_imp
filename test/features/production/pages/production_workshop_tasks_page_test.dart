@@ -7,6 +7,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../../support/filter_segment_tap.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -17,7 +19,6 @@ import 'package:uten_imp/features/production/models/production_execution_workben
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_material_repository.dart';
-import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
@@ -108,7 +109,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('生产中'));
+      await selectFilterSegment(tester, '生产中');
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey('workshop-material-usage-segment-a')),
@@ -134,18 +135,22 @@ void main() {
             ),
         isTrue,
       );
-      await tester.tap(find.text('将待登记量填入实耗'));
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('提交用料登记'));
-      await tester.tap(find.text('提交用料登记'));
-      await tester.pumpAndSettle();
-      final payload =
-          requests.singleWhere((request) => request.method == 'POST').data
-              as Map;
-      expect(payload['executionSegmentId'], 'original-issued');
+      // V583：本页只剩只读台账——实耗随报工在生产日报页一起填，这里不再有任何
+      // 记账入口，也不发 POST。沿用前批的来源选择本身保留(只读也要选看哪一段)。
+      expect(find.text('将待登记量填入实耗'), findsNothing);
+      expect(find.text('提交用料登记'), findsNothing);
       expect(
-        (payload['lines'] as List).single,
-        containsPair('demandId', 'original-demand'),
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey('material-consume-original-demand')),
+            )
+            .enabled,
+        isFalse,
+      );
+      expect(
+        requests.any((request) => request.method == 'POST'),
+        isFalse,
+        reason: '只读台账不得写任何材料事实',
       );
       expect(tester.takeException(), isNull);
     },
@@ -305,7 +310,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('生产中'));
+      await selectFilterSegment(tester, '生产中');
       await tester.pumpAndSettle();
       expect(find.text('已入库 · 待登记实际用料'), findsOneWidget);
       final entry = find.byKey(
@@ -483,7 +488,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('生产中'));
+    await selectFilterSegment(tester, '生产中');
     await tester.pumpAndSettle();
 
     // 生产中显示进度列与「生产中 · 可报工」口径。
@@ -530,7 +535,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       // 分类默认不选：点分类后才渲染表格。
-      await tester.tap(find.text('生产中'));
+      await selectFilterSegment(tester, '生产中');
       await tester.pumpAndSettle();
 
       // 2026-09-06 用户口径：报工按钮统一=多选后右下角悬浮执行；
@@ -581,7 +586,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     // 分类默认不选：点分类后才渲染表格。
-    await tester.tap(find.text('生产中'));
+    await selectFilterSegment(tester, '生产中');
     await tester.pumpAndSettle();
 
     final header = find.byWidgetPredicate(
@@ -643,7 +648,7 @@ void main() {
     await tester.tap(find.text('等待物料'));
     await tester.pump();
     expect(repository.calls, 1);
-    await tester.tap(find.text('生产中'));
+    await selectFilterSegment(tester, '生产中');
     await tester.pump();
     expect(repository.calls, 2);
 
@@ -694,7 +699,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('生产中'));
+      await selectFilterSegment(tester, '生产中');
       await tester.pumpAndSettle();
 
       // 行菜单不再提供计划详情入口（菜单为空时不弹）。
@@ -761,7 +766,7 @@ void main() {
     expect(repository.calls, isEmpty);
 
     // 选「全部」→ 发一次 COMPLETED 请求，不带日期。
-    await tester.tap(find.text('全部'));
+    await selectFilterSegment(tester, '全部');
     await tester.pumpAndSettle();
     expect(repository.calls, hasLength(1));
     expect(repository.calls.single.status, 'COMPLETED');
@@ -771,7 +776,7 @@ void main() {
     expect(find.text('已红冲'), findsOneWidget);
 
     // 切回活动分类：时间门控行消失，请求不带日期。
-    await tester.tap(find.text('生产中'));
+    await selectFilterSegment(tester, '生产中');
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('workshop-history-time')), findsNothing);
     expect(repository.calls.last.status, 'IN_PROGRESS');
@@ -929,11 +934,13 @@ void materialUsageEntryTests() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.text('生产中'));
+        await selectFilterSegment(tester, '生产中');
         await tester.pumpAndSettle();
         await _rightClick(tester, find.text('产品 A'));
-        // 生产中分类保留「登记实际用料」（2026-09-12 用户口径：只在生产中显示）。
-        await tester.tap(find.text(canSettle ? '登记实际用料' : '查看用料记录').last);
+        // V583：实耗登记搬到生产日报页(报工时物料子行一起填)，本页任何分类、
+        // 任何权限组合都只剩只读台账，入口文案固定为「查看用料记录」。
+        expect(find.text('登记实际用料'), findsNothing);
+        await tester.tap(find.text('查看用料记录').last);
         await tester.pumpAndSettle();
         expect(find.text('本工单原料'), findsOneWidget);
         expect(reads.length, 4);
@@ -950,44 +957,19 @@ void materialUsageEntryTests() {
         );
         expect(find.text('检查并完成任务'), findsNothing, reason: '单段任务权限不能关闭整个计划');
         expect(find.text('余料退库'), findsNothing, reason: '任务入口不能跳入未过滤的全计划退料选择器');
-        if (canSettle && serverAllows) {
-          await tester.tap(find.text('将待登记量填入实耗'));
-          await tester.pumpAndSettle();
-          final field = tester.widget<TextField>(
-            find.byKey(const ValueKey('material-consume-demand-a')),
-          );
-          expect(field.controller!.text, '10');
-          expect(field.decoration!.filled, isTrue);
-          expect(
-            find.byWidgetPredicate(
-              (widget) => widget is UtenFieldHintIcon && widget.autofilled,
-            ),
-            findsOneWidget,
-          );
-          expect(writes, isEmpty, reason: '建议量必须人工提交后才入账');
-          await tester.ensureVisible(find.text('提交用料登记'));
-          await tester.tap(find.text('提交用料登记'));
-          await tester.pumpAndSettle();
-          expect(writes.length, 1);
-          final payload = writes.single.data as Map<String, dynamic>;
-          expect(payload['executionSegmentId'], 'segment-a');
-          expect(
-            (payload['lines'] as List).single,
-            containsPair('demandId', 'demand-a'),
-          );
-        } else {
-          expect(find.text('将待登记量填入实耗'), findsNothing);
-          expect(find.text('提交用料登记'), findsNothing);
-          expect(
-            tester
-                .widget<TextField>(
-                  find.byKey(const ValueKey('material-consume-demand-a')),
-                )
-                .enabled,
-            isFalse,
-          );
-          expect(writes, isEmpty);
-        }
+        // 有没有 settle 权限、服务端 capabilities 允不允许，本页一律只读：
+        // 两处都能记账会让实耗数字互相打架，实耗的唯一入口是生产日报页。
+        expect(find.text('将待登记量填入实耗'), findsNothing);
+        expect(find.text('提交用料登记'), findsNothing);
+        expect(
+          tester
+              .widget<TextField>(
+                find.byKey(const ValueKey('material-consume-demand-a')),
+              )
+              .enabled,
+          isFalse,
+        );
+        expect(writes, isEmpty);
         expect(tester.takeException(), isNull);
       },
     );

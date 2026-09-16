@@ -53,7 +53,11 @@ void main() {
     await tester.tap(find.text('待排产'));
     await tester.pumpAndSettle();
 
-    expect(find.text('可生产量'), findsOneWidget);
+    // ADR-088：「可生产量 / 预计可生产」两列迁出待排产段(齐套是分析批次的事实)，
+    // 改挂「已分析」指路列。
+    expect(find.text('可生产量'), findsNothing);
+    expect(find.text('预计可生产'), findsNothing);
+    expect(find.text('已分析'), findsOneWidget);
     // V545：新增「已排」列；部分排产（订 10 排 4）的行仍在待排产段，状态标明已排/订货。
     expect(find.text('已排'), findsOneWidget);
     expect(find.text('部分已排 4/10'), findsOneWidget);
@@ -231,6 +235,61 @@ void main() {
       ),
       isEmpty,
     );
+  });
+
+  // ADR-088：已被分析承接的订单行只在「进行中」出现，所以「看不见进行中」=
+  // 那批量从这个账号的世界里消失。缺 overview 时必须给明确的权限引导，
+  // 而不是让面板去撞一个 403 错误态。
+  testWidgets('ongoing segment guides instead of 403 without overview', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final requests = <RequestOptions>[];
+    await tester.binding.setSurfaceSize(const Size(1400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final router = _router();
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          productionPlanRepositoryProvider.overrideWithValue(
+            _planRepository(requests),
+          ),
+          productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+            _workbenchRepository(requests),
+          ),
+          // 纯调度账号：能看待排产，没有进行中的读权限。
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.productionPlanView,
+          }),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('进行中'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('production-board-progress-no-permission')),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('production_execution:overview'),
+      findsOneWidget,
+    );
+    // 引导态不发列表请求(不制造一个注定 403 的调用)。
+    expect(
+      requests.where(
+        (request) => request.path == '/production/execution-workbench',
+      ),
+      isEmpty,
+    );
+    expect(tester.takeException(), isNull);
   });
 }
 

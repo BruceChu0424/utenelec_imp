@@ -23,6 +23,7 @@
 //   )
 import 'dart:async';
 
+import 'package:flutter/gestures.dart' show kSecondaryButton;
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
@@ -148,17 +149,46 @@ class UtenContextMenuRegion extends StatelessWidget {
     }
   }
 
+  /// 本次右键手势的指针 id（静态：开菜单会触发宿主 setState 重建换掉闭包，
+  /// 局部变量存不住跨重建的指针；同一时刻只有一路右键手势，单值即可）。
+  static int? _secondaryPointerInFlight;
+
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    // 桌面右键改走原始 Listener（2026-09-15 用户反馈）：手势竞技场里更深的
+    // TextField / SelectionArea 识别器会按深度优先抢走右键、弹系统「全选/复制」
+    // 工具条，行级 GestureDetector 竞争不过，自家菜单时有时无。Listener 不进
+    // 竞技场，右键落在行内（含输入格/可选文字）即开自家菜单。
+    //
+    // 同一次右键的抬键阶段，输入框仍会 toggle 出自带工具条（EditableText 在
+    // Windows/Linux 于 pointer up 触发、经 ContextMenuController 上 Overlay）：
+    // 在该指针抬键的微任务里 removeAny 掉它（微任务在本次事件同步分发之后、
+    // 下一帧绘制之前执行，系统工具条不会闪出来），用户只看到我们的一份。
+    return Listener(
       behavior: HitTestBehavior.translucent,
-      // 桌面/Web：鼠标右击。不抢单/双击（不同按键，手势竞技场互不冲突）。
-      onSecondaryTapDown: (d) => unawaited(_open(context, d.globalPosition)),
-      // 手机/触屏：长按出同一个菜单。与单击选中/双击打开共存：
-      // 长按与 tap 是不同识别器，tap 先赢则长按自动取消，行为符合直觉。
-      onLongPressStart: (d) => unawaited(_open(context, d.globalPosition)),
-      child: child,
+      onPointerDown: (event) {
+        if (event.buttons & kSecondaryButton == 0) return;
+        _secondaryPointerInFlight = event.pointer;
+        unawaited(_open(context, event.position));
+      },
+      onPointerUp: (event) => _dismissSystemContextMenu(event.pointer),
+      onPointerCancel: (event) => _dismissSystemContextMenu(event.pointer),
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        // 手机/触屏：长按出同一个菜单。与单击选中/双击打开共存：
+        // 长按与 tap 是不同识别器，tap 先赢则长按自动取消，行为符合直觉。
+        onLongPressStart: (d) => unawaited(_open(context, d.globalPosition)),
+        child: child,
+      ),
     );
+  }
+
+  static void _dismissSystemContextMenu(int pointer) {
+    if (_secondaryPointerInFlight != pointer) return;
+    _secondaryPointerInFlight = null;
+    // removeAny 对当前没有系统菜单是 no-op；只清理系统右键工具条，
+    // 自家菜单是普通 OverlayEntry，不受影响。
+    scheduleMicrotask(ContextMenuController.removeAny);
   }
 }
 

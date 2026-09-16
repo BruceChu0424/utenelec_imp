@@ -4,7 +4,7 @@
 // 名称解析：客户/仓库/币种/颜色/单位用 SalesMasterNameService；货品按明细 id 批量 lookup。
 //
 // 审核副作用（前端只调 approve 端点，UI 显示状态）：
-//  - 出货财务审核→只放行仓库；仓库交接出库才扣库存、回写已发并立应收
+//  - 出货财务审核→只放行仓库；仓库确认出库才扣库存、回写已发并立应收
 //  - 退货审核→后端自动库存入库+双挂回写+立红字应收+结案
 //  - 其它出货审核→仅库存出库
 //
@@ -27,13 +27,12 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
-import '../../../components/inputs/uten_field_message.dart';
-import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -320,6 +319,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           .whereType<String>()
           .toSet();
       await ref.read(salesMasterNameServiceProvider).loadGoodsNames(goodsIds);
+      // 2026-09-14：快照上线前的老单据没有 goodsCodeSnapshot，货品列只剩名称；
+      // 同页「库位号」列读的也是这份详情缓存（此前恒显示 —）。补一次货品详情，
+      // 让编号与库位都能回落到主档事实。失败不影响正文（名称已加载）。
+      await ref.read(salesMasterNameServiceProvider).loadGoodsDetails(goodsIds);
       // 表头人员字段（业务员/发货人/分批确认登记人）按 id 解析为姓名展示。
       await ref.read(salesMasterNameServiceProvider).loadEmployeeNames([
         d.sellerId,
@@ -391,106 +394,15 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     );
   }
 
-  Future<String?> _askRequiredReason({
-    required String title,
-    required String message,
-    required String confirmLabel,
-    bool danger = false,
-  }) async {
-    final controller = TextEditingController();
-    String? result;
-    try {
-      result = await showDialog<String>(
-        context: context,
-        builder: (ctx) {
-          String? error;
-          return StatefulBuilder(
-            builder: (ctx, setDialogState) => AlertDialog(
-              title: Text(title),
-              content: SizedBox(
-                width: 440,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(message),
-                    const SizedBox(height: UtenSpacing.s12),
-                    TextField(
-                      key: ValueKey('reason-$confirmLabel'),
-                      controller: controller,
-                      autofocus: true,
-                      maxLength: 500,
-                      maxLines: 4,
-                      decoration: UtenInputDecoration(
-                        InputDecoration(
-                          labelText: '处理依据 / 原因',
-                          hintText: '必填，系统将写入操作审计',
-                          error: utenFieldError(error),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actionsAlignment: MainAxisAlignment.center,
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  style: danger
-                      ? FilledButton.styleFrom(
-                          backgroundColor: Theme.of(ctx).colorScheme.error,
-                        )
-                      : null,
-                  onPressed: () {
-                    final reason = controller.text.trim();
-                    if (reason.isEmpty) {
-                      setDialogState(() => error = '请填写原因或处理依据');
-                      return;
-                    }
-                    Navigator.pop(ctx, reason);
-                  },
-                  child: Text(confirmLabel),
-                ),
-              ],
-            ),
-          );
-        },
-      );
-    } finally {
-      controller.dispose();
-    }
-    return result;
-  }
-
   Future<void> _performWarehouseAction(SalesWarehouseWorkAction action) async {
     if (_busy) {
       context.appInfo('正在处理，请稍候…');
       return;
     }
-    if (action.requiresReason) {
-      final reason = await _askRequiredReason(
-        title: action.label,
-        message: action == SalesWarehouseWorkAction.reportException
-            ? '登记后出货任务会进入异常处理并暂停推进，请写明缺货、货损、批次或其它具体原因。'
-            : '恢复后任务会回到待拣货，请写明已经完成的处理和复核结果。',
-        confirmLabel: action.label,
-        danger: action == SalesWarehouseWorkAction.reportException,
-      );
-      if (reason == null || !mounted) return;
-      await _runWarehouseTransition(action, reason: reason);
-      return;
-    }
-
     final message = switch (action) {
-      SalesWarehouseWorkAction.startPicking =>
-        '所有客户均须先完成财务审核。开始拣货后，销售不能直接编辑或删除，财务也不能再审核或反审。确认开始？',
-      SalesWarehouseWorkAction.finishPicking => '请确认实物数量、批次和单据明细已经复核一致。确认拣货完成？',
-      SalesWarehouseWorkAction.handOver =>
-        '交接出库将正式扣减库存、回写订单已发数量并驱动应收；不能通过普通编辑撤回。确认交接？',
-      _ => '确认执行该仓库作业？',
+      SalesWarehouseWorkAction.confirmShipment =>
+        '确认出库将在同一事务里扣减库存、消耗预留、回写订单已发数量并生成应收；'
+            '不能通过普通编辑撤回。确认出库？',
     };
     await _doAction(
       message,
@@ -498,36 +410,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         widget.id,
         targetStatus: action.targetStatus,
       ),
-      action == SalesWarehouseWorkAction.handOver
-          ? '已交接并正式出库'
-          : '已${action.label}',
+      '已确认出库',
     );
-  }
-
-  Future<void> _runWarehouseTransition(
-    SalesWarehouseWorkAction action, {
-    String? reason,
-  }) async {
-    setState(() => _busy = true);
-    try {
-      final detail = await ref
-          .read(salesRepositoryProvider(widget.docType))
-          .transitionWarehouseWork(
-            widget.id,
-            targetStatus: action.targetStatus,
-            reason: reason,
-          );
-      if (!mounted) return;
-      setState(() => _detail = detail);
-      context.appSuccess('已${action.label}');
-      bumpListRefresh(ref, _cfg.refreshKey);
-    } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError('${action.label}失败，请稍后重试');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
   }
 
   /// 订单改量：弹窗逐行改数量（增量重走预留/减量释放，已排产行需生产部权限）。
@@ -664,7 +548,13 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 
   Future<void> _confirmShipmentSales() async {
     final workflow = _detail?.shipmentWorkflow;
-    if (_busy || workflow == null || !workflow.canConfirmSales) return;
+    // V578：被财务退回后允许原样重新提交（无需先改单）。
+    if (_busy ||
+        workflow == null ||
+        (!workflow.canConfirmSales &&
+            !workflow.canResubmitAfterFinanceReject)) {
+      return;
+    }
     setState(() => _busy = true);
     try {
       await ref
@@ -1071,6 +961,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       // 2026-09-12 UI 统一口径：底部操作改右下悬浮组（UtenFloatingActionGroup），
       // 不再做固定吸底操作条；重要/危险动作仍为红色按钮。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _detail == null || _busy ? null : _actions(theme),
     );
   }
@@ -1081,43 +972,32 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     final d = _detail!;
     final rejected = d.shipmentWorkflow.financeRejected;
     final audited = d.financeAudit == 1;
-    final working = const {
-      SalesWarehouseWorkStatus.picking,
-      SalesWarehouseWorkStatus.picked,
-      SalesWarehouseWorkStatus.exception,
-    }.contains(d.warehouseWorkStatus);
+    // V582：仓库不再有「作业中」的中间态——要么待出库，要么已出库。
     final (color, icon, text) = d.status == kSalesStatusApproved
         ? (
             theme.colorScheme.primary,
             Icons.local_shipping_outlined,
-            '已交接出库；数量与价款不能再改，真实退货走退货检验。',
+            '已出库；数量与价款不能再改，真实退货走退货检验。',
           )
         : rejected
         ? (
             theme.colorScheme.error,
             Icons.undo_rounded,
             '财务已退回：${d.shipmentWorkflow.financeRejectionReason ?? '未注明原因'}。'
-                '请修改后重新「确认并提交财务」。',
+                '可「编辑」改单后重新提交，或原因与内容无关时直接「重新提交财务审核」。',
           )
         : audited
         ? (
             theme.colorScheme.primary,
             Icons.verified_rounded,
             '财务已放行${d.financeAuditedAt != null ? '（${d.financeAuditedAt!.substring(0, 10)}）' : ''}，'
-                '等待仓库拣货；修改须先由财务反审或仓库退拣。',
-          )
-        : working
-        ? (
-            theme.colorScheme.tertiary,
-            Icons.inventory_2_outlined,
-            '仓库作业中（${salesWarehouseWorkStatusLabel(d.warehouseWorkStatus)}）；'
-                '修改须先完成退拣并恢复待拣货。',
+                '等待仓库确认出库；修改须先由财务反审。',
           )
         : d.shipmentWorkflow.financeReviewPending
         ? (
             theme.colorScheme.tertiary,
             Icons.hourglass_top_rounded,
-            '正在等待财务审核；财务放行后仓库才能开始拣货。财审认领期间本单锁定编辑。',
+            '正在等待财务审核；财务放行后仓库才能确认出库。财审认领期间本单锁定编辑。',
           )
         : d.shipmentWorkflow.isDirect
         ? (
@@ -1300,16 +1180,12 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               ? salesWarehouseWorkStatusHint(d.warehouseWorkStatus)
               : d.financeAudit == 1
               ? salesWarehouseWorkStatusHint(d.warehouseWorkStatus)
-              : '等待财务审核放行；放行前仓库不能开始拣货。',
+              : '等待财务审核放行；放行前仓库不能确认出库。',
         ),
       if (_cfg.type.isShipment && d.warehouseWorkUpdatedAt != null)
         _KV('作业更新时间', utenFmtIsoTime(d.warehouseWorkUpdatedAt)),
-      if (_cfg.type.isShipment && d.pickingStartedAt != null)
-        _KV('开始拣货', utenFmtIsoTime(d.pickingStartedAt)),
-      if (_cfg.type.isShipment && d.pickedAt != null)
-        _KV('拣货完成', utenFmtIsoTime(d.pickedAt)),
       if (_cfg.type.isShipment && d.handedOverAt != null)
-        _KV('交接出库', utenFmtIsoTime(d.handedOverAt)),
+        _KV('出库时间', utenFmtIsoTime(d.handedOverAt)),
       if (_cfg.type.isShipment &&
           !salesShipmentAllowsDirectReverse(
             warehouseWorkStatus: d.warehouseWorkStatus,
@@ -1322,18 +1198,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
             financeAudit: d.financeAudit,
             warehouseWorkStatus: d.warehouseWorkStatus,
           ))
-        const _KV('编辑限制', '仓库作业已开始；须先完成退拣并恢复待拣货，再由销售修改并重新确认。'),
+        const _KV('编辑限制', '已确认出库；库存与应收已过账，纠错请走销售退货。'),
       if (_cfg.type.isShipment &&
           (d.warehouseExceptionReason?.isNotEmpty ?? false))
         _KV('仓库异常', d.warehouseExceptionReason),
-      if (_cfg.type.isShipment &&
-          d.financeAudit != 1 &&
-          const {
-            SalesWarehouseWorkStatus.picking,
-            SalesWarehouseWorkStatus.picked,
-            SalesWarehouseWorkStatus.exception,
-          }.contains(d.warehouseWorkStatus))
-        const _KV('财务处理', '仓库作业已开始，不能补做或撤销财务审核；如需回退，请先登记异常并恢复到待拣货。'),
       // 报价转入回链（SOP §三1）：来源报价可点跳报价详情，行级报价单价见明细
       if (_cfg.type == SalesDocType.order && d.sourceQuoteId != null)
         _KV(
@@ -1509,7 +1377,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 
   /// 口径保留：价格脱敏（无权限订单单价/金额 = ***）；报价来源行「单价（报价 X）」对比；
   /// 订单行含可发/已排/已产；链路状态并入货品列文本。
-  /// 2026-09-11 起是折叠容器的 body：标题行钉住、表格 primary:true 内滚、合计条常驻底部。
+  /// 2026-09-11 起是折叠容器的 body：标题行钉住、表格 primary:true 内滚；
+  /// 2026-09-14 合计条收进表格 summaryBar 槽位；2026-09-15 改随表体滚动
+  ///（summaryBarInline：表内脚注，跟在最后一行数据之下）。
   Widget _itemsCard(ThemeData theme, SalesMasterNameService names) {
     final items = _detail!.items;
     final isOrder = _cfg.type == SalesDocType.order;
@@ -1529,24 +1399,57 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           child: MasterDataTableView<SalesDocItem>(
             primary: true,
             columns: [
+              // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
+              // 不再拼成「编号 · 名称(颜色 · 单位)」一长串。单位与链路状态各自
+              // 单独成列，列窄时不会先把编号吃掉。
               MasterColumnDef(
                 key: 'goods',
-                label: '货品',
-                width: 240,
-                value: (it) {
-                  final goodsIdentity = salesGoodsIdentityLabel(
-                    it,
-                    names.goods(it.goodsId),
-                  );
-                  final base =
-                      '$goodsIdentity(${names.color(it.colorId)} · ${names.unit(it.unitId)})';
-                  return (isOrder &&
-                          it.chainStatus != null &&
-                          it.chainStatus != 0)
-                      ? '$base · ${chainStatusLabel(it.chainStatus, plannedQty: it.plannedQty, qty: it.qty)}'
-                      : base;
-                },
+                label: '货品名称',
+                width: 200,
+                value: (it) => salesGoodsNameLabel(it, names.goods(it.goodsId)),
               ),
+              MasterColumnDef(
+                key: 'goodsCode',
+                label: '编号',
+                width: 130,
+                value: (it) => UtenGoodsAttributeCell.text(
+                  salesGoodsCodeLabel(
+                    it,
+                    fallbackCode: names.goodsInfo(it.goodsId)?.code,
+                  ),
+                ),
+                cellBuilder: (_, it) => UtenGoodsAttributeCell(
+                  salesGoodsCodeLabel(
+                    it,
+                    fallbackCode: names.goodsInfo(it.goodsId)?.code,
+                  ),
+                ),
+              ),
+              MasterColumnDef(
+                key: 'colorName',
+                label: '颜色',
+                width: 96,
+                value: (it) => names.color(it.colorId),
+              ),
+              MasterColumnDef(
+                key: 'unitName',
+                label: '单位',
+                width: 80,
+                value: (it) => names.unit(it.unitId),
+              ),
+              if (isOrder)
+                MasterColumnDef(
+                  key: 'chainStatus',
+                  label: '业务链',
+                  width: 130,
+                  value: (it) => it.chainStatus == null || it.chainStatus == 0
+                      ? '—'
+                      : chainStatusLabel(
+                          it.chainStatus,
+                          plannedQty: it.plannedQty,
+                          qty: it.qty,
+                        ),
+                ),
               MasterColumnDef(
                 key: 'qty',
                 label: '数量',
@@ -1664,57 +1567,65 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
             filters: const {},
             onFilterChanged: (_, _) {},
             onRowTap: (it) => _showLineActions(it),
-            // 右下悬浮操作组让位：末行可滚出按钮区（合计条由外层固定让位）。
+            // 右下悬浮操作组让位：末行（含随表滚动的合计条）可滚出按钮区。
             bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
             emptyMessage: '(无明细)',
+            // 明细下合计条（summaryBarInline 随表体滚动）：数量按单位分组；
+            // 价格脱敏时不出金额项。
+            summaryBar: items.isNotEmpty
+                ? UtenTotalsSummaryBar(
+                    key: const Key('sales-detail-totals'),
+                    density: true,
+                    compact: true,
+                    entries: [
+                      utenQuantityTotalEntry(
+                        items.map(
+                          (it) => MeasuredAmount(
+                            value: it.qty ?? 0,
+                            unitId: it.unitId,
+                            unitName: names.unit(it.unitId),
+                          ),
+                        ),
+                      ),
+                      if (!masked) ...[
+                        UtenTotalEntry(
+                          utenAmountTotalLabel(
+                            _cfg.hasCurrency
+                                ? financeCurrencyDisplayLabel(
+                                    name: names.currency(_detail!.currencyId),
+                                  )
+                                : null,
+                          ),
+                          (_detail!.totalOriginal ??
+                                  items.fold<double>(
+                                    0,
+                                    (sum, it) =>
+                                        sum +
+                                        (it.amountOriginal ??
+                                            it.amountLocal ??
+                                            0),
+                                  ))
+                              .toStringAsFixed(2),
+                          danger: true,
+                        ),
+                        // 销售订单阶段本币事实按设计为空（不落 totalLocal）；订单表头卡
+                        // 也只出「订单金额(订单币种)」。历史脏数据带 totalLocal 的订单
+                        // 会把本币合计漏出来，故显式按单据类型门控（非订单单据照常出
+                        // 本币合计）。
+                        if (!isOrder)
+                          UtenTotalEntry(
+                            '合计(本币)',
+                            _detail!.totalLocal?.toStringAsFixed(2) ?? '',
+                          ),
+                      ],
+                    ],
+                  )
+                : null,
+            // 2026-09-15 用户口径：合计条属于表格那一块——渲染进表体滚动内容末尾
+            //（最后一行数据之下），不钉在区块底部/按钮上方。
+            summaryBarInline: true,
           ),
         ),
-        // 明细下合计条（全站统一口径）：数量按单位分组；价格脱敏时不出金额项。
-        if (items.isNotEmpty)
-          UtenTotalsSummaryBar(
-            key: const Key('sales-detail-totals'),
-            density: true,
-            entries: [
-              utenQuantityTotalEntry(
-                items.map(
-                  (it) => MeasuredAmount(
-                    value: it.qty ?? 0,
-                    unitId: it.unitId,
-                    unitName: names.unit(it.unitId),
-                  ),
-                ),
-              ),
-              if (!masked) ...[
-                UtenTotalEntry(
-                  utenAmountTotalLabel(
-                    _cfg.hasCurrency
-                        ? financeCurrencyDisplayLabel(
-                            name: names.currency(_detail!.currencyId),
-                          )
-                        : null,
-                  ),
-                  (_detail!.totalOriginal ??
-                          items.fold<double>(
-                            0,
-                            (sum, it) =>
-                                sum +
-                                (it.amountOriginal ?? it.amountLocal ?? 0),
-                          ))
-                      .toStringAsFixed(2),
-                  danger: true,
-                ),
-                // 销售订单阶段本币事实按设计为空（不落 totalLocal）；订单表头卡
-                // 也只出「订单金额(订单币种)」。2026-09-11 折叠头改版后合计条常驻
-                // 可见，历史脏数据带 totalLocal 的订单会把本币合计漏出来，故显式
-                // 按单据类型门控（非订单单据照常出本币合计）。
-                if (!isOrder)
-                  UtenTotalEntry(
-                    '合计(本币)',
-                    _detail!.totalLocal?.toStringAsFixed(2) ?? '',
-                  ),
-              ],
-            ],
-          ),
       ],
     );
   }
@@ -1731,9 +1642,24 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         add(
           UtenButton(
             key: const ValueKey('shipment-confirm-sales'),
+            size: UtenButtonSize.large,
             icon: Icons.send_outlined,
             onPressed: _busy ? null : _confirmShipmentSales,
             child: const Text('销售确认并提交财务'),
+          ),
+        );
+      }
+      // V578：被财务退回后，销售可原样重新提交（退回原因与内容无关时），
+      // 也可走「编辑」改单再提交——两条路都通。
+      if (_detail!.shipmentWorkflow.canResubmitAfterFinanceReject &&
+          _hasPermission(_cfg.approvePerm)) {
+        add(
+          UtenButton(
+            key: const ValueKey('shipment-resubmit-finance'),
+            size: UtenButtonSize.large,
+            icon: Icons.replay_rounded,
+            onPressed: _busy ? null : _confirmShipmentSales,
+            child: const Text('重新提交财务审核'),
           ),
         );
       }
@@ -1744,6 +1670,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           UtenButton(
             key: const ValueKey('sales-doc-delete'),
             type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
             icon: _cfg.type.isShipment
                 ? Icons.cancel_outlined
                 : Icons.delete_outline,
@@ -1757,6 +1684,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           UtenButton(
             key: const ValueKey('sales-doc-edit'),
             type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
             icon: Icons.edit_outlined,
             onPressed: () => context.push(
               SalesRoutePath.docEdit(_cfg.type.pathSegment, widget.id),
@@ -1769,6 +1697,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       if (_canApprove && !_cfg.type.isShipment) {
         add(
           UtenButton(
+            size: UtenButtonSize.large,
             icon: Icons.check_circle_outline,
             onPressed: _approveClaimBlocked ? null : _approve,
             child: Text(_approveClaimBlocked ? '他人审核中' : '审核'),
@@ -1780,22 +1709,13 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           _detail!.warehouseWorkStatus,
         )) {
           final icon = switch (action) {
-            SalesWarehouseWorkAction.startPicking => Icons.play_circle_outline,
-            SalesWarehouseWorkAction.finishPicking => Icons.task_alt_outlined,
-            SalesWarehouseWorkAction.reportException =>
-              Icons.report_problem_outlined,
-            SalesWarehouseWorkAction.restorePending => Icons.restart_alt,
-            SalesWarehouseWorkAction.handOver => Icons.local_shipping_outlined,
-          };
-          final type = switch (action) {
-            SalesWarehouseWorkAction.reportException => UtenButtonType.danger,
-            SalesWarehouseWorkAction.handOver => UtenButtonType.primary,
-            _ => UtenButtonType.secondary,
+            SalesWarehouseWorkAction.confirmShipment =>
+              Icons.local_shipping_outlined,
           };
           add(
             UtenButton(
               key: ValueKey('warehouse-work-${action.name}'),
-              type: type,
+              size: UtenButtonSize.large,
               icon: icon,
               onPressed: () => _performWarehouseAction(action),
               child: Text(action.label),
@@ -1810,6 +1730,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         children.add(
           UtenButton(
             type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
             icon: Icons.block_outlined,
             onPressed: _reject,
             child: const Text('驳回'),
@@ -1835,6 +1756,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           ..add(
             UtenButton(
               type: UtenButtonType.danger,
+              size: UtenButtonSize.large,
               icon: Icons.delete_outline,
               onPressed: _delete,
               child: const Text('删除重开'),
@@ -1845,6 +1767,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       children.add(
         UtenButton(
           type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
           onPressed: () => backTo(
             context,
             defaultPath: SalesRoutePath.list(_cfg.type.pathSegment),
@@ -1858,6 +1781,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         children
           ..add(
             UtenButton(
+              size: UtenButtonSize.large,
               icon: Icons.transform_outlined,
               onPressed: _convertToOrder,
               child: const Text('转订货单'),
@@ -1871,6 +1795,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
             ..add(
               UtenButton(
                 key: const ValueKey('sales-order-finance-rejected-edit'),
+                size: UtenButtonSize.large,
                 icon: Icons.edit_outlined,
                 onPressed: () => context.push(
                   SalesRoutePath.docEdit(_cfg.type.pathSegment, widget.id),
@@ -1885,6 +1810,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
             ..add(
               UtenButton(
                 type: UtenButtonType.secondary,
+                size: UtenButtonSize.large,
                 icon: Icons.edit_note_outlined,
                 onPressed: _changeQty,
                 child: const Text('改量'),
@@ -1899,6 +1825,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           ..addAll([
             UtenButton(
               type: UtenButtonType.secondary,
+              size: UtenButtonSize.large,
               icon: Icons.local_shipping_outlined,
               onPressed: () =>
                   context.push(RoutePath.salesOrderProgressDetail(widget.id)),
@@ -1911,6 +1838,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
             ..add(
               UtenButton(
                 type: UtenButtonType.danger,
+                size: UtenButtonSize.large,
                 icon: Icons.cancel_outlined,
                 onPressed: _cancel,
                 child: const Text('取消订单'),
@@ -1929,6 +1857,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         add(
           UtenButton(
             type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
             icon: Icons.play_circle_outline,
             onPressed: _restore,
             child: const Text('恢复订单'),
@@ -1939,6 +1868,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         children.add(
           UtenButton(
             type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
             icon: Icons.undo_outlined,
             onPressed: _reverse,
             child: const Text('红冲'),
@@ -1949,6 +1879,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       children.add(
         UtenButton(
           type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
           onPressed: () => backTo(
             context,
             defaultPath: SalesRoutePath.list(_cfg.type.pathSegment),
@@ -1961,6 +1892,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       children.add(
         UtenButton(
           type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
           onPressed: () => backTo(
             context,
             defaultPath: SalesRoutePath.list(_cfg.type.pathSegment),

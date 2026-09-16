@@ -37,6 +37,8 @@ public record ScheduleOrderLine(
             String code,
             String name,
             String spec,
+            UUID colorId,
+            String colorName,
             BigDecimal perQty,
             BigDecimal needQty,
             BigDecimal onhand,

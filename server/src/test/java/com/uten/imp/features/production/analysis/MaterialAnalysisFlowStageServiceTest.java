@@ -125,6 +125,39 @@ class MaterialAnalysisFlowStageServiceTest {
     }
 
     @Test
+    void subcontractWithMakeTaskButNoPlanIsPendingWorkshopNotPendingIssue() {
+        // 2026-09-15 用户反馈：委外件下达之后「还是显示未下达」。根因就在这里——
+        // 有自制子层的委外件 notify 之后，服务端建的是「前置自制任务台账 +
+        // 分析产品行」，既不出委外申请、也不出生产计划；于是 hasApplication=false，
+        // childStatus 又因为锚点还没排产而为空，整条回落 SC_PENDING_ISSUE
+        //（界面写「等待下发委外」），与「从未下达」一字不差。
+        UUID line = UUID.randomUUID();
+        UUID action = UUID.randomUUID();
+        Query actions = mock(Query.class);
+        when(actions.setParameter(
+                anyString(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(actions);
+        // 必须写成 List.<Object[]>of：List.of(new Object[]{..}) 会走可变参数
+        // 重载，把数组元素摊平成三个元素的列表。
+        when(actions.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{line, action, "SUBCONTRACT_MAKE_TASK"}));
+        when(em.createNativeQuery(
+                org.mockito.ArgumentMatchers.contains(
+                        "FROM preplan_supply_action_allocations allocation")))
+                .thenReturn(actions);
+
+        Map<UUID, String> stages = service.lineFlowStages(
+                UUID.randomUUID(),
+                Map.of(line, "SUBCONTRACT"),
+                Map.of(line, new BigDecimal("5")),
+                Map.of(line, new BigDecimal("10")),
+                Map.of(),
+                Map.of());
+        // 已建前置自制台账、尚未排产 = 「等待下达车间」，不是「等待下发委外」。
+        assertThat(stages).containsEntry(line, "MAKE_PENDING_ISSUE");
+    }
+
+    @Test
     void stockedLineCompletesEvenWithoutChainRows() {
         // 空链路下 shortage<=0 不会出现在真实数据（有行动才可能齐套），
         // 但口径必须先判齐套：本测试以 BUY_REQUESTED 起点验证顺序保守。

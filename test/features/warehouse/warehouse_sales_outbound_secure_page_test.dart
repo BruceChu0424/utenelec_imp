@@ -145,7 +145,10 @@ void main() {
   );
 
   test('warehouse sales parser and routes stay commercial-free', () {
-    expect(summary.allows(WarehouseSalesOutboundAction.startPicking), isTrue);
+    expect(
+      summary.allows(WarehouseSalesOutboundAction.confirmShipment),
+      isTrue,
+    );
     expect(requiredAnyPermFor(RouteName.warehouseSalesOutbound), <String>[
       Perm.salesShipmentWarehouseWork,
     ]);
@@ -195,7 +198,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('仓库销售出库'), findsOneWidget);
     // 2026-09-03 分类范式：状态行默认不选（不发请求），先 tap「待拣货」才加载。
-    await tester.tap(find.text('待拣货'));
+    await tester.tap(find.text('待出库'));
     await tester.pumpAndSettle();
     expect(find.text('SO-OUT-001'), findsOneWidget);
     expect(find.textContaining('仓库作业视图'), findsOneWidget);
@@ -214,7 +217,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('SO-OUT-001'), findsWidgets);
-    expect(find.text('开始拣货'), findsOneWidget);
+    expect(find.text('确认出库'), findsOneWidget);
     expect(find.text('当前建议库位'), findsOneWidget);
     expect(find.textContaining('金额'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -222,7 +225,7 @@ void main() {
   });
 
   testWidgets(
-    'warehouse chooses a real source and confirms actual location before picking',
+    'warehouse chooses a real source and confirms actual location before the outbound',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1800, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -276,7 +279,7 @@ void main() {
         'B02-08',
       );
       await tester.tap(
-        find.byKey(const Key('warehouse-sales-outbound-action-PICKING')),
+        find.byKey(const Key('warehouse-sales-outbound-action-SHIPPED')),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.text('确认'));
@@ -295,7 +298,7 @@ const _detailJson = <String, dynamic>{
   'clientName': '客户甲',
   'warehouseName': '一号仓',
   'warehouseWorkStatus': 'PENDING_PICK',
-  'allowedWarehouseTargets': <String>['PICKING', 'EXCEPTION'],
+  'allowedWarehouseTargets': <String>['SHIPPED'],
   'shipAddress': '交接地址',
   'contactPhone': '13800000000',
   'logisticsNo': 'LOG-001',

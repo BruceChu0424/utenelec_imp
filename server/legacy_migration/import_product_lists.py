@@ -6,8 +6,8 @@
 用途
 ----
 平台上架 / 数据重导时，把 `product lists/` 目录下三个新 ERP 导出的产品列表
-（20260409172229_1.xls / _2.xls / _3.xls，工作表「产品列表」，80 列）按
-**产品编号 = goods.code** 匹配灌入平台库：
+（20260409172229_1.xls / _2.xls / _3.xls，工作表「产品列表」，80 列）灌入平台库。
+下面第 1、2 段按 **产品编号 = goods.code** 匹配；第 3 段(所属仓库)按 **产品名称** 匹配：
 
 1. 「来源」属性（goods.source_type，V128）：产品角色 自制件→自制、外购件→采购、委外件→委外。
 2. 空值补齐（仅当库内字段为空才补，不覆盖已有值）：
@@ -41,8 +41,21 @@
     UTEN_DB_HOST(127.0.0.1) UTEN_DB_PORT(5433) UTEN_DB_NAME(uten_imp)
     UTEN_DB_USER(uten) UTEN_DB_PASSWORD(required)
 
-幂等：可重复执行。分类按（父, 名称）查建、颜色按名称查建、货品更新结果收敛。
-报告：`<数据目录>/import_report/` 下 summary.txt + 三份 CSV。
+另有一段**按产品名称**匹配(与上面按编号的补字段完全分开)：
+
+3. 所属仓库 goods.owning_warehouse_id(V587)：Excel「所属仓库」列(五金仓库 /
+   塑胶仓库 / 包材仓库 / 成品仓库 / 五金车间)按**产品名称**对上库内货品。
+   为什么这一段不按编号：这批 Excel 的编号只命中 22488 分之 85，名称却是干净的
+   (17010 个不重名、同名映射到两个仓库的冲突 0 条)，2026-09-15 用户明确指定按名称。
+   - 只填空：库里已有值一律不动，重跑不会冲掉界面上人工改过的所属仓库
+     (要覆盖得显式传 --overwrite-warehouse)；
+   - 仓库按名称对 warehouses，缺的补建 auto_created=true 存根(编码 XW01/XW02…)；
+   - 库里没有 goods.owning_warehouse_id(V587 未应用)时整段跳过并明说。
+
+幂等：可重复执行。分类按(父, 名称)查建、颜色按名称查建、仓库按名称查建、
+货品更新结果收敛(实测第二遍写入 0 行、补建 0 个仓库)。
+报告：`<数据目录>/import_report/` 下 summary.txt + 四份 CSV
+(含 warehouse_unmatched.csv：Excel 有这个名字、库里没有同名货品，属正常差集)。
 """
 from __future__ import annotations
 
@@ -70,6 +83,7 @@ ROLE_MAP = {"自制件": "自制", "外购件": "采购", "委外件": "委外"}
 UNIT_ALIAS = {"千克": "kg"}  # Excel 单位名 → 平台 units.name
 ROOT_CODE = "GOODS"          # 分类树根「货品资料」
 NEW_CODE_PREFIX = "XL"       # 新建分类编码前缀（XL01/XL02…，每父级内按序）
+NEW_WAREHOUSE_PREFIX = "XW"  # 自动补建仓库存根的编码前缀（XW01/XW02…）
 
 
 def cell_str(v) -> str:
@@ -127,6 +141,9 @@ def load_rows(data_dir: Path, files: list[str]) -> list[dict]:
                 "m_weight": g(r, "单重（克）"),
                 "remark": g(r, "原ERP备注"),
                 "unit": g(r, "基本单位"),
+                # 所属仓库(V587)：这批货平时归哪个仓管。列可能缺席(旧导出)，
+                # 缺了就是空串，后面整段自动跳过。
+                "warehouse": g(r, "所属仓库"),
             }
             if not rec["code"] and not rec["name"]:
                 continue  # 空行
@@ -144,6 +161,8 @@ def main() -> None:
     ap.add_argument("--recategorize", action="store_true",
                     help="【默认关闭】按 Excel 产品分类路径建新分类树并重指货品分类；"
                          "2026-07-31 决策：分类结构只走老树，Excel 只补字段，勿随意开启")
+    ap.add_argument("--overwrite-warehouse", action="store_true",
+                    help="【默认关闭】连库里已有的所属仓库一起覆盖；默认只填空，不冲掉界面上人工改过的值")
     ap.add_argument("--data-dir", default=str(DEFAULT_DATA_DIR), help="Excel 所在目录")
     ap.add_argument("--files", nargs="*", default=DEFAULT_FILES, help="文件名列表")
     args = ap.parse_args()
@@ -380,13 +399,141 @@ def main() -> None:
         if "category_id" in sets:
             stats["分类重指"] += 1
 
+    # =================================================================
+    # 3. 所属仓库(V587，goods.owning_warehouse_id)
+    # =================================================================
+    # 与上面「按产品编号补字段」**完全分开的一段**，因为匹配键不同：
+    # 编号在这批 Excel 里只命中 85/22488，名称却是干净的(17010 个不重名、
+    # 同名映射到两个仓库的冲突 0 条)。2026-09-15 用户明确指定按名称匹配。
+    #
+    # 三条口径：
+    # ① 只填空：库里已经有值就不动。界面上计划员可以改所属仓库，重跑本脚本
+    #    绝不能把人工改过的值冲掉(--overwrite-warehouse 显式覆盖除外)。
+    # ② 仓库按名称对 warehouses；缺的仓库补建 auto_created=true 存根
+    #    (与本脚本既有的「缺名自动建色」同款处理)，挂在根仓下。
+    # ③ V587 未应用时整段跳过并明说，不让脚本在 42703 上炸掉。
+    wh_updates = 0
+    wh_created: list[str] = []
+    wh_unmatched: list[tuple[str, str]] = []
+    cur.execute("""
+        SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'goods' AND column_name = 'owning_warehouse_id'
+    """)
+    has_warehouse_column = cur.fetchone() is not None
+    excel_warehouse_rows = sum(1 for rec in rows if rec.get("warehouse"))
+
+    if not has_warehouse_column:
+        print("[SKIP] 所属仓库：库里没有 goods.owning_warehouse_id，请先应用 V587 迁移")
+    elif excel_warehouse_rows == 0:
+        print("[SKIP] 所属仓库：Excel 没有「所属仓库」列(旧版导出)")
+    else:
+        # ---- Excel 侧：名称 → 仓库名(冲突名整条丢弃，宁可不填也不填错) ----
+        wh_by_name: dict[str, str] = {}
+        wh_conflicts: set[str] = set()
+        for rec in rows:
+            key, wh = norm_name(rec["name"]), rec["warehouse"]
+            if not key or not wh:
+                continue
+            prev = wh_by_name.get(key)
+            if prev is None:
+                wh_by_name[key] = wh
+            elif prev != wh:
+                wh_conflicts.add(key)
+        for key in wh_conflicts:
+            wh_by_name.pop(key, None)
+
+        # ---- 平台侧：仓库字典 + 根仓(新建存根挂在它下面) ----
+        cur.execute("SELECT id, name, code FROM warehouses WHERE is_deleted = false")
+        warehouse_rows = cur.fetchall()
+        warehouse_by_name = {}
+        used_warehouse_codes = set()
+        for wid, wname, wcode in warehouse_rows:
+            clean = norm_name(wname or "")
+            if clean and clean not in warehouse_by_name:
+                warehouse_by_name[clean] = wid
+            if wcode:
+                used_warehouse_codes.add(wcode)
+        cur.execute("""
+            SELECT id FROM warehouses
+             WHERE is_deleted = false AND parent_id IS NULL
+             ORDER BY code NULLS LAST LIMIT 1
+        """)
+        root_row = cur.fetchone()
+        warehouse_root = root_row[0] if root_row else None
+
+        def ensure_warehouse(name: str):
+            key = norm_name(name)
+            if not key:
+                return None
+            if key in warehouse_by_name:
+                return warehouse_by_name[key]
+            n = 1
+            while f"{NEW_WAREHOUSE_PREFIX}{n:02d}" in used_warehouse_codes:
+                n += 1
+            code = f"{NEW_WAREHOUSE_PREFIX}{n:02d}"
+            used_warehouse_codes.add(code)
+            wid = f"dry:{code}"
+            if args.apply:
+                cur.execute(
+                    """INSERT INTO warehouses (id, code, name, parent_id, status,
+                                               is_accountable, auto_created,
+                                               created_at, updated_at, is_deleted)
+                       VALUES (gen_random_uuid(), %s, %s, %s, '使用', true, true,
+                               %s, %s, false)
+                       RETURNING id""",
+                    (code, name, warehouse_root, now, now))
+                wid = cur.fetchone()[0]
+            warehouse_by_name[key] = wid
+            wh_created.append(f"{name}({code})")
+            return wid
+
+        # ---- 逐个货品按名称匹配 ----
+        cur.execute("""
+            SELECT id, name, owning_warehouse_id
+              FROM goods WHERE is_deleted = false AND name IS NOT NULL
+        """)
+        goods_rows = cur.fetchall()
+        matched_names: set[str] = set()
+        for gid, gname, current_warehouse in goods_rows:
+            key = norm_name(gname)
+            target_name = wh_by_name.get(key)
+            if not target_name:
+                continue
+            matched_names.add(key)
+            if current_warehouse is not None and not args.overwrite_warehouse:
+                stats["所属仓库-已有值不动"] += 1
+                continue
+            wid = ensure_warehouse(target_name)
+            if wid is None:
+                continue
+            wh_updates += 1
+            stats[f"所属仓库-{target_name}"] += 1
+            if args.apply:
+                cur.execute(
+                    """UPDATE goods
+                          SET owning_warehouse_id = %s,
+                              version = version + 1,
+                              updated_at = %s
+                        WHERE id = %s AND is_deleted = false""",
+                    (wid, now, gid))
+
+        # Excel 有名称、库里没有同名货品 —— 正常差集，出报告供人工核对，不强灌。
+        for key, wh in wh_by_name.items():
+            if key not in matched_names:
+                wh_unmatched.append((key, wh))
+
+        print(f"所属仓库：Excel 去重名称 {len(wh_by_name)}(丢弃冲突名 {len(wh_conflicts)})；"
+              f"库内匹配 {len(matched_names)}；本次写入 {wh_updates}；"
+              f"补建仓库 {len(wh_created)}")
+
     # ----- 提交 / 报告 -----
     if args.apply:
         conn.commit()
-        print(f"已提交：更新货品 {updates} 行")
+        print(f"已提交：更新货品 {updates} 行；所属仓库 {wh_updates} 行")
     else:
         conn.rollback()
-        print(f"干跑完成：预计更新货品 {updates} 行（未写库，加 --apply 正式导入）")
+        print(f"干跑完成：预计更新货品 {updates} 行、所属仓库 {wh_updates} 行"
+              f"（未写库，加 --apply 正式导入）")
 
     def write_csv(name, header, data):
         with open(report_dir / name, "w", newline="", encoding="utf-8-sig") as f:
@@ -405,6 +552,9 @@ def main() -> None:
     write_csv("skipped_no_code.csv",
               ["文件", "行号", "产品名称"],
               [(n["file"], n["row"], n["name"]) for n in no_code])
+    write_csv("warehouse_unmatched.csv",
+              ["归一后产品名称", "Excel所属仓库"],
+              sorted(wh_unmatched))
 
     summary = [
         f"运行时间: {now.isoformat()}  模式: {'APPLY' if args.apply else 'DRY-RUN'}",
@@ -412,6 +562,7 @@ def main() -> None:
         f"编号命中: {len(verified) + len(mismatch)}  名称核对通过: {len(verified)}  "
         f"名称不符: {len(mismatch)}  编号未命中: {len(unmatched)}",
         f"更新货品: {updates}",
+        f"所属仓库写入: {wh_updates}  补建仓库: {len(wh_created)}  Excel有名库里无此货品: {len(wh_unmatched)}",
         "",
         "明细统计:",
         *[f"  {k}: {v}" for k, v in sorted(stats.items())],

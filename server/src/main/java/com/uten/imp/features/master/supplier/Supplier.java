@@ -109,6 +109,14 @@ public class Supplier extends SoftDeletableEntity {
     @Column(name = "default_settlement_method_id")
     private UUID defaultSettlementMethodId;
 
+    /** 默认币种（V593 单一事实源）：采购/委外订货选供应商后预填；每次下单写回最新选择。 */
+    @Column(name = "default_currency_id")
+    private UUID defaultCurrencyId;
+
+    /** 默认税率（V593 单一事实源）：采购/委外订货选供应商后预填；每次下单写回最新选择。 */
+    @Column(name = "default_tax_rate", precision = 18, scale = 4)
+    private java.math.BigDecimal defaultTaxRate;
+
     // ===== 状态 / 备注 =====
     private String status;              // Status（使用/禁用）
     private String remark;              // Remark（备注）

@@ -167,6 +167,8 @@ class InstantInventoryRow {
     this.stockPlace,
     this.pendingQty,
     this.pendingStockInQty,
+    this.owningWarehouseId,
+    this.owningWarehouseName,
   });
 
   final String? goodsId;
@@ -192,6 +194,13 @@ class InstantInventoryRow {
   final double? pendingQty; // 待检量（采购/委外收货未放行，>0=货在 IQC 待检）
   final double? pendingStockInQty; // IQC 已合格、仓库尚未确认入库，不计可用库存
 
+  // ===== 所属仓库 (V587) =====
+  // 货品平时归哪个仓管的主档归属，不是本行库存所在的落点仓，也不是页面的仓库筛选值。
+  // 当前后端即时库存行还没下发这两个字段 (恒 null)，页面据此回落货品字典
+  // (GoodsDictEntry.owningWarehouseName)；后端补发后前端无需再改。
+  final String? owningWarehouseId;
+  final String? owningWarehouseName;
+
   factory InstantInventoryRow.fromJson(Map<String, dynamic> json) =>
       InstantInventoryRow(
         goodsId: json['goodsId'] as String?,
@@ -213,5 +222,7 @@ class InstantInventoryRow {
         stockPlace: json['stockPlace'] as String?,
         pendingQty: (json['pendingQty'] as num?)?.toDouble(),
         pendingStockInQty: (json['pendingStockInQty'] as num?)?.toDouble(),
+        owningWarehouseId: json['owningWarehouseId'] as String?,
+        owningWarehouseName: json['owningWarehouseName'] as String?,
       );
 }

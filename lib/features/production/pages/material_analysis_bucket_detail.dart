@@ -579,7 +579,14 @@ class _MaterialAnalysisBucketPageState
     final issued = await _executeAndRefresh(request);
     // Only a successful workshop submission may return after its result
     // dialog closes. A conflict/error stays on the page for inspection.
-    if (!mounted || !issued || ModalRoute.of(context)?.isCurrent != true) {
+    //
+    // 「关不关本页」不能再借 issued 表达（2026-09-14 ADR-081 起 issued 是
+    // 「命令成功没有」的真值，采购/委外也会返回 true）：采购/委外按既定契约
+    // 永远留在本页，只有下达车间成功才退出。
+    if (!mounted ||
+        !issued ||
+        request.type != _BucketActionType.createProductionPlans ||
+        ModalRoute.of(context)?.isCurrent != true) {
       return;
     }
     Navigator.of(context).pop();
@@ -653,19 +660,171 @@ class _MaterialAnalysisBucketPageState
     List<_ChildCascadeSeed> seeds,
   ) async {
     if (_running) return;
-    final rows = _host._pendingChildCascadeRows(seeds);
-    if (rows == null) {
-      await _run(request);
+    final pending = _host._pendingChildCascadeRows(seeds);
+    if (pending.rows.isEmpty) {
+      // 不进级联页也要把「为什么不进」说清：下层都下过单 / 下层被挡住 /
+      // 结构过大都不是「没有下层」，静默跳过会让人以为系统没检查。
+      //
+      // 2026-09-15：这句提示改到**提交成功之后**才发。原来是先弹再提交，
+      // 文案却用「父件按原样下达」的已然口吻——数量确认弹窗被取消、或服务端
+      // 拒绝时，用户刚读到的那句话就是假的。
+      final note = pending.note;
+      final issued = await _executeAndRefresh(request);
+      if (!mounted) return;
+      if (issued && note != null) context.appInfo(note);
+      if (issued &&
+          request.type == _BucketActionType.createProductionPlans &&
+          ModalRoute.of(context)?.isCurrent == true) {
+        Navigator.of(context).pop();
+      }
       return;
     }
     final done = await _host._showChildCascadeDialog(
       seeds: seeds,
-      initialRows: rows,
-      parentAction: () => _executeAndRefresh(request, silent: true),
+      initialRows: pending.rows,
+      // 父件段提交时按种子**当前**数量重打请求——用户可能在「跟父件一起办」
+      // 页面里改过树顶的本批数量（改完既驱动下层重算，也改这里提交的量）。
+      // 车间与委外两条入口都要打补丁：委外 notify 同样支持按 actionGroupKey
+      // 传数量（超量另需 over_supply 权限，由服务端自裁）。
+      parentAction: () => _executeAndRefresh(
+        _patchRequestWithSeedInputs(request, seeds),
+        silent: true,
+      ),
     );
-    if (done && mounted && ModalRoute.of(context)?.isCurrent == true) {
+    // 与 [_run] 同一条口径：只有下达车间成功才退出分桶页；采购/委外留在本页
+    // 供计划员接着办下一批（2026-09-14：原来级联成功一律 pop，把委外桶也关了）。
+    if (done &&
+        mounted &&
+        request.type == _BucketActionType.createProductionPlans &&
+        ModalRoute.of(context)?.isCurrent == true) {
       Navigator.of(context).pop();
     }
+  }
+
+  /// 委外桶的一颗种子：通道、上限与驱动量三者必须与**服务端实际会收到的那
+  /// 次提交**逐字一致。
+  ///
+  /// 要先自制目标件的委外行（`subcontractMakeFirst`）在服务端是
+  /// `createsChildOwnership`：`requested` 必须逐字等于剩余需求，且不接受公共
+  /// 超量。所以它的驱动量只能取 `_residualSubmitQty` ——表格里那个可编辑的
+  /// 数量框对这类行本来就是假的（`_resolveSubcontractQuantities` 提交时会用
+  /// `entry.maxQty` 覆盖掉），2026-09-15 起界面上也据此置灰并写明原因，
+  /// 不再让用户填一个注定被丢弃的数字，也不再让下层按那个数字备料。
+  _ChildCascadeSeed _subcontractSeed(
+    _MaterialGroup group,
+    Map<String, String> qtyByActionGroupKey,
+  ) {
+    final material = group.representative;
+    final analysis = _host._analysis;
+    // 拿不到快照时保守按「要先自制」处理：数量置灰、要车间——宁可多问一步，
+    // 也不要放开一个服务端会 422 的可编辑数量框。
+    final needsPreparation =
+        analysis == null ||
+        _host._subcontractNeedsPreparation(material, analysis);
+    final residual = _host._residualSubmitQty(
+      group,
+      MaterialSupplyRoute.subcontract,
+    );
+    return _ChildCascadeSeed(
+      label: material.goodsName ?? material.goodsCode ?? group.key,
+      channel: needsPreparation
+          ? _CascadeParentChannel.subcontractMakeFirst
+          : _CascadeParentChannel.subcontractDirect,
+      maxQty: residual,
+      batchQty: needsPreparation
+          ? residual
+          : _seedQtyOf(
+              group,
+              MaterialSupplyRoute.subcontract,
+              qtyByActionGroupKey,
+            ),
+      materialLineId: material.materialLineId,
+      actionGroupKey: material.actionGroupKey,
+      unitName: material.unitName,
+    );
+  }
+
+  /// 本次真正会提交给服务端的数量：表格里填了就用填的，没填/填不出数才回落
+  /// 默认全量。种子驱动量必须与它逐字一致，否则下层按一个从未提交过的数字备料。
+  double _seedQtyOf(
+    _MaterialGroup group,
+    MaterialSupplyRoute route,
+    Map<String, String> qtyByActionGroupKey,
+  ) {
+    final actionGroupKey = group.representative.actionGroupKey;
+    final edited = actionGroupKey == null
+        ? null
+        : double.tryParse(qtyByActionGroupKey[actionGroupKey]?.trim() ?? '');
+    if (edited != null && edited.isFinite && edited > 0) return edited;
+    return _host._defaultSubmitQty(group, route);
+  }
+
+  /// 把父件请求按种子的**当前**内容重打一遍：数量、生产车间、负责人。
+  ///
+  /// 2026-09-14 只补了数量；2026-09-15 起车间/负责人也在级联页可改，必须一起
+  /// 回写，否则界面显示 A 车间、提交的还是上一页那个 B 车间。
+  /// 委外入口只回写数量（`NotifyRequest` 没有车间字段，委外件本身也不需要
+  /// 车间——需要车间的是它随后建出来的前置自制任务，由编排单独下达）。
+  _BucketActionRequest _patchRequestWithSeedInputs(
+    _BucketActionRequest request,
+    List<_ChildCascadeSeed> seeds,
+  ) {
+    if (request.type == _BucketActionType.subcontractOnly) {
+      final patched = <String, String>{...?request.qtyByActionGroupKey};
+      for (final seed in seeds) {
+        final key = seed.actionGroupKey;
+        // 要先自制的委外行不写数量：服务端强制整量接管，写进去只会与它算出
+        // 来的 delta 不等而 422 整批回滚。
+        if (key == null ||
+            key.isEmpty ||
+            seed.batchQty <= 0 ||
+            !seed.quantityEditable) {
+          continue;
+        }
+        patched[key] = _bucketQtyText(seed.batchQty);
+      }
+      return _BucketActionRequest.subcontract(
+        request.groupKeys,
+        qtyByActionGroupKey: patched,
+      );
+    }
+    final byAnalysisLine = {
+      for (final seed in seeds)
+        if (seed.analysisLineId != null) seed.analysisLineId!: seed,
+    };
+    final byMaterialLine = {
+      for (final seed in seeds)
+        if (seed.materialLineId != null) seed.materialLineId!: seed,
+    };
+    return _BucketActionRequest.createProductionPlans(
+      candidateInputs: [
+        for (final input
+            in request.candidateInputs ?? const <_BucketCandidatePlanInput>[])
+          () {
+            final seed = byMaterialLine[input.materialLineId];
+            return _BucketCandidatePlanInput(
+              materialLineId: input.materialLineId,
+              qty: seed?.batchQty ?? input.qty,
+              departmentId: seed?.departmentId ?? input.departmentId,
+              workshopName: seed?.departmentName ?? input.workshopName,
+              workerId: seed?.workerId ?? input.workerId,
+            );
+          }(),
+      ],
+      planDrafts: [
+        for (final draft in request.planDrafts ?? const <_BucketPlanDraft>[])
+          () {
+            final seed = byAnalysisLine[draft.analysisLineId];
+            return _BucketPlanDraft(
+              analysisLineId: draft.analysisLineId,
+              qty: seed?.batchQty ?? draft.qty,
+              departmentId: seed?.departmentId ?? draft.departmentId,
+              workshopName: seed?.departmentName ?? draft.workshopName,
+              workerId: seed?.workerId ?? draft.workerId,
+            );
+          }(),
+      ],
+    );
   }
 
   bool _running = false;
@@ -871,6 +1030,51 @@ class _MaterialAnalysisBucketPageState
   String? _rowSpec(_BucketRow row) =>
       (row.product?.spec ?? _rowMaterial(row)?.spec)?.trim();
 
+  /// 本行的货品 id(所属仓库按货品写回, 与编号/颜色同一取值口径: 产品行先用
+  /// 产品自己的字段, 物料/候选行回落物料事实)。
+  String? _rowGoodsId(_BucketRow row) =>
+      (row.product?.goodsId ?? _rowMaterial(row)?.goodsId)?.trim();
+
+  /// 快照下发的所属仓库(V587); 本次会话改过的值由宿主覆盖表接管。
+  String? _rowOwningWarehouseSnapshotName(_BucketRow row) =>
+      row.product?.owningWarehouseName ??
+      _rowMaterial(row)?.owningWarehouseName;
+
+  String? _rowOwningWarehouseSnapshotId(_BucketRow row) =>
+      row.product?.owningWarehouseId ?? _rowMaterial(row)?.owningWarehouseId;
+
+  /// 本行该显示的所属仓库名(三张表同一份真相, 一律走宿主助手)。V590 起归属仓
+  /// 由任何入库自动回写主档(单一事实源), 这里只读快照/会话覆盖值。
+  String? _rowOwningWarehouseName(_BucketRow row) =>
+      _host.owningWarehouseNameOf(
+        _rowGoodsId(row),
+        _rowOwningWarehouseSnapshotName(row),
+      );
+
+  /// 表头筛选桶值: 没登记归属的行统一落「未登记」一桶。
+  String _rowOwningWarehouseFilterValue(_BucketRow row) =>
+      _host.owningWarehouseFilterValue(
+        _rowGoodsId(row),
+        _rowOwningWarehouseSnapshotName(row),
+      );
+
+  /// 归属生产车间名(V590): 货品主档学习字段, 最近一次排产确认/改派自动回写。
+  String? _rowOwningWorkshopName(_BucketRow row) {
+    final workshop =
+        _rowMaterial(row)?.owningWorkshopName ??
+        row.product?.owningWorkshopName;
+    return workshop?.trim().isEmpty == true ? null : workshop?.trim();
+  }
+
+  /// 归属车间表头筛选桶值: 未学过的行统一落「未学习」一桶。
+  String _rowOwningWorkshopFilterValue(_BucketRow row) {
+    final name = _rowOwningWorkshopName(row);
+    if (name == null || name.isEmpty) {
+      return _MaterialAnalysisProductTasksState.owningWorkshopUnsetLabel;
+    }
+    return name;
+  }
+
   List<MasterColumnDef<_BucketRow>> _identityColumns() => [
     MasterColumnDef<_BucketRow>(
       key: 'goods',
@@ -878,10 +1082,13 @@ class _MaterialAnalysisBucketPageState
       width: 220,
       value: _rowGoodsName,
       cellBuilderHandlesSemantics: true,
-      cellBuilder: (context, row) => UtenGoodsIdentityCell(
+      // 顶层成品行名称后挂红色「顶层」小框；采购/委外桶的物料行没有 product，
+      // 这些表照旧只出身份格。
+      cellBuilder: (context, row) => _goodsNameCell(
+        context,
         name: _rowGoodsName(row) ?? row.id,
-        // 编号/颜色已各自成列，身份格只补规格（它没有独立列，丢了就看不到）。
         spec: _rowSpec(row),
+        product: row.product,
       ),
     ),
     MasterColumnDef<_BucketRow>(
@@ -993,6 +1200,89 @@ class _MaterialAnalysisBucketPageState
     });
   }
 
+  /// 所属仓库列(V587/V590): 货品主档单一事实源——任何入库自动回写为最新入库仓;
+  /// 就地点格仍可手工改, 改完对全站生效。三张表共用宿主助手的同一份真相。
+  MasterColumnDef<_BucketRow> _owningWarehouseColumn() =>
+      MasterColumnDef<_BucketRow>(
+        key: 'owningWarehouse',
+        label: '所属仓库',
+        width: 132,
+        info:
+            '这个货品归哪个仓管。任何入库都会自动把它更新为最新入库仓（与即时库存'
+            '同一事实源）；点这一格可以直接改，改完对全站生效。',
+        value: _rowOwningWarehouseName,
+        cellBuilderHandlesSemantics: true,
+        cellBuilder: (context, row) => _owningWarehouseCell(context, row),
+      );
+
+  /// 归属生产车间列(V590): 最近一次排产确认/车间改派自动学习回写, 只读展示。
+  MasterColumnDef<_BucketRow> _owningWorkshopColumn() =>
+      MasterColumnDef<_BucketRow>(
+        key: 'owningWorkshop',
+        label: '归属车间',
+        width: 120,
+        info:
+            '这个货品归哪个生产车间生产。最近一次排产确认或车间改派会自动记住，'
+            '下次下达车间默认带出。',
+        value: _rowOwningWorkshopName,
+      );
+
+  Widget _owningWarehouseCell(BuildContext context, _BucketRow row) {
+    final theme = Theme.of(context);
+    final goodsId = _rowGoodsId(row);
+    final name = _rowOwningWarehouseName(row)?.trim() ?? '';
+    // 没有货品 id(旧快照/脏数据)就写不回主档; 动作执行窗口内也只读, 与路线列同口径。
+    if (_actionsLocked || goodsId == null || goodsId.isEmpty) {
+      return Text(
+        name.isEmpty ? '—' : name,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      );
+    }
+    return InkWell(
+      key: ValueKey('material-bucket-owning-warehouse-${row.id}'),
+      onTap: () => _pickOwningWarehouse(row),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              name.isEmpty ? '点击选择' : name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: name.isEmpty
+                    ? theme.colorScheme.onSurfaceVariant
+                    : theme.colorScheme.onSurface,
+              ),
+            ),
+          ),
+          Icon(
+            name.isEmpty ? Icons.search_rounded : Icons.unfold_more_rounded,
+            size: 16,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 弹仓库选择面板改本行货品的所属仓库。写回与覆盖表都在宿主助手里,
+  /// 这里只负责本页重建(宿主 setState 不会重建这个独立路由页)。
+  Future<void> _pickOwningWarehouse(_BucketRow row) async {
+    final goodsId = _rowGoodsId(row);
+    if (goodsId == null || goodsId.isEmpty) return;
+    final changed = await _host.pickOwningWarehouse(
+      context,
+      goodsId: goodsId,
+      currentWarehouseId: _host.owningWarehouseIdOf(
+        goodsId,
+        _rowOwningWarehouseSnapshotId(row),
+      ),
+    );
+    if (changed && mounted) setState(() {});
+  }
+
   bool get _hasWriteAction => _canAct;
 
   /// 动作执行窗口（含宿主页 busy 与本页 _running——宿主页 busy 变化不通知
@@ -1038,26 +1328,20 @@ class _MaterialAnalysisBucketPageState
           ),
         );
       case _AnalysisBucket.subcontract:
-        // 有子层级的委外件下达后，它的下层料仍要接着办（ADR-081 弹窗前置）；
-        // 无子层委外件是叶子，构建不出下层行，自动走原路直接提交。
-        // 数量口径：有子层委外 notify 按全量剩余（服务端 2026-09-06 守恒
-        // 决定，不可改量），种子驱动量同取全量剩余，保证下层数学与实际下达一致。
+        // BOM 上还有下层的委外件下达后，那些料仍要接着办（ADR-081 弹窗前置）——
+        // 含 V581「只有一个叶子子件」这类直接外发件：父件走 notify，那颗子件
+        // 仍要我方备出来。真正的叶子件构建不出下层行，自动走原路直接提交。
+        //
+        // 数量口径（2026-09-14 修订）：种子驱动量必须等于**本次真正会提交的
+        // 数量**——即表格里填的那个数，填空了才回落默认全量。原来一律取
+        // `_residualSubmitQty`，用户在委外桶把数量改大（超量下达，
+        // `_notifyRoute` 的 allowOverDemand 是支持的）或改小分批时，
+        // 下层需求仍按剩余需求算，父件下达 200 而下层只备到 100 的料。
         final seeds = <_ChildCascadeSeed>[
           for (final row in allowedRows)
             if (row.group != null &&
                 _host._analysisMaterialHasChildren(row.group!.representative))
-              _ChildCascadeSeed(
-                label:
-                    row.group!.representative.goodsName ??
-                    row.group!.representative.goodsCode ??
-                    row.id,
-                batchQty: _host._residualSubmitQty(
-                  row.group!,
-                  MaterialSupplyRoute.subcontract,
-                ),
-                materialLineId: row.group!.representative.materialLineId,
-                unitName: row.group!.representative.unitName,
-              ),
+              _subcontractSeed(row.group!, qtyByActionGroupKey),
         ];
         unawaited(
           _submitWithCascade(
@@ -1217,8 +1501,11 @@ class _MaterialAnalysisBucketPageState
       context.appInfo('所选候选当前不可创建，请刷新后重试');
       return;
     }
-    // 下层办齐弹窗前置（ADR-081 修订）：种子只带 ID + 本批数量——父件提交后
-    // 分析快照整体换一份，现在抓到的 product/material 对象立刻过期。
+    // 下层办齐整页前置（ADR-081 修订）：种子带的是**父件段完整的提交意图**
+    // ——ID + 本批数量 + 上限 + 车间 + 负责人。快照会在父件提交后整体换一份，
+    // 所以不带 product/material 对象；但车间/负责人是用户输入、不随快照失效，
+    // 必须一起带进去，否则级联页只能把树顶那两格封死（用户口径「父件也要有
+    // 车间和负责人选项」）。
     final seeds = <_ChildCascadeSeed>[
       for (final row in selected)
         _ChildCascadeSeed(
@@ -1228,6 +1515,15 @@ class _MaterialAnalysisBucketPageState
               row.origin.candidate?.material.goodsName ??
               row.origin.candidate?.material.goodsCode ??
               row.id,
+          channel: _CascadeParentChannel.workshop,
+          maxQty:
+              row.origin.product?.remainingQty ??
+              (row.origin.candidate?.group != null
+                  ? _host._residualSubmitQty(
+                      row.origin.candidate!.group!,
+                      row.origin.candidate!.route,
+                    )
+                  : null),
           batchQty: double.parse(row.qty.text.trim()),
           analysisLineId: row.isProduct ? row.id : null,
           materialLineId: row.isProduct
@@ -1236,6 +1532,14 @@ class _MaterialAnalysisBucketPageState
           unitName:
               row.origin.product?.unitName ??
               row.origin.candidate?.material.unitName,
+          departmentId: row.departmentId.value,
+          departmentName: row.departmentName,
+          workerId: row.workerId.value,
+          workerName: row.workerName,
+          // 「这两格是系统带出来的默认值」也要一起带过去，级联页的树顶才会
+          // 和下层一样标黄 + 挂提示 icon(2026-09-15 用户口径)。
+          workshopAutofilled: row.workshopAutofilled,
+          workerAutofilled: row.workerAutofilled,
         ),
     ];
     await _submitWithCascade(
@@ -1308,9 +1612,31 @@ class _MaterialAnalysisBucketPageState
         onDisabledTap: !_host._canGenerate
             ? () => context.appWarning('没有生成生产计划权限')
             : null,
-        child: Text('创建生产计划($total)'),
+        // 勾中的行里有下层要一起办时，这一下是「进下一页核对」而不是「提交」：
+        // 用省略号表达（通用约定），不要加长文案——悬浮动作组在窄屏下会溢出。
+        child: Text(
+          _planSelectionOpensCascade(controller.selectedRows)
+              ? '创建生产计划($total)…'
+              : '创建生产计划($total)',
+        ),
       ),
     ];
+  }
+
+  /// 勾中的计划行里有没有「会把人带进级联页」的（只看 BOM 形状）。
+  bool _planSelectionOpensCascade(List<_BucketPlanRow> rows) {
+    for (final row in rows) {
+      final product = row.origin.product;
+      if (product != null && _host._productHasCascadeChildren(product)) {
+        return true;
+      }
+      final candidate = row.origin.candidate;
+      if (candidate != null &&
+          _host._analysisMaterialHasChildren(candidate.material)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// 该计划行的默认数量文案（= 剩余需求；与建行时的 defaultQtyText 同源）。
@@ -1898,12 +2224,64 @@ class _MaterialAnalysisBucketPageState
         ]..sort((a, b) => a.display.compareTo(b.display)),
       );
     }
+    // 所属仓库(V587)三个桶都能筛: 它按货品取值, 不依赖物料组, 故独立于
+    // filterable(后者只管采购/委外桶特有的进度与缺口两列)。空归属落「未登记」桶。
+    final owningWarehouseCounts = <String, int>{};
+    for (final row in rows) {
+      final label = _rowOwningWarehouseFilterValue(row);
+      owningWarehouseCounts[label] = (owningWarehouseCounts[label] ?? 0) + 1;
+    }
+    final owningWarehouseFacets = <MasterFacetBucket>[
+      for (final entry in owningWarehouseCounts.entries)
+        MasterFacetBucket(
+          value: entry.key,
+          count: entry.value,
+          label: entry.key,
+        ),
+    ];
+    owningWarehouseFacets.sort((a, b) => a.display.compareTo(b.display));
+    // 归属车间(V590)同款：按货品取值独立于 filterable，未学过的落「未学习」桶。
+    const workshopUnset =
+        _MaterialAnalysisProductTasksState.owningWorkshopUnsetLabel;
+    final owningWorkshopCounts = <String, int>{};
+    for (final row in rows) {
+      final label = _rowOwningWorkshopFilterValue(row);
+      owningWorkshopCounts[label] = (owningWorkshopCounts[label] ?? 0) + 1;
+    }
+    final owningWorkshopFacets = <MasterFacetBucket>[
+      for (final entry in owningWorkshopCounts.entries)
+        MasterFacetBucket(
+          value: entry.key,
+          count: entry.value,
+          label: entry.key,
+        ),
+    ];
+    owningWorkshopFacets.sort((a, b) {
+      if (a.value == workshopUnset) return b.value == workshopUnset ? 0 : 1;
+      if (b.value == workshopUnset) return -1;
+      return a.display.compareTo(b.display);
+    });
     final progressFilter = _tableFilters['taskState'];
     final gapFilter = _tableFilters['shortageQty'];
-    final filtered = !filterable
+    final owningWarehouseFilter = _tableFilters['owningWarehouse'];
+    final owningWorkshopFilter = _tableFilters['owningWorkshop'];
+    final filtered =
+        !filterable &&
+            owningWarehouseFilter == null &&
+            owningWorkshopFilter == null
         ? rows
         : rows
               .where((row) {
+                if (owningWarehouseFilter != null &&
+                    _rowOwningWarehouseFilterValue(row) !=
+                        owningWarehouseFilter) {
+                  return false;
+                }
+                if (owningWorkshopFilter != null &&
+                    _rowOwningWorkshopFilterValue(row) !=
+                        owningWorkshopFilter) {
+                  return false;
+                }
                 final group = row.group;
                 if (group == null) return true;
                 if (progressFilter != null &&
@@ -1929,6 +2307,10 @@ class _MaterialAnalysisBucketPageState
           'shortageQty': [
             MasterFacetBucket(value: 'GAP', count: gapCount, label: '只看有缺口'),
           ],
+        if (owningWarehouseFacets.isNotEmpty)
+          'owningWarehouse': owningWarehouseFacets,
+        if (owningWorkshopFacets.isNotEmpty)
+          'owningWorkshop': owningWorkshopFacets,
       },
       nullCounts: const {},
       filters: {
@@ -1967,15 +2349,41 @@ class _MaterialAnalysisBucketPageState
     );
   }
 
+  /// 当前勾选里有没有「会把人带进级联页」的行（委外桶专用）。
+  /// 只看 BOM 形状，不做展开——真正的进页判定仍由 `_pendingChildCascadeRows`
+  /// 统一给出，这里只决定按钮怎么写。
+  bool _selectionOpensCascade() {
+    final analysis = _host._analysis;
+    if (analysis == null) return false;
+    for (final row in _filterRows(_host._bucketRows(_bucket))) {
+      if (!_selectedIds.contains(row.id) || !_canSelectTask(row)) continue;
+      final group = row.group;
+      if (group != null &&
+          _host._analysisMaterialHasChildren(group.representative)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   List<Widget> _readOnlyBatchActions(
     BuildContext context,
     Set<String> selectedIds,
   ) {
     if (!_hasWriteAction) return const [];
     final count = selectedIds.length;
+    // 委外桶：勾中的行里只要有「BOM 上还有下层要一起办」的，这一下点下去
+    // **不是提交**，而是打开「父件 + 下层一起下单」整页——按钮文案必须与它
+    // 真正触发的动作一致（2026-09-15 用户反馈 2：以为点了就下达了，回头看
+    // 那行还在未下达）。
+    final opensCascade =
+        _bucket == _AnalysisBucket.subcontract && _selectionOpensCascade();
     final label = switch (_bucket) {
       _AnalysisBucket.buy => '提交采购需求($count)',
-      _AnalysisBucket.subcontract => '下达委外($count)',
+      // 省略号 = 「还要再过一页才真正提交」的通用约定。文案不能更长：悬浮动作
+      // 组在窄屏下会直接 RenderFlex 溢出。
+      _AnalysisBucket.subcontract =>
+        opensCascade ? '下达委外($count)…' : '下达委外($count)',
       _ => '',
     };
     final canAct = _canAct && !_actionsLocked && count > 0;
@@ -2239,9 +2647,11 @@ class _MaterialAnalysisBucketPageState
           // 把同货不同行拆成 N 个桶）。
           filterValueOf: _planRowGoodsLabel,
           textOf: (row) => _rowGoodsName(row.origin) ?? '',
-          cellBuilder: (context, row) => UtenGoodsIdentityCell(
+          cellBuilder: (context, row) => _goodsNameCell(
+            context,
             name: _rowGoodsName(row.origin) ?? row.id,
             spec: _rowSpec(row.origin),
+            product: row.origin.product,
           ),
         ),
         EditableGridColumn<_BucketPlanRow>(
@@ -2278,6 +2688,56 @@ class _MaterialAnalysisBucketPageState
             return group == null ? null : _host._draftRoute(group).label;
           },
           cellBuilder: (context, row) => _routeCell(context, row.origin),
+        ),
+        EditableGridColumn<_BucketPlanRow>(
+          key: 'owningWarehouse',
+          label: '所属仓库',
+          // 同生产车间/负责人列: 选择类单元格按内容自适应宽度(含图标与内边距)。
+          width: _adaptivePickerColumnWidth(
+            _planGrid!.rows.map((row) => _rowOwningWarehouseName(row.origin)),
+          ),
+          headerInfo:
+              '这个货品平时归哪个仓管的主档归属。既不是本次分析的范围仓, 也不是'
+              '单据的收发货仓; 点这一格可以直接改, 改完对全站生效。',
+          // 空归属不建空桶: 统一落「未登记」一桶(与只读桶同口径)。
+          filterValueOf: (row) => _rowOwningWarehouseFilterValue(row.origin),
+          cellBuilder: (context, row) {
+            final goodsId = _rowGoodsId(row.origin);
+            final name = _rowOwningWarehouseName(row.origin)?.trim() ?? '';
+            final editable =
+                !_actionsLocked && goodsId != null && goodsId.isNotEmpty;
+            return InkWell(
+              key: ValueKey(
+                'material-analysis-bucket-owning-warehouse-${row.id}',
+              ),
+              onTap: editable ? () => _pickOwningWarehouse(row.origin) : null,
+              // 2026-09-10 单元规格统一: 不自带 border/contentPadding(吃
+              // UtenEditableGrid 行级主题), 与同行车间/负责人格等高同圆角。
+              child: InputDecorator(
+                decoration: InputDecoration(
+                  isDense: true,
+                  suffixIcon: Icon(
+                    name.isEmpty
+                        ? Icons.search_rounded
+                        : Icons.unfold_more_rounded,
+                    size: 16,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  suffixIconConstraints: const BoxConstraints(minWidth: 20),
+                ),
+                child: Text(
+                  name.isEmpty ? (editable ? '点击选择' : '—') : name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: name.isEmpty
+                        ? Theme.of(context).colorScheme.onSurfaceVariant
+                        : Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+              ),
+            );
+          },
         ),
         EditableGridColumn<_BucketPlanRow>(
           key: 'requiredQty',
@@ -2477,6 +2937,63 @@ class _MaterialAnalysisBucketPageState
               : '当前状态不可创建');
   }
 
+  /// 这条产品行是不是**顶层**成品(销售 / 手工来源),而不是自制 / 委外子件。
+  ///
+  /// `parentAnalysisLineId` 是服务端给的结构事实:只有子件行才有父装配行
+  /// (模型注释「Null for top-level sales/manual sources」)。`sourceType` 再兜一道,
+  /// 脏数据缺父指针时也不会把子件当顶层。
+  bool _isTopLevelProduct(ProductionMaterialAnalysisProduct? product) =>
+      product != null &&
+      (product.parentAnalysisLineId?.isEmpty ?? true) &&
+      product.sourceType != 'MAKE_COMPONENT' &&
+      product.sourceType != 'SUBCONTRACT_MAKE';
+
+  /// 物料名称格：身份格 + 顶层产品的红色「顶层」小框。
+  ///
+  /// 2026-09-15 用户口径：下达车间里一眼看不出哪一行是顶层——2026-09-05 起
+  /// 「顶层与子层自制同构」，类型列一律写「自制候选」，顶层和子件长得一模一样。
+  /// 名称后挂个红框就分得清「这一行是成品」。
+  ///
+  /// **不走 [UtenGoodsIdentityCell.trailing]**：那会在名称外面包一层 `Row`，而
+  /// 本页族既有用例按「离名称最近的 Row = 整行」定位数量框与复选框
+  /// (`material_analysis_root_routes_test` 等)，包了就全定位不到。`Wrap` 不是
+  /// `Row`，排版等效(列窄时徽章换行而不是溢出)，定位契约因此不变。
+  Widget _goodsNameCell(
+    BuildContext context, {
+    required String name,
+    String? spec,
+    ProductionMaterialAnalysisProduct? product,
+  }) {
+    // 编号/颜色已各自成列，身份格只补规格(它没有独立列，丢了就看不到)。
+    final cell = UtenGoodsIdentityCell(name: name, spec: spec);
+    if (!_isTopLevelProduct(product)) return cell;
+    final theme = Theme.of(context);
+    final color = theme.colorScheme.error;
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: UtenSpacing.s4,
+      children: [
+        cell,
+        Container(
+          key: const ValueKey('material-analysis-top-level-badge'),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: UtenRadius.smAll,
+            border: Border.all(color: color.withValues(alpha: 0.5)),
+          ),
+          child: Text(
+            '顶层',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   /// 计划行的类型文案（自制候选 / 自制子件 / 委外子件）。单元格与表头筛选共用
   /// 同一口径——取值稳定（不随重建变动），空值不可能出现，故不返回 null。
   String _planRowKindLabel(_BucketPlanRow row) {
@@ -2523,9 +3040,15 @@ class _MaterialAnalysisBucketPageState
   /// 原「未下达」并入可编辑的「下达数量」（默认=本批缺口−已在途，可直接改）。
   /// 单据清单列只在「已下达」段出现——该段的核心信息就是已生成的单据；
   /// 未下达段不再与四个数量列混排（单号仍可点行看全链路进度弹窗）。
+  ///
+  /// 2026-09-15 用户口径（已下达段对齐「下达车间」）：BOM 路径 / 仓库余量 /
+  /// 缺口 / 订单总量四列从已下达段退役（已下出去的单看总量与进度，不再回看
+  /// 下单前的缺口账），「下达数量」直接显示已下达单据的真实下单总量（含公共
+  /// 备货/安全补库，即原「订单总量」口径，采购与委外两桶同改）。
   List<MasterColumnDef<_BucketRow>> _materialGroupColumns() {
     final host = _host;
     final route = _bucket.supplyRoute!;
+    final issued = _taskFilter == _PreparationTaskFilter.issued;
     return [
       _supplyDetailsColumn(),
       if (_host._analysis?.materials.any(
@@ -2543,14 +3066,17 @@ class _MaterialAnalysisBucketPageState
         ),
       ..._identityColumns(),
       _routeColumn(),
-      MasterColumnDef<_BucketRow>(
-        key: 'path',
-        label: 'BOM 路径',
-        width: 260,
-        value: (row) => row.group == null
-            ? null
-            : host._pathLabel(row.group!.representative),
-      ),
+      _owningWarehouseColumn(),
+      _owningWorkshopColumn(),
+      if (!issued)
+        MasterColumnDef<_BucketRow>(
+          key: 'path',
+          label: 'BOM 路径',
+          width: 260,
+          value: (row) => row.group == null
+              ? null
+              : host._pathLabel(row.group!.representative),
+        ),
       MasterColumnDef<_BucketRow>(
         key: 'requiredQty',
         label: '需求量',
@@ -2565,136 +3091,93 @@ class _MaterialAnalysisBucketPageState
       // 仓库余量（2026-09-06 用户口径）：仓库里该维度还可用的现货池。
       // 够需求（>=需求量）标绿、不够标红——即使够货也不跳过采购/委外流程，
       // 计划员仍可在桶内按富余量下单（超量部分走公共富余，不绑定本需求）。
-      MasterColumnDef<_BucketRow>(
-        key: 'warehouseAvailableQty',
-        label: '仓库余量',
-        width: 100,
-        type: 'number',
-        value: (row) => host._qty(row.group?.representative.availableQty),
-        info:
-            '仓库里该物料当前还可用的现货量（不含在途订单）。够需求=绿、不够=红；'
-            '即使够货也不跳过流程，仍可按富余量下单（富余走公共备货，不绑定本需求）。',
-        // 颜色走语义 token（准则：不用硬编码 Material 色）：够=绿实底（浅色
-        // successText 深绿/深色 successOnDark），不够=colorScheme.error。
-        cellColor: (context, row) {
-          final material = row.group?.representative;
-          if (material == null || material.requiredQty <= 0) return null;
-          final theme = Theme.of(context);
-          return material.availableQty >= material.requiredQty
-              ? (theme.brightness == Brightness.dark
-                    ? UtenColors.successOnDark
-                    : UtenColors.successText)
-              : theme.colorScheme.error;
-        },
-      ),
-      MasterColumnDef<_BucketRow>(
-        key: 'shortageQty',
-        label: '缺口',
-        width: 90,
-        type: 'number',
-        // 缺口始终使用服务端实际缺料事实；下达量和公共备货不改变本批需求。
-        value: (row) => host._qty(row.group?.representative.shortageQty),
-        info: host._l10n.materialPhysicalShortageHint,
-        cellBuilder: (context, row) {
-          final group = row.group;
-          if (group == null) return const SizedBox.shrink();
-          final theme = Theme.of(context);
-          final shortage = group.representative.shortageQty;
-          // 说明挂列头 ⓘ（info 字段），格内不再逐行 Tooltip（2026-09-09 口径）；
-          // key 供测试/语义锚定「物理缺口」单元格。
-          // 缺口颜色与主表同一口径（>0 红 / =0 绿 token 明暗配对，F2e）。
-          return KeyedSubtree(
-            key: const Key('bucket-shortage-qty-cell'),
-            child: Text(
-              host._qty(shortage),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: host._shortageTextColor(theme, shortage),
-                fontWeight: FontWeight.w700,
+      // 2026-09-15：仅未下达段保留（已下达段不再回看下单前的库存账）。
+      if (!issued)
+        MasterColumnDef<_BucketRow>(
+          key: 'warehouseAvailableQty',
+          label: '仓库余量',
+          width: 100,
+          type: 'number',
+          value: (row) => host._qty(row.group?.representative.availableQty),
+          info:
+              '仓库里该物料当前还可用的现货量（不含在途订单）。够需求=绿、不够=红；'
+              '即使够货也不跳过流程，仍可按富余量下单（富余走公共备货，不绑定本需求）。',
+          // 颜色走语义 token（准则：不用硬编码 Material 色）：够=绿实底（浅色
+          // successText 深绿/深色 successOnDark），不够=colorScheme.error。
+          cellColor: (context, row) {
+            final material = row.group?.representative;
+            if (material == null || material.requiredQty <= 0) return null;
+            final theme = Theme.of(context);
+            return material.availableQty >= material.requiredQty
+                ? (theme.brightness == Brightness.dark
+                      ? UtenColors.successOnDark
+                      : UtenColors.successText)
+                : theme.colorScheme.error;
+          },
+        ),
+      // 缺口始终使用服务端实际缺料事实；下达量和公共备货不改变本批需求。
+      // 2026-09-15：仅未下达段保留（已下达段看已下总量与到货进度）。
+      if (!issued)
+        MasterColumnDef<_BucketRow>(
+          key: 'shortageQty',
+          label: '缺口',
+          width: 90,
+          type: 'number',
+          value: (row) => host._qty(row.group?.representative.shortageQty),
+          info: host._l10n.materialPhysicalShortageHint,
+          cellBuilder: (context, row) {
+            final group = row.group;
+            if (group == null) return const SizedBox.shrink();
+            final theme = Theme.of(context);
+            final shortage = group.representative.shortageQty;
+            // 说明挂列头 ⓘ（info 字段），格内不再逐行 Tooltip（2026-09-09 口径）；
+            // key 供测试/语义锚定「物理缺口」单元格。
+            // 缺口颜色与主表同一口径（>0 红 / =0 绿 token 明暗配对，F2e）。
+            return KeyedSubtree(
+              key: const Key('bucket-shortage-qty-cell'),
+              child: Text(
+                host._qty(shortage),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: host._shortageTextColor(theme, shortage),
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-          );
-        },
-        cellColor: (context, row) {
-          final group = row.group;
-          if (group == null) return null;
-          return host._shortageCellColor(
-            Theme.of(context),
-            group.representative.shortageQty,
-          );
-        },
-      ),
+            );
+          },
+          cellColor: (context, row) {
+            final group = row.group;
+            if (group == null) return null;
+            return host._shortageCellColor(
+              Theme.of(context),
+              group.representative.shortageQty,
+            );
+          },
+        ),
       MasterColumnDef<_BucketRow>(
         key: 'submitQty',
         label: '下达数量',
         width: 130,
         type: 'number',
-        // 未下达段=可编辑的本次下达量（默认=缺口−已在途）；已下达段=该行
-        // 已实际下达给下游的量（按路线匹配的分摊合计），不再显示剩余 0。
+        // 未下达段=可编辑的本次下达量（默认=缺口−已在途）；已下达段=已下达
+        // 单据的真实下单总量（含公共备货/安全补库；无行动快照时回落分摊合计），
+        // 与「下达车间」段的计划量口径对齐（2026-09-15）。
         value: (row) => row.group == null
             ? null
-            : _taskFilter == _PreparationTaskFilter.issued
-            ? host._qty(_issuedSubmitQty(row.group!, route))
+            : issued
+            ? host._qty(
+                _issuedOrderTotal(row.group!, route)?.total ??
+                    _issuedSubmitQty(row.group!, route),
+              )
             : host._qty(host._defaultSubmitQty(row.group!, route)),
         info:
             '未下达行：本次要下达的数量（默认 = 缺口 − 已在途，可改小分批）；'
             '采购行若货品维护了最小起订量或订货倍数，默认值会按它向上抬，'
             '富余部分归公共备货（需超量下达权限，可改小）；'
-            '已下达行：只统计绑定本需求的分摊量——超量下单的公共备货部分见'
-            '右侧「订单总量」列。',
+            '已下达行：已下达单据的真实下单总量（含公共备货与安全补库）。',
         cellBuilderHandlesSemantics: true,
         cellBuilder: (context, row) => _submitQtyCell(context, row, route),
       ),
-      // 超量下单（需求 1000 实下 2000）时「下达数量」只显示绑定本需求的 1000，
-      // 用户看不到这张单到底下了多少。补一列订单总量（= 需求分摊 + 公共备货 +
-      // 公共安全补库），只在本段真有超量时出现，不改任何账本口径。
-      if (_hasIssuedOrderSurplus(route))
-        MasterColumnDef<_BucketRow>(
-          key: 'issuedOrderTotalQty',
-          label: '订单总量',
-          width: 150,
-          type: 'number',
-          value: (row) => row.group == null
-              ? null
-              : host._qty(_issuedOrderTotal(row.group!, route)?.total),
-          info:
-              '本行已下达单据的下单总量（= 绑定本需求的量 + 公共备货 + 公共安全补库）。'
-              '与左侧「下达数量」的差额归公共池，不占本分析的精确账，其他计划可认领。',
-          cellBuilder: (context, row) {
-            final group = row.group;
-            final totals = group == null
-                ? null
-                : _issuedOrderTotal(group, route);
-            if (totals == null) {
-              return const Align(
-                alignment: Alignment.centerRight,
-                child: Text('—'),
-              );
-            }
-            final theme = Theme.of(context);
-            final demand = totals.total - totals.surplus;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  host._qty(totals.total),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                if (totals.surplus > 0.0001)
-                  Text(
-                    '本需求 ${host._qty(demand)} + 公共 '
-                    '${host._qty(totals.surplus)}',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-              ],
-            );
-          },
-        ),
-      if (_taskFilter == _PreparationTaskFilter.issued)
+      if (issued)
         MasterColumnDef<_BucketRow>(
           key: 'supplyProgress',
           label: '${host._l10n.materialTaskIssued}单据',
@@ -2763,6 +3246,8 @@ class _MaterialAnalysisBucketPageState
   ///
   /// 同一 action 会分摊到同组多条 BOM 路径，**必须按 actionId 去重**否则翻倍；
   /// 非 SUPPLY 行动（在途调入 / 公共认领）只搬在途份额、没有自己的订单量，跳过。
+  /// 2026-09-15 起「已下达」段该值直接作为「下达数量」显示（真实下单总量），
+  /// 独立的「订单总量」列退役。
   ({double total, double surplus})? _issuedOrderTotal(
     _MaterialGroup group,
     MaterialSupplyRoute route,
@@ -2795,19 +3280,6 @@ class _MaterialAnalysisBucketPageState
     return matched ? (total: total, surplus: surplus) : null;
   }
 
-  /// 本桶「已下达」段是否存在超出本需求的下单量（公共备货/安全补库）。
-  /// 没有超量时不出「订单总量」列——它会与「下达数量」同值，纯噪音。
-  bool _hasIssuedOrderSurplus(MaterialSupplyRoute route) {
-    if (_taskFilter != _PreparationTaskFilter.issued) return false;
-    for (final row in _host._bucketRows(_bucket)) {
-      final group = row.group;
-      if (group == null) continue;
-      final totals = _issuedOrderTotal(group, route);
-      if (totals != null && totals.surplus > 0.0001) return true;
-    }
-    return false;
-  }
-
   /// 「下达数量」单元格：可编辑行（未下达段 + actionGroupKey 提交单元）给
   /// 数字输入框（默认=缺口全量，可改小分批/超量）；已下达段只读显示
   /// 已实际下达的量（路线匹配的分摊合计）；其余只读行显示默认量。
@@ -2828,8 +3300,13 @@ class _MaterialAnalysisBucketPageState
       return Align(
         alignment: Alignment.centerRight,
         child: Text(
+          // 已下达行显示真实下单总量（含公共备货/安全补库），与「下达车间」的
+          // 计划量口径对齐；无行动快照时回落分摊合计（2026-09-15）。
           issued
-              ? _host._qty(_issuedSubmitQty(group, route))
+              ? _host._qty(
+                  _issuedOrderTotal(group, route)?.total ??
+                      _issuedSubmitQty(group, route),
+                )
               : _host._qty(defaultValue),
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
@@ -2900,6 +3377,8 @@ class _MaterialAnalysisBucketPageState
       _supplyDetailsColumn(),
       ..._identityColumns(),
       _routeColumn(),
+      _owningWarehouseColumn(),
+      _owningWorkshopColumn(),
       MasterColumnDef<_BucketRow>(
         key: 'requestedQty',
         label: '需求量',
@@ -2951,10 +3430,20 @@ class _MaterialAnalysisBucketPageState
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 2),
-              ProductionFlowProgress(
-                ratio: product.planExecutionProgressRatio,
-                semanticsLabel: '完工进度',
-                height: 6,
+              Builder(
+                builder: (context) {
+                  // 进度条颜色随流程阶段色调变化，与状态列底色同一映射
+                  //（2026-09-15 颜色统一；无阶段时回落主题主色）。
+                  final stage = host._productExecutionStage(product);
+                  return ProductionFlowProgress(
+                    ratio: product.planExecutionProgressRatio,
+                    semanticsLabel: '完工进度',
+                    height: 6,
+                    color: stage == null
+                        ? null
+                        : host._productExecutionColor(Theme.of(context), stage),
+                  );
+                },
               ),
             ],
           );
@@ -2983,15 +3472,19 @@ class _MaterialAnalysisBucketPageState
               : '当前状态不可创建';
         },
         // 顶层路线待确认：红色浅底与物料行一致（cellColor 组件层保证文字对比度）。
+        // 2026-09-15 颜色统一：其余已下达行走采购/委外桶「进度」列同一套流程
+        // 阶段语义底色（productionFlowToneColor 映射），下达车间不再无色。
         cellColor: (context, row) {
           final product = row.product;
-          return product != null &&
-                  !product.canSchedule &&
-                  _host._rootRoutePending(product)
-              ? Theme.of(
-                  context,
-                ).colorScheme.errorContainer.withValues(alpha: 0.3)
-              : null;
+          if (product == null) return null;
+          final theme = Theme.of(context);
+          if (!product.canSchedule && _host._rootRoutePending(product)) {
+            return theme.colorScheme.errorContainer.withValues(alpha: 0.3);
+          }
+          final stage = host._productExecutionStage(product);
+          return stage == null
+              ? null
+              : host._productExecutionColor(theme, stage);
         },
       ),
       MasterColumnDef<_BucketRow>(

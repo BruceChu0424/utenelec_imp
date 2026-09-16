@@ -51,11 +51,16 @@ class ProductionFlowProgress extends StatelessWidget {
     this.height = 8,
     this.showPercentText = true,
     this.semanticsLabel,
+    this.color,
   });
 
   /// 0-1；null 表示尚无可计算的进度（不伪装 0%）。
   final double? ratio;
   final double height;
+
+  /// 进度条前景色；null = 主题主色（既有口径）。传流程阶段色调时进度条
+  /// 随阶段变色（2026-09-15 与分桶「进度」列的语义底色同一映射）。
+  final Color? color;
   final bool showPercentText;
   final String? semanticsLabel;
 
@@ -89,7 +94,9 @@ class ProductionFlowProgress extends StatelessWidget {
                   value: value,
                   minHeight: height,
                   backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                  valueColor: AlwaysStoppedAnimation(theme.colorScheme.primary),
+                  valueColor: AlwaysStoppedAnimation(
+                    color ?? theme.colorScheme.primary,
+                  ),
                 ),
               ),
             ),

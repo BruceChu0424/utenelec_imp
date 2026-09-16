@@ -90,6 +90,8 @@ class StockQueryRepository {
     String? warehouseId,
     bool includeDefective = true,
     String? keyword,
+    String? owningWarehouse,
+    bool owningWarehouseNull = false,
     String? sort,
     String? order,
   }) async {
@@ -102,6 +104,9 @@ class StockQueryRepository {
         'warehouseId': ?warehouseId,
         'includeDefective': includeDefective,
         if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
+        // V587/V590 归属表头筛选：UUID 等值 / 未登记。
+        'owningWarehouse': ?owningWarehouse,
+        if (owningWarehouseNull) 'owningWarehouseNull': true,
         if (sort != null && sort.isNotEmpty) 'sort': sort,
         if (order != null && order.isNotEmpty) 'order': order,
       },

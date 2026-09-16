@@ -39,6 +39,10 @@ class GoodsListItem {
     this.stockPlace,
     this.minOrderQty,
     this.orderMultipleQty,
+    this.owningWarehouseId,
+    this.owningWarehouseName,
+    this.owningWorkshopId,
+    this.owningWorkshopName,
   });
 
   final String id;
@@ -77,6 +81,14 @@ class GoodsListItem {
   final double? minOrderQty; // 最小起订量（供应商 MOQ，基本单位）；null=未登记，0=已确认无起订量
   final double? orderMultipleQty; // 订货倍数/整包装量（基本单位，整箱 50 即 50）；null=无倍数要求
 
+  // ===== 所属仓库 (V587；货品主档归属，不是单据落点仓，也不是分析范围仓) =====
+  final String? owningWarehouseId; // 这批货平时归哪个仓管；null=未登记归属
+  final String? owningWarehouseName; // 展示名；仓库已软删或未解析时为 null
+
+  // ===== 归属生产车间 (V590；最近一次排产确认/改派自动学习回写，只读展示) =====
+  final String? owningWorkshopId; // null=尚未学习
+  final String? owningWorkshopName; // 展示名；部门已软删或未解析时为 null
+
   factory GoodsListItem.fromJson(Map<String, dynamic> json) => GoodsListItem(
     id: json['id'] as String,
     code: json['code'] as String?,
@@ -109,6 +121,10 @@ class GoodsListItem {
     // 后端 NUMERIC(18,4)，Jackson 可能发 int 或 double；统一走 num? 再 toDouble。
     minOrderQty: (json['minOrderQty'] as num?)?.toDouble(),
     orderMultipleQty: (json['orderMultipleQty'] as num?)?.toDouble(),
+    owningWarehouseId: json['owningWarehouseId'] as String?,
+    owningWarehouseName: json['owningWarehouseName'] as String?,
+    owningWorkshopId: json['owningWorkshopId'] as String?,
+    owningWorkshopName: json['owningWorkshopName'] as String?,
   );
 }
 
@@ -195,6 +211,10 @@ class GoodsDetail {
     this.writable = false,
     this.minOrderQty,
     this.orderMultipleQty,
+    this.owningWarehouseId,
+    this.owningWarehouseName,
+    this.owningWorkshopId,
+    this.owningWorkshopName,
   });
 
   final String id;
@@ -286,6 +306,16 @@ class GoodsDetail {
   final double? minOrderQty; // 最小起订量（供应商 MOQ，基本单位）；null=未登记，0=已确认无起订量
   final double? orderMultipleQty; // 订货倍数/整包装量（基本单位，整箱 50 即 50）；null=无倍数要求
 
+  // ===== 所属仓库 (V587) =====
+  // 货品平时归哪个仓管的主档归属，既不是单据落点仓，也不是物料分析的分析范围仓。
+  // 保存时只有带上 owningWarehouseId 这个键才会改动；不带=后端保持原归属。
+  final String? owningWarehouseId; // null=未登记归属
+  final String? owningWarehouseName; // 展示名；仓库已软删或未解析时为 null
+
+  // ===== 归属生产车间 (V590；只读展示，由排产确认/改派自动学习回写) =====
+  final String? owningWorkshopId; // null=尚未学习
+  final String? owningWorkshopName; // 展示名；部门已软删或未解析时为 null
+
   factory GoodsDetail.fromJson(Map<String, dynamic> json) => GoodsDetail(
     id: json['id'] as String,
     code: json['code'] as String?,
@@ -365,6 +395,10 @@ class GoodsDetail {
     // 后端 NUMERIC(18,4)，Jackson 可能发 int 或 double；统一走 num? 再 toDouble。
     minOrderQty: (json['minOrderQty'] as num?)?.toDouble(),
     orderMultipleQty: (json['orderMultipleQty'] as num?)?.toDouble(),
+    owningWarehouseId: json['owningWarehouseId'] as String?,
+    owningWarehouseName: json['owningWarehouseName'] as String?,
+    owningWorkshopId: json['owningWorkshopId'] as String?,
+    owningWorkshopName: json['owningWorkshopName'] as String?,
   );
 }
 
@@ -520,6 +554,9 @@ class GoodsFacets {
     'colorLegacyId',
     'unitLegacyId',
     'sourceType',
+    // V587/V590 归属两列：value=UUID（筛选回传），label=仓库名/车间名。
+    'owningWarehouse',
+    'owningWorkshop',
   ];
 
   factory GoodsFacets.fromJson(Map<String, dynamic> json) {

@@ -229,7 +229,7 @@ public class ProductionExecutionPlanningService {
                                            WHEN plan_workshop_parent.id IS NOT NULL
                                            THEN p.department_id
                                            WHEN preferred_workshop_parent.id IS NOT NULL
-                                           THEN workshop_preference.workshop_department_id
+                                           THEN product.owning_workshop_department_id
                                            ELSE NULL
                                        END,
                                        p.worker_id,
@@ -270,12 +270,10 @@ public class ProductionExecutionPlanningService {
                                 JOIN goods product
                                   ON product.id = i.goods_id
                                  AND product.is_deleted = FALSE
-                                 LEFT JOIN production_goods_workshop_preferences
-                                      workshop_preference
-                                   ON workshop_preference.goods_id = product.id
+                                -- V590：货品归属车间搬进货品表（偏好表已废弃删除）。
                                  LEFT JOIN departments preferred_workshop
                                    ON preferred_workshop.id =
-                                      workshop_preference.workshop_department_id
+                                      product.owning_workshop_department_id
                                   AND preferred_workshop.is_deleted = FALSE
                                  LEFT JOIN departments preferred_workshop_parent
                                    ON preferred_workshop_parent.id =

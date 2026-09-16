@@ -6,7 +6,6 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
-import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -105,8 +104,7 @@ class _WarehouseSalesOutboundDetailPageState
       return;
     }
     final reviewed = _detail!;
-    if (action == WarehouseSalesOutboundAction.startPicking &&
-        _picking?.validate() == false) {
+    if (_picking?.validate() == false) {
       setState(() {});
       context.appWarning(_picking!.error!);
       return;
@@ -146,14 +144,10 @@ class _WarehouseSalesOutboundDetailPageState
             widget.id,
             targetStatus: action.targetStatus,
             reason: reason,
-            warehouseId:
-                action == WarehouseSalesOutboundAction.startPicking &&
-                    reviewed.canSelectWarehouse
+            warehouseId: reviewed.canSelectWarehouse
                 ? _picking?.warehouseId
                 : null,
-            stockPlaces: action == WarehouseSalesOutboundAction.startPicking
-                ? _picking?.stockPlaces
-                : null,
+            stockPlaces: _picking?.stockPlaces,
           );
       if (!mounted) return;
       if (updated.header.id != widget.id ||
@@ -161,7 +155,7 @@ class _WarehouseSalesOutboundDetailPageState
         throw const FormatException();
       }
       setState(() => _replaceDetail(updated));
-      // 交接出库会减少待出库角标；流转成功立即失效全部仓库任务计数。
+      // 确认出库会减少待出库角标；流转成功立即失效全部仓库任务计数。
       invalidateWarehouseTaskCounts(ref);
       context.appSuccess('${action.label}已完成');
     } on ApiException catch (error) {
@@ -196,69 +190,50 @@ class _WarehouseSalesOutboundDetailPageState
     }
   }
 
+  /// 返回 null = 取消；返回字符串 = 确认，内容是选填的出库备注（可为空串）。
   Future<String?> _confirmAction(WarehouseSalesOutboundAction action) async {
     final controller = TextEditingController();
-    String? validation;
     final result = await showDialog<String?>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(action.label),
-          content: SizedBox(
-            width: 440,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(_actionDescription(action)),
-                if (action.requiresReason) ...[
-                  const SizedBox(height: UtenSpacing.s12),
-                  TextField(
-                    key: const Key('warehouse-sales-outbound-action-reason'),
-                    controller: controller,
-                    minLines: 2,
-                    maxLines: 4,
-                    maxLength: 1000,
-                    decoration: UtenInputDecoration(
-                      InputDecoration(
-                        labelText:
-                            action ==
-                                WarehouseSalesOutboundAction.reportException
-                            ? '异常说明'
-                            : '恢复说明',
-                        error: validation == null
-                            ? null
-                            : UtenFieldMessage.error(validation!),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+      builder: (dialogContext) => AlertDialog(
+        title: Text(action.label),
+        content: SizedBox(
+          width: 440,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(_actionDescription(action)),
+              const SizedBox(height: UtenSpacing.s12),
+              TextField(
+                key: const Key('warehouse-sales-outbound-action-reason'),
+                controller: controller,
+                minLines: 2,
+                maxLines: 4,
+                maxLength: 500,
+                decoration: const UtenInputDecoration(
+                  InputDecoration(labelText: '出库备注(选填)'),
+                ),
+              ),
+            ],
           ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            UtenButton(
-              type: UtenButtonType.secondary,
-              size: UtenButtonSize.large,
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('取消'),
-            ),
-            UtenButton(
-              type: UtenButtonType.danger,
-              size: UtenButtonSize.large,
-              onPressed: () {
-                final reason = controller.text.trim();
-                if (action.requiresReason && reason.isEmpty) {
-                  setDialogState(() => validation = '请填写具体说明');
-                  return;
-                }
-                Navigator.of(dialogContext).pop(reason);
-              },
-              child: const Text('确认'),
-            ),
-          ],
         ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          UtenButton(
+            type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+          UtenButton(
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(controller.text.trim()),
+            child: const Text('确认'),
+          ),
+        ],
       ),
     );
     controller.dispose();
@@ -338,7 +313,7 @@ class _WarehouseSalesOutboundDetailPageState
                           const SizedBox(height: UtenSpacing.s12),
                           _factsCard(detail),
                           if (detail.header.allows(
-                                WarehouseSalesOutboundAction.startPicking,
+                                WarehouseSalesOutboundAction.confirmShipment,
                               ) &&
                               _picking != null) ...[
                             const SizedBox(height: UtenSpacing.s12),
@@ -358,7 +333,7 @@ class _WarehouseSalesOutboundDetailPageState
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '拣货明细 (${detail.lines.length})',
+                          '出库明细 (${detail.lines.length})',
                           style: Theme.of(context).textTheme.titleSmall
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
@@ -387,7 +362,7 @@ class _WarehouseSalesOutboundDetailPageState
                                   stockPlaceControllerOf:
                                       detail.header.allows(
                                         WarehouseSalesOutboundAction
-                                            .startPicking,
+                                            .confirmShipment,
                                       )
                                       ? (row) => _picking?.places[row.line.id]
                                       : null,
@@ -400,7 +375,7 @@ class _WarehouseSalesOutboundDetailPageState
                                 nullCounts: const {},
                                 filters: const {},
                                 onFilterChanged: (_, _) {},
-                                emptyMessage: '该任务暂无拣货明细',
+                                emptyMessage: '该任务暂无出库明细',
                               ),
                         ),
                       ],
@@ -409,6 +384,7 @@ class _WarehouseSalesOutboundDetailPageState
                 ),
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
         floatingActionButton: actions.isEmpty
             ? null
             : UtenFloatingActionGroup(
@@ -449,10 +425,7 @@ class _WarehouseSalesOutboundDetailPageState
       ('物流单号', detail.logisticsNo),
       ('件数', detail.parcelCount?.toString()),
       ('作业状态', detail.header.statusLabel),
-      ('异常说明', detail.warehouseExceptionReason),
-      ('开始拣货', detail.pickingStartedAt),
-      ('拣货完成', detail.pickedAt),
-      ('交接出库', detail.handedOverAt),
+      ('出库时间', detail.handedOverAt),
       ('作业更新', detail.warehouseWorkUpdatedAt),
     ].where((fact) => _present(fact.$2)).toList(growable: false);
     final theme = Theme.of(context);
@@ -588,19 +561,13 @@ class _OutboundFact extends StatelessWidget {
 
 String _actionDescription(WarehouseSalesOutboundAction action) =>
     switch (action) {
-      WarehouseSalesOutboundAction.startPicking => '确认开始实物拣货。开始后任务进入拣货中。',
-      WarehouseSalesOutboundAction.finishPicking => '确认所有行已按实物核对并完成拣货。',
-      WarehouseSalesOutboundAction.reportException => '登记真实仓库异常，任务会暂停后续交接。',
-      WarehouseSalesOutboundAction.restorePending => '确认异常已处理，并说明处理结果。任务恢复待拣货。',
-      WarehouseSalesOutboundAction.handOver => '确认实物已完成交接。该动作会推进正式出库，请再次核对。',
+      WarehouseSalesOutboundAction.confirmShipment =>
+        '确认出库会在同一事务里扣减库存、消耗预留、回写订单已发数量并生成应收，'
+            '不能撤回。请核对实物后再确认。',
     };
 
 IconData _actionIcon(WarehouseSalesOutboundAction action) => switch (action) {
-  WarehouseSalesOutboundAction.startPicking => Icons.play_circle_outline,
-  WarehouseSalesOutboundAction.finishPicking => Icons.task_alt_outlined,
-  WarehouseSalesOutboundAction.reportException => Icons.report_problem_outlined,
-  WarehouseSalesOutboundAction.restorePending => Icons.restart_alt_rounded,
-  WarehouseSalesOutboundAction.handOver => Icons.local_shipping_outlined,
+  WarehouseSalesOutboundAction.confirmShipment => Icons.local_shipping_outlined,
 };
 
 bool _present(String? value) => value?.trim().isNotEmpty == true;

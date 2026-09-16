@@ -274,6 +274,9 @@ Iterable<String> _businessPaths() sync* {
     '/production/material-analysis',
     '/production/material-analyses',
     '/production/material-analyses/analysis-1/summary',
+    // ADR-088 关联订单只读货品清单：不登记的话本页右上角「权限设置」入口
+    // 会因为拿不到 scope 而静默消失，而路由守卫测试只查守卫不查 surface。
+    '/production/material-analyses/analysis-1/sales-orders/order-1',
     '/production/plans',
     '/production/plans/new',
     '/production/plans/plan-1',

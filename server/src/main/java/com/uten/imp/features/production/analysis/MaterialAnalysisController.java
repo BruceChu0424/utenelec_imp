@@ -38,7 +38,9 @@ public class MaterialAnalysisController {
     private final ProductionGoodsWorkshopPreferenceService workshopPreferences;
     private final MaterialAnalysisSupplyProgressService supplyProgressService;
     private final SubcontractMakeTaskService subcontractMakeTasks;
+    private final AnalysisLinkedSalesOrderService linkedSalesOrders;
     private final AuditDetailViewRecorder detailViewAudit;
+    private final GoodsOwningWarehouseWriteService goodsOwningWarehouses;
 
     @GetMapping
     @PreAuthorize("hasAuthority('production_material_analysis:view')")
@@ -128,6 +130,28 @@ public class MaterialAnalysisController {
         return result;
     }
 
+    /**
+     * 关联销售订货单的货品清单(只读，ADR-088)。
+     *
+     * <p>物料分析顶部卡片点订单编号进入的专用只读页数据源——不是销售订单详情：
+     * 只要分析查看权，且 orderId 必须确实被本张分析引用(服务端反查，见
+     * {@link AnalysisLinkedSalesOrderService#linkedOrder})，一律不返回价格金额。
+     */
+    @GetMapping("/{id}/sales-orders/{orderId}")
+    @PreAuthorize("hasAuthority('production_material_analysis:view')")
+    public AnalysisLinkedSalesOrderService.LinkedSalesOrderView linkedSalesOrder(
+            @PathVariable UUID id,
+            @PathVariable UUID orderId) {
+        AnalysisLinkedSalesOrderService.LinkedSalesOrderView result =
+                linkedSalesOrders.linkedOrder(id, orderId);
+        // 这是一次「跨模块读」：拿生产权限看销售单据明细，留痕对象记订单本身，
+        // 与销售侧详情查看同一 action/targetType 对，审计里能合并成一条线索。
+        detailViewAudit.record(
+                "view_sales_order_detail", "sales_orders", orderId,
+                null, null, "销售订货单");
+        return result;
+    }
+
     /** 物料节点供给全链路进度（只读）：下单/财务/收货/质检/入库逐步状态。 */
     @GetMapping("/{id}/materials/{materialLineId}/supply-progress")
     @PreAuthorize("hasAuthority('production_material_analysis:view')")
@@ -200,6 +224,24 @@ public class MaterialAnalysisController {
             @PathVariable UUID id,
             @Valid @RequestBody RouteRequest request) {
         return queryService.saveRoutes(id, request);
+    }
+
+    /**
+     * 货品主档「所属仓库」回写 (V587)：计划员在物料分析各表里改这批货平时归哪个
+     * 仓管，保存即写回 goods 主档，返回 {updated, skipped}。owningWarehouseId
+     * 传 null = 清空。不是分析级数据，故不挂在 /{id} 下。
+     *
+     * <p>权限为什么复用 :route 这把锁：所属仓库与供料路线是同一类「计划员在分析页
+     * 维护的货品级计划属性」——同一批人、同一屏、同一次保存动作，另铸一个权限码要
+     * 再发一版迁移并登记权限目录 (V228 两级权限目录)，不值当。查看权 + 路线维护权
+     * 同时具备才放行。
+     */
+    @PutMapping("/goods-owning-warehouses")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:route')")
+    public java.util.Map<String, Integer> saveGoodsOwningWarehouses(
+            @Valid @RequestBody
+            List<GoodsOwningWarehouseWriteService.OwningWarehouseRequest> requests) {
+        return goodsOwningWarehouses.applyOwningWarehouses(requests);
     }
 
     @PutMapping("/{id}/allocation-priorities")

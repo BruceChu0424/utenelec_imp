@@ -5,15 +5,15 @@ import 'package:uten_imp/shared/measurement/measurement_totals.dart';
 
 /// 明细表格下方的合计条——全站「明细 → 汇总（币种/总金额…）」统一口径。
 ///
-/// 视觉与 MasterDataTableView 同语言：与表体同宽、顶部分隔线、右对齐的
-/// 「标签 值」序列；关键金额传 [danger] 标红（与审核详情「本单金额」同色规则）。
+/// 视觉与 MasterDataTableView 同语言：与表体同宽、右对齐的「标签 值」序列；
+/// 关键金额传 [danger] 标红（与审核详情「本单金额」同色规则）。
 /// 值为 null/空字符串时该项整体隐藏（避免出现「合计 —」）。
 class UtenTotalsSummaryBar extends StatelessWidget {
   const UtenTotalsSummaryBar({
     super.key,
     required this.entries,
     this.density = false,
-    this.showDivider = true,
+    this.showDivider = false,
     this.compact = false,
   });
 
@@ -23,8 +23,9 @@ class UtenTotalsSummaryBar extends StatelessWidget {
   /// 紧凑模式（嵌入卡片内时用，字号略小）。
   final bool density;
 
-  /// 顶部分隔线。嵌在已自带上边框的容器里（如编辑页底部操作条）传 false，
-  /// 避免出现两条平行线。
+  /// 顶部分隔线。2026-09-15 用户口径：合计条不再画顶部分隔线（表格自带行线，
+  /// 紧贴其下再一条横线显得重复）——默认 false；嵌在自带上边框容器里的旧调用
+  /// 语义保留，显式传 true 仍可画线。
   final bool showDivider;
 
   /// 收紧纵向内边距。

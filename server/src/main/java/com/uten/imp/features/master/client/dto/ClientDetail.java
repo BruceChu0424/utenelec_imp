@@ -58,4 +58,8 @@ public class ClientDetail {
     private boolean writable;
     private boolean accessManageable;
     private String accessReason;
+    // ===== 默认销售条款（V592 单一事实源：基础资料可维护 + 下单自动写回） =====
+    private String defaultShipmentPolicy;
+    private UUID defaultCurrencyId;
+    private String defaultCurrencyName;
 }

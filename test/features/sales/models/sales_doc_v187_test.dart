@@ -10,7 +10,7 @@ void main() {
         'partialShipmentConfirmedAt': '2026-08-01T09:30:00+08:00',
         'partialShipmentConfirmedBy': 'employee-1',
         'partialShipmentConfirmationReason': '客户微信确认',
-        'warehouseWorkStatus': 'PICKED',
+        'warehouseWorkStatus': 'SHIPPED',
         'warehouseWorkUpdatedAt': '2026-08-01T10:00:00+08:00',
         'pickingStartedAt': '2026-08-01T09:40:00+08:00',
         'pickedAt': '2026-08-01T10:00:00+08:00',
@@ -23,7 +23,7 @@ void main() {
       expect(detail.partialShipmentConfirmed, isTrue);
       expect(detail.partialShipmentConfirmedBy, 'employee-1');
       expect(detail.partialShipmentConfirmationReason, '客户微信确认');
-      expect(detail.warehouseWorkStatus, SalesWarehouseWorkStatus.picked);
+      expect(detail.warehouseWorkStatus, SalesWarehouseWorkStatus.shipped);
       expect(detail.warehouseWorkUpdatedAt, isNotNull);
       expect(detail.pickingStartedAt, isNotNull);
       expect(detail.pickedAt, isNotNull);
@@ -116,33 +116,20 @@ void main() {
     test('warehouse actions follow the server state machine', () {
       expect(
         salesWarehouseWorkActionsFor(SalesWarehouseWorkStatus.pendingPick),
-        const [
-          SalesWarehouseWorkAction.startPicking,
-          SalesWarehouseWorkAction.reportException,
-        ],
+        const [SalesWarehouseWorkAction.confirmShipment],
       );
-      expect(
-        salesWarehouseWorkActionsFor(SalesWarehouseWorkStatus.picking),
-        const [
-          SalesWarehouseWorkAction.finishPicking,
-          SalesWarehouseWorkAction.reportException,
-        ],
-      );
-      expect(
-        salesWarehouseWorkActionsFor(SalesWarehouseWorkStatus.picked),
-        const [
-          SalesWarehouseWorkAction.handOver,
-          SalesWarehouseWorkAction.reportException,
-        ],
-      );
-      expect(
-        salesWarehouseWorkActionsFor(SalesWarehouseWorkStatus.exception),
-        const [SalesWarehouseWorkAction.restorePending],
-      );
-      expect(
-        salesWarehouseWorkActionsFor(SalesWarehouseWorkStatus.legacyPending),
-        isEmpty,
-      );
+      // 终态与历史迁移异常都没有可执行动作；已退役的中间态字符串同样不认。
+      for (final terminal in const [
+        SalesWarehouseWorkStatus.shipped,
+        SalesWarehouseWorkStatus.cancelled,
+        SalesWarehouseWorkStatus.reversed,
+        SalesWarehouseWorkStatus.legacyPending,
+        'PICKING',
+        'PICKED',
+        'EXCEPTION',
+      ]) {
+        expect(salesWarehouseWorkActionsFor(terminal), isEmpty);
+      }
     });
 
     test('legacy, finance, order-link and reverse gates fail closed', () {
@@ -167,7 +154,7 @@ void main() {
         isTrue,
       );
       expect(
-        salesShipmentAllowsFinanceAudit(SalesWarehouseWorkStatus.picking),
+        salesShipmentAllowsFinanceAudit(SalesWarehouseWorkStatus.shipped),
         isFalse,
       );
       expect(
@@ -234,7 +221,7 @@ void main() {
         salesShipmentLocksDraftEdit(
           documentStatus: kSalesStatusDraft,
           financeAudit: 1,
-          warehouseWorkStatus: SalesWarehouseWorkStatus.picking,
+          warehouseWorkStatus: SalesWarehouseWorkStatus.shipped,
         ),
         isTrue,
       );

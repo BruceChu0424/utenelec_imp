@@ -64,6 +64,7 @@ class ProductionPlanServiceTest {
     private Query plannedDecrement;
     private Query analysisHeaderLock;
     private Query analysisPlanConsistency;
+    private Query analysisSubmittedQty;
     private Query salesTrace;
     private Query dailyTrace;
     private Query materialTrace;
@@ -102,6 +103,7 @@ class ProductionPlanServiceTest {
         plannedDecrement = query();
         analysisHeaderLock = query();
         analysisPlanConsistency = query();
+        analysisSubmittedQty = query();
         salesTrace = query();
         dailyTrace = query();
         materialTrace = query();
@@ -118,6 +120,8 @@ class ProductionPlanServiceTest {
         when(executionV1ParentLink.getResultList()).thenReturn(List.of());
         when(analysisHeaderLock.getResultList()).thenReturn(List.of());
         when(analysisPlanConsistency.getResultList()).thenReturn(List.of());
+        // V588：审核分摊按分析 link 的 submitted_qty（手工计划返回空表 → 按整行数量分摊）。
+        when(analysisSubmittedQty.getResultList()).thenReturn(List.of());
         when(salesTrace.getResultList()).thenReturn(List.of());
         when(dailyTrace.getResultList()).thenReturn(List.of());
         when(materialTrace.getResultList()).thenReturn(List.of());
@@ -163,6 +167,9 @@ class ProductionPlanServiceTest {
             }
             if (sql.contains("FOR UPDATE OF analysis")) {
                 return analysisHeaderLock;
+            }
+            if (sql.contains("SELECT plan_item.id, link.submitted_qty")) {
+                return analysisSubmittedQty;
             }
             if (sql.contains("analysis_link.submitted_qty")) {
                 return analysisPlanConsistency;

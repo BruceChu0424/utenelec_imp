@@ -390,6 +390,10 @@ public class SupplierService {
         m.setInitTotal(req.getInitTotal());
         m.setTday(req.getTday());
         applyDefaultSettlementMethod(req, m);
+        applyDefaultCurrency(req, m);
+        if (req.getDefaultTaxRate() != null) {
+            m.setDefaultTaxRate(req.getDefaultTaxRate());
+        }
         m.setStatus(req.getStatus());
         m.setRemark(req.getRemark());
     }
@@ -399,6 +403,24 @@ public class SupplierService {
      * 传 null 显式清空时同步清掉旧库快照；DB 触发器 fn_sync_supplier_default_settlement_reference
      * 另有一致性兜底（UUID 必须指向使用中的结算方式，price_style 由 UUID 同步）。
      */
+    /** 默认币种（V593）：presence 语义同结账方式；必须存在且未软删。 */
+    private void applyDefaultCurrency(SupplierSaveRequest req, Supplier supplier) {
+        if (!req.hasDefaultCurrencyReference()) return;
+        UUID id = req.getDefaultCurrencyId();
+        if (id == null) {
+            supplier.setDefaultCurrencyId(null);
+            return;
+        }
+        var found = em.createNativeQuery(
+                        "SELECT id FROM currencies WHERE id = :id AND is_deleted = false")
+                .setParameter("id", id)
+                .getResultList();
+        if (!(found instanceof List<?> rows) || rows.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "币种不存在");
+        }
+        supplier.setDefaultCurrencyId(id);
+    }
+
     private void applyDefaultSettlementMethod(
             SupplierSaveRequest req, Supplier supplier) {
         if (!req.hasDefaultSettlementMethodReference()) return;
@@ -443,7 +465,20 @@ public class SupplierService {
                 m.getRemark(), m.getVersion(), m.getOwnerEmployeeId(),
                 employeeNameResolver.nameOf(m.getOwnerEmployeeId()),
                 m.getDefaultSettlementMethodId(),
-                settlementMethodName);
+                settlementMethodName,
+                m.getDefaultCurrencyId(),
+                currencyName(m.getDefaultCurrencyId()),
+                m.getDefaultTaxRate());
+    }
+
+    /** 币种名（详情展示；软删/缺行回落 null）。 */
+    private String currencyName(UUID id) {
+        if (id == null) return null;
+        var rows = em.createNativeQuery(
+                        "SELECT name FROM currencies WHERE id = :id AND is_deleted = false")
+                .setParameter("id", id)
+                .getResultList();
+        return rows.isEmpty() ? null : String.valueOf(rows.get(0));
     }
 
     private Map<UUID, String> settlementMethodNames(List<Supplier> suppliers) {
@@ -474,7 +509,8 @@ public class SupplierService {
                 m.getPhone(), m.getPhone2(), m.getFax(), m.getPostcode(), m.getAddress(),
                 m.getBank(), m.getBankAccount(), m.getTaxId(), m.getWebsite(),
                 m.getShipVia(), m.getShipAddress(),
-                m.getCategory() == null ? null : m.getCategory().getId());
+                m.getCategory() == null ? null : m.getCategory().getId(),
+                employeeNameResolver.nameOf(m.getOwnerEmployeeId()));
     }
 
     private SupplierCategory requireCategory(UUID id) {

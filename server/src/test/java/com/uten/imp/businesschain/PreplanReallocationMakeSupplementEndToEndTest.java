@@ -163,6 +163,10 @@ class PreplanReallocationMakeSupplementEndToEndTest {
 
     @Test void completedSubcontractPreparationCanManufactureAndNotifyOnlyFourReplacementUnitsAfterYield() {
         var c=scenario("subcontract-make-supplement",false);fixture.insertBom(c.child(),c.raw(),"1");
+        // V581 起「只有一个叶子子件」的委外件走 COMPONENT_OUTBOUND 委外下达，issue-plans
+        // 拒收；本用例测「让料后补 4 件」的前置自制链，挂第二颗采购叶子让它保留车间路线
+        //（同 MaterialWorkshopAnchorEndToEndTest#createMixed 的做法，路线映射里补 BUY）。
+        fixture.insertBom(c.child(),c.world().goodsD(),"1");
         ReflectionTestUtils.invokeMethod(fixture,"putDirectTargetStock",c.world(),c.raw(),"10");
         AnalysisView a=preview(c,"A","10");UUID materialId=material(a,c.child()).materialLineId();
         var first=commands.issueWorkshopPlans(a.analysisId(),planRequest(c,a,materialId,"10","submake-first-"+a.analysisId())).plans().getFirst();
@@ -209,7 +213,7 @@ class PreplanReallocationMakeSupplementEndToEndTest {
                 List.of(new PreviewItem("OTHER",null,c.root(),null,c.world().unitId(),"yield-"+c.root()+suffix,"让料后的正式补供",BusinessTime.today().plusDays(10),new BigDecimal(quantity)))));
         return analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"yield-routes-"+view.analysisId(),
                 view.flatMaterials().stream().filter(MaterialView::actionable).map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),
-                        row.goodsId().equals(c.raw())?"BUY":row.goodsId().equals(c.child())&&!c.make()?"SUBCONTRACT":"MAKE",null)).toList()));
+                        row.goodsId().equals(c.raw())||row.goodsId().equals(c.world().goodsD())?"BUY":row.goodsId().equals(c.child())&&!c.make()?"SUBCONTRACT":"MAKE",null)).toList()));
     }
     private IssueWorkshopPlansRequest planRequest(Scenario c,AnalysisView view,UUID material,String quantity,String key) {
         return new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),key,c.world().warehouseId(),BusinessTime.today(),null,true,

@@ -37,6 +37,7 @@ class SupplierListItem {
     this.shipVia,
     this.shipAddress,
     this.categoryId,
+    this.ownerEmployeeName,
   });
 
   final String id;
@@ -63,6 +64,7 @@ class SupplierListItem {
   final String? shipVia; // 运输方式
   final String? shipAddress; // 送货地址
   final String? categoryId; // 所属分类 id（供应商资料页"搜供应商定位分类"用）
+  final String? ownerEmployeeName; // 业务员姓名（V578：按 owner_employee_id 解析）
 
   factory SupplierListItem.fromJson(Map<String, dynamic> json) =>
       SupplierListItem(
@@ -90,6 +92,7 @@ class SupplierListItem {
         shipVia: (json['shipVia'] ?? json['shipvia']) as String?,
         shipAddress: (json['shipAddress'] ?? json['shipaddress']) as String?,
         categoryId: json['categoryId'] as String?,
+        ownerEmployeeName: json['ownerEmployeeName'] as String?,
       );
 }
 

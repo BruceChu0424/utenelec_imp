@@ -11,6 +11,8 @@ import 'package:uten_imp/features/warehouse/repositories/warehouse_sales_outboun
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
+import '../../../support/filter_segment_tap.dart';
+
 void main() {
   testWidgets('finance task page defaults to pending and uses desktop table', (
     tester,
@@ -58,12 +60,8 @@ void main() {
 
       // 分类分段范式（ADR-066）：状态默认不选不发请求（引导占位），
       // 先点「待拣货」段加载列表，再点「拣货中」验证状态筛选下发。
-      await tester.tap(
-        find.descendant(
-          of: find.byKey(const Key('warehouse-sales-outbound-status')),
-          matching: find.text('待拣货'),
-        ),
-      );
+      // 375px 下状态行放不下收成「分类」下拉（2026-09-14），统一走共用助手。
+      await selectFilterSegment(tester, '待出库');
       await tester.pumpAndSettle();
 
       expect(
@@ -73,15 +71,10 @@ void main() {
       expect(find.text('SO-OUT-001'), findsOneWidget);
       expect(gateway.workStatuses.first, SalesWarehouseWorkStatus.pendingPick);
 
-      await tester.tap(
-        find.descendant(
-          of: find.byKey(const Key('warehouse-sales-outbound-status')),
-          matching: find.text('拣货中'),
-        ),
-      );
+      await selectFilterSegment(tester, '已出库');
       await tester.pumpAndSettle();
 
-      expect(gateway.workStatuses.last, 'PICKING');
+      expect(gateway.workStatuses.last, 'SHIPPED');
       expect(tester.takeException(), isNull);
     },
   );

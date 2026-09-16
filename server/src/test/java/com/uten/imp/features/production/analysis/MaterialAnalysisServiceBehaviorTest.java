@@ -2371,7 +2371,7 @@ class MaterialAnalysisServiceBehaviorTest {
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, List.of(), null, null,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                BigDecimal.ZERO, BigDecimal.ZERO);
+                BigDecimal.ZERO, BigDecimal.ZERO, null, null, null, null, null);
     }
 
     private static MaterialAnalysisService.MaterialRow materialRow(
@@ -2390,7 +2390,7 @@ class MaterialAnalysisServiceBehaviorTest {
                 BigDecimal.ONE, bd("10"), BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, shortage, null,
                 "BUY", "BUY", null,
-                false, null, null);
+                false, null, null, null, null, null, null);
     }
 
     private static MaterialAnalysisService.MaterialRow requirementRow(
@@ -2415,7 +2415,7 @@ class MaterialAnalysisServiceBehaviorTest {
                 true, true, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE,
                 bd(required), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, bd(shortage), null,
-                suggestion, confirmedRoute, null, false, null, null);
+                suggestion, confirmedRoute, null, false, null, null, null, null, null, null);
     }
 
     private static Query query(List<?> rows) {

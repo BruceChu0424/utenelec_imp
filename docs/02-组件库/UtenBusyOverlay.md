@@ -19,12 +19,13 @@ if (_saving)
 |---|---|
 | 全屏蒙版 | 组件把画面送进 **root Overlay**：宿主 Stack 只覆盖内容区（宽屏右半）也照样铺满整屏、卡片居中**屏幕**正中；本体在宿主树里渲染 `SizedBox.shrink` |
 | 蒙版色 | 页面背景色向中灰轻掺（浅色 12%/深色 16%）再 82% 不透明——「和背景差不多但偏灰点」，不用半透明黑 scrim |
-| 挂载时机 | 帧后插浮层（构建期插会 markNeedsBuild during build）；宿主被路由压栈（TickerMode=false）不挂，回前台（didChangeDependencies）再评估——避免宿主页+分桶页各挂一张同 key 卡片 |
+| 标题热更 | 已挂载状态下 title/description 变化改为**帧后**重建浮层卡片（2026-09-15）：`didUpdateWidget` 里直接 `markNeedsBuild` 一个 root Overlay 的 entry 会踩「构建期改树」断言——物料分析级联页跑批期间逐段换标题时炸过；帧后标脏实际渲染只晚一帧，无感 |
+| 挂载时机 | 帧后插浮层（构建期插会 markNeedsBuild during build）；宿主被路由压栈（TickerMode=false）不挂，回前台（didChangeDependencies）再评估——避免宿主页+分桶页各挂一张同 key 卡片；**注意**：宿主被 opaque 整页（如 `MaterialPageRoute`）盖住时其子树整体不 build，宿主挂的遮罩不会出现——被压栈页面自己跑批时要**自挂**（级联页教训，2026-09-15） |
 | 撤下时机 | **只跟随网络调用本身**：结果弹层展示期间必须已撤下，否则弹层背后转圈、widget test 的 pumpAndSettle 永不落定（物料分析 `planSubmissionProgress` 同款教训；挂载点必须在数量确认弹窗收口后的纯网络段） |
 | 拦截 | `ModalBarrier(dismissible: false)` 吃掉蒙版层点击，不可关闭 |
 
 ## 接入方
 
-- 物料分析：`_planSubmissionOverlay`（下达车间，delegate 到本组件，语义 key 保留）、`bucketActionBusyMessage`（下达采购/委外，挂 `_notifyRoute` 分块段）
+- 物料分析：`_planSubmissionOverlay`（下达车间，delegate 到本组件，语义 key 保留）、`bucketActionBusyMessage`（下达采购/委外**与确认路线**——2026-09-15 起路线确认并入，挂 `_notifyRoute`/`_saveRoutes` 分块段）、级联整页「一键下单」跑批遮罩（2026-09-15：本页 opaque 自挂，标题逐段跟随上述两条通道）
 - 品质：批量审批页、FQC 检查单办理页、IQC 单张处置页（提交报告）
 - 仓库：IQC 批量入库页、产成品批量全量点收页、普通出库审核（stock_doc 详情）

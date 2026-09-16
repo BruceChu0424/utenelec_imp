@@ -240,12 +240,13 @@ public class ProductionReportService {
                 ReportColumn.text("productNo", "生产流水号", 130),
                 ReportColumn.text("categoryName", "类别", 100),
                 ReportColumn.text("series", "系列", 90),
+                // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
+                ReportColumn.text("goodsName", "货品名称", 180),
                 ReportColumn.text("goodsCode", "编号", 110),
+                ReportColumn.text("colorName", "颜色", 80),
                 ReportColumn.text("model", "型号", 100),
                 ReportColumn.text("customerModel", "客户型号", 100),
-                ReportColumn.text("goodsName", "货品名称", 180),
                 ReportColumn.text("spec", "规格", 140),
-                ReportColumn.text("colorName", "颜色", 80),
                 // 订货数量 = 来源销售订单行的数量快照：一张销售订单行被拆成父计划 + 多张子计划时
                 // 同一个 oqty 会重复落在多行上（明细报表全量含子计划），相加会重复计数，故不声明合计。
                 ReportColumn.number("oqty", "订货数量"),

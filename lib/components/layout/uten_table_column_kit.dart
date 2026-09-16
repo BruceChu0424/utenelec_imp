@@ -166,6 +166,112 @@ class UtenFrozenLeadingColumn extends StatelessWidget {
   }
 }
 
+/// 行尾操作列「横滚时钉在视口右缘」的通用包裹（编辑明细表删除/移出列，2026-09-15）。
+///
+/// 与 [UtenFrozenLeadingColumn] 同一套做法（同一行 Stack 上叠一份跟手副本），只是
+/// 方向相反：副本按 `offset − maxScrollExtent` 反向平移贴在视口右缘；滚到最右
+/// （副本与真实行尾格重合）时 [IgnorePointer] + 不可见，只切开关、不增删挂载。
+///
+/// 与行首列的两点差异：
+/// 1. 初始态（未滚动且已横向溢出）副本就该显示——首帧布局前读不到
+///    maxScrollExtent，挂载后帧末补一拍触发重算；
+/// 2. 定位块同样必须**整行大小**（Positioned.fill）：Transform.translate 只搬
+///    绘制、命中测试仍被父级 size 挡住，块只有行尾宽时副本画得出来却点不动。
+class UtenFrozenTrailingColumn extends StatefulWidget {
+  const UtenFrozenTrailingColumn({
+    super.key,
+    required this.horizontal,
+    required this.width,
+    required this.cell,
+    required this.row,
+  });
+
+  /// 该表的横向滚动控制器（表头用表头那只，表体用表体那只；两者本就双向同步）。
+  final ScrollController horizontal;
+
+  /// 冻结列宽（= 行尾格的宽度）。
+  final double width;
+
+  /// 冻结列的格子内容（与行尾格同一份构建结果，须自带不透明底色）。
+  final Widget cell;
+
+  /// 整行（尾格照常在内）。
+  final Widget row;
+
+  @override
+  State<UtenFrozenTrailingColumn> createState() =>
+      _UtenFrozenTrailingColumnState();
+}
+
+class _UtenFrozenTrailingColumnState extends State<UtenFrozenTrailingColumn> {
+  /// 帧末补一拍：首帧布局后 maxScrollExtent 才可用（初始未滚动也要显示副本）。
+  final ValueNotifier<int> _extentTick = ValueNotifier<int>(0);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _extentTick.value++;
+    });
+  }
+
+  @override
+  void dispose() {
+    _extentTick.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        widget.row,
+        // ⚠️ 定位块必须是**整行大小**（Positioned.fill），与行首冻结列同因：
+        // Transform.translate 只搬绘制、命中测试仍被父级 size 挡住，块只有行尾
+        // 宽时平移后的副本画得出来却点不动。
+        Positioned.fill(
+          child: AnimatedBuilder(
+            animation: Listenable.merge([widget.horizontal, _extentTick]),
+            builder: (_, child) {
+              final controller = widget.horizontal;
+              final position =
+                  controller.hasClients && controller.positions.length == 1
+                  ? controller.position
+                  : null;
+              final hasExtent =
+                  position != null && position.hasContentDimensions;
+              final maxExtent = hasExtent ? position.maxScrollExtent : 0.0;
+              final dx = hasExtent ? position.pixels : 0.0;
+              // 未产生横向溢出（maxExtent=0）或已滚到最右：副本与真实尾格重合，隐藏。
+              final frozen = maxExtent > 0.5 && dx < maxExtent - 0.5;
+              return IgnorePointer(
+                ignoring: !frozen,
+                child: Visibility(
+                  visible: frozen,
+                  child: Transform.translate(
+                    // 视口右缘在行坐标系里的位置 = dx − maxScrollExtent
+                    //（负值 = 整体左移，把行尾格拉回视口右缘）。
+                    offset: Offset(dx - maxExtent, 0),
+                    child: Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: SizedBox(
+                        width: widget.width,
+                        height: double.infinity,
+                        child: child,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+            child: widget.cell,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// 一个待选列：[key]（稳定标识）、[label]（展示名）、[required]（必填锁定）。
 class UtenColumnChooserEntry {
   const UtenColumnChooserEntry({

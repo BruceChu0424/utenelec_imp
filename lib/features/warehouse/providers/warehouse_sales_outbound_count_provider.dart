@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/auth/permissions.dart';
 import '../repositories/warehouse_sales_outbound_repository.dart';
 
-/// 销售出库待办计数（出库任务中心分段/汇总角标）：未交接出库的财务放行单，
+/// 销售出库待办计数（出库任务中心分段/汇总角标）：尚未确认出库的财务放行单，
 /// 与仓库销售出库列表同一读范围；60s 轮询 + 返回任务中心时由页面主动失效重拉。
 // 徽章计数 provider 一律**常驻**（不 autoDispose）——2026-09-11 用户反馈：
 // 仓库/品质的徽章「进页面要等一会才出现」「冒出来又消失又冒出来」，而采购点进去就有。

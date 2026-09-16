@@ -21,6 +21,10 @@ import '../providers/production_execution_refresh.dart';
 import '../repositories/production_material_repository.dart';
 import 'production_material_return_request_sheet.dart';
 
+/// [canRequestReturn] 与 [canSettle] 分开传(V583)：车间任务页的实耗登记已经搬到
+/// 报工页，这里 `canSettle: false` 降级成只读台账；但「撤回退仓申请」必须留着——
+/// 退料单一旦填错数量就只能撤回重提，把它和登记入口一起关掉等于把人锁死。
+/// 不传时沿用 [canSettle](计划详情页的管理侧入口两者本来就同开同关)。
 Future<bool?> showProductionMaterialSettlementSheet(
   BuildContext context,
   WidgetRef ref, {
@@ -29,6 +33,7 @@ Future<bool?> showProductionMaterialSettlementSheet(
   required bool canSettle,
   required bool canReverse,
   required bool canClose,
+  bool? canRequestReturn,
 }) {
   return showUtenAdaptivePanel<bool>(
     context: context,
@@ -46,6 +51,7 @@ Future<bool?> showProductionMaterialSettlementSheet(
       canSettle: canSettle,
       canReverse: canReverse,
       canClose: canClose,
+      canRequestReturn: canRequestReturn ?? canSettle,
     ),
   );
 }
@@ -93,6 +99,7 @@ class _MaterialSettlementSheet extends ConsumerStatefulWidget {
     required this.canSettle,
     required this.canReverse,
     required this.canClose,
+    required this.canRequestReturn,
   });
 
   final String planId;
@@ -100,6 +107,7 @@ class _MaterialSettlementSheet extends ConsumerStatefulWidget {
   final bool canSettle;
   final bool canReverse;
   final bool canClose;
+  final bool canRequestReturn;
 
   @override
   ConsumerState<_MaterialSettlementSheet> createState() =>
@@ -125,7 +133,8 @@ class _MaterialSettlementSheetState
   bool get _canRegister => _canSettle && _grid.rows.isNotEmpty;
   bool get _canReverse => widget.canReverse && _capabilities.canReverse;
   bool get _canClose => widget.canClose && _capabilities.canClose;
-  bool get _canReturn => widget.canSettle && _capabilities.canRequestReturn;
+  bool get _canReturn =>
+      widget.canRequestReturn && _capabilities.canRequestReturn;
   bool _loading = true;
   bool _busy = false;
   bool _closed = false;

@@ -40,6 +40,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_form_grid.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -160,6 +161,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   final _grid = UtenEditableGridController<SalesGridRow>();
   final _scrollCtl = ScrollController();
 
+  /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
+  final _gridPinned = ValueNotifier<bool>(false);
+
   /// 网格底部「总数量」实时汇总（行增删/数量改动时刷新）。
   final _totalQtyNotifier = ValueNotifier<double>(0);
 
@@ -242,6 +246,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   @override
   void dispose() {
     _grid.removeListener(_onGridRowsChanged);
+    _gridPinned.dispose();
     for (final c in _qtyListened) {
       c.removeListener(_recalcQtyTotal);
     }
@@ -581,6 +586,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       _grid.addRows(extraRows);
     }
     _recalcQtyTotal();
+    // 选了货品 = 「有内容」：驱动右下保存按钮从灰转红（2026-09-14 口径）。
+    if (mounted) setState(() {});
   }
 
   /// 实物出入库单据（出货/其它出货/退货）：按货品主档补全各行库位号（拣货/上架指引）。
@@ -894,6 +901,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       ..clear()
       ..addAll(current);
     _recalcQtyTotal();
+    // 行增删/引入同样驱动「有内容」判定（保存按钮灰→红）。
+    if (mounted) setState(() {});
   }
 
   /// 仅用作 footer 刷新信号；展示值由 footer 按 unitId 分组重算，绝不跨单位相加。
@@ -904,6 +913,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     }
     _totalQtyNotifier.value = sum;
   }
+
+  /// 明细里是否已有内容（至少一行选了货品）——右下保存按钮灰/红的判定。
+  bool get _hasGoodsRows => _grid.rows.any((r) => r.goods != null);
 
   /// 必填校验：返回第一条错误文案；并把未填的表头字段记入 [_errors]（红框）、
   /// 不合格明细行打红标。通过则返回 null（并清除旧标记）。
@@ -1453,10 +1465,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                     actionLabel: '重试',
                     onAction: _init,
                   )
-                : UtenContentContainer(
-                    child: Scrollbar(
-                      controller: _scrollCtl,
-                      thumbVisibility: true,
+                : UtenGridPageScrollbar(
+                    pinned: _gridPinned,
+                    controller: _scrollCtl,
+                    // 滚动条贴屏幕右缘（2026-09-15）：Scrollbar 包装在内容容器之外，
+                    // 视口右缘窄条恒在屏幕最右，不随限宽容器/列宽漂移。
+                    child: UtenContentContainer(
                       child: ListView(
                         controller: _scrollCtl,
                         // 底部多留一个悬浮动作组的高度，否则明细表最后一行被「取消/保存」压住。
@@ -2084,6 +2098,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                               )[widget.docType.name];
                               return UtenEditableGrid<SalesGridRow>(
                                 controller: _grid,
+                                stickyHeaderPinned: _gridPinned,
                                 columns: salesGridColumns(
                                   context: context,
                                   freeCustomerShipment: _freeCustomerShipment,
@@ -2134,7 +2149,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                                 'sales-edit-totals',
                                               ),
                                               density: true,
-                                              showDivider: false,
                                               entries: [
                                                 utenQuantityTotalEntry(
                                                   _grid.rows
@@ -2183,6 +2197,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         ),
         // 加载中/初始化失败时不给保存入口（与原底部操作条同一显隐口径）。
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
         floatingActionButton: _loading || _initializationError != null
             ? null
             : UtenEditFloatingActions(
@@ -2190,7 +2205,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                     ? null
                     : () =>
                           popOrBackTo(context, defaultPath: SalesRoutePath.hub),
-                onSave: _save,
+                // 2026-09-14 口径：没选货品（无内容）保存按钮置灰，点了提示原因；
+                // 有内容才转红可点——与财审页「未选中灰/选中红」同款。
+                onSave: _hasGoodsRows || _uncertainShipmentBody != null
+                    ? _save
+                    : null,
+                saveDisabledHint: _uncertainShipmentBody != null
+                    ? null
+                    : '请先在明细表选择货品',
                 saving: _saving,
                 saveLabel: _uncertainShipmentBody != null ? '重试确认开单' : '保存',
               ),

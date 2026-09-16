@@ -40,7 +40,11 @@ public final class RdTaskContracts {
             OffsetDateTime createdAt,
             String closeNote,
             long rowVersion,
-            List<String> allowedActions) {
+            List<String> allowedActions,
+            // 货品身份三件套（名称+编号+颜色）缺一就会认错货：同名货品常按颜色分行
+            // （「白色/香槟金」）。颜色取 goods.color_id 主档色，rd_tasks 自身不存颜色。
+            // 新字段追加在末尾，不打乱既有位置构造。
+            String colorName) {
         public RdTaskRow {
             allowedActions = allowedActions == null ? List.of() : List.copyOf(allowedActions);
         }

@@ -194,7 +194,8 @@ class _ProductionFinishedBatchStockInPageState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            '按每张单全部待点收数量原子入库；短收、拒收请取消并逐单进入确认。',
+            '默认全选。本次不入库的单据取消勾选即可移出本批（不会提交、仍留在待点收）；'
+            '勾中的按每张单全部待点收数量原子入库，短收、拒收请逐单进入确认。',
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: UtenSpacing.s8),

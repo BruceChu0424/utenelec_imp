@@ -32,6 +32,10 @@ public record GoodsQueryFilter(
         // stub/禁用隔离（货品资料页集合行 + 滑窗隐藏 stub）
         Boolean excludeStub,    // 滑窗用：排除 auto_created=true 的兜底货品
         Boolean disabledOnly,   // 货品页"禁用货品集合"用：只看 status='禁用'
-        Boolean stubOnly        // 货品页"不明货品集合"用：只看 auto_created=true
+        Boolean stubOnly,       // 货品页"不明货品集合"用：只看 auto_created=true
+        // V587/V590 归属筛选（表头下拉，值为 UUID；空值走 nullFields 的
+        // owningWarehouse/owningWorkshop 两个键，与表头筛选键同名）
+        UUID owningWarehouse,
+        UUID owningWorkshop
 ) {
 }

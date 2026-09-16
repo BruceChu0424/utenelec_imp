@@ -18,6 +18,7 @@ import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -100,16 +101,24 @@ class FqcReportRow {
   double get passValue => double.tryParse(pass.text.trim()) ?? 0;
   double get failValue => double.tryParse(fail.text.trim()) ?? 0;
 
-  /// null = 校验通过；否则为错误文案。
-  String? validate() {
+  /// null = 校验通过；否则 [message] 进行内红字、[category] 供批量提交按问题
+  /// 归类汇总（合计超量的文案带本行待检量，按文案分组会分成几十组）。
+  ({String category, String message})? get problem {
     final remaining = inspection.remainingQty;
-    if (passValue < 0 || failValue < 0) return '数量不能为负';
-    if (passValue + failValue <= 0) return '合格与不合格不能同时为 0';
+    if (passValue < 0 || failValue < 0) {
+      return (category: '数量为负', message: '数量不能为负');
+    }
+    if (passValue + failValue <= 0) {
+      return (category: '合格与不合格同时为 0', message: '合格与不合格不能同时为 0');
+    }
     if (passValue + failValue > remaining + 1e-9) {
-      return '合计不能超过待检 ${fqty(remaining)}';
+      return (category: '合计超过待检数量', message: '合计不能超过待检 ${fqty(remaining)}');
     }
     return null;
   }
+
+  /// null = 校验通过；否则为错误文案。
+  String? validate() => problem?.message;
 
   /// 由两个数量推导决定类型：纯合格 PASS、纯不合格 FAIL、混合 PARTIAL。
   ({String decision, double? passQty, double? failQty}) get command =>
@@ -152,6 +161,14 @@ String _fqcTotalsText(
     for (final entry in byUnit.entries)
       '${fqty(entry.value)}${entry.key.isEmpty ? '' : ' ${entry.key}'}',
   ].join(' · ');
+}
+
+/// 批量校验的问题行清单：最多列前 8 条，其余折成「等 N 行」——顶部通知里十几条
+/// 会刷屏，前几条足够定位，改完再提交剩下的还会继续提示。
+String _joinRowLabels(List<String> labels) {
+  const limit = 8;
+  final shown = labels.take(limit).join('；');
+  return labels.length <= limit ? shown : '$shown 等 ${labels.length} 行';
 }
 
 /// ———————————————————— 检查单办理页（V547 一单一页） ————————————————————
@@ -235,12 +252,23 @@ class _ProductionFqcSheetHandlingPageState
       context.appWarning('请先勾选要提交的明细行');
       return;
     }
+    // 一次可勾十几行：问题行按类别收齐后一次讲完，逐行 return 只暴露第一行，
+    // 用户改一行提交一次。行内红字本就对每行常亮，这里只补「还差哪几行」。
+    final problems = <String, List<String>>{};
     for (final row in selected) {
-      final problem = row.validate();
-      if (problem != null) {
-        context.appWarning('${row.label}：$problem');
-        return;
-      }
+      final problem = row.problem;
+      if (problem == null) continue;
+      problems.putIfAbsent(problem.category, () => <String>[]).add(row.label);
+    }
+    if (problems.isNotEmpty) {
+      context.appWarning(
+        [
+          for (final entry in problems.entries)
+            '以下 ${entry.value.length} 行${entry.key}，请改正后再提交：'
+                '${_joinRowLabels(entry.value)}',
+        ].join('\n'),
+      );
+      return;
     }
     final hasFail = selected.any((row) => row.failValue > 0);
     final reason = await showInspectionReportConfirmDialog(
@@ -596,15 +624,24 @@ class _ProductionFqcSheetHandlingPageState
       width: 150,
       value: (row) => row.inspection.planNo ?? '—',
     ),
+    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。同名不同
+    // 编号的自制成品很常见（V5 插面既有自制件也有委外件），只看名称会把检验
+    // 结果登到错的货上；颜色/单位本表本来就有独立列。
     MasterColumnDef<FqcReportRow>(
       key: 'goods',
-      label: '货品',
-      width: 220,
-      value: (row) => [
-        row.inspection.goodsName,
-        if (row.inspection.goodsCode?.isNotEmpty == true)
-          '(${row.inspection.goodsCode})',
-      ].whereType<String>().join(),
+      label: '货品名称',
+      width: 200,
+      value: (row) => row.inspection.goodsName ?? '—',
+      cellBuilderHandlesSemantics: true,
+      cellBuilder: (_, row) =>
+          UtenGoodsIdentityCell(name: row.inspection.goodsName),
+    ),
+    MasterColumnDef<FqcReportRow>(
+      key: 'goodsCode',
+      label: '编号',
+      width: 130,
+      value: (row) => UtenGoodsAttributeCell.text(row.inspection.goodsCode),
+      cellBuilder: (_, row) => UtenGoodsAttributeCell(row.inspection.goodsCode),
     ),
     MasterColumnDef<FqcReportRow>(
       key: 'colorName',
@@ -918,6 +955,7 @@ class _ProductionFqcInspectionPageState
         ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _canDecide && _row != null
           ? UtenFloatingActionGroup(
               children: [
@@ -1007,11 +1045,32 @@ class _ProductionFqcInspectionPageState
                   width: 150,
                   value: (row) => row.planNo,
                 ),
+                // 身份格：本卡无独立编号/颜色列，名称、编号、颜色三属性合并一格，
+                // 办理前一眼确认「同名不同色」的是不是手上这批货。
                 MasterColumnDef<_FactRow>(
                   key: 'goods',
-                  label: '货品',
-                  width: 220,
-                  value: (row) => row.goods,
+                  label: '货品名称',
+                  width: 200,
+                  value: (row) => row.goodsName ?? '—',
+                  cellBuilderHandlesSemantics: true,
+                  cellBuilder: (_, row) =>
+                      UtenGoodsIdentityCell(name: row.goodsName),
+                ),
+                MasterColumnDef<_FactRow>(
+                  key: 'goodsCode',
+                  label: '编号',
+                  width: 130,
+                  value: (row) => UtenGoodsAttributeCell.text(row.goodsCode),
+                  cellBuilder: (_, row) =>
+                      UtenGoodsAttributeCell(row.goodsCode),
+                ),
+                MasterColumnDef<_FactRow>(
+                  key: 'colorName',
+                  label: '颜色',
+                  width: 96,
+                  value: (row) => UtenGoodsAttributeCell.text(row.colorName),
+                  cellBuilder: (_, row) =>
+                      UtenGoodsAttributeCell(row.colorName),
                 ),
                 MasterColumnDef<_FactRow>(
                   key: 'sheetNo',
@@ -1053,12 +1112,9 @@ class _ProductionFqcInspectionPageState
               items: [
                 _FactRow(
                   planNo: inspection.planNo ?? '—',
-                  goods: [
-                    inspection.goodsCode,
-                    inspection.goodsName,
-                    if (inspection.colorName?.isNotEmpty == true)
-                      '(${inspection.colorName})',
-                  ].whereType<String>().join(' '),
+                  goodsName: inspection.goodsName,
+                  goodsCode: inspection.goodsCode,
+                  colorName: inspection.colorName,
                   sheetNo: inspection.sheetNo ?? '无检查单',
                   warehouse: inspection.warehouseName ?? '—',
                   place: inspection.place ?? '—',
@@ -1120,14 +1176,35 @@ class _ProductionFqcInspectionPageState
               embedded: true,
               showColumnChooser: false,
               columns: [
+                // 决定表原来只有名称：本表没有编号/颜色列，判定合格与不合格前
+                // 必须能分清「同名不同色」的两条（自制白色 / 委外香槟金），
+                // 故名称 + 编号 + 颜色合并进身份格（单位另有独立列）。
                 MasterColumnDef(
                   key: 'goods',
-                  label: '货品',
+                  label: '货品名称',
                   width: 200,
+                  value: (row) => row.inspection.goodsName ?? '—',
+                  cellBuilderHandlesSemantics: true,
+                  cellBuilder: (_, row) =>
+                      UtenGoodsIdentityCell(name: row.inspection.goodsName),
+                ),
+                MasterColumnDef(
+                  key: 'goodsCode',
+                  label: '编号',
+                  width: 130,
                   value: (row) =>
-                      row.inspection.goodsName ??
-                      row.inspection.goodsCode ??
-                      '—',
+                      UtenGoodsAttributeCell.text(row.inspection.goodsCode),
+                  cellBuilder: (_, row) =>
+                      UtenGoodsAttributeCell(row.inspection.goodsCode),
+                ),
+                MasterColumnDef(
+                  key: 'colorName',
+                  label: '颜色',
+                  width: 96,
+                  value: (row) =>
+                      UtenGoodsAttributeCell.text(row.inspection.colorName),
+                  cellBuilder: (_, row) =>
+                      UtenGoodsAttributeCell(row.inspection.colorName),
                 ),
                 MasterColumnDef(
                   key: 'pass',
@@ -1302,7 +1379,9 @@ class _ProductionFqcInspectionPageState
 class _FactRow {
   const _FactRow({
     required this.planNo,
-    required this.goods,
+    required this.goodsName,
+    required this.goodsCode,
+    required this.colorName,
     required this.sheetNo,
     required this.warehouse,
     required this.place,
@@ -1312,7 +1391,11 @@ class _FactRow {
   });
 
   final String planNo;
-  final String goods;
+
+  /// 货品身份三件套（未维护时为空，身份格自然省略，不显示「无」这类占位词）。
+  final String? goodsName;
+  final String? goodsCode;
+  final String? colorName;
   final String sheetNo;
   final String warehouse;
   final String place;

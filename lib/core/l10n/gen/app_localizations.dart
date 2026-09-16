@@ -6742,7 +6742,7 @@ abstract class AppLocalizations {
   /// No description provided for @warehouseOutboundBatchHint.
   ///
   /// In zh, this message translates to:
-  /// **'请逐项核对所选单据的货品、数量、单位、仓库与建议库位；确认后办理当前作业阶段。'**
+  /// **'请逐项核对所选单据的货品、数量、单位、仓库与实际库位；确认后一次性出库。'**
   String get warehouseOutboundBatchHint;
 
   /// No description provided for @warehouseOutboundBatchConfirm.
@@ -6817,11 +6817,11 @@ abstract class AppLocalizations {
   /// **'处理说明'**
   String get warehouseOutboundBatchReason;
 
-  /// No description provided for @warehouseOutboundBatchReasonRequired.
+  /// No description provided for @warehouseOutboundConfirmShipment.
   ///
   /// In zh, this message translates to:
-  /// **'请填写具体说明'**
-  String get warehouseOutboundBatchReasonRequired;
+  /// **'确认出库'**
+  String get warehouseOutboundConfirmShipment;
 
   /// No description provided for @warehouseOutboundBillNo.
   ///
@@ -6924,30 +6924,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'来源订单'**
   String get warehouseOutboundSourceOrder;
-
-  /// No description provided for @warehouseOutboundStartPicking.
-  ///
-  /// In zh, this message translates to:
-  /// **'开始拣货'**
-  String get warehouseOutboundStartPicking;
-
-  /// No description provided for @warehouseOutboundFinishPicking.
-  ///
-  /// In zh, this message translates to:
-  /// **'拣货完成'**
-  String get warehouseOutboundFinishPicking;
-
-  /// No description provided for @warehouseOutboundHandOver.
-  ///
-  /// In zh, this message translates to:
-  /// **'交接出库'**
-  String get warehouseOutboundHandOver;
-
-  /// No description provided for @warehouseOutboundRestorePending.
-  ///
-  /// In zh, this message translates to:
-  /// **'恢复待拣货'**
-  String get warehouseOutboundRestorePending;
 
   /// No description provided for @warehouseStockOutboundTitle.
   ///

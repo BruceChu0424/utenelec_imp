@@ -100,8 +100,8 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
 }
 
 /// 仓库明细列。
-/// - isCheck=false：货品 / 编码 / 系列 / 库位 / 颜色 / 单位 / 数量 / 实际重量。
-/// - isCheck=true：货品 / 编码 / 系列 / 库位 / 颜色 / 单位 / 账面 / 实盘 / 盘盈亏(自动)。
+/// - isCheck=false：货品 / 编码 / 颜色 / 系列 / 库位 / 单位 / 数量 / 实际重量。
+/// - isCheck=true：货品 / 编码 / 颜色 / 系列 / 库位 / 单位 / 账面 / 实盘 / 盘盈亏(自动)。
 ///
 /// [onPickGoods] 由编辑页提供（弹货品选择器并写回 row.goods）。
 List<EditableGridColumn<StockGridRow>> stockGridColumns(
@@ -112,7 +112,9 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
   return [
     EditableGridColumn<StockGridRow>(
       key: 'goods',
-      label: '货品',
+      // 2026-09-14 全站列头统一：名称列叫「货品名称」（编号/颜色本表本来就
+      // 各有独立列，顺序也已是 名称 → 编号 → 颜色）。
+      label: '货品名称',
       width: 200,
       required: true,
       textOf: (r) => r.goods?.name ?? '',
@@ -153,11 +155,24 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
     // 无变更通知器可挂——只给 textOf（行集变化时整体量宽），不接实时加宽。
     EditableGridColumn<StockGridRow>(
       key: 'code',
-      label: '物料编码',
+      label: '编号',
       width: 110,
       textOf: (r) => r.goodsCode ?? '',
       cellBuilder: (context, row) => Text(
         row.goodsCode ?? '—',
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      ),
+    ),
+    // 颜色原排在系列/库位号之后：同名不同色的物料（自制白色 / 委外香槟金）录单时
+    // 极易选错，编号与颜色必须紧跟货品列同屏可见，故上移到编码之后。
+    // 已有独立颜色列，货品列就不再重复带颜色。
+    EditableGridColumn<StockGridRow>(
+      key: 'color',
+      label: '颜色',
+      width: 80,
+      textOf: (r) => r.colorName ?? '',
+      cellBuilder: (context, row) => Text(
+        row.colorName ?? '—',
         style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
     ),
@@ -178,16 +193,6 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
       textOf: (r) => r.goodsStockPlace ?? '',
       cellBuilder: (context, row) => Text(
         row.goodsStockPlace ?? '—',
-        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-      ),
-    ),
-    EditableGridColumn<StockGridRow>(
-      key: 'color',
-      label: '颜色',
-      width: 80,
-      textOf: (r) => r.colorName ?? '',
-      cellBuilder: (context, row) => Text(
-        row.colorName ?? '—',
         style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
     ),

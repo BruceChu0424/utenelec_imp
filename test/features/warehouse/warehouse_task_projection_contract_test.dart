@@ -12,7 +12,7 @@ void main() {
   test('warehouse sales projection ignores every commercial key', () {
     final detail = WarehouseSalesOutboundDetail.fromJson(_salesJson);
     expect(detail.header.billNo, 'XS-001');
-    expect(detail.header.statusLabel, '待拣货');
+    expect(detail.header.statusLabel, '待出库');
     expect(detail.lines.single.quantity, '10.0000');
     expect(detail.lines.single.currentStockPlaceHint, 'A01-01');
 
@@ -52,19 +52,22 @@ void main() {
       await sales.list(
         page: 2,
         keyword: ' XS ',
-        warehouseWorkStatus: WarehouseSalesOutboundStatus.picking,
+        warehouseWorkStatus: WarehouseSalesOutboundStatus.pendingPick,
       );
       expect(api.lastPath, '/warehouse/sales-outbound');
-      expect(api.lastQuery, containsPair('warehouseWorkStatus', 'PICKING'));
+      expect(
+        api.lastQuery,
+        containsPair('warehouseWorkStatus', 'PENDING_PICK'),
+      );
       await sales.transition(
         'sales-1',
-        targetStatus: WarehouseSalesOutboundStatus.exception,
-        reason: '  包装破损  ',
+        targetStatus: WarehouseSalesOutboundStatus.shipped,
+        reason: '  包装已复核  ',
       );
       expect(api.lastPath, '/warehouse/sales-outbound/sales-1/warehouse-work');
       expect(api.lastBody, <String, dynamic>{
-        'targetStatus': 'EXCEPTION',
-        'reason': '包装破损',
+        'targetStatus': 'SHIPPED',
+        'reason': '包装已复核',
       });
 
       await iqc.recordReturn(
@@ -91,7 +94,7 @@ const Map<String, dynamic> _salesJson = <String, dynamic>{
   'clientName': '示例客户',
   'warehouseName': '成品仓',
   'warehouseWorkStatus': 'PENDING_PICK',
-  'allowedWarehouseTargets': ['PICKING', 'EXCEPTION'],
+  'allowedWarehouseTargets': ['SHIPPED'],
   'shipAddress': '收货地址',
   'contactPhone': '13800000000',
   'totalLocal': '999999.99',

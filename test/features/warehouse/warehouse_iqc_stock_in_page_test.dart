@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/filter_segment_tap.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_iqc_stock_in.dart';
@@ -118,9 +120,9 @@ void main() {
       await tester.pumpAndSettle();
       // 2026-09-03 分类范式：来源/状态默认不选（未选不发请求），
       // 先选来源（采购收货）再选状态（等待结果）才渲染表格。
-      await tester.tap(find.text('采购收货').last);
+      await selectFilterSegment(tester, '采购收货');
       await tester.pumpAndSettle();
-      await tester.tap(find.text('等待结果').last);
+      await selectFilterSegment(tester, '等待结果');
       await tester.pumpAndSettle();
 
       final table = tester

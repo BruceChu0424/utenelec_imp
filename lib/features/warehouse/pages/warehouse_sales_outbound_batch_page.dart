@@ -8,7 +8,6 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
-import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsible_section.dart';
@@ -48,12 +47,12 @@ class WarehouseSalesOutboundBatchPage extends ConsumerStatefulWidget {
 
 class _WarehouseSalesOutboundBatchPageState
     extends ConsumerState<WarehouseSalesOutboundBatchPage> {
+  /// 选填统一出库备注，随每张单的出库事件留证。
   final _reason = TextEditingController();
   List<WarehouseSalesOutboundDetail>? _details;
   final Set<String> _completed = {};
   String? _failedId;
   String? _error;
-  String? _reasonError;
   bool _loading = true;
   bool _saving = false;
   bool _confirming = false;
@@ -144,19 +143,13 @@ class _WarehouseSalesOutboundBatchPageState
       return;
     }
     final l10n = _l10n;
-    if (widget.action == WarehouseSalesOutboundAction.startPicking) {
-      final valid = _picking.values
-          .map((draft) => draft.validate())
-          .toList()
-          .every((value) => value);
-      if (!valid) {
-        setState(() {});
-        context.appWarning('请逐单核对实际发货仓库');
-        return;
-      }
-    }
-    if (widget.action.requiresReason && _reason.text.trim().isEmpty) {
-      setState(() => _reasonError = l10n.warehouseOutboundBatchReasonRequired);
+    final valid = _picking.values
+        .map((draft) => draft.validate())
+        .toList()
+        .every((value) => value);
+    if (!valid) {
+      setState(() {});
+      context.appWarning('请逐单核对实际发货仓库');
       return;
     }
     // Busy before the dialog also prevents two confirmations from rapid taps.
@@ -219,16 +212,11 @@ class _WarehouseSalesOutboundBatchPageState
           final updated = await repository.transition(
             reviewed.header.id,
             targetStatus: widget.action.targetStatus,
-            reason: widget.action.requiresReason ? _reason.text.trim() : null,
-            warehouseId:
-                widget.action == WarehouseSalesOutboundAction.startPicking &&
-                    reviewed.canSelectWarehouse
+            reason: _reason.text.trim(),
+            warehouseId: reviewed.canSelectWarehouse
                 ? _picking[reviewed.header.id]?.warehouseId
                 : null,
-            stockPlaces:
-                widget.action == WarehouseSalesOutboundAction.startPicking
-                ? _picking[reviewed.header.id]?.stockPlaces
-                : null,
+            stockPlaces: _picking[reviewed.header.id]?.stockPlaces,
           );
           if (updated.header.id != reviewed.header.id ||
               updated.header.warehouseWorkStatus !=
@@ -293,6 +281,7 @@ class _WarehouseSalesOutboundBatchPageState
           ],
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
         floatingActionButton: UtenFloatingActionGroup(
           children: [
             if (_failedId != null)
@@ -379,27 +368,18 @@ class _WarehouseSalesOutboundBatchPageState
                                   style: Theme.of(context).textTheme.titleSmall
                                       ?.copyWith(fontWeight: FontWeight.w700),
                                 ),
-                                if (widget.action.requiresReason) ...[
-                                  const SizedBox(height: UtenSpacing.s12),
-                                  TextField(
-                                    controller: _reason,
-                                    readOnly: _attempted,
-                                    maxLength: 1000,
-                                    onChanged: (_) =>
-                                        setState(() => _reasonError = null),
-                                    decoration: UtenInputDecoration(
-                                      InputDecoration(
-                                        labelText:
-                                            l10n.warehouseOutboundBatchReason,
-                                        error: _reasonError == null
-                                            ? null
-                                            : UtenFieldMessage.error(
-                                                _reasonError!,
-                                              ),
-                                      ),
+                                const SizedBox(height: UtenSpacing.s12),
+                                TextField(
+                                  controller: _reason,
+                                  readOnly: _attempted,
+                                  maxLength: 500,
+                                  decoration: UtenInputDecoration(
+                                    InputDecoration(
+                                      labelText:
+                                          l10n.warehouseOutboundBatchReason,
                                     ),
                                   ),
-                                ],
+                                ),
                                 const SizedBox(height: UtenSpacing.s12),
                                 Expanded(
                                   child: MasterDataTableView<WarehouseSalesOutboundTableRow>(
@@ -413,14 +393,9 @@ class _WarehouseSalesOutboundBatchPageState
                                       warehouseNameOf: (row) =>
                                           _picking[row.detail.header.id]
                                               ?.warehouseName,
-                                      stockPlaceControllerOf:
-                                          widget.action ==
-                                              WarehouseSalesOutboundAction
-                                                  .startPicking
-                                          ? (row) =>
-                                                _picking[row.detail.header.id]
-                                                    ?.places[row.line.id]
-                                          : null,
+                                      stockPlaceControllerOf: (row) =>
+                                          _picking[row.detail.header.id]
+                                              ?.places[row.line.id],
                                       editingEnabled:
                                           !_attempted &&
                                           !_saving &&
@@ -522,8 +497,7 @@ class _WarehouseSalesOutboundBatchPageState
                 style: theme.textTheme.bodyMedium,
               ),
             ),
-          if (widget.action == WarehouseSalesOutboundAction.startPicking &&
-              _picking[detail.header.id] != null) ...[
+          if (_picking[detail.header.id] != null) ...[
             const SizedBox(height: UtenSpacing.s12),
             WarehouseSalesPickingFields(
               draft: _picking[detail.header.id]!,

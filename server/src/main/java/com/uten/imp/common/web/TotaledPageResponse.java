@@ -3,6 +3,7 @@ package com.uten.imp.common.web;
 import com.uten.imp.common.report.ReportTotal;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 带「表格下方合计」的分页响应（{@link PageResponse} + {@code totals}）。
@@ -22,12 +23,43 @@ public class TotaledPageResponse<T> extends PageResponse<T> {
 
     private final List<ReportTotal> totals;
 
+    /** 表头筛选桶（可选；null=本端点无 facet，JSON 不输出，老客户端零感知）。 */
+    private final Map<String, List<FacetBucket>> facets;
+
+    /** 各 facet 字段的空值行数（可选；供 "(空)(N)" 桶，与 facets 成对出现）。 */
+    private final Map<String, Long> facetNullCounts;
+
     public TotaledPageResponse(PageResponse<T> page, List<ReportTotal> totals) {
+        this(page, totals, null, null);
+    }
+
+    public TotaledPageResponse(PageResponse<T> page, List<ReportTotal> totals,
+                               Map<String, List<FacetBucket>> facets) {
+        this(page, totals, facets, null);
+    }
+
+    public TotaledPageResponse(PageResponse<T> page, List<ReportTotal> totals,
+                               Map<String, List<FacetBucket>> facets,
+                               Map<String, Long> facetNullCounts) {
         super(page.getItems(), page.getPage(), page.getSize(), page.getTotal(), page.getTotalPages());
         this.totals = totals == null ? List.of() : List.copyOf(totals);
+        this.facets = facets;
+        this.facetNullCounts = facetNullCounts;
     }
 
     public List<ReportTotal> getTotals() {
         return totals;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonInclude(
+            com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public Map<String, List<FacetBucket>> getFacets() {
+        return facets;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonInclude(
+            com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public Map<String, Long> getFacetNullCounts() {
+        return facetNullCounts;
     }
 }

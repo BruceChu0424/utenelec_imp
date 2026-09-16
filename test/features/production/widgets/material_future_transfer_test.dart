@@ -71,7 +71,10 @@ void main() {
         find.byKey(const Key('future-transfer-candidate-allocation-2')),
       );
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('future-transfer-accept-late')), findsNothing);
+      expect(
+        find.byKey(const Key('future-transfer-accept-late')),
+        findsNothing,
+      );
       await tester.enterText(
         find.byKey(const Key('cross-reallocation-reason')),
         '同意延后供给',

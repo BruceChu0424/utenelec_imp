@@ -15,46 +15,34 @@ const Set<String> warehouseSalesOutboundForbiddenKeys = {
   'arPosted',
 };
 
+/// V582 起仓库只有两个有效态：财务放行后的「待出库」和确认出库后的「已出库」。
+/// 历史单据仍可能带着已退役的 PICKING/PICKED/EXCEPTION 字符串，label 用兜底分支
+/// 原样显示，不把未知值伪装成已知状态。
 abstract final class WarehouseSalesOutboundStatus {
   static const pendingPick = 'PENDING_PICK';
-  static const picking = 'PICKING';
-  static const picked = 'PICKED';
-  static const exception = 'EXCEPTION';
   static const shipped = 'SHIPPED';
 
   static String label(String? value) => switch (value?.trim().toUpperCase()) {
-    pendingPick => '待拣货',
-    picking => '拣货中',
-    picked => '已拣货，待交接',
-    exception => '仓库异常',
-    shipped => '已交接出库',
+    pendingPick => '待出库',
+    shipped => '已出库',
     _ => value?.trim().isNotEmpty == true ? value!.trim() : '状态未知',
   };
 
   static String nextStep(String? value) =>
       switch (value?.trim().toUpperCase()) {
-        pendingPick => '核对实物与库位后开始拣货',
-        picking => '完成逐项拣货，或如实登记异常',
-        picked => '核对交接后完成正式出库',
-        exception => '处理异常并填写说明后恢复待拣货',
-        shipped => '已完成仓库交接',
+        pendingPick => '核对货品、数量与库位后确认出库',
+        shipped => '已完成出库',
         _ => '请刷新后按服务端允许动作处理',
       };
 }
 
 enum WarehouseSalesOutboundAction {
-  startPicking(WarehouseSalesOutboundStatus.picking, '开始拣货'),
-  finishPicking(WarehouseSalesOutboundStatus.picked, '拣货完成'),
-  reportException(WarehouseSalesOutboundStatus.exception, '登记异常'),
-  restorePending(WarehouseSalesOutboundStatus.pendingPick, '恢复待拣货'),
-  handOver(WarehouseSalesOutboundStatus.shipped, '交接出库');
+  confirmShipment(WarehouseSalesOutboundStatus.shipped, '确认出库');
 
   const WarehouseSalesOutboundAction(this.targetStatus, this.label);
 
   final String targetStatus;
   final String label;
-
-  bool get requiresReason => this == reportException || this == restorePending;
 }
 
 class WarehouseSalesOutboundSummary {
@@ -110,10 +98,7 @@ class WarehouseSalesOutboundDetail {
     this.logisticsNo,
     this.parcelCount,
     this.warehouseWorkUpdatedAt,
-    this.pickingStartedAt,
-    this.pickedAt,
     this.handedOverAt,
-    this.warehouseExceptionReason,
     this.canSelectWarehouse = false,
     this.warehouseOptions = const [],
   });
@@ -124,10 +109,7 @@ class WarehouseSalesOutboundDetail {
   final String? logisticsNo;
   final int? parcelCount;
   final String? warehouseWorkUpdatedAt;
-  final String? pickingStartedAt;
-  final String? pickedAt;
   final String? handedOverAt;
-  final String? warehouseExceptionReason;
   final List<WarehouseSalesOutboundLine> lines;
   final bool canSelectWarehouse;
   final List<WarehouseSalesWarehouseOption> warehouseOptions;
@@ -140,10 +122,7 @@ class WarehouseSalesOutboundDetail {
       logisticsNo: _text(json['logisticsNo']),
       parcelCount: _integer(json['parcelCount']),
       warehouseWorkUpdatedAt: _text(json['warehouseWorkUpdatedAt']),
-      pickingStartedAt: _text(json['pickingStartedAt']),
-      pickedAt: _text(json['pickedAt']),
       handedOverAt: _text(json['handedOverAt']),
-      warehouseExceptionReason: _text(json['warehouseExceptionReason']),
       canSelectWarehouse: json['canSelectWarehouse'] == true,
       warehouseOptions: _objectList(
         json['warehouseOptions'],

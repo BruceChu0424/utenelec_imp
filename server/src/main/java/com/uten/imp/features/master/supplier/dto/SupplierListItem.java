@@ -53,4 +53,7 @@ public class SupplierListItem {
     @JsonProperty("shipAddress")
     private String shipAddress;     // 送货地址（Ship_Addr）
     private UUID categoryId;        // 所属分类 id（供应商资料页"搜供应商定位分类"用）
+
+    /** 业务员姓名（按 owner_employee_id 解析；老库未匹配行为空，前端显示"—"）。 */
+    private String ownerEmployeeName;
 }

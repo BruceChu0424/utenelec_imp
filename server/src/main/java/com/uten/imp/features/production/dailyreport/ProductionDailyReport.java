@@ -88,4 +88,11 @@ public class ProductionDailyReport extends SoftDeletableEntity {
 
     @Column(name = "source_doc_no")
     private String sourceDocNo;
+
+    /**
+     * 收尾余料退仓意愿(V583)：最后一次报工时车间确认「剩下的料退回仓库」。
+     * 草稿阶段只是意愿，审核时先结实耗、再按剩余可退量生成退料单。
+     */
+    @Column(name = "surplus_return_requested", nullable = false)
+    private boolean surplusReturnRequested = false;
 }

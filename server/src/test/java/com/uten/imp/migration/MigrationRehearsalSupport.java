@@ -26,8 +26,8 @@ final class MigrationRehearsalSupport {
     // 以及它的两份契约测试——BusinessDataResetSqlContractTest
     // #resetScriptAllowlistCoversTheCurrentMigrationHead 会从迁移目录算出真实头再比对，
     // 漏改时直接告诉你该补哪一行。
-    static final String CURRENT_HEAD_VERSION = "577";
-    static final int CURRENT_MIGRATION_COUNT = 534;
+    static final String CURRENT_HEAD_VERSION = "593";
+    static final int CURRENT_MIGRATION_COUNT = 550;
 
     /** Reviewed post-V238 system/evidence row-count mutations on pre-existing tables. */
     private static final Set<String> EXPECTED_ROW_COUNT_MUTATIONS = Set.of(
@@ -45,6 +45,10 @@ final class MigrationRehearsalSupport {
             // V543 下架 production.* 面上的停用码并补齐我的车间任务面三码（有意的增删）。
             "permission_surface_permissions",
             "role_permissions",
+            // V582 把在途拣货任务拨回待出库时，按追加式事件账补一条
+            // PICKING/PICKED/EXCEPTION -> PENDING_PICK 的留证行(只在真实克隆库里
+            // 有在途单时才增行；空库与合成库为 0 行)。
+            "sales_shipment_warehouse_events",
             "supplier_categories",
             "user_permission_overrides");
 

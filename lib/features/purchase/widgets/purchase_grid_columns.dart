@@ -7,7 +7,9 @@
 // 供既有单回填/保存透传），单位列紧跟数量之后。
 // purchaseGridColumns：货品/数量/单价/金额 四列。
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
@@ -182,12 +184,28 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
   final showSupplier = supplierEntries.isNotEmpty;
   // 列说明统一挂表头 ⓘ（2026-09-09 口径）：每行重复的 ⓘ 既冗余又挤占格宽。
   final l10n = workflowFieldText(context);
+  // 货品身份列的颜色名（2026-09-14 口径）：行模型只透传 colorId，这里按需解析。
+  // 延迟到取值/渲染时才读字典容器——列定义本身不碰 Provider，裸 MaterialApp
+  // 构列的列序契约测试不受影响。未维护颜色返回 null（身份格自然省略，不占位）。
+  String? colorNameOf(PurchaseGridRow row) {
+    final id = row.colorId;
+    if (id == null || id.isEmpty) return null;
+    final name = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(masterNameServiceProvider).color(id);
+    return name == '—' ? null : name;
+  }
+
   return [
     EditableGridColumn<PurchaseGridRow>(
       key: 'goods',
-      label: '货品',
-      width: 220,
+      label: '货品名称',
+      width: 200,
       required: true,
+      // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色**各占一列**，
+      // 不把编号颜色拼进名称格——拼在一起既不能各自排序筛选，列窄时编号还先
+      // 被省略号吃掉。这里只放名称，编号与颜色见紧随其后的两列。
       textOf: (r) => r.goods?.name ?? '',
       listenableOf: (r) => r.goodsNotifier,
       cellBuilder: (context, row) => RequiredCellFrame(
@@ -202,14 +220,16 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
                 Expanded(
                   child: ValueListenableBuilder<GoodsOption?>(
                     valueListenable: row.goodsNotifier,
-                    builder: (context, g, _) => Text(
-                      g?.name ?? '点击选择',
-                      style: TextStyle(
-                        color: g == null
-                            ? Theme.of(context).colorScheme.onSurfaceVariant
-                            : Theme.of(context).colorScheme.onSurface,
-                      ),
-                    ),
+                    builder: (context, g, _) => g == null
+                        ? Text(
+                            '点击选择',
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                          )
+                        : UtenGoodsIdentityCell(name: g.name),
                   ),
                 ),
                 Icon(
@@ -220,6 +240,28 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
             ),
           ),
         ),
+      ),
+    ),
+    EditableGridColumn<PurchaseGridRow>(
+      key: 'goodsCode',
+      label: '编号',
+      width: 130,
+      textOf: (r) => r.goods?.code ?? '',
+      listenableOf: (r) => r.goodsNotifier,
+      cellBuilder: (context, row) => ValueListenableBuilder<GoodsOption?>(
+        valueListenable: row.goodsNotifier,
+        builder: (context, goods, _) => UtenGoodsAttributeCell(goods?.code),
+      ),
+    ),
+    EditableGridColumn<PurchaseGridRow>(
+      key: 'colorName',
+      label: '颜色',
+      width: 110,
+      textOf: (r) => colorNameOf(r) ?? '',
+      listenableOf: (r) => r.goodsNotifier,
+      cellBuilder: (context, row) => ValueListenableBuilder<GoodsOption?>(
+        valueListenable: row.goodsNotifier,
+        builder: (context, _, _) => UtenGoodsAttributeCell(colorNameOf(row)),
       ),
     ),
     if (showSource)

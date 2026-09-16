@@ -69,7 +69,14 @@ class _UtenBusyOverlayState extends State<UtenBusyOverlay> {
   void didUpdateWidget(covariant UtenBusyOverlay oldWidget) {
     super.didUpdateWidget(oldWidget);
     // title/description 变化时重建浮层（builder 经 State 读最新 widget）。
-    _entry?.markNeedsBuild();
+    // 必须帧后再标脏：didUpdateWidget 本身跑在宿主重建的 build 相位里，
+    // 直接 markNeedsBuild 一个 root Overlay 的 entry 会触发「构建期改树」
+    // 断言（级联页跑批期间标题逐段热更时踩到，2026-09-15）。
+    if (_entry != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _entry != null) _entry!.markNeedsBuild();
+      });
+    }
   }
 
   @override

@@ -45,9 +45,9 @@ class ProductionWorkshopPreferencePreviewSqlTest {
         // V298：快照前多一次 material_analysis_id 预查（分析备料绑定），第 1 个仍是主查询。
         verify(em, times(4)).createNativeQuery(sql.capture());
         assertThat(normalize(sql.getAllValues().getFirst()))
-                .contains("case when plan_workshop_parent.id is not null then p.department_id when preferred_workshop_parent.id is not null then workshop_preference.workshop_department_id else null end")
-                .contains("left join production_goods_workshop_preferences workshop_preference on workshop_preference.goods_id = product.id")
-                .contains("left join departments preferred_workshop on preferred_workshop.id = workshop_preference.workshop_department_id and preferred_workshop.is_deleted = false")
+                .contains("case when plan_workshop_parent.id is not null then p.department_id when preferred_workshop_parent.id is not null then product.owning_workshop_department_id else null end")
+                // V590：归属车间搬进货品表（偏好表已废弃删除），JOIN 直连货品列。
+                .contains("left join departments preferred_workshop on preferred_workshop.id = product.owning_workshop_department_id and preferred_workshop.is_deleted = false")
                 .contains("preferred_workshop_parent.code = 'dept_prod'")
                 .contains("plan_workshop_parent.code = 'dept_prod'")
                 .contains("fn_analysis_plan_material_matches( p.material_analysis_item_id, candidate.id)")

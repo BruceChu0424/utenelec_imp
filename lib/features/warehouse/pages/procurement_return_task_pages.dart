@@ -5,11 +5,13 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -228,57 +230,53 @@ class _ProcurementReturnTasksPageState
               )
             : _buildList(result),
       ),
-      bottomNavigationBar: _selected.isEmpty
+      // 多选批量操作：2026-09-14 UI 统一口径——吸底操作条改右下悬浮组，
+      // 「已选 N」标准胶囊 + 全选/批量按钮统一 large。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _selected.isEmpty
           ? null
-          : SafeArea(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  border: Border(
-                    top: BorderSide(
-                      color: Theme.of(context).colorScheme.outlineVariant,
-                    ),
+          : UtenFloatingActionGroup(
+              children: [
+                UtenSelectionSummaryPill(
+                  count: _selected.length,
+                  onClear: _clearSelection,
+                ),
+                UtenButton(
+                  type: UtenButtonType.secondary,
+                  size: UtenButtonSize.large,
+                  icon: _selectedTasks.length == (_result?.items.length ?? 0)
+                      ? Icons.deselect_rounded
+                      : Icons.select_all_rounded,
+                  onPressed:
+                      _selectedTasks.length == (_result?.items.length ?? 0)
+                      ? _clearSelection
+                      : _selectAll,
+                  child: Text(
+                    _selectedTasks.length == (_result?.items.length ?? 0)
+                        ? '清空'
+                        : '全选本页',
                   ),
                 ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s12,
-                  vertical: UtenSpacing.s8,
+                UtenButton(
+                  size: UtenButtonSize.large,
+                  onPressed:
+                      _batchSaving ||
+                          _selectedTasks
+                              .where((t) => t.canCompleteReturn)
+                              .isEmpty
+                      ? null
+                      : _batchConfirmReturn,
+                  onDisabledTap:
+                      _selectedTasks.where((t) => t.canCompleteReturn).isEmpty
+                      ? () => context.appInfo('所选任务都已完成退回，无需再办')
+                      : null,
+                  icon: Icons.assignment_return_outlined,
+                  child: Text(
+                    '批量确认退回 ${_selectedTasks.where((t) => t.canCompleteReturn).length}',
+                  ),
                 ),
-                child: Row(
-                  children: [
-                    TextButton.icon(
-                      onPressed:
-                          _selectedTasks.length == (_result?.items.length ?? 0)
-                          ? _clearSelection
-                          : _selectAll,
-                      icon: Icon(
-                        _selectedTasks.length == (_result?.items.length ?? 0)
-                            ? Icons.deselect_rounded
-                            : Icons.select_all_rounded,
-                      ),
-                      label: Text(
-                        _selectedTasks.length == (_result?.items.length ?? 0)
-                            ? '清空'
-                            : '全选本页',
-                      ),
-                    ),
-                    const Spacer(),
-                    FilledButton.icon(
-                      onPressed:
-                          _batchSaving ||
-                              _selectedTasks
-                                  .where((t) => t.canCompleteReturn)
-                                  .isEmpty
-                          ? null
-                          : _batchConfirmReturn,
-                      icon: const Icon(Icons.assignment_return_outlined),
-                      label: Text(
-                        '批量确认退回 ${_selectedTasks.where((t) => t.canCompleteReturn).length}',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              ],
             ),
     );
   }
@@ -298,7 +296,15 @@ class _ProcurementReturnTasksPageState
         onRefresh: () => _load(result.page),
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+          // 选择模式下右下悬浮操作组让位。
+          padding: EdgeInsets.fromLTRB(
+            0,
+            UtenSpacing.s16,
+            0,
+            _selected.isEmpty
+                ? UtenSpacing.s16
+                : UtenFloatingActionGroup.scrollClearance,
+          ),
           children: [
             // 顶部计数卡与任务工作台统一（MetricFilterCards 横幅式单卡，纯展示）。
             MetricFilterCards(
@@ -605,8 +611,12 @@ class _ProcurementReturnTaskDetailPageState
             ? UtenEmpty.error(message: '任务不存在或并非由您下单')
             : UtenContentContainer.narrow(
                 child: ListView(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: UtenSpacing.s16,
+                  // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
+                  padding: const EdgeInsets.fromLTRB(
+                    0,
+                    UtenSpacing.s16,
+                    0,
+                    UtenFloatingActionGroup.scrollClearance,
                   ),
                   children: [
                     _ReturnStatusBanner(task: task),
@@ -617,31 +627,23 @@ class _ProcurementReturnTaskDetailPageState
                 ),
               ),
       ),
-      bottomNavigationBar: task?.canCompleteReturn != true
+      // 2026-09-14 UI 统一口径：吸底操作按钮改右下悬浮组（按钮已是 large）。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: task?.canCompleteReturn != true
           ? null
-          : SafeArea(
-              child: Container(
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  border: Border(
-                    top: BorderSide(
-                      color: Theme.of(context).colorScheme.outlineVariant,
-                    ),
-                  ),
+          : UtenFloatingActionGroup(
+              children: [
+                UtenButton(
+                  key: const Key('supplier-return-confirm'),
+                  type: UtenButtonType.danger,
+                  size: UtenButtonSize.large,
+                  isLoading: _saving,
+                  icon: Icons.assignment_return_outlined,
+                  onPressed: _saving ? null : _completeReturn,
+                  child: const Text('确认退回供应商'),
                 ),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: UtenButton(
-                    key: const Key('supplier-return-confirm'),
-                    size: UtenButtonSize.large,
-                    isLoading: _saving,
-                    icon: Icons.assignment_return_outlined,
-                    onPressed: _saving ? null : _completeReturn,
-                    child: const Text('确认退回供应商'),
-                  ),
-                ),
-              ),
+              ],
             ),
     );
   }

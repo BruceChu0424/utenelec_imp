@@ -47,9 +47,22 @@ void main() {
       expect(table.selectable, isTrue);
       expect(
         table.columns.map((column) => column.label),
-        containsAll(['产品', '订货', '已排', '已生产入库', '已发', '本次可发', '办理中']),
+        containsAll([
+          '产品名称',
+          '编号',
+          '颜色',
+          '订货',
+          '已排',
+          '已生产入库',
+          '已发',
+          '本次可发',
+          '办理中',
+        ]),
       );
       expect(table.idOf!(table.items.last), isNull);
+      // 2026-09-14 名称/编号/颜色/规格拆列后表体更宽：先滚到该按钮再点。
+      await tester.ensureVisible(find.text('查看进度').first);
+      await tester.pumpAndSettle();
       await tester.tap(find.text('查看进度').first);
       await tester.pumpAndSettle();
       expect(find.text('产品甲 · 进度来源'), findsOneWidget);

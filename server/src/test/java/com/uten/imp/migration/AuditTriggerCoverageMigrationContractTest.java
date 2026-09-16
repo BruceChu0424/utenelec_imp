@@ -106,7 +106,10 @@ class AuditTriggerCoverageMigrationContractTest {
             "sales_shipment_warehouse_events", "sales_return_quality_items",
             "sales_return_quality_events",
             // Pre-approval planning, workshop defaults and MAKE receipt provenance.
-            "production_planning_drafts", "production_goods_workshop_preferences",
+            // (production_goods_workshop_preferences V590 整表废弃删除，学习语义
+            //  搬进 goods.owning_workshop_department_id/owning_responsible_employee_id，
+            //  goods 本身已在该清单里。)
+            "production_planning_drafts",
             "production_material_make_receipt_allocations",
             // Finance-assigned procurement approval and warehouse expectation ledgers.
             "procurement_order_approval_cases",
@@ -231,6 +234,13 @@ class AuditTriggerCoverageMigrationContractTest {
      */
     private static final Map<String, Integer> POST_SWEEP_EXPLICIT_AUDIT_TABLES =
             Map.ofEntries(
+                    Map.entry("party_contact_methods", 579),
+                    Map.entry("party_addresses", 579),
+                    Map.entry("party_activity_records", 579),
+                    Map.entry("production_daily_report_material_usages", 583),
+                    Map.entry("production_workshop_direct_transfers", 584),
+                    Map.entry("production_workshop_direct_transfer_items", 584),
+                    Map.entry("production_workshop_direct_transfer_reversals", 584),
                     Map.entry("permission_surfaces", 328),
                     Map.entry("permission_surface_permissions", 328),
                     Map.entry("employee_offboarding_events", 398),

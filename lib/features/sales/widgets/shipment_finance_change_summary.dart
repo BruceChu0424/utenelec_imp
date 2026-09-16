@@ -73,11 +73,14 @@ class ShipmentFinanceChangeSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 2026-09-14 口径：首审不再用文字复述明细——下方出货明细表格即完整事实；
+    // 只有「上次审核 → 本次修改」的差异对比才需要文字逐项列出。
     if (current == null || current!.isEmpty) return const SizedBox.shrink();
     final hasPrevious = previous != null && previous!.isNotEmpty;
+    if (!hasPrevious) return const SizedBox.shrink();
     Map<String, dynamic> old, now;
     try {
-      old = hasPrevious ? jsonDecode(previous!) as Map<String, dynamic> : {};
+      old = jsonDecode(previous!) as Map<String, dynamic>;
       now = jsonDecode(current!) as Map<String, dynamic>;
     } on Object {
       return const Text('以前的审核内容暂时无法展示，请刷新并核对后再决定。');

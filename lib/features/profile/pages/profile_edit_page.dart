@@ -29,9 +29,10 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input.dart';
+import '../../../components/buttons/uten_edit_floating_actions.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
@@ -342,33 +343,19 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
               description: l10n.profileUnboundDescription,
             )
           : _buildForm(context, l10n, theme),
-      bottomNavigationBar: _loading || _error != null || _unbound
+      // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组（全站编辑页统一形态：
+      // 取消 secondary + 保存 danger，large 尺寸）。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _loading || _error != null || _unbound
           ? null
-          : UtenBottomActionBar(
-              child: Row(
-                children: [
-                  Expanded(
-                    child: UtenButton(
-                      type: UtenButtonType.ghost,
-                      isExpanded: true,
-                      onPressed: _saving
-                          ? null
-                          : () => context.go(RouteName.profile),
-                      child: Text(l10n.profileChangeCancel2),
-                    ),
-                  ),
-                  const SizedBox(width: UtenSpacing.s12),
-                  Expanded(
-                    flex: 2,
-                    child: UtenButton(
-                      isExpanded: true,
-                      isLoading: _saving,
-                      onPressed: _saving ? null : _submit,
-                      child: Text(l10n.profileChangeConfirm),
-                    ),
-                  ),
-                ],
-              ),
+          : UtenEditFloatingActions(
+              cancelLabel: l10n.profileChangeCancel2,
+              saveLabel: l10n.profileChangeConfirm,
+              saveIcon: Icons.check_rounded,
+              onCancel: _saving ? null : () => context.go(RouteName.profile),
+              onSave: _submit,
+              saving: _saving,
             ),
     );
   }
@@ -388,7 +375,13 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
         key: _formKey,
         // 仅五个分区全部保持挂载，确保滚出视口的脏字段也参与 Form.validate。
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+          // 底部留出右下悬浮操作组的高度，末段字段可滚出按钮区。
+          padding: const EdgeInsets.fromLTRB(
+            0,
+            UtenSpacing.s16,
+            0,
+            UtenFloatingActionGroup.scrollClearance,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

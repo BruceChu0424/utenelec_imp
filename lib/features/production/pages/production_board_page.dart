@@ -22,6 +22,10 @@
 // 生产 Hub 只剩一张「生产调度与进度」卡进 /production/schedule，进行中靠 progress 深链预选）。
 // 待排产表 2026-09-10（V545）起加「已排」列：部分排产的行按剩余未排量继续留在本段，
 // 状态列标「部分已排 已排/订货」，不再因 planned>0 从待排产消失。
+// 2026-09-15(ADR-088)待排产口径再收一层：缺口列改为「尚未被活动物料分析承接的量」
+//(= 剩余未排量 − 活动分析未下达量)。一条订单行被分析全量承接后即从本段消失，
+// 改在「进行中」按分析批次汇总成一行；只承接了一部分的行按残量继续留在本段，
+// 「已分析」列显示已被承接的那部分——量不会凭空消失(服务端 PENDING_NEED_SQL 同源)。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -51,7 +55,6 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
-import '../../../shared/models/progress_ratio.dart';
 import '../models/production_material_analysis.dart';
 import '../providers/production_board_pending_count_provider.dart';
 import '../providers/production_board_sort_provider.dart';
@@ -200,10 +203,24 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
                     keyword: _keyword,
                     refreshTick: _pendingRefreshTick.value,
                   ),
-                  'progress' => ProductionExecutionGroupPanel(
-                    key: const Key('production-board-progress'),
-                    keyword: _keyword,
-                  ),
+                  // ADR-088：已被分析承接的订单行只在本段出现，所以「看不见进行中」
+                  // 就等于「那批量从这个账号的世界里消失」。缺 production_execution:overview
+                  // 时给明确的权限引导，而不是让面板去撞一个 403 错误态。
+                  'progress' =>
+                    ref
+                            .watch(currentPermissionsProvider)
+                            .contains(Perm.productionExecutionOverview)
+                        ? ProductionExecutionGroupPanel(
+                            key: const Key('production-board-progress'),
+                            keyword: _keyword,
+                          )
+                        : const UtenFilterPlaceholder(
+                            key: Key('production-board-progress-no-permission'),
+                            message: '当前账号没有「生产进度总览」权限',
+                            description:
+                                '已做过物料分析的订单行统一在本段按分析批次跟踪。'
+                                '请联系管理员授予 production_execution:overview 后查看。',
+                          ),
                   'history' =>
                     historyReady
                         ? _PlanPanel(
@@ -511,10 +528,13 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   /// 双击行 → 有活动分析直接恢复那张联合分析（多销售单联合分析时，任何一行
   /// 都带同一张分析的 id，点谁都是进那张合并分析页）；未分析/无权限的行也给
   /// 明确提示——双击任何行都必须有反馈，不能“点了没反应”。
+  ///
+  /// 2026-09-15(ADR-088)起本段只剩「还有未承接残量」的行，所以带 analysisId 的
+  /// 一定是部分承接行：双击进的是承接了另一部分的那张分析。
   Future<void> _openRowAnalysis(SchedulePendingRow row) async {
     final analysisId = row.materialAnalysisId;
     if (analysisId == null) {
-      context.appInfo('该行尚未分析；请勾选后点右下角「联合分析所选 N 项」');
+      context.appInfo('该行的缺口还没有分析承接；请勾选后点右下角「联合分析所选 N 项」');
       return;
     }
     if (!_canRefreshAnalysis) {
@@ -673,18 +693,11 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                   nullCounts: const {},
                   filters: _filters,
                   onFilterChanged: _onFilterChanged,
-                  rowColor: (r) {
-                    if (r.materialAnalysisId != null &&
-                        (r.readyNowQty ?? 0) <= 0) {
-                      return theme.colorScheme.errorContainer.withValues(
-                        alpha: 0.32,
-                      );
-                    }
-                    if (r.urgent) {
-                      return theme.colorScheme.error.withValues(alpha: 0.06);
-                    }
-                    return null;
-                  },
+                  // 2026-09-15(ADR-088)撤掉「已分析但不可生产」的红底：本段只剩
+                  // 未被承接的残量，齐套红旗属于「进行中」那张分析。只保留交期告警。
+                  rowColor: (r) => r.urgent
+                      ? theme.colorScheme.error.withValues(alpha: 0.06)
+                      : null,
                   sortColumn: _sortKey,
                   sortAscending: _sortAsc,
                   onSortChange: _onSortChange,
@@ -767,24 +780,20 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         final row = rows[index];
         final selected = _selected.containsKey(row.orderItemId);
         final canSelect = _canSelectForAnalysis(row);
-        final analyzed =
-            row.materialAnalysisId != null || row.readyNowQty != null;
-        final ready = row.readyNowQty ?? 0;
+        // ADR-088：窄屏卡与桌面表同口径——本段只剩未被承接的残量，
+        // 「已分析 N」是指路信息(那部分在进行中跟踪)，不再显示齐套率。
+        final covered = row.analysisCoveredQty ?? 0;
+        final partlyAnalyzed = covered > 0;
         final awaitingApproval =
             (row.submittedPlanQty ?? 0) > (row.approvedPlannedQty ?? 0);
-        final statusColor = (analyzed && ready <= 0)
-            ? theme.colorScheme.error
-            : awaitingApproval
+        final statusColor = awaitingApproval
             ? theme.colorScheme.tertiary
-            : analyzed
+            : partlyAnalyzed
             ? theme.colorScheme.primary
             : theme.colorScheme.onSurfaceVariant;
         return Card(
           margin: EdgeInsets.zero,
           elevation: 0,
-          color: (analyzed && ready <= 0)
-              ? theme.colorScheme.errorContainer.withValues(alpha: 0.32)
-              : null,
           shape: RoundedRectangleBorder(
             borderRadius: UtenRadius.mdAll,
             side: BorderSide(color: theme.colorScheme.outlineVariant),
@@ -857,10 +866,8 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                   Row(
                     children: [
                       Icon(
-                        analyzed
-                            ? ready > 0
-                                  ? Icons.check_circle_outline
-                                  : Icons.error_outline
+                        partlyAnalyzed
+                            ? Icons.donut_large_rounded
                             : Icons.help_outline,
                         size: 18,
                         color: statusColor,
@@ -868,13 +875,11 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                       const SizedBox(width: UtenSpacing.s4),
                       Expanded(
                         child: Text(
-                          analyzed
-                              ? '可立即生产 ${_qtyText(row.readyNowQty)} '
+                          partlyAnalyzed
+                              ? '已分析 ${_qtyText(row.analysisCoveredQty)} '
                                     '${row.unitName ?? '单位未维护'} · '
-                                    '预计 ${_qtyText(row.readyByDateQty)} '
-                                    '${row.unitName ?? '单位未维护'} · '
-                                    '齐套 ${_ratioText(row.readinessRatio)}'
-                              : '未分析 · 进入物料分析获取可生产数量',
+                                    '这部分在「进行中」跟踪；此处是未承接的残量'
+                              : '待分析 · 勾选后做物料分析，本行即转入「进行中」',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: statusColor,
                             fontWeight: FontWeight.w700,
@@ -906,7 +911,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                               ? () => _openRowAnalysis(row)
                               : null,
                           icon: const Icon(Icons.insights_rounded, size: 18),
-                          label: const Text('继续分析'),
+                          label: const Text('打开已承接的分析'),
                         ),
                       ),
                     ),
@@ -989,6 +994,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       width: 100,
       type: 'number',
       sortable: true,
+      info: '尚未被任何物料分析承接的量 = 剩余未排量 − 已分析。全部被承接的行不在本段，改看「进行中」。',
       value: (r) => r.needQty?.toStringAsFixed(2) ?? '—',
     ),
     MasterColumnDef(
@@ -998,21 +1004,18 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       type: 'number',
       value: (r) => r.plannedQty?.toStringAsFixed(2) ?? '—',
     ),
+    // 2026-09-15(ADR-088)「可生产量 / 预计可生产」两列迁出本段：齐套是分析批次
+    // 的事实，本段的行只代表「还没被任何分析承接的残量」，在这里显示齐套率说的
+    // 是另一笔量，会误导调度。改挂「已分析」列指路——有数就去「进行中」看那张分析。
     MasterColumnDef(
-      key: 'readyNowQty',
-      label: '可生产量',
-      width: 150,
+      key: 'analysisCoveredQty',
+      label: '已分析',
+      width: 110,
       type: 'number',
-      value: (r) => r.readyNowQty == null && r.materialAnalysisId == null
-          ? '未分析'
-          : '${_qtyText(r.readyNowQty)}(${_ratioText(r.readinessRatio)})',
-    ),
-    MasterColumnDef(
-      key: 'readyByDateQty',
-      label: '预计可生产',
-      width: 130,
-      type: 'number',
-      value: (r) => r.readyByDateQty == null ? '—' : _qtyText(r.readyByDateQty),
+      info: '本行已被活动物料分析承接的量；这部分在「进行中」按分析批次跟踪，双击本行可直达那张分析。',
+      value: (r) => (r.analysisCoveredQty ?? 0) > 0
+          ? _qtyText(r.analysisCoveredQty)
+          : '—',
     ),
     MasterColumnDef(
       key: 'deliverDate',
@@ -1027,7 +1030,14 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       key: 'status',
       label: '状态',
       width: 150,
+      // 2026-09-15(ADR-088)分支顺序重排：本段的行一律是「还有未承接残量」的行，
+      // 所以先说清这个残量的来历(部分已分析 / 部分已排 / 待审批)，再落到紧急/待分析。
+      // 旧口径里「已分析」「已分析·暂不可生产」两档在这里已无意义——全量分析过的行
+      // 根本不在本段，齐套情况去「进行中」那张分析里看。
       value: (r) {
+        if ((r.analysisCoveredQty ?? 0) > 0) {
+          return '部分已分析 ${_qtyText(r.analysisCoveredQty)}/${_qtyText(r.qty)}';
+        }
         if ((r.submittedPlanQty ?? 0) > (r.approvedPlannedQty ?? 0)) {
           return '已提交·待审批';
         }
@@ -1035,12 +1045,8 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         if ((r.plannedQty ?? 0) > 0) {
           return '部分已排 ${_qtyText(r.plannedQty)}/${_qtyText(r.qty)}';
         }
-        if (r.readyNowQty == null && r.materialAnalysisId == null) {
-          return '未分析';
-        }
-        if ((r.readyNowQty ?? 0) <= 0) return '已分析·暂不可生产';
         if (r.urgent) return '紧急';
-        return '已分析';
+        return '待分析';
       },
     ),
   ];
@@ -1074,12 +1080,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         .toStringAsFixed(4)
         .replaceFirst(RegExp(r'0+$'), '')
         .replaceFirst(RegExp(r'\.$'), '');
-  }
-
-  String _ratioText(double? value) {
-    if (value == null) return '—';
-    final ratio = normalizeProgressRatio(value);
-    return '${(ratio.clamp(0, 1) * 100).toStringAsFixed(0)}%';
   }
 
   String _shortDate(String? value) {

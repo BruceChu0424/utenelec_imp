@@ -170,8 +170,14 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
         initNames: (ref) async {
           ref.read(mn.masterNameServiceProvider).ensureLoaded();
         },
-        loadGoodsNames: (ref, goodsIds) =>
-            ref.read(mn.masterNameServiceProvider).loadGoodsNames(goodsIds),
+        // 2026-09-14：顺带拉一次货品详情，Step2 的货品身份格才有编号可显示
+        //（名称+编号+颜色三属性同屏；详情拉不到时自然退回单行名称）。
+        loadGoodsNames: (ref, goodsIds) async {
+          await ref.read(mn.masterNameServiceProvider).loadGoodsNames(goodsIds);
+          await ref
+              .read(mn.masterNameServiceProvider)
+              .loadGoodsDetails(goodsIds);
+        },
         listDocs: (ref, page, keyword, supplierId, sort, order) => ref
             .read(subcontractRepositoryProvider(upstream))
             .list(
@@ -205,6 +211,8 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
         ),
         docColumns: (names) => _docColumns(names),
         goodsName: (names, goodsId) => names.goods(goodsId),
+        // 2026-09-14：货品身份格补编号（名称+编号+颜色三属性同屏）。
+        goodsCode: (names, goodsId) => names.goodsInfo(goodsId)?.code,
         colorName: (names, colorId) => names.color(colorId),
         unitName: (names, unitId) => names.unit(unitId),
         middleItemColumns: (names) => _middleItemColumns(),

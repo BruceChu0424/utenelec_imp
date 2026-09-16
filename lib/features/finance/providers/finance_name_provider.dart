@@ -258,6 +258,8 @@ class FinanceNameService extends ChangeNotifier {
   Map<String, String> get clientEntries => _clients;
   Map<String, String> get supplierEntries => _suppliers;
   Map<String, String> get accountEntries => _accountEntries;
+  Map<String, FinanceAccountReference> get accountReferences =>
+      _accountReferences;
   Map<String, String> get currencyEntries => _currencies;
 
   String _resolve(Map<String, String> map, String? id) =>

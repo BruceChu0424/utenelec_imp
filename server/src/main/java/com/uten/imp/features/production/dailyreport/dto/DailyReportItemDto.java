@@ -40,4 +40,8 @@ public class DailyReportItemDto {
     private String sourceDocNo;
     private String remark;
     private Boolean isFinal;
+    /** 产出去向(V584)：WAREHOUSE / WORKSHOP。 */
+    private String destination;
+    /** 直送的接收需求(V585)；WAREHOUSE 行为空。 */
+    private UUID directTransferDemandId;
 }

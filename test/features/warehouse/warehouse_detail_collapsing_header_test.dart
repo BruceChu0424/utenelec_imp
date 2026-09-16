@@ -203,7 +203,7 @@ const _outboundJson = <String, dynamic>{
   'clientName': '客户甲',
   'warehouseName': '一号仓',
   'warehouseWorkStatus': 'PENDING_PICK',
-  'allowedWarehouseTargets': <String>['PICKING', 'EXCEPTION'],
+  'allowedWarehouseTargets': <String>['SHIPPED'],
   'shipAddress': '交接地址',
   'contactPhone': '13800000000',
   'logisticsNo': 'LOG-001',

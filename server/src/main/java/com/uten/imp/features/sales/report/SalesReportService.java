@@ -308,9 +308,11 @@ public class SalesReportService {
                 ReportColumn.text("region", "区域", 100),
                 ReportColumn.text("contractNo", "合同编号", 130), ReportColumn.money("totalAmount", "总额"),
                 ReportColumn.bool("closed", "是否完成"), ReportColumn.bool("approved", "是否审核"),
-                ReportColumn.text("series", "系列", 90), ReportColumn.text("goodsCode", "编号", 110),
+                // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
+                ReportColumn.text("series", "系列", 90), ReportColumn.text("goodsName", "货品名称", 180),
+                ReportColumn.text("goodsCode", "编号", 110), ReportColumn.text("colorName", "颜色", 80),
                 ReportColumn.text("model", "型号", 100), ReportColumn.text("clientOrderNo", "客户订单号", 120),
-                ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.text("spec", "规格", 140),
+                ReportColumn.text("spec", "规格", 140),
                 ReportColumn.number("circumference", "围数"), ReportColumn.money("machiningPrice", "机加价"),
                 ReportColumn.money("price", "单价"), ReportColumn.number("discount", "折扣"),
                 ReportColumn.money("amount", "金额").totaled("合计金额", "currencyCode"),
@@ -325,8 +327,9 @@ public class SalesReportService {
                        currency.code AS "currencyCode", c.region AS "region",
                        o.contract_no AS "contractNo", o.total_original AS "totalAmount",
                        o.is_closed AS "closed", (o.status = 1) AS "approved",
-                       g.series AS "series", i.goods_code_snapshot AS "goodsCode", g.model AS "model",
-                       i.client_no AS "clientOrderNo", i.goods_name_snapshot AS "goodsName", g.spec AS "spec",
+                       g.series AS "series", i.goods_name_snapshot AS "goodsName", i.goods_code_snapshot AS "goodsCode",
+                       col.name AS "colorName", g.model AS "model",
+                       i.client_no AS "clientOrderNo", g.spec AS "spec",
                        i.circumference AS "circumference", i.machining_price AS "machiningPrice",
                        i.price AS "price", i.discount AS "discount", i.amount_original AS "amount",
                        i.inbound_qty AS "inboundQty", i.shipped_qty AS "shippedQty",
@@ -340,6 +343,7 @@ public class SalesReportService {
                 LEFT JOIN clients c ON c.id = o.client_id
                 LEFT JOIN currencies currency ON currency.id = o.currency_id
                 LEFT JOIN goods g ON g.id = i.goods_id
+                LEFT JOIN colors col ON col.id = i.color_id
                 LEFT JOIN (SELECT goods_id, SUM(qty) AS stock_qty FROM stock_balances GROUP BY goods_id) sb ON sb.goods_id = i.goods_id
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
@@ -367,8 +371,8 @@ public class SalesReportService {
                 ReportColumn.text("region", "区域", 100),
                 new ReportColumn("settlementStyle", "结帐方式", "style", 100),
                 ReportColumn.bool("approved", "是否审核"), ReportColumn.text("series", "系列", 90),
-                ReportColumn.text("goodsCode", "编号", 110),
-                ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.number("qty", "数量"),
+                ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.text("goodsCode", "编号", 110),
+                ReportColumn.text("colorName", "颜色", 80), ReportColumn.number("qty", "数量"),
                 ReportColumn.money("price", "单价"), ReportColumn.number("discount", "折扣"),
                 ReportColumn.money("amount", "金额"), ReportColumn.money("dealAmount", "成交金额"),
                 ReportColumn.text("remark", "备注", 160),
@@ -376,8 +380,9 @@ public class SalesReportService {
         String dataSelect = """
                 SELECT i.bill_date AS "billDate", c.name AS "clientName", c.region AS "region",
                        o.payment_style_id AS "settlementStyle", (o.status = 1) AS "approved",
-                       g.series AS "series", i.goods_code_snapshot AS "goodsCode",
-                       i.goods_name_snapshot AS "goodsName", i.qty AS "qty", i.price AS "price",
+                       g.series AS "series", i.goods_name_snapshot AS "goodsName",
+                       i.goods_code_snapshot AS "goodsCode", col.name AS "colorName",
+                       i.qty AS "qty", i.price AS "price",
                        i.discount AS "discount", i.amount_local AS "amount",
                        """ + DEAL_EXPR + " AS \"dealAmount\", i.remark AS \"remark\", o.id AS \"__srcId\"";
         String fromJoin = """
@@ -385,6 +390,7 @@ public class SalesReportService {
                 JOIN sales_shipments o ON o.id = i.shipment_id
                 LEFT JOIN clients c ON c.id = o.client_id
                 LEFT JOIN goods g ON g.id = i.goods_id
+                LEFT JOIN colors col ON col.id = i.color_id
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
         addOwnerReadFilter(w, "o.owner_employee_id", "salesOwners");
@@ -406,8 +412,8 @@ public class SalesReportService {
                 ReportColumn.text("clientName", "客户", 160), ReportColumn.text("sellerName", "业务员", 100),
                 ReportColumn.text("region", "区域", 100), ReportColumn.text("director", "总监", 110),
                 ReportColumn.bool("approved", "是否审核"), ReportColumn.text("series", "系列", 90),
-                ReportColumn.text("goodsCode", "编号", 110),
-                ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.text("colorName", "颜色", 80),
+                ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.text("goodsCode", "编号", 110),
+                ReportColumn.text("colorName", "颜色", 80),
                 ReportColumn.number("qty", "数量"), ReportColumn.money("price", "单价"),
                 ReportColumn.money("amount", "金额"), ReportColumn.number("discount", "折扣"),
                 ReportColumn.money("dealAmount", "成交金额"), ReportColumn.text("remark", "备注", 160),
@@ -453,10 +459,11 @@ public class SalesReportService {
                 ReportColumn.text("senderName", "送货人", 100), ReportColumn.text("shipAddr", "送货地址", 160),
                 new ReportColumn("settlementStyle", "结帐方式", "style", 100),
                 ReportColumn.money("totalAmount", "总额"), ReportColumn.bool("approved", "是否审核"),
-                ReportColumn.text("series", "系列", 90), ReportColumn.text("goodsCode", "编号", 110),
+                ReportColumn.text("series", "系列", 90), ReportColumn.text("goodsName", "货品名称", 180),
+                ReportColumn.text("goodsCode", "编号", 110), ReportColumn.text("colorName", "颜色", 80),
                 ReportColumn.text("model", "型号", 100), ReportColumn.text("customerModel", "客户型号", 100),
-                ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.text("spec", "规格", 140),
-                ReportColumn.text("colorName", "颜色", 80), ReportColumn.number("cartonCount", "箱数"),
+                ReportColumn.text("spec", "规格", 140),
+                ReportColumn.number("cartonCount", "箱数"),
                 ReportColumn.number("parcelQty", "把/箱"), ReportColumn.number("weight", "重量"),
                 ReportColumn.number("circumference", "围"), ReportColumn.number("qty", "数量"),
                 ReportColumn.money("materialPrice", "材料价"), ReportColumn.money("dieCastPrice", "压铸价"),

@@ -18,8 +18,8 @@ import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -133,76 +133,48 @@ class _ExpenseApprovalDetailPageState
 
     return Scaffold(
       appBar: const UtenAppBar(title: '审批详情', showBackButton: true),
-      bottomNavigationBar: _canApprove
-          ? UtenBottomActionBar(
-              child: TaskClaimHandle(
-                targetType: 'EXPENSE_APPROVE',
-                targetKey: widget.claimId,
-                builder: (heldByMe, claim) {
-                  final blocked = !heldByMe && claim != null;
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (!blocked) ...[
-                        const UtenReviewerResponsibilityNotice(
-                          actionLabel: '报销审批',
-                          description: '点击通过或驳回后，系统将记录当前审核员及审批结果，请对本次决定负责。',
-                        ),
-                        const SizedBox(height: UtenSpacing.s8),
-                      ],
-                      if (blocked)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Row(
-                            children: [
-                              TaskClaimBadge(claim: claim),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  '他人正在审批此单，请稍后再试',
-                                  style: Theme.of(context).textTheme.labelMedium
-                                      ?.copyWith(fontWeight: FontWeight.w400),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      Row(
-                        children: [
-                          UtenButton(
-                            type: UtenButtonType.ghost,
-                            isLoading: _acting,
-                            icon: Icons.close_rounded,
-                            onPressed: (_acting || blocked) ? null : _reject,
-                            child: const Text('驳回'),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: UtenButton(
-                              isLoading: _acting,
-                              isExpanded: true,
-                              icon: Icons.check_rounded,
-                              onPressed: (_acting || blocked) ? null : _approve,
-                              child: const Text('通过'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  );
-                },
-              ),
+      // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组（大小/高度/禁用态全站
+      // 统一）；审核员责任提示与「他人审批中」横幅随入页面正文，不再挤进操作条。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _canApprove
+          ? TaskClaimHandle(
+              targetType: 'EXPENSE_APPROVE',
+              targetKey: widget.claimId,
+              builder: (heldByMe, claim) {
+                final blocked = !heldByMe && claim != null;
+                return UtenFloatingActionGroup(
+                  children: [
+                    UtenButton(
+                      type: UtenButtonType.danger,
+                      size: UtenButtonSize.large,
+                      isLoading: _acting,
+                      icon: Icons.close_rounded,
+                      onPressed: (_acting || blocked) ? null : _reject,
+                      child: const Text('驳回'),
+                    ),
+                    UtenButton(
+                      size: UtenButtonSize.large,
+                      isLoading: _acting,
+                      icon: Icons.check_rounded,
+                      onPressed: (_acting || blocked) ? null : _approve,
+                      child: const Text('通过'),
+                    ),
+                  ],
+                );
+              },
             )
           : _canPay
-          ? UtenBottomActionBar(
-              child: UtenButton(
-                isLoading: _acting,
-                isExpanded: true,
-                icon: Icons.account_balance_wallet_outlined,
-                onPressed: _acting ? null : _pay,
-                child: const Text('填写付款信息并打款'),
-              ),
+          ? UtenFloatingActionGroup(
+              children: [
+                UtenButton(
+                  size: UtenButtonSize.large,
+                  isLoading: _acting,
+                  icon: Icons.account_balance_wallet_outlined,
+                  onPressed: _acting ? null : _pay,
+                  child: const Text('填写付款信息并打款'),
+                ),
+              ],
             )
           : null,
       body: detail.when(
@@ -213,7 +185,13 @@ class _ExpenseApprovalDetailPageState
         ),
         data: (claim) => UtenContentContainer.narrow(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+            // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
+            padding: const EdgeInsets.fromLTRB(
+              0,
+              UtenSpacing.s16,
+              0,
+              UtenFloatingActionGroup.scrollClearance,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -299,6 +277,35 @@ class _ExpenseApprovalDetailPageState
                 const SizedBox(height: UtenSpacing.s8),
                 UtenCard(child: _ApprovalTimeline(claim: claim)),
                 if (_canApprove) ...[
+                  const SizedBox(height: UtenSpacing.s20),
+                  // 认领横幅 + 审核员责任提示（2026-09-14 随操作条改悬浮迁入正文）：
+                  // 他人审批中锁操作；就绪时提示审核责任。
+                  TaskClaimHandle(
+                    targetType: 'EXPENSE_APPROVE',
+                    targetKey: widget.claimId,
+                    builder: (heldByMe, claim) {
+                      final blocked = !heldByMe && claim != null;
+                      if (!blocked) {
+                        return const UtenReviewerResponsibilityNotice(
+                          actionLabel: '报销审批',
+                          description: '点击通过或驳回后，系统将记录当前审核员及审批结果，请对本次决定负责。',
+                        );
+                      }
+                      return Row(
+                        children: [
+                          TaskClaimBadge(claim: claim),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '他人正在审批此单，请稍后再试',
+                              style: Theme.of(context).textTheme.labelMedium
+                                  ?.copyWith(fontWeight: FontWeight.w400),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                   const SizedBox(height: UtenSpacing.s20),
                   const UtenSectionHeader(title: '审批意见'),
                   const SizedBox(height: UtenSpacing.s8),

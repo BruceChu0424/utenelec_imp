@@ -11,6 +11,7 @@
 // 文档：见 docs/数据迁移/07-客户资料-新库与迁移.md。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
@@ -25,6 +26,7 @@ import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
@@ -42,8 +44,8 @@ import '../widgets/category_page_shell.dart';
 import '../widgets/category_tree_search.dart';
 import '../widgets/client_access_batch_dialog.dart';
 import '../widgets/client_access_panel.dart';
+import '../widgets/client_master_edit.dart';
 import '../widgets/master_edit_dialog.dart';
-import '../widgets/master_detail_sheet.dart';
 import '../widgets/system_master_category_guard.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../widgets/master_data_table_view.dart';
@@ -243,7 +245,6 @@ class _DetailPaneState extends State<_DetailPane> {
   bool _sortAsc = true;
 
   /// 详情弹窗加载中（防并发）。与 [_clientLoading]（列表分页加载）是两回事，不可混用。
-  bool _detailLoading = false;
 
   /// 多选选中集（业务 id，跨页保留；批量禁用/删除用）。切换分类时清空。
   Set<String> _selectedClientIds = {};
@@ -429,129 +430,18 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   // 客户主档可编辑字段（与后端 ClientSaveRequest 对齐；含义不明的遗留字段不进表单）。
+  // 2026-09-14：字段表抽取到 client_master_edit.dart（分类页与详情整页共用）。
   List<MasterFieldDef> _clientFields(
     Map<String, String> iv,
     List<ReferenceMethodOption> settlementMethods, {
     bool legacyCreditSnapshot = false,
     bool showAccess = false,
-  }) => [
-    // 归属（负责人/可见人）在编辑页只**展示**不编辑：它走独立的 access 接口
-    //（变更原因 + 版本 CAS + 审计事件），混进普通字段提交会绕开那套守卫。
-    // 要改点行菜单「负责人和可见人」（2026-09-11 用户要求编辑页也看得到）。
-    if (showAccess) ...const <MasterFieldDef>[
-      MasterFieldDef(
-        key: 'ownerEmployeeName',
-        label: '负责人',
-        group: '归属',
-        readOnly: true,
-        hint: '未设置',
-        info: '负责人决定这个客户的单据归谁。修改请用列表行右键「负责人和可见人」。',
-      ),
-      MasterFieldDef(
-        key: 'accessViewerNames',
-        label: '可见人',
-        group: '归属',
-        readOnly: true,
-        hint: '未设置',
-        info: '可见人只能查看该客户及其单据，不能修改。修改请用列表行右键「负责人和可见人」。',
-      ),
-    ],
-    ...const <MasterFieldDef>[
-      MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
-      MasterFieldDef(
-        key: 'code',
-        label: '编号',
-        group: '基础',
-        hint: '留空按分类前缀自动生成；手工编号也必须唯一',
-      ),
-      MasterFieldDef(key: 'fullName', label: '全称', group: '基础'),
-      MasterFieldDef(key: 'clientRank', label: '等级', group: '基础'),
-      MasterFieldDef(
-        key: 'status',
-        label: '状态',
-        type: MasterFieldType.select,
-        options: kMasterStatusOptions,
-        required: true,
-        group: '基础',
-      ),
-      MasterFieldDef(key: 'linkman', label: '联系人', group: '联系'),
-      MasterFieldDef(key: 'mobile', label: '手机', required: true, group: '联系'),
-      MasterFieldDef(key: 'phone', label: '电话', group: '联系'),
-      MasterFieldDef(key: 'phone2', label: '电话2', group: '联系'),
-      MasterFieldDef(key: 'fax', label: '传真', group: '联系'),
-      MasterFieldDef(key: 'email', label: '邮箱', group: '联系'),
-      MasterFieldDef(key: 'website', label: '网址', group: '联系'),
-      MasterFieldDef(key: 'postcode', label: '邮编', group: '联系'),
-      MasterFieldDef(key: 'region', label: '区域', group: '地址'),
-      MasterFieldDef(key: 'placeId', label: '地区', group: '地址'),
-      MasterFieldDef(key: 'address', label: '地址', group: '地址'),
-      MasterFieldDef(key: 'shipAddress', label: '收货地址', group: '地址'),
-      MasterFieldDef(key: 'shipVia', label: '运输方式', group: '地址'),
-      MasterFieldDef(key: 'legalPerson', label: '法人', group: '资质'),
-    ],
-    ...const <MasterFieldDef>[
-      MasterFieldDef(key: 'bank', label: '开户行', group: '财务'),
-      MasterFieldDef(key: 'bankAccount', label: '银行账号', group: '财务'),
-      MasterFieldDef(key: 'taxId', label: '税号', group: '财务'),
-    ],
-    const MasterFieldDef(
-      key: 'salesPaymentType',
-      label: '销售货款类型',
-      type: MasterFieldType.select,
-      required: true,
-      options: [
-        MasterSelectOption(value: ClientSalesPaymentType.monthly, label: '月结'),
-        MasterSelectOption(value: ClientSalesPaymentType.cash, label: '现金'),
-        MasterSelectOption(value: ClientSalesPaymentType.deposit, label: '定金'),
-      ],
-      group: '财务',
-      hint: '用于发货财务审核分类；不代表定金已到账',
-    ),
-    MasterFieldDef(
-      key: 'defaultSettlementMethodId',
-      label: '默认结账方式',
-      type: MasterFieldType.select,
-      options: [
-        for (final method in settlementMethods)
-          MasterSelectOption(
-            value: method.id,
-            label: method.code.isEmpty
-                ? method.name
-                : '${method.name} · ${method.code}',
-          ),
-      ],
-      group: '财务',
-      hint: '订单未指定时使用；关联以系统 UUID 保存',
-    ),
-    MasterFieldDef(
-      key: 'credit',
-      label: legacyCreditSnapshot ? '旧库 Credit 快照（只读）' : '信用额度',
-      type: MasterFieldType.money,
-      group: '财务',
-      hint: legacyCreditSnapshot ? '仅用于旧库对照，不参与铺底或发货放行计算' : null,
-    ),
-    ...const <MasterFieldDef>[
-      MasterFieldDef(
-        key: 'initTotal',
-        label: '期初应收',
-        type: MasterFieldType.money,
-        group: '财务',
-      ),
-      MasterFieldDef(
-        key: 'creditFloor',
-        label: '铺底额',
-        type: MasterFieldType.money,
-        group: '财务',
-      ),
-      MasterFieldDef(
-        key: 'tday',
-        label: '结算天数',
-        type: MasterFieldType.integer,
-        group: '财务',
-      ),
-      MasterFieldDef(key: 'remark', label: '备注', group: '其他'),
-    ],
-  ];
+  }) => buildClientFields(
+    iv,
+    settlementMethods,
+    legacyCreditSnapshot: legacyCreditSnapshot,
+    showAccess: showAccess,
+  );
 
   bool get _canCreateMaster =>
       widget.ref.read(currentPermissionsProvider).contains(Perm.clientCreate);
@@ -625,97 +515,15 @@ class _DetailPaneState extends State<_DetailPane> {
     return true;
   }
 
+  // 2026-09-14：编辑流程抽取到 showClientMasterEdit（详情整页共用）。
   Future<void> _showClientEdit(ClientDetail d) async {
-    final settlementMethods = await _loadSettlementMethods();
-    if (!mounted || settlementMethods == null) return;
-    // 可见人不在 ClientDetail 里，只能问 access 接口；无 client:assign 的人问了会
-    // 被拒，所以按权限判定后再取，取不到就只显示负责人（失败不挡编辑）。
-    ClientAccessSettings? access;
-    if (_canAssignClientAccess && d.accessManageable) {
-      try {
-        access = await widget.ref.read(clientRepositoryProvider).access(d.id);
-      } catch (_) {
-        access = null;
-      }
-      if (!mounted) return;
-    }
-    if (d.defaultSettlementMethodId != null &&
-        !settlementMethods.any(
-          (method) => method.id == d.defaultSettlementMethodId,
-        )) {
-      context.appError('当前默认结账方式已不可用，请先修复客户结账方式关联');
-      return;
-    }
-    final iv = <String, String>{
-      'name': d.name ?? '',
-      'code': d.code ?? '',
-      'fullName': d.fullName ?? '',
-      'clientRank': d.clientRank ?? '',
-      'region': d.region ?? '',
-      'placeId': d.placeId ?? '',
-      'legalPerson': d.legalPerson ?? '',
-      'linkman': d.linkman ?? '',
-      'mobile': d.mobile ?? '',
-      'phone': d.phone ?? '',
-      'phone2': d.phone2 ?? '',
-      'fax': d.fax ?? '',
-      'postcode': d.postcode ?? '',
-      'address': d.address ?? '',
-      'email': d.email ?? '',
-      'website': d.website ?? '',
-      'shipVia': d.shipVia ?? '',
-      'shipAddress': d.shipAddress ?? '',
-      'bank': d.bank ?? '',
-      'bankAccount': d.bankAccount ?? '',
-      'taxId': d.taxId ?? '',
-      'credit': d.credit?.toString() ?? '',
-      'initTotal': d.initTotal?.toString() ?? '',
-      'creditFloor': d.creditFloor?.toString() ?? '',
-      'tday': d.tday?.toString() ?? '',
-      'salesPaymentType': d.salesPaymentType ?? '',
-      'defaultSettlementMethodId': d.defaultSettlementMethodId ?? '',
-      'status': d.status ?? '',
-      'remark': d.remark ?? '',
-      'ownerEmployeeName':
-          access?.ownerEmployeeName ?? d.ownerEmployeeName ?? d.empId ?? '',
-      'accessViewerNames': access == null
-          ? ''
-          : access.viewers.map((viewer) => viewer.name).join('、'),
-    };
-    final readOnlyKeys = <String>{
-      if (!_canStatusMaster) 'status',
-      if (d.legacyId != null) 'credit',
-    };
-    showMasterEditDialog(
-      context: context,
-      title: '编辑客户', // TODO(l10n): 补 arb
-      fields: _clientFields(
-        iv,
-        settlementMethods,
-        legacyCreditSnapshot: d.legacyId != null,
-        showAccess: true,
-      ),
-      initialValues: iv,
-      fixedValues: {
-        'categoryId': d.categoryId ?? widget.nodeId,
-        if (d.version != null) 'version': d.version,
-      },
-      readOnlyKeys: readOnlyKeys.isEmpty ? null : readOnlyKeys,
-      onSubmit: (body) => _doUpdateClient(d.id, body),
+    await showClientMasterEdit(
+      context,
+      widget.ref,
+      d,
+      fallbackCategoryId: widget.nodeId,
+      onSaved: () => _loadClients(_clientPageNum),
     );
-  }
-
-  Future<bool> _doUpdateClient(String id, Map<String, dynamic> body) async {
-    final ok = await context.guardRun(
-      () async {
-        await widget.ref.read(clientRepositoryProvider).update(id, body);
-      },
-      success: '客户已更新', // TODO(l10n): 补 arb
-      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!ok) return false;
-    await _loadClients(_clientPageNum);
-    return true;
   }
 
   Future<void> _deleteClient(ClientDetail d) async {
@@ -773,121 +581,12 @@ class _DetailPaneState extends State<_DetailPane> {
     if (saved != null && mounted) await _loadClients(_clientPageNum);
   }
 
-  /// 点客户行：拉详情弹框。用独立的 [_detailLoading] 防并发（见 mould 页同款注释）。
+  /// 双击客户行（2026-09-14）：从弹窗改为客户详情整页 /basicinfo/client/:id——
+  /// 页宽自适应多列展示 + 联系方式/地址/跟进记录子表管理；返回时刷新列表。
   Future<void> _showClientDetail(String id) async {
-    if (_detailLoading) return;
-    _detailLoading = true;
-    // 预取 root navigator：showDialog 默认 useRootNavigator:true 把对话框 push 到
-    // root navigator，pop 也必须用同一个 root（见 MEMORY: go_router 嵌套 navigator 坑）。
-    // 之前漏了 rootNavigator:true，nav.pop() 误把 go_router 那层页面 pop 掉 → 白屏。
-    final nav = Navigator.of(context, rootNavigator: true);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator()),
-    );
-    ClientDetail? d;
-    try {
-      d = await widget.ref.read(clientRepositoryProvider).detail(id);
-    } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) {
-        context.appError('加载客户详情失败'); // TODO(l10n): 补 arb
-      }
-    }
-    if (!mounted) {
-      nav.pop();
-      return;
-    }
-    nav.pop(); // 关 loading
-    if (d == null) {
-      _detailLoading = false;
-      return;
-    }
-    final detail = d;
-    await showMasterDetailSheet(
-      context: context,
-      title: detail.name ?? detail.code ?? '客户详情',
-      rows: _clientDetailRows(detail),
-      extraActions: [
-        if (detail.accessManageable)
-          MasterDetailAction(
-            label: '负责人和可见人',
-            icon: Icons.manage_accounts_outlined,
-            onPressed: () => _showClientAccess(detail),
-          ),
-      ],
-      canEdit: _canEditMaster && detail.writable,
-      canDelete: _canDeleteMaster && detail.writable,
-      onToggleStatus: _canStatusMaster && detail.writable
-          ? () async {
-              final next = detail.status == '使用' ? '禁用' : '使用';
-              final ok = await context.guardRun(
-                () => widget.ref
-                    .read(masterStatusRepositoryProvider)
-                    .change(
-                      resourcePath: ApiEndpoints.client(detail.id),
-                      status: next,
-                      version: detail.version,
-                    ),
-                success: next == '禁用' ? '已停用' : '已启用',
-              );
-              if (ok && mounted) await _loadClients(_clientPageNum);
-            }
-          : null,
-      statusActionLabel: detail.status == '使用' ? '停用' : '启用',
-      onEdit: () {
-        _showClientEdit(detail);
-      },
-      onDelete: () {
-        _deleteClient(detail);
-      },
-    );
-    if (mounted) _detailLoading = false;
+    await context.push(RoutePath.basicinfoClientDetail(id));
+    if (mounted) await _loadClients(_clientPageNum);
   }
-
-  List<MasterDetailRow> _clientDetailRows(ClientDetail d) => [
-    MasterDetailRow('当前访问', d.accessReasonLabel),
-    MasterDetailRow('编号', d.code), // TODO(l10n): 补 arb
-    MasterDetailRow('名称', d.name), // TODO(l10n): 补 arb
-    MasterDetailRow('全称', d.fullName), // TODO(l10n): 补 arb
-    MasterDetailRow('等级', d.clientRank), // TODO(l10n): 补 arb
-    MasterDetailRow('分类', d.categoryName), // TODO(l10n): 补 arb
-    MasterDetailRow('区域', d.region), // TODO(l10n): 补 arb
-    MasterDetailRow('地区', d.placeId), // TODO(l10n): 补 arb
-    MasterDetailRow('负责人', d.ownerEmployeeName ?? d.empId), // TODO(l10n): 补 arb
-    MasterDetailRow('法人', d.legalPerson), // TODO(l10n): 补 arb
-    MasterDetailRow('联系人', d.linkman), // TODO(l10n): 补 arb
-    MasterDetailRow('手机', d.mobile), // TODO(l10n): 补 arb
-    MasterDetailRow('电话', d.phone), // TODO(l10n): 补 arb
-    MasterDetailRow('电话2', d.phone2), // TODO(l10n): 补 arb
-    MasterDetailRow('传真', d.fax), // TODO(l10n): 补 arb
-    MasterDetailRow('邮编', d.postcode), // TODO(l10n): 补 arb
-    MasterDetailRow('地址', d.address), // TODO(l10n): 补 arb
-    MasterDetailRow('收货地址', d.shipAddress), // TODO(l10n): 补 arb
-    MasterDetailRow('运输方式', d.shipVia), // TODO(l10n): 补 arb
-    MasterDetailRow('开户行', d.bank), // TODO(l10n): 补 arb
-    MasterDetailRow('银行账号', d.bankAccount), // TODO(l10n): 补 arb
-    MasterDetailRow('税号', d.taxId), // TODO(l10n): 补 arb
-    MasterDetailRow(
-      d.legacyId == null ? '信用额度' : '旧库 Credit 快照（只读）',
-      d.credit?.toStringAsFixed(2),
-    ),
-    MasterDetailRow(
-      '期初应收',
-      d.initTotal?.toStringAsFixed(2),
-    ), // TODO(l10n): 补 arb
-    MasterDetailRow('铺底额', d.creditFloor?.toStringAsFixed(2)),
-    MasterDetailRow('结算天数', d.tday?.toString()), // TODO(l10n): 补 arb
-    MasterDetailRow('销售货款类型', salesPaymentTypeLabel(d.salesPaymentType)),
-    MasterDetailRow('默认结账方式', d.defaultSettlementMethodName),
-    MasterDetailRow('邮箱', d.email), // TODO(l10n): 补 arb
-    MasterDetailRow('网址', d.website), // TODO(l10n): 补 arb
-    MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb
-    MasterDetailRow('备注', d.remark), // TODO(l10n): 补 arb
-    MasterDetailRow('旧系统 ID', d.legacyId?.toString()), // TODO(l10n): 补 arb
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -1440,7 +1139,10 @@ class _DetailPaneState extends State<_DetailPane> {
       key: 'ownerEmployeeName',
       label: '负责人',
       width: 120,
-      value: (m) => m.ownerEmployeeName ?? m.empId,
+      // 2026-09-14：老库未匹配到员工的行 owner 为空——显示未分配而不是裸数字 ID。
+      value: (m) => (m.ownerEmployeeName?.trim().isNotEmpty ?? false)
+          ? m.ownerEmployeeName
+          : '未分配',
     ),
     MasterColumnDef(
       key: 'legalPerson',

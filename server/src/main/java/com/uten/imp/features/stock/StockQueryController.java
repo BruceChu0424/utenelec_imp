@@ -71,11 +71,15 @@ public class StockQueryController {
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(defaultValue = "true") boolean includeDefective,
             @RequestParam(required = false) String keyword,
+            // V587/V590 归属表头筛选（值为仓库 UUID；owningWarehouseNull=筛未登记）。
+            @RequestParam(required = false) UUID owningWarehouse,
+            @RequestParam(required = false) Boolean owningWarehouseNull,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.instantInventory(categoryId, warehouseId, includeDefective, keyword, page, size, sort, order);
+        return service.instantInventory(categoryId, warehouseId, includeDefective, keyword,
+                owningWarehouse, owningWarehouseNull, page, size, sort, order);
     }
 
     /**

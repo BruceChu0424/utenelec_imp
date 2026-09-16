@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -521,11 +522,31 @@ class _WarehouseArrivalExceptionsViewState
       width: 190,
       value: (task) => task.supplierName ?? '—',
     ),
+    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+    // 到货异常最常见的误判就是「同名不同色」认错货（V5 插面同时有自制/白色与
+    // 委外/香槟金），三个属性都得看得见，还得能各自排序筛选。
     MasterColumnDef(
       key: 'goods',
-      label: '货品',
-      width: 240,
-      value: (task) => '${task.goodsCode} ${task.goodsName}'.trim(),
+      label: '货品名称',
+      width: 200,
+      value: (task) => task.goodsName,
+      cellBuilderHandlesSemantics: true,
+      cellBuilder: (context, task) =>
+          UtenGoodsIdentityCell(name: task.goodsName),
+    ),
+    MasterColumnDef(
+      key: 'goodsCode',
+      label: '编号',
+      width: 130,
+      value: (task) => UtenGoodsAttributeCell.text(task.goodsCode),
+      cellBuilder: (context, task) => UtenGoodsAttributeCell(task.goodsCode),
+    ),
+    MasterColumnDef(
+      key: 'colorName',
+      label: '颜色',
+      width: 96,
+      value: (task) => UtenGoodsAttributeCell.text(task.colorName),
+      cellBuilder: (context, task) => UtenGoodsAttributeCell(task.colorName),
     ),
     MasterColumnDef(
       key: 'warehouseName',
@@ -676,10 +697,8 @@ class _WarehouseExceptionDetailDialog extends StatelessWidget {
                 _DetailLine(label: '订货单', value: task.orderBillNo),
                 _DetailLine(label: '供应商', value: task.supplierName ?? '—'),
                 _DetailLine(label: '仓库', value: task.warehouseName ?? '—'),
-                _DetailLine(
-                  label: '货品',
-                  value: '${task.goodsCode} ${task.goodsName}'.trim(),
-                ),
+                _DetailLine(label: '货品名称', value: task.goodsName),
+                _DetailLine(label: '编号', value: task.goodsCode),
                 if (task.colorName?.isNotEmpty == true)
                   _DetailLine(label: '颜色', value: task.colorName!),
                 const Divider(height: UtenSpacing.s24),

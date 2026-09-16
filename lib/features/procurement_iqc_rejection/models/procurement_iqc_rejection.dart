@@ -96,6 +96,8 @@ class ProcurementIqcRejectionCase {
     this.supplierName,
     this.goodsCode,
     this.goodsName,
+    this.colorId,
+    this.colorName,
     this.failedBaseQty,
     this.failedQty,
     this.unitName,
@@ -128,6 +130,8 @@ class ProcurementIqcRejectionCase {
   final String? supplierName;
   final String? goodsCode;
   final String? goodsName;
+  final String? colorId;
+  final String? colorName;
   final String? failedBaseQty;
   final String? failedQty;
   final String? unitName;
@@ -179,6 +183,8 @@ class ProcurementIqcRejectionCase {
         supplierName: _text(json['supplierName']),
         goodsCode: _text(json['goodsCode']),
         goodsName: _text(json['goodsName']),
+        colorId: _text(json['colorId']),
+        colorName: _text(json['colorName']),
         failedBaseQty: _text(json['failedBaseQty']),
         failedQty: _text(json['failedQty']),
         unitName: _text(json['unitName']),

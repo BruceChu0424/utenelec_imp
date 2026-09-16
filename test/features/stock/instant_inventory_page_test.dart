@@ -218,6 +218,8 @@ class _RecordingStockRepository extends StockQueryRepository {
     String? warehouseId,
     bool includeDefective = true,
     String? keyword,
+    String? owningWarehouse,
+    bool owningWarehouseNull = false,
     String? sort,
     String? order,
   }) {

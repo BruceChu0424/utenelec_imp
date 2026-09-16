@@ -82,7 +82,9 @@ public class GoodsService {
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
             "series", "model", "material", "code", "name", "spec",
             "cNumber", "requireRemark", "paper", "rearInsertCode",
-            "colorLegacyId", "unitLegacyId", "sourceType");
+            "colorLegacyId", "unitLegacyId", "sourceType",
+            // V587/V590 归属表头筛选的空值桶（@ManyToOne 属性名）。
+            "owningWarehouse", "owningWorkshop");
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（金额/编号等可排序列；命中才排序，否则默认 id ASC）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of("price", "price", "code", "code");
@@ -173,8 +175,15 @@ public class GoodsService {
                 content.stream().map(Goods::getMouldLegacyId).toList());
         Map<UUID, BigDecimal> stockByGoods = stockQuantitiesFor(
                 content.stream().map(Goods::getId).toList());
+        // 所属仓库名 (V587)：一次批量取名，不在拼行时逐行碰关联触发懒加载 (N+1)。
+        Map<UUID, String> owningWarehouseNames = relationships.warehouseNames(
+                content.stream().map(GoodsService::owningWarehouseIdOf).toList());
+        // 归属车间名 (V590)：同一批量取名口径。
+        Map<UUID, String> owningWorkshopNames = relationships.departmentNames(
+                content.stream().map(GoodsService::owningWorkshopIdOf).toList());
         List<GoodsListItem> items = content.stream()
-                .map(g -> toList(g, colorNames, unitNames, mouldsByLegacy, stockByGoods))
+                .map(g -> toList(g, colorNames, unitNames, mouldsByLegacy, stockByGoods,
+                        owningWarehouseNames, owningWorkshopNames))
                 .toList();
         return new PageResponse<>(items, p);
     }
@@ -264,6 +273,13 @@ public class GoodsService {
             ps.add(cb.equal(mouldJoin.get("code"), f.mouldCode()));
         }
         addEq(ps, cb, root, "sourceType", f.sourceType());
+        // V587/V590 归属表头筛选：等值（UUID 关系）；空值桶走 nullFields。
+        if (f.owningWarehouse() != null) {
+            ps.add(cb.equal(root.get("owningWarehouse").get("id"), f.owningWarehouse()));
+        }
+        if (f.owningWorkshop() != null) {
+            ps.add(cb.equal(root.get("owningWorkshop").get("id"), f.owningWorkshop()));
+        }
         if (f.colorLegacyId() != null) ps.add(cb.equal(root.get("colorLegacyId"), f.colorLegacyId()));
         if (f.unitLegacyId() != null) ps.add(cb.equal(root.get("unitLegacyId"), f.unitLegacyId()));
         if (Boolean.TRUE.equals(f.excludeDisabled())) {
@@ -510,6 +526,11 @@ public class GoodsService {
                 // 采购批量口径（V575）：供应商 MOQ / 整箱倍数，采购据此抬量、取整。
                 new ExportColumn("minOrderQty", "最小起订量", ExportColumn.NUMBER),
                 new ExportColumn("orderMultipleQty", "订货倍数", ExportColumn.NUMBER),
+                // 所属仓库 (V587)：主档归属仓，不是单据落点仓。与下方 row.put 必须成对，
+                // 只加一处会导出一个空列。表头同时登记进 GoodsImportService 的别名表。
+                new ExportColumn("owningWarehouseName", "所属仓库", ExportColumn.TEXT),
+                // 归属生产车间 (V590)：与下方 row.put 必须成对，只加一处会导出空列。
+                new ExportColumn("owningWorkshopName", "归属车间", ExportColumn.TEXT),
                 new ExportColumn("status", "状态", ExportColumn.TEXT));
         List<Map<String, Object>> rows = new ArrayList<>();
         int pageSize = 100;
@@ -537,6 +558,8 @@ public class GoodsService {
                 row.put("price", g.getPrice());
                 row.put("minOrderQty", g.getMinOrderQty());
                 row.put("orderMultipleQty", g.getOrderMultipleQty());
+                row.put("owningWarehouseName", g.getOwningWarehouseName());
+                row.put("owningWorkshopName", g.getOwningWorkshopName());
                 row.put("status", g.getStatus());
                 rows.add(row);
             }
@@ -595,13 +618,55 @@ public class GoodsService {
             Long nc = ((Number) nq.getSingleResult()).longValue();
             nullCounts.put(field, nc);
         }
+        // V587/V590 归属两列：值是 UUID 关系，桶值=UUID、标签=仓库名/车间名
+        //（FACET_COLUMNS 的裸列聚合不适用，单独 JOIN 取名）。
+        buckets.put("owningWarehouse",
+                refFacet("owning_warehouse_id", "warehouses", ids, ownerClause, bindEmp, ownerEmps));
+        nullCounts.put("owningWarehouse", nullCountOf("owning_warehouse_id", ids, ownerClause, bindEmp, ownerEmps));
+        buckets.put("owningWorkshop",
+                refFacet("owning_workshop_department_id", "departments", ids, ownerClause, bindEmp, ownerEmps));
+        nullCounts.put("owningWorkshop", nullCountOf("owning_workshop_department_id", ids, ownerClause, bindEmp, ownerEmps));
         return new GoodsFacets(
                 buckets.get("code"), buckets.get("series"), buckets.get("model"),
                 buckets.get("name"), buckets.get("spec"), buckets.get("material"),
                 buckets.get("rearInsertCode"), buckets.get("paper"),
                 buckets.get("colorLegacyId"), buckets.get("unitLegacyId"),
                 buckets.get("sourceType"),
+                buckets.get("owningWarehouse"), buckets.get("owningWorkshop"),
                 nullCounts);
+    }
+
+    /** 归属 UUID 列的 facet 桶：JOIN 名称表取标签，值=UUID 字符串（筛选按 UUID 回传）。 */
+    private List<FacetBucket> refFacet(String goodsCol, String refTable,
+                                       List<UUID> ids, String ownerClause,
+                                       boolean[] bindEmp, java.util.Set<UUID> ownerEmps) {
+        var fq = em.createNativeQuery(
+                "select goods." + goodsCol + " as v, ref.name as label, count(*) as c "
+                        + "from goods join " + refTable + " ref on ref.id = goods." + goodsCol + " "
+                        + "where goods.is_deleted = false and goods.category_id in (:ids) "
+                        + ownerClause
+                        + " group by goods." + goodsCol + ", ref.name "
+                        + "order by c desc, label asc limit " + FACET_LIMIT)
+                .setParameter("ids", ids);
+        if (bindEmp[0]) fq.setParameter("__ownerEmp", ownerEmps);
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(fq);
+        List<FacetBucket> list = new ArrayList<>(rows.size());
+        for (Object[] row : rows) {
+            list.add(new FacetBucket(String.valueOf(row[0]),
+                    ((Number) row[2]).longValue(), String.valueOf(row[1])));
+        }
+        return list;
+    }
+
+    private Long nullCountOf(String goodsCol, List<UUID> ids, String ownerClause,
+                             boolean[] bindEmp, java.util.Set<UUID> ownerEmps) {
+        var nq = em.createNativeQuery(
+                "select count(*) from goods "
+                        + "where is_deleted = false and category_id in (:ids) and " + goodsCol + " is null"
+                        + ownerClause)
+                .setParameter("ids", ids);
+        if (bindEmp[0]) nq.setParameter("__ownerEmp", ownerEmps);
+        return ((Number) nq.getSingleResult()).longValue();
     }
 
     /** facets 桶展示标签：颜色/单位字段用解析名（解析不到回落 #id），其余字段=label=value。 */
@@ -654,13 +719,24 @@ public class GoodsService {
     public List<GoodsDictItem> lookup(Set<UUID> ids) {
         if (ids == null || ids.isEmpty()) return List.of();
         var scope = goodsScope();
-        return repo.findAllById(ids).stream()
+        List<Goods> visible = repo.findAllById(ids).stream()
                 .filter(g -> !g.isDeleted())
                 .filter(g -> scope.seeAll() || g.getOwnerEmployeeId() == null
                         || scope.visibleOwners().contains(g.getOwnerEmployeeId()))
+                .toList();
+        // 所属仓库名 (V587)：批量场景，先一次取好 id→名再拼行，不逐行触发懒加载 (N+1)。
+        Map<UUID, String> owningWarehouseNames = relationships.warehouseNames(
+                visible.stream().map(GoodsService::owningWarehouseIdOf).toList());
+        Map<UUID, String> owningWorkshopNames = relationships.departmentNames(
+                visible.stream().map(GoodsService::owningWorkshopIdOf).toList());
+        return visible.stream()
                 .map(g -> new GoodsDictItem(
                         g.getId(), g.getCode(), g.getName(), g.getSeries(), g.getStockPlace(),
-                        g.getUnit() == null ? null : g.getUnit().getId()))
+                        g.getUnit() == null ? null : g.getUnit().getId(),
+                        owningWarehouseIdOf(g) == null
+                                ? null : owningWarehouseNames.get(owningWarehouseIdOf(g)),
+                        owningWorkshopIdOf(g) == null
+                                ? null : owningWorkshopNames.get(owningWorkshopIdOf(g))))
                 .toList();
     }
 
@@ -913,6 +989,34 @@ public class GoodsService {
         goods.setColorLegacyId(target.getLegacyId());
     }
 
+    /**
+     * 所属仓库 (V587)：这批货平时归哪个仓管的主档归属，不是单据落点仓，也不是物料分析范围仓。
+     *
+     * <p>presence 机制同颜色：请求里没带 owningWarehouseId 这个键=不动 (旧客户端不会误清)；
+     * 显式带了且为 null=清空归属。无 legacy 影子列，故清空判定只看 UUID。
+     */
+    private void applyOwningWarehouseReference(GoodsSaveRequest req, Goods goods) {
+        if (!req.hasOwningWarehouseReference()) return;
+        if (req.getOwningWarehouseId() == null) {
+            goods.setOwningWarehouse(null);
+            return;
+        }
+        goods.setOwningWarehouse(relationships.owningWarehouse(req.getOwningWarehouseId()));
+    }
+
+    /**
+     * 所属仓库 UUID (V587)：读关联的 id 不会初始化 LAZY 代理，批量场景安全。
+     * 名称另走 {@code relationships.warehouseNames} 一次批量取，别在循环里拿名字。
+     */
+    private static UUID owningWarehouseIdOf(Goods g) {
+        return g.getOwningWarehouse() == null ? null : g.getOwningWarehouse().getId();
+    }
+
+    /** V590 归属生产车间 id；名称另走 {@code relationships.departmentNames} 批量取。 */
+    private static UUID owningWorkshopIdOf(Goods g) {
+        return g.getOwningWorkshop() == null ? null : g.getOwningWorkshop().getId();
+    }
+
     private void applyThicknessUnitReference(GoodsSaveRequest req, Goods goods) {
         if (!req.hasThicknessUnitReference()) return;
         if (clearsReference(req.getThicknessUnitId(), req.getThicknessUnitLegacyId())) {
@@ -986,6 +1090,7 @@ public class GoodsService {
                         ? null : req.getOrderMultipleQty());
         g.setStatus(req.getStatus());
         applyColorReference(req, g);
+        applyOwningWarehouseReference(req, g);
         // Used units were checked before apply. Preserve their exact UUID and
         // legacy snapshot even if that unit is now inactive or unresolved.
         if (req.hasUnitReference() && !g.isQuantityUnitLocked()) {
@@ -1080,6 +1185,16 @@ public class GoodsService {
         Map<Integer, Mould> mouldByLegacy = g.getMouldLegacyId() == null
                 ? Map.of()
                 : mouldsByLegacyFor(List.of(g.getMouldLegacyId()));
+        // 所属仓库 (V587)：走与列表同一条批量取名路径，软删仓库统一显示为未解析 (null)。
+        UUID owningWarehouseId = owningWarehouseIdOf(g);
+        String owningWarehouseName = owningWarehouseId == null
+                ? null
+                : relationships.warehouseNames(List.of(owningWarehouseId)).get(owningWarehouseId);
+        // 归属生产车间 (V590)：同一条批量取名路径。
+        UUID owningWorkshopId = owningWorkshopIdOf(g);
+        String owningWorkshopName = owningWorkshopId == null
+                ? null
+                : relationships.departmentNames(List.of(owningWorkshopId)).get(owningWorkshopId);
         GoodsDetail d = new GoodsDetail(
                 g.getId(), g.getCode(), g.getName(), g.getSpec(), g.getModel(),
                 canViewPrice() ? g.getPrice() : null, g.getDiscount(), g.getStatus(), g.getLegacyId(),
@@ -1116,7 +1231,9 @@ public class GoodsService {
                 g.getThicknessUnit() == null ? null : g.getThicknessUnit().getId(),
                 g.getMWeightUnit() == null ? null : g.getMWeightUnit().getId(),
                 g.isQuantityUnitLocked(), canWrite(g),
-                g.getMinOrderQty(), g.getOrderMultipleQty());
+                g.getMinOrderQty(), g.getOrderMultipleQty(),
+                owningWarehouseId, owningWarehouseName,
+                owningWorkshopId, owningWorkshopName);
         // 成本可见性（goods:cost:view）：未授权清空 18 个成本字段 + 置 costMasked（前端隐藏成本 Tab）
         if (!costMasker.canView()) {
             d.setSourceE(null); d.setMachiningE(null); d.setIncidentalE(null); d.setLacquerE(null);
@@ -1140,7 +1257,11 @@ public class GoodsService {
     }
 
     private GoodsListItem toList(Goods g, Map<Integer, String> colorNames, Map<Integer, String> unitNames,
-                                 Map<Integer, Mould> mouldsByLegacy, Map<UUID, BigDecimal> stockByGoods) {
+                                 Map<Integer, Mould> mouldsByLegacy, Map<UUID, BigDecimal> stockByGoods,
+                                 Map<UUID, String> owningWarehouseNames,
+                                 Map<UUID, String> owningWorkshopNames) {
+        UUID owningWarehouseId = owningWarehouseIdOf(g);
+        UUID owningWorkshopId = owningWorkshopIdOf(g);
         return new GoodsListItem(
                 g.getId(), g.getCode(), g.getName(), g.getSpec(), g.getModel(),
                 canViewPrice() ? g.getPrice() : null,
@@ -1164,7 +1285,11 @@ public class GoodsService {
                 g.isAutoCreated(),
                 stockByGoods.getOrDefault(g.getId(), BigDecimal.ZERO),
                 g.getStockPlace(),
-                g.getMinOrderQty(), g.getOrderMultipleQty());
+                g.getMinOrderQty(), g.getOrderMultipleQty(),
+                owningWarehouseId,
+                owningWarehouseId == null ? null : owningWarehouseNames.get(owningWarehouseId),
+                owningWorkshopId,
+                owningWorkshopId == null ? null : owningWorkshopNames.get(owningWorkshopId));
     }
 
     private MaterialCategory requireCategory(UUID id) {

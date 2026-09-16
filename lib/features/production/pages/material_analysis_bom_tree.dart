@@ -1,5 +1,23 @@
 part of 'production_material_analysis_page.dart';
 
+/// BOM 兄弟行排序:先层级、再货品编号(无编号退货品名、再退行 id)。
+///
+/// **全站唯一口径**:物料分析准备页主表([_MaterialAnalysisBomTreeState._orderedBomNodes])
+/// 与「父件+下层一起下单」页([_MaterialAnalysisChildCascadeState._cascadeNodes])
+/// 共用同一个比较器——两张表看的是同一棵 BOM,行序不一样用户就得在两页之间重新
+/// 找一遍物料(2026-09-15 用户口径「里面的顺序按照物料分析里准备下面的顺序一样」)。
+/// 两处属于不同的 State 类,故落在库级私有函数上而不是某个类里。
+int _compareBomSiblings(
+  ProductionMaterialAnalysisMaterial left,
+  ProductionMaterialAnalysisMaterial right,
+) {
+  final byLevel = left.level.compareTo(right.level);
+  if (byLevel != 0) return byLevel;
+  return (left.goodsCode ?? left.goodsName ?? left.materialLineId).compareTo(
+    right.goodsCode ?? right.goodsName ?? right.materialLineId,
+  );
+}
+
 abstract class _MaterialAnalysisBomTreeState
     extends _MaterialAnalysisProductTasksState {
   ProductionMaterialAnalysisView? _bomPresentationAnalysis;
@@ -436,6 +454,7 @@ abstract class _MaterialAnalysisBomTreeState
     return aggregates;
   }
 
+  /// 兄弟行排序:先层级、再货品编号(无编号退货品名、再退行 id)。
   List<ProductionMaterialAnalysisMaterial> _orderedBomNodes(
     List<ProductionMaterialAnalysisMaterial> nodes, {
     required Map<String, String?> parentIds,
@@ -454,21 +473,9 @@ abstract class _MaterialAnalysisBomTreeState
         children.putIfAbsent(parentKey, () => []).add(node);
       }
     }
-    int compare(
-      ProductionMaterialAnalysisMaterial left,
-      ProductionMaterialAnalysisMaterial right,
-    ) {
-      final byLevel = left.level.compareTo(right.level);
-      if (byLevel != 0) return byLevel;
-      return (left.goodsCode ?? left.goodsName ?? left.materialLineId)
-          .compareTo(
-            right.goodsCode ?? right.goodsName ?? right.materialLineId,
-          );
-    }
-
-    roots.sort(compare);
+    roots.sort(_compareBomSiblings);
     for (final values in children.values) {
-      values.sort(compare);
+      values.sort(_compareBomSiblings);
     }
     final result = <ProductionMaterialAnalysisMaterial>[];
     final visited = <String>{};
@@ -503,7 +510,7 @@ abstract class _MaterialAnalysisBomTreeState
     }
     final remaining =
         nodes.where((node) => !visited.contains(node.materialLineId)).toList()
-          ..sort(compare);
+          ..sort(_compareBomSiblings);
     for (final node in remaining) {
       visit(node);
     }

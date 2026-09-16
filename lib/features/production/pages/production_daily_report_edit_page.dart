@@ -26,6 +26,7 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -44,10 +45,14 @@ import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_daily_report.dart';
+import '../models/production_direct_transfer_candidate.dart';
+import '../models/production_material_usage_source.dart';
 import '../models/reportable_plan_line.dart';
 import '../providers/production_department_provider.dart';
+import '../repositories/production_material_repository.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/production_daily_grid_columns.dart';
+import '../widgets/production_report_surplus_return_dialog.dart';
 import '../widgets/reportable_plan_line_picker.dart';
 
 class ProductionDailyReportEditPage extends ConsumerStatefulWidget {
@@ -84,12 +89,38 @@ class _ProductionDailyReportEditPageState
 
   final _grid = UtenEditableGridController<DailyGridRow>();
 
+  /// ===== V583 报工同页登记实际用料 =====
+  /// 每个执行工单的材料台账缓存，键 'planId|物料所属段Id'。一张日报常把同一个工单
+  /// 挂在多个成品行下，去重后只拉一次。
+  final Map<String, List<ProductionMaterialClearanceRow>> _clearanceCache = {};
+
+  /// 报工段 → 它的合法用料来源段(分批生产时料挂在前批原领料段上)。
+  /// 每条来源自带 canSettle，所以不用再单独打 capabilities 接口。
+  final Map<String, List<ProductionMaterialUsageSource>> _usageSourceCache = {};
+
+  /// 编辑既有草稿时回填用：demandId → 已登记的本次实际用料。
+  final Map<String, String> _savedMaterialUsage = {};
+
+  bool _materialLoading = false;
+
+  /// 物料台账整体读不到(老计划、无权限、接口故障)：物料区降级为提示，不拦报工。
+  String? _materialNotice;
+
+  /// 收尾余料退仓意愿：最后一次报工时问过用户，随日报一起提交，审核时才真正发退料单。
+  bool _surplusReturnRequested = false;
+
+  /// 批量报工工单太多时不拉物料(N 次台账请求会把页面拖死)，只报工。
+  static const int _materialSourceLimit = 20;
+
   /// 新建日报保存前暂存的附件（ADR-074：保存拿到 UUID 后逐个确认上传）。
   final _pendingFiles = PendingAttachmentController();
 
   /// 日报已创建但仍有附件上传失败：再点「保存」只重试附件，不重复建单。
   String? _createdReportId;
   final _scrollCtl = ScrollController();
+
+  /// 明细表 sticky 表头是否已置顶(页面滚动条门控：置顶前不显示，置顶后才显示)。
+  final _gridPinned = ValueNotifier<bool>(false);
   bool _saving = false;
   bool _loading = false;
   int _rowVersion = 0;
@@ -107,6 +138,7 @@ class _ProductionDailyReportEditPageState
 
   @override
   void dispose() {
+    _gridPinned.dispose();
     _billNo.dispose();
     _remark.dispose();
     _pendingFiles.dispose();
@@ -158,6 +190,12 @@ class _ProductionDailyReportEditPageState
         _makerName = d.makerName;
         _createdAt = d.createdAt;
         _rowVersion = d.rowVersion;
+        // V583：已登记的实耗按需求 UUID 回填到重新拉取的台账行上(草稿还没记账，
+        // 台账数字可能已被别人改动，所以只回填用户填过的数，不回填当时的上限)。
+        _surplusReturnRequested = d.surplusReturnRequested;
+        for (final usage in d.materialUsages) {
+          _savedMaterialUsage[usage.demandId] = _quantityText(usage.qtyBase);
+        }
         final rows = <DailyGridRow>[];
         for (final it in d.items) {
           final row = DailyGridRow()
@@ -217,6 +255,8 @@ class _ProductionDailyReportEditPageState
         await _loadInitialSources(initialIds);
       }
     }
+    if (!mounted) return;
+    await _reloadMaterialRows();
   }
 
   String _fmt(DateTime d) =>
@@ -274,17 +314,21 @@ class _ProductionDailyReportEditPageState
       return;
     }
     _applySource(row, sources.first);
-    if (sources.length == 1) return;
-    var insertAt = _grid.rows.indexOf(row) + 1;
-    for (final source in sources.skip(1)) {
-      final extra = DailyGridRow();
-      _grid.insertAt(insertAt, extra);
-      _applySource(extra, source);
-      insertAt++;
+    if (sources.length > 1) {
+      var insertAt = _grid.rows.indexOf(row) + 1;
+      for (final source in sources.skip(1)) {
+        final extra = DailyGridRow();
+        _grid.insertAt(insertAt, extra);
+        _applySource(extra, source);
+        insertAt++;
+      }
+      if (mounted) {
+        context.appInfo('已按所选 ${sources.length} 个报工任务建好 ${sources.length} 行明细');
+      }
     }
-    if (mounted) {
-      context.appInfo('已按所选 ${sources.length} 个报工任务建好 ${sources.length} 行明细');
-    }
+    // 换了来源工单就要重挂它的物料子行：_reloadMaterialRows 会按成品行顺序重排整表，
+    // 上面插在中间的新行也会被归位。
+    await _reloadMaterialRows();
   }
 
   /// 卡片“分批报工”已给出精确执行子任务。若读侧只有一条可报分摊，直接
@@ -434,6 +478,13 @@ class _ProductionDailyReportEditPageState
   }
 
   void _clearSource(DailyGridRow row) {
+    // 来源没了，挂在这行下面的物料子行也就没有归属：先摘掉再清字段，
+    // 否则它们会变成指向已失效工单的孤儿行，提交时被服务端判 403。
+    final orphans = [
+      for (final candidate in _grid.rows)
+        if (candidate.materialParent == row) candidate,
+    ];
+    if (orphans.isNotEmpty) _grid.removeRows(orphans);
     setState(() {
       row
         ..planId = null
@@ -465,6 +516,317 @@ class _ProductionDailyReportEditPageState
       ? value.toStringAsFixed(0)
       : value.toStringAsFixed(4).replaceFirst(RegExp(r'0+$'), '');
 
+  // ===================== V583 物料子行 =====================
+
+  /// 成品报工行(排除挂在它们下面的物料子行)。
+  List<DailyGridRow> get _productRows =>
+      _grid.rows.where((row) => !row.isMaterialRow).toList(growable: false);
+
+  String _materialKey(String planId, String segmentId) => '$planId|$segmentId';
+
+  /// 有界并发：一次批量报工可能带十几个工单，逐个串行太慢、一把全发会打爆后端。
+  Future<void> _runBounded(
+    List<Future<void> Function()> tasks, {
+    int limit = 4,
+  }) async {
+    var cursor = 0;
+    Future<void> worker() async {
+      while (true) {
+        final index = cursor++;
+        if (index >= tasks.length) return;
+        await tasks[index]();
+      }
+    }
+
+    await Future.wait([
+      for (var i = 0; i < limit && i < tasks.length; i++) worker(),
+    ]);
+  }
+
+  /// 按当前成品行的来源工单重建物料子行。
+  ///
+  /// 为什么要先问 `material-usage-sources` 再拉台账：分批生产时，本批执行段可能一条
+  /// 物料需求都没有，料挂在**前批原领料段**上(ADR-078)。直接拿报工段去查台账会查出
+  /// 零条，提交时还会被服务端按段归属判 403。
+  Future<void> _reloadMaterialRows() async {
+    final targets = [
+      for (final row in _productRows)
+        if (row.planId != null && row.executionSegmentId != null) row,
+    ];
+    if (targets.isEmpty) {
+      _applyMaterialRows(const {});
+      if (mounted) setState(() => _materialNotice = null);
+      return;
+    }
+    if (targets.length > _materialSourceLimit) {
+      // 逐工单两次请求，几十个工单会把页面拖到不可用。明说本次不登记实耗，
+      // 而不是静默少挂几行——静默会让车间以为料已经登记过了。
+      _applyMaterialRows(const {});
+      if (mounted) {
+        setState(
+          () => _materialNotice =
+              '本次报工的工单超过 $_materialSourceLimit 个，页面不再逐单加载用料明细；'
+              '本单只报工，实际用料请分批报工或到计划详情的材料台账登记。',
+        );
+      }
+      return;
+    }
+    setState(() {
+      _materialLoading = true;
+      _materialNotice = null;
+    });
+    final repo = ref.read(productionMaterialRepositoryProvider);
+    final failures = <String>[];
+    try {
+      // 1) 报工段 → 合法用料来源段(含沿用前批的原领料段)。
+      await _runBounded([
+        for (final row in targets)
+          () async {
+            final key = _materialKey(row.planId!, row.executionSegmentId!);
+            if (_usageSourceCache.containsKey(key)) return;
+            try {
+              _usageSourceCache[key] = await repo.materialUsageSources(
+                row.planId!,
+                executionSegmentId: row.executionSegmentId!,
+              );
+            } catch (_) {
+              _usageSourceCache[key] = const [];
+              failures.add(row.executionSegmentCode ?? '工单');
+            }
+          },
+      ]);
+      // 2) 每个来源段的材料台账。同一段被多个成品行引用时只拉一次。
+      final segments = <String, ({String planId, String segmentId})>{};
+      for (final row in targets) {
+        final sources =
+            _usageSourceCache[_materialKey(
+              row.planId!,
+              row.executionSegmentId!,
+            )] ??
+            const <ProductionMaterialUsageSource>[];
+        for (final source in sources) {
+          if (!source.canOpen) continue;
+          segments[_materialKey(row.planId!, source.executionSegmentId)] = (
+            planId: row.planId!,
+            segmentId: source.executionSegmentId,
+          );
+        }
+      }
+      await _runBounded([
+        for (final entry in segments.entries)
+          () async {
+            if (_clearanceCache.containsKey(entry.key)) return;
+            try {
+              _clearanceCache[entry.key] = await repo.clearance(
+                entry.value.planId,
+                executionSegmentId: entry.value.segmentId,
+              );
+            } catch (_) {
+              _clearanceCache[entry.key] = const [];
+              failures.add('材料台账');
+            }
+          },
+      ]);
+      await _reloadDirectTransferCandidates();
+      _applyMaterialRows(segments);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _materialLoading = false;
+          if (failures.isNotEmpty) {
+            _materialNotice =
+                '部分工单的用料明细没能读取(老计划或无材料权限)，这些工单本次只报工；'
+                '实际用料请到计划详情的材料台账单独登记。';
+          }
+        });
+      }
+    }
+  }
+
+  /// 把缓存里的台账铺成「成品行 + 其物料子行」的扁平行序。
+  ///
+  /// 复用既有行对象而不是整表重建：用户已经填进去的数字不能因为换了个来源就清空。
+  void _applyMaterialRows(Map<String, ({String planId, String segmentId})> _) {
+    final previous = <DailyGridRow, Map<String, DailyGridRow>>{};
+    for (final row in _grid.rows) {
+      final parent = row.materialParent;
+      final material = row.material;
+      if (!row.isMaterialRow || parent == null || material == null) continue;
+      previous.putIfAbsent(parent, () => {})[material.demandId] = row;
+    }
+    final reused = <DailyGridRow>{};
+    final flat = <DailyGridRow>[];
+    // 同一个执行工单挂在多个成品行下时，它的物料只有一份额度：第一处可填，
+    // 其余只读镜像。否则两行各自按满额填，提交必被服务端守恒守卫拒掉。
+    final owned = <String>{};
+    for (final product in _productRows) {
+      flat.add(product);
+      final planId = product.planId;
+      final segmentId = product.executionSegmentId;
+      if (planId == null || segmentId == null) continue;
+      final sources =
+          _usageSourceCache[_materialKey(planId, segmentId)] ??
+          const <ProductionMaterialUsageSource>[];
+      for (final source in sources) {
+        if (!source.canOpen) continue;
+        final rows =
+            _clearanceCache[_materialKey(planId, source.executionSegmentId)] ??
+            const <ProductionMaterialClearanceRow>[];
+        for (final clearance in rows) {
+          // 与材料台账同口径：没领过料、或已经没有可继续登记的量，就不占一行。
+          if (clearance.issuedQty <= 0 || clearance.availableToSettleQty <= 0) {
+            continue;
+          }
+          final row = previous[product]?[clearance.demandId] ?? DailyGridRow();
+          reused.add(row);
+          row
+            ..depth = 1
+            ..material = clearance
+            ..materialParent = product
+            ..materialShared = source.shared
+            ..materialReadOnly = !source.canSettle
+            ..materialOwnsInput = owned.add(clearance.demandId);
+          final saved = _savedMaterialUsage[clearance.demandId];
+          if (saved != null && row.materialUsed.text.trim().isEmpty) {
+            row.materialUsed.text = saved;
+          }
+          flat.add(row);
+        }
+      }
+    }
+    final orphans = [
+      for (final row in _grid.rows)
+        if (row.isMaterialRow && !reused.contains(row)) row,
+    ];
+    // swapRows 不 dispose：行对象归本页所有。被丢弃的子行等这一帧的输入框拆掉
+    // 之后再 dispose，同帧 dispose 正在使用的控制器会直接抛异常。
+    _grid.swapRows(flat);
+    if (orphans.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        for (final row in orphans) {
+          row.dispose();
+        }
+      });
+    }
+    if (mounted) setState(() {});
+  }
+
+  /// 删成品行：连带删掉挂在它下面的物料子行，不留孤儿。
+  void _deleteProductRow(DailyGridRow row, int index) {
+    final victims = [
+      row,
+      for (final candidate in _grid.rows)
+        if (candidate.materialParent == row) candidate,
+    ];
+    _grid.removeRows(victims);
+    setState(() {});
+  }
+
+  bool _hasMaterialChildren(DailyGridRow row) =>
+      !row.isMaterialRow &&
+      _grid.rows.any((candidate) => candidate.materialParent == row);
+
+  bool _isLastMaterialChild(DailyGridRow row) {
+    final rows = _grid.rows;
+    final index = rows.indexOf(row);
+    if (index < 0 || index + 1 >= rows.length) return true;
+    return rows[index + 1].materialParent != row.materialParent;
+  }
+
+  /// 本行是不是「最后一次报工」：勾了完结，或本次把可报量报满。
+  bool _isLastReport(DailyGridRow row) {
+    if (row.isFinal) return true;
+    final cap = row.maxReportQty;
+    if (cap == null) return false;
+    final qty = double.tryParse(row.qty.text.trim()) ?? 0;
+    return qty >= cap - 0.000001;
+  }
+
+  /// 拉每个成品行可转送的同车间上层工单(V584/V585)。
+  ///
+  /// 只有一个候选时直接选中——用户口径「能简化就简化」，多数情况下下游就一个。
+  /// 一个候选都没有时「转下一道工序」保持不可选，并把已选的去向退回送仓库，
+  /// 避免留下一个选了去向却投不出去的行。
+  Future<void> _reloadDirectTransferCandidates() async {
+    final repo = ref.read(productionMaterialRepositoryProvider);
+    final rows = [
+      for (final row in _productRows)
+        if (row.executionSegmentId != null && row.goods != null) row,
+    ];
+    await _runBounded([
+      for (final row in rows)
+        () async {
+          try {
+            row.directTransferCandidates = await repo.directTransferCandidates(
+              executionSegmentId: row.executionSegmentId!,
+              goodsId: row.goods!.id,
+              colorId: row.colorId,
+            );
+          } catch (_) {
+            // 读不到候选不拦报工：这一行退回送仓库那条老路。
+            row.directTransferCandidates = const [];
+          }
+          if (row.directTransferCandidates.isEmpty) {
+            row.destination = 'WAREHOUSE';
+            row.directTransfer = null;
+          } else if (row.isDirectTransfer && row.directTransfer == null) {
+            row.directTransfer = row.directTransferCandidates.length == 1
+                ? row.directTransferCandidates.single
+                : null;
+          }
+        },
+    ]);
+  }
+
+  void _onDestinationChanged(DailyGridRow row, String destination) {
+    setState(() {
+      row.destination = destination;
+      if (destination != 'WORKSHOP') {
+        row.directTransfer = null;
+        return;
+      }
+      row.directTransfer ??= row.directTransferCandidates.length == 1
+          ? row.directTransferCandidates.single
+          : null;
+    });
+  }
+
+  void _onDirectTransferPicked(
+    DailyGridRow row,
+    ProductionDirectTransferCandidate picked,
+  ) {
+    setState(() => row.directTransfer = picked);
+  }
+
+  /// 收尾差额：最后一次报工的行，其物料还剩多少没登记成消耗。
+  ///
+  /// 只用本地快照估算「要不要问用户」；真正退多少由服务端在审核时按当时的可退量算，
+  /// 因为退料走原领料单位、台账是基本量，两者在换算率不为 1 时对不上。
+  List<SurplusReturnCandidate> _surplusCandidates() {
+    final seen = <String>{};
+    final out = <SurplusReturnCandidate>[];
+    for (final row in _grid.rows) {
+      if (!row.materialEditable) continue;
+      final parent = row.materialParent;
+      if (parent == null || !_isLastReport(parent)) continue;
+      final material = row.material!;
+      if (!seen.add(material.demandId)) continue;
+      final remaining =
+          material.availableToSettleQty - (row.materialUsedValue ?? 0);
+      if (remaining <= 0.0000001) continue;
+      out.add(
+        SurplusReturnCandidate(
+          goodsName: material.goodsName ?? material.goodsCode ?? '物料',
+          colorName: material.colorName,
+          remainingQty: remaining,
+          unitName: material.unitName ?? '',
+          segmentLabel: row.materialShared ? row.materialSegmentLabel : null,
+        ),
+      );
+    }
+    return out;
+  }
+
   /// 把暂存附件上传到刚创建的日报；全部成功才跳详情，失败项留在页面供重试。
   Future<void> _finishCreatedReport(String createdId) async {
     setState(() => _saving = true);
@@ -489,7 +851,9 @@ class _ProductionDailyReportEditPageState
       await _finishCreatedReport(createdId);
       return;
     }
-    final rows = _grid.rows;
+    // 校验与「第 N 行」计数都只看成品报工行：物料子行是挂在它们下面的派生行，
+    // 混进来会让行号对不上用户在界面上数到的那一行。
+    final rows = _productRows;
     if (rows.isEmpty || rows.every((r) => r.goods == null)) {
       context.appError('请至少添加一条明细');
       return;
@@ -547,6 +911,68 @@ class _ProductionDailyReportEditPageState
         return;
       }
     }
+    // V583 物料子行：本次实际用料必填、不能为负、不能超过本次还能登记的量。
+    // 允许填 0——「这批料一点没用」是合法事实，逼人编个正数就是在造假账。
+    final materialIssues = <String>[];
+    for (final row in _grid.rows) {
+      if (!row.materialEditable || !row.materialInvalid) continue;
+      final material = row.material!;
+      final name = material.goodsName ?? material.goodsCode ?? '物料';
+      final value = row.materialUsedValue;
+      materialIssues.add(
+        value == null || !value.isFinite
+            ? '$name 未填写本次实际用料'
+            : value < 0
+            ? '$name 的本次实际用料不能为负'
+            : '$name 本次登记 ${_quantityText(value)}，'
+                  '超过可登记 ${_quantityText(row.materialCap)} '
+                  '${material.unitName ?? ''}',
+      );
+    }
+    if (materialIssues.isNotEmpty) {
+      context.appError(
+        '以下 ${materialIssues.length} 项用料需要先改正：${_joinIssues(materialIssues)}',
+      );
+      return;
+    }
+    // V584/V585 转下一道工序：必须指名投给哪个上层工单，且不得超过它还缺的量。
+    // 更强的不变量(同车间、同货品同颜色、同主仓)由服务端与数据库守卫兜底。
+    final transferIssues = <String>[];
+    for (var i = 0; i < rows.length; i++) {
+      final r = rows[i];
+      if (r.goods == null || !r.isDirectTransfer) continue;
+      final picked = r.directTransfer;
+      if (picked == null) {
+        transferIssues.add('第 ${i + 1} 行选了转下一道工序，但没有指定接收的上层工单');
+        continue;
+      }
+      final qty = double.tryParse(r.qty.text.trim()) ?? 0;
+      if (qty - picked.remainingQty > 0.000001) {
+        transferIssues.add(
+          '第 ${i + 1} 行本次 ${_quantityText(qty)} 超过上层工单还缺的 '
+          '${_quantityText(picked.remainingQty)}；超出的部分请另起一行送入仓库',
+        );
+      }
+    }
+    if (transferIssues.isNotEmpty) {
+      context.appError(
+        '以下 ${transferIssues.length} 项转送需要先改正：${_joinIssues(transferIssues)}',
+      );
+      return;
+    }
+    // 最后一次报工(报满或勾完结)且还有料没登记成消耗时，问一次要不要退回仓库。
+    // 填 0 / 没有差额 = 不问、不建单、不打扰仓库。
+    final surplus = _surplusCandidates();
+    if (surplus.isNotEmpty) {
+      final wantsReturn = await showProductionReportSurplusReturnDialog(
+        context,
+        candidates: surplus,
+      );
+      if (!mounted) return;
+      _surplusReturnRequested = wantsReturn == true;
+    } else {
+      _surplusReturnRequested = false;
+    }
     final itemsBody = <Map<String, dynamic>>[];
     for (final r in rows) {
       if (r.goods == null) continue;
@@ -583,9 +1009,21 @@ class _ProductionDailyReportEditPageState
         if (r.orderQty != null) 'orderQty': r.orderQty,
         if (r.planNo.text.trim().isNotEmpty) 'planNo': r.planNo.text.trim(),
         if (r.isFinal) 'isFinal': true,
+        // V584/V585 产出去向。不传即送仓库，服务端按老口径处理。
+        if (r.isDirectTransfer) 'destination': 'WORKSHOP',
+        if (r.isDirectTransfer && r.directTransfer != null)
+          'directTransferDemandId': r.directTransfer!.demandId,
         if (r.remark.text.trim().isNotEmpty) 'remark': r.remark.text.trim(),
       });
     }
+    final materialBody = <Map<String, dynamic>>[
+      for (final row in _grid.rows)
+        if (row.materialEditable)
+          {
+            'demandId': row.material!.demandId,
+            'qtyBase': row.materialUsedValue ?? 0,
+          },
+    ];
     // 单据号后端自动生成（DocNumberService），不再随 body 提交。
     final body = <String, dynamic>{
       'billDate': _fmt(_billDate),
@@ -596,6 +1034,10 @@ class _ProductionDailyReportEditPageState
       'workerIds': [for (final worker in _workers) worker.id],
       if (_remark.text.trim().isNotEmpty) 'remark': _remark.text.trim(),
       'items': itemsBody,
+      // V583：实耗按需求 UUID 整单提交(同一工单挂多个成品行时只算一份额度，
+      // 只有 owns 的那一行进来)。计划与物料所属段由服务端从需求行反查。
+      if (materialBody.isNotEmpty) 'materialLines': materialBody,
+      if (_surplusReturnRequested) 'surplusReturnRequested': true,
     };
     setState(() => _saving = true);
     try {
@@ -628,6 +1070,14 @@ class _ProductionDailyReportEditPageState
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  /// 批量校验的问题清单：最多列前 6 条，其余折成「等 N 项」——顶部通知里十几条会刷屏，
+  /// 前几条足够定位，改完再提交剩下的还会继续提示。
+  String _joinIssues(List<String> issues) {
+    const limit = 6;
+    final shown = issues.take(limit).join('；');
+    return issues.length <= limit ? shown : '$shown 等 ${issues.length} 项';
   }
 
   /// 预解析生产部（DEPT_PROD）子树 id，供生产工 picker 默认收敛范围。
@@ -715,10 +1165,12 @@ class _ProductionDailyReportEditPageState
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-            : UtenContentContainer(
-                child: Scrollbar(
-                  controller: _scrollCtl,
-                  thumbVisibility: true,
+            : UtenGridPageScrollbar(
+                pinned: _gridPinned,
+                controller: _scrollCtl,
+                // 滚动条贴屏幕右缘(2026-09-15)：包装在内容容器之外，右缘窄条
+                // 恒在屏幕最右，不随限宽容器/列宽漂移。
+                child: UtenContentContainer(
                   child: ListView(
                     controller: _scrollCtl,
                     // 底部多留一段：右下角悬浮的「取消/保存」不压住最后一行明细。
@@ -885,8 +1337,41 @@ class _ProductionDailyReportEditPageState
                       ],
                       // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）。
                       const SizedBox(height: UtenSpacing.s12),
+                      if (_materialLoading || _materialNotice != null)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            bottom: UtenSpacing.s8,
+                          ),
+                          child: Row(
+                            children: [
+                              if (_materialLoading)
+                                const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              if (_materialLoading)
+                                const SizedBox(width: UtenSpacing.s8),
+                              Expanded(
+                                child: Text(
+                                  _materialLoading
+                                      ? '正在读取这些工单已领用的物料…'
+                                      : _materialNotice!,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: _materialLoading
+                                        ? theme.colorScheme.onSurfaceVariant
+                                        : theme.colorScheme.error,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       UtenEditableGrid<DailyGridRow>(
                         controller: _grid,
+                        stickyHeaderPinned: _gridPinned,
                         columns: dailyGridColumns(
                           context: context,
                           onPickGoods: _pickGoods,
@@ -901,9 +1386,23 @@ class _ProductionDailyReportEditPageState
                           onClearSource: _clearSource,
                           colorEntries: names.colorEntries,
                           unitEntries: names.unitEntries,
+                          hasMaterialChildren: _hasMaterialChildren,
+                          isLastMaterialChild: _isLastMaterialChild,
+                          onMaterialChanged: () => setState(() {}),
+                          onDestinationChanged: _onDestinationChanged,
+                          onDirectTransferPicked: _onDirectTransferPicked,
                         ),
                         createBlankRow: () => DailyGridRow(),
                         cloneRow: (r) => r.clone(),
+                        // 物料子行是成品行派生出来的：不能单独勾选、复制或删除，
+                        // 删成品行时由 _deleteProductRow 连带删掉它们。
+                        canSelectRow: (r) => !r.isMaterialRow,
+                        showRowSelection: (r) => !r.isMaterialRow,
+                        canDeleteRow: (r) => !r.isMaterialRow,
+                        onDeleteRow: _deleteProductRow,
+                        rowColor: (r) => r.isMaterialRow
+                            ? theme.colorScheme.surfaceContainerLow
+                            : null,
                       ),
                     ],
                   ),
@@ -912,6 +1411,7 @@ class _ProductionDailyReportEditPageState
       ),
       // 详情尚未回填时不出按钮：此刻点保存会把空表单当草稿提交。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _loading
           ? null
           : UtenEditFloatingActions(

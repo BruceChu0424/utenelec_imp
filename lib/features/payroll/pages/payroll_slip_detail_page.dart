@@ -14,8 +14,8 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/io/file_saver.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -47,6 +47,29 @@ class _PayrollSlipDetailPageState extends ConsumerState<PayrollSlipDetailPage> {
     }
   }
 
+  /// 工资条下载（悬浮按钮动作）：独立 State 方法，async 后的 context 用
+  /// mounted 守卫（State.context 与 mounted 同源）。
+  Future<void> _download(PayrollSlip slip) async {
+    try {
+      final bytes = await downloadPayrollSlip(ref, slip.id);
+      if (!hasPdfSignature(bytes)) {
+        throw const FormatException('服务器返回的文件不是有效 PDF');
+      }
+      final savedPath = await saveBytes(
+        bytes,
+        payrollPdfFilename(
+          period: slip.periodLabel,
+          employeeCode: slip.employeeCode,
+        ),
+      );
+      if (!mounted) return;
+      context.appSuccess('工资条已保存：$savedPath');
+    } catch (error) {
+      if (!mounted) return;
+      context.appError('下载失败：$error');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final detail = ref.watch(payrollDetailProvider(widget.slipId));
@@ -67,6 +90,23 @@ class _PayrollSlipDetailPageState extends ConsumerState<PayrollSlipDetailPage> {
           }
           return _DetailContent(slip: slip);
         },
+      ),
+      // 2026-09-14 UI 统一口径：吸底下载按钮改右下悬浮组，按钮统一 large。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: detail.maybeWhen(
+        data: (slip) => UtenFloatingActionGroup(
+          children: [
+            UtenActionButton(
+              size: UtenActionButtonSize.large,
+              icon: Icons.download_outlined,
+              label: const Text('下载工资条'),
+              loadingLabel: const Text('生成中…'),
+              onAction: () => _download(slip),
+            ),
+          ],
+        ),
+        orElse: () => null,
       ),
     );
   }
@@ -111,7 +151,13 @@ class _DetailContent extends ConsumerWidget {
             // narrow 容器：compact 提供 gutter，medium+ 把内容钳到 1120 居中
             child: UtenContentContainer.narrow(
               child: ListView(
-                padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+                // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
+                padding: const EdgeInsets.fromLTRB(
+                  0,
+                  UtenSpacing.s16,
+                  0,
+                  UtenFloatingActionGroup.scrollClearance,
+                ),
                 children: [
                   // 头部 - 大金额展示
                   _buildHero(theme),
@@ -269,38 +315,6 @@ class _DetailContent extends ConsumerWidget {
                 ],
               ),
             ),
-          ),
-        ),
-
-        // 底部下载按钮
-        UtenBottomActionBar(
-          child: UtenActionButton(
-            isExpanded: true,
-            icon: Icons.download_outlined,
-            label: const Text('下载工资条'),
-            loadingLabel: const Text('生成中…'),
-            onAction: () async {
-              try {
-                final bytes = await downloadPayrollSlip(ref, slip.id);
-                if (!hasPdfSignature(bytes)) {
-                  throw const FormatException('服务器返回的文件不是有效 PDF');
-                }
-                final savedPath = await saveBytes(
-                  bytes,
-                  payrollPdfFilename(
-                    period: slip.periodLabel,
-                    employeeCode: slip.employeeCode,
-                  ),
-                );
-                if (context.mounted) {
-                  context.appSuccess('工资条已保存：$savedPath');
-                }
-              } catch (error) {
-                if (context.mounted) {
-                  context.appError('下载失败：$error');
-                }
-              }
-            },
           ),
         ),
       ],

@@ -77,10 +77,32 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
         assertMethods("features/stock/StockDocService.java", " update(", " delete(");
         String stock = source("features/stock/StockDocService.java");
         assertThat(method(stock, " approveInternal(")).contains("approveDocumentAfterPrelock(");
-        assertThat(method(stock, " approveDocumentAfterPrelock(")).contains("requireOperationWritable(");
+        // V584 车间直送给 approveDocumentAfterPrelock 加了一个重载：4 参那个只做
+        // 转发，守卫落在 5 参那个上。契约因此按「每个重载要么转发给同名重载、
+        // 要么自己带 requireOperationWritable」表述——只断言第一个声明会被一次
+        // 纯转发重载悄悄绕过（2026-09-15）。
+        var approveOverloads = methods(stock, " approveDocumentAfterPrelock(");
+        assertThat(approveOverloads).as("approveDocumentAfterPrelock 重载").isNotEmpty();
+        for (String overload : approveOverloads) {
+            assertThat(overload).satisfiesAnyOf(
+                    body -> assertThat(body).contains("requireOperationWritable("),
+                    body -> assertThat(body)
+                            .contains("return approveDocumentAfterPrelock("));
+        }
+        // 直送那一支不是「免检」：它换成了「本单确实是车间直送产物」的形状守卫，
+        // 授权在直送审核入口（V585 production_direct_transfer:approve）已经判过。
+        assertThat(stock).contains("requireWorkshopDirectTransferDocument(");
         assertThat(method(stock, " reverseInternal(")).contains("requireOperationWritable(");
         assertThat(method(stock, " issue(")).contains("issueAfterPrelock(");
-        assertThat(method(stock, " issueAfterPrelock(")).contains("requireOperationWritable(");
+        // 同 approveDocumentAfterPrelock：V584 也给 issueAfterPrelock 加了一个
+        // 纯转发重载，守卫落在带 workshopDirectTransfer 的那个上。
+        var issueOverloads = methods(stock, " issueAfterPrelock(");
+        assertThat(issueOverloads).as("issueAfterPrelock 重载").isNotEmpty();
+        for (String overload : issueOverloads) {
+            assertThat(overload).satisfiesAnyOf(
+                    body -> assertThat(body).contains("requireOperationWritable("),
+                    body -> assertThat(body).contains("return issueAfterPrelock("));
+        }
         assertThat(method(stock, " reverseIssue(")).contains("requireOperationWritable(");
         assertThat(method(stock, " requireOperationWritable(")).contains(
                 "access.requireWritable(document.getMakerId(), message)",
@@ -123,6 +145,28 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
 
     private static String source(String relative) throws Exception {
         return Files.readString(JAVA.resolve(relative), StandardCharsets.UTF_8);
+    }
+
+    /** 同名重载全取（守卫可能只落在其中一个上，另一个纯转发）。 */
+    private static List<String> methods(String source, String signature) {
+        var declaration = java.util.regex.Pattern.compile(
+                "(?m)^\s*(?:public|protected|private)\s+[^\r\n{;]*?"
+                        + java.util.regex.Pattern.quote(signature)).matcher(source);
+        List<String> bodies = new java.util.ArrayList<>();
+        while (declaration.find()) {
+            int start = declaration.end() - signature.length();
+            int bodyStart = source.indexOf('{', start + signature.length());
+            int depth = 0;
+            for (int index = bodyStart; index < source.length(); index++) {
+                char token = source.charAt(index);
+                if (token == '{') depth++;
+                if (token == '}' && --depth == 0) {
+                    bodies.add(source.substring(start, index + 1));
+                    break;
+                }
+            }
+        }
+        return bodies;
     }
 
     private static String method(String source, String signature) {

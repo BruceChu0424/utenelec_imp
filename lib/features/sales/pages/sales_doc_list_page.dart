@@ -423,7 +423,13 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
           key: 'financeAudit',
           label: '财务审核',
           width: 120,
-          value: (it) => salesShipmentFinanceAuditLabel(it.financeAudit),
+          // V578：被退回单显示「已退回销售」并标红，销售侧列表也能一眼定位。
+          value: (it) => it.shipmentWorkflow.financeRejected
+              ? '已退回销售'
+              : salesShipmentFinanceAuditLabel(it.financeAudit),
+          cellColor: (context, it) => it.shipmentWorkflow.financeRejected
+              ? Theme.of(context).colorScheme.errorContainer
+              : null,
         ),
       if (_cfg.type == SalesDocType.shipment)
         MasterColumnDef(

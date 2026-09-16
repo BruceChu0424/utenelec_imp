@@ -1,4 +1,4 @@
-// 销售出库工作台（可嵌入）：仓库侧执行财务已放行销售出货的拣货/异常/交接。
+// 销售出库工作台（可嵌入）：仓库侧对财务已放行的销售出货一步确认出库。
 //
 // 2026-09-01 起「出库任务中心 · 销售出库」分段内嵌本组件（embedded=true 时不带
 // 搜索框——关键字由任务中心页级工具条统一下发）。独立路由 /warehouse/sales-outbound
@@ -140,7 +140,7 @@ class _WarehouseSalesOutboundWorkbenchState
         _result = result;
         _loading = false;
       });
-      // 列表口径变化后同步角标（交接出库会减少待办数）。
+      // 列表口径变化后同步角标（确认出库会减少待办数）。
       ref.invalidate(warehouseSalesOutboundPendingCountProvider);
     } on ApiException catch (error) {
       if (!mounted || version != _requestVersion) return;
@@ -196,17 +196,10 @@ class _WarehouseSalesOutboundWorkbenchState
     _load(1);
   }
 
-  WarehouseSalesOutboundAction? get _batchAction => switch (_seg?.status) {
-    WarehouseSalesOutboundStatus.pendingPick =>
-      WarehouseSalesOutboundAction.startPicking,
-    WarehouseSalesOutboundStatus.picking =>
-      WarehouseSalesOutboundAction.finishPicking,
-    WarehouseSalesOutboundStatus.picked =>
-      WarehouseSalesOutboundAction.handOver,
-    WarehouseSalesOutboundStatus.exception =>
-      WarehouseSalesOutboundAction.restorePending,
-    _ => null,
-  };
+  WarehouseSalesOutboundAction? get _batchAction =>
+      _seg?.status == WarehouseSalesOutboundStatus.pendingPick
+      ? WarehouseSalesOutboundAction.confirmShipment
+      : null;
 
   bool _canSelect(WarehouseSalesOutboundSummary item) =>
       !_loading &&
@@ -377,9 +370,6 @@ class _WarehouseSalesOutboundWorkbenchState
       segments: [
         for (final status in [
           WarehouseSalesOutboundStatus.pendingPick,
-          WarehouseSalesOutboundStatus.picking,
-          WarehouseSalesOutboundStatus.picked,
-          WarehouseSalesOutboundStatus.exception,
           WarehouseSalesOutboundStatus.shipped,
         ])
           UtenFilterSegment(
@@ -460,7 +450,7 @@ class _WarehouseOutboundBoundaryBanner extends StatelessWidget {
     final theme = Theme.of(context);
     return Semantics(
       container: true,
-      label: '仓库销售出库作业视图，只处理实物拣货、异常恢复和交接。',
+      label: '仓库销售出库作业视图，只处理实物出库。',
       child: Container(
         key: const Key('warehouse-sales-outbound-boundary'),
         padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -470,7 +460,7 @@ class _WarehouseOutboundBoundaryBanner extends StatelessWidget {
           border: Border.all(color: theme.colorScheme.outlineVariant),
         ),
         child: Text(
-          '仓库作业视图 · 只处理服务端已放行任务的实物拣货、异常恢复和交接。'
+          '仓库作业视图 · 财务放行后核对货品、数量与库位，一步确认出库。'
           '本页不包含商业与财务信息，也不提供销售业务编辑操作。',
           style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
         ),

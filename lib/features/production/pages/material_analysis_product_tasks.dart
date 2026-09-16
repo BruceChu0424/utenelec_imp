@@ -161,6 +161,92 @@ class MaterialAnalysisMakeChildDetails extends StatelessWidget {
 
 abstract class _MaterialAnalysisProductTasksState
     extends _MaterialAnalysisPlanActionsState {
+  // ===== 所属仓库(V587): 三张表共用的读写口径 =====
+  //
+  // 为什么落在宿主状态链上: 主表、分桶详情、「父件+下层一起下单」三处都要显示并
+  // 允许改同一个货品级事实。分桶页与级联页是各自独立的 StatefulWidget, 但两边的
+  // `_host` 都声明成本类型, 所以把覆盖表与选择动作放这里, 三处才是同一份真相——
+  // 分头实现会出现「在 A 表改完, 切到 B 表还是旧值」。
+
+  /// 本次会话里改过的货品所属仓库(goodsId -> warehouseId, null = 已清空)。
+  ///
+  /// 服务端写成功后**不刷分析快照**: 所属仓库刻意不进快照指纹(服务端同款口径),
+  /// 重拉快照既慢又会把别人在编的 CAS 令牌搅乱。所以本地留一份覆盖表, 读的时候
+  /// 优先于快照值, 下次真正重拉分析时自然归一。
+  final Map<String, String?> _owningWarehouseIdOverrides = {};
+  final Map<String, String?> _owningWarehouseNameOverrides = {};
+
+  /// 这一行该显示的所属仓库名: 先看本次会话改过没有, 再回落快照下发值。
+  String? owningWarehouseNameOf(String? goodsId, String? snapshotName) {
+    if (goodsId == null || goodsId.isEmpty) return snapshotName;
+    if (_owningWarehouseNameOverrides.containsKey(goodsId)) {
+      return _owningWarehouseNameOverrides[goodsId];
+    }
+    return snapshotName;
+  }
+
+  /// 这一行当前的所属仓库 id(同上口径), 供选择面板回显选中项。
+  String? owningWarehouseIdOf(String? goodsId, String? snapshotId) {
+    if (goodsId == null || goodsId.isEmpty) return snapshotId;
+    if (_owningWarehouseIdOverrides.containsKey(goodsId)) {
+      return _owningWarehouseIdOverrides[goodsId];
+    }
+    return snapshotId;
+  }
+
+  /// 表头筛选用的桶值: 没登记归属的行统一落到「未登记」一桶, 不建空桶。
+  static const String owningWarehouseUnsetLabel = '未登记';
+
+  /// 归属车间(V590)筛选的未学习桶标签（与「未登记」同款沉底口径）。
+  static const String owningWorkshopUnsetLabel = '未学习';
+
+  String owningWarehouseFilterValue(String? goodsId, String? snapshotName) {
+    final name = owningWarehouseNameOf(goodsId, snapshotName)?.trim();
+    return name == null || name.isEmpty ? owningWarehouseUnsetLabel : name;
+  }
+
+  /// 弹仓库选择面板并回写货品主档。返回 true = 真的改了(调用方据此 setState)。
+  ///
+  /// allowParent: true —— 所属仓库是主档归属不是过账落点, V476 的叶子仓约束不适用,
+  /// 而且「成品仓库」这类合法值本身可能挂着不良子仓, 限叶子会把它挡在外面。
+  Future<bool> pickOwningWarehouse(
+    BuildContext context, {
+    required String goodsId,
+    String? currentWarehouseId,
+  }) async {
+    if (goodsId.isEmpty) return false;
+    final names = ref.read(masterNameServiceProvider);
+    final picked = await showUtenWarehousePickerPanel(
+      context,
+      hierarchy: names.warehouseHierarchy,
+      initialWarehouseId: currentWarehouseId,
+      title: '选择所属仓库', // TODO(l10n): 补 arb
+      allowParent: true,
+    );
+    if (picked == null || !mounted) return false;
+    final nextId = picked.isAll ? null : picked.id;
+    if (nextId == currentWarehouseId) return false;
+    try {
+      await ref
+          .read(productionPlanRepositoryProvider)
+          .updateGoodsOwningWarehouses({goodsId: nextId});
+    } catch (error) {
+      if (!mounted) return false;
+      // 用宿主 State 自己的 context 报错: 传进来的那个可能属于已被回收的行/弹窗。
+      this.context.appError('所属仓库保存失败: $error'); // TODO(l10n): 补 arb
+      return false;
+    }
+    if (!mounted) return false;
+    // 名称直接取面板回传的 label, 不再二次查字典(字典没有按 id 取名的入口,
+    // 而 label 就是面板刚刚展示给用户的那一个, 两者必然一致)。
+    final nextName = nextId == null ? null : picked.label;
+    setState(() {
+      _owningWarehouseIdOverrides[goodsId] = nextId;
+      _owningWarehouseNameOverrides[goodsId] = nextName;
+    });
+    return true;
+  }
+
   List<ProductionMaterialAnalysisMaterial> _depth1MaterialsFor(
     ProductionMaterialAnalysisProduct product,
   ) {
@@ -428,6 +514,24 @@ abstract class _MaterialAnalysisProductTasksState
     return normalized == 'SHIP' || normalized == 'REFERENCE';
   }
 
+  /// 该委外件是否**必须先自制目标件再发外**（MAKE_THEN_OUTBOUND 两段式）。
+  ///
+  /// 与 [_hasProductionBomChildren] 的分工要分清：
+  /// - 「BOM 上还有没有下层要办」→ 用 [_hasProductionBomChildren]（纯结构问题）；
+  /// - 「父件自己走哪条通道、能不能改量」→ 用本方法。
+  ///
+  /// V581 起「只有一个叶子子件」的委外件虽然有下层，却**不进车间**：仓库直接把
+  /// 那个子件发给委外商。服务端以 `subcontractOutboundForm` 明确告知
+  /// （判据含 PER_UNIT / 投入阶段 / 子件无下层，前端无法从快照可靠推断），
+  /// 旧服务端返回 null 时按原口径回退。
+  bool _subcontractNeedsPreparation(
+    ProductionMaterialAnalysisMaterial material,
+    ProductionMaterialAnalysisView analysis,
+  ) {
+    if (material.isComponentOutbound) return false;
+    return _hasProductionBomChildren(material, analysis);
+  }
+
   String _materialKindIdentity(ProductionMaterialAnalysisMaterial material) {
     final key = material.materialKey?.trim();
     if (key?.isNotEmpty == true) return key!;
@@ -496,6 +600,8 @@ abstract class _MaterialAnalysisProductTasksState
         ],
         const SizedBox(height: UtenSpacing.s8),
         // Route entries retain issued history and show status inside each list.
+        // 2026-09-15 用户口径：恢复 2026-09-14 改版前的「图标卡」分桶入口
+        //（带边框卡 + 计数徽标 + chevron），分段栏形态撤下。
         Wrap(
           key: const Key('material-analysis-bucket-entries'),
           spacing: UtenSpacing.s8,
@@ -771,16 +877,24 @@ abstract class _MaterialAnalysisProductTasksState
     bool silent = false,
   }) async {
     // 遮罩挂在 _notifyRoute 的纯网络段（数量确认弹窗之后），见 supply_actions。
+    //
+    // 2026-09-14（ADR-081）：返回值语义收敛为**本次命令是否提交成功**。
+    // 原来采购/委外两支丢掉结果直接落到末尾的 `return false`，用的是
+    // 「要不要关掉分桶页」那套语义——而 ADR-081 的父件段拿同一个返回值判定
+    // 「父件下达成功没有」，于是从「下达委外」进级联页时父件明明已经提交，
+    // 编排却永远报「父件未提交成功，下层未动」，下层一行都下不出去。
+    // 「要不要关页」改由调用方 [_run] 按 request.type 自己决定。
     switch (request.type) {
       case _BucketActionType.buy:
-        await _notifyRoute(
-          MaterialSupplyRoute.buy,
-          onlyGroupKeys: request.groupKeys,
-          qtyByActionGroupKey: request.qtyByActionGroupKey,
-          silent: silent,
-        );
+        return await _notifyRoute(
+              MaterialSupplyRoute.buy,
+              onlyGroupKeys: request.groupKeys,
+              qtyByActionGroupKey: request.qtyByActionGroupKey,
+              silent: silent,
+            ) !=
+            null;
       case _BucketActionType.subcontractOnly:
-        await _arrangeSubcontractProduction(
+        return _arrangeSubcontractProduction(
           onlyGroupKeys: request.groupKeys,
           qtyByActionGroupKey: request.qtyByActionGroupKey,
           silent: silent,
@@ -796,7 +910,6 @@ abstract class _MaterialAnalysisProductTasksState
           silent: silent,
         );
     }
-    return false;
   }
 
   /// 下达车间（ADR-071）：把分桶页收集的行输入交给服务端原子执行。数量/
@@ -901,8 +1014,14 @@ abstract class _MaterialAnalysisProductTasksState
       );
       return false;
     } finally {
-      if (mounted && _planSubmissionApproveNow) {
-        setState(() => _planSubmissionApproveNow = false);
+      // 兜底清场（2026-09-14，与 _notifyRoute 同一口径）：_generating 只要有一条
+      // 分支忘了清，`_busy` 就永久为真——整页按钮（含「取消分析」「刷新分析」）
+      // 全部变灰，用户看到的是「点了没反应」，且刷新页面前好不了。
+      if (mounted && (_generating || _planSubmissionApproveNow)) {
+        setState(() {
+          _setGenerating(false);
+          _planSubmissionApproveNow = false;
+        });
       }
     }
   }

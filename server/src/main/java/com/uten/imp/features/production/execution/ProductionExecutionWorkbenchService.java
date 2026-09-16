@@ -205,6 +205,11 @@ public class ProductionExecutionWorkbenchService {
         predicate += preparationPredicate(preparationFilter);
         String finalPredicate = predicate;
         UUID scopedEmployeeId = seeAll ? null : employeeId;
+        // 我的车间任务「等待物料」（2026-09-15 用户口径）：可开工的排最前，
+        // 进度越接近可开工越靠前——档位与状态筛选四桶一一对应。
+        String orderBy = "PREPARING".equals(status)
+                ? SEGMENT_ORDER_READINESS
+                : SEGMENT_ORDER_DEFAULT;
         return segmentPage(
                 finalPredicate,
                 query -> {
@@ -225,7 +230,8 @@ public class ProductionExecutionWorkbenchService {
                     }
                 },
                 requestedPage,
-                requestedSize);
+                requestedSize,
+                orderBy);
     }
 
     @Transactional(readOnly = true)
@@ -268,11 +274,52 @@ public class ProductionExecutionWorkbenchService {
             long total, long preparing, long inProgress) {
     }
 
+    /** 段列表默认排序：计划完工日期 → 计划号 → 段序 → UUID 稳定收尾。 */
+    private static final String SEGMENT_ORDER_DEFAULT = """
+            ORDER BY task.plan_end_date ASC NULLS LAST,
+                     task.plan_no ASC,
+                     task.segment_no ASC,
+                     task.segment_id ASC
+            """;
+
+    /**
+     * 我的车间任务「等待物料」排序（2026-09-15 用户口径：可开工的放最前，越接近
+     * 可开工越靠前）。档位与状态筛选四桶一一对应（preparationPredicate 同款谓词）：
+     * 0 = 可开工（零料/已发料且 READY/DISPATCHED）；1 = 已提交领料·待仓库发料；
+     * 2 = 物料齐套·去领料；3 = 等料（WAITING）。同档位内再按既有键稳定排序。
+     * CASE 短路保证领料谓词里的 EXISTS 只对 READY/DISPATCHED 行求值。
+     */
+    private static final String SEGMENT_ORDER_READINESS = """
+            ORDER BY CASE
+                         WHEN task.segment_status IN ('READY','DISPATCHED')
+                              AND (task.zero_material OR task.issued
+                                   OR fn_split_batch_empty_issued(task.segment_id)) THEN 0
+                         WHEN task.segment_status IN ('READY','DISPATCHED')
+                              AND NOT task.zero_material AND NOT task.issued
+                              AND (%s) THEN 1
+                         WHEN task.segment_status IN ('READY','DISPATCHED') THEN 2
+                         ELSE 3
+                     END ASC,
+                     task.plan_end_date ASC NULLS LAST,
+                     task.plan_no ASC,
+                     task.segment_no ASC,
+                     task.segment_id ASC
+            """.formatted(drawRequestedPredicate());
+
     private PageResponse<ProductionExecutionWorkbenchSegment> segmentPage(
             String predicate,
             java.util.function.Consumer<Query> binder,
             int requestedPage,
             int requestedSize) {
+        return segmentPage(predicate, binder, requestedPage, requestedSize, SEGMENT_ORDER_DEFAULT);
+    }
+
+    private PageResponse<ProductionExecutionWorkbenchSegment> segmentPage(
+            String predicate,
+            java.util.function.Consumer<Query> binder,
+            int requestedPage,
+            int requestedSize,
+            String orderBy) {
         int size = boundedSize(requestedSize);
         int page = Math.max(requestedPage, 1);
         String from = " FROM v_production_execution_workbench_segments task WHERE "
@@ -282,13 +329,8 @@ public class ProductionExecutionWorkbenchService {
         long total = ((Number) count.getSingleResult()).longValue();
         int totalPages = pages(total, size);
         if (totalPages > 0 && page > totalPages) page = totalPages;
-        Query data = em.createNativeQuery(segmentSelect() + from + "\n" + """
-                ORDER BY task.plan_end_date ASC NULLS LAST,
-                         task.plan_no ASC,
-                         task.segment_no ASC,
-                         task.segment_id ASC
-                LIMIT :limit OFFSET :offset
-                """);
+        Query data = em.createNativeQuery(segmentSelect() + from + "\n" + orderBy
+                + "\n LIMIT :limit OFFSET :offset");
         binder.accept(data);
         boolean allowReport = reportAllowed(
                 productionAccess.hasAuthority("production_daily_report:view"),

@@ -47,17 +47,19 @@ class ProductionGoodsWorkshopPreferenceServiceTest {
         verify(query).setParameter("goodsId", goodsId);
         verify(query).setParameter("workshopId", workshopId);
         verify(query).setParameter("workerId", workerId);
-        verify(query).setParameter("selectedBy", actorId);
         verify(query).executeUpdate();
+        // V590 起学习直接回写货品表两列（偏好表已废弃删除）：不再有
+        // on conflict/selection_count，改为幂等 UPDATE + DEPT_PROD 校验。
         assertThat(normalize(sql.getValue()))
-                .contains("on conflict (goods_id) do update")
-                .contains("selection_count = production_goods_workshop_preferences .selection_count + 1")
+                .contains("update goods g")
+                .contains("owning_workshop_department_id = :workshopid")
                 .contains("responsible_employee_id = case")
                 .contains("is distinct from")
                 .contains("d.is_deleted = false")
-                .contains("production_department.code = 'dept_prod'")
-                .contains("production_department.is_deleted = false")
-                .contains("g.is_deleted = false");
+                .contains("pd.code = 'dept_prod'")
+                .contains("pd.is_deleted = false")
+                .contains("g.is_deleted = false")
+                .doesNotContain("production_goods_workshop_preferences");
     }
 
     @Test
@@ -138,8 +140,11 @@ class ProductionGoodsWorkshopPreferenceServiceTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em).createNativeQuery(sql.capture());
         verify(query).setParameter("goodsIds", goodsIds);
+        // V590 起归属车间/负责人读货品表列（偏好表已废弃删除）。
         assertThat(normalize(sql.getValue()))
-                .contains("from production_goods_workshop_preferences preference")
+                .contains("from goods g")
+                .contains("g.owning_workshop_department_id")
+                .contains("g.owning_responsible_employee_id")
                 .contains("g.is_deleted = false")
                 .contains("workshop.is_deleted = false")
                 .contains("production_department.id = workshop.parent_id")
@@ -148,7 +153,8 @@ class ProductionGoodsWorkshopPreferenceServiceTest {
                 // 负责人仅在职（未删/未离职）才返回，离职不泄漏到预填。
                 .contains("left join employees employee")
                 .contains("employee.is_deleted = false")
-                .contains("employee.status = 'active'");
+                .contains("employee.status = 'active'")
+                .doesNotContain("production_goods_workshop_preferences");
     }
 
     @Test

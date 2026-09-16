@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
+import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
 import '../../../basic_data/models/reference_method_option.dart';
@@ -224,7 +225,13 @@ class _SupplierSettlementCreatePanelState
       ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
+          // 底部留出右下悬浮操作组的高度。
+          padding: const EdgeInsets.fromLTRB(
+            UtenSpacing.s12,
+            UtenSpacing.s12,
+            UtenSpacing.s12,
+            UtenFloatingActionGroup.scrollClearance,
+          ),
           children: [
             DropdownButtonFormField<String>(
               initialValue: _supplierId,
@@ -280,15 +287,19 @@ class _SupplierSettlementCreatePanelState
           ],
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: UtenButton(
+      // 2026-09-14 UI 统一口径：吸底操作按钮改右下悬浮组，统一 large。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: UtenFloatingActionGroup(
+        children: [
+          UtenButton(
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
             icon: Icons.ac_unit_outlined,
             onPressed: _submit,
             child: const Text('冻结月结快照'),
           ),
-        ),
+        ],
       ),
     );
   }

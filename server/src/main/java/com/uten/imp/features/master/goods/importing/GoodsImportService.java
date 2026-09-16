@@ -131,7 +131,13 @@ public class GoodsImportService {
             putAlias(a, "rearInsertCode");
         }
         // 导出有但 DTO 未开放编辑——识别但忽略其值（不报「无法识别」）。
-        for (String a : new String[]{"客户型号", "备注"}) putAlias(a, "ignored");
+        //
+        // 所属仓库 (V587)：导出写这一列，但导入侧只拿得到仓库「名称」，而在线关系只认 UUID
+        // (本文件的 UUID-only 契约)，按名反查会重蹈按名猜关系的老路，故本轮登记为 ignored
+        // 只识别不落值——导出改完再导入，这一列的值不会写进新货品，与 客户型号/备注 同口径。
+        // 必须登记：把「刻意丢弃」写成明账，避免后来人把它当成又一个 V457 式的漏登记去补，
+        // 也避免别处误把它接成别的字段。真要支持编辑，得先给导入一条 UUID 口径的仓库选择通道。
+        for (String a : new String[]{"客户型号", "备注", "所属仓库", "归属仓库"}) putAlias(a, "ignored");
     }
 
     private static void putAlias(String alias, String key) {

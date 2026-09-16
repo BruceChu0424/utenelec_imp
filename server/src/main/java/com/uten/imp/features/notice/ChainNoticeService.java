@@ -1640,7 +1640,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
 
     private void notifyShipmentFinanceRejected(UUID shipmentId,String reason,Long expectedRevision) {
         Map<String,Object> document=one("""
-                SELECT bill_no,shipment_kind,owner_employee_id,review_revision FROM sales_shipments
+                SELECT bill_no,shipment_kind,owner_employee_id,maker_id,review_revision FROM sales_shipments
                 WHERE id=? AND status=0 AND NOT is_deleted AND finance_rejected AND warehouse_work_status='PENDING_PICK'
                 """,shipmentId);
         if(document==null)return;
@@ -1654,10 +1654,16 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             return;
         }
         deliverAtomically(()->{
+            // V578：退回通知只要求能看单（view）——此前 view+edit 双门槛导致只读销售
+            // 或归属人为空的“公共单”收不到任何提示，退回后流程在两侧同时失联。
+            // 归属人不可达时回退投递给制单人。
             UUID owner=userIdOfEmployee((UUID)document.get("owner_employee_id"));
+            UUID fallback=userIdOfEmployee((UUID)document.get("maker_id"));
             String prefix=direct?"sales_other_shipment":"sales_shipment";
-            if(!userHasPermissions(owner,NOTICE_READ_AUTHORITY,prefix+":view",prefix+":edit"))return;
-            sendToUser(owner,TYPE_URGENT,"发货已退回，请修改："+document.get("bill_no"),
+            UUID recipient = userHasPermissions(owner,NOTICE_READ_AUTHORITY,prefix+":view")
+                    ? owner : (userHasPermissions(fallback,NOTICE_READ_AUTHORITY,prefix+":view") ? fallback : null);
+            if(recipient==null)return;
+            sendToUser(recipient,TYPE_URGENT,"发货已退回，请修改："+document.get("bill_no"),
                     "财务退回原因："+Objects.toString(reason,"")+"。请核对修改后重新确认，也可以取消尚未出库的单据。",
                     (direct?"/sales/customer-shipments/":"/sales/shipments/")+shipmentId,event,"important",shipmentId);
         });

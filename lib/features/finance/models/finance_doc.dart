@@ -67,7 +67,7 @@ double? _financeDecimalDouble(Object? value) {
 }
 
 String financeReceiptKindLabel(String? value) => switch (value?.toUpperCase()) {
-  'AR_SETTLEMENT' => '普通应收收款',
+  'AR_SETTLEMENT' => '货款收款(核销应收)',
   'CUSTOMER_PREPAYMENT' => '客户订单预收',
   _ => value?.trim().isNotEmpty == true ? value! : '未标记',
 };

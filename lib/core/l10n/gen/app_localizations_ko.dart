@@ -3571,7 +3571,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get warehouseOutboundBatchHint =>
-      'Check goods, quantities, units, warehouses and suggested locations before confirming the current work stage.';
+      'Check goods, quantities, units, warehouses and actual locations before confirming the outbound.';
 
   @override
   String warehouseOutboundBatchConfirm(String action, int count) {
@@ -3618,8 +3618,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get warehouseOutboundBatchReason => 'Processing note';
 
   @override
-  String get warehouseOutboundBatchReasonRequired =>
-      'Enter a specific explanation';
+  String get warehouseOutboundConfirmShipment => 'Confirm outbound';
 
   @override
   String get warehouseOutboundBillNo => 'Shipment number';
@@ -3671,18 +3670,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get warehouseOutboundSourceOrder => 'Source order';
-
-  @override
-  String get warehouseOutboundStartPicking => 'Start picking';
-
-  @override
-  String get warehouseOutboundFinishPicking => 'Complete picking';
-
-  @override
-  String get warehouseOutboundHandOver => 'Hand over shipment';
-
-  @override
-  String get warehouseOutboundRestorePending => 'Restore pending picking';
 
   @override
   String get warehouseStockOutboundTitle => 'Review outbound documents';

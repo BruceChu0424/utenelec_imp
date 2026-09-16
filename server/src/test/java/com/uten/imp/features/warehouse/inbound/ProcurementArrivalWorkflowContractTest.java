@@ -215,7 +215,12 @@ class ProcurementArrivalWorkflowContractTest {
                 .contains("requireChanged(jdbc.update(\"\"\"\n                UPDATE %s receipt")
                 .contains("arrival_overage_posted_qty =")
                 .contains("status = 'RECEIPT_ADJUSTED'")
-                .contains("status = 'PENDING_FINANCE'");
+                .contains("status = 'PENDING_FINANCE'")
+                // V581：共享折算式必须以**格式参数**注入，不能拼进这个带 .formatted 的
+                // 文本块——`.formatted` 只作用于紧挨它的那一段字面量，拆段会让前面几段的
+                // %1$s 原样留在 SQL 里（真库 bad SQL grammar，两条到货边界用例红）。
+                .contains(".formatted(itemAlias, SubcontractOutboundFlowSql.ISSUED_TARGET_BASE_SUM)")
+                .contains("SELECT %2$s");
     }
 
     @Test

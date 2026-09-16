@@ -88,24 +88,24 @@ void main() {
     final repository = SalesRepository(
       _api((request) {
         captured = request;
-        return const {'id': 'shipment-1', 'warehouseWorkStatus': 'EXCEPTION'};
+        return const {'id': 'shipment-1', 'warehouseWorkStatus': 'SHIPPED'};
       }),
       SalesDocType.shipment,
     );
 
     final detail = await repository.transitionWarehouseWork(
       'shipment-1',
-      targetStatus: SalesWarehouseWorkStatus.exception,
+      targetStatus: SalesWarehouseWorkStatus.shipped,
       reason: '  外箱破损待复核  ',
     );
 
     expect(captured.method, 'POST');
     expect(captured.path, '/sales/shipments/shipment-1/warehouse-work');
     expect(captured.data, {
-      'targetStatus': SalesWarehouseWorkStatus.exception,
+      'targetStatus': SalesWarehouseWorkStatus.shipped,
       'reason': '外箱破损待复核',
     });
-    expect(detail.warehouseWorkStatus, SalesWarehouseWorkStatus.exception);
+    expect(detail.warehouseWorkStatus, SalesWarehouseWorkStatus.shipped);
   });
 
   test('warehouse transition omits an empty optional reason', () async {
@@ -113,18 +113,23 @@ void main() {
     final repository = SalesRepository(
       _api((request) {
         captured = request;
-        return const {'id': 'shipment-1', 'warehouseWorkStatus': 'PICKING'};
+        return const {
+          'id': 'shipment-1',
+          'warehouseWorkStatus': 'PENDING_PICK',
+        };
       }),
       SalesDocType.shipment,
     );
 
     await repository.transitionWarehouseWork(
       'shipment-1',
-      targetStatus: SalesWarehouseWorkStatus.picking,
+      targetStatus: SalesWarehouseWorkStatus.pendingPick,
       reason: '   ',
     );
 
-    expect(captured.data, {'targetStatus': SalesWarehouseWorkStatus.picking});
+    expect(captured.data, {
+      'targetStatus': SalesWarehouseWorkStatus.pendingPick,
+    });
   });
 
   test('finance audit preview is GET before the POST command', () async {
@@ -189,12 +194,12 @@ void main() {
       await repository.list(
         filter: const SalesDocFilter(
           financeAudit: 1,
-          warehouseWorkStatus: SalesWarehouseWorkStatus.picking,
+          warehouseWorkStatus: SalesWarehouseWorkStatus.pendingPick,
         ),
       );
 
       expect(captured?.queryParameters['financeAudit'], 1);
-      expect(captured?.queryParameters['warehouseWorkStatus'], 'PICKING');
+      expect(captured?.queryParameters['warehouseWorkStatus'], 'PENDING_PICK');
     },
   );
 }

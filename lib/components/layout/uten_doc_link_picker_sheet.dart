@@ -26,6 +26,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/app_notification.dart';
+import '../data_display/uten_goods_identity_cell.dart';
 import '../inputs/uten_field_message.dart';
 import '../../shared/models/paged_result.dart';
 import '../forms/link_quantity_validator.dart';
@@ -168,6 +169,7 @@ class UtenDocLinkPickerConfig<D, I, N> {
     required this.itemFields,
     required this.docColumns,
     required this.goodsName,
+    this.goodsCode,
     required this.colorName,
     required this.unitName,
     required this.middleItemColumns,
@@ -233,6 +235,10 @@ class UtenDocLinkPickerConfig<D, I, N> {
 
   /// 明细货品名。
   final String Function(N names, String? goodsId) goodsName;
+
+  /// 明细货品编号（2026-09-14 用户口径：货品身份要能同时看到名称+编号+颜色）。
+  /// 宿主没接线时返回 null，货品格自然退回单行名称，不显示占位词。
+  final String? Function(N names, String? goodsId)? goodsCode;
 
   /// 明细颜色名。
   final String Function(N names, String? colorId) colorName;
@@ -756,15 +762,29 @@ class _UtenDocLinkPickerSheetState<D, I, N>
             Checkbox(value: sel, onChanged: (v) => _toggleRow(row, v ?? false)),
       ),
     ),
+    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+    // 颜色与单位本表右侧本来就有独立列，这里补出编号列。
     EditableGridColumn<UtenDocLinkItemRow<I>>(
       key: 'goods',
-      label: '货品',
+      label: '货品名称',
       width: 200,
       filterValueOf: (row) => _bucketOrNull(
         _cfg.goodsName(names, _cfg.itemFields.goodsId(row.item)),
       ),
-      cellBuilder: (context, row) =>
-          Text(_cfg.goodsName(names, _cfg.itemFields.goodsId(row.item))),
+      cellBuilder: (context, row) => UtenGoodsIdentityCell(
+        name: _cfg.goodsName(names, _cfg.itemFields.goodsId(row.item)),
+      ),
+    ),
+    EditableGridColumn<UtenDocLinkItemRow<I>>(
+      key: 'goodsCode',
+      label: '编号',
+      width: 130,
+      filterValueOf: (row) => _bucketOrNull(
+        _cfg.goodsCode?.call(names, _cfg.itemFields.goodsId(row.item)),
+      ),
+      cellBuilder: (context, row) => UtenGoodsAttributeCell(
+        _cfg.goodsCode?.call(names, _cfg.itemFields.goodsId(row.item)),
+      ),
     ),
     EditableGridColumn<UtenDocLinkItemRow<I>>(
       key: 'color',

@@ -298,6 +298,55 @@ void main() {
       contains('/sales/shipments/shipment-reject-flow/finance-audit-reject'),
     );
   });
+
+  // V578：被退回的单据在财务侧有显式出口——「撤回退回」恢复待审，
+  // 退回原因与出货内容无关（如客户货款分类未维护）时无需销售改单来回。
+  testWidgets('rejected shipment offers reject reversal back to pending', (
+    tester,
+  ) async {
+    final api = await _pumpReviewPage(
+      tester,
+      detail: const {
+        'id': 'shipment-reject-reverse',
+        'billNo': 'XS-20260914-009',
+        'salesConfirmed': true,
+        'status': 0,
+        'financeAudit': 0,
+        'financeRejected': true,
+        'financeRejectionReason': '客户货款分类未维护',
+        'warehouseWorkStatus': 'PENDING_PICK',
+        'items': <Map<String, dynamic>>[
+          {'id': 'line-1', 'goodsId': 'goods-1', 'qty': 1, 'price': 10},
+        ],
+      },
+      financeAuditInfo: const {
+        'shipmentId': 'shipment-reject-reverse',
+        'reviewRevision': 1,
+        'contentHash': 'hash-1',
+        'financeAudit': 0,
+        'clientName': '测试客户',
+        'salesPaymentType': '',
+      },
+    );
+    expect(find.textContaining('已退回销售'), findsOneWidget);
+    expect(find.textContaining('客户货款分类未维护'), findsWidgets);
+    final reverse = find.byKey(
+      const Key('finance-shipment-audit-reject-reverse-btn'),
+    );
+    expect(reverse, findsOneWidget);
+    await tester.tap(reverse);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('finance-shipment-audit-reject-reverse')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      api.postPaths,
+      contains(
+        '/sales/shipments/shipment-reject-reverse/finance-reject-reverse',
+      ),
+    );
+  });
 }
 
 Future<_ReviewApi> _pumpReviewPage(
@@ -406,6 +455,13 @@ class _ReviewApi extends ApiClient {
     if (path.endsWith('/finance-audit') ||
         path.endsWith('/finance-audit-reject')) {
       return <String, dynamic>{...?financeAuditInfo, 'financeAudit': 1};
+    }
+    if (path.endsWith('/finance-reject-reverse')) {
+      return <String, dynamic>{
+        ...?financeAuditInfo,
+        'financeAudit': 0,
+        'financeRejected': false,
+      };
     }
     throw StateError('unsupported test POST: $path');
   }

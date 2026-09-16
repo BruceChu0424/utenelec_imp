@@ -36,6 +36,8 @@ public class CustomerShipmentInventoryService implements CustomerShipmentInvento
         Map<InventoryKey,BigDecimal> needed=new java.util.TreeMap<>();
         lines.forEach(line->needed.merge(new InventoryKey(line.goodsId(),line.colorId()),base(line.baseQty()),BigDecimal::add));
         for(var demand:needed.entrySet()) {
+            // 全局臂与本仓臂都只减安全库存与硬预留：V582 起销售出货没有
+            // "已开拣未出账"的中间态，原来减去 PICKING/PICKED/EXCEPTION 在途量的子查询已删除。
             Object[] capacity=(Object[])em.createNativeQuery("""
                     SELECT
                       GREATEST(COALESCE((SELECT SUM(GREATEST(balance.qty-GREATEST(COALESCE(CAST(goods.min_qty AS NUMERIC),0),0),0))
@@ -43,12 +45,7 @@ public class CustomerShipmentInventoryService implements CustomerShipmentInvento
                           WHERE balance.goods_id=:goods AND balance.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)),0)
                         -COALESCE((SELECT SUM(qty-consumed_qty-released_qty) FROM stock_reservations
                           WHERE goods_id=:goods AND color_id IS NOT DISTINCT FROM CAST(:color AS uuid) AND status=0 AND NOT is_deleted),0)
-                        -COALESCE((SELECT SUM(item.qty*COALESCE(NULLIF(item.unit_rate,0),1)) FROM sales_shipment_items item
-                          JOIN sales_shipments document ON document.id=item.shipment_id
-                          WHERE document.shipment_kind<>'DIRECT_CUSTOMER' AND item.order_item_id IS NULL
-                            AND document.status=0 AND NOT document.is_deleted AND NOT document.rejected AND NOT item.is_deleted
-                            AND document.warehouse_work_status IN ('PICKING','PICKED','EXCEPTION')
-                            AND item.goods_id=:goods AND item.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)),0),0),
+                        ,0),
                       GREATEST(COALESCE((SELECT balance.qty-GREATEST(COALESCE(CAST(goods.min_qty AS NUMERIC),0),0)
                           FROM stock_balances balance JOIN goods ON goods.id=balance.goods_id
                           WHERE balance.warehouse_id=:warehouse AND balance.goods_id=:goods
@@ -56,12 +53,7 @@ public class CustomerShipmentInventoryService implements CustomerShipmentInvento
                         -COALESCE((SELECT SUM(qty-consumed_qty-released_qty) FROM stock_reservations
                           WHERE warehouse_id=:warehouse AND goods_id=:goods AND color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
                             AND status=0 AND NOT is_deleted),0)
-                        -COALESCE((SELECT SUM(item.qty*COALESCE(NULLIF(item.unit_rate,0),1)) FROM sales_shipment_items item
-                          JOIN sales_shipments document ON document.id=item.shipment_id
-                          WHERE document.shipment_kind<>'DIRECT_CUSTOMER' AND item.order_item_id IS NULL
-                            AND document.warehouse_id=:warehouse AND document.status=0 AND NOT document.is_deleted
-                            AND NOT document.rejected AND NOT item.is_deleted AND document.warehouse_work_status IN ('PICKING','PICKED','EXCEPTION')
-                            AND item.goods_id=:goods AND item.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)),0),0)
+                        ,0)
                     """).setParameter("goods",demand.getKey().goodsId()).setParameter("color",demand.getKey().colorId())
                     .setParameter("warehouse",warehouseId).getSingleResult();
             if(demand.getValue().compareTo(decimal(capacity[0]).min(decimal(capacity[1])))>0)

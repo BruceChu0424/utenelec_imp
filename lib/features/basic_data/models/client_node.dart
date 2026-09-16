@@ -57,6 +57,9 @@ class ClientListItem {
     this.ownerEmployeeName,
     this.defaultSettlementMethodId,
     this.defaultSettlementMethodName,
+    this.defaultShipmentPolicy,
+    this.defaultCurrencyId,
+    this.defaultCurrencyName,
     this.salesPaymentType,
     this.writable = false,
     this.accessManageable = false,
@@ -92,6 +95,11 @@ class ClientListItem {
   final String? ownerEmployeeName; // 当前负责人显示名
   final String? defaultSettlementMethodId;
   final String? defaultSettlementMethodName;
+
+  /// 默认销售条款（V592 单一事实源）：新建销售订货单预填；每次下单自动写回最新选择。
+  final String? defaultShipmentPolicy;
+  final String? defaultCurrencyId;
+  final String? defaultCurrencyName;
   final String? salesPaymentType; // MONTHLY / CASH / DEPOSIT；旧数据可空
   final bool writable; // 对象范围允许维护；额外查看/单客户共享为 false
   final bool accessManageable; // 服务端已合并 client:assign 与对象范围判断
@@ -128,6 +136,9 @@ class ClientListItem {
     ownerEmployeeName: json['ownerEmployeeName'] as String?,
     defaultSettlementMethodId: json['defaultSettlementMethodId'] as String?,
     defaultSettlementMethodName: json['defaultSettlementMethodName'] as String?,
+    defaultShipmentPolicy: json['defaultShipmentPolicy'] as String?,
+    defaultCurrencyId: json['defaultCurrencyId'] as String?,
+    defaultCurrencyName: json['defaultCurrencyName'] as String?,
     salesPaymentType: json['salesPaymentType'] as String?,
     writable: json['writable'] as bool? ?? false,
     accessManageable: json['accessManageable'] as bool? ?? false,
@@ -184,6 +195,9 @@ class ClientDetail {
     this.ownerEmployeeName,
     this.defaultSettlementMethodId,
     this.defaultSettlementMethodName,
+    this.defaultShipmentPolicy,
+    this.defaultCurrencyId,
+    this.defaultCurrencyName,
     this.salesPaymentType,
     this.writable = false,
     this.accessManageable = false,
@@ -227,6 +241,11 @@ class ClientDetail {
   final String? ownerEmployeeName;
   final String? defaultSettlementMethodId;
   final String? defaultSettlementMethodName;
+
+  /// 默认销售条款（V592 单一事实源）：新建销售订货单预填；每次下单自动写回最新选择。
+  final String? defaultShipmentPolicy;
+  final String? defaultCurrencyId;
+  final String? defaultCurrencyName;
   final String? salesPaymentType; // MONTHLY / CASH / DEPOSIT；旧数据可空
   final bool writable;
   final bool accessManageable;
@@ -296,6 +315,9 @@ class ClientDetail {
     ownerEmployeeName: json['ownerEmployeeName'] as String?,
     defaultSettlementMethodId: json['defaultSettlementMethodId'] as String?,
     defaultSettlementMethodName: json['defaultSettlementMethodName'] as String?,
+    defaultShipmentPolicy: json['defaultShipmentPolicy'] as String?,
+    defaultCurrencyId: json['defaultCurrencyId'] as String?,
+    defaultCurrencyName: json['defaultCurrencyName'] as String?,
     salesPaymentType: json['salesPaymentType'] as String?,
     writable: json['writable'] as bool? ?? false,
     accessManageable: json['accessManageable'] as bool? ?? false,

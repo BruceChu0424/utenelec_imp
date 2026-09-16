@@ -14,7 +14,7 @@ abstract interface class WarehouseSalesOutboundGateway {
     String? dateTo,
   });
 
-  /// 待出库任务计数（出库任务中心/工作台角标：未交接出库的放行单）。
+  /// 待出库任务计数（出库任务中心/工作台角标：尚未确认出库的放行单）。
   Future<int> pendingCount();
 
   Future<WarehouseSalesOutboundDetail> detail(String id);

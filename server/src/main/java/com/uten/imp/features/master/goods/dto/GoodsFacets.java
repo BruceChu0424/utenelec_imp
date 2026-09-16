@@ -26,5 +26,9 @@ public class GoodsFacets {
     private final List<FacetBucket> colorLegacyId;
     private final List<FacetBucket> unitLegacyId;
     private final List<FacetBucket> sourceType;
+    /** V587 所属仓库桶：value=warehouse UUID，label=仓库名。 */
+    private final List<FacetBucket> owningWarehouse;
+    /** V590 归属车间桶：value=department UUID，label=车间名。 */
+    private final List<FacetBucket> owningWorkshop;
     private final Map<String, Long> nullCounts;
 }

@@ -71,16 +71,20 @@ UtenTotalsSummaryBar(
 位置：表格统一把合计条挂在**表体（内部滚动）与翻页条之间**
 （`MasterDataTableView.summaryBar`），所以表体滚到哪一行合计条都在；
 全屏表格与嵌入式明细表同样跟随。各页不自己摆位置，全站间距/字号因此一致。
+例外(2026-09-15 起)：详情页「合计行是表格脚注」语义传 `summaryBarInline: true`，
+合计条改渲染进**表体滚动内容末尾**(跟在最后一行数据之下、随表格竖向滚动)，
+但**横向钉在表体可视框右缘**——怎么左右滑合计都在卡片右边，不必把表格拖到最右才看得见，
+见 [MasterDataTableView](MasterDataTableView.md) `summaryBarInline`。
 
 ## 六、接入表（2026-09-11）
 
 | 页面 | 位置 | 合计项 | 门控 |
 |---|---|---|---|
 | 订货审批审核详情 `finance_procurement_approval_review_page.dart` | 明细表下 | 合计数量 / 合计金额(币种)🔴 / 折合本币 | — |
-| 销售订单财务审核详情 `finance_sales_order_review_page.dart` | 明细表下 | 合计数量 / 合计金额(币种)🔴 | 销售阶段无本币事实，不出折合本币 |
+| 销售订单财务审核详情 `finance_sales_order_review_page.dart` | 明细表下·随表体滚动（`summaryBarInline`，2026-09-15） | 合计数量 / 合计金额(币种)🔴 | 销售阶段无本币事实，不出折合本币 |
 | 采购单据详情 `purchase_doc_detail_page.dart` | 明细表下（`purchase-detail-totals`） | 合计数量 / 合计金额(币种)🔴 / 合计(本币) | `canViewCommercialAmounts`（含服务端 `priceMasked`）；申请单无金额口径 |
 | 委外单据详情 `subcontract_doc_detail_page.dart` | 明细表下（`subcontract-detail-totals`） | 同上 | `canViewCommercialAmounts` + `_cfg.hasAmount` |
-| 销售单据详情 `sales_doc_detail_page.dart` | 明细表下（`sales-detail-totals`） | 合计数量 / 合计金额(币种)🔴 / 合计(本币) | `priceMasked` 时金额项整体不渲染；订单阶段不出本币项 |
+| 销售单据详情 `sales_doc_detail_page.dart` | 明细表下·随表体滚动（`summaryBarInline`，2026-09-15，`sales-detail-totals`） | 合计数量 / 合计金额(币种)🔴 / 合计(本币) | `priceMasked` 时金额项整体不渲染；订单阶段不出本币项 |
 | 钱流单据详情 `finance_doc_detail_page.dart` | 明细表下（`finance-detail-totals`） | 合计金额(币种)🔴 / 合计(本币) | 无单位口径故不出数量；明细币种不唯一时不合计原币（跨币种与跨单位同理，绝不相加）；精确文本缺失则整项隐藏，不伪造 0 |
 | 采购单据编辑 `purchase_doc_edit_page.dart` | 底部操作条（`purchase-edit-totals`） | 合计数量 / 合计金额(币种)🔴 | `_cfg.hasCurrency` |
 | 采购订货编辑 `purchase_order_edit_page.dart` | 底部操作条 | 同上 | 行级条款：全单币种唯一才标注币种 |

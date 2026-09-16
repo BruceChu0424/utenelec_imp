@@ -202,6 +202,11 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   }
 
   /// 可见节点平铺：根 → （展开的）子级递归，级联序号 1 / 1.1 / 1.1.2。
+  ///
+  /// `ancestorContinuations` 按 [UtenTreeTableCell] 的硬契约累积：长度恒等于
+  /// depth、`[i]` = 深度 i 的祖先后面还有没有兄弟。这里的展开是懒加载的
+  /// （`hasChildren` 是服务端事实，不能从扁平行推），所以保留本地 walk；
+  /// 同口径的通用推导见 `utenTreeProjection`。
   List<_BomRow> get _visibleRows {
     final rows = <_BomRow>[];
     void walk(
@@ -416,10 +421,14 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             '${r.seq} 组件 ${r.depth + 1} 级 '
             '${r.node.item.componentName ?? ''}',
         cellBuilderHandlesSemantics: true,
+        // 树列吃满整行高度 + 连线跨过数据格纵向内边距，否则层级竖线会在
+        // 行与行之间断开（与物料分析主表 / 级联页同一处理，2026-09-15）。
+        fillsCellHeight: true,
         cellBuilder: (context, r) => UtenTreeTableCell(
           key: ValueKey('goods-bom-tree-cell-${r.node.item.id}'),
           toggleKey: ValueKey('goods-bom-tree-toggle-${r.node.item.id}'),
           depth: r.depth,
+          guideBleed: MasterDataTableView.cellVerticalPadding,
           sequence: r.seq,
           levelLabel: '组件 ${r.depth + 1} 级',
           title:

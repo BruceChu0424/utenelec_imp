@@ -204,8 +204,11 @@ class BusinessDataResetServicePostgresTest {
         // V547 +2（品质检查单头/明细）、V548 +1（登记撤回记录）：266→269。
         // V560 +3（退料事实）、V561 +1（分批谱系）、V568 +1（让料补供）、
         // V569 +2（在途转拨及撤销）：269→276；V570/V571 不新增业务表。
-        assertThat(result.clearedTableCount()).isEqualTo(276);
-        assertThat(result.preservedTableCount()).isEqualTo(96);
+        // V579 再 +3 张 party 子表（联系方式/地址/跟进记录，PRESERVE）：96→99。
+        // V586 补登记 V583 报工实耗表与 V584 车间直送三张表（两个建表迁移都漏了
+        // 这一步，清库函数 fail-closed 会整体拒跑）：276→280。
+        assertThat(result.clearedTableCount()).isEqualTo(280);
+        assertThat(result.preservedTableCount()).isEqualTo(99);
         // cleared_rows 只统计 CLEAR 表：2 条 outbox、1 条库存余额、1 条待核历史价值池。
         // refresh_tokens 属 PRESERVE，
         // 在终局校验后单独清空，不计入）

@@ -488,6 +488,10 @@ public class ClientService {
         m.setInitTotal(req.getInitTotal());
         m.setTday(req.getTday());
         applyDefaultSettlementMethod(req, m);
+        m.setDefaultShipmentPolicy(req.getDefaultShipmentPolicy() == null
+                ? null : req.getDefaultShipmentPolicy().trim().isEmpty()
+                ? null : req.getDefaultShipmentPolicy().trim());
+        applyDefaultCurrency(req, m);
         if (req.getSalesPaymentType() != null) {
             m.setSalesPaymentType(req.getSalesPaymentType());
         }
@@ -537,7 +541,10 @@ public class ClientService {
                 m.getSalesPaymentType(),
                 clientAccessPolicy.canWrite(m, scope),
                 clientAccessPolicy.canManageAccess(m, scope),
-                clientAccessPolicy.accessReason(m, scope));
+                clientAccessPolicy.accessReason(m, scope),
+                m.getDefaultShipmentPolicy(),
+                m.getDefaultCurrencyId(),
+                currencyName(m.getDefaultCurrencyId()));
     }
 
     private ClientListItem toList(
@@ -656,6 +663,34 @@ public class ClientService {
                 em, id, null, "客户默认结账方式");
         client.setDefaultSettlementMethodId(method.id());
         client.setPriceStyle(method.legacyId());
+    }
+
+    /** 默认币种（V592）：presence 语义同结账方式；必须存在且未软删。 */
+    private void applyDefaultCurrency(ClientSaveRequest req, Client client) {
+        if (!req.hasDefaultCurrencyReference()) return;
+        UUID id = req.getDefaultCurrencyId();
+        if (id == null) {
+            client.setDefaultCurrencyId(null);
+            return;
+        }
+        var found = em.createNativeQuery(
+                        "SELECT id FROM currencies WHERE id = :id AND is_deleted = false")
+                .setParameter("id", id)
+                .getResultList();
+        if (!(found instanceof List<?> rows) || rows.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "币种不存在");
+        }
+        client.setDefaultCurrencyId(id);
+    }
+
+    /** 币种名（详情展示用；软删/缺行回落 null）。 */
+    private String currencyName(UUID id) {
+        if (id == null) return null;
+        var rows = em.createNativeQuery(
+                        "SELECT name FROM currencies WHERE id = :id AND is_deleted = false")
+                .setParameter("id", id)
+                .getResultList();
+        return rows.isEmpty() ? null : String.valueOf(rows.get(0));
     }
 
     static BigDecimal normalizeCreditFloor(BigDecimal value) {

@@ -199,14 +199,19 @@ class _SubcontractOutboundDetailTableState
       showColumnSettings: true,
       showSelectAllToggle: false,
       showRemoveRowsAction: false,
+      // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
+      // 不再「编号 名称」拼一格；历史父件同样拆名称 + 编号。
+      // 委外发料最容易错的就是同名不同色（自制白色 / 委外香槟金）——
+      // 名称/编号/颜色在前几列同屏可见。
       initialColumnOrder: const [
         'document',
-        'goods',
+        'goodsName',
+        'goodsCode',
+        'color',
         'warehouse',
         'quantity',
         'unit',
         'maximum',
-        'color',
         'weight',
         'place',
         'lineRemark',
@@ -217,7 +222,8 @@ class _SubcontractOutboundDetailTableState
         'order',
         'supplier',
         'status',
-        'legacyParent',
+        'legacyParentName',
+        'legacyParentCode',
       ],
       selectable: widget.editable && widget.selectable,
       selectionEnabled: widget.editable,
@@ -253,29 +259,43 @@ class _SubcontractOutboundDetailTableState
             (row) => row.supplierName ?? '—',
           ),
         textColumn(
-          'goods',
-          l10n.warehouseSubcontractOutboundGoods,
-          240,
-          (row) =>
-              '${row.draft.line.goodsCode ?? ''} ${row.draft.line.goodsName ?? ''}'
-                  .trim(),
+          'goodsName',
+          l10n.warehouseSubcontractOutboundGoodsName,
+          200,
+          (row) => row.draft.line.goodsName ?? '—',
+        ),
+        textColumn(
+          'goodsCode',
+          l10n.warehouseSubcontractOutboundGoodsCode,
+          130,
+          (row) => row.draft.line.goodsCode ?? '—',
         ),
         if (widget.rows.any(
           (row) =>
               row.draft.line.flowMode ==
               SubcontractOutboundFlowMode.legacyBomComponent,
-        ))
+        )) ...[
           textColumn(
-            'legacyParent',
-            l10n.warehouseSubcontractOutboundLegacyParent,
+            'legacyParentName',
+            l10n.warehouseSubcontractOutboundLegacyParentName,
             200,
             (row) =>
                 row.draft.line.flowMode ==
                     SubcontractOutboundFlowMode.legacyBomComponent
-                ? '${row.draft.line.parentGoodsCode ?? ''} ${row.draft.line.parentGoodsName ?? ''}'
-                      .trim()
+                ? row.draft.line.parentGoodsName ?? '—'
                 : '—',
           ),
+          textColumn(
+            'legacyParentCode',
+            l10n.warehouseSubcontractOutboundLegacyParentCode,
+            130,
+            (row) =>
+                row.draft.line.flowMode ==
+                    SubcontractOutboundFlowMode.legacyBomComponent
+                ? row.draft.line.parentGoodsCode ?? '—'
+                : '—',
+          ),
+        ],
         textColumn(
           'color',
           l10n.warehouseSubcontractOutboundColor,

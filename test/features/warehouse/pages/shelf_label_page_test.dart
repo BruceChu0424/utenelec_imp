@@ -34,7 +34,17 @@ void main() {
     expect(find.text('+1'), findsOneWidget);
 
     // 统一表格：新列头 + 全量行（禁用货品默认不查）。
-    for (final label in const ['货架', '层', '位', '库位号', '货品编码', '即时库存', '状态']) {
+    // 2026-09-14 全站列序统一：名称在前、编码列头改「编号」（ADR-081 §4.1）。
+    for (final label in const [
+      '货架',
+      '层',
+      '位',
+      '库位号',
+      '货品名称',
+      '编号',
+      '即时库存',
+      '状态',
+    ]) {
       expect(find.text(label), findsWidgets);
     }
     expect(_table(tester).items.length, 4);

@@ -23,6 +23,8 @@ public class ShipmentWorkflowView {
     private boolean financeRejected;
     private boolean financeReviewPending;
     private String financeRejectionReason;
+    /** V578：被财务退回后允许原样重新提交财务审核（无需先改单）。 */
+    private boolean canResubmitAfterFinanceReject;
 
     public void populate(SalesShipment document,CustomerShipmentPolicy policy) {
         shipmentKind=document.getShipmentKind();billingMode=document.getBillingMode();
@@ -37,5 +39,8 @@ public class ShipmentWorkflowView {
         canConfirmSales=policy.can(shipmentKind,"approve")&&document.getStatus()!=null&&document.getStatus()==0
                 &&document.getFinanceGateVersion()!=null&&document.getFinanceGateVersion()>=2
                 &&!document.isRejected()&&!financeRejected&&!salesConfirmed&&SalesShipment.WORK_PENDING_PICK.equals(document.getWarehouseWorkStatus());
+        canResubmitAfterFinanceReject=policy.can(shipmentKind,"approve")&&document.getStatus()!=null&&document.getStatus()==0
+                &&document.getFinanceGateVersion()!=null&&document.getFinanceGateVersion()>=2
+                &&!document.isRejected()&&financeRejected&&SalesShipment.WORK_PENDING_PICK.equals(document.getWarehouseWorkStatus());
     }
 }

@@ -428,17 +428,18 @@ class _ProductionFqcInspectionsPageState
       width: 170,
       value: (inspection) => inspection.sheetNo ?? '无检查单',
     ),
-    MasterColumnDef(
-      key: 'goodsCode',
-      label: '货品编码',
-      width: 140,
-      value: (inspection) => inspection.goodsCode ?? '—',
-    ),
+    // 2026-09-14 全站列序统一：名称 → 编号 → 颜色。
     MasterColumnDef(
       key: 'goodsName',
       label: '货品名称',
       width: 240,
       value: (inspection) => inspection.goodsName ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'goodsCode',
+      label: '编号',
+      width: 140,
+      value: (inspection) => inspection.goodsCode ?? '—',
     ),
     MasterColumnDef(
       key: 'colorName',

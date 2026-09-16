@@ -348,9 +348,7 @@ class _ReturnRequestSheetState extends ConsumerState<_ReturnRequestSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          UtenGoodsIdentityCell(
-            name: _omitPlaceholder(row.source.goodsName),
-          ),
+          UtenGoodsIdentityCell(name: _omitPlaceholder(row.source.goodsName)),
           Text(
             '领料单 ${row.source.drawNo}',
             maxLines: 1,

@@ -138,8 +138,10 @@ void main() {
     expect(api.loadedDraftIds, ['draft-a', 'draft-b']);
     await tester.tap(find.text('单据信息'));
     await tester.pumpAndSettle();
-    expect(find.text('ITEM-B 当前草稿目标件'), findsOneWidget);
-    expect(find.text('ITEM-A 其它仓草稿目标件'), findsOneWidget);
+    expect(find.text('ITEM-B'), findsOneWidget);
+    expect(find.text('当前草稿目标件'), findsOneWidget);
+    expect(find.text('ITEM-A'), findsOneWidget);
+    expect(find.text('其它仓草稿目标件'), findsOneWidget);
     final qty = tester.widget<TextField>(
       find.byKey(const ValueKey('subcontract-outbound-draft-item-b-quantity')),
     );

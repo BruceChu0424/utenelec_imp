@@ -21,6 +21,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -445,14 +446,31 @@ class _ProgressList extends ConsumerWidget {
         columns: [
           MasterColumnDef(
             key: 'product',
-            label: '产品',
-            width: 210,
-            value: (line) => [
-              line.goodsCode,
-              line.goodsName,
-              line.spec,
-              line.colorName,
-            ].where((value) => value?.isNotEmpty == true).join(' · '),
+            // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+            label: '产品名称',
+            width: 190,
+            value: (line) => line.goodsName ?? line.goodsCode ?? '—',
+          ),
+          MasterColumnDef(
+            key: 'goodsCode',
+            label: '编号',
+            width: 130,
+            value: (line) => UtenGoodsAttributeCell.text(line.goodsCode),
+            cellBuilder: (_, line) => UtenGoodsAttributeCell(line.goodsCode),
+          ),
+          MasterColumnDef(
+            key: 'colorName',
+            label: '颜色',
+            width: 96,
+            value: (line) => UtenGoodsAttributeCell.text(line.colorName),
+            cellBuilder: (_, line) => UtenGoodsAttributeCell(line.colorName),
+          ),
+          MasterColumnDef(
+            key: 'spec',
+            label: '规格',
+            width: 120,
+            value: (line) => UtenGoodsAttributeCell.text(line.spec),
+            cellBuilder: (_, line) => UtenGoodsAttributeCell(line.spec),
           ),
           MasterColumnDef(
             key: 'unit',

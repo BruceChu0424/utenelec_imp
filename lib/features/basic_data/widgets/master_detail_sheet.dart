@@ -77,8 +77,10 @@ Future<void> showMasterDetailSheet({
     builder: (ctx) => Dialog(
       shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
       child: ConstrainedBox(
+        // 2026-09-14：宽度随屏幕放缩（原固定 560 太小；客户/供应商已改详情整页，
+        // 其余主档弹窗同样受益），网格列数按实际宽度自适应。
         constraints: BoxConstraints(
-          maxWidth: 560,
+          maxWidth: (MediaQuery.sizeOf(ctx).width * 0.92).clamp(560.0, 840.0),
           maxHeight: MediaQuery.sizeOf(ctx).height * 0.88,
         ),
         child: body,
@@ -134,23 +136,28 @@ class _MasterDetailBody extends StatelessWidget {
   }
 
   Widget _grid(ThemeData theme, bool twoColumn) {
-    final colCount = twoColumn ? 2 : 1;
+    if (!twoColumn) return _gridColumns(theme, 1);
+    // 2026-09-14：非 compact 弹窗按容器宽度自适应 2-4 列。
+    return LayoutBuilder(
+      builder: (context, constraints) =>
+          _gridColumns(theme, (constraints.maxWidth ~/ 260).clamp(1, 4)),
+    );
+  }
+
+  Widget _gridColumns(ThemeData theme, int colCount) {
     final rows2 = <Widget>[];
     for (var i = 0; i < rows.length; i += colCount) {
-      final first = rows[i];
-      final second = i + 1 < rows.length ? rows[i + 1] : null;
       rows2.add(
         Padding(
           padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: _cell(theme, first)),
-              if (colCount > 1) ...[
-                const SizedBox(width: UtenSpacing.s8),
+              for (var c = 0; c < colCount; c++) ...[
+                if (c > 0) const SizedBox(width: UtenSpacing.s8),
                 Expanded(
-                  child: second != null
-                      ? _cell(theme, second)
+                  child: i + c < rows.length
+                      ? _cell(theme, rows[i + c])
                       : const SizedBox.shrink(),
                 ),
               ],

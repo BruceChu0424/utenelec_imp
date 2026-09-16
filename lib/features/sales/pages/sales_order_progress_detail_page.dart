@@ -284,6 +284,7 @@ class _SalesOrderProgressDetailPageState
         ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _floatingActions(),
       body: SafeArea(
         child: UtenContentContainer(

@@ -29,9 +29,11 @@ public class SalesShipment extends SoftDeletableEntity {
 
     public static final String WORK_LEGACY_PENDING = "LEGACY_PENDING";
     public static final String WORK_PENDING_PICK = "PENDING_PICK";
-    public static final String WORK_PICKING = "PICKING";
-    public static final String WORK_PICKED = "PICKED";
-    public static final String WORK_EXCEPTION = "EXCEPTION";
+    /**
+     * V582 起仓库只有一步：财务放行后 {@code PENDING_PICK} 直接确认出库到
+     * {@code SHIPPED}。原 PICKING/PICKED/EXCEPTION 三个中间态已连同其命令一起删除，
+     * 在途单由迁移统一拨回 {@code PENDING_PICK}；事件账里的历史值只读保留。
+     */
     public static final String WORK_SHIPPED = "SHIPPED";
     public static final String WORK_CANCELLED = "CANCELLED";
     public static final String WORK_REVERSED = "REVERSED";
@@ -188,6 +190,11 @@ public class SalesShipment extends SoftDeletableEntity {
     @Column(name = "warehouse_work_updated_by")
     private UUID warehouseWorkUpdatedBy;
 
+    /**
+     * V582 前两阶段拣货留下的历史证据，新流程不再写入（一步确认出库只留
+     * {@code handedOverAt/By}）。列不可删：V566 的实仓取证触发器仍按这两列
+     * 校验历史 {@code PICKING} 事件。
+     */
     @Column(name = "picking_started_at")
     private OffsetDateTime pickingStartedAt;
 
@@ -206,6 +213,10 @@ public class SalesShipment extends SoftDeletableEntity {
     @Column(name = "handed_over_by")
     private UUID handedOverBy;
 
+    /**
+     * 仓库驳回原因镜像（{@code reject()} 仍在写）。V582 删除 EXCEPTION 状态后
+     * 不再承载"仓库异常"，但字段本身没有退役。
+     */
     @Column(name = "warehouse_exception_reason")
     private String warehouseExceptionReason;
 }

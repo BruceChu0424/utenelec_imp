@@ -251,6 +251,7 @@ class _ProductionDrawBatchIssuePageState
           ),
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
         floatingActionButton: _loading || documents == null
             ? null
             : UtenFloatingActionGroup(

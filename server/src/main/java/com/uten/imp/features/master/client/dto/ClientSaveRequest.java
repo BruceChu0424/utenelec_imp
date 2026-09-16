@@ -98,4 +98,21 @@ public class ClientSaveRequest {
 
     /** 乐观锁版本（编辑时回传详情读到的 version；新建忽略。不符即 409）。 */
     private Long version;
+
+    /** 默认货运策略（V592）；与其它字符串字段同口径整体覆盖。 */
+    private String defaultShipmentPolicy;
+
+    /** 默认币种（V592）；同结账方式 presence 语义：不带键=不动。 */
+    private UUID defaultCurrencyId;
+    private boolean defaultCurrencyReferencePresent;
+
+    @JsonSetter("defaultCurrencyId")
+    public void setDefaultCurrencyReference(UUID value) {
+        defaultCurrencyId = value;
+        defaultCurrencyReferencePresent = true;
+    }
+
+    public boolean hasDefaultCurrencyReference() {
+        return defaultCurrencyReferencePresent;
+    }
 }

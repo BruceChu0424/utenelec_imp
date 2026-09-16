@@ -10,7 +10,11 @@ import '../../../components/inputs/uten_input_decoration.dart';
 
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/widgets/uten_tree_table_cell.dart';
+import '../models/production_direct_transfer_candidate.dart';
+import '../repositories/production_material_repository.dart';
 
 /// 生产日报明细行。货品用 ValueNotifier（点选后单元格自动刷新）；
 /// 完工量是生产声明；颜色/单位为来源任务冻结值。
@@ -44,6 +48,86 @@ class DailyGridRow extends EditableGridRow {
   double? maxReportQty;
   bool legacyManual = false;
 
+  // ===== V583 物料子行：报工与实际用料合并到同一张表 =====
+  // 一张表只能有一个泛型行类型，所以成品行与物料子行共用本类，由 [depth] 区分：
+  // 0 = 成品报工行(原有全部字段)，1 = 挂在它下面的物料子行(只用下面这几个)。
+  // 各列的 cellBuilder 按 depth 分支，用不到的格返回空。
+
+  /// 0 = 成品报工行；1 = 该成品所属工单已领用的物料子行。
+  int depth = 0;
+
+  /// 物料子行的来源台账行(领料量、可继续登记量、单位、颜色都在里面)。
+  ProductionMaterialClearanceRow? material;
+
+  /// 物料子行所属的成品行。删成品行时连带删掉它，不留孤儿。
+  DailyGridRow? materialParent;
+
+  /// 本子行是否由自己负责提交。同一个执行工单出现在多个成品行时，它的物料只有
+  /// 一份额度：第一处 owns=true 可填，其余是只读镜像，避免两行各自当满额填。
+  bool materialOwnsInput = true;
+
+  /// 沿用前批已领物料：该子行的料挂在前批原领料段上，不是本次报工的段。
+  bool materialShared = false;
+
+  /// 当前账号对该物料所属工单没有 production_material:settle 权限：只读，不参与必填。
+  bool materialReadOnly = false;
+
+  /// 本次实际用料(基本量)。允许 0——「这批料一点没用」是合法事实。
+  final TextEditingController materialUsed = TextEditingController();
+
+  // ===== V584/V585 产出去向：送仓库 还是 转下一道工序(同车间内部直送) =====
+  // 一行只有一个去向，要拆量就拆行——送检登记与检验都按报工行唯一，行内拆量
+  // 要同时改两处唯一性。
+
+  /// 'WAREHOUSE' = 送入仓库(默认，走品质部)；'WORKSHOP' = 转下一道工序。
+  final ValueNotifier<String> destinationNotifier = ValueNotifier<String>(
+    'WAREHOUSE',
+  );
+  String get destination => destinationNotifier.value;
+  set destination(String value) => destinationNotifier.value = value;
+  bool get isDirectTransfer => destination == 'WORKSHOP';
+
+  /// 转送时投给哪条上层物料需求。候选由服务端按同车间同货品给出。
+  final ValueNotifier<ProductionDirectTransferCandidate?>
+  directTransferNotifier = ValueNotifier<ProductionDirectTransferCandidate?>(
+    null,
+  );
+  ProductionDirectTransferCandidate? get directTransfer =>
+      directTransferNotifier.value;
+  set directTransfer(ProductionDirectTransferCandidate? value) =>
+      directTransferNotifier.value = value;
+
+  /// 本行可选的上层工单；空列表 = 这一行没有同车间的下游可转。
+  List<ProductionDirectTransferCandidate> directTransferCandidates = const [];
+
+  bool get isMaterialRow => depth > 0;
+
+  /// 物料所属工单的可读标识(子计划号，取不到时退回 UUID 前 8 位)。
+  String get materialSegmentLabel {
+    final code = material?.executionSegmentCode;
+    if (code != null && code.trim().isNotEmpty) return code.trim();
+    final id = material?.executionSegmentId;
+    return id == null || id.length < 8 ? '原领料工单' : id.substring(0, 8);
+  }
+
+  /// 可填的物料子行(自己负责提交且有权限)：必填红框与提交校验都只认这些行。
+  bool get materialEditable =>
+      isMaterialRow && materialOwnsInput && !materialReadOnly;
+
+  /// 本次可登记上限：待仓库收料的数量已被扣掉，填超会被服务端守卫直接拒绝。
+  double get materialCap => material?.availableToSettleQty ?? 0;
+
+  double? get materialUsedValue => double.tryParse(materialUsed.text.trim());
+
+  bool get materialInvalid {
+    if (!materialEditable) return false;
+    final value = materialUsedValue;
+    return value == null ||
+        !value.isFinite ||
+        value < 0 ||
+        value - materialCap > 0.0000001;
+  }
+
   bool get hasLinkedSource => planItemId != null && planItemId!.isNotEmpty;
   bool get hasSourceSnapshot => planNo.text.trim().isNotEmpty;
   bool get isFqcRecovery => fqcRecoveryAuthorizationId?.isNotEmpty == true;
@@ -61,7 +145,12 @@ class DailyGridRow extends EditableGridRow {
   /// 强制每行有精确来源，且按来源聚合校验「累计申报 ≤ 可报量」，拷引用不会放大申报。
   /// 仅 isFinal 重置：粘贴行是新一次申报，不继承上一行的「完结」标记
   /// （FQC 恢复行本就禁止完结，重置后口径一致）。
+  /// 物料子行不参与复制粘贴：它由来源工单派生，复制出来的第二份会把同一份额度
+  /// 当成两份填。页面已用 canSelectRow 挡住勾选，这里再兜一次底。
   DailyGridRow clone() {
+    if (isMaterialRow) {
+      throw UnsupportedError('物料子行由来源工单派生，不支持复制');
+    }
     final c = DailyGridRow()
       ..planItemId = planItemId
       ..planId = planId
@@ -113,12 +202,18 @@ class DailyGridRow extends EditableGridRow {
     weight.dispose();
     planNo.dispose();
     remark.dispose();
+    materialUsed.dispose();
+    destinationNotifier.dispose();
+    directTransferNotifier.dispose();
     super.dispose();
   }
 }
 
 /// 生产日报明细列：货品（点选）/ 颜色（只读）/ 单位（只读）/ 完工申报量 / 实际重量 /
 /// 关联计划号 / 备注。[onPickGoods] 由编辑页提供；[colorEntries]/[unitEntries] 由编辑页注入。
+/// [hasMaterialChildren]/[isLastMaterialChild] 由编辑页按当前行序计算：本表把成品行与
+/// 它的物料子行扁平混排，树形缩进和连接线要知道「这行下面还有没有子行」「这是不是
+/// 最后一个子行」。[onMaterialChanged] 让编辑页在实耗输入变化时重算必填红框与提交态。
 List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
   required BuildContext context,
   required Future<void> Function(DailyGridRow row) onPickGoods,
@@ -127,79 +222,127 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
   Future<void> Function(DailyGridRow row)? onOpenSource,
   required Map<String, String> colorEntries,
   required Map<String, String> unitEntries,
+  bool Function(DailyGridRow row)? hasMaterialChildren,
+  bool Function(DailyGridRow row)? isLastMaterialChild,
+  void Function()? onMaterialChanged,
+  void Function(DailyGridRow row, String destination)? onDestinationChanged,
+  void Function(DailyGridRow row, ProductionDirectTransferCandidate picked)?
+  onDirectTransferPicked,
 }) {
   // 列说明统一挂表头 ⓘ（2026-09-09 口径）：每行重复的 ⓘ 既冗余又挤占格宽。
   final l10n = workflowFieldText(context);
   return [
     EditableGridColumn<DailyGridRow>(
       key: 'goods',
-      label: '货品名称',
-      width: 200,
+      label: '货品名称 / 用料',
+      // V583 起本列要容下物料子行的树形缩进(16)+ 叶子位(48)：树单元的缩进与
+      // 图标位不进 textOf 的自动量宽，宽度只能硬给，否则物料名一律被挤成省略号。
+      width: 320,
       required: true,
       // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色**各占一列**。
       // 报工行多由来源子任务冻结带入，同名不同色/不同编号的货品只看名称会报到
       // 别的货上；这里只放名称，编号见下一列，颜色/单位本表本来就有独立列。
-      textOf: (r) => r.goods?.name ?? '',
+      textOf: (r) => r.isMaterialRow
+          ? (r.material?.goodsName ?? '')
+          : (r.goods?.name ?? ''),
       listenableOf: (r) => r.goodsNotifier,
-      cellBuilder: (context, row) => RequiredCellFrame(
-        listenable: row.goodsNotifier,
-        isEmpty: () => row.goods == null,
-        child: InkWell(
-          onTap: row.hasLinkedSource ? null : () => onPickGoods(row),
-          child: InputDecorator(
-            decoration: const InputDecoration(isDense: true),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ValueListenableBuilder<GoodsOption?>(
-                    valueListenable: row.goodsNotifier,
-                    builder: (context, g, _) => g == null
-                        ? Text(
-                            '点击选择',
-                            style: TextStyle(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSurfaceVariant,
-                            ),
-                          )
-                        : UtenGoodsIdentityCell(name: g.name),
+      cellBuilder: (context, row) {
+        if (row.isMaterialRow) {
+          return UtenTreeTableCell(
+            depth: 1,
+            sequence: '',
+            sequenceInline: true,
+            showLeafMarker: false,
+            // 连接线要跨过宿主数据格的纵向内边距才连成一条而不是虚线；
+            // 数值取自表格组件公开的常量，不在调用点抄魔数（2026-09-15）。
+            guideBleed: UtenEditableGrid.cellVerticalPadding,
+            isLastChild: isLastMaterialChild?.call(row) ?? true,
+            title: row.material?.goodsName ?? '未命名物料',
+            subtitle: row.materialShared
+                ? '沿用前批已领 · ${row.materialSegmentLabel}'
+                : '本工单领用',
+          );
+        }
+        return RequiredCellFrame(
+          listenable: row.goodsNotifier,
+          isEmpty: () => row.goods == null,
+          child: InkWell(
+            onTap: row.hasLinkedSource ? null : () => onPickGoods(row),
+            child: InputDecorator(
+              decoration: const InputDecoration(isDense: true),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ValueListenableBuilder<GoodsOption?>(
+                      valueListenable: row.goodsNotifier,
+                      builder: (context, g, _) => g == null
+                          ? Text(
+                              '点击选择',
+                              style: TextStyle(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                            )
+                          : UtenGoodsIdentityCell(name: g.name),
+                    ),
                   ),
-                ),
-                const Icon(Icons.search_rounded, size: 16),
-              ],
+                  if (hasMaterialChildren?.call(row) ?? false)
+                    Padding(
+                      padding: const EdgeInsets.only(right: UtenSpacing.s4),
+                      child: Icon(
+                        Icons.account_tree_outlined,
+                        size: 14,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  const Icon(Icons.search_rounded, size: 16),
+                ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     ),
     EditableGridColumn<DailyGridRow>(
       key: 'goodsCode',
       label: '编号',
       width: 130,
-      textOf: (r) => r.goods?.code ?? '',
+      textOf: (r) => r.isMaterialRow
+          ? (r.material?.goodsCode ?? '')
+          : (r.goods?.code ?? ''),
       listenableOf: (r) => r.goodsNotifier,
-      cellBuilder: (context, row) => ValueListenableBuilder<GoodsOption?>(
-        valueListenable: row.goodsNotifier,
-        builder: (context, goods, _) => UtenGoodsAttributeCell(goods?.code),
-      ),
+      cellBuilder: (context, row) => row.isMaterialRow
+          ? UtenGoodsAttributeCell(row.material?.goodsCode)
+          : ValueListenableBuilder<GoodsOption?>(
+              valueListenable: row.goodsNotifier,
+              builder: (context, goods, _) =>
+                  UtenGoodsAttributeCell(goods?.code),
+            ),
     ),
     EditableGridColumn<DailyGridRow>(
       key: 'color',
       label: '颜色',
       width: 130,
-      textOf: (r) => colorEntries[r.colorId ?? ''] ?? '',
+      textOf: (r) => r.isMaterialRow
+          ? (r.material?.colorName ?? '')
+          : (colorEntries[r.colorId ?? ''] ?? ''),
       listenableOf: (r) => r.colorIdNotifier,
-      cellBuilder: (context, row) =>
-          _readOnlyMasterCell(context, row.colorIdNotifier, colorEntries),
+      cellBuilder: (context, row) => row.isMaterialRow
+          ? UtenGoodsAttributeCell(row.material?.colorName)
+          : _readOnlyMasterCell(context, row.colorIdNotifier, colorEntries),
     ),
     EditableGridColumn<DailyGridRow>(
       key: 'unit',
       label: '单位',
       width: 110,
-      textOf: (r) => unitEntries[r.unitId ?? ''] ?? '',
+      textOf: (r) => r.isMaterialRow
+          ? (r.material?.unitName ?? '')
+          : (unitEntries[r.unitId ?? ''] ?? ''),
       listenableOf: (r) => r.unitIdNotifier,
-      cellBuilder: (context, row) =>
-          _readOnlyMasterCell(context, row.unitIdNotifier, unitEntries),
+      cellBuilder: (context, row) => row.isMaterialRow
+          ? Text(row.material?.unitName ?? '—')
+          : _readOnlyMasterCell(context, row.unitIdNotifier, unitEntries),
     ),
     EditableGridColumn<DailyGridRow>(
       key: 'qty',
@@ -208,18 +351,202 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       numeric: true,
       required: true,
       headerInfo: l10n.workflowReportQuantityHint,
-      cellBuilder: (context, row) => RequiredCellFrame(
-        listenable: row.qty,
-        isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
-        child: TextField(
-          controller: row.qty,
-          textAlign: TextAlign.right,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const UtenInputDecoration(
-            InputDecoration(isDense: true, hintText: '0'),
+      cellBuilder: (context, row) => row.isMaterialRow
+          ? const SizedBox.shrink()
+          : RequiredCellFrame(
+              listenable: row.qty,
+              isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
+              child: TextField(
+                controller: row.qty,
+                textAlign: TextAlign.right,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const UtenInputDecoration(
+                  InputDecoration(isDense: true, hintText: '0'),
+                ),
+              ),
+            ),
+    ),
+    // ===== V583 物料子行专用两列：成品行留空 =====
+    EditableGridColumn<DailyGridRow>(
+      key: 'issuedQty',
+      label: '领料量',
+      width: 104,
+      numeric: true,
+      headerInfo:
+          '仓库已实际发给本工单的数量(基本单位)。它是只读事实，'
+          '要改只能走仓库的出库红冲。',
+      textOf: (r) =>
+          r.isMaterialRow ? _quantityText(r.material?.issuedQty ?? 0) : '',
+      cellBuilder: (context, row) => row.isMaterialRow
+          ? Text(_quantityText(row.material?.issuedQty ?? 0))
+          : const SizedBox.shrink(),
+    ),
+    EditableGridColumn<DailyGridRow>(
+      key: 'materialUsed',
+      label: '本次实际用料',
+      width: 140,
+      numeric: true,
+      required: true,
+      headerInfo:
+          '填本次这张报工真正用掉的数量，允许填 0(这批料一点没用)。'
+          '上限是「本次还能登记多少」——已提交待仓库收料的部分不能再记成消耗。'
+          '最后一次报工时，剩下没登记的会问你要不要退回仓库。',
+      cellBuilder: (context, row) {
+        if (!row.isMaterialRow) return const SizedBox.shrink();
+        if (!row.materialOwnsInput) {
+          // 同一工单已在上面某个成品行下登记过：这里只回显，不重复占额度。
+          return Tooltip(
+            message: '本工单的物料已在上面的成品行下登记，这里只作对照',
+            child: Text(
+              _quantityText(row.materialUsedValue ?? 0),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          );
+        }
+        return RequiredCellFrame(
+          listenable: row.materialUsed,
+          // 成品行的完工量是「必须大于 0」，物料实耗是「必须填、可以是 0」：
+          // 逼车间为没用的料编个正数就是在造假账，所以这里判的是「空 / 负 / 超上限」。
+          isEmpty: () => row.materialInvalid,
+          child: TextField(
+            key: ValueKey('daily-material-used-${row.material?.demandId}'),
+            controller: row.materialUsed,
+            enabled: !row.materialReadOnly,
+            textAlign: TextAlign.right,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onChanged: (_) => onMaterialChanged?.call(),
+            // 可登记上限走 UtenInputDecoration 的 info（格内统一披露），
+            // 不能用裸 helperText——`uten_field_message_source_contract_test`
+            // 会直接判红（全站口径：提示与错误都留在字段里，不另开一行）。
+            decoration: UtenInputDecoration(
+              const InputDecoration(isDense: true, hintText: '0'),
+              info: row.materialReadOnly
+                  ? null
+                  : '可登记 ${_quantityText(row.materialCap)}',
+            ),
           ),
-        ),
-      ),
+        );
+      },
+    ),
+    // ===== V584/V585 产出去向两列：物料子行留空 =====
+    EditableGridColumn<DailyGridRow>(
+      key: 'destination',
+      label: '产出去向',
+      width: 150,
+      headerInfo:
+          '「送入仓库」= 交仓库送检登记、品质部检验、点收入库(默认)。\n'
+          '「转下一道工序」= 班组自检合格后不入库，直接投给**本车间**的上层工单；'
+          '审核时自动完成放行、入本车间线边仓和投入，不用再走领料。\n'
+          '跨车间必须走仓库——料离开本车间就脱离同一批人的视线。',
+      textOf: (r) =>
+          r.isMaterialRow ? '' : (r.isDirectTransfer ? '转下一道工序' : '送入仓库'),
+      listenableOf: (r) => r.destinationNotifier,
+      cellBuilder: (context, row) {
+        if (row.isMaterialRow) return const SizedBox.shrink();
+        return ValueListenableBuilder<String>(
+          valueListenable: row.destinationNotifier,
+          builder: (context, value, _) {
+            final canTransfer = row.directTransferCandidates.isNotEmpty;
+            return DropdownButtonFormField<String>(
+              initialValue: value,
+              // 不设 isExpanded 时下拉按最宽选项的固有宽度撑开，会把固定宽的
+              // 格子顶破(2026-09-15 实测溢出 150px，正好是本列宽)。
+              isExpanded: true,
+              decoration: const UtenInputDecoration(
+                InputDecoration(isDense: true),
+              ),
+              items: [
+                const DropdownMenuItem(value: 'WAREHOUSE', child: Text('送入仓库')),
+                DropdownMenuItem(
+                  value: 'WORKSHOP',
+                  enabled: canTransfer,
+                  child: Text(
+                    canTransfer ? '转下一道工序' : '转下一道工序(无下游)',
+                    style: canTransfer
+                        ? null
+                        : TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                  ),
+                ),
+              ],
+              onChanged: (next) {
+                if (next == null) return;
+                if (next == 'WORKSHOP' && !canTransfer) return;
+                onDestinationChanged?.call(row, next);
+              },
+            );
+          },
+        );
+      },
+    ),
+    EditableGridColumn<DailyGridRow>(
+      key: 'directTransfer',
+      label: '转给工单',
+      width: 210,
+      required: true,
+      headerInfo:
+          '本批产出投给同车间的哪个上层工单。只有一个候选时自动选中；'
+          '一次只投一个工单，要投多个就拆成多行。',
+      textOf: (r) => r.directTransfer?.label ?? '',
+      listenableOf: (r) => r.directTransferNotifier,
+      cellBuilder: (context, row) {
+        if (row.isMaterialRow) return const SizedBox.shrink();
+        return ValueListenableBuilder<String>(
+          valueListenable: row.destinationNotifier,
+          builder: (context, destination, _) {
+            if (destination != 'WORKSHOP') {
+              return Text(
+                '—',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              );
+            }
+            return RequiredCellFrame(
+              listenable: row.directTransferNotifier,
+              isEmpty: () => row.directTransfer == null,
+              child: ValueListenableBuilder<ProductionDirectTransferCandidate?>(
+                valueListenable: row.directTransferNotifier,
+                builder: (context, picked, _) =>
+                    DropdownButtonFormField<String>(
+                      initialValue: picked?.demandId,
+                      isExpanded: true,
+                      decoration: const UtenInputDecoration(
+                        InputDecoration(isDense: true, hintText: '选择上层工单'),
+                      ),
+                      items: [
+                        for (final candidate in row.directTransferCandidates)
+                          DropdownMenuItem(
+                            value: candidate.demandId,
+                            child: Text(
+                              candidate.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: (demandId) {
+                        if (demandId == null) return;
+                        onDirectTransferPicked?.call(
+                          row,
+                          row.directTransferCandidates.firstWhere(
+                            (candidate) => candidate.demandId == demandId,
+                          ),
+                        );
+                      },
+                    ),
+              ),
+            );
+          },
+        );
+      },
     ),
     // 2026-09-12 用户口径「新建生产日报不显示重量」：实际重量列撤出编辑表格
     //（行模型 weight 字段保留，回填/提交透传既有单不受影响；详情页只读回看不变）。
@@ -227,77 +554,95 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       key: 'planNo',
       label: '来源子任务',
       width: 240,
-      textOf: (row) => row.executionSegmentCode ?? row.planNo.text,
-      cellBuilder: (context, row) => ValueListenableBuilder<TextEditingValue>(
-        valueListenable: row.planNo,
-        builder: (context, value, _) {
-          final linked = row.hasLinkedSource;
-          final canOpen =
-              linked &&
-              row.planId != null &&
-              row.executionSegmentId != null &&
-              onOpenSource != null;
-          final label = row.executionSegmentCode ?? value.text;
-          return Row(
-            children: [
-              Expanded(
-                child: Tooltip(
-                  message: [
-                    value.text,
-                    row.recoveryLabel,
-                    row.fqcSourceReportNo,
-                    row.salesOrderNo,
-                  ].whereType<String>().where((v) => v.isNotEmpty).join(' · '),
-                  child: TextButton.icon(
-                    onPressed: canOpen
-                        ? () => onOpenSource(row)
-                        : linked
-                        ? null
-                        : () => onPickSource(row),
-                    icon: Icon(
-                      canOpen
-                          ? Icons.open_in_new_rounded
-                          : Icons.search_rounded,
-                      size: 16,
+      textOf: (row) => row.isMaterialRow
+          ? ''
+          : (row.executionSegmentCode ?? row.planNo.text),
+      cellBuilder: (context, row) => row.isMaterialRow
+          ? const SizedBox.shrink()
+          : ValueListenableBuilder<TextEditingValue>(
+              valueListenable: row.planNo,
+              builder: (context, value, _) {
+                final linked = row.hasLinkedSource;
+                final canOpen =
+                    linked &&
+                    row.planId != null &&
+                    row.executionSegmentId != null &&
+                    onOpenSource != null;
+                final label = row.executionSegmentCode ?? value.text;
+                return Row(
+                  children: [
+                    Expanded(
+                      child: Tooltip(
+                        message:
+                            [
+                                  value.text,
+                                  row.recoveryLabel,
+                                  row.fqcSourceReportNo,
+                                  row.salesOrderNo,
+                                ]
+                                .whereType<String>()
+                                .where((v) => v.isNotEmpty)
+                                .join(' · '),
+                        child: TextButton.icon(
+                          onPressed: canOpen
+                              ? () => onOpenSource(row)
+                              : linked
+                              ? null
+                              : () => onPickSource(row),
+                          icon: Icon(
+                            canOpen
+                                ? Icons.open_in_new_rounded
+                                : Icons.search_rounded,
+                            size: 16,
+                          ),
+                          label: Text(
+                            label.isEmpty ? '点击选择' : label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
                     ),
-                    label: Text(
-                      label.isEmpty ? '点击选择' : label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-              ),
-              if (linked || row.hasSourceSnapshot) ...[
-                IconButton(
-                  tooltip: '重新选择来源子任务',
-                  onPressed: () => onPickSource(row),
-                  icon: const Icon(Icons.search_rounded, size: 16),
-                ),
-                IconButton(
-                  tooltip: '清除来源',
-                  onPressed: () => onClearSource(row),
-                  icon: const Icon(Icons.close_rounded, size: 16),
-                ),
-              ],
-            ],
-          );
-        },
-      ),
+                    if (linked || row.hasSourceSnapshot) ...[
+                      IconButton(
+                        tooltip: '重新选择来源子任务',
+                        onPressed: () => onPickSource(row),
+                        icon: const Icon(Icons.search_rounded, size: 16),
+                      ),
+                      IconButton(
+                        tooltip: '清除来源',
+                        onPressed: () => onClearSource(row),
+                        icon: const Icon(Icons.close_rounded, size: 16),
+                      ),
+                    ],
+                  ],
+                );
+              },
+            ),
     ),
     EditableGridColumn<DailyGridRow>(
       key: 'remark',
       label: '备注',
       width: 180,
-      textOf: (r) => r.remark.text,
+      textOf: (r) => r.isMaterialRow ? '' : r.remark.text,
       listenableOf: (r) => r.remark,
-      cellBuilder: (context, row) => TextField(
-        controller: row.remark,
-        decoration: const InputDecoration(isDense: true),
-      ),
+      cellBuilder: (context, row) => row.isMaterialRow
+          ? const SizedBox.shrink()
+          : TextField(
+              controller: row.remark,
+              decoration: const InputDecoration(isDense: true),
+            ),
     ),
   ];
 }
+
+/// 数量文本：整数不带小数点，小数最多 4 位且不留尾零(与全站数量显示同口径)。
+String _quantityText(double value) => value == value.roundToDouble()
+    ? value.toStringAsFixed(0)
+    : value
+          .toStringAsFixed(4)
+          .replaceFirst(RegExp(r'0+$'), '')
+          .replaceFirst(RegExp(r'\.$'), '');
 
 /// 只读主档字段单元格（颜色/单位自动回填后用）：显示 entries[id] 名，空显示「—」。
 Widget _readOnlyMasterCell(

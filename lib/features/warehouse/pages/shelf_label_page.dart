@@ -355,17 +355,18 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
         info: placeInfo.toString(),
         value: (r) => r.place ?? '',
       ),
-      MasterColumnDef(
-        key: 'goodsCode',
-        label: '货品编码',
-        width: 130,
-        value: (r) => r.goodsCode ?? '',
-      ),
+      // 2026-09-14 全站列序统一（ADR-081 §4.1）：名称 → 编号 → 颜色。
       MasterColumnDef(
         key: 'goodsName',
         label: '货品名称',
         width: 220,
         value: (r) => r.goodsName ?? '',
+      ),
+      MasterColumnDef(
+        key: 'goodsCode',
+        label: '编号',
+        width: 130,
+        value: (r) => r.goodsCode ?? '',
       ),
       MasterColumnDef(
         key: 'colorName',
@@ -860,16 +861,17 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
           border: pw.TableBorder.all(width: 0.5),
           columnWidths: const {
             0: pw.FlexColumnWidth(1.1),
-            1: pw.FlexColumnWidth(1.4),
-            2: pw.FlexColumnWidth(),
-            3: pw.FlexColumnWidth(2.6),
-            4: pw.FlexColumnWidth(0.9),
+            1: pw.FlexColumnWidth(2.2),
+            2: pw.FlexColumnWidth(1.4),
+            3: pw.FlexColumnWidth(0.9),
+            4: pw.FlexColumnWidth(),
           },
           children: [
             pw.TableRow(
               decoration: const pw.BoxDecoration(color: _teal),
               children: [
-                for (final h in ['库位号', '物料编码', '物料系列', '物料名称', '颜色']) hCell(h),
+                // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
+                for (final h in ['库位号', '物料名称', '物料编码', '颜色', '物料系列']) hCell(h),
               ],
             ),
             for (var i = 0; i < rows.length; i++)
@@ -879,10 +881,10 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
                 ),
                 children: [
                   dCell(rows[i].place),
-                  dCell(rows[i].goodsCode),
-                  dCell(rows[i].series),
                   dCell(rows[i].goodsName, start: true),
+                  dCell(rows[i].goodsCode),
                   dCell(rows[i].colorName),
+                  dCell(rows[i].series),
                 ],
               ),
             for (var i = 0; i < padBlanks; i++)

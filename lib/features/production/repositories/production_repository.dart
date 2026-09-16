@@ -31,6 +31,7 @@ import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/progress_ratio.dart';
 import '../../basic_data/models/master_facet.dart';
+import '../models/analysis_linked_sales_order.dart';
 import '../models/production_daily_report.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_material_analysis.dart';
@@ -681,6 +682,21 @@ class ProductionPlanRepository {
     return ProductionMaterialAnalysisView.fromJson(json);
   }
 
+  /// 关联销售订货单的货品清单(ADR-088，只读)。
+  ///
+  /// 物料分析顶部卡片点订单编号进入的专用只读页数据源；服务端会反查
+  /// orderId 是否真的被这张分析引用，不是就 404——所以这里不需要、
+  /// 也不应该改用销售模块的订单详情接口(那条路会看到价格与编辑动作)。
+  Future<AnalysisLinkedSalesOrder> analysisLinkedSalesOrder({
+    required String analysisId,
+    required String orderId,
+  }) async {
+    final json = await api.get(
+      '$_materialAnalysesBase/$analysisId/sales-orders/$orderId',
+    ); // ENDPOINT
+    return AnalysisLinkedSalesOrder.fromJson(json);
+  }
+
   /// Creates or CAS-refreshes one joint analysis. BOM expansion, warehouse
   /// availability and readiness quantities are all server-owned facts.
   Future<ProductionMaterialAnalysisView> previewMaterialAnalysis({
@@ -724,6 +740,30 @@ class ProductionPlanRepository {
       },
     ); // ENDPOINT
     return ProductionMaterialAnalysisView.fromJson(json);
+  }
+
+  /// 回写货品主档的「所属仓库」(V587)。
+  ///
+  /// 与路线确认不同, 这条**不带 version/fingerprint**: 所属仓库是货品主档事实,
+  /// 不属于本次分析快照, 服务端也刻意不把它计入快照指纹——否则改一个归属就会
+  /// 让别人正在编辑的分析 CAS 令牌失效。返回 {updated, skipped}。
+  ///
+  /// [entries] 的 value 传 null = 清空该货品的所属仓库(合法操作, 不是跳过)。
+  Future<Map<String, int>> updateGoodsOwningWarehouses(
+    Map<String, String?> entries,
+  ) async {
+    if (entries.isEmpty) return const {'updated': 0, 'skipped': 0};
+    final json = await api.put(
+      '$_materialAnalysesBase/goods-owning-warehouses',
+      body: [
+        for (final entry in entries.entries)
+          {'goodsId': entry.key, 'owningWarehouseId': entry.value},
+      ],
+    ); // ENDPOINT
+    return {
+      'updated': (json['updated'] as num?)?.toInt() ?? 0,
+      'skipped': (json['skipped'] as num?)?.toInt() ?? 0,
+    };
   }
 
   Future<ProductionMaterialAnalysisView> cancelMaterialAnalysis({
@@ -1287,6 +1327,7 @@ class SchedulePendingRow {
     this.deliverDate,
     this.chainStatus,
     this.urgent = false,
+    this.analysisCoveredQty,
   });
   final String orderItemId;
   final String orderId;
@@ -1319,6 +1360,11 @@ class SchedulePendingRow {
   final int? chainStatus;
   final bool urgent;
 
+  /// 活动物料分析已承接量(ADR-088)。> 0 表示这一行已有一部分转到「进行中」
+  /// 按分析批次跟踪，本行的 [needQty] 是尚未被任何分析承接的残量。
+  /// 旧服务端不返回该字段时为 null，展示层退回「不显示已分析列」。
+  final double? analysisCoveredQty;
+
   factory SchedulePendingRow.fromJson(
     Map<String, dynamic> j,
   ) => SchedulePendingRow(
@@ -1350,6 +1396,7 @@ class SchedulePendingRow {
     deliverDate: j['deliverDate'] as String?,
     chainStatus: (j['chainStatus'] as num?)?.toInt(),
     urgent: j['urgent'] == true,
+    analysisCoveredQty: (j['analysisCoveredQty'] as num?)?.toDouble(),
   );
 }
 

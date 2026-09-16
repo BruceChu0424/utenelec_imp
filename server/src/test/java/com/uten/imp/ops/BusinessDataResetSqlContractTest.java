@@ -86,7 +86,29 @@ class BusinessDataResetSqlContractTest {
             Map.entry("subcontract_receipt_material_consumptions", 522),
             Map.entry("production_fqc_inspection_sheets", 547),
             Map.entry("production_fqc_inspection_sheet_items", 547),
-            Map.entry("production_finished_arrival_registration_reversals", 548));
+            Map.entry("production_finished_arrival_registration_reversals", 548),
+            // V583/V584 建表时漏登记，V586 统一补进清库策略（四张都是纯业务事实）。
+            Map.entry("production_daily_report_material_usages", 586),
+            Map.entry("production_workshop_direct_transfer_items", 586),
+            Map.entry("production_workshop_direct_transfer_reversals", 586),
+            Map.entry("production_workshop_direct_transfers", 586));
+
+    /**
+     * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。
+     * 同样走「读取已安装函数定义 + 锚点替换插入」补丁；与 CLEAR 扩展分开登记，
+     * ops 脚本与 V579 补丁锚点保持一致。
+     */
+    private static final Map<String, Integer> PRESERVE_RESET_EXTENSIONS = Map.of(
+            "party_activity_records", 579,
+            "party_addresses", 579,
+            "party_contact_methods", 579);
+
+    /**
+     * V590 起整表废弃并从清空策略移除的表（「读取已安装定义 + 锚点替换删除」
+     * 补丁）。新增删除时同步登记，并保持 ops 脚本与 V590 补丁锚点一致。
+     */
+    private static final Map<String, Integer> REMOVED_RESET_TABLES = Map.of(
+            "production_goods_workshop_preferences", 590);
 
     private String opsScript;
     private String migrationSql;
@@ -176,6 +198,23 @@ class BusinessDataResetSqlContractTest {
             extensionSql += read(Path.of("src", "main", "resources", "db", "migration", migration),
                     Path.of("server", "src", "main", "resources", "db", "migration", migration));
         }
+        extensionSql += read(
+                Path.of("src", "main", "resources", "db", "migration",
+                        "V579__party_contact_address_activity.sql"),
+                Path.of("server", "src", "main", "resources", "db", "migration",
+                        "V579__party_contact_address_activity.sql"));
+        // V586 补登记 V583 报工实耗表与 V584 车间直送三张表（建表迁移漏了这一步，
+        // 清库函数 fail-closed 会直接拒绝执行，com.uten.imp.ops.** 整包红）。
+        extensionSql += read(
+                Path.of("src", "main", "resources", "db", "migration",
+                        "V586__reset_policy_daily_report_usage_and_direct_transfer.sql"),
+                Path.of("server", "src", "main", "resources", "db", "migration",
+                        "V586__reset_policy_daily_report_usage_and_direct_transfer.sql"));
+        extensionSql += read(
+                Path.of("src", "main", "resources", "db", "migration",
+                        "V590__goods_owning_workshop_consolidation.sql"),
+                Path.of("server", "src", "main", "resources", "db", "migration",
+                        "V590__goods_owning_workshop_consolidation.sql"));
     }
 
     @Test
@@ -183,21 +222,31 @@ class BusinessDataResetSqlContractTest {
         Map<String, String> opsPolicy = policy(opsScript);
         Map<String, String> twinPolicy = policy(migrationSql);
 
-        assertThat(opsPolicy).hasSize(320 + RUNTIME_RESET_EXTENSIONS.size());
+        assertThat(opsPolicy).hasSize(
+                320 + RUNTIME_RESET_EXTENSIONS.size() + PRESERVE_RESET_EXTENSIONS.size()
+                        - REMOVED_RESET_TABLES.size());
         assertThat(opsPolicy.values().stream().filter("CLEAR"::equals).count())
                 .isEqualTo(224 + RUNTIME_RESET_EXTENSIONS.size());
         assertThat(opsPolicy.values().stream().filter("PRESERVE"::equals).count())
-                .isEqualTo(96);
+                .isEqualTo(96 + PRESERVE_RESET_EXTENSIONS.size()
+                        - REMOVED_RESET_TABLES.size());
 
         // V464 基础清单逐表一致：任何一侧漂移（新增/删除/改分类）都失败关闭。
+        // V590 起废弃表从两侧同时移除（twin 基线文件按历史字节保留，比较前扣除）。
         Map<String, String> opsBase = new LinkedHashMap<>(opsPolicy);
         RUNTIME_RESET_EXTENSIONS.keySet().forEach(opsBase::remove);
-        assertThat(twinPolicy).isEqualTo(opsBase);
+        PRESERVE_RESET_EXTENSIONS.keySet().forEach(opsBase::remove);
+        Map<String, String> twinExpected = new LinkedHashMap<>(twinPolicy);
+        REMOVED_RESET_TABLES.keySet().forEach(twinExpected::remove);
+        assertThat(twinExpected).isEqualTo(opsBase);
         // 扩展行必须全部 CLEAR：追加式运行时事件账随系统测试一并清空。
         RUNTIME_RESET_EXTENSIONS.keySet().forEach(table ->
                 assertThat(opsPolicy.get(table))
                         .as(table + " runtime reset extension must be CLEAR")
                         .isEqualTo("CLEAR"));
+        // 废弃表必须真的不在两侧策略里。
+        REMOVED_RESET_TABLES.keySet().forEach(table ->
+                assertThat(opsPolicy).as(table + " was retired by V590").doesNotContainKey(table));
     }
 
     @Test
@@ -281,7 +330,34 @@ class BusinessDataResetSqlContractTest {
                 // V577 下达车间超量的公共备货产出分账：只给计划关联行加一列 +
                 // 改一个触发器，不新增业务表（533→534）。V576 由并行分支占用。
                 .contains("(577, 534)")
-                .contains("V507/469、V508/470及V511至V577完整目录");
+                .contains("(578, 535)")
+                .contains("(579, 536)")
+                // V580 只放宽计划关联行对账(公共备货单可不带销售来源)，不加表。
+                // V581 只扩委外发料计划行的 flow_mode 白名单与四个既有守卫，不加表。
+                .contains("(581, 538)")
+                // V582 只收窄销售出货仓库作业状态取值并重建触发器/索引/视图，不加表。
+                .contains("(582, 539)")
+                // V583 报工同页登记实际用料：新增 1 张表(539→540)。
+                .contains("(583, 540)")
+                // V584 车间直送：新增 3 张表(540→541)+ 线边仓/去向/检验种类三个列。
+                .contains("(584, 541)")
+                // V585 只加报工行接收需求列 + 一个审核权限码，不加表。
+                .contains("(585, 542)")
+                // V586 只补清库策略登记，不新增业务表；版本对的第二个数是迁移
+                // 文件条数，本迁移本身让它 542→543。
+                .contains("(586, 543)")
+                .contains("(587, 544)")
+                .contains("(588, 545)")
+                .contains("(589, 546)")
+                // V590 货品归属收敛：偏好表废弃删除（PRESERVE 96→95），条数 546→547。
+                .contains("(590, 547)")
+                // V591 存量归属回填：只 UPDATE 不加表（547→548）。
+                .contains("(591, 548)")
+                // V592 客户默认销售条款：clients 只加两列不加表（548→549）。
+                .contains("(592, 549)")
+                // V593 采购/委外链主档默认值：只加列不加表（549→550）。
+                .contains("(593, 550)")
+                .contains("V507/469、V508/470及V511至V593完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);
@@ -299,6 +375,15 @@ class BusinessDataResetSqlContractTest {
                     .as(table + " must be inserted by the runtime reset patch")
                     .contains("'" + table + "'");
         }
+        // V579：PRESERVE 语义扩展同样走补丁(基础资料子表随主档保留)。
+        assertThat(extensionSql)
+                .contains("RAISE EXCEPTION 'V579 cannot extend business_data_reset policy safely'")
+                .contains("(''party_contact_methods'', ''PRESERVE'')");
+        // V590：整表废弃走「读已安装定义 + 锚点替换删除」补丁；锚点单行无换行，
+        // 不受迁移文件 CRLF/LF 差异影响（V588 教训）。
+        assertThat(extensionSql)
+                .contains("RAISE EXCEPTION 'V590 cannot drop retired preference policy row from business_data_reset'")
+                .contains("(''production_goods_workshop_preferences'', ''PRESERVE''),");
     }
 
     @Test

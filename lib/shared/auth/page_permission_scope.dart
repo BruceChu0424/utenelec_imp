@@ -366,7 +366,12 @@ PagePermissionScope? _productionScopeFor(List<String> segments) {
           : null;
     case 'material-analyses':
       if (segments.length == 2) return _materialAnalysisHistoryScope;
-      return segments.length == 4 && segments[3] == 'summary'
+      if (segments.length == 4 && segments[3] == 'summary') {
+        return _materialAnalysisScope;
+      }
+      // 关联销售订货单只读货品清单(ADR-088)复用物料分析面：与入口页同权，
+      // 不补这一支的话本页右上角「权限设置」入口会静默消失(无 scope = 不渲染)。
+      return segments.length == 5 && segments[3] == 'sales-orders'
           ? _materialAnalysisScope
           : null;
     case 'plans':

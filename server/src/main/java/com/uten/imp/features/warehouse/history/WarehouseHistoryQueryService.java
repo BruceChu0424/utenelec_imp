@@ -199,7 +199,8 @@ public class WarehouseHistoryQueryService {
                 text(row[24]),
                 decimal(row[25]),
                 text(row[26]),
-                text(row[27]));
+                text(row[27]),
+                text(row[28]));
     }
 
     private String employeeName(

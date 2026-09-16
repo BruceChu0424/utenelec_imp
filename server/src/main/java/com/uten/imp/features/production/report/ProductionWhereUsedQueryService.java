@@ -262,6 +262,7 @@ public class ProductionWhereUsedQueryService {
                 SELECT goods.id AS product_id,
                        goods.code AS goods_code,
                        goods.name AS goods_name,
+                       color.name AS color_name,
                        goods.spec AS spec,
                        category.name AS category_name,
                        goods.status AS goods_status,
@@ -337,6 +338,7 @@ public class ProductionWhereUsedQueryService {
                 FROM product_ids ids
                 JOIN goods ON goods.id = ids.product_id
                 LEFT JOIN material_categories category ON category.id = goods.category_id
+                LEFT JOIN colors color ON color.id = goods.color_id
                 LEFT JOIN current_ancestors ancestor ON ancestor.product_id = goods.id
                 LEFT JOIN invalid_ancestors invalid ON invalid.product_id = goods.id
                 LEFT JOIN direct_bom direct ON direct.product_id = goods.id
@@ -421,8 +423,9 @@ public class ProductionWhereUsedQueryService {
                        row.goods_status AS "__goodsStatus",
                        row.auto_created AS "__autoCreated",
                        row.goods_deleted AS "__goodsDeleted",
-                       row.goods_code AS "goodsCode",
                        row.goods_name AS "goodsName",
+                       row.goods_code AS "goodsCode",
+                       row.color_name AS "colorName",
                        row.spec AS "spec",
                        row.category_name AS "categoryName",
                        row.sources AS "sources",
@@ -806,8 +809,11 @@ public class ProductionWhereUsedQueryService {
                 ReportColumn.text("__goodsStatus", ""),
                 ReportColumn.bool("__autoCreated", ""),
                 ReportColumn.bool("__goodsDeleted", ""),
-                ReportColumn.text("goodsCode", "产成品编号", 130),
+                // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
+                // 注意：本报表按 columns() 顺序位置映射 SELECT 投影，两处必须同步改。
                 ReportColumn.text("goodsName", "产成品名称", 200),
+                ReportColumn.text("goodsCode", "产成品编号", 130),
+                ReportColumn.text("colorName", "颜色", 80),
                 ReportColumn.text("spec", "规格", 130),
                 ReportColumn.text("categoryName", "分类", 110),
                 ReportColumn.text("sources", "关系来源", 230),

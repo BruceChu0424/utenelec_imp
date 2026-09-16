@@ -158,6 +158,22 @@ public class StockQueryService {
                                                               boolean includeDefective,
                                                               String keyword, int page, int size,
                                                               String sort, String order) {
+        return instantInventory(categoryId, warehouseId, includeDefective, keyword,
+                null, null, page, size, sort, order);
+    }
+
+    /**
+     * 2026-09-15 起带「所属仓库」表头筛选（V587/V590 单一事实源）：
+     * owningWarehouse=按 goods.owning_warehouse_id 等值；owningWarehouseNull=筛未登记。
+     * facet 桶随响应下发（在**未应用本筛选**的同一口径上聚合，翻页不变）。
+     */
+    public PageResponse<InstantInventoryRow> instantInventory(UUID categoryId, UUID warehouseId,
+                                                              boolean includeDefective,
+                                                              String keyword,
+                                                              UUID owningWarehouse,
+                                                              Boolean owningWarehouseNull,
+                                                              int page, int size,
+                                                              String sort, String order) {
         boolean canViewCost = costMasker.canView();
         if (!canViewCost && "costAmount".equals(sort)) {
             throw new ApiException(
@@ -210,6 +226,14 @@ public class StockQueryService {
         if (keyword != null && !keyword.isBlank()) {
             goodsWhere.append(
                     " AND (g.name ILIKE :kw OR g.code ILIKE :kw OR g.model ILIKE :kw OR g.c_number ILIKE :kw)");
+        }
+        // V587/V590 归属筛选只作用于列表本体；facet 桶在未应用本筛选的口径上聚合。
+        String goodsWhereBase = goodsWhere.toString();
+        if (owningWarehouse != null) {
+            goodsWhere.append(" AND g.owning_warehouse_id = :ownWh");
+        }
+        if (Boolean.TRUE.equals(owningWarehouseNull)) {
+            goodsWhere.append(" AND g.owning_warehouse_id IS NULL");
         }
 
         // 递归 CTE：仅 categoryId 过滤时才声明（锚为参数，无过滤时整段不出现，计划更简）。
@@ -299,6 +323,7 @@ public class StockQueryService {
                     GROUP BY goods_id, color_id
                 ) pm ON pm.goods_id = g.id AND pm.color_id IS NOT DISTINCT FROM base.color_id
                 """ + goodsWhere;
+        String coreFacet = core.replace(goodsWhere.toString(), goodsWhereBase);
 
         String orderBy = "qty DESC, name ASC";
         if (sort != null && INSTANT_ALLOWED_SORT.containsKey(sort)) {
@@ -318,6 +343,7 @@ public class StockQueryService {
             }
             if (categoryId != null) q.setParameter("categoryId", categoryId);
             if (keyword != null && !keyword.isBlank()) q.setParameter("kw", "%" + keyword.trim() + "%");
+            if (owningWarehouse != null) q.setParameter("ownWh", owningWarehouse);
         }
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
@@ -357,10 +383,53 @@ public class StockQueryService {
                             if (keyword != null && !keyword.isBlank()) {
                                 q.setParameter("kw", "%" + keyword.trim() + "%");
                             }
+                            if (owningWarehouse != null) q.setParameter("ownWh", owningWarehouse);
                         },
                         INSTANT_TOTAL_SPECS);
+        // 归属仓库 facet：在同一口径（未应用归属筛选本身）的 core 上聚合，
+        // 行粒度=货品×颜色（与列表行一致），空归属由 nullCounts 单独计。
+        var facetQ = em.createNativeQuery(
+                "SELECT ow.id AS v, COALESCE(ow.name, '') AS label, COUNT(*) AS c "
+                        + "FROM (" + coreFacet + ") t "
+                        + "JOIN goods g2 ON g2.id = t.goods_id "
+                        + "LEFT JOIN warehouses ow ON ow.id = g2.owning_warehouse_id "
+                        + "WHERE g2.owning_warehouse_id IS NOT NULL "
+                        + "GROUP BY ow.id, ow.name ORDER BY c DESC, label ASC LIMIT 50");
+        if (warehouseScope != null && warehouseScope.size() == 1) {
+            facetQ.setParameter("warehouseId", warehouseId);
+        }
+        if (warehouseScope != null && warehouseScope.size() > 1) {
+            facetQ.setParameter("scopeIds", warehouseScope);
+        }
+        if (categoryId != null) facetQ.setParameter("categoryId", categoryId);
+        if (keyword != null && !keyword.isBlank()) {
+            facetQ.setParameter("kw", "%" + keyword.trim() + "%");
+        }
+        List<Object[]> facetRows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(facetQ);
+        List<com.uten.imp.common.web.FacetBucket> owningBuckets = new ArrayList<>(facetRows.size());
+        for (Object[] r : facetRows) {
+            owningBuckets.add(new com.uten.imp.common.web.FacetBucket(
+                    String.valueOf(r[0]), ((Number) r[2]).longValue(), String.valueOf(r[1])));
+        }
+        var nullQ = em.createNativeQuery(
+                "SELECT COUNT(*) FROM (" + coreFacet + ") t "
+                        + "JOIN goods g2 ON g2.id = t.goods_id "
+                        + "WHERE g2.owning_warehouse_id IS NULL");
+        if (warehouseScope != null && warehouseScope.size() == 1) {
+            nullQ.setParameter("warehouseId", warehouseId);
+        }
+        if (warehouseScope != null && warehouseScope.size() > 1) {
+            nullQ.setParameter("scopeIds", warehouseScope);
+        }
+        if (categoryId != null) nullQ.setParameter("categoryId", categoryId);
+        if (keyword != null && !keyword.isBlank()) {
+            nullQ.setParameter("kw", "%" + keyword.trim() + "%");
+        }
+        long owningNullCount = ((Number) nullQ.getSingleResult()).longValue();
         return new com.uten.imp.common.web.TotaledPageResponse<>(
-                new PageResponse<>(items, safePage, safeSize, total, totalPages), totals);
+                new PageResponse<>(items, safePage, safeSize, total, totalPages), totals,
+                java.util.Map.of("owningWarehouse", owningBuckets),
+                java.util.Map.of("owningWarehouse", owningNullCount));
     }
 
     /**

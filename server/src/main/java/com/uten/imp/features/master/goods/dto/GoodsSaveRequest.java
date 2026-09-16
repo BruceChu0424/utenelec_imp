@@ -78,6 +78,11 @@ public class GoodsSaveRequest {
     private Integer vendLegacyId; // 旧库默认供应商主键快照；不能单独建立关系
     private UUID secondarySupplierId;
     private Integer vend2LegacyId; // 旧库次供应商主键快照；不能单独建立关系
+    /**
+     * 所属仓库 (V587)：这批货平时归哪个仓管的主档归属，不是单据落点仓，也不是物料分析范围仓。
+     * 无 legacy 影子列，只接受 UUID；没传这个键=不动，显式传 null=清空归属 (见 hasOwningWarehouseReference)。
+     */
+    private UUID owningWarehouseId;
 
     @JsonIgnore
     private boolean colorReferencePresent;
@@ -95,6 +100,8 @@ public class GoodsSaveRequest {
     private boolean thicknessUnitReferencePresent;
     @JsonIgnore
     private boolean mWeightUnitReferencePresent;
+    @JsonIgnore
+    private boolean owningWarehouseReferencePresent;
 
     @JsonSetter("thicknessUnitId")
     public void setThicknessUnitId(UUID value) {
@@ -192,6 +199,12 @@ public class GoodsSaveRequest {
         secondarySupplierReferencePresent = true;
     }
 
+    @JsonSetter("owningWarehouseId")
+    public void setOwningWarehouseId(UUID value) {
+        owningWarehouseId = value;
+        owningWarehouseReferencePresent = true;
+    }
+
     public boolean hasColorReference() { return colorReferencePresent; }
     public boolean hasUnitReference() { return unitReferencePresent; }
     public boolean hasMouldReference() { return mouldReferencePresent; }
@@ -200,6 +213,7 @@ public class GoodsSaveRequest {
     public boolean hasSecondarySupplierReference() { return secondarySupplierReferencePresent; }
     public boolean hasThicknessUnitReference() { return thicknessUnitReferencePresent; }
     public boolean hasMWeightUnitReference() { return mWeightUnitReferencePresent; }
+    public boolean hasOwningWarehouseReference() { return owningWarehouseReferencePresent; }
 
     // ===== 成本预算（「成本预算」页签；可空，留空不清已有值时传 null 即覆盖为 null，前端表单始终全量回传） =====
     @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)

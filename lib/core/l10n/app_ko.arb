@@ -1307,7 +1307,7 @@
     }
   },
   "warehouseOutboundBatchReview": "Review sales outbound tasks",
-  "warehouseOutboundBatchHint": "Check goods, quantities, units, warehouses and suggested locations before confirming the current work stage.",
+  "warehouseOutboundBatchHint": "Check goods, quantities, units, warehouses and actual locations before confirming the outbound.",
   "warehouseOutboundBatchConfirm": "Confirm {action} for {count} selected documents?",
   "@warehouseOutboundBatchConfirm": {
     "placeholders": {
@@ -1337,7 +1337,7 @@
   },
   "warehouseOutboundBatchSelect": "Select actionable tasks first",
   "warehouseOutboundBatchReason": "Processing note",
-  "warehouseOutboundBatchReasonRequired": "Enter a specific explanation",
+  "warehouseOutboundConfirmShipment": "Confirm outbound",
   "warehouseOutboundBillNo": "Shipment number",
   "warehouseOutboundClient": "Customer",
   "warehouseOutboundWarehouse": "Warehouse",
@@ -1354,11 +1354,7 @@
   "warehouseOutboundCartonCount": "Cartons",
   "warehouseOutboundClientProductCode": "Customer product code",
   "warehouseOutboundClientModel": "Customer model",
-  "warehouseOutboundSourceOrder": "Source order",
-  "warehouseOutboundStartPicking": "Start picking",
-  "warehouseOutboundFinishPicking": "Complete picking",
-  "warehouseOutboundHandOver": "Hand over shipment",
-  "warehouseOutboundRestorePending": "Restore pending picking",
+  "warehouseOutboundSourceOrder": "Source order",
   "warehouseStockOutboundTitle": "Review outbound documents",
   "warehouseStockOutboundAction": "Batch outbound",
   "warehouseStockOutboundConfirm": "Confirm batch outbound",

@@ -387,12 +387,6 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                 WHERE e.analysis_id=:id AND e.event_kind='FULFILL' AND e.source_receipt_id IS NULL
                   AND r.consumed_qty=0 AND r.released_qty=0 AND r.is_deleted=FALSE
                   AND NOT EXISTS(SELECT 1 FROM preplan_root_output_events rev WHERE rev.reversed_event_id=e.id)
-                  AND NOT EXISTS(SELECT 1 FROM sales_shipment_items item
-                    JOIN sales_shipments shipment ON shipment.id=item.shipment_id
-                    WHERE item.order_item_id=e.sales_order_item_id AND item.is_deleted=FALSE
-                      AND shipment.is_deleted=FALSE AND shipment.status=0
-                      AND shipment.warehouse_id=e.warehouse_id
-                      AND shipment.warehouse_work_status IN ('PICKING','PICKED'))
                 LIMIT 1
                 """).setParameter("id",analysisId).getResultList().isEmpty();
     }
@@ -440,7 +434,8 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
         BigDecimal before = fulfilled(root.itemId());
         UUID salesReservationId = (UUID) event[1];
         if (salesReservationId != null) {
-            requireNoPicking(root);
+            // V582：销售出货没有“已开拣未出账”的中间态，原 requireNoPicking 窗口不复存在。
+            // 唯一真闸门是下面这条 CAS：一旦确认出库，consumed_qty 已被消费，撤回必然失败。
             int changed = em.createNativeQuery("""
                     UPDATE stock_reservations SET released_qty=qty,status=1,updated_at=now()
                     WHERE id=:id AND consumed_qty=0 AND released_qty=0 AND is_deleted=FALSE
@@ -516,17 +511,6 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
         if (updated!=1) throw conflict("根产品供给与销售剩余数量不一致，事务已回滚");
     }
 
-    private void requireNoPicking(Root root) {
-        Number count = (Number) em.createNativeQuery("""
-                SELECT COUNT(*) FROM sales_shipment_items item JOIN sales_shipments shipment ON shipment.id=item.shipment_id
-                WHERE item.order_item_id=:orderItem AND item.is_deleted=FALSE
-                  AND shipment.is_deleted=FALSE AND shipment.status=0
-                  AND shipment.warehouse_id=:warehouse
-                  AND shipment.warehouse_work_status IN ('PICKING','PICKED')
-                """).setParameter("orderItem", root.salesOrderItemId())
-                .setParameter("warehouse", root.warehouseId()).getSingleResult();
-        if (count.longValue()>0) throw conflict("根产品已进入销售拣货，请先撤回仓库拣货再红冲供给");
-    }
 
     private Root lockRoot(UUID materialId) {
         List<Object[]> matches = rows("""

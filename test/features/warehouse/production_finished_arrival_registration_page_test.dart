@@ -114,7 +114,12 @@ void main() {
         const Key('production-finished-arrival-validation-error'),
       );
       expect(validation, findsOneWidget);
-      expect(tester.widget<Text>(validation).data, '第 1 行必须填写库位号');
+      // 2026-09-14：行级校验改为「整批扫完、同类一次点名全部违规行」——
+      // 一批几十行时旧写法只报第一行，用户要提交 N 次才知道缺 N 个库位。
+      expect(
+        tester.widget<Text>(validation).data,
+        allOf(contains('未填写库位号'), contains('第 1 行')),
+      );
 
       await tester.enterText(placeField, ' CP-A-01 ');
       _pressSubmit(tester);
@@ -830,9 +835,14 @@ void main() {
     final api = _ArrivalRegistrationApi();
     await _openPage(tester, api: api, canRegister: true);
     await _selectWarehouse(tester, '成品仓', settle: true);
-    await tester.tap(
-      find.byKey(const Key('production-finished-arrival-remember-places')),
+    // 记忆开关在工具区，默认视口下可能已被上方内容挤出屏幕——先滚到可见再点，
+    // 否则 tap 落空、开关仍为默认开启，提交时照样打记忆接口（本用例就白测了）。
+    final rememberSwitch = find.byKey(
+      const Key('production-finished-arrival-remember-places'),
     );
+    await tester.ensureVisible(rememberSwitch);
+    await tester.pumpAndSettle();
+    await tester.tap(rememberSwitch);
     await tester.pump();
     await _revealGrid(tester);
     await tester.enterText(

@@ -34,6 +34,7 @@ class GoodsDictEntry {
     this.series,
     this.stockPlace,
     this.unitId,
+    this.owningWarehouseName,
   });
 
   final String name;
@@ -42,12 +43,16 @@ class GoodsDictEntry {
   final String? stockPlace;
   final String? unitId;
 
+  /// 所属仓库名(V587)：货品主档归属，供各表直接显示，不必再逐行查仓库字典。
+  final String? owningWarehouseName;
+
   factory GoodsDictEntry.fromJson(Map<String, dynamic> json) => GoodsDictEntry(
     name: (json['name'] ?? '') as String,
     code: json['code'] as String?,
     series: json['series'] as String?,
     stockPlace: json['stockPlace'] as String?,
     unitId: json['unitId'] as String?,
+    owningWarehouseName: json['owningWarehouseName'] as String?,
   );
 }
 

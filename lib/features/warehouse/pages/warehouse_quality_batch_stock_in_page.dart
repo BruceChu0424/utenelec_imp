@@ -325,6 +325,7 @@ class _WarehouseQualityBatchStockInPageState
           ],
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
         floatingActionButton: _canConfirmStockIn
             ? _buildBottomBar(theme)
             : null,

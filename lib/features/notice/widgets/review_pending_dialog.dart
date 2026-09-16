@@ -570,7 +570,7 @@ class _Header extends StatelessWidget {
 String _eventGroupLabel(String? sourceEvent) => switch (sourceEvent) {
   'SALES_ORDER_PENDING_FINANCE_CONFIRM' => '销售订单待确认',
   'SALES_SHIPMENT_PENDING_FINANCE_AUDIT' => '发货待财务审核',
-  'SALES_SHIPMENT_PENDING_PICK' => '发货待拣货',
+  'SALES_SHIPMENT_PENDING_PICK' => '发货待出库',
   'SALES_SHIPMENT_FINANCE_REJECTED' ||
   'DIRECT_CUSTOMER_SHIPMENT_FINANCE_REJECTED' => '发货被驳回',
   'PROCUREMENT_FINANCE_SUBMITTED' => '订货待财务审批',

@@ -126,7 +126,7 @@ class SalesOrderPlanProgressServiceTest {
                 null,
                 null,
                 null,
-                org.mockito.Mockito.mock(com.uten.imp.features.sales.SalesMutationFootprintService.class));
+                org.mockito.Mockito.mock(com.uten.imp.features.sales.SalesMutationFootprintService.class), null);
 
         PlanProgressLine line = service.planProgress(orderId).getFirst();
 

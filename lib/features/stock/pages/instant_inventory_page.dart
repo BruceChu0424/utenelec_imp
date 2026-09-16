@@ -49,6 +49,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/product_category_picker_panel.dart';
 import '../../report/shared/report_total.dart';
 import '../models/stock_query.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../providers/instant_inventory_prefs_provider.dart';
 import '../repositories/stock_query_repository.dart';
 
@@ -81,6 +82,10 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   // 列排序态：null=后端默认（库存数量 DESC）。
   String? _sortKey;
   bool _sortAsc = false;
+
+  // 表头筛选态（2026-09-15 起「所属仓库」列；key=列 key，值=仓库 UUID 或
+  // kMasterFilterNullValue 哨兵=筛未登记）。服务端过滤+服务端聚合 facet 桶。
+  Map<String, String?> _filters = {};
 
   @override
   void initState() {
@@ -127,9 +132,14 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             warehouseId: _warehouseId,
             includeDefective: ref.read(instantInventoryPrefsProvider),
             keyword: _keyword.isEmpty ? null : _keyword,
+            owningWarehouse: _owningFilterUuid,
+            owningWarehouseNull: _owningFilterIsNull,
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      // 「所属仓库」列的名字来自货品字典，先补齐再落表，免得整页先空一拍再跳字。
+      await _loadOwningWarehouseNames(r.items);
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() => _page = r);
     } on ApiException catch (e) {
@@ -151,6 +161,28 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
       _sortAsc = ascending;
     });
     _load(1);
+  }
+
+  /// 归属仓筛选值：普通值=仓库 UUID；哨兵=筛未登记。
+  String? get _owningFilterUuid {
+    final v = _filters['owningWarehouse'];
+    return (v == null || v == kMasterFilterNullValue) ? null : v;
+  }
+
+  bool get _owningFilterIsNull =>
+      _filters['owningWarehouse'] == kMasterFilterNullValue;
+
+  void _onFilterChanged(String key, String? value) {
+    setState(() {
+      final next = Map<String, String?>.from(_filters);
+      if (value == null) {
+        next.remove(key); // 选"所有"= 不筛
+      } else {
+        next[key] = value;
+      }
+      _filters = next;
+    });
+    _load(1); // 表头筛选变化回第 1 页（与主档页同口径）
   }
 
   /// 导出查询参数（与 _load 一致，不含 page/size；report 固定 'instant-inventory' 走后端独立分支）。
@@ -185,6 +217,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           sort: _sortKey,
           order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
         );
+    // 打印件与页面同列，「所属仓库」同样要先补齐货品字典才有名字可印。
+    await _loadOwningWarehouseNames(r.items);
     final cols = _columns();
     return UtenPrintTable(
       headers: [for (final c in cols) c.label],
@@ -192,6 +226,29 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
         for (final row in r.items) [for (final c in cols) c.value(row) ?? ''],
       ],
     );
+  }
+
+  /// 「所属仓库」列取值 (V587)：行上自带的字段优先；后端尚未下发时回落货品字典
+  /// (lookup 已带 owningWarehouseName)。两边都没有=该货品还没登记归属，显空。
+  String? _owningWarehouseName(InstantInventoryRow row) {
+    final onRow = row.owningWarehouseName?.trim();
+    if (onRow != null && onRow.isNotEmpty) return onRow;
+    return ref
+        .read(masterNameServiceProvider)
+        .goodsInfo(row.goodsId)
+        ?.owningWarehouseName;
+  }
+
+  /// 补一次本页货品的字典详情，让上面那列有名字可显 (只拉没缓存过的 id)。
+  Future<void> _loadOwningWarehouseNames(List<InstantInventoryRow> rows) async {
+    final ids = <String>{
+      for (final row in rows)
+        if ((row.owningWarehouseName ?? '').trim().isEmpty &&
+            (row.goodsId ?? '').isNotEmpty)
+          row.goodsId!,
+    };
+    if (ids.isEmpty) return;
+    await ref.read(masterNameServiceProvider).loadGoodsDetails(ids);
   }
 
   List<MasterColumnDef<InstantInventoryRow>> _columns() =>
@@ -202,11 +259,26 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           width: 120,
           value: (r) => r.categoryName ?? '—',
         ),
+        // 2026-09-14 全站表格统一：名称 → 编号 → 颜色 三列排在最前，
+        // 型号/系列/库位等次要属性排在后面。
+        MasterColumnDef(
+          key: 'name',
+          label: '货品名称',
+          width: 220,
+          sortable: true,
+          value: (r) => r.name ?? '',
+        ),
         MasterColumnDef(
           key: 'goodsCode',
-          label: '物料编码',
-          width: 120,
+          label: '编号',
+          width: 130,
           value: (r) => r.goodsCode ?? '',
+        ),
+        MasterColumnDef(
+          key: 'color',
+          label: '颜色',
+          width: 90,
+          value: (r) => r.colorName ?? '',
         ),
         MasterColumnDef(
           key: 'series',
@@ -219,6 +291,16 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           label: '库位号',
           width: 90,
           value: (r) => r.stockPlace ?? '',
+        ),
+        // 所属仓库 (V587)：货品平时归哪个仓管的主档归属，只读。
+        // 列 key 是 owningWarehouse，不能叫 warehouse —— 本页顶部的仓库筛选是
+        // 另一回事 (那是本次看盘的范围仓)，两者绝不是同一个概念。
+        MasterColumnDef(
+          key: 'owningWarehouse',
+          label: '所属仓库',
+          width: 120,
+          info: '货品平时归哪个仓管的主档归属，不是这行库存所在的仓，也不是上面的仓库筛选值。',
+          value: (r) => _owningWarehouseName(r) ?? '',
         ),
         MasterColumnDef(
           key: 'model',
@@ -233,23 +315,10 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           value: (r) => r.cNumber ?? '',
         ),
         MasterColumnDef(
-          key: 'name',
-          label: '货品名称',
-          width: 220,
-          sortable: true,
-          value: (r) => r.name ?? '',
-        ),
-        MasterColumnDef(
           key: 'spec',
           label: '规格',
           width: 120,
           value: (r) => r.spec ?? '',
-        ),
-        MasterColumnDef(
-          key: 'color',
-          label: '颜色',
-          width: 90,
-          value: (r) => r.colorName ?? '',
         ),
         MasterColumnDef(
           key: 'unit',
@@ -469,10 +538,11 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
                 size: UtenButtonSize.large,
               ),
             ],
-            facets: const {},
-            nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
+            // facet 桶/空值计数由服务端随列表下发（未应用归属筛选的同一口径聚合）。
+            facets: _page?.facets ?? const {},
+            nullCounts: _page?.facetNullCounts ?? const {},
+            filters: _filters,
+            onFilterChanged: _onFilterChanged,
             sortColumn: _sortKey,
             sortAscending: _sortAsc,
             onSortChange: _onSortChange,

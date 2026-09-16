@@ -344,7 +344,10 @@ class DocumentDirectLockTest {
                 mock(com.uten.imp.application.port.ProductionFqcRecoveryPort.class),
                 mock(com.uten.imp.features.production.dailyreport.ProductionLegacyFinishedInboundService.class),
                 org.mockito.Mockito.mock(com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
-                mock(com.uten.imp.application.port.ProductionCostTargetPort.class));
+                mock(com.uten.imp.application.port.ProductionCostTargetPort.class),
+                mock(com.uten.imp.application.port.ProductionMaterialConsumptionWritePort.class),
+                mock(com.uten.imp.features.production.directtransfer
+                        .ProductionWorkshopDirectTransferService.class));
         UUID id = UUID.randomUUID();
         ProductionDailyReport report = new ProductionDailyReport();
         report.setId(id);

@@ -84,7 +84,7 @@ class WarehouseHubPage extends ConsumerWidget {
                 (
                   icon: Icons.outbox_outlined,
                   label: '出库任务中心',
-                  description: '销售出库（拣货/交接/历史）· 委外出仓 · 其它/产成品出库（新建+历史）',
+                  description: '销售出库（确认出库/历史）· 委外出仓 · 其它/产成品出库（新建+历史）',
                   location: RouteName.warehouseOutboundTasks,
                   badge: const WarehouseOutboundTaskBadge(showLabel: true),
                 ),

@@ -319,7 +319,11 @@ class StockDocFinishedInboundConfirmationTest {
                 .contains("proposed.subtract(actual)")
                 .contains("'app.production_finished_in_confirm_doc_id'")
                 .contains(".setParameter(\"documentId\", id.toString())")
-                .contains("return approveDocumentAfterPrelock(id, true, false, batchContext)")
+                // V584/V585 起多一个「车间内部直送」授权模式参数：确认实收与审核是同一个
+                // 动作的两半，授权口径必须一起走，否则直送确认过了后半段还会被要仓库的码。
+                // 前三个实参的语义不变：实收已确认、不是 DRAW 直审、带批次上下文。
+                .contains("return approveDocumentAfterPrelock(\n"
+                        + "                id, true, false, batchContext, workshopDirectTransfer)")
                 .contains("\"REJECTED\", varianceReason")
                 .contains("confirmationId, document, residualDocument")
                 .contains("notifyFinishedInboundPending(residualDocument.getId())")

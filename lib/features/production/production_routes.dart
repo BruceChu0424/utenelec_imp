@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/router/route_names.dart';
 import 'config/production_report_config.dart';
 import 'models/production_material_analysis.dart';
+import 'pages/production_analysis_sales_order_page.dart';
 import 'pages/production_board_page.dart';
 import 'pages/production_chain_health_page.dart';
 import 'pages/production_daily_report_detail_page.dart';
@@ -94,6 +95,19 @@ final List<RouteBase> productionRoutes = [
       return RouteName.subcontract;
     },
     builder: (_, _) => const ProductionMaterialAnalysisHistoryPage(),
+  ),
+  // 关联销售订货单只读货品清单(ADR-088)。静态段 summary 在前，
+  // 本路由的第三段是固定字面量 sales-orders，两条互不遮挡。
+  GoRoute(
+    path: '/production/material-analyses/:id/sales-orders/:orderId',
+    name: 'production-analysis-sales-order',
+    builder: (_, state) => ProductionAnalysisSalesOrderPage(
+      key: ValueKey(
+        '${state.pathParameters['id']}/${state.pathParameters['orderId']}',
+      ),
+      analysisId: state.pathParameters['id']!,
+      orderId: state.pathParameters['orderId']!,
+    ),
   ),
   GoRoute(
     path: '/production/material-analyses/:id/summary',

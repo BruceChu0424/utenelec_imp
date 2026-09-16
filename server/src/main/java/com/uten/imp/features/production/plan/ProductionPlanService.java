@@ -242,8 +242,11 @@ public class ProductionPlanService {
                                COALESCE(soi.unit_rate,1), ai.sales_order_item_id,
                                plan_item.goods_id, plan_item.color_id, plan_item.unit_id,
                                COALESCE(plan_item.unit_rate,1), plan_item.sales_order_item_id,
-                               plan_item.qty, analysis_link.submitted_qty,
-                               analysis_link.allocation_status
+                               plan_item.qty, analysis_link.submitted_qty
+                                   + COALESCE(analysis_link.public_surplus_qty, 0),
+                               analysis_link.allocation_status,
+                               analysis_link.submitted_qty,
+                               COALESCE(analysis_link.public_surplus_qty, 0)
                         FROM production_plans p
                         JOIN production_material_analysis_items ai
                           ON ai.analysis_id = p.material_analysis_id
@@ -272,12 +275,25 @@ public class ProductionPlanService {
         BigDecimal sourceRate = normalizedPositiveRate(bd(row[5]), "物料分析需求");
         BigDecimal planRate = normalizedPositiveRate(bd(row[10]), "生产计划明细");
         BigDecimal planQty = requirePositiveAllocation(bd(row[12]));
+        // V577：计划量 = 关联行的「归本需求量 + 公共备货产出量」之和。
+        // 下达车间允许超出剩余需求，超出部分记 public_surplus_qty、不占需求守恒；
+        // 这里对账的是「计划行数量与两笔之和一致」，与 DB 触发器同一口径。
         BigDecimal linkedQty = requirePositiveAllocation(bd(row[13]));
+        // 纯公共备货的关联行：归本需求量为 0、公共备货量为正。销售订单来源顶层行
+        // 超量下达时，服务端把它拆成「订单行 + 公共备货行」两张计划（ADR-081 §7.3），
+        // 后者按设计**不带销售来源**——带了就会破坏 production_plan_sales_allocations
+        // 的「分摊合计 = 计划数量」与「排产量 ≤ 订单未满足」两条守恒。
+        // 所以这一种、且只有这一种情形，允许计划明细的销售来源与分析行不等；
+        // 与 DB 触发器 fn_sync_material_analysis_plan_link_qty 的放宽口径逐字对齐
+        // （V580）。带需求的关联行一个字节不放松。
+        boolean pureSurplusLink = bd(row[15]).signum() == 0 && bd(row[16]).signum() > 0;
+        boolean salesLineageOk = Objects.equals(row[6], row[11])
+                || (pureSurplusLink && row[11] == null);
         if (!Objects.equals(row[2], row[7])
                 || !Objects.equals(row[3], row[8])
                 || !Objects.equals(row[4], row[9])
                 || sourceRate.compareTo(planRate) != 0
-                || !Objects.equals(row[6], row[11])
+                || !salesLineageOk
                 || planQty.compareTo(linkedQty) != 0
                 || !"SUBMITTED".equals(row[14])) {
             throw new ApiException(ErrorCode.CONFLICT,
@@ -321,7 +337,7 @@ public class ProductionPlanService {
     private boolean linkOrderItems(UUID planId) {
         List<ProductionPlanItem> items = itemRepo.findByPlanIdOrderByLineNoAsc(planId);
         if (items.isEmpty()) return false;
-        List<PlanAllocation> allocations = collectAllocations(items);
+        List<PlanAllocation> allocations = collectAllocations(items, analysisSubmittedQtyByPlanItem(planId));
         Map<UUID, LockedOrderItem> lockedOrderItems = lockAndValidateSourceOrderItems(allocations);
         MaterialDecision material = materialDecision(planId);
         short chain = material == MaterialDecision.READY ? CHAIN_PLANNED : CHAIN_WAIT_MATERIAL;
@@ -339,12 +355,42 @@ public class ProductionPlanService {
     }
 
     /**
+     * 物料分析计划行 → 关联行「归本需求量」（plan link submitted_qty）。
+     * 非分析计划返回空表。2026-09-15 起销售顶层行超量下达不再拆两张计划：
+     * 一张计划的明细数量 = 归需求量 + 公共备货产出量，销售分摊（含
+     * plan_order_item_links 容量与订单侧 planned_qty）必须只认归需求量，
+     * 否则「排产量 ≤ 订单未满足」会被公共备货冲破。
+     */
+    private Map<UUID, BigDecimal> analysisSubmittedQtyByPlanItem(UUID planId) {
+        List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT plan_item.id, link.submitted_qty
+                        FROM production_plan_items plan_item
+                        JOIN production_plans plan ON plan.id = plan_item.plan_id
+                        JOIN production_material_analysis_plan_links link
+                          ON link.plan_id = plan.id
+                         AND link.analysis_id = plan.material_analysis_id
+                         AND link.analysis_item_id = plan.material_analysis_item_id
+                        WHERE plan_item.plan_id = :planId
+                          AND plan_item.is_deleted = FALSE
+                          AND plan.material_analysis_id IS NOT NULL
+                        """).setParameter("planId", planId));
+        Map<UUID, BigDecimal> result = new HashMap<>();
+        for (Object[] row : rows) {
+            result.put((UUID) row[0], bd(row[1]));
+        }
+        return result;
+    }
+
+    /**
      * Resolve both supported source forms into one allocation model. A merged
      * plan item's active links must account for exactly the plan item quantity;
      * otherwise the plan quantity and the order-side planned quantity would
      * immediately diverge.
      */
-    private List<PlanAllocation> collectAllocations(List<ProductionPlanItem> items) {
+    private List<PlanAllocation> collectAllocations(
+            List<ProductionPlanItem> items,
+            Map<UUID, BigDecimal> analysisSubmittedByItem) {
         List<PlanAllocation> allocations = new ArrayList<>();
         for (ProductionPlanItem item : items) {
             BigDecimal planQty = validatePlanItemForApproval(item);
@@ -375,7 +421,17 @@ public class ProductionPlanService {
                                     + qtyText(planQty) + "，分摊 " + qtyText(linkedQty) + ")");
                 }
             } else if (item.getSalesOrderItemId() != null) {
-                BigDecimal allocatedQty = planQty;
+                // 2026-09-15：分析计划超量下达（link 记 submitted + public_surplus）
+                // 的销售分摊只认「归本需求量」——公共备货产出不进订单侧
+                // planned_qty，也不建 plan_order_item_links 容量；无分析关联的
+                // 手工计划仍按整行数量分摊。
+                BigDecimal analysisSubmitted = analysisSubmittedByItem.get(item.getId());
+                BigDecimal allocatedQty = analysisSubmitted != null
+                        ? analysisSubmitted : planQty;
+                if (allocatedQty.signum() <= 0) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "计划明细缺少可排产的销售需求量");
+                }
                 allocations.add(new PlanAllocation(
                         item, item.getSalesOrderItemId(), allocatedQty, null));
             } else if (hasHistoricalOrderLinks(item.getId())) {

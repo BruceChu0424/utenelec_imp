@@ -102,7 +102,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('物料齐套 · 可开工'), findsNWidgets(3));
       expect(find.text('车间已收到 · 等待物料'), findsNWidgets(4));
-      expect(find.text('创建生产计划(1)'), findsNothing);
+      expect(find.textContaining(RegExp(r'创建生产计划.*\(1\)')), findsNothing);
       await _closeBucket(tester);
       final refreshes = harness.requests
           .where((request) => request.path.endsWith('/preview'))
@@ -151,10 +151,10 @@ void main() {
         find.descendant(of: row, matching: find.byType(Checkbox)),
       );
       await tester.pumpAndSettle();
-      expect(find.text('创建生产计划(1)'), findsOneWidget);
+      expect(find.textContaining(RegExp(r'创建生产计划.*\(1\)')), findsOneWidget);
       await tester.tap(find.text('已下达 (7)'));
       await tester.pumpAndSettle();
-      expect(find.text('创建生产计划(1)'), findsNothing);
+      expect(find.textContaining(RegExp(r'创建生产计划.*\(1\)')), findsNothing);
       expect(
         tester
             .widgetList<Checkbox>(find.byType(Checkbox))
@@ -427,7 +427,7 @@ void main() {
         find.descendant(of: productRow, matching: find.byType(Checkbox)),
       );
       await tester.pumpAndSettle();
-      expect(find.text('创建生产计划(1)'), findsOneWidget);
+      expect(find.textContaining(RegExp(r'创建生产计划.*\(1\)')), findsOneWidget);
       await tester.tap(
         find.byKey(const Key('material-analysis-bucket-action-ready')),
       );
@@ -469,10 +469,8 @@ void main() {
         const Key('material-analysis-entry-workshop'),
       );
       expect(workshopEntry, findsOneWidget);
-      expect(
-        find.descendant(of: workshopEntry, matching: find.text('0')),
-        findsOneWidget,
-      );
+      // 2026-09-14 分桶入口改分类栏形态：待办红徽章 0 不渲染（徽章口径），
+      // 计数为 0 的入口灰显不可点仍由此锁定。
       expect(tester.widget<InkWell>(workshopEntry).onTap, isNull);
       // 确认自制后顶层进入车间桶、共用下层齐套词汇的契约由下方
       // 'confirmed root MAKE waits for materials...' 用例锁定。

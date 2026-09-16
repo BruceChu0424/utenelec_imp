@@ -26,6 +26,7 @@ import '../../features/basic_data/pages/mould_category_page.dart';
 import '../../features/basic_data/pages/payment_style_page.dart';
 import '../../features/basic_data/pages/settlement_method_page.dart';
 import '../../features/basic_data/pages/product_category_page.dart';
+import '../../features/basic_data/pages/party_detail_page.dart';
 import '../../features/basic_data/pages/supplier_category_page.dart';
 import '../../features/basic_data/pages/unit_page.dart';
 import '../../features/basic_data/pages/warehouse_page.dart';
@@ -621,10 +622,27 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'basicinfo-client',
             builder: (_, _) => const ClientCategoryPage(),
           ),
+          // 2026-09-14：客户详情整页（双击列表行进入，替代 560 宽弹窗）。
+          GoRoute(
+            path: RouteName.basicinfoClientDetail,
+            name: 'basicinfo-client-detail',
+            builder: (_, s) => PartyDetailPage(
+              partyType: 'client',
+              id: s.pathParameters['id']!,
+            ),
+          ),
           GoRoute(
             path: RouteName.basicinfoSupplier,
             name: 'basicinfo-supplier',
             builder: (_, _) => const SupplierCategoryPage(),
+          ),
+          GoRoute(
+            path: RouteName.basicinfoSupplierDetail,
+            name: 'basicinfo-supplier-detail',
+            builder: (_, s) => PartyDetailPage(
+              partyType: 'supplier',
+              id: s.pathParameters['id']!,
+            ),
           ),
           GoRoute(
             path: RouteName.basicinfoColor,

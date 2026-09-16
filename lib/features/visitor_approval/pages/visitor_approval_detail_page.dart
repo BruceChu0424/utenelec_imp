@@ -12,7 +12,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -181,15 +181,14 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
         ),
         data: (d) {
           final app = d.application;
-          final canApprove =
-              app.status == VisitorApplicationStatus.pending ||
-              app.status == VisitorApplicationStatus.hostReviewing;
-          final canForward = app.status == VisitorApplicationStatus.pending;
           final isCompact = context.breakpoint.isCompact;
           Widget content = SingleChildScrollView(
-            padding: EdgeInsets.symmetric(
-              horizontal: isCompact ? 0 : UtenSpacing.s16,
-              vertical: UtenSpacing.s16,
+            padding: EdgeInsets.fromLTRB(
+              isCompact ? 0 : UtenSpacing.s16,
+              UtenSpacing.s16,
+              isCompact ? 0 : UtenSpacing.s16,
+              // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
+              UtenFloatingActionGroup.scrollClearance,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -242,47 +241,52 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
               child: content,
             );
           }
-          return Column(
+          return content;
+        },
+      ),
+      // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组（大小/高度/禁用态全站统一）。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: detail.maybeWhen(
+        data: (d) {
+          final canApprove =
+              d.application.status == VisitorApplicationStatus.pending ||
+              d.application.status == VisitorApplicationStatus.hostReviewing;
+          final canForward =
+              d.application.status == VisitorApplicationStatus.pending;
+          if (!canApprove && !canForward) return null;
+          return UtenFloatingActionGroup(
             children: [
-              Expanded(child: content),
-              if (canApprove || canForward)
-                UtenBottomActionBar(
-                  child: Row(
-                    children: [
-                      if (canForward) ...[
-                        Expanded(
-                          child: UtenButton(
-                            type: UtenButtonType.secondary,
-                            onPressed: () => _action(context, ref, 'forward'),
-                            child: Text(l10n.visitorApprovalForward),
-                          ),
-                        ),
-                        const SizedBox(width: UtenSpacing.s12),
-                      ],
-                      Expanded(
-                        child: UtenButton(
-                          type: UtenButtonType.danger,
-                          onPressed: canApprove
-                              ? () => _reject(context, ref, l10n)
-                              : null,
-                          child: Text(l10n.visitorApprovalReject),
-                        ),
-                      ),
-                      const SizedBox(width: UtenSpacing.s12),
-                      Expanded(
-                        child: UtenButton(
-                          onPressed: canApprove
-                              ? () => _approve(context, ref, l10n)
-                              : null,
-                          child: Text(l10n.visitorApprovalApprove),
-                        ),
-                      ),
-                    ],
+              if (canForward)
+                UtenButton(
+                  type: UtenButtonType.secondary,
+                  size: UtenButtonSize.large,
+                  onPressed: () => _action(context, ref, 'forward'),
+                  child: Text(
+                    AppLocalizations.of(context).visitorApprovalForward,
                   ),
                 ),
+              UtenButton(
+                type: UtenButtonType.danger,
+                size: UtenButtonSize.large,
+                onPressed: canApprove
+                    ? () => _reject(context, ref, AppLocalizations.of(context))
+                    : null,
+                child: Text(AppLocalizations.of(context).visitorApprovalReject),
+              ),
+              UtenButton(
+                size: UtenButtonSize.large,
+                onPressed: canApprove
+                    ? () => _approve(context, ref, AppLocalizations.of(context))
+                    : null,
+                child: Text(
+                  AppLocalizations.of(context).visitorApprovalApprove,
+                ),
+              ),
             ],
           );
         },
+        orElse: () => null,
       ),
     );
   }

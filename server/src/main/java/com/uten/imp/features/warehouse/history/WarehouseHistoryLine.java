@@ -33,5 +33,11 @@ public record WarehouseHistoryLine(
         String reason,
         BigDecimal boxQuantity,
         String parentGoodsCode,
-        String parentGoodsName) {
+        String parentGoodsName,
+        /**
+         * 父件颜色：行上的 parent_color_id 优先，空则回落父件货品主档色。
+         * 父件也是货品，身份同样要「名称+编号+颜色」才认得出是哪一条。
+         * 新字段追加在末尾，不打乱既有位置构造。
+         */
+        String parentColorName) {
 }

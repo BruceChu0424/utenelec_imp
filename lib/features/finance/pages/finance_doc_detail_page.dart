@@ -19,6 +19,7 @@ import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -295,7 +296,10 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
               : _body(theme, names, scopeCapability, canViewFiles),
         ),
       ),
-      bottomNavigationBar: _detail == null || _busy ? null : _actions(theme),
+      // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组，大小/高度/禁用态全站统一。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _detail == null || _busy ? null : _actions(theme),
     );
   }
 
@@ -315,7 +319,13 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     );
     if (!_hasItemsTable) {
       return ListView(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
+        // 底部让位右下悬浮操作组。
+        padding: const EdgeInsets.fromLTRB(
+          UtenSpacing.s12,
+          UtenSpacing.s12,
+          UtenSpacing.s12,
+          UtenFloatingActionGroup.scrollClearance,
+        ),
         children: sections,
       );
     }
@@ -334,7 +344,13 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       ),
       // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
       body: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
+        // 底部让位右下悬浮操作组：末段可滚出按钮区。
+        padding: const EdgeInsets.fromLTRB(
+          UtenSpacing.s12,
+          UtenSpacing.s12,
+          UtenSpacing.s12,
+          UtenFloatingActionGroup.controlHeight + UtenSpacing.s32,
+        ),
         child: _itemsCard(theme, names),
       ),
     );
@@ -426,7 +442,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       _KV('日期', d.billDate),
       _KV('制单员', d.makerName),
       _KV('制单时间', utenFmtIsoTime(d.createdAt)),
-      if (isReceipt) _KV('收款业务', financeReceiptKindLabel(d.receiptKind)),
+      if (isReceipt) _KV('收款类型', financeReceiptKindLabel(d.receiptKind)),
       if (isReceipt)
         _KV(
           '结算口径',
@@ -667,6 +683,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     return UtenTotalsSummaryBar(
       key: const Key('finance-detail-totals'),
       density: true,
+      compact: true,
       entries: [
         UtenTotalEntry(
           utenAmountTotalLabel(
@@ -913,7 +930,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
         ),
         const SizedBox(height: UtenSpacing.s8),
         // primary:true → 表体占满 body 并参与「头部折叠 → 表格内滚」联动；
-        // 合计条留在表格下方常驻（不随表体内滚）。
+        // 合计条收进 summaryBar 槽位（表体下方，全站统一挂点）。
         Expanded(
           child: MasterDataTableView<FinanceDocItem>(
             primary: true,
@@ -923,10 +940,12 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
             nullCounts: const {},
             filters: const {},
             onFilterChanged: (_, _) {},
+            // 右下悬浮操作组让位：末行可滚出按钮区。
+            bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
             emptyMessage: '(无明细)',
+            summaryBar: _totalsBar(names, items),
           ),
         ),
-        _totalsBar(names, items),
       ],
     );
   }
@@ -955,6 +974,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       addAction(
         UtenButton(
           type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
           onPressed: () => popOrBackTo(context, defaultPath: listPath),
           child: const Text('返回列表'),
         ),
@@ -966,6 +986,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
         addAction(
           UtenButton(
             type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
             icon: Icons.delete_outline,
             onPressed: _delete,
             child: const Text('删除'),
@@ -976,6 +997,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
         addAction(
           UtenButton(
             type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
             icon: Icons.edit_outlined,
             onPressed: () => context.push(
               '/finance/${_cfg.type.pathSegment}/${widget.id}/edit',
@@ -987,6 +1009,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       if (_canApprove) {
         addAction(
           UtenButton(
+            size: UtenButtonSize.large,
             icon: Icons.check_circle_outline,
             onPressed: _approve,
             child: const Text('审核'),
@@ -1000,6 +1023,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
           _canConfirmGeneralLedger) {
         addAction(
           UtenButton(
+            size: UtenButtonSize.large,
             icon: Icons.fact_check_outlined,
             onPressed: _glConfirm,
             child: const Text('财务确认'),
@@ -1010,6 +1034,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
         addAction(
           UtenButton(
             type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
             icon: Icons.undo_outlined,
             onPressed: _reverse,
             child: const Text('红冲'),
@@ -1021,20 +1046,10 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       addBack();
     }
     if (children.isEmpty) return const SizedBox.shrink();
-    return SafeArea(
-      child: Container(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          border: Border(
-            top: BorderSide(color: theme.colorScheme.outlineVariant),
-          ),
-        ),
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: children,
-        ),
-      ),
+    // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组；SizedBox 占位过滤
+    //（组自带 8px 间距），按钮统一 large。
+    return UtenFloatingActionGroup(
+      children: children.where((child) => child is! SizedBox).toList(),
     );
   }
 }

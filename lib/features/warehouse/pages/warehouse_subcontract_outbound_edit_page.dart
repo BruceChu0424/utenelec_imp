@@ -51,6 +51,22 @@ import '../navigation/warehouse_subcontract_outbound_navigation.dart';
 import '../providers/warehouse_count_refresh.dart';
 import 'warehouse_subcontract_outbound_batch_page.dart';
 
+/// 批量校验提示：把同一类违规的**全部**行汇总成一句话。
+///
+/// 条目多时只列前 8 条再折成「等 N 行」——刷屏的提示和只报第一行一样没法用。
+/// [issue] 可直接传 l10n 整句，故先去掉句末句号再接后半句。
+String _rowIssueMessage(
+  List<String> rowLabels,
+  String issue, {
+  required String action,
+}) {
+  const shownMax = 8;
+  final shown = rowLabels.take(shownMax).join('、');
+  final more = rowLabels.length > shownMax ? '等 ${rowLabels.length} 行' : '';
+  final text = issue.replaceFirst(RegExp(r'[。.]$'), '');
+  return '以下 ${rowLabels.length} 行$text，$action：$shown$more';
+}
+
 class WarehouseSubcontractOutboundEditPage extends ConsumerStatefulWidget {
   const WarehouseSubcontractOutboundEditPage({super.key, required this.planId});
 
@@ -305,29 +321,52 @@ class _WarehouseSubcontractOutboundEditPageState
       context.appError('请选择发出仓');
       return null;
     }
+    // 明细整表扫完再报：原先首个违规就 return，多行时用户改一行存一次才看到下一行，
+    // 观感像「怎么老是报错」。判定条件与逐行先后顺序不变，只把问题按类别各汇总成一条。
     final items = <Map<String, dynamic>>[];
-    for (final e in _lines) {
+    final badQty = <String>[];
+    final overMaxQty = <String>[];
+    final badWeight = <String>[];
+    for (var index = 0; index < _lines.length; index++) {
+      final e = _lines[index];
       final qty = double.tryParse(e.qty.text.trim()) ?? -1;
       final maxQty = e.maxEditableQty;
       final name = e.line.goodsName ?? e.line.goodsCode ?? '该目标件';
+      final label = '第 ${index + 1} 行（$name）';
       if (!qty.isFinite || qty <= 0) {
-        context.appError('$name 的本次出仓量必须大于 0');
-        return null;
+        badQty.add(label);
+        continue;
       }
       if (qty - maxQty > 0.0000001) {
-        context.appError(
-          '$name: ${_l10n.warehouseSubcontractOutboundQuantityInvalid}',
-        );
-        return null;
+        overMaxQty.add(label);
+        continue;
       }
       final weightText = e.weight.text.trim();
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
       if (weightText.isNotEmpty &&
           (weight == null || !weight.isFinite || weight <= 0)) {
-        context.appError('$name 的实际重量必须大于 0');
-        return null;
+        badWeight.add(label);
+        continue;
       }
       items.add(e.toPayload());
+    }
+    final rowIssues = <String>[
+      if (badQty.isNotEmpty)
+        _rowIssueMessage(badQty, '的本次出仓量不是大于 0 的数字', action: '请改正后再提交'),
+      if (overMaxQty.isNotEmpty)
+        // 超量沿用明细表 validate 的同一句 l10n 文案，口径不分叉。
+        _rowIssueMessage(
+          overMaxQty,
+          _l10n.warehouseSubcontractOutboundQuantityInvalid,
+          action: '请改小后再提交',
+        ),
+      if (badWeight.isNotEmpty)
+        _rowIssueMessage(badWeight, '的实际重量必须大于 0', action: '请改正后再提交'),
+    ];
+    if (rowIssues.isNotEmpty) {
+      // 不同类别分行列出，混成一句会让人看不清到底要改哪几处。
+      context.appError(rowIssues.join('\n'));
+      return null;
     }
     if (items.isEmpty) {
       context.appError('出仓明细为空');

@@ -2,6 +2,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/filter_segment_tap.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -43,8 +45,8 @@ void main() {
       await tester.tap(find.text('待处理'));
       await tester.pumpAndSettle();
       expect(
-        tester.getTopLeft(find.text('FG-task-1 委外目标件')).dy,
-        lessThan(tester.getTopLeft(find.text('SC-A 委外件A')).dy),
+        tester.getTopLeft(find.text('FG-task-1')).dy,
+        lessThan(tester.getTopLeft(find.text('SC-A')).dy),
       );
       expect(find.text('计划下达日期'), findsOneWidget);
       expect(find.text('2026-09-08'), findsWidgets);
@@ -56,7 +58,7 @@ void main() {
       expect(gateway.queries.last['sort'], 'issuedAt');
       expect(gateway.queries.last['order'], 'desc');
       expect(gateway.queries.last['page'], 1);
-      await tester.tap(find.text('委外目标件').first);
+      await tester.tap(find.text('委外目标件名称'));
       await tester.pumpAndSettle();
       expect(find.text('完整范围物料 (125)'), findsOneWidget);
       await tester.tap(find.text('完整范围物料 (125)'));
@@ -103,7 +105,7 @@ void main() {
         if (category == '历史记录') {
           expect(action, findsNothing);
           expect(find.byType(UtenSelectionSummaryPill), findsNothing);
-          await tester.tap(find.text('全部'));
+          await selectFilterSegment(tester, '全部');
           await tester.pumpAndSettle();
         }
         expect(action, findsOneWidget, reason: category);
@@ -122,7 +124,7 @@ void main() {
       }
       await tester.tap(find.text('待处理'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('FG-task-1 委外目标件'));
+      await tester.tap(find.text('FG-task-1'));
       await tester.pumpAndSettle();
       expect(find.text('已选 1 项'), findsOneWidget);
       await tester.tap(find.text('全屏'));
@@ -138,7 +140,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(action, findsOneWidget);
       expect(find.text('已选 0 项'), findsOneWidget);
-      await tester.tap(find.text('FG-task-1 委外目标件'));
+      await tester.tap(find.text('FG-task-1'));
       await tester.pumpAndSettle();
       for (final width in [900.0, 375.0, 1400.0]) {
         tester.view.physicalSize = Size(width, 1400);
@@ -159,12 +161,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('已选 0 项'), findsOneWidget);
       expect(tester.widget<UtenButton>(action).onPressed, isNull);
-      await tester.ensureVisible(find.text('历史记录'));
-      await tester.tap(find.text('历史记录'));
+      // 375px 下分类栏收成「分类」下拉（2026-09-14），统一走共用助手选段。
+      await selectFilterSegment(tester, '历史记录');
       await tester.pumpAndSettle();
       expect(action, findsNothing);
       expect(find.byType(UtenSelectionSummaryPill), findsNothing);
-      await tester.tap(find.text('全部'));
+      await selectFilterSegment(tester, '全部');
       await tester.pumpAndSettle();
       expect(action, findsOneWidget);
       expect(find.byType(UtenSelectionSummaryPill), findsOneWidget);
@@ -209,6 +211,9 @@ void main() {
       expect(find.text('在上方选择阶段后开始办理'), findsOneWidget);
       expect(find.byType(DropdownButtonFormField<String>), findsNothing);
       // 2026-09-06 委外不再有「分解」行为用语：首段改名「待处理」。
+      // 375px 分类栏放不下收成「分类」下拉（2026-09-14）：段名在菜单里断言与点选。
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
+      await tester.pumpAndSettle();
       expect(find.text('待处理'), findsOneWidget);
       var button = tester.widget<UtenButton>(
         find.byKey(const Key('subcontract-decomposition-create-order')),
@@ -216,7 +221,7 @@ void main() {
       expect(button.onPressed, isNull);
 
       // 先 tap 阶段段「待处理」：加载任务卡后才能勾选。
-      await tester.tap(find.text('待处理'));
+      await tester.tap(find.text('待处理').last);
       await tester.pumpAndSettle();
       expect(gateway.statuses, [null, 'WAITING_ORDER']);
       expect(find.text('计划申请已下达 / 待分解'), findsNWidgets(2));
@@ -308,7 +313,7 @@ void main() {
       expect(find.text('EA-application-1'), findsWidgets);
 
       // 双击不可下单的合成行 → 产品进度弹窗(车间进度时间线)。
-      await _doubleTapRow(tester, find.textContaining('SC-A 委外件A'));
+      await _doubleTapRow(tester, find.text('委外件A'));
       await tester.pumpAndSettle();
       expect(find.textContaining('产品进度 ·'), findsOneWidget);
       expect(find.text('正在生产，暂时不能下委外单'), findsOneWidget);
@@ -326,7 +331,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // 双击申请行 → 全链路进度弹窗，可再深链只读申请。
-      await _doubleTapRow(tester, find.text('FG-task-1 委外目标件'));
+      await _doubleTapRow(tester, find.text('FG-task-1'));
       await tester.pumpAndSettle();
       expect(find.text('待生成委外订货单（当前）'), findsOneWidget);
       expect(

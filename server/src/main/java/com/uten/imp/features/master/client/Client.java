@@ -118,6 +118,14 @@ public class Client extends SoftDeletableEntity {
     private Integer tday;               // TDay（结算天数）
     @Column(name = "default_settlement_method_id")
     private UUID defaultSettlementMethodId; // UUID 真源；price_style 仅旧库快照
+
+    /** 默认货运策略（V592 单一事实源）：新建销售订货单预填；每次下单自动写回最新选择。 */
+    @Column(name = "default_shipment_policy")
+    private String defaultShipmentPolicy;
+
+    /** 默认币种（V592 单一事实源）：新建销售订货单预填；每次下单自动写回最新选择。 */
+    @Column(name = "default_currency_id")
+    private UUID defaultCurrencyId;
     /** 月结/现金/定金客户标签；只作人工审核分类，不代表真实到账。 */
     @Enumerated(EnumType.STRING)
     @Column(name = "sales_payment_type", length = 20)

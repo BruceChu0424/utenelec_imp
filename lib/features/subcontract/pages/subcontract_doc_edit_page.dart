@@ -41,6 +41,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -123,6 +124,9 @@ class _SubcontractDocEditPageState
 
   final _grid = UtenEditableGridController<SubcontractGridRow>();
   final _scrollCtl = ScrollController();
+
+  /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
+  final _gridPinned = ValueNotifier<bool>(false);
   bool _saving = false;
   bool _loading = false;
 
@@ -134,6 +138,7 @@ class _SubcontractDocEditPageState
 
   @override
   void dispose() {
+    _gridPinned.dispose();
     _billNo.dispose();
     _remark.dispose();
     _rate.dispose();
@@ -681,10 +686,12 @@ class _SubcontractDocEditPageState
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-            : UtenContentContainer(
-                child: Scrollbar(
-                  controller: _scrollCtl,
-                  thumbVisibility: true,
+            : UtenGridPageScrollbar(
+                pinned: _gridPinned,
+                controller: _scrollCtl,
+                // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
+                // 恒在屏幕最右，不随限宽容器/列宽漂移。
+                child: UtenContentContainer(
                   child: ListView(
                     controller: _scrollCtl,
                     // 底部多留一个悬浮动作组的高度，否则明细表最后一行被「取消/保存」压住。
@@ -720,6 +727,7 @@ class _SubcontractDocEditPageState
                           )[widget.docType.name];
                           return UtenEditableGrid<SubcontractGridRow>(
                             controller: _grid,
+                            stickyHeaderPinned: _gridPinned,
                             showColumnSettings: true,
                             initialColumnOrder: columnPrefs?.order,
                             initialHiddenColumnKeys: columnPrefs?.hidden,
@@ -752,6 +760,7 @@ class _SubcontractDocEditPageState
       ),
       // 加载中不给保存入口（表单还没填回来，此时保存会把空值提交上去）。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _loading
           ? null
           : UtenEditFloatingActions(
@@ -775,7 +784,6 @@ class _SubcontractDocEditPageState
       return EditableGridTotalsBar<SubcontractGridRow>(
         key: const Key('subcontract-edit-totals'),
         controller: _grid,
-        showDivider: false,
         watchOf: (row) => [row.qty],
         entriesBuilder: (rows) {
           final names = ref.read(mn.masterNameServiceProvider);

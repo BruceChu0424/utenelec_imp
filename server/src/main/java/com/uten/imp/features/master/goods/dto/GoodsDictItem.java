@@ -23,4 +23,14 @@ public class GoodsDictItem {
     private String stockPlace;
     /** 货品基本单位 UUID；数量展示必须使用该关系，不能按单位名称猜。 */
     private UUID unitId;
+    /**
+     * 所属仓库名 (V587)：这批货平时归哪个仓管的主档归属，不是单据落点仓。
+     * 批量取名后拼入；仓库已软删或未解析时为 null。
+     */
+    private String owningWarehouseName;
+    /**
+     * 归属生产车间名 (V590)：最近一次排产确认/改派自动学习回写。
+     * 批量取名后拼入；部门已软删或未解析时为 null。
+     */
+    private String owningWorkshopName;
 }

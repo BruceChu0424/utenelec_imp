@@ -21,9 +21,11 @@ import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../basic_data/models/client_node.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../core/network/api_exception.dart';
@@ -150,6 +152,13 @@ class _FinanceSalesShipmentAuditReviewPageState
           .loadGoodsNames(
             detail.items.map((e) => e.goodsId).whereType<String>().toSet(),
           );
+      // 2026-09-14：快照上线前的老出货单没有 goodsCodeSnapshot，货品列只剩名称；
+      // 同表「库位号」列读的也是这份详情缓存（此前恒显示 —）。补一次货品详情。
+      await ref
+          .read(salesMasterNameServiceProvider)
+          .loadGoodsDetails(
+            detail.items.map((e) => e.goodsId).whereType<String>().toSet(),
+          );
       await ref.read(salesMasterNameServiceProvider).loadEmployeeNames([
         detail.sellerId,
         detail.senderId,
@@ -223,11 +232,11 @@ class _FinanceSalesShipmentAuditReviewPageState
             children: [
               UtenReviewerResponsibilityNotice(
                 actionLabel: '出货财务审核',
-                description: '确认仅放行仓库作业；正式应收在仓库交接出库后生成。系统将记录当前审核员并承担本次放行责任。',
+                description: '确认仅放行仓库作业；正式应收在仓库确认出库后生成。系统将记录当前审核员并承担本次放行责任。',
                 compact: true,
               ),
               SizedBox(height: UtenSpacing.s12),
-              Text('放行后仓库即可开始拣货；交接出库时才扣库存并生成应收。确认放行？'),
+              Text('放行后仓库即可确认出库；出库时才扣库存并生成应收。确认放行？'),
             ],
           ),
         ),
@@ -270,7 +279,7 @@ class _FinanceSalesShipmentAuditReviewPageState
             )!,
           );
       if (!mounted) return;
-      context.appSuccess('财务已确认，仓库可以开始拣货');
+      context.appSuccess('财务已确认，仓库可以出库');
       _closeAfterDecision();
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
@@ -397,6 +406,60 @@ class _FinanceSalesShipmentAuditReviewPageState
     }
   }
 
+  /// 撤回退回可用：被退回 + 未放行 + 仓库未作业（V578）。
+  bool get _canRejectReverse {
+    final d = _detail;
+    if (d == null || !_canDecide || _busy) return false;
+    if (d.financeAudit == 1) return false;
+    if (!d.shipmentWorkflow.financeRejected) return false;
+    return salesShipmentAllowsFinanceAudit(d.warehouseWorkStatus);
+  }
+
+  /// 撤回退回（V578）：财务收回退回决定，单据恢复待审——退回原因与出货
+  /// 内容无关（如客户货款分类未维护、误退）时无需销售改单来回折腾。
+  Future<void> _rejectReverse() async {
+    if (_busy) return;
+    final billNo = _detail?.billNo ?? '';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: Text('撤回退回 $billNo'),
+        content: const SizedBox(
+          width: 440,
+          child: Text('撤回后本单恢复「待财务审核」，销售无需重新确认；可直接重新核对并放行。确认撤回？'),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            key: const Key('finance-shipment-audit-reject-reverse'),
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            child: const Text('撤回退回'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await ref
+          .read(salesRepositoryProvider(SalesDocType.shipment))
+          .financeRejectReverse(widget.id);
+      if (!mounted) return;
+      context.appSuccess('已撤回退回，本单恢复待财务审核');
+      _closeAfterDecision();
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError('撤回退回失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen(sessionProvider, (previous, next) {
@@ -458,44 +521,62 @@ class _FinanceSalesShipmentAuditReviewPageState
                 children: [
                   AbsorbPointer(
                     absorbing: _busy,
+                    // 2026-09-15 表格宽度口径（用户反馈）：整页收进 UtenContentContainer.narrow
+                    // ——卡片区与出货明细表同宽、窄幅居中，对齐销售订货单详情页；滚动仍为
+                    // 折叠头+表内滚：上滑先收卡片区，明细标题吸顶后再在表格内部滚。
                     child: UtenContentContainer.narrow(
-                      child: ListView(
-                        padding: const EdgeInsets.fromLTRB(
-                          UtenSpacing.s12,
-                          UtenSpacing.s12,
-                          UtenSpacing.s12,
-                          UtenFloatingActionGroup.scrollClearance,
-                        ),
-                        children: [
-                          if (_canDecide &&
-                              _decisionReady &&
-                              _claim?.isReady != true) ...[
-                            FinanceReviewClaimNotice(
-                              claim: _claim,
-                              onRetry: _busy ? null : _load,
-                            ),
-                            const SizedBox(height: UtenSpacing.s12),
-                          ],
-                          _statusStrip(theme, _detail!, _info!),
-                          const SizedBox(height: UtenSpacing.s12),
-                          _clientFinanceCard(theme, _info!),
-                          const SizedBox(height: UtenSpacing.s12),
-                          _shipmentCard(theme, _detail!),
-                          const SizedBox(height: UtenSpacing.s12),
-                          ShipmentFinanceChangeSummary(
-                            previous: _info!.previousCommercialSnapshot,
-                            current: _info!.commercialSnapshot,
-                            describe: _describeSnapshotValue,
+                      child: UtenCollapsingHeaderScrollView(
+                        collapsingHeader: Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            UtenSpacing.s12,
+                            UtenSpacing.s12,
+                            UtenSpacing.s12,
+                            UtenSpacing.s12,
                           ),
-                          const SizedBox(height: UtenSpacing.s12),
-                          _itemsCard(theme, _detail!),
-                          const SizedBox(height: UtenSpacing.s12),
-                          _attachments(theme, _detail!),
-                          if (_detail!.shipmentWorkflow.financeRejected) ...[
-                            const SizedBox(height: UtenSpacing.s12),
-                            _rejectRecordCard(theme, _detail!),
-                          ],
-                        ],
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (_canDecide &&
+                                  _decisionReady &&
+                                  _claim?.isReady != true) ...[
+                                FinanceReviewClaimNotice(
+                                  claim: _claim,
+                                  onRetry: _busy ? null : _load,
+                                ),
+                                const SizedBox(height: UtenSpacing.s12),
+                              ],
+                              _statusStrip(theme, _detail!, _info!),
+                              const SizedBox(height: UtenSpacing.s12),
+                              _clientFinanceCard(theme, _info!),
+                              const SizedBox(height: UtenSpacing.s12),
+                              _shipmentCard(theme, _detail!),
+                              const SizedBox(height: UtenSpacing.s12),
+                              ShipmentFinanceChangeSummary(
+                                previous: _info!.previousCommercialSnapshot,
+                                current: _info!.commercialSnapshot,
+                                describe: _describeSnapshotValue,
+                              ),
+                              const SizedBox(height: UtenSpacing.s12),
+                              _attachments(theme, _detail!),
+                              if (_detail!
+                                  .shipmentWorkflow
+                                  .financeRejected) ...[
+                                const SizedBox(height: UtenSpacing.s12),
+                                _rejectRecordCard(theme, _detail!),
+                              ],
+                            ],
+                          ),
+                        ),
+                        body: Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            UtenSpacing.s12,
+                            UtenSpacing.s12,
+                            UtenSpacing.s12,
+                            UtenFloatingActionGroup.controlHeight +
+                                UtenSpacing.s32,
+                          ),
+                          child: _itemsCard(theme, _detail!),
+                        ),
                       ),
                     ),
                   ),
@@ -508,18 +589,40 @@ class _FinanceSalesShipmentAuditReviewPageState
               ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _detail == null || _info == null
           ? null
           : _floatingActions(theme),
     );
   }
 
-  /// 右下悬浮操作组：待审=退回销售(红)+确认放行；其余状态只留返回。
+  /// 右下悬浮操作组：待审=退回销售(红)+确认放行；已退回=撤回退回；其余状态只留返回。
   /// 客户未完成销售货款分类时放行禁用（服务端同样拒绝；快照卡内有恢复路径）。
   Widget _floatingActions(ThemeData theme) {
     final claimReady = _claim?.isReady == true;
     final classified = _paymentTypeClassified;
     final canDecide = _canDecide && _decisionReady && claimReady && !_busy;
+    if (_canRejectReverse) {
+      return UtenFloatingActionGroup(
+        children: [
+          UtenButton(
+            key: const Key('finance-shipment-audit-back-secondary'),
+            type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
+            onPressed: _leave,
+            child: const Text('返回'),
+          ),
+          UtenButton(
+            key: const Key('finance-shipment-audit-reject-reverse-btn'),
+            size: UtenButtonSize.large,
+            icon: Icons.settings_backup_restore_rounded,
+            isLoading: _busy,
+            onPressed: _rejectReverse,
+            child: const Text('撤回退回'),
+          ),
+        ],
+      );
+    }
     if (!canDecide) {
       return UtenFloatingActionGroup(
         children: [
@@ -597,19 +700,20 @@ class _FinanceSalesShipmentAuditReviewPageState
         ? (
             theme.colorScheme.primary,
             Icons.verified_rounded,
-            '财务已放行 · ${d.financeAuditedAt != null ? '${d.financeAuditedAt!.substring(0, 10)} · ' : ''}仓库可以开始拣货',
+            '财务已放行 · ${d.financeAuditedAt != null ? '${d.financeAuditedAt!.substring(0, 10)} · ' : ''}仓库可以确认出库',
           )
         : rejected
         ? (
             theme.colorScheme.error,
             Icons.undo_rounded,
-            '已退回销售 · ${d.shipmentWorkflow.financeRejectionReason ?? '未注明原因'}',
+            '已退回销售 · ${d.shipmentWorkflow.financeRejectionReason ?? '未注明原因'}'
+                '${_canRejectReverse ? ' · 可撤回退回恢复审核' : ''}',
           )
         : warehouseStarted
         ? (
             theme.colorScheme.error,
             Icons.block_rounded,
-            '仓库作业已开始，不能补做或撤销财务审核；如需回退，请先登记异常并恢复到待拣货。',
+            '仓库已确认出库，不能补做或撤销财务审核；纠错请走销售退货。',
           )
         : !d.shipmentWorkflow.salesConfirmed
         ? (
@@ -620,7 +724,7 @@ class _FinanceSalesShipmentAuditReviewPageState
         : (
             theme.colorScheme.tertiary,
             Icons.pending_actions_rounded,
-            '待财务审核 · 放行后仓库才能开始拣货',
+            '待财务审核 · 放行后仓库才能确认出库',
           );
     return Container(
       padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -733,7 +837,7 @@ class _FinanceSalesShipmentAuditReviewPageState
                     _ => '其它客户发货',
                   }),
                 if (info.freeReason != null) metric('不收费原因', info.freeReason),
-                metric('销售货款类型', salesPaymentTypeLabel(info.salesPaymentType)),
+                metric('客户货款类别', salesPaymentTypeLabel(info.salesPaymentType)),
                 metric('结账方式', info.settlementMethodName ?? '未设置'),
                 metric('正式应收未收(本币)', info.outstanding),
                 metric('铺底额(本币)', info.creditFloor),
@@ -744,7 +848,7 @@ class _FinanceSalesShipmentAuditReviewPageState
             ),
             const SizedBox(height: UtenSpacing.s8),
             Text(
-              '请人工核对客户分类与本次放行依据；可用预收只统计同客户同币种的真实已审核到账，“定金”只是客户标签，绝不代表已经到账。预收仍按原绑定订单使用，不能自动抵扣到其它订单或零星发货。',
+              '货款类别来自客户资料（月结/现金/定金），不是本单填写；“定金”只是客户标签，绝不代表已经到账；可用预收只统计同客户同币种的真实已审核到账，不能自动抵扣其它订单。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -893,60 +997,91 @@ class _FinanceSalesShipmentAuditReviewPageState
           ),
         ),
         const SizedBox(height: UtenSpacing.s8),
-        MasterDataTableView<SalesDocItem>(
-          embedded: true,
-          columns: [
-            MasterColumnDef(
-              key: 'goods',
-              label: '货品',
-              width: 240,
-              value: (it) =>
-                  '${salesGoodsIdentityLabel(it, names.goods(it.goodsId))}'
-                  '(${names.color(it.colorId)} · ${names.unit(it.unitId)})',
-            ),
-            MasterColumnDef(
-              key: 'stockPlace',
-              label: '库位号',
-              width: 90,
-              value: (it) => names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
-            ),
-            MasterColumnDef(
-              key: 'qty',
-              label: '数量',
-              width: 90,
-              type: 'number',
-              value: (it) => it.qty?.toStringAsFixed(2),
-            ),
-            MasterColumnDef(
-              key: 'price',
-              label: '单价',
-              width: 120,
-              type: 'money',
-              value: (it) => masked ? '***' : it.price?.toStringAsFixed(2),
-            ),
-            MasterColumnDef(
-              key: 'amount',
-              label: '金额',
-              width: 100,
-              type: 'money',
-              value: (it) => masked
-                  ? '***'
-                  : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
-            ),
-            MasterColumnDef(
-              key: 'remark',
-              label: '备注',
-              width: 160,
-              value: (it) =>
-                  (it.remark?.isNotEmpty ?? false) ? it.remark : null,
-            ),
-          ],
-          items: items,
-          facets: const {},
-          nullCounts: const {},
-          filters: const {},
-          onFilterChanged: (_, _) {},
-          emptyMessage: '(无明细)',
+        Expanded(
+          child: MasterDataTableView<SalesDocItem>(
+            primary: true,
+            bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+            columns: [
+              MasterColumnDef(
+                key: 'goods',
+                // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+                label: '货品名称',
+                width: 200,
+                value: (it) => salesGoodsNameLabel(it, names.goods(it.goodsId)),
+              ),
+              MasterColumnDef(
+                key: 'goodsCode',
+                label: '编号',
+                width: 130,
+                value: (it) => UtenGoodsAttributeCell.text(
+                  salesGoodsCodeLabel(
+                    it,
+                    fallbackCode: names.goodsInfo(it.goodsId)?.code,
+                  ),
+                ),
+                cellBuilder: (_, it) => UtenGoodsAttributeCell(
+                  salesGoodsCodeLabel(
+                    it,
+                    fallbackCode: names.goodsInfo(it.goodsId)?.code,
+                  ),
+                ),
+              ),
+              MasterColumnDef(
+                key: 'colorName',
+                label: '颜色',
+                width: 96,
+                value: (it) => names.color(it.colorId),
+              ),
+              MasterColumnDef(
+                key: 'unitName',
+                label: '单位',
+                width: 80,
+                value: (it) => names.unit(it.unitId),
+              ),
+              MasterColumnDef(
+                key: 'stockPlace',
+                label: '库位号',
+                width: 90,
+                value: (it) => names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
+              ),
+              MasterColumnDef(
+                key: 'qty',
+                label: '数量',
+                width: 90,
+                type: 'number',
+                value: (it) => it.qty?.toStringAsFixed(2),
+              ),
+              MasterColumnDef(
+                key: 'price',
+                label: '单价',
+                width: 120,
+                type: 'money',
+                value: (it) => masked ? '***' : it.price?.toStringAsFixed(2),
+              ),
+              MasterColumnDef(
+                key: 'amount',
+                label: '金额',
+                width: 100,
+                type: 'money',
+                value: (it) => masked
+                    ? '***'
+                    : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
+              ),
+              MasterColumnDef(
+                key: 'remark',
+                label: '备注',
+                width: 160,
+                value: (it) =>
+                    (it.remark?.isNotEmpty ?? false) ? it.remark : null,
+              ),
+            ],
+            items: items,
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+            emptyMessage: '(无明细)',
+          ),
         ),
       ],
     );

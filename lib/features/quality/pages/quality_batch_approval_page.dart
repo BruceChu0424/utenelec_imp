@@ -16,6 +16,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
@@ -520,6 +521,7 @@ class _QualityBatchApprovalPageState
                 ),
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
         floatingActionButton: _loading ? null : _buildBottomBar(theme),
       ),
     );
@@ -734,14 +736,29 @@ class _QualityBatchApprovalPageState
         embedded: true,
         showSelectionSummary: false,
         columns: [
+          // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+          // 批量页一屏多单，名称撞车时靠编号区分；颜色与验收单位本表已有独立列。
           MasterColumnDef(
             key: 'goods',
-            label: '货品',
-            width: 190,
-            value: (row) => [
-              row.item.goodsName,
-              row.item.goodsCode,
-            ].whereType<String>().join(' '),
+            label: '货品名称',
+            width: 200,
+            value: (row) => row.item.goodsName ?? '—',
+            cellBuilderHandlesSemantics: true,
+            cellBuilder: (_, row) =>
+                UtenGoodsIdentityCell(name: row.item.goodsName),
+          ),
+          MasterColumnDef(
+            key: 'goodsCode',
+            label: '编号',
+            width: 130,
+            value: (row) => UtenGoodsAttributeCell.text(row.item.goodsCode),
+            cellBuilder: (_, row) => UtenGoodsAttributeCell(row.item.goodsCode),
+          ),
+          MasterColumnDef(
+            key: 'color',
+            label: '颜色',
+            width: 100,
+            value: (row) => row.item.colorName ?? '—',
           ),
           MasterColumnDef(
             key: 'pass',
@@ -774,12 +791,6 @@ class _QualityBatchApprovalPageState
             label: '验收单位',
             width: 190,
             value: (row) => inspectionQuantityUnitCell(context, row.item),
-          ),
-          MasterColumnDef(
-            key: 'color',
-            label: '颜色',
-            width: 100,
-            value: (row) => row.item.colorName ?? '—',
           ),
           MasterColumnDef(
             key: 'source',
@@ -847,12 +858,28 @@ class _QualityBatchApprovalPageState
     embedded: true,
     showSelectionSummary: false,
     columns: [
+      // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+      // 勾一行就是整行判合格，认错货直接放行错批次；颜色与单位本表已有独立列。
       MasterColumnDef(
         key: 'goods',
-        label: '货品',
-        width: 220,
-        value: (row) =>
-            [row.goodsName, row.goodsCode].whereType<String>().join(' '),
+        label: '货品名称',
+        width: 200,
+        value: (row) => row.goodsName ?? row.goodsCode ?? '—',
+        cellBuilderHandlesSemantics: true,
+        cellBuilder: (_, row) => UtenGoodsIdentityCell(name: row.goodsName),
+      ),
+      MasterColumnDef(
+        key: 'goodsCode',
+        label: '编号',
+        width: 130,
+        value: (row) => UtenGoodsAttributeCell.text(row.goodsCode),
+        cellBuilder: (_, row) => UtenGoodsAttributeCell(row.goodsCode),
+      ),
+      MasterColumnDef(
+        key: 'color',
+        label: '颜色',
+        width: 100,
+        value: (row) => row.colorName ?? '—',
       ),
       MasterColumnDef(
         key: 'quantity',
@@ -867,12 +894,6 @@ class _QualityBatchApprovalPageState
         label: '单位',
         width: 80,
         value: (row) => row.unitName ?? '—',
-      ),
-      MasterColumnDef(
-        key: 'color',
-        label: '颜色',
-        width: 100,
-        value: (row) => row.colorName ?? '—',
       ),
       MasterColumnDef(
         key: 'report',

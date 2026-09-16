@@ -180,7 +180,7 @@ void main() {
     await tester.pump();
     expect(find.text('货品-g1'), findsNWidgets(2));
 
-    final header = find.widgetWithText(GridHeaderFilterCell, '货品');
+    final header = find.widgetWithText(GridHeaderFilterCell, '货品名称');
     expect(header, findsOneWidget);
     await tester.tap(header);
     await tester.pump();

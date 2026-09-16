@@ -12,8 +12,8 @@ import '../../../components/data_display/uten_user_avatar.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -64,36 +64,27 @@ class _HrProfileChangeDetailPageState
           onAction: () => ref.invalidate(hrProfileChangeDetailProvider),
         ),
       ),
-      bottomNavigationBar: async.maybeWhen(
+      // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组（大小/高度/禁用态全站统一）。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: async.maybeWhen(
         data: (batch) => batch.status == ProfileChangeStatus.pending
-            ? UtenBottomActionBar(
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: UtenButton(
-                        type: UtenButtonType.danger,
-                        isExpanded: true,
-                        isLoading: _acting,
-                        onPressed: _acting
-                            ? null
-                            : () => _onReject(context, l10n),
-                        child: Text(l10n.profileChangeReviewReject),
-                      ),
-                    ),
-                    const SizedBox(width: UtenSpacing.s12),
-                    Expanded(
-                      flex: 2,
-                      child: UtenButton(
-                        isExpanded: true,
-                        isLoading: _acting,
-                        onPressed: _acting
-                            ? null
-                            : () => _onApprove(context, l10n),
-                        child: Text(l10n.profileChangeReviewApprove),
-                      ),
-                    ),
-                  ],
-                ),
+            ? UtenFloatingActionGroup(
+                children: [
+                  UtenButton(
+                    type: UtenButtonType.danger,
+                    size: UtenButtonSize.large,
+                    isLoading: _acting,
+                    onPressed: _acting ? null : () => _onReject(context, l10n),
+                    child: Text(l10n.profileChangeReviewReject),
+                  ),
+                  UtenButton(
+                    size: UtenButtonSize.large,
+                    isLoading: _acting,
+                    onPressed: _acting ? null : () => _onApprove(context, l10n),
+                    child: Text(l10n.profileChangeReviewApprove),
+                  ),
+                ],
               )
             : null,
         orElse: () => null,
@@ -110,7 +101,13 @@ class _HrProfileChangeDetailPageState
     // 详情页全断点窄版收敛（1120），避免宽屏 diff 行被拉得过长
     return UtenContentContainer.narrow(
       child: ListView(
-        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+        // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
+        padding: const EdgeInsets.fromLTRB(
+          0,
+          UtenSpacing.s16,
+          0,
+          UtenFloatingActionGroup.scrollClearance,
+        ),
         children: [
           // 员工摘要卡
           UtenCard(

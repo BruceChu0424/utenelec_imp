@@ -1,6 +1,9 @@
 // 生产部待排产数量 Provider（工作台「生产管理」卡片红色数字徽章用）。
 //
-// 口径 = 调度工作台待排产行数（已审订单行 qty − 预留 − 已排产 > 0），
+// 口径 = 调度工作台待排产行数：已审订单行的**待排产缺口 > 0**
+// (= 剩余未排量 − 活动物料分析已承接量，ADR-088 的 PENDING_NEED_SQL)。
+// 服务端徽标 SQL 与列表/facets 共用同一份 WHERE，数字与点进去看到的行数不会漂移；
+// 做过物料分析并被全量承接的行不再计入本徽章，改在「进行中」按分析批次跟踪。
 // 后端 GET /production/schedule/pending-count 返回 {count, urgent, overdue}。
 // 默认 60s 轮询一次；无 production_plan:view 权限时返回 0（不渲染徽章）。
 // 范式同 lib/shared/auth/pending_review_provider.dart（HR 待办徽章）。

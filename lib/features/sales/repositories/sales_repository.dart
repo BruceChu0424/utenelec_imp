@@ -28,6 +28,7 @@ class SalesDocFilter {
     this.chainGroup,
     this.sellerId,
     this.financeAudit,
+    this.financeRejected,
     this.warehouseWorkStatus,
   });
   final String? keyword;
@@ -41,6 +42,7 @@ class SalesDocFilter {
   final String? chainGroup; // 数量派生大类 pending/production（V545，与 stats 同口径）
   final String? sellerId; // 按销售员筛选（生产计划选来源单按跟单员收敛）
   final int? financeAudit; // 出货财务审核：0 待审 / 1 已审
+  final bool? financeRejected; // 出货被财务退回待销售处理（V578 专段筛选）
   final String? warehouseWorkStatus; // 出货仓库作业状态
 }
 
@@ -75,6 +77,8 @@ class SalesRepository {
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
       if (filter.closed != null) 'closed': filter.closed,
       if (filter.financeAudit != null) 'financeAudit': filter.financeAudit,
+      if (filter.financeRejected != null)
+        'financeRejected': filter.financeRejected,
       if (filter.warehouseWorkStatus != null &&
           filter.warehouseWorkStatus!.trim().isNotEmpty)
         'warehouseWorkStatus': filter.warehouseWorkStatus!.trim(),
@@ -243,6 +247,12 @@ class SalesRepository {
     final json = await api.post(
       '${_doc(id)}/finance-audit-reverse',
     ); // ENDPOINT
+    return ShipmentFinanceAuditInfo.fromJson(json);
+  }
+
+  /// 撤回退回（V578）：财务收回自己的退回决定，单据恢复待财务审核。
+  Future<ShipmentFinanceAuditInfo> financeRejectReverse(String id) async {
+    final json = await api.post('${_doc(id)}/finance-reject-reverse');
     return ShipmentFinanceAuditInfo.fromJson(json);
   }
 

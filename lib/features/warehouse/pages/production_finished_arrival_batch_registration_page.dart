@@ -32,6 +32,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -45,6 +46,22 @@ import '../models/production_finished_inbound_task.dart';
 import '../providers/production_finished_arrival_fill_memory.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/production_finished_inbound_task_repository.dart';
+
+/// 批量校验提示：把同一类违规的**全部**行汇总成一句话。
+///
+/// 条目多时只列前 8 条再折成「等 N 行」——刷屏的提示和只报第一行一样没法用。
+/// [unit] 供报工单、货品这类非行维度的汇总复用同一句式。
+String _rowIssueMessage(
+  List<String> rowLabels,
+  String issue, {
+  required String action,
+  String unit = '行',
+}) {
+  const shownMax = 8;
+  final shown = rowLabels.take(shownMax).join('、');
+  final more = rowLabels.length > shownMax ? '等 ${rowLabels.length} $unit' : '';
+  return '以下 ${rowLabels.length} $unit$issue，$action：$shown$more';
+}
 
 class ProductionFinishedArrivalBatchRegistrationPage
     extends ConsumerStatefulWidget {
@@ -70,6 +87,9 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
     extends ConsumerState<ProductionFinishedArrivalBatchRegistrationPage> {
   final _grid = UtenEditableGridController<_BatchArrivalRegistrationRow>();
   final _scrollController = ScrollController();
+
+  /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
+  final _gridPinned = ValueNotifier<bool>(false);
   final String _idempotencyKey = 'finished-arrival-batch-${const Uuid().v4()}';
 
   List<ProductionFinishedArrivalRegistration>? _reports;
@@ -107,6 +127,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
   @override
   void dispose() {
     _grid.dispose();
+    _gridPinned.dispose();
     _scrollController.dispose();
     _remarkController.dispose();
     super.dispose();
@@ -398,17 +419,25 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       final key = '$warehouseId|${row.item.goodsId}|${row.item.colorId ?? ''}';
       grouped.putIfAbsent(key, () => {}).putIfAbsent(place, () => []).add(row);
     }
+    // 冲突货品全部列出：只报第一个的话，用户统一完再提交才看到第二个。
+    final conflicts = <String>[];
     for (final entry in grouped.entries) {
       if (entry.value.length <= 1) continue;
       final sample = entry.value.values.first.first;
       final candidates = entry.value.entries
           .map((candidate) => '${candidate.key}(${candidate.value.length}行)')
           .join(' / ');
-      return '货品 ${sample.item.goodsCode} ${sample.item.goodsName} '
-          '在同一仓库同一颜色维度填写了不同库位：$candidates。'
-          '请统一库位，或关闭“同时记住”为仅保存本次登记快照。';
+      conflicts.add(
+        '${sample.item.goodsCode} ${sample.item.goodsName}：$candidates',
+      );
     }
-    return null;
+    if (conflicts.isEmpty) return null;
+    return _rowIssueMessage(
+      conflicts,
+      '在同一仓库同一颜色维度填写了不同库位',
+      action: '请统一库位，或关闭“同时记住”为仅保存本次登记快照',
+      unit: '个货品',
+    );
   }
 
   Future<void> _save() async {
@@ -429,22 +458,23 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       context.appError('没有待登记的成品明细');
       return;
     }
+    // 整批一次扫完再报：原先首个违规就 return，一批几十行时用户补一行提交一次，
+    // 观感像「怎么老是报错」。判定条件不变，只把问题按类别各汇总成一条。
+    final missingWarehouse = <String>[];
+    final missingPlace = <String>[];
+    final placeTooLong = <String>[];
     for (var index = 0; index < rows.length; index++) {
       final row = rows[index];
+      final label = '第 ${index + 1} 行（${row.report.reportNo}）';
       final warehouseId = row.warehouseId.value;
       if (warehouseId == null || warehouseId.isEmpty) {
-        final message = '第 ${index + 1} 行（${row.report.reportNo}）必须选择成品仓';
-        setState(() => _validationError = message);
-        context.appError(message);
-        return;
+        missingWarehouse.add(label);
       }
       final place = row.place.text.trim();
-      if (place.isEmpty || place.length > 100) {
-        final message =
-            '第 ${index + 1} 行（${row.report.reportNo}）库位号必填且不超过 100 字';
-        setState(() => _validationError = message);
-        context.appError(message);
-        return;
+      if (place.isEmpty) {
+        missingPlace.add(label);
+      } else if (place.length > 100) {
+        placeTooLong.add(label);
       }
     }
     // 按报工单分组：同一批次中，同一报工的所选行必须同仓。
@@ -452,26 +482,40 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
     for (final row in rows) {
       byReport.putIfAbsent(row.report.reportId, () => []).add(row);
     }
+    final mixedWarehouseReports = <String>[];
     for (final entry in byReport.entries) {
       final warehouses = entry.value
           .map((row) => row.warehouseId.value)
           .toSet();
       if (warehouses.length > 1) {
-        final message =
-            '报工单 ${entry.value.first.report.reportNo} 的明细行选择了不同成品仓；'
-            '同一张报工单只能登记到一个仓，请统一';
-        setState(() => _validationError = message);
-        context.appError(message);
-        return;
+        mixedWarehouseReports.add(entry.value.first.report.reportNo);
       }
     }
+    final rowIssues = <String>[
+      if (missingWarehouse.isNotEmpty)
+        _rowIssueMessage(missingWarehouse, '未选择成品仓', action: '请补齐后再提交'),
+      if (missingPlace.isNotEmpty)
+        _rowIssueMessage(missingPlace, '未填写库位号', action: '请补齐后再提交'),
+      if (placeTooLong.isNotEmpty)
+        _rowIssueMessage(placeTooLong, '的库位号超过 100 字', action: '请改短后再提交'),
+      if (mixedWarehouseReports.isNotEmpty)
+        _rowIssueMessage(
+          mixedWarehouseReports,
+          '的明细行选择了不同成品仓，同一张报工单只能登记到一个仓',
+          action: '请统一后再提交',
+          unit: '张报工单',
+        ),
+    ];
     if (_rememberPlaces) {
       final conflict = _rememberPlacesConflict();
-      if (conflict != null) {
-        setState(() => _validationError = conflict);
-        context.appError(conflict);
-        return;
-      }
+      if (conflict != null) rowIssues.add(conflict);
+    }
+    if (rowIssues.isNotEmpty) {
+      // 不同类别分行列出，混成一句会让人看不清到底要改哪几处。
+      final message = rowIssues.join('\n');
+      setState(() => _validationError = message);
+      context.appError(message);
+      return;
     }
 
     final reportIds = byReport.keys.toList()..sort();
@@ -686,10 +730,12 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                 actionLabel: '重新加载',
                 onAction: _load,
               )
-            : UtenContentContainer(
-                child: Scrollbar(
-                  controller: _scrollController,
-                  thumbVisibility: true,
+            : UtenGridPageScrollbar(
+                pinned: _gridPinned,
+                controller: _scrollController,
+                // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
+                // 恒在屏幕最右，不随限宽容器/列宽漂移。
+                child: UtenContentContainer(
                   child: ListView(
                     controller: _scrollController,
                     padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -728,12 +774,22 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
+                      const SizedBox(height: UtenSpacing.s4),
+                      // 2026-09-14：本次可以只登记一部分产品，入口必须一眼可见。
+                      Text(
+                        '本次不送检的产品点行末 ⊖ 移出本次登记（也可勾选多行后右键批量移出）；'
+                        '报工事实不会删除、也不写库存，这些行仍留在待登记送检。',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                       const SizedBox(height: UtenSpacing.s8),
                       UtenEditableGrid<_BatchArrivalRegistrationRow>(
                         key: const Key(
                           'production-finished-arrival-batch-grid',
                         ),
                         controller: _grid,
+                        stickyHeaderPinned: _gridPinned,
                         columns: _columns(names),
                         createBlankRow: () =>
                             throw UnsupportedError('明细由所选报工单固定带入'),
@@ -759,6 +815,9 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                         // 改仓/写库位即整批落值」+ 右键菜单批量动作。
                         showSelectAllToggle: false,
                         showRemoveRowsAction: false,
+                        // 2026-09-14：行末常驻 ⊖（与到货登记页同一口径）。
+                        // 已登记行与提交后 canSelectRow=false，自动只占位。
+                        showInlineRemoveAction: true,
                         rowMenuExtraBuilder:
                             _canRegister && !_saving && !_submitted
                             ? (context, selected) => [
@@ -803,6 +862,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
               ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _reports == null
           ? null
           : UtenFloatingActionGroup(
@@ -1028,13 +1088,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       textOf: (row) => row.report.reportNo,
       cellBuilder: (context, row) => Text(row.report.reportNo),
     ),
-    EditableGridColumn(
-      key: 'goodsCode',
-      label: '物料编码',
-      width: 120,
-      textOf: (row) => row.item.goodsCode,
-      cellBuilder: (context, row) => Text(row.item.goodsCode),
-    ),
+    // 2026-09-14 全站列序统一（ADR-081 §4.1）：名称 → 编号 → 颜色。
     EditableGridColumn(
       key: 'goodsName',
       label: '货品名称',
@@ -1042,6 +1096,13 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       filterValueOf: (row) => _bucketOrNull(row.item.goodsName),
       textOf: (row) => row.item.goodsName,
       cellBuilder: (context, row) => Text(row.item.goodsName),
+    ),
+    EditableGridColumn(
+      key: 'goodsCode',
+      label: '编号',
+      width: 120,
+      textOf: (row) => row.item.goodsCode,
+      cellBuilder: (context, row) => Text(row.item.goodsCode),
     ),
     EditableGridColumn(
       key: 'color',

@@ -32,6 +32,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
@@ -69,6 +70,20 @@ import '../widgets/doc_link_picker.dart';
 import '../widgets/purchase_grid_columns.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
+
+/// 批量校验提示：把同一类违规的**全部**行汇总成一句话。
+///
+/// 条目多时只列前 8 行再折成「等 N 行」——刷屏的提示和只报第一行一样没法用。
+String _rowIssueMessage(
+  List<String> rowLabels,
+  String issue, {
+  required String action,
+}) {
+  const shownMax = 8;
+  final shown = rowLabels.take(shownMax).join('、');
+  final more = rowLabels.length > shownMax ? '等 ${rowLabels.length} 行' : '';
+  return '以下 ${rowLabels.length} 行$issue，$action：$shown$more';
+}
 
 class PurchaseOrderEditPage extends ConsumerStatefulWidget {
   const PurchaseOrderEditPage({
@@ -111,6 +126,9 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
 
   final _grid = UtenEditableGridController<PurchaseGridRow>();
   final _scrollCtl = ScrollController();
+
+  /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
+  final _gridPinned = ValueNotifier<bool>(false);
   bool _saving = false;
   bool _loading = false;
   // 制单信息（服务端权威，只读展示）
@@ -130,6 +148,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
 
   @override
   void dispose() {
+    _gridPinned.dispose();
     _billNo.dispose();
     _remark.dispose();
     _pendingFiles.dispose();
@@ -818,32 +837,71 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
       context.appError('请至少添加一条明细');
       return;
     }
-    // 行级条款完整性：供应商/结账方式/币种必填，汇率>0，税率 0-100。
+    // 行级条款完整性：供应商/结账方式/币种必填，汇率>0，税率 0-100；
+    // 数量>0、单价≥0、填了实际重量则>0。
     String rateTextOf(PurchaseGridRow r) => r.exchangeRate.text.trim();
     String taxTextOf(PurchaseGridRow r) => r.taxRate.text.trim();
-    for (final r in rows) {
-      if (r.supplierId == null) {
-        context.appError('${r.goods!.name} 未选择供应商；可勾选多行统一设置');
-        return;
-      }
-      if (r.settlementMethodId == null) {
-        context.appError('${r.goods!.name} 未选择结账方式；可勾选多行统一设置');
-        return;
-      }
-      if (r.currencyId == null) {
-        context.appError('${r.goods!.name} 未选择币种；可勾选多行统一设置');
-        return;
-      }
+    // 判定条件不变，只改暴露方式：一批几十行时逐行 return 只说第一处，用户改一行
+    // 提交一次、被同一批问题反复拦下；这里按问题类别把**全部**违规行收齐后一次说完。
+    final missingSupplier = <String>[];
+    final missingSettlement = <String>[];
+    final missingCurrency = <String>[];
+    final badRate = <String>[];
+    final badTax = <String>[];
+    final badQty = <String>[];
+    final badPrice = <String>[];
+    final badWeight = <String>[];
+    final gridRows = _grid.rows;
+    // 行标识用用户看得见的行序 + 货品名（明细表不显示 UUID，报 id 等于没报）。
+    String labelOf(int i, PurchaseGridRow r) =>
+        '第 ${i + 1} 行（${r.goods!.name ?? r.goods!.code ?? '该货品'}）';
+    for (var i = 0; i < gridRows.length; i++) {
+      final r = gridRows[i];
+      if (r.goods == null) continue;
+      final label = labelOf(i, r);
+      if (r.supplierId == null) missingSupplier.add(label);
+      if (r.settlementMethodId == null) missingSettlement.add(label);
+      if (r.currencyId == null) missingCurrency.add(label);
       final rate = double.tryParse(rateTextOf(r));
-      if (rate == null || rate <= 0) {
-        context.appError('${r.goods!.name} 的汇率必须大于 0');
-        return;
-      }
+      if (rate == null || rate <= 0) badRate.add(label);
       final tax = double.tryParse(taxTextOf(r));
-      if (tax == null || tax < 0 || tax > 100) {
-        context.appError('${r.goods!.name} 的税率必须填写 0 至 100 之间的百分比');
-        return;
+      if (tax == null || tax < 0 || tax > 100) badTax.add(label);
+      final qty = double.tryParse(r.qty.text) ?? 0;
+      if (qty <= 0) badQty.add(label);
+      // 2026-09 起订货允许超过申请剩余量（超采备货）：不再校验 qty ≤ maxQty。
+      final price = double.tryParse(r.price.text);
+      if (price == null || price < 0) badPrice.add(label);
+      final weightText = r.weight.text.trim();
+      final weight = weightText.isEmpty ? null : double.tryParse(weightText);
+      if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
+        badWeight.add(label);
       }
+    }
+    // 指路要落到真实入口上：批量条款只在行右键菜单里，含糊的「统一设置」会让用户
+    // 在工具条上找一个 2026-09-11 已撤掉的按钮。
+    const batchHint = '请补齐后再提交（可勾选多行后右键「统一设置条款」）';
+    final rowIssues = <String>[
+      if (missingSupplier.isNotEmpty)
+        _rowIssueMessage(missingSupplier, '未选择供应商', action: batchHint),
+      if (missingSettlement.isNotEmpty)
+        _rowIssueMessage(missingSettlement, '未选择结账方式', action: batchHint),
+      if (missingCurrency.isNotEmpty)
+        _rowIssueMessage(missingCurrency, '未选择币种', action: batchHint),
+      if (badRate.isNotEmpty)
+        _rowIssueMessage(badRate, '的汇率不是大于 0 的数字', action: '请改正后再提交'),
+      if (badTax.isNotEmpty)
+        _rowIssueMessage(badTax, '的税率不是 0 至 100 之间的百分比', action: '请改正后再提交'),
+      if (badQty.isNotEmpty)
+        _rowIssueMessage(badQty, '的数量不是大于 0 的数字', action: '请改正后再提交'),
+      if (badPrice.isNotEmpty)
+        _rowIssueMessage(badPrice, '的采购单价无效（须为不小于 0 的数字）', action: '请改正后再提交'),
+      if (badWeight.isNotEmpty)
+        _rowIssueMessage(badWeight, '的实际重量必须大于 0', action: '请改正后再提交'),
+    ];
+    if (rowIssues.isNotEmpty) {
+      // 不同类别分行列出，混成一句会让人看不清到底要改哪几处。
+      context.appError(rowIssues.join('\n'));
+      return;
     }
     // 编辑既有单：一单一套条款（行条款必须全一致）。
     if (!_isCreate) {
@@ -855,31 +913,27 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
     }
     final settlementEntries = await _settlementEntries();
     if (!mounted) return;
-    for (final r in rows) {
+    final stoppedSettlement = <String>[];
+    for (var i = 0; i < gridRows.length; i++) {
+      final r = gridRows[i];
+      if (r.goods == null) continue;
       if (!settlementEntries.containsKey(r.settlementMethodId)) {
-        context.appError('${r.goods!.name} 的结账方式已停用，请重新选择');
-        return;
+        stoppedSettlement.add(labelOf(i, r));
       }
     }
+    if (stoppedSettlement.isNotEmpty) {
+      context.appError(
+        _rowIssueMessage(stoppedSettlement, '的结账方式已停用', action: '请重新选择后再提交'),
+      );
+      return;
+    }
+    // 逐行校验已全部通过，这里只组装提交体。
     final itemsBody = <Map<String, dynamic>>[];
     for (final r in rows) {
       final qty = double.tryParse(r.qty.text) ?? 0;
-      if (qty <= 0) {
-        context.appError('${r.goods!.name} 的数量必须大于 0');
-        return;
-      }
-      // 2026-09 起订货允许超过申请剩余量（超采备货）：不再校验 qty ≤ maxQty。
-      final price = double.tryParse(r.price.text);
-      if (price == null || price < 0) {
-        context.appError('请填写${r.goods!.name}的有效采购单价');
-        return;
-      }
+      final price = double.tryParse(r.price.text)!;
       final weightText = r.weight.text.trim();
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
-      if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
-        context.appError('${r.goods!.name} 的实际重量必须大于 0');
-        return;
-      }
       final rate = double.tryParse(rateTextOf(r))!;
       final tax = double.tryParse(taxTextOf(r))!;
       final remarkText = r.remark.text.trim();
@@ -1078,10 +1132,12 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-            : UtenContentContainer(
-                child: Scrollbar(
-                  controller: _scrollCtl,
-                  thumbVisibility: true,
+            : UtenGridPageScrollbar(
+                pinned: _gridPinned,
+                controller: _scrollCtl,
+                // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
+                // 恒在屏幕最右，不随限宽容器/列宽漂移。
+                child: UtenContentContainer(
                   child: ListView(
                     controller: _scrollCtl,
                     // 底部多留一个悬浮动作组的高度，否则明细表最后一行被「取消/保存」压住。
@@ -1225,6 +1281,34 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
                       const SizedBox(height: UtenSpacing.s12),
                       // 「明细 (N)」标题行 2026-09-11 撤除；同日「从上游引入」也并入
                       // 明细表工具条，与「表头设置」同排同高（不再单独占一行）。
+                      // 2026-09-14：「统一设置条款」是本页唯一的批量条款入口，却只挂在
+                      // 行右键菜单上——条款格是 TextField/下拉，用户最自然的右键位置被
+                      // 输入框自带菜单吃掉，等于零可见入口（报错文案还在指路一个看不见
+                      // 的按钮）。补这行常驻提示说明入口在哪；不加窄屏门控，宽屏桌面才是
+                      // 看不见右键的重灾区。
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline_rounded,
+                              size: 18,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: UtenSpacing.s8),
+                            Expanded(
+                              child: Text(
+                                '勾选多行后在选中行上右键（触屏长按）可「统一设置条款」，'
+                                '一次写全套供应商、结账方式、币种、汇率、税率（留空的保持原值）；'
+                                '右键请点在非输入框的位置，例如行首复选框或货品名称一列。',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                       // 列显隐/排序持久化（本页固定订货模式，单桶即可；账号级）。
                       Builder(
                         builder: (_) {
@@ -1233,6 +1317,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
                           )['order'];
                           return UtenEditableGrid<PurchaseGridRow>(
                             controller: _grid,
+                            stickyHeaderPinned: _gridPinned,
                             showColumnSettings: true,
                             initialColumnOrder: columnPrefs?.order,
                             initialHiddenColumnKeys: columnPrefs?.hidden,
@@ -1295,7 +1380,6 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
                             footer: EditableGridTotalsBar<PurchaseGridRow>(
                               key: const Key('purchase-order-edit-totals'),
                               controller: _grid,
-                              showDivider: false,
                               watchOf: (row) => [row.qty],
                               entriesBuilder: (rows) {
                                 final currencyIds = rows
@@ -1354,6 +1438,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
       // 加载中不给保存入口；他人正在分解此申请时（认领被占）保存禁用，
       // 与原底部操作条同一显隐/禁用口径。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _loading
           ? null
           : UtenEditFloatingActions(

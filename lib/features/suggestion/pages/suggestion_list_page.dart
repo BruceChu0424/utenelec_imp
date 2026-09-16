@@ -114,6 +114,7 @@ class SuggestionListPage extends ConsumerWidget {
           ],
         ),
       ),
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: createAction.floatingActionButton(
         context,
         hasItems: list.valueOrNull?.items.isNotEmpty ?? false,

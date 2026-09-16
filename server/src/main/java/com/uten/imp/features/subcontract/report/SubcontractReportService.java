@@ -283,9 +283,12 @@ public class SubcontractReportService {
                 new ReportColumn("settlementStyle", "结帐方式", "style", 100),
                 ReportColumn.text("receiverName", "收货人", 100),
                 ReportColumn.money("totalAmount", "总额"), ReportColumn.bool("approved", "是否审核"),
-                ReportColumn.text("goodsCode", "编号", 110), ReportColumn.text("model", "型号", 100),
-                ReportColumn.text("customerModel", "客户型号", 100), ReportColumn.text("goodsName", "货品名称", 180),
-                ReportColumn.text("spec", "规格", 140), ReportColumn.text("colorName", "颜色", 80),
+                // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
+                ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.text("goodsCode", "编号", 110),
+                ReportColumn.text("colorName", "颜色", 80),
+                ReportColumn.text("model", "型号", 100),
+                ReportColumn.text("customerModel", "客户型号", 100),
+                ReportColumn.text("spec", "规格", 140),
                 ReportColumn.number("weight", "重量").totaled("合计重量"),
                 ReportColumn.number("girth", "围数"),
                 ReportColumn.number("qty", "数量").totaled("合计数量", "unitName"),
@@ -383,9 +386,12 @@ public class SubcontractReportService {
                 new ReportColumn("settlementStyle", "结帐方式", "style", 100),
                 ReportColumn.text("makerName", "制单员", 100),
                 ReportColumn.bool("approved", "是否审核"), ReportColumn.money("totalAmount", "总额"),
-                ReportColumn.text("goodsCode", "编号", 110), ReportColumn.text("model", "型号", 100),
-                ReportColumn.text("customerModel", "客户型号", 100), ReportColumn.text("goodsName", "货品名称", 180),
-                ReportColumn.text("spec", "规格", 140), ReportColumn.text("colorName", "颜色", 80),
+                // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
+                ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.text("goodsCode", "编号", 110),
+                ReportColumn.text("colorName", "颜色", 80),
+                ReportColumn.text("model", "型号", 100),
+                ReportColumn.text("customerModel", "客户型号", 100),
+                ReportColumn.text("spec", "规格", 140),
                 ReportColumn.number("weight", "重量").totaled("合计重量"),
                 ReportColumn.number("girth", "围数"),
                 ReportColumn.number("qty", "数量").totaled("合计数量", "unitName"),
@@ -475,9 +481,12 @@ public class SubcontractReportService {
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
                 ReportColumn.text("operatorName", "经办人", 100), ReportColumn.bool("approved", "是否审核"),
-                ReportColumn.text("goodsCode", "编号", 110), ReportColumn.text("model", "型号", 100),
-                ReportColumn.text("customerModel", "客户型号", 100), ReportColumn.text("goodsName", "货品名称", 180),
-                ReportColumn.text("spec", "规格", 140), ReportColumn.text("colorName", "颜色", 80),
+                // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
+                ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.text("goodsCode", "编号", 110),
+                ReportColumn.text("colorName", "颜色", 80),
+                ReportColumn.text("model", "型号", 100),
+                ReportColumn.text("customerModel", "客户型号", 100),
+                ReportColumn.text("spec", "规格", 140),
                 ReportColumn.text("unitName", "单位", 70),
                 ReportColumn.number("weight", "重量").totaled("合计重量"),
                 ReportColumn.number("boxQty", "胶箱数量").totaled("合计胶箱数量"),
@@ -560,9 +569,12 @@ public class SubcontractReportService {
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
                 ReportColumn.text("operatorName", "经办人", 100), ReportColumn.bool("approved", "是否审核"),
-                ReportColumn.text("goodsCode", "编号", 110), ReportColumn.text("model", "型号", 100),
-                ReportColumn.text("customerModel", "客户型号", 100), ReportColumn.text("goodsName", "货品名称", 180),
-                ReportColumn.text("spec", "规格", 140), ReportColumn.text("colorName", "颜色", 80),
+                // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
+                ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.text("goodsCode", "编号", 110),
+                ReportColumn.text("colorName", "颜色", 80),
+                ReportColumn.text("model", "型号", 100),
+                ReportColumn.text("customerModel", "客户型号", 100),
+                ReportColumn.text("spec", "规格", 140),
                 ReportColumn.text("unitName", "单位", 70),
                 ReportColumn.number("weight", "重量").totaled("合计重量"),
                 ReportColumn.number("girth", "围数"),
@@ -636,7 +648,7 @@ public class SubcontractReportService {
     // ======================== ⑨ 委外出入状况表（综合 · 按 委外商×货品×颜色 聚合） ========================
 
     /**
-     * 列：加工单位/品名及规格/型号/系列/编号/颜色/期初结存/订货数量/发胚(15)/退成品(18)/
+     * 列：加工单位/品名/编号/颜色/规格/型号/系列/期初结存/订货数量/发胚(15)/退成品(18)/
      * 退原胚(16)/退不良品(19)/收货(17)/单价/金额/期末结存。
      *
      * <p>实现：直接聚合 5 类源明细（不依赖 stock_movements——迁移未回填流水，源明细对迁移数据立即可见）：
@@ -654,9 +666,12 @@ public class SubcontractReportService {
 
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("supplierName", "加工单位", 160),
-                ReportColumn.text("goodsDesc", "品名及规格", 200),
+                // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布，
+                // 「品名及规格」拆成 名称 + 规格 两列。
+                ReportColumn.text("goodsName", "品名", 180), ReportColumn.text("goodsCode", "编号", 110),
+                ReportColumn.text("colorName", "颜色", 80),
+                ReportColumn.text("spec", "规格", 140),
                 ReportColumn.text("model", "型号", 100), ReportColumn.text("series", "系列", 90),
-                ReportColumn.text("goodsCode", "编号", 110), ReportColumn.text("colorName", "颜色", 80),
                 ReportColumn.number("openingQty", "期初结存"), ReportColumn.number("orderQty", "订货数量"),
                 ReportColumn.number("issueQty", "发胚数量"), ReportColumn.number("returnQty", "退成品"),
                 ReportColumn.number("mReturnQty", "退原胚"), ReportColumn.number("wasteQty", "退不良品"),
@@ -718,7 +733,7 @@ public class SubcontractReportService {
                              oi.goods_name_snapshot, oi.color_id
                 )
                 SELECT sup.name AS supplierName,
-                       a.goods_name_snapshot || COALESCE(' ' || gg.spec, '') AS goodsDesc,
+                       a.goods_name_snapshot AS goodsName, gg.spec AS spec,
                        gg.model AS model, gg.series AS series, a.goods_code_snapshot AS goodsCode, col.name AS colorName,
                        a.opening AS openingQty, COALESCE(od.order_qty, 0) AS orderQty,
                        a.issue_qty AS issueQty, a.return_qty AS returnQty, a.m_return_qty AS mReturnQty,
@@ -737,7 +752,7 @@ public class SubcontractReportService {
                        OR LOWER(COALESCE(a.goods_name_snapshot,'')) LIKE LOWER(:kw)
                        OR LOWER(COALESCE(a.goods_code_snapshot,'')) LIKE LOWER(:kw)
                        OR LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw))
-                ORDER BY supplierName NULLS LAST, goodsDesc
+                ORDER BY supplierName NULLS LAST, a.goods_name_snapshot, a.goods_code_snapshot
                 LIMIT :__limit OFFSET :__offset
                 """;
         var q = em.createNativeQuery(sql);

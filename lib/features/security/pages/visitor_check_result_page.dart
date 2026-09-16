@@ -10,7 +10,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
@@ -125,10 +125,14 @@ class _VisitorCheckResultPageState
               children: [
                 Expanded(
                   child: SingleChildScrollView(
-                    // 内容窄收敛：宽屏居中，手机端保持原有节奏
+                    // 内容窄收敛：宽屏居中，手机端保持原有节奏；
+                    // 底部留出右下悬浮操作组的高度。
                     child: UtenContentContainer.narrow(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: UtenSpacing.s16,
+                      padding: const EdgeInsets.fromLTRB(
+                        0,
+                        UtenSpacing.s16,
+                        0,
+                        UtenFloatingActionGroup.scrollClearance,
                       ),
                       child: Column(
                         children: [
@@ -206,18 +210,23 @@ class _VisitorCheckResultPageState
                     ),
                   ),
                 ),
-                if (valid && canCheckIn && _result?.checkInAt == null)
-                  UtenBottomActionBar(
-                    child: UtenButton(
-                      onPressed: _checking ? null : _checkIn,
-                      isLoading: _checking,
-                      isExpanded: true,
-                      size: UtenButtonSize.large,
-                      child: Text(l10n.securityCheckIn),
-                    ),
-                  ),
               ],
             ),
+      // 2026-09-14 UI 统一口径：吸底操作按钮改右下悬浮组（按钮已是 large）。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: valid && canCheckIn && _result?.checkInAt == null
+          ? UtenFloatingActionGroup(
+              children: [
+                UtenButton(
+                  onPressed: _checking ? null : _checkIn,
+                  isLoading: _checking,
+                  size: UtenButtonSize.large,
+                  child: Text(l10n.securityCheckIn),
+                ),
+              ],
+            )
+          : null,
     );
   }
 }

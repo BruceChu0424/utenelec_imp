@@ -21,6 +21,7 @@ import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -30,6 +31,7 @@ import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
@@ -488,139 +490,150 @@ class _QualityPendingDisposalPageState
     return UtenContentContainer.wide(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildToolbar(purchaseCount, subcontractCount, fqcCount),
-            if (_error != null) ...[
+        // 2026-09-15 用户口径：对齐其他列表页的「整页先滚 → 工具条与表头顶到
+        // 页面顶 → 表体内滚」联动。错误横幅/提示行随页滚走；分段+搜索工具条
+        // 钉在表头上方一起到顶，之后表格（primary:true）接手内滚。
+        child: UtenCollapsingHeaderScrollView(
+          collapsingHeader: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_error != null)
+                _InlineWorkbenchError(message: _error!, onRetry: _load),
+              _buildAuxHints(),
               const SizedBox(height: UtenSpacing.s12),
-              _InlineWorkbenchError(message: _error!, onRetry: _load),
             ],
-            const SizedBox(height: UtenSpacing.s12),
-            Expanded(
-              child: MasterDataTableView<_DisposalRow>(
-                key: const Key('iqc-receipt-table'),
-                columns: _columns,
-                items: pageItems,
-                facets: {
-                  'docType': [
-                    if (_canViewIqc) ...[
-                      MasterFacetBucket(
-                        value: 'PURCHASE',
-                        count: purchaseCount ?? 0,
-                        label: '采购收货',
-                      ),
-                      MasterFacetBucket(
-                        value: 'SUBCONTRACT',
-                        count: subcontractCount ?? 0,
-                        label: '委外回厂',
-                      ),
-                    ],
-                    if (_canViewFqc)
-                      MasterFacetBucket(
-                        value: 'FQC',
-                        count: fqcCount ?? 0,
-                        label: '自制产成品',
-                      ),
-                  ],
-                  // 状态桶按当前类型/关键字口径实时统计（客户端全集，非当页）。
-                  'status': _statusFacets,
-                },
-                nullCounts: const {},
-                filters: {'docType': _typeFilter, 'status': _statusFilter},
-                // 类型分段条在表外、空态也一直看得见，用户随时能切回「全部」；
-                // 表里再给一个「清除筛选」是重复入口（状态筛选只有表头有，保留）。
-                externalFilterKeys: const {'docType'},
-                onFilterChanged: (key, value) {
-                  if (key == 'status') {
-                    setState(() {
-                      _statusFilter = value;
-                      _page = 1;
-                    });
-                    return;
-                  }
-                  if (key != 'docType') return;
-                  _selectType(value);
-                },
-                // 2026-09-05 起 IQC 收货单也可多选（此前只有 FQC 可勾）：
-                // 勾选后走「批量审批」汇总页。
-                selectable: _canDecideFqc || _canHandleIqc,
-                idOf: (row) => row.isSheet
-                    ? (_canDecideFqc && row.sheet!.active
-                          ? 'sheet:${row.sheet!.id}'
-                          : null)
-                    : row.isFqc
-                    ? (_canDecideFqc && row.inspection!.active
-                          ? row.inspection!.id
-                          : null)
-                    : (_canHandleIqc
-                          ? 'iqc:${row.receipt!.receiptType}:${row.receipt!.receiptId}'
-                          : null),
-                // 行稳定键单独给：IQC 用收货单 id，检查单用单 id，无检查单任务用任务 id。
-                rowKeyOf: (row) => row.isSheet
-                    ? row.sheet!.id
-                    : row.isFqc
-                    ? row.inspection!.id
-                    : row.receipt!.receiptId,
-                selectedIds: _selectedIds,
-                onSelectedIdsChanged: (next) => setState(
-                  () => _selectedIds
-                    ..clear()
-                    ..addAll(next),
-                ),
-                batchActionsBuilder: _canDecideFqc || _canHandleIqc
-                    ? _batchActions
-                    : null,
-                onRowTap: (row) => row.isSheet
-                    ? _openSheet(row.sheet!)
-                    : row.isFqc
-                    ? _openFqcDetail(row)
-                    : _openIqcDetail(row.receipt!),
-                rowMenuBuilder: (row) => row.isSheet
-                    ? [
-                        UtenMenuItem(
-                          label: _canDecideFqc
-                              ? '办理检查单(${row.sheet!.activeCount} 行待检)'
-                              : '查看检查单',
-                          icon: Icons.fact_check_outlined,
-                          onTap: () => _openSheet(row.sheet!),
+          ),
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildFilterToolbar(purchaseCount, subcontractCount, fqcCount),
+              const SizedBox(height: UtenSpacing.s12),
+              Expanded(
+                child: MasterDataTableView<_DisposalRow>(
+                  key: const Key('iqc-receipt-table'),
+                  primary: true,
+                  columns: _columns,
+                  items: pageItems,
+                  facets: {
+                    'docType': [
+                      if (_canViewIqc) ...[
+                        MasterFacetBucket(
+                          value: 'PURCHASE',
+                          count: purchaseCount ?? 0,
+                          label: '采购收货',
                         ),
-                      ]
-                    : row.isFqc
-                    ? [
-                        UtenMenuItem(
-                          label: _canDecideFqc ? '办理质检' : '查看质检详情',
-                          icon: _canDecideFqc
-                              ? Icons.rule_rounded
-                              : Icons.visibility_outlined,
-                          onTap: () => _openFqcDetail(row),
-                        ),
-                      ]
-                    : [
-                        UtenMenuItem(
-                          label: _canHandleIqc
-                              ? '检验本单(${row.receipt!.itemCount} 行待检)'
-                              : '查看待检明细',
-                          icon: Icons.fact_check_outlined,
-                          onTap: () => _openIqcDetail(row.receipt!),
+                        MasterFacetBucket(
+                          value: 'SUBCONTRACT',
+                          count: subcontractCount ?? 0,
+                          label: '委外回厂',
                         ),
                       ],
-                isLoading: _loading,
-                error: pageItems.isEmpty ? _error : null,
-                onRetry: _load,
-                emptyMessage: _emptyMessage,
-                currentPage: _page,
-                totalPages: _totalPages,
-                onPageChange: (next) => setState(() => _page = next),
+                      if (_canViewFqc)
+                        MasterFacetBucket(
+                          value: 'FQC',
+                          count: fqcCount ?? 0,
+                          label: '自制产成品',
+                        ),
+                    ],
+                    // 状态桶按当前类型/关键字口径实时统计（客户端全集，非当页）。
+                    'status': _statusFacets,
+                  },
+                  nullCounts: const {},
+                  filters: {'docType': _typeFilter, 'status': _statusFilter},
+                  // 类型分段条在表外、空态也一直看得见，用户随时能切回「全部」；
+                  // 表里再给一个「清除筛选」是重复入口（状态筛选只有表头有，保留）。
+                  externalFilterKeys: const {'docType'},
+                  onFilterChanged: (key, value) {
+                    if (key == 'status') {
+                      setState(() {
+                        _statusFilter = value;
+                        _page = 1;
+                      });
+                      return;
+                    }
+                    if (key != 'docType') return;
+                    _selectType(value);
+                  },
+                  // 2026-09-05 起 IQC 收货单也可多选（此前只有 FQC 可勾）：
+                  // 勾选后走「批量审批」汇总页。
+                  selectable: _canDecideFqc || _canHandleIqc,
+                  idOf: (row) => row.isSheet
+                      ? (_canDecideFqc && row.sheet!.active
+                            ? 'sheet:${row.sheet!.id}'
+                            : null)
+                      : row.isFqc
+                      ? (_canDecideFqc && row.inspection!.active
+                            ? row.inspection!.id
+                            : null)
+                      : (_canHandleIqc
+                            ? 'iqc:${row.receipt!.receiptType}:${row.receipt!.receiptId}'
+                            : null),
+                  // 行稳定键单独给：IQC 用收货单 id，检查单用单 id，无检查单任务用任务 id。
+                  rowKeyOf: (row) => row.isSheet
+                      ? row.sheet!.id
+                      : row.isFqc
+                      ? row.inspection!.id
+                      : row.receipt!.receiptId,
+                  selectedIds: _selectedIds,
+                  onSelectedIdsChanged: (next) => setState(
+                    () => _selectedIds
+                      ..clear()
+                      ..addAll(next),
+                  ),
+                  batchActionsBuilder: _canDecideFqc || _canHandleIqc
+                      ? _batchActions
+                      : null,
+                  onRowTap: (row) => row.isSheet
+                      ? _openSheet(row.sheet!)
+                      : row.isFqc
+                      ? _openFqcDetail(row)
+                      : _openIqcDetail(row.receipt!),
+                  rowMenuBuilder: (row) => row.isSheet
+                      ? [
+                          UtenMenuItem(
+                            label: _canDecideFqc
+                                ? '办理检查单(${row.sheet!.activeCount} 行待检)'
+                                : '查看检查单',
+                            icon: Icons.fact_check_outlined,
+                            onTap: () => _openSheet(row.sheet!),
+                          ),
+                        ]
+                      : row.isFqc
+                      ? [
+                          UtenMenuItem(
+                            label: _canDecideFqc ? '办理质检' : '查看质检详情',
+                            icon: _canDecideFqc
+                                ? Icons.rule_rounded
+                                : Icons.visibility_outlined,
+                            onTap: () => _openFqcDetail(row),
+                          ),
+                        ]
+                      : [
+                          UtenMenuItem(
+                            label: _canHandleIqc
+                                ? '检验本单(${row.receipt!.itemCount} 行待检)'
+                                : '查看待检明细',
+                            icon: Icons.fact_check_outlined,
+                            onTap: () => _openIqcDetail(row.receipt!),
+                          ),
+                        ],
+                  isLoading: _loading,
+                  error: pageItems.isEmpty ? _error : null,
+                  onRetry: _load,
+                  emptyMessage: _emptyMessage,
+                  currentPage: _page,
+                  totalPages: _totalPages,
+                  onPageChange: (next) => setState(() => _page = next),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildToolbar(
+  Widget _buildFilterToolbar(
     int? purchaseCount,
     int? subcontractCount,
     int? fqcCount,
@@ -631,61 +644,64 @@ class _QualityPendingDisposalPageState
       'FQC' => 'fqc',
       _ => 'all',
     };
+    // 全平台统一筛选工具条：分段 + 胶囊搜索框。计数形态：三个来源段都是
+    // 「等我验货」的待检队列 → 红徽章；「全部待检单」不传 count（没有总量段
+    // 与之重复红一次）。
+    return Semantics(
+      header: true,
+      label: '共有 ${_rows.length} 条待检任务',
+      child: UtenFilterToolbar<String>(
+        segmentsKey: const Key('iqc-type-segments'),
+        searchKey: const Key('iqc-search'),
+        segments: [
+          const UtenFilterSegment(value: 'all', label: '全部待检单'),
+          if (_canViewIqc) ...[
+            UtenFilterSegment(
+              value: 'purchase',
+              label: '采购收货',
+              count: purchaseCount,
+              countForm: UtenSegmentCountForm.actionable,
+            ),
+            UtenFilterSegment(
+              value: 'subcontract',
+              label: '委外回厂',
+              count: subcontractCount,
+              countForm: UtenSegmentCountForm.actionable,
+            ),
+          ],
+          if (_canViewFqc)
+            UtenFilterSegment(
+              value: 'fqc',
+              label: '自制产成品',
+              count: fqcCount,
+              countForm: UtenSegmentCountForm.actionable,
+            ),
+        ],
+        selected: _typeFilterSelected ? {selected} : const {},
+        onSelectionChanged: (value) => _selectType(switch (value) {
+          'purchase' => 'PURCHASE',
+          'subcontract' => 'SUBCONTRACT',
+          'fqc' => 'FQC',
+          _ => null,
+        }),
+        searchHint: '搜索单号 / 供应商 / 货品',
+        initialSearchValue: _keyword,
+        onSearchChanged: _applySearch,
+        trailing: Text(
+          '共 ${_filtered.length} 条 · 双击办理',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 提示行与截断告警：放折叠头（随页滚走），不再常驻占表体高度。
+  Widget _buildAuxHints() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Semantics(
-          header: true,
-          label: '共有 ${_rows.length} 条待检任务',
-          // 全平台统一筛选工具条：分段 + 胶囊搜索框。
-          // 计数形态：三个来源段都是「等我验货」的待检队列 → 红徽章；
-          // 「全部待检单」不传 count（没有总量段与之重复红一次）。
-          child: UtenFilterToolbar<String>(
-            segmentsKey: const Key('iqc-type-segments'),
-            searchKey: const Key('iqc-search'),
-            segments: [
-              const UtenFilterSegment(value: 'all', label: '全部待检单'),
-              if (_canViewIqc) ...[
-                UtenFilterSegment(
-                  value: 'purchase',
-                  label: '采购收货',
-                  count: purchaseCount,
-                  countForm: UtenSegmentCountForm.actionable,
-                ),
-                UtenFilterSegment(
-                  value: 'subcontract',
-                  label: '委外回厂',
-                  count: subcontractCount,
-                  countForm: UtenSegmentCountForm.actionable,
-                ),
-              ],
-              if (_canViewFqc)
-                UtenFilterSegment(
-                  value: 'fqc',
-                  label: '自制产成品',
-                  count: fqcCount,
-                  countForm: UtenSegmentCountForm.actionable,
-                ),
-            ],
-            selected: _typeFilterSelected ? {selected} : const {},
-            onSelectionChanged: (value) => _selectType(switch (value) {
-              'purchase' => 'PURCHASE',
-              'subcontract' => 'SUBCONTRACT',
-              'fqc' => 'FQC',
-              _ => null,
-            }),
-            searchHint: '搜索单号 / 供应商 / 货品',
-            initialSearchValue: _keyword,
-            onSearchChanged: _applySearch,
-            trailing: Text(
-              '共 ${_filtered.length} 条 · 双击办理',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s8),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -780,19 +796,49 @@ class _QualityPendingDisposalPageState
           ? '无检查单 · 计划 ${row.inspection!.planNo ?? '—'}'
           : (row.receipt!.supplierName ?? '—'),
     ),
+    // 无检查单的 FQC 行此前只有名称 + 颜色，补上编号：队列里同名的自制件与
+    // 委外件排在一起，认错货就会把判定登到别的批次上。本表没有独立编号/颜色列，
+    // 三属性都进身份格；检查单行是服务端拼好的多货品摘要，无法拆分故原样显示。
     MasterColumnDef(
       key: 'goods',
-      label: '货品',
-      width: 230,
+      label: '货品名称',
+      width: 200,
       value: (row) => row.isSheet
           ? (row.sheet!.goodsSummary ?? '—')
           : row.isFqc
-          ? [
-              row.inspection!.goodsName,
-              if (row.inspection!.colorName?.isNotEmpty == true)
-                '(${row.inspection!.colorName})',
-            ].whereType<String>().join()
+          ? (row.inspection!.goodsName ?? '—')
           : '—',
+      cellBuilderHandlesSemantics: true,
+      cellBuilder: (_, row) => row.isFqc
+          ? UtenGoodsIdentityCell(name: row.inspection!.goodsName)
+          : Text(
+              row.isSheet ? (row.sheet!.goodsSummary ?? '—') : '—',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+    ),
+    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+    // 本表是混合行：检查单行是「多货品汇总」、收货单行没有单一货品，这两类
+    // 在编号/颜色列如实显示「—」，不拿汇总串冒充单件身份。
+    MasterColumnDef(
+      key: 'goodsCode',
+      label: '编号',
+      width: 130,
+      value: (row) => row.isFqc
+          ? UtenGoodsAttributeCell.text(row.inspection!.goodsCode)
+          : null,
+      cellBuilder: (_, row) =>
+          UtenGoodsAttributeCell(row.isFqc ? row.inspection!.goodsCode : null),
+    ),
+    MasterColumnDef(
+      key: 'colorName',
+      label: '颜色',
+      width: 96,
+      value: (row) => row.isFqc
+          ? UtenGoodsAttributeCell.text(row.inspection!.colorName)
+          : null,
+      cellBuilder: (_, row) =>
+          UtenGoodsAttributeCell(row.isFqc ? row.inspection!.colorName : null),
     ),
     MasterColumnDef(
       key: 'status',
@@ -1372,14 +1418,22 @@ class _ProcurementInspectionDetailPageState
   }
 
   List<MasterColumnDef<ProcurementInspectionItem>> get _itemColumns => [
+    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+    // 同名不同编号的来料必须分得清再填数量；颜色与验收单位本表已有独立列。
     MasterColumnDef(
       key: 'goods',
-      label: '货品',
-      width: 220,
-      value: (item) => [
-        item.goodsName,
-        if (item.goodsCode?.isNotEmpty == true) '(${item.goodsCode})',
-      ].whereType<String>().join(),
+      label: '货品名称',
+      width: 200,
+      value: (item) => item.goodsName ?? item.goodsCode ?? '—',
+      cellBuilderHandlesSemantics: true,
+      cellBuilder: (_, item) => UtenGoodsIdentityCell(name: item.goodsName),
+    ),
+    MasterColumnDef(
+      key: 'goodsCode',
+      label: '编号',
+      width: 130,
+      value: (item) => UtenGoodsAttributeCell.text(item.goodsCode),
+      cellBuilder: (_, item) => UtenGoodsAttributeCell(item.goodsCode),
     ),
     MasterColumnDef(
       key: 'colorName',

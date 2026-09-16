@@ -108,7 +108,7 @@ class SalesDocumentAttachmentAccessPolicyTest {
         assertDoesNotThrow(() -> h.policy.requireCanView(h.id, h.user()));
     }
 
-    @Test void submittedFinanceApprovedAndPickingShipmentsAreImmutable() {
+    @Test void submittedFinanceApprovedAndShippedShipmentsAreImmutable() {
         var h = new Harness(Kind.ORDER_SHIPMENT);
         h.shipment.setSalesConfirmedAt(OffsetDateTime.now());
         h.shipment.setSalesConfirmedBy(h.owner);
@@ -119,7 +119,7 @@ class SalesDocumentAttachmentAccessPolicyTest {
         h.shipment.setFinanceAudit((short) 1);
         assertThrows(ApiException.class, () -> h.policy.requireCanManage(h.id, h.user()));
         h.shipment.setFinanceAudit((short) 0);
-        h.shipment.setWarehouseWorkStatus(SalesShipment.WORK_PICKING);
+        h.shipment.setWarehouseWorkStatus(SalesShipment.WORK_SHIPPED);
         assertThrows(ApiException.class, () -> h.policy.requireCanManage(h.id, h.user()));
     }
 

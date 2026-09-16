@@ -43,4 +43,20 @@ public class DailyReportSaveRequest {
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
     private List<DailyReportItemLine> items;
+
+    /**
+     * 报工同页登记的本次实际用料(V583)。整单一条需求只登记一次，所以放在请求头而不是
+     * 明细行上：同一个执行工单出现在多个成品行时，它的物料只算一份额度。
+     *
+     * <p>草稿阶段只是事实登记，审核时才转成 CONSUMED 结算。
+     */
+    @Valid
+    @Size(max = RequestLimits.DOCUMENT_LINES)
+    private List<DailyReportMaterialUsageLine> materialLines;
+
+    /**
+     * 收尾余料退仓意愿：最后一次报工时车间确认「剩下的料退回仓库」。审核时先结实耗、
+     * 再按剩余可退量生成退料单；没有可退量就什么都不做，不打扰仓库。
+     */
+    private Boolean surplusReturnRequested;
 }

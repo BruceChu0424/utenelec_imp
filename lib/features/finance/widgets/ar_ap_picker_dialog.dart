@@ -506,10 +506,18 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
       );
     }
     if (_items.isEmpty && _keyword.trim().isEmpty) {
+      // 2026-09-14：应收在仓库「确认出库」后才立账——客户没走过完整出货时
+      // 选择器必然为空。明说生成时机，避免误以为丢数据（用户实测困惑点）。
       return Center(
-        child: Text(
-          '暂无未清$_ledgerNoun', // TODO(l10n): 补 arb
-          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s16),
+          child: Text(
+            _isAr
+                ? '暂无未清$_ledgerNoun。应收在仓库确认出货单出库后自动生成；客户尚未发货时这里没有内容，收到的是订单定金/预付款请改用「登记订单预收」。'
+                : '暂无未清$_ledgerNoun', // TODO(l10n): 补 arb
+            style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+            textAlign: TextAlign.center,
+          ),
         ),
       );
     }

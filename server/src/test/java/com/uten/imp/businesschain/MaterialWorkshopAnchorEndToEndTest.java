@@ -390,6 +390,39 @@ class MaterialWorkshopAnchorEndToEndTest {
         assertEquals(3,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
     }
 
+    /**
+     * V589（2026-09-15）用户口径「顶层要做 5000，委外件就要加工 5000」：有自制
+     * 子层的委外候选超量下达车间时，委外链如实跟量——ARRANGE 行动记
+     * requested=归需求量(锁) + public_surplus=超量，台账 required=两者之和，
+     * 锚点计划一张（link 分账，V577 形状）。人工「下达委外」通道不变：仍整量
+     * 接管、仍禁公共超量。
+     */
+    @Test void subcontractMakeFirstTaskFollowsWorkshopOverquantity(){
+        MixedCase c=createMixed("anchor-sc-over");
+        AnalysisView view=analyses.detail(c.analysis());
+        var result=commands.issueWorkshopPlans(c.analysis(),issueRequest(c.analysis(),view,c.world(),"sc-over",
+                line(c.subcontractLine(),"15000")));
+        assertEquals(1,result.plans().size());
+        var action=db.queryForMap("SELECT requested_qty,public_surplus_qty FROM preplan_supply_actions WHERE analysis_id=? AND route='SUBCONTRACT'",c.analysis());
+        qty("10000",(BigDecimal)action.get("requested_qty"));
+        qty("5000",(BigDecimal)action.get("public_surplus_qty"));
+        qty("15000",db.queryForObject("SELECT required_qty FROM preplan_subcontract_make_tasks WHERE analysis_id=?",
+                BigDecimal.class,c.analysis()));
+        qty("15000",db.queryForObject("""
+                SELECT COALESCE(SUM(pi.qty),0) FROM production_plan_items pi
+                JOIN production_plans p ON p.id=pi.plan_id
+                WHERE p.material_analysis_id=? AND pi.is_deleted=FALSE
+                """,BigDecimal.class,c.analysis()));
+        var links=db.queryForList("SELECT submitted_qty,public_surplus_qty FROM production_material_analysis_plan_links WHERE analysis_id=?",c.analysis());
+        assertEquals(1,links.size());
+        qty("10000",(BigDecimal)links.get(0).get("submitted_qty"));
+        qty("5000",(BigDecimal)links.get(0).get("public_surplus_qty"));
+        // 锚点行需求侧仍只记需求量（10000）——超量在台账与行动上，不抬需求账。
+        AnalysisView after=analyses.detail(c.analysis());
+        UUID anchor=material(after,c.subcontractLine()).planAnchorAnalysisLineId();
+        qty("10000",product(after,anchor).requestedQty());
+    }
+
     /** 同一批自制候选二次下达：走既有锚点（不新建子件行），只消费剩余配额，计划数累加。 */
     @Test void secondIssueOnTheSameCandidatesReusesExistingAnchorsWithoutNewChildRows(){
         MixedCase c=createMixed("anchor-reuse");
@@ -506,6 +539,11 @@ class MaterialWorkshopAnchorEndToEndTest {
         }
         UUID sub=UUID.randomUUID();fixture.insertGoods(sub,"S-"+tag,"有自制子层的委外件","委外",w.unitId(),w.unitLegacy());
         fixture.insertBom(root,sub,"1");fixture.insertBom(sub,w.goodsC(),"1");
+        // 必须挂**两颗**子件：V581 起「只有一个叶子子件」的委外件属直接发那颗子件
+        // 出去（COMPONENT_OUTBOUND），issue-plans 会明确拒掉它。本用例测的正是
+        // 「有自制子层的委外件与自制候选同批下达车间」，夹具要落在前置自制那一类。
+        // 第二颗取已存在的采购件 goodsD（路线映射里是 BUY），不会多出自制锚点。
+        fixture.insertBom(sub,w.goodsD(),"1");
         fixture.insertBom(root,w.goodsD(),"1");
         UUID planner=fixture.createUserWithPerms(w,"planner-"+tag,
                 "production_material_analysis:view","production_material_analysis:manage","production_material_analysis:route",
@@ -653,11 +691,13 @@ class MaterialWorkshopAnchorEndToEndTest {
     /**
      * 2026-09-14 修订二：销售订单来源顶层行超量下达不再拒绝（用户口径「填大于
      * 需求的量要能下单，超出部分就是公共的」）。本批 13000 > 订单剩余 10000 时
-     * 拆成**两张**计划：单 A 销售行 1:1 分摊 10000（订单守恒不动），单 B 无销售
-     * 来源的公共备货行 3000（link 记 submitted=0 + surplus=3000）。两张单各自
-     * 恰一条明细，分别满足 fn_sync_material_analysis_plan_link_qty 的单行对账。
+     * 仍出**一张**计划（2026-09-15 修订，用户口径「多余的不要单独列一张单，
+     * 直接合并」）：明细数量 13000、带销售来源，link 记 submitted=10000 +
+     * surplus=3000；销售分摊（plan_order_item_links 容量与订单侧 planned_qty）
+     * 只认 submitted 的 10000，3000 公共备货产出不进销售账（V588 放宽执行段
+     * 分摊断言的计划件级口径）。
      */
-    @Test void salesTopOverQuantitySplitsIntoOrderPlanAndPublicSurplusPlan(){
+    @Test void salesTopOverQuantityIssuesSinglePlanWithSurplusLink(){
         Case c=create("sales-top-over",false,true,"10000");
         AnalysisView view=analyses.detail(c.analysis());
         ProductView top=view.products().stream().filter(p->p.salesOrderItemId()!=null).findFirst().orElseThrow();
@@ -667,34 +707,67 @@ class MaterialWorkshopAnchorEndToEndTest {
                 c.world().warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,
                 List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null,top.analysisLineId(),
                         new BigDecimal("13000"),null,null,null,null,null,null,null))));
-        assertEquals(2,result.plans().size());
-        assertEquals(2,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=? AND is_deleted=FALSE",c.analysis()));
-        // 计划分账：一张 submitted=10000/surplus=0，一张 submitted=0/surplus=3000。
-        var links=db.queryForList("SELECT submitted_qty,public_surplus_qty FROM production_material_analysis_plan_links WHERE analysis_id=? ORDER BY submitted_qty DESC",c.analysis());
-        assertEquals(2,links.size());
+        assertEquals(1,result.plans().size());
+        assertEquals(1,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=? AND is_deleted=FALSE",c.analysis()));
+        // 计划分账：一张 link submitted=10000 + surplus=3000，计划明细 13000。
+        var links=db.queryForList("SELECT submitted_qty,public_surplus_qty FROM production_material_analysis_plan_links WHERE analysis_id=?",c.analysis());
+        assertEquals(1,links.size());
         qty("10000",(BigDecimal)links.get(0).get("submitted_qty"));
-        qty("0",(BigDecimal)links.get(0).get("public_surplus_qty"));
-        qty("0",(BigDecimal)links.get(1).get("submitted_qty"));
-        qty("3000",(BigDecimal)links.get(1).get("public_surplus_qty"));
-        // 销售侧只排产 10000：带销售来源的计划行恰好合计 10000，备货行不带
-        // 销售来源、不进任何分摊。
-        qty("10000",db.queryForObject("""
+        qty("3000",(BigDecimal)links.get(0).get("public_surplus_qty"));
+        // 一张计划行带销售来源，数量 13000（不再拆出无销售来源的备货行）。
+        qty("13000",db.queryForObject("""
                 SELECT COALESCE(SUM(pi.qty),0) FROM production_plan_items pi
                 JOIN production_plans p ON p.id=pi.plan_id
                 WHERE p.material_analysis_id=? AND pi.is_deleted=FALSE AND pi.sales_order_item_id IS NOT NULL
                 """,BigDecimal.class,c.analysis()));
-        qty("3000",db.queryForObject("""
+        qty("0",db.queryForObject("""
                 SELECT COALESCE(SUM(pi.qty),0) FROM production_plan_items pi
                 JOIN production_plans p ON p.id=pi.plan_id
                 WHERE p.material_analysis_id=? AND pi.is_deleted=FALSE AND pi.sales_order_item_id IS NULL
                 """,BigDecimal.class,c.analysis()));
+        // 销售侧只排产 10000：plan_order_item_links 容量（= 审核分摊）只认
+        // 归需求量，公共备货的 3000 不进订单 planned_qty。
         qty("10000",db.queryForObject("""
                 SELECT COALESCE(SUM(l.allocated_qty),0) FROM plan_order_item_links l
                 WHERE l.order_item_id=?
                 """,BigDecimal.class,c.salesItem()));
-        // 分析任务的 submitted 仍按需求记账（10000，不是 13000）。
+        qty("10000",db.queryForObject("""
+                SELECT COALESCE(planned_qty,0) FROM sales_order_items WHERE id=?
+                """,BigDecimal.class,c.salesItem()));
+        // 分析任务的需求侧仍只记 10000（不是 13000）——超产的 3000 走公共备货，
+        // 不占需求账。本例 approveNow=true，计划一审核 trg_sync_material_analysis_plan_lifecycle
+        // 就把 link 翻成 APPROVED，数量从 items.submitted_qty 移进 approved_qty，
+        // 所以这里对账的是两者之和（只看 submitted 会在审核后恒为 0）。
         AnalysisView after=analyses.detail(c.analysis());
-        qty("10000",product(after,top.analysisLineId()).submittedQty());
+        ProductView top2=product(after,top.analysisLineId());
+        qty("10000",top2.submittedQty().add(top2.approvedQty()));
+    }
+
+    /**
+     * 2026-09-15 修复回归：单计划超量（V588 形态）在「超量 > 需求」时曾把
+     * `销售订单剩余可排数量` 算成负数——审核前的二次校验把整张草稿（含公共
+     * 备货 4000）都当成销售容量占用，available = 需求 − 超量 = 1000 − 4000。
+     * 修复后 draft 口径只记 link 的归需求量；本例需求 1000 实下 5000（用户
+     * 实测形态）必须整链成功。
+     */
+    @Test void salesTopOverQuantityLargerThanDemandStillIssuesSinglePlan(){
+        Case c=create("sales-top-over3",false,true,"1000");
+        AnalysisView view=analyses.detail(c.analysis());
+        ProductView top=view.products().stream().filter(p->p.salesOrderItemId()!=null).findFirst().orElseThrow();
+        var result=commands.issueWorkshopPlans(c.analysis(),new IssueWorkshopPlansRequest(
+                view.version(),view.fingerprint(),"issue-"+c.analysis()+"-over3",
+                c.world().warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null,top.analysisLineId(),
+                        new BigDecimal("5000"),null,null,null,null,null,null,null))));
+        assertEquals(1,result.plans().size());
+        var links=db.queryForList("SELECT submitted_qty,public_surplus_qty FROM production_material_analysis_plan_links WHERE analysis_id=?",c.analysis());
+        assertEquals(1,links.size());
+        qty("1000",(BigDecimal)links.get(0).get("submitted_qty"));
+        qty("4000",(BigDecimal)links.get(0).get("public_surplus_qty"));
+        // 公共备货 4000 不得进订单排产量
+        qty("1000",db.queryForObject("""
+                SELECT COALESCE(planned_qty,0) FROM sales_order_items WHERE id=?
+                """,BigDecimal.class,c.salesItem()));
     }
     private record Case(FullChainEndToEndTest.World world,UUID analysis,UUID root,String sourceRef,List<UUID> materials,
                         UUID planner,UUID salesOrder,UUID salesItem,UUID salesActor,UUID financeActor){}

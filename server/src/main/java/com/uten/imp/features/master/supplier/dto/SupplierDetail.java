@@ -49,4 +49,9 @@ public class SupplierDetail {
     private String ownerEmployeeName;
     private UUID defaultSettlementMethodId;  // 默认结算方式 UUID（V452）
     private String defaultSettlementMethodName;
+
+    // ===== 默认条款（V593 单一事实源；下单自动写回，基础资料可改） =====
+    private UUID defaultCurrencyId;
+    private String defaultCurrencyName;
+    private java.math.BigDecimal defaultTaxRate;
 }

@@ -132,5 +132,20 @@ public class ProductionDailyReportItem extends BaseEntity {
     @Column(name = "source_doc_no")
     private String sourceDocNo;
 
+    /**
+     * 产出去向(V584)：WAREHOUSE=送仓库走品质部送检登记与 FQC；
+     * WORKSHOP=班组自检后直送同车间的上层工单，不进公共仓库。
+     * 一行只有一个去向，要拆量就拆行。
+     */
+    @Column(name = "destination", nullable = false)
+    private String destination = "WAREHOUSE";
+
+    /**
+     * 直送的接收需求(V585)：这一行的产出投给同车间哪条上层物料需求。
+     * destination=WORKSHOP 时必填，数据库 CHECK 保证两者同进同出。
+     */
+    @Column(name = "direct_transfer_demand_id")
+    private UUID directTransferDemandId;
+
     private String remark;
 }

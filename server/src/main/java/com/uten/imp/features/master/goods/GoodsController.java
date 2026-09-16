@@ -86,6 +86,9 @@ public class GoodsController {
             @RequestParam(required = false) Boolean excludeStub,
             @RequestParam(required = false) Boolean disabledOnly,
             @RequestParam(required = false) Boolean stubOnly,
+            // V587/V590 归属表头筛选（值为 UUID；空值走 nullFields）
+            @RequestParam(required = false) UUID owningWarehouse,
+            @RequestParam(required = false) UUID owningWorkshop,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
@@ -94,7 +97,8 @@ public class GoodsController {
                 series, model, material, code, name, spec, cNumber, requireRemark,
                 mouldCode, rearInsertCode, paper,
                 colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
-                excludeStub, disabledOnly, stubOnly), page, size, sort, order);
+                excludeStub, disabledOnly, stubOnly,
+                owningWarehouse, owningWorkshop), page, size, sort, order);
     }
 
     /** 统一选择器搜索定位：只返回受 scope/权限约束的命中货品分类 id，不下载全部货品页。 */
@@ -109,7 +113,7 @@ public class GoodsController {
                 null, categoryRootIds, keyword, Set.of(),
                 null, null, null, null, null, null, null, null,
                 null, null, null,
-                null, null, null, excludeDisabled, excludeStub, null, null));
+                null, null, null, excludeDisabled, excludeStub, null, null, null, null));
     }
 
     @GetMapping("/facets")
@@ -177,7 +181,7 @@ public class GoodsController {
                 series, model, material, code, name, spec, cNumber, requireRemark,
                 mouldCode, rearInsertCode, paper,
                 colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
-                excludeStub, disabledOnly, stubOnly), sort, order);
+                excludeStub, disabledOnly, stubOnly, null, null), sort, order);
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),

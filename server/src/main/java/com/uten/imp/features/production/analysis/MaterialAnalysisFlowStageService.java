@@ -175,9 +175,15 @@ public class MaterialAnalysisFlowStageService {
                 && !chain.subcontractExternalItems.isEmpty();
         if (!hasApplication) {
             // 无申请 = 尚未通知委外：有前置自制则先走车间，否则未下达。
-            return childStatus == null || childStatus.isBlank()
-                    ? SC_PENDING_ISSUE
-                    : makeStage(childStatus, childZero);
+            if (childStatus != null && !childStatus.isBlank()) {
+                return makeStage(childStatus, childZero);
+            }
+            // 台账已建、锚点还没出计划：这是「已下达委外 → 等待下达车间」，
+            // 不是「从未下达」。childStatus 为空同时表示这两件事，所以必须
+            // 用台账这条独立事实兜住（2026-09-15）。
+            return chain != null && chain.hasMakeTask
+                    ? MAKE_PENDING_ISSUE
+                    : SC_PENDING_ISSUE;
         }
         // 与采购同口径（2026-09-06）：整批下达归零是转出不是齐套，转出行沿
         // 链路逐步判定；只有需求仍在行内时缺口归零才是覆盖齐套。
@@ -269,6 +275,14 @@ public class MaterialAnalysisFlowStageService {
                     entry.getValue().subcontractExternalItems.addAll(items);
                 } else if (type != null && type.startsWith("PURCHASE")) {
                     entry.getValue().purchaseExternalItems.addAll(items);
+                } else if ("SUBCONTRACT_MAKE_TASK".equals(type)
+                        || "PREPLAN_MAKE_TASK".equals(type)) {
+                    // 「前置自制任务已建」也是链路上的一个真实事实。原来这一类
+                    // 动作被整体丢弃，委外行下达之后 hasApplication 仍为假、
+                    // childStatus 又因为锚点还没出计划而为空，于是回落
+                    // SC_PENDING_ISSUE——界面写「等待下发委外」，与「从未下达」
+                    // 一模一样（2026-09-15 用户反馈：下达了委外还是显示未下达）。
+                    entry.getValue().hasMakeTask = true;
                 }
             }
         }
@@ -423,6 +437,9 @@ public class MaterialAnalysisFlowStageService {
         final List<UUID> actions = new ArrayList<>();
         final Set<UUID> purchaseExternalItems = new LinkedHashSet<>();
         final Set<UUID> subcontractExternalItems = new LinkedHashSet<>();
+
+        /** 本行已建过前置自制 / 自制备料任务台账（未取消）。 */
+        boolean hasMakeTask;
     }
 
     private record OrderRow(UUID orderId, int status, UUID orderItemId, BigDecimal requiredBaseQty) {

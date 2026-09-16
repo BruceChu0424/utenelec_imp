@@ -3,6 +3,7 @@ package com.uten.imp.features.sales.shipment.warehouse;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.sales.shipment.SalesShipment;
 import com.uten.imp.features.sales.shipment.SalesShipmentService;
 import com.uten.imp.features.sales.shipment.dto.ShipmentDetail;
 import com.uten.imp.features.sales.shipment.dto.ShipmentItemDto;
@@ -23,7 +24,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** Maps the authoritative sales shipment state machine to a warehouse-only read model. */
+/**
+ * Maps the authoritative sales shipment state machine to a warehouse-only read model.
+ *
+ * <p>V582 起可发量口径与 {@code assertWarehousePickCapacity} 完全对齐：只减安全库存与
+ * 其它订单硬预留。一步式没有"已开拣但未出账"的在途量，原来三处
+ * {@code warehouse_work_status IN('PICKING','PICKED')} 的减项随中间态一起删除；
+ * 两侧口径必须同批修改，否则会出现"预览可发 / 确认报库存不足"的用户可见不一致。</p>
+ */
 @Service
 public class WarehouseSalesOutboundProjectionService {
 
@@ -129,7 +137,8 @@ public class WarehouseSalesOutboundProjectionService {
                 SELECT entry.key::uuid,entry.value FROM sales_shipment_warehouse_events event
                 CROSS JOIN LATERAL jsonb_each_text(event.line_stock_places) entry
                 WHERE event.id=(SELECT latest.id FROM sales_shipment_warehouse_events latest
-                    WHERE latest.shipment_id=:id AND latest.to_status='PICKING' ORDER BY latest.occurred_at DESC,latest.id DESC LIMIT 1)
+                    WHERE latest.shipment_id=:id AND latest.line_stock_places<>'{}'::jsonb
+                    ORDER BY latest.occurred_at DESC,latest.id DESC LIMIT 1)
                 """).setParameter("id",source.getId())))stockPlaces.put((UUID)row[0],(String)row[1]);
         List<String> allowedTargets = source.isCanManageWarehouseWork()
                 ? SalesShipmentService.allowedWarehouseTransitionTargets(
@@ -158,8 +167,8 @@ public class WarehouseSalesOutboundProjectionService {
                 source.getWarehouseExceptionReason(),
                 allowedTargets,
                 lines,
-                chosenAtPick && allowedTargets.contains("PICKING"),
-                allowedTargets.contains("PICKING")?warehouseOptions(source,chosenAtPick):List.of());
+                chosenAtPick && allowedTargets.contains(SalesShipment.WORK_SHIPPED),
+                allowedTargets.contains(SalesShipment.WORK_SHIPPED)?warehouseOptions(source,chosenAtPick):List.of());
     }
 
     private WarehouseSalesOutboundLine toLine(
@@ -203,8 +212,8 @@ public class WarehouseSalesOutboundProjectionService {
                 )
                 SELECT warehouse.id,warehouse.name,item.id,item.order_item_id,item.goods_id,item.color_id,
                        COALESCE(item.unit_rate,1)::numeric,item.qty::numeric,
-                       LEAST(GREATEST(COALESCE(balance.qty,0)-GREATEST(COALESCE(goods.min_qty::numeric,0),0)-COALESCE(other_reserved.qty,0)-COALESCE(active.qty,0),0),global_budget.qty)::numeric,
-                       GREATEST(COALESCE(own.qty,0)-COALESCE(active_order.qty,0),0)::numeric
+                       LEAST(GREATEST(COALESCE(balance.qty,0)-GREATEST(COALESCE(goods.min_qty::numeric,0),0)-COALESCE(other_reserved.qty,0),0),global_budget.qty)::numeric,
+                       GREATEST(COALESCE(own.qty,0),0)::numeric
                 FROM active_wh warehouse JOIN warehouses physical ON physical.id=warehouse.id
                 JOIN sales_shipment_items item ON item.shipment_id=:shipment AND NOT item.is_deleted
                 JOIN goods ON goods.id=item.goods_id
@@ -217,40 +226,18 @@ public class WarehouseSalesOutboundProjectionService {
                       AND (reservation.order_item_id IS NULL OR reservation.order_item_id NOT IN (:ownIds))
                 ) other_reserved ON TRUE
                 LEFT JOIN LATERAL (
-                    SELECT sum(other_item.qty*COALESCE(other_item.unit_rate,1)) qty FROM sales_shipment_items other_item
-                    JOIN sales_shipments other ON other.id=other_item.shipment_id
-                    WHERE other.id<>:shipment AND other.warehouse_id=warehouse.id AND other.status=0
-                      AND NOT other.is_deleted AND NOT other.rejected AND NOT other_item.is_deleted
-                      AND other.warehouse_work_status IN('PICKING','PICKED') AND other.shipment_kind<>'DIRECT_CUSTOMER'
-                      AND other_item.goods_id=item.goods_id AND other_item.color_id IS NOT DISTINCT FROM item.color_id
-                      AND (other_item.order_item_id IS NULL OR other_item.order_item_id IN (:ownIds))
-                ) active ON TRUE
-                LEFT JOIN LATERAL (
                     SELECT sum(reservation.qty-reservation.consumed_qty-reservation.released_qty) qty FROM stock_reservations reservation
                     WHERE (reservation.warehouse_id IS NULL OR reservation.warehouse_id=warehouse.id)
                       AND reservation.order_item_id=item.order_item_id AND reservation.goods_id=item.goods_id
                       AND reservation.color_id IS NOT DISTINCT FROM item.color_id AND NOT reservation.is_deleted AND reservation.status=0
                 ) own ON TRUE
                 LEFT JOIN LATERAL (
-                    SELECT sum(other_item.qty*COALESCE(other_item.unit_rate,1)) qty FROM sales_shipment_items other_item
-                    JOIN sales_shipments other ON other.id=other_item.shipment_id
-                    WHERE other.id<>:shipment AND other.warehouse_id=warehouse.id AND other.status=0 AND NOT other.is_deleted
-                      AND NOT other.rejected AND NOT other_item.is_deleted AND other.warehouse_work_status IN('PICKING','PICKED')
-                      AND other_item.order_item_id=item.order_item_id
-                ) active_order ON TRUE
-                LEFT JOIN LATERAL (
                     SELECT GREATEST(COALESCE((SELECT sum(GREATEST(global_stock.qty-GREATEST(COALESCE(goods.min_qty::numeric,0),0),0))
                         FROM stock_balances global_stock WHERE global_stock.goods_id=item.goods_id AND global_stock.color_id IS NOT DISTINCT FROM item.color_id),0)
                       -COALESCE((SELECT sum(reservation.qty-reservation.consumed_qty-reservation.released_qty) FROM stock_reservations reservation
                         WHERE reservation.goods_id=item.goods_id AND reservation.color_id IS NOT DISTINCT FROM item.color_id
                           AND reservation.status=0 AND NOT reservation.is_deleted
-                          AND (reservation.order_item_id IS NULL OR reservation.order_item_id NOT IN (:ownIds))),0)
-                      -COALESCE((SELECT sum(other_item.qty*COALESCE(other_item.unit_rate,1)) FROM sales_shipment_items other_item
-                        JOIN sales_shipments other ON other.id=other_item.shipment_id WHERE other.id<>:shipment AND other.status=0
-                          AND NOT other.is_deleted AND NOT other.rejected AND NOT other_item.is_deleted
-                          AND other.warehouse_work_status IN('PICKING','PICKED') AND other.shipment_kind<>'DIRECT_CUSTOMER'
-                          AND other_item.goods_id=item.goods_id AND other_item.color_id IS NOT DISTINCT FROM item.color_id
-                          AND (other_item.order_item_id IS NULL OR other_item.order_item_id IN (:ownIds))),0),0)::numeric qty
+                          AND (reservation.order_item_id IS NULL OR reservation.order_item_id NOT IN (:ownIds))),0),0)::numeric qty
                 ) global_budget ON TRUE
                 WHERE physical.is_accountable AND NOT EXISTS(SELECT 1 FROM warehouses child WHERE child.parent_id=warehouse.id AND NOT child.is_deleted)
                   AND (:choose OR warehouse.id=CAST(:warehouse AS uuid))
@@ -279,10 +266,27 @@ public class WarehouseSalesOutboundProjectionService {
                 entry.getValue().stream().allMatch(line->line.availableQty().compareTo(line.requiredQty())>=0),List.copyOf(entry.getValue()))).toList();
     }
 
+    /**
+     * 作业状态筛选白名单。底层 list 的谓词是裸等值比较：不拦住已删除的
+     * PICKING/PICKED/EXCEPTION，旧客户端的三个分段会静默返回空列表，
+     * 用户会以为"单子丢了"。这里显式 fail-closed 报错，让灰度期的旧页面看到真实原因。
+     */
     private static String normalize(String value) {
         if (value == null || value.isBlank()) return null;
-        return value.trim().toUpperCase(java.util.Locale.ROOT);
+        String normalized = value.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!ALLOWED_WORK_STATUS_FILTERS.contains(normalized)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "仓库作业状态已简化为待出库与已出库，请刷新页面后重新筛选：" + normalized);
+        }
+        return normalized;
     }
+
+    private static final java.util.Set<String> ALLOWED_WORK_STATUS_FILTERS = java.util.Set.of(
+            SalesShipment.WORK_LEGACY_PENDING,
+            SalesShipment.WORK_PENDING_PICK,
+            SalesShipment.WORK_SHIPPED,
+            SalesShipment.WORK_CANCELLED,
+            SalesShipment.WORK_REVERSED);
 
     private static String firstNonBlank(String preferred, String fallback) {
         return preferred == null || preferred.isBlank() ? fallback : preferred;

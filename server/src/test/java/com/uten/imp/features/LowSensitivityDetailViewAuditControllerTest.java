@@ -252,7 +252,10 @@ class LowSensitivityDetailViewAuditControllerTest {
                 mock(ProductionGoodsWorkshopPreferenceService.class),
                 mock(MaterialAnalysisSupplyProgressService.class),
                 mock(com.uten.imp.features.production.analysis.SubcontractMakeTaskService.class),
-                recorder);
+                mock(com.uten.imp.features.production.analysis.AnalysisLinkedSalesOrderService.class),
+                recorder,
+                mock(com.uten.imp.features.production.analysis
+                        .GoodsOwningWarehouseWriteService.class));
         assertSame(analysis, analysisController.detail(analysisId));
         verify(recorder).record(
                 "view_material_analysis_detail", "production_material_analyses", analysisId,

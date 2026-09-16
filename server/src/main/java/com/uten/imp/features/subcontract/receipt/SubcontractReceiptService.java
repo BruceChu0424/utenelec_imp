@@ -3,6 +3,7 @@ package com.uten.imp.features.subcontract.receipt;
 import com.uten.imp.application.port.ProcurementArrivalBlockedException;
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
+import com.uten.imp.features.subcontract.SubcontractOutboundFlowSql;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -644,20 +645,24 @@ public class SubcontractReceiptService {
                     SELECT plan_item.id
                     FROM subcontract_material_plan_items plan_item
                     WHERE plan_item.order_item_id = :orderItemId
-                      AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                      AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
                       AND plan_item.is_deleted = FALSE
                     ORDER BY plan_item.id FOR UPDATE
                     """).setParameter("orderItemId", orderItemId).getResultList();
             if (flowRows.isEmpty()) continue;
             BigDecimal issuedBase = decimal(em.createNativeQuery("""
-                    SELECT COALESCE(SUM(issue_item.qty * COALESCE(issue_item.unit_rate,1)),0)
+                    SELECT COALESCE(
+                    """ + SubcontractOutboundFlowSql.ISSUED_TARGET_BASE_SUM + """
+                    , 0)
                     FROM subcontract_material_issue_items issue_item
                     JOIN subcontract_material_issues issue
                       ON issue.id = issue_item.issue_id
                      AND issue.status = 1 AND issue.is_deleted = FALSE
                     JOIN subcontract_material_plan_items plan_item
                       ON plan_item.id = issue_item.plan_item_id
-                     AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                     AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
+                    JOIN subcontract_order_items order_unit
+                      ON order_unit.id = issue_item.order_item_id
                     WHERE issue_item.order_item_id = :orderItemId
                       AND issue_item.is_deleted = FALSE
                     """).setParameter("orderItemId", orderItemId).getSingleResult());
@@ -722,11 +727,12 @@ public class SubcontractReceiptService {
                            FROM subcontract_material_plan_items plan_item
                            WHERE plan_item.order_item_id = order_item.id
                              AND plan_item.flow_mode IN (
-                                 'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                                 'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
                              AND plan_item.is_deleted = FALSE
                        ) AS new_flow,
                        COALESCE((
-                           SELECT SUM(issue_item.qty * COALESCE(issue_item.unit_rate, 1))
+                           SELECT
+                           """ + SubcontractOutboundFlowSql.ISSUED_TARGET_BASE_SUM + """
                            FROM subcontract_material_issue_items issue_item
                            JOIN subcontract_material_issues issue
                              ON issue.id = issue_item.issue_id
@@ -735,8 +741,10 @@ public class SubcontractReceiptService {
                            JOIN subcontract_material_plan_items plan_item
                              ON plan_item.id = issue_item.plan_item_id
                             AND plan_item.flow_mode IN (
-                                'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                                'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
                             AND plan_item.is_deleted = FALSE
+                           JOIN subcontract_order_items order_unit
+                             ON order_unit.id = issue_item.order_item_id
                            WHERE issue_item.order_item_id = order_item.id
                              AND issue_item.is_deleted = FALSE
                        ), 0) AS issued_base,

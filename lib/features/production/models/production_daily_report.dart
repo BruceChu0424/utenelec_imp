@@ -228,6 +228,8 @@ class ProductionDailyReportDetail {
     this.sourceDocNo,
     this.rowVersion = 0,
     this.items = const [],
+    this.materialUsages = const [],
+    this.surplusReturnRequested = false,
   });
 
   final String id;
@@ -260,38 +262,103 @@ class ProductionDailyReportDetail {
   final int rowVersion;
   final List<ProductionDailyReportItem> items;
 
-  factory ProductionDailyReportDetail.fromJson(Map<String, dynamic> json) =>
-      ProductionDailyReportDetail(
-        id: json['id'] as String,
-        legacyId: _asInt(json['legacyId']),
-        billNo: json['billNo'] as String?,
-        billDate: json['billDate'] as String?,
-        warehouseId: json['warehouseId'] as String?,
-        departmentId: json['departmentId'] as String?,
-        workshopName: json['workshopName'] as String?,
-        workerId: json['workerId'] as String?,
-        workerIds: _stringIds(json['workerIds'], json['workerId']),
-        supplierId: json['supplierId'] as String?,
-        makerId: json['makerId'] as String?,
-        makerName: json['makerName'] as String?,
-        createdAt: json['createdAt'] as String?,
-        approverId: json['approverId'] as String?,
-        makerLegacyId: _asInt(json['makerLegacyId']),
-        approverLegacyId: _asInt(json['approverLegacyId']),
-        remark: json['remark'] as String?,
-        status: _asInt(json['status']),
-        closed: (json['closed'] as bool?) ?? false,
-        canceled: (json['canceled'] as bool?) ?? false,
-        sourceDocNo: json['sourceDocNo'] as String?,
-        rowVersion: _asInt(json['rowVersion']) ?? 0,
-        items:
-            (json['items'] as List?)
-                ?.map(
-                  (e) => ProductionDailyReportItem.fromJson(
-                    e as Map<String, dynamic>,
-                  ),
-                )
-                .toList() ??
-            const [],
-      );
+  /// V583 报工同页登记的本次实际用料；历史日报为空。
+  final List<ProductionDailyReportMaterialUsage> materialUsages;
+
+  /// 收尾余料退仓意愿；审核时先结实耗再按剩余可退量开退料单。
+  final bool surplusReturnRequested;
+
+  factory ProductionDailyReportDetail.fromJson(
+    Map<String, dynamic> json,
+  ) => ProductionDailyReportDetail(
+    id: json['id'] as String,
+    legacyId: _asInt(json['legacyId']),
+    billNo: json['billNo'] as String?,
+    billDate: json['billDate'] as String?,
+    warehouseId: json['warehouseId'] as String?,
+    departmentId: json['departmentId'] as String?,
+    workshopName: json['workshopName'] as String?,
+    workerId: json['workerId'] as String?,
+    workerIds: _stringIds(json['workerIds'], json['workerId']),
+    supplierId: json['supplierId'] as String?,
+    makerId: json['makerId'] as String?,
+    makerName: json['makerName'] as String?,
+    createdAt: json['createdAt'] as String?,
+    approverId: json['approverId'] as String?,
+    makerLegacyId: _asInt(json['makerLegacyId']),
+    approverLegacyId: _asInt(json['approverLegacyId']),
+    remark: json['remark'] as String?,
+    status: _asInt(json['status']),
+    closed: (json['closed'] as bool?) ?? false,
+    canceled: (json['canceled'] as bool?) ?? false,
+    sourceDocNo: json['sourceDocNo'] as String?,
+    rowVersion: _asInt(json['rowVersion']) ?? 0,
+    items:
+        (json['items'] as List?)
+            ?.map(
+              (e) =>
+                  ProductionDailyReportItem.fromJson(e as Map<String, dynamic>),
+            )
+            .toList() ??
+        const [],
+    materialUsages:
+        (json['materialUsages'] as List?)
+            ?.map(
+              (e) => ProductionDailyReportMaterialUsage.fromJson(
+                e as Map<String, dynamic>,
+              ),
+            )
+            .toList() ??
+        const [],
+    surplusReturnRequested: json['surplusReturnRequested'] == true,
+  );
+}
+
+/// 日报上已登记的一条本次实际用料(V583)。草稿阶段只是事实，审核才转成材料消耗。
+class ProductionDailyReportMaterialUsage {
+  const ProductionDailyReportMaterialUsage({
+    required this.demandId,
+    required this.qtyBase,
+    this.id,
+    this.lineNo,
+    this.planId,
+    this.materialExecutionSegmentId,
+    this.materialExecutionSegmentCode,
+    this.goodsId,
+    this.goodsCode,
+    this.goodsName,
+    this.colorName,
+    this.unitName,
+  });
+
+  final String? id;
+  final int? lineNo;
+  final String? planId;
+  final String demandId;
+  final String? materialExecutionSegmentId;
+  final String? materialExecutionSegmentCode;
+  final String? goodsId;
+  final String? goodsCode;
+  final String? goodsName;
+  final String? colorName;
+  final String? unitName;
+  final double qtyBase;
+
+  factory ProductionDailyReportMaterialUsage.fromJson(
+    Map<String, dynamic> json,
+  ) => ProductionDailyReportMaterialUsage(
+    id: json['id'] as String?,
+    lineNo: _asInt(json['lineNo']),
+    planId: json['planId'] as String?,
+    demandId: json['demandId'] as String,
+    materialExecutionSegmentId: json['materialExecutionSegmentId'] as String?,
+    materialExecutionSegmentCode:
+        json['materialExecutionSegmentCode'] as String?,
+    goodsId: json['goodsId'] as String?,
+    goodsCode: json['goodsCode'] as String?,
+    goodsName: json['goodsName'] as String?,
+    colorName: json['colorName'] as String?,
+    unitName: json['unitName'] as String?,
+    qtyBase: (json['qtyBase'] as num?)?.toDouble() ?? 0,
+  );
 }

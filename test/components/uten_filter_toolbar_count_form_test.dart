@@ -66,30 +66,55 @@ void main() {
     expect(labelOf('需处理').countForm, UtenSegmentCountForm.actionable);
   });
 
-  testWidgets('375px + 1.5 倍字号：分段行横滚不换行也不溢出', (tester) async {
+  testWidgets('375px + 1.5 倍字号：放不下收成「分类」下拉，不换行也不溢出', (tester) async {
     await tester.binding.setSurfaceSize(const Size(375, 812));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(_wrap(_toolbar(), textScale: 1.5));
+    var picked = '';
+    await tester.pumpWidget(
+      _wrap(
+        UtenFilterToolbar<String>(
+          segmentsKey: const Key('count-form-segments'),
+          segments: const [
+            UtenFilterSegment(value: 'pending', label: '等待下达车间', count: 46),
+            UtenFilterSegment(value: 'issued', label: '已下达', count: 0),
+            UtenFilterSegment(
+              value: 'blocked',
+              label: '需处理',
+              count: 3,
+              countForm: UtenSegmentCountForm.actionable,
+            ),
+            UtenFilterSegment(value: 'history', label: '历史记录'),
+          ],
+          selected: const {'pending'},
+          onSelectionChanged: (v) => picked = v,
+        ),
+        textScale: 1.5,
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    // 窄屏（< compactBreakpoint）走横向滚动分支，分段挤不下时滑动而不是折行。
+    // 2026-09-14 口径：窄屏放不下时不再左右拖分段，收成一颗「分类」下拉按钮。
     final scroller = find.ancestor(
       of: find.byKey(const Key('count-form-segments')),
       matching: find.byType(SingleChildScrollView),
     );
-    expect(scroller, findsOneWidget);
-    expect(
-      tester.widget<SingleChildScrollView>(scroller).scrollDirection,
-      Axis.horizontal,
-    );
-    // 括号数字与标签仍是单行（maxLines=1，不因大字号折成两行）。
-    expect(tester.widget<Text>(find.text('(46)')).maxLines, 1);
-    // 分段行整体只占一行：最后一段与第一段的垂直位置一致。
-    final first = tester.getRect(find.text('等待下达车间'));
-    final last = tester.getRect(find.text('历史记录'));
-    expect(first.center.dy, closeTo(last.center.dy, 1.0));
+    expect(scroller, findsNothing);
+    // 按钮文案 = 当前选中的分段；红徽章 = actionable 分段计数总量（3）。
+    expect(find.text('等待下达车间'), findsOneWidget);
+    expect(find.byType(UtenNotificationBadge), findsOneWidget);
+    expect(find.text('3'), findsOneWidget);
+    // 点开下拉：逐项展示分类与计数（口径不变），选中项打勾；点选回调换选。
+    await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text('已下达'), findsOneWidget);
+    expect(find.text('(46)'), findsOneWidget);
+    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+    await tester.tap(find.text('历史记录'));
+    await tester.pumpAndSettle();
+    expect(picked, 'history');
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('括号数字与标签共用基线', (tester) async {

@@ -67,25 +67,14 @@ void main() {
       permissions: const {Perm.salesShipmentWarehouseWork},
     );
 
-    expect(find.text('开始拣货'), findsOneWidget);
-    expect(find.text('登记异常'), findsOneWidget);
-    expect(find.text('审核'), findsNothing);
-
-    await tester.tap(
-      find.byKey(const ValueKey('warehouse-work-reportException')),
-    );
-    await tester.pump();
-    await tester.tap(find.widgetWithText(FilledButton, '登记异常'));
-    await tester.pump();
-    // 2026-09-04 ⓘ字段说明全站化：必填原因校验文案进输入框 ⓘ Tooltip
-    //（UtenInputDecoration 不再占底部错误槽），断言用 Tooltip.message 谓词。
+    // V582：财务放行后仓库只剩「确认出库」一个动作，没有拣货/异常分支。
+    expect(find.text('确认出库'), findsOneWidget);
     expect(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is Tooltip && widget.message?.contains('请填写原因或处理依据') == true,
-      ),
+      find.byKey(const ValueKey('warehouse-work-confirmShipment')),
       findsOneWidget,
     );
+    expect(find.text('登记异常'), findsNothing);
+    expect(find.text('审核'), findsNothing);
   });
 
   testWidgets('unaudited shipment keeps warehouse actions locked', (
@@ -106,7 +95,7 @@ void main() {
       permissions: const {Perm.salesShipmentWarehouseWork},
     );
 
-    expect(find.text('开始拣货'), findsNothing);
+    expect(find.text('确认出库'), findsNothing);
     expect(find.textContaining('等待财务审核放行'), findsOneWidget);
   });
 
@@ -129,7 +118,7 @@ void main() {
     expect(find.text('审核'), findsNothing);
     expect(find.byKey(const ValueKey('finance-audit')), findsNothing);
     expect(find.byKey(const ValueKey('legacy-sales-approve')), findsNothing);
-    expect(find.text('开始拣货'), findsNothing);
+    expect(find.text('确认出库'), findsNothing);
     expect(find.textContaining('历史直接审核流程已停用'), findsOneWidget);
   });
 
@@ -160,17 +149,18 @@ void main() {
     expect(find.textContaining('财务汇率'), findsNothing);
   });
 
-  testWidgets('finance actions disappear after picking has started', (
+  testWidgets('finance actions disappear once the warehouse shipped it', (
     tester,
   ) async {
     await _pumpDetail(
       tester,
       type: SalesDocType.shipment,
       detail: const {
-        'id': 'shipment-picking',
-        'status': 0,
-        'financeAudit': 0,
-        'warehouseWorkStatus': 'PICKING',
+        'id': 'shipment-shipped',
+        'status': 1,
+        'financeAudit': 1,
+        'warehouseWorkStatus': 'SHIPPED',
+        'handedOverAt': '2026-09-14T10:00:00+08:00',
         'items': <Map<String, dynamic>>[],
       },
       permissions: const {Perm.financeShipmentAudit},
@@ -178,7 +168,7 @@ void main() {
 
     expect(find.byKey(const ValueKey('finance-audit')), findsNothing);
     expect(find.byKey(const ValueKey('finance-audit-reverse')), findsNothing);
-    expect(find.textContaining('仓库作业已开始，不能补做或撤销财务审核'), findsOneWidget);
+    expect(find.text('确认出库'), findsNothing);
   });
 
   testWidgets('finance-audited pending-pick draft allows controlled editing', (

@@ -14,6 +14,7 @@ import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -546,8 +547,12 @@ class _FinanceArrivalExceptionDetailPageState
             ? UtenEmpty.error(message: '任务不存在或并非分配给您')
             : UtenContentContainer.narrow(
                 child: ListView(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: UtenSpacing.s16,
+                  // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
+                  padding: const EdgeInsets.fromLTRB(
+                    0,
+                    UtenSpacing.s16,
+                    0,
+                    UtenFloatingActionGroup.scrollClearance,
                   ),
                   children: [
                     _FinanceStatusBanner(task: task),
@@ -573,31 +578,23 @@ class _FinanceArrivalExceptionDetailPageState
                 ),
               ),
       ),
-      bottomNavigationBar: task?.canFinanceDecide != true
+      // 2026-09-14 UI 统一口径：吸底操作按钮改右下悬浮组（按钮已是 large）。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: task?.canFinanceDecide != true
           ? null
-          : SafeArea(
-              child: Container(
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  border: Border(
-                    top: BorderSide(
-                      color: Theme.of(context).colorScheme.outlineVariant,
-                    ),
-                  ),
+          : UtenFloatingActionGroup(
+              children: [
+                UtenButton(
+                  key: const Key('finance-arrival-confirm'),
+                  type: UtenButtonType.danger,
+                  size: UtenButtonSize.large,
+                  isLoading: _saving,
+                  icon: Icons.check_circle_outline_rounded,
+                  onPressed: _saving ? null : _submit,
+                  child: const Text('确认财务决定'),
                 ),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: UtenButton(
-                    key: const Key('finance-arrival-confirm'),
-                    size: UtenButtonSize.large,
-                    isLoading: _saving,
-                    icon: Icons.check_circle_outline_rounded,
-                    onPressed: _saving ? null : _submit,
-                    child: const Text('确认财务决定'),
-                  ),
-                ),
-              ),
+              ],
             ),
     );
   }

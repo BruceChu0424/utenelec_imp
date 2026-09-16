@@ -74,6 +74,7 @@ public class StockService {
     private final TxSessionVars tx;
     private final InventoryMutationLock inventoryLock;
     private final com.uten.imp.features.stock.valuation.StockValuationCoordinator valuation;
+    private final GoodsOwningWarehouseSyncService owningWarehouseSync;
 
     /**
      * Pre-locks all dimensions of a multi-line document in stable order.
@@ -305,6 +306,11 @@ public class StockService {
         BigDecimal signedWgt = req.weight() == null ? null : req.weight().multiply(dir);
         balanceRepo.upsertBalance(req.warehouseId(), req.goodsId(), req.colorId(),
                 signedQty, signedAmt, signedWgt, ts);
+        // 货品「归属仓」单一事实源（V590）：任何入库自动回写为最新入库仓。
+        // 出库/红冲不翻转；值没变不写。见 GoodsOwningWarehouseSyncService。
+        if (req.direction() == DIR_IN) {
+            owningWarehouseSync.syncOnInbound(req.goodsId(), req.warehouseId());
+        }
         return m.getId();
     }
 

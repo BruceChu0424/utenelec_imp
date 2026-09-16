@@ -415,11 +415,17 @@ public class ProductionFqcInspectionService
                                WHERE inspection.status IN ('PENDING', 'PARTIAL')
                            )::integer AS active_count,
                            string_agg(DISTINCT report.bill_no, '、') AS report_nos,
+                           -- 与产成品待点收任务同一摘要口径「名称 (编号 · 颜色)」：
+                           -- 一张检查单常含同名不同色的多行，只给名称必然认错货。
                            string_agg(
                                DISTINCT COALESCE(
                                    NULLIF(goods.name, ''),
                                    NULLIF(goods.code, ''),
-                                   '未命名货品'),
+                                   '未命名货品')
+                                   || COALESCE(' (' || NULLIF(concat_ws(' · ',
+                                       CASE WHEN NULLIF(goods.name, '') IS NULL
+                                            THEN NULL ELSE NULLIF(goods.code, '') END,
+                                       NULLIF(line_color.name, '')), '') || ')', ''),
                                '、') AS goods_summary,
                            pending.text AS pending_qty_text
                     FROM production_fqc_inspection_sheets sheet
@@ -430,6 +436,9 @@ public class ProductionFqcInspectionService
                     JOIN production_daily_reports report
                       ON report.id = inspection.source_report_id
                     JOIN goods goods ON goods.id = inspection.goods_id
+                    LEFT JOIN colors line_color
+                      ON line_color.id = COALESCE(inspection.color_id, goods.color_id)
+                     AND line_color.is_deleted = FALSE
                     LEFT JOIN LATERAL (
                         SELECT string_agg(
                                    unit_total.qty_text || ' ' || unit_total.unit_name,
@@ -586,6 +595,118 @@ public class ProductionFqcInspectionService
             items.add(new PassAllBatchItem(decision.getKey(), decision.getValue(), view));
         }
         return new PassAllBatchResult(batch.id(), items, false);
+    }
+
+    /**
+     * 车间直送的班组自检：建一条 WORKSHOP_SELF 检验，锚点是本车间线边仓(V584/V585)。
+     *
+     * <p>与仓库送检登记那条链的唯一差别是「入哪个仓这件事由谁证明」——ARRIVAL 认仓库的
+     * 送检登记行，WORKSHOP_SELF 认车间的直送行，数据库守卫
+     * {@code fn_guard_production_fqc_inspection} 按 kind 分流校验。
+     *
+     * <p>权限与车间归属由调用方(车间直送服务，{@code production_direct_transfer:approve})
+     * 校验完毕；本方法只做「这条报工行确实是 WORKSHOP 去向且尚未检验过」的前置。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public UUID registerWorkshopSelfInspection(
+            UUID reportId, UUID reportItemId, UUID lineSideWarehouseId) {
+        if (reportId == null || reportItemId == null || lineSideWarehouseId == null) {
+            throw validation("班组自检缺少报工行或线边仓 UUID");
+        }
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT report.id, report.maker_id,
+                                       item.id, item.plan_item_id,
+                                       item.execution_segment_id,
+                                       item.execution_segment_sales_allocation_id,
+                                       item.goods_id, item.color_id, item.unit_id,
+                                       COALESCE(item.unit_rate, 1), item.qty
+                                FROM production_daily_reports report
+                                JOIN production_daily_report_items item
+                                  ON item.report_id = report.id
+                                 AND item.is_deleted = FALSE
+                                WHERE report.id = :reportId
+                                  AND item.id = :reportItemId
+                                  AND report.status = 1
+                                  AND report.is_deleted = FALSE
+                                  AND report.maker_id IS NOT NULL
+                                  AND item.destination = 'WORKSHOP'
+                                  AND item.execution_segment_id IS NOT NULL
+                                FOR UPDATE OF report, item
+                                """)
+                        .setParameter("reportId", reportId)
+                        .setParameter("reportItemId", reportItemId));
+        if (rows.size() != 1) {
+            throw conflict("班组自检的报工行已变化或不是转送车间的行");
+        }
+        Object[] row = rows.getFirst();
+        UUID inspectionId = UUID.randomUUID();
+        em.createNativeQuery("""
+                        INSERT INTO production_fqc_inspections(
+                            id, source_report_id, source_report_item_id,
+                            source_plan_item_id, execution_segment_id,
+                            execution_segment_sales_allocation_id,
+                            warehouse_id, goods_id, color_id, unit_id,
+                            unit_rate, reported_qty, report_maker_id,
+                            inspection_kind, created_by)
+                        VALUES (
+                            :id, :reportId, :reportItemId,
+                            :planItemId, :segmentId, :salesAllocationId,
+                            :warehouseId, :goodsId, :colorId, :unitId,
+                            :unitRate, :reportedQty, :makerId,
+                            'WORKSHOP_SELF', :actorId)
+                        """)
+                .setParameter("id", inspectionId)
+                .setParameter("reportId", row[0])
+                .setParameter("reportItemId", row[2])
+                .setParameter("planItemId", row[3])
+                .setParameter("segmentId", row[4])
+                .setParameter("salesAllocationId", row[5])
+                .setParameter("warehouseId", lineSideWarehouseId)
+                .setParameter("goodsId", row[6])
+                .setParameter("colorId", row[7])
+                .setParameter("unitId", row[8])
+                .setParameter("unitRate", dec(row[9]))
+                .setParameter("reportedQty", dec(row[10]))
+                .setParameter("makerId", row[1])
+                .setParameter("actorId", currentUser.requireId())
+                .executeUpdate();
+        return inspectionId;
+    }
+
+    /**
+     * 班组判整批合格并放行，返回由放行生成的成品入库草稿 UUID(入线边仓)。
+     *
+     * <p>不走 {@link #decide} 的原因不是绕过校验，而是这条链的责任人不同：
+     * decide 要求品质部的 {@code production_quality_inspection:approve} 与品质组织范围，
+     * 而车间直送的判定人就是车间班组，由 {@code production_direct_transfer:approve} 授权。
+     * 记录的决定事实、放行命令、恢复授权与成本覆盖判定与品质部那条链**完全同表同形**，
+     * {@code decided_by_employee_id} 留的是自检人——出了问题追得到人。
+     *
+     * <p>品质部对 WORKSHOP_SELF 检验保留事后翻案权：放行未被消费前仍可追加 FAIL 决定。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public UUID passWorkshopSelfInspection(UUID inspectionId, String idempotencyKey) {
+        prelockDecisionDimensions(inspectionId);
+        Object[] inspection = lockInspection(inspectionId);
+        NormalizedRequest normalized = normalizeRequest(new DecisionRequest(
+                "PASS", null, null, null, "车间内部直送 · 班组自检合格", idempotencyKey));
+        recordDecisionLocked(inspectionId, normalized, inspection, () -> { });
+        List<UUID> documents = NativeQueryResults.typedRows(em.createNativeQuery("""
+                        SELECT DISTINCT item.doc_id
+                        FROM stock_document_items item
+                        JOIN stock_documents document
+                          ON document.id = item.doc_id
+                         AND document.doc_type = 'FINISHED_IN'
+                         AND document.is_deleted = FALSE
+                         AND document.status = 0
+                        WHERE item.source_daily_report_item_id = :reportItemId
+                          AND item.is_deleted = FALSE
+                        """).setParameter("reportItemId", inspection[6]), UUID.class);
+        if (documents.size() != 1) {
+            throw conflict("班组自检放行未能唯一确定入库任务，请刷新后重试");
+        }
+        return documents.getFirst();
     }
 
     private DecisionResult decideLocked(

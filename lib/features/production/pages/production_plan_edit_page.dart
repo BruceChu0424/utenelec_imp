@@ -29,6 +29,7 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
@@ -106,6 +107,9 @@ class _ProductionPlanEditPageState
 
   final _grid = UtenEditableGridController<ProductionGridRow>();
   final _scrollCtl = ScrollController();
+
+  /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
+  final _gridPinned = ValueNotifier<bool>(false);
   bool _saving = false;
   bool _loading = true;
   String? _initializationError;
@@ -123,6 +127,7 @@ class _ProductionPlanEditPageState
 
   @override
   void dispose() {
+    _gridPinned.dispose();
     _billNo.dispose();
     _remark.dispose();
     _manualSourceRef.dispose();
@@ -664,10 +669,12 @@ class _ProductionPlanEditPageState
                 actionLabel: '重试',
                 onAction: _init,
               )
-            : UtenContentContainer(
-                child: Scrollbar(
-                  controller: _scrollCtl,
-                  thumbVisibility: true,
+            : UtenGridPageScrollbar(
+                pinned: _gridPinned,
+                controller: _scrollCtl,
+                // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
+                // 恒在屏幕最右，不随限宽容器/列宽漂移。
+                child: UtenContentContainer(
                   child: ListView(
                     controller: _scrollCtl,
                     // 底部多留一段：右下角悬浮的「取消/保存」会盖住最后一行。
@@ -875,6 +882,7 @@ class _ProductionPlanEditPageState
                       const SizedBox(height: UtenSpacing.s12),
                       UtenEditableGrid<ProductionGridRow>(
                         controller: _grid,
+                        stickyHeaderPinned: _gridPinned,
                         columns: productionGridColumns(
                           onPickGoods: _pickGoods,
                           onPickSalesOrder: _pickRowSalesOrder,
@@ -893,7 +901,6 @@ class _ProductionPlanEditPageState
                         footer: EditableGridTotalsBar<ProductionGridRow>(
                           key: const Key('production-plan-edit-totals'),
                           controller: _grid,
-                          showDivider: false,
                           watchOf: (row) => [row.qty],
                           entriesBuilder: (rows) => [
                             utenQuantityTotalEntry(
@@ -922,6 +929,7 @@ class _ProductionPlanEditPageState
       ),
       // 加载中/初始化失败时不出按钮（沿用原底部操作条的显隐守卫）。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _loading || _initializationError != null
           ? null
           : UtenEditFloatingActions(

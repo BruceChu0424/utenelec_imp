@@ -62,7 +62,7 @@ void main() {
       );
       expect(grid.showAddRow, isFalse);
       expect(grid.controller, isEmpty);
-      expect(find.text('暂无应付核销明细，请点击顶部“引用应付”添加'), findsOneWidget);
+      expect(find.text('暂无应付核销明细，请点击上方“引用应付”添加'), findsOneWidget);
 
       await tester.tap(find.text('保存'));
       await tester.pumpAndSettle();

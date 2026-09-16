@@ -24,9 +24,10 @@ void main() {
     await _pump(tester);
     await _openWorkshopBucket(tester);
 
-    // 2026-09-14 身份四列拆开 + 供应方式列后，可筛选列为九个：
-    // 类型 / 物料名称 / 编号 / 颜色 / 单位 / 供应方式 / 生产车间 / 负责人 / 状态。
-    expect(find.byType(GridHeaderFilterCell), findsNWidgets(9));
+    // 2026-09-15 补「所属仓库」列(V587)后，可筛选列为十个：
+    // 类型 / 物料名称 / 编号 / 颜色 / 单位 / 供应方式 / 所属仓库 /
+    // 生产车间 / 负责人 / 状态。
+    expect(find.byType(GridHeaderFilterCell), findsNWidgets(10));
     expect(_headerFilter('类型'), findsOneWidget);
     expect(_headerFilter('物料名称'), findsOneWidget);
 

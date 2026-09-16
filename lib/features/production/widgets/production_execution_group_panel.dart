@@ -271,7 +271,6 @@ String? _productNameLine(ProductionExecutionWorkbenchGroup row) {
   return row.productHasMore ? '$text · 共 ${row.productCount} 项' : text;
 }
 
-
 class _GroupStatusBadge extends StatelessWidget {
   const _GroupStatusBadge({required this.row});
 

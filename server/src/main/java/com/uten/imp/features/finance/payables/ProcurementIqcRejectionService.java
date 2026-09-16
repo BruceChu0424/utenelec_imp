@@ -1597,7 +1597,8 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         return new CaseItem(
                 uuid(row[0]), receiptType, uuid(row[2]), uuid(row[3]), uuid(row[4]),
                 text(row[5]), text(row[6]), uuid(row[7]), text(row[8]), text(row[9]),
-                text(row[10]), quantity(row[11]), quantity(row[12]), text(row[13]),
+                text(row[10]), uuid(row[33]), text(row[34]),
+                quantity(row[11]), quantity(row[12]), text(row[13]),
                 canSeePrice ? money(row[14]) : null,
                 canSeePrice ? money(row[15]) : null,
                 text(row[16]), status, ((Number) row[19]).longValue(), uuid(row[20]),
@@ -1650,7 +1651,8 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                        rejection.closed_no_credit_at,
                        rejection.finance_exception_code,
                        rejection.finance_exception_message,
-                       inspection.status
+                       inspection.status,
+                       rejection.color_id,color.name
                 """;
     }
 
@@ -1663,6 +1665,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                    ON inspection.id=rejection.inspection_item_id
                  LEFT JOIN units unit ON unit.id=rejection.unit_id
                  LEFT JOIN currencies currency ON currency.id=rejection.currency_id
+                 LEFT JOIN colors color ON color.id=rejection.color_id
                 """;
     }
 

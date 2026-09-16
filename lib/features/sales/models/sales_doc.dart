@@ -157,12 +157,12 @@ String salesShipmentPolicyLabel(String? code) => switch (code) {
 };
 
 /// 仓库出货作业状态。
+/// V582 起仓库只有一步：财务放行后 PENDING_PICK 直接确认出库到 SHIPPED。
+/// 历史单据可能还带着已退役的 PICKING/PICKED/EXCEPTION 字符串，
+/// 标签用兵底分支原样显示。
 abstract final class SalesWarehouseWorkStatus {
   static const legacyPending = 'LEGACY_PENDING';
   static const pendingPick = 'PENDING_PICK';
-  static const picking = 'PICKING';
-  static const picked = 'PICKED';
-  static const exception = 'EXCEPTION';
   static const shipped = 'SHIPPED';
   static const cancelled = 'CANCELLED';
   static const reversed = 'REVERSED';
@@ -170,11 +170,8 @@ abstract final class SalesWarehouseWorkStatus {
 
 String salesWarehouseWorkStatusLabel(String? code) => switch (code) {
   SalesWarehouseWorkStatus.legacyPending => '历史迁移异常',
-  SalesWarehouseWorkStatus.pendingPick => '待拣货',
-  SalesWarehouseWorkStatus.picking => '拣货中',
-  SalesWarehouseWorkStatus.picked => '已拣货，待交接',
-  SalesWarehouseWorkStatus.exception => '仓库异常',
-  SalesWarehouseWorkStatus.shipped => '已交接出库',
+  SalesWarehouseWorkStatus.pendingPick => '待出库',
+  SalesWarehouseWorkStatus.shipped => '已出库',
   SalesWarehouseWorkStatus.cancelled => '已取消',
   SalesWarehouseWorkStatus.reversed => '已红冲',
   null || '' => '未返回',
@@ -184,11 +181,8 @@ String salesWarehouseWorkStatusLabel(String? code) => switch (code) {
 String salesWarehouseWorkStatusHint(String? code) => switch (code) {
   SalesWarehouseWorkStatus.legacyPending =>
     '历史直接审核流程已停用；请登记迁移异常并人工重建为“两次审核”出货任务。',
-  SalesWarehouseWorkStatus.pendingPick => '待仓库开始拣货；开始后销售将不能直接编辑或删除。',
-  SalesWarehouseWorkStatus.picking => '仓库正在拣货，可登记异常或确认拣货完成。',
-  SalesWarehouseWorkStatus.picked => '货物已拣齐；交接出库会正式扣减库存并驱动下游。',
-  SalesWarehouseWorkStatus.exception => '异常处理中；处理完成后需填写说明并恢复到待拣货。',
-  SalesWarehouseWorkStatus.shipped => '仓库已完成交接并正式过账出库。',
+  SalesWarehouseWorkStatus.pendingPick => '待仓库确认出库；出库后销售将不能直接编辑或删除。',
+  SalesWarehouseWorkStatus.shipped => '仓库已确认出库，库存、已发数量与应收均已过账。',
   SalesWarehouseWorkStatus.cancelled => '该仓库任务已取消。',
   SalesWarehouseWorkStatus.reversed => '该出货已红冲。',
   _ => '当前没有可执行的仓库作业。',
@@ -345,44 +339,20 @@ class ShipmentFinanceBatchDecision {
 }
 
 enum SalesWarehouseWorkAction {
-  startPicking(SalesWarehouseWorkStatus.picking),
-  finishPicking(SalesWarehouseWorkStatus.picked),
-  reportException(SalesWarehouseWorkStatus.exception),
-  restorePending(SalesWarehouseWorkStatus.pendingPick),
-  handOver(SalesWarehouseWorkStatus.shipped);
+  confirmShipment(SalesWarehouseWorkStatus.shipped);
 
   const SalesWarehouseWorkAction(this.targetStatus);
   final String targetStatus;
 
   String get label => switch (this) {
-    SalesWarehouseWorkAction.startPicking => '开始拣货',
-    SalesWarehouseWorkAction.finishPicking => '拣货完成',
-    SalesWarehouseWorkAction.reportException => '登记异常',
-    SalesWarehouseWorkAction.restorePending => '恢复待拣货',
-    SalesWarehouseWorkAction.handOver => '交接出库',
+    SalesWarehouseWorkAction.confirmShipment => '确认出库',
   };
-
-  bool get requiresReason =>
-      this == SalesWarehouseWorkAction.reportException ||
-      this == SalesWarehouseWorkAction.restorePending;
 }
 
 List<SalesWarehouseWorkAction> salesWarehouseWorkActionsFor(String? status) =>
     switch (status) {
       SalesWarehouseWorkStatus.pendingPick => const [
-        SalesWarehouseWorkAction.startPicking,
-        SalesWarehouseWorkAction.reportException,
-      ],
-      SalesWarehouseWorkStatus.picking => const [
-        SalesWarehouseWorkAction.finishPicking,
-        SalesWarehouseWorkAction.reportException,
-      ],
-      SalesWarehouseWorkStatus.picked => const [
-        SalesWarehouseWorkAction.handOver,
-        SalesWarehouseWorkAction.reportException,
-      ],
-      SalesWarehouseWorkStatus.exception => const [
-        SalesWarehouseWorkAction.restorePending,
+        SalesWarehouseWorkAction.confirmShipment,
       ],
       _ => const [],
     };
@@ -485,6 +455,7 @@ class CustomerShipmentWorkflow {
     this.financeRejected = false,
     this.financeRejectionReason,
     this.financeReviewPending = false,
+    this.canResubmitAfterFinanceReject = false,
   });
   final String? kind;
   final String? billingMode;
@@ -496,6 +467,9 @@ class CustomerShipmentWorkflow {
   final bool financeRejected;
   final bool financeReviewPending;
   final String? financeRejectionReason;
+
+  /// V578：被财务退回后允许原样重新提交（无需先改单）。
+  final bool canResubmitAfterFinanceReject;
   bool get isDirect => kind == 'DIRECT_CUSTOMER';
   bool get isFree => isDirect && billingMode == 'FREE';
   factory CustomerShipmentWorkflow.fromJson(Map<String, dynamic> json) =>
@@ -510,6 +484,8 @@ class CustomerShipmentWorkflow {
         financeRejected: json['financeRejected'] == true,
         financeRejectionReason: json['financeRejectionReason'] as String?,
         financeReviewPending: json['financeReviewPending'] == true,
+        canResubmitAfterFinanceReject:
+            json['canResubmitAfterFinanceReject'] == true,
       );
 }
 
@@ -816,13 +792,40 @@ class SalesDocItem {
 
 /// Historical documents prefer the goods code/name frozen on the line.
 /// [fallback] only serves pre-snapshot or incomplete legacy payloads.
-String salesGoodsIdentityLabel(SalesDocItem item, String fallback) {
+///
+/// 2026-09-14：快照上线前的老行没有 goodsCodeSnapshot，只给 [fallback]（名称）
+/// 就会丢掉编号。调用方可传 [fallbackCode]（主档编号）补齐——名称+编号+颜色
+/// 三属性必须同屏可见，同名不同编号的货在单据上认错代价很高。
+String salesGoodsIdentityLabel(
+  SalesDocItem item,
+  String fallback, {
+  String? fallbackCode,
+}) {
   final snapshot = [item.goodsCodeSnapshot, item.goodsNameSnapshot]
       .whereType<String>()
       .map((value) => value.trim())
       .where((value) => value.isNotEmpty)
       .join(' · ');
-  return snapshot.isEmpty ? fallback : snapshot;
+  if (snapshot.isNotEmpty) return snapshot;
+  final code = fallbackCode?.trim();
+  return code == null || code.isEmpty ? fallback : '$code · $fallback';
+}
+
+/// 单据行的货品**名称**（快照优先，老行回落主档名）。
+///
+/// 2026-09-14 起表格把名称 / 编号 / 颜色拆成三列，[salesGoodsIdentityLabel]
+/// 那种「编号 · 名称」拼串只留给非表格场景（弹窗标题、提示文案）。
+String salesGoodsNameLabel(SalesDocItem item, String fallback) {
+  final snapshot = item.goodsNameSnapshot?.trim();
+  return snapshot == null || snapshot.isEmpty ? fallback : snapshot;
+}
+
+/// 单据行的货品**编号**（快照优先，老行回落主档编号；都没有返回 null）。
+String? salesGoodsCodeLabel(SalesDocItem item, {String? fallbackCode}) {
+  final snapshot = item.goodsCodeSnapshot?.trim();
+  if (snapshot != null && snapshot.isNotEmpty) return snapshot;
+  final code = fallbackCode?.trim();
+  return code == null || code.isEmpty ? null : code;
 }
 
 /// 稀缺库存占用视图（GET /reservations/scarce）：某货品+颜色的生效预留 + 订单上下文 + 持有逾期。

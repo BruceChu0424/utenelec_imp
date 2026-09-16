@@ -23,7 +23,10 @@ import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/layout/uten_form_grid.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -409,148 +412,152 @@ class _FinanceProcurementApprovalReviewPageState
         ),
       ),
       body: SafeArea(
-        child: !canView
-            ? Center(
-                child: Text(
-                  '无权查看订货审批任务',
-                  style: TextStyle(color: theme.colorScheme.error),
-                ),
-              )
-            : _loading
-            ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-            : _error != null
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(UtenSpacing.s16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _error!,
-                        style: TextStyle(color: theme.colorScheme.error),
-                      ),
-                      const SizedBox(height: UtenSpacing.s12),
-                      UtenButton(
-                        type: UtenButtonType.secondary,
-                        icon: Icons.refresh_rounded,
-                        onPressed: _load,
-                        child: const Text('重试'),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            : review == null
-            ? const SizedBox.shrink()
-            : UtenContentContainer.narrow(
-                child: ListView(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  children: [
-                    if (review.isPending &&
-                        review.allowedActions.isNotEmpty &&
-                        _reviewClaim?.isReady != true)
-                      FinanceReviewClaimNotice(
-                        claim: _reviewClaim,
-                        onRetry: _busy ? null : _load,
-                      ),
-                    _statusStrip(theme, review),
-                    const SizedBox(height: UtenSpacing.s12),
-                    _supplierFinanceCard(theme, review),
-                    const SizedBox(height: UtenSpacing.s12),
-                    _orderCard(theme, review),
-                    if (review.qtyChanges.isNotEmpty) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      _qtyChangesCard(theme, review),
-                    ],
-                    const SizedBox(height: UtenSpacing.s12),
-                    _itemsSection(theme, review),
-                    // 财务审核只读查看采购/委外合同原件；后端按「待审可见」口径终审，
-                    // 审核页不提供上传/删除（原件不能在审批时被悄悄替换）。
-                    if (review.orderId.isNotEmpty &&
-                        review.orderType !=
-                            FinanceProcurementOrderType.unknown) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      BusinessAttachmentSection(
-                        key: const ValueKey('finance-order-review-attachments'),
-                        ownerType:
-                            review.orderType ==
-                                FinanceProcurementOrderType.purchase
-                            ? 'PURCHASE_ORDER'
-                            : 'SUBCONTRACT_ORDER',
-                        ownerId: review.orderId,
-                        canView: true,
-                        canManage: false,
-                        title: '合同与确认文件（只读）',
-                      ),
-                    ],
-                    const SizedBox(height: UtenSpacing.s12),
-                    _historyCard(theme, review),
-                  ],
-                ),
-              ),
-      ),
-      bottomNavigationBar: !showActions
-          ? null
-          : SafeArea(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
-                  border: Border(
-                    top: BorderSide(color: theme.colorScheme.outlineVariant),
-                  ),
-                ),
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                child: _busy
-                    ? const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+        child: Stack(
+          children: [
+            !canView
+                ? Center(
+                    child: Text(
+                      '无权查看订货审批任务',
+                      style: TextStyle(color: theme.colorScheme.error),
+                    ),
+                  )
+                : _loading
+                ? const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  )
+                : _error != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(UtenSpacing.s16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2.5),
+                          Text(
+                            _error!,
+                            style: TextStyle(color: theme.colorScheme.error),
                           ),
-                          SizedBox(width: UtenSpacing.s12),
-                          Text('正在处理，请稍候…'),
-                        ],
-                      )
-                    : Wrap(
-                        alignment: WrapAlignment.center,
-                        spacing: UtenSpacing.s12,
-                        runSpacing: UtenSpacing.s8,
-                        children: [
+                          const SizedBox(height: UtenSpacing.s12),
                           UtenButton(
-                            key: const Key('finance-order-review-back'),
-                            type: UtenButtonType.tonal,
-                            icon: Icons.arrow_back_rounded,
-                            onPressed: () => backTo(
-                              context,
-                              defaultPath: FinanceWorkflowRoutes.approvalTasks,
-                            ),
-                            child: const Text('返回'),
+                            type: UtenButtonType.secondary,
+                            icon: Icons.refresh_rounded,
+                            onPressed: _load,
+                            child: const Text('重试'),
                           ),
-                          if (review.allowedActions.contains('REJECT'))
-                            UtenButton(
-                              key: const Key('finance-order-review-reject'),
-                              type: UtenButtonType.danger,
-                              icon: Icons.undo_rounded,
-                              onPressed: _reviewClaim?.isReady == true
-                                  ? _reject
-                                  : null,
-                              child: const Text('驳回'),
-                            ),
-                          if (review.allowedActions.contains('APPROVE'))
-                            UtenButton(
-                              key: const Key('finance-order-review-approve'),
-                              type: UtenButtonType.success,
-                              icon: Icons.check_circle_outline_rounded,
-                              onPressed: _reviewClaim?.isReady == true
-                                  ? _approve
-                                  : null,
-                              child: const Text('通过'),
-                            ),
                         ],
                       ),
-              ),
+                    ),
+                  )
+                : review == null
+                ? const SizedBox.shrink()
+                : UtenContentContainer.narrow(
+                    child: ListView(
+                      // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
+                      padding: const EdgeInsets.fromLTRB(
+                        UtenSpacing.s12,
+                        UtenSpacing.s12,
+                        UtenSpacing.s12,
+                        UtenFloatingActionGroup.scrollClearance,
+                      ),
+                      children: [
+                        if (review.isPending &&
+                            review.allowedActions.isNotEmpty &&
+                            _reviewClaim?.isReady != true)
+                          FinanceReviewClaimNotice(
+                            claim: _reviewClaim,
+                            onRetry: _busy ? null : _load,
+                          ),
+                        _statusStrip(theme, review),
+                        const SizedBox(height: UtenSpacing.s12),
+                        _supplierFinanceCard(theme, review),
+                        const SizedBox(height: UtenSpacing.s12),
+                        _orderCard(theme, review),
+                        if (review.qtyChanges.isNotEmpty) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          _qtyChangesCard(theme, review),
+                        ],
+                        const SizedBox(height: UtenSpacing.s12),
+                        _itemsSection(theme, review),
+                        // 财务审核只读查看采购/委外合同原件；后端按「待审可见」口径终审，
+                        // 审核页不提供上传/删除（原件不能在审批时被悄悄替换）。
+                        if (review.orderId.isNotEmpty &&
+                            review.orderType !=
+                                FinanceProcurementOrderType.unknown) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          BusinessAttachmentSection(
+                            key: const ValueKey(
+                              'finance-order-review-attachments',
+                            ),
+                            ownerType:
+                                review.orderType ==
+                                    FinanceProcurementOrderType.purchase
+                                ? 'PURCHASE_ORDER'
+                                : 'SUBCONTRACT_ORDER',
+                            ownerId: review.orderId,
+                            canView: true,
+                            canManage: false,
+                            title: '合同与确认文件（只读）',
+                          ),
+                        ],
+                        const SizedBox(height: UtenSpacing.s12),
+                        _historyCard(theme, review),
+                      ],
+                    ),
+                  ),
+            // 处理中屏幕中央加载动画（对齐财审专页口径：按钮 isLoading 同步转圈，
+            // 不再用固定底栏占位）。
+            if (_busy)
+              const Positioned.fill(child: UtenBusyOverlay(title: '正在处理，请稍候')),
+          ],
+        ),
+      ),
+      // 2026-09-14 UI 统一口径：吸底双决策改右下悬浮组，大小/高度/禁用态全站统一。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: !showActions
+          ? null
+          : UtenFloatingActionGroup(
+              children: [
+                UtenButton(
+                  key: const Key('finance-order-review-back'),
+                  type: UtenButtonType.secondary,
+                  size: UtenButtonSize.large,
+                  icon: Icons.arrow_back_rounded,
+                  onPressed: () => backTo(
+                    context,
+                    defaultPath: FinanceWorkflowRoutes.approvalTasks,
+                  ),
+                  child: const Text('返回'),
+                ),
+                if (review.allowedActions.contains('REJECT'))
+                  UtenButton(
+                    key: const Key('finance-order-review-reject'),
+                    type: UtenButtonType.danger,
+                    size: UtenButtonSize.large,
+                    icon: Icons.undo_rounded,
+                    onPressed: _reviewClaim?.isReady == true && !_busy
+                        ? _reject
+                        : null,
+                    onDisabledTap: _reviewClaim?.isReady == true
+                        ? null
+                        : () => context.appWarning('请先完成审核认领，再驳回'),
+                    child: const Text('驳回'),
+                  ),
+                if (review.allowedActions.contains('APPROVE'))
+                  UtenButton(
+                    key: const Key('finance-order-review-approve'),
+                    type: UtenButtonType.success,
+                    size: UtenButtonSize.large,
+                    icon: Icons.check_circle_outline_rounded,
+                    isLoading: _busy,
+                    onPressed: _reviewClaim?.isReady == true && !_busy
+                        ? _approve
+                        : null,
+                    onDisabledTap: _reviewClaim?.isReady == true
+                        ? null
+                        : () => context.appWarning('请先完成审核认领，再通过'),
+                    child: const Text('通过'),
+                  ),
+              ],
             ),
     );
   }
@@ -888,21 +895,34 @@ class _FinanceProcurementApprovalReviewPageState
               type: 'number',
               value: (it) => it.lineNo.toString(),
             ),
+            // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
+            // 不再拼成「编号 · 名称(颜色 · 单位)」一长串。
             MasterColumnDef(
               key: 'goods',
-              label: '货品',
-              width: 260,
-              value: (it) {
-                final base = [
-                  if (it.goodsCode != null) it.goodsCode!,
-                  if (it.goodsName != null) it.goodsName!,
-                ].join(' · ');
-                final suffix = [
-                  if (it.colorName != null) it.colorName!,
-                  if (it.unitName != null) it.unitName!,
-                ].join(' · ');
-                return suffix.isEmpty ? base : '$base($suffix)';
-              },
+              label: '货品名称',
+              width: 200,
+              value: (it) => it.goodsName ?? it.goodsCode ?? '—',
+            ),
+            MasterColumnDef(
+              key: 'goodsCode',
+              label: '编号',
+              width: 130,
+              value: (it) => UtenGoodsAttributeCell.text(it.goodsCode),
+              cellBuilder: (_, it) => UtenGoodsAttributeCell(it.goodsCode),
+            ),
+            MasterColumnDef(
+              key: 'colorName',
+              label: '颜色',
+              width: 96,
+              value: (it) => UtenGoodsAttributeCell.text(it.colorName),
+              cellBuilder: (_, it) => UtenGoodsAttributeCell(it.colorName),
+            ),
+            MasterColumnDef(
+              key: 'unitName',
+              label: '单位',
+              width: 80,
+              value: (it) => UtenGoodsAttributeCell.text(it.unitName),
+              cellBuilder: (_, it) => UtenGoodsAttributeCell(it.unitName),
             ),
             MasterColumnDef(
               key: 'qty',

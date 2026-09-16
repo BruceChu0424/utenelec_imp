@@ -39,7 +39,9 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -70,6 +72,20 @@ import '../widgets/warehouse_inbound_allocation_view.dart';
 import '../widgets/warehouse_autofill_text_field.dart';
 import '../widgets/warehouse_arrival_source_field.dart';
 
+/// 批量校验提示：把同一类违规的**全部**行汇总成一句话。
+///
+/// 条目多时只列前 8 条再折成「等 N 行」——刷屏的提示和只报第一行一样没法用。
+String _rowIssueMessage(
+  List<String> rowLabels,
+  String issue, {
+  required String action,
+}) {
+  const shownMax = 8;
+  final shown = rowLabels.take(shownMax).join('、');
+  final more = rowLabels.length > shownMax ? '等 ${rowLabels.length} 行' : '';
+  return '以下 ${rowLabels.length} 行$issue，$action：$shown$more';
+}
+
 class WarehouseArrivalReceiptPage extends ConsumerStatefulWidget {
   const WarehouseArrivalReceiptPage({
     super.key,
@@ -92,6 +108,9 @@ class _WarehouseArrivalReceiptPageState
     extends ConsumerState<WarehouseArrivalReceiptPage> {
   final _remark = TextEditingController();
   final _scrollCtl = ScrollController();
+
+  /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
+  final _gridPinned = ValueNotifier<bool>(false);
   final Map<String, UtenEmployeePickerItem> _empCache = {};
 
   DateTime _billDate = ChinaDateTime.today();
@@ -190,6 +209,7 @@ class _WarehouseArrivalReceiptPageState
     _remark.dispose();
     _scrollCtl.dispose();
     _lineGrid.dispose();
+    _gridPinned.dispose();
     super.dispose();
   }
 
@@ -386,23 +406,42 @@ class _WarehouseArrivalReceiptPageState
       return;
     }
     if (_lines.isEmpty) {
-      context.appError('该任务没有可登记明细，请返回任务中心刷新');
+      context.appError(
+        _removedLineCount > 0
+            ? '本次登记已无明细（已移出 $_removedLineCount 行）；'
+                  '请至少保留一行，或返回任务中心重新进入——移出的来源行仍是待登记送检。'
+            : '该任务没有可登记明细，请返回任务中心刷新',
+      );
       return;
     }
     // 行级有效仓库分组（LinkedHashMap 保序）：每仓一张收货单顺序登记。
+    // 同时整表扫完再报：原先首个违规就 return，用户补一行提交一次才看到下一行，
+    // 观感像「怎么老是报错」。判定条件不变，只把问题按类别各汇总成一条。
     final groups = <String, List<_ArrivalReceiptLine>>{};
-    for (final line in _lines) {
+    final badQty = <String>[];
+    final missingWarehouse = <String>[];
+    for (var index = 0; index < _lines.length; index++) {
+      final line = _lines[index];
+      final label = '第 ${index + 1} 行（${line.item.goodsName}）';
       final qty = double.tryParse(line.qty.text.trim()) ?? 0;
-      if (qty <= 0) {
-        context.appError('${line.item.goodsName} 的本次实收必须大于 0');
-        return;
-      }
+      if (qty <= 0) badQty.add(label);
       final warehouseId = _effectiveWarehouseId(line);
       if (warehouseId == null || warehouseId.isEmpty) {
-        context.appError('请为 ${line.item.goodsName} 选择入库仓库');
-        return;
+        missingWarehouse.add(label);
+        continue;
       }
       groups.putIfAbsent(warehouseId, () => []).add(line);
+    }
+    final rowIssues = <String>[
+      if (badQty.isNotEmpty)
+        _rowIssueMessage(badQty, '的本次实收不是大于 0 的数字', action: '请改正后再提交'),
+      if (missingWarehouse.isNotEmpty)
+        _rowIssueMessage(missingWarehouse, '未选择入库仓库', action: '请补齐后再提交'),
+    ];
+    if (rowIssues.isNotEmpty) {
+      // 不同类别分行列出，混成一句会让人看不清到底要改哪几处。
+      context.appError(rowIssues.join('\n'));
+      return;
     }
     // 预计去向按员工本次实收、unitRate 和各自行有效仓重算；
     // 真正归属仍由后续 IQC 入库事务决定。
@@ -588,7 +627,10 @@ class _WarehouseArrivalReceiptPageState
                 child: _buildForm(context, theme, prefill, canRegister),
               ),
       ),
-      bottomNavigationBar: prefill == null
+      // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组（按钮已是 large）。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: prefill == null
           ? null
           : _buildBottomBar(theme, canRegister),
     );
@@ -620,13 +662,21 @@ class _WarehouseArrivalReceiptPageState
     ProcurementReceiptPrefill prefill,
     bool canRegister,
   ) {
-    return UtenContentContainer(
-      child: Scrollbar(
-        controller: _scrollCtl,
-        thumbVisibility: true,
+    return UtenGridPageScrollbar(
+      pinned: _gridPinned,
+      controller: _scrollCtl,
+      // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
+      // 恒在屏幕最右，不随限宽容器/列宽漂移。
+      child: UtenContentContainer(
         child: ListView(
           controller: _scrollCtl,
-          padding: const EdgeInsets.all(UtenSpacing.s12),
+          // 底部留出右下悬浮操作组的高度，末段明细可滚出按钮区。
+          padding: const EdgeInsets.fromLTRB(
+            UtenSpacing.s12,
+            UtenSpacing.s12,
+            UtenSpacing.s12,
+            UtenFloatingActionGroup.scrollClearance,
+          ),
           children: [
             _arrivalBanner(theme, prefill),
             const SizedBox(height: UtenSpacing.s12),
@@ -686,35 +736,39 @@ class _WarehouseArrivalReceiptPageState
             // 一并撤除：落仓/填库位改由表格操作条的批量动作承载（勾选若干行后
             // 作用于选中行，未勾选时沿用旧口径作用于全部明细行）。
             const SizedBox(height: UtenSpacing.s8),
+            // 2026-09-14：提示行改为常驻（原先只在 <840 窄屏出现，宽屏桌面
+            // 完全看不到「可以只登记一部分」这件事）。
             LayoutBuilder(
-              builder: (context, constraints) => constraints.maxWidth < 840
-                  ? Padding(
-                      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.swipe_rounded,
-                            size: 18,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: UtenSpacing.s8),
-                          Expanded(
-                            child: Text(
-                              '表格可左右滑动；可勾选或右键/长按明细移出本次登记，'
-                              '数量、入库仓库、库位、系列和物料编码可直接编辑。',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ),
-                        ],
+              builder: (context, constraints) => Padding(
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 18,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Expanded(
+                      child: Text(
+                        '本次不收的货品可以只登记一部分：点行末 ⊖ 把该行移出本次登记'
+                        '（也可勾选多行后右键批量移出）。移出不删除订货明细、不写库存，'
+                        '这些行仍留在待登记送检。'
+                        '${constraints.maxWidth < 840 ? '表格可左右滑动；' : ''}'
+                        '数量、入库仓库、库位、系列和物料编码可直接编辑。',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
-                    )
-                  : const SizedBox.shrink(),
+                    ),
+                  ],
+                ),
+              ),
             ),
             UtenEditableGrid<_ArrivalReceiptLine>(
               key: const Key('warehouse-arrival-lines-grid'),
               controller: _lineGrid,
+              stickyHeaderPinned: _gridPinned,
               columns: _arrivalLineColumns,
               createBlankRow: () => throw UnsupportedError('到货任务明细由订货单固定带入'),
               showAddRow: false,
@@ -732,6 +786,10 @@ class _WarehouseArrivalReceiptPageState
               // 落仓/写库位改成「勾选多行后改任意一行即整批落值」。
               showSelectAllToggle: false,
               showRemoveRowsAction: false,
+              // 2026-09-14：只走右键在宽屏桌面等于没有入口（提示被窄屏门控吃掉，
+              // 右键落在可编辑单元格弹的是输入框自带菜单），用户判定「不能删除
+              // 部分」。补每行常驻 ⊖，点击走同一条「移出本次登记」确认与回调。
+              showInlineRemoveAction: true,
               // 2026-09-12 右键菜单补显式批量入口（与批量登记页、产成品登记页
               // 统一口径）：勾选多行后右键可批量设仓/批量填库位。
               rowMenuExtraBuilder: canRegister && !_saving
@@ -945,17 +1003,34 @@ class _WarehouseArrivalReceiptPageState
   }
 
   List<EditableGridColumn<_ArrivalReceiptLine>> get _arrivalLineColumns => [
+    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
     EditableGridColumn(
       key: 'goods',
-      label: '货品',
-      width: 220,
-      textOf: (line) => '${line.item.goodsName}(${line.item.goodsCode})',
+      label: '货品名称',
+      width: 200,
+      textOf: (line) => line.item.goodsName,
       cellBuilder: (context, line) => Tooltip(
-        message: '${line.item.goodsName}(${line.item.goodsCode})',
+        message: line.item.goodsName,
         child: Text(
-          '${line.item.goodsName}(${line.item.goodsCode})',
+          line.item.goodsName,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    ),
+    EditableGridColumn(
+      key: 'goodsCode',
+      label: '编号',
+      width: 160,
+      textOf: (line) => line.goodsCode.text,
+      listenableOf: (line) => line.goodsCode,
+      cellBuilder: (context, line) => Semantics(
+        textField: true,
+        label: '${line.item.goodsName} 物料编码',
+        child: WarehouseAutofillTextField(
+          controller: line.goodsCode,
+          source: '编码来自货品资料，请核对本次到货',
+          enabled: !_saving,
         ),
       ),
     ),
@@ -1163,22 +1238,6 @@ class _WarehouseArrivalReceiptPageState
         ),
       ),
     ),
-    EditableGridColumn(
-      key: 'goodsCode',
-      label: '物料编码',
-      width: 160,
-      textOf: (line) => line.goodsCode.text,
-      listenableOf: (line) => line.goodsCode,
-      cellBuilder: (context, line) => Semantics(
-        textField: true,
-        label: '${line.item.goodsName} 物料编码',
-        child: WarehouseAutofillTextField(
-          controller: line.goodsCode,
-          source: '编码来自货品资料，请核对本次到货',
-          enabled: !_saving,
-        ),
-      ),
-    ),
   ];
 
   /// 明细表下方的合计条（全站统一 UtenTotalsSummaryBar 口径）：数量严格按单位
@@ -1186,7 +1245,6 @@ class _WarehouseArrivalReceiptPageState
   Widget _lineTotalsBar() => UtenTotalsSummaryBar(
     key: const Key('warehouse-arrival-totals'),
     density: true,
-    showDivider: false,
     entries: [
       UtenTotalEntry('明细', '${_lines.length} 行'),
       utenQuantityTotalEntry(
@@ -1205,39 +1263,24 @@ class _WarehouseArrivalReceiptPageState
   Widget _buildBottomBar(ThemeData theme, bool canRegister) {
     // 合计不再挂底部操作条（2026-09-11 用户口径：明细表下方已有合计条，
     // 底部再报一遍是重复），这里只剩取消 / 登记并送检。
-    return SafeArea(
-      child: Container(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          border: Border(
-            top: BorderSide(color: theme.colorScheme.outlineVariant),
-          ),
+    return UtenFloatingActionGroup(
+      children: [
+        UtenButton(
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
+          onPressed: _saving ? null : () => context.pop(),
+          child: const Text('取消'),
         ),
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            UtenButton(
-              type: UtenButtonType.secondary,
-              size: UtenButtonSize.large,
-              onPressed: _saving ? null : () => context.pop(),
-              child: const Text('取消'),
-            ),
-            const SizedBox(width: UtenSpacing.s12),
-            UtenButton(
-              // 「点了就往下走一步」的主动作统一红底白字（全站口径）。
-              type: UtenButtonType.danger,
-              size: UtenButtonSize.large,
-              isLoading: _saving,
-              icon: Icons.fact_check_outlined,
-              onPressed: !canRegister || _saving || _lines.isEmpty
-                  ? null
-                  : _save,
-              child: const Text('登记并送检'),
-            ),
-          ],
+        UtenButton(
+          // 「点了就往下走一步」的主动作统一红底白字（全站口径）。
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          isLoading: _saving,
+          icon: Icons.fact_check_outlined,
+          onPressed: !canRegister || _saving || _lines.isEmpty ? null : _save,
+          child: const Text('登记并送检'),
         ),
-      ),
+      ],
     );
   }
 

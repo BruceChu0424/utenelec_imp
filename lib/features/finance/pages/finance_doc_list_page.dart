@@ -155,7 +155,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
       if (_cfg.type == FinanceDocType.receipt)
         MasterColumnDef(
           key: 'receiptKind',
-          label: '收款业务',
+          label: '收款类型',
           width: 130,
           value: (it) => financeReceiptKindLabel(it.receiptKind),
         ),

@@ -52,6 +52,10 @@ void main() {
       expect(find.text('必选 · 点击选择'), findsNWidgets(3));
       // 2026-09-11 起表头上方不再有「批量设置入库仓库」按钮：直接点行内仓库格
       // （未勾选任何行 = 只改这一行）。
+      await tester.ensureVisible(
+        find.byKey(const Key('warehouse-arrival-batch-wh-batch-item-1')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('warehouse-arrival-batch-wh-batch-item-1')),
       );
@@ -163,6 +167,12 @@ void main() {
     await tester.tap(headerSelectAll.first);
     await tester.pumpAndSettle();
 
+    // 2026-09-14「编号」列上移到名称后面（全站列序统一），仓库格右移出视口：
+    // 与本文件其它格子一样先 ensureVisible 再点。
+    await tester.ensureVisible(
+      find.byKey(const Key('warehouse-arrival-batch-wh-batch-item-1')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const Key('warehouse-arrival-batch-wh-batch-item-1')),
     );

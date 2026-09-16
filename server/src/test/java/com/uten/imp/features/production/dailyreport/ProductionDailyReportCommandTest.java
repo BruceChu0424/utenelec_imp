@@ -10,6 +10,7 @@ import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
+import com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest;
 import com.uten.imp.features.production.plan.PlanOrderItemLinkRepository;
 import com.uten.imp.features.production.plan.ProductionPlanItemRepository;
@@ -67,6 +68,8 @@ class ProductionDailyReportCommandTest {
     @Mock private ProductionQualityInspectionPort qualityInspection;
     @Mock private ProductionFqcRecoveryPort fqcRecovery;
     @Mock private com.uten.imp.application.port.ProductionCostTargetPort costTargets;
+    @Mock private com.uten.imp.application.port.ProductionMaterialConsumptionWritePort materialConsumption;
+    @Mock private com.uten.imp.features.production.directtransfer.ProductionWorkshopDirectTransferService directTransfer;
     @Mock(answer=org.mockito.Answers.RETURNS_DEEP_STUBS) private com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService mutationFootprint;
     @InjectMocks private ProductionDailyReportService service;
 
@@ -99,6 +102,62 @@ class ProductionDailyReportCommandTest {
         assertNotEquals(
                 ProductionDailyReportService.createRequestHash(first),
                 ProductionDailyReportService.createRequestHash(replay));
+    }
+
+    /// V583：实耗与收尾退仓意愿必须进创建指纹，否则「同一幂等键、只改了用料数字」的
+    /// 重发会被判成重放，静默返回旧单——用户改的数字一个都没存进去。
+    /// 同时锁住「不带用料的请求指纹不变」：变了的话历史 command 行重放会全部判冲突。
+    @Test
+    void canonicalHashCoversMaterialUsageWithoutMovingLegacyRequests() {
+        UUID goodsId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        UUID planItemId = UUID.randomUUID();
+        UUID orderItemId = UUID.randomUUID();
+        UUID demandId = UUID.randomUUID();
+        DailyReportSaveRequest bare = request(
+                "material-key", "SR-material", goodsId, unitId,
+                planItemId, orderItemId, BigDecimal.TEN);
+        String bareHash = ProductionDailyReportService.createRequestHash(bare);
+
+        // 显式空列表 / 显式 false 都是「没有用料」，指纹必须与完全不带这两个字段时一致。
+        bare.setMaterialLines(List.of());
+        bare.setSurplusReturnRequested(false);
+        assertEquals(
+                bareHash, ProductionDailyReportService.createRequestHash(bare));
+
+        DailyReportSaveRequest withUsage = request(
+                "material-key", "SR-material", goodsId, unitId,
+                planItemId, orderItemId, BigDecimal.TEN);
+        withUsage.setMaterialLines(List.of(materialLine(demandId, "6")));
+        String usageHash =
+                ProductionDailyReportService.createRequestHash(withUsage);
+        assertNotEquals(bareHash, usageHash);
+
+        // 只把实耗从 6 改成 7：这是两次不同的申报，不能算重放。
+        withUsage.setMaterialLines(List.of(materialLine(demandId, "7")));
+        assertNotEquals(
+                usageHash,
+                ProductionDailyReportService.createRequestHash(withUsage));
+
+        // 数量写法不同但数值相同(6 与 6.0000)仍是同一次申报，允许重放。
+        withUsage.setMaterialLines(List.of(materialLine(demandId, "6.0000")));
+        assertEquals(
+                usageHash,
+                ProductionDailyReportService.createRequestHash(withUsage));
+
+        // 勾了「余料退回仓库」会多开退料单，是不同的业务意图。
+        withUsage.setSurplusReturnRequested(true);
+        assertNotEquals(
+                usageHash,
+                ProductionDailyReportService.createRequestHash(withUsage));
+    }
+
+    private static DailyReportMaterialUsageLine materialLine(
+            UUID demandId, String qty) {
+        DailyReportMaterialUsageLine line = new DailyReportMaterialUsageLine();
+        line.setDemandId(demandId);
+        line.setQtyBase(new BigDecimal(qty));
+        return line;
     }
 
     @Test
@@ -193,6 +252,8 @@ class ProductionDailyReportCommandTest {
         Query workerRead = query(false);
         when(workerRead.getResultList()).thenReturn(
                 List.of(firstWorker, secondWorker));
+        Query materialUsages = query(false);
+        when(materialUsages.getResultList()).thenReturn(List.of());
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             if (sql.contains("pg_advisory_xact_lock")) return advisory;
@@ -215,6 +276,10 @@ class ProductionDailyReportCommandTest {
             if (sql.contains("SELECT employee_id")
                     && sql.contains("production_daily_report_workers")) {
                 return workerRead;
+            }
+            // V583：本请求没带实际用料，create 只会清一次旧行、detail 只会读回空表。
+            if (sql.contains("production_daily_report_material_usages")) {
+                return materialUsages;
             }
             throw new AssertionError("unexpected SQL: " + sql);
         });
@@ -285,10 +350,16 @@ class ProductionDailyReportCommandTest {
         String hash = ProductionDailyReportService.createRequestHash(request);
         Query advisory = query(true);
         Query command = query(false);
+        Query materialUsages = query(false);
+        when(materialUsages.getResultList()).thenReturn(List.of());
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             if (sql.contains("pg_advisory_xact_lock")) return advisory;
             if (sql.contains("FROM production_daily_report_commands")) return command;
+            // V583：重放路径最后走 detail()，会读一次本单已登记的实际用料。
+            if (sql.contains("production_daily_report_material_usages")) {
+                return materialUsages;
+            }
             throw new AssertionError("unexpected SQL: " + sql);
         });
         when(command.getResultList()).thenReturn(
@@ -336,6 +407,8 @@ class ProductionDailyReportCommandTest {
                         new Object[]{legacyHash, reportId}));
         Query workerRead = query(false);
         when(workerRead.getResultList()).thenReturn(List.of(workerId));
+        Query materialUsages = query(false);
+        when(materialUsages.getResultList()).thenReturn(List.of());
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             if (sql.contains("pg_advisory_xact_lock")) return advisory;
@@ -345,6 +418,10 @@ class ProductionDailyReportCommandTest {
             if (sql.contains("SELECT employee_id")
                     && sql.contains("production_daily_report_workers")) {
                 return workerRead;
+            }
+            // V583：重放路径最后走 detail()，会读一次本单已登记的实际用料。
+            if (sql.contains("production_daily_report_material_usages")) {
+                return materialUsages;
             }
             throw new AssertionError("unexpected SQL: " + sql);
         });
@@ -472,6 +549,9 @@ class ProductionDailyReportCommandTest {
                 when(query.getResultList()).thenReturn(List.of());
             } else if (sql.contains("FROM production_plans")
                     && sql.contains("source_daily_report_id")) {
+                when(query.getResultList()).thenReturn(List.of());
+            } else if (sql.contains("production_daily_report_material_usages")) {
+                // V583：本单没登记过实际用料，红冲时没有要冲销的材料消耗。
                 when(query.getResultList()).thenReturn(List.of());
             }
             return query;

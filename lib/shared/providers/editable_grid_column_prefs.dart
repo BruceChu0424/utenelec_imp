@@ -134,3 +134,17 @@ final subcontractOrderGridColumnPrefsProvider =
       SubcontractOrderGridColumnPrefsNotifier,
       Map<String, EditableGridColumnsPrefs>
     >(SubcontractOrderGridColumnPrefsNotifier.new);
+
+/// 物料分析「父件 + 下层一起下单」级联页（ADR-081）的列设置。
+/// 桶 key 只有一个（'cascade'）：这一页只有一张表。
+class MaterialAnalysisCascadeGridColumnPrefsNotifier
+    extends EditableGridColumnPrefsNotifierBase {
+  @override
+  String get prefKey => 'production.materialAnalysis.cascade.gridColumns';
+}
+
+final materialAnalysisCascadeGridColumnPrefsProvider =
+    NotifierProvider<
+      MaterialAnalysisCascadeGridColumnPrefsNotifier,
+      Map<String, EditableGridColumnsPrefs>
+    >(MaterialAnalysisCascadeGridColumnPrefsNotifier.new);

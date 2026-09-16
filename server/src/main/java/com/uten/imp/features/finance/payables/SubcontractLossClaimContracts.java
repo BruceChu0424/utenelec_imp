@@ -68,6 +68,7 @@ public final class SubcontractLossClaimContracts {
             String goodsCode,
             String goodsName,
             UUID colorId,
+            String colorName,
             UUID unitId,
             String actualLossQty,
             String allowedLossQty,

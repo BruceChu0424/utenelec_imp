@@ -418,6 +418,37 @@ public class StockDocService {
         return detail(id);
     }
 
+    /**
+     * 车间内部直送的入线边仓确认(V584/V585)。
+     *
+     * <p>与仓库点收走同一条确认链路、同一套守恒校验，只有两点不同：
+     * 一是不要求 SUB_WH 仓储范围(料从没交给仓库，收的是车间自己的料架)，
+     * 二是实收恒等于报工量(同一批人报的数，没有部门间交接，不存在短收协商)。
+     * 授权由调用方的 {@code production_direct_transfer:approve} 与车间归属判定完成，
+     * 更强的不变量由 V584 的直送行守卫在数据库层兜底。
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void confirmWorkshopDirectTransferInbound(UUID id, String idempotencyKey) {
+        List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
+        if (items.isEmpty()) {
+            throw new ApiException(ErrorCode.CONFLICT, "直送入库任务没有明细");
+        }
+        FinishedInboundConfirmRequest request = new FinishedInboundConfirmRequest();
+        request.setIdempotencyKey(idempotencyKey);
+        request.setLines(items.stream().map(item -> {
+            FinishedInboundConfirmRequest.Line line =
+                    new FinishedInboundConfirmRequest.Line();
+            line.setItemId(item.getId());
+            line.setAcceptedQty(item.getQty());
+            return line;
+        }).toList());
+        Map<UUID, BigDecimal> accepted = normalizeFinishedInboundAccepted(request);
+        String requestHash = finishedInboundConfirmationHash(id, accepted, null);
+        confirmFinishedInboundAfterPrelock(
+                id, request, accepted, null, requestHash,
+                lockProductionDocuments(List.of(id)), null, true);
+    }
+
     private StockDocument confirmFinishedInboundAfterPrelock(
             UUID id,
             FinishedInboundConfirmRequest request,
@@ -426,11 +457,29 @@ public class StockDocService {
             String requestHash,
             FulfillmentMutationLocks.Guard mutationGuard,
             FinishedInboundBatchContext batchContext) {
+        return confirmFinishedInboundAfterPrelock(
+                id, request, accepted, varianceReason, requestHash,
+                mutationGuard, batchContext, false);
+    }
+
+    private StockDocument confirmFinishedInboundAfterPrelock(
+            UUID id,
+            FinishedInboundConfirmRequest request,
+            Map<UUID, BigDecimal> accepted,
+            String varianceReason,
+            String requestHash,
+            FulfillmentMutationLocks.Guard mutationGuard,
+            FinishedInboundBatchContext batchContext,
+            boolean workshopDirectTransfer) {
         taskClaim.requireNoActiveClaimByOther(
                 "FULFILLMENT_TASK_APPROVE", id.toString());
         StockDocument document = requireDocForUpdate(id);
-        requireOperationWritable(
-                document, "stock_doc:approve", "无权点收此成品入库单");
+        if (workshopDirectTransfer) {
+            requireWorkshopDirectTransferDocument(document);
+        } else {
+            requireOperationWritable(
+                    document, "stock_doc:approve", "无权点收此成品入库单");
+        }
         if (!"FINISHED_IN".equals(document.getDocType())
                 || !isProductionLinked(document.getId())) {
             throw new ApiException(
@@ -609,7 +658,10 @@ public class StockDocService {
         if (residualDocument != null) {
             chainNotice.notifyFinishedInboundPending(residualDocument.getId());
         }
-        return approveDocumentAfterPrelock(id, true, false, batchContext);
+        // 确认实收与审核是同一个动作的两半，授权口径必须一起走：车间直送的确认
+        // 已经按「这张单确实由一条有效直送行派生」判过，后半段不能再要仓库的码。
+        return approveDocumentAfterPrelock(
+                id, true, false, batchContext, workshopDirectTransfer);
     }
 
     /** 审核：0→1；生产链 DRAW 必须走审核并出库的一段式端点。 */
@@ -649,6 +701,17 @@ public class StockDocService {
             boolean warehouseQuantityConfirmed,
             boolean allowProductionDrawApproveAndIssue,
             FinishedInboundBatchContext batchContext) {
+        return approveDocumentAfterPrelock(
+                id, warehouseQuantityConfirmed, allowProductionDrawApproveAndIssue,
+                batchContext, false);
+    }
+
+    private StockDocument approveDocumentAfterPrelock(
+            UUID id,
+            boolean warehouseQuantityConfirmed,
+            boolean allowProductionDrawApproveAndIssue,
+            FinishedInboundBatchContext batchContext,
+            boolean workshopDirectTransfer) {
         tx.bind();
         taskClaim.requireNoActiveClaimByOther("FULFILLMENT_TASK_APPROVE", id.toString());
         StockDocument d = requireDocForUpdate(id);
@@ -659,8 +722,12 @@ public class StockDocService {
                     ErrorCode.CONFLICT,
                     "生产领料单不能单独审核；请使用“出库”一次完成审核与实物出库");
         }
-        requireOperationWritable(
-                d, "stock_doc:approve", "无权审核此仓库单据");
+        if (workshopDirectTransfer) {
+            requireWorkshopDirectTransferDocument(d);
+        } else {
+            requireOperationWritable(
+                    d, "stock_doc:approve", "无权审核此仓库单据");
+        }
         requireBalanceAdjustmentPermission(d);
         if (!warehouseQuantityConfirmed
                 && "FINISHED_IN".equals(d.getDocType())
@@ -1073,11 +1140,26 @@ public class StockDocService {
 
     private StockDocDetail issueAfterPrelock(UUID id,StockDocIssueRequest req,
                                             FulfillmentMutationLocks.Guard mutationGuard) {
+        return issueAfterPrelock(id, req, mutationGuard, false);
+    }
+
+    /**
+     * [workshopDirectTransfer] = 车间内部直送的自动投入(V584/V585)。两点差别：
+     * 一是不要求 SUB_WH 仓储范围——发的是车间自己线边仓里的料，仓库不参与；
+     * 二是不要求「车间已提交领料申请」——直送本身就是车间的领料意愿，
+     * 再要一次申请就回到了用户要砍掉的那一步。其余校验(计划已审、逐行唯一执行工单
+     * 映射、申请余量、库存非负、台账守恒)一条不少。
+     */
+    private StockDocDetail issueAfterPrelock(UUID id,StockDocIssueRequest req,
+                                            FulfillmentMutationLocks.Guard mutationGuard,
+                                            boolean workshopDirectTransfer) {
         tx.bind();
         StockDocument d = requireDrawForIssue(id);
-        requireOperationWritable(
-                d, "stock_doc:issue", "无权发出此生产领料单");
-        requireProductionDrawRequested(id);
+        if (!workshopDirectTransfer) {
+            requireOperationWritable(
+                    d, "stock_doc:issue", "无权发出此生产领料单");
+            requireProductionDrawRequested(id);
+        }
         // 生产链 DRAW：出库即审核口径下必须能证明「已审关联计划 + 逐行唯一执行
         // 工单映射」；手工单（isProductionLinked=false）没有这些事实，不套用
         // 生产侧校验（其可发性由台账层 lockPackageForDraw 的计划包守卫统一收口）。
@@ -1095,8 +1177,16 @@ public class StockDocService {
         for (StockDocIssueRequest.Line line : req.getLines()) {
             StockDocumentItem item = findItem(items, line.getItemId());
             BigDecimal alreadyIssued = item.getIssuedQty() == null ? BigDecimal.ZERO : item.getIssuedQty();
-            if (line.getQty().add(alreadyIssued).compareTo(requestedDrawQuantity(item.getId())) > 0) {
-                throw new ApiException(ErrorCode.CONFLICT, "本次出库超过车间已申请的剩余数量，请刷新后核对");
+            // 直送没有单独的领料申请步骤(那正是用户要砍掉的一步)，上限回到 DRAW 行
+            // 自己冻结的需求量；其余出库仍以「车间已申请的剩余量」为准。
+            BigDecimal ceiling = workshopDirectTransfer
+                    ? item.getQty()
+                    : requestedDrawQuantity(item.getId());
+            if (line.getQty().add(alreadyIssued).compareTo(ceiling) > 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        workshopDirectTransfer
+                                ? "本次直送投入超过该领料单冻结的需求量，请刷新后核对"
+                                : "本次出库超过车间已申请的剩余数量，请刷新后核对");
             }
         }
         lockInventory(items);
@@ -1128,6 +1218,140 @@ public class StockDocService {
         chainNotice.notifyProductionDrawIssued(
                 d.getId(), req.getIdempotencyKey());
         return detail(id);
+    }
+
+    /**
+     * 这张单据是不是一次有效车间直送的某一条腿？少了这道闸，直送权限就等于一张
+     * 通用的仓库单据通行证。两条腿各有自己的证据：
+     *
+     * <ul>
+     *   <li>入线边仓(FINISHED_IN)：单据行的来源报工行上挂着一条未撤回的直送行，
+     *       且目标仓正是那条直送记录的线边仓；</li>
+     *   <li>投给上层(DRAW)：领料单按计划包映射属于某条直送行的收料工单，
+     *       且发料仓正是那条直送记录的线边仓。</li>
+     * </ul>
+     */
+    private void requireWorkshopDirectTransferDocument(StockDocument document) {
+        String sql = "FINISHED_IN".equals(document.getDocType())
+                ? """
+                  SELECT EXISTS (
+                      SELECT 1
+                      FROM stock_document_items item
+                      JOIN production_workshop_direct_transfer_items transfer_item
+                        ON transfer_item.source_report_item_id
+                               = item.source_daily_report_item_id
+                       AND transfer_item.reversal_id IS NULL
+                      JOIN production_workshop_direct_transfers transfer
+                        ON transfer.id = transfer_item.transfer_id
+                       AND transfer.line_side_warehouse_id = :warehouseId
+                      JOIN warehouses line_side
+                        ON line_side.id = transfer.line_side_warehouse_id
+                       AND line_side.is_line_side
+                       AND line_side.is_deleted = FALSE
+                      WHERE item.doc_id = :documentId
+                        AND item.is_deleted = FALSE)
+                  """
+                : """
+                  SELECT EXISTS (
+                      SELECT 1
+                      FROM production_planning_package_documents mapping
+                      JOIN production_workshop_direct_transfer_items transfer_item
+                        ON transfer_item.to_execution_segment_id
+                               = mapping.execution_segment_id
+                       AND transfer_item.reversal_id IS NULL
+                      JOIN production_workshop_direct_transfers transfer
+                        ON transfer.id = transfer_item.transfer_id
+                       AND transfer.line_side_warehouse_id = :warehouseId
+                      JOIN warehouses line_side
+                        ON line_side.id = transfer.line_side_warehouse_id
+                       AND line_side.is_line_side
+                       AND line_side.is_deleted = FALSE
+                      WHERE mapping.document_id = :documentId
+                        AND mapping.document_type = 'DRAW')
+                  """;
+        if (!"FINISHED_IN".equals(document.getDocType())
+                && !"DRAW".equals(document.getDocType())) {
+            throw new ApiException(
+                    ErrorCode.FORBIDDEN, "车间直送只处理成品入库与生产领料两种单据");
+        }
+        Boolean eligible = (Boolean) em.createNativeQuery(sql)
+                .setParameter("documentId", document.getId())
+                .setParameter("warehouseId", document.getWarehouseId())
+                .getSingleResult();
+        if (!Boolean.TRUE.equals(eligible)) {
+            throw new ApiException(
+                    ErrorCode.FORBIDDEN,
+                    "该仓库单据不是车间内部直送产生的，请走仓库的正常点收或发料");
+        }
+    }
+
+    /**
+     * 把线边仓里刚到的料直接投给上层工单(V584/V585)。
+     *
+     * <p>这是用户口径「既然是车间内流转，不需要领料、自动解锁」的落点：齐套后形成的
+     * 线边仓领料单在同一笔事务里发掉，上层工单立刻可开工，仓库全程不出现。
+     *
+     * <p>**尽力而为**：上层还缺别的料、领料单还没形成、已经发过——都不算失败，
+     * 静默跳过，料留在线边仓等后续到料。绝不因为上层没齐套就把整张报工审核回滚掉。
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void issueWorkshopDirectTransferDraws(
+            UUID receivingSegmentId, UUID lineSideWarehouseId, String idempotencyKey) {
+        // 领料单与执行段的映射在 production_planning_package_documents 上，
+        // 不在 stock_document_items.execution_segment_id(那是成品入库行才用的列)。
+        List<UUID> draws = NativeQueryResults.typedRows(em.createNativeQuery("""
+                        SELECT DISTINCT document.id
+                        FROM production_planning_package_documents mapping
+                        JOIN stock_documents document
+                          ON document.id = mapping.document_id
+                         AND document.doc_type = 'DRAW'
+                         AND document.is_deleted = FALSE
+                         AND document.status = 0
+                         AND document.warehouse_id = :warehouseId
+                        WHERE mapping.document_type = 'DRAW'
+                          AND mapping.execution_segment_id = :segmentId
+                          AND EXISTS (
+                              SELECT 1 FROM stock_document_items item
+                              WHERE item.doc_id = document.id
+                                AND item.is_deleted = FALSE
+                                AND COALESCE(item.issued_qty, 0) < item.qty)
+                        ORDER BY 1
+                        """)
+                .setParameter("warehouseId", lineSideWarehouseId)
+                .setParameter("segmentId", receivingSegmentId), UUID.class);
+        for (UUID drawId : draws) {
+            List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(drawId);
+            StockDocIssueRequest request = new StockDocIssueRequest();
+            request.setIdempotencyKey(idempotencyKey + "-" + drawId);
+            request.setReason("车间内部直送 · 自动投入上层工单");
+            request.setLines(items.stream()
+                    .filter(item -> item.getQty() != null)
+                    .map(item -> {
+                        BigDecimal issued = item.getIssuedQty() == null
+                                ? BigDecimal.ZERO : item.getIssuedQty();
+                        BigDecimal remaining = item.getQty().subtract(issued);
+                        if (remaining.signum() <= 0) return null;
+                        StockDocIssueRequest.Line line = new StockDocIssueRequest.Line();
+                        line.setItemId(item.getId());
+                        line.setQty(remaining);
+                        return line;
+                    })
+                    .filter(Objects::nonNull)
+                    .toList());
+            if (request.getLines().isEmpty()) continue;
+            StockDocument draw = requireDocForUpdate(drawId);
+            // 生产领料单是草稿，出库前必须先审核 —— 与仓库那条「审核并出库」一段式端点
+            // 同一条路径，只是授权走直送这条窄路。
+            // 守卫必须一动作一取：审核自己就会改履约图，跨两个动作复用同一个快照
+            // 会被自己的写入判成「相关单据已变化」。
+            if (draw.getStatus() != null && draw.getStatus() == STATUS_DRAFT) {
+                var approveGuard = lockProductionDocuments(List.of(drawId));
+                approveGuard.verifyUnchanged();
+                approveDocumentAfterPrelock(drawId, false, true, null, true);
+            }
+            issueAfterPrelock(
+                    drawId, request, lockProductionDocuments(List.of(drawId)), true);
+        }
     }
 
     private boolean productionDrawRequested(UUID documentId) {

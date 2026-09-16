@@ -707,12 +707,9 @@ class _DesktopTaskTable extends StatelessWidget {
           width: 160,
           value: (item) => item.actionDocument?.number ?? '—',
         ),
-        MasterColumnDef(
-          key: 'goodsCode',
-          label: '货品编码',
-          width: 140,
-          value: (item) => item.isDocumentGrouped ? '—' : item.goodsCode,
-        ),
+        // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
+        // 规格再单独一列（原来「规格 / 颜色」挤在一格，两个属性都没法单独筛）。
+        // 按单归组的行没有单一货品身份，编号/颜色/规格如实显示「—」。
         MasterColumnDef(
           key: 'goodsName',
           label: '货品名称',
@@ -721,15 +718,26 @@ class _DesktopTaskTable extends StatelessWidget {
               item.isDocumentGrouped ? item.goodsSummaryLabel : item.goodsName,
         ),
         MasterColumnDef(
-          key: 'spec',
-          label: '规格 / 颜色',
-          width: 180,
+          key: 'goodsCode',
+          label: '编号',
+          width: 130,
+          value: (item) => item.isDocumentGrouped ? '—' : item.goodsCode,
+        ),
+        MasterColumnDef(
+          key: 'colorName',
+          label: '颜色',
+          width: 96,
           value: (item) => item.isDocumentGrouped
               ? '—'
-              : [
-                  item.spec,
-                  item.colorName,
-                ].where((value) => value.isNotEmpty).join(' / '),
+              : (item.colorName.isEmpty ? '—' : item.colorName),
+        ),
+        MasterColumnDef(
+          key: 'spec',
+          label: '规格',
+          width: 120,
+          value: (item) => item.isDocumentGrouped
+              ? '—'
+              : (item.spec.isEmpty ? '—' : item.spec),
         ),
         MasterColumnDef(
           key: 'supplyRoute',

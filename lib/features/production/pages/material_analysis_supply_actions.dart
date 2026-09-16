@@ -164,6 +164,10 @@ abstract class _MaterialAnalysisSupplyActionsState
       _bulkOperationCompleted = 0;
       _bulkOperationTotal = changes.length;
     });
+    // 2026-09-15 用户口径「点了在等没反馈像卡住」：路线确认同样是分批网络
+    // 提交，与下达采购/委外共用同一条全屏加载遮罩通道（宿主页、级联页都听
+    // 这份消息）。挂在分批循环起点 = 换桶/数量类确认弹窗已收口的纯网络段。
+    bucketActionBusyMessage.value = '正在确认物料路线';
     try {
       for (final batch in batches) {
         final key = businessIdempotencyKey(
@@ -244,6 +248,10 @@ abstract class _MaterialAnalysisSupplyActionsState
             : '已保存 $completed / ${changes.length} 条；剩余路线仍保留在页面，可直接重试。$message',
         force: true,
       );
+    } finally {
+      // 与 _notifyRoute 同款兜底：success/conflict/error 各分支漏清任何一条，
+      // 这份消息驱动的全屏遮罩就会一直盖住整页吃掉点击。
+      bucketActionBusyMessage.value = null;
     }
   }
 
@@ -365,8 +373,19 @@ abstract class _MaterialAnalysisSupplyActionsState
         sum + (path.demandSupplyGapQty > 0 ? path.demandSupplyGapQty : 0),
   );
 
-  /// 剩余本批生产需求 = demandSupplyGapQty − 已在途生产需求（下限 0）。
-  /// 公共安全库存补库是另一条显式数量切片，不得混入本值。
+  /// 本组「还可下达」的权威量。
+  ///
+  /// **唯一主口径是服务端投影的 `additionalSupplyRecommendedQty`**
+  /// （= max(0, 本批缺口 − 有效在途覆盖)，见 MaterialAnalysisService 的
+  /// ACTIVE_FUTURE_COVERAGE_SQL：采购/委外在途、公共认领、以及委外前置自制台账的
+  /// `required_qty − notified_qty` 都在里面）。
+  ///
+  /// 2026-09-15 修正：这个判定原来还捆着「sharedFuturePendingQty 非空 或 已认领 > 0」
+  /// 两个条件，读起来像「只有用了公共在途的行才走服务端口径」，实际上服务端恒定
+  /// 下发 `sharedFuturePendingQty = 0`（ClaimedFutureState.NONE），条件恒真——
+  /// 也就是说下面那条 `缺口 − 已在途` 的回退在真实服务端**永不执行**，却被注释和
+  /// ADR-081 §3.1 当成主口径，而全部分桶用例的夹具又只覆盖这条死分支。
+  /// 现在把优先级写明白：有服务端字段就用服务端的，回退只服务于缺该字段的旧载荷。
   double _residualSubmitQty(_MaterialGroup group, MaterialSupplyRoute route) {
     if (_isPriorityMakeSupplementGroup(group, route)) {
       // The backend has already deducted issued replenishment responsibility.
@@ -380,17 +399,13 @@ abstract class _MaterialAnalysisSupplyActionsState
                 : 0),
       );
     }
-    if (group.paths.every(
-      (path) =>
-          path.additionalSupplyRecommendationKnown &&
-          (path.sharedFuturePendingQty != null ||
-              path.sharedFutureClaimedQty > 0),
-    )) {
+    if (group.paths.every((path) => path.additionalSupplyRecommendationKnown)) {
       return group.paths.fold(
         0.0,
         (sum, path) => sum + path.additionalSupplyRecommendedQty,
       );
     }
+    // 旧载荷回退（服务端没给该字段）：按分摊在途估算，只作兜底。
     final residual =
         _groupDemandSupplyGapQty(group) - _openSubmittedQty(group, route);
     return residual > 0 ? residual : 0;
@@ -734,7 +749,8 @@ abstract class _MaterialAnalysisSupplyActionsState
     setState(() {
       for (final material in view.materials) {
         if (!requestedLineIds.contains(material.materialLineId)) continue;
-        // 无子层委外件没有子件任务：已直接合并生成委外申请，不进入两段式。
+        // 直接外发的委外件（无子层，或 V581 只有一个叶子子件）不建前置自制
+        // 子任务：已直接合并生成委外申请，不进入两段式。
         final child = _subcontractMakeChildProductOf(material);
         if (child == null) continue;
         created++;
@@ -764,9 +780,10 @@ abstract class _MaterialAnalysisSupplyActionsState
     return true;
   }
 
-  /// 该分析节点在当前快照内是否还有下层节点（与服务端「有子层级委外件」
-  /// 的 BOM 分流同向：分析节点来自货品 BOM，节点有子 ⇒ 货品必有活动子层，
-  /// 不会把无子层叶子误当两段式自动下达）。经父节点索引判定（原为全表扫描）。
+  /// 该分析节点在当前快照内是否还有下层节点。**只回答 BOM 形状**：本节点下面
+  /// 还有没有东西要办。是不是要先自制目标件再发外，另见
+  /// `_subcontractNeedsPreparation`——V581 起「只有一个叶子子件」的委外件有下层
+  /// 却直接外发，两者不再等价。经父节点索引判定（原为全表扫描）。
   bool _analysisMaterialHasChildren(
     ProductionMaterialAnalysisMaterial material,
   ) {
@@ -788,6 +805,25 @@ abstract class _MaterialAnalysisSupplyActionsState
       analysisLineId: material.analysisLineId,
       parentNodeKey: nodeKey,
     ));
+  }
+
+  /// 这个产品行在当前快照里还有没有下层（= 点下达会不会把人带进
+  /// 「父件 + 下层一起下单」整页）。只看 BOM 形状，供按钮文案使用；真正的
+  /// 进页判定仍由 `_pendingChildCascadeRows` 一处给出。
+  bool _productHasCascadeChildren(ProductionMaterialAnalysisProduct product) {
+    final analysis = _analysis;
+    if (analysis == null) return false;
+    final root = _rootSupplyMaterialOf(product);
+    if (root != null) return _analysisMaterialHasChildren(root);
+    final indexes = _analysisIndexes(analysis);
+    return indexes
+                .productsById[product.analysisLineId]
+                ?.hasProductionMaterialChildren ==
+            true ||
+        (indexes.materialsByProduct[product.analysisLineId]?.any(
+              (node) => !node.isRootSupply && node.level == 1,
+            ) ??
+            false);
   }
 
   List<_SupplyNotificationTarget> _notificationTargetsForGroups(
@@ -942,11 +978,29 @@ abstract class _MaterialAnalysisSupplyActionsState
       }
       if (!mounted) return null;
       bucketActionBusyMessage.value = null;
+      // 服务端**只有真的写了东西才会重建快照**（refreshLocked 换 version/
+      // fingerprint）。版本与指纹都没动 = 这次提交一条下达都没产生：可能是别人
+      // 刚下达过、在途已完全覆盖，也可能是同一份请求的幂等回放。原来这种情况
+      // 照样弹「委外任务已下达」，而那一行一个字节没动，再点一次还是如此——
+      // 用户反复遇到的「点了下达、提示成功、行还在未下达」就是它（2026-09-15）。
+      // 不当成功：如实说明并返回 null，让「一起下单」的编排在这一段停下。
+      final producedNothing =
+          current.version == analysis.version &&
+          current.fingerprint == analysis.fingerprint;
       setState(() {
         _notifyingRoute = null;
         _clearBulkOperation();
         _applyAnalysis(current);
       });
+      if (producedNothing) {
+        context.appWarning(
+          '本次没有产生任何${route.label}下达：所选行在服务端已无可下达余量'
+          '（可能刚被他人下达、或在途已完全覆盖），也可能是同一份请求被幂等回放。'
+          '页面已刷新，请重新核对后再提交。',
+          force: true,
+        );
+        return null;
+      }
       final usedRootStock = groups.any(
         (group) => _hasRootStockToAllocate(group, route),
       );
@@ -996,6 +1050,19 @@ abstract class _MaterialAnalysisSupplyActionsState
         force: true,
       );
       return null;
+    } finally {
+      // 兜底清场（2026-09-14）：忙标志与全屏遮罩原来只在各 return 分支上手动清，
+      // 漏任何一条，`_busy` 就永久为真、`bucketActionBusyMessage` 的
+      // Positioned.fill 遮罩会一直盖在整页上吃掉所有点击——表现就是用户说的
+      // 「按钮点了没反应」，而且刷新页面前好不了。这类状态必须由 finally 收口，
+      // 不能指望每条分支都记得清。
+      bucketActionBusyMessage.value = null;
+      if (mounted && _notifyingRoute != null) {
+        setState(() {
+          _notifyingRoute = null;
+          _clearBulkOperation();
+        });
+      }
     }
   }
 
@@ -1020,22 +1087,30 @@ abstract class _MaterialAnalysisSupplyActionsState
   }
 
   /// 委外「下达委外」的数量裁决 + 总结确认（2026-09-06 对齐采购口径）：
-  /// 有子层=与自制同构的全量剩余（服务端转前置自制，不可改量）；无子层=行内
-  /// 数量裁决（校验同采购）。两类合并为**一张**总结弹窗二次确认，取消整批放弃
-  ///（此前有子层路径不弹任何确认直接下达）。
+  /// **要先自制目标件**的委外件 = 与自制同构的全量剩余（服务端转前置自制，
+  /// 不可改量）；**直接外发**的委外件 = 行内数量裁决（校验同采购）。
+  /// 两类合并为**一张**总结弹窗二次确认，取消整批放弃。
+  ///
+  /// V581 起「直接外发」含两种：无子层的纯外协，以及只有一个叶子子件、由我方
+  /// 发那颗子件的件——后者也是一张普通委外订货，可分批、可按权限超量，
+  /// 不再被当成「创建子件任务必须整量接管」。
   Future<List<MaterialSupplyQuantityInput>?> _resolveSubcontractQuantities(
     List<_MaterialGroup> groups,
     Map<String, String>? qtyByActionGroupKey, {
     bool silent = false,
   }) async {
     const route = MaterialSupplyRoute.subcontract;
-    final childGroups = groups
-        .where((group) => _analysisMaterialHasChildren(group.representative))
-        .toList(growable: false);
+    // 要不要先自制目标件再发外：有下层**且**不是 V581「只有一个叶子子件」的
+    // 直接外发件。形态由服务端 subcontractOutboundForm 明确告知，旧服务端
+    // 返回 null 时 isComponentOutbound 为 false，自然回落旧口径。
+    bool needsPreparation(_MaterialGroup group) =>
+        !group.representative.isComponentOutbound &&
+        _analysisMaterialHasChildren(group.representative);
+    final childGroups = groups.where(needsPreparation).toList(growable: false);
     final leafGroups = groups
-        .where((group) => !_analysisMaterialHasChildren(group.representative))
+        .where((group) => !needsPreparation(group))
         .toList(growable: false);
-    // 有子层：显式创建 child 时必须全量接管剩余需求（仅当选中含有子层行时校验）。
+    // 先自制：显式创建 child 时必须全量接管剩余需求（仅当选中含这类行时校验）。
     final childEntries = [
       for (final target in _notificationTargetsForGroups(childGroups))
         _supplyQuantityEntry(target, route),
@@ -1075,6 +1150,8 @@ abstract class _MaterialAnalysisSupplyActionsState
     if (!confirmed) return null;
     return [
       for (var i = 0; i < entries.length; i++)
+        // 前 childEntries.length 个是「要先自制」的行——恒不许超量；其后是
+        // 直接外发段（无子层 + V581 单一子件），按行内裁决结果决定。
         entries[i].toInput(
           quantities[i],
           allowOverDemand:
@@ -1270,21 +1347,17 @@ abstract class _MaterialAnalysisSupplyActionsState
             (material.demandSupplyGapQty > 0 ? material.demandSupplyGapQty : 0);
       }
     }
-    final nodeKey = representative?.nodeKey;
-    final analysis = _analysis;
+    // 「我方供料的委外件不能吃公共超量备货」——多出来的量会凭空产生一份
+    // 无人负责的子件需求，服务端与数据库
+    //（preplan_public_surplus_subcontract_leaf_guard）都拒绝。
+    //
+    // 这里问的是**有没有生产性子层**（V581 的单一子件委外同样有，同样不许超量），
+    // 不是「要不要先自制」。原先这一处内联判定只查 childrenByParentNodeKey、
+    // 没有根行回退，导致 ROOT_SUPPLY 顶层直委外行被判成「无子层」而放开超量，
+    // 与同一批数量裁决的判定相反；改用带根行回退的 _analysisMaterialHasChildren
+    // （它不排除 SHIP/REFERENCE，恰好与数据库那条「有任意活动 BOM 边即拒」同口径）。
     final hasProductionChildren =
-        representative != null &&
-        nodeKey != null &&
-        analysis != null &&
-        (_analysisIndexes(analysis).childrenByParentNodeKey[(
-                  analysisLineId: representative.analysisLineId,
-                  parentNodeKey: nodeKey,
-                )] ??
-                const <ProductionMaterialAnalysisMaterial>[])
-            .any((child) {
-              final stage = child.controlStage?.trim().toUpperCase();
-              return stage != 'SHIP' && stage != 'REFERENCE';
-            });
+        representative != null && _analysisMaterialHasChildren(representative);
     return MaterialSupplyQuantityEntry(
       actionGroupKey: target.actionGroupKey,
       materialLineId: target.materialLineId,

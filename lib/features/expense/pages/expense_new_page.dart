@@ -18,12 +18,13 @@ import '../../../components/inputs/uten_input.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../models/expense_item.dart';
 import '../providers/expense_providers.dart';
@@ -62,7 +63,13 @@ class _ExpenseNewPageState extends ConsumerState<ExpenseNewPage> {
             // narrow 容器：compact 提供 gutter，medium+ 把表单钳到 1120 居中
             child: UtenContentContainer.narrow(
               child: ListView(
-                padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+                // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
+                padding: const EdgeInsets.fromLTRB(
+                  0,
+                  UtenSpacing.s16,
+                  0,
+                  UtenFloatingActionGroup.scrollClearance,
+                ),
                 children: [
                   UtenCard(
                     child: Column(
@@ -120,56 +127,63 @@ class _ExpenseNewPageState extends ConsumerState<ExpenseNewPage> {
                       ],
                     ),
                   ),
+
+                  // 合计随内容收尾（2026-09-14 口径：合计挂在内容下面，
+                  // 不再挤进底部操作条）。
+                  const SizedBox(height: UtenSpacing.s16),
+                  UtenCard(
+                    child: Row(
+                      children: [
+                        Text(
+                          '合计',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '¥ ${_total.toStringAsFixed(2)}',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: UtenColors.primary,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
-
-          // 底部
-          UtenBottomActionBar(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '合计',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      Text(
-                        '¥ ${_total.toStringAsFixed(2)}',
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: UtenColors.primary,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: UtenSpacing.s16),
-                UtenButton(
-                  type: UtenButtonType.ghost,
-                  onPressed: _isSubmitting
-                      ? null
-                      : () => _submit(saveOnly: true),
-                  child: const Text('存草稿'),
-                ),
-                const SizedBox(width: 12),
-                UtenButton(
-                  isLoading: _isSubmitting,
-                  icon: Icons.send_rounded,
-                  onPressed: _isSubmitting
-                      ? null
-                      : () => _submit(saveOnly: false),
-                  child: const Text('提交'),
-                ),
-              ],
-            ),
+        ],
+      ),
+      // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组，按钮统一 large；
+      // 没有明细（无内容）时置灰并提示原因。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: UtenFloatingActionGroup(
+        children: [
+          UtenButton(
+            type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
+            onPressed: _isSubmitting || _items.isEmpty
+                ? null
+                : () => _submit(saveOnly: true),
+            child: const Text('存草稿'),
+          ),
+          UtenButton(
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
+            isLoading: _isSubmitting,
+            icon: Icons.send_rounded,
+            onPressed: _isSubmitting || _items.isEmpty
+                ? null
+                : () => _submit(saveOnly: false),
+            onDisabledTap: _isSubmitting
+                ? null
+                : () => context.appWarning('请先添加报销明细'),
+            child: const Text('提交'),
           ),
         ],
       ),

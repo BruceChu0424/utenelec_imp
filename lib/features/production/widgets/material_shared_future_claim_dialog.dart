@@ -277,10 +277,7 @@ class _MaterialSharedFutureClaimDialogState
                   ),
                 ),
               if (_error != null)
-                Text(
-                  _error!,
-                  style: TextStyle(color: theme.colorScheme.error),
-                ),
+                Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
             ],
           ),
         ),

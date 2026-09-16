@@ -4,6 +4,7 @@
 // 的端点会下发，其余端点解析成空列表、合计条整条不渲染。合计一律由服务端在**整个结果集**
 // 上算（见 features/report/shared/report_total.dart）——列表是服务端分页的，前端对当前页
 // 求和会得出一个看着像总计、其实只覆盖一页的数，比不显示更糟。
+import '../../features/basic_data/models/master_facet.dart';
 import '../../features/report/shared/report_total.dart';
 
 class PagedResult<T> {
@@ -14,6 +15,8 @@ class PagedResult<T> {
     required this.total,
     required this.totalPages,
     this.totals = const [],
+    this.facets = const {},
+    this.facetNullCounts = const {},
   });
 
   final List<T> items;
@@ -25,11 +28,36 @@ class PagedResult<T> {
   /// 服务端下发的合计项（按单位/币种分组，前端不做任何加法）；端点没声明时为空。
   final List<ReportTotal> totals;
 
+  /// 服务端下发的表头筛选桶（2026-09-15 即时库存「所属仓库」起用）；
+  /// 端点没声明时为空，表格不显示对应表头筛选。
+  final Map<String, List<MasterFacetBucket>> facets;
+
+  /// 各 facet 字段的空值行数（"(空)(N)" 桶用）；与 [facets] 成对出现。
+  final Map<String, int> facetNullCounts;
+
   factory PagedResult.fromJson(
     Map<String, dynamic> json,
     T Function(Map<String, dynamic>) fromJson,
   ) {
     final list = json['items'] as List<dynamic>? ?? const [];
+    final facets = <String, List<MasterFacetBucket>>{};
+    final rawFacets = json['facets'];
+    if (rawFacets is Map<String, dynamic>) {
+      rawFacets.forEach((key, value) {
+        if (value is List) {
+          facets[key] = value
+              .map((e) => MasterFacetBucket.fromJson(e as Map<String, dynamic>))
+              .toList();
+        }
+      });
+    }
+    final nullCounts = <String, int>{};
+    final rawNulls = json['facetNullCounts'];
+    if (rawNulls is Map<String, dynamic>) {
+      rawNulls.forEach((key, value) {
+        if (value is num) nullCounts[key] = value.toInt();
+      });
+    }
     return PagedResult<T>(
       items: list.map((e) => fromJson(e as Map<String, dynamic>)).toList(),
       page: json['page'] as int? ?? 1,
@@ -39,6 +67,8 @@ class PagedResult<T> {
       totals: (json['totals'] as List<dynamic>? ?? const [])
           .map((e) => ReportTotal.fromJson(e as Map<String, dynamic>))
           .toList(),
+      facets: facets,
+      facetNullCounts: nullCounts,
     );
   }
 }

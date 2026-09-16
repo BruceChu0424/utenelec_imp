@@ -9,9 +9,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/cards/uten_card.dart';
+import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -255,48 +257,31 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
 
     return Scaffold(
       body: body,
-      // 多选操作条：选中数 + 删除按钮（选择模式才显示）
-      bottomNavigationBar: _selecting
-          ? SafeArea(
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s20,
-                  vertical: UtenSpacing.s12,
-                ),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  border: Border(
-                    top: BorderSide(
-                      color: Theme.of(context).colorScheme.outlineVariant,
+      // 多选操作：2026-09-14 UI 统一口径——吸底操作条改右下悬浮组，
+      // 「已选 N」用全站标准胶囊，删除按钮统一 large。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _selecting
+          ? UtenFloatingActionGroup(
+              children: [
+                UtenSelectionSummaryPill(count: _selected.length),
+                // 未选中时视觉禁用（UtenActionButton 无 disabled 参数，
+                // 用 Opacity + IgnorePointer 包一层）
+                Opacity(
+                  opacity: _selected.isEmpty ? 0.5 : 1,
+                  child: IgnorePointer(
+                    ignoring: _selected.isEmpty,
+                    child: UtenActionButton(
+                      type: UtenActionButtonType.danger,
+                      size: UtenActionButtonSize.large,
+                      icon: Icons.delete_outline_rounded,
+                      label: const Text('删除'),
+                      loadingLabel: const Text('删除中…'),
+                      onAction: _deleteSelected,
                     ),
                   ),
                 ),
-                child: Row(
-                  children: [
-                    Text(
-                      '已选 ${_selected.length} 条',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const Spacer(),
-                    // 未选中时视觉禁用（UtenActionButton 无 disabled 参数，
-                    // 用 Opacity + IgnorePointer 包一层）
-                    Opacity(
-                      opacity: _selected.isEmpty ? 0.5 : 1,
-                      child: IgnorePointer(
-                        ignoring: _selected.isEmpty,
-                        child: UtenActionButton(
-                          icon: Icons.delete_outline_rounded,
-                          label: const Text('删除'),
-                          loadingLabel: const Text('删除中…'),
-                          onAction: _deleteSelected,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              ],
             )
           : null,
     );

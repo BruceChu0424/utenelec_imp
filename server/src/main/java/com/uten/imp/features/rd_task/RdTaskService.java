@@ -44,12 +44,16 @@ public class RdTaskService {
     private static final String SELECT_COLUMNS = """
             SELECT t.id, t.task_no, t.title, t.category, t.status, t.priority,
                    t.goods_id, g.name AS goods_name, g.code AS goods_code,
+                   goods_color.name AS color_name,
                    t.order_item_id, t.source_doc_type, t.source_doc_id, t.source_doc_no,
                    t.assignee_employee_id, assignee.full_name AS assignee_name,
                    t.reporter_employee_id, reporter.full_name AS reporter_name,
                    t.due_date, t.started_at, t.completed_at, t.created_at, t.close_note, t.row_version
             FROM rd_tasks t
             LEFT JOIN goods g ON g.id = t.goods_id
+            -- 任务只指到货品，颜色只能取主档色；不参与过滤/排序，纯身份展示列。
+            LEFT JOIN colors goods_color ON goods_color.id = g.color_id
+                                        AND goods_color.is_deleted = FALSE
             LEFT JOIN employees assignee ON assignee.id = t.assignee_employee_id
             LEFT JOIN employees reporter ON reporter.id = t.reporter_employee_id
             """;
@@ -246,7 +250,8 @@ public class RdTaskService {
                 rs.getObject("created_at", OffsetDateTime.class),
                 rs.getString("close_note"),
                 rs.getLong("row_version"),
-                actions);
+                actions,
+                rs.getString("color_name"));
     }
 
     private ApiException concurrentChange() {

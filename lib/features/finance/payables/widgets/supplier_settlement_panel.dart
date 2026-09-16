@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/inputs/uten_search_bar.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
+import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../components/layout/uten_h_scroll_area.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/network/latest_request_guard.dart';
@@ -455,7 +456,9 @@ class _SupplierSettlementDetailPanelState
           : _error != null
           ? Center(child: Text(_error!))
           : _body(),
-      bottomNavigationBar: _detail == null ? null : _actions(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _detail == null ? null : _actions(),
     );
   }
 
@@ -465,7 +468,13 @@ class _SupplierSettlementDetailPanelState
     final theme = Theme.of(context);
     return SafeArea(
       child: ListView(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
+        // 底部留出右下悬浮操作组的高度。
+        padding: const EdgeInsets.fromLTRB(
+          UtenSpacing.s12,
+          UtenSpacing.s12,
+          UtenSpacing.s12,
+          UtenFloatingActionGroup.scrollClearance,
+        ),
         children: [
           Card(
             child: Padding(
@@ -576,6 +585,7 @@ class _SupplierSettlementDetailPanelState
       children.add(
         UtenButton(
           type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
           icon: Icons.undo_outlined,
           isLoading: _writing,
           onPressed: _writing ? null : () => _reasonAction(reverse: true),
@@ -587,6 +597,7 @@ class _SupplierSettlementDetailPanelState
       children.add(
         UtenButton(
           type: UtenButtonType.tonal,
+          size: UtenButtonSize.large,
           icon: Icons.report_problem_outlined,
           isLoading: _writing,
           onPressed: _writing ? null : () => _reasonAction(reverse: false),
@@ -598,6 +609,7 @@ class _SupplierSettlementDetailPanelState
       children.add(
         UtenButton(
           type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
           icon: Icons.handshake_outlined,
           isLoading: _writing,
           onPressed: _writing ? null : () => _confirm(supplier: true),
@@ -608,6 +620,7 @@ class _SupplierSettlementDetailPanelState
     if (_canConfirm && summary.canInternalConfirm) {
       children.add(
         UtenButton(
+          size: UtenButtonSize.large,
           icon: Icons.fact_check_outlined,
           isLoading: _writing,
           onPressed: _writing ? null : () => _confirm(supplier: false),
@@ -616,16 +629,7 @@ class _SupplierSettlementDetailPanelState
       );
     }
     if (children.isEmpty) return null;
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Wrap(
-          alignment: WrapAlignment.center,
-          spacing: UtenSpacing.s8,
-          runSpacing: UtenSpacing.s8,
-          children: children,
-        ),
-      ),
-    );
+    // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组，按钮统一 large。
+    return UtenFloatingActionGroup(children: children);
   }
 }

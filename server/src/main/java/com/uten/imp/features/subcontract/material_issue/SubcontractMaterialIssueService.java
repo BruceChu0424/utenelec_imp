@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.material_issue;
 
+import com.uten.imp.features.subcontract.SubcontractOutboundFlowSql;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -486,11 +487,12 @@ public class SubcontractMaterialIssueService {
                            FROM subcontract_material_plan_items plan_item
                            WHERE plan_item.order_item_id = order_item.id
                              AND plan_item.flow_mode IN (
-                                 'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                                 'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
                              AND plan_item.is_deleted = FALSE
                        ) AS new_flow,
                        COALESCE((
-                           SELECT SUM(issue_item.qty * COALESCE(issue_item.unit_rate, 1))
+                           SELECT
+                           """ + SubcontractOutboundFlowSql.ISSUED_TARGET_BASE_SUM + """
                            FROM subcontract_material_issue_items issue_item
                            JOIN subcontract_material_issues issue
                              ON issue.id = issue_item.issue_id
@@ -499,8 +501,10 @@ public class SubcontractMaterialIssueService {
                            JOIN subcontract_material_plan_items plan_item
                              ON plan_item.id = issue_item.plan_item_id
                             AND plan_item.flow_mode IN (
-                                'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                                'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
                             AND plan_item.is_deleted = FALSE
+                           JOIN subcontract_order_items order_unit
+                             ON order_unit.id = issue_item.order_item_id
                            WHERE issue_item.order_item_id = order_item.id
                              AND issue_item.issue_id <> :issueId
                              AND issue_item.is_deleted = FALSE

@@ -33,9 +33,15 @@ void main() {
   );
 
   test('client editor requires the three-way type and list exports floor', () {
-    final source = File(
-      'lib/features/basic_data/pages/client_category_page.dart',
-    ).readAsStringSync();
+    // 2026-09-14：客户编辑表单抽到 widgets/client_master_edit.dart，分类页只留
+    // 列表与详情。契约按两文件并集判定，不绑死在某一个文件里。
+    final source =
+        File(
+          'lib/features/basic_data/pages/client_category_page.dart',
+        ).readAsStringSync() +
+        File(
+          'lib/features/basic_data/widgets/client_master_edit.dart',
+        ).readAsStringSync();
     final field = _between(
       source,
       "key: 'salesPaymentType'",
@@ -54,9 +60,13 @@ void main() {
   test(
     'legacy Credit is a read-only snapshot distinct from the active floor',
     () {
-      final source = File(
-        'lib/features/basic_data/pages/client_category_page.dart',
-      ).readAsStringSync();
+      final source =
+          File(
+            'lib/features/basic_data/pages/client_category_page.dart',
+          ).readAsStringSync() +
+          File(
+            'lib/features/basic_data/widgets/client_master_edit.dart',
+          ).readAsStringSync();
 
       expect(source, contains("if (d.legacyId != null) 'credit'"));
       expect(source, contains('legacyCreditSnapshot: d.legacyId != null'));

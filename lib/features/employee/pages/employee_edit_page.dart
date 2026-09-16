@@ -15,7 +15,9 @@ import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_section_header.dart';
+import '../../../components/buttons/uten_button.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -371,7 +373,8 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                 child: ListView(
                   padding: const EdgeInsets.only(
                     top: UtenSpacing.s12,
-                    bottom: 96, // 底部固定操作栏留白
+                    // 右下悬浮操作组让位（最后一节可滚出按钮区）。
+                    bottom: UtenFloatingActionGroup.scrollClearance,
                   ),
                   children: [
                     _section(l10n.employeeEditBasic, [
@@ -551,20 +554,20 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                 ),
               ),
             ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s16),
-          child: FilledButton(
+      // 2026-09-14 UI 统一口径：吸底保存按钮改右下悬浮组，统一 large 尺寸。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: UtenFloatingActionGroup(
+        children: [
+          UtenButton(
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
+            icon: Icons.save_outlined,
+            isLoading: _saving,
             onPressed: _saving ? null : _save,
-            child: _saving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(l10n.commonSave),
+            child: Text(l10n.commonSave),
           ),
-        ),
+        ],
       ),
     );
   }

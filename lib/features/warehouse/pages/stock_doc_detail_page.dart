@@ -1018,9 +1018,17 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                                             UtenFloatingActionGroup
                                                 .scrollClearance,
                                         columns: [
+                                          // 2026-09-14 全站列序统一（ADR-081 §4.1）：名称 → 编号 → 颜色。
+                                          MasterColumnDef(
+                                            key: 'goods',
+                                            label: '货品名称',
+                                            width: 200,
+                                            value: (it) =>
+                                                names.goods(it.goodsId),
+                                          ),
                                           MasterColumnDef(
                                             key: 'goodsCode',
-                                            label: '物料编码',
+                                            label: '编号',
                                             width: 110,
                                             value: (it) =>
                                                 names
@@ -1029,11 +1037,11 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                                                 '—',
                                           ),
                                           MasterColumnDef(
-                                            key: 'goods',
-                                            label: '货品名称',
-                                            width: 200,
+                                            key: 'color',
+                                            label: '颜色',
+                                            width: 80,
                                             value: (it) =>
-                                                names.goods(it.goodsId),
+                                                names.color(it.colorId),
                                           ),
                                           MasterColumnDef(
                                             key: 'series',
@@ -1057,13 +1065,6 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                                                           .goodsInfo(it.goodsId)
                                                           ?.stockPlace ??
                                                       '—',
-                                          ),
-                                          MasterColumnDef(
-                                            key: 'color',
-                                            label: '颜色',
-                                            width: 80,
-                                            value: (it) =>
-                                                names.color(it.colorId),
                                           ),
                                           MasterColumnDef(
                                             key: 'unit',
@@ -1170,6 +1171,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           ],
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
         floatingActionButton: _d == null || _busy ? null : _actions(),
       ),
     );

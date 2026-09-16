@@ -29,6 +29,8 @@ public final class ProcurementIqcRejectionContracts {
             String supplierName,
             String goodsCode,
             String goodsName,
+            UUID colorId,
+            String colorName,
             String failedBaseQty,
             String failedQty,
             String unitName,

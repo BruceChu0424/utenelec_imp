@@ -56,6 +56,7 @@ public class SalesShipmentController {
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) Boolean arPosted,
             @RequestParam(required = false) Short financeAudit,
+            @RequestParam(required = false) Boolean financeRejected,
             @RequestParam(required = false) String warehouseWorkStatus,
             @RequestParam(required = false) String shipmentKind,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
@@ -66,7 +67,7 @@ public class SalesShipmentController {
             @RequestParam(required = false) String order) {
         return service.list(new ShipmentQueryFilter(
                 keyword, clientId, warehouseId, status, arPosted, financeAudit,
-                warehouseWorkStatus,
+                financeRejected, warehouseWorkStatus,
                 dateFrom, dateTo,shipmentKind), page, size, sort, order);
     }
 
@@ -163,6 +164,12 @@ public class SalesShipmentController {
     }
 
     /** 财务反审（仅仓库开始拣货前且当前已财审的单据）。 */
+    @PostMapping("/{id}/finance-reject-reverse")
+    @PreAuthorize("hasAuthority('finance_shipment_audit')")
+    public java.util.Map<String, Object> financeRejectReverse(@PathVariable UUID id) {
+        return service.financeRejectReverse(id);
+    }
+
     @PostMapping("/{id}/finance-audit-reverse")
     @PreAuthorize("hasAuthority('finance_shipment_audit')")
     public java.util.Map<String, Object> financeAuditReverse(@PathVariable UUID id) {

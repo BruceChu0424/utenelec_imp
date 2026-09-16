@@ -39,9 +39,11 @@ void main() {
             .ancestor(of: find.text(label), matching: find.byType(Row))
             .first;
         final first = row('第一条已下达物料');
-        final shortage = find.descendant(of: first, matching: find.text('7'));
+        // 2026-09-15 已下达段对齐「下达车间」：缺口列退役，行的数量事实只剩
+        // 需求量(10)与下达数量(4，无行动快照=分摊合计兜底)。
+        final demand = find.descendant(of: first, matching: find.text('10'));
         final issued = find.descendant(of: first, matching: find.text('4'));
-        final shortageBefore = tester.widget<Text>(shortage).style?.color;
+        final demandBefore = tester.widget<Text>(demand).style?.color;
         final issuedBefore = tester.widget<Text>(issued).style?.color;
 
         await tester.tap(find.text('第一条已下达物料'));
@@ -62,12 +64,12 @@ void main() {
                 'Selected $route cell ${text.data} must stay normal-colored',
           );
         }
-        expect(tester.widget<Text>(shortage).style?.color, shortageBefore);
+        expect(tester.widget<Text>(demand).style?.color, demandBefore);
         expect(tester.widget<Text>(issued).style?.color, issuedBefore);
 
         await tester.tap(find.text('第二条已下达物料'));
         await tester.pumpAndSettle();
-        expect(tester.widget<Text>(shortage).style?.color, shortageBefore);
+        expect(tester.widget<Text>(demand).style?.color, demandBefore);
         expect(tester.widget<Text>(issued).style?.color, issuedBefore);
         for (final element
             in find
@@ -85,7 +87,7 @@ void main() {
     );
 
     testWidgets(
-      '$route issue preserves physical shortage until qualified receipt',
+      '$route issued segment retires shortage column and shows real issued qty',
       (tester) async {
         final analysis = _analysis();
         final material = _material(
@@ -101,18 +103,19 @@ void main() {
         await _open(tester, route == 'BUY' ? 'buy' : 'subcontract');
         await _filter(tester, '已下达 (1)');
 
-        // 2026-09-09 起缺口说明挂列头 ⓘ、格内无 Tooltip；用格子 key 锚定。
-        Finder shortageCell(String qty) => find.descendant(
-          of: find.byKey(const Key('bucket-shortage-qty-cell')),
-          matching: find.text(qty),
-        );
-        expect(shortageCell('10'), findsOneWidget);
-        expect(shortageCell('4'), findsNothing);
+        // 2026-09-15 用户口径（已下达段对齐「下达车间」）：缺口/仓库余量/BOM
+        // 路径/订单总量四列从已下达段退役；「下达数量」直接显示真实已下达量
+        //（本夹具无行动快照，回落分摊合计 4）。物理缺口仍是服务端口径，只是
+        // 不再在这段回看——被需求冲抵的 6 同样不该出现。
+        expect(find.byKey(const Key('bucket-shortage-qty-cell')), findsNothing);
+        expect(find.text('待到齐物料'), findsOneWidget);
+        expect(find.text('4'), findsOneWidget);
+        expect(find.text('6'), findsNothing);
         expect(tester.takeException(), isNull);
       },
     );
 
-    testWidgets('$route physical shortage excludes public surplus orders', (
+    testWidgets('$route issued segment drops pre-issue ledger columns', (
       tester,
     ) async {
       final analysis = _analysis();
@@ -125,15 +128,12 @@ void main() {
       await _pump(tester, analysis: analysis);
       await _open(tester, route == 'BUY' ? 'buy' : 'subcontract');
       await _filter(tester, '已下达 (1)');
-      final physicalShortage = find.descendant(
-        of: find.byKey(const Key('bucket-shortage-qty-cell')),
-        matching: find.text('7'),
-      );
-      expect(physicalShortage, findsOneWidget);
-      // 2026-09-14：「已备数量」列撤除（恒等于 需求 − 缺口，与缺口列完全冗余），
-      // 原来靠它露出的 allocatedAvailableQty=3 不再单独成格；本用例真正要守的是
-      // 缺口按物理口径显示 7、不被公共超量订单冲成 6。
-      expect(find.text('6'), findsNothing);
+      // 已下达段不再回看下单前的库存账：缺口列整个不出现，真实下达量 15 直接
+      // 显示在「下达数量」；被公共超量订单冲抵后的 6/已备 3 都不该露头。
+      expect(find.byKey(const Key('bucket-shortage-qty-cell')), findsNothing);
+      expect(find.text('15'), findsOneWidget);
+      expect(find.text('7'), findsNothing);
+      expect(find.text('3'), findsNothing);
       expect(tester.takeException(), isNull);
     });
   }
@@ -224,7 +224,7 @@ void main() {
       );
       await tester.tap(header);
       await tester.pumpAndSettle();
-      expect(find.text('创建生产计划(1)'), findsOneWidget);
+      expect(find.textContaining(RegExp(r'创建生产计划.*\(1\)')), findsOneWidget);
       final fields = tester.widgetList<TextField>(find.byType(TextField));
       expect(fields, isNotEmpty);
 

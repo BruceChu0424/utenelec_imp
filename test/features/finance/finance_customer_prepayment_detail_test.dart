@@ -38,7 +38,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
-      expect(find.text('收款业务'), findsOneWidget);
+      expect(find.text('收款类型'), findsOneWidget);
       expect(find.text('客户订单预收'), findsOneWidget);
       expect(find.text('历史口径未分层'), findsOneWidget);
       expect(find.text('绑定销售订单 UUID'), findsOneWidget);

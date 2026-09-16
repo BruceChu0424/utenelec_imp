@@ -240,8 +240,6 @@ class _ProductionExecutionBatchPageState
     ref.watch(currentPermissionsProvider);
     ref.watch(isSuperAdminProvider);
     final preview = _preview;
-    final compact =
-        MediaQuery.sizeOf(context).width < UtenBreakpoints.mediumStart;
     return PopScope(
       canPop: !_saving,
       child: Scaffold(
@@ -281,26 +279,9 @@ class _ProductionExecutionBatchPageState
           ),
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        floatingActionButton: compact ? null : _actions(),
-        bottomNavigationBar: compact
-            ? Material(
-                color: Theme.of(context).colorScheme.surface,
-                child: SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: UtenSpacing.s16,
-                      vertical: UtenSpacing.s12,
-                    ),
-                    child: Align(
-                      heightFactor: 1,
-                      alignment: Alignment.centerRight,
-                      child: _actions(),
-                    ),
-                  ),
-                ),
-              )
-            : null,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+        // 2026-09-14 UI 统一口径：紧凑视口同样用右下悬浮组（不再吸底条）。
+        floatingActionButton: _actions(),
       ),
     );
   }
@@ -309,6 +290,7 @@ class _ProductionExecutionBatchPageState
     children: [
       UtenButton(
         type: UtenButtonType.secondary,
+        size: UtenButtonSize.large,
         onPressed: _saving ? null : _back,
         child: Text(l10n.commonBack),
       ),
@@ -854,9 +836,8 @@ class _ProductionExecutionBatchPageState
               emptyMessage: preview.maxReadyQty <= 0
                   ? l10n.productionBatchNoKitHint
                   : l10n.productionBatchNoAdditionalMaterials,
-              bottomContentPadding: compact
-                  ? UtenSpacing.s16
-                  : UtenFloatingActionGroup.scrollClearance,
+              // 右下悬浮操作组让位（紧凑视口同样走悬浮组）。
+              bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
             ),
           ),
         ],

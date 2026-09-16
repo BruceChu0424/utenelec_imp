@@ -74,17 +74,27 @@ class ProductionDrawDetailTable extends StatelessWidget {
         width: 160,
         value: (row) => row.document.billNo ?? '—',
       ),
-      MasterColumnDef(
-        key: 'goodsCode',
-        label: '物料编码',
-        width: 120,
-        value: (row) => names.goodsInfo(row.item.goodsId)?.code ?? '—',
-      ),
+      // 2026-09-14 全站列序统一（ADR-081 §4.1）：名称 → 编号 → 颜色。
       MasterColumnDef(
         key: 'goods',
         label: '货品名称',
         width: 200,
         value: (row) => names.goods(row.item.goodsId),
+      ),
+      MasterColumnDef(
+        key: 'goodsCode',
+        label: '编号',
+        width: 120,
+        value: (row) => names.goodsInfo(row.item.goodsId)?.code ?? '—',
+      ),
+      // 颜色列原来排在库位号之后（第 8 列），仓库拣货要横滚才看得到：同名不同色
+      // 在本系统很常见，编号/名称/颜色必须在前几列同屏可见，故上移紧跟货品名称。
+      // 已有独立颜色列，货品列就不再重复带颜色。
+      MasterColumnDef(
+        key: 'color',
+        label: '颜色',
+        width: 90,
+        value: (row) => names.color(row.item.colorId),
       ),
       MasterColumnDef(
         key: 'warehouse',
@@ -111,12 +121,6 @@ class ProductionDrawDetailTable extends StatelessWidget {
         value: (row) => row.item.place?.trim().isNotEmpty == true
             ? row.item.place!
             : names.goodsInfo(row.item.goodsId)?.stockPlace ?? '—',
-      ),
-      MasterColumnDef(
-        key: 'color',
-        label: '颜色',
-        width: 90,
-        value: (row) => names.color(row.item.colorId),
       ),
       MasterColumnDef(
         key: 'unit',

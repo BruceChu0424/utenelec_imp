@@ -95,11 +95,18 @@ void main() {
       expect(find.text('产品甲 · 进度来源'), findsNothing);
 
       // 「查看进度」列按钮才弹窗。
+      // 2026-09-14 名称/编号/颜色/规格拆列后表体更宽：先滚到该按钮再点。
+      await tester.ensureVisible(find.text('查看进度').first);
+      await tester.pumpAndSettle();
       await tester.tap(find.text('查看进度').first);
       await tester.pumpAndSettle();
       expect(find.text('产品甲 · 进度来源'), findsOneWidget);
       await tester.tap(find.text('关闭'));
       await tester.pumpAndSettle();
+
+      // 上面 ensureVisible 把表体横滚过去了：首列是冻结列（钉在视口左缘），
+      // 不先归零横滚，点名称就点在冻结列底下（既有表格用例同款处理）。
+      await _resetTableHScroll(tester);
 
       // 勾选第二行批量发货：数量=各自本次可发（出货单里再调整）。
       await tester.tap(find.text('产品丙'));
@@ -228,4 +235,15 @@ class _ShippableRepository extends SalesRepository {
       ),
     ];
   }
+}
+
+/// 把表格的横向滚动归零（冻结首列会盖住对齐到视口左缘的内容）。
+Future<void> _resetTableHScroll(WidgetTester tester) async {
+  for (final state in tester.stateList<ScrollableState>(
+    find.byType(Scrollable),
+  )) {
+    if (state.position.axis != Axis.horizontal) continue;
+    state.position.jumpTo(0);
+  }
+  await tester.pumpAndSettle();
 }

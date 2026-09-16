@@ -279,7 +279,7 @@ class SalesReturnQualityIdempotencyPostgresTest {
                     return new com.uten.imp.application.port.InventoryValuationPort.MovementValue(
                             UUID.randomUUID(),invocation.getArgument(0),UUID.randomUUID(),UUID.randomUUID(),
                             request.qty().multiply(FIXTURE_UNIT_BOOK_COST),com.uten.imp.application.port.InventoryValuationPort.State.PENDING,false);
-                }));
+                }), org.mockito.Mockito.mock(com.uten.imp.features.stock.GoodsOwningWarehouseSyncService.class));
         stockService = spy(realStockService);
         doAnswer(invocation -> {
             StockService.MovementRequest request =

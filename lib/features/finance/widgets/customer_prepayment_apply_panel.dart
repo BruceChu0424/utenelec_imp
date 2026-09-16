@@ -7,6 +7,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -301,7 +302,10 @@ class _CustomerPrepaymentApplyPanelState
         ],
       ),
       body: SafeArea(child: _body(theme)),
-      bottomNavigationBar: _loading || _error != null || _page == null
+      // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组，按钮统一 large。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _loading || _error != null || _page == null
           ? null
           : _footer(theme),
     );
@@ -351,7 +355,13 @@ class _CustomerPrepaymentApplyPanelState
     }
     final mixedCurrencies = customerPrepaymentSummaryUsesLocalCurrency(page);
     return ListView(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
+      // 底部留出右下悬浮操作组的高度。
+      padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s12,
+        UtenSpacing.s12,
+        UtenSpacing.s12,
+        UtenFloatingActionGroup.scrollClearance,
+      ),
       children: [
         _summary(theme, page.summary, mixedCurrencies: mixedCurrencies),
         const SizedBox(height: UtenSpacing.s12),
@@ -530,44 +540,34 @@ class _CustomerPrepaymentApplyPanelState
         ),
       );
 
-  Widget _footer(ThemeData theme) => SafeArea(
-    child: Container(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border(
-          top: BorderSide(color: theme.colorScheme.outlineVariant),
+  Widget _footer(ThemeData theme) => UtenFloatingActionGroup(
+    children: [
+      UtenButton(
+        type: UtenButtonType.secondary,
+        size: UtenButtonSize.large,
+        onPressed: _busy ? null : () => Navigator.pop(context, _lastResult),
+        child: Text(_lastResult == null ? '取消' : '完成'),
+      ),
+      if (_lastResult == null)
+        UtenButton(
+          key: const ValueKey('customer-prepayment-apply'),
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          isLoading: _busy,
+          icon: Icons.account_balance_wallet_outlined,
+          onPressed: _busy || !_canApply ? null : _apply,
+          child: const Text('确认应用预收'),
+        )
+      else if (_lastResult!.status != 'REVERSED' && _canReverse)
+        UtenButton(
+          key: const ValueKey('customer-prepayment-reverse'),
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          isLoading: _busy,
+          icon: Icons.undo_rounded,
+          onPressed: _busy ? null : _reverse,
+          child: const Text('反转本次抵销'),
         ),
-      ),
-      child: Wrap(
-        alignment: WrapAlignment.end,
-        spacing: UtenSpacing.s8,
-        runSpacing: UtenSpacing.s8,
-        children: [
-          UtenButton(
-            type: UtenButtonType.secondary,
-            onPressed: _busy ? null : () => Navigator.pop(context, _lastResult),
-            child: Text(_lastResult == null ? '取消' : '完成'),
-          ),
-          if (_lastResult == null)
-            UtenButton(
-              key: const ValueKey('customer-prepayment-apply'),
-              isLoading: _busy,
-              icon: Icons.account_balance_wallet_outlined,
-              onPressed: _busy || !_canApply ? null : _apply,
-              child: const Text('确认应用预收'),
-            )
-          else if (_lastResult!.status != 'REVERSED' && _canReverse)
-            UtenButton(
-              key: const ValueKey('customer-prepayment-reverse'),
-              type: UtenButtonType.danger,
-              isLoading: _busy,
-              icon: Icons.undo_rounded,
-              onPressed: _busy ? null : _reverse,
-              child: const Text('反转本次抵销'),
-            ),
-        ],
-      ),
-    ),
+    ],
   );
 }

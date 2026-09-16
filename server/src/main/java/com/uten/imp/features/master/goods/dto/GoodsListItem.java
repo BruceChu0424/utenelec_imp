@@ -49,6 +49,13 @@ public class GoodsListItem {
     // ===== 采购批量口径（V575；软约束，列表/导出展示用，下达采购按此预填默认数量） =====
     private BigDecimal minOrderQty;      // 最小起订量（供应商 MOQ，基本单位）
     private BigDecimal orderMultipleQty; // 订货倍数/整包装量（基本单位，整箱 50 即 50）
+    // ===== 所属仓库 (V587；主档归属仓，不是单据落点仓，也不是物料分析范围仓) =====
+    private UUID owningWarehouseId;      // 这批货平时归哪个仓管；null=未登记归属
+    private String owningWarehouseName;  // 批量取名后拼入；仓库已软删或未解析时为 null
+
+    // ===== 归属生产车间 (V590；最近一次排产确认/改派自动学习回写，只读展示) =====
+    private UUID owningWorkshopId;       // null=尚未学习
+    private String owningWorkshopName;   // 批量取名后拼入；部门已软删或未解析时为 null
 
     /** Keep the public JSON key stable across Jackson/JavaBeans versions. */
     @JsonProperty("cNumber")

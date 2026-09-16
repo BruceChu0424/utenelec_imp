@@ -13,6 +13,7 @@ class RdTaskRow {
     this.goodsId,
     this.goodsName,
     this.goodsCode,
+    this.colorName,
     this.orderItemId,
     this.sourceDocType,
     this.sourceDocId,
@@ -39,6 +40,9 @@ class RdTaskRow {
   final String? goodsId;
   final String? goodsName;
   final String? goodsCode;
+
+  /// 货品主档颜色（后端 RdTaskRow.colorName）：同名货品靠颜色区分，身份列必带。
+  final String? colorName;
   final String? orderItemId;
   final String? sourceDocType;
   final String? sourceDocId;
@@ -67,6 +71,7 @@ class RdTaskRow {
     goodsId: json['goodsId'] as String?,
     goodsName: json['goodsName'] as String?,
     goodsCode: json['goodsCode'] as String?,
+    colorName: json['colorName'] as String?,
     orderItemId: json['orderItemId'] as String?,
     sourceDocType: json['sourceDocType'] as String?,
     sourceDocId: json['sourceDocId'] as String?,

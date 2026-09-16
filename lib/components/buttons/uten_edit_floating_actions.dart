@@ -24,6 +24,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../core/ui/app_notification.dart';
 import '../layout/uten_floating_action_group.dart';
 import 'uten_button.dart';
 
@@ -36,6 +37,7 @@ class UtenEditFloatingActions extends StatelessWidget {
     this.cancelLabel = '取消',
     this.saveLabel = '保存',
     this.saveIcon = Icons.save_outlined,
+    this.saveDisabledHint,
     this.extraLeading = const [],
   });
 
@@ -52,6 +54,11 @@ class UtenEditFloatingActions extends StatelessWidget {
   final String cancelLabel;
   final String saveLabel;
   final IconData saveIcon;
+
+  /// 保存不可用（[onSave] 为 null 且非保存中）时的点击提示（如「请先在明细表
+  /// 选择货品」）。2026-09-14 口径：右下角主动作「没内容=灰、有内容=红」，
+  /// 灰态点击要说明原因。null = 灰态点击无反应。
+  final String? saveDisabledHint;
 
   /// 排在「取消」左侧的页面自有动作（如「另存为草稿」）。
   final List<Widget> extraLeading;
@@ -75,6 +82,9 @@ class UtenEditFloatingActions extends StatelessWidget {
           isLoading: saving,
           icon: saveIcon,
           onPressed: saving ? null : onSave,
+          onDisabledTap: saving || saveDisabledHint == null
+              ? null
+              : () => context.appWarning(saveDisabledHint!),
           child: Text(saveLabel),
         ),
       ],

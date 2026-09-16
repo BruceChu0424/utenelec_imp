@@ -2,6 +2,7 @@ package com.uten.imp.features.warehouse.inbound;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.features.subcontract.SubcontractOutboundFlowSql;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
 import com.uten.imp.application.port.ProcurementArrivalBlockedException;
@@ -118,6 +119,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
      * allocation 重复扣减。最终容量仍受订单净未收量约束。
      */
     private static String currentReceivableQty(String itemAlias) {
+        // 共享折算式作为 %2$s **参数**注入，而不是拼进文本块：`.formatted(...)` 只会
+        // 作用于紧挨它的那一段字面量，把带 %1$s 的模板拆成多段拼接会让前面几段的
+        // 占位符原样留在 SQL 里（真库直接 42601）。这条 SQL 一旦拆段就必炸，别再拆。
         return """
                 CASE
                   WHEN NOT EXISTS (
@@ -125,25 +129,26 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                       FROM subcontract_material_plan_items release_plan
                       WHERE release_plan.order_item_id = %1$s.order_item_id
                         AND release_plan.flow_mode IN (
-                            'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                            'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
                         AND release_plan.is_deleted = FALSE
                   ) THEN GREATEST(%1$s.ordered_qty - %1$s.accepted_qty, 0)
                   ELSE LEAST(
                       GREATEST(%1$s.ordered_qty - %1$s.accepted_qty, 0),
                       GREATEST((
                           COALESCE((
-                              SELECT SUM(issue_item.qty
-                                  * COALESCE(issue_item.unit_rate, 1))
+                              SELECT %2$s
                               FROM subcontract_material_issue_items issue_item
                               JOIN subcontract_material_issues issue
                                 ON issue.id = issue_item.issue_id
                                AND issue.status = 1
                                AND issue.is_deleted = FALSE
-                              JOIN subcontract_material_plan_items issue_plan
-                                ON issue_plan.id = issue_item.plan_item_id
-                               AND issue_plan.flow_mode IN (
-                                   'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
-                               AND issue_plan.is_deleted = FALSE
+                              JOIN subcontract_material_plan_items plan_item
+                                ON plan_item.id = issue_item.plan_item_id
+                               AND plan_item.flow_mode IN (
+                                   'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
+                               AND plan_item.is_deleted = FALSE
+                              JOIN subcontract_order_items order_unit
+                                ON order_unit.id = issue_item.order_item_id
                               WHERE issue_item.order_item_id = %1$s.order_item_id
                                 AND issue_item.is_deleted = FALSE
                           ), 0)
@@ -172,7 +177,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                       ) / NULLIF(%1$s.unit_rate, 0), 0)
                   )
                 END
-                """.formatted(itemAlias);
+                """.formatted(itemAlias, SubcontractOutboundFlowSql.ISSUED_TARGET_BASE_SUM);
     }
 
     /** 一条委外预计到货明细正在等待登记、续办、品质或异常处理。 */

@@ -24,8 +24,8 @@ import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -130,8 +130,12 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
                   },
                   child: SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(
-                      vertical: UtenSpacing.s16,
+                    // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
+                    padding: const EdgeInsets.fromLTRB(
+                      0,
+                      UtenSpacing.s16,
+                      0,
+                      UtenFloatingActionGroup.scrollClearance,
                     ),
                     child: _BatchDetail(batch: batch),
                   ),
@@ -149,7 +153,9 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
 
     return Scaffold(
       appBar: const UtenAppBar(title: '工资批次审核', showBackButton: true),
-      bottomNavigationBar: selectedBatch == null
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: selectedBatch == null
           ? null
           : _actionBar(selectedBatch, permissions),
       body: body,
@@ -157,58 +163,55 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
   }
 
   Widget? _actionBar(PayrollBatch batch, Set<String> permissions) {
+    // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组，按钮统一 large。
     if (batch.status == PayrollBatchStatus.draft &&
         permissions.contains(Perm.payrollGenerate)) {
-      return UtenBottomActionBar(
-        child: UtenButton(
-          isExpanded: true,
-          isLoading: _acting,
-          icon: Icons.send_outlined,
-          onPressed: _acting ? null : () => _act(batch, _BatchAction.submit),
-          child: const Text('提交审核'),
-        ),
+      return UtenFloatingActionGroup(
+        children: [
+          UtenButton(
+            size: UtenButtonSize.large,
+            isLoading: _acting,
+            icon: Icons.send_outlined,
+            onPressed: _acting ? null : () => _act(batch, _BatchAction.submit),
+            child: const Text('提交审核'),
+          ),
+        ],
       );
     }
     if (batch.status == PayrollBatchStatus.submitted &&
         permissions.contains(Perm.payrollReview)) {
-      return UtenBottomActionBar(
-        child: Row(
-          children: [
-            UtenButton(
-              type: UtenButtonType.ghost,
-              isLoading: _acting,
-              icon: Icons.close_rounded,
-              onPressed: _acting
-                  ? null
-                  : () => _act(batch, _BatchAction.reject),
-              child: const Text('驳回'),
-            ),
-            const SizedBox(width: UtenSpacing.s12),
-            Expanded(
-              child: UtenButton(
-                isExpanded: true,
-                isLoading: _acting,
-                icon: Icons.check_rounded,
-                onPressed: _acting
-                    ? null
-                    : () => _act(batch, _BatchAction.approve),
-                child: const Text('审核通过'),
-              ),
-            ),
-          ],
-        ),
+      return UtenFloatingActionGroup(
+        children: [
+          UtenButton(
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
+            isLoading: _acting,
+            icon: Icons.close_rounded,
+            onPressed: _acting ? null : () => _act(batch, _BatchAction.reject),
+            child: const Text('驳回'),
+          ),
+          UtenButton(
+            size: UtenButtonSize.large,
+            isLoading: _acting,
+            icon: Icons.check_rounded,
+            onPressed: _acting ? null : () => _act(batch, _BatchAction.approve),
+            child: const Text('审核通过'),
+          ),
+        ],
       );
     }
     if (batch.status == PayrollBatchStatus.approved &&
         permissions.contains(Perm.payrollPublish)) {
-      return UtenBottomActionBar(
-        child: UtenButton(
-          isExpanded: true,
-          isLoading: _acting,
-          icon: Icons.publish_outlined,
-          onPressed: _acting ? null : () => _act(batch, _BatchAction.publish),
-          child: const Text('发布工资条'),
-        ),
+      return UtenFloatingActionGroup(
+        children: [
+          UtenButton(
+            size: UtenButtonSize.large,
+            isLoading: _acting,
+            icon: Icons.publish_outlined,
+            onPressed: _acting ? null : () => _act(batch, _BatchAction.publish),
+            child: const Text('发布工资条'),
+          ),
+        ],
       );
     }
     return null;

@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -360,11 +361,42 @@ class _WarehouseDrawTaskSegmentState
       width: 150,
       value: (task) => task.drawBillLabel,
     ),
+    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列——
+    // 仓库正是靠名称 + 颜色对位拣货，三个属性挤成一串时列一窄就先被省略号吃掉。
+    // 规格没有独立列，仍留在名称格副行；归组行（N 种物料）没有单一货品身份，
+    // 名称列沿用规模摘要、编号/颜色列如实显示「—」。
     MasterColumnDef(
       key: 'goods',
-      label: '货品',
-      width: 260,
-      value: (task) => task.goodsLabel,
+      label: '货品名称',
+      width: 200,
+      value: (task) =>
+          task.isDocumentGrouped ? task.goodsLabel : task.goodsName,
+      cellBuilderHandlesSemantics: true,
+      cellBuilder: (context, task) => task.isDocumentGrouped
+          ? Text(task.goodsLabel, maxLines: 1, overflow: TextOverflow.ellipsis)
+          : UtenGoodsIdentityCell(name: task.goodsName, spec: task.spec),
+    ),
+    MasterColumnDef(
+      key: 'goodsCode',
+      label: '编号',
+      width: 130,
+      value: (task) => task.isDocumentGrouped
+          ? null
+          : UtenGoodsAttributeCell.text(task.goodsCode),
+      cellBuilder: (context, task) => UtenGoodsAttributeCell(
+        task.isDocumentGrouped ? null : task.goodsCode,
+      ),
+    ),
+    MasterColumnDef(
+      key: 'colorName',
+      label: '颜色',
+      width: 96,
+      value: (task) => task.isDocumentGrouped
+          ? null
+          : UtenGoodsAttributeCell.text(task.colorName),
+      cellBuilder: (context, task) => UtenGoodsAttributeCell(
+        task.isDocumentGrouped ? null : task.colorName,
+      ),
     ),
     MasterColumnDef(
       key: 'warehouseName',

@@ -83,7 +83,7 @@ class ProcurementOrderSourceRequirementTest {
                 mock(com.uten.imp.application.port.MasterReferenceValidationPort.class),
                         org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementReviewCancellationPort.class),
                         org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementOrderSourceRevisionPort.class),
-                        org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
+                        org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS), null);
 
         ApiException error =
                 assertThrows(ApiException.class, () -> service.create(request));
@@ -133,7 +133,7 @@ class ProcurementOrderSourceRequirementTest {
                         mock(com.uten.imp.application.port.MasterReferenceValidationPort.class),
                         mock(com.uten.imp.application.port.ProcurementReviewCancellationPort.class),
                         org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementOrderSourceRevisionPort.class),
-                        org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
+                        org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS), null);
 
         // 手工行不再被「必须关联委外申请明细」拦截；mock 环境下只会停在后续的
         // 货品主档快照缺失校验（证明流程已越过来源校验进入保存管线）。

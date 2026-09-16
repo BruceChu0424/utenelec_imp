@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/forms/maker_audit_fields.dart';
@@ -253,41 +254,64 @@ class _WarehouseDocumentHistoryDetailPageState
         type: 'number',
         value: (item) => item.lineNo?.toString() ?? '—',
       ),
-      MasterColumnDef(
-        key: 'goodsCode',
-        label: '货品编码',
-        width: 126,
-        value: (item) => item.goodsCode ?? '—',
-      ),
+      // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色的固定顺序。
       MasterColumnDef(
         key: 'goodsName',
         label: '货品名称',
-        width: 220,
+        width: 200,
         value: (item) => item.goodsName ?? '—',
       ),
-      if (has((item) => item.parentGoodsCode ?? item.parentGoodsName))
+      MasterColumnDef(
+        key: 'goodsCode',
+        label: '编号',
+        width: 130,
+        value: (item) => UtenGoodsAttributeCell.text(item.goodsCode),
+        cellBuilder: (_, item) => UtenGoodsAttributeCell(item.goodsCode),
+      ),
+      if (has((item) => item.colorName))
+        MasterColumnDef(
+          key: 'colorName',
+          label: '颜色',
+          width: 96,
+          value: (item) => UtenGoodsAttributeCell.text(item.colorName),
+          cellBuilder: (_, item) => UtenGoodsAttributeCell(item.colorName),
+        ),
+      // 父件也是一个货品，同样按「名称 / 编号 / 颜色」三列展开（2026-09-14）。
+      // 父件颜色取 parentColorName（行色优先、父件主档色兜底）：委外发料/材料退
+      // 的父件常按颜色分行，只有编号+名称仍会指错成品。
+      if (has((item) => item.parentGoodsCode ?? item.parentGoodsName)) ...[
         MasterColumnDef(
           key: 'parentGoods',
-          label: '父件',
-          width: 180,
-          value: (item) => [
-            item.parentGoodsCode,
-            item.parentGoodsName,
-          ].where(_present).join(' · '),
+          label: '父件名称',
+          width: 200,
+          value: (item) => item.parentGoodsName ?? item.parentGoodsCode ?? '—',
+          cellBuilderHandlesSemantics: true,
+          cellBuilder: (_, item) =>
+              UtenGoodsIdentityCell(name: item.parentGoodsName),
         ),
+        MasterColumnDef(
+          key: 'parentGoodsCode',
+          label: '父件编号',
+          width: 130,
+          value: (item) => UtenGoodsAttributeCell.text(item.parentGoodsCode),
+          cellBuilder: (_, item) =>
+              UtenGoodsAttributeCell(item.parentGoodsCode),
+        ),
+        MasterColumnDef(
+          key: 'parentColorName',
+          label: '父件颜色',
+          width: 96,
+          value: (item) => UtenGoodsAttributeCell.text(item.parentColorName),
+          cellBuilder: (_, item) =>
+              UtenGoodsAttributeCell(item.parentColorName),
+        ),
+      ],
       if (has((item) => item.stockPlace))
         MasterColumnDef(
           key: 'stockPlace',
           label: '当前建议库位',
           width: 126,
           value: (item) => item.stockPlace ?? '—',
-        ),
-      if (has((item) => item.colorName))
-        MasterColumnDef(
-          key: 'colorName',
-          label: '颜色',
-          width: 100,
-          value: (item) => item.colorName ?? '—',
         ),
       if (has((item) => item.unitName))
         MasterColumnDef(

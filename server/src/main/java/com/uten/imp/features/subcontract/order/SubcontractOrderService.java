@@ -114,6 +114,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     private final com.uten.imp.application.port.ProcurementReviewCancellationPort reviewCancellation;
     private final com.uten.imp.application.port.ProcurementOrderSourceRevisionPort sourceRevision;
     private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
+    private final com.uten.imp.features.purchase.common.ProcurementMasterDefaultsSyncService masterDefaultsSync;
     @Autowired
     private com.uten.imp.application.port.SubcontractOrderPreparationPort orderPreparation;
 
@@ -240,6 +241,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         r.setStatus(STATUS_DRAFT);
         mutationLocks.expectCreatedOrder(orderType(),r.getId());
         orderRepo.save(r);
+        masterDefaultsSync.syncFromSubcontractOrder(r.getId());
         orderRepo.flush();
         mutationLocks.registerCreatedOrder(orderType(),r.getId());
         List<OrderItemDto> items = saveItems(r, req.getItems());
@@ -372,8 +374,20 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             return Map.of();
         }
         Map<UUID, UUID> result = new LinkedHashMap<>();
-        for (Object[] row : itemRepo.findLastSupplierPerGoods(goodsIds)) {
+        // V593 主档优先：货品资料上绑定的默认供应商（每次下单自动写回最新）。
+        for (Object[] row : com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery(
+                """
+                SELECT g.id, g.default_supplier_id
+                FROM goods g
+                WHERE g.id IN (:ids)
+                  AND g.default_supplier_id IS NOT NULL
+                  AND g.is_deleted = false
+                """).setParameter("ids", goodsIds))) {
             result.put((UUID) row[0], (UUID) row[1]);
+        }
+        for (Object[] row : itemRepo.findLastSupplierPerGoods(goodsIds)) {
+            result.putIfAbsent((UUID) row[0], (UUID) row[1]);
         }
         return result;
     }
@@ -390,21 +404,59 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             return Map.of();
         }
         Map<UUID, LastTermsPerGoods> result = new LinkedHashMap<>();
-        for (Object[] row : itemRepo.findLastTermsPerGoods(goodsIds)) {
+        // V593 主档优先：货品绑定的默认供应商 + 供应商主档默认条款 + 货品默认
+        // 委外加工单价；无主档绑定回落最近订单推导。
+        for (Object[] row : com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery(
+                """
+                SELECT g.id, g.default_supplier_id,
+                       sup.default_settlement_method_id,
+                       sup.default_currency_id,
+                       cur.exchange_rate,
+                       sup.default_tax_rate,
+                       g.default_subcontract_price
+                FROM goods g
+                LEFT JOIN suppliers sup
+                  ON sup.id = g.default_supplier_id
+                 AND sup.is_deleted = false
+                 AND sup.is_internal_workshop = false
+                LEFT JOIN currencies cur ON cur.id = sup.default_currency_id
+                WHERE g.id IN (:ids)
+                  AND g.default_supplier_id IS NOT NULL
+                  AND g.is_deleted = false
+                """).setParameter("ids", goodsIds))) {
             result.put((UUID) row[0], new LastTermsPerGoods(
                     (UUID) row[1], (UUID) row[2], (UUID) row[3],
-                    (BigDecimal) row[4], (BigDecimal) row[5]));
+                    (BigDecimal) row[4], (BigDecimal) row[5], (BigDecimal) row[6]));
+        }
+        Map<UUID, BigDecimal> masterPrices = new LinkedHashMap<>();
+        for (var entry : result.entrySet()) {
+            if (entry.getValue().subcontractPrice() != null) {
+                masterPrices.put(entry.getKey(), entry.getValue().subcontractPrice());
+            }
+        }
+        for (Object[] row : itemRepo.findLastTermsPerGoods(goodsIds)) {
+            UUID goodsId = (UUID) row[0];
+            if (result.containsKey(goodsId)) continue;
+            result.put(goodsId, new LastTermsPerGoods(
+                    (UUID) row[1], (UUID) row[2], (UUID) row[3],
+                    (BigDecimal) row[4], (BigDecimal) row[5],
+                    masterPrices.get(goodsId)));
         }
         return result;
     }
 
-    /** 行级条款学习记忆视图（/last-terms 返回体；金额口径字段见 subcontract_orders 头）。 */
+    /**
+     * 行级条款学习记忆视图（/last-terms 返回体；金额口径字段见 subcontract_orders 头）。
+     * V593 起含 subcontractPrice=货品默认委外加工单价（主档列，行价预填）。
+     */
     public record LastTermsPerGoods(
             UUID supplierId,
             UUID settlementMethodId,
             UUID currencyId,
             BigDecimal exchangeRate,
-            BigDecimal taxRate) {}
+            BigDecimal taxRate,
+            BigDecimal subcontractPrice) {}
 
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_order:edit')")
@@ -443,7 +495,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         List<OrderItemDto> items = saveItems(r, req.getItems(),retained);
         applyTotals(r, items);
         prepareDraft(r);
-        return toDetail(r, items);
+                masterDefaultsSync.syncFromSubcontractOrder(r.getId());
+return toDetail(r, items);
     }
 
     @Transactional

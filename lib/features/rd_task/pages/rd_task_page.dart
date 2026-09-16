@@ -24,6 +24,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -677,11 +678,32 @@ class _DesktopTaskTable extends StatelessWidget {
           width: 110,
           value: (item) => rdTaskCategoryLabel(item.category),
         ),
-        const MasterColumnDef(
+        // 货品身份格：主行名称、副行编号。研发任务多是「同名不同编号」的 BOM /
+        // 打样件（V5 插面自制与委外两条），旧写法把编号和名称挤在一行且编号在前，
+        // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+        // 颜色取 RdTaskRow.colorName（后端 join 货品主档色）：同名同编号的货品
+        // 按颜色分行是常态，少了颜色照样认错货。
+        MasterColumnDef(
           key: 'goods',
-          label: '货品',
-          width: 220,
-          value: _goodsText,
+          label: '货品名称',
+          width: 200,
+          value: (item) => item.goodsName ?? item.goodsCode,
+          cellBuilderHandlesSemantics: true,
+          cellBuilder: (_, item) => UtenGoodsIdentityCell(name: item.goodsName),
+        ),
+        MasterColumnDef(
+          key: 'goodsCode',
+          label: '编号',
+          width: 130,
+          value: (item) => UtenGoodsAttributeCell.text(item.goodsCode),
+          cellBuilder: (_, item) => UtenGoodsAttributeCell(item.goodsCode),
+        ),
+        MasterColumnDef(
+          key: 'colorName',
+          label: '颜色',
+          width: 96,
+          value: (item) => UtenGoodsAttributeCell.text(item.colorName),
+          cellBuilder: (_, item) => UtenGoodsAttributeCell(item.colorName),
         ),
         MasterColumnDef(
           key: 'title',

@@ -166,6 +166,7 @@ class SubcontractLossClaimLine {
     this.goodsCode,
     this.goodsName,
     this.colorId,
+    this.colorName,
     this.unitId,
     this.actualLossQty,
     this.allowedLossQty,
@@ -183,6 +184,7 @@ class SubcontractLossClaimLine {
   final String? goodsCode;
   final String? goodsName;
   final String? colorId;
+  final String? colorName;
   final String? unitId;
   final String? actualLossQty;
   final String? allowedLossQty;
@@ -206,6 +208,7 @@ class SubcontractLossClaimLine {
         goodsCode: _text(json['goodsCode']),
         goodsName: _text(json['goodsName']),
         colorId: _text(json['colorId']),
+        colorName: _text(json['colorName']),
         unitId: _text(json['unitId']),
         actualLossQty: _text(json['actualLossQty']),
         allowedLossQty: _text(json['allowedLossQty']),

@@ -222,6 +222,7 @@ class _AdminSystemSettingsPageState
               ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _saveBar(theme),
     );
   }

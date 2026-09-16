@@ -467,11 +467,14 @@ public class MaterialAnalysisSupplyProgressService {
                        COUNT(*) FILTER (
                            WHERE pi.flow_mode NOT IN (
                                'LEGACY_BOM_COMPONENT','DIRECT_OUTBOUND',
-                               'MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                               'MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND',
+                               'COMPONENT_OUTBOUND')
                               OR pi.preparation_status NOT IN (
                                'LEGACY_READY','ACTION_REQUIRED','IN_PREPARATION',
                                'WAITING_FQC','WAITING_INBOUND','READY_OUTBOUND',
-                               'OUTBOUND_COMPLETE','CANCELLED'))
+                               'OUTBOUND_COMPLETE','CANCELLED')),
+                       COUNT(*) FILTER (
+                           WHERE pi.flow_mode = 'COMPONENT_OUTBOUND')
                 FROM subcontract_material_plans p
                 JOIN subcontract_material_plan_items pi
                   ON pi.plan_id = p.id AND pi.is_deleted = FALSE
@@ -487,6 +490,7 @@ public class MaterialAnalysisSupplyProgressService {
         BigDecimal planned = decimal(agg[7]);
         BigDecimal prepared = decimal(agg[8]);
         long invalid = ((Number) agg[9]).longValue();
+        long component = ((Number) agg[10]).longValue();
         if (total == 0) {
             return new MaterialAnalysisContracts.SupplyProgressStep(
                     "PREPARATION", "委外目标件准备", CURRENT,
@@ -502,6 +506,9 @@ public class MaterialAnalysisSupplyProgressService {
             String detail;
             if (make > 0) {
                 detail = "前置自制已完成 FQC 与仓库整批实收，目标件已专属占用";
+            } else if (component > 0) {
+                // V581：目标件只有一个叶子子件，仓库发的是那个子件。
+                detail = "目标件只有一个子件，仓库按冻结单耗直接发该子件给委外商";
             } else if (direct > 0 && legacy == 0) {
                 detail = "目标件无活动子层级，可直接进入仓库出仓";
             } else {

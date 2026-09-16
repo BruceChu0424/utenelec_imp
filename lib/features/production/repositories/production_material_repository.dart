@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../models/production_direct_transfer_candidate.dart';
 import '../models/production_material_usage_source.dart';
 import '../models/production_material_return.dart';
 
@@ -215,6 +216,26 @@ class ProductionMaterialRepository {
     );
     return rows
         .map(ProductionMaterialUsageSource.fromJson)
+        .toList(growable: false);
+  }
+
+  /// 报工页「转下一道工序」的候选上层工单(V584/V585)。
+  /// 服务端只返回同车间、同货品同颜色、还缺料的工单——跨车间必须走仓库。
+  Future<List<ProductionDirectTransferCandidate>> directTransferCandidates({
+    required String executionSegmentId,
+    required String goodsId,
+    String? colorId,
+  }) async {
+    final rows = await api.getList(
+      '/production/direct-transfers/candidates',
+      query: {
+        'executionSegmentId': executionSegmentId,
+        'goodsId': goodsId,
+        'colorId': ?colorId,
+      },
+    );
+    return rows
+        .map(ProductionDirectTransferCandidate.fromJson)
         .toList(growable: false);
   }
 

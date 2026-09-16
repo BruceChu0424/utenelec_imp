@@ -99,6 +99,6 @@ class GoodsListUuidReferenceTest {
                 null, null, null, Set.of(),
                 null, null, null, null, null, null, null, null,
                 null, null, null,
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null);
     }
 }

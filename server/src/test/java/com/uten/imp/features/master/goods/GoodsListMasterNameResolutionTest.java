@@ -169,6 +169,6 @@ class GoodsListMasterNameResolutionTest {
                 null, null, null, Set.of(),
                 null, null, null, null, null, null, null, null,
                 null, null, null,
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null);
     }
 }

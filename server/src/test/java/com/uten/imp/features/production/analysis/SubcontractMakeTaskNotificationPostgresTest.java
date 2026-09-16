@@ -325,6 +325,67 @@ class SubcontractMakeTaskNotificationPostgresTest {
                 List.of(new ProductionSubcontractRequestPort.DraftLineResult(line.demandId(), item, LocalDate.now(), line.qty())));
     }
 
+    /**
+     * V589（2026-09-15）「顶层要做 5000，委外件就要加工 5000」：前置自制承接
+     * 车间腿超量——台账 required = 归需求量(1000) + 公共备货产出(4000)，通知
+     * 批的申请明细是整批数量，action 只锁归需求份、公共份记 public_surplus
+     * 并锚回同一条明细（合并明细形态）。
+     */
+    @Test
+    void overQuantityBatchLocksDemandPartAndCarriesPublicSurplus() {
+        Fixture f = overQuantityFixture();
+        var full = notify(f, "batch-over-full1", "5000");
+
+        assertThat(jdbc.queryForObject(
+                "SELECT qty FROM subcontract_application_items WHERE application_id=?",
+                BigDecimal.class, full.applicationId())).isEqualByComparingTo("5000");
+        Map<String, Object> action = jdbc.queryForMap("""
+                SELECT requested_qty, public_surplus_qty, public_surplus_external_item_id
+                FROM preplan_supply_actions
+                WHERE external_document_type='SUBCONTRACT_APPLICATION' AND external_document_id=?
+                """, full.applicationId());
+        assertThat((BigDecimal) action.get("requested_qty")).isEqualByComparingTo("1000");
+        assertThat((BigDecimal) action.get("public_surplus_qty")).isEqualByComparingTo("4000");
+        assertThat(action.get("public_surplus_external_item_id"))
+                .isEqualTo(jdbc.queryForObject(
+                        "SELECT id FROM subcontract_application_items WHERE application_id=?",
+                        UUID.class, full.applicationId()));
+        assertThat(jdbc.queryForObject("""
+                SELECT COALESCE(SUM(allocated_qty),0) FROM preplan_supply_action_allocations
+                WHERE action_id=(SELECT id FROM preplan_supply_actions
+                                 WHERE external_document_type='SUBCONTRACT_APPLICATION' AND external_document_id=?)
+                """, BigDecimal.class, full.applicationId())).isEqualByComparingTo("1000");
+        assertThat(full.availableQty()).isZero();
+    }
+
+    /** 分批通知先消费归需求份；纯公共批不建需求 allocation（V589 批次行锚可空）。 */
+    @Test
+    void splitBatchesConsumeDemandPartFirstAndPurePublicBatchSkipsAllocation() {
+        Fixture f = overQuantityFixture();
+        notify(f, "batch-over-dm01", "1000");
+        notify(f, "batch-over-pb02", "4000");
+
+        List<Map<String, Object>> actions = jdbc.queryForList("""
+                SELECT requested_qty, public_surplus_qty
+                FROM preplan_supply_actions
+                WHERE analysis_id=? AND external_document_type='SUBCONTRACT_APPLICATION'
+                ORDER BY generation
+                """, f.analysis());
+        assertThat(actions).hasSize(2);
+        assertThat((BigDecimal) actions.get(0).get("requested_qty")).isEqualByComparingTo("1000");
+        assertThat((BigDecimal) actions.get(0).get("public_surplus_qty")).isEqualByComparingTo("0");
+        assertThat((BigDecimal) actions.get(1).get("requested_qty")).isEqualByComparingTo("0");
+        assertThat((BigDecimal) actions.get(1).get("public_surplus_qty")).isEqualByComparingTo("4000");
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM preplan_supply_action_allocations allocation
+                JOIN preplan_supply_actions action ON action.id=allocation.action_id
+                WHERE action.analysis_id=? AND action.external_document_type='SUBCONTRACT_APPLICATION'
+                """, Integer.class, f.analysis())).isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+                "SELECT notified_qty FROM preplan_subcontract_make_tasks WHERE id=?",
+                BigDecimal.class, f.task())).isEqualByComparingTo("5000");
+    }
+
     private static Fixture fixture() {
         Fixture f = new Fixture(UUID.randomUUID(), UUID.randomUUID());
         UUID item = UUID.randomUUID();
@@ -371,6 +432,58 @@ class SubcontractMakeTaskNotificationPostgresTest {
                     INSERT INTO preplan_subcontract_make_tasks(id,analysis_id,analysis_material_id,supply_action_id,
                         preparation_item_id,goods_id,unit_id,warehouse_id,required_qty,produced_qty,created_by,updated_by)
                     VALUES(?,?,?,?,?,?,?,?,10,10,?,?)
+                    """, f.task(), f.analysis(), material, source, preparation, GOODS, UNIT, WAREHOUSE, ACTOR, ACTOR);
+        });
+        return f;
+    }
+
+    /** V589 超量形态夹具：归需求量 1000 + 公共备货 4000，台账 required=5000 已产 5000。 */
+    private static Fixture overQuantityFixture() {
+        Fixture f = new Fixture(UUID.randomUUID(), UUID.randomUUID());
+        UUID item = UUID.randomUUID();
+        UUID material = UUID.randomUUID();
+        UUID preparation = UUID.randomUUID();
+        UUID source = UUID.randomUUID();
+        setupTransaction.executeWithoutResult(unused -> {
+            jdbc.update("""
+                    INSERT INTO production_material_analyses(id,warehouse_id,status,fingerprint,
+                        initial_idempotency_key,maker_id,created_by,updated_by)
+                    VALUES(?,?,'ACTIVE',?,?,?, ?,?)
+                    """, f.analysis(), WAREHOUSE, "a".repeat(64), "SC-OVER-" + f.analysis(), owner, ACTOR, ACTOR);
+            jdbc.update("""
+                    INSERT INTO production_material_analysis_items(id,analysis_id,source_type,goods_id,unit_id,
+                        source_ref,source_reason,requested_qty,line_priority,created_by,updated_by)
+                    VALUES(?,?,'OTHER',?,?,?,'Over-quantity regression',1000,1,?,?)
+                    """, item, f.analysis(), GOODS, UNIT, "SC-OVER-SRC-" + item, ACTOR, ACTOR);
+            jdbc.update("""
+                    INSERT INTO production_material_analysis_materials(id,analysis_id,analysis_item_id,node_key,
+                        goods_id,unit_id,depth,path,per_product_qty,required_qty,available_qty,allocated_available_qty,
+                        shortage_qty,source_suggestion,confirmed_route,route_reason,route_confirmed_by,route_confirmed_at,
+                        control_stage,consumption_basis,basis_output_qty,allow_partial_package,hard_gate,
+                        bom_qty,parent_per_product_qty,calculation_mode,created_by,updated_by)
+                    VALUES(?,?,?,'sc-over-target',?,?,1,'sc-over-target',1,1000,0,0,1000,'SUBCONTRACT','SUBCONTRACT',
+                        'Over test',?,now(),'START','PER_UNIT',1,TRUE,TRUE,1,1,'EDGE_RULE',?,?)
+                    """, material, f.analysis(), item, GOODS, UNIT, ACTOR, ACTOR, ACTOR);
+            jdbc.update("""
+                    INSERT INTO production_material_analysis_items(id,analysis_id,source_type,goods_id,unit_id,
+                        source_ref,source_reason,requested_qty,line_priority,parent_analysis_material_id,created_by,updated_by)
+                    VALUES(?,?,'SUBCONTRACT_MAKE',?,?,?,'Prepared over regression',1000,2,?,?,?)
+                    """, preparation, f.analysis(), GOODS, UNIT, "SC-OVER-PREP-" + preparation, material, ACTOR, ACTOR);
+            jdbc.update("""
+                    INSERT INTO preplan_supply_actions(id,analysis_id,warehouse_id,goods_id,unit_id,route,requested_qty,
+                        public_surplus_qty,status,idempotency_key,action_group_key,request_business_key,generation,request_hash,
+                        external_document_type,external_document_id,created_by)
+                    VALUES(?,?,?,?,?,'SUBCONTRACT',1000,4000,'CREATED',?,?,?,1,?,'SUBCONTRACT_MAKE_TASK',?,?)
+                    """, source, f.analysis(), WAREHOUSE, GOODS, UNIT, "SC-OVER-ACT-" + source,
+                    "e".repeat(64), "f".repeat(64), "0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9", preparation, ACTOR);
+            jdbc.update("""
+                    INSERT INTO preplan_supply_action_allocations(id,analysis_id,action_id,analysis_material_id,
+                        allocated_qty,external_item_id,created_by) VALUES(?,?,?,?,1000,?,?)
+                    """, UUID.randomUUID(), f.analysis(), source, material, preparation, ACTOR);
+            jdbc.update("""
+                    INSERT INTO preplan_subcontract_make_tasks(id,analysis_id,analysis_material_id,supply_action_id,
+                        preparation_item_id,goods_id,unit_id,warehouse_id,required_qty,produced_qty,created_by,updated_by)
+                    VALUES(?,?,?,?,?,?,?,?,5000,5000,?,?)
                     """, f.task(), f.analysis(), material, source, preparation, GOODS, UNIT, WAREHOUSE, ACTOR, ACTOR);
         });
         return f;

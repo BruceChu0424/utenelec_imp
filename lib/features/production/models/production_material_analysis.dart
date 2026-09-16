@@ -835,10 +835,27 @@ class ProductionMaterialAnalysisProduct {
     this.planExecutionZeroMaterial = false,
     this.planExecutionWorkshopName,
     this.planExecutionResponsibleName,
+    this.owningWarehouseId,
+    this.owningWarehouseName,
+    this.owningWorkshopId,
+    this.owningWorkshopName,
   });
 
   final String analysisLineId;
   final String? sourceType;
+
+  /// 所属仓库(V587, goods.owning_warehouse_id): 这批货平时归哪个仓管的**主档归属**。
+  ///
+  /// 既不是单据落点仓(各单据自己的 warehouseId), 也不是本次分析的范围仓
+  /// (production.materialAnalysis.warehouses 偏好)——三者在同一屏里并存, 所以
+  /// 一律用 owning 前缀区分。旧服务端不下发时为 null。
+  final String? owningWarehouseId;
+  final String? owningWarehouseName;
+
+  /// 归属生产车间(V590, goods.owning_workshop_department_id): 最近一次排产确认/
+  /// 车间改派自动学习回写。旧服务端不下发时为 null。
+  final String? owningWorkshopId;
+  final String? owningWorkshopName;
 
   /// Exact root supply node. Older responses omit this read-only identity.
   final String? rootMaterialLineId;
@@ -974,6 +991,10 @@ class ProductionMaterialAnalysisProduct {
     planExecutionZeroMaterial: json['planExecutionZeroMaterial'] == true,
     planExecutionWorkshopName: _string(json['planExecutionWorkshopName']),
     planExecutionResponsibleName: _string(json['planExecutionResponsibleName']),
+    owningWarehouseId: _string(json['owningWarehouseId']),
+    owningWarehouseName: _string(json['owningWarehouseName']),
+    owningWorkshopId: _string(json['owningWorkshopId']),
+    owningWorkshopName: _string(json['owningWorkshopName']),
   );
 }
 
@@ -1139,17 +1160,48 @@ class ProductionMaterialAnalysisMaterial {
     this.crossReallocationRefs = const [],
     this.warehouseStocks = const [],
     this.flowStage,
+    this.subcontractOutboundForm,
     required this.actionable,
+    this.owningWarehouseId,
+    this.owningWarehouseName,
+    this.owningWorkshopId,
+    this.owningWorkshopName,
   });
 
   final String materialLineId;
   final String? analysisLineId;
   final String? nodeKey;
 
+  /// 所属仓库(V587, goods.owning_warehouse_id): 这批货平时归哪个仓管的**主档归属**。
+  ///
+  /// 既不是单据落点仓(各单据自己的 warehouseId), 也不是本次分析的范围仓
+  /// (production.materialAnalysis.warehouses 偏好)——三者在同一屏里并存, 所以
+  /// 一律用 owning 前缀区分。旧服务端不下发时为 null。
+  final String? owningWarehouseId;
+  final String? owningWarehouseName;
+
+  /// 归属生产车间(V590, goods.owning_workshop_department_id): 最近一次排产确认/
+  /// 车间改派自动学习回写。旧服务端不下发时为 null。
+  final String? owningWorkshopId;
+  final String? owningWorkshopName;
+
   /// 服务端批量推导的行级流程阶段键（BUY_* / SC_* / MAKE_*，
   /// 见 ProductionFlowStage 词表）；旧服务端无此字段时为 null，
   /// 由客户端按行内事实回退。
   final String? flowStage;
+
+  /// V581 委外发出物形态。只有一个取值有意义：`COMPONENT_OUTBOUND` 表示该委外件
+  /// 的活动 BOM 恰好只有一个 PER_UNIT 投入的叶子子件——**不先自制**，仓库直接把
+  /// 那个子件发给委外商，委外商加工后交回目标件。
+  ///
+  /// null 表示其余全部情况（无子层的纯外协、需要先自制的有子层件、非委外路线，
+  /// 以及旧服务端）。**null 一律按旧口径回退（有子层 ⇒ 先自制），绝不能当成
+  /// COMPONENT_OUTBOUND。**
+  final String? subcontractOutboundForm;
+
+  /// 该委外件是否「只发一个子件出去」（见 [subcontractOutboundForm]）。
+  bool get isComponentOutbound =>
+      subcontractOutboundForm == 'COMPONENT_OUTBOUND';
   final String? goodsId;
   final String? goodsCode;
   final String? goodsName;
@@ -1384,6 +1436,7 @@ class ProductionMaterialAnalysisMaterial {
       json['downstreamReferences'] ?? json['notifiedTargets'],
     ),
     flowStage: _string(json['flowStage']),
+    subcontractOutboundForm: _string(json['subcontractOutboundForm']),
     borrowedInQty: _double(json['borrowedInQty']) ?? 0,
     borrowedOutQty: _double(json['borrowedOutQty']) ?? 0,
     borrowRefs: _mapList(json['borrowRefs'], MaterialBorrowRef.fromJson),
@@ -1401,6 +1454,10 @@ class ProductionMaterialAnalysisMaterial {
         _mapList(json['warehouseBreakdown'], MaterialWarehouseStock.fromJson),
     actionable:
         _boolOrNull(json['actionable']) ?? ((_int(json['level']) ?? 0) == 1),
+    owningWarehouseId: _string(json['owningWarehouseId']),
+    owningWarehouseName: _string(json['owningWarehouseName']),
+    owningWorkshopId: _string(json['owningWorkshopId']),
+    owningWorkshopName: _string(json['owningWorkshopName']),
   );
 }
 

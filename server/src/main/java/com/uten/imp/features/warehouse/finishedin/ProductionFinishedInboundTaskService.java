@@ -41,7 +41,11 @@ public class ProductionFinishedInboundTaskService {
                            DISTINCT COALESCE(
                                NULLIF(goods.name, ''),
                                NULLIF(goods.code, ''),
-                               '未命名货品'),
+                               '未命名货品')
+                               || COALESCE(' (' || NULLIF(concat_ws(' · ',
+                                   CASE WHEN NULLIF(goods.name, '') IS NULL
+                                        THEN NULL ELSE NULLIF(goods.code, '') END,
+                                   NULLIF(line_color.name, '')), '') || ')', ''),
                            '、') AS goods_summary,
                        COUNT(report_item.id)::integer AS line_count,
                        COALESCE(SUM(report_item.qty), 0) AS pending_qty,
@@ -54,6 +58,11 @@ public class ProductionFinishedInboundTaskService {
                 JOIN v_production_report_items_pending_registration pending
                   ON pending.report_item_id = report_item.id
                 JOIN goods goods ON goods.id = report_item.goods_id
+                -- 行色优先、主档色兜底（仓库里既有写法）：一单多货品时摘要按
+                -- 「名称 (编号 · 颜色)」拼，否则同名不同色的两行会被 DISTINCT 合成一条。
+                LEFT JOIN colors line_color
+                  ON line_color.id = COALESCE(report_item.color_id, goods.color_id)
+                 AND line_color.is_deleted = FALSE
                 LEFT JOIN LATERAL (
                     SELECT production_plan.id AS plan_id,
                            production_plan.bill_no AS plan_no
@@ -89,7 +98,12 @@ public class ProductionFinishedInboundTaskService {
                            DISTINCT COALESCE(
                                NULLIF(item.goods_name_snapshot, ''),
                                NULLIF(item.goods_code_snapshot, ''),
-                               '未命名货品'),
+                               '未命名货品')
+                               || COALESCE(' (' || NULLIF(concat_ws(' · ',
+                                   CASE WHEN NULLIF(item.goods_name_snapshot, '') IS NULL
+                                        THEN NULL
+                                        ELSE NULLIF(item.goods_code_snapshot, '') END,
+                                   NULLIF(line_color.name, '')), '') || ')', ''),
                            '、') AS goods_summary,
                        COUNT(item.id)::integer AS line_count,
                        COALESCE(SUM(item.qty), 0) AS pending_qty,
@@ -108,6 +122,11 @@ public class ProductionFinishedInboundTaskService {
                      item.source_daily_report_item_id IS NOT NULL
                      OR item.execution_segment_id IS NOT NULL
                  )
+                -- 单据行自带颜色（快照口径，不回看主档）：摘要同样按
+                -- 「名称 (编号 · 颜色)」拼，同名不同色不再被 DISTINCT 并成一条。
+                LEFT JOIN colors line_color
+                  ON line_color.id = item.color_id
+                 AND line_color.is_deleted = FALSE
                 LEFT JOIN warehouses warehouse
                   ON warehouse.id = document.warehouse_id
                  AND warehouse.is_deleted = FALSE

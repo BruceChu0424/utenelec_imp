@@ -17,6 +17,7 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/print/pdf_printer.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -302,7 +303,10 @@ class _ProductionPlanSummarySheetPageState
       ),
       // 局部 SelectionArea：计划汇总页文字可框选复制（准则 §3.4；无周期轮询，可包）。
       body: SelectionArea(child: SafeArea(child: _body())),
-      bottomNavigationBar: _bottomBar(),
+      // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组，按钮统一 large。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _bottomBar(),
     );
   }
 
@@ -348,7 +352,13 @@ class _ProductionPlanSummarySheetPageState
     final buyRows = _supplyRows(MaterialSupplyRoute.buy);
     final subcontractRows = _supplyRows(MaterialSupplyRoute.subcontract);
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(UtenSpacing.s16),
+      // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
+      padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s16,
+        UtenSpacing.s16,
+        UtenSpacing.s16,
+        UtenFloatingActionGroup.scrollClearance,
+      ),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -744,32 +754,20 @@ class _ProductionPlanSummarySheetPageState
     ],
   );
 
-  Widget _bottomBar() => Material(
-    elevation: 8,
-    color: Theme.of(context).colorScheme.surface,
-    child: SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            UtenButton(
-              key: const Key('plan-summary-print'),
-              icon: Icons.print_outlined,
-              isLoading: _printing,
-              onPressed: !_workshopsLoaded || _printing ? null : _print,
-              onDisabledTap: !_workshopsLoaded && !_printing
-                  ? () => context.appWarning(
-                      _workshopsError ?? '正在核对默认车间，请稍候或重新读取',
-                    )
-                  : null,
-              child: const Text('打印 / 导出 PDF'),
-            ),
-          ],
-        ),
+  Widget _bottomBar() => UtenFloatingActionGroup(
+    children: [
+      UtenButton(
+        key: const Key('plan-summary-print'),
+        size: UtenButtonSize.large,
+        icon: Icons.print_outlined,
+        isLoading: _printing,
+        onPressed: !_workshopsLoaded || _printing ? null : _print,
+        onDisabledTap: !_workshopsLoaded && !_printing
+            ? () => context.appWarning(_workshopsError ?? '正在核对默认车间，请稍候或重新读取')
+            : null,
+        child: const Text('打印 / 导出 PDF'),
       ),
-    ),
+    ],
   );
 
   // ===== PDF =====
@@ -897,16 +895,7 @@ class _ProductionPlanSummarySheetPageState
           ],
           _pdfSectionTitle('一、自制件(按组件安排车间生产)'),
           _pdfTable(
-            const [
-              '产品 / 组件名称',
-              '编号',
-              '颜色',
-              '本批需求',
-              '可生产',
-              '默认车间',
-              '状态',
-              '来源',
-            ],
+            const ['产品 / 组件名称', '编号', '颜色', '本批需求', '可生产', '默认车间', '状态', '来源'],
             [
               for (final row in _makeRows)
                 [

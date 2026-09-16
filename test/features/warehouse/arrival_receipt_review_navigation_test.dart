@@ -425,7 +425,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('当前有 1 行包含跨仓预定'), findsOneWidget);
-    final row = find.text('明细 B(G-002)');
+    final row = find.text('明细 B');
     final gesture = await tester.startGesture(
       tester.getCenter(row),
       kind: PointerDeviceKind.mouse,
@@ -438,7 +438,7 @@ void main() {
     expect(find.textContaining('仍保持待登记送检'), findsOneWidget);
     await tester.tap(find.text('确认移出'));
     await tester.pumpAndSettle();
-    expect(find.text('明细 B(G-002)'), findsNothing);
+    expect(find.text('明细 B'), findsNothing);
     expect(
       find.byKey(const Key('warehouse-arrival-allocation-warehouse-notice')),
       findsNothing,
@@ -535,7 +535,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('登记实际到货 · 采购'), findsOneWidget);
-    final removedRow = find.text('采购明细 B(PG-002)');
+    // 2026-09-14 起名称/编号各占一列，行内不再拼「名称(编号)」。
+    final removedRow = find.text('采购明细 B');
     final gesture = await tester.startGesture(
       tester.getCenter(removedRow),
       kind: PointerDeviceKind.mouse,

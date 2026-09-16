@@ -605,20 +605,19 @@ public class ProductionExecutionPackageCommandService {
             BigDecimal linkTotal = links.stream()
                     .map(SalesLinkSlice::remaining)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
-            if (segmentTotal.compareTo(linkTotal) != 0) {
+            if (linkTotal.compareTo(segmentTotal) > 0) {
                 throw conflict(
                         "执行分段总量与销售分摊总量不一致");
             }
+            // 2026-09-15 分析计划超量下达：计划数量 = 归需求量 + 公共备货产出，
+            // 销售分摊（link 容量）只覆盖归需求量，段总量可以大于分摊总量——
+            // 按 min(段总量, 分摊总量) 依序分摊，分摊仍须被精确消耗完。
 
             int linkIndex = 0;
             for (SegmentDraft segment : entry.getValue()) {
                 BigDecimal remaining =
                         segment.segment().getPlannedQty();
-                while (remaining.signum() > 0) {
-                    if (linkIndex >= links.size()) {
-                        throw conflict(
-                                "执行分段的销售分摊不完整");
-                    }
+                while (remaining.signum() > 0 && linkIndex < links.size()) {
                     SalesLinkSlice link = links.get(linkIndex);
                     BigDecimal quantity =
                             remaining.min(link.remaining());

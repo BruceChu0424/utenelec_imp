@@ -28,7 +28,8 @@ final class SubcontractReturnDueFacts {
             WITH flow_by_item AS (
                 SELECT plan_item.order_item_id,
                        BOOL_OR(plan_item.flow_mode IN (
-                           'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND'))
+                           'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND',
+                           'COMPONENT_OUTBOUND'))
                            AS target_item_flow
                 FROM subcontract_material_plan_items plan_item
                 WHERE plan_item.is_deleted = FALSE
@@ -42,6 +43,13 @@ final class SubcontractReturnDueFacts {
                                    'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND')
                                 THEN GREATEST(
                                     COALESCE(issue_item.supplier_ending, 0), 0)
+                                -- V581：COMPONENT 行在供应商处的是**子件**，按冻结单耗
+                                -- 折回目标件订货单位后才和其余流向同量纲可加。
+                                WHEN plan_item.flow_mode = 'COMPONENT_OUTBOUND'
+                                 AND COALESCE(issue_item.frozen_unit_qty, 0) > 0
+                                THEN GREATEST(
+                                    COALESCE(issue_item.supplier_ending, 0), 0)
+                                    / issue_item.frozen_unit_qty
                                 ELSE 0 END
                        ), 0) AS target_supplier_ending
                 FROM subcontract_material_issue_items issue_item

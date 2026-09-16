@@ -128,8 +128,11 @@ class PurchaseGoodsHistorySnapshotContractTest {
         String report = read(MAIN.resolve(
                 "java/com/uten/imp/features/purchase/report/PurchaseReportService.java"));
 
+        // 2026-09-14：又有一处报表投影从 g.code 改成 i.goods_code_snapshot（方向与
+        // 本契约一致——历史单据一律读快照），计数 5 → 6。下面的 doesNotContain
+        // 才是真正的守卫：只要还有 g.code/g.name 直投就红。
         assertThat(occurrences(report, "goods_code_snapshot"))
-                .isEqualTo(5);
+                .isEqualTo(6);
         assertThat(occurrences(report, "goods_name_snapshot"))
                 .isEqualTo(6);
         assertThat(report)

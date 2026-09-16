@@ -91,7 +91,11 @@ enum WarehouseHistoryType {
             "i.box_qty",
             "COALESCE(NULLIF(i.parent_goods_code_snapshot, ''), parent_goods.code)",
             "COALESCE(NULLIF(i.parent_goods_name_snapshot, ''), parent_goods.name)",
-            "LEFT JOIN goods parent_goods ON parent_goods.id = i.parent_goods_id",
+            "LEFT JOIN goods parent_goods ON parent_goods.id = i.parent_goods_id"
+                    // 父件颜色：行上的 parent_color_id 优先，空则回落父件主档色。
+                    + " LEFT JOIN colors parent_color"
+                    + " ON parent_color.id = COALESCE(i.parent_color_id, parent_goods.color_id)"
+                    + " AND parent_color.is_deleted = FALSE",
             ""),
     SUBCONTRACT_RETURN(
             "subcontract-returns",
@@ -143,7 +147,11 @@ enum WarehouseHistoryType {
             "NULL::numeric",
             "COALESCE(NULLIF(i.parent_goods_code_snapshot, ''), parent_goods.code)",
             "COALESCE(NULLIF(i.parent_goods_name_snapshot, ''), parent_goods.name)",
-            "LEFT JOIN goods parent_goods ON parent_goods.id = i.parent_goods_id",
+            "LEFT JOIN goods parent_goods ON parent_goods.id = i.parent_goods_id"
+                    // 父件颜色：行上的 parent_color_id 优先，空则回落父件主档色。
+                    + " LEFT JOIN colors parent_color"
+                    + " ON parent_color.id = COALESCE(i.parent_color_id, parent_goods.color_id)"
+                    + " AND parent_color.is_deleted = FALSE",
             ""),
     SUBCONTRACT_WASTE(
             "subcontract-wastes",
@@ -354,6 +362,13 @@ enum WarehouseHistoryType {
 
     String parentGoodsNameExpression() {
         return parentGoodsNameExpression;
+    }
+
+    /** 只有带父件 join 的单据类型才有父件颜色可取，其余恒为 NULL（同 IQC 派生列的写法）。 */
+    String parentColorNameExpression() {
+        return parentGoodsJoin.contains("parent_color")
+                ? "parent_color.name"
+                : "NULL::text";
     }
 
     String parentGoodsJoin() {

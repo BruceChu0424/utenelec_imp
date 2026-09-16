@@ -11,8 +11,8 @@ import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -320,31 +320,31 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: UtenAppBar(title: l10n.noticePublishTitle, showBackButton: true),
-      bottomNavigationBar: UtenBottomActionBar(
-        child: Row(
-          children: [
-            UtenActionButton(
-              type: UtenActionButtonType.ghost,
-              label: Text(l10n.commonCancel),
-              onAction: () async {
-                if (context.canPop()) {
-                  context.pop();
-                } else {
-                  context.go('/notice');
-                }
-              },
-            ),
-            const SizedBox(width: UtenSpacing.s12),
-            Expanded(
-              child: UtenActionButton(
-                icon: Icons.send_rounded,
-                label: Text(l10n.noticePublishPublishButton),
-                loadingLabel: Text(l10n.noticePublishPublishing),
-                onAction: _onPublish,
-              ),
-            ),
-          ],
-        ),
+      // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组，按钮统一 large。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: UtenFloatingActionGroup(
+        children: [
+          UtenActionButton(
+            type: UtenActionButtonType.secondary,
+            size: UtenActionButtonSize.large,
+            label: Text(l10n.commonCancel),
+            onAction: () async {
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go('/notice');
+              }
+            },
+          ),
+          UtenActionButton(
+            size: UtenActionButtonSize.large,
+            icon: Icons.send_rounded,
+            label: Text(l10n.noticePublishPublishButton),
+            loadingLabel: Text(l10n.noticePublishPublishing),
+            onAction: _onPublish,
+          ),
+        ],
       ),
       body: UtenContentContainer(
         maxWidth: 1040,
@@ -359,7 +359,13 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
               final content = _buildContentCard(context, l10n);
               final audience = _buildAudienceColumn(context, l10n);
               return SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s24),
+                // 底部留出右下悬浮操作组的高度。
+                padding: const EdgeInsets.fromLTRB(
+                  0,
+                  UtenSpacing.s24,
+                  0,
+                  UtenFloatingActionGroup.scrollClearance,
+                ),
                 child: wide
                     ? Row(
                         crossAxisAlignment: CrossAxisAlignment.start,

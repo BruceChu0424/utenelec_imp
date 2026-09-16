@@ -3530,7 +3530,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get warehouseOutboundBatchHint =>
-      '请逐项核对所选单据的货品、数量、单位、仓库与建议库位；确认后办理当前作业阶段。';
+      '请逐项核对所选单据的货品、数量、单位、仓库与实际库位；确认后一次性出库。';
 
   @override
   String warehouseOutboundBatchConfirm(String action, int count) {
@@ -3573,7 +3573,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseOutboundBatchReason => '处理说明';
 
   @override
-  String get warehouseOutboundBatchReasonRequired => '请填写具体说明';
+  String get warehouseOutboundConfirmShipment => '确认出库';
 
   @override
   String get warehouseOutboundBillNo => '出货单号';
@@ -3625,18 +3625,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get warehouseOutboundSourceOrder => '来源订单';
-
-  @override
-  String get warehouseOutboundStartPicking => '开始拣货';
-
-  @override
-  String get warehouseOutboundFinishPicking => '拣货完成';
-
-  @override
-  String get warehouseOutboundHandOver => '交接出库';
-
-  @override
-  String get warehouseOutboundRestorePending => '恢复待拣货';
 
   @override
   String get warehouseStockOutboundTitle => '批量出库详情';

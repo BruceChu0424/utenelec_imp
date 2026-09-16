@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
+import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
@@ -275,15 +276,19 @@ class _SupplierCreditApplyPanelState
           ],
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: UtenButton(
+      // 2026-09-14 UI 统一口径：吸底操作按钮改右下悬浮组，统一 large。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: UtenFloatingActionGroup(
+        children: [
+          UtenButton(
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
             icon: Icons.link_rounded,
             onPressed: _loading ? null : _confirm,
             child: Text('确认应用 (${_selected.length})'),
           ),
-        ),
+        ],
       ),
     );
   }

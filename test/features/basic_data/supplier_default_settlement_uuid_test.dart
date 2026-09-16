@@ -26,9 +26,18 @@ void main() {
   });
 
   group('supplier editor UUID-only contract', () {
-    final pageSource = File(
-      'lib/features/basic_data/pages/supplier_category_page.dart',
-    ).readAsStringSync();
+    // 2026-09-14：供应商编辑表单抽到 widgets/supplier_master_edit.dart，分类页
+    // 只留列表与详情。契约按两文件并集判定，不绑死在某一个文件里。
+    final pageSource =
+        File(
+          'lib/features/basic_data/pages/supplier_category_page.dart',
+        ).readAsStringSync() +
+        File(
+          'lib/features/basic_data/widgets/supplier_master_edit.dart',
+        ).readAsStringSync() +
+        File(
+          'lib/features/basic_data/pages/party_detail_page.dart',
+        ).readAsStringSync();
 
     test('edit form submits UUID key and prefills from detail', () {
       expect(pageSource, contains("key: 'defaultSettlementMethodId'"));
@@ -46,7 +55,10 @@ void main() {
       expect(
         normalized,
         // 不断言收尾括号：formatter 可能加尾逗号
-        contains("MasterDetailRow('默认结算方式',d.defaultSettlementMethodName"),
+        // 2026-09-14：详情面板整页化后这一行搬到 pages/party_detail_page.dart，
+        // 渲染器由 MasterDetailRow 换成本页的 _kv。契约不变——详情显示的必须是
+        // UUID 解析出来的**名称**，不是 legacy 值。
+        contains("_kv(theme,'默认结算方式',d.defaultSettlementMethodName"),
       );
     });
   });

@@ -221,6 +221,7 @@ class WarehouseDocumentPhysicalItem {
     this.supplierEndingQty,
     this.boxQty,
     this.parentGoodsName,
+    this.parentColorName,
   });
 
   final String id;
@@ -258,6 +259,9 @@ class WarehouseDocumentPhysicalItem {
   final String? supplierEndingQty;
   final String? boxQty;
   final String? parentGoodsName;
+
+  /// 父件颜色（后端 parentColorName）：父件身份同样要名称+编号+颜色才认得出。
+  final String? parentColorName;
 
   String get displayGoods {
     final code = _nonBlank(goodsCode);
@@ -319,6 +323,7 @@ class WarehouseDocumentPhysicalItem {
       supplierEndingQty: _decimalText(json['supplierEndingQuantity']),
       boxQty: _decimalText(json['boxQuantity']),
       parentGoodsName: _text(json['parentGoodsName']),
+      parentColorName: _text(json['parentColorName']),
     );
   }
 }

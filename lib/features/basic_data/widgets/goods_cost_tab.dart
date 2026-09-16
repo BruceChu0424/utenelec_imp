@@ -276,6 +276,9 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       'series': d.series,
       'stockPlace': d.stockPlace,
       'sourceType': d.sourceType,
+      // 所属仓库 (V587)：本 body 是整体覆盖式回传，这一键原样带回，保证在成本页
+      // 保存不会把货品的仓管归属改掉 (值来自刚拉到的 detail 快照)。
+      'owningWarehouseId': d.owningWarehouseId,
       if (d.version != null) 'version': d.version,
       ...goodsUuidFirstReferenceBody(d),
       ...cost,

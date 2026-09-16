@@ -26,6 +26,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -83,6 +84,9 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
 
   final _grid = UtenEditableGridController<StockGridRow>();
   final _scrollCtl = ScrollController();
+
+  /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
+  final _gridPinned = ValueNotifier<bool>(false);
   bool _saving = false;
   bool _loadingCheckBooks = false;
   bool _loading = false;
@@ -100,6 +104,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
 
   @override
   void dispose() {
+    _gridPinned.dispose();
     _billNo.dispose();
     _remark.dispose();
     _pendingFiles.dispose();
@@ -560,10 +565,12 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-            : UtenContentContainer(
-                child: Scrollbar(
-                  controller: _scrollCtl,
-                  thumbVisibility: true,
+            : UtenGridPageScrollbar(
+                pinned: _gridPinned,
+                controller: _scrollCtl,
+                // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
+                // 恒在屏幕最右，不随限宽容器/列宽漂移。
+                child: UtenContentContainer(
                   child: ListView(
                     controller: _scrollCtl,
                     // 底部多留一屏悬浮按钮的高度，最后一行明细不被「取消/保存」压住。
@@ -720,6 +727,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                       // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）：本页无右侧入口，整行删除。
                       UtenEditableGrid<StockGridRow>(
                         controller: _grid,
+                        stickyHeaderPinned: _gridPinned,
                         columns: stockGridColumns(
                           _pickGoods,
                           isCheck: _isCheck,
@@ -739,6 +747,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
       ),
       // 底部固定操作条 2026-09-11 收口为右下角悬浮；合计不再重复（明细表下方已有）。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _loading ? null : _floatingActions(theme),
     );
   }

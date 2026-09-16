@@ -11,6 +11,7 @@
 // 文档：见 docs/数据迁移/09-供应商资料-新库与迁移.md。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
@@ -25,12 +26,10 @@ import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
-import '../../../components/inputs/uten_employee_picker.dart';
-import '../../employee/repositories/employee_repository.dart';
-import '../../employee/widgets/department_employee_picker.dart';
 import '../models/master_facet.dart';
 import '../models/product_category_node.dart';
 import '../models/reference_method_option.dart';
@@ -43,8 +42,8 @@ import '../../../shared/widgets/master_detail_card.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/category_page_shell.dart';
 import '../widgets/master_data_table_view.dart';
-import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
+import '../widgets/supplier_master_edit.dart';
 import '../widgets/category_tree_search.dart';
 import '../widgets/system_master_category_guard.dart';
 
@@ -248,7 +247,6 @@ class _DetailPaneState extends State<_DetailPane> {
   /// 详情弹窗加载中（防并发）。
   /// 注意：与 [_supplierLoading]（供应商分页列表的加载状态）是两回事，不可混用——
   /// 列表加载完后 [_supplierLoading] 恒为 false，无法防止详情弹窗被并发触发。
-  bool _detailLoading = false;
 
   /// 多选选中集（业务 id，跨页保留；批量禁用/删除用）。切换分类时清空。
   Set<String> _selectedSupplierIds = {};
@@ -433,108 +431,11 @@ class _DetailPaneState extends State<_DetailPane> {
     );
   }
 
-  // 供应商主档可编辑字段（与后端 SupplierSaveRequest 对齐）。
+  // 2026-09-14：字段表抽取到 supplier_master_edit.dart（分类页与详情整页共用）。
   List<MasterFieldDef> _supplierFields(
     Map<String, String> iv,
     List<ReferenceMethodOption> settlementMethods,
-  ) => [
-    ...const <MasterFieldDef>[
-      MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
-      MasterFieldDef(
-        key: 'code',
-        label: '编号',
-        group: '基础',
-        hint: '留空按分类前缀自动生成；手工编号也必须唯一',
-      ),
-      MasterFieldDef(key: 'description', label: '描述/全称', group: '基础'),
-      MasterFieldDef(key: 'place', label: '地区', group: '地址'),
-    ],
-    MasterFieldDef(
-      key: 'ownerEmployeeId',
-      label: '业务员',
-      type: MasterFieldType.custom,
-      group: '资质',
-      customBuilder: (ctx) => DepartmentEmployeePickerField(
-        label: '业务员',
-        hint: '选择在职员工',
-        initialId: ctx.initialValue,
-        initialName: iv['ownerEmployeeName'],
-        initialLoader: (employeeId) async {
-          final employee = await widget.ref
-              .read(employeeRepositoryProvider)
-              .getById(employeeId);
-          return UtenEmployeePickerItem(
-            id: employee.id,
-            name: employee.fullName ?? '',
-            employeeCode: employee.code,
-            departmentName: employee.departmentName,
-          );
-        },
-        onChanged: ctx.onChanged,
-        onPick: () => showUtenDepartmentEmployeePicker(
-          context,
-          widget.ref,
-          title: '选择业务员',
-        ),
-      ),
-    ),
-    ...const <MasterFieldDef>[
-      MasterFieldDef(key: 'legalPerson', label: '法人', group: '资质'),
-      MasterFieldDef(key: 'linkman', label: '联系人', group: '联系'),
-      MasterFieldDef(key: 'mobile', label: '手机', required: true, group: '联系'),
-      MasterFieldDef(key: 'phone', label: '电话', group: '联系'),
-      MasterFieldDef(key: 'phone2', label: '电话2', group: '联系'),
-      MasterFieldDef(key: 'fax', label: '传真', group: '联系'),
-      MasterFieldDef(key: 'postcode', label: '邮编', group: '联系'),
-      MasterFieldDef(key: 'address', label: '地址', group: '地址'),
-      MasterFieldDef(key: 'email', label: '邮箱', group: '联系'),
-      MasterFieldDef(key: 'website', label: '网址', group: '联系'),
-      MasterFieldDef(key: 'shipVia', label: '运输方式', group: '地址'),
-      MasterFieldDef(key: 'shipAddress', label: '收货地址', group: '地址'),
-      MasterFieldDef(key: 'bank', label: '开户行', group: '财务'),
-      MasterFieldDef(key: 'bankAccount', label: '银行账号', group: '财务'),
-      MasterFieldDef(key: 'taxId', label: '税号', group: '财务'),
-      MasterFieldDef(
-        key: 'initTotal',
-        label: '期初应付',
-        type: MasterFieldType.money,
-        group: '财务',
-      ),
-      MasterFieldDef(
-        key: 'tday',
-        label: '结算天数',
-        type: MasterFieldType.integer,
-        group: '财务',
-      ),
-    ],
-    MasterFieldDef(
-      key: 'defaultSettlementMethodId',
-      label: '默认结算方式',
-      type: MasterFieldType.select,
-      options: [
-        for (final method in settlementMethods)
-          MasterSelectOption(
-            value: method.id,
-            label: method.code.isEmpty
-                ? method.name
-                : '${method.name} · ${method.code}',
-          ),
-      ],
-      group: '财务',
-      hint: '采购/委外订货开单时预填结账方式；不影响既有单据与应付',
-    ),
-    ...const <MasterFieldDef>[
-      MasterFieldDef(
-        key: 'status',
-        label: '状态',
-        type: MasterFieldType.select,
-        options: kMasterStatusOptions,
-        required: true,
-        group: '基础',
-      ),
-      MasterFieldDef(key: 'remark', label: '备注', group: '其他'),
-    ],
-  ];
+  ) => buildSupplierFields(context, iv, settlementMethods, widget.ref);
 
   bool get _canCreateMaster =>
       widget.ref.read(currentPermissionsProvider).contains(Perm.supplierCreate);
@@ -607,69 +508,15 @@ class _DetailPaneState extends State<_DetailPane> {
     return true;
   }
 
+  // 2026-09-14：编辑流程抽取到 showSupplierMasterEdit（详情整页共用）。
   Future<void> _showSupplierEdit(SupplierDetail d) async {
-    final settlementMethods = await _loadSettlementMethods();
-    if (!mounted || settlementMethods == null) return;
-    if (d.defaultSettlementMethodId != null &&
-        !settlementMethods.any(
-          (method) => method.id == d.defaultSettlementMethodId,
-        )) {
-      context.appError('当前默认结算方式已不可用，请先修复供应商结算方式关联');
-      return;
-    }
-    final iv = <String, String>{
-      'name': d.name ?? '',
-      'code': d.code ?? '',
-      'description': d.description ?? '',
-      'place': d.place ?? '',
-      'ownerEmployeeId': d.ownerEmployeeId ?? '',
-      'ownerEmployeeName': d.ownerEmployeeName ?? d.empId ?? '',
-      'legalPerson': d.legalPerson ?? '',
-      'linkman': d.linkman ?? '',
-      'mobile': d.mobile ?? '',
-      'phone': d.phone ?? '',
-      'phone2': d.phone2 ?? '',
-      'fax': d.fax ?? '',
-      'postcode': d.postcode ?? '',
-      'address': d.address ?? '',
-      'email': d.email ?? '',
-      'website': d.website ?? '',
-      'shipVia': d.shipVia ?? '',
-      'shipAddress': d.shipAddress ?? '',
-      'bank': d.bank ?? '',
-      'bankAccount': d.bankAccount ?? '',
-      'taxId': d.taxId ?? '',
-      'initTotal': d.initTotal?.toString() ?? '',
-      'tday': d.tday?.toString() ?? '',
-      'defaultSettlementMethodId': d.defaultSettlementMethodId ?? '',
-      'status': d.status ?? '',
-      'remark': d.remark ?? '',
-    };
-    showMasterEditDialog(
-      context: context,
-      title: '编辑供应商', // TODO(l10n): 补 arb
-      fields: _supplierFields(iv, settlementMethods),
-      initialValues: iv,
-      fixedValues: {
-        'categoryId': d.categoryId ?? widget.nodeId,
-        if (d.version != null) 'version': d.version,
-      },
-      readOnlyKeys: _canStatusMaster ? null : const {'status'},
-      onSubmit: (body) => _doUpdateSupplier(d.id, body),
+    await showSupplierMasterEdit(
+      context,
+      widget.ref,
+      d,
+      fallbackCategoryId: widget.nodeId,
+      onSaved: () => _loadSuppliers(_supplierPageNum),
     );
-  }
-
-  Future<bool> _doUpdateSupplier(String id, Map<String, dynamic> body) async {
-    final ok = await context.guardRun(
-      () async {
-        await widget.ref.read(supplierRepositoryProvider).update(id, body);
-      },
-      success: '供应商已更新', // TODO(l10n): 补 arb
-      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!ok) return false;
-    await _loadSuppliers(_supplierPageNum);
-    return true;
   }
 
   Future<void> _deleteSupplier(SupplierDetail d) async {
@@ -907,112 +754,11 @@ class _DetailPaneState extends State<_DetailPane> {
     await _loadSuppliers(_supplierPageNum);
   }
 
-  /// 点供应商行：拉详情弹框展示核心字段。
-  ///
-  /// 用独立的 [_detailLoading] 防并发——不能用 [_supplierLoading]（那是分页列表
-  /// 加载状态，列表加载完即恒为 false，起不到防连点作用）。否则并发触发
-  /// showDialog 会让 Navigator 上多个对话框路由交错 push/pop，触发 element
-  /// 生命周期断言（见 MEMORY: go_router 嵌套 navigator 坑）。
+  /// 双击供应商行（2026-09-14）：从弹窗改为供应商详情整页 /basicinfo/supplier/:id。
   Future<void> _showSupplierDetail(String id) async {
-    if (_detailLoading) return;
-    _detailLoading = true;
-    // 预取 root navigator：showDialog 默认 useRootNavigator:true 把对话框 push 到
-    // root navigator，pop 也必须用同一个 root。
-    final nav = Navigator.of(context, rootNavigator: true);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator()),
-    );
-    SupplierDetail? d;
-    try {
-      d = await widget.ref.read(supplierRepositoryProvider).detail(id);
-    } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) {
-        context.appError('加载供应商详情失败'); // TODO(l10n): 补 arb
-      }
-    }
-    if (!mounted) {
-      nav.pop(); // 页面已销毁：关闭可能残留的 loading 对话框
-      return;
-    }
-    nav.pop(); // 关 loading
-    if (d == null) {
-      _detailLoading = false; // 失败：loading 已关，复位
-      return;
-    }
-    // 成功：开详情面板，关闭后再复位 flag（面板期间继续禁止并发）。
-    // 用局部 detail 捕获 non-null：d 是 nullable，跨闭包边界不再提升，
-    // 直接在 onEdit/onDelete 里用 d 会报类型错。
-    final detail = d;
-    await showMasterDetailSheet(
-      context: context,
-      title: detail.name?.isNotEmpty == true
-          ? detail.name!
-          : (detail.code ?? '供应商详情'),
-      rows: _supplierDetailRows(detail),
-      canEdit: _canEditMaster,
-      canDelete: _canDeleteMaster,
-      onToggleStatus: _canStatusMaster
-          ? () async {
-              final next = detail.status == '使用' ? '禁用' : '使用';
-              final ok = await context.guardRun(
-                () => widget.ref
-                    .read(masterStatusRepositoryProvider)
-                    .change(
-                      resourcePath: ApiEndpoints.supplier(detail.id),
-                      status: next,
-                      version: detail.version,
-                    ),
-                success: next == '禁用' ? '已停用' : '已启用',
-              );
-              if (ok && mounted) await _loadSuppliers(_supplierPageNum);
-            }
-          : null,
-      statusActionLabel: detail.status == '使用' ? '停用' : '启用',
-      onEdit: () => _showSupplierEdit(detail),
-      onDelete: () => _deleteSupplier(detail),
-    );
-    if (mounted) _detailLoading = false;
+    await context.push(RoutePath.basicinfoSupplierDetail(id));
+    if (mounted) await _loadSuppliers(_supplierPageNum);
   }
-
-  List<MasterDetailRow> _supplierDetailRows(SupplierDetail d) => [
-    MasterDetailRow('编号', d.code), // TODO(l10n): 补 arb
-    MasterDetailRow('名称', d.name), // TODO(l10n): 补 arb
-    MasterDetailRow('描述/全称', d.description), // TODO(l10n): 补 arb
-    MasterDetailRow('分类', d.categoryName), // TODO(l10n): 补 arb
-    MasterDetailRow('地区', d.place), // TODO(l10n): 补 arb
-    MasterDetailRow('业务员', d.ownerEmployeeName ?? d.empId), // TODO(l10n): 补 arb
-    MasterDetailRow('法人', d.legalPerson), // TODO(l10n): 补 arb
-    MasterDetailRow('联系人', d.linkman), // TODO(l10n): 补 arb
-    MasterDetailRow('手机', d.mobile), // TODO(l10n): 补 arb
-    MasterDetailRow('电话', d.phone), // TODO(l10n): 补 arb
-    MasterDetailRow('电话2', d.phone2), // TODO(l10n): 补 arb
-    MasterDetailRow('传真', d.fax), // TODO(l10n): 补 arb
-    MasterDetailRow('邮编', d.postcode), // TODO(l10n): 补 arb
-    MasterDetailRow('地址', d.address), // TODO(l10n): 补 arb
-    MasterDetailRow('收货地址', d.shipAddress), // TODO(l10n): 补 arb
-    MasterDetailRow('运输方式', d.shipVia), // TODO(l10n): 补 arb
-    MasterDetailRow('开户行', d.bank), // TODO(l10n): 补 arb
-    MasterDetailRow('银行账号', d.bankAccount), // TODO(l10n): 补 arb
-    MasterDetailRow('税号', d.taxId), // TODO(l10n): 补 arb
-    MasterDetailRow(
-      '期初应付',
-      d.initTotal?.toStringAsFixed(2),
-    ), // TODO(l10n): 补 arb
-    MasterDetailRow('结算天数', d.tday?.toString()), // TODO(l10n): 补 arb
-    MasterDetailRow(
-      '默认结算方式',
-      d.defaultSettlementMethodName,
-    ), // TODO(l10n): 补 arb
-    MasterDetailRow('邮箱', d.email), // TODO(l10n): 补 arb
-    MasterDetailRow('网址', d.website), // TODO(l10n): 补 arb
-    MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb
-    MasterDetailRow('备注', d.remark), // TODO(l10n): 补 arb
-    MasterDetailRow('旧系统 ID', d.legacyId?.toString()), // TODO(l10n): 补 arb
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -1247,10 +993,13 @@ class _DetailPaneState extends State<_DetailPane> {
       value: (s) => s.place,
     ),
     MasterColumnDef(
-      key: 'empId',
+      key: 'ownerEmployeeName',
       label: '业务员',
-      width: 90,
-      value: (s) => s.empId,
+      width: 110,
+      // 2026-09-14：后端补 ownerEmployeeName；未匹配显示未分配而不是裸数字 ID。
+      value: (s) => (s.ownerEmployeeName?.trim().isNotEmpty ?? false)
+          ? s.ownerEmployeeName
+          : '未分配',
     ),
     MasterColumnDef(
       key: 'legalPerson',

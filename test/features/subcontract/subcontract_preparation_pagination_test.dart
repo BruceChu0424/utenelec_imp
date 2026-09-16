@@ -139,7 +139,8 @@ void main() {
       expect(seen, hasLength(128));
       expect(seen, contains('prepare-125'));
       expect(gateway.sizes, everyElement(lessThanOrEqualTo(50)));
-      final row = find.textContaining('SC-101 Component101');
+      // 2026-09-14 列序统一后名称/编号分列，双击改点名称格。
+      final row = find.text('Component101');
       await tester.tap(row);
       await tester.pump(const Duration(milliseconds: 50));
       await tester.tap(row);

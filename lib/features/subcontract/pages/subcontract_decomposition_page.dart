@@ -675,23 +675,34 @@ class _SubcontractDecompositionPageState
                     ? '—'
                     : (t.actionDocument?.number ?? '—')),
         ),
+        // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
+        // 不再「编号 名称」拼一格、颜色拼进规格。
         MasterColumnDef(
           key: 'goods',
           sortable: true,
-          label: '委外目标件',
-          width: 240,
-          value: (t) => t.isDocumentGrouped
-              ? t.goodsSummaryLabel
-              : '${t.goodsCode} ${t.goodsName}'.trim(),
+          label: '委外目标件名称',
+          width: 200,
+          value: (t) => t.isDocumentGrouped ? t.goodsSummaryLabel : t.goodsName,
+        ),
+        MasterColumnDef(
+          key: 'goodsCode',
+          sortable: true,
+          label: '编号',
+          width: 130,
+          value: (t) => t.isDocumentGrouped ? '—' : t.goodsCode,
+        ),
+        MasterColumnDef(
+          key: 'colorName',
+          label: '颜色',
+          width: 96,
+          value: (t) => t.isDocumentGrouped ? '—' : t.colorName,
         ),
         MasterColumnDef(
           key: 'spec',
           sortable: true,
-          label: '规格 / 颜色',
-          width: 180,
-          value: (t) => t.isDocumentGrouped
-              ? '—'
-              : [t.spec, t.colorName].where((v) => v.isNotEmpty).join(' / '),
+          label: '规格',
+          width: 150,
+          value: (t) => t.isDocumentGrouped ? '—' : t.spec,
         ),
         MasterColumnDef(
           key: 'requiredQty',
@@ -707,11 +718,12 @@ class _SubcontractDecompositionPageState
           label: '待下单量',
           width: 120,
           type: 'number',
-          value: (t) => _isSynthetic(t)
-              ? '—'
-              : (t.isDocumentGrouped
-                    ? '${t.openLineCount} 行'
-                    : '${_number(t.openQty)} ${t.unitName}'.trim()),
+          // 2026-09-15：前置自制合成行（待生产）同样显示真实待通知量
+          // （required − notified），不再藏成「—」——委外的需求量与待下单量
+          // 两列口径与其余行一致。
+          value: (t) => t.isDocumentGrouped
+              ? '${t.openLineCount} 行'
+              : '${_number(t.openQty)} ${t.unitName}'.trim(),
         ),
         MasterColumnDef(
           key: 'issuedAt',
@@ -925,7 +937,7 @@ class _SubcontractDemandCard extends StatelessWidget {
                     Text(
                       '需求 ${_SubcontractDecompositionPageState._number(task.requiredQty)} ${task.unitName}',
                     ),
-                  if (!synthetic) Text('待下单 ${task.quantityText}'),
+                  Text('待下单 ${task.quantityText}'),
                   if ((task.needDate ?? '').isNotEmpty)
                     Text('需求日 ${task.needDate}'),
                   Text(

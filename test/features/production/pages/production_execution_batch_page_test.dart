@@ -454,7 +454,15 @@ void main() {
         .widget<MasterDataTableView<ProductionDrawRequestSummary>>(
           find.byKey(_tableKey),
         );
-    expect(table.columns.take(2).map((column) => column.key), ['name', 'qty']);
+    // 2026-09-14 全站列序统一：紧凑/非紧凑同序 名称→编号→颜色（不再把编号挪到
+    // 数量之后）；窄屏数量列经横向滚动到达。
+    expect(table.columns.take(3).map((column) => column.key), [
+      'name',
+      'code',
+      'color',
+    ]);
+    await tester.drag(find.byKey(_tableKey), const Offset(-300, 0));
+    await tester.pumpAndSettle();
     final quantityRect = tester.getRect(find.text('150'));
     expect(quantityRect.left, greaterThanOrEqualTo(0));
     expect(quantityRect.right, lessThanOrEqualTo(390));
@@ -481,17 +489,13 @@ void main() {
           expect(tester.takeException(), isNull);
           expect(find.byKey(_submitKey).hitTestable(), findsOneWidget);
           if (viewport.name == 'phone') {
+            // 2026-09-14 口径：紧凑视口同样用右下悬浮组（吸底条退役）；
+            // 正文让位由表格 bottomContentPadding 承担，可达性由下方
+            // ensureVisible + 悬浮按钮 hitTestable 断言覆盖。
             final bottomBar = tester
                 .widget<Scaffold>(find.byType(Scaffold))
                 .bottomNavigationBar;
-            expect(bottomBar, isNotNull);
-            expect(
-              tester
-                  .getRect(find.byType(UtenCollapsingHeaderScrollView))
-                  .bottom,
-              lessThanOrEqualTo(tester.getRect(find.byWidget(bottomBar!)).top),
-              reason: 'The compact action area must reserve body space.',
-            );
+            expect(bottomBar, isNull);
           }
           await tester.ensureVisible(find.byKey(_quantityKey));
           await tester.pumpAndSettle();

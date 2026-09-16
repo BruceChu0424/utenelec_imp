@@ -61,7 +61,11 @@ class ClientDefaultSettlementMethodUuidContractTest {
         String shipment = read("server/src/main/java/com/uten/imp/features/sales/"
                 + "shipment/SalesShipmentService.java");
         String model = read("lib/features/basic_data/models/client_node.dart");
-        String page = read("lib/features/basic_data/pages/client_category_page.dart");
+        // 客户编辑表单 2026-09-14 拆到 widgets/client_master_edit.dart，列表页只留
+        // 表格列与名称回显；契约看的是「这套 UUID 口径还在不在客户主档界面上」，
+        // 所以按两文件的并集判定，不绑死在某一个文件里。
+        String page = read("lib/features/basic_data/pages/client_category_page.dart")
+                + read("lib/features/basic_data/widgets/client_master_edit.dart");
 
         assertTrue(clientService.contains("hasDefaultSettlementMethodReference"));
         assertTrue(clientService.contains("SettlementMethodReferenceResolver.resolve("));

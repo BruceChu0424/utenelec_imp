@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/ui/app_notification.dart';
 import '../models/sales_doc.dart';
@@ -243,8 +244,11 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
   return [
     EditableGridColumn<SalesGridRow>(
       key: 'goods',
-      label: '货品',
-      width: 220,
+      label: '货品名称',
+      // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色**各占一列**，
+      // 不把编号拼进名称格——拼在一起既不能各自排序筛选，列窄时编号还先被
+      // 省略号吃掉。这里只放名称，编号见右边「编号」列、颜色见「颜色」列。
+      width: 200,
       required: true,
       textOf: (r) => r.goods?.name ?? '',
       listenableOf: (r) => r.goodsNotifier,
@@ -260,14 +264,16 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
                 Expanded(
                   child: ValueListenableBuilder<GoodsOption?>(
                     valueListenable: row.goodsNotifier,
-                    builder: (context, g, _) => Text(
-                      g?.name ?? '点击选择',
-                      style: TextStyle(
-                        color: g == null
-                            ? Theme.of(context).colorScheme.onSurfaceVariant
-                            : Theme.of(context).colorScheme.onSurface,
-                      ),
-                    ),
+                    builder: (context, g, _) => g == null
+                        ? Text(
+                            '点击选择',
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                          )
+                        : UtenGoodsIdentityCell(name: g.name),
                   ),
                 ),
                 const Icon(Icons.search_rounded, size: 16),
@@ -275,6 +281,17 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
             ),
           ),
         ),
+      ),
+    ),
+    EditableGridColumn<SalesGridRow>(
+      key: 'goodsCode',
+      label: '编号',
+      width: 130,
+      textOf: (r) => r.goods?.code ?? '',
+      listenableOf: (r) => r.goodsNotifier,
+      cellBuilder: (context, row) => ValueListenableBuilder<GoodsOption?>(
+        valueListenable: row.goodsNotifier,
+        builder: (context, goods, _) => UtenGoodsAttributeCell(goods?.code),
       ),
     ),
     EditableGridColumn<SalesGridRow>(

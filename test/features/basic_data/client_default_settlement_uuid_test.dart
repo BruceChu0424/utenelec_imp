@@ -29,7 +29,12 @@ void main() {
   });
 
   group('client editor UUID-only contract', () {
+    // 2026-09-14：客户编辑字段表与保存流程抽取到 client_master_edit.dart
+    //（分类页与详情整页共用），源码契约随迁；新建弹窗仍留在分类页。
     final pageSource = File(
+      'lib/features/basic_data/widgets/client_master_edit.dart',
+    ).readAsStringSync();
+    final categoryPageSource = File(
       'lib/features/basic_data/pages/client_category_page.dart',
     ).readAsStringSync();
     final formSource = File(
@@ -66,8 +71,8 @@ void main() {
     test('loading, errors, and empty dictionaries fail closed', () {
       final loader = _between(
         pageSource,
-        'Future<List<ReferenceMethodOption>?> _loadSettlementMethods()',
-        '// ---- 客户 新建/编辑/删除',
+        'Future<List<ReferenceMethodOption>?> loadClientSettlementMethods(',
+        '/// 客户编辑弹窗（分类页与详情页共用）。[onSaved] 在保存成功后回调（刷新各自数据）。',
       );
       expect(loader, contains('if (_settlementOptionsLoading) return null'));
       expect(loader, contains('barrierDismissible: false'));
@@ -78,30 +83,45 @@ void main() {
       expect(loader, contains('on ApiException catch'));
       expect(loader, contains("context.appError('加载结账方式失败，请重试')"));
 
+      // 2026-09-14：新建仍留在分类页，编辑流程在共享模块 showClientMasterEdit。
       final create = _between(
-        pageSource,
+        categoryPageSource,
         'Future<void> _showClientCreate()',
         'Future<bool> _doCreateClient',
       );
-      _expectLoadGuardBeforeDialog(create);
+      _expectCreateLoadGuardBeforeDialog(create);
 
       final edit = _between(
         pageSource,
-        'Future<void> _showClientEdit(ClientDetail d)',
-        'Future<bool> _doUpdateClient',
+        'Future<void> showClientMasterEdit(',
+        '    onSubmit: (body) async {',
       );
-      _expectLoadGuardBeforeDialog(edit);
-      expect(edit, contains('!settlementMethods.any('));
-      expect(edit, contains('method.id == d.defaultSettlementMethodId'));
-      expect(edit, contains('请先修复客户结账方式关联'));
+      _expectEditLoadGuardBeforeDialog(edit);
+      // 2026-09-15 用户口径「点击编辑报错」：原守卫在当前默认结账方式已停用时
+      // 直接报错拦死编辑。现改为追加带「已停用」标注的选项保住原值（客户可顺手
+      // 改掉），编辑不再被单个字典值挡住；V592 默认币种同款保值。
+      expect(edit, contains('settlementOptions.any((m) => m.id == d.defaultSettlementMethodId)'));
+      expect(edit, contains('已停用'));
+      expect(edit, isNot(contains('请先修复客户结账方式关联')));
     });
   });
 }
 
-void _expectLoadGuardBeforeDialog(String source) {
+void _expectCreateLoadGuardBeforeDialog(String source) {
   final load = source.indexOf('await _loadSettlementMethods()');
   final guard = source.indexOf('settlementMethods == null) return');
   final dialog = source.indexOf('showMasterEditDialog(');
+  expect(load, greaterThanOrEqualTo(0));
+  expect(guard, greaterThan(load));
+  expect(dialog, greaterThan(guard));
+}
+
+void _expectEditLoadGuardBeforeDialog(String source) {
+  final load = source.indexOf(
+    'await loadClientSettlementMethods(context, ref)',
+  );
+  final guard = source.indexOf('|| settlementMethods == null) return');
+  final dialog = source.indexOf('await showMasterEditDialog(');
   expect(load, greaterThanOrEqualTo(0));
   expect(guard, greaterThan(load));
   expect(dialog, greaterThan(guard));

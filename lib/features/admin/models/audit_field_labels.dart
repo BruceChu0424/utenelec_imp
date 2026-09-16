@@ -94,6 +94,9 @@ abstract final class AuditFieldLabels {
     'mould_id': '模具',
     'rear_insert_code': '后模镶件编号',
     'paper': '备注（货品）',
+    // 采购批量口径（V575）：软约束，下达采购按此预填默认数量。
+    'min_order_qty': '最小起订量',
+    'order_multiple_qty': '订货倍数',
 
     // 单据通用
     'doc_no': '单据编号',

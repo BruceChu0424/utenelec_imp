@@ -270,7 +270,11 @@ void main() {
     expect(find.text('供应商财务快照 · 供应商A(S-001)'), findsOneWidget);
     expect(find.text('12500.50'), findsOneWidget, reason: '应付余额格式化展示');
     expect(find.text('美元'), findsWidgets);
-    expect(find.text('G001 · 铜线(裸色 · 公斤)'), findsOneWidget);
+    // 2026-09-14 起名称 / 编号 / 颜色 / 单位各占一列，不再拼成一格。
+    expect(find.text('铜线'), findsOneWidget);
+    expect(find.text('G001'), findsOneWidget);
+    expect(find.text('裸色'), findsOneWidget);
+    expect(find.text('公斤'), findsWidgets);
     expect(find.text('PR-2026-010'), findsOneWidget);
     expect(find.text('原因：单价待复核'), findsOneWidget);
     expect(find.byKey(const Key('finance-order-review-back')), findsOneWidget);

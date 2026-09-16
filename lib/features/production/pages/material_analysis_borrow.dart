@@ -300,9 +300,8 @@ abstract class _MaterialAnalysisBorrowState
           if (!mounted) return;
           setState(() => _applyAnalysis(latest));
         },
-        onOpenSourcePlan: _permissions.contains(
-          Perm.productionMaterialAnalysisView,
-        )
+        onOpenSourcePlan:
+            _permissions.contains(Perm.productionMaterialAnalysisView)
             ? (candidate) {
                 context.push(
                   RouteName.productionMaterialAnalysis,
@@ -363,7 +362,9 @@ abstract class _MaterialAnalysisBorrowState
             sourceLabel: result.sourceLabel,
           );
         } else if (completions.length > 1) {
-          context.appInfo('本次共调入 ${completions.length} 个来源；如需为某个来源计划补供，请在调拨记录里逐笔办理。');
+          context.appInfo(
+            '本次共调入 ${completions.length} 个来源；如需为某个来源计划补供，请在调拨记录里逐笔办理。',
+          );
         }
       }
     } finally {
@@ -817,8 +818,9 @@ abstract class _MaterialAnalysisBorrowState
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
-                  if (_crossReallocationOperatorLine(allocation)
-                      .isNotEmpty) ...[
+                  if (_crossReallocationOperatorLine(
+                    allocation,
+                  ).isNotEmpty) ...[
                     const SizedBox(height: UtenSpacing.s2),
                     Text(
                       _crossReallocationOperatorLine(allocation),

@@ -120,7 +120,8 @@ class SalesShipmentFinanceRateSqlContractTest {
         assertThat(filter).contains("string warehouseworkstatus");
         assertThat(controller).contains(
                 "@requestparam(required = false) string warehouseworkstatus",
-                "financeaudit, warehouseworkstatus, datefrom");
+                // V578：列表新增 financeRejected 专段参数（财务「已退回」看板）。
+                "financeaudit, financerejected, warehouseworkstatus, datefrom");
         assertThat(service).contains(
                 "f.warehouseworkstatus() != null",
                 "root.get(\"warehouseworkstatus\")",

@@ -131,4 +131,42 @@ void main() {
       reason: '向下滚后卡片应被拉回(顶边 dy 增大)',
     );
   });
+
+  // 2026-09-14 滚动条口径：外层收头部阶段不显示表内竖向滚动条，收完后（表格
+  // 吸顶、内滚生效）再显示；下滚拉回头部后再次隐藏。竖向滚动条 = 表体行的
+  // Scrollbar 祖先（primary 表的横滚条是独立覆盖层，不含数据行）。
+  testWidgets('表内竖向滚动条按滚动阶段显隐', (tester) async {
+    await tester.pumpWidget(_harness());
+    await tester.pumpAndSettle();
+
+    Scrollbar vBar() => tester.widget<Scrollbar>(
+      find
+          .ancestor(of: find.text('ROW-0'), matching: find.byType(Scrollbar))
+          .first,
+    );
+
+    // 卡片展开（外滚阶段）：滚动条不显示。
+    expect(vBar().thumbVisibility, isFalse);
+
+    // 滚足 200+ 把 180 高的卡片收完，进入表体内滚。
+    final bodyFinder = find.byWidgetPredicate(
+      (w) => w is MasterDataTableView<String>,
+    );
+    final pointer = TestPointer(3, PointerDeviceKind.mouse);
+    final center = tester.getCenter(bodyFinder);
+    for (var i = 0; i < 3; i++) {
+      await tester.sendEventToBinding(pointer.hover(center));
+      await tester.sendEventToBinding(pointer.scroll(const Offset(0, 100)));
+      await tester.pumpAndSettle();
+    }
+    expect(vBar().thumbVisibility, isTrue, reason: '头部收完后应显示表内滚动条');
+
+    // 向下滚：body 回顶后头部拉回，脱离内滚阶段 → 滚动条隐藏。
+    for (var i = 0; i < 4; i++) {
+      await tester.sendEventToBinding(pointer.hover(center));
+      await tester.sendEventToBinding(pointer.scroll(const Offset(0, -100)));
+      await tester.pumpAndSettle();
+    }
+    expect(vBar().thumbVisibility, isFalse, reason: '头部拉回后应隐藏表内滚动条');
+  });
 }

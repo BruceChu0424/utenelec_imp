@@ -27,15 +27,16 @@ void main() {
   test('only the explicitly allowed current stage can enter a batch', () {
     expect(
       warehouseSalesOutboundPrimaryAction(_detail('1').header),
-      WarehouseSalesOutboundAction.startPicking,
+      WarehouseSalesOutboundAction.confirmShipment,
     );
     expect(
       warehouseSalesOutboundPrimaryAction(_detail('1', targets: []).header),
       isNull,
     );
+    // 退役的中间态目标不再被当成可办动作。
     expect(
       warehouseSalesOutboundPrimaryAction(
-        _detail('1', targets: ['SHIPPED']).header,
+        _detail('1', targets: ['PICKING', 'EXCEPTION']).header,
       ),
       isNull,
     );
@@ -47,7 +48,7 @@ void main() {
     );
   });
 
-  testWidgets('batch picking preserves each actual warehouse and location', (
+  testWidgets('batch outbound preserves each actual warehouse and location', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1800, 1000));
@@ -60,7 +61,7 @@ void main() {
       gateway,
       WarehouseSalesOutboundBatchPage(
         targets: [a.header, b.header],
-        action: WarehouseSalesOutboundAction.startPicking,
+        action: WarehouseSalesOutboundAction.confirmShipment,
       ),
     );
     expect(
@@ -99,7 +100,7 @@ void main() {
         _detail('blocked', targets: []),
       ]);
       await _pump(tester, gateway, const WarehouseSalesOutboundPage());
-      await tester.tap(find.text('待拣货'));
+      await tester.tap(find.text('待出库'));
       await tester.pumpAndSettle();
       final listFinder = find.byKey(
         const Key('warehouse-sales-outbound-table'),
@@ -156,7 +157,7 @@ void main() {
         find.byKey(const Key('warehouse-sales-outbound-batch-confirm')),
       );
       await tester.pumpAndSettle();
-      expect(gateway.commands, ['1:PICKING', '2:PICKING']);
+      expect(gateway.commands, ['1:SHIPPED', '2:SHIPPED']);
       expect(
         find.byKey(const Key('warehouse-sales-outbound-table')),
         findsOneWidget,
@@ -178,11 +179,11 @@ void main() {
         gateway,
         WarehouseSalesOutboundBatchPage(
           targets: gateway.values.values.map((d) => d.header).toList(),
-          action: WarehouseSalesOutboundAction.startPicking,
+          action: WarehouseSalesOutboundAction.confirmShipment,
         ),
       );
       await _confirm(tester);
-      expect(gateway.commands, ['1:PICKING', '2:PICKING']);
+      expect(gateway.commands, ['1:SHIPPED', '2:SHIPPED']);
       expect(
         find.byKey(const Key('warehouse-sales-outbound-batch-submit')),
         findsNothing,
@@ -210,7 +211,7 @@ void main() {
       gateway,
       WarehouseSalesOutboundBatchPage(
         targets: [gateway.values['1']!.header],
-        action: WarehouseSalesOutboundAction.startPicking,
+        action: WarehouseSalesOutboundAction.confirmShipment,
       ),
     );
     gateway.values['1'] = _detail('1', quantity: '12.5000');
@@ -223,34 +224,6 @@ void main() {
     expect(find.textContaining('任务状态或允许动作已变化'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
-
-  testWidgets(
-    'exception recovery requires a note and only restores pending picking',
-    (tester) async {
-      final gateway = _Gateway([
-        _detail('1', status: 'EXCEPTION', targets: ['PENDING_PICK']),
-      ])..failId = '1';
-      await _pump(
-        tester,
-        gateway,
-        WarehouseSalesOutboundBatchPage(
-          targets: [gateway.values['1']!.header],
-          action: WarehouseSalesOutboundAction.restorePending,
-        ),
-      );
-      await tester.tap(
-        find.byKey(const Key('warehouse-sales-outbound-batch-submit')),
-      );
-      await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsNothing);
-      expect(gateway.commands, isEmpty);
-      await tester.enterText(find.byType(TextField), '实物已核实并退拣');
-      await _confirm(tester);
-      expect(gateway.commands, ['1:PENDING_PICK']);
-      expect(gateway.reasons, ['实物已核实并退拣']);
-      expect(tester.takeException(), isNull);
-    },
-  );
 
   testWidgets(
     'batch cards retain document dates while every physical line shares one table',
@@ -269,7 +242,7 @@ void main() {
           gateway,
           WarehouseSalesOutboundBatchPage(
             targets: gateway.values.values.map((d) => d.header).toList(),
-            action: WarehouseSalesOutboundAction.startPicking,
+            action: WarehouseSalesOutboundAction.confirmShipment,
           ),
         );
         final header = find.byKey(
@@ -361,13 +334,13 @@ void main() {
         const WarehouseSalesOutboundDetailPage(id: '1'),
       );
       final buttonFinder = find.byKey(
-        const Key('warehouse-sales-outbound-action-PICKING'),
+        const Key('warehouse-sales-outbound-action-SHIPPED'),
       );
       await tester.tap(buttonFinder);
       await tester.pumpAndSettle();
       await tester.tap(find.text('确认'));
       await tester.pumpAndSettle();
-      expect(gateway.commands, ['1:PICKING']);
+      expect(gateway.commands, ['1:SHIPPED']);
       expect(tester.widget<UtenButton>(buttonFinder).onPressed, isNull);
       expect(tester.takeException(), isNull);
     },
@@ -438,9 +411,7 @@ WarehouseSalesOutboundDetail _detail(
   'allowedWarehouseTargets':
       targets ??
       switch (status) {
-        'PENDING_PICK' => ['PICKING', 'EXCEPTION'],
-        'PICKING' => ['PICKED', 'EXCEPTION'],
-        'PICKED' => ['SHIPPED', 'EXCEPTION'],
+        'PENDING_PICK' => ['SHIPPED'],
         _ => <String>[],
       },
   'lines': [

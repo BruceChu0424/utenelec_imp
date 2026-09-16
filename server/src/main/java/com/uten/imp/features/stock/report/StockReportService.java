@@ -115,13 +115,14 @@ public class StockReportService {
                     c("toWh", "调入仓库", "text", 120, "wh2.name"),
                     c("workerName", "经办人", "text", 100, WK),
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
+                    // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
+                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
+                    c("colorName", "颜色", "text", 80, "col.name"),
                     c("stockPlace", "库位号", "text", 90, "g.stock_place"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
-                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("spec", "规格", "text", 140, "g.spec"),
-                    c("colorName", "颜色", "text", 80, "col.name"),
                     c("unitName", "单位", "text", 70, "un.name"),
                     ct("weight", "重量", "number", null, "i.weight", "合计重量", null),
                     ct("qty", "数量", "number", null, "i.qty", "合计数量", "unitName"));
@@ -132,13 +133,14 @@ public class StockReportService {
                     c("workerName", "经办人", "text", 100, WK),
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
                     c("series", "系列", "text", 90, "g.series"),
+                    // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
+                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
+                    c("colorName", "颜色", "text", 80, "col.name"),
                     c("stockPlace", "库位号", "text", 90, "g.stock_place"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
-                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("spec", "规格", "text", 140, "g.spec"),
-                    c("colorName", "颜色", "text", 80, "col.name"),
                     c("unitName", "单位", "text", 70, "un.name"),
                     ct("weight", "重量", "number", null, "i.weight", "合计重量", null),
                     ct("qty", "数量", "number", null, "i.qty", "合计数量", "unitName"));
@@ -153,12 +155,13 @@ public class StockReportService {
                     c("makerName", "制单员", "text", 100, MK),
                     c("approverName", "审核员", "text", 100, AP),
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
+                    // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
+                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
+                    c("colorName", "颜色", "text", 80, "col.name"),
                     c("stockPlace", "库位号", "text", 90, "g.stock_place"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
-                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
-                    c("colorName", "颜色", "text", 80, "col.name"),
                     c("unitName", "单位", "text", 70, "un.name"),
                     ct("weight", "重量", "number", null, "i.weight", "合计重量", null),
                     ct("drawQty", "领料数量", "number", null, "i.qty", "合计领料数量", "unitName"),
@@ -173,13 +176,14 @@ public class StockReportService {
                     c("workerName", "退料人", "text", 100, WK),
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
                     c("series", "系列", "text", 90, "g.series"),
+                    // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
+                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
+                    c("colorName", "颜色", "text", 80, "col.name"),
                     c("stockPlace", "库位号", "text", 90, "g.stock_place"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
-                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("spec", "规格", "text", 140, "g.spec"),
-                    c("colorName", "颜色", "text", 80, "col.name"),
                     c("unitName", "单位", "text", 70, "un.name"),
                     ct("weight", "重量", "number", null, "i.weight", "合计重量", null),
                     ct("returnQty", "清退数量", "number", null, "i.qty", "合计清退数量", "unitName"));
@@ -191,13 +195,14 @@ public class StockReportService {
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
                     c("clientName", "客户名称", "text", 150, "cl.name"),
                     c("series", "系列", "text", 90, "g.series"),
+                    // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
+                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
+                    c("colorName", "颜色", "text", 80, "col.name"),
                     c("stockPlace", "库位号", "text", 90, "g.stock_place"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
-                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("spec", "规格", "text", 140, "g.spec"),
-                    c("colorName", "颜色", "text", 80, "col.name"),
                     c("unitName", "单位", "text", 70, "un.name"),
                     c("material", "材质", "text", 90, "g.material"),
                     ct("netWeight", "净重", "number", null, "i.weight", "合计净重", null),
@@ -209,12 +214,13 @@ public class StockReportService {
                     c("workerName", "跟单员", "text", 100, WK),
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
                     c("series", "系列", "text", 90, "g.series"),
+                    // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
+                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
+                    c("colorName", "颜色", "text", 80, "col.name"),
                     c("stockPlace", "库位号", "text", 90, "g.stock_place"),
                     c("model", "型号", "text", 100, "g.model"),
-                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("spec", "规格", "text", 140, "g.spec"),
-                    c("colorName", "颜色", "text", 80, "col.name"),
                     c("unitName", "单位", "text", 70, "un.name"),
                     ct("weight", "重量", "number", null, "i.weight", "合计重量", null),
                     ct("qty", "数量", "number", null, "i.qty", "合计数量", "unitName"));
@@ -224,13 +230,14 @@ public class StockReportService {
                     c("warehouseName", "仓库", "text", 120, "wh.name"),
                     c("workerName", "跟单员", "text", 100, WK),
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
+                    // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
+                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
+                    c("colorName", "颜色", "text", 80, "col.name"),
                     c("stockPlace", "库位号", "text", 90, "g.stock_place"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
-                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("spec", "规格", "text", 140, "g.spec"),
-                    c("colorName", "颜色", "text", 80, "col.name"),
                     c("unitName", "单位", "text", 70, "un.name"),
                     ct("bookQty", "帐面数量", "number", null, "COALESCE(i.count_qty,0) - COALESCE(i.surplus_qty,0)",
                             "合计帐面数量", "unitName"),
@@ -414,14 +421,15 @@ public class StockReportService {
     /** 即时库存导出列（与页面完整业务列一致；成本列按 goods:cost:view 动态裁剪）。 */
     private static final List<ReportColumn> INSTANT_EXPORT_COLUMNS = List.of(
             ReportColumn.text("category", "所属类型", 120),
+            // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布（与即时库存页列序一致）。
+            ReportColumn.text("name", "货品名称", 220),
             ReportColumn.text("goodsCode", "物料编码", 120),
+            ReportColumn.text("color", "颜色", 90),
             ReportColumn.text("series", "物料系列", 90),
             ReportColumn.text("stockPlace", "库位号", 90),
             ReportColumn.text("model", "型号", 110),
             ReportColumn.text("cNumber", "客户型号", 120),
-            ReportColumn.text("name", "货品名称", 220),
             ReportColumn.text("spec", "规格", 120),
-            ReportColumn.text("color", "颜色", 90),
             ReportColumn.text("unit", "单位", 70),
             ReportColumn.text("remark", "备注", 90),
             ReportColumn.number("weight", "库存重量"),
@@ -480,7 +488,7 @@ public class StockReportService {
 
     /**
      * 货架目视化清单导出（report='shelf-labels'）：货品主档已维护库位号的全部货品，
-     * 列 = 库行/层/位/库位号/物料编码/物料系列/物料名称/颜色/单位/即时库存（+ 状态，仅含禁用时）。
+     * 列 = 库行/层/位/库位号/物料名称/物料编码/颜色/物料系列/单位/即时库存（+ 状态，仅含禁用时）。
      * 参数：rack / keyword / warehouseId（选仓=本仓偏好优先 + 仓树库存）/ includeDisabled，
      * 与页面 GET /api/stock/shelf-labels 同口径；未分层行的层/位为空。
      */
@@ -495,10 +503,11 @@ public class StockReportService {
                 new ExportColumn("level", "层", "number"),
                 new ExportColumn("slot", "位", "number"),
                 new ExportColumn("place", "库位号", "text"),
-                new ExportColumn("goodsCode", "物料编码", "text"),
-                new ExportColumn("series", "物料系列", "text"),
+                // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布（与货架标签页/PDF 一致）。
                 new ExportColumn("goodsName", "物料名称", "text"),
+                new ExportColumn("goodsCode", "物料编码", "text"),
                 new ExportColumn("colorName", "颜色", "text"),
+                new ExportColumn("series", "物料系列", "text"),
                 new ExportColumn("unitName", "单位", "text"),
                 new ExportColumn("qty", "即时库存", "number")));
         if (includeDisabled) {

@@ -7,6 +7,7 @@ import com.uten.imp.features.master.client.ClientRepository;
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.mould.MouldRepository;
 import com.uten.imp.features.master.supplier.SupplierRepository;
+import com.uten.imp.features.master.warehouse.WarehouseRepository;
 import com.uten.imp.features.master.unit.Unit;
 import com.uten.imp.features.master.unit.UnitRepository;
 import org.junit.jupiter.api.Test;
@@ -31,9 +32,13 @@ class GoodsMasterRelationshipResolverTest {
     private final MouldRepository mouldRepo = mock(MouldRepository.class);
     private final ClientRepository clientRepo = mock(ClientRepository.class);
     private final SupplierRepository supplierRepo = mock(SupplierRepository.class);
+    private final WarehouseRepository warehouseRepo = mock(WarehouseRepository.class);
+    private final com.uten.imp.features.org.department.DepartmentRepository departmentRepo =
+            mock(com.uten.imp.features.org.department.DepartmentRepository.class);
     private final MasterReferenceValidationPort references = mock(MasterReferenceValidationPort.class);
     private final GoodsMasterRelationshipResolver resolver = new GoodsMasterRelationshipResolver(
-            unitRepo, colorRepo, mouldRepo, clientRepo, supplierRepo, references);
+            unitRepo, colorRepo, mouldRepo, clientRepo, supplierRepo, warehouseRepo,
+            departmentRepo, references);
 
     @Test
     void uuidIsAuthoritativeAndLegacyLookupIsNotConsulted() {

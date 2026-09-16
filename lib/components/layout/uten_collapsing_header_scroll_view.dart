@@ -34,6 +34,11 @@
 // compactHeightBreakpoint（均默认 600）时不用 NestedScrollView——它的 body 只有
 // 「视口高 − 顶部高」，手机竖屏/横屏上会被压到表格固定件（工具条/表头/分页）纵向溢出。
 // 回退为「整页滚 + body 定高内滚」，见 compactBreakpoint/compactHeightBreakpoint 文档。
+//
+// 滚动条口径（2026-09-14）：本容器向子树注入 UtenInnerScrollActiveScope（外层头部
+// 是否收完）。表格上滑置顶之前不显示上下滚动条，进入表体内滚后再显示（显示的是
+// 表格自带的表内滚动条，大小与表内容对应）。紧凑回退分支复用同一外层控制器，
+// 「收完」= 整页滚到底（表格盒占满视口）。
 
 import 'dart:math' as math;
 
@@ -111,6 +116,34 @@ class UtenCollapsingHeaderScrollView extends StatefulWidget {
       _UtenCollapsingHeaderScrollViewState();
 }
 
+/// 外层折叠头部「已收完」的阶段信号（true = 表格已吸顶、body 内滚生效）。
+///
+/// 2026-09-14 用户口径（全站滚动条统一）：表格上滑置顶之前（外层收头部阶段）
+/// 不显示上下滚动条；等滚动进入表格内部后再显示，且滚动条与表体内容对应
+/// （显示的就是 MasterDataTableView 自带的表内竖向滚动条）。本容器跟踪外层
+/// 位置：pixels 到达 maxScrollExtent（或外层本无可滚量）即视为内滚阶段。
+/// MasterDataTableView 经 [maybeOf] 读取并门控其竖向滚动条显隐；不在本容器
+/// 内的表格查不到 scope，滚动条维持常显（无外滚阶段可言）。
+class UtenInnerScrollActiveScope extends InheritedWidget {
+  const UtenInnerScrollActiveScope({
+    super.key,
+    required this.active,
+    required super.child,
+  });
+
+  /// true = 外层头部已收完，滚动只发生在 body（表格）内部。
+  final ValueNotifier<bool> active;
+
+  /// 查找最近的阶段信号；不在 [UtenCollapsingHeaderScrollView] 内时返回 null。
+  static ValueNotifier<bool>? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<UtenInnerScrollActiveScope>()
+      ?.active;
+
+  @override
+  bool updateShouldNotify(UtenInnerScrollActiveScope oldWidget) =>
+      oldWidget.active != active;
+}
+
 class _UtenCollapsingHeaderScrollViewState
     extends State<UtenCollapsingHeaderScrollView> {
   /// 检测到「body 被头部挤扁」的视口尺寸（null = 未挤扁）。
@@ -121,65 +154,127 @@ class _UtenCollapsingHeaderScrollViewState
   /// 改走整页滚动回退；视口尺寸变化（窗口缩放/转屏）时重试联动模式。
   Size? _squeezedViewport;
 
+  /// 外层头部是否已收完（内滚阶段）。默认 true：外层无可滚量（无折叠头/头部本就
+  /// 装得下）的页面没有「外滚阶段」，表内滚动条应常显。
+  final ValueNotifier<bool> _innerActive = ValueNotifier<bool>(true);
+
+  /// 页面未传 [UtenCollapsingHeaderScrollView.controller] 时自建的外层控制器。
+  /// 无论用谁的控制器，都挂监听跟踪「外层收完」；紧凑回退的整页 CustomScrollView
+  /// 复用同一控制器，切换分支不断跟踪。
+  late final ScrollController _ownedOuter = ScrollController();
+  ScrollController get _outer => widget.controller ?? _ownedOuter;
+
+  @override
+  void initState() {
+    super.initState();
+    _outer.addListener(_evaluateOuterPhase);
+  }
+
+  @override
+  void didUpdateWidget(covariant UtenCollapsingHeaderScrollView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      (oldWidget.controller ?? _ownedOuter).removeListener(_evaluateOuterPhase);
+      _outer.addListener(_evaluateOuterPhase);
+      _innerActive.value = true;
+      _scheduleOuterPhaseEval();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller?.removeListener(_evaluateOuterPhase);
+    _innerActive.dispose();
+    _ownedOuter.dispose();
+    super.dispose();
+  }
+
+  /// 外层收完判定：pixels 贴到 maxScrollExtent（外层无可滚量同样算收完）。
+  /// 联动/紧凑两分支共用——紧凑分支的「收完」= 整页滚到底（表格盒占满视口）。
+  void _evaluateOuterPhase() {
+    final c = _outer;
+    if (!c.hasClients) return;
+    final p = c.position;
+    final collapsed =
+        !p.hasContentDimensions ||
+        p.maxScrollExtent <= 0.5 ||
+        p.pixels >= p.maxScrollExtent - 0.5;
+    if (_innerActive.value != collapsed) _innerActive.value = collapsed;
+  }
+
+  /// 布局后的复核：内容加载/分支切换（联动↔紧凑/挤扁回退）后外层 extent 变化，
+  /// 控制器监听只覆盖滚动 tick，帧末兜底再评一次。
+  void _scheduleOuterPhaseEval() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _evaluateOuterPhase();
+    });
+  }
+
   void _reportSqueezed(Size viewport) {
     if (_squeezedViewport == viewport) return;
     // 量到挤扁时正处在布局中，推迟到帧末再切换布局分支。
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _squeezedViewport == viewport) return;
       setState(() => _squeezedViewport = viewport);
+      _scheduleOuterPhaseEval();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final viewport = Size(constraints.maxWidth, constraints.maxHeight);
-        // 有吸顶头（TabBar 三段式）的页面保持 NestedScrollView 联动：其顶部是横幅
-        // 而非拉长的信息卡，且「横幅滚走→Tab 吸顶→面板内滚」的时序依赖外内协调。
-        final canFallBack =
-            widget.pinnedHeader == null && constraints.hasBoundedHeight;
-        final smallViewport =
-            constraints.maxWidth < widget.compactBreakpoint ||
-            constraints.maxHeight < widget.compactHeightBreakpoint;
-        if (canFallBack && (smallViewport || _squeezedViewport == viewport)) {
-          return _CompactPageScroll(
-            viewportHeight: constraints.maxHeight,
-            collapsingHeader: widget.collapsingHeader,
-            pinnedHeader: widget.pinnedHeader,
-            pinnedHeaderExtent: widget.pinnedHeaderExtent,
-            controller: widget.controller,
-            bodyMinHeight: widget.compactBodyMinHeight,
-            body: widget.body,
+    _scheduleOuterPhaseEval();
+    return UtenInnerScrollActiveScope(
+      active: _innerActive,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final viewport = Size(constraints.maxWidth, constraints.maxHeight);
+          // 有吸顶头（TabBar 三段式）的页面保持 NestedScrollView 联动：其顶部是横幅
+          // 而非拉长的信息卡，且「横幅滚走→Tab 吸顶→面板内滚」的时序依赖外内协调。
+          final canFallBack =
+              widget.pinnedHeader == null && constraints.hasBoundedHeight;
+          final smallViewport =
+              constraints.maxWidth < widget.compactBreakpoint ||
+              constraints.maxHeight < widget.compactHeightBreakpoint;
+          if (canFallBack && (smallViewport || _squeezedViewport == viewport)) {
+            return _CompactPageScroll(
+              viewportHeight: constraints.maxHeight,
+              collapsingHeader: widget.collapsingHeader,
+              pinnedHeader: widget.pinnedHeader,
+              pinnedHeaderExtent: widget.pinnedHeaderExtent,
+              controller: _outer,
+              bodyMinHeight: widget.compactBodyMinHeight,
+              body: widget.body,
+            );
+          }
+          return NestedScrollView(
+            controller: _outer,
+            floatHeaderSlivers: widget.floatHeaderSlivers,
+            headerSliverBuilder:
+                (BuildContext context, bool innerBoxIsScrolled) {
+                  return <Widget>[
+                    if (widget.collapsingHeader != null)
+                      SliverToBoxAdapter(child: widget.collapsingHeader!),
+                    if (widget.pinnedHeader != null)
+                      SliverPersistentHeader(
+                        pinned: true,
+                        delegate: _PinnedHeaderDelegate(
+                          extent: widget.pinnedHeaderExtent!,
+                          child: widget.pinnedHeader!,
+                        ),
+                      ),
+                  ];
+                },
+            body: canFallBack
+                ? _SqueezeGuard(
+                    viewport: viewport,
+                    minHeight: widget.compactBodyMinHeight,
+                    onSqueezed: _reportSqueezed,
+                    child: widget.body,
+                  )
+                : widget.body,
           );
-        }
-        return NestedScrollView(
-          controller: widget.controller,
-          floatHeaderSlivers: widget.floatHeaderSlivers,
-          headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
-            return <Widget>[
-              if (widget.collapsingHeader != null)
-                SliverToBoxAdapter(child: widget.collapsingHeader!),
-              if (widget.pinnedHeader != null)
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _PinnedHeaderDelegate(
-                    extent: widget.pinnedHeaderExtent!,
-                    child: widget.pinnedHeader!,
-                  ),
-                ),
-            ];
-          },
-          body: canFallBack
-              ? _SqueezeGuard(
-                  viewport: viewport,
-                  minHeight: widget.compactBodyMinHeight,
-                  onSqueezed: _reportSqueezed,
-                  child: widget.body,
-                )
-              : widget.body,
-        );
-      },
+        },
+      ),
     );
   }
 }

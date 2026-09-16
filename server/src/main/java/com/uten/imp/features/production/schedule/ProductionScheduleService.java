@@ -26,8 +26,11 @@ import java.util.UUID;
 /**
  * 生产调度工作台服务（业务链 · 排产段，docs/07-业务链路/02）。
  *
- * <p>① 待排产列表：已审订单的链路行中"待生产缺口 = qty − 预留 − 已排产 > 0"的明细，
+ * <p>① 待排产列表：已审订单的链路行中"待排产缺口 = 剩余未排量 − 活动物料分析已承接量 > 0"的明细，
  * 交货越近越靠前，≤3 天 urgent 标红（SOP：距离交货日期越近排序越靠前）。
+ * 2026-09-15(ADR-088)起扣减活动分析承接量：一条订单行一旦被物料分析全量承接，
+ * 就从「待排产」消失、改由「进行中」按分析批次聚合展示；只承接了一部分的行，
+ * 按未被承接的残量继续留在「待排产」——量不会凭空消失。
  *
  * <p>写入排产已迁移到持久物料分析的联合预览/原子生成链路；本服务只保留待排产读模型和
  * 历史兼容查询。
@@ -37,13 +40,53 @@ import java.util.UUID;
 public class ProductionScheduleService {
 
     private final EntityManager em;
-    /** 新增排产缺口 = 剩余未排量（订单净未交 − 当前可发预留 − 尚未入库的计划量，行单位）；
-     *  与 chain_status 派生、销售进度 PENDING、待生产大类同一口径（V545，SalesOrderChainSql）。 */
+    /** 剩余未排量(订单净未交 − 当前可发预留 − 尚未入库的计划量，行单位)；
+     *  与 chain_status 派生、销售进度 PENDING、待生产大类同一口径(V545，SalesOrderChainSql)。
+     *  注意：这是**链路口径**，不扣物料分析；待排产列表用下面的 PENDING_NEED_SQL。 */
     static final String SCHEDULING_NEED_SQL = SalesOrderChainSql.unplannedQtySql("i");
+
+    /** 活动物料分析已承接、但**还没落到订单行数量列上**的那部分量之和。
+     *
+     *  <p>分析行有四个量桶(V478 的 CHECK：submitted + approved + root_fulfilled ≤ requested)，
+     *  其中两桶已经被 SCHEDULING_NEED_SQL 自己扣掉了，这里必须剔除，否则同一批量两段双扣：
+     *  <ul>
+     *    <li>{@code approved_qty} —— 计划审核时 ProductionPlanService.applyAllocation
+     *        同事务写 {@code sales_order_items.planned_qty}，已进 unfinishedPlan；</li>
+     *    <li>{@code root_fulfilled_qty} —— 根产品供给交接时 MaterialAnalysisRootSupplyService
+     *        同步写 {@code sales_order_items.reserved_qty}，已进 reserved。</li>
+     *  </ul>
+     *  于是 covered = requested − approved − root_fulfilled = submitted + 未下达余量，
+     *  正好是「分析已经接走、但订单行数量列上还看不见」的那部分
+     *  (草稿计划不写 planned_qty，所以 submitted 必须留在 covered 里)。
+     *
+     *  <p>分析状态白名单与「进行中」根视图同源(V487：{@code status <> 'CANCELLED'})：
+     *  两侧收录同一批分析，才谈得上 <b>待排产缺口 + 进行中已承接量 = 链路剩余未排量</b>。
+     *  取消的分析承接量归零，该订单行自动回到待排产。
+     *  {@code source_type} 条件在 V234 的 source_shape CHECK 下是冗余的显式护栏。
+     *  外层 sales_order_items 必须别名 i。 */
+    static final String ACTIVE_ANALYSIS_COVERED_SQL = """
+            COALESCE((
+                SELECT SUM(GREATEST(analysis_item.requested_qty
+                                    - analysis_item.approved_qty
+                                    - analysis_item.root_fulfilled_qty, 0))
+                FROM production_material_analysis_items analysis_item
+                JOIN production_material_analyses analysis
+                  ON analysis.id = analysis_item.analysis_id
+                WHERE analysis_item.sales_order_item_id = i.id
+                  AND analysis_item.source_type = 'SALES_ORDER_ITEM'
+                  AND analysis_item.is_deleted = FALSE
+                  AND analysis.is_deleted = FALSE
+                  AND analysis.status <> 'CANCELLED'), 0)""";
+
+    /** 待排产缺口 = 剩余未排量 − 活动分析已承接量(下限 0)。列表 / facets / 徽章计数三处同源。 */
+    static final String PENDING_NEED_SQL =
+            "GREATEST(" + SCHEDULING_NEED_SQL + " - " + ACTIVE_ANALYSIS_COVERED_SQL + ", 0)";
+
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
 
     /** 待排产订单行（服务端分页；交货升序，urgent=距交货 ≤3 天或已逾期）。
+     *  缺口口径见 PENDING_NEED_SQL：已被活动物料分析全量承接的行不在本列表(改看「进行中」)。
      *  keyword 模糊 订单号/客户/货品名/货品编码；dateFrom/dateTo 交货日期范围（行级优先、缺省取单头）。
      *  页码越界自动回退到最后一页。 */
     @Transactional(readOnly = true)
@@ -54,12 +97,15 @@ public class ProductionScheduleService {
         int sz = Math.min(Math.max(1, size), 100);
         String kw = keyword == null ? "" : keyword.trim().toLowerCase();
         LocalDate warn = BusinessTime.today().plusDays(3);
-        String filters = pendingFiltersBase(kw, dateFrom, dateTo) + pendingStatusFilter(status);
+        String where = pendingWhere(kw, dateFrom, dateTo) + pendingStatusFilter(status);
+        // 计数不挂分析投影 LATERAL(纯投影，WHERE 从不引用它)；取数才挂。
+        String countFilters = pendingFromJoins() + where;
+        String dataFilters = pendingFromJoins() + pendingAnalysisProjection() + where;
         // :warn 仅 urgent/normal 状态筛选会进 SQL；Hibernate 6 原生查询 setParameter 会校验参数
         // 是否存在，未用时绑定抛 UnknownParameterException，故按需绑定（facets 恒为 true）。
         boolean needsWarn = "urgent".equals(status) || "normal".equals(status);
 
-        var countQ = em.createNativeQuery("SELECT COUNT(*) " + filters);
+        var countQ = em.createNativeQuery("SELECT COUNT(*) " + countFilters);
         bindPendingFilters(countQ, kw, dateFrom, dateTo, warn, needsWarn);
         long total = ((Number) countQ.getSingleResult()).longValue();
         int totalPages = total == 0 ? 0 : (int) ((total + sz - 1) / sz);
@@ -83,11 +129,13 @@ public class ProductionScheduleService {
                        latest_analysis.approved_qty,
                        latest_analysis.ready_now_qty,
                        latest_analysis.ready_by_date_qty,
-                       CASE WHEN latest_analysis.remaining_qty > 0 THEN
-                           LEAST(latest_analysis.ready_now_qty
-                                  / latest_analysis.remaining_qty, 1)
-                       ELSE 1 END AS readiness_ratio
-                """.formatted(SCHEDULING_NEED_SQL) + filters
+                       CASE WHEN latest_analysis.analysis_id IS NULL
+                                  OR latest_analysis.remaining_qty <= 0 THEN NULL
+                            ELSE LEAST(latest_analysis.ready_now_qty
+                                        / latest_analysis.remaining_qty, 1)
+                            END AS readiness_ratio,
+                       %s AS analysis_covered
+                """.formatted(PENDING_NEED_SQL, ACTIVE_ANALYSIS_COVERED_SQL) + dataFilters
                 + " " + pendingOrderBy(sort, order) + " LIMIT :lim OFFSET :off");
         bindPendingFilters(dataQ, kw, dateFrom, dateTo, warn, needsWarn);
         @SuppressWarnings("unchecked")
@@ -109,7 +157,7 @@ public class ProductionScheduleService {
                     r[22] == null ? null : ((Number) r[22]).longValue(),
                     offsetDateTime(r[23]), bdOrNull(r[24]), bdOrNull(r[25]),
                     bdOrNull(r[26]), bdOrNull(r[27]), bdOrNull(r[28]),
-                    bdOrNull(r[29])));
+                    bdOrNull(r[29]), bd(r[30])));
         }
         return new com.uten.imp.common.web.PageResponse<>(out, p, sz, total, totalPages);
     }
@@ -127,8 +175,15 @@ public class ProductionScheduleService {
     /** 行级交货日期（行级优先、缺省取单头）。 */
     private static final String DELIVER_EXPR = "COALESCE(i.deliver_date, o.deliver_date)";
 
-    /** pending 列表 FROM/JOIN/WHERE 基础过滤（keyword 模糊 订单号/客户/货品，交货日期范围；不含状态）。 */
+    /** pending 列表 FROM/JOIN/WHERE 基础过滤(keyword 模糊 订单号/客户/货品，交货日期范围；不含状态)。
+     *  缺口谓词用 PENDING_NEED_SQL：被活动分析全量承接的行在这里就被过滤掉，
+     *  列表 total / 分段徽章 / facets 三处因此自动同源。 */
     private static String pendingFiltersBase(String kw, LocalDate dateFrom, LocalDate dateTo) {
+        return pendingFromJoins() + pendingWhere(kw, dateFrom, dateTo);
+    }
+
+    /** 主表与主档 JOIN(不含分析投影 LATERAL)。计数路径只用这一段。 */
+    private static String pendingFromJoins() {
         return """
                 FROM sales_order_items i
                 JOIN sales_orders o ON o.id = i.order_id
@@ -136,6 +191,22 @@ public class ProductionScheduleService {
                 JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
                 LEFT JOIN units u ON u.id = i.unit_id
+                """;
+    }
+
+    /**
+     * 最近一张仍在承接本行的物料分析(纯投影，WHERE 从不引用它)。
+     *
+     * <p>只挂在取数查询上：COUNT / facets / 工作台徽标三条只算数的 SQL 不需要它，
+     * 而 PostgreSQL 的 join removal 消不掉带 lateral 引用的关系，挂上去就是每行白跑一次。
+     *
+     * <p>准入谓词与 {@link #ACTIVE_ANALYSIS_COVERED_SQL} 逐项同源
+     * (requested − approved − root_fulfilled > 0，status <> 'CANCELLED')：
+     * 保证「已分析 > 0」的行一定有一张可点开的分析，不会出现表上说「双击可直达」
+     * 却弹「还没有分析承接」的自相矛盾。
+     */
+    private static String pendingAnalysisProjection() {
+        return """
                 LEFT JOIN LATERAL (
                     SELECT a.id AS analysis_id,
                            ai.id AS analysis_item_id,
@@ -154,18 +225,23 @@ public class ProductionScheduleService {
                     WHERE ai.sales_order_item_id = i.id
                       AND ai.source_type = 'SALES_ORDER_ITEM'
                       AND ai.is_deleted = FALSE AND a.is_deleted = FALSE
-                      AND a.status IN ('ACTIVE','PARTIALLY_PLANNED')
-                      AND ai.requested_qty-ai.submitted_qty-ai.approved_qty > 0
+                      AND a.status <> 'CANCELLED'
+                      AND ai.requested_qty-ai.approved_qty-ai.root_fulfilled_qty > 0
                     ORDER BY a.analyzed_at DESC, a.id DESC
                     LIMIT 1
                 ) latest_analysis ON TRUE
+                """;
+    }
+
+    private static String pendingWhere(String kw, LocalDate dateFrom, LocalDate dateTo) {
+        return """
                 WHERE o.is_deleted = false AND o.status = 1
                   AND o.finance_confirmed = true
                   AND o.is_closed = false AND o.is_stopped = false
                   AND i.is_deleted = false
                   AND COALESCE(i.chain_status,0) BETWEEN 1 AND 8
                   AND %s > 0
-                """.formatted(SCHEDULING_NEED_SQL)
+                """.formatted(PENDING_NEED_SQL)
                 + (kw.isEmpty() ? ""
                         : "  AND (LOWER(o.bill_no) LIKE :kw OR LOWER(COALESCE(c.name,'')) LIKE :kw"
                           + " OR LOWER(g.name) LIKE :kw OR LOWER(g.code) LIKE :kw)\n")
@@ -201,7 +277,8 @@ public class ProductionScheduleService {
     }
 
     /** 待排产状态 facets：{status:[{value,count,label}]}（紧急/正常 两桶，全量计数）。
-     *  复用 pendingFiltersBase（不含 status 条件，故两桶计数互补）；SUM(CASE WHEN ...) 聚合。 */
+     *  复用 pendingFiltersBase(不含 status 条件，故两桶计数互补，且与列表同样扣除活动分析承接量)；
+     *  SUM(CASE WHEN ...) 聚合。 */
     @Transactional(readOnly = true)
     public Map<String, List<Map<String, Object>>> pendingFacets(
             String keyword, LocalDate dateFrom, LocalDate dateTo) {
@@ -230,7 +307,10 @@ public class ProductionScheduleService {
 
     // ======================== 工作台徽标：待排产计数 ========================
 
-    /** 待排产计数（生产部工作台徽标）：待排产行数 + 其中紧急（交货 ≤3 天/含逾期）+ 已逾期（交货 < 今天）行数。口径同 PENDING_SQL。 */
+    /** 待排产计数(生产部工作台徽标)：待排产行数 + 其中紧急(交货 ≤3 天/含逾期)+ 已逾期(交货 < 今天)行数。
+     *  直接复用 pendingFiltersBase，与列表 / facets 同一份 SQL 文本——徽标数字与点进去看到的行数
+     *  永远不可能漂移(ADR-088 之前这里是独立一条 SQL，改口径时极易只改一半)。
+     *  pendingFiltersBase("", null, null) 不产出任何命名参数，只剩 :today。 */
     @Transactional(readOnly = true)
     public Map<String, Long> pendingCount() {
         Object[] r = (Object[]) em.createNativeQuery("""
@@ -241,15 +321,7 @@ public class ProductionScheduleService {
                        COUNT(*) FILTER (
                            WHERE COALESCE(i.deliver_date, o.deliver_date)
                                  < CAST(:today AS date))
-                FROM sales_order_items i
-                JOIN sales_orders o ON o.id = i.order_id
-                WHERE o.is_deleted = false AND o.status = 1
-                  AND o.finance_confirmed = true
-                  AND o.is_closed = false AND o.is_stopped = false
-                  AND i.is_deleted = false
-                  AND COALESCE(i.chain_status,0) BETWEEN 1 AND 8
-                  AND %s > 0
-                """.formatted(SCHEDULING_NEED_SQL))
+                """ + pendingFiltersBase("", null, null))
                 .setParameter("today", BusinessTime.today())
                 .getSingleResult();
         return Map.of("count", ((Number) r[0]).longValue(),
@@ -319,11 +391,13 @@ public class ProductionScheduleService {
         @SuppressWarnings("unchecked")
         List<Object[]> rs = em.createNativeQuery("""
                 SELECT b.component_goods_id, g.code, g.name, g.spec, b.qty,
+                       g.color_id, col.name,
                        COALESCE(sb.onhand, 0),
                        EXISTS (SELECT 1 FROM goods_bom_items c
                                WHERE c.goods_id = b.component_goods_id AND c.is_deleted = false)
                 FROM goods_bom_items b
                 JOIN goods g ON g.id = b.component_goods_id
+                LEFT JOIN colors col ON col.id = g.color_id
                 LEFT JOIN (SELECT goods_id, SUM(qty) AS onhand FROM stock_balances GROUP BY goods_id) sb
                        ON sb.goods_id = b.component_goods_id
                 WHERE b.goods_id = :g AND b.is_deleted = false
@@ -334,7 +408,8 @@ public class ProductionScheduleService {
             BigDecimal per = bd(r[4]);
             out.add(new ScheduleOrderLine.BomComponent(
                     (UUID) r[0], (String) r[1], (String) r[2], (String) r[3],
-                    per, per.multiply(need), bd(r[5]), Boolean.TRUE.equals(r[6])));
+                    (UUID) r[5], (String) r[6],
+                    per, per.multiply(need), bd(r[7]), Boolean.TRUE.equals(r[8])));
         }
         return out;
     }

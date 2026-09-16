@@ -137,7 +137,13 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         assertThat(service).contains("latest_analysis.ready_now_qty");
         assertThat(service).contains("ai.ready_now_qty");
         assertThat(service).doesNotContain("analysis_readiness");
-        assertThat(service).contains("a.status IN ('ACTIVE','PARTIALLY_PLANNED')");
+        // ADR-088：分析投影 LATERAL 的状态白名单从 IN ('ACTIVE','PARTIALLY_PLANNED')
+        // 改为与「进行中」根视图同源的 <> 'CANCELLED' (V487 analysis_roots)，
+        // 准入量也改为 requested − approved − root_fulfilled > 0，与待排产承接量逐项同源——
+        // 保证「已分析 > 0」的行一定有一张可点开的分析。
+        assertThat(service).contains("a.status <> 'CANCELLED'");
+        assertThat(service)
+                .contains("ai.requested_qty-ai.approved_qty-ai.root_fulfilled_qty > 0");
     }
 
     @Test
@@ -153,7 +159,9 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         // 车间侧 WAITING→READY 自动提升。
         assertThat(commands).contains("candidateRoutesByMaterialLine(preArrange)");
         assertThat(commands).contains("只有自制路线的物料才能直接下达车间");
-        assertThat(commands).contains("无自制子层的委外件请走委外下达，不能直接建生产计划");
+        assertThat(commands).contains("无自制子层、或只有一个叶子子件（直接发子件给委外商）的委外件");
+        // V581：单一叶子子件的委外件同样不进车间（仓库直接发那个子件）。
+        assertThat(commands).contains("soleComponentSubcontractGoodsIds(subcontractCandidateGoods)");
         assertThat(commands).contains(
                 "material.actionable() || \"ROOT_SUPPLY\".equals(material.nodeRole())");
         assertThat(commands).contains("rootSupply.fulfillExisting(analysisId");
@@ -409,7 +417,9 @@ class ProductionMaterialAnalysisWorkflowContractTest {
 
         // ADR-065：一次通知先整批聚合（全部 BUY 一张采购申请 / 全部无子层委外一张
         // 委外申请，表头日期取最早），再逐 action 挂接明细锚点。
-        assertThat(commands).contains("prepareExternalDocuments(analysisId, created, subcontractBomParents)");
+        assertThat(commands).contains("prepareExternalDocuments(analysisId, created, subcontractMakeFirst)");
+        // V581：委外申请通道 = 无子层叶子 + 单一叶子子件；只有「要先自制」的行才留在车间。
+        assertThat(commands).contains("subcontractMakeFirst = subcontractBomParents.stream()");
         assertThat(commands).contains(
                 "createExternalDocument(analysisId, action, prepared)");
         assertThat(commands).contains("earliest(purchaseNeedDate, needDate)");

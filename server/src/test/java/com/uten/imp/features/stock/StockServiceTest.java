@@ -56,7 +56,7 @@ class StockServiceTest {
         when(valuation.value(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any()))
                 .thenAnswer(invocation->new com.uten.imp.application.port.InventoryValuationPort.MovementValue(UUID.randomUUID(),invocation.getArgument(0),
                         UUID.randomUUID(),UUID.randomUUID(),new BigDecimal("600"),com.uten.imp.application.port.InventoryValuationPort.State.FINAL,false));
-        var service=new StockService(movementRepo,balanceRepo,tx,inventoryLock,valuation);
+        var service=new StockService(movementRepo,balanceRepo,tx,inventoryLock,valuation, org.mockito.Mockito.mock(com.uten.imp.features.stock.GoodsOwningWarehouseSyncService.class));
         service.recordMovement(new StockService.MovementRequest(OffsetDateTime.now(),StockService.TYPE_SALES_OUT,"SALES_SHIPMENT",
                 UUID.randomUUID(),UUID.randomUUID(),goods,null,warehouse,StockService.DIR_OUT,new BigDecimal("20"),
                 UUID.randomUUID(),BigDecimal.ONE,new BigDecimal("2000"),null));
@@ -78,7 +78,7 @@ class StockServiceTest {
         when(balanceRepo.readPhysicalSnapshot(
                 warehouseId, goodsId, null)).thenReturn(java.util.List.of(snapshot(balance)));
         StockService service =
-                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation());
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation(), org.mockito.Mockito.mock(com.uten.imp.features.stock.GoodsOwningWarehouseSyncService.class));
 
         ApiException error = assertThrows(
                 ApiException.class,
@@ -102,7 +102,7 @@ class StockServiceTest {
         UUID warehouseId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();
         StockService service =
-                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation());
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation(), org.mockito.Mockito.mock(com.uten.imp.features.stock.GoodsOwningWarehouseSyncService.class));
 
         service.recordMovement(request(
                 warehouseId, goodsId, StockService.DIR_IN, "5"));
@@ -123,7 +123,7 @@ class StockServiceTest {
         UUID warehouseId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();
         StockService service =
-                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation());
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation(), org.mockito.Mockito.mock(com.uten.imp.features.stock.GoodsOwningWarehouseSyncService.class));
         BigDecimal actualWeight = new BigDecimal("5.0000");
 
         service.recordMovement(new StockService.MovementRequest(
@@ -145,7 +145,7 @@ class StockServiceTest {
     @Test
     void negativeActualWeightIsRejectedBeforeWritingLedger() {
         StockService service =
-                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation());
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation(), org.mockito.Mockito.mock(com.uten.imp.features.stock.GoodsOwningWarehouseSyncService.class));
 
         assertThrows(IllegalArgumentException.class, () -> service.recordMovement(
                 new StockService.MovementRequest(
@@ -179,7 +179,7 @@ class StockServiceTest {
         when(balanceRepo.readPhysicalSnapshot(
                 warehouseId, goodsId, null)).thenReturn(java.util.List.of(snapshot(balance)));
         StockService service =
-                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation());
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation(), org.mockito.Mockito.mock(com.uten.imp.features.stock.GoodsOwningWarehouseSyncService.class));
 
         ApiException error = assertThrows(
                 ApiException.class,
@@ -215,7 +215,7 @@ class StockServiceTest {
         when(balanceRepo.warehouseAvailableBase(warehouseId, goodsId, null))
                 .thenReturn(new BigDecimal("2"));
         StockService service =
-                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation());
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation(), org.mockito.Mockito.mock(com.uten.imp.features.stock.GoodsOwningWarehouseSyncService.class));
 
         ApiException error = assertThrows(
                 ApiException.class,
@@ -240,7 +240,7 @@ class StockServiceTest {
         when(balanceRepo.readPhysicalSnapshot(
                 warehouseId, goodsId, null)).thenReturn(java.util.List.of(snapshot(balance)));
         StockService service =
-                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation());
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation(), org.mockito.Mockito.mock(com.uten.imp.features.stock.GoodsOwningWarehouseSyncService.class));
 
         // qty 3 ≤ 在手 10 → 过非负底线；PURCHASE_RECEIPT 在 REVERSAL_RETURN_TYPES → 跳过 movable
         service.recordMovement(request(
@@ -262,7 +262,7 @@ class StockServiceTest {
                 org.mockito.ArgumentMatchers.eq(BigDecimal.ONE))).thenReturn(new BigDecimal("30"));
         when(balanceRepo.warehouseUnreservedBase(req.warehouseId(), req.goodsId(), null)).thenReturn(new BigDecimal("30"));
 
-        new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation()).recordMovement(req);
+        new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation(), org.mockito.Mockito.mock(com.uten.imp.features.stock.GoodsOwningWarehouseSyncService.class)).recordMovement(req);
 
         verify(balanceRepo, never()).warehouseAvailableBase(req.warehouseId(), req.goodsId(), null);
         verify(movementRepo).save(org.mockito.ArgumentMatchers.any());
@@ -273,7 +273,7 @@ class StockServiceTest {
         var req = productionIssueRequest();
         stockAt(req, "30");
         assertThrows(ApiException.class, () -> new StockService(movementRepo, balanceRepo, tx,
-                inventoryLock, quantityTestValuation()).recordMovement(req));
+                inventoryLock, quantityTestValuation(), org.mockito.Mockito.mock(com.uten.imp.features.stock.GoodsOwningWarehouseSyncService.class)).recordMovement(req));
         verify(balanceRepo, never()).warehouseUnreservedBase(org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
         verify(movementRepo, never()).save(org.mockito.ArgumentMatchers.any());
@@ -290,7 +290,7 @@ class StockServiceTest {
                 org.mockito.ArgumentMatchers.eq(BigDecimal.ONE))).thenReturn(new BigDecimal("30"));
         when(balanceRepo.warehouseUnreservedBase(req.warehouseId(), req.goodsId(), null)).thenReturn(new BigDecimal("29"));
         assertThrows(ApiException.class, () -> new StockService(movementRepo, balanceRepo, tx,
-                inventoryLock, quantityTestValuation()).recordMovement(req));
+                inventoryLock, quantityTestValuation(), org.mockito.Mockito.mock(com.uten.imp.features.stock.GoodsOwningWarehouseSyncService.class)).recordMovement(req));
         verify(movementRepo, never()).save(org.mockito.ArgumentMatchers.any());
     }
 
@@ -320,7 +320,7 @@ class StockServiceTest {
         when(balanceRepo.readPhysicalSnapshot(
                 warehouseId, goodsId, null)).thenReturn(java.util.List.of(snapshot(balance)));
         StockService service =
-                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation());
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock, quantityTestValuation(), org.mockito.Mockito.mock(com.uten.imp.features.stock.GoodsOwningWarehouseSyncService.class));
 
         service.recordMovement(request(
                 warehouseId, goodsId, StockService.DIR_OUT, "3",

@@ -181,7 +181,8 @@ Future<_Gateway> _pump(
 }
 
 Future<void> _openProgress(WidgetTester tester) async {
-  final row = find.textContaining('SC-PART 委外件首批');
+  // 2026-09-14 列序统一后名称/编号分列，双击改点名称格。
+  final row = find.text('委外件首批');
   await tester.tap(row);
   await tester.pump(const Duration(milliseconds: 50));
   await tester.tap(row);

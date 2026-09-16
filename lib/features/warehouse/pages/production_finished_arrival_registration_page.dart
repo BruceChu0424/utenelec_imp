@@ -17,6 +17,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -35,6 +36,22 @@ import '../providers/warehouse_count_refresh.dart';
 import '../repositories/production_finished_inbound_task_repository.dart';
 import '../widgets/arrival_registration_reversal_dialog.dart';
 import '../widgets/batch_place_fill_dialog.dart';
+
+/// 批量校验提示：把同一类违规的**全部**行汇总成一句话。
+///
+/// 条目多时只列前 8 条再折成「等 N 行」——刷屏的提示和只报第一行一样没法用。
+/// [unit] 供货品这类非行维度的汇总复用同一句式。
+String _rowIssueMessage(
+  List<String> rowLabels,
+  String issue, {
+  required String action,
+  String unit = '行',
+}) {
+  const shownMax = 8;
+  final shown = rowLabels.take(shownMax).join('、');
+  final more = rowLabels.length > shownMax ? '等 ${rowLabels.length} $unit' : '';
+  return '以下 ${rowLabels.length} $unit$issue，$action：$shown$more';
+}
 
 /// 生产报工审核后的仓库到货登记（「登记成品」）。
 ///
@@ -69,6 +86,9 @@ class _ProductionFinishedArrivalRegistrationPageState
   final _grid =
       UtenEditableGridController<_FinishedArrivalRegistrationGridRow>();
   final _scrollController = ScrollController();
+
+  /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
+  final _gridPinned = ValueNotifier<bool>(false);
   // 登记备注（V542）：随每个登记批次提交并留痕。
   final _remarkController = TextEditingController();
   // 页面级幂等键；按仓提交时派生 `页面键:仓库UUID`，重试不重复登记已成功仓。
@@ -115,6 +135,7 @@ class _ProductionFinishedArrivalRegistrationPageState
   @override
   void dispose() {
     _grid.dispose();
+    _gridPinned.dispose();
     _scrollController.dispose();
     _remarkController.dispose();
     super.dispose();
@@ -354,6 +375,8 @@ class _ProductionFinishedArrivalRegistrationPageState
       final key = '$warehouseId|${row.item.goodsId}|${row.item.colorId ?? ''}';
       grouped.putIfAbsent(key, () => {}).putIfAbsent(place, () => []).add(row);
     }
+    // 冲突货品全部列出：只报第一个的话，用户统一完再提交才看到下一个。
+    final conflicts = <String>[];
     for (final entry in grouped.entries) {
       if (entry.value.length <= 1) continue;
       final sample = entry.value.values.first.first;
@@ -363,11 +386,17 @@ class _ProductionFinishedArrivalRegistrationPageState
                 '${candidate.key}(第${candidate.value.map(_rowLabel).join('、')}行)',
           )
           .join(' / ');
-      return '货品 ${sample.item.goodsCode} ${sample.item.goodsName} '
-          '在同一成品仓同一颜色维度填写了不同库位：$candidates。'
-          '请统一库位，或关闭“同时记住”为仅保存本次登记快照。';
+      conflicts.add(
+        '${sample.item.goodsCode} ${sample.item.goodsName}：$candidates',
+      );
     }
-    return null;
+    if (conflicts.isEmpty) return null;
+    return _rowIssueMessage(
+      conflicts,
+      '在同一成品仓同一颜色维度填写了不同库位',
+      action: '请统一库位，或关闭“同时记住”为仅保存本次登记快照',
+      unit: '个货品',
+    );
   }
 
   String _rowLabel(_FinishedArrivalRegistrationGridRow row) {
@@ -398,35 +427,41 @@ class _ProductionFinishedArrivalRegistrationPageState
       context.appError('请选择实际存放的成品仓库');
       return;
     }
-    for (var index = 0; index < rows.length; index++) {
-      final row = rows[index];
+    // 明细整表扫完再报：原先首个违规就 return，多行缺仓/缺库位时用户补一行提交一次，
+    // 观感像「怎么老是报错」。判定条件不变，只把问题按类别各汇总成一条。
+    final missingWarehouse = <String>[];
+    final missingPlace = <String>[];
+    final placeTooLong = <String>[];
+    for (final row in rows) {
+      final label = '第 ${_rowLabel(row)} 行（${row.item.goodsName}）';
       if (row.warehouseId.value?.isNotEmpty != true) {
-        final message = '第 ${index + 1} 行必须选择成品仓';
-        setState(() => _validationError = message);
-        context.appError(message);
-        return;
+        missingWarehouse.add(label);
       }
       final place = row.place.text.trim();
       if (place.isEmpty) {
-        final message = '第 ${index + 1} 行必须填写库位号';
-        setState(() => _validationError = message);
-        context.appError(message);
-        return;
-      }
-      if (place.length > 100) {
-        final message = '第 ${index + 1} 行库位号不能超过 100 个字符';
-        setState(() => _validationError = message);
-        context.appError(message);
-        return;
+        missingPlace.add(label);
+      } else if (place.length > 100) {
+        placeTooLong.add(label);
       }
     }
+    final rowIssues = <String>[
+      if (missingWarehouse.isNotEmpty)
+        _rowIssueMessage(missingWarehouse, '未选择成品仓', action: '请补齐后再提交'),
+      if (missingPlace.isNotEmpty)
+        _rowIssueMessage(missingPlace, '未填写库位号', action: '请补齐后再提交'),
+      if (placeTooLong.isNotEmpty)
+        _rowIssueMessage(placeTooLong, '的库位号超过 100 个字符', action: '请改短后再提交'),
+    ];
     if (_rememberPlaces) {
       final conflict = _rememberPlacesConflict();
-      if (conflict != null) {
-        setState(() => _validationError = conflict);
-        context.appError(conflict);
-        return;
-      }
+      if (conflict != null) rowIssues.add(conflict);
+    }
+    if (rowIssues.isNotEmpty) {
+      // 不同类别分行列出，混成一句会让人看不清到底要改哪几处。
+      final message = rowIssues.join('\n');
+      setState(() => _validationError = message);
+      context.appError(message);
+      return;
     }
 
     // 按行仓分组：一个仓一个登记批次 + 一张品质检查单（V469 一批一仓，V547 一仓一单）。
@@ -674,10 +709,12 @@ class _ProductionFinishedArrivalRegistrationPageState
                 actionLabel: '重新加载',
                 onAction: _load,
               )
-            : UtenContentContainer(
-                child: Scrollbar(
-                  controller: _scrollController,
-                  thumbVisibility: true,
+            : UtenGridPageScrollbar(
+                pinned: _gridPinned,
+                controller: _scrollController,
+                // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
+                // 恒在屏幕最右，不随限宽容器/列宽漂移。
+                child: UtenContentContainer(
                   child: ListView(
                     controller: _scrollController,
                     padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -715,38 +752,36 @@ class _ProductionFinishedArrivalRegistrationPageState
                         ),
                         const SizedBox(height: UtenSpacing.s8),
                       ],
+                      // 2026-09-14：提示常驻（原先只在 <840 窄屏出现）。
                       LayoutBuilder(
-                        builder: (context, constraints) =>
-                            constraints.maxWidth < 840
-                            ? Padding(
-                                padding: const EdgeInsets.only(
-                                  bottom: UtenSpacing.s8,
+                        builder: (context, constraints) => Padding(
+                          padding: const EdgeInsets.only(
+                            bottom: UtenSpacing.s8,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline_rounded,
+                                size: 18,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: UtenSpacing.s8),
+                              Expanded(
+                                child: Text(
+                                  '本批可以只送检一部分产品：点行末 ⊖ 把该行移出本批送检'
+                                  '（也可勾选多行后右键批量移出），报工明细不会删除、'
+                                  '也不写库存，仍留在待登记送检。'
+                                  '${constraints.maxWidth < 840 ? '表格可左右滑动；' : ''}'
+                                  '报工数量只读；勾选多行后在任意一行改成品仓/库位即批量落值，'
+                                  '也可右键批量设置；库位说明见列头 ⓘ。',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
                                 ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.swipe_rounded,
-                                      size: 18,
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                    const SizedBox(width: UtenSpacing.s8),
-                                    Expanded(
-                                      child: Text(
-                                        '表格可左右滑动；可勾选或右键/长按明细移出本批送检。'
-                                        '报工数量只读；勾选多行后在任意一行改成品仓/库位即批量落值，'
-                                        '也可右键批量设置；库位说明见列头 ⓘ。',
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                              color: theme
-                                                  .colorScheme
-                                                  .onSurfaceVariant,
-                                            ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            : const SizedBox.shrink(),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                       // 「成品明细 (N)」标题行 2026-09-11 撤除（全站同改）。
                       const SizedBox(height: UtenSpacing.s8),
@@ -755,6 +790,7 @@ class _ProductionFinishedArrivalRegistrationPageState
                           'production-finished-arrival-registration-grid',
                         ),
                         controller: _grid,
+                        stickyHeaderPinned: _gridPinned,
                         columns: _columns(names),
                         createBlankRow: () =>
                             throw UnsupportedError('成品到货登记明细由已审核报工固定带入'),
@@ -779,6 +815,10 @@ class _ProductionFinishedArrivalRegistrationPageState
                         // 一行改仓/写库位即整批落值」+ 右键菜单批量动作。
                         showSelectAllToggle: false,
                         showRemoveRowsAction: false,
+                        // 2026-09-14：行末常驻 ⊖（与到货登记页同一口径）——只走
+                        // 右键在宽屏等于没有入口，用户判定「不能删除部分产品」。
+                        // 已登记行 canSelectRow=false，组件自动只占位不出按钮。
+                        showInlineRemoveAction: true,
                         rowMenuExtraBuilder: _canRegister && !_saving
                             ? (context, selected) => [
                                 UtenMenuItem(
@@ -852,6 +892,7 @@ class _ProductionFinishedArrivalRegistrationPageState
               ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _detail == null ? null : _buildBottomBar(theme),
     );
   }
@@ -1289,19 +1330,20 @@ class _ProductionFinishedArrivalRegistrationPageState
       cellBuilder: (context, row) =>
           Text(row.item.lineNo.toString(), textAlign: TextAlign.right),
     ),
-    EditableGridColumn(
-      key: 'goodsCode',
-      label: '物料编码',
-      width: 130,
-      textOf: (row) => row.item.goodsCode,
-      cellBuilder: (context, row) => Text(row.item.goodsCode),
-    ),
+    // 2026-09-14 全站列序统一（ADR-081 §4.1）：名称 → 编号 → 颜色。
     EditableGridColumn(
       key: 'goodsName',
       label: '货品名称',
       width: 220,
       textOf: (row) => row.item.goodsName,
       cellBuilder: (context, row) => Text(row.item.goodsName),
+    ),
+    EditableGridColumn(
+      key: 'goodsCode',
+      label: '编号',
+      width: 130,
+      textOf: (row) => row.item.goodsCode,
+      cellBuilder: (context, row) => Text(row.item.goodsCode),
     ),
     EditableGridColumn(
       key: 'color',

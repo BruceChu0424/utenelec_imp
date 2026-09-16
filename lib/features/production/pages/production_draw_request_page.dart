@@ -327,6 +327,7 @@ class _ProductionDrawRequestPageState
           ),
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
         floatingActionButton:
             !_hasPermission ||
                 _loading ||

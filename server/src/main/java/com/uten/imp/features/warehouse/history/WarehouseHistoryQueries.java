@@ -53,7 +53,8 @@ final class WarehouseHistoryQueries {
                        %s AS reason,
                        %s AS box_quantity,
                        %s AS parent_goods_code,
-                       %s AS parent_goods_name
+                       %s AS parent_goods_name,
+                       %s AS parent_color_name
                 FROM %s i
                 JOIN %s h ON h.id = i.%s
                 LEFT JOIN goods goods ON goods.id = i.goods_id
@@ -84,6 +85,7 @@ final class WarehouseHistoryQueries {
                 type.boxQuantityExpression(),
                 type.parentGoodsCodeExpression(),
                 type.parentGoodsNameExpression(),
+                type.parentColorNameExpression(),
                 type.itemTable(),
                 type.headerTable(),
                 type.itemForeignKey(),

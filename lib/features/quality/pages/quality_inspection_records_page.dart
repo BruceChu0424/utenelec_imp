@@ -482,17 +482,18 @@ class _QualityInspectionRecordsPageState
       width: 180,
       value: (record) => _text(record.partnerName),
     ),
-    MasterColumnDef(
-      key: 'goodsCode',
-      label: '货品编码',
-      width: 140,
-      value: (record) => _text(record.goodsCode),
-    ),
+    // 2026-09-14 全站列序统一：名称 → 编号 → 颜色。
     MasterColumnDef(
       key: 'goodsName',
       label: '货品名称',
       width: 240,
       value: (record) => _text(record.goodsName),
+    ),
+    MasterColumnDef(
+      key: 'goodsCode',
+      label: '编号',
+      width: 140,
+      value: (record) => _text(record.goodsCode),
     ),
     MasterColumnDef(
       key: 'colorName',

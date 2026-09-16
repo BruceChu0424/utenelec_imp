@@ -315,20 +315,22 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         @SuppressWarnings("unchecked")
         List<Object[]> lineRows = em.createNativeQuery("""
                 SELECT line.id, line.waste_item_id, line.material_issue_item_id, line.order_item_id,
-                       line.goods_id, line.goods_code_snapshot, line.goods_name_snapshot, line.color_id, line.unit_id,
+                       line.goods_id, line.goods_code_snapshot, line.goods_name_snapshot, line.color_id, color.name, line.unit_id,
                        line.actual_loss_qty, line.allowed_loss_qty, line.excess_loss_qty,
                        CASE WHEN actual.normal_value_local IS NOT NULL AND actual.excess_value_local IS NOT NULL
                             THEN ROUND((actual.normal_value_local+actual.excess_value_local)/line.actual_loss_qty,30) END,
                        actual.excess_value_local,CASE WHEN actual.complete THEN 'VALUED' ELSE 'MISSING_COST' END
-                FROM subcontract_loss_case_lines line JOIN v_subcontract_waste_actual_value actual ON actual.waste_item_id=line.waste_item_id
+                FROM subcontract_loss_case_lines line
+                JOIN v_subcontract_waste_actual_value actual ON actual.waste_item_id=line.waste_item_id
+                LEFT JOIN colors color ON color.id=line.color_id
                 WHERE case_id=:id ORDER BY line.id
                 """).setParameter("id", id).getResultList();
         List<CaseLine> lines = lineRows.stream().map(row -> new CaseLine(
                 uuid(row[0]), uuid(row[1]), uuid(row[2]), uuid(row[3]), uuid(row[4]),
-                text(row[5]), text(row[6]), uuid(row[7]), uuid(row[8]),
-                quantity(row[9]), quantity(row[10]), quantity(row[11]),
-                priceMasked ? null : money(row[12]),
-                priceMasked ? null : money(row[13]), text(row[14]))).toList();
+                text(row[5]), text(row[6]), uuid(row[7]), text(row[8]), uuid(row[9]),
+                quantity(row[10]), quantity(row[11]), quantity(row[12]),
+                priceMasked ? null : money(row[13]),
+                priceMasked ? null : money(row[14]), text(row[15]))).toList();
         @SuppressWarnings("unchecked")
         List<Object[]> resolutionRows = em.createNativeQuery("""
                 SELECT id, case_line_id, resolution_type, quantity, amount_local,

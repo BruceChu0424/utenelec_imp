@@ -51,6 +51,21 @@ bool _isOrderDetailPath(String location, String module) {
       segments[3] != 'edit';
 }
 
+/// 物料分析关联销售订货单只读货品清单(ADR-088):
+/// `/production/material-analyses/:id/sales-orders/:orderId`。
+///
+/// 按**段数精确匹配**而不是 contains：同前缀下将来再加子页时不会静默继承本页权限，
+/// 判定形状与 `page_permission_scope.dart` 的 `segments.length == 5` 保持一致。
+bool _isAnalysisSalesOrderPath(String routePath) {
+  final segments = routePath.split('/');
+  return segments.length == 6 &&
+      segments[1] == 'production' &&
+      segments[2] == 'material-analyses' &&
+      segments[3].isNotEmpty &&
+      segments[4] == 'sales-orders' &&
+      segments[5].isNotEmpty;
+}
+
 /// 返回某路径所需的权限点列表（任一满足即可）；不需要权限返回 null。
 ///
 /// 这是路由守卫与工作台显隐共用的唯一数据源。
@@ -421,8 +436,12 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.goodsView];
   }
   if (location == RouteName.basicinfoMould) return const [Perm.mouldView];
-  if (location == RouteName.basicinfoClient) return const [Perm.clientView];
-  if (location == RouteName.basicinfoSupplier) {
+  if (location == RouteName.basicinfoClient ||
+      location.startsWith('${RouteName.basicinfoClient}/')) {
+    return const [Perm.clientView];
+  }
+  if (location == RouteName.basicinfoSupplier ||
+      location.startsWith('${RouteName.basicinfoSupplier}/')) {
     return const [Perm.supplierView];
   }
   if (location == RouteName.basicinfoColor) return const [Perm.colorView];
@@ -581,6 +600,11 @@ List<String>? requiredAnyPermFor(String location) {
       location.endsWith('/summary')) {
     return const [Perm.productionMaterialAnalysisView];
   }
+  // 关联销售订货单只读货品清单(ADR-088)：与分析查看同权，不额外要求
+  // sales_order:view —— 服务端已把可见范围收窄到「这张分析引用过的订单」。
+  if (_isAnalysisSalesOrderPath(routePath)) {
+    return const [Perm.productionMaterialAnalysisView];
+  }
   // 生产链路健康初筛：与物料分析查看同权（只读扫描）
   if (location == RouteName.productionChainHealth) {
     return const [Perm.productionMaterialAnalysisView];
@@ -723,10 +747,12 @@ List<String> requiredAllPermsFor(String location) {
   if (location == RouteName.basicinfoMould) {
     return const [Perm.mouldCategoryView];
   }
-  if (location == RouteName.basicinfoClient) {
+  if (location == RouteName.basicinfoClient ||
+      location.startsWith('${RouteName.basicinfoClient}/')) {
     return const [Perm.clientCategoryView];
   }
-  if (location == RouteName.basicinfoSupplier) {
+  if (location == RouteName.basicinfoSupplier ||
+      location.startsWith('${RouteName.basicinfoSupplier}/')) {
     return const [Perm.supplierCategoryView];
   }
 

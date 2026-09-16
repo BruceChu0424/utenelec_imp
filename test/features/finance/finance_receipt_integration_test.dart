@@ -105,11 +105,26 @@ void main() {
       expect(currencyColumn.required, isTrue);
       expect(rateColumn.label, '批次汇率');
       expect(rateColumn.required, isFalse);
-      final accountField = tester.widget<UtenDropdownField>(
-        _dropdownWithLabel('真实收款账户'),
+      // 2026-09-14：收款账户由平铺下拉改为侧滑选择面板（账户一多下拉难找）。
+      // 契约不变：已选账户按「编号 · 名称 · 币种」回显，面板里只列「使用中」
+      // 的账户——这里全量字典只有一个合规账户，所以恰好一条。
+      expect(find.text('ZH000001 · 人民币账户 · 人民币'), findsOneWidget);
+      await tester.tap(find.text('ZH000001 · 人民币账户 · 人民币'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(ListTile, 'ZH000001 · 人民币账户'), findsOneWidget);
+      expect(find.byType(ListTile), findsOneWidget);
+      await tester.tap(find.widgetWithText(ListTile, 'ZH000001 · 人民币账户'));
+      await tester.pumpAndSettle();
+      // 2026-09-14：手续费口径改为「费用结算方式」下拉三选（无 / 从本批扣除 /
+      // 由其它真实账户另付），原来那句常驻说明「另付费用单独记录」并入选项文案。
+      // 下拉收起时选项文本不在树里，所以断言字段本身与它的选项集合。
+      final feeMode = tester.widget<UtenDropdownField>(
+        _dropdownWithLabel('费用结算方式'),
       );
-      expect(accountField.items.single.label, 'ZH000001 · 人民币账户 · 人民币');
-      expect(find.textContaining('另付费用单独记录'), findsOneWidget);
+      expect(
+        feeMode.items.map((item) => item.label),
+        containsAll(const ['无费用', '从本批到账中扣除', '由其它真实账户另付']),
+      );
       expect(
         grid.columns.map((column) => column.label),
         containsAllInOrder(const [
@@ -457,7 +472,8 @@ void main() {
       tester.element(find.byType(FinanceDocEditPage)),
     ).read(appNotificationProvider);
     expect(notifications.single.message, '请至少引用一条应收明细');
-    expect(find.text('暂无明细，请点击顶部“引用应收”添加'), findsOneWidget);
+    // 2026-09-14：引用入口从顶部工具条挪到明细表上方，空态文案随之改「上方」。
+    expect(find.text('暂无明细，请点击上方“引用应收”添加'), findsOneWidget);
   });
 
   testWidgets(
@@ -489,22 +505,37 @@ void main() {
       size: const Size(375, 900),
     );
 
-    expect(find.byTooltip('资金引用').hitTestable(), findsOneWidget);
+    // 2026-09-14：「引用应收 / 应用预收」从 AppBar 的「资金引用」菜单迁到明细
+    // 表格上方（用户反馈按钮应放在表格上面），AppBar 只留草稿入口。窄屏下
+    // 这两个入口仍必须直接可点，不再藏在菜单里。
+    // 迁到表格上方后它在可滚动区里，窄屏首屏既没露出、也还没被懒构建，
+    // 所以要滚到它再判可点（ensureVisible 对「从未构建」的行无效）。
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('receipt-import-ar')),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('receipt-import-ar')).hitTestable(),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('资金引用'), findsNothing);
     expect(find.byTooltip('查看历史'), findsNothing);
     expect(find.text('保存').hitTestable(), findsOneWidget);
     expect(find.text('本批客户已付(人民币) ¥360.00'), findsOneWidget);
     expect(find.text('真实账户实际入账 人民币 324.00'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-
-    await tester.tap(find.byTooltip('资金引用'));
-    await tester.pumpAndSettle();
     expect(find.text('引用应收'), findsOneWidget);
-    expect(find.text('应用预收'), findsNothing);
+    // 没有预收权限：应用预收入口不出现。
+    expect(
+      find.byKey(const ValueKey('receipt-apply-prepayment')),
+      findsNothing,
+    );
     expect(tester.takeException(), isNull);
   });
 
   testWidgets(
-    'compact fund menu exposes prepayment only with both permissions',
+    'compact receipt exposes prepayment entry only with both permissions',
     (tester) async {
       await _pumpEditor(
         tester,
@@ -517,11 +548,22 @@ void main() {
         },
       );
 
-      await tester.tap(find.byTooltip('资金引用'));
+      // 同上：入口已从菜单迁到表格上方，两个按钮直接可见。
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('receipt-import-ar')),
+        240,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
-
+      expect(
+        find.byKey(const ValueKey('receipt-import-ar')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('receipt-apply-prepayment')),
+        findsOneWidget,
+      );
       expect(find.text('引用应收'), findsOneWidget);
-      expect(find.text('应用预收'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

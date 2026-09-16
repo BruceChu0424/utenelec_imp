@@ -613,17 +613,27 @@ class _SubcontractOrderProgressSectionState
               3: FlexColumnWidth(2),
               4: FlexColumnWidth(2),
               5: FlexColumnWidth(2),
+              6: FlexColumnWidth(2),
+              7: FlexColumnWidth(2),
             },
             children: [
-              _tableHead(theme, const ['货品', '发出', '已加工/消费', '已退', '损耗', '结存']),
+              // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+              _tableHead(theme, const [
+                '货品名称',
+                '编号',
+                '颜色',
+                '发出',
+                '已加工/消费',
+                '已退',
+                '损耗',
+                '结存',
+              ]),
               for (final l in p.supplierLedger)
                 TableRow(
                   children: [
-                    _cell(
-                      theme,
-                      '${l.goodsCode ?? ''} ${l.goodsName ?? ''}'.trim(),
-                      sub: l.unitName,
-                    ),
+                    _cell(theme, l.goodsName ?? '', sub: l.unitName),
+                    _cell(theme, l.goodsCode ?? ''),
+                    _cell(theme, l.colorName ?? ''),
                     _cell(theme, _fmt(l.atSupplierQty)),
                     _cell(theme, _fmt(l.consumedQty)),
                     _cell(theme, _fmt(l.returnedQty)),

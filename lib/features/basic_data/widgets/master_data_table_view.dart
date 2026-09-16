@@ -17,6 +17,7 @@ import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_table_column_kit.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -57,6 +58,7 @@ class MasterColumnDef<T> {
     this.cellColor,
     this.cellBuilder,
     this.cellBuilderHandlesSemantics = false,
+    this.fillsCellHeight = false,
     this.info,
   });
 
@@ -79,6 +81,15 @@ class MasterColumnDef<T> {
   /// their child already exposes complete button/expanded/value semantics.
   /// Defaults to false so existing simple custom cells keep the column label.
   final bool cellBuilderHandlesSemantics;
+
+  /// 本列的自定义单元格自己吃满整行高度（不再被 selectable 模式那层
+  /// `Align(centerLeft)` 竖向收缩）。
+  ///
+  /// 只给「要画跨行图形」的列用——典型就是层级树列（[UtenTreeTableCell]）：
+  /// 同一行里只要有别的列换了两行，树格就会被居中、上下各留一截空白，层级
+  /// 竖线接不到相邻行，看着像虚线（2026-09-15 用户口径「表示层级的竖线不对」）。
+  /// 默认 false，既有列一字不变。
+  final bool fillsCellHeight;
 
   /// 列类型，对齐后端 ReportColumn.type：text / date / number / money / bool。
   /// 用于决定排序菜单文案（date=从远到近/从近到远，数值=从小到大/从大到小）。
@@ -151,6 +162,11 @@ class MasterDataGroup<T> {
 /// 主档通用表格视图：横排 autofilter 筛选 + 逐行数据（列对齐）+ 分页。
 /// 搜索框由调用方自行放在标题行（标题 | 搜索 | 添加）。
 class MasterDataTableView<T> extends StatefulWidget {
+  /// 数据格的纵向内边距。要画跨行图形的单元格（层级树列）按它设
+  /// `UtenTreeTableCell.guideBleed`，不要在调用点抄一个魔数——抄漏了行与行
+  /// 之间就会空出 2×8px，整列连线看着像虚线。
+  static const double cellVerticalPadding = UtenSpacing.s8;
+
   const MasterDataTableView({
     super.key,
     required this.columns,
@@ -182,6 +198,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.totalPages = 1,
     this.onPageChange,
     this.summaryBar,
+    this.summaryBarInline = false,
     this.toolbarActions,
     this.toolbarLeadingActions,
     this.embedded = false,
@@ -411,6 +428,12 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// **服务端分页的表格必须传服务端合计**——对当前页求和会得出一个看着像总计、
   /// 其实只覆盖一页的数；拿不到服务端合计时要么不传，要么把标签写成「本页合计」。
   final Widget? summaryBar;
+
+  /// 合计条改为**随表体滚动**：渲染进表体竖向滚动内容的末尾（最后一行数据之下），
+  /// 行少时紧跟末行，行多时要滚到底才见——合计条属于表格那一块，不再钉在区块底部。
+  /// 横向同样随表格内容（表格横向滚动时合计条跟着走）。用于详情页等
+  /// 「合计行是表格脚注」语义的场景；默认 false 保持钉在表体之外的全站口径。
+  final bool summaryBarInline;
 
   @override
   State<MasterDataTableView<T>> createState() => _MasterDataTableViewState<T>();
@@ -799,7 +822,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                   child: Column(
                     children: [
                       Expanded(child: _buildTableStage(ctx2)),
-                      if (widget.summaryBar != null) _buildSummaryBar(ctx2),
+                      if (widget.summaryBar != null && !widget.summaryBarInline)
+                        _buildSummaryBar(ctx2),
                       if (!widget.embedded && widget.totalPages > 1)
                         _buildPager(ctx2),
                     ],
@@ -1092,7 +1116,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         ),
       ),
     );
-    final aligned = widget.selectable
+    final aligned = widget.selectable && !column.fillsCellHeight
         ? Align(alignment: Alignment.centerLeft, child: custom)
         : custom;
     if (column.cellBuilderHandlesSemantics) return aligned;
@@ -1116,7 +1140,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildTable(context),
-          if (widget.summaryBar != null) _buildSummaryBar(context),
+          if (widget.summaryBar != null && !widget.summaryBarInline)
+            _buildSummaryBar(context),
           if (_hasFloatingBatchActions)
             Padding(
               padding: const EdgeInsets.only(top: UtenSpacing.s8),
@@ -1132,7 +1157,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       children: [
         Expanded(child: _buildTableStage(context)),
         // 合计条在表体（内部滚动）之外、翻页条之上：滚到哪一行它都在。
-        if (widget.summaryBar != null) _buildSummaryBar(context),
+        // summaryBarInline 时改为表内脚注（见 _buildTable 的 ListView 末项），
+        // 不在这里钉住。
+        if (widget.summaryBar != null && !widget.summaryBarInline)
+          _buildSummaryBar(context),
         if (widget.totalPages > 1) _buildPager(context),
       ],
     );
@@ -1495,6 +1523,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                     if (_usesOverlayHBar) {
                       _scheduleHBarUpdate();
                     }
+                    // 合计条随表体滚动（summaryBarInline）：作为竖向滚动内容的
+                    // 最后一项（数据行与「加载更多」指示器之后），行少时紧跟末行。
+                    final summaryInline =
+                        widget.summaryBarInline && widget.summaryBar != null;
+                    final summaryIndex =
+                        plan.length + (widget.loadingMore ? 1 : 0);
                     final list = ListView.builder(
                       controller: widget.primary ? null : _bodyV,
                       // primary 模式：交还给祖先 NestedScrollView 注入的 PrimaryScrollController
@@ -1509,8 +1543,23 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                           : const ClampingScrollPhysics(),
                       // 留白只参与竖向滚动范围，覆盖层横滚条始终以真实末行为锚点。
                       padding: EdgeInsets.only(bottom: _bodyBottomPad),
-                      itemCount: plan.length + (widget.loadingMore ? 1 : 0),
+                      itemCount: summaryIndex + (summaryInline ? 1 : 0),
                       itemBuilder: (ctx, i) {
+                        if (summaryInline && i == summaryIndex) {
+                          return _ViewportPinnedRow(
+                            controller: _bodyH,
+                            contentWidth: total,
+                            fallbackViewportWidth: c.maxWidth,
+                            child: Padding(
+                              padding: const EdgeInsets.only(
+                                top: UtenSpacing.s8,
+                                left: UtenSpacing.s4,
+                                right: UtenSpacing.s4,
+                              ),
+                              child: widget.summaryBar!,
+                            ),
+                          );
+                        }
                         if (widget.loadingMore && i == plan.length) {
                           return const Padding(
                             padding: EdgeInsets.all(UtenSpacing.s12),
@@ -1581,20 +1630,43 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                             thumbVisibility: true,
                             child: hArea,
                           );
-                    return Scrollbar(
-                      // 竖向滚动条（上下）：绑表体 ListView 的 _bodyV。置于横向滚动之外层，
-                      // 使 thumb 固定在视口右边缘、不随横向滚动被带走。竖向 ListView 嵌在
-                      // 横向 SingleChildScrollView 内层，其滚动通知冒泡到本 Scrollbar 时
-                      // depth=1（穿过了横向那层 Scrollable），Scrollbar 默认 notificationPredicate
-                      // (depth==0) 会滤掉 → thumb 不更新；放宽到 depth<=1 才能捕获竖向滚动。
-                      // primary 模式下 _bodyV 无 client，省略 controller：Scrollbar 经
-                      // notificationPredicate(depth<=1) 仍能捕获 primary ListView 的竖向滚动。
-                      controller: widget.primary ? null : _bodyV,
+                    // 竖向滚动条（上下）：绑表体 ListView 的 _bodyV。置于横向滚动之外层，
+                    // 使 thumb 固定在视口右边缘、不随横向滚动被带走。竖向 ListView 嵌在
+                    // 横向 SingleChildScrollView 内层，其滚动通知冒泡到本 Scrollbar 时
+                    // depth=1（穿过了横向那层 Scrollable），Scrollbar 默认 notificationPredicate
+                    // (depth==0) 会滤掉 → thumb 不更新；放宽到 depth<=1 才能捕获竖向滚动。
+                    // primary 模式下 _bodyV 无 client，省略 controller：Scrollbar 经
+                    // notificationPredicate(depth<=1) 仍能捕获 primary ListView 的竖向滚动。
+                    //
+                    // 2026-09-14 滚动条口径（全站统一）：在 UtenCollapsingHeaderScrollView
+                    // 内的表格，外层收头部阶段（表格未置顶）不显示竖向滚动条，进入表体
+                    // 内滚后再显示——显示的就是本条表内滚动条（大小与表内容对应）。
+                    // 独立表格查不到 scope，维持常显。
+                    final vScrollbarController = widget.primary ? null : _bodyV;
+                    Widget vScrolled = Scrollbar(
+                      controller: vScrollbarController,
                       thumbVisibility: true,
                       notificationPredicate: (ScrollNotification n) =>
                           n.depth <= 1,
                       child: hWrapped,
                     );
+                    final innerPhase = UtenInnerScrollActiveScope.maybeOf(
+                      context,
+                    );
+                    if (innerPhase != null) {
+                      vScrolled = ValueListenableBuilder<bool>(
+                        valueListenable: innerPhase,
+                        builder: (context, innerActive, child) => Scrollbar(
+                          controller: vScrollbarController,
+                          thumbVisibility: innerActive,
+                          notificationPredicate: (ScrollNotification n) =>
+                              n.depth <= 1,
+                          child: child!,
+                        ),
+                        child: hWrapped,
+                      );
+                    }
+                    return vScrolled;
                   },
                 ),
                 // 横滚条覆盖层：按内容高度定位（[_hBarY] 为底边 local top）。
@@ -1644,7 +1716,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   Widget _maybeSelectionArea(Widget child) =>
       widget.selectable || !widget.enableTextSelection
       ? SelectionContainer.disabled(child: child)
-      : SelectionArea(child: child);
+      : SelectionArea(
+          // 2026-09-15 用户口径：表格自带右键行菜单时，只显示自家菜单。右键点到
+          // 可选文字上 SelectionArea 会弹框架默认「全选/复制」工具条与行菜单撞车
+          //（文字拖选/键盘复制不受影响，只静音右键工具条）。
+          contextMenuBuilder: widget.rowMenuBuilder == null
+              ? null
+              : (_, _) => const SizedBox.shrink(),
+          child: child,
+        );
 
   /// 选择摘要：已选 N 项 + 清除（升位公共组件 UtenSelectionSummaryPill）。
   /// 业务动作在右下悬浮区，不再塞进表头工具条。
@@ -1977,7 +2057,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: UtenSpacing.s12,
-          vertical: UtenSpacing.s8,
+          vertical: MasterDataTableView.cellVerticalPadding,
         ),
         child: _dataCell(column, item, cellStyle, selected),
       ),
@@ -2816,6 +2896,65 @@ class _BodyFlex extends StatelessWidget {
     return Flexible(
       fit: primary || virtualized ? FlexFit.tight : FlexFit.loose,
       child: child,
+    );
+  }
+}
+
+/// 表体横滚内容里的「贴可视框右缘」行——目前只服务表内合计条
+/// ([MasterDataTableView.summaryBarInline])。
+///
+/// 2026-09-15 用户口径：合计条竖向要跟着最后一行走(表格脚注语义)，横向却必须
+/// 一直看得见——表宽超出卡片时，靠右对齐的合计会落在表格最右端，用户得把表格拖到
+/// 底才看得到「合计数量/合计金额」。这里把整条按当前横滚位置左移，使其右边缘始终
+/// 落在表体**可视框**右缘：怎么左右滑，合计都在卡片右边、紧跟末行下方。
+///
+/// 实现取 [Transform.translate](只改绘制、不改布局)：本行在布局上仍是整张表宽，
+/// 因此不影响列宽/横滚范围/末行测量(横滚条覆盖层仍按真实末行定位)。
+class _ViewportPinnedRow extends StatelessWidget {
+  const _ViewportPinnedRow({
+    required this.controller,
+    required this.contentWidth,
+    required this.fallbackViewportWidth,
+    required this.child,
+  });
+
+  /// 表体横向 ScrollView 的控制器([MasterDataTableView] 的 _bodyH)。
+  final ScrollController controller;
+
+  /// 表格总宽(列宽合计)——本行右边缘在滚动内容里的位置。
+  final double contentWidth;
+
+  /// 首帧(controller 尚未 attach)用的可视框宽度，取表体 LayoutBuilder 约束。
+  final double fallbackViewportWidth;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: controller,
+      // child 不随滚动重建，只重算平移量。
+      child: child,
+      builder: (context, inner) {
+        // 多 position(全屏路由双挂同一 controller)时 `.position` 会断言失败，
+        // 与 [UtenFrozenLeadingColumn] 同款守卫：回落首帧取值。
+        final position =
+            controller.hasClients && controller.positions.length == 1
+            ? controller.position
+            : null;
+        final viewport = position != null && position.hasViewportDimension
+            ? position.viewportDimension
+            : fallbackViewportWidth;
+        final offset = position != null && position.hasPixels
+            ? position.pixels
+            : 0.0;
+        // 目标右边缘 = 可视框右缘；表宽没撑满可视框时保持贴表格右端(shift 不取正)。
+        final shift = offset + viewport - contentWidth;
+        return Transform.translate(
+          offset: Offset(shift < 0 ? shift : 0, 0),
+          child: inner,
+        );
+      },
     );
   }
 }

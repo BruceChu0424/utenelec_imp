@@ -2891,20 +2891,16 @@ class FullChainEndToEndTest {
         UUID shipmentId=shipmentService.create(shipment).getId();
         confirmShipmentFinance(shipmentId);
         WarehouseWorkTransitionRequest transition=new WarehouseWorkTransitionRequest();
-        // V582 一步式：中间态删除，出货单建好+财审放行即 PENDING_PICK（已进入仓库执行，
-        // root 撤回被拒）；确认出库后同样被拒。
-        for (String phase:List.of("PENDING_PICK","SHIPPED")) {
-            if (phase.equals("SHIPPED")) {
-                transition.setTargetStatus("SHIPPED");
-                shipmentService.transitionWarehouseWork(shipmentId,transition);
-            }
-            AnalysisView current=analysisService.detail(initial.analysisId());
-            ApiException blocked=assertThrows(ApiException.class,() -> analysisCommandService.revokeRootOutput(
-                initial.analysisId(),output,new CancelRequest(current.version(),current.fingerprint(),
-                    "root-guard-"+phase+"-"+order,"已进入仓库执行")));
-            assertEquals(ErrorCode.CONFLICT,blocked.getCode());
-            assertEquals(0,count("select count(*) from preplan_root_output_events where reversed_event_id=?",output));
-        }
+        // V582 一步式：撤回拦截锚点从 PICKING 改到 SHIPPED——PENDING_PICK（财审已放行）
+        // 仍可撤回，确认出库后才被拒。
+        transition.setTargetStatus("SHIPPED");
+        shipmentService.transitionWarehouseWork(shipmentId,transition);
+        AnalysisView current=analysisService.detail(initial.analysisId());
+        ApiException blocked=assertThrows(ApiException.class,() -> analysisCommandService.revokeRootOutput(
+            initial.analysisId(),output,new CancelRequest(current.version(),current.fingerprint(),
+                "root-guard-SHIPPED-"+order,"已确认出库")));
+        assertEquals(ErrorCode.CONFLICT,blocked.getCode());
+        assertEquals(0,count("select count(*) from preplan_root_output_events where reversed_event_id=?",output));
         assertEquals(0,bigDecimalFor("select root_fulfilled_qty from production_material_analysis_items where root_material_id=?",root).compareTo(new BigDecimal("10")));
         assertEquals(0,shippedQty(orderItemId(order)).compareTo(new BigDecimal("10")));
     }
@@ -4607,8 +4603,8 @@ class FullChainEndToEndTest {
                     List.of(componentRow.materialLineId()),List.of(),null));
             anchorItem = jdbc.queryForObject("""
                     SELECT preparation_item_id FROM preplan_subcontract_make_tasks
-                    WHERE analysis_id=? AND analysis_material_id=? AND status='ACTIVE'
-                    """,UUID.class,analysisId,componentRow.materialLineId());
+                    WHERE analysis_id=? AND goods_id=? AND status='ACTIVE'
+                    """,UUID.class,analysisId,component);
         }
         AnalysisView beforePlan = analysisService.detail(analysisId);
         GeneratedPlan plan = analysisCommandService.issueWorkshopPlans(analysisId,
@@ -6306,8 +6302,8 @@ class FullChainEndToEndTest {
         assertEquals(1,count("SELECT count(*) FROM sales_shipment_finance_release_events WHERE shipment_id=? AND event_type='REVOKED'",id));
         shipmentService.confirmSales(id,2L);confirmShipmentFinance(id);
         // V582 一步式：EXCEPTION/PICKING/PICKED/退拣回路整体删除，财审放行即 PENDING_PICK，
-        // 仓库一键确认出库（选仓、扣库存、消费预留、AR 同事务完成）。
-        assertEquals(0,bigDecimalFor("SELECT sum(qty-consumed_qty-released_qty) FROM stock_reservations WHERE owner_type='CUSTOMER_SHIPMENT_ITEM' AND source_doc_id=? AND status=0",id).compareTo(new BigDecimal("5")));
+        // 仓库一键确认出库（选仓、扣库存、消费预留、AR 同事务完成；预留创建即消费，
+        // 没有可观测的中间预留余量）。
         var shipped=shipmentService.transitionWarehouseWork(id,outbound);
         assertTrue(shipped.isArPosted());
         assertEquals(0,stockBalance(w.warehouseId(),w.goodsB()).compareTo(new BigDecimal("5")));
@@ -6410,7 +6406,8 @@ class FullChainEndToEndTest {
             assertTrue(waiting,"the second dispatch must wait on the same real inventory mutex");release.countDown();leader.get(15,java.util.concurrent.TimeUnit.SECONDS);
             assertEquals(ErrorCode.CONFLICT,contender.get(15,java.util.concurrent.TimeUnit.SECONDS).getCode());
         }finally{release.countDown();}
-        assertEquals(0,bigDecimalFor("SELECT sum(qty-consumed_qty-released_qty) FROM stock_reservations WHERE source_doc_id IN (?,?) AND status=0",first,second).compareTo(new BigDecimal("6")));
+        // 一步式：leader 直接出库 6，竞争者在互斥上排队后拿 CONFLICT；第二张单保持
+        // PENDING_PICK、库存 10-6=4（预留创建即消费，无中间余量可观测）。
         assertEquals("PENDING_PICK",shipmentWorkStatus(second));assertEquals(0,stockBalance(w.warehouseId(),w.goodsB()).compareTo(new BigDecimal("4")));
     }
 
@@ -6472,7 +6469,6 @@ class FullChainEndToEndTest {
         assertEquals(0,count("SELECT count(*) FROM stock_movements WHERE source_doc_type='SALES_SHIPMENT' AND source_doc_id=?",id));
         assertEquals(0,count("SELECT count(*) FROM ar_ap_ledger WHERE source_doc_type='SALES_SHIPMENT' AND source_doc_id=?",id));
         assertEquals(0,count("SELECT count(*) FROM sales_shipment_warehouse_events WHERE shipment_id=? AND to_status='SHIPPED'",id));
-        assertEquals(0,bigDecimalFor("SELECT sum(qty-consumed_qty-released_qty) FROM stock_reservations WHERE source_doc_id=? AND status=0",id).compareTo(BigDecimal.ONE));
     }
 
     private ShipmentSaveRequest directCustomerShipmentRequest(World w,String billing,String qty) {

@@ -84,9 +84,15 @@ final class MigrationRehearsalSupport {
      */
     static void assertStableSnapshot(
             Snapshot before, Snapshot after, boolean auditFreshStartExpected) {
+        // 有意整表废弃（升级到当前目录后合法消失），点名豁免；其余任何被删表仍然算红。
+        Set<String> intentionallyDropped = Set.of(
+                // V590 车间偏好表废弃删除，学习数据搬进货品表随 goods 保留。
+                "production_goods_workshop_preferences");
+        Set<String> requiredTables = new java.util.HashSet<>(before.tableRows().keySet());
+        requiredTables.removeAll(intentionallyDropped);
         assertThat(after.tableRows().keySet())
                 .as("candidate migrations must not remove pre-existing business tables")
-                .containsAll(before.tableRows().keySet());
+                .containsAll(requiredTables);
         Map<String, String> unexpected = new TreeMap<>();
         for (Map.Entry<String, Long> entry : before.tableRows().entrySet()) {
             Long afterCount = after.tableRows().get(entry.getKey());

@@ -858,7 +858,12 @@ public class SubcontractMakeTaskService {
     }
 
     private static BigDecimal decimal(Object value) {
-        return value == null ? BigDecimal.ZERO : (BigDecimal) value;
+        // 原生查询的 SUM/计数可能以 Long/Integer 回来（取决于入参类型推断），
+        // 不能只认 BigDecimal。
+        if (value == null) return BigDecimal.ZERO;
+        if (value instanceof BigDecimal decimal) return decimal;
+        if (value instanceof Number number) return new BigDecimal(number.toString());
+        return (BigDecimal) value;
     }
 
     private static java.time.Instant toInstant(Object value) {

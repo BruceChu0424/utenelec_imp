@@ -469,7 +469,9 @@ class ProductionWhereUsedQueryServiceTest {
     }
 
     private static Object[] reportRow(UUID productId) {
-        Object[] row = new Object[49];
+        // 49 列 + 尾部 COUNT(*) OVER() "__total"（columns() 与 SELECT 投影按位置映射，
+        // 2026-09-15 全站列统一加「颜色」列后总长 49+1=50）。
+        Object[] row = new Object[50];
         row[0] = productId;
         row[1] = true;
         row[2] = false;
@@ -480,7 +482,7 @@ class ProductionWhereUsedQueryServiceTest {
         row[32] = java.sql.Date.valueOf("2026-01-31");
         row[36] = "FG-001";
         row[37] = "Finished product";
-        row[48] = 1L;
+        row[49] = 1L;
         return row;
     }
 

@@ -67,7 +67,8 @@ class ResetBusinessDataScriptContractTest {
         // V579 party contact/address/activity tables (372→375, 96→99 PRESERVE).
         // V586 把 V583 报工实耗表与 V584 车间直送三张表补登记进清库策略
         // (375→379，CLEAR 276→280)；四张都是纯业务事实，随系统测试清空。
-        assertThat(policy).hasSize(379);
+        // V590 废弃车间偏好表（搬进货品表）：379→378、PRESERVE 99→98。
+        assertThat(policy).hasSize(378);
         assertThat(policy.values().stream().filter("CLEAR"::equals).count())
                 .isEqualTo(280);
         assertThat(policy).containsEntry("production_material_return_requests", "CLEAR");
@@ -95,7 +96,7 @@ class ResetBusinessDataScriptContractTest {
         assertThat(policy).containsEntry("party_addresses", "PRESERVE");
         assertThat(policy).containsEntry("party_activity_records", "PRESERVE");
         assertThat(policy.values().stream().filter("PRESERVE"::equals).count())
-                .isEqualTo(99);
+                .isEqualTo(98);
 
         // V463：订货行多来源锚定的两张分配表随业务数据清空。
         assertThat(policy).containsEntry(

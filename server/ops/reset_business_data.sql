@@ -1031,8 +1031,9 @@ BEGIN
         -- 负责人两列，production_goods_workshop_preferences 整表废弃删除
         -- (PRESERVE 96→95，数据搬进货品表随 goods 继续保留)；条数 546→547。
         (590, 547),
-        -- V591 存量归属回填：只 UPDATE goods(仓库/车间从既有事实种上)，
-        -- 不新增业务表；条数 547→548。
+        -- V591 存量归属回填：只更新 goods 表的归属仓/车间两列(从既有事实种上；
+        -- 注释里勿出现 goods 更新语句的字面写法，脚本契约测试按字面 indexOf 抓锚点
+        -- 排序，注释抢锚点会让排序断言假红)，不新增业务表；条数 547→548。
         (591, 548),
         -- V592 客户默认销售条款：clients 加默认货运策略/默认币种两列并从
         -- 最近订单回填（结账方式复用既有列），不新增业务表；条数 548→549。
@@ -1208,7 +1209,10 @@ BEGIN
     -- 随主档保留；它们是主档的一部分，不是业务流水)。
     IF (applied_max_version <= 458 AND preserve_count <> 95)
        OR (applied_max_version BETWEEN 459 AND 578 AND preserve_count <> 96)
-       OR (applied_max_version >= 579 AND preserve_count <> 99)
+       OR (applied_max_version BETWEEN 579 AND 589 AND preserve_count <> 99)
+       -- V590 废弃车间偏好表 production_goods_workshop_preferences（数据搬进货品表
+       -- 随 goods 继续保留）：PRESERVE 99→98。
+       OR (applied_max_version >= 590 AND preserve_count <> 98)
        OR NOT (
            (v446_business_table_count = 0
                 AND v447_business_table_count = 0

@@ -207,8 +207,9 @@ class BusinessDataResetServicePostgresTest {
         // V579 再 +3 张 party 子表（联系方式/地址/跟进记录，PRESERVE）：96→99。
         // V586 补登记 V583 报工实耗表与 V584 车间直送三张表（两个建表迁移都漏了
         // 这一步，清库函数 fail-closed 会整体拒跑）：276→280。
+        // V590 废弃车间偏好表（数据搬进货品表随 goods 保留）：PRESERVE 99→98。
         assertThat(result.clearedTableCount()).isEqualTo(280);
-        assertThat(result.preservedTableCount()).isEqualTo(99);
+        assertThat(result.preservedTableCount()).isEqualTo(98);
         // cleared_rows 只统计 CLEAR 表：2 条 outbox、1 条库存余额、1 条待核历史价值池。
         // refresh_tokens 属 PRESERVE，
         // 在终局校验后单独清空，不计入）

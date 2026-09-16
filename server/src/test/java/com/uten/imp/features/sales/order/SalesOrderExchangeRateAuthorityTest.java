@@ -70,6 +70,8 @@ class SalesOrderExchangeRateAuthorityTest {
     @Mock private SalesMasterReferenceValidator referenceValidator;
     @Mock private TaskClaimService taskClaim;
     @Mock private com.uten.imp.features.sales.SalesMutationFootprintService mutationFootprint;
+    // V592 客户默认销售条款写回：create/update 会调它，@InjectMocks 缺 mock 时为 null 直接 NPE。
+    @Mock private com.uten.imp.features.master.client.ClientDefaultTermsSyncService clientDefaultTermsSync;
 
     @InjectMocks private SalesOrderService service;
 

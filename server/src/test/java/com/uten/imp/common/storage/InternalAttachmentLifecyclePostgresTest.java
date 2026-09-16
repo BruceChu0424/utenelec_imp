@@ -261,8 +261,9 @@ class InternalAttachmentLifecyclePostgresTest {
         // V547 +2（品质检查单头/明细）、V548 +1（登记撤回）、V560 +3（退料申请）、
         // V561 +1（分批谱系）、V568 +1（让料补自制）、V569 +2（在途转拨）：266→276（V572 目录）。
         // V579 party 三子表 PRESERVE 96→99；V586 报工实耗 + 车间直送三表 CLEAR 276→280（V589 目录）。
+        // V590 废弃车间偏好表（搬进货品表）：PRESERVE 99→98。
         assertThat(result.path("clearedTableCount").asInt()).isEqualTo(280);
-        assertThat(result.path("preservedTableCount").asInt()).isEqualTo(99);
+        assertThat(result.path("preservedTableCount").asInt()).isEqualTo(98);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_orders",Long.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM employees",Long.class)).isEqualTo(humans);
         assertThat(jdbc.queryForObject("SELECT md5(to_jsonb(attachment)::text) FROM attachments attachment WHERE id=?",String.class,UUID.fromString(human.attachment.path("id").asText()))).isEqualTo(humanDigest);

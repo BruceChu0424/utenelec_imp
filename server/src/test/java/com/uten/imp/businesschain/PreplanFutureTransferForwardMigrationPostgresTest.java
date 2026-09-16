@@ -60,7 +60,8 @@ class PreplanFutureTransferForwardMigrationPostgresTest {
             // V587 货品主档加「所属仓库」一列(只加列，不建表不改行)、
             // V588 放宽销售分摊守卫(顶层超量一张计划，只改函数定义)、
             // V589 委外前置自制跟量(放宽公共备货形态守卫与批次 allocation 锚)。
-            assertEquals(19,upgrade.migrationsExecuted);
+            // V594 日报审核补链放行(只 CREATE OR REPLACE 只增不改守卫函数)。
+            assertEquals(20,upgrade.migrationsExecuted);
             assertEquals(1405930679,db.queryForObject("SELECT checksum FROM flyway_schema_history WHERE version='569'",Integer.class));
             assertEquals(originalCancel,db.queryForObject("SELECT (to_jsonb(c)-'restore_to_source_qty'-'public_release_qty')::text FROM preplan_future_supply_transfer_cancellations c WHERE id=?",String.class,state.cancel()));
             assertEquals(originalTransfer,db.queryForObject("SELECT to_jsonb(t)::text FROM preplan_future_supply_transfers t WHERE id=?",String.class,state.transfer()));

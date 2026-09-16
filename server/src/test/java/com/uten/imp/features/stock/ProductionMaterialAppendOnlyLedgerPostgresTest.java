@@ -227,6 +227,60 @@ class ProductionMaterialAppendOnlyLedgerPostgresTest {
                             + "where id = ?",
                     settlementPosting,
                     "5");
+
+            // V594：settlement_events 唯一放行「daily_report_id 的 NULL→值首次回填」——
+            // 日报审核/红冲同事务给刚插入的事件行补来源。放在方法末尾，让上面的
+            // 全表计数断言先于这些插入执行，互不干扰。
+            UUID stampEvent = UUID.randomUUID();
+            insert(connection, """
+                    insert into production_material_settlement_events(
+                        id, plan_id, event_type, idempotency_key, request_hash
+                    ) values (?, ?, 'POST', 'settle-stamp-0001', ?)
+                    """, stampEvent, f.planId(), "c".repeat(64));
+            UUID tamperEvent = UUID.randomUUID();
+            insert(connection, """
+                    insert into production_material_settlement_events(
+                        id, plan_id, event_type, idempotency_key, request_hash
+                    ) values (?, ?, 'POST', 'settle-stamp-0002', ?)
+                    """, tamperEvent, f.planId(), "3".repeat(64));
+            UUID report = UUID.randomUUID();
+            UUID otherReport = UUID.randomUUID();
+            LocalDate stampDate = LocalDate.of(2026, 7, 31);
+            insert(connection, """
+                    insert into production_daily_reports(id,bill_no,bill_date,status,remark)
+                    values(?,?,?,0,'V594 linkage stamp')
+                    """, report, businessIdentifier("SR", stampDate), stampDate);
+            insert(connection, """
+                    insert into production_daily_reports(id,bill_no,bill_date,status,remark)
+                    values(?,?,?,0,'V594 linkage stamp')
+                    """, otherReport, businessIdentifier("SR", stampDate), stampDate);
+
+            assertEquals(1, update(connection, """
+                    update production_material_settlement_events
+                    set daily_report_id = ?
+                    where plan_id = ? and event_type = 'POST'
+                      and idempotency_key = 'settle-stamp-0001'
+                      and daily_report_id is null
+                    """, report, f.planId()));
+            assertStampGuardRejected(connection, """
+                    update production_material_settlement_events
+                    set daily_report_id = ?
+                    where id = ?
+                    """, otherReport, stampEvent);
+            assertStampGuardRejected(connection, """
+                    update production_material_settlement_events
+                    set daily_report_id = null
+                    where id = ?
+                    """, stampEvent);
+            assertStampGuardRejected(connection, """
+                    update production_material_settlement_events
+                    set daily_report_id = ?, reason = 'tamper'
+                    where id = ? and daily_report_id is null
+                    """, report, tamperEvent);
+            assertEquals(1, count(connection, """
+                    select count(*) from production_material_settlement_events
+                    where id = ? and daily_report_id = ?
+                    """, stampEvent, report));
         }
     }
 
@@ -373,6 +427,18 @@ class ProductionMaterialAppendOnlyLedgerPostgresTest {
                 constraint,
                 error.getServerErrorMessage().getConstraint());
         assertTrue(error.getServerErrorMessage().getHint().contains("reversal"));
+    }
+
+    /** V594 唯一放行形态之外的 settlement_events UPDATE 一律按 V161 原样拒绝。 */
+    private static void assertStampGuardRejected(
+            Connection c, String sql, Object... values) {
+        PSQLException error = assertThrows(
+                PSQLException.class,
+                () -> update(c, sql, values));
+        assertEquals("55000", error.getSQLState());
+        assertEquals(
+                "production_material_settlement_events_append_only_guard",
+                error.getServerErrorMessage().getConstraint());
     }
 
     private static int count(Connection c, String sql, Object... values)

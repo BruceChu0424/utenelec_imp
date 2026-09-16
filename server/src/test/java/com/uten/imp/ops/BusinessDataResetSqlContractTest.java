@@ -357,7 +357,9 @@ class BusinessDataResetSqlContractTest {
                 .contains("(592, 549)")
                 // V593 采购/委外链主档默认值：只加列不加表（549→550）。
                 .contains("(593, 550)")
-                .contains("V507/469、V508/470及V511至V593完整目录");
+                // V594 日报审核补链放行：只替换只增不改守卫函数体，不加表（550→551）。
+                .contains("(594, 551)")
+                .contains("V507/469、V508/470及V511至V594完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);

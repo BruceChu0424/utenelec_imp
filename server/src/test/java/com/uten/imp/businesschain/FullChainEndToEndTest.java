@@ -4576,12 +4576,20 @@ class FullChainEndToEndTest {
         UUID product = UUID.randomUUID();
         UUID component = UUID.randomUUID();
         UUID material = UUID.randomUUID();
+        // V581 起「只有一个叶子子件」的委外件走 COMPONENT_OUTBOUND，notifySupply 不再
+        // 外部化前置自制任务（4604 的 make-task 查询会 EmptyResult）。挂第二颗采购料
+        // 保留「先自制后通知」路线；直接插库存防它拖住 4629 的 READY 断言。
+        UUID secondMaterial = UUID.randomUUID();
         insertGoods(product,"P-"+suffix,"总装产品","自制",w.unitId(),w.unitLegacy());
         insertGoods(component,"COMPONENT-"+suffix,"先排车间的子件","自制",w.unitId(),w.unitLegacy());
         insertGoods(material,"RAW-"+suffix,"子件底层采购料","采购",w.unitId(),w.unitLegacy());
-        jdbc.update("UPDATE goods SET default_supplier_id=? WHERE id=?",w.supplierId(),material);
+        insertGoods(secondMaterial,"RAW2-"+suffix,"子件第二颗采购料","采购",w.unitId(),w.unitLegacy());
+        jdbc.update("UPDATE goods SET default_supplier_id=? WHERE id IN (?,?)",w.supplierId(),material,secondMaterial);
         insertBom(product,component,"1");
         insertBom(component,material,"2");
+        insertBom(component,secondMaterial,"1");
+        jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
+                w.warehouseId(),secondMaterial,new BigDecimal("30"));
         UUID salesOrder = createApprovedOrder(w,root ? component : product,"10","100");
         loginAs(w.superAdminUserId());
         AnalysisView analysis = analysisService.preview(new PreviewRequest(null,null,null,
@@ -5632,15 +5640,22 @@ class FullChainEndToEndTest {
                 w.unitId(), w.unitLegacy());
         insertGoods(subcontracted, "S-s23c-" + w.goodsA(), "委外件S-s23c", "委外", w.unitId(), w.unitLegacy());
         insertGoods(suppliedMaterial, "R-s23c-" + w.goodsA(), "委外发料R-s23c", "采购", w.unitId(), w.unitLegacy());
-        jdbc.update("update goods set default_supplier_id = ? where id = ?",
-                w.supplierId(), subcontracted);
+        // V581 起「只有一个叶子子件」的委外件走 COMPONENT_OUTBOUND，notifySupply 不再
+        // 外部化前置自制任务（5716 断言计数会变 0）。挂第二颗采购料保留「先自制后通知」。
+        UUID secondSuppliedMaterial = UUID.randomUUID();
+        insertGoods(secondSuppliedMaterial, "R2-s23c-" + w.goodsA(), "委外第二颗料", "采购", w.unitId(), w.unitLegacy());
+        jdbc.update("update goods set default_supplier_id = ? where id in (?,?)",
+                w.supplierId(), subcontracted, secondSuppliedMaterial);
         insertBom(finished, subcontracted, "1");
         insertBom(siblingFinished, subcontracted, "1");
         insertBom(subcontracted, suppliedMaterial, "2");
+        insertBom(subcontracted, secondSuppliedMaterial, "1");
         // These full return-chain tests start with enough raw material for both paths.
         // Separate WAITING-anchor tests prove issuance before material arrival.
         jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
                 w.warehouseId(), suppliedMaterial, new BigDecimal("40"));
+        jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
+                w.warehouseId(), secondSuppliedMaterial, new BigDecimal("40"));
 
         UUID planner = createUserWithPerms(w, "planner-s23c-" + w.goodsA(),
                 "production_material_analysis:view", "production_material_analysis:manage",
@@ -6185,9 +6200,17 @@ class FullChainEndToEndTest {
                 w.unitId(), w.unitLegacy());
         insertGoods(childMaterial, "V447-C", "V447 internal child", "采购",
                 w.unitId(), w.unitLegacy());
-        jdbc.update("update goods set default_supplier_id=? where id=?",
-                w.supplierId(), subcontracted);
+        // V581 起「只有一个叶子子件」的委外件走 COMPONENT_OUTBOUND，准备开始不再建立
+        // 独立分析（6236 的查询 EmptyResult）。挂第二颗采购料保留旧路线，插库存防拖段。
+        UUID secondChildMaterial = UUID.randomUUID();
+        insertGoods(secondChildMaterial, "V447-C2", "V447 second child", "采购",
+                w.unitId(), w.unitLegacy());
+        jdbc.update("update goods set default_supplier_id=? where id in (?,?)",
+                w.supplierId(), subcontracted, secondChildMaterial);
         insertBom(subcontracted, childMaterial, "2");
+        insertBom(subcontracted, secondChildMaterial, "1");
+        jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
+                w.warehouseId(), secondChildMaterial, new BigDecimal("30"));
 
         UUID planner = createUserWithPerms(w, "planner-v447-start",
                 "production_material_analysis:view",
@@ -6220,10 +6243,10 @@ class FullChainEndToEndTest {
         orderRequest.setItems(List.of(line));
         UUID subcontractOrderId = subcontractOrderService.create(orderRequest).getId();
         UUID orderItemId=jdbc.queryForObject("select id from subcontract_order_items where order_id=? and is_deleted=false",UUID.class,subcontractOrderId);
-        // 直下单财审口径已放开（V588+/直下单供货流）：准备开始=提交财审，不再整单拒绝；
-        // 本测试主体是「准备开始建立独立分析」，提交成功即进入该路径。
-        financeApproval.submit("SUBCONTRACT",subcontractOrderId);
-        assertEquals(1,count("select count(*) from procurement_order_approval_cases where order_type='SUBCONTRACT' and order_id=?",subcontractOrderId));
+        assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,
+                ()->financeApproval.submit("SUBCONTRACT",subcontractOrderId)).getCode());
+        assertEquals(0,intFor("select status from subcontract_orders where id=?",subcontractOrderId));
+        assertEquals(0,count("select count(*) from procurement_order_approval_cases where order_type='SUBCONTRACT' and order_id=?",subcontractOrderId));
         assertEquals(0, count("""
                 SELECT count(*)
                 FROM subcontract_material_plan_items plan_item
@@ -6265,8 +6288,11 @@ class FullChainEndToEndTest {
                 """, startedAnalysisId),
                 "direct-order preparation must not fabricate cross-analysis handoffs");
 
-        // 旧收尾（删除草稿单→分析同步取消）依赖「直下单停留在草稿」的前置，提交成功后
-        // 已不成立；该取消联动语义由其它草稿删除用例覆盖，这里不再重复走删除路径。
+        loginAs(w.superAdminUserId());
+        subcontractOrderService.delete(subcontractOrderId);
+        assertEquals("CANCELLED",strFor("select status from production_material_analyses where id=?",startedAnalysisId),
+                "取消原草稿必须同步取消尚未排产准备，不能残留无需求任务");
+        assertEquals(1,count("select count(*) from subcontract_orders where id=? and is_deleted",subcontractOrderId));
     }
 
 

@@ -100,7 +100,12 @@ void main() {
       // 2026-09-15 用户口径「点击编辑报错」：原守卫在当前默认结账方式已停用时
       // 直接报错拦死编辑。现改为追加带「已停用」标注的选项保住原值（客户可顺手
       // 改掉），编辑不再被单个字典值挡住；V592 默认币种同款保值。
-      expect(edit, contains('settlementOptions.any((m) => m.id == d.defaultSettlementMethodId)'));
+      expect(
+        edit,
+        contains(
+          'settlementOptions.any((m) => m.id == d.defaultSettlementMethodId)',
+        ),
+      );
       expect(edit, contains('已停用'));
       expect(edit, isNot(contains('请先修复客户结账方式关联')));
     });

@@ -58,6 +58,11 @@ LEFT JOIN settlement_methods active
  AND active.status = '使用'
  AND COALESCE(active.is_deleted, FALSE) = FALSE
 WHERE c.id = latest.client_id
+  -- V443 的 clients_online_sales_payment_type_required_chk 是 NOT VALID：老库可能
+  -- 存在 legacy_id 与 sales_payment_type 双空的存量客户行（彩排库 V378 起就是这形态）。
+  -- UPDATE 会对该行重验证全部约束，双空行一碰就 23514。这类行本来就不满足现行
+  -- 口径、也不该被本回填改写，直接跳过。
+  AND (c.legacy_id IS NOT NULL OR c.sales_payment_type IS NOT NULL)
   AND (c.default_settlement_method_id IS DISTINCT FROM
             COALESCE(active.id, c.default_settlement_method_id)
        OR c.price_style IS DISTINCT FROM

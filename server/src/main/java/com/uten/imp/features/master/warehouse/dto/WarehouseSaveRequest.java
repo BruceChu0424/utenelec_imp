@@ -24,6 +24,8 @@ public class WarehouseSaveRequest {
     private String location;         // 仓库位置
     private String remark;           // 备注
     private Boolean accountable;     // 是否参与库存核算（null 时保留默认 true）
+    /** 线边仓标记（V584）：null=不改；新建默认否。置「是」须同时有所属车间且参与核算。 */
+    private Boolean isLineSide;
     private UUID workshopDepartmentId;
     @JsonIgnore
     private boolean workshopDepartmentReferenceSpecified;

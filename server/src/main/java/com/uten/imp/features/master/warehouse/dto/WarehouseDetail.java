@@ -28,4 +28,6 @@ public class WarehouseDetail {
     private Integer legacyId;
     /** 上级仓库（V476 主/子层级）；null=独立顶层。 */
     private UUID parentId;
+    /** 线边仓标记（V584 车间内部直送）：车间自己的料架，直送候选与投入都指向它。 */
+    private boolean lineSide;
 }

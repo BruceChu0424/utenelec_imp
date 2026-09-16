@@ -1,8 +1,8 @@
 // 工资条详情页
 // 文档：docs/03-页面/工资条详情页.md（待写）
 //
-// 响应式：全断点套 UtenContentContainer.narrow（maxWidth 1120）——
-// 外壳只收敛到 1600，详情页需自行钳窄居中
+// 响应式：全断点套默认 UtenContentContainer（1600 钳制居中）——
+// 2026-09-15 弃 narrow(1120)：两侧大留白，对齐新建销售订货单页
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

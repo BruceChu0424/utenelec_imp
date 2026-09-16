@@ -121,7 +121,9 @@ class _FinanceArrivalExceptionTasksPageState
           total: 0,
           totalPages: 1,
         );
-    return UtenContentContainer.narrow(
+    // 2026-09-15 宽度口径（用户反馈）：弃 narrow（1120 两侧大留白），
+    // 改默认容器对齐新建销售订货单页。
+    return UtenContentContainer(
       child: RefreshIndicator(
         onRefresh: () => _load(result.page),
         child: ListView(
@@ -545,7 +547,9 @@ class _FinanceArrivalExceptionDetailPageState
               )
             : task == null
             ? UtenEmpty.error(message: '任务不存在或并非分配给您')
-            : UtenContentContainer.narrow(
+            // 2026-09-15 宽度口径（用户反馈）：弃 narrow（1120 两侧大留白），
+            // 改默认容器对齐新建销售订货单页。
+            : UtenContentContainer(
                 child: ListView(
                   // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
                   padding: const EdgeInsets.fromLTRB(

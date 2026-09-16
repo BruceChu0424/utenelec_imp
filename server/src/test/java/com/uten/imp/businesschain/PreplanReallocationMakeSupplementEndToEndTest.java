@@ -166,9 +166,14 @@ class PreplanReallocationMakeSupplementEndToEndTest {
         // V581 起「只有一个叶子子件」的委外件走 COMPONENT_OUTBOUND 委外下达，issue-plans
         // 拒收；本用例测「让料后补 4 件」的前置自制链，挂第二颗采购叶子让它保留车间路线
         //（同 MaterialWorkshopAnchorEndToEndTest#createMixed 的做法，路线映射里补 BUY）。
+        // goodsD 库存要等两张分析的路由都定型后再补（preview 前播种会把该行折叠成
+        // 不可行动行致 saveRoutes 悬空），见下方 yieldFour 之后。
         fixture.insertBom(c.child(),c.world().goodsD(),"1");
         ReflectionTestUtils.invokeMethod(fixture,"putDirectTargetStock",c.world(),c.raw(),"10");
         AnalysisView a=preview(c,"A","10");UUID materialId=material(a,c.child()).materialLineId();
+        // 路由定型后、下达前补 goodsD 库存：段的就绪在下达时实时重算（库存变化不作废
+        // 请求 CAS），而 preview 前播种会把 goodsD 行折叠成不可行动行令 saveRoutes 悬空。
+        ReflectionTestUtils.invokeMethod(fixture,"putDirectTargetStock",c.world(),c.world().goodsD(),"100");
         var first=commands.issueWorkshopPlans(a.analysisId(),planRequest(c,a,materialId,"10","submake-first-"+a.analysisId())).plans().getFirst();
         UUID childItem=db.queryForObject("SELECT material_analysis_item_id FROM production_plans WHERE id=?",UUID.class,first.planId());
         finish(c,first,"10");

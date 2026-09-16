@@ -30,4 +30,6 @@ public class WarehouseListItem {
     private UUID parentId;
     /** 上级仓库名称（列表列展示用；独立顶层为 null）。 */
     private String parentName;
+    /** 线边仓标记（V584 车间内部直送）。 */
+    private boolean lineSide;
 }

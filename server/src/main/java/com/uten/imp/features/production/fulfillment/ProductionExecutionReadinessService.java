@@ -841,6 +841,17 @@ public class ProductionExecutionReadinessService
         tryPromote(segmentId, segmentId, warehouseId, ReceiptKind.RECHECK);
     }
 
+    /**
+     * 车间内部直送后的齐套重算(V584/ADR-087)：**尽力而为**——上层工单还缺别的料、
+     * 或采购/委外供给未完成来源入库时都静默返回，料留在线边仓等既有就绪补偿，
+     * 绝不把「上层没齐套」抛成报工审核的失败。缺料原因要抛错解释的是
+     * {@link #promoteAfterMaterialRecheck} 那条人工重核路径，不是这里。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void promoteAfterWorkshopDirectTransfer(UUID segmentId, UUID warehouseId) {
+        tryPromote(segmentId, segmentId, warehouseId, ReceiptKind.RECHECK, null, true);
+    }
+
     private void tryPromote(
             UUID segmentId,
             UUID triggeringReceiptId,
@@ -870,6 +881,21 @@ public class ProductionExecutionReadinessService
             UUID expectedWarehouseId,
             ReceiptKind triggeringKind,
             PromotionActor systemActor) {
+        tryPromote(segmentId, triggeringReceiptId, expectedWarehouseId,
+                triggeringKind, systemActor, false);
+    }
+
+    /**
+     * @param tolerateShortage 车间直送路径为 true：缺料与供给未齐都静默返回，
+     *                         不把「上层没齐套」抛成报工审核的失败(ADR-087 §2.3)。
+     */
+    private void tryPromote(
+            UUID segmentId,
+            UUID triggeringReceiptId,
+            UUID expectedWarehouseId,
+            ReceiptKind triggeringKind,
+            PromotionActor systemActor,
+            boolean tolerateShortage) {
         lockExecutionSegmentMaterialDimensions(
                 segmentId, expectedWarehouseId);
         List<Object[]> segmentRows = NativeQueryResults.objectArrayRows(
@@ -955,7 +981,8 @@ public class ProductionExecutionReadinessService
         }
 
         if (!isFullyAvailable(warehouseId, demands, analysisId, analysisItemId,
-                triggeringKind == ReceiptKind.RECHECK)) {
+                !tolerateShortage
+                        && triggeringKind == ReceiptKind.RECHECK)) {
             return;
         }
 
@@ -972,7 +999,7 @@ public class ProductionExecutionReadinessService
          * releases a purchase/subcontract peg.
          */
         if (!contributionsCoverOpenSupply(demands, contributions)) {
-            if (triggeringKind == ReceiptKind.RECHECK) {
+            if (!tolerateShortage && triggeringKind == ReceiptKind.RECHECK) {
                 throw conflict("采购或委外供给尚未完成对应来源入库，仍须等待仓库实际入库");
             }
             return;

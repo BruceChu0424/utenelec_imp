@@ -171,6 +171,19 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
         onChanged: field.onChanged,
       ),
     ),
+    // V584 车间内部直送：线边仓=车间自己的料架。直送产出先进它再投给同车间上层工单，
+    // 仓库部门不参与；置「是」要求已选所属车间、参与核算、且是叶子仓。
+    const MasterFieldDef(
+      key: 'isLineSide',
+      label: '线边仓',
+      group: '基础',
+      type: MasterFieldType.select,
+      hint: '车间内部直送用；须有所属车间且参与核算',
+      options: [
+        MasterSelectOption(value: 'false', label: '否'),
+        MasterSelectOption(value: 'true', label: '是(车间料架)'),
+      ],
+    ),
     // V476 主/子层级：上级仓库。不选=独立顶层；父仓仅作查询聚合与下拉分组。
     MasterFieldDef(
       key: 'parentId',
@@ -199,7 +212,11 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       context: context,
       title: '新增仓库',
       fields: _fields(),
-      initialValues: const {'accountable': 'true', 'status': '使用'},
+      initialValues: const {
+        'accountable': 'true',
+        'isLineSide': 'false',
+        'status': '使用',
+      },
       readOnlyKeys: _canStatus ? null : const {'status'},
       onSubmit: _doCreate,
     );
@@ -229,6 +246,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
         'location': d.location ?? '',
         'accountable': d.accountable ? 'true' : 'false',
         'workshopDepartmentId': d.workshopDepartmentId ?? '',
+        'isLineSide': d.lineSide ? 'true' : 'false',
         'parentId': d.parentId ?? '',
         'status': d.status ?? '',
       },
@@ -348,6 +366,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     MasterDetailRow('仓库名称', w.name),
     MasterDetailRow('位置', w.location),
     MasterDetailRow('是否核算', w.accountable ? '是' : '否'),
+    MasterDetailRow('线边仓', w.lineSide ? '是(车间内部直送用)' : '否'),
     MasterDetailRow('备注', w.remark),
     MasterDetailRow('状态', w.status),
     MasterDetailRow('所属车间', w.workshopDepartmentName),

@@ -218,6 +218,7 @@ public class WarehouseService {
         w.setLocation(req.getLocation());
         w.setRemark(req.getRemark());
         if (req.getAccountable() != null) w.setAccountable(req.getAccountable());
+        if (req.getIsLineSide() != null) w.setLineSide(req.getIsLineSide());
         if (req.hasWorkshopDepartmentReference()) {
             DepartmentReference workshop = requireWorkshop(req.getWorkshopDepartmentId());
             w.setWorkshopDepartmentId(workshop == null ? null : workshop.id());
@@ -226,6 +227,28 @@ public class WarehouseService {
             w.setParentId(requireValidParent(w, req.getParentId()));
         }
         w.setStatus(req.getStatus());
+        requireLineSideShape(w);
+    }
+
+    /**
+     * 线边仓形状校验（V584）：归属一个车间、参与核算、叶子仓。数据库触发器
+     * {@code fn_guard_warehouse_line_side} 兜底同款规则，这里前置成中文报错，
+     * 另有「还有余额时不许摘线边标记」仅由触发器把关。
+     */
+    private void requireLineSideShape(Warehouse w) {
+        if (!w.isLineSide()) return;
+        if (w.getWorkshopDepartmentId() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "线边仓必须归属一个生产车间，请先选所属车间");
+        }
+        if (!w.isAccountable()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "线边仓必须参与核算（库存按它记账，否则直送的完工与成本结不出来）");
+        }
+        if (w.getId() != null && repo.existsByParentIdAndDeletedFalse(w.getId())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "线边仓必须是叶子仓，该仓库下面还有子仓");
+        }
     }
 
     /**
@@ -261,7 +284,7 @@ public class WarehouseService {
         return new WarehouseDetail(w.getId(), w.getCode(), w.getName(), w.getLocation(), w.getRemark(),
                 w.isAccountable(), workshopId, workshopName, w.getLegacyOperatorId(),
                 w.getWorkshopLegacyId(),
-                w.getStatus(), w.getLegacyId(), w.getParentId());
+                w.getStatus(), w.getLegacyId(), w.getParentId(), w.isLineSide());
     }
 
     private WarehouseListItem toList(Warehouse w, Map<UUID, String> workshopNames,
@@ -272,7 +295,8 @@ public class WarehouseService {
         return new WarehouseListItem(w.getId(), w.getCode(), w.getName(), w.getLocation(), w.getRemark(),
                 w.isAccountable(), workshopId, workshopName, w.getLegacyOperatorId(),
                 w.getWorkshopLegacyId(),
-                w.getStatus(), w.getLegacyId(), w.getParentId(), parentNames.get(w.getParentId()));
+                w.getStatus(), w.getLegacyId(), w.getParentId(), parentNames.get(w.getParentId()),
+                w.isLineSide());
     }
 
     /** 上级仓库名称（V476 层级列表列）：仓库量级个位数，全量载入一次建 id→name。 */

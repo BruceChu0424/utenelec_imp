@@ -97,7 +97,9 @@ final class MigrationRehearsalSupport {
         for (Map.Entry<String, Long> entry : before.tableRows().entrySet()) {
             Long afterCount = after.tableRows().get(entry.getKey());
             if (!entry.getValue().equals(afterCount)
-                    && !EXPECTED_ROW_COUNT_MUTATIONS.contains(entry.getKey())) {
+                    && !EXPECTED_ROW_COUNT_MUTATIONS.contains(entry.getKey())
+                    // 整表废弃后行数 0 -> null 同样合法（表已点名豁免删除）。
+                    && !intentionallyDropped.contains(entry.getKey())) {
                 unexpected.put(entry.getKey(), entry.getValue() + " -> " + afterCount);
             }
         }

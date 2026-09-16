@@ -1679,22 +1679,23 @@ public class MaterialAnalysisCommandService {
             taskId = existing.getFirst();
             // 任务需求量 = 任务行需求量（重下达只增不减）+ 仍未撤销的前置自制
             // 行动带来的公共备货产出（V589：车间腿超量由台账如实承接）。
+            // 公共备货合计写成 SET 里的标量子查询：UPDATE ... FROM 的 LATERAL
+            // 不允许引用更新目标别名 task（PG 报 invalid reference to FROM-clause）。
             em.createNativeQuery("""
                     UPDATE preplan_subcontract_make_tasks task
-                    SET required_qty = item.requested_qty + COALESCE(surplus.total, 0),
+                    SET required_qty = item.requested_qty + COALESCE((
+                            SELECT SUM(action.public_surplus_qty)
+                            FROM preplan_supply_actions action
+                            JOIN preplan_supply_action_allocations allocation
+                              ON allocation.action_id = action.id
+                             AND allocation.analysis_material_id = task.analysis_material_id
+                            WHERE action.analysis_id = task.analysis_id
+                              AND action.external_document_type = 'SUBCONTRACT_MAKE_TASK'
+                              AND action.status <> 'CANCELLED'
+                        ), 0),
                         version = task.version + 1,
                         updated_by = :actorId, updated_at = now()
                     FROM production_material_analysis_items item
-                    LEFT JOIN LATERAL (
-                        SELECT SUM(action.public_surplus_qty) AS total
-                        FROM preplan_supply_actions action
-                        JOIN preplan_supply_action_allocations allocation
-                          ON allocation.action_id = action.id
-                         AND allocation.analysis_material_id = task.analysis_material_id
-                        WHERE action.analysis_id = task.analysis_id
-                          AND action.external_document_type = 'SUBCONTRACT_MAKE_TASK'
-                          AND action.status <> 'CANCELLED'
-                    ) surplus ON TRUE
                     WHERE task.id = :taskId
                       AND item.id = task.preparation_item_id
                     """)

@@ -744,9 +744,9 @@ class _ProductionDailyReportEditPageState
 
   /// 拉每个成品行可转送的同车间上层工单(V584/V585)。
   ///
-  /// 只有一个候选时直接选中——用户口径「能简化就简化」，多数情况下下游就一个。
+  /// 只有一个候选时直接选中——用户口径「能简化就简化」，多数情况下同车间上层工单就一个。
   /// 一个候选都没有时「转下一道工序」保持不可选，并把已选的去向退回送仓库，
-  /// 避免留下一个选了去向却投不出去的行。
+  /// 避免留下一个选了去向却投不出去的行；缺线边仓时另标原因，提示去建线边仓。
   Future<void> _reloadDirectTransferCandidates() async {
     final repo = ref.read(productionMaterialRepositoryProvider);
     final rows = [
@@ -757,14 +757,17 @@ class _ProductionDailyReportEditPageState
       for (final row in rows)
         () async {
           try {
-            row.directTransferCandidates = await repo.directTransferCandidates(
+            final result = await repo.directTransferCandidates(
               executionSegmentId: row.executionSegmentId!,
               goodsId: row.goods!.id,
               colorId: row.colorId,
             );
+            row.directTransferCandidates = result.candidates;
+            row.lineSideWarehouseMissing = result.lineSideWarehouseMissing;
           } catch (_) {
             // 读不到候选不拦报工：这一行退回送仓库那条老路。
             row.directTransferCandidates = const [];
+            row.lineSideWarehouseMissing = false;
           }
           if (row.directTransferCandidates.isEmpty) {
             row.destination = 'WAREHOUSE';

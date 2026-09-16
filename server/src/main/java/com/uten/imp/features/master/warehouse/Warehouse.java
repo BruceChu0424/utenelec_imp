@@ -60,6 +60,14 @@ public class Warehouse extends SoftDeletableEntity {
     private UUID workshopDepartmentId;
 
     /**
+     * 线边仓标记（V584 车间内部直送）：车间自己的料架，参与核算、非不良、叶子仓、
+     * 必须归属一个车间。形状由 fn_guard_warehouse_line_side 在数据库层兜底；
+     * 本字段是主档唯一维护入口（ADR-087）。
+     */
+    @Column(name = "is_line_side", nullable = false)
+    private boolean lineSide = false;
+
+    /**
      * 上级仓库（V476 主/子层级）：null=独立顶层。父仓仅作查询聚合与下拉分组，
      * 单据/收发存仍落到具体仓库；保存时服务端校验防环（见 WarehouseService）。
      */

@@ -15,8 +15,10 @@
 // 页内自动轮询做结构重建的页面（如生产物料分析）必须传 selectable:false 退出。
 //
 // 用法：
-//   UtenContentContainer(child: 页面内容)          // 列表/工作台等宽页面
-//   UtenContentContainer.narrow(child: 表单)       // 表单/详情等窄页面（maxWidth 1120）
+//   UtenContentContainer(child: 页面内容)          // 列表/工作台等宽页面；2026-09-15 起
+//                                                   // 单据详情/财审/任务详情类页面同用默认
+//                                                   // 容器（1600 钳制），对齐新建销售订货单页
+//   UtenContentContainer.narrow(child: 表单)       // 输入表单/设置等窄页面（maxWidth 1120）
 //   UtenContentContainer.wide(child: 列表/报表)    // 数据页全宽（不钳制、靠左顶满侧栏右沿）
 
 import 'dart:math' as math;
@@ -39,7 +41,9 @@ class UtenContentContainer extends StatelessWidget {
     this.selectable = true,
   });
 
-  /// 窄内容变体：表单 / 详情页专用（maxWidth 1120）
+  /// 窄内容变体：输入表单 / 设置页专用（maxWidth 1120）。
+  /// 2026-09-15 起：单据详情/财审/任务详情类页面改用默认容器（1600 钳制），
+  /// narrow 只留给纯表单与设置页（用户口径：详情类页面两侧不留大空白）。
   factory UtenContentContainer.narrow({
     Key? key,
     required Widget child,

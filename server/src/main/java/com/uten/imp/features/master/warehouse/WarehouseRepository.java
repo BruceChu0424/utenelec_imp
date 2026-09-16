@@ -29,4 +29,7 @@ public interface WarehouseRepository extends JpaRepository<Warehouse, UUID>, Jpa
 
     /** 批量按 legacy_id 取未软删记录（单据仓库解析用）。 */
     List<Warehouse> findByLegacyIdInAndDeletedFalse(Collection<Integer> legacyIds);
+
+    /** 线边仓叶子校验（V584）：该仓还有未软删子仓时不能标线边。 */
+    boolean existsByParentIdAndDeletedFalse(UUID parentId);
 }

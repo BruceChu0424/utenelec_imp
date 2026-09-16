@@ -74,17 +74,32 @@ public class ProductionWorkshopDirectTransferService {
             String unitName,
             BigDecimal requiredQty,
             BigDecimal alreadyCoveredQty,
-            BigDecimal remainingQty) {
+            BigDecimal remainingQty,
+            String receivingGoodsCode,
+            String receivingGoodsName) {
+    }
+
+    /**
+     * 候选列表 + 空候选的原因标记。
+     *
+     * <p>{@code lineSideWarehouseMissing}：同车间明明有还缺料的上层工单，但本车间没有
+     * 与收料需求同主仓的线边仓——界面据此提示「先建线边仓」，而不是笼统的「没有可投的上层」。
+     * 曾因缺这个区分，真实链路(父子同车间)在界面上永远显示「无下游」，被误读成方向查错。
+     */
+    public record CandidateListing(
+            List<Candidate> candidates,
+            boolean lineSideWarehouseMissing) {
     }
 
     /**
      * 列出这条报工行可以投给谁。
      *
      * <p>只列同车间的段：跨车间必须走仓库(数据库守卫也会拒)。已开工且需求已领齐的段
-     * 不列——料投过去也挂不上，只会变成线边仓的呆料。
+     * 不列——料投过去也挂不上，只会变成线边仓的呆料。同车间上层工单存在但线边仓缺失时，
+     * 候选为空并带 {@code lineSideWarehouseMissing=true}。
      */
     @Transactional(readOnly = true)
-    public List<Candidate> candidates(UUID executionSegmentId, UUID goodsId, UUID colorId) {
+    public CandidateListing candidates(UUID executionSegmentId, UUID goodsId, UUID colorId) {
         if (executionSegmentId == null || goodsId == null) {
             throw validation("请先选择报工来源工单与货品");
         }
@@ -99,7 +114,16 @@ public class ProductionWorkshopDirectTransferService {
                                    SELECT SUM(covered.qty)
                                    FROM production_workshop_direct_transfer_items covered
                                    WHERE covered.to_demand_id = demand.id
-                                     AND covered.reversal_id IS NULL), 0)
+                                     AND covered.reversal_id IS NULL), 0),
+                               EXISTS (
+                                   SELECT 1 FROM warehouses line_side
+                                   WHERE line_side.is_line_side
+                                     AND line_side.is_deleted = FALSE
+                                     AND line_side.workshop_department_id
+                                         = producing.workshop_department_id
+                                     AND fn_warehouse_same_main(
+                                         line_side.id, demand.warehouse_id)),
+                               receiving_product.code, receiving_product.name
                         FROM production_execution_segments producing
                         JOIN production_execution_segments receiving
                           ON receiving.workshop_department_id = producing.workshop_department_id
@@ -116,37 +140,38 @@ public class ProductionWorkshopDirectTransferService {
                           ON plan.id = receiving.plan_id AND plan.is_deleted = FALSE
                          AND plan.is_canceled = FALSE AND plan.is_stopped = FALSE
                         LEFT JOIN goods ON goods.id = demand.goods_id
+                        LEFT JOIN goods receiving_product
+                          ON receiving_product.id = receiving.product_goods_id
                         LEFT JOIN colors color ON color.id = demand.color_id
                         LEFT JOIN units unit ON unit.id = demand.unit_id
                         WHERE producing.id = :segmentId
                           AND producing.is_deleted = FALSE
                           AND producing.workshop_department_id IS NOT NULL
-                          AND EXISTS (
-                              SELECT 1 FROM warehouses line_side
-                              WHERE line_side.is_line_side
-                                AND line_side.is_deleted = FALSE
-                                AND line_side.workshop_department_id
-                                    = producing.workshop_department_id
-                                AND fn_warehouse_same_main(
-                                    line_side.id, demand.warehouse_id))
                         ORDER BY plan.bill_no, receiving.segment_code, demand.id
                         """)
                 .setParameter("segmentId", executionSegmentId)
                 .setParameter("goodsId", goodsId)
                 .setParameter("colorId", colorId));
         List<Candidate> out = new ArrayList<>(rows.size());
+        boolean eligibleWithoutLineSide = false;
         for (Object[] row : rows) {
             BigDecimal required = decimal(row[10]);
             BigDecimal covered = decimal(row[11]);
             BigDecimal remaining = required.subtract(covered);
             if (remaining.signum() <= 0) continue;
+            boolean lineSideReady = (Boolean) row[12];
+            if (!lineSideReady) {
+                eligibleWithoutLineSide = true;
+                continue;
+            }
             out.add(new Candidate(
                     (UUID) row[0], (UUID) row[1], (String) row[2],
                     (UUID) row[3], (String) row[4], (UUID) row[5],
                     (String) row[6], (String) row[7], (String) row[8], (String) row[9],
-                    required, covered, remaining));
+                    required, covered, remaining,
+                    (String) row[13], (String) row[14]));
         }
-        return List.copyOf(out);
+        return new CandidateListing(List.copyOf(out), out.isEmpty() && eligibleWithoutLineSide);
     }
 
     /**
@@ -341,10 +366,11 @@ public class ProductionWorkshopDirectTransferService {
      *
      * <p>这一步是**尽力而为**：上层还缺别的料时不算失败，料留在线边仓里等后续到料，
      * 既有的就绪补偿会在齐套时自动提升。绝不因为上层没齐套就把整张报工审核回滚掉。
+     * 用户口径(2026-09-15)：「父件下面其他物料不齐没关系，各自完成送过去就行，不用卡着。」
      */
     private void handOverToReceivingSegment(Resolved resolved) {
         if (resolved.packageWarehouseId() == null) return;
-        readiness.promoteAfterMaterialRecheck(
+        readiness.promoteAfterWorkshopDirectTransfer(
                 resolved.receivingSegmentId(), resolved.packageWarehouseId());
         stockDocs.issueWorkshopDirectTransferDraws(
                 resolved.receivingSegmentId(), resolved.lineSideWarehouseId(),

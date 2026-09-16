@@ -221,12 +221,14 @@ class ProductionMaterialRepository {
 
   /// 报工页「转下一道工序」的候选上层工单(V584/V585)。
   /// 服务端只返回同车间、同货品同颜色、还缺料的工单——跨车间必须走仓库。
-  Future<List<ProductionDirectTransferCandidate>> directTransferCandidates({
+  /// 候选为空且 [DirectTransferCandidatesResult.lineSideWarehouseMissing]
+  /// 时，是本车间缺同主仓线边仓，不是没有上层工单可投。
+  Future<DirectTransferCandidatesResult> directTransferCandidates({
     required String executionSegmentId,
     required String goodsId,
     String? colorId,
   }) async {
-    final rows = await api.getList(
+    final json = await api.get(
       '/production/direct-transfers/candidates',
       query: {
         'executionSegmentId': executionSegmentId,
@@ -234,9 +236,7 @@ class ProductionMaterialRepository {
         'colorId': ?colorId,
       },
     );
-    return rows
-        .map(ProductionDirectTransferCandidate.fromJson)
-        .toList(growable: false);
+    return DirectTransferCandidatesResult.fromJson(json);
   }
 
   Future<ProductionMaterialCapabilities> capabilities(

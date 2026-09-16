@@ -64,6 +64,11 @@ class SubcontractPreparationActualWarehousePostgresTest {
         // 拒收；本用例测「订货专属委外前置产出」的车间链，挂第二颗采购叶子保留车间路线
         //（同 MaterialWorkshopAnchorEndToEndTest#createMixed 的做法）。
         fixture.insertBom(product,w.goodsD(),"1");
+        // 下达后补 goodsD 库存（preview 前播种会把该行折叠成不可行动行致 saveRoutes 悬空）。
+        call(fixture,"putDirectTargetStock",w,w.goodsD(),"100");
+        // goodsC 是齐套 kit 的自制叶子：同样要备料，否则 CompleteKitAllocator 判 WAITING、
+        // 段永远起不来（绿版这里有 putDirectTargetStock(goodsC,"1")，V581 适配时被误删）。
+        call(fixture,"putDirectTargetStock",w,w.goodsC(),"1");
         OrderSaveRequest request=call(fixture,"directSubcontractDraft",w,product,(Object)new String[]{"1"});
         var order=orders.create(request);UUID orderItem=order.getItems().getFirst().getId();
         UUID analysis=db.queryForObject("SELECT analysis_id FROM production_material_analysis_items WHERE subcontract_order_item_id=?",UUID.class,orderItem);

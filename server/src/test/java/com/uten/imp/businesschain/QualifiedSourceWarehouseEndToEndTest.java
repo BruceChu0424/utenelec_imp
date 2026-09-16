@@ -302,6 +302,9 @@ class QualifiedSourceWarehouseEndToEndTest {
         lines.add(new IssueWorkshopPlansRequest.IssuePlanLine(parentAnalysis,BigDecimal.ONE));
         commands.issueWorkshopPlans(view.analysisId(),new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),"make-issue-"+parent,
                 w.warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,lines));
+        // 第二颗采购叶子(goodsD)的路由与下达都定型后再补库存：preview 时无货才保持
+        // 可行动行，段就绪是实时读库存，晚播不影响（V581 夹具形态见上）。
+        call("putDirectTargetStock",w,w.goodsD(),"100");
         UUID parentPlan=db.queryForObject("SELECT id FROM production_plans WHERE material_analysis_item_id=?",UUID.class,parentAnalysis);
         UUID childAnchor=db.queryForObject("SELECT id FROM production_material_analysis_items WHERE analysis_id=? AND parent_analysis_material_id=? AND NOT is_deleted",UUID.class,view.analysisId(),childMaterial);
         UUID childPlan=db.queryForObject("SELECT id FROM production_plans WHERE material_analysis_item_id=?",UUID.class,childAnchor);

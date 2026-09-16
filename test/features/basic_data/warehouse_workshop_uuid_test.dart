@@ -37,4 +37,15 @@ void main() {
     expect(warehouse.workshopDepartmentId, isNull);
     expect(warehouse.legacyOperatorId, 174);
   });
+
+  test('line-side flag parses and defaults to false (V584)', () {
+    final plain = WarehouseDetail.fromJson(const {'id': 'warehouse-uuid'});
+    final lineSide = WarehouseListItem.fromJson(const {
+      'id': 'line-side-uuid',
+      'lineSide': true,
+    });
+
+    expect(plain.lineSide, isFalse, reason: '老负载没有 lineSide 字段时必须回退为普通仓');
+    expect(lineSide.lineSide, isTrue);
+  });
 }

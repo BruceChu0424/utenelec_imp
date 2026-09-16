@@ -365,7 +365,8 @@ class _ProductionDailyReportDetailPageState
             columns: [
               // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
               // 同名不同编号的货品（自制/委外两条同名成品）在日报里必须分得开，
-              // 否则审核时会认错货。单位没有独立列，仍留在名称格副行。
+              // 否则审核时会认错货。2026-09-15 起单位也不再并入名称格副行，
+              // 颜色后面独立一列（用户口径）。
               MasterColumnDef(
                 key: 'goods',
                 label: '货品名称',
@@ -374,7 +375,6 @@ class _ProductionDailyReportDetailPageState
                 cellBuilderHandlesSemantics: true,
                 cellBuilder: (_, it) => UtenGoodsIdentityCell(
                   name: _dictText(names.goods(it.goodsId)),
-                  unit: _dictText(names.unit(it.unitId)),
                 ),
               ),
               MasterColumnDef(
@@ -396,6 +396,16 @@ class _ProductionDailyReportDetailPageState
                 ),
                 cellBuilder: (_, it) =>
                     UtenGoodsAttributeCell(_dictText(names.color(it.colorId))),
+              ),
+              MasterColumnDef(
+                key: 'unitName',
+                label: '单位',
+                width: 72,
+                value: (it) => UtenGoodsAttributeCell.text(
+                  _dictText(names.unit(it.unitId)),
+                ),
+                cellBuilder: (_, it) =>
+                    UtenGoodsAttributeCell(_dictText(names.unit(it.unitId))),
               ),
               MasterColumnDef(
                 key: 'qty',

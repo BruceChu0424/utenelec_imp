@@ -23,6 +23,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
@@ -766,9 +767,11 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           children: [
             SafeArea(
               child: UtenContentContainer(
+                // 2026-09-15 宽度口径（用户反馈）：非普通出库弃 narrow(1120)（两侧
+                // 大留白），改默认 1600 钳制对齐新建销售订货单页；普通出库仍全宽。
                 maxWidth: _isOrdinaryOutbound
                     ? UtenContentContainer.wideMaxWidth
-                    : UtenContentContainer.narrowMaxWidth,
+                    : UtenBreakpoints.maxContentWidth,
                 center: !_isOrdinaryOutbound,
                 child: _loading
                     ? const Center(

@@ -97,8 +97,12 @@ class DailyGridRow extends EditableGridRow {
   set directTransfer(ProductionDirectTransferCandidate? value) =>
       directTransferNotifier.value = value;
 
-  /// 本行可选的上层工单；空列表 = 这一行没有同车间的下游可转。
+  /// 本行可选的上层工单；空列表 = 这一行没有同车间的上层工单可转。
   List<ProductionDirectTransferCandidate> directTransferCandidates = const [];
+
+  /// 候选为空的原因：同车间有还缺料的上层工单，但本车间没有同主仓线边仓。
+  /// 界面据此提示「先建线边仓」，而不是笼统的「没有可转的上层」。
+  bool lineSideWarehouseMissing = false;
 
   bool get isMaterialRow => depth > 0;
 
@@ -436,11 +440,13 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
     EditableGridColumn<DailyGridRow>(
       key: 'destination',
       label: '产出去向',
-      width: 150,
+      width: 185,
       headerInfo:
           '「送入仓库」= 交仓库送检登记、品质部检验、点收入库(默认)。\n'
-          '「转下一道工序」= 班组自检合格后不入库，直接投给**本车间**的上层工单；'
-          '审核时自动完成放行、入本车间线边仓和投入，不用再走领料。\n'
+          '「转下一道工序」= 班组自检合格后不入库，直接投给**本车间**的上层工单'
+          '(父件)；审核时自动完成放行、入本车间线边仓和投入，不用再走领料。\n'
+          '前提：本车间有与收料工单同主仓的**线边仓**(基础资料·仓库 里标记)，'
+          '没有时先建线边仓。\n'
           '跨车间必须走仓库——料离开本车间就脱离同一批人的视线。',
       textOf: (r) =>
           r.isMaterialRow ? '' : (r.isDirectTransfer ? '转下一道工序' : '送入仓库'),
@@ -465,7 +471,13 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                   value: 'WORKSHOP',
                   enabled: canTransfer,
                   child: Text(
-                    canTransfer ? '转下一道工序' : '转下一道工序(无下游)',
+                    canTransfer
+                        ? '转下一道工序'
+                        : (row.lineSideWarehouseMissing
+                              ? '转下一道工序(缺线边仓)'
+                              : '转下一道工序(无同车间上层工单)'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: canTransfer
                         ? null
                         : TextStyle(
@@ -521,14 +533,46 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                       decoration: const UtenInputDecoration(
                         InputDecoration(isDense: true, hintText: '选择上层工单'),
                       ),
+                      // 收起态一行(父件产品·还差多少)，下拉项两行(产品名+编号 / 工单号·还差)：
+                      // 车间认「投给谁」认的是父件产品，工单号放第二行不挤占首行。
+                      selectedItemBuilder: (context) => [
+                        for (final candidate in row.directTransferCandidates)
+                          Text(
+                            candidate.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
                       items: [
                         for (final candidate in row.directTransferCandidates)
                           DropdownMenuItem(
                             value: candidate.demandId,
-                            child: Text(
-                              candidate.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  candidate.receivingGoodsLabel.isEmpty
+                                      ? candidate.label
+                                      : candidate.receivingGoodsLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                Text(
+                                  candidate.secondaryLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                       ],

@@ -39,6 +39,7 @@ class WarehouseListItem {
     this.legacyId,
     this.parentId,
     this.parentName,
+    this.lineSide = false,
   });
 
   final String id;
@@ -61,6 +62,9 @@ class WarehouseListItem {
   /// 上级仓库名称（列表列展示用）。
   final String? parentName;
 
+  /// 线边仓（V584 车间内部直送）：车间自己的料架，直送产出先进它再投给上层工单。
+  final bool lineSide;
+
   factory WarehouseListItem.fromJson(Map<String, dynamic> json) =>
       WarehouseListItem(
         id: json['id'] as String,
@@ -78,6 +82,7 @@ class WarehouseListItem {
         legacyId: (json['legacyId'] as num?)?.toInt(),
         parentId: json['parentId'] as String?,
         parentName: json['parentName'] as String?,
+        lineSide: (json['lineSide'] as bool?) ?? false,
       );
 }
 
@@ -95,6 +100,7 @@ class WarehouseDetail {
     this.status,
     this.legacyId,
     this.parentId,
+    this.lineSide = false,
   });
 
   final String id;
@@ -114,6 +120,9 @@ class WarehouseDetail {
   /// 上级仓库（V476 主/子层级）；null=独立顶层。
   final String? parentId;
 
+  /// 线边仓（V584 车间内部直送）。
+  final bool lineSide;
+
   factory WarehouseDetail.fromJson(Map<String, dynamic> json) =>
       WarehouseDetail(
         id: json['id'] as String,
@@ -130,6 +139,7 @@ class WarehouseDetail {
         status: json['status'] as String?,
         legacyId: (json['legacyId'] as num?)?.toInt(),
         parentId: json['parentId'] as String?,
+        lineSide: (json['lineSide'] as bool?) ?? false,
       );
 }
 

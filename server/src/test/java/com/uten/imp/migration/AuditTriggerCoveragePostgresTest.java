@@ -70,7 +70,14 @@ class AuditTriggerCoveragePostgresTest {
         assertEquals(oldBusiness,db.queryForObject("SELECT to_jsonb(opening)::text FROM stock_value_openings opening WHERE event_id=?",String.class,oldOpening.eventId()));
         assertEquals(oldAudit,auditSnapshotBeforeUpgrade());
         assertEquals(0,db.queryForObject("SELECT count(*) FROM audit_log WHERE target_type='stock_value_openings' AND target_id=?",Integer.class,oldOpening.eventId().toString()),"no historical audit backfill");
-        assertEquals(oldValidTriggers,validOldTriggerSnapshot());
+        // V590 整表废弃 production_goods_workshop_preferences，其 trg_audit_* 随表删除：
+        // 这是唯一被显式豁免的旧触发器（按名字点名，其它丢失仍然算红）。
+        String expectedSurvivingTriggers=db.queryForObject(
+                "SELECT COALESCE(jsonb_agg(value ORDER BY (value->>'oid')::oid),'[]'::jsonb)::text"
+                        +" FROM jsonb_array_elements(?::jsonb) e"
+                        +" WHERE value->>'name' <> 'trg_audit_production_goods_workshop_preferences'",
+                String.class,oldValidTriggers);
+        assertEquals(expectedSurvivingTriggers,validOldTriggerSnapshot());
         for(String table:List.of("procurement_order_source_revisions","procurement_order_source_revision_allocations","procurement_order_source_revision_peg_changes",
                 "stock_value_pools","stock_value_events","stock_value_nodes","stock_value_edges","stock_value_jobs","stock_value_tasks","stock_value_node_revisions","stock_value_postings",
                 "stock_value_openings","stock_value_legacy_balance_cases","stock_value_legacy_balance_case_events","stock_value_acquisition_sources","stock_value_position_transfers",

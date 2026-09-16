@@ -139,7 +139,9 @@ public class ProductionGoodsWorkshopPreferenceService {
                                         IS DISTINCT FROM :workshopId
                                     THEN :workerId
                                 -- 车间没换：本次没选负责人时保留旧记忆。
-                                WHEN :workerId IS NOT NULL
+                                -- IS NOT NULL 上下文推不出参数类型（workerId 可为空），
+                                -- 必须 CAST（PG 42P18 null 参数坑）。
+                                WHEN CAST(:workerId AS uuid) IS NOT NULL
                                     THEN :workerId
                                 ELSE g.owning_responsible_employee_id
                             END

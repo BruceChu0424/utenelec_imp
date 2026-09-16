@@ -2891,13 +2891,17 @@ class FullChainEndToEndTest {
         UUID shipmentId=shipmentService.create(shipment).getId();
         confirmShipmentFinance(shipmentId);
         WarehouseWorkTransitionRequest transition=new WarehouseWorkTransitionRequest();
-        for (String phase:List.of("PICKING","PICKED","SHIPPED")) {
-            transition.setTargetStatus(phase);
-            shipmentService.transitionWarehouseWork(shipmentId,transition);
+        // V582 一步式：中间态删除，出货单建好+财审放行即 PENDING_PICK（已进入仓库执行，
+        // root 撤回被拒）；确认出库后同样被拒。
+        for (String phase:List.of("PENDING_PICK","SHIPPED")) {
+            if (phase.equals("SHIPPED")) {
+                transition.setTargetStatus("SHIPPED");
+                shipmentService.transitionWarehouseWork(shipmentId,transition);
+            }
             AnalysisView current=analysisService.detail(initial.analysisId());
             ApiException blocked=assertThrows(ApiException.class,() -> analysisCommandService.revokeRootOutput(
-                    initial.analysisId(),output,new CancelRequest(current.version(),current.fingerprint(),
-                        "root-guard-"+phase+"-"+order,"已进入仓库执行")));
+                initial.analysisId(),output,new CancelRequest(current.version(),current.fingerprint(),
+                    "root-guard-"+phase+"-"+order,"已进入仓库执行")));
             assertEquals(ErrorCode.CONFLICT,blocked.getCode());
             assertEquals(0,count("select count(*) from preplan_root_output_events where reversed_event_id=?",output));
         }
@@ -6220,10 +6224,10 @@ class FullChainEndToEndTest {
         orderRequest.setItems(List.of(line));
         UUID subcontractOrderId = subcontractOrderService.create(orderRequest).getId();
         UUID orderItemId=jdbc.queryForObject("select id from subcontract_order_items where order_id=? and is_deleted=false",UUID.class,subcontractOrderId);
-        assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,
-                ()->financeApproval.submit("SUBCONTRACT",subcontractOrderId)).getCode());
-        assertEquals(0,intFor("select status from subcontract_orders where id=?",subcontractOrderId));
-        assertEquals(0,count("select count(*) from procurement_order_approval_cases where order_type='SUBCONTRACT' and order_id=?",subcontractOrderId));
+        // 直下单财审口径已放开（V588+/直下单供货流）：准备开始=提交财审，不再整单拒绝；
+        // 本测试主体是「准备开始建立独立分析」，提交成功即进入该路径。
+        financeApproval.submit("SUBCONTRACT",subcontractOrderId);
+        assertEquals(1,count("select count(*) from procurement_order_approval_cases where order_type='SUBCONTRACT' and order_id=?",subcontractOrderId));
         assertEquals(0, count("""
                 SELECT count(*)
                 FROM subcontract_material_plan_items plan_item
@@ -6265,11 +6269,8 @@ class FullChainEndToEndTest {
                 """, startedAnalysisId),
                 "direct-order preparation must not fabricate cross-analysis handoffs");
 
-        loginAs(w.superAdminUserId());
-        subcontractOrderService.delete(subcontractOrderId);
-        assertEquals("CANCELLED",strFor("select status from production_material_analyses where id=?",startedAnalysisId),
-                "取消原草稿必须同步取消尚未排产准备，不能残留无需求任务");
-        assertEquals(1,count("select count(*) from subcontract_orders where id=? and is_deleted",subcontractOrderId));
+        // 旧收尾（删除草稿单→分析同步取消）依赖「直下单停留在草稿」的前置，提交成功后
+        // 已不成立；该取消联动语义由其它草稿删除用例覆盖，这里不再重复走删除路径。
     }
 
 
@@ -6283,8 +6284,8 @@ class FullChainEndToEndTest {
         UUID id=draft.getId(),itemId=draft.getItems().getFirst().getId();
         assertFalse(draft.getWorkflow().isSalesConfirmed());
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->reviewClaims.claim("SALES_SHIPMENT_FINANCE_AUDIT",id.toString())).getCode());
-        var picking=new WarehouseWorkTransitionRequest();picking.setTargetStatus("PICKING");
-        assertThrows(ApiException.class,()->shipmentService.transitionWarehouseWork(id,picking));
+        var outbound=new WarehouseWorkTransitionRequest();outbound.setTargetStatus("SHIPPED");
+        assertThrows(ApiException.class,()->shipmentService.transitionWarehouseWork(id,outbound));
         shipmentService.confirmSales(id,0L);
         var claim=reviewClaims.claim("SALES_SHIPMENT_FINANCE_AUDIT",id.toString());
         var revised=directCustomerShipmentRequest(w,"CHARGED","4");
@@ -6304,24 +6305,18 @@ class FullChainEndToEndTest {
         assertFalse(changed.getWorkflow().isSalesConfirmed());
         assertEquals(1,count("SELECT count(*) FROM sales_shipment_finance_release_events WHERE shipment_id=? AND event_type='REVOKED'",id));
         shipmentService.confirmSales(id,2L);confirmShipmentFinance(id);
-        shipmentService.transitionWarehouseWork(id,picking);
+        // V582 一步式：EXCEPTION/PICKING/PICKED/退拣回路整体删除，财审放行即 PENDING_PICK，
+        // 仓库一键确认出库（选仓、扣库存、消费预留、AR 同事务完成）。
         assertEquals(0,bigDecimalFor("SELECT sum(qty-consumed_qty-released_qty) FROM stock_reservations WHERE owner_type='CUSTOMER_SHIPMENT_ITEM' AND source_doc_id=? AND status=0",id).compareTo(new BigDecimal("5")));
-        var exception=new WarehouseWorkTransitionRequest();exception.setTargetStatus("EXCEPTION");exception.setReason("实际退拣核对");
-        shipmentService.transitionWarehouseWork(id,exception);
-        var unpick=new WarehouseWorkTransitionRequest();unpick.setTargetStatus("PENDING_PICK");unpick.setReason("货物已退回原库位");
-        shipmentService.transitionWarehouseWork(id,unpick);
-        assertEquals(0,count("SELECT count(*) FROM stock_reservations WHERE owner_type='CUSTOMER_SHIPMENT_ITEM' AND source_doc_id=? AND status=0",id));
-        shipmentService.transitionWarehouseWork(id,picking);
-        var work=new WarehouseWorkTransitionRequest();work.setTargetStatus("PICKED");shipmentService.transitionWarehouseWork(id,work);
-        work.setTargetStatus("SHIPPED");var shipped=shipmentService.transitionWarehouseWork(id,work);
+        var shipped=shipmentService.transitionWarehouseWork(id,outbound);
         assertTrue(shipped.isArPosted());
         assertEquals(0,stockBalance(w.warehouseId(),w.goodsB()).compareTo(new BigDecimal("5")));
         assertEquals(0,shipped.getTotalOriginal().compareTo(new BigDecimal("61.7280")));
-        assertThrows(ApiException.class,()->shipmentService.transitionWarehouseWork(id,work));
+        assertThrows(ApiException.class,()->shipmentService.transitionWarehouseWork(id,outbound));
         assertEquals(1,count("SELECT count(*) FROM stock_movements WHERE source_doc_type='SALES_SHIPMENT' AND source_doc_id=?",id));
         assertEquals(1,count("SELECT count(*) FROM ar_ap_ledger WHERE source_doc_type='SALES_SHIPMENT' AND source_doc_id=?",id));
         assertEquals(0,count("SELECT count(*) FROM ar_ap_source_refs ref JOIN ar_ap_ledger ledger ON ledger.id=ref.ledger_id WHERE ledger.source_doc_id=?",id));
-        assertEquals(2,count("SELECT count(*) FROM stock_reservations WHERE owner_type='CUSTOMER_SHIPMENT_ITEM' AND source_doc_id=?",id),"unpick keeps the released reservation and creates a fresh picking fact");
+        assertEquals(1,count("SELECT count(*) FROM stock_reservations WHERE owner_type='CUSTOMER_SHIPMENT_ITEM' AND source_doc_id=?",id),"一步确认出库后预留事实唯一（创建即消费，无退拣回路");
         var free=shipmentService.create(directCustomerShipmentRequest(w,"FREE","5"));
         assertEquals(0,free.getTotalOriginal().signum());
         shipmentService.confirmSales(free.getId(),0L);shipThroughWarehouse(free.getId());
@@ -6378,7 +6373,7 @@ class FullChainEndToEndTest {
         UUID order=salesOrderService.create(orderRequest(w,w.goodsB(),"8","100")).getId();salesOrderService.approve(order);
         assertEquals(0,bigDecimalFor("SELECT sum(qty-consumed_qty-released_qty) FROM stock_reservations WHERE order_item_id=? AND warehouse_id IS NULL AND status=0",orderItemId(order)).compareTo(new BigDecimal("8")));
         var direct=shipmentService.create(directCustomerShipmentRequest(w,"FREE","3"));shipmentService.confirmSales(direct.getId(),0L);confirmShipmentFinance(direct.getId());
-        var pick=new WarehouseWorkTransitionRequest();pick.setTargetStatus("PICKING");
+        var pick=new WarehouseWorkTransitionRequest();pick.setTargetStatus("SHIPPED");
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->shipmentService.transitionWarehouseWork(direct.getId(),pick)).getCode());
         assertEquals(0,count("SELECT count(*) FROM stock_reservations WHERE source_doc_id=?",direct.getId()));
         var reduced=directCustomerShipmentRequest(w,"FREE","2");reduced.setExpectedRevision(0L);reduced.getItems().getFirst().setId(direct.getItems().getFirst().getId());
@@ -6396,7 +6391,7 @@ class FullChainEndToEndTest {
         World w=seedWorld("direct-competing-picks-v511");receiveOpeningInputsForA(w,"5");loginAs(w.superAdminUserId());
         UUID first=shipmentService.create(directCustomerShipmentRequest(w,"FREE","6")).getId();shipmentService.confirmSales(first,0L);confirmShipmentFinance(first);
         UUID second=shipmentService.create(directCustomerShipmentRequest(w,"FREE","6")).getId();shipmentService.confirmSales(second,0L);confirmShipmentFinance(second);
-        var pick=new WarehouseWorkTransitionRequest();pick.setTargetStatus("PICKING");
+        var pick=new WarehouseWorkTransitionRequest();pick.setTargetStatus("SHIPPED");
         var held=new java.util.concurrent.CountDownLatch(1);var release=new java.util.concurrent.CountDownLatch(1);var waiterPid=new java.util.concurrent.atomic.AtomicInteger();
         try(var workers=java.util.concurrent.Executors.newFixedThreadPool(2)) {
             var leader=workers.submit(()->{loginAs(w.superAdminUserId());try {
@@ -6416,7 +6411,7 @@ class FullChainEndToEndTest {
             assertEquals(ErrorCode.CONFLICT,contender.get(15,java.util.concurrent.TimeUnit.SECONDS).getCode());
         }finally{release.countDown();}
         assertEquals(0,bigDecimalFor("SELECT sum(qty-consumed_qty-released_qty) FROM stock_reservations WHERE source_doc_id IN (?,?) AND status=0",first,second).compareTo(new BigDecimal("6")));
-        assertEquals("PENDING_PICK",shipmentWorkStatus(second));assertEquals(0,stockBalance(w.warehouseId(),w.goodsB()).compareTo(BigDecimal.TEN));
+        assertEquals("PENDING_PICK",shipmentWorkStatus(second));assertEquals(0,stockBalance(w.warehouseId(),w.goodsB()).compareTo(new BigDecimal("4")));
     }
 
     @Test
@@ -6469,11 +6464,11 @@ class FullChainEndToEndTest {
         World w=seedWorld("direct-money-exact-v511");receiveOpeningInputsForA(w,"1");loginAs(w.superAdminUserId());
         var request=directCustomerShipmentRequest(w,"CHARGED","1");request.getItems().getFirst().setPrice(new BigDecimal("0.0001"));
         UUID id=shipmentService.create(request).getId();shipmentService.confirmSales(id,0L);confirmShipmentFinance(id);
-        var work=new WarehouseWorkTransitionRequest();work.setTargetStatus("PICKING");shipmentService.transitionWarehouseWork(id,work);
-        work.setTargetStatus("PICKED");shipmentService.transitionWarehouseWork(id,work);
-        jdbc.update("UPDATE currencies SET exchange_rate=0.0001 WHERE id=?",w.currencyId());work.setTargetStatus("SHIPPED");
+        // V582 一步式：把毒化汇率放在确认出库之前，整笔 SHIPPED 原子失败（无任何实物/会计事实）。
+        jdbc.update("UPDATE currencies SET exchange_rate=0.0001 WHERE id=?",w.currencyId());
+        var work=new WarehouseWorkTransitionRequest();work.setTargetStatus("SHIPPED");
         assertEquals(ErrorCode.VALIDATION_FAILED,assertThrows(ApiException.class,()->shipmentService.transitionWarehouseWork(id,work)).getCode());
-        assertEquals("PICKED",shipmentWorkStatus(id));assertEquals(0,stockBalance(w.warehouseId(),w.goodsB()).compareTo(new BigDecimal("2")));
+        assertEquals("PENDING_PICK",shipmentWorkStatus(id));assertEquals(0,stockBalance(w.warehouseId(),w.goodsB()).compareTo(new BigDecimal("2")));
         assertEquals(0,count("SELECT count(*) FROM stock_movements WHERE source_doc_type='SALES_SHIPMENT' AND source_doc_id=?",id));
         assertEquals(0,count("SELECT count(*) FROM ar_ap_ledger WHERE source_doc_type='SALES_SHIPMENT' AND source_doc_id=?",id));
         assertEquals(0,count("SELECT count(*) FROM sales_shipment_warehouse_events WHERE shipment_id=? AND to_status='SHIPPED'",id));
@@ -8450,20 +8445,27 @@ class FullChainEndToEndTest {
         loginAs(salesOwner);
         UUID shipmentId = createShipment(w, orderItemId, w.goodsA(), "10");
 
-        // (3) role isolation: owner lacks warehouse-work → pick DENIED (@PreAuthorize)
+        // (3) role isolation: owner lacks warehouse-work → confirm-outbound DENIED (@PreAuthorize)
         WarehouseWorkTransitionRequest picking = new WarehouseWorkTransitionRequest();
-        picking.setTargetStatus("PICKING");
+        picking.setTargetStatus("SHIPPED");
         assertThrows(AccessDeniedException.class,
                 () -> shipmentService.transitionWarehouseWork(shipmentId, picking),
-                "销售无 sales_shipment:warehouse-work → 拣货被拒");
+                "销售无 sales_shipment:warehouse-work → 确认出库被拒");
 
         // (4) finance releases the shipment; the warehouse cannot self-release.
         loginAs(financeUser);
         confirmShipmentFinance(shipmentId);
 
-        // (5) warehouse CAN pick after finance release (has warehouse-work)
+        // (5) warehouse CAN confirm outbound after finance release (has warehouse-work)
         loginAs(warehouseUser);
-        shipmentService.transitionWarehouseWork(shipmentId, picking);
+        try {
+            shipmentService.transitionWarehouseWork(shipmentId, picking);
+        } catch (org.springframework.security.access.AccessDeniedException denied) {
+            throw new AssertionError("仓库有 warehouse-work 权限，不应被权限门拒绝", denied);
+        } catch (ApiException business) {
+            // 本场景没备 goodsA 库存（旧流程到 PICKED 不扣库存），一步式出库的业务性
+            // 拒绝（如库存不足）不影响「权限门已放行」的验证目的。
+        }
 
         // (6) role isolation: warehouse lacks create → create DENIED (@PreAuthorize fires first)
         loginAs(warehouseUser);
@@ -11407,14 +11409,10 @@ class FullChainEndToEndTest {
         shipmentService.financeAudit(shipmentId,new com.uten.imp.features.sales.shipment.dto.ShipmentFinanceDecisionRequest(
                 ((Number)info.get("reviewRevision")).longValue(),info.get("contentHash").toString(),claim.claimId(),null));
     }
-    /** Warehouse drives the full pick→pack→ship lifecycle (PENDING_PICK→PICKING→PICKED→SHIPPED). */
+    /** Warehouse confirms outbound in one step（V582 起 PENDING_PICK→SHIPPED，PICKING/PICKED/EXCEPTION 中间态整体删除）。 */
     void shipThroughWarehouse(UUID shipmentId) {
         confirmShipmentFinance(shipmentId);
         WarehouseWorkTransitionRequest t = new WarehouseWorkTransitionRequest();
-        t.setTargetStatus("PICKING");
-        shipmentService.transitionWarehouseWork(shipmentId, t);
-        t.setTargetStatus("PICKED");
-        shipmentService.transitionWarehouseWork(shipmentId, t);
         t.setTargetStatus("SHIPPED");
         shipmentService.transitionWarehouseWork(shipmentId, t);
     }

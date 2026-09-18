@@ -57,6 +57,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
         jdbc.execute("""
                 CREATE TABLE production_execution_segments(id uuid PRIMARY KEY, status text, auto_promote_when_ready boolean DEFAULT TRUE, is_deleted boolean DEFAULT FALSE,source_segment_id uuid,
+                    product_goods_id uuid,
                     continuous_supply boolean DEFAULT FALSE, start_route text, route_confirmed_at timestamptz);
                 CREATE TABLE production_execution_segment_splits(source_segment_id uuid);
                 CREATE FUNCTION fn_split_batch_empty_issued(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
@@ -91,7 +92,8 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                     segment_status text, material_status text DEFAULT 'KIT_SHORT', preparation_status text,
                     warehouse_ready boolean DEFAULT FALSE, issued boolean DEFAULT FALSE, reportable boolean DEFAULT FALSE,
                     report_source_count integer DEFAULT 1, blocked_reason text DEFAULT 'Waiting for materials',
-                    plan_begin_date date DEFAULT '2026-09-05', plan_end_date date DEFAULT '2026-09-06', lock_version bigint DEFAULT 1, zero_material boolean DEFAULT FALSE);
+                    plan_begin_date date DEFAULT '2026-09-05', plan_end_date date DEFAULT '2026-09-06', lock_version bigint DEFAULT 1, zero_material boolean DEFAULT FALSE,
+                    product_goods_id uuid);
                 CREATE TABLE v_production_execution_workbench_roots(
                     root_type text DEFAULT 'PLAN', root_id uuid, owner_employee_id uuid,
                     root_label text DEFAULT 'PLAN-001', status text DEFAULT 'WAITING',

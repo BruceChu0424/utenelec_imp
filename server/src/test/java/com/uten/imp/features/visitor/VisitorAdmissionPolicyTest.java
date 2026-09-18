@@ -2,6 +2,8 @@ package com.uten.imp.features.visitor;
 
 import com.uten.imp.features.notice.HrNoticeService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.audit.AuditService;
+import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -37,7 +39,9 @@ class VisitorAdmissionPolicyTest {
         when(tx.hmac(anyString())).thenReturn("a".repeat(64));
         when(current.id()).thenReturn(Optional.of(UUID.randomUUID()));
         gate = new VisitorGateService(applications, accounts, appService, mapper,
-                mock(VisitorGuard.class), tx, current, new ObjectMapper());
+                mock(VisitorGuard.class), tx, current, new ObjectMapper(),
+                mock(AuditService.class), mock(UserAccountRepository.class),
+                mock(EmployeeRepository.class));
         account = new VisitorAccount();
         app = new VisitorApplication();
         app.setVisitorAccountId(account.getId());
@@ -95,7 +99,7 @@ class VisitorAdmissionPolicyTest {
         OffsetDateTime admittedAt = OffsetDateTime.now().minusHours(1);
         app.setCheckInAt(admittedAt);
         when(accounts.findAndLockById(account.getId())).thenReturn(Optional.of(account));
-        gate.blacklist(account.getId());
+        gate.blacklist(account.getId(), "冒用他人凭证");
         assertThat(account.getStatus()).isEqualTo("blocked");
         assertThat(app.getStatus()).isEqualTo("checkedIn");
         assertThat(app.getCheckInAt()).isEqualTo(admittedAt);

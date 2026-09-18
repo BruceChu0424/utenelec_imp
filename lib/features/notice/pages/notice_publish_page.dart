@@ -1,3 +1,13 @@
+// 通知发布页（HR/管理端）：普通通知 / 待办通知 / 庆典祝福三类发布形态。
+//
+// 普通通知：九种类型（NoticeTypePicker）+ 可选置顶；庆典类（生日/周年/新婚/新生儿）
+// 需选祝福对象，previewCelebration 预填标题与祝福语模板（标题自动套用/覆盖见
+// _onCelebrationSubjectChanged）。待办通知：kind=todo，可带办理路径与截止时间。
+// 可见范围：全员 / 按部门+员工（发布前 previewAudience 确认人数）。
+// HR 任务子页「送祝福」经 ?type=&subject= 预填；发布成功后 backTo 回来源。
+// 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组；2026-09-18 收口：截止日期改
+// UtenDateField（与其它编辑页 outlined 日期同款）。
+// 文档：docs/03-页面/通知发布页.md
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +16,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_multi_picker.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -524,19 +535,16 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
                   },
                 ),
                 const SizedBox(height: UtenSpacing.s8),
-                OutlinedButton.icon(
-                  onPressed: _pickDueDate,
-                  icon: const Icon(Icons.event_outlined),
-                  label: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      _dueAt == null
-                          ? '设置截止日期(可选)'
-                          : '截止日期：${_dueAt!.year}-'
-                                '${_dueAt!.month.toString().padLeft(2, '0')}-'
-                                '${_dueAt!.day.toString().padLeft(2, '0')}',
-                    ),
-                  ),
+                // 待办截止日期：按天选择，当天 23:59 到期（与原 _pickDueDate 口径一致）。
+                UtenDateField(
+                  label: '截止日期(可选)',
+                  value: _dueAt,
+                  firstDate: DateTime.now(),
+                  lastDate: DateTime(DateTime.now().year + 3),
+                  info: '待办通知的办理截止时间；按天生效，当天 23:59 到期。',
+                  onChanged: (d) => setState(() {
+                    _dueAt = DateTime(d.year, d.month, d.day, 23, 59);
+                  }),
                 ),
               ],
               if (_kind == NoticeKind.normal && _type == NoticeType.urgent) ...[
@@ -640,21 +648,6 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
         ),
       ],
     );
-  }
-
-  Future<void> _pickDueDate() async {
-    final now = DateTime.now();
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _dueAt ?? now,
-      firstDate: DateTime(now.year, now.month, now.day),
-      lastDate: DateTime(now.year + 3),
-      helpText: '选择待办截止日期',
-    );
-    if (date == null || !mounted) return;
-    setState(() {
-      _dueAt = DateTime(date.year, date.month, date.day, 23, 59);
-    });
   }
 
   Widget _buildAudienceColumn(BuildContext context, AppLocalizations l10n) {

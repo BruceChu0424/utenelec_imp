@@ -27,7 +27,9 @@ import '../providers/visitor_providers.dart';
 import '../providers/visitor_session_provider.dart';
 import '../widgets/visitor_status_ui.dart';
 
-enum VisitorFilter { all, pending, approved, rejected }
+// 「申请中」段与审批端待办同口径（pending + hostReviewing，经后端多状态下推）；
+// 「已签到」独立分段，签到后的单子不再从「已批准」段消失。
+enum VisitorFilter { all, pending, approved, checkedIn, rejected }
 
 class VisitorHomePage extends ConsumerStatefulWidget {
   const VisitorHomePage({super.key});
@@ -42,8 +44,9 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
 
   String? get _status => switch (_filter) {
     VisitorFilter.all => null,
-    VisitorFilter.pending => 'pending',
+    VisitorFilter.pending => 'pending,hostReviewing',
     VisitorFilter.approved => 'approved',
+    VisitorFilter.checkedIn => 'checkedIn',
     VisitorFilter.rejected => 'rejected',
   };
 
@@ -114,6 +117,10 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
                     label: l10n.visitorFilterApproved,
                   ),
                   UtenSegment(
+                    value: VisitorFilter.checkedIn,
+                    label: l10n.visitorStatusCheckedIn,
+                  ),
+                  UtenSegment(
                     value: VisitorFilter.rejected,
                     label: l10n.visitorFilterRejected,
                   ),
@@ -164,19 +171,19 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
 List<MasterColumnDef<VisitorApplication>> _columns(AppLocalizations l10n) => [
   MasterColumnDef(
     key: 'visitorName',
-    label: '姓名',
+    label: l10n.visitorColName,
     width: 110,
     value: (app) => app.visitorName,
   ),
   MasterColumnDef(
     key: 'visitPurpose',
-    label: '事由',
+    label: l10n.visitorColPurpose,
     width: 200,
     value: (app) => app.visitPurpose,
   ),
   MasterColumnDef(
     key: 'hostName',
-    label: '接待人',
+    label: l10n.visitorColHost,
     width: 110,
     // 接待人缺省时回退公司名（原卡片口径），两者皆空留白。
     value: (app) => (app.hostName != null && app.hostName!.isNotEmpty)
@@ -185,14 +192,14 @@ List<MasterColumnDef<VisitorApplication>> _columns(AppLocalizations l10n) => [
   ),
   MasterColumnDef(
     key: 'plannedVisitAt',
-    label: '计划到访',
+    label: l10n.visitorColPlannedVisit,
     width: 150,
     type: 'date',
     value: (app) => fmtDateTime(app.plannedVisitAt),
   ),
   MasterColumnDef(
     key: 'status',
-    label: '状态',
+    label: l10n.visitorColStatus,
     width: 90,
     value: (app) => visitorStatusLabel(app.status, l10n),
   ),

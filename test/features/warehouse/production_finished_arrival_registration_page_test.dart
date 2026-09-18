@@ -132,7 +132,7 @@ void main() {
       _placeField('30000000-0000-0000-0000-000000000001'),
       'CP-A-01',
     );
-    _pressSubmit(tester);
+    await _pressSubmit(tester);
     await tester.pumpAndSettle();
     final items = (api.lastPostBody?['items'] as List)
         .cast<Map<String, dynamic>>();
@@ -156,7 +156,7 @@ void main() {
       expect(find.text('RB202608300001'), findsOneWidget);
       expect(tester.takeException(), isNull);
 
-      _pressSubmit(tester);
+      await _pressSubmit(tester);
       await tester.pump();
       await _revealValidationError(tester);
       expect(find.text('请选择实际存放的成品仓库'), findsWidgets);
@@ -173,7 +173,7 @@ void main() {
       );
       expect(tester.widget<TextField>(placeField).controller?.text, isEmpty);
 
-      _pressSubmit(tester);
+      await _pressSubmit(tester);
       await tester.pump();
       expect(api.lastPostBody, isNull);
       expect(find.text('登记成品仓与库位'), findsOneWidget);
@@ -190,7 +190,7 @@ void main() {
       );
 
       await tester.enterText(placeField, ' CP-A-01 ');
-      _pressSubmit(tester);
+      await _pressSubmit(tester);
       await tester.pumpAndSettle();
 
       expect(
@@ -696,7 +696,7 @@ void main() {
       _placeField('30000000-0000-0000-0000-000000000002'),
       'CP-B-01',
     );
-    _pressSubmit(tester);
+    await _pressSubmit(tester);
     await tester.pumpAndSettle();
 
     expect(api.postBodies, hasLength(2));
@@ -752,7 +752,7 @@ void main() {
       _placeField('30000000-0000-0000-0000-000000000002'),
       'CP-B-01',
     );
-    _pressSubmit(tester);
+    await _pressSubmit(tester);
     await tester.pumpAndSettle();
 
     expect(api.postBodies, hasLength(1));
@@ -781,7 +781,7 @@ void main() {
     );
 
     api.failWarehouses.clear();
-    _pressSubmit(tester);
+    await _pressSubmit(tester);
     await tester.pumpAndSettle();
     expect(api.postBodies, hasLength(2));
     expect(api.postBodies.last['warehouseId'], 'warehouse-2');
@@ -917,7 +917,7 @@ void main() {
       _placeField('30000000-0000-0000-0000-000000000001'),
       'CP-A-01',
     );
-    _pressSubmit(tester);
+    await _pressSubmit(tester);
     await tester.pumpAndSettle();
 
     expect(api.rememberRequests, 0);
@@ -932,6 +932,12 @@ void main() {
       await _selectWarehouse(tester, '成品仓', settle: true);
       await _selectWarehouse(tester, '成品仓', settle: true, row: 2);
       await _revealGrid(tester);
+      // 2026-09-18 默认全选会让行内改库位整批落值（两行会同值，冲不出用例要的
+      // 冲突）：先取消行勾选恢复逐行落值，提交前 _pressSubmit 会统一回选。
+      for (final checkbox in _gridRowCheckboxStates(tester)) {
+        if (checkbox.value == true) checkbox.onChanged?.call(false);
+      }
+      await tester.pump();
       await tester.enterText(
         _placeField('30000000-0000-0000-0000-000000000001'),
         'CP-A-01',
@@ -940,7 +946,7 @@ void main() {
         _placeField('30000000-0000-0000-0000-000000000002'),
         'CP-B-02',
       );
-      _pressSubmit(tester);
+      await _pressSubmit(tester);
       await tester.pump();
 
       expect(find.textContaining('同一颜色维度填写了不同库位'), findsOneWidget);
@@ -958,7 +964,7 @@ void main() {
       await _revealGrid(tester);
       final placeField = _placeField('30000000-0000-0000-0000-000000000001');
       await tester.enterText(placeField, 'CP-A-01');
-      _pressSubmit(tester);
+      await _pressSubmit(tester);
       await tester.pump();
       for (var i = 0; i < 8; i++) {
         await tester.pump(const Duration(milliseconds: 100));
@@ -1094,7 +1100,16 @@ Future<void> _selectWarehouse(
   if (settle) await tester.pumpAndSettle();
 }
 
-void _pressSubmit(WidgetTester tester) {
+/// 提交集=勾选集（2026-09-18）：行没勾时提交按钮置灰，先回选全部行再触发。
+Future<void> _pressSubmit(WidgetTester tester) async {
+  final rowCheckboxes = _gridRowCheckboxStates(tester);
+  final anyChecked = rowCheckboxes.any((checkbox) => checkbox.value == true);
+  if (rowCheckboxes.isNotEmpty && !anyChecked) {
+    for (final checkbox in rowCheckboxes) {
+      checkbox.onChanged?.call(true);
+    }
+    await tester.pump();
+  }
   tester
       .widget<UtenButton>(
         find.byKey(const Key('production-finished-arrival-submit')),
@@ -1138,7 +1153,30 @@ Future<void> _openPage(
   );
   await tester.tap(find.byKey(const Key('open-arrival-registration')));
   await tester.pumpAndSettle();
+  // 2026-09-18 明细默认全选（提交集=勾选集）：本文件多数用例按「逐行操作」编写，
+  // 开页先等明细格就位（详情加载可能跨多个 settle 段）再清空选择恢复逐行语义；
+  // 提交前由 _pressSubmit 统一回选全部行。
+  final firstPlace = _placeField('30000000-0000-0000-0000-000000000001');
+  for (var i = 0; i < 10 && firstPlace.evaluate().isEmpty; i++) {
+    await tester.pumpAndSettle();
+  }
+  for (final state in _gridRowCheckboxStates(tester)) {
+    if (state.value == true) state.onChanged?.call(false);
+  }
+  await tester.pump();
 }
+
+/// 网格内行复选框的当前态（只取明细网格，历史表在网格外不掺和）。
+List<Checkbox> _gridRowCheckboxStates(WidgetTester tester) => tester
+    .widgetList<Checkbox>(
+      find.descendant(
+        of: find.byKey(
+          const Key('production-finished-arrival-registration-grid'),
+        ),
+        matching: find.byType(Checkbox),
+      ),
+    )
+    .toList();
 
 class _ArrivalRegistrationApi extends ApiClient {
   _ArrivalRegistrationApi({

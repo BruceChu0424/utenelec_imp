@@ -52,9 +52,9 @@ class ActivationReauthorizationClosureTest(unittest.TestCase):
                     "version": "255",
                 }
             ],
-            "releaseSequence": 20260814001,
+            "releaseSequence": 100001004000,
             "signingKeyId": "SHA256:test-key",
-            "version": "v2026.08.14-1",
+            "version": "v1.4.0",
         }
 
     def onboarding(self, *, currently_expired: bool = True) -> tuple[dict, bytes]:
@@ -172,7 +172,7 @@ class ActivationReauthorizationClosureTest(unittest.TestCase):
             "wrong-system": {"databaseIdentity": {"systemIdentifier": "other"}},
             "wrong-boot": {"bootId": "22222222-2222-4222-8222-222222222222"},
             "wrong-origin": {"onboardingSha256": "9" * 64},
-            "wrong-version": {"version": "v2026.08.14-2"},
+            "wrong-version": {"version": "v1.4.1"},
         }
         for label, mutation in cases.items():
             with self.subTest(label=label):

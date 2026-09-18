@@ -121,7 +121,7 @@ elif [[ -n "$replace_confirmation" || -n "$legacy_retirement_evidence" ]]; then
   die 'replacement evidence and confirmation are valid only with --replace-existing'
 fi
 if [[ "$enable_staging" == true ]]; then
-  [[ "$expected_candidate_version" =~ ^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}-([1-9][0-9]{0,2})$ ]] \
+  [[ "$expected_candidate_version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
     || die '--enable-staging requires a canonical --expected-candidate-version'
   [[ "$oss_read_only_confirmation" == "$OSS_READ_ONLY_CONFIRMATION" ]] \
     || die "--enable-staging requires --confirm-oss-read-only '$OSS_READ_ONLY_CONFIRMATION'"

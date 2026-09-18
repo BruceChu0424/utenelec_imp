@@ -156,6 +156,10 @@ class ProductionFlowStage {
   }
 
   /// 执行段事实 → 自制链阶段（车间任务、计划详情、分桶已下达共用）。
+  ///
+  /// [startRoute]（V599 开工路线）确认后，WAITING 的等待方式按路线区分——
+  /// 与物料分析「未下达段按路线显示第一步」同款：齐套等到齐、分批等部分到货、
+  /// 持续等直送料；未确认/null 保持通用「车间已收到 · 等待物料」。
   factory ProductionFlowStage.forSegment({
     required String segmentStatus,
     required bool zeroMaterial,
@@ -164,6 +168,7 @@ class ProductionFlowStage {
     bool splitReplaced = false,
     bool continuousSupply = false,
     bool pendingLineSideOnly = false,
+    String? startRoute,
     double? reportedQty,
     double? plannedQty,
     double? remainingReportQty,
@@ -200,7 +205,12 @@ class ProductionFlowStage {
       return _make(4, label, ProductionFlowTone.waiting);
     }
     return switch (status) {
-      'WAITING' => _make(2, '车间已收到 · 等待物料', ProductionFlowTone.waiting),
+      'WAITING' => _make(2, switch (startRoute?.trim().toUpperCase()) {
+        'FULL_KIT' => '等待物料到齐 · 齐套生产',
+        'BATCH' => '等待到货 · 分批生产',
+        'CONTINUOUS' => '等待直送料 · 持续生产',
+        _ => '车间已收到 · 等待物料',
+      }, ProductionFlowTone.waiting),
       'READY' =>
         zeroMaterial
             ? _make(3, '无需领料 · 可开工', ProductionFlowTone.ready)

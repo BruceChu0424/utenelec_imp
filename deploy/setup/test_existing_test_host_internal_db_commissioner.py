@@ -789,7 +789,7 @@ class ExistingOnboardingTest(unittest.TestCase):
             return False
 
     def test_same_version_receipt_with_different_authority_is_not_success(self):
-        version = "v2026.08.12-1"
+        version = "v1.2.0"
         approval = "CHG-2026-0812-INTERNAL"
         worker_request = commissioner.worker_request_value(
             version,

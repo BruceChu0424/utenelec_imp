@@ -37,11 +37,15 @@ RELEASE_NAMESPACE = "uten-imp-release-v1"
 WHEELHOUSE_NAMESPACE = "uten-imp-updater-wheelhouse-v1"
 DECISION_NAMESPACE = "uten-imp-single-maintainer-decision-v1"
 SIGNER_IDENTITY = "uten-imp-release"
-VERSION_RE = re.compile(r"v(20[0-9]{2})\.(0[1-9]|1[0-2])\.([0-2][0-9]|3[01])-([1-9][0-9]{0,2})")
+VERSION_RE = re.compile(
+    r"^v(?P<major>0|[1-9][0-9]*)\.(?P<minor>0|[1-9][0-9]*)\.(?P<patch>0|[1-9][0-9]*)$"
+)
 COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 KEY_ID_RE = re.compile(r"SHA256:[A-Za-z0-9+/]{43}")
-ARTIFACT_RE = re.compile(r"uten-imp-(v20[0-9]{2}\.[0-9]{2}\.[0-9]{2}-[1-9][0-9]{0,2})-([0-9a-f]{12})\.tar\.gz")
+ARTIFACT_RE = re.compile(
+    r"uten-imp-(v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))-([0-9a-f]{12})\.tar\.gz"
+)
 MAX_JSON_BYTES = 8 * 1024 * 1024
 MAX_ZIP_BYTES = 256 * 1024 * 1024
 MAX_TAR_MEMBER_BYTES = 256 * 1024 * 1024
@@ -239,16 +243,30 @@ def require_exact_keys(value: Any, expected: set[str], label: str) -> dict[str, 
     return value
 
 
+# Must stay numerically identical to deploy/updater/release_guard.py
+# version_sequence() and deploy/release/release_tools.py validate_version().
+SEMVER_SEQUENCE_EPOCH = 100_000_000_000
+SEMVER_MAX_MAJOR = 9_999
+SEMVER_MAX_MINOR = 999
+SEMVER_MAX_PATCH = 999
+
+
 def validate_version(value: str) -> int:
     match = VERSION_RE.fullmatch(value)
     if match is None:
-        fail("version must be canonical vYYYY.MM.DD-N")
-    year, month, day, counter = (int(item) for item in match.groups())
-    try:
-        date = dt.date(year, month, day)
-    except ValueError as error:
-        fail(f"version contains an invalid date: {error}")
-    return int(f"{date:%Y%m%d}{counter:03d}")
+        fail("version must match vMAJOR.MINOR.PATCH (canonical semantic version)")
+    major = int(match.group("major"))
+    minor = int(match.group("minor"))
+    patch = int(match.group("patch"))
+    if major == 0 and minor == 0 and patch == 0:
+        fail("v0.0.0 is not a publishable release version")
+    if major > SEMVER_MAX_MAJOR or minor > SEMVER_MAX_MINOR or patch > SEMVER_MAX_PATCH:
+        fail(
+            "version components exceed the allowed maximums "
+            f"(major<={SEMVER_MAX_MAJOR}, minor<={SEMVER_MAX_MINOR}, "
+            f"patch<={SEMVER_MAX_PATCH})"
+        )
+    return SEMVER_SEQUENCE_EPOCH + major * 1_000_000 + minor * 1_000 + patch
 
 
 def require_bucket(value: Any) -> str:

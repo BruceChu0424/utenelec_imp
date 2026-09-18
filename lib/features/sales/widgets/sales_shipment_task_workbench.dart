@@ -46,10 +46,23 @@ enum SalesShipmentTaskWorkbenchMode { financeAudit, warehouseOutbound }
 ///   批量放行/批量退回（整批原子），双击/行菜单进财务专用审核详情页
 ///   `/finance/sales-shipment-audits/:id`，与销售端出货详情彻底分离；
 /// - 仓库（销售出库）：保持只读列表，双击进共享出货详情做仓库作业。
+///
+/// [embedded]：财务模式嵌入「业务审核中心」分段时为 true——去掉本工作台的
+/// AppBar 与内容容器（外层提供标题/刷新/容器）；[refreshTick] 由外层刷新
+/// 信号递增触发重拉。仓库模式不使用嵌入形态。
 class SalesShipmentTaskWorkbench extends ConsumerStatefulWidget {
-  const SalesShipmentTaskWorkbench({super.key, required this.mode});
+  const SalesShipmentTaskWorkbench({
+    super.key,
+    required this.mode,
+    this.embedded = false,
+    this.refreshTick = 0,
+  });
 
   final SalesShipmentTaskWorkbenchMode mode;
+  final bool embedded;
+
+  /// 外层（业务审核中心）触发的刷新信号；数值变化时重拉当前页。
+  final int refreshTick;
 
   @override
   ConsumerState<SalesShipmentTaskWorkbench> createState() =>
@@ -127,6 +140,12 @@ class _SalesShipmentTaskWorkbenchState
       );
       _load(1);
     });
+  }
+
+  @override
+  void didUpdateWidget(SalesShipmentTaskWorkbench oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.refreshTick != oldWidget.refreshTick) _load();
   }
 
   @override
@@ -543,6 +562,36 @@ class _SalesShipmentTaskWorkbenchState
     final allowed =
         ref.watch(isSuperAdminProvider) ||
         permissions.contains(_requiredPermission);
+    // 局部 SelectionArea：销售发货审核工作台文字可框选复制（准则 §3.4；
+    // 仅搜索防抖无周期轮询，可包）。
+    final body = SelectionArea(
+      child: SafeArea(
+        child: Stack(
+          children: [
+            !allowed
+                ? UtenEmpty.error(
+                    message: '无权查看$_title',
+                    description: '请在本页权限中授予 $_requiredPermission。',
+                  )
+                : _loading && _result == null
+                ? const UtenSkeletonList()
+                : _error != null && _result == null
+                ? UtenEmpty.error(
+                    message: _error,
+                    actionLabel: '重新加载',
+                    onAction: () => _load(1),
+                  )
+                : _body(),
+            // 2026-09-12 口径：批量提交等一段必须屏幕中央加载动画（跟随网络段）。
+            if (_busyDecision)
+              const Positioned.fill(
+                child: UtenBusyOverlay(title: '正在提交批量审核决定'),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (widget.embedded) return body;
     return Scaffold(
       appBar: UtenAppBar(
         title: _title,
@@ -560,35 +609,7 @@ class _SalesShipmentTaskWorkbenchState
               ]
             : null,
       ),
-      // 局部 SelectionArea：销售发货审核工作台文字可框选复制（准则 §3.4；
-      // 仅搜索防抖无周期轮询，可包）。
-      body: SelectionArea(
-        child: SafeArea(
-          child: Stack(
-            children: [
-              !allowed
-                  ? UtenEmpty.error(
-                      message: '无权查看$_title',
-                      description: '请在本页权限中授予 $_requiredPermission。',
-                    )
-                  : _loading && _result == null
-                  ? const UtenSkeletonList()
-                  : _error != null && _result == null
-                  ? UtenEmpty.error(
-                      message: _error,
-                      actionLabel: '重新加载',
-                      onAction: () => _load(1),
-                    )
-                  : _body(),
-              // 2026-09-12 口径：批量提交等一段必须屏幕中央加载动画（跟随网络段）。
-              if (_busyDecision)
-                const Positioned.fill(
-                  child: UtenBusyOverlay(title: '正在提交批量审核决定'),
-                ),
-            ],
-          ),
-        ),
-      ),
+      body: body,
     );
   }
 
@@ -603,18 +624,26 @@ class _SalesShipmentTaskWorkbenchState
           totalPages: 1,
         );
     final names = ref.watch(salesMasterNameServiceProvider);
+    Widget buildContent(BoxConstraints constraints) {
+      // 财务模式大小屏统一走响应式表格（多选/批量/双击与窄屏同款）；
+      // 仓库模式保持 桌面表格 / 窄屏卡片 的既有形态。
+      final desktop = breakpointForWidth(constraints.maxWidth).isExpanded;
+      return _isFinance || desktop
+          ? _table(result, names)
+          : _compact(result, names);
+    }
+
+    if (widget.embedded) {
+      // 嵌入形态不复套容器与内边距（业务审核中心已提供），避免双重 gutter。
+      return LayoutBuilder(
+        builder: (context, constraints) => buildContent(constraints),
+      );
+    }
     return UtenContentContainer.wide(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s12),
         child: LayoutBuilder(
-          builder: (context, constraints) {
-            // 财务模式大小屏统一走响应式表格（多选/批量/双击与窄屏同款）；
-            // 仓库模式保持 桌面表格 / 窄屏卡片 的既有形态。
-            final desktop = breakpointForWidth(constraints.maxWidth).isExpanded;
-            return _isFinance || desktop
-                ? _table(result, names)
-                : _compact(result, names);
-          },
+          builder: (context, constraints) => buildContent(constraints),
         ),
       ),
     );

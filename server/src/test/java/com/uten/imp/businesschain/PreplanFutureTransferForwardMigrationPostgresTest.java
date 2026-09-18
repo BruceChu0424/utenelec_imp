@@ -1,5 +1,6 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.migration.MigrationRehearsalSupport;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -41,41 +42,16 @@ class PreplanFutureTransferForwardMigrationPostgresTest {
 
             var upgrade=Flyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword())
                     .locations("classpath:db/migration").load().migrate();
-            // 从 V569 升到当前目录头应当只跑 V569 之后的迁移，且都不触碰本测试的事实行：
-            // V570 售价查看权限、V571 在途前向兼容、V572 审计触发器 sweep、
-            // V573 原因可选、V574 跨路线在途调入、V575 货品订货策略、
-            // V577 下达车间超量的公共备货产出分账(只给计划关联行加列改触发器)、
-            // V578 出货财审「撤回退回」事件类型、V579 客户/供应商联系方式·地址·
-            // 跟进记录三张子表 + clients.credit_score、V580 放宽计划关联行对账、
-            // V581 委外「单一叶子子件」直接发料出仓(只扩 flow_mode 白名单与
-            // 四个既有守卫)、V582 销售出货仓库一步确认出库(收窄作业状态取值、
-            // 重建 V566 实仓取证触发器与待办索引)、V583 报工同页登记实际用料
-            //(新增日报实耗表 + 日报收尾退仓意愿列 + 结算事件日报来源列)、
-            // V584 车间直送(线边仓标记 + 报工行产出去向 + 直送三张表 +
-            // FQC 检验种类与来源守卫分流)。
-            // 新增迁移时这个数字要 +1(与 ops 白名单、MigrationRehearsalSupport、
-            // 迁移 README 同属「迁移头四处同步」的连带项)。
-            // V585 报工行接收需求列 + 车间直送审核权限码、
-            // V586 把 V583/V584 的四张表补登记进清库策略、
-            // V587 货品主档加「所属仓库」一列(只加列，不建表不改行)、
-            // V588 放宽销售分摊守卫(顶层超量一张计划，只改函数定义)、
-            // V589 委外前置自制跟量(放宽公共备货形态守卫与批次 allocation 锚)。
-            // V590 货品归属单一事实源(偏好表废弃删除)、V591 存量归属回填、
-            // V592 客户默认销售条款、V593 采购/委外主档默认值。
-            // V594 日报审核补链放行(只 CREATE OR REPLACE 只增不改守卫函数)、
-            // V595 车间直送 v2(持续生产/直送供给两列 + 四函数 + 两索引)、
-            // V598 货品来源按路线确认历史回填(只 UPDATE goods.source_type 一列)。
-            // (V596 / V597 由并行分支 feat/iqc-stock-in-before-inspection 占号，
-            //  不在本树目录里；合并后此处每多一个迁移 +1。)
-            //
-            // 改这个数之前先确认 target/classes/db/migration 里没有改名前的残留
-            // 文件：Flyway 读的是 classpath 而不是 src，`mvn compile` 不会删掉已
-            // 被重命名/删除的旧资源，残留一个就凭空多算一条(本轮踩过一次)。
-            // V596 到货先入库后质检、V597 产成品先入库后质检(都只加列/守卫/权限码，不加表)、
-            // V599 开工路线确认与到货进展通知(段两列+三函数+事件白名单，不加表)、
-            // V600 庆典自动发送默认关(只 UPDATE system_settings 一行)。
-            // 改这个数之前先确认 server/target/classes/db/migration 没有改名残留的孤儿文件。
-            assertEquals(30,upgrade.migrationsExecuted);
+            // 从 V569 升到当前目录头应当只跑 V569 之后的迁移，且都不触碰本测试的事实行
+            // （V570-V600 的逐条说明见 docs/数据迁移/README.md 索引）。
+            // 期望条数由 MigrationRehearsalSupport 从迁移目录推导（2026-09-18 起）：
+            // 新增迁移不再需要来这里"+1"——目录变了推导值自动跟着变
+            // （历史上漏改 28→30 曾烧一轮 CI）。
+            // 注意推导与 Flyway 读的是同一个 classpath：server/target/classes/db/migration
+            // 里改名/删除后的残留孤儿文件会同时抬高两侧，本断言仍绿，但会炸
+            // LegacyMigrationSafetyContractTest 的 README 头行对账——改迁移文件名后
+            // 先 mvn clean 再对账。
+            assertEquals(MigrationRehearsalSupport.expectedMigrationsAfter(569),upgrade.migrationsExecuted);
             assertEquals(1405930679,db.queryForObject("SELECT checksum FROM flyway_schema_history WHERE version='569'",Integer.class));
             assertEquals(originalCancel,db.queryForObject("SELECT (to_jsonb(c)-'restore_to_source_qty'-'public_release_qty')::text FROM preplan_future_supply_transfer_cancellations c WHERE id=?",String.class,state.cancel()));
             assertEquals(originalTransfer,db.queryForObject("SELECT to_jsonb(t)::text FROM preplan_future_supply_transfers t WHERE id=?",String.class,state.transfer()));

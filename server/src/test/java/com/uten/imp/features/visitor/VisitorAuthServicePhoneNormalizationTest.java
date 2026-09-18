@@ -7,6 +7,7 @@ import com.uten.imp.config.props.SmsProperties;
 import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.security.JwtService;
 import com.uten.imp.security.LoginRateLimiter;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,7 @@ class VisitorAuthServicePhoneNormalizationTest {
                 mock(VisitorRefreshCompromiseService.class),
                 mock(EmployeeSensitiveRepository.class),
                 mock(JwtService.class),
+                mock(SecurityContextCurrentUser.class),
                 mock(TxSessionVars.class),
                 new SmsProperties(),
                 mock(AuditService.class),

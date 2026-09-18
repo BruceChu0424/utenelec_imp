@@ -52,4 +52,8 @@ mvn verify
 
 当前发布方式依据[ADR-060](docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md)和[部署运行手册](deploy/simple/RUNBOOK.zh-CN.md)；六端签名、安装及端点规则见[多端发布与签名](docs/99-项目治理/多端发布与签名.md)。Git操作遵守[提交与合并规范](docs/00-项目准则/11-Git提交与合并规范.md)。服务器写入、备份恢复、迁移、业务对账及切换必须有各自实际执行证据，文档和脚本存在不表示已经部署。
 
+## 版本号规则
+
+发布版本号使用语义化 `vMAJOR.MINOR.PATCH`：大更新或不兼容调整升 MAJOR，新增小功能升 MINOR，问题修复升 PATCH。自 2026-09-18 起生效，此前使用的日期号 `vYYYY.MM.DD-N` 不再接受；首个语义化版本为 `v1.0.0`。发布内部序号（`releaseSequence`）由 `deploy/updater/release_guard.py`、`deploy/release/release_tools.py`、`deploy/release/offline_release.py` 三处孪生函数按同一编码折算（语义化 epoch 恒高于历史日期序，老链路单调闸门跨方案自然放行），三处必须逐位一致，改动任一处须同步另外两处。方案与执行记录见[版本号方案迁移待办](docs/99-项目治理/2026-09-11-版本号方案迁移待办.md)。
+
 文档使用中文为主的 Markdown，跨文档使用相对链接。长期规则放在准则/SOP，交互放在页面说明，正式决策放在ADR，迁移与兼容放在数据迁移专册，测试结果只写入相应验收记录；避免再建立重复的日期续作入口。

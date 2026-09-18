@@ -3,11 +3,15 @@ package com.uten.imp.features.visitor;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.util.HashUtil;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.config.props.SmsProperties;
 import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.features.visitor.dto.VisitorAuthDto;
+import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.JwtService;
 import com.uten.imp.security.LoginRateLimiter;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.Test;
 
@@ -16,6 +20,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -62,6 +67,7 @@ class VisitorAuthSessionPropagationTest {
                 mock(VisitorRefreshCompromiseService.class),
                 employees,
                 jwt,
+                mock(SecurityContextCurrentUser.class),
                 tx,
                 mock(SmsProperties.class),
                 audit,
@@ -82,6 +88,52 @@ class VisitorAuthSessionPropagationTest {
                 eq(account.getId().toString()),
                 eq("success"),
                 eq(sessionId));
+    }
+
+    @Test
+    void visitorMeReturnsCurrentAccountProfileForVisitorPrincipalOnly() {
+        UUID visitorId = UUID.randomUUID();
+        VisitorAccount account = new VisitorAccount();
+        account.setId(visitorId);
+        account.setVisitorNo("V800015");
+        account.setName("访客");
+        account.setAvatarSeed("seed");
+        account.setStatus("active");
+        AuthUser principal = mock(AuthUser.class);
+        when(principal.isVisitor()).thenReturn(true);
+        when(principal.getId()).thenReturn(visitorId);
+        SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
+        when(currentUser.get()).thenReturn(Optional.of(principal));
+        VisitorAccountRepository accounts = mock(VisitorAccountRepository.class);
+        when(accounts.findById(visitorId)).thenReturn(Optional.of(account));
+        VisitorAuthService service = new VisitorAuthService(
+                accounts,
+                mock(VisitorSmsService.class),
+                mock(VisitorRefreshTokenService.class),
+                mock(VisitorRefreshTokenRepository.class),
+                mock(VisitorRefreshTransaction.class),
+                mock(VisitorRefreshCompromiseService.class),
+                mock(EmployeeSensitiveRepository.class),
+                mock(JwtService.class),
+                currentUser,
+                mock(TxSessionVars.class),
+                mock(SmsProperties.class),
+                mock(AuditService.class),
+                mock(LoginRateLimiter.class),
+                mock(MasterCodeService.class),
+                mock(VisitorAccountCreationLock.class));
+
+        VisitorAuthDto.MeResponse me = service.me();
+
+        assertEquals(visitorId, me.visitorId());
+        assertEquals("V800015", me.visitorNo());
+        assertEquals("访客", me.name());
+        assertEquals("active", me.status());
+
+        when(principal.isVisitor()).thenReturn(false);
+        assertEquals(
+                ErrorCode.FORBIDDEN,
+                assertThrows(ApiException.class, service::me).getCode());
     }
 
     @Test

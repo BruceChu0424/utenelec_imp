@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_employee_multi_picker.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/features/department/models/workforce_overview.dart';
 import 'package:uten_imp/features/department/repositories/department_repository.dart';
@@ -97,6 +99,58 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('新建日报勾选口径：来源行自动勾选，没勾行时保存置灰并说明原因', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _api();
+    final employees = _FakeEmployeeRepository();
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          departmentRepositoryProvider.overrideWithValue(
+            _FakeDepartmentRepository(),
+          ),
+          masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+          productionDailyReportRepositoryProvider.overrideWithValue(
+            ProductionDailyReportRepository(api),
+          ),
+          employeeRepositoryProvider.overrideWithValue(employees),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+        child: const MaterialApp(
+          home: Column(
+            children: [
+              AppNotificationHost(),
+              Expanded(
+                child: ProductionDailyReportEditPage(
+                  initialExecutionSegmentId: 'segment-1',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('成品灯'), findsOneWidget);
+
+    final save = find.byKey(const ValueKey('uten-edit-save'));
+    UtenButton saveButton() => tester.widget<UtenButton>(save);
+    // 深链来源已应用到行 → 自动勾选（2026-09-18 勾选口径），保存可点。
+    expect(saveButton().onPressed, isNotNull);
+    // 取消行勾选（行框树序在表头框之前）→ 保存置灰，灰态点击说明原因。
+    await tester.tap(find.byType(Checkbox).at(0));
+    await tester.pump();
+    expect(saveButton().onPressed, isNull);
+    await tester.tap(save);
+    await tester.pump();
+    expect(find.textContaining('请先勾选要报工的明细行'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 ApiClient _api() {

@@ -48,6 +48,7 @@ import '../../features/finance/pages/finance_assets_page.dart';
 import '../../features/finance/pages/finance_doc_detail_page.dart';
 import '../../features/finance/pages/finance_doc_edit_page.dart';
 import '../../features/finance/pages/finance_doc_list_page.dart';
+import '../../features/finance/pages/finance_audit_center_page.dart';
 import '../../features/finance/pages/finance_hub_page.dart';
 import '../../features/finance/payables/pages/finance_payables_page.dart';
 import '../../features/finance/pages/finance_procurement_approval_review_page.dart';
@@ -162,6 +163,7 @@ import '../../features/subcontract/pages/subcontract_hub_page.dart';
 import '../../features/subcontract/pages/subcontract_page_factory.dart';
 import '../../features/subcontract/config/subcontract_report_config.dart';
 import '../../features/subcontract/pages/subcontract_report_table_page.dart';
+import '../../features/security/pages/security_blacklist_page.dart';
 import '../../features/security/pages/security_scan_page.dart';
 import '../../features/visitor_approval/pages/my_visitors_page.dart';
 import '../../features/visitor_approval/pages/visitor_approval_detail_page.dart';
@@ -1412,6 +1414,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'finance-hub',
             builder: (_, _) => const FinanceHubPage(),
           ),
+          // 业务审核中心：六个审核队列的分段工作台（?segment= 深链直落某队列；
+          // 静态段，须先于 /finance/:seg 单据参数路由声明）。
+          GoRoute(
+            path: RouteName.financeAudits,
+            name: 'finance-audit-center',
+            builder: (_, state) => FinanceAuditCenterPage(
+              initialSegment: state.uri.queryParameters['segment'],
+            ),
+          ),
           GoRoute(
             path: RouteName.financePayables,
             name: 'finance-payables',
@@ -1603,6 +1614,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.securityScan,
             name: 'security-scan',
             builder: (_, _) => const SecurityScanPage(),
+          ),
+          GoRoute(
+            path: RouteName.securityBlacklist,
+            name: 'security-blacklist',
+            builder: (_, _) => const SecurityBlacklistPage(),
           ),
 
           // —— 个人信息自助修改（员工侧）——

@@ -3,7 +3,8 @@
 // 用户口径：多选的内容都汇总到一个页面，可多选/单选，填合格/不合格数量后
 // 「提交报告」一次办结：
 //   - IQC 收货单区：按单分组，逐行勾选 + 行内编辑合格数量/不合格数量
-//     （默认合格 = 剩余待检、不合格 = 0），提交走 decide-batch（每单一事务）；
+//     （默认合格 = 剩余待检、不合格 = 0），提交走 decide-batch（每单一事务，
+//     2026-09-18 起 4 通道并行，失败不连坐、重试只补未确认的单）；
 //   - FQC 自制产成品区：V547 按品质检查单分组（组头三态复选，镜像 IQC 收货单组），
 //     无检查单的历史任务单列；勾选任务 = 全部合格（既有 pass-all 语义）；
 //   - 右下角 UtenFloatingActionGroup：UtenSelectionSummaryPill（已选计数唯一出处，✕ 一键清空）
@@ -30,6 +31,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -40,6 +42,7 @@ import '../../warehouse/providers/production_finished_inbound_task_count_provide
 import '../../../shared/providers/production_fqc_pending_count_provider.dart';
 import '../models/production_fqc_inspection.dart';
 import '../widgets/production_fqc_dialogs.dart' show fqcQtyText;
+import 'production_fqc_handling_page.dart' show fqcStorageText;
 import '../repositories/production_fqc_repository.dart';
 import '../services/quality_batch_submission.dart';
 import '../widgets/inspection_report_confirm_dialog.dart';
@@ -407,6 +410,25 @@ class _QualityBatchApprovalPageState
     await _sendSubmission();
   }
 
+  /// 提交期间忙碌浮层的进度文案：并行通道逐单确认，已确认的单不重发。
+  String _submitOverlayDescription() {
+    final submission = _submission;
+    if (submission == null || submission.receipts.isEmpty) {
+      return submission != null && submission.fqcInspectionIds.isNotEmpty
+          ? '自制产成品整批提交中，响应丢失重试不会重复判定。'
+          : '并行提交中，已确认部分不会重复发送。';
+    }
+    final buffer = StringBuffer(
+      '已确认 ${submission.completedReceiptCount}/${submission.receipts.length} 单'
+      '（多单并行，每单一事务）',
+    );
+    if (submission.fqcInspectionIds.isNotEmpty) {
+      buffer.write('，另含自制产成品 ${submission.fqcInspectionIds.length} 项');
+    }
+    buffer.write('；已确认部分不会重复发送。');
+    return buffer.toString();
+  }
+
   Future<void> _sendSubmission() async {
     final submission = _submission!;
     var countsInvalidated = false;
@@ -511,11 +533,13 @@ class _QualityBatchApprovalPageState
                     ),
                     // 2026-09-12 用户口径「点了像卡住」：提交报告执行期间屏幕
                     // 中间给加载动画（跟随网络调用本身，失败/完成后撤下）。
+                    // 2026-09-18 并行提交 + 实时进度（X/Y 单已确认），长批次不再
+                    // 像卡死：每确认一张单 onProgress 就刷新这里。
                     if (_submitting)
-                      const Positioned.fill(
+                      Positioned.fill(
                         child: UtenBusyOverlay(
                           title: '正在提交检验报告',
-                          description: '按收货单逐张原子提交，已确认部分不会重复发送。',
+                          description: _submitOverlayDescription(),
                         ),
                       ),
                   ],
@@ -827,6 +851,27 @@ class _QualityBatchApprovalPageState
             width: 100,
             value: (row) => row.item.colorName ?? '—',
           ),
+          // 2026-09-18 用户口径：先入库后检的货品在批量页也要逐行看到储放位置
+          //（此前只在组头红条里显示前 3 行）；写法对齐检验处置页。
+          MasterColumnDef(
+            key: 'preStocked',
+            label: '储放位置',
+            width: 200,
+            value: (row) => row.item.preStocked?.label ?? '待检区',
+            cellBuilder: (context, row) {
+              final location = row.item.preStocked;
+              if (location == null) return const Text('待检区');
+              return Text(
+                '已入库 · ${location.label}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: UtenColors.error,
+                  fontWeight: FontWeight.w700,
+                ),
+              );
+            },
+          ),
           MasterColumnDef(
             key: 'pass',
             label: '合格数量',
@@ -980,11 +1025,25 @@ class _QualityBatchApprovalPageState
         width: 150,
         value: (row) => row.warehouseName ?? '—',
       ),
+      // 先入库后检(V597)：已上架行红字给出实际储放位置，与 FQC 办理页同口径。
       MasterColumnDef(
         key: 'place',
-        label: '库位',
-        width: 120,
-        value: (row) => row.place ?? '—',
+        label: '储放位置',
+        width: 150,
+        value: (row) => fqcStorageText(row),
+        cellBuilder: (context, row) {
+          final text = fqcStorageText(row);
+          if (row.preStocked == null) return Text(text);
+          return Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: UtenColors.error,
+              fontWeight: FontWeight.w700,
+            ),
+          );
+        },
       ),
     ],
     items: inspections,

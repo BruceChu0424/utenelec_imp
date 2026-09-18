@@ -155,6 +155,7 @@ abstract final class RouteName {
   static const String visitorApprovalDetail = '/visitor-approval/:id';
   static const String myVisitors = '/my-visitors';
   static const String securityScan = '/security/scan';
+  static const String securityBlacklist = '/security/blacklist';
 
   // 账号支持 + 超级管理员授权管理
   static const String adminPermissions = '/admin/permissions';
@@ -392,6 +393,10 @@ abstract final class RouteName {
   // 钱流管理（财税部）：hub + 5 单据 + AR/AP 台账 + 对账 + 支票 + 报表。
   // seg = receipts|payments|expenses|incomes|bank-transfers。
   static const String finance = '/finance';
+
+  /// 业务审核中心：财务全部审核/审批队列的一站式分段工作台（原 hub 任务中心
+  /// 6 张卡的合并入口；?segment= 深链到具体队列分段）。
+  static const String financeAudits = '/finance/audits';
 
   /// 销售出货财务人工放行工作台。
   static const String financeSalesShipmentAudit =

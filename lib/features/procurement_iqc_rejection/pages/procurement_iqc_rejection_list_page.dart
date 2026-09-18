@@ -27,10 +27,19 @@ class ProcurementIqcRejectionListPage extends ConsumerStatefulWidget {
     super.key,
     this.source,
     this.repository,
+    this.embedded = false,
+    this.refreshTick = 0,
   });
 
   final String? source;
   final ProcurementIqcRejectionGateway? repository;
+
+  /// 嵌入「业务审核中心」分段时为 true——去掉本页 AppBar 与内容容器
+  /// （外层提供标题/刷新/容器）。
+  final bool embedded;
+
+  /// 外层（业务审核中心）触发的刷新信号；数值变化时重拉当前页。
+  final int refreshTick;
 
   @override
   ConsumerState<ProcurementIqcRejectionListPage> createState() =>
@@ -62,6 +71,14 @@ class _ProcurementIqcRejectionListPageState
   void initState() {
     super.initState();
     Future<void>.microtask(() => _load(1));
+  }
+
+  @override
+  void didUpdateWidget(ProcurementIqcRejectionListPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.refreshTick != oldWidget.refreshTick) {
+      _load(_result?.page ?? 1);
+    }
   }
 
   Future<void> _load(int page) async {
@@ -148,6 +165,24 @@ class _ProcurementIqcRejectionListPageState
   @override
   Widget build(BuildContext context) {
     final result = _result;
+    final body = SafeArea(
+      child: _loading && result == null
+          ? Center(
+              child: Semantics(
+                label: '正在加载 IQC 不合格任务',
+                child: const CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+            )
+          : _error != null && result == null
+          ? UtenEmpty.error(
+              message: '无法加载 IQC 不合格任务',
+              description: _error,
+              actionLabel: '重新加载',
+              onAction: () => _load(1),
+            )
+          : _buildContent(),
+    );
+    if (widget.embedded) return body;
     return Scaffold(
       appBar: UtenAppBar(
         title: 'IQC 不合格退回与贷项',
@@ -164,23 +199,7 @@ class _ProcurementIqcRejectionListPageState
           ),
         ],
       ),
-      body: SafeArea(
-        child: _loading && result == null
-            ? Center(
-                child: Semantics(
-                  label: '正在加载 IQC 不合格任务',
-                  child: const CircularProgressIndicator(strokeWidth: 2.5),
-                ),
-              )
-            : _error != null && result == null
-            ? UtenEmpty.error(
-                message: '无法加载 IQC 不合格任务',
-                description: _error,
-                actionLabel: '重新加载',
-                onAction: () => _load(1),
-              )
-            : _buildContent(),
-      ),
+      body: body,
     );
   }
 
@@ -194,72 +213,80 @@ class _ProcurementIqcRejectionListPageState
           total: 0,
           totalPages: 1,
         );
+    Widget buildContent(BoxConstraints constraints) {
+      final expanded = constraints.maxWidth >= 840;
+      final header = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildResponsibilityBanner(),
+          const SizedBox(height: UtenSpacing.s12),
+          if (_counts != null) _buildCounts(_counts!),
+          if (_counts != null) const SizedBox(height: UtenSpacing.s12),
+          _buildFilters(expanded: expanded),
+          if (_error != null) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Semantics(
+              liveRegion: true,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.sync_problem_outlined,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Expanded(child: Text('刷新失败：${_error!}')),
+                  TextButton(
+                    onPressed: _loading ? null : () => _load(result.page),
+                    child: const Text('重试'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: UtenSpacing.s12),
+        ],
+      );
+      if (expanded) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            header,
+            Expanded(child: _buildTable(result)),
+          ],
+        );
+      }
+      return ListView(
+        key: const Key('iqc-rejection-compact-list'),
+        children: [
+          header,
+          if (result.items.isEmpty)
+            SizedBox(height: 320, child: _emptyState())
+          else
+            for (final item in result.items) ...[
+              _IqcRejectionTaskCard(item: item, onTap: () => _open(item)),
+              const SizedBox(height: UtenSpacing.s8),
+            ],
+          _IqcRejectionPager(
+            page: result.page,
+            totalPages: result.totalPages,
+            loading: _loading,
+            onPageChanged: _load,
+          ),
+        ],
+      );
+    }
+
+    // 嵌入形态不复套容器与内边距（业务审核中心已提供），避免双重 gutter。
+    if (widget.embedded) {
+      return LayoutBuilder(
+        builder: (context, constraints) => buildContent(constraints),
+      );
+    }
     return UtenContentContainer.wide(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s12),
         child: LayoutBuilder(
-          builder: (context, constraints) {
-            final expanded = constraints.maxWidth >= 840;
-            final header = Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildResponsibilityBanner(),
-                const SizedBox(height: UtenSpacing.s12),
-                if (_counts != null) _buildCounts(_counts!),
-                if (_counts != null) const SizedBox(height: UtenSpacing.s12),
-                _buildFilters(expanded: expanded),
-                if (_error != null) ...[
-                  const SizedBox(height: UtenSpacing.s8),
-                  Semantics(
-                    liveRegion: true,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.sync_problem_outlined,
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                        const SizedBox(width: UtenSpacing.s8),
-                        Expanded(child: Text('刷新失败：${_error!}')),
-                        TextButton(
-                          onPressed: _loading ? null : () => _load(result.page),
-                          child: const Text('重试'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-                const SizedBox(height: UtenSpacing.s12),
-              ],
-            );
-            if (expanded) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  header,
-                  Expanded(child: _buildTable(result)),
-                ],
-              );
-            }
-            return ListView(
-              key: const Key('iqc-rejection-compact-list'),
-              children: [
-                header,
-                if (result.items.isEmpty)
-                  SizedBox(height: 320, child: _emptyState())
-                else
-                  for (final item in result.items) ...[
-                    _IqcRejectionTaskCard(item: item, onTap: () => _open(item)),
-                    const SizedBox(height: UtenSpacing.s8),
-                  ],
-                _IqcRejectionPager(
-                  page: result.page,
-                  totalPages: result.totalPages,
-                  loading: _loading,
-                  onPageChanged: _load,
-                ),
-              ],
-            );
-          },
+          builder: (context, constraints) => buildContent(constraints),
         ),
       ),
     );

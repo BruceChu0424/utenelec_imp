@@ -135,8 +135,12 @@ class _QualityPendingDisposalPageState
       _error = null;
     });
     final errors = <String>[];
+    // 2026-09-18 批量提交后返回队列的重载：IQC 收货单、FQC 决定能力、检查单、
+    // 散任务四个独立读并发发出（原先串行四次往返，提交后的等待被拉长一整圈）。
+    // 各域成功才覆盖、失败保留旧数据的口径与串行版一致。
     List<PendingInspectionReceipt>? receipts;
-    if (_canViewIqc) {
+    Future<void> loadReceipts() async {
+      if (!_canViewIqc) return;
       try {
         receipts = await ref
             .read(procurementInspectionRepositoryProvider)
@@ -147,32 +151,36 @@ class _QualityPendingDisposalPageState
         errors.add('待检收货单加载失败');
       }
     }
+
     List<ProductionFqcInspectionSheet>? sheets;
     List<ProductionFqcInspection>? inspections;
     var fqcTotal = 0;
     var fqcTruncated = false;
     var canDecideFqc = false;
-    if (_canViewFqc) {
+    Future<void> loadFqc() async {
+      if (!_canViewFqc) return;
       try {
+        final repo = ref.read(productionFqcRepositoryProvider);
         final permissions = ref.read(currentPermissionsProvider);
         final mayApprove =
             ref.read(isSuperAdminProvider) ||
             permissions.contains(Perm.productionQualityInspectionApprove);
-        if (mayApprove) {
+        // 决定能力 fail closed；失败不拖垮任务读取，与原串行版一致。
+        Future<bool> capability() async {
+          if (!mayApprove) return false;
           try {
-            // Fail closed for the write actions; task reading stays available.
-            canDecideFqc = await ref
-                .read(productionFqcRepositoryProvider)
-                .canDecide();
+            return await repo.canDecide();
           } catch (_) {
-            canDecideFqc = false;
+            return false;
           }
         }
+
+        final canDecide = capability();
         // status 默认 'ACTIVE'（仍有待检行），与待检口径一致：
         // 一行一张检查单 + 无检查单的历史任务逐条（与 /count 角标同口径）。
-        final repo = ref.read(productionFqcRepositoryProvider);
         final sheetResult = await repo.listSheets(size: _fqcFetchSize);
         final looseResult = await repo.list(size: _fqcFetchSize, sheet: 'NONE');
+        canDecideFqc = await canDecide;
         sheets = sheetResult.items;
         inspections = looseResult.items;
         fqcTotal = sheetResult.total + looseResult.total;
@@ -185,6 +193,9 @@ class _QualityPendingDisposalPageState
         errors.add('自制产成品待检任务加载失败');
       }
     }
+
+    final receiptsFuture = loadReceipts();
+    await Future.wait([receiptsFuture, loadFqc()]);
     if (!mounted || request != _requestVersion) return;
     setState(() {
       // 成功才覆盖；失败保留旧数据并叠加行内错误（不把失败伪装成空队列）。
@@ -768,14 +779,27 @@ class _QualityPendingDisposalPageState
     return row.receipt!.preStockedItemCount;
   }
 
-  String _storageText(_DisposalRow row) {
-    final count = _preStockedLineCount(row);
-    if (count == 0) return '待检区';
-    // 检查单行带上登记库位去重清单(place_summary)：品质部按「库行-层-位」到储放区域找货。
-    final places = row.isSheet ? row.sheet!.placeSummary : null;
-    final suffix = (places == null || places.isEmpty) ? '' : ' · $places';
-    return '已入库待检($count 行)$suffix';
-  }
+  /// 已上架行的标红样式（2026-09-18 起「仓库 / 库位号」两列共用）。
+  TextStyle? _preStockedStyle(BuildContext context) => Theme.of(context)
+      .textTheme
+      .bodyMedium
+      ?.copyWith(color: UtenColors.error, fontWeight: FontWeight.w700);
+
+  /// 「仓库」列：IQC 取已上架行的去重仓名（未上架=待检区）；FQC 检查单/历史任务
+  /// 取登记成品仓——成品登记时逐行必填仓+库位，位置始终可知。
+  String _warehouseText(_DisposalRow row) => row.isSheet
+      ? (row.sheet!.warehouseName ?? '—')
+      : row.isFqc
+      ? (row.inspection!.warehouseName ?? '—')
+      : (row.receipt!.preStockedWarehouseNames ?? '待检区');
+
+  /// 「库位号」列：IQC 取已上架行的去重库位清单；FQC 检查单取待检行登记库位
+  /// 去重清单(place_summary)；无检查单的历史任务直接用本行登记库位。
+  String _placeText(_DisposalRow row) => row.isSheet
+      ? (row.sheet!.placeSummary ?? '—')
+      : row.isFqc
+      ? (row.inspection!.place ?? '—')
+      : (row.receipt!.preStockedPlaces ?? '—');
 
   List<MasterColumnDef<_DisposalRow>> get _columns => [
     MasterColumnDef(
@@ -864,23 +888,31 @@ class _QualityPendingDisposalPageState
       width: 100,
       value: _statusLabel,
     ),
-    // 先入库后检(V596 IQC / V597 FQC)：仓库把货先落到库位的单，品质部要到储放区域检验。
+    // 先入库后检(V596 IQC / V597 FQC)：仓库把货先落到库位的单，品质部要到储放区域
+    // 检验（2026-09-18 用户口径：直接给「仓库 / 库位号」两列，不用逐单点进明细找位置）。
     MasterColumnDef(
-      key: 'storage',
-      label: '储放位置',
-      width: 130,
-      value: _storageText,
-      cellBuilder: (context, row) {
-        final text = _storageText(row);
-        if (_preStockedLineCount(row) == 0) return Text(text);
-        return Text(
-          text,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: UtenColors.error,
-            fontWeight: FontWeight.w700,
-          ),
-        );
-      },
+      key: 'warehouse',
+      label: '仓库',
+      width: 140,
+      value: _warehouseText,
+      cellBuilder: (context, row) => Text(
+        _warehouseText(row),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: _preStockedLineCount(row) > 0 ? _preStockedStyle(context) : null,
+      ),
+    ),
+    MasterColumnDef(
+      key: 'place',
+      label: '库位号',
+      width: 150,
+      value: _placeText,
+      cellBuilder: (context, row) => Text(
+        _placeText(row),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: _preStockedLineCount(row) > 0 ? _preStockedStyle(context) : null,
+      ),
     ),
     MasterColumnDef(
       key: 'itemCount',

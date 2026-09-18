@@ -75,7 +75,9 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
       // 确认后回到 pending（HR 待办）或 rejected，两个徽章都要刷新
       ref.read(visitorHostPendingCountProvider.notifier).refresh();
       ref.read(visitorPendingCountProvider.notifier).refresh();
-      context.appSuccess(confirmed ? '已确认接待，申请已转回 HR 审批' : '已拒绝接待');
+      context.appSuccess(
+        confirmed ? l10n.myVisitorsConfirmDone : l10n.myVisitorsRejectDone,
+      );
     } on ApiException catch (e) {
       if (context.mounted) {
         context.appApiError(e, fallback: l10n.commonError);
@@ -118,6 +120,7 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
     List<VisitorApplication> pageItems,
   ) async {
     if (_batchBusy || ids.isEmpty) return;
+    final l10n = AppLocalizations.of(context);
     final statusById = {for (final app in pageItems) app.id: app.status};
     final confirmable = ids
         .where(
@@ -128,37 +131,36 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
         .toSet();
     final skipped = ids.length - confirmable.length;
     if (confirmable.isEmpty) {
-      context.appError('所选申请均不在「待我确认」状态，无需确认');
+      context.appError(l10n.myVisitorsBatchNoneSelected);
       return;
     }
     if (confirmable.length > kMyVisitorsBatchLimit) {
       context.appError(
-        '单次最多批量处理 $kMyVisitorsBatchLimit 条，请分批操作（当前 ${confirmable.length} 条）',
+        l10n.visitorBatchLimitError(kMyVisitorsBatchLimit, confirmable.length),
       );
       return;
     }
-    final l10n = AppLocalizations.of(context);
     final count = confirmable.length;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text('批量确认接待($count)'),
+        title: Text(l10n.myVisitorsBatchTitle(count)),
         content: SizedBox(
           width: 440,
           child: Text(
-            '将逐条确认接待所选 $count 位访客，确认后申请转回 HR 等待最终批准。'
-            '${skipped > 0 ? '（另有 $skipped 条不在「待我确认」状态，已跳过）' : ''}',
+            l10n.myVisitorsBatchMessage(count) +
+                (skipped > 0 ? l10n.myVisitorsBatchSkippedNote(skipped) : ''),
           ),
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
+            child: Text(l10n.commonCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('确认接待'),
+            child: Text(l10n.myVisitorsBatchConfirm),
           ),
         ],
       ),
@@ -186,13 +188,15 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
     });
     if (okCount > 0) {
       context.appSuccess(
-        '已确认接待 $okCount 位访客'
-        '${failures.isNotEmpty ? '，${failures.length} 条失败' : ''}'
-        '${skipped > 0 ? '，$skipped 条已跳过' : ''}',
+        l10n.myVisitorsBatchResult(okCount) +
+            (failures.isNotEmpty
+                ? l10n.visitorBatchResultFailures(failures.length)
+                : '') +
+            (skipped > 0 ? l10n.visitorBatchResultSkipped(skipped) : ''),
       );
     }
     if (failures.isNotEmpty) {
-      context.appError('批量确认未全部完成：${failures.first}');
+      context.appError(l10n.myVisitorsBatchIncomplete(failures.first));
     }
     ref.invalidate(myAsHostProvider);
     ref.read(visitorHostPendingCountProvider.notifier).refresh();
@@ -213,7 +217,9 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
       onPressed: selectedIds.isNotEmpty && !_batchBusy
           ? () => _batchConfirm(Set<String>.of(selectedIds), pageItems)
           : null,
-      child: Text('批量确认接待(${selectedIds.length})'),
+      child: Text(
+        AppLocalizations.of(context).myVisitorsBatchButton(selectedIds.length),
+      ),
     ),
   ];
 
@@ -287,34 +293,34 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
   List<MasterColumnDef<VisitorApplication>> _columns(AppLocalizations l10n) => [
     MasterColumnDef(
       key: 'visitorName',
-      label: '访客姓名',
+      label: l10n.visitorColVisitorName,
       width: 130,
       value: (app) => app.visitorName,
     ),
     MasterColumnDef(
       key: 'company',
-      label: '公司',
+      label: l10n.visitorColCompany,
       width: 170,
       value: (app) => app.company,
     ),
     MasterColumnDef(
       key: 'visitPurpose',
-      label: '事由',
+      label: l10n.visitorColPurpose,
       width: 260,
       value: (app) => app.visitPurpose,
     ),
     MasterColumnDef(
       key: 'plannedVisitAt',
-      label: '计划到访',
+      label: l10n.visitorColPlannedVisit,
       width: 180,
       type: 'date',
       value: (app) => fmtDateTime(app.plannedVisitAt),
     ),
     MasterColumnDef(
       key: 'status',
-      label: '状态',
+      label: l10n.visitorColStatus,
       width: 110,
-      info: '默认只看「待我确认」；表头筛选可切到已转 HR / 已批准 / 已拒绝（下推后端）。',
+      info: l10n.myVisitorsStatusColInfo,
       value: (app) => visitorStatusLabel(app.status, l10n),
     ),
   ];

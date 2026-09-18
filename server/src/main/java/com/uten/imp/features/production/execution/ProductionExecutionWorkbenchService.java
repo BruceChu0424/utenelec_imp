@@ -622,7 +622,14 @@ public class ProductionExecutionWorkbenchService {
                            WHERE route_demand.execution_segment_id = task.segment_id
                              AND route_demand.is_deleted = FALSE
                              AND route_demand.status NOT IN ('RELEASED', 'REVERSED')
-                             AND fn_demand_direct_supply_eligible(route_demand.id))
+                             AND fn_demand_direct_supply_eligible(route_demand.id)),
+                       (SELECT memory.start_route
+                          FROM production_execution_segments memory
+                         WHERE memory.product_goods_id = task.product_goods_id
+                           AND memory.is_deleted = FALSE
+                           AND memory.start_route IS NOT NULL
+                         ORDER BY memory.route_confirmed_at DESC NULLS LAST
+                         LIMIT 1)
                 """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), effectiveIssuedPredicate(), drawRequestedPredicate(),
                         effectiveIssuedPredicate(), pendingDrawItemSql(), pendingDrawItemSql());
     }
@@ -824,7 +831,8 @@ public class ProductionExecutionWorkbenchService {
                 bool(row[38]), uuid(row[39]), bool(row[40]), bool(row[41]),
                 usage.hasPendingReturn(), usage.hasAvailableMaterial(),
                 bool(row[42]), bool(row[43]), bool(row[44]),
-                text(row[45]), bool(row[46]), bool(row[47]), bool(row[48]));
+                text(row[45]), bool(row[46]), bool(row[47]), bool(row[48]),
+                text(row[49]));
     }
 
     private static int boundedSize(int requested) {

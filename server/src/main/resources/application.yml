@@ -61,6 +61,13 @@ server:
   # Finite combined request-line/header budget. Keep the reverse proxy aligned;
   # reduce JWT/device evidence size before considering any further increase.
   max-http-request-header-size: ${UTEN_MAX_HTTP_REQUEST_HEADER_SIZE:16KB}
+  # 大分析响应（数千行 × 70 字段）未压缩时以 MB 计（2026-09-18 实测 2460 行 ≈ 7.4MB，
+  # 共享仓库投影前 20MB）。JSON 重复度高、gzip 后 <10%，客户端（dio/Dart HttpClient）
+  # 透明解压；低于 64KB 的响应不值得压。
+  compression:
+    enabled: true
+    mime-types: application/json
+    min-response-size: 64KB
   servlet:
     encoding:
       charset: UTF-8

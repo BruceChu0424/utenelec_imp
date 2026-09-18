@@ -287,6 +287,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get visitorApplyValidateVisitTimeFuture => '방문 시간은 현재 이후여야 합니다';
 
   @override
+  String get visitorApplyValidatePlate => '차량으로 방문하는 경우 차량 번호판을 입력해 주세요';
+
+  @override
   String get visitorApplyDuplicateTime =>
       '같은 시간에 진행 중인 예약이 있습니다. 다른 시간을 선택해 주세요';
 
@@ -391,6 +394,9 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get securityPasscodeHint => '6자리 출입 코드 입력';
+
+  @override
+  String get securityPasscodeInvalid => '6자리 숫자 출입 코드를 입력해 주세요';
 
   @override
   String get visitorPasscodeLabel => '출입 코드';
@@ -3398,4 +3404,297 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get productionBatchNoAdditionalMaterials =>
       'No additional materials are needed; arrange production using the existing material sources.';
+
+  @override
+  String get securityReasonBlocked => '차단됨: 출입 금지';
+
+  @override
+  String get securityBlacklistTitle => '방문자 블랙리스트';
+
+  @override
+  String get securityBlacklistEmpty => '차단된 방문자가 없습니다';
+
+  @override
+  String get securityBlacklistColNo => '방문자 번호';
+
+  @override
+  String get securityBlacklistColName => '이름';
+
+  @override
+  String get securityBlacklistColPhone => '휴대폰 번호';
+
+  @override
+  String get securityBlacklistColReason => '차단 사유';
+
+  @override
+  String get securityBlacklistColAt => '차단 시간';
+
+  @override
+  String get securityBlacklistColBy => '작업자';
+
+  @override
+  String get securityBlacklistAction => '방문자 차단';
+
+  @override
+  String get securityBlacklistNoticeLabel => '방문자 차단';
+
+  @override
+  String get securityBlacklistNoticeDesc =>
+      '차단 시 해당 방문자는 즉시 로그인과 출입이 불가하며, 작업과 사유가 감사 기록에 남습니다.';
+
+  @override
+  String get securityBlacklistReasonLabel => '차단 사유';
+
+  @override
+  String get securityBlacklistReasonHint => '차단 사유를 입력해 주세요(필수)';
+
+  @override
+  String get securityBlacklistDone => '방문자가 차단되었습니다';
+
+  @override
+  String get securityBlacklistRemove => '차단 해제';
+
+  @override
+  String get securityBlacklistRemoveConfirm =>
+      '차단을 해제할까요? 해제 후 해당 방문자는 다시 로그인하고 신청할 수 있으며, 기존 신청 상태는 유지됩니다.';
+
+  @override
+  String get securityBlacklistRemoveDone => '차단이 해제되었습니다';
+
+  @override
+  String get entryStaffSubtitle => '직원 계정으로 로그인하여 작업 공간에 들어갑니다';
+
+  @override
+  String get entryVisitorSubtitle => '방문자는 휴대폰 인증번호로 등록하여 신속히 출입합니다';
+
+  @override
+  String get visitorColName => '이름';
+
+  @override
+  String get visitorColPurpose => '목적';
+
+  @override
+  String get visitorColHost => '담당자';
+
+  @override
+  String get visitorColPlannedVisit => '방문 예정';
+
+  @override
+  String get visitorColStatus => '상태';
+
+  @override
+  String get visitorColCompany => '회사';
+
+  @override
+  String get visitorColVisitorName => '방문자 이름';
+
+  @override
+  String get visitorColHostDepartment => '담당자 부서';
+
+  @override
+  String get visitorApplySubmittingOverlay =>
+      '신청을 제출하는 중입니다. 중복 제출하거나 페이지를 벗어나지 마세요.';
+
+  @override
+  String get visitorApplyDeptHint => '담당 부서를 선택해 주세요';
+
+  @override
+  String get visitorApplyHostHint => '방문할 담당자를 선택해 주세요';
+
+  @override
+  String get visitorApplyHostSheetTitle => '방문할 담당자 선택';
+
+  @override
+  String visitorSettingsPortalTag(Object app) {
+    return '$app · 방문자';
+  }
+
+  @override
+  String get visitorApprovalHostDeptColInfo =>
+      '신청 시점의 담당자 부서 스냅샷; 헤더 필터는 hostDepartmentId를 백엔드로 전달합니다.';
+
+  @override
+  String visitorBatchLimitError(int limit, int count) {
+    return '한 번에 최대 $limit건까지 처리할 수 있습니다. 나누어 처리해 주세요(현재 $count건)';
+  }
+
+  @override
+  String visitorBatchApproveTitle(int count) {
+    return '일괄 승인($count)';
+  }
+
+  @override
+  String visitorBatchApproveMessage(int count) {
+    return '선택한 $count건의 방문 신청을 건별로 승인하며, 승인 시 출입 QR 코드가 발급됩니다. 담당자와 방문 목적을 확인하려면 행을 더블클릭하여 상세를 검토하세요.';
+  }
+
+  @override
+  String get visitorBatchApproveConfirm => '일괄 승인 확인';
+
+  @override
+  String get visitorBatchActionLabel => '방문자 심사';
+
+  @override
+  String visitorBatchApproveResponsibility(int count) {
+    return '확인 시 선택한 $count건의 방문 신청에 대한 심사 책임이 현재 로그인 계정으로 기록됩니다.';
+  }
+
+  @override
+  String get visitorBatchVerbApprove => '승인';
+
+  @override
+  String get visitorBatchVerbReject => '거부';
+
+  @override
+  String get visitorBatchVerbForward => '담당자 확인으로 전달';
+
+  @override
+  String visitorBatchResult(Object verb, int count) {
+    return '$count건의 방문 신청을 $verb했습니다';
+  }
+
+  @override
+  String visitorBatchResultFailures(int count) {
+    return ', $count건 실패';
+  }
+
+  @override
+  String visitorBatchResultSkipped(int count) {
+    return ', $count건 건너뜀';
+  }
+
+  @override
+  String visitorBatchIncomplete(Object verb, Object reason) {
+    return '일괄 $verb이(가) 완료되지 않았습니다: $reason';
+  }
+
+  @override
+  String visitorBatchRejectTitle(int count) {
+    return '일괄 거부($count)';
+  }
+
+  @override
+  String visitorBatchRejectDescription(int count) {
+    return '거부 사유가 $count명의 방문자에게 전달됩니다. 구체적인 문제를 설명해 주세요.';
+  }
+
+  @override
+  String get visitorBatchRejectConfirm => '거부 확인';
+
+  @override
+  String get visitorBatchSubjectLabel => '방문 신청';
+
+  @override
+  String get visitorBatchForwardNoneSelected =>
+      '선택한 신청이 모두 담당자 확인 중이므로 전달할 항목이 없습니다';
+
+  @override
+  String visitorBatchForwardTitle(int count) {
+    return '일괄 담당자 확인 전달($count)';
+  }
+
+  @override
+  String visitorBatchForwardMessage(int count) {
+    return '선택한 $count건의 방문 신청이 각 담당자에게 전달되며, 담당자 확인 후 최종 승인을 위해 이 대기열로 돌아옵니다.';
+  }
+
+  @override
+  String visitorBatchForwardSkippedNote(int count) {
+    return ' (추가 $count건은 이미 담당자 확인 중이므로 건너뛰었습니다)';
+  }
+
+  @override
+  String get visitorBatchForwardConfirm => '일괄 전달 확인';
+
+  @override
+  String visitorBatchForwardResponsibility(int count) {
+    return '확인 시 선택한 $count건의 방문 신청 전달 작업이 현재 로그인 계정으로 기록됩니다.';
+  }
+
+  @override
+  String visitorBatchApproveButton(int count) {
+    return '승인($count)';
+  }
+
+  @override
+  String visitorBatchForwardButton(int count) {
+    return '전달($count)';
+  }
+
+  @override
+  String visitorBatchRejectButton(int count) {
+    return '거부($count)';
+  }
+
+  @override
+  String get visitorApprovalDoneApprove => '방문 신청이 승인되었습니다';
+
+  @override
+  String get visitorApprovalDoneReject => '방문 신청이 거부되었습니다';
+
+  @override
+  String get visitorApprovalDoneForward => '담당자 확인으로 전달했습니다';
+
+  @override
+  String get visitorApprovalDoneFallback => '작업이 완료되었습니다';
+
+  @override
+  String get visitorApprovalApproveNoticeLabel => '방문자 승인';
+
+  @override
+  String get visitorApprovalApproveNoticeDesc =>
+      '확인 시 현재 심사자와 심사 결과가 기록됩니다. 이번 방문자 입장 결정에 대한 책임을 확인하세요.';
+
+  @override
+  String get visitorApprovalRejectNoticeLabel => '방문자 거부';
+
+  @override
+  String get visitorApprovalRejectNoticeDesc =>
+      '확인 시 현재 심사자와 거부 결과가 기록됩니다. 이번 결정에 대한 책임을 확인하세요.';
+
+  @override
+  String get myVisitorsConfirmDone => '담당 확정 완료, 신청이 HR 심사로 돌아갔습니다';
+
+  @override
+  String get myVisitorsRejectDone => '담당 거부 완료';
+
+  @override
+  String get myVisitorsBatchNoneSelected => '선택한 신청 중 확인 대기 중인 항목이 없습니다';
+
+  @override
+  String myVisitorsBatchTitle(int count) {
+    return '일괄 담당 확정($count)';
+  }
+
+  @override
+  String myVisitorsBatchMessage(int count) {
+    return '선택한 $count명의 방문자를 건별로 담당 확정하며, 신청은 최종 승인을 위해 HR로 돌아갑니다.';
+  }
+
+  @override
+  String myVisitorsBatchSkippedNote(int count) {
+    return ' (추가 $count건은 확인 대기 상태가 아니므로 건너뛰었습니다)';
+  }
+
+  @override
+  String get myVisitorsBatchConfirm => '확인';
+
+  @override
+  String myVisitorsBatchResult(int count) {
+    return '$count명의 방문자를 담당 확정했습니다';
+  }
+
+  @override
+  String myVisitorsBatchIncomplete(Object reason) {
+    return '일괄 확인이 완료되지 않았습니다: $reason';
+  }
+
+  @override
+  String myVisitorsBatchButton(int count) {
+    return '확정($count)';
+  }
+
+  @override
+  String get myVisitorsStatusColInfo =>
+      '기본적으로 \'확인 대기\' 항목만 표시합니다. 헤더 필터로 전달됨/승인됨/거부됨으로 전환할 수 있습니다(백엔드 전달).';
 }

@@ -2,6 +2,10 @@
 
 > ⚠️ **已随 ADR-060 退役（2026-09-01）**：本文属旧发布链/旧部署链文档，按 [ADR-060](../../docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md) 保留作未来引入第二维护者时的参考，不再具有操作效力。现役链见 [deploy/simple/RUNBOOK.zh-CN.md](../../simple/RUNBOOK.zh-CN.md)。
 
+> **2026-09-18 订正**：发布版本号已改为语义化 `vMAJOR.MINOR.PATCH`（规则见仓库 README
+>「版本号规则」）。本文正文中的 `vYYYY.MM.DD-N` tag 示例为历史写法；验收工作流
+> `aliyun-oidc-acceptance.yml` 的 ref 预检正则已同步只接受语义化 tag。
+
 本目录只生成、校验和验收策略，不创建或修改任何真实阿里云资源。生产启用前必须由云平台/安全负责人把渲染结果作为受控变更应用，再读回核对并保存证据。GitHub 仓库身份、套餐、ruleset、Environment、人员
 Commit/Tag 签名与 Release 制品签名的前置清单见
 [GitHub 保护/签名 authority 配置执行清单](../release/GITHUB_SIGNING_AND_PROTECTION_SETUP.zh-CN.md)。

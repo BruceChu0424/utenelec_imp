@@ -2,22 +2,26 @@
 // 工号提交时自动生成（UT 前缀）；登录账号 = 手机号；初始密码 = 身份证后 6 位（首登强制改）。
 // 岗位为空起步：可选择部门已有岗位，也可填写新岗位，确认后再回填表单。
 // 表单页全断点套 UtenContentContainer.narrow（maxWidth 1120），分组为 UtenSectionHeader + UtenCard。
+// 2026-09-18 UI 统一收口：日期字段改 UtenDateField（与其它编辑页 outlined 同款）、
+// 吸底提交按钮改右下悬浮操作组（2026-09-14 全站口径），日期必填校验移到提交时。
 // 文档：docs/03-页面/入职流程页.md
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/input/china_input_formatters.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -52,9 +56,10 @@ class _EmployeeOnboardingPageState
   final _idNumber = TextEditingController();
   final _phone = TextEditingController();
   final _email = TextEditingController();
-  final _hireDate = TextEditingController();
+  // 日期字段走 UtenDateField：值是 DateTime（提交时格式化），必填校验在 _submit。
+  DateTime? _hireDate;
   // ADR-021：用工状态=正式（active）时转正日期必填；默认带入入职日期可改
-  final _confirmedDate = TextEditingController();
+  DateTime? _confirmedDate;
   final _baseSalary = TextEditingController();
   final _bankAccount = TextEditingController();
   final _bankBranch = TextEditingController();
@@ -105,8 +110,6 @@ class _EmployeeOnboardingPageState
       _idNumber,
       _phone,
       _email,
-      _hireDate,
-      _confirmedDate,
       _baseSalary,
       _bankAccount,
       _bankBranch,
@@ -114,38 +117,6 @@ class _EmployeeOnboardingPageState
       c.dispose();
     }
     super.dispose();
-  }
-
-  Future<void> _pickDate() async {
-    final today = ChinaDateTime.today();
-    final d = await showDatePicker(
-      context: context,
-      initialDate: today,
-      firstDate: DateTime(1990),
-      lastDate: today.add(const Duration(days: 365)),
-    );
-    if (d != null) {
-      _hireDate.text = DateFormat('yyyy-MM-dd').format(d);
-      // 正式员工转正日期默认=入职日期（可改）；试用员工不涉及
-      if (_status == 'active' && _confirmedDate.text.trim().isEmpty) {
-        _confirmedDate.text = _hireDate.text;
-      }
-    }
-  }
-
-  Future<void> _pickConfirmedDate() async {
-    final today = ChinaDateTime.today();
-    final hire = DateTime.tryParse(_hireDate.text.trim());
-    final d = await showDatePicker(
-      context: context,
-      initialDate:
-          DateTime.tryParse(_confirmedDate.text.trim()) ?? hire ?? today,
-      firstDate: hire ?? DateTime(1990),
-      lastDate: today,
-    );
-    if (d != null) {
-      _confirmedDate.text = DateFormat('yyyy-MM-dd').format(d);
-    }
   }
 
   String _idTypeLabel(AppLocalizations l10n, String code) => switch (code) {
@@ -180,8 +151,23 @@ class _EmployeeOnboardingPageState
       return;
     }
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _submitting = true);
     final l10n = AppLocalizations.of(context);
+    // 日期字段是 UtenDateField（非 FormField），必填校验在这里收口。
+    if (_hireDate == null) {
+      context.appError(l10n.employeeOnboardPickHireDate);
+      return;
+    }
+    // ADR-021：正式入职必须登记转正日期（后端 fail closed 复核）
+    if (_status == 'active' && _confirmedDate == null) {
+      context.appError('正式入职的员工必须填写转正日期'); // TODO(l10n): 补 arb
+      return;
+    }
+    // 转正日期不得早于入职日期（原日期选择器口径，改 UtenDateField 后由提交校验承担）
+    if (_status == 'active' && _confirmedDate!.isBefore(_hireDate!)) {
+      context.appError('转正日期不能早于入职日期'); // TODO(l10n): 补 arb
+      return;
+    }
+    setState(() => _submitting = true);
     try {
       final profile = <String, dynamic>{
         'fullName': _name.text.trim(),
@@ -196,13 +182,12 @@ class _EmployeeOnboardingPageState
         if (_position.position == null &&
             (_position.customName?.trim().isNotEmpty ?? false))
           'positionName': _position.customName!.trim(),
-        'hireDate': _hireDate.text.trim().isEmpty
-            ? ChinaDateTime.formatDate(ChinaDateTime.today())
-            : _hireDate.text.trim(),
+        'hireDate': ChinaDateTime.formatDate(_hireDate!),
         'employmentType': _employmentType,
         'status': _status,
         // ADR-021：正式入职必须登记转正日期（后端 fail closed 复核）
-        if (_status == 'active') 'confirmedAt': _confirmedDate.text.trim(),
+        if (_status == 'active')
+          'confirmedAt': ChinaDateTime.formatDate(_confirmedDate!),
       };
       Map<String, dynamic>? compensation;
       final canEditCompensation = permissions.contains(
@@ -260,6 +245,21 @@ class _EmployeeOnboardingPageState
         title: l10n.employeeOnboardTitle,
         showBackButton: true,
       ),
+      // 2026-09-14 UI 统一口径：吸底提交按钮改右下悬浮组，统一 large 尺寸。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: UtenFloatingActionGroup(
+        children: [
+          UtenButton(
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
+            icon: Icons.how_to_reg_outlined,
+            isLoading: _submitting,
+            onPressed: _submitting ? null : _submit,
+            child: Text(l10n.employeeOnboardSubmit),
+          ),
+        ],
+      ),
       // 表单页全断点窄版收敛（1120），避免宽屏表单被拉得过长
       body: !canOnboard
           ? const UtenEmpty(
@@ -272,8 +272,12 @@ class _EmployeeOnboardingPageState
                   Form(
                     key: _formKey,
                     child: ListView(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: UtenSpacing.s16,
+                      // 底部留出右下悬浮操作组的高度。
+                      padding: const EdgeInsets.fromLTRB(
+                        0,
+                        UtenSpacing.s16,
+                        0,
+                        UtenFloatingActionGroup.scrollClearance,
                       ),
                       children: [
                         _group(l10n.employeeOnboardGroupProfile, [
@@ -403,19 +407,24 @@ class _EmployeeOnboardingPageState
                             onChanged: (value) =>
                                 setState(() => _position = value),
                           ),
-                          GestureDetector(
-                            onTap: _pickDate,
-                            child: AbsorbPointer(
-                              child: _text(
-                                _hireDate,
-                                l10n.employeeFieldHireDate,
-                                l10n.employeeOnboardHireDateHint,
-                                required: true,
-                                validator: (v) => (v == null || v.isEmpty)
-                                    ? l10n.employeeOnboardPickHireDate
-                                    : null,
-                              ),
+                          UtenDateField(
+                            label: l10n.employeeFieldHireDate,
+                            required: true,
+                            value: _hireDate,
+                            firstDate: DateTime(1990),
+                            lastDate: ChinaDateTime.today().add(
+                              const Duration(days: 365),
                             ),
+                            onChanged: (d) {
+                              setState(() {
+                                _hireDate = d;
+                                // 正式员工转正日期默认=入职日期（可改）；试用员工不涉及
+                                if (_status == 'active' &&
+                                    _confirmedDate == null) {
+                                  _confirmedDate = d;
+                                }
+                              });
+                            },
                           ),
                           UtenDropdownField(
                             label: l10n.employeeFieldEmploymentType,
@@ -436,19 +445,15 @@ class _EmployeeOnboardingPageState
                           ),
                           // ADR-021：正式（active）入职必须填写转正日期；试用由合同试用期派生
                           if (_status == 'active')
-                            GestureDetector(
-                              onTap: _pickConfirmedDate,
-                              child: AbsorbPointer(
-                                child: _text(
-                                  _confirmedDate,
-                                  '转正日期',
-                                  '正式入职必填，默认=入职日期，可按实际修改',
-                                  required: true,
-                                  validator: (v) => (v == null || v.isEmpty)
-                                      ? '正式入职的员工必须填写转正日期'
-                                      : null,
-                                ),
-                              ),
+                            UtenDateField(
+                              label: '转正日期',
+                              required: true,
+                              info: '正式入职必填，默认=入职日期，可按实际修改',
+                              value: _confirmedDate,
+                              firstDate: DateTime(1990),
+                              lastDate: ChinaDateTime.today(),
+                              onChanged: (d) =>
+                                  setState(() => _confirmedDate = d),
                             ),
                           UtenDropdownField(
                             label: l10n.employeeFieldStatus,
@@ -506,19 +511,8 @@ class _EmployeeOnboardingPageState
                             },
                           ),
                         ),
-                        FilledButton(
-                          onPressed: _submitting ? null : _submit,
-                          child: _submitting
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : Text(l10n.employeeOnboardSubmit),
-                        ),
-                        const SizedBox(height: UtenSpacing.s24),
+                        // 提交按钮在右下悬浮操作组（UtenFloatingActionGroup），
+                        // 底部留白已由 ListView padding(scrollClearance) 承担。
                       ],
                     ),
                   ),

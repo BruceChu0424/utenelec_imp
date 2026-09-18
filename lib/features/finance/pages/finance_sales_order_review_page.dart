@@ -256,11 +256,14 @@ class _FinanceSalesOrderReviewPageState
   }
 
   String get widgetSafeBillNo => _review?.billNo ?? '';
+
+  /// 办结后的落点：调用方带 returnTo（确认队列/修改队列/业务审核中心）则原样
+  /// 回去；深链无 returnTo 时按审核轮次归位（改过的单回「修改」队列）。
   String get _returnPath =>
-      widget.returnTo == '/finance/sales-order-changes' ||
-          (widget.returnTo == null && (_review?.financeReviewRevision ?? 0) > 0)
-      ? '/finance/sales-order-changes'
-      : '/finance/sales-order-confirmations';
+      widget.returnTo ??
+      ((_review?.financeReviewRevision ?? 0) > 0
+          ? '/finance/sales-order-changes'
+          : '/finance/sales-order-confirmations');
 
   Future<void> _leaveReview() async {
     await _reviewClaim?.releaseAll();

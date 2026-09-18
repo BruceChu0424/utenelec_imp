@@ -640,6 +640,12 @@ abstract class AppLocalizations {
   /// **'到访时间需晚于当前时间'**
   String get visitorApplyValidateVisitTimeFuture;
 
+  /// No description provided for @visitorApplyValidatePlate.
+  ///
+  /// In zh, this message translates to:
+  /// **'开车来访时请填写车牌号'**
+  String get visitorApplyValidatePlate;
+
   /// No description provided for @visitorApplyDuplicateTime.
   ///
   /// In zh, this message translates to:
@@ -849,6 +855,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'输入6位通行码'**
   String get securityPasscodeHint;
+
+  /// No description provided for @securityPasscodeInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入6位数字通行码'**
+  String get securityPasscodeInvalid;
 
   /// No description provided for @visitorPasscodeLabel.
   ///
@@ -6316,6 +6328,480 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'本批无需新增领料，沿已有物料来源安排生产'**
   String get productionBatchNoAdditionalMaterials;
+
+  /// No description provided for @securityReasonBlocked.
+  ///
+  /// In zh, this message translates to:
+  /// **'已拉黑，禁止入场'**
+  String get securityReasonBlocked;
+
+  /// No description provided for @securityBlacklistTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'访客黑名单'**
+  String get securityBlacklistTitle;
+
+  /// No description provided for @securityBlacklistEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无拉黑访客'**
+  String get securityBlacklistEmpty;
+
+  /// No description provided for @securityBlacklistColNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'访客编号'**
+  String get securityBlacklistColNo;
+
+  /// No description provided for @securityBlacklistColName.
+  ///
+  /// In zh, this message translates to:
+  /// **'姓名'**
+  String get securityBlacklistColName;
+
+  /// No description provided for @securityBlacklistColPhone.
+  ///
+  /// In zh, this message translates to:
+  /// **'手机号'**
+  String get securityBlacklistColPhone;
+
+  /// No description provided for @securityBlacklistColReason.
+  ///
+  /// In zh, this message translates to:
+  /// **'拉黑原因'**
+  String get securityBlacklistColReason;
+
+  /// No description provided for @securityBlacklistColAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'拉黑时间'**
+  String get securityBlacklistColAt;
+
+  /// No description provided for @securityBlacklistColBy.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作人'**
+  String get securityBlacklistColBy;
+
+  /// No description provided for @securityBlacklistAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'拉黑访客'**
+  String get securityBlacklistAction;
+
+  /// No description provided for @securityBlacklistNoticeLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'访客拉黑'**
+  String get securityBlacklistNoticeLabel;
+
+  /// No description provided for @securityBlacklistNoticeDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'拉黑后该访客立即无法登录与入场，操作与原因将记入审计。'**
+  String get securityBlacklistNoticeDesc;
+
+  /// No description provided for @securityBlacklistReasonLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'拉黑原因'**
+  String get securityBlacklistReasonLabel;
+
+  /// No description provided for @securityBlacklistReasonHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写拉黑原因（必填）'**
+  String get securityBlacklistReasonHint;
+
+  /// No description provided for @securityBlacklistDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已拉黑该访客'**
+  String get securityBlacklistDone;
+
+  /// No description provided for @securityBlacklistRemove.
+  ///
+  /// In zh, this message translates to:
+  /// **'解除拉黑'**
+  String get securityBlacklistRemove;
+
+  /// No description provided for @securityBlacklistRemoveConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认解除拉黑？解除后该访客可重新登录与提交申请，历史申请状态不变。'**
+  String get securityBlacklistRemoveConfirm;
+
+  /// No description provided for @securityBlacklistRemoveDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已解除拉黑'**
+  String get securityBlacklistRemoveDone;
+
+  /// No description provided for @entryStaffSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'员工工号登录，进入工作台'**
+  String get entryStaffSubtitle;
+
+  /// No description provided for @entryVisitorSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'访客手机验证码登记，快速通行'**
+  String get entryVisitorSubtitle;
+
+  /// No description provided for @visitorColName.
+  ///
+  /// In zh, this message translates to:
+  /// **'姓名'**
+  String get visitorColName;
+
+  /// No description provided for @visitorColPurpose.
+  ///
+  /// In zh, this message translates to:
+  /// **'事由'**
+  String get visitorColPurpose;
+
+  /// No description provided for @visitorColHost.
+  ///
+  /// In zh, this message translates to:
+  /// **'接待人'**
+  String get visitorColHost;
+
+  /// No description provided for @visitorColPlannedVisit.
+  ///
+  /// In zh, this message translates to:
+  /// **'计划到访'**
+  String get visitorColPlannedVisit;
+
+  /// No description provided for @visitorColStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'状态'**
+  String get visitorColStatus;
+
+  /// No description provided for @visitorColCompany.
+  ///
+  /// In zh, this message translates to:
+  /// **'公司'**
+  String get visitorColCompany;
+
+  /// No description provided for @visitorColVisitorName.
+  ///
+  /// In zh, this message translates to:
+  /// **'访客姓名'**
+  String get visitorColVisitorName;
+
+  /// No description provided for @visitorColHostDepartment.
+  ///
+  /// In zh, this message translates to:
+  /// **'接待人部门'**
+  String get visitorColHostDepartment;
+
+  /// No description provided for @visitorApplySubmittingOverlay.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在提交访客申请，请勿重复提交或离开本页。'**
+  String get visitorApplySubmittingOverlay;
+
+  /// No description provided for @visitorApplyDeptHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择接待部门'**
+  String get visitorApplyDeptHint;
+
+  /// No description provided for @visitorApplyHostHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择被访人'**
+  String get visitorApplyHostHint;
+
+  /// No description provided for @visitorApplyHostSheetTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择被访人'**
+  String get visitorApplyHostSheetTitle;
+
+  /// No description provided for @visitorSettingsPortalTag.
+  ///
+  /// In zh, this message translates to:
+  /// **'{app} · 访客端'**
+  String visitorSettingsPortalTag(Object app);
+
+  /// No description provided for @visitorApprovalHostDeptColInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'访客申请时记录的接待人所属部门快照；表头筛选按此下推后端 hostDepartmentId 参数。'**
+  String get visitorApprovalHostDeptColInfo;
+
+  /// No description provided for @visitorBatchLimitError.
+  ///
+  /// In zh, this message translates to:
+  /// **'单次最多批量处理 {limit} 条，请分批操作（当前 {count} 条）'**
+  String visitorBatchLimitError(int limit, int count);
+
+  /// No description provided for @visitorBatchApproveTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量批准({count})'**
+  String visitorBatchApproveTitle(int count);
+
+  /// No description provided for @visitorBatchApproveMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'将逐单批准所选 {count} 条访客申请，批准后生成通行二维码。如需核对接待人与来访事由，请双击行进入详情逐单审阅。'**
+  String visitorBatchApproveMessage(int count);
+
+  /// No description provided for @visitorBatchApproveConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认批量批准'**
+  String get visitorBatchApproveConfirm;
+
+  /// No description provided for @visitorBatchActionLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'访客审批'**
+  String get visitorBatchActionLabel;
+
+  /// No description provided for @visitorBatchApproveResponsibility.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认后，系统将以此登录员工记录所选 {count} 条访客申请的审批责任。'**
+  String visitorBatchApproveResponsibility(int count);
+
+  /// No description provided for @visitorBatchVerbApprove.
+  ///
+  /// In zh, this message translates to:
+  /// **'批准'**
+  String get visitorBatchVerbApprove;
+
+  /// No description provided for @visitorBatchVerbReject.
+  ///
+  /// In zh, this message translates to:
+  /// **'拒绝'**
+  String get visitorBatchVerbReject;
+
+  /// No description provided for @visitorBatchVerbForward.
+  ///
+  /// In zh, this message translates to:
+  /// **'转接待人确认'**
+  String get visitorBatchVerbForward;
+
+  /// No description provided for @visitorBatchResult.
+  ///
+  /// In zh, this message translates to:
+  /// **'已{verb} {count} 条访客申请'**
+  String visitorBatchResult(Object verb, int count);
+
+  /// No description provided for @visitorBatchResultFailures.
+  ///
+  /// In zh, this message translates to:
+  /// **'，{count} 条失败'**
+  String visitorBatchResultFailures(int count);
+
+  /// No description provided for @visitorBatchResultSkipped.
+  ///
+  /// In zh, this message translates to:
+  /// **'，{count} 条已跳过'**
+  String visitorBatchResultSkipped(int count);
+
+  /// No description provided for @visitorBatchIncomplete.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量{verb}未全部完成：{reason}'**
+  String visitorBatchIncomplete(Object verb, Object reason);
+
+  /// No description provided for @visitorBatchRejectTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量拒绝({count})'**
+  String visitorBatchRejectTitle(int count);
+
+  /// No description provided for @visitorBatchRejectDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'拒绝原因将同步给 {count} 位访客，请说明具体问题。'**
+  String visitorBatchRejectDescription(int count);
+
+  /// No description provided for @visitorBatchRejectConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认拒绝'**
+  String get visitorBatchRejectConfirm;
+
+  /// No description provided for @visitorBatchSubjectLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'访客申请'**
+  String get visitorBatchSubjectLabel;
+
+  /// No description provided for @visitorBatchForwardNoneSelected.
+  ///
+  /// In zh, this message translates to:
+  /// **'所选申请均已转接待人确认，无需重复转接'**
+  String get visitorBatchForwardNoneSelected;
+
+  /// No description provided for @visitorBatchForwardTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量转接待人确认({count})'**
+  String visitorBatchForwardTitle(int count);
+
+  /// No description provided for @visitorBatchForwardMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'将把所选 {count} 条访客申请转给各自接待人确认，接待人确认后回到本队列等待你最终批准。'**
+  String visitorBatchForwardMessage(int count);
+
+  /// No description provided for @visitorBatchForwardSkippedNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'（另有 {count} 条已在接待人确认中，已跳过）'**
+  String visitorBatchForwardSkippedNote(int count);
+
+  /// No description provided for @visitorBatchForwardConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认批量转接'**
+  String get visitorBatchForwardConfirm;
+
+  /// No description provided for @visitorBatchForwardResponsibility.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认后，系统将以此登录员工记录所选 {count} 条访客申请的转接责任。'**
+  String visitorBatchForwardResponsibility(int count);
+
+  /// No description provided for @visitorBatchApproveButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量批准({count})'**
+  String visitorBatchApproveButton(int count);
+
+  /// No description provided for @visitorBatchForwardButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量转接待人确认({count})'**
+  String visitorBatchForwardButton(int count);
+
+  /// No description provided for @visitorBatchRejectButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量拒绝({count})'**
+  String visitorBatchRejectButton(int count);
+
+  /// No description provided for @visitorApprovalDoneApprove.
+  ///
+  /// In zh, this message translates to:
+  /// **'访客申请已批准'**
+  String get visitorApprovalDoneApprove;
+
+  /// No description provided for @visitorApprovalDoneReject.
+  ///
+  /// In zh, this message translates to:
+  /// **'访客申请已驳回'**
+  String get visitorApprovalDoneReject;
+
+  /// No description provided for @visitorApprovalDoneForward.
+  ///
+  /// In zh, this message translates to:
+  /// **'已转接待人确认'**
+  String get visitorApprovalDoneForward;
+
+  /// No description provided for @visitorApprovalDoneFallback.
+  ///
+  /// In zh, this message translates to:
+  /// **'审批操作已完成'**
+  String get visitorApprovalDoneFallback;
+
+  /// No description provided for @visitorApprovalApproveNoticeLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'访客审批通过'**
+  String get visitorApprovalApproveNoticeLabel;
+
+  /// No description provided for @visitorApprovalApproveNoticeDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认后系统将记录当前审核员和审批结果，请对本次访客放行决定负责。'**
+  String get visitorApprovalApproveNoticeDesc;
+
+  /// No description provided for @visitorApprovalRejectNoticeLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'访客审批拒绝'**
+  String get visitorApprovalRejectNoticeLabel;
+
+  /// No description provided for @visitorApprovalRejectNoticeDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认后系统将记录当前审核员和拒绝结果，请对本次决定负责。'**
+  String get visitorApprovalRejectNoticeDesc;
+
+  /// No description provided for @myVisitorsConfirmDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已确认接待，申请已转回 HR 审批'**
+  String get myVisitorsConfirmDone;
+
+  /// No description provided for @myVisitorsRejectDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已拒绝接待'**
+  String get myVisitorsRejectDone;
+
+  /// No description provided for @myVisitorsBatchNoneSelected.
+  ///
+  /// In zh, this message translates to:
+  /// **'所选申请均不在「待我确认」状态，无需确认'**
+  String get myVisitorsBatchNoneSelected;
+
+  /// No description provided for @myVisitorsBatchTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量确认接待({count})'**
+  String myVisitorsBatchTitle(int count);
+
+  /// No description provided for @myVisitorsBatchMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'将逐条确认接待所选 {count} 位访客，确认后申请转回 HR 等待最终批准。'**
+  String myVisitorsBatchMessage(int count);
+
+  /// No description provided for @myVisitorsBatchSkippedNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'（另有 {count} 条不在「待我确认」状态，已跳过）'**
+  String myVisitorsBatchSkippedNote(int count);
+
+  /// No description provided for @myVisitorsBatchConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认接待'**
+  String get myVisitorsBatchConfirm;
+
+  /// No description provided for @myVisitorsBatchResult.
+  ///
+  /// In zh, this message translates to:
+  /// **'已确认接待 {count} 位访客'**
+  String myVisitorsBatchResult(int count);
+
+  /// No description provided for @myVisitorsBatchIncomplete.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量确认未全部完成：{reason}'**
+  String myVisitorsBatchIncomplete(Object reason);
+
+  /// No description provided for @myVisitorsBatchButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量确认接待({count})'**
+  String myVisitorsBatchButton(int count);
+
+  /// No description provided for @myVisitorsStatusColInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'默认只看「待我确认」；表头筛选可切到已转 HR / 已批准 / 已拒绝（下推后端）。'**
+  String get myVisitorsStatusColInfo;
 }
 
 class _AppLocalizationsDelegate

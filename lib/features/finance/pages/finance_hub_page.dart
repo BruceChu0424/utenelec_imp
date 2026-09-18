@@ -1,11 +1,13 @@
-// 钱流管理入口页（hub）—— 两个分组卡片：
-//  ① 钱流管理：销售收款/采购付款/一般费用/其它收入/银行存取款/支票管理 入口
-//  ② 钱流报表：应收应付台账/对账单/流水账 入口
+// 钱流管理入口页（hub）—— 三个分组：
+//  ① 任务中心：业务审核中心（销售订单确认/订单修改/出货/订货/超量到货/IQC 退回
+//     六个队列在页内分段办理，2026-09-18 由 6 张卡合并为 1 张卡）
+//  ② 钱流管理：销售收款/采购付款/一般费用/其它收入/银行存取款/支票管理/资产 入口
+//  ③ 钱流报表：应收应付台账/对账单/流水账 入口
 // 点卡片进对应列表/报表页。卡片统一用 UtenHubCard（图标统一 40×40），
 // 计数口径（准则 14-徽章与计数口径）：
-//   · 任务中心 6 张卡挂右上角红色待办徽章（进工作台「钱流管理」卡累加；
-//     「销售订单财务确认」与「销售订单修改」是同一批单据的两个队列切片，
-//     累加只认总数一次，见 shared/badges/todo_badge_registry.dart 末注）。
+//   · 「业务审核中心」卡挂右上角红色待办徽章（五类审核队列之和，走
+//     todo_badge_registry 注册表；「订单修改」是「销售订单确认」的队列切片，
+//     总数只计一次）。原 6 张队列卡的旧路由保留，通知深链仍直达具体队列。
 //   · 钱流单据 5 张卡挂草稿红徽章（2026-09-11 口径反转：草稿是本人必须处理完的活，
 //     改红底白字并逐级累加，不再是中性括号）。
 //   · 报表区 10 张卡是浏览型入口，不挂任何计数。
@@ -33,15 +35,10 @@ import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../../components/feedback/uten_draft_badge.dart';
 import '../../../shared/badges/todo_badge_registry.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
-import '../../warehouse/widgets/procurement_inbound_badges.dart';
 import '../../procurement_iqc_rejection/repositories/procurement_iqc_rejection_repository.dart';
-import '../../procurement_iqc_rejection/widgets/procurement_iqc_rejection_badge.dart';
-import '../finance_workflow_routes.dart';
 import '../providers/finance_procurement_approval_count_provider.dart';
 import '../providers/sales_order_finance_confirmation_count_provider.dart';
-import '../../../shared/providers/sales_shipment_finance_count_provider.dart';
-import '../widgets/finance_procurement_approval_badge.dart';
-import '../widgets/sales_order_finance_confirmation_badge.dart';
+import '../widgets/finance_audit_center_badge.dart';
 
 class FinanceHubPage extends ConsumerWidget {
   const FinanceHubPage({super.key});
@@ -106,67 +103,17 @@ class FinanceHubPage extends ConsumerWidget {
                   canAuditSalesShipments ||
                   canViewIqcRejections) ...[
                 _section(context, theme, l10n.hubSectionTaskCenter, [
-                  // V294 闸门：销售订货单审核后先经财务确认再放行计划部。
-                  if (canViewSalesConfirmations)
-                    const _Entry(
-                      icon: Icons.fact_check_outlined,
-                      label: '销售订单财务确认',
-                      description: '销售订货单审核后在此确认，确认后计划部才可见并排产',
-                      location: FinanceWorkflowRoutes.salesOrderConfirmations,
-                      badge: SalesOrderFinanceConfirmationBadge(
-                        size: 16,
-                        changesOnly: false,
-                      ),
-                    ),
-                  if (canViewSalesConfirmations)
-                    const _Entry(
-                      icon: Icons.compare_arrows_outlined,
-                      label: '销售订单修改',
-                      description: '核对原内容与修改后内容，重新确认后放行后续任务',
-                      location: FinanceWorkflowRoutes.salesOrderChanges,
-                      badge: SalesOrderFinanceConfirmationBadge(
-                        size: 16,
-                        changesOnly: true,
-                      ),
-                    ),
-                  if (canAuditSalesShipments)
-                    const _Entry(
-                      icon: Icons.local_shipping_outlined,
-                      label: '出货财务审核',
-                      description: '核对收款条件和未收金额，再交给仓库备货发货',
-                      location: RouteName.financeSalesShipmentAudit,
-                      badge: SalesShipmentFinanceBadge(),
-                    ),
-                  if (canViewProcurementApprovals)
-                    _Entry(
-                      icon: Icons.approval_outlined,
-                      label: l10n.financeHubTaskApproval,
-                      description: l10n.financeHubTaskApprovalSub,
-                      location: FinanceWorkflowRoutes.approvalTasks,
-                      badge: const FinanceProcurementApprovalBadge(size: 16),
-                    ),
-                  if (canViewProcurementApprovals)
-                    _Entry(
-                      icon: Icons.local_shipping_outlined,
-                      label: l10n.financeHubTaskOverDelivery,
-                      description: l10n.financeHubTaskOverDeliverySub,
-                      location: FinanceWorkflowRoutes.arrivalExceptionTasks,
-                      badge: const FinanceArrivalExceptionBadge(
-                        showLabel: true,
-                      ),
-                    ),
-                  if (canViewIqcRejections)
-                    _Entry(
-                      icon: Icons.assignment_late_outlined,
-                      label: 'IQC 不合格退回与贷项',
-                      description: '实物已退回后确认供应商贷项、零金额结案或修复财务异常',
-                      location: RoutePath.procurementIqcRejections(
-                        source: 'finance',
-                      ),
-                      badge: const ProcurementIqcRejectionBadge(
-                        showLabel: true,
-                      ),
-                    ),
+                  // 2026-09-18 合并：原 6 张审核队列卡（销售订单财务确认/销售订单
+                  // 修改/出货财务审核/订货审批/超量到货审批/IQC 不合格退回与贷项）
+                  // 并为一张「业务审核中心」卡，队列在页内按权限分段显示；
+                  // 角标 = 五类队列待办之和（FinanceAuditCenterBadge 走注册表）。
+                  const _Entry(
+                    icon: Icons.fact_check_outlined,
+                    label: '业务审核中心',
+                    description: '销售订单 · 订单修改 · 出货 · 订货 · 超量到货 · IQC 退回，一站式审核',
+                    location: RouteName.financeAudits,
+                    badge: FinanceAuditCenterBadge(),
+                  ),
                 ]),
                 const SizedBox(height: UtenSpacing.s16),
               ],

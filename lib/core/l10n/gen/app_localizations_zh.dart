@@ -285,6 +285,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get visitorApplyValidateVisitTimeFuture => '到访时间需晚于当前时间';
 
   @override
+  String get visitorApplyValidatePlate => '开车来访时请填写车牌号';
+
+  @override
   String get visitorApplyDuplicateTime => '您已有相同时段的进行中预约，请换一个时间';
 
   @override
@@ -388,6 +391,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get securityPasscodeHint => '输入6位通行码';
+
+  @override
+  String get securityPasscodeInvalid => '请输入6位数字通行码';
 
   @override
   String get visitorPasscodeLabel => '通行码';
@@ -3324,4 +3330,293 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get productionBatchNoAdditionalMaterials => '本批无需新增领料，沿已有物料来源安排生产';
+
+  @override
+  String get securityReasonBlocked => '已拉黑，禁止入场';
+
+  @override
+  String get securityBlacklistTitle => '访客黑名单';
+
+  @override
+  String get securityBlacklistEmpty => '暂无拉黑访客';
+
+  @override
+  String get securityBlacklistColNo => '访客编号';
+
+  @override
+  String get securityBlacklistColName => '姓名';
+
+  @override
+  String get securityBlacklistColPhone => '手机号';
+
+  @override
+  String get securityBlacklistColReason => '拉黑原因';
+
+  @override
+  String get securityBlacklistColAt => '拉黑时间';
+
+  @override
+  String get securityBlacklistColBy => '操作人';
+
+  @override
+  String get securityBlacklistAction => '拉黑访客';
+
+  @override
+  String get securityBlacklistNoticeLabel => '访客拉黑';
+
+  @override
+  String get securityBlacklistNoticeDesc => '拉黑后该访客立即无法登录与入场，操作与原因将记入审计。';
+
+  @override
+  String get securityBlacklistReasonLabel => '拉黑原因';
+
+  @override
+  String get securityBlacklistReasonHint => '请填写拉黑原因（必填）';
+
+  @override
+  String get securityBlacklistDone => '已拉黑该访客';
+
+  @override
+  String get securityBlacklistRemove => '解除拉黑';
+
+  @override
+  String get securityBlacklistRemoveConfirm =>
+      '确认解除拉黑？解除后该访客可重新登录与提交申请，历史申请状态不变。';
+
+  @override
+  String get securityBlacklistRemoveDone => '已解除拉黑';
+
+  @override
+  String get entryStaffSubtitle => '员工工号登录，进入工作台';
+
+  @override
+  String get entryVisitorSubtitle => '访客手机验证码登记，快速通行';
+
+  @override
+  String get visitorColName => '姓名';
+
+  @override
+  String get visitorColPurpose => '事由';
+
+  @override
+  String get visitorColHost => '接待人';
+
+  @override
+  String get visitorColPlannedVisit => '计划到访';
+
+  @override
+  String get visitorColStatus => '状态';
+
+  @override
+  String get visitorColCompany => '公司';
+
+  @override
+  String get visitorColVisitorName => '访客姓名';
+
+  @override
+  String get visitorColHostDepartment => '接待人部门';
+
+  @override
+  String get visitorApplySubmittingOverlay => '正在提交访客申请，请勿重复提交或离开本页。';
+
+  @override
+  String get visitorApplyDeptHint => '请选择接待部门';
+
+  @override
+  String get visitorApplyHostHint => '请选择被访人';
+
+  @override
+  String get visitorApplyHostSheetTitle => '选择被访人';
+
+  @override
+  String visitorSettingsPortalTag(Object app) {
+    return '$app · 访客端';
+  }
+
+  @override
+  String get visitorApprovalHostDeptColInfo =>
+      '访客申请时记录的接待人所属部门快照；表头筛选按此下推后端 hostDepartmentId 参数。';
+
+  @override
+  String visitorBatchLimitError(int limit, int count) {
+    return '单次最多批量处理 $limit 条，请分批操作（当前 $count 条）';
+  }
+
+  @override
+  String visitorBatchApproveTitle(int count) {
+    return '批量批准($count)';
+  }
+
+  @override
+  String visitorBatchApproveMessage(int count) {
+    return '将逐单批准所选 $count 条访客申请，批准后生成通行二维码。如需核对接待人与来访事由，请双击行进入详情逐单审阅。';
+  }
+
+  @override
+  String get visitorBatchApproveConfirm => '确认批量批准';
+
+  @override
+  String get visitorBatchActionLabel => '访客审批';
+
+  @override
+  String visitorBatchApproveResponsibility(int count) {
+    return '确认后，系统将以此登录员工记录所选 $count 条访客申请的审批责任。';
+  }
+
+  @override
+  String get visitorBatchVerbApprove => '批准';
+
+  @override
+  String get visitorBatchVerbReject => '拒绝';
+
+  @override
+  String get visitorBatchVerbForward => '转接待人确认';
+
+  @override
+  String visitorBatchResult(Object verb, int count) {
+    return '已$verb $count 条访客申请';
+  }
+
+  @override
+  String visitorBatchResultFailures(int count) {
+    return '，$count 条失败';
+  }
+
+  @override
+  String visitorBatchResultSkipped(int count) {
+    return '，$count 条已跳过';
+  }
+
+  @override
+  String visitorBatchIncomplete(Object verb, Object reason) {
+    return '批量$verb未全部完成：$reason';
+  }
+
+  @override
+  String visitorBatchRejectTitle(int count) {
+    return '批量拒绝($count)';
+  }
+
+  @override
+  String visitorBatchRejectDescription(int count) {
+    return '拒绝原因将同步给 $count 位访客，请说明具体问题。';
+  }
+
+  @override
+  String get visitorBatchRejectConfirm => '确认拒绝';
+
+  @override
+  String get visitorBatchSubjectLabel => '访客申请';
+
+  @override
+  String get visitorBatchForwardNoneSelected => '所选申请均已转接待人确认，无需重复转接';
+
+  @override
+  String visitorBatchForwardTitle(int count) {
+    return '批量转接待人确认($count)';
+  }
+
+  @override
+  String visitorBatchForwardMessage(int count) {
+    return '将把所选 $count 条访客申请转给各自接待人确认，接待人确认后回到本队列等待你最终批准。';
+  }
+
+  @override
+  String visitorBatchForwardSkippedNote(int count) {
+    return '（另有 $count 条已在接待人确认中，已跳过）';
+  }
+
+  @override
+  String get visitorBatchForwardConfirm => '确认批量转接';
+
+  @override
+  String visitorBatchForwardResponsibility(int count) {
+    return '确认后，系统将以此登录员工记录所选 $count 条访客申请的转接责任。';
+  }
+
+  @override
+  String visitorBatchApproveButton(int count) {
+    return '批量批准($count)';
+  }
+
+  @override
+  String visitorBatchForwardButton(int count) {
+    return '批量转接待人确认($count)';
+  }
+
+  @override
+  String visitorBatchRejectButton(int count) {
+    return '批量拒绝($count)';
+  }
+
+  @override
+  String get visitorApprovalDoneApprove => '访客申请已批准';
+
+  @override
+  String get visitorApprovalDoneReject => '访客申请已驳回';
+
+  @override
+  String get visitorApprovalDoneForward => '已转接待人确认';
+
+  @override
+  String get visitorApprovalDoneFallback => '审批操作已完成';
+
+  @override
+  String get visitorApprovalApproveNoticeLabel => '访客审批通过';
+
+  @override
+  String get visitorApprovalApproveNoticeDesc =>
+      '确认后系统将记录当前审核员和审批结果，请对本次访客放行决定负责。';
+
+  @override
+  String get visitorApprovalRejectNoticeLabel => '访客审批拒绝';
+
+  @override
+  String get visitorApprovalRejectNoticeDesc => '确认后系统将记录当前审核员和拒绝结果，请对本次决定负责。';
+
+  @override
+  String get myVisitorsConfirmDone => '已确认接待，申请已转回 HR 审批';
+
+  @override
+  String get myVisitorsRejectDone => '已拒绝接待';
+
+  @override
+  String get myVisitorsBatchNoneSelected => '所选申请均不在「待我确认」状态，无需确认';
+
+  @override
+  String myVisitorsBatchTitle(int count) {
+    return '批量确认接待($count)';
+  }
+
+  @override
+  String myVisitorsBatchMessage(int count) {
+    return '将逐条确认接待所选 $count 位访客，确认后申请转回 HR 等待最终批准。';
+  }
+
+  @override
+  String myVisitorsBatchSkippedNote(int count) {
+    return '（另有 $count 条不在「待我确认」状态，已跳过）';
+  }
+
+  @override
+  String get myVisitorsBatchConfirm => '确认接待';
+
+  @override
+  String myVisitorsBatchResult(int count) {
+    return '已确认接待 $count 位访客';
+  }
+
+  @override
+  String myVisitorsBatchIncomplete(Object reason) {
+    return '批量确认未全部完成：$reason';
+  }
+
+  @override
+  String myVisitorsBatchButton(int count) {
+    return '批量确认接待($count)';
+  }
+
+  @override
+  String get myVisitorsStatusColInfo =>
+      '默认只看「待我确认」；表头筛选可切到已转 HR / 已批准 / 已拒绝（下推后端）。';
 }

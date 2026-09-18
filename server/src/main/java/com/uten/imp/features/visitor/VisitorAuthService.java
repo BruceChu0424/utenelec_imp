@@ -13,6 +13,7 @@ import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.features.visitor.dto.VisitorAuthDto;
 import com.uten.imp.security.JwtService;
 import com.uten.imp.security.LoginRateLimiter;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -41,6 +42,7 @@ public class VisitorAuthService {
     private final VisitorRefreshCompromiseService compromiseService;
     private final EmployeeSensitiveRepository employeeSensitiveRepo;
     private final JwtService jwtService;
+    private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
     private final SmsProperties smsProps;
     private final AuditService audit;
@@ -150,6 +152,27 @@ public class VisitorAuthService {
                 account.getVisitorNo(),
                 account.getName(),
                 account.getAvatarSeed());
+    }
+
+    /**
+     * 访客冷启动会话校验：令牌经 JwtAuthFilter 复查过账号状态，这里再对库账号
+     * 取一次当前资料返回，供客户端把本地恢复的会话与服务器对齐。
+     */
+    @Transactional(readOnly = true)
+    public VisitorAuthDto.MeResponse me() {
+        var user = currentUser.get()
+                .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+        if (!user.isVisitor()) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "仅访客可访问");
+        }
+        VisitorAccount account = accountRepo.findById(user.getId())
+                .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+        return new VisitorAuthDto.MeResponse(
+                account.getId(),
+                account.getVisitorNo(),
+                account.getName(),
+                account.getAvatarSeed(),
+                account.getStatus());
     }
 
     /**

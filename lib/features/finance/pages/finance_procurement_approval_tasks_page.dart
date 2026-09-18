@@ -30,8 +30,21 @@ import '../models/finance_procurement_workflow.dart';
 import '../providers/finance_procurement_approval_count_provider.dart';
 import '../repositories/finance_procurement_workflow_repository.dart';
 
+/// 订货审批任务中心（采购/委外订货的财务审核队列）。
+///
+/// [embedded]：嵌入「业务审核中心」分段时为 true——去掉本页 AppBar 与内容
+/// 容器（外层提供标题/刷新/容器）；[refreshTick] 由外层刷新信号递增触发重拉。
 class FinanceProcurementApprovalTasksPage extends ConsumerStatefulWidget {
-  const FinanceProcurementApprovalTasksPage({super.key});
+  const FinanceProcurementApprovalTasksPage({
+    super.key,
+    this.embedded = false,
+    this.refreshTick = 0,
+  });
+
+  final bool embedded;
+
+  /// 外层（业务审核中心）触发的刷新信号；数值变化时重拉当前页。
+  final int refreshTick;
 
   @override
   ConsumerState<FinanceProcurementApprovalTasksPage> createState() =>
@@ -127,6 +140,12 @@ class _FinanceProcurementApprovalTasksPageState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+  }
+
+  @override
+  void didUpdateWidget(FinanceProcurementApprovalTasksPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.refreshTick != oldWidget.refreshTick) _refreshCurrent();
   }
 
   void _selectType(FinanceProcurementOrderType? type) {
@@ -490,6 +509,23 @@ class _FinanceProcurementApprovalTasksPageState
     final allowed =
         ref.watch(isSuperAdminProvider) ||
         permissions.contains(Perm.financeOrderApprovalView);
+    final body = SafeArea(
+      child: !allowed
+          ? UtenEmpty.error(
+              message: '无权查看订货审批任务',
+              description: '只有被授权的财务审核人员可以进入。',
+            )
+          : _loading && _result == null
+          ? const UtenSkeletonList()
+          : _error != null && _result == null
+          ? UtenEmpty.error(
+              message: _error,
+              actionLabel: '重新加载',
+              onAction: () => _load(1),
+            )
+          : _buildList(context),
+    );
+    if (widget.embedded) return body;
     return Scaffold(
       appBar: UtenAppBar(
         title: '订货审批任务中心',
@@ -514,22 +550,7 @@ class _FinanceProcurementApprovalTasksPageState
               ]
             : null,
       ),
-      body: SafeArea(
-        child: !allowed
-            ? UtenEmpty.error(
-                message: '无权查看订货审批任务',
-                description: '只有被授权的财务审核人员可以进入。',
-              )
-            : _loading && _result == null
-            ? const UtenSkeletonList()
-            : _error != null && _result == null
-            ? UtenEmpty.error(
-                message: _error,
-                actionLabel: '重新加载',
-                onAction: () => _load(1),
-              )
-            : _buildList(context),
-      ),
+      body: body,
     );
   }
 
@@ -551,97 +572,96 @@ class _FinanceProcurementApprovalTasksPageState
         _selectedTasks.any((task) => task.allowedActions.contains('REJECT'));
     final selectable = canApprove || canReject;
 
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AbsorbPointer(
+          absorbing: _busyDecision,
+          child: Opacity(
+            opacity: _busyDecision ? 0.65 : 1,
+            child: _buildToolbar(result),
+          ),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: UtenSpacing.s12),
+          _InlineError(message: _error!, onRetry: () => _load(result.page)),
+        ],
+        if (_busyDecision) ...[
+          const SizedBox(height: UtenSpacing.s8),
+          const LinearProgressIndicator(
+            key: Key('finance-approval-batch-progress'),
+          ),
+        ],
+        const SizedBox(height: UtenSpacing.s12),
+        Expanded(
+          child: AbsorbPointer(
+            absorbing: _busyDecision,
+            child: MasterDataTableView<FinanceProcurementApprovalTask>(
+              key: const Key('finance-approval-task-table'),
+              columns: _columns(context),
+              items: result.items,
+              facets: const {
+                'orderType': [
+                  MasterFacetBucket(value: 'PURCHASE', count: 0, label: '采购订货'),
+                  MasterFacetBucket(
+                    value: 'SUBCONTRACT',
+                    count: 0,
+                    label: '委外订货',
+                  ),
+                ],
+              },
+              nullCounts: const {},
+              filters: {'orderType': _orderType?.name.toUpperCase()},
+              onFilterChanged: (key, value) {
+                if (key != 'orderType') return;
+                _selectType(switch (value) {
+                  'PURCHASE' => FinanceProcurementOrderType.purchase,
+                  'SUBCONTRACT' => FinanceProcurementOrderType.subcontract,
+                  _ => null,
+                });
+              },
+              selectable: selectable,
+              idOf: (task) => _canSelectTask(task) ? task.caseId : null,
+              selectedIds: _selectedIds,
+              onSelectedIdsChanged: _setSelectedIds,
+              batchActionsBuilder: selectable ? _batchActions : null,
+              onRowTap: _open,
+              canOpenRow: (task) => task.canOpen,
+              rowMenuBuilder: (task) => [
+                UtenMenuItem(
+                  label: '打开审核详情',
+                  icon: Icons.fact_check_outlined,
+                  onTap: () => _open(task),
+                ),
+                if (task.detailRoute != null)
+                  UtenMenuItem(
+                    label: '查看原订货单详情',
+                    icon: Icons.open_in_new_rounded,
+                    onTap: () => _openSourceOrder(task),
+                  ),
+              ],
+              canShowRowMenu: (task) => task.canOpen,
+              isLoading: _loading,
+              loadingMore: _loading && _result != null,
+              error: result.items.isEmpty ? _error : null,
+              onRetry: () => _load(result.page),
+              emptyMessage: _keyword.isNotEmpty || _orderType != null
+                  ? '没有匹配的待审订货单'
+                  : '目前没有待审核的订货单',
+              currentPage: result.page,
+              totalPages: result.totalPages,
+              onPageChange: _load,
+            ),
+          ),
+        ),
+      ],
+    );
+    // 嵌入形态不复套容器与内边距（业务审核中心已提供），避免双重 gutter。
+    if (widget.embedded) return content;
     return UtenContentContainer.wide(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            AbsorbPointer(
-              absorbing: _busyDecision,
-              child: Opacity(
-                opacity: _busyDecision ? 0.65 : 1,
-                child: _buildToolbar(result),
-              ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: UtenSpacing.s12),
-              _InlineError(message: _error!, onRetry: () => _load(result.page)),
-            ],
-            if (_busyDecision) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              const LinearProgressIndicator(
-                key: Key('finance-approval-batch-progress'),
-              ),
-            ],
-            const SizedBox(height: UtenSpacing.s12),
-            Expanded(
-              child: AbsorbPointer(
-                absorbing: _busyDecision,
-                child: MasterDataTableView<FinanceProcurementApprovalTask>(
-                  key: const Key('finance-approval-task-table'),
-                  columns: _columns(context),
-                  items: result.items,
-                  facets: const {
-                    'orderType': [
-                      MasterFacetBucket(
-                        value: 'PURCHASE',
-                        count: 0,
-                        label: '采购订货',
-                      ),
-                      MasterFacetBucket(
-                        value: 'SUBCONTRACT',
-                        count: 0,
-                        label: '委外订货',
-                      ),
-                    ],
-                  },
-                  nullCounts: const {},
-                  filters: {'orderType': _orderType?.name.toUpperCase()},
-                  onFilterChanged: (key, value) {
-                    if (key != 'orderType') return;
-                    _selectType(switch (value) {
-                      'PURCHASE' => FinanceProcurementOrderType.purchase,
-                      'SUBCONTRACT' => FinanceProcurementOrderType.subcontract,
-                      _ => null,
-                    });
-                  },
-                  selectable: selectable,
-                  idOf: (task) => _canSelectTask(task) ? task.caseId : null,
-                  selectedIds: _selectedIds,
-                  onSelectedIdsChanged: _setSelectedIds,
-                  batchActionsBuilder: selectable ? _batchActions : null,
-                  onRowTap: _open,
-                  canOpenRow: (task) => task.canOpen,
-                  rowMenuBuilder: (task) => [
-                    UtenMenuItem(
-                      label: '打开审核详情',
-                      icon: Icons.fact_check_outlined,
-                      onTap: () => _open(task),
-                    ),
-                    if (task.detailRoute != null)
-                      UtenMenuItem(
-                        label: '查看原订货单详情',
-                        icon: Icons.open_in_new_rounded,
-                        onTap: () => _openSourceOrder(task),
-                      ),
-                  ],
-                  canShowRowMenu: (task) => task.canOpen,
-                  isLoading: _loading,
-                  loadingMore: _loading && _result != null,
-                  error: result.items.isEmpty ? _error : null,
-                  onRetry: () => _load(result.page),
-                  emptyMessage: _keyword.isNotEmpty || _orderType != null
-                      ? '没有匹配的待审订货单'
-                      : '目前没有待审核的订货单',
-                  currentPage: result.page,
-                  totalPages: result.totalPages,
-                  onPageChange: _load,
-                ),
-              ),
-            ),
-          ],
-        ),
+        child: content,
       ),
     );
   }

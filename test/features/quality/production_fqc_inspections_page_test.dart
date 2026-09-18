@@ -279,6 +279,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+    'batch approval shows storage location for pre-stocked FQC rows',
+    (tester) async {
+      final api = _FqcApi(includeStocked: true);
+      await _pumpPage(
+        tester,
+        api: api,
+        permissions: const {
+          Perm.productionQualityInspectionView,
+          Perm.productionQualityInspectionApprove,
+        },
+      );
+
+      await tester.tap(find.text('RB-STOCKED'));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('production-fqc-batch-approval')));
+      await tester.pumpAndSettle();
+
+      // 2026-09-18 用户口径：批量页也要逐行看到储放位置；已上架行红字
+      //「已入库 · 仓 / 库位」覆盖登记库位，与 FQC 办理页同口径。
+      expect(
+        find.byKey(const Key('batch-approval-fqc-table-legacy')),
+        findsOneWidget,
+      );
+      expect(find.text('储放位置'), findsOneWidget);
+      expect(find.text('已入库 · 成品一仓 / B-02'), findsOneWidget);
+      expect(find.text('C-03'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('FQC queue exposes server paging controls at 375px', (
     tester,
   ) async {
@@ -382,6 +413,7 @@ class _FqcApi extends ApiClient {
     this.canDecide = true,
     this.failReloadAfterDecision = false,
     this.totalPages = 1,
+    this.includeStocked = false,
   }) : super(Dio());
 
   Map<String, dynamic>? decisionBody;
@@ -389,6 +421,9 @@ class _FqcApi extends ApiClient {
   final bool canDecide;
   final bool failReloadAfterDecision;
   final int totalPages;
+
+  /// 额外给待检队列塞一行「先入库后检」的成品（带登记库位与已上架位置）。
+  final bool includeStocked;
   bool decided = false;
   int requestedPage = 1;
   int capabilityCalls = 0;
@@ -450,6 +485,18 @@ class _FqcApi extends ApiClient {
     'status': 'RESOLVED',
   };
 
+  Map<String, dynamic> get _stockedInspection => {
+    ..._inspection,
+    'id': '40000000-0000-0000-0000-000000000001',
+    'reportNo': 'RB-STOCKED',
+    'place': 'C-03',
+    'preStocked': const {
+      'warehouseId': '10000000-0000-0000-0000-000000000007',
+      'warehouseName': '成品一仓',
+      'place': 'B-02',
+    },
+  };
+
   List<Map<String, dynamic>> _itemsFor(String status) {
     return switch (status) {
       'RESOLVED' => [if (decided) _decidedInspection, _resolvedInspection],
@@ -459,7 +506,10 @@ class _FqcApi extends ApiClient {
         _resolvedInspection,
         _cancelledInspection,
       ],
-      _ => decided ? <Map<String, dynamic>>[] : [_inspection],
+      _ =>
+        decided
+            ? <Map<String, dynamic>>[]
+            : [if (includeStocked) _stockedInspection, _inspection],
     };
   }
 

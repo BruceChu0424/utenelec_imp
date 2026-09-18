@@ -193,6 +193,70 @@ class ProductionExecutionSegmentServiceTest {
     }
 
     @Test
+    void confirmRouteResolvesTheArrivalProgressCardBeforeKitPromotion() {
+        UUID warehouseId = UUID.randomUUID();
+        when(currentUser.requireId()).thenReturn(UUID.randomUUID());
+        when(readiness.lockManualReleaseDimensions(planId, segmentId))
+                .thenReturn(warehouseId);
+        Query lock = routeLocked(null, "WAITING", 5L, true);
+        Query replay = query();
+        when(replay.getResultList()).thenReturn(List.of());
+        Query update = query();
+        when(update.executeUpdate()).thenReturn(1);
+        Query view = query();
+        when(view.getResultList()).thenReturn(
+                Collections.singletonList(viewRow(null, 6L)));
+        Query event = query();
+        when(event.executeUpdate()).thenReturn(1);
+        when(em.createNativeQuery(anyString())).thenReturn(
+                lock, replay, update, view, event);
+
+        service.confirmRoute(planId, segmentId, new SegmentRouteConfirmRequest(
+                5L, "route-confirm-full-kit", "FULL_KIT"));
+
+        // 到货进展卡带着路线语境，路线确认即办结（ADR-091 §2.3）；必须发生在
+        // 齐套补跑提升之前——提升成功会立刻重发「物料齐套·去领料」新卡。
+        var ordered = inOrder(update, chainNotice, readiness);
+        ordered.verify(update).executeUpdate();
+        ordered.verify(chainNotice).resolveProductionWorkshopTasks(
+                List.of(segmentId), "ROUTE_CONFIRMED");
+        ordered.verify(readiness).promoteAfterRouteConfirmation(
+                segmentId, warehouseId);
+        verify(event).setParameter("action", "ROUTE_CONFIRMED");
+        verify(event).setParameter("resultingVersion", 6L);
+    }
+
+    @Test
+    void confirmRouteBatchResolvesTheArrivalCardWithoutKitPromotion() {
+        when(currentUser.requireId()).thenReturn(UUID.randomUUID());
+        Query lock = routeLocked(null, "WAITING", 4L, true);
+        Query replay = query();
+        when(replay.getResultList()).thenReturn(List.of());
+        // validateRouteChoice：非默认路线先过 fn_can_change_execution_route。
+        Query canChange = query();
+        when(canChange.getSingleResult()).thenReturn(true);
+        Query update = query();
+        when(update.executeUpdate()).thenReturn(1);
+        Query view = query();
+        when(view.getResultList()).thenReturn(
+                Collections.singletonList(viewRow(null, 5L)));
+        Query event = query();
+        when(event.executeUpdate()).thenReturn(1);
+        when(em.createNativeQuery(anyString())).thenReturn(
+                lock, replay, canChange, update, view, event);
+
+        service.confirmRoute(planId, segmentId, new SegmentRouteConfirmRequest(
+                4L, "route-confirm-batch", "BATCH"));
+
+        verify(chainNotice).resolveProductionWorkshopTasks(
+                List.of(segmentId), "ROUTE_CONFIRMED");
+        verify(readiness, never()).promoteAfterRouteConfirmation(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+        verify(event).setParameter("action", "ROUTE_CONFIRMED");
+    }
+
+    @Test
     void objectScopeDenialStopsBeforeReplayAndMutation() {
         Query lock = locked("READY", 2L, "CONFIRMED");
         when(em.createNativeQuery(anyString())).thenReturn(lock);
@@ -697,6 +761,29 @@ class ProductionExecutionSegmentServiceTest {
             UUID workshopId,
             boolean autoPromoteWhenReady,
             String materialRequirementMode) {
+        return routeLockedRow(
+                targetSegmentId, "FULL_KIT", status, version, packageStatus,
+                workshopId, autoPromoteWhenReady, materialRequirementMode);
+    }
+
+    /** 与 [locked] 同投影，但 start_route 可指定（null=待确认首确认场景）。 */
+    private Query routeLocked(
+            String startRoute, String status, long version,
+            boolean autoPromoteWhenReady) {
+        return routeLockedRow(
+                segmentId, startRoute, status, version, "CONFIRMED",
+                null, autoPromoteWhenReady, "DEMANDED");
+    }
+
+    private Query routeLockedRow(
+            UUID targetSegmentId,
+            String startRoute,
+            String status,
+            long version,
+            String packageStatus,
+            UUID workshopId,
+            boolean autoPromoteWhenReady,
+            String materialRequirementMode) {
         Query lock = query();
         when(lock.getResultList()).thenReturn(
                 Collections.singletonList(new Object[]{
@@ -719,8 +806,7 @@ class ProductionExecutionSegmentServiceTest {
                         planMakerId, null,
                         // s.continuous_supply(V595 起进入 lock 投影)
                         false,
-                        // s.start_route(V599 起进入 lock 投影)：单测默认已确认齐套路线。
-                        "FULL_KIT"
+                        startRoute
                 }));
         return lock;
     }

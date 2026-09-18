@@ -20,6 +20,7 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -38,13 +39,23 @@ import '../repositories/sales_order_finance_confirmation_repository.dart';
 ///
 /// 桌面端使用系统自研表格：单击选择、双击进入审核详情、复选多选和批量确认；
 /// 紧凑端使用可勾选的密集列表，并保留显式详情按钮，不把双击作为唯一入口。
+///
+/// [embedded]：嵌入「业务审核中心」分段时为 true——去掉本页 AppBar 与内容
+/// 容器（外层提供标题/刷新/容器），保留右下角批量确认 FAB；[refreshTick] 由
+/// 外层刷新按钮/返回本页时递增，变化即重拉当前页。
 class FinanceSalesOrderConfirmationPage extends ConsumerStatefulWidget {
   const FinanceSalesOrderConfirmationPage({
     super.key,
     this.changesOnly = false,
+    this.embedded = false,
+    this.refreshTick = 0,
   });
 
   final bool changesOnly;
+  final bool embedded;
+
+  /// 外层（业务审核中心）触发的刷新信号；数值变化时重拉当前视图。
+  final int refreshTick;
 
   @override
   ConsumerState<FinanceSalesOrderConfirmationPage> createState() =>
@@ -95,6 +106,12 @@ class _FinanceSalesOrderConfirmationPageState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+  }
+
+  @override
+  void didUpdateWidget(FinanceSalesOrderConfirmationPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.refreshTick != oldWidget.refreshTick) _refreshCurrent();
   }
 
   Future<void> _load(int page) async {
@@ -228,13 +245,9 @@ class _FinanceSalesOrderConfirmationPageState
 
   /// 打开财务审核详情页；确认/驳回后返回 true → 刷新当前视图。
   Future<void> _open(SalesOrderFinancePendingItem item) async {
-    final route = Uri.parse(item.detailRoute).replace(
-      queryParameters: {
-        'returnTo': widget.changesOnly
-            ? '/finance/sales-order-changes'
-            : '/finance/sales-order-confirmations',
-      },
-    );
+    final route = Uri.parse(
+      item.detailRoute,
+    ).replace(queryParameters: {'returnTo': _returnPath});
     final changed = await context.push<bool>(route.toString());
     if (changed == true && mounted) {
       setState(() {
@@ -451,11 +464,17 @@ class _FinanceSalesOrderConfirmationPageState
     }
   }
 
+  /// 审核详情的返回落点：嵌入审核中心时回审核中心；独立页时回对应队列
+  /// （详情页办结后 bumpListRefresh 也用同一 key，见 finance_sales_order_review_page）。
+  String get _returnPath => widget.embedded
+      ? RouteName.financeAudits
+      : widget.changesOnly
+      ? '/finance/sales-order-changes'
+      : '/finance/sales-order-confirmations';
+
   @override
   Widget build(BuildContext context) {
-    final returnPath = widget.changesOnly
-        ? '/finance/sales-order-changes'
-        : '/finance/sales-order-confirmations';
+    final returnPath = _returnPath;
     ref.listen(listRefreshTickProvider('finance:sales-order:$returnPath'), (
       _,
       _,
@@ -469,6 +488,33 @@ class _FinanceSalesOrderConfirmationPageState
     final canConfirm =
         ref.watch(isSuperAdminProvider) ||
         permissions.contains(Perm.salesOrderFinanceConfirm);
+    final body = SafeArea(
+      child: !allowed
+          ? UtenEmpty.error(
+              message: '无权查看销售订单财务确认任务',
+              description: '只有被授权的财务人员可以进入（权限设置中授予 sales_order_finance:view）。',
+            )
+          : _loading && _result == null
+          ? const UtenSkeletonList()
+          : _error != null && _result == null
+          ? UtenEmpty.error(
+              message: _error,
+              actionLabel: '重新加载',
+              onAction: () => _load(1),
+            )
+          : _buildBody(context, canConfirm: canConfirm),
+    );
+    if (widget.embedded) {
+      // 嵌入形态：无 AppBar（标题/刷新由业务审核中心提供），保留批量确认 FAB。
+      return Scaffold(
+        body: body,
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+        floatingActionButton: allowed && canConfirm && !_showRejected
+            ? _floatingSelectionActions()
+            : null,
+      );
+    }
     return Scaffold(
       appBar: UtenAppBar(
         title: widget.changesOnly ? '销售订单修改' : '销售订单财务确认',
@@ -487,23 +533,7 @@ class _FinanceSalesOrderConfirmationPageState
               ]
             : null,
       ),
-      body: SafeArea(
-        child: !allowed
-            ? UtenEmpty.error(
-                message: '无权查看销售订单财务确认任务',
-                description:
-                    '只有被授权的财务人员可以进入（权限设置中授予 sales_order_finance:view）。',
-              )
-            : _loading && _result == null
-            ? const UtenSkeletonList()
-            : _error != null && _result == null
-            ? UtenEmpty.error(
-                message: _error,
-                actionLabel: '重新加载',
-                onAction: () => _load(1),
-              )
-            : _buildBody(context, canConfirm: canConfirm),
-      ),
+      body: body,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: allowed && canConfirm && !_showRejected
@@ -563,20 +593,20 @@ class _FinanceSalesOrderConfirmationPageState
           total: 0,
           totalPages: 1,
         );
-    return UtenContentContainer.wide(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final expanded = breakpointForWidth(
-              constraints.maxWidth,
-            ).isExpanded;
-            return expanded
-                ? _desktopWorkbench(context, result, canConfirm: canConfirm)
-                : _compactWorkbench(context, result, canConfirm: canConfirm);
-          },
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final workbench = breakpointForWidth(constraints.maxWidth).isExpanded
+            ? _desktopWorkbench(context, result, canConfirm: canConfirm)
+            : _compactWorkbench(context, result, canConfirm: canConfirm);
+        // 嵌入形态不复套容器与内边距（业务审核中心已提供），避免双重 gutter。
+        if (widget.embedded) return workbench;
+        return UtenContentContainer.wide(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+            child: workbench,
+          ),
+        );
+      },
     );
   }
 

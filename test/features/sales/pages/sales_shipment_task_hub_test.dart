@@ -15,7 +15,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
   });
-  testWidgets('finance shipment auditor sees the dedicated task card', (
+  testWidgets('finance shipment auditor sees the merged audit center card', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -23,7 +23,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('出货财务审核'), findsOneWidget);
+    // 2026-09-18 合并：出货财务审核并入「业务审核中心」卡（页内分段），
+    // 不再是独立卡；具体队列入口在审核中心分段里。
+    expect(find.text('业务审核中心'), findsOneWidget);
+    expect(find.text('出货财务审核'), findsNothing);
     expect(find.text('销售订单财务确认'), findsNothing);
   });
 

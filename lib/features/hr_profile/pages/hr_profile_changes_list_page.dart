@@ -22,6 +22,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_batch_reject_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
+import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
@@ -258,7 +259,11 @@ class _HrProfileChangesListPageState
     Widget body = Column(
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+          // 分段行间距与访客审批/报销审批队列同款（top 12 / bottom 8）。
+          padding: const EdgeInsets.only(
+            top: UtenSpacing.s12,
+            bottom: UtenSpacing.s8,
+          ),
           child: UtenSegmentedFilter<String?>(
             segments: _segments,
             selected: _status,
@@ -327,7 +332,7 @@ class _HrProfileChangesListPageState
           onPageChange: (p) => setState(() => _page = p),
         ),
       ),
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => const UtenSkeletonList(itemCount: 6),
       error: (e, _) => UtenEmpty.error(
         message: e is ApiException ? e.message : l10n.commonError,
         actionLabel: l10n.commonRetry,

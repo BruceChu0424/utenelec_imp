@@ -19,14 +19,19 @@
 //   * 新近入职 → 无批量动作（无可批量的状态动作），故不开多选。
 //   批量后 hrTaskSummaryProvider.reloadSilently() 同步工作台/部门徽标。
 // 窄屏（compact）保留卡片 + HrTaskTile（移动端手感，与其他任务中心一致）。
+// 2026-09-18 UI 统一收口：加载态改 UtenSkeletonList、区块卡片统一 UtenCard、
+// 批量登记转正弹窗改公共 UtenDialog（按钮/限高与全仓弹窗规范一致）。
 // 文档：docs/03-页面/HR任务中心.md
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
@@ -136,7 +141,7 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
         perms.contains(Perm.employeeEdit);
 
     Widget body = async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => const UtenSkeletonList(itemCount: 6),
       error: (_, _) => UtenEmpty.error(
         message: '加载失败，请稍后重试',
         actionLabel: '重试',
@@ -648,56 +653,43 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
   }
 
   /// 转正日期选择（整批一个日期，默认今天；不可选未来）。
+  /// 2026-09-18 起走公共 UtenDialog：按钮/居中/限高与全仓弹窗规范一致。
   Future<String?> _pickConfirmDate(int count) async {
     final today = DateTime.now();
     DateTime selected = today;
     String two(int n) => n.toString().padLeft(2, '0');
     String fmt(DateTime d) => '${d.year}-${two(d.month)}-${two(d.day)}';
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: Text('批量登记转正($count 人)'),
-          content: SizedBox(
-            width: 440,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '所选 $count 人将使用同一个实际转正日期（默认今天）。'
-                  '试用期员工转为在职；已是正式员工的补登转正日期。',
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                OutlinedButton.icon(
-                  key: const Key('hr-task-batch-confirm-date'),
-                  icon: const Icon(Icons.event_outlined, size: 18),
-                  label: Text(fmt(selected)),
-                  onPressed: () async {
-                    final picked = await showDatePicker(
-                      context: dialogContext,
-                      initialDate: selected,
-                      firstDate: DateTime(2000),
-                      lastDate: today,
-                      locale: const Locale('zh'),
-                    );
-                    if (picked != null) {
-                      setDialogState(() => selected = picked);
-                    }
-                  },
-                ),
-              ],
+    final ok = await UtenDialog.show(
+      context,
+      title: '批量登记转正($count 人)',
+      confirmLabel: '确定',
+      cancelLabel: '取消',
+      content: StatefulBuilder(
+        builder: (dialogContext, setDialogState) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '所选 $count 人将使用同一个实际转正日期（默认今天）。'
+              '试用期员工转为在职；已是正式员工的补登转正日期。',
             ),
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('确定'),
+            const SizedBox(height: UtenSpacing.s12),
+            OutlinedButton.icon(
+              key: const Key('hr-task-batch-confirm-date'),
+              icon: const Icon(Icons.event_outlined, size: 18),
+              label: Text(fmt(selected)),
+              onPressed: () async {
+                final picked = await showDatePicker(
+                  context: dialogContext,
+                  initialDate: selected,
+                  firstDate: DateTime(2000),
+                  lastDate: today,
+                  locale: const Locale('zh'),
+                );
+                if (picked != null) {
+                  setDialogState(() => selected = picked);
+                }
+              },
             ),
           ],
         ),
@@ -786,14 +778,14 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
             child: UtenEmpty(message: _type.emptyText),
           )
         else
-          Card(
+          UtenCard(
             margin: const EdgeInsets.fromLTRB(
               UtenSpacing.s12,
               UtenSpacing.s8,
               UtenSpacing.s12,
               0,
             ),
-            clipBehavior: Clip.antiAlias,
+            padding: EdgeInsets.zero,
             child: Column(
               children: [
                 for (var i = 0; i < items.length; i++) ...[
@@ -830,9 +822,13 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
         UtenSpacing.s12,
         0,
       ),
-      child: Card(
+      // 主题色号召集横幅（非标准卡）：Container + token 圆角，与通知发布页提示容器同款。
+      child: Container(
         clipBehavior: Clip.antiAlias,
-        color: theme.colorScheme.primaryContainer,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primaryContainer,
+          borderRadius: UtenRadius.lgAll,
+        ),
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: UtenSpacing.s12,
@@ -878,14 +874,14 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
   Widget _celebrationAutoToggle({required double horizontalPadding}) {
     final theme = Theme.of(context);
     final async = ref.watch(celebrationSettingsProvider);
-    return Card(
+    return UtenCard(
       margin: EdgeInsets.fromLTRB(
         horizontalPadding,
         UtenSpacing.s8,
         horizontalPadding,
         UtenSpacing.s4,
       ),
-      clipBehavior: Clip.antiAlias,
+      padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: UtenSpacing.s16,

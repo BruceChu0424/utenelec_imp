@@ -13,6 +13,8 @@
 //
 // 响应式：compact 自套 UtenContentContainer 收敛（medium+ 外壳已收敛，
 // 内层水平 padding 相应让位）；窄屏表格横向滚动即可。
+// 2026-09-18 UI 统一收口：错误态改 ApiException 提取 message、分段行间距
+// 对齐报销审批队列口径（top 12 / bottom 8）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -125,8 +127,9 @@ class _VisitorApprovalListPageState
 
   /// 单次批量上限守卫（逐单循环 HTTP，超限提示分批）。
   bool _withinBatchLimit(int count) {
+    final l10n = AppLocalizations.of(context);
     if (count <= kVisitorBatchLimit) return true;
-    context.appError('单次最多批量处理 $kVisitorBatchLimit 条，请分批操作（当前 $count 条）');
+    context.appError(l10n.visitorBatchLimitError(kVisitorBatchLimit, count));
     return false;
   }
 
@@ -134,40 +137,40 @@ class _VisitorApprovalListPageState
 
   Future<void> _batchApprove(Set<String> ids) async {
     if (_batchBusy || ids.isEmpty || !_withinBatchLimit(ids.length)) return;
+    final l10n = AppLocalizations.of(context);
     final count = ids.length;
     final confirmed = await showUtenReviewerConfirmDialog(
       context,
-      title: '批量批准($count)',
-      message:
-          '将逐单批准所选 $count 条访客申请，批准后生成通行二维码。'
-          '如需核对接待人与来访事由，请双击行进入详情逐单审阅。',
-      confirmLabel: '确认批量批准',
-      actionLabel: '访客审批',
-      responsibilityDescription: '确认后，系统将以此登录员工记录所选 $count 条访客申请的审批责任。',
+      title: l10n.visitorBatchApproveTitle(count),
+      message: l10n.visitorBatchApproveMessage(count),
+      confirmLabel: l10n.visitorBatchApproveConfirm,
+      actionLabel: l10n.visitorBatchActionLabel,
+      responsibilityDescription: l10n.visitorBatchApproveResponsibility(count),
     );
     if (!confirmed || !mounted) return;
     await _runBatch(
       ids,
-      verb: '批准',
+      verb: l10n.visitorBatchVerbApprove,
       call: (repo, id) => repo.action(id, action: 'approve'),
     );
   }
 
   Future<void> _batchReject(Set<String> ids) async {
     if (_batchBusy || ids.isEmpty || !_withinBatchLimit(ids.length)) return;
+    final l10n = AppLocalizations.of(context);
     final reason = await showUtenBatchRejectDialog(
       context,
       count: ids.length,
-      actionLabel: '访客审批',
-      subjectLabel: '访客申请',
-      title: '批量拒绝(${ids.length})',
-      description: '拒绝原因将同步给 ${ids.length} 位访客，请说明具体问题。',
-      confirmLabel: '确认拒绝',
+      actionLabel: l10n.visitorBatchActionLabel,
+      subjectLabel: l10n.visitorBatchSubjectLabel,
+      title: l10n.visitorBatchRejectTitle(ids.length),
+      description: l10n.visitorBatchRejectDescription(ids.length),
+      confirmLabel: l10n.visitorBatchRejectConfirm,
     );
     if (reason == null || reason.isEmpty || !mounted) return;
     await _runBatch(
       ids,
-      verb: '拒绝',
+      verb: l10n.visitorBatchVerbReject,
       call: (repo, id) =>
           repo.action(id, action: 'reject', rejectReason: reason),
     );
@@ -180,6 +183,7 @@ class _VisitorApprovalListPageState
     List<VisitorApplication> pageItems,
   ) async {
     if (_batchBusy || ids.isEmpty) return;
+    final l10n = AppLocalizations.of(context);
     final statusById = {for (final app in pageItems) app.id: app.status};
     final forwardable = ids
         .where(
@@ -190,26 +194,26 @@ class _VisitorApprovalListPageState
         .toSet();
     final skipped = ids.length - forwardable.length;
     if (forwardable.isEmpty) {
-      context.appError('所选申请均已转接待人确认，无需重复转接');
+      context.appError(l10n.visitorBatchForwardNoneSelected);
       return;
     }
     if (!_withinBatchLimit(forwardable.length)) return;
     final confirmed = await showUtenReviewerConfirmDialog(
       context,
-      title: '批量转接待人确认(${forwardable.length})',
+      title: l10n.visitorBatchForwardTitle(forwardable.length),
       message:
-          '将把所选 ${forwardable.length} 条访客申请转给各自接待人确认，'
-          '接待人确认后回到本队列等待你最终批准。'
-          '${skipped > 0 ? '（另有 $skipped 条已在接待人确认中，已跳过）' : ''}',
-      confirmLabel: '确认批量转接',
-      actionLabel: '访客审批',
-      responsibilityDescription:
-          '确认后，系统将以此登录员工记录所选 ${forwardable.length} 条访客申请的转接责任。',
+          l10n.visitorBatchForwardMessage(forwardable.length) +
+          (skipped > 0 ? l10n.visitorBatchForwardSkippedNote(skipped) : ''),
+      confirmLabel: l10n.visitorBatchForwardConfirm,
+      actionLabel: l10n.visitorBatchActionLabel,
+      responsibilityDescription: l10n.visitorBatchForwardResponsibility(
+        forwardable.length,
+      ),
     );
     if (!confirmed || !mounted) return;
     await _runBatch(
       forwardable,
-      verb: '转接待人确认',
+      verb: l10n.visitorBatchVerbForward,
       skipped: skipped,
       call: (repo, id) => repo.action(id, action: 'forward'),
     );
@@ -244,18 +248,21 @@ class _VisitorApprovalListPageState
     });
     if (okCount > 0) {
       context.appSuccess(
-        '已$verb $okCount 条访客申请'
-        '${failures.isNotEmpty ? '，${failures.length} 条失败' : ''}'
-        '${skipped > 0 ? '，$skipped 条已跳过' : ''}',
+        l10n.visitorBatchResult(verb, okCount) +
+            (failures.isNotEmpty
+                ? l10n.visitorBatchResultFailures(failures.length)
+                : '') +
+            (skipped > 0 ? l10n.visitorBatchResultSkipped(skipped) : ''),
       );
     }
     if (failures.isNotEmpty) {
-      context.appError('批量$verb未全部完成：${failures.first}');
+      context.appError(l10n.visitorBatchIncomplete(verb, failures.first));
     }
-    // 刷新当前分段队列、筛选桶与徽章计数。
+    // 刷新当前分段队列、筛选桶与徽章计数（forward 会推给接待人，两个徽章都变）。
     ref.invalidate(visitorApprovalListProvider(_query));
     ref.invalidate(visitorApprovalFacetsProvider(_tabStatus));
     ref.read(visitorPendingCountProvider.notifier).refresh();
+    ref.read(visitorHostPendingCountProvider.notifier).refresh();
   }
 
   List<Widget> _batchActions(
@@ -263,6 +270,7 @@ class _VisitorApprovalListPageState
     Set<String> selectedIds,
     List<VisitorApplication> pageItems,
   ) {
+    final l10n = AppLocalizations.of(context);
     final enabled = selectedIds.isNotEmpty && !_batchBusy;
     return [
       UtenButton(
@@ -274,7 +282,7 @@ class _VisitorApprovalListPageState
         onPressed: enabled
             ? () => _batchApprove(Set<String>.of(selectedIds))
             : null,
-        child: Text('批量批准(${selectedIds.length})'),
+        child: Text(l10n.visitorBatchApproveButton(selectedIds.length)),
       ),
       UtenButton(
         key: const Key('visitor-approval-batch-forward'),
@@ -284,7 +292,7 @@ class _VisitorApprovalListPageState
         onPressed: enabled
             ? () => _batchForward(Set<String>.of(selectedIds), pageItems)
             : null,
-        child: Text('批量转接待人确认(${selectedIds.length})'),
+        child: Text(l10n.visitorBatchForwardButton(selectedIds.length)),
       ),
       UtenButton(
         key: const Key('visitor-approval-batch-reject'),
@@ -295,7 +303,7 @@ class _VisitorApprovalListPageState
         onPressed: enabled
             ? () => _batchReject(Set<String>.of(selectedIds))
             : null,
-        child: Text('批量拒绝(${selectedIds.length})'),
+        child: Text(l10n.visitorBatchRejectButton(selectedIds.length)),
       ),
     ];
   }
@@ -332,11 +340,9 @@ class _VisitorApprovalListPageState
     Widget body = Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(
-            0,
-            UtenSpacing.s12,
-            0,
-            UtenSpacing.s8,
+          padding: const EdgeInsets.only(
+            top: UtenSpacing.s12,
+            bottom: UtenSpacing.s8,
           ),
           child: UtenSegmentedFilter<ApprovalTab>(
             selected: _tab,
@@ -361,7 +367,8 @@ class _VisitorApprovalListPageState
           child: list.when(
             loading: () => const UtenSkeletonList(itemCount: 6),
             error: (e, _) => UtenEmpty.error(
-              message: '$e',
+              // 与信息变更审核/通知列表同款：ApiException 提取 message，兜底通用文案。
+              message: e is ApiException ? e.message : l10n.commonError,
               actionLabel: l10n.commonRetry,
               onAction: () =>
                   ref.invalidate(visitorApprovalListProvider(_query)),
@@ -424,45 +431,45 @@ class _VisitorApprovalListPageState
   List<MasterColumnDef<VisitorApplication>> _columns(AppLocalizations l10n) => [
     MasterColumnDef(
       key: 'visitorName',
-      label: '访客姓名',
+      label: l10n.visitorColVisitorName,
       width: 130,
       value: (app) => app.visitorName,
     ),
     MasterColumnDef(
       key: 'company',
-      label: '公司',
+      label: l10n.visitorColCompany,
       width: 170,
       value: (app) => app.company,
     ),
     MasterColumnDef(
       key: 'visitPurpose',
-      label: '事由',
+      label: l10n.visitorColPurpose,
       width: 260,
       value: (app) => app.visitPurpose,
     ),
     MasterColumnDef(
       key: 'hostName',
-      label: '接待人',
+      label: l10n.visitorColHost,
       width: 120,
       value: (app) => app.hostName,
     ),
     MasterColumnDef(
       key: 'hostDepartment',
-      label: '接待人部门',
+      label: l10n.visitorColHostDepartment,
       width: 150,
-      info: '访客申请时记录的接待人所属部门快照；表头筛选按此下推后端 hostDepartmentId 参数。',
+      info: l10n.visitorApprovalHostDeptColInfo,
       value: (app) => app.hostDepartment,
     ),
     MasterColumnDef(
       key: 'plannedVisitAt',
-      label: '计划到访',
+      label: l10n.visitorColPlannedVisit,
       width: 180,
       type: 'date',
       value: (app) => fmtDateTime(app.plannedVisitAt),
     ),
     MasterColumnDef(
       key: 'status',
-      label: '状态',
+      label: l10n.visitorColStatus,
       width: 110,
       value: (app) => visitorStatusLabel(app.status, l10n),
     ),

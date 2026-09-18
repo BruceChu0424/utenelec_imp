@@ -1,7 +1,10 @@
 // HR 信息变更队列（2026-09-10 表头筛选接后端 + 批量驳回）。
+// 2026-09-18 起页面加载态为 UtenSkeletonList（读性能档→sharedPreferences），
+// 测试需 override sharedPreferencesProvider（与工资条/通知列表测试同款）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_batch_reject_dialog.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
@@ -10,6 +13,7 @@ import 'package:uten_imp/features/hr_profile/pages/hr_profile_changes_list_page.
 import 'package:uten_imp/features/profile/models/profile_change_request.dart';
 import 'package:uten_imp/features/profile/repositories/profile_change_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 class _FakeProfileChangeRepository extends Fake
     implements ProfileChangeRepository {
@@ -92,17 +96,19 @@ class _FakeProfileChangeRepository extends Fake
   Future<int> hrPendingCount() async => 0;
 }
 
-Widget _app(_FakeProfileChangeRepository repo) => ProviderScope(
-  overrides: [
-    profileChangeRepositoryProvider.overrideWithValue(repo),
-    currentPermissionsProvider.overrideWithValue({Perm.profileReview}),
-  ],
-  child: const MaterialApp(
-    localizationsDelegates: AppLocalizations.localizationsDelegates,
-    supportedLocales: AppLocalizations.supportedLocales,
-    home: HrProfileChangesListPage(),
-  ),
-);
+Widget _app(_FakeProfileChangeRepository repo, SharedPreferences preferences) =>
+    ProviderScope(
+      overrides: [
+        profileChangeRepositoryProvider.overrideWithValue(repo),
+        currentPermissionsProvider.overrideWithValue({Perm.profileReview}),
+        sharedPreferencesProvider.overrideWithValue(preferences),
+      ],
+      child: const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: HrProfileChangesListPage(),
+      ),
+    );
 
 MasterDataTableView<HrProfileChangeListItem> _table(WidgetTester tester) =>
     tester.widget<MasterDataTableView<HrProfileChangeListItem>>(
@@ -115,8 +121,10 @@ void main() {
   testWidgets('department header facet is pushed to the backend query', (
     tester,
   ) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
     final repo = _FakeProfileChangeRepository();
-    await tester.pumpWidget(_app(repo));
+    await tester.pumpWidget(_app(repo, preferences));
     await tester.pumpAndSettle();
 
     final table = _table(tester);
@@ -137,8 +145,10 @@ void main() {
   });
 
   testWidgets('status header facet switches the queue segment', (tester) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
     final repo = _FakeProfileChangeRepository();
-    await tester.pumpWidget(_app(repo));
+    await tester.pumpWidget(_app(repo, preferences));
     await tester.pumpAndSettle();
 
     _table(tester).onFilterChanged('status', 'rejected');
@@ -155,8 +165,10 @@ void main() {
   testWidgets('batch reject applies one shared reason to every batch', (
     tester,
   ) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
     final repo = _FakeProfileChangeRepository();
-    await tester.pumpWidget(_app(repo));
+    await tester.pumpWidget(_app(repo, preferences));
     await tester.pumpAndSettle();
 
     final table = _table(tester);

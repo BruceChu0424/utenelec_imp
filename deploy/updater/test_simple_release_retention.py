@@ -42,30 +42,30 @@ class SimpleReleaseRetentionTest(unittest.TestCase):
     def test_lists_real_versions_and_ignores_unrecognized_directories(self):
         with tempfile.TemporaryDirectory(prefix="uten-release-retention-") as temp:
             root = Path(temp)
-            for name in ("v2026.09.12-10", "v2026.09.12-2", "v2026.09.12-1.backup", "notes"):
+            for name in ("v1.33.9", "v1.33.1", "v1.33.0.backup", "notes"):
                 (root / name).mkdir()
             self.assertEqual(self.run_functions(root, "release_versions"),
-                             ["v2026.09.12-2", "v2026.09.12-10"])
+                             ["v1.33.1", "v1.33.9"])
 
     def test_retention_never_deletes_active_or_unknown_directories(self):
         with tempfile.TemporaryDirectory(prefix="uten-release-retention-") as temp:
             root = Path(temp)
-            active = "v2026.09.01-1"
-            names = (active, "v2026.09.10-1", "v2026.09.11-1", "v2026.09.12-1", "v-unreviewed")
+            active = "v1.22.0"
+            names = (active, "v1.31.0", "v1.32.0", "v1.33.0", "v-unreviewed")
             for name in names:
                 (root / name).mkdir()
                 (root / name / "marker").write_text(name)
             self.run_functions(root, "prune_old", active=active)
             self.assertEqual({p.name for p in root.iterdir()},
-                             {active, "v2026.09.11-1", "v2026.09.12-1", "v-unreviewed"})
+                             {active, "v1.32.0", "v1.33.0", "v-unreviewed"})
             self.assertEqual((root / active / "marker").read_text(), active)
 
     def test_status_displays_nonempty_staged_version_names(self):
         with tempfile.TemporaryDirectory(prefix="uten-release-retention-") as temp:
             root = Path(temp)
-            (root / "v2026.09.12-1").mkdir()
-            lines = self.run_functions(root, "do_status", active="v2026.09.12-1")
-            self.assertIn("  - v2026.09.12-1", lines)
+            (root / "v1.33.0").mkdir()
+            lines = self.run_functions(root, "do_status", active="v1.33.0")
+            self.assertIn("  - v1.33.0", lines)
             self.assertNotIn("  - ", lines)
 
     def test_empty_release_directory_is_safe(self):
@@ -73,13 +73,13 @@ class SimpleReleaseRetentionTest(unittest.TestCase):
             self.assertEqual(self.run_functions(Path(temp), "release_versions; prune_old"), [])
 
     def test_invalid_retention_or_inconsistent_current_preserves_all_versions(self):
-        for keep, actual in (("0", None), ("-1", None), ("invalid", None), ("2", "v2026.09.12-1")):
+        for keep, actual in (("0", None), ("-1", None), ("invalid", None), ("2", "v1.33.0")):
             with self.subTest(keep=keep, actual=actual), tempfile.TemporaryDirectory(prefix="uten-release-retention-") as temp:
                 root = Path(temp)
-                versions = {"v2026.09.01-1", "v2026.09.10-1", "v2026.09.11-1", "v2026.09.12-1"}
+                versions = {"v1.22.0", "v1.31.0", "v1.32.0", "v1.33.0"}
                 for version in versions:
                     (root / version).mkdir()
-                self.run_functions(root, "prune_old", active="v2026.09.01-1", keep=keep, actual=actual)
+                self.run_functions(root, "prune_old", active="v1.22.0", keep=keep, actual=actual)
                 self.assertEqual({p.name for p in root.iterdir()}, versions)
 
 

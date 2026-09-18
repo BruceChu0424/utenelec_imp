@@ -85,7 +85,7 @@ recovery_gate = load_module(
 )
 
 
-VERSION = "v2026.08.12-1"
+VERSION = "v1.2.0"
 TRANSACTION_ID = "internal-test-db-20260812T120000Z-0123456789ab"
 WORKER_BOOT_ID = "11111111-1111-4111-8111-111111111111"
 WORKER_UNIT_SHA256 = "d" * 64
@@ -2903,7 +2903,7 @@ class UpdaterDatabaseTerminalAdmissionTest(unittest.TestCase):
             ],
             "flywayHeadVersion": "1",
             "flywayMigrationSetSha256": "3" * 64,
-            "releaseSequence": 20260812001,
+            "releaseSequence": 100001002000,
             "signingKeyId": "SHA256:" + "A" * 43,
             "version": VERSION,
         }
@@ -3436,7 +3436,7 @@ class RecoveryIngressProbeAuthorizationTest(unittest.TestCase):
             "flywayHeadVersion": "253",
             "flywayMigrationSetSha256": "b" * 64,
             "manifestSha256": "c" * 64,
-            "releaseSequence": 20260812001,
+            "releaseSequence": 100001002000,
             "verified": True,
             "version": VERSION,
         }
@@ -3451,7 +3451,7 @@ class RecoveryIngressProbeAuthorizationTest(unittest.TestCase):
                     "finishTargetVersion": VERSION,
                     "originalBootEnablement": desired_boot,
                     "previousFlywayMigrationSetSha256": "b" * 64,
-                    "previousVersion": "v2026.08.11-1",
+                    "previousVersion": "v1.1.0",
                 },
             },
         }
@@ -3945,7 +3945,7 @@ class RecoveryIngressBootGateTest(unittest.TestCase):
             {
                 "commitSha": "a" * 40,
                 "desiredBootEnablement": commit["desiredBootEnablement"],
-                "releaseSequence": 20260812001,
+                "releaseSequence": 100001002000,
                 "schemaVersion": 1,
                 "startedAtUtc": "2026-08-12T11:59:30Z",
                 "version": commit["targetVersion"],
@@ -4312,7 +4312,7 @@ class RecoveryIngressBootGateTest(unittest.TestCase):
                             {
                                 "commitSha": "a" * 40,
                                 "product": "uten-imp",
-                                "releaseSequence": 20260812001,
+                                "releaseSequence": 100001002000,
                                 "schemaVersion": 1,
                                 "version": VERSION,
                             }

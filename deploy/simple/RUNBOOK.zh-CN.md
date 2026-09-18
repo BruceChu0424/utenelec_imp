@@ -98,9 +98,9 @@ ln -s /etc/nginx/sites-available/uten-imp /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default   # 按需保留
 nginx -t && systemctl enable --now nginx
 
-# 7. 发首个版本：本机打 tag vYYYY.MM.DD-1 push → GitHub 出制品进 OSS
+# 7. 发首个版本：本机打 tag v1.0.0 push → GitHub 出制品进 OSS
 /usr/local/sbin/uten-imp-updater check          # 下载暂存（会提示首装需人工激活）
-/usr/local/sbin/uten-imp-updater activate vYYYY.MM.DD-1   # 备份→建库→切换→健康检查
+/usr/local/sbin/uten-imp-updater activate v1.0.0   # 备份→建库→切换→健康检查
 
 # 8. 通过后开机自启 + 定时更新
 systemctl enable --now uten-imp.service uten-imp-updater.timer
@@ -136,7 +136,7 @@ Simple Release现在在构建前强制核验实际检出提交SHA对应的三个
 `.github/scripts/test_release_gate.py`提供离线回归并在发布作业的门禁前执行。
 
 ```bash
-git tag v2026.09.01-1 && git push origin v2026.09.01-1
+git tag v1.4.1 && git push origin v1.4.1
 ```
 
 - 服务器每天 **05:00（北京时间）** 自动拉取（要立即上线可 SSH 执行
@@ -150,7 +150,7 @@ git tag v2026.09.01-1 && git push origin v2026.09.01-1
 
   ```bash
   /usr/local/sbin/uten-imp-updater status
-  /usr/local/sbin/uten-imp-updater activate v2026.09.01-2
+  /usr/local/sbin/uten-imp-updater activate v1.5.0
   # 自动：pg_dump 全量备份 → migrator → 原子切换 → 健康检查
   # 失败：代码回滚、应用停止、备份文件路径会打印出来，按路径人工恢复
   ```
@@ -290,7 +290,7 @@ REMOTE
 
 ## 六、故障速查
 
-版本目录的列出与保留由更新器`release_versions`统一处理，只接受`vYYYY.MM.DD-N`目录。2026-09-12修复了旧`ls .../ | sed`把带尾斜杠的整个路径删空的问题：它会使`status`显示空版本且旧版本保留策略失效。新实现按版本排序，只清理保留数量之外的已识别目录，始终保护正在运行的版本；未识别目录不自动删除。保留数量不在1至9999、版本记录与实际current链接不一致或链接不可核对时，停止清理并保留全部文件，不把已健康激活的版本误报为发布失败。对应5项回归为`deploy/updater/test_simple_release_retention.py`。更新脚本源码与安装到`/usr/local/sbin/uten-imp-updater`是两个步骤，目标安装必须另外核验摘要。
+版本目录的列出与保留由更新器`release_versions`统一处理，只接受语义化`vMAJOR.MINOR.PATCH`目录（2026-09-18 起从日期号 `vYYYY.MM.DD-N` 切换；切换前留在服务器上的旧日期号目录不再被识别，属「未识别目录」，不会被自动删除，确认无需回退后可人工清理）。2026-09-12修复了旧`ls .../ | sed`把带尾斜杠的整个路径删空的问题：它会使`status`显示空版本且旧版本保留策略失效。新实现按版本排序，只清理保留数量之外的已识别目录，始终保护正在运行的版本；未识别目录不自动删除。保留数量不在1至9999、版本记录与实际current链接不一致或链接不可核对时，停止清理并保留全部文件，不把已健康激活的版本误报为发布失败。对应5项回归为`deploy/updater/test_simple_release_retention.py`。更新脚本源码与安装到`/usr/local/sbin/uten-imp-updater`是两个步骤，目标安装必须另外核验摘要。
 
 | 症状 | 命令 |
 |---|---|

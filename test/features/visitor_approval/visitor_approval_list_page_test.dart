@@ -98,6 +98,7 @@ Widget _app(_FakeVisitorStaffRepository repo, SharedPreferences preferences) =>
       child: const MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        locale: Locale('zh'),
         home: VisitorApprovalListPage(),
       ),
     );

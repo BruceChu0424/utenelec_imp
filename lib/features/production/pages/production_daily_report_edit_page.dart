@@ -15,6 +15,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_edit_floating_actions.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
@@ -89,6 +90,10 @@ class _ProductionDailyReportEditPageState
   String? _productionDeptId;
 
   final _grid = UtenEditableGridController<DailyGridRow>();
+
+  /// 新建态（2026-09-18 勾选口径，与订货单/到货登记页同款）：勾选=本次要提交的
+  /// 成品报工行，保存只认勾选行；编辑既有日报保持整单保存。
+  bool get _isCreate => widget.id == null;
 
   /// ===== V583 报工同页登记实际用料 =====
   /// 每个执行工单的材料台账缓存，键 'planId|物料所属段Id'。一张日报常把同一个工单
@@ -436,6 +441,8 @@ class _ProductionDailyReportEditPageState
   void _applySource(DailyGridRow row, ReportablePlanLine source) {
     if (!mounted) return;
     setState(() {
+      // 选了报工来源 = 这行要进本次日报：新建态自动勾上（保存按钮只认勾选行）。
+      if (_isCreate && !row.isMaterialRow) _grid.setSelected([row], true);
       row
         ..planId = source.planId
         ..planItemId = source.planItemId
@@ -979,14 +986,38 @@ class _ProductionDailyReportEditPageState
     }
     // 校验与「第 N 行」计数都只看成品报工行：物料子行是挂在它们下面的派生行，
     // 混进来会让行号对不上用户在界面上数到的那一行。
-    final rows = _productRows;
+    // 新建态只提交勾选行（2026-09-18，与订货单编辑页同款）；编辑既有单整单保存。
+    final candidate = _isCreate
+        ? _grid.selectedRows.where((row) => !row.isMaterialRow).toList()
+        : _productRows;
+    final rows = candidate;
     if (rows.isEmpty || rows.every((r) => r.goods == null)) {
-      context.appError('请至少添加一条明细');
+      context.appError(_isCreate ? '请先勾选要报工的明细行' : '请至少添加一条明细');
       return;
     }
-    for (var i = 0; i < rows.length; i++) {
-      final r = rows[i];
-      if (r.goods == null) continue;
+    // 有来源却未勾选的成品行：提交前明确告知去向，防「取消勾选=静默不报工」。
+    if (_isCreate) {
+      final excluded = _productRows
+          .where((r) => r.goods != null && !_grid.isSelected(r))
+          .length;
+      if (excluded > 0) {
+        final confirmed = await UtenDialog.show(
+          context,
+          title: '有 $excluded 行明细未勾选',
+          confirmLabel: '只提交勾选行',
+          content: Text(
+            '本次只提交勾选的 ${rows.length} 行报工；未勾选的 $excluded 行不会写入本张日报，'
+            '来源任务仍保持可报状态，可稍后再报。',
+          ),
+        );
+        if (confirmed != true || !mounted) return;
+      }
+    }
+    final submitted = rows.toSet();
+    // 行号按用户在界面数到的成品行序（_productRows），未勾选行跳过不校验不报号。
+    for (var i = 0; i < _productRows.length; i++) {
+      final r = _productRows[i];
+      if (r.goods == null || !submitted.contains(r)) continue;
       final qty = double.tryParse(r.qty.text);
       if (qty == null || qty <= 0) {
         context.appError('第 ${i + 1} 行完工申报量必须大于 0');
@@ -1039,9 +1070,16 @@ class _ProductionDailyReportEditPageState
     }
     // V583 物料子行：本次实际用料必填、不能为负、不能超过本次还能登记的量。
     // 允许填 0——「这批料一点没用」是合法事实，逼人编个正数就是在造假账。
+    // 只看勾选成品行的物料子行：未勾选行不进本次提交，其用料也不校验。
     final materialIssues = <String>[];
     for (final row in _grid.rows) {
-      if (!row.materialEditable || !row.materialInvalid) continue;
+      if (!row.materialEditable ||
+          !row.materialInvalid ||
+          (row.materialParent != null &&
+              _isCreate &&
+              !submitted.contains(row.materialParent))) {
+        continue;
+      }
       final material = row.material!;
       final name = material.goodsName ?? material.goodsCode ?? '物料';
       final value = row.materialUsedValue;
@@ -1142,9 +1180,13 @@ class _ProductionDailyReportEditPageState
         if (r.remark.text.trim().isNotEmpty) 'remark': r.remark.text.trim(),
       });
     }
+    // 物料实耗只随勾选的成品行走（新建态）；编辑既有单整单提交不变。
     final materialBody = <Map<String, dynamic>>[
       for (final row in _grid.rows)
-        if (row.materialEditable)
+        if (row.materialEditable &&
+            (row.materialParent == null ||
+                !_isCreate ||
+                submitted.contains(row.materialParent)))
           {
             'demandId': row.material!.demandId,
             'qtyBase': row.materialUsedValue ?? 0,
@@ -1560,15 +1602,30 @@ class _ProductionDailyReportEditPageState
       // 详情尚未回填时不出按钮：此刻点保存会把空表单当草稿提交。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      // 新建态保存只认勾选的成品报工行（2026-09-18）：监听表格选择集，一条有货品
+      // 的行都没勾时保存置灰（灰态点击说明原因），勾回任意行立即恢复。
       floatingActionButton: _loading
           ? null
-          : UtenEditFloatingActions(
-              onCancel: () => popOrBackTo(
-                context,
-                defaultPath: RouteName.productionDailyReportList,
-              ),
-              onSave: _save,
-              saving: _saving,
+          : ListenableBuilder(
+              listenable: _grid,
+              builder: (context, _) {
+                final hasCheckedLine =
+                    !_isCreate ||
+                    _grid.selectedRows.any(
+                      (row) => !row.isMaterialRow && row.goods != null,
+                    );
+                return UtenEditFloatingActions(
+                  onCancel: () => popOrBackTo(
+                    context,
+                    defaultPath: RouteName.productionDailyReportList,
+                  ),
+                  onSave: hasCheckedLine ? _save : null,
+                  saving: _saving,
+                  saveDisabledHint: hasCheckedLine
+                      ? null
+                      : '请先勾选要报工的明细行（未勾选的行不会写入本张日报）',
+                );
+              },
             ),
     );
   }

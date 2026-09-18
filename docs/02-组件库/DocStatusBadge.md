@@ -25,6 +25,8 @@
 
 生产/财务/销售/委外/采购共用同一状态机（各域 `kXxxStatusDraft/Approved/Reversed = 0/1/-1`），`docStatusBadgeType` 不依赖 feature 层，直接按值映射。
 
+采购订货单的财务四态映射由 `lib/features/purchase/widgets/purchase_status_badge.dart` 的 `purchaseOrderDisplayBadgeType` 提供（标签走 `models/purchase_doc.dart` 的 `purchaseOrderDisplayLabel`）；2026-09-18 起详情页「状态」徽章（`PurchaseStatusBadge.financeApproval`）与列表状态列共用同一映射——在审/退回期间单据 `status` 仍为 0，展示以 `financeApproval` 投影为准，红冲/已取消终态优先回落单据状态文案，避免在审单误显「草稿」。
+
 ## 三、用法（列表页状态列）
 
 ```dart
@@ -52,4 +54,4 @@ MasterColumnDef(
 - 只是配色映射，不新增状态、不改变任何列表的数据或筛选；
 - 深色模式配色由 `UtenStatusBadge` 自行处理（半透明底 + 亮档文字）。
 
-**最后更新**：2026-09-10 · 新建（C06 F2e 推广）。
+**最后更新**：2026-09-18 · 采购订货财务态映射下沉共享（列表/详情同口径）；2026-09-10 新建（C06 F2e 推广）。

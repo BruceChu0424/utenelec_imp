@@ -33,7 +33,7 @@ usage() {
 Usage:
   sudo bash harden-existing-postgres-roles.sh \
     --expected-flyway-version 289 \
-    --expected-release-version v2026.08.14-1 \
+    --expected-release-version v1.4.0 \
     --trusted-release-manifest /root/trusted-release/manifest.json \
     --trusted-release-signature /root/trusted-release/manifest.sig \
     --confirm 'HARDEN uten_imp ON 16/main'
@@ -42,7 +42,7 @@ For any non-empty database, a separately reviewed change approval is mandatory:
 
   sudo bash harden-existing-postgres-roles.sh \
     --expected-flyway-version 289 \
-    --expected-release-version v2026.08.14-1 \
+    --expected-release-version v1.4.0 \
     --trusted-release-manifest /root/trusted-release/manifest.json \
     --trusted-release-signature /root/trusted-release/manifest.sig \
     --allow-audited-nonempty \
@@ -180,7 +180,7 @@ readonly SCRIPT_FILE="$(realpath -e -- "${BASH_SOURCE[0]}")"
 secure_root_file "$SCRIPT_FILE" 'role hardener installer' 2097152 >/dev/null
 [[ "$expected_flyway_version" =~ ^[1-9][0-9]*$ ]] \
   || die '--expected-flyway-version must be a positive integer without a leading zero'
-[[ "$expected_release_version" =~ ^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[1-9][0-9]{0,2}$ ]] \
+[[ "$expected_release_version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
   || die '--expected-release-version must be one canonical signed release tag'
 [[ -n "$trusted_release_manifest" && -n "$trusted_release_signature" ]] \
   || die 'both trusted release manifest and signature paths are required'

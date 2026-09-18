@@ -21,7 +21,7 @@ from typing import Any, Iterable, NoReturn
 PRODUCT = "uten-imp"
 MANIFEST_SCHEMA_VERSION = 1
 VERSION_RE = re.compile(
-    r"^v(?P<year>[0-9]{4})\.(?P<month>[0-9]{2})\.(?P<day>[0-9]{2})-(?P<counter>[0-9]{1,3})$"
+    r"^v(?P<major>0|[1-9][0-9]*)\.(?P<minor>0|[1-9][0-9]*)\.(?P<patch>0|[1-9][0-9]*)$"
 )
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 MIGRATION_RE = re.compile(r"^V(?P<version>[0-9]+)__(?P<description>.+)\.sql$")
@@ -85,22 +85,30 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+# Must stay numerically identical to deploy/updater/release_guard.py
+# version_sequence() and deploy/release/offline_release.py validate_version().
+SEMVER_SEQUENCE_EPOCH = 100_000_000_000
+SEMVER_MAX_MAJOR = 9_999
+SEMVER_MAX_MINOR = 999
+SEMVER_MAX_PATCH = 999
+
+
 def validate_version(version: str) -> int:
     match = VERSION_RE.fullmatch(version)
     if not match:
-        fail("version must match vYYYY.MM.DD-N (counter 1..999)")
-    counter = int(match.group("counter"))
-    if counter < 1 or match.group("counter") != str(counter):
-        fail("release counter must be canonical and at least 1")
-    try:
-        calendar_day = dt.date(
-            int(match.group("year")),
-            int(match.group("month")),
-            int(match.group("day")),
+        fail("version must match vMAJOR.MINOR.PATCH (canonical semantic version)")
+    major = int(match.group("major"))
+    minor = int(match.group("minor"))
+    patch = int(match.group("patch"))
+    if major == 0 and minor == 0 and patch == 0:
+        fail("v0.0.0 is not a publishable release version")
+    if major > SEMVER_MAX_MAJOR or minor > SEMVER_MAX_MINOR or patch > SEMVER_MAX_PATCH:
+        fail(
+            "version components exceed the allowed maximums "
+            f"(major<={SEMVER_MAX_MAJOR}, minor<={SEMVER_MAX_MINOR}, "
+            f"patch<={SEMVER_MAX_PATCH})"
         )
-    except ValueError as exc:
-        raise ReleaseMetadataError(f"invalid release date: {exc}") from exc
-    return int(calendar_day.strftime("%Y%m%d")) * 1000 + counter
+    return SEMVER_SEQUENCE_EPOCH + major * 1_000_000 + minor * 1_000 + patch
 
 
 def validate_commit(commit_sha: str) -> str:

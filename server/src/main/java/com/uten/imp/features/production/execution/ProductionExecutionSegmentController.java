@@ -74,9 +74,10 @@ public class ProductionExecutionSegmentController {
         return service.startContinuousSupply(planId, segmentId, request);
     }
 
-    /** 「确认生产路线」(V599 / ADR-091)：开工前显式选定齐套生产 / 分批生产 / 持续生产。 */
+    /** 「确认生产路线」(V599 / ADR-091)：开工前显式选定齐套生产 / 分批生产 / 持续生产。
+     * 与领料/分批同门槛 view+start（ADR-091 §2.1「权限零新增」表）。 */
     @PostMapping("/{segmentId}/confirm-route")
-    @PreAuthorize("hasAuthority('production_execution:start')")
+    @PreAuthorize("hasAuthority('production_execution:view') and hasAuthority('production_execution:start')")
     public ExecutionSegmentView confirmRoute(
             @PathVariable UUID planId,
             @PathVariable UUID segmentId,

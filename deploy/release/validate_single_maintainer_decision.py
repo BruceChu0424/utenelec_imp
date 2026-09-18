@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 
-VERSION_RE = re.compile(r"v(20[0-9]{2})\.(0[1-9]|1[0-2])\.([0-2][0-9]|3[01])-([1-9][0-9]{0,2})")
+VERSION_RE = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 KEY_ID_RE = re.compile(r"SHA256:[A-Za-z0-9+/]{43}")

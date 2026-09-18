@@ -217,10 +217,11 @@ public class NoticeController {
         service.markAllRead();
     }
 
+    /** 按业务事件来源批量标记已读（进入该事件的任务页/工作台后清对应通知）。 */
     @PostMapping("/read-by-source")
     @PreAuthorize("hasAuthority('notice:read')")
-    public void markReadBySource(@RequestParam List<String> events) {
-        service.markReadBySourceEvents(events);
+    public Map<String, Object> markReadBySource(@RequestParam List<String> events) {
+        return Map.of("read", service.markReadBySourceEvents(events));
     }
 
     /** 按站内办理路由批量标记已读（业务动作完成/打开单据后清对应通知）。 */

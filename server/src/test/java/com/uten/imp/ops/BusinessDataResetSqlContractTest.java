@@ -1,5 +1,6 @@
 package com.uten.imp.ops;
 
+import com.uten.imp.migration.MigrationRehearsalSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -369,7 +370,7 @@ class BusinessDataResetSqlContractTest {
                 .contains("(598, 555)")
                 .contains("(599, 556)")
                 .contains("(600, 557)")
-                .contains("V507/469、V508/470及V511至V600完整目录");
+                .contains("V507/469、V508/470及V511至V602完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);
@@ -535,6 +536,57 @@ class BusinessDataResetSqlContractTest {
                         + "请改成 **当前正式目录：V%d/%d …**（并补一句新迁移做了什么）"
                                 .formatted(head, count))
                 .contains("当前正式目录：V" + head + "/" + count);
+    }
+
+    /**
+     * <b>白名单全量对账（2026-09-18 起）：每一个版本对的条数都必须能从迁移目录数出来。</b>
+     *
+     * <p>上面的 {@code resetScriptAllowlistCoversTheCurrentMigrationHead} 只证明「最后一对
+     * 覆盖当前头」，证明不了中间任何一对没写错（手抄条数打错一位照样绿，直到某次
+     * 真实清库在旧目录上 fail-closed 拒跑）。版本对的第二个数 = 目录里版本号
+     * {@code <= 该版本} 的 .sql 个数（跳号版本天然数不进去），完全可从目录推导——
+     * 所以这里逐对重算：写错任何一对、漏写中间任何一对、顺序错乱，全部当场报出
+     * 该改成什么，不再等真实库。
+     */
+    @Test
+    void everyAllowlistPairIsRecountedFromTheMigrationDirectory() {
+        int whitelistStart = opsScript.indexOf(
+                "(applied_max_version, applied_migration_count) NOT IN (");
+        assertThat(whitelistStart)
+                .as("ops/reset_business_data.sql 里找不到迁移头 fail-closed 白名单锚点")
+                .isGreaterThanOrEqualTo(0);
+        int whitelistEnd = opsScript.indexOf(") THEN", whitelistStart);
+        assertThat(whitelistEnd).isGreaterThan(whitelistStart);
+        String whitelist = opsScript.substring(whitelistStart, whitelistEnd);
+
+        Matcher pair = Pattern.compile("\\((\\d{1,4}),\\s*(\\d{1,4})\\)").matcher(whitelist);
+        int previousVersion = 0;
+        int pairCount = 0;
+        while (pair.find()) {
+            pairCount++;
+            int version = Integer.parseInt(pair.group(1));
+            int claimedCount = Integer.parseInt(pair.group(2));
+            assertThat(version)
+                    .as("白名单版本对必须严格递增，第 %d 对是 (%d, %d)"
+                            .formatted(pairCount, version, claimedCount))
+                    .isGreaterThan(previousVersion);
+            int recounted = MigrationRehearsalSupport.migrationFileCountUpTo(version);
+            assertThat(claimedCount)
+                    .as("""
+                            白名单第 %d 对 (%d, %d) 的条数与迁移目录不符：目录里版本号 \
+                            <= %d 的 .sql 实际有 %d 个。要么这对手抄错了，要么目录有\
+                            增删没同步白名单。"""
+                            .formatted(pairCount, version, claimedCount, version, recounted))
+                    .isEqualTo(recounted);
+            previousVersion = version;
+        }
+        assertThat(pairCount)
+                .as("白名单一个版本对都没解析到——锚点窗口或格式变了，先修本测试")
+                .isGreaterThan(100);
+        assertThat(previousVersion)
+                .as("白名单最后一对的版本必须是当前迁移头 %s"
+                        .formatted(MigrationRehearsalSupport.CURRENT_HEAD_VERSION))
+                .isEqualTo(Integer.parseInt(MigrationRehearsalSupport.CURRENT_HEAD_VERSION));
     }
 
     private static Path resolve(Path direct, Path fallback) {

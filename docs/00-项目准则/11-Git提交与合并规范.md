@@ -1,7 +1,8 @@
 # 11 - 单维护者 Git 上传与合并规范
 
 > **2026-09-01 起（ADR-060）**：主仓库为 `BruceChu0424/utenelec_imp`（本地 `origin`），旧组织库仅为
-> 归档备份（本地 `old-origin`，push 已禁用）。发版 = 在 `main` 上打 `vYYYY.MM.DD-N` tag 并推送，
+> 归档备份（本地 `old-origin`，push 已禁用）。发版 = 在 `main` 上打语义化版本 `vMAJOR.MINOR.PATCH`
+> tag 并推送（2026-09-18 起启用，此前为日期号 `vYYYY.MM.DD-N`，规则见 README「版本号规则」），
 > `simple-release.yml` 自动构建签名上传 OSS，服务器自动/受控激活。详见
 > [ADR-60](../99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md)。
 
@@ -19,7 +20,7 @@
 | 要做的事 | 最少步骤 | 不需要做的事 |
 |---|---|---|
 | 日常上传 GitHub | 定向测试 → 精确暂存 → Commit → push 功能分支 → SHA 回读；合并时走PR门禁 | 不需要 `gh`、第二审批人、OSS、服务器操作 |
-| 发版（internal-test） | Quality Gate 全绿 → `git tag vYYYY.MM.DD-N && git push origin v…` → 服务器按已配置的更新器定时器拉取(立即更新可手动`check`)；纯代码自动激活，含迁移手动`activate` | 不需要手动构建、手动传文件、手动改服务器目录 |
+| 发版（internal-test） | Quality Gate 全绿 → `git tag vMAJOR.MINOR.PATCH && git push origin v…` → 服务器按已配置的更新器定时器拉取(立即更新可手动`check`)；纯代码自动激活，含迁移手动`activate` | 不需要手动构建、手动传文件、手动改服务器目录 |
 
 上传功能分支只证明代码已在 GitHub；不等于已合并 `main`，更不等于已部署服务器。
 

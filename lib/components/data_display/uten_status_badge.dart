@@ -99,6 +99,10 @@ class UtenStatusBadge extends StatelessWidget {
           UtenColors.error.withValues(alpha: 0.18),
           UtenColors.errorOnDark,
         ),
+        UtenStatusBadgeType.fuchsia => (
+          UtenColors.fuchsia.withValues(alpha: 0.18),
+          UtenColors.fuchsiaOnDark,
+        ),
         UtenStatusBadgeType.accent => (
           UtenColors.teal500.withValues(alpha: 0.18),
           UtenColors.teal300,
@@ -120,6 +124,10 @@ class UtenStatusBadge extends StatelessWidget {
         UtenColors.warningText,
       ),
       UtenStatusBadgeType.danger => (UtenColors.errorBg, UtenColors.errorText),
+      UtenStatusBadgeType.fuchsia => (
+        UtenColors.fuchsiaBg,
+        UtenColors.fuchsiaText,
+      ),
       UtenStatusBadgeType.accent => (
         UtenColors.tealSurface,
         UtenColors.teal700,
@@ -144,6 +152,10 @@ enum UtenStatusBadgeType {
 
   /// 危险红（驳回/失败）
   danger,
+
+  /// 品红（分类强调，非语义状态：生产路线「持续生产」等类别色，
+  /// 与绿/蓝拉开色相——2026-09-18 用户口径「颜色取差别大的」）
+  fuchsia,
 
   /// 品牌青绿（已查看/特殊状态）
   accent,

@@ -39,7 +39,7 @@ decision_validator = load_module(
 )
 
 
-VERSION = "v2026.08.21-1"
+VERSION = "v1.11.0"
 COMMIT = "1" * 40
 RELEASE_KEY = "SHA256:" + "B" * 43
 TAG_KEY = "SHA256:" + "C" * 43

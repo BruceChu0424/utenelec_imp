@@ -67,6 +67,45 @@ Color purchaseStatusColor(int? code, ThemeData theme) {
   }
 }
 
+/// 订货单展示状态文案（列表状态列与详情「状态」徽章共用口径）：财务通过前
+/// 单据 status 保持 0，在审/退回期间以 financeApproval 投影为准——
+/// PENDING=等待财务审核 / REJECTED=财务退回 / APPROVED=财务已通过 /
+/// DRAFT=待提交财务；红冲/已取消终态与无投影/未知态回落单据状态文案。
+String purchaseOrderDisplayLabel(
+  int? status,
+  ProcurementFinanceApproval? financeApproval,
+) {
+  if (status == kPurchaseStatusReversed || status == kPurchaseStatusCanceled) {
+    return purchaseStatusLabel(status);
+  }
+  return switch (financeApproval?.status) {
+    'PENDING' => '等待财务审核',
+    'REJECTED' => '财务退回',
+    'APPROVED' => '财务已通过',
+    'DRAFT' => '待提交财务',
+    _ => purchaseStatusLabel(status),
+  };
+}
+
+/// [purchaseOrderDisplayLabel] 对应的徽章主题色：在审=警告橙、退回=危险红、
+/// 通过=绿（对齐已审）、待提交=中性；终态与未知态回落单据状态色。
+Color purchaseOrderDisplayColor(
+  int? status,
+  ProcurementFinanceApproval? financeApproval,
+  ThemeData theme,
+) {
+  if (status == kPurchaseStatusReversed || status == kPurchaseStatusCanceled) {
+    return purchaseStatusColor(status, theme);
+  }
+  return switch (financeApproval?.status) {
+    'PENDING' => Colors.orange,
+    'REJECTED' => theme.colorScheme.error,
+    'APPROVED' => Colors.green,
+    'DRAFT' => theme.colorScheme.onSurfaceVariant,
+    _ => purchaseStatusColor(status, theme),
+  };
+}
+
 class PurchaseDocListItem {
   const PurchaseDocListItem({
     required this.id,

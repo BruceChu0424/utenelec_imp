@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -64,6 +65,13 @@ public class VisitorApplicationService {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
                     "计划离开时间必须晚于计划到访时间");
+        }
+        // 前端日期选择器限制今天起 30 天内，这里兜底拒绝已过去的时间点，
+        // 防止绕过客户端直接提交历史时刻的申请。
+        if (req.plannedVisitAt().isBefore(OffsetDateTime.now())) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "计划到访时间不能早于当前时间");
         }
         String plateNo = trimToNull(req.plateNo());
         if (req.hasVehicle() && plateNo == null) {
@@ -140,11 +148,20 @@ public class VisitorApplicationService {
     @Transactional(readOnly = true)
     public PageResponse<VisitorListItem> listMine(String status, int page, int size) {
         UUID visitorId = currentVisitorId();
+        // status 支持逗号分隔多状态（如 pending,hostReviewing，访客端「申请中」口径）；
+        // 单状态保持原 equal 语义，未知状态码自然查空，不做白名单拦截。
+        List<String> statuses = status == null ? List.of()
+                : Arrays.stream(status.split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .toList();
         Specification<VisitorApplication> spec = (root, q, cb) -> {
             Predicate p = cb.and(cb.equal(root.get("visitorAccountId"), visitorId),
                     cb.equal(root.get("deleted"), false));
-            if (!isBlank(status)) {
-                p = cb.and(p, cb.equal(root.get("status"), status));
+            if (statuses.size() == 1) {
+                p = cb.and(p, cb.equal(root.get("status"), statuses.get(0)));
+            } else if (statuses.size() > 1) {
+                p = cb.and(p, root.get("status").in(statuses));
             }
             return p;
         };

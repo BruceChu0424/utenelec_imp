@@ -272,8 +272,9 @@ void main() {
       permissions: _bothViewPerms,
     );
 
-    // 队列「储放位置」列：检查单按已上架行数标红；IQC 单未上架仍是「待检区」。
-    expect(find.text('已入库待检(1 行)'), findsOneWidget);
+    // 队列「仓库 / 库位号」两列（2026-09-18 起）：检查单按已上架行标红，
+    // 仓库=登记成品仓；IQC 单未上架仍是「待检区」。
+    expect(find.text('成品仓'), findsOneWidget);
     expect(find.text('待检区'), findsWidgets);
 
     await _doubleTapRow(tester, _sheetNo);

@@ -92,6 +92,32 @@ void main() {
   );
 
   testWidgets(
+    'pre-stocked lines show their storage location per row in the batch table',
+    (tester) async {
+      final iqc = _Iqc(
+        load: (_) async => [
+          _row(
+            'shelf-line',
+            preStocked: const WarehousePreStockedLocation(
+              warehouseId: 'wh-1',
+              warehouseName: '五金仓',
+              place: 'B-12',
+            ),
+          ),
+          _row('plain-line'),
+        ],
+      );
+      await _pump(tester, iqc, 1);
+      // 2026-09-18 用户口径：先入库后检的行在批量页逐行可见储放位置，
+      // 与检验处置页同文案（红字「已入库 · 仓 / 库位」），未上架行显示待检区。
+      expect(find.text('储放位置'), findsOneWidget);
+      expect(find.text('已入库 · 五金仓 / B-12'), findsOneWidget);
+      expect(find.text('待检区'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'canceling report confirmation leaves an editable draft and sends nothing',
     (tester) async {
       final iqc = _Iqc();
@@ -380,7 +406,10 @@ Future<void> _confirm(WidgetTester tester) async {
   await tester.pump();
 }
 
-ProcurementInspectionItem _row(String id) => ProcurementInspectionItem(
+ProcurementInspectionItem _row(
+  String id, {
+  WarehousePreStockedLocation? preStocked,
+}) => ProcurementInspectionItem(
   id: id,
   goodsName: '物料$id',
   remainingBaseQty: 5,
@@ -389,6 +418,7 @@ ProcurementInspectionItem _row(String id) => ProcurementInspectionItem(
   failedBaseQty: 0,
   baseUnitName: '件',
   status: 'PENDING',
+  preStocked: preStocked,
 );
 
 class _Iqc extends Fake implements ProcurementInspectionRepository {

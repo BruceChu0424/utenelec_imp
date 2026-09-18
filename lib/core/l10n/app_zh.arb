@@ -110,6 +110,7 @@
   "visitorApplyValidateHost": "请选择接待人",
   "visitorApplyValidateVisitTime": "请选择到访时间",
   "visitorApplyValidateVisitTimeFuture": "到访时间需晚于当前时间",
+  "visitorApplyValidatePlate": "开车来访时请填写车牌号",
   "visitorApplyDuplicateTime": "您已有相同时段的进行中预约，请换一个时间",
   "visitorApplySuccess": "预约已提交，等待审批",
   "visitorStatusPending": "申请中",
@@ -145,6 +146,7 @@
   "securityScanHint": "将访客二维码对准扫码框",
   "securityScanManual": "手动输入凭证",
   "securityPasscodeHint": "输入6位通行码",
+  "securityPasscodeInvalid": "请输入6位数字通行码",
   "visitorPasscodeLabel": "通行码",
   "securityPass": "允许通行",
   "securityReject": "禁止通行",
@@ -1569,5 +1571,207 @@
   "productionBatchUnit": "领料单位",
   "productionBatchMaterialQuantity": "本批领料数量",
   "productionBatchMaterialQuantityHint": "仅为本批需要新增领取的数量，按本行单位和实际仓库办理。",
-  "productionBatchNoAdditionalMaterials": "本批无需新增领料，沿已有物料来源安排生产"
+  "productionBatchNoAdditionalMaterials": "本批无需新增领料，沿已有物料来源安排生产",
+  "securityReasonBlocked": "已拉黑，禁止入场",
+  "securityBlacklistTitle": "访客黑名单",
+  "securityBlacklistEmpty": "暂无拉黑访客",
+  "securityBlacklistColNo": "访客编号",
+  "securityBlacklistColName": "姓名",
+  "securityBlacklistColPhone": "手机号",
+  "securityBlacklistColReason": "拉黑原因",
+  "securityBlacklistColAt": "拉黑时间",
+  "securityBlacklistColBy": "操作人",
+  "securityBlacklistAction": "拉黑访客",
+  "securityBlacklistNoticeLabel": "访客拉黑",
+  "securityBlacklistNoticeDesc": "拉黑后该访客立即无法登录与入场，操作与原因将记入审计。",
+  "securityBlacklistReasonLabel": "拉黑原因",
+  "securityBlacklistReasonHint": "请填写拉黑原因（必填）",
+  "securityBlacklistDone": "已拉黑该访客",
+  "securityBlacklistRemove": "解除拉黑",
+  "securityBlacklistRemoveConfirm": "确认解除拉黑？解除后该访客可重新登录与提交申请，历史申请状态不变。",
+  "securityBlacklistRemoveDone": "已解除拉黑",
+  "entryStaffSubtitle": "员工工号登录，进入工作台",
+  "entryVisitorSubtitle": "访客手机验证码登记，快速通行",
+  "visitorColName": "姓名",
+  "visitorColPurpose": "事由",
+  "visitorColHost": "接待人",
+  "visitorColPlannedVisit": "计划到访",
+  "visitorColStatus": "状态",
+  "visitorColCompany": "公司",
+  "visitorColVisitorName": "访客姓名",
+  "visitorColHostDepartment": "接待人部门",
+  "visitorApplySubmittingOverlay": "正在提交访客申请，请勿重复提交或离开本页。",
+  "visitorApplyDeptHint": "请选择接待部门",
+  "visitorApplyHostHint": "请选择被访人",
+  "visitorApplyHostSheetTitle": "选择被访人",
+  "visitorSettingsPortalTag": "{app} · 访客端",
+  "@visitorSettingsPortalTag": {
+    "placeholders": {
+      "app": {}
+    }
+  },
+  "visitorApprovalHostDeptColInfo": "访客申请时记录的接待人所属部门快照；表头筛选按此下推后端 hostDepartmentId 参数。",
+  "visitorBatchLimitError": "单次最多批量处理 {limit} 条，请分批操作（当前 {count} 条）",
+  "@visitorBatchLimitError": {
+    "placeholders": {
+      "limit": {"type": "int"},
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchApproveTitle": "批量批准({count})",
+  "@visitorBatchApproveTitle": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchApproveMessage": "将逐单批准所选 {count} 条访客申请，批准后生成通行二维码。如需核对接待人与来访事由，请双击行进入详情逐单审阅。",
+  "@visitorBatchApproveMessage": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchApproveConfirm": "确认批量批准",
+  "visitorBatchActionLabel": "访客审批",
+  "visitorBatchApproveResponsibility": "确认后，系统将以此登录员工记录所选 {count} 条访客申请的审批责任。",
+  "@visitorBatchApproveResponsibility": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchVerbApprove": "批准",
+  "visitorBatchVerbReject": "拒绝",
+  "visitorBatchVerbForward": "转接待人确认",
+  "visitorBatchResult": "已{verb} {count} 条访客申请",
+  "@visitorBatchResult": {
+    "placeholders": {
+      "verb": {},
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchResultFailures": "，{count} 条失败",
+  "@visitorBatchResultFailures": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchResultSkipped": "，{count} 条已跳过",
+  "@visitorBatchResultSkipped": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchIncomplete": "批量{verb}未全部完成：{reason}",
+  "@visitorBatchIncomplete": {
+    "placeholders": {
+      "verb": {},
+      "reason": {}
+    }
+  },
+  "visitorBatchRejectTitle": "批量拒绝({count})",
+  "@visitorBatchRejectTitle": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchRejectDescription": "拒绝原因将同步给 {count} 位访客，请说明具体问题。",
+  "@visitorBatchRejectDescription": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchRejectConfirm": "确认拒绝",
+  "visitorBatchSubjectLabel": "访客申请",
+  "visitorBatchForwardNoneSelected": "所选申请均已转接待人确认，无需重复转接",
+  "visitorBatchForwardTitle": "批量转接待人确认({count})",
+  "@visitorBatchForwardTitle": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchForwardMessage": "将把所选 {count} 条访客申请转给各自接待人确认，接待人确认后回到本队列等待你最终批准。",
+  "@visitorBatchForwardMessage": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchForwardSkippedNote": "（另有 {count} 条已在接待人确认中，已跳过）",
+  "@visitorBatchForwardSkippedNote": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchForwardConfirm": "确认批量转接",
+  "visitorBatchForwardResponsibility": "确认后，系统将以此登录员工记录所选 {count} 条访客申请的转接责任。",
+  "@visitorBatchForwardResponsibility": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchApproveButton": "批量批准({count})",
+  "@visitorBatchApproveButton": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchForwardButton": "批量转接待人确认({count})",
+  "@visitorBatchForwardButton": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchRejectButton": "批量拒绝({count})",
+  "@visitorBatchRejectButton": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorApprovalDoneApprove": "访客申请已批准",
+  "visitorApprovalDoneReject": "访客申请已驳回",
+  "visitorApprovalDoneForward": "已转接待人确认",
+  "visitorApprovalDoneFallback": "审批操作已完成",
+  "visitorApprovalApproveNoticeLabel": "访客审批通过",
+  "visitorApprovalApproveNoticeDesc": "确认后系统将记录当前审核员和审批结果，请对本次访客放行决定负责。",
+  "visitorApprovalRejectNoticeLabel": "访客审批拒绝",
+  "visitorApprovalRejectNoticeDesc": "确认后系统将记录当前审核员和拒绝结果，请对本次决定负责。",
+  "myVisitorsConfirmDone": "已确认接待，申请已转回 HR 审批",
+  "myVisitorsRejectDone": "已拒绝接待",
+  "myVisitorsBatchNoneSelected": "所选申请均不在「待我确认」状态，无需确认",
+  "myVisitorsBatchTitle": "批量确认接待({count})",
+  "@myVisitorsBatchTitle": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "myVisitorsBatchMessage": "将逐条确认接待所选 {count} 位访客，确认后申请转回 HR 等待最终批准。",
+  "@myVisitorsBatchMessage": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "myVisitorsBatchSkippedNote": "（另有 {count} 条不在「待我确认」状态，已跳过）",
+  "@myVisitorsBatchSkippedNote": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "myVisitorsBatchConfirm": "确认接待",
+  "myVisitorsBatchResult": "已确认接待 {count} 位访客",
+  "@myVisitorsBatchResult": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "myVisitorsBatchIncomplete": "批量确认未全部完成：{reason}",
+  "@myVisitorsBatchIncomplete": {
+    "placeholders": {
+      "reason": {}
+    }
+  },
+  "myVisitorsBatchButton": "批量确认接待({count})",
+  "@myVisitorsBatchButton": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "myVisitorsStatusColInfo": "默认只看「待我确认」；表头筛选可切到已转 HR / 已批准 / 已拒绝（下推后端）。"
 }

@@ -19,7 +19,7 @@ import release_updater as updater  # noqa: E402
 
 
 class FirstBackupActivationGateTest(unittest.TestCase):
-    VERSION = "v2026.08.14-1"
+    VERSION = "v1.4.0"
     TRANSACTION_ID = "internal-test-db-20260814T110000Z-abcdef123456"
     LOCKED_ID = "20260814T120000Z-0123456789abcdef0123456789abcdef"
     CREATED = "2026-08-14T12:05:00Z"
@@ -280,7 +280,7 @@ class FirstBackupActivationGateTest(unittest.TestCase):
             expired = {**kwargs, "now": datetime(2026, 8, 15, 12, 5, tzinfo=timezone.utc)}
             with self.assertRaisesRegex(updater.UpdaterError, "expired"):
                 updater.validate_internal_test_first_backup_receipt(value, **expired)
-            candidate_binding.return_value = {"version": "v2026.08.14-2"}
+            candidate_binding.return_value = {"version": "v1.4.1"}
             with self.assertRaisesRegex(updater.UpdaterError, "candidate differs"):
                 updater.validate_internal_test_first_backup_receipt(value, **kwargs)
 
@@ -476,9 +476,9 @@ class FirstBackupActivationGateTest(unittest.TestCase):
         newer = {
             "commitSha": "a" * 40,
             "releaseSequence": updater.release_guard.version_sequence(
-                "v2026.08.14-2"
+                "v1.4.1"
             ),
-            "version": "v2026.08.14-2",
+            "version": "v1.4.1",
         }
         with mock.patch.object(
             updater, "deployment_profile", return_value="internal-test"
@@ -498,7 +498,7 @@ class FirstBackupActivationGateTest(unittest.TestCase):
             return_value="internal-test-first-backup-binding-v1",
         ) as validate:
             authority = updater.runtime_authority_value(
-                target=Path("/opt/uten-imp/releases/v2026.08.14-2"),
+                target=Path("/opt/uten-imp/releases/v1.4.1"),
                 manifest=newer,
                 live_evidence={"verified": True},
                 first_backup_binding=binding,

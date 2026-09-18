@@ -128,7 +128,7 @@ void main() {
   });
 
   test(
-    'definite rejection still retains the exact command and never reaches later receipts',
+    'definite rejection still retains the exact command for every receipt',
     () async {
       final api = _Api(
         (path, body) async => throw ApiException('CONFLICT', '待检量已变化'),
@@ -160,9 +160,66 @@ void main() {
         );
       }
       expect(report.completedReceiptCount, 0);
-      expect(api.requests.length, 2);
-      expect(api.requests[0].$1, api.requests[1].$1);
-      expect(api.requests[0].$2, api.requests[1].$2);
+      // 2026-09-18 并行通道：失败不再连坐取消其它单，两张单各重试一次；
+      // 收货单未全部确认前 FQC 一张都不发。
+      expect(api.requests.length, 4);
+      for (final id in ['receipt-1', 'receipt-2']) {
+        final attempts = api.requests
+            .where((request) => request.$1.contains(id))
+            .toList();
+        expect(attempts.length, 2);
+        expect(attempts[0].$1, attempts[1].$1);
+        expect(attempts[0].$2, attempts[1].$2);
+      }
+    },
+  );
+
+  test(
+    'receipts submit on at most four concurrent lanes in one pass',
+    () async {
+      var active = 0;
+      var peak = 0;
+      var held = 0;
+      final gates = <Completer<Map<String, dynamic>>>[];
+      final api = _Api((path, body) {
+        active++;
+        if (active > peak) peak = active;
+        void release() => active--;
+        if (held < 4) {
+          held++;
+          final gate = Completer<Map<String, dynamic>>();
+          gates.add(gate);
+          return gate.future.whenComplete(release);
+        }
+        return Future<Map<String, dynamic>>.value({
+          'processedCount': 1,
+        }).whenComplete(release);
+      });
+      final report = QualityBatchSubmission(
+        receipts: [
+          for (var i = 1; i <= 6; i++)
+            QualityReceiptSubmission(
+              receiptType: 'PURCHASE',
+              receiptId: 'receipt-$i',
+              label: 'R$i',
+              items: [_item('inspection-$i')],
+            ),
+        ],
+        fqcInspectionIds: const [],
+        reason: null,
+      );
+      final iqc = DioProcurementInspectionRepository(api);
+      final fqc = ProductionFqcRepository(api);
+      final running = report.send(iqc: iqc, fqc: fqc);
+      await Future<void>.delayed(Duration.zero);
+      expect(gates.length, 4, reason: '首波在飞的只有 4 条通道');
+      expect(peak, 4);
+      for (final gate in gates) {
+        gate.complete({'processedCount': 1});
+      }
+      await running;
+      expect(report.completedReceiptCount, 6);
+      expect(report.complete, isTrue);
     },
   );
 }

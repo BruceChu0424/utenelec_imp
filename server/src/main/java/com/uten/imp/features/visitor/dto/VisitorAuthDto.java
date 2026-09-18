@@ -40,4 +40,9 @@ public final class VisitorAuthDto {
     public record VisitorTokenResponse(
             String accessToken, String refreshToken,
             UUID visitorId, String visitorNo, String name, String avatarSeed) {}
+
+    /** GET /api/visitor/me 响应：访客冷启动会话校验（令牌有效 + 账号在库）。 */
+    public record MeResponse(
+            UUID visitorId, String visitorNo, String name,
+            String avatarSeed, String status) {}
 }

@@ -78,7 +78,8 @@ public class ProductionDrawRequestService {
         lockRows("production_execution_segments", items.stream().map(Item::segmentId).toList());
         List<Segment> locked = segments(items);
         requireAccess(locked); // Assignment or plan state may have changed while acquiring locks.
-        // 开工路线门控(V599)：未确认路线不能提交领料；分批生产路线走分批领料，不在这里整单领。
+        // 开工路线门控(V599/V606)：分批生产路线走分批领料，不在这里整单领。
+        // V606 路线自动识别后不再有 NULL（历史脏数据按齐套放行，不阻塞车间）。
         for (Segment segment : locked) {
             String route = (String) em.createNativeQuery("""
                     SELECT start_route FROM production_execution_segments
@@ -86,10 +87,6 @@ public class ProductionDrawRequestService {
                     """)
                     .setParameter("id", segment.id())
                     .getSingleResult();
-            if (route == null) {
-                throw conflict("请先确认生产路线——工单 " + segment.code()
-                        + " 尚未选定齐套/分批/持续生产之一，不能提交领料");
-            }
             if ("BATCH".equals(route)) {
                 throw conflict("工单 " + segment.code()
                         + " 已确认为「分批生产」路线，请用「分批领料」按批办理");

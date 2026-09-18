@@ -79,6 +79,19 @@ abstract final class UtenColors {
   static const Color errorOnDark = Color(0xFFF87171);
   static const Color infoOnDark = Color(0xFF60A5FA);
 
+  /// 品红（分类强调色，非语义状态色）：生产路线「持续生产」的类别色
+  /// （2026-09-18 用户口径「路线颜色取差别大的」——与齐套绿、分批蓝拉开色相）。
+  static const Color fuchsia = Color(0xFFD946EF);
+
+  /// 品红深色表面高对比前景色
+  static const Color fuchsiaOnDark = Color(0xFFE879F9);
+
+  /// 品红柔和底色（徽章浅底）
+  static const Color fuchsiaBg = Color(0xFFFDF4FF);
+
+  /// 品红深档文字色（配合 fuchsiaBg 保证对比度）
+  static const Color fuchsiaText = Color(0xFFA21CAF);
+
   /// 语义色柔和底色（徽章、提示条、浅色高亮块）
   static const Color successBg = Color(0xFFECFDF5);
   static const Color warningBg = Color(0xFFFFFBEB);

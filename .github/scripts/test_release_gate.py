@@ -271,7 +271,7 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "posix", "release assembly uses the Linux CI environment")
 class SimpleReleaseWebAssemblyTest(unittest.TestCase):
-    version = "v2026.09.12-4"
+    version = "v1.33.3"
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -303,7 +303,7 @@ class SimpleReleaseWebAssemblyTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         dist = self.root / "dist"
         metadata = json.loads((dist / "web/version.json").read_text(encoding="utf-8"))
-        self.assertEqual({"commitSha": SHA, "product": "uten-imp", "releaseSequence": 20260912004,
+        self.assertEqual({"commitSha": SHA, "product": "uten-imp", "releaseSequence": 100001033003,
                           "schemaVersion": 1, "version": self.version}, metadata)
         index = (dist / "web/index.html").read_text(encoding="utf-8")
         self.assertNotIn("__UTEN_RELEASE_VERSION__", index)

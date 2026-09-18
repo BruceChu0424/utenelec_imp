@@ -145,7 +145,7 @@ def authority(*, fingerprint: str = "f" * 64) -> dict:
         "serverJarSha256": "7" * 64,
         "signedFlywayProjectionSha256": "3" * 64,
         "signingKeyId": "test-key",
-        "version": "v2026.08.14-1",
+        "version": "v1.4.0",
     }
     fields = {
         "candidateBinding": binding,

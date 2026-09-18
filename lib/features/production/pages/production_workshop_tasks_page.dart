@@ -22,6 +22,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -33,6 +34,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -64,6 +66,10 @@ class _ProductionWorkshopTasksPageState
     extends ConsumerState<ProductionWorkshopTasksPage> {
   List<ProductionExecutionWorkbenchSegment> _items = const [];
   final Set<String> _selected = {};
+
+  /// 重新确认生产路线(人工纠偏)提交中：全屏加载遮罩通道（2026-09-18 五轮起）。
+  /// V604 路线自动识别后，「确认路线」批量主通道退役，这里只剩单行纠偏提交。
+  bool _confirmingRoutes = false;
   bool _navigating = false;
   String _keyword = '';
   String? _status;
@@ -131,18 +137,39 @@ class _ProductionWorkshopTasksPageState
     if (task.routeContinuousEligible && task.routeChangeable) 'CONTINUOUS',
   ];
 
-  /// 路线芯片的短标签：三个并排才放得下一格；完整名称与说明进 Tooltip。
-  static const _routeShortLabels = {
-    'FULL_KIT': '齐套',
-    'BATCH': '分批',
-    'CONTINUOUS': '持续',
-  };
+  /// 首列勾选门：齐套链批量动作（批量领料 / 批量开工）原有口径。V604 路线自动
+  /// 识别后勾选不再承载路线确认（「确认路线(N)/批量设置路线」按钮随确认步骤退役）。
+  bool _kitSelectableTask(ProductionExecutionWorkbenchSegment task) =>
+      _routeAllowsKitActions(task) &&
+      (_canRequestDrawTask(task) || _canStartTask(task));
 
   static const _routeIcons = {
     'FULL_KIT': Icons.checklist_rounded,
     'BATCH': Icons.call_split_rounded,
     'CONTINUOUS': Icons.all_inclusive_rounded,
   };
+
+  /// 路线配色（2026-09-18 用户口径「不同生产路线给不同的颜色，不然不好区分」；
+  /// 五轮口径「颜色太相近看不清，取差别大的」）：齐套=绿 / 分批=蓝 / 持续=品红，
+  /// 三色色相拉开到互相一眼可分。与同行状态徽章不撞色：分批、持续路线的工单必然
+  /// 还在 WAITING（琥珀），品红与琥珀、蓝都分得开；绿色的「已完工」只在历史任务
+  /// 出现，而历史任务没有路线列。
+  static UtenStatusBadgeType _routeBadgeType(String? route) => switch (route) {
+    'BATCH' => UtenStatusBadgeType.info,
+    'CONTINUOUS' => UtenStatusBadgeType.fuchsia,
+    _ => UtenStatusBadgeType.success,
+  };
+
+  /// 「重新确认生产路线」纠偏弹窗的选项图标用色（与徽章同一套路线分类色）：
+  /// 浅色模式用分类色本体，深色模式用亮档。
+  static Color _routeDotColor(BuildContext context, String? route) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return switch (route) {
+      'BATCH' => isDark ? UtenColors.infoOnDark : UtenColors.info,
+      'CONTINUOUS' => isDark ? UtenColors.fuchsiaOnDark : UtenColors.fuchsia,
+      _ => isDark ? UtenColors.successOnDark : UtenColors.success,
+    };
+  }
 
   /// 一行的「下一步」清单，按先后顺序排。
   ///
@@ -154,19 +181,9 @@ class _ProductionWorkshopTasksPageState
   List<_NextStep> _nextSteps(ProductionExecutionWorkbenchSegment task) {
     final busy = _navigating || _loading;
     return [
-      // 开工路线门控(V599)：未确认路线时「确认生产路线」是唯一 primary；
-      // 已确认则只显示该路线的动作——齐套(开工/去领料)、分批(分批生产领料)、
-      // 持续(部分开工·持续生产；混合链仓库料领齐后再点开工)。
-      if (_isPreparing && task.canConfirmRoute)
-        _NextStep(
-          primary: true,
-          item: UtenMenuItem(
-            label: '确认生产路线',
-            icon: Icons.alt_route_rounded,
-            enabled: !busy,
-            onTap: () => _confirmRoute(task),
-          ),
-        ),
+      // 路线动作(V604 自动识别)：齐套链(开工/去领料)按路线放行；「分批生产领料」
+      // 与「部分开工 · 持续生产」是能力驱动——点哪个动作就是选哪条路线，服务端
+      // 对未动过的工单同事务切换路线，不再有先行的「确认生产路线」步骤。
       if (_isPreparing &&
           _canStart &&
           _canStartTask(task) &&
@@ -193,10 +210,7 @@ class _ProductionWorkshopTasksPageState
             onTap: () => _requestDraw([task]),
           ),
         ),
-      if (_isPreparing &&
-          _canStart &&
-          task.canSplitBatch &&
-          task.startRoute == 'BATCH')
+      if (_isPreparing && _canStart && task.canSplitBatch)
         _NextStep(
           primary: true,
           item: UtenMenuItem(
@@ -206,9 +220,7 @@ class _ProductionWorkshopTasksPageState
             onTap: () => _prepareBatch(task),
           ),
         ),
-      if (_isPreparing &&
-          _canStartContinuousTask(task) &&
-          task.startRoute == 'CONTINUOUS')
+      if (_isPreparing && _canStartContinuousTask(task))
         _NextStep(
           primary: true,
           item: UtenMenuItem(
@@ -280,18 +292,35 @@ class _ProductionWorkshopTasksPageState
     ProductionExecutionWorkbenchSegment task,
   ) => _nextSteps(task).map((step) => step.item).toList(growable: false);
 
-  /// 「生产路线」格里已确认路线的主操作(2026-09-18)：与「下一步」清单同一条
-  /// 优先级——第一条 primary 动作(开工 > 去领料 > 分批生产领料 > 部分开工·持续生产
-  /// > 查看用料记录)。null=该路线当前没有可办的事(等料/等仓库)，只显示路线徽章。
-  (String, VoidCallback)? _routePrimaryActionOf(
-    ProductionExecutionWorkbenchSegment task,
-  ) {
-    for (final step in _nextSteps(task)) {
-      if (step.primary) {
-        return (step.item.label, step.item.onTap);
-      }
+  /// 「生产路线」格(V604)：只读徽章——路线由服务端在创建事务内**自动识别**
+  /// （有本车间直送供给的子件=持续生产；否则齐套生产；点「分批领料」即选分批），
+  /// 不再有下拉草稿与确认步骤。冻结原因悬停可见；自动识别错边时，未动过的
+  /// 工单从行右键菜单「重新确认生产路线」人工纠偏（服务端 confirm-route 保留）。
+  Widget _routeCell(ProductionExecutionWorkbenchSegment task) {
+    if (task.startRoute == null) {
+      return Tooltip(
+        message: '生产路线待识别（正常情况下创建时已自动识别），请刷新',
+        child: Text(
+          '待识别',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
     }
-    return null;
+    final frozen = !task.routeChangeable;
+    return Tooltip(
+      message: frozen
+          ? '路线已冻结：本工单已产生领料单、报工或预留（或已开工），不能再更改生产路线'
+          : '系统按工单事实自动识别：有本车间直送供给的子件=持续生产，否则齐套生产；'
+                '点「分批生产领料」即选择分批。未领料/未报工前可在右键菜单'
+                '「重新确认生产路线」人工改选',
+      child: UtenStatusBadge(
+        label: task.startRouteLabel,
+        type: _routeBadgeType(task.startRoute),
+        icon: _routeIcons[task.startRoute],
+      ),
+    );
   }
 
   /// 实物领齐后才能开工；齐套但未发料走独立的领料申请。
@@ -324,13 +353,21 @@ class _ProductionWorkshopTasksPageState
 
   /// 未开工行点击/勾选受限的明确原因（物料未入库、库存不足、备料未完成等）。
   String _blockedReasonOf(ProductionExecutionWorkbenchSegment task) {
-    if (task.startRoute == null) {
-      return '请先确认生产路线：选定「齐套生产 / 分批生产 / 持续生产」之一后，'
-          '对应的开工动作才会解锁；到货进展会按已确认的路线提示下一步';
+    if (_isPreparing && !_canStart) {
+      return '缺少开工权限（production_execution:view + start）：不能开工、领料或改选生产路线；'
+          '可查看物料进度，办理请联系车间负责人';
     }
     if (task.startRoute == 'BATCH') {
       return '本工单已确认为「分批生产」路线：请点「分批生产领料」，按当前可齐套的数量切一批办理；'
           '剩余数量等后续到货继续分批';
+    }
+    if (task.startRoute == 'CONTINUOUS' && !task.continuousSupply) {
+      // 混合链序列（ADR-089）：直送子件到一部分 → 部分开工 → 仓库料领料 → 开工；
+      // 采购/委外子件不参与直送前提（V605 收紧）。真等不来直送时给出改路逃生口。
+      return '本工单已确认为「持续生产」路线：每种同车间直送的子件都需要先送到一部分，'
+          '才能点「部分开工 · 持续生产」开工；开工后仓库物料（采购/委外子件）走领料，'
+          '领齐后再开工。若这单的子件其实都从仓库领（采购/委外，没有本车间直送），'
+          '请在未领料前点「重新确认生产路线」改回齐套生产';
     }
     if (task.canSplitBatch && task.canStartContinuous) {
       return '本任务尚未全部齐套：子件由本车间直送的，可点「部分开工 · 持续生产」先开工、'
@@ -437,17 +474,50 @@ class _ProductionWorkshopTasksPageState
     }
   }
 
-  /// 等待物料可选待提交领料或已领齐可开工行；两个动作分别计算有效选择。
-  /// V599：未确认路线/分批路线的行不可勾选——齐套链批量动作对它们不适用。
+  /// 等待物料首列勾选门(V606)：勾选只服务齐套链批量动作（批量领料/批量开工，
+  /// 路线自动识别后不再有路线确认批量）。不满足的行维持带原因的锁图标。
+  /// 生产中分类仍是可报工行才可勾选。
   bool _selectableTask(ProductionExecutionWorkbenchSegment task) => _isPreparing
-      ? _routeAllowsKitActions(task) &&
-            (_canRequestDrawTask(task) || _canStartTask(task))
+      ? _kitSelectableTask(task)
       : task.segmentStatus == 'IN_PROGRESS' && task.canBatchReport;
+
+  /// 「批量领料」的计数与提交目标（同一谓词）：勾选中 ∩ 齐套链路线放行 ∩ 可提交领料。
+  /// 2026-09-18 二轮勾选门放宽后未确认路线的行可勾选，这里必须保持路线门，
+  /// 否则会把「先确认路线」的行喂给服务端 409、并拖垮同计划的批量开工（计划内原子）。
+  List<ProductionExecutionWorkbenchSegment> _selectedDrawTasks(
+    Set<String> ids,
+  ) => _items
+      .where(
+        (task) =>
+            ids.contains(task.segmentId) &&
+            _routeAllowsKitActions(task) &&
+            _canRequestDrawTask(task),
+      )
+      .toList(growable: false);
+
+  /// 「批量开工」的计数与提交目标（同一谓词）：勾选中 ∩ 齐套链路线放行 ∩ 可开工。
+  List<ProductionExecutionWorkbenchSegment> _selectedStartTasks(
+    Set<String> ids,
+  ) => _items
+      .where(
+        (task) =>
+            ids.contains(task.segmentId) &&
+            _routeAllowsKitActions(task) &&
+            _canStartTask(task),
+      )
+      .toList(growable: false);
 
   Future<void> _requestDraw(
     List<ProductionExecutionWorkbenchSegment> tasks,
   ) async {
     if (!_canStart || _navigating || tasks.isEmpty) return;
+    // 双保险：调用方按 _selectedDrawTasks 过滤，这里再挡一次路线未放行的行。
+    tasks = tasks
+        .where(
+          (task) => _routeAllowsKitActions(task) && _canRequestDrawTask(task),
+        )
+        .toList(growable: false);
+    if (tasks.isEmpty) return;
     if (tasks.length > 50) {
       context.appWarning('一次最多选择 50 个工单领料');
       return;
@@ -537,18 +607,12 @@ class _ProductionWorkshopTasksPageState
     }
   }
 
-  /// 「确认生产路线」(V599 / ADR-091)：先定路线再卡流程——齐套生产 / 分批生产 /
-  /// 持续生产三选一(按工单事实收窄可选项)。未确认前开工侧动作被服务端拒绝，
-  /// 系统也不会替车间自动提升齐套；确认齐套路线时若已可齐套会就地补跑备料提升。
-  /// [preselect]：「生产路线」列的选项芯片直连这里——车间在单元格里点了哪条路线，
-  /// 弹窗就预选哪条(2026-09-18 口径：选项直接显示，少一层下拉；说明仍在弹窗里，
-  /// 确认前看得清后果，什么都不缺)。
-  Future<void> _confirmRoute(
-    ProductionExecutionWorkbenchSegment task, {
-    String? preselect,
-  }) async {
+  /// 「重新确认生产路线」(V606 人工纠偏通道)：路线由创建事务自动识别，这里只在
+  /// 识别错边时给未动过的工单一个三选一改选弹窗（行右键菜单/详情弹窗入口）。
+  /// 改值仍受服务端 WAITING+未动过 校验；提交盖全屏加载遮罩。
+  Future<void> _confirmRoute(ProductionExecutionWorkbenchSegment task) async {
     if (!_canStart) {
-      context.appWarning('缺少开工权限(production_execution:start)，不能确认生产路线');
+      context.appWarning('缺少开工权限(production_execution:start)，不能改选生产路线');
       return;
     }
     if (_navigating || _loading) return;
@@ -558,7 +622,8 @@ class _ProductionWorkshopTasksPageState
       await _submitRoute(task, 'FULL_KIT');
       return;
     }
-    var selected = preselect ?? task.startRoute ?? 'FULL_KIT';
+    // 预选当前已识别的路线（改选从现状出发）。
+    var selected = task.startRoute ?? 'FULL_KIT';
     if (!options.contains(selected)) {
       selected = options.first;
     }
@@ -614,6 +679,7 @@ class _ProductionWorkshopTasksPageState
                             Icon(
                               _routeIcons[option] ?? Icons.alt_route_rounded,
                               size: 20,
+                              color: _routeDotColor(dialogContext, option),
                             ),
                             const SizedBox(width: UtenSpacing.s8),
                             Expanded(
@@ -663,11 +729,16 @@ class _ProductionWorkshopTasksPageState
     await _submitRoute(task, selected);
   }
 
+  /// 人工纠偏提交（V606）：路线自动识别错边时的「重新确认生产路线」单行通道。
+  /// 提交期间盖全屏加载遮罩（[_confirmingRoutes] 通道）。
   Future<void> _submitRoute(
     ProductionExecutionWorkbenchSegment task,
     String route,
   ) async {
-    setState(() => _navigating = true);
+    setState(() {
+      _navigating = true;
+      _confirmingRoutes = true;
+    });
     try {
       final result = await ref
           .read(productionPlanRepositoryProvider)
@@ -684,19 +755,24 @@ class _ProductionWorkshopTasksPageState
         'CONTINUOUS': '持续生产',
       };
       if (route == 'FULL_KIT' && result.status == 'READY') {
-        context.appSuccess('已确认生产路线：齐套生产；物料已齐套，可提交领料汇总，领齐后开工');
+        context.appSuccess('已改选生产路线：齐套生产；物料已齐套，可提交领料汇总，领齐后开工');
       } else if (route == 'BATCH') {
-        context.appSuccess('已确认生产路线：分批生产；物料到一部分就可以点「分批生产领料」切第一批');
+        context.appSuccess('已改选生产路线：分批生产；物料到一部分就可以点「分批生产领料」切第一批');
       } else if (route == 'CONTINUOUS') {
-        context.appSuccess('已确认生产路线：持续生产；直送子件到一部分后可点「部分开工 · 持续生产」');
+        context.appSuccess('已改选生产路线：持续生产；直送子件到一部分后可点「部分开工 · 持续生产」');
       } else {
-        context.appSuccess('已确认生产路线：${labels[route] ?? route}');
+        context.appSuccess('已改选生产路线：${labels[route] ?? route}');
       }
       await _load();
     } catch (error) {
       if (mounted) context.appApiError(error);
     } finally {
-      if (mounted) setState(() => _navigating = false);
+      if (mounted) {
+        setState(() {
+          _navigating = false;
+          _confirmingRoutes = false;
+        });
+      }
     }
   }
 
@@ -723,20 +799,15 @@ class _ProductionWorkshopTasksPageState
 
   /// 批量开工：按计划分组提交（计划内原子；跨计划串行）。全部完成后刷新，
   /// 部分失败时保留失败项的选择并提示首个原因。
-  Future<void> _startSelected() async {
-    if (!_canStart || _selected.isEmpty || _navigating) return;
-    final targets = _items
-        .where(
-          (task) => _selected.contains(task.segmentId) && _canStartTask(task),
-        )
-        .toList(growable: false);
-    await _startTasks(targets);
-  }
-
   Future<void> _startTasks(
     List<ProductionExecutionWorkbenchSegment> targets,
   ) async {
     if (!_canStart || _navigating || targets.isEmpty) return;
+    // 双保险：未确认/分批路线的行服务端必拒（V599），混进一个会拖垮同计划整批。
+    targets = targets
+        .where((task) => _routeAllowsKitActions(task) && _canStartTask(task))
+        .toList(growable: false);
+    if (targets.isEmpty) return;
     final byPlan = <String, List<ProductionExecutionWorkbenchSegment>>{};
     for (final task in targets) {
       byPlan.putIfAbsent(task.planId, () => []).add(task);
@@ -882,8 +953,29 @@ class _ProductionWorkshopTasksPageState
                 Text('生产计划：${task.planNo}'),
                 Text('车间：${task.workshopName ?? '—'}'),
                 Text('负责人：${task.responsibleEmployeeName ?? '—'}'),
-                Text(
-                  '生产路线：${task.startRouteLabel.isEmpty ? '待确认（先确认路线再开工）' : task.startRouteLabel}',
+                Row(
+                  children: [
+                    Text(
+                      '生产路线：',
+                      style: Theme.of(dialogContext).textTheme.bodyMedium,
+                    ),
+                    if (task.startRoute == null)
+                      Text(
+                        '待确认（先确认路线再开工）',
+                        style: Theme.of(dialogContext).textTheme.bodyMedium
+                            ?.copyWith(
+                              color: Theme.of(
+                                dialogContext,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                      )
+                    else
+                      UtenStatusBadge(
+                        label: task.startRouteLabel,
+                        type: _routeBadgeType(task.startRoute),
+                        icon: _routeIcons[task.startRoute],
+                      ),
+                  ],
                 ),
                 const SizedBox(height: UtenSpacing.s12),
                 Text(
@@ -924,33 +1016,41 @@ class _ProductionWorkshopTasksPageState
               onPressed: () => Navigator.of(dialogContext).pop('material'),
               child: Text(_materialUsageLabel(task)),
             ),
-          if (_canStart && _isPreparing && _canStartTask(task))
+          if (_isPreparing && _canStart && task.routeChangeable)
+            FilledButton.icon(
+              key: ValueKey('workshop-detail-route-${task.segmentId}'),
+              onPressed: () => Navigator.of(dialogContext).pop('route'),
+              icon: const Icon(Icons.alt_route_rounded),
+              label: const Text('重新确认生产路线'),
+            ),
+          if (_canStart &&
+              _isPreparing &&
+              _routeAllowsKitActions(task) &&
+              _canStartTask(task))
             FilledButton.icon(
               key: ValueKey('workshop-detail-start-${task.segmentId}'),
               onPressed: () => Navigator.of(dialogContext).pop('start'),
               icon: const Icon(Icons.play_circle_outline),
               label: const Text('开工'),
             ),
-          if (_canStart && _isPreparing && _canRequestDrawTask(task))
+          if (_canStart &&
+              _isPreparing &&
+              _routeAllowsKitActions(task) &&
+              _canRequestDrawTask(task))
             FilledButton.icon(
               key: ValueKey('workshop-detail-draw-${task.segmentId}'),
               onPressed: () => Navigator.of(dialogContext).pop('draw'),
               icon: const Icon(Icons.move_to_inbox_outlined),
               label: const Text('去领料'),
             ),
-          if (_canStart &&
-              _isPreparing &&
-              task.canSplitBatch &&
-              task.startRoute == 'BATCH')
+          if (_canStart && _isPreparing && task.canSplitBatch)
             FilledButton.icon(
               key: ValueKey('workshop-detail-batch-${task.segmentId}'),
               onPressed: () => Navigator.of(dialogContext).pop('batch'),
               icon: const Icon(Icons.call_split_rounded),
               label: const Text('分批领料'),
             ),
-          if (_isPreparing &&
-              task.startRoute == 'CONTINUOUS' &&
-              _canStartContinuousTask(task))
+          if (_isPreparing && _canStartContinuousTask(task))
             FilledButton.icon(
               key: ValueKey('workshop-detail-continuous-${task.segmentId}'),
               onPressed: () => Navigator.of(dialogContext).pop('continuous'),
@@ -962,6 +1062,8 @@ class _ProductionWorkshopTasksPageState
     );
     if (!mounted || action == null) return;
     switch (action) {
+      case 'route':
+        await _confirmRoute(task);
       case 'draw':
         await _requestDraw([task]);
       case 'batch':
@@ -1086,6 +1188,8 @@ class _ProductionWorkshopTasksPageState
   }
 
   /// 状态列：全站统一流程词表（等待物料/物料齐套·可开工/生产中%/已完工）。
+  /// 路线确认后 WAITING 的等待方式按路线区分（齐套等到齐/分批等部分到货/
+  /// 持续等直送料——物料分析「未下达按路线显示第一步」同款）。
   ProductionFlowStage _flowStageOf(ProductionExecutionWorkbenchSegment task) =>
       ProductionFlowStage.forSegment(
         segmentStatus: task.segmentStatus,
@@ -1095,6 +1199,7 @@ class _ProductionWorkshopTasksPageState
         splitReplaced: task.splitReplaced,
         continuousSupply: task.continuousSupply,
         pendingLineSideOnly: task.pendingLineSideOnly,
+        startRoute: task.startRoute,
         reportedQty: task.reportedQty,
         plannedQty: task.plannedQty,
         remainingReportQty: task.remainingReportQty,
@@ -1328,31 +1433,21 @@ class _ProductionWorkshopTasksPageState
                           },
                           batchActionsBuilder: (_, ids) => [
                             if (_isPreparing) ...[
+                              // V606 路线自动识别：「批量设置路线 / 确认路线」按钮随
+                              // 确认步骤一起退役——勾选只服务批量领料 / 批量开工；
+                              // 改选路线走行右键菜单「重新确认生产路线」单行纠偏。
                               UtenButton(
                                 type: UtenButtonType.danger,
                                 icon: Icons.move_to_inbox_rounded,
                                 onPressed:
                                     _loading ||
                                         _navigating ||
-                                        !_items.any(
-                                          (task) =>
-                                              ids.contains(task.segmentId) &&
-                                              _canRequestDrawTask(task),
-                                        )
+                                        _selectedDrawTasks(ids).isEmpty
                                     ? null
-                                    : () => _requestDraw(
-                                        _items
-                                            .where(
-                                              (task) =>
-                                                  ids.contains(
-                                                    task.segmentId,
-                                                  ) &&
-                                                  _canRequestDrawTask(task),
-                                            )
-                                            .toList(growable: false),
-                                      ),
+                                    : () =>
+                                          _requestDraw(_selectedDrawTasks(ids)),
                                 child: Text(
-                                  '批量领料(${_items.where((task) => ids.contains(task.segmentId) && _canRequestDrawTask(task)).length})',
+                                  '批量领料(${_selectedDrawTasks(ids).length})',
                                 ),
                               ),
                               UtenButton(
@@ -1361,15 +1456,12 @@ class _ProductionWorkshopTasksPageState
                                 onPressed:
                                     _loading ||
                                         _navigating ||
-                                        !_items.any(
-                                          (task) =>
-                                              ids.contains(task.segmentId) &&
-                                              _canStartTask(task),
-                                        )
+                                        _selectedStartTasks(ids).isEmpty
                                     ? null
-                                    : _startSelected,
+                                    : () =>
+                                          _startTasks(_selectedStartTasks(ids)),
                                 child: Text(
-                                  '批量开工(${_items.where((task) => ids.contains(task.segmentId) && _canStartTask(task)).length})',
+                                  '批量开工(${_selectedStartTasks(ids).length})',
                                 ),
                               ),
                             ] else
@@ -1401,6 +1493,15 @@ class _ProductionWorkshopTasksPageState
                               : '该时间段内没有已完工 / 已取消 / 已红冲的工单',
                         ),
                 ),
+                // 确认生产路线期间的全屏加载遮罩（组件自己推 root Overlay，挂载
+                // 位置随意；物料分析 bucketActionBusyMessage 同款）：批量「确认
+                // 路线(N)」串行逐单提交与单行提交共用 [_confirmingRoutes] 通道。
+                if (_confirmingRoutes)
+                  const UtenBusyOverlay(
+                    semanticsKey: Key('workshop-route-confirm-busy'),
+                    title: '正在确认生产路线',
+                    description: '正在提交所选工单的生产路线，完成后自动刷新。',
+                  ),
               ],
             ),
           ),
@@ -1430,7 +1531,10 @@ class _ProductionWorkshopTasksPageState
           type: productionFlowBadgeType(stage),
           icon: stage.icon,
         );
-        if (_isPreparing && _canStart && _canRequestDrawTask(task)) {
+        if (_isPreparing &&
+            _canStart &&
+            _routeAllowsKitActions(task) &&
+            _canRequestDrawTask(task)) {
           return Tooltip(
             message: '查看领料汇总，确认后提交仓库',
             child: InkWell(
@@ -1456,36 +1560,24 @@ class _ProductionWorkshopTasksPageState
             : badge;
       },
     ),
-    // 2026-09-18 用户口径：「等待物料」的「下一步」列改成「生产路线」，选项直接
-    // 显示在单元格里(点哪个就预选哪个，确认弹窗只剩最后一次点击)；「生产中」与
-    // 「历史任务」不再有这一列——开工后路线已冻结，操作收进行右键菜单与详情弹窗。
-    // 表头 ⓘ 说明三条路线各是什么，车间不用猜。
+    // V606 用户口径「不用确认路线这个操作了，自动识别生产路线」：「生产路线」列
+    // 改为**只读徽章**——服务端在创建事务内自动识别（有本车间直送子件=持续生产；
+    // 否则齐套生产；点「分批生产领料」即选分批）。识别错边时未动过的工单可从
+    // 行右键菜单/详情弹窗「重新确认生产路线」人工纠偏。
+    // 「生产中」「历史任务」无此列——开工后路线已冻结。
     if (status == 'PREPARING')
       MasterColumnDef(
         key: 'route',
         label: '生产路线',
         width: 210,
         info:
-            '先定路线再开工：齐套生产=全部子件到齐一次领料开工(默认)；'
-            '分批生产=物料到一部分先做第一批，剩余到货继续拆批；'
-            '持续生产=同车间直送的子件到一批投一批，只开一次工、数量按报工结。'
-            '路线在领料/报工前可重新确认；未确认时开工、领料、分批、持续生产都会被拒绝。',
-        value: (task) =>
-            task.startRouteLabel.isEmpty ? '待确认' : task.startRouteLabel,
-        cellBuilderHandlesSemantics: true,
-        cellBuilder: (_, task) {
-          final primary = _routePrimaryActionOf(task);
-          return _RouteChoiceCell(
-            key: ValueKey('workshop-route-cell-${task.segmentId}'),
-            task: task,
-            options: _routeOptions(task),
-            enabled: !_navigating && !_loading,
-            onPickRoute: (route) => _confirmRoute(task, preselect: route),
-            onReconfirm: () => _confirmRoute(task),
-            primaryActionLabel: primary?.$1,
-            primaryActionTap: primary?.$2,
-          );
-        },
+            '生产路线由系统按工单事实自动识别，无需确认：有本车间直送供给的子件'
+            '=持续生产（直送子件到一批投一批，只开一次工、数量按报工结）；'
+            '否则=齐套生产（全部子件到齐一次领料开工）；点「分批生产领料」'
+            '本身就是选择分批（按当前可齐套量切批，剩余到货继续拆）。'
+            '未领料/未报工前可在右键菜单「重新确认生产路线」人工改选（动过即冻结）。',
+        value: (task) => task.startRouteLabel,
+        cellBuilder: (_, task) => _routeCell(task),
       ),
     // 2026-09-16 用户口径：产品名称 / 编号 / 颜色紧跟「下一步」列——先看清是
     // 哪个产品，再往右读订单 / 工单 / 车间。三列口径仍按全站统一（各占一列）。
@@ -1553,193 +1645,6 @@ class _ProductionWorkshopTasksPageState
   ];
 }
 
-/// 「生产路线」格(2026-09-18 用户口径)：路线选项**直接显示在单元格里**——
-/// 未确认时并排渲染「齐套 / 分批 / 持续」选项芯片，点哪个就预选哪个进确认弹窗
-/// (单选项工单直接确认，不再给只有一个选项的假弹窗)；已确认显示路线徽章 +
-/// 该路线当前要办的主操作按钮(开工/去领料/分批生产领料/部分开工·持续生产)，
-/// 未动过还可「重选」。每颗芯片的 Tooltip 就是该路线的完整说明，表头 ⓘ 讲
-/// 三条路线的区别——少一层下拉，但说明一个不少。
-class _RouteChoiceCell extends StatelessWidget {
-  const _RouteChoiceCell({
-    super.key,
-    required this.task,
-    required this.options,
-    required this.enabled,
-    required this.onPickRoute,
-    required this.onReconfirm,
-    this.primaryActionLabel,
-    this.primaryActionTap,
-  });
-
-  final ProductionExecutionWorkbenchSegment task;
-  final List<String> options;
-  final bool enabled;
-  final ValueChanged<String> onPickRoute;
-  final VoidCallback onReconfirm;
-  final String? primaryActionLabel;
-  final VoidCallback? primaryActionTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    if (task.startRoute == null && !task.canConfirmRoute) {
-      // 无开工权限(或状态不可确认)的人看得到路线未定，但动不了。
-      return Tooltip(
-        message:
-            '本工单尚未确认生产路线；确认路线需要开工权限'
-            '(production_execution:start)。',
-        child: Text(
-          '待确认',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: scheme.onSurfaceVariant,
-          ),
-        ),
-      );
-    }
-    if (task.canConfirmRoute && task.startRoute == null) {
-      return Wrap(
-        spacing: UtenSpacing.s4,
-        runSpacing: 2,
-        children: [
-          for (final route in options)
-            Tooltip(
-              message:
-                  '${_ProductionWorkshopTasksPageState._routeOptionMeta[route]?.$1 ?? route}：'
-                  '${_ProductionWorkshopTasksPageState._routeOptionMeta[route]?.$2 ?? ''}',
-              child: InkWell(
-                key: ValueKey('workshop-route-chip-$route-${task.segmentId}'),
-                onTap: enabled ? () => onPickRoute(route) : null,
-                borderRadius: BorderRadius.circular(UtenRadius.pill),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: UtenSpacing.s8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(UtenRadius.pill),
-                    border: Border.all(color: scheme.outlineVariant),
-                    color: enabled
-                        ? scheme.surfaceContainerHighest.withValues(alpha: 0.45)
-                        : null,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        _ProductionWorkshopTasksPageState._routeIcons[route] ??
-                            Icons.alt_route_rounded,
-                        size: 14,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: UtenSpacing.s4),
-                      Text(
-                        _ProductionWorkshopTasksPageState
-                            ._routeShortLabels[route]!,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-        ],
-      );
-    }
-    // 已确认：路线徽章(+未动过可重选) + 该路线的主操作。
-    final action = primaryActionLabel == null || primaryActionTap == null
-        ? null
-        : (primaryActionLabel!, primaryActionTap!);
-    return Wrap(
-      spacing: UtenSpacing.s6,
-      runSpacing: UtenSpacing.s4,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        Tooltip(
-          message:
-              '已确认路线：${task.startRouteLabel}。'
-              '${_ProductionWorkshopTasksPageState._routeOptionMeta[task.startRoute]?.$2 ?? ''}',
-          child: Container(
-            key: ValueKey('workshop-route-badge-${task.segmentId}'),
-            padding: const EdgeInsets.symmetric(
-              horizontal: UtenSpacing.s8,
-              vertical: 3,
-            ),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(UtenRadius.pill),
-              color: scheme.primaryContainer,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.check_circle_rounded,
-                  size: 14,
-                  color: scheme.onPrimaryContainer,
-                ),
-                const SizedBox(width: UtenSpacing.s4),
-                Text(
-                  task.startRouteLabel,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: scheme.onPrimaryContainer,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (action != null)
-          FilledButton.tonal(
-            key: ValueKey('workshop-route-action-${task.segmentId}'),
-            onPressed: enabled ? action.$2 : null,
-            style: FilledButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: Text(
-              action.$1,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        if (task.routeChangeable)
-          Tooltip(
-            message: '本工单还没领料/报工，可以重新确认生产路线。',
-            child: InkWell(
-              key: ValueKey('workshop-route-reselect-${task.segmentId}'),
-              onTap: enabled ? onReconfirm : null,
-              borderRadius: BorderRadius.circular(UtenRadius.pill),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.published_with_changes_rounded,
-                      size: 14,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: 2),
-                    Text(
-                      '重选',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
 /// 「下一步」清单里的一条：[primary]=true 表示这一行真正要做的动作；
 /// 只读与求助条目只出现在行右键菜单里。
 class _NextStep {
@@ -1748,3 +1653,6 @@ class _NextStep {
   final UtenMenuItem item;
   final bool primary;
 }
+
+/// 「批量设置生产路线」底部面板已随 V606 路线自动识别退役（确认步骤删除，
+/// 改选走「重新确认生产路线」单行纠偏）。

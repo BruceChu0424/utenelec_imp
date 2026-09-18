@@ -86,7 +86,7 @@ STORAGE_VERIFIER_SHA256 = (
 MAX_JSON_BYTES = 4 * 1024 * 1024
 MAX_AUTHORIZATION_AGE_SECONDS = 300
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
-VERSION_RE = re.compile(r"v\d{4}\.\d{2}\.\d{2}-[1-9]\d{0,2}")
+VERSION_RE = re.compile(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
 COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 BOOT_ID_RE = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"

@@ -70,7 +70,7 @@ class EntrySelectionPage extends StatelessWidget {
                                       (
                                         icon: Icons.badge_rounded,
                                         title: l10n.entryStaff,
-                                        subtitle: '员工工号登录，进入工作台',
+                                        subtitle: l10n.entryStaffSubtitle,
                                         location: RoutePath.login(
                                           returnTo: returnTo,
                                         ),
@@ -78,7 +78,7 @@ class EntrySelectionPage extends StatelessWidget {
                                       (
                                         icon: Icons.qr_code_2_rounded,
                                         title: l10n.entryVisitor,
-                                        subtitle: '访客扫码登记，快速通行',
+                                        subtitle: l10n.entryVisitorSubtitle,
                                         location: RoutePath.visitorLogin(
                                           returnTo: returnTo,
                                         ),

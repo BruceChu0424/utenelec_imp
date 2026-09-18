@@ -123,7 +123,7 @@ class VisitorSettingsPage extends ConsumerWidget {
 
               Center(
                 child: Text(
-                  '${AppInfo.displayName} · 访客端',
+                  l10n.visitorSettingsPortalTag(AppInfo.displayName),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),

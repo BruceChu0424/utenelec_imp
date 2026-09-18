@@ -104,7 +104,7 @@ LEGACY_BACKUP_UNITS = (
     "uten-pgbackup.service",
 )
 APPROVAL_RE = re.compile(r"CHG-[A-Z0-9][A-Z0-9._-]{5,95}")
-VERSION_RE = re.compile(r"v\d{4}\.\d{2}\.\d{2}-[1-9]\d{0,2}")
+VERSION_RE = re.compile(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
 TRANSACTION_RE = re.compile(
     r"internal-test-db-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{12}"
 )

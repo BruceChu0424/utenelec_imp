@@ -125,6 +125,13 @@ class VisitorRequestValidationTest {
                 () -> service.submit(request(
                         UUID.randomUUID(), null, true, " ", visitAt, null)));
         assertEquals(ErrorCode.VALIDATION_FAILED, missingPlate.getCode());
+
+        ApiException pastVisitAt = assertThrows(
+                ApiException.class,
+                () -> service.submit(request(
+                        UUID.randomUUID(), null, false, null,
+                        OffsetDateTime.now().minusMinutes(1), null)));
+        assertEquals(ErrorCode.VALIDATION_FAILED, pastVisitAt.getCode());
     }
 
     @Test

@@ -4,7 +4,7 @@
   const CHECK_INTERVAL_MS = 60_000;
   const BANNER_ID = "uten-web-update-banner";
   const DISMISS_KEY = "uten-web-update-dismissed";
-  const VERSION_RE = /^v\d{4}\.\d{2}\.\d{2}-[1-9]\d{0,2}$/;
+  const VERSION_RE = /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
   const COMMIT_RE = /^[0-9a-f]{40}$/;
   const baselineVersion = document
     .querySelector('meta[name="uten-release-version"]')

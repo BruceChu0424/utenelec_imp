@@ -39,6 +39,7 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
     String? comment,
     String? rejectReason,
   }) async {
+    final l10n = AppLocalizations.of(context);
     try {
       await ref
           .read(visitorStaffRepositoryProvider)
@@ -54,14 +55,16 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
       // 不失效的话返回后仍显示「待审批」老状态。
       ref.invalidate(visitorApprovalListProvider);
       ref.invalidate(myAsHostProvider);
+      // 状态桶计数（facets）随动作变化，一并失效。
+      ref.invalidate(visitorApprovalFacetsProvider);
       // 审批动作改变待办数，立即刷新徽章
       ref.read(visitorPendingCountProvider.notifier).refresh();
       ref.read(visitorHostPendingCountProvider.notifier).refresh();
       context.appSuccess(switch (action) {
-        'approve' => '访客申请已批准',
-        'reject' => '访客申请已驳回',
-        'forward' => '已转接待人确认',
-        _ => '审批操作已完成',
+        'approve' => l10n.visitorApprovalDoneApprove,
+        'reject' => l10n.visitorApprovalDoneReject,
+        'forward' => l10n.visitorApprovalDoneForward,
+        _ => l10n.visitorApprovalDoneFallback,
       });
     } on ApiException catch (e) {
       if (context.mounted) {
@@ -89,9 +92,9 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const UtenReviewerResponsibilityNotice(
-            actionLabel: '访客审批通过',
-            description: '确认后系统将记录当前审核员和审批结果，请对本次访客放行决定负责。',
+          UtenReviewerResponsibilityNotice(
+            actionLabel: l10n.visitorApprovalApproveNoticeLabel,
+            description: l10n.visitorApprovalApproveNoticeDesc,
           ),
           const SizedBox(height: UtenSpacing.s12),
           Text(l10n.visitorApprovalConfirmApprove),
@@ -122,9 +125,9 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const UtenReviewerResponsibilityNotice(
-                  actionLabel: '访客审批拒绝',
-                  description: '确认后系统将记录当前审核员和拒绝结果，请对本次决定负责。',
+                UtenReviewerResponsibilityNotice(
+                  actionLabel: l10n.visitorApprovalRejectNoticeLabel,
+                  description: l10n.visitorApprovalRejectNoticeDesc,
                 ),
                 const SizedBox(height: UtenSpacing.s12),
                 UtenInput(

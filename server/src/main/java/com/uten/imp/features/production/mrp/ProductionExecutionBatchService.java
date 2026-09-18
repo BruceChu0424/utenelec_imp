@@ -78,17 +78,9 @@ public class ProductionExecutionBatchService {
                 quantity.toPlainString(),request.previewFingerprint()));
         Source initial = source(request.segmentId());
         requireAccess(initial);
-        // 开工路线门控(V599)：分批领料只属于「分批生产」路线；未确认路线的工单先去确认。
-        String route = routeOf(initial.id());
-        if (route == null) {
-            throw conflict("请先确认生产路线——「分批领料」需要工单先选定齐套/分批/持续生产之一");
-        }
-        if (!"BATCH".equals(route)) {
-            throw conflict("本工单已确认为「"
-                    + com.uten.imp.features.production.execution
-                            .ProductionExecutionSegmentService.routeWord(route)
-                    + "」路线，「分批领料」不可用；如需更改，请在等待物料且未领料时重新确认生产路线");
-        }
+        // 开工路线自动识别配套(V606)：「分批领料」本身就是选择分批——不再要求先手工
+        // 确认 BATCH；拆批后根段取消、批次段落生即 FULL_KIT、剩余段继承 BATCH(V599 谱系)。
+        // 「未动过」的尺子(无领料单/报工/供给钉/预留)仍由 context() 的 activity 检查把守。
         List<Object[]> prior = rows("""
                 SELECT source_segment_id,batch_segment_id,remaining_segment_id,request_hash
                 FROM production_execution_segment_splits WHERE created_by=:actor AND idempotency_key=:key
@@ -413,7 +405,6 @@ public class ProductionExecutionBatchService {
     }
     private List<UUID> documents(UUID segment){return NativeQueryResults.typedRows(em.createNativeQuery("SELECT document_id FROM production_planning_package_documents WHERE execution_segment_id=:id AND document_type='DRAW' ORDER BY document_id").setParameter("id",segment),UUID.class);}
     private List<Object[]> rows(String sql,Map<String,?> parameters){var query=em.createNativeQuery(sql);parameters.forEach(query::setParameter);return NativeQueryResults.objectArrayRows(query);}
-    private String routeOf(UUID segmentId){List<?> routes=em.createNativeQuery("SELECT start_route FROM production_execution_segments WHERE id=:id AND NOT is_deleted").setParameter("id",segmentId).getResultList();return routes.isEmpty()||routes.getFirst()==null?null:routes.getFirst().toString();}
     private void lock(String table,UUID id){em.createNativeQuery("SELECT id FROM "+table+" WHERE id=:id FOR UPDATE").setParameter("id",id).getSingleResult();}
     private static BigDecimal positive(BigDecimal qty){if(qty==null||qty.signum()<=0)throw invalid("本次生产数量必须大于零");try{return qty.setScale(4,RoundingMode.UNNECESSARY);}catch(ArithmeticException failure){throw invalid("本次数量最多保留四位小数");}}
     private static String fingerprint(List<String> values){return PlanningPackageFingerprint.sha256(values);}

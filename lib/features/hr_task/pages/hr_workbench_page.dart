@@ -1,12 +1,15 @@
 // HR 工作台主页（行政与人力资源部）：今日概览统计 + 我处理中的事项 + 事务入口。
 // 数据来自服务端按「今天」动态计算（hrTaskSummaryProvider），任务软认领见 ADR-021。
 // 子页面：/hr/tasks/:type（转正办理/生日关怀/入职周年/新近入职）。
+// 2026-09-18 UI 统一收口：加载态改 UtenSkeletonList，区块卡片统一 UtenCard。
 // 文档：docs/03-页面/HR任务中心.md
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -31,7 +34,7 @@ class HrWorkbenchPage extends ConsumerWidget {
         ref.watch(currentPermissionsProvider).contains(Perm.noticePublish);
 
     Widget body = async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => const UtenSkeletonList(itemCount: 6),
       error: (_, _) => UtenEmpty.error(
         message: '加载工作台失败，请稍后重试',
         actionLabel: '重试',
@@ -218,14 +221,15 @@ class HrWorkbenchPage extends ConsumerWidget {
     ];
     if (mine.isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
-    return Card(
+    // UtenCard 的 Material 即 ink 表面：内部 HrTaskTile 的点按涟漪照常渲染。
+    return UtenCard(
       margin: const EdgeInsets.fromLTRB(
         UtenSpacing.s12,
         UtenSpacing.s12,
         UtenSpacing.s12,
         0,
       ),
-      clipBehavior: Clip.antiAlias,
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -329,9 +333,9 @@ class HrWorkbenchPage extends ConsumerWidget {
             ),
           ),
           for (final (type, headline, caption) in entries)
-            Card(
+            UtenCard(
               margin: const EdgeInsets.only(bottom: UtenSpacing.s12),
-              clipBehavior: Clip.antiAlias,
+              padding: EdgeInsets.zero,
               child: ListTile(
                 onTap: () => context.push(RouteName.hrTaskList(type.taskType)),
                 leading: Container(
@@ -424,51 +428,49 @@ class _StatCard extends StatelessWidget {
       label: '${type.title}，$count，$caption',
       child: SizedBox(
         height: 72,
-        child: Card(
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: UtenSpacing.s12,
-                vertical: UtenSpacing.s12,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          color: color.withValues(alpha: active ? 0.14 : 0.08),
-                          borderRadius: UtenRadius.mdAll,
-                        ),
-                        child: Icon(type.icon, size: 16, color: color),
+        child: UtenCard(
+          padding: EdgeInsets.zero,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: UtenSpacing.s12,
+              vertical: UtenSpacing.s12,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: active ? 0.14 : 0.08),
+                        borderRadius: UtenRadius.mdAll,
                       ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      Text(
-                        '$count',
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: color,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    caption,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                      child: Icon(type.icon, size: 16, color: color),
                     ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Text(
+                      '$count',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: color,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: UtenSpacing.s4),
+                Text(
+                  caption,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -492,43 +494,31 @@ class _QuickTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      elevation: 0,
-      color: theme.colorScheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: theme.colorScheme.outlineVariant),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s8),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(UtenSpacing.s8),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.14),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: color),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              Text(
-                label,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+    return UtenCard(
+      padding: const EdgeInsets.all(UtenSpacing.s8),
+      onTap: onTap,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(UtenSpacing.s8),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.14),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color),
           ),
-        ),
+          const SizedBox(height: UtenSpacing.s8),
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
       ),
     );
   }

@@ -35,7 +35,7 @@ import wheelhouse_supply_chain  # noqa: E402
 
 
 class ReleaseFixture(unittest.TestCase):
-    version = "v2026.08.11-1"
+    version = "v1.1.0"
     commit = "0123456789abcdef0123456789abcdef01234567"
     key_id = "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
     flyway_checksum = -1320745395
@@ -308,9 +308,9 @@ class ReleaseFixture(unittest.TestCase):
 
     def test_release_counter_is_canonical_and_anti_alias(self) -> None:
         with self.assertRaises(release_tools.ReleaseMetadataError):
-            release_tools.validate_version("v2026.08.11-01")
+            release_tools.validate_version("v1.01.0")
         with self.assertRaises(release_guard.ReleaseGuardError):
-            release_guard.version_sequence("v2026.08.11-01")
+            release_guard.version_sequence("v1.01.0")
 
     def test_absolute_checksum_path_is_a_controlled_metadata_error(self) -> None:
         (self.payload / "SHA256SUMS").write_text(
@@ -448,7 +448,7 @@ class ReleaseFixture(unittest.TestCase):
         release_guard.validate_static_entry_response(
             200,
             "text/html; charset=utf-8",
-            b'<meta name="uten-release-version" content="v2026.08.11-1">'
+            b'<meta name="uten-release-version" content="v1.1.0">'
             b"<script src='flutter_bootstrap.js'></script>",
             self.version,
         )
@@ -666,7 +666,7 @@ class ReleaseFixture(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "posix", "release web stamping is Linux CI-only")
 class FlutterWebVersionStampTest(unittest.TestCase):
-    version = "v2026.08.14-1"
+    version = "v1.4.0"
     commit = "89abcdef0123456789abcdef0123456789abcdef"
 
     def setUp(self) -> None:
@@ -715,7 +715,7 @@ class FlutterWebVersionStampTest(unittest.TestCase):
             {
                 "commitSha": self.commit,
                 "product": release_tools.PRODUCT,
-                "releaseSequence": 20260814001,
+                "releaseSequence": 100001004000,
                 "schemaVersion": 1,
                 "version": self.version,
             },
@@ -749,7 +749,7 @@ class FlutterWebVersionStampTest(unittest.TestCase):
                 {
                     "commitSha": self.commit,
                     "product": release_tools.PRODUCT,
-                    "releaseSequence": 20260814001,
+                    "releaseSequence": 100001004000,
                     "schemaVersion": 1,
                     "version": self.version,
                 }
@@ -871,7 +871,7 @@ class FlutterWebVersionStampTest(unittest.TestCase):
         forged = release_tools._web_stamp_transaction_value(
             version=self.version,
             commit_sha=self.commit,
-            sequence=20260814001,
+            sequence=100001004000,
             index_preimage=original_index,
             index_final=release_tools._stamped_index_from_preimage(
                 original_index, self.version
@@ -880,7 +880,7 @@ class FlutterWebVersionStampTest(unittest.TestCase):
                 {
                     "commitSha": self.commit,
                     "product": release_tools.PRODUCT,
-                    "releaseSequence": 20260814001,
+                    "releaseSequence": 100001004000,
                     "schemaVersion": 1,
                     "version": self.version,
                 }
@@ -908,7 +908,7 @@ class FlutterWebVersionStampTest(unittest.TestCase):
             {
                 "commitSha": self.commit,
                 "product": release_tools.PRODUCT,
-                "releaseSequence": 20260814001,
+                "releaseSequence": 100001004000,
                 "schemaVersion": 1,
                 "version": self.version,
             }
@@ -916,7 +916,7 @@ class FlutterWebVersionStampTest(unittest.TestCase):
         original_transaction = release_tools._web_stamp_transaction_value(
             version=self.version,
             commit_sha=self.commit,
-            sequence=20260814001,
+            sequence=100001004000,
             index_preimage=original_index,
             index_final=release_tools._stamped_index_from_preimage(
                 original_index, self.version
@@ -926,7 +926,7 @@ class FlutterWebVersionStampTest(unittest.TestCase):
         cases = {
             "boolean-schema": ("schemaVersion", True),
             "float-schema": ("schemaVersion", 1.0),
-            "float-sequence": ("releaseSequence", 20260814001.0),
+            "float-sequence": ("releaseSequence", 100001004000.0),
         }
         for label, (key, value) in cases.items():
             with self.subTest(label=label):
@@ -1812,13 +1812,13 @@ class SignatureAndIoValidationTest(unittest.TestCase):
     def test_committed_internal_onboarding_adoption_is_idempotently_terminalized(self) -> None:
         import release_updater
 
-        target = Path("/opt/uten-imp/releases/v2026.08.12-1")
+        target = Path("/opt/uten-imp/releases/v1.2.0")
         manifest = {
             "commitSha": "a" * 40,
             "flywayHeadVersion": "255",
             "flywayMigrationSetSha256": "b" * 64,
-            "releaseSequence": 20260812001,
-            "version": "v2026.08.12-1",
+            "releaseSequence": 100001002000,
+            "version": "v1.2.0",
         }
         archive = release_updater.INTERNAL_TEST_ONBOARDING_EVIDENCE_DIR / (
             "internal-test-db-20260812T120000Z-abcdef123456.json"
@@ -2249,7 +2249,7 @@ class SignatureAndIoValidationTest(unittest.TestCase):
                 (candidate / name).write_text(f"fixture {name}\n", encoding="utf-8")
             manifest_info = {
                 "artifactFileName": "release.tar.gz",
-                "version": "v2026.08.11-1",
+                "version": "v1.1.0",
             }
             install_paths: dict[str, Path] = {}
 
@@ -2285,11 +2285,11 @@ class SignatureAndIoValidationTest(unittest.TestCase):
             manager.attach_mock(atomic_json, "atomic_json")
             release_updater.commit_staged_candidate(
                 work=Path("/state/.incoming"),
-                candidate=Path("/state/candidates/v2026.08.11-1"),
+                candidate=Path("/state/candidates/v1.1.0"),
                 state_dir=Path("/state"),
                 candidates=Path("/state/candidates"),
                 high_water_path=Path("/state/high-water.json"),
-                high_water_value={"releaseSequence": 20260811001},
+                high_water_value={"releaseSequence": 100001001000},
             )
         self.assertEqual(
             manager.mock_calls,
@@ -2297,13 +2297,13 @@ class SignatureAndIoValidationTest(unittest.TestCase):
                 mock.call.fsync_tree(Path("/state/.incoming")),
                 mock.call.replace(
                     Path("/state/.incoming"),
-                    Path("/state/candidates/v2026.08.11-1"),
+                    Path("/state/candidates/v1.1.0"),
                 ),
                 mock.call.fsync_directory(Path("/state/candidates")),
                 mock.call.fsync_directory(Path("/state")),
                 mock.call.atomic_json(
                     Path("/state/high-water.json"),
-                    {"releaseSequence": 20260811001},
+                    {"releaseSequence": 100001001000},
                 ),
             ],
         )
@@ -2329,11 +2329,11 @@ class SignatureAndIoValidationTest(unittest.TestCase):
         ) as atomic_json, self.assertRaisesRegex(OSError, "injected fsync failure"):
             release_updater.commit_staged_candidate(
                 work=Path("/state/.incoming"),
-                candidate=Path("/state/candidates/v2026.08.11-1"),
+                candidate=Path("/state/candidates/v1.1.0"),
                 state_dir=Path("/state"),
                 candidates=Path("/state/candidates"),
                 high_water_path=Path("/state/high-water.json"),
-                high_water_value={"releaseSequence": 20260811001},
+                high_water_value={"releaseSequence": 100001001000},
             )
         fsync_directory.assert_called_once_with(Path("/state/candidates"))
         atomic_json.assert_not_called()
@@ -2531,11 +2531,11 @@ class SignatureAndIoValidationTest(unittest.TestCase):
     def test_activation_transaction_disables_boot_before_gate_removal(self) -> None:
         import release_updater
 
-        old_info = {"version": "v2026.08.10-1"}
+        old_info = {"version": "v1.0.0"}
         new_info = {
             "commitSha": "b" * 40,
-            "releaseSequence": 20260811001,
-            "version": "v2026.08.11-1",
+            "releaseSequence": 100001001000,
+            "version": "v1.1.0",
         }
         enabled = {unit: True for unit in release_updater.BOOT_UNITS}
         manager = mock.Mock()
@@ -2939,8 +2939,8 @@ class SignatureAndIoValidationTest(unittest.TestCase):
         desired = {unit: True for unit in release_updater.BOOT_UNITS}
         release_info = {
             "commitSha": "b" * 40,
-            "releaseSequence": 20260811001,
-            "version": "v2026.08.11-1",
+            "releaseSequence": 100001001000,
+            "version": "v1.1.0",
         }
         for fail_index in range(len(release_updater.BOOT_UNITS)):
             attempts: list[str] = []
@@ -3045,7 +3045,7 @@ class SignatureAndIoValidationTest(unittest.TestCase):
             "base": Path("/opt/uten-imp"),
             "old_target": Path("/opt/uten-imp/releases/legacy-unsigned"),
             "old_info": None,
-            "new_info": {"commitSha": "b" * 40, "version": "v2026.08.11-1"},
+            "new_info": {"commitSha": "b" * 40, "version": "v1.1.0"},
             "nginx_was_active": False,
             "active_timers": [],
             "boot_enabled_before": {
@@ -3118,7 +3118,7 @@ class SignatureAndIoValidationTest(unittest.TestCase):
             marker.parent.mkdir()
             new_info = {
                 "commitSha": "b" * 40,
-                "version": "v2026.08.11-1",
+                "version": "v1.1.0",
             }
             expected_evidence = {
                 "legacyCurrentLinkTarget": "releases/legacy-unsigned",
@@ -3155,7 +3155,7 @@ class SignatureAndIoValidationTest(unittest.TestCase):
             parser.parse_args(
                 [
                     "activate",
-                    "v2026.08.11-1",
+                    "v1.1.0",
                     "--accept-legacy-current",
                 ]
             )
@@ -3176,13 +3176,13 @@ class SignatureAndIoValidationTest(unittest.TestCase):
         old_info = {
             "flywayMigrationSetSha256": "a" * 64,
             "flywayHeadVersion": "252",
-            "version": "v2026.08.10-1",
+            "version": "v1.0.0",
         }
         new_info = {
             "commitSha": "b" * 40,
             "flywayMigrationSetSha256": "c" * 64,
             "flywayHeadVersion": "253",
-            "version": "v2026.08.11-1",
+            "version": "v1.1.0",
         }
         enabled = {unit: True for unit in release_updater.BOOT_UNITS}
         with mock.patch.object(release_updater, "stop_unit"), mock.patch.object(
@@ -3192,7 +3192,7 @@ class SignatureAndIoValidationTest(unittest.TestCase):
         ) as persist:
             release_updater.restore_after_failure(
                 base=Path("/opt/uten-imp"),
-                old_target=Path("/opt/uten-imp/releases/v2026.08.10-1"),
+                old_target=Path("/opt/uten-imp/releases/v1.0.0"),
                 old_info=old_info,
                 new_info=new_info,
                 nginx_was_active=True,
@@ -3214,13 +3214,13 @@ class SignatureAndIoValidationTest(unittest.TestCase):
         old_info = {
             "flywayMigrationSetSha256": "a" * 64,
             "flywayHeadVersion": "252",
-            "version": "v2026.08.10-1",
+            "version": "v1.0.0",
         }
         new_info = {
             "commitSha": "b" * 40,
             "flywayMigrationSetSha256": "c" * 64,
             "flywayHeadVersion": "253",
-            "version": "v2026.08.11-1",
+            "version": "v1.1.0",
         }
         enabled = {unit: True for unit in release_updater.BOOT_UNITS}
         with mock.patch.object(release_updater, "stop_unit"), mock.patch.object(
@@ -3242,7 +3242,7 @@ class SignatureAndIoValidationTest(unittest.TestCase):
         ) as persist:
             release_updater.restore_after_failure(
                 base=Path("/opt/uten-imp"),
-                old_target=Path("/opt/uten-imp/releases/v2026.08.10-1"),
+                old_target=Path("/opt/uten-imp/releases/v1.0.0"),
                 old_info=old_info,
                 new_info=new_info,
                 nginx_was_active=True,
@@ -3268,13 +3268,13 @@ class SignatureAndIoValidationTest(unittest.TestCase):
         old_info = {
             "flywayMigrationSetSha256": "a" * 64,
             "flywayHeadVersion": "253",
-            "version": "v2026.08.10-1",
+            "version": "v1.0.0",
         }
         new_info = {
             "commitSha": "b" * 40,
             "flywayMigrationSetSha256": "a" * 64,
             "flywayHeadVersion": "253",
-            "version": "v2026.08.11-1",
+            "version": "v1.1.0",
         }
         enabled = {unit: True for unit in release_updater.BOOT_UNITS}
         with mock.patch.object(release_updater, "stop_unit"), mock.patch.object(
@@ -3286,7 +3286,7 @@ class SignatureAndIoValidationTest(unittest.TestCase):
         ) as persist:
             release_updater.restore_after_failure(
                 base=Path("/opt/uten-imp"),
-                old_target=Path("/opt/uten-imp/releases/v2026.08.10-1"),
+                old_target=Path("/opt/uten-imp/releases/v1.0.0"),
                 old_info=old_info,
                 new_info=new_info,
                 nginx_was_active=True,
@@ -3939,7 +3939,7 @@ class SignatureAndIoValidationTest(unittest.TestCase):
             release_updater.recover_failed_activation(
                 activation_error=RuntimeError("terminal fsync failed"),
                 base=Path("/opt/uten-imp"),
-                old_target=Path("/opt/uten-imp/releases/v2026.08.11-1"),
+                old_target=Path("/opt/uten-imp/releases/v1.1.0"),
                 old_info=None,
                 new_info={},
                 nginx_was_active=False,
@@ -4195,13 +4195,13 @@ class SignatureAndIoValidationTest(unittest.TestCase):
         old_info = {
             "flywayMigrationSetSha256": "a" * 64,
             "flywayHeadVersion": "252",
-            "version": "v2026.08.10-1",
+            "version": "v1.0.0",
         }
         new_info = {
             "commitSha": "b" * 40,
             "flywayMigrationSetSha256": "c" * 64,
             "flywayHeadVersion": "253",
-            "version": "v2026.08.11-1",
+            "version": "v1.1.0",
         }
         enabled = {unit: True for unit in release_updater.BOOT_UNITS}
         with tempfile.TemporaryDirectory() as temporary:
@@ -4239,7 +4239,7 @@ class SignatureAndIoValidationTest(unittest.TestCase):
         self.assertGreaterEqual(stop.call_count, len(release_updater.BOOT_UNITS))
 
     def recovery_state_fixture(self, release_updater):
-        version = "v2026.08.11-1"
+        version = "v1.1.0"
         commit = "b" * 40
         migration_digest = "c" * 64
         manifest_digest = "d" * 64
@@ -4254,7 +4254,7 @@ class SignatureAndIoValidationTest(unittest.TestCase):
             "originalBootEnablement": boot_map,
             "previousFlywayHeadVersion": "252",
             "previousFlywayMigrationSetSha256": "e" * 64,
-            "previousVersion": "v2026.08.10-1",
+            "previousVersion": "v1.0.0",
             "reason": "activation-commit-failed",
             "recoveryRequired": True,
             "schemaVersion": 1,
@@ -4267,7 +4267,7 @@ class SignatureAndIoValidationTest(unittest.TestCase):
             "flywayMigrationSetSha256": migration_digest,
             "manifestSha256": manifest_digest,
             "path": str(target_path),
-            "releaseSequence": 20260811001,
+            "releaseSequence": 100001001000,
             "signingKeyId": "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
             "verified": True,
             "version": version,
@@ -4279,7 +4279,7 @@ class SignatureAndIoValidationTest(unittest.TestCase):
             "flywayHeadVersion": "253",
             "flywayMigrationSetSha256": migration_digest,
             "manifestSha256": manifest_digest,
-            "releaseSequence": 20260811001,
+            "releaseSequence": 100001001000,
             "version": version,
         }
         controlled_units = tuple(
@@ -4376,7 +4376,7 @@ class SignatureAndIoValidationTest(unittest.TestCase):
         return full_manifest
 
     def recovery_previous_manifest_fixture(self, release_updater):
-        version = "v2026.08.10-1"
+        version = "v1.0.0"
         return {
             "commitSha": "e" * 40,
             "flywayHeadVersion": "252",
@@ -4384,7 +4384,7 @@ class SignatureAndIoValidationTest(unittest.TestCase):
             "flywayMigrationSetSha256": "e" * 64,
             "manifestSha256": "6" * 64,
             "path": str(release_updater.DEFAULT_RELEASE_BASE / "releases" / version),
-            "releaseSequence": 20260810001,
+            "releaseSequence": 100001000000,
             "signingKeyId": "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
             "verified": True,
             "version": version,
@@ -4701,7 +4701,7 @@ class SignatureAndIoValidationTest(unittest.TestCase):
             "commitSha": failed["failedCommitSha"],
             "originalBootEnablement": failed["originalBootEnablement"],
             "previousVersion": previous["version"],
-            "releaseSequence": 20260811001,
+            "releaseSequence": 100001001000,
             "schemaVersion": 1,
             "startedAtUtc": "2026-08-11T08:00:00Z",
             "version": failed["failedVersion"],
@@ -5022,7 +5022,7 @@ class SignatureAndIoValidationTest(unittest.TestCase):
             "receiptType": "backup",
             "schemaVersion": 1,
             "successful": True,
-            "targetVersion": "v2026.08.11-1",
+            "targetVersion": "v1.1.0",
         }
         with self.assertRaisesRegex(release_updater.UpdaterError, "fixed detailed receipt"):
             release_updater.validate_database_recovery_receipt(receipt)
@@ -5353,7 +5353,7 @@ class SignatureAndIoValidationTest(unittest.TestCase):
                 "desiredBootEnablement": state["activationFailure"]["fields"][
                     "originalBootEnablement"
                 ],
-                "releaseSequence": 20260811001,
+                "releaseSequence": 100001001000,
                 "schemaVersion": 1,
                 "startedAtUtc": "2026-08-11T08:06:00Z",
                 "version": state["activationFailure"]["fields"]["failedVersion"],
@@ -5994,8 +5994,8 @@ class SignatureAndIoValidationTest(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "posix", "interrupted recovery runs on Linux CI")
 class InterruptedContainmentTest(unittest.TestCase):
-    version = "v2026.08.12-1"
-    sequence = 20260812001
+    version = "v1.2.0"
+    sequence = 100001002000
     commit = "a" * 40
 
     def setUp(self) -> None:
@@ -6104,7 +6104,7 @@ class InterruptedContainmentTest(unittest.TestCase):
             "originalBootEnablement": {
                 unit: True for unit in release_updater.BOOT_UNITS
             },
-            "previousVersion": "v2026.08.11-1",
+            "previousVersion": "v1.1.0",
             "releaseSequence": self.sequence,
             "schemaVersion": 1,
             "startedAtUtc": "2026-08-12T01:00:00Z",
@@ -6157,7 +6157,7 @@ class InterruptedContainmentTest(unittest.TestCase):
             },
             "previousFlywayHeadVersion": "254",
             "previousFlywayMigrationSetSha256": "2" * 64,
-            "previousVersion": "v2026.08.11-1",
+            "previousVersion": "v1.1.0",
             "reason": "activation-commit-failed",
             "recoveryRequired": True,
             "schemaVersion": 1,
@@ -6279,7 +6279,7 @@ class InterruptedContainmentTest(unittest.TestCase):
 
         for action, target_version in (
             ("finish-activation", self.version),
-            ("restore-previous", "v2026.08.11-1"),
+            ("restore-previous", "v1.1.0"),
         ):
             with self.subTest(action=action), self.interrupted_environment(
                 release_updater

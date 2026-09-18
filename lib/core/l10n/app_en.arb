@@ -107,6 +107,7 @@
   "visitorApplyValidateHost": "Please select a host",
   "visitorApplyValidateVisitTime": "Please select visit time",
   "visitorApplyValidateVisitTimeFuture": "Visit time must be later than now",
+  "visitorApplyValidatePlate": "Plate number is required when visiting by car",
   "visitorApplyDuplicateTime": "You already have an active visit at this time",
   "visitorApplySuccess": "Submitted, awaiting approval",
   "visitorStatusPending": "Pending",
@@ -142,6 +143,7 @@
   "securityScanHint": "Point the visitor QR at the frame",
   "securityScanManual": "Enter code manually",
   "securityPasscodeHint": "Enter the 6-digit pass code",
+  "securityPasscodeInvalid": "Please enter the 6-digit numeric pass code",
   "visitorPasscodeLabel": "Pass code",
   "securityPass": "Allow entry",
   "securityReject": "Deny entry",
@@ -1440,5 +1442,207 @@
   "productionBatchUnit": "Issue unit",
   "productionBatchMaterialQuantity": "Quantity to request",
   "productionBatchMaterialQuantityHint": "Additional material needed for this batch, in this row's unit and actual warehouse.",
-  "productionBatchNoAdditionalMaterials": "No additional materials are needed; arrange production using the existing material sources."
+  "productionBatchNoAdditionalMaterials": "No additional materials are needed; arrange production using the existing material sources.",
+  "securityReasonBlocked": "Blacklisted: entry denied",
+  "securityBlacklistTitle": "Visitor Blacklist",
+  "securityBlacklistEmpty": "No blacklisted visitors",
+  "securityBlacklistColNo": "Visitor No.",
+  "securityBlacklistColName": "Name",
+  "securityBlacklistColPhone": "Phone",
+  "securityBlacklistColReason": "Reason",
+  "securityBlacklistColAt": "Blocked At",
+  "securityBlacklistColBy": "By",
+  "securityBlacklistAction": "Blacklist Visitor",
+  "securityBlacklistNoticeLabel": "Visitor Blacklist",
+  "securityBlacklistNoticeDesc": "Once blacklisted, the visitor immediately loses login and entry access; the action and reason are audited.",
+  "securityBlacklistReasonLabel": "Reason",
+  "securityBlacklistReasonHint": "Reason is required",
+  "securityBlacklistDone": "Visitor blacklisted",
+  "securityBlacklistRemove": "Remove from Blacklist",
+  "securityBlacklistRemoveConfirm": "Remove this visitor from the blacklist? They can log in and apply again; existing applications keep their status.",
+  "securityBlacklistRemoveDone": "Removed from blacklist",
+  "entryStaffSubtitle": "Sign in with your staff account to enter the workspace",
+  "entryVisitorSubtitle": "Visitors register with a phone code for quick entry",
+  "visitorColName": "Name",
+  "visitorColPurpose": "Purpose",
+  "visitorColHost": "Host",
+  "visitorColPlannedVisit": "Planned Visit",
+  "visitorColStatus": "Status",
+  "visitorColCompany": "Company",
+  "visitorColVisitorName": "Visitor Name",
+  "visitorColHostDepartment": "Host Department",
+  "visitorApplySubmittingOverlay": "Submitting your application. Please do not resubmit or leave this page.",
+  "visitorApplyDeptHint": "Select the host department",
+  "visitorApplyHostHint": "Select the person to visit",
+  "visitorApplyHostSheetTitle": "Select the person to visit",
+  "visitorSettingsPortalTag": "{app} · Visitor",
+  "@visitorSettingsPortalTag": {
+    "placeholders": {
+      "app": {}
+    }
+  },
+  "visitorApprovalHostDeptColInfo": "Department snapshot of the host at apply time; the header filter pushes hostDepartmentId to the backend.",
+  "visitorBatchLimitError": "A single batch handles at most {limit} items; please split it (currently {count})",
+  "@visitorBatchLimitError": {
+    "placeholders": {
+      "limit": {"type": "int"},
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchApproveTitle": "Batch Approve ({count})",
+  "@visitorBatchApproveTitle": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchApproveMessage": "Each of the {count} selected applications will be approved one by one; approval issues the entry QR code. To double-check hosts and purposes, open details by double-clicking a row.",
+  "@visitorBatchApproveMessage": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchApproveConfirm": "Confirm Batch Approve",
+  "visitorBatchActionLabel": "Visitor Approval",
+  "visitorBatchApproveResponsibility": "On confirmation, the selected {count} applications will be recorded under your account as approver.",
+  "@visitorBatchApproveResponsibility": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchVerbApprove": "approved",
+  "visitorBatchVerbReject": "rejected",
+  "visitorBatchVerbForward": "forwarded",
+  "visitorBatchResult": "{count} applications {verb}",
+  "@visitorBatchResult": {
+    "placeholders": {
+      "verb": {},
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchResultFailures": ", {count} failed",
+  "@visitorBatchResultFailures": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchResultSkipped": ", {count} skipped",
+  "@visitorBatchResultSkipped": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchIncomplete": "Batch {verb} did not fully complete: {reason}",
+  "@visitorBatchIncomplete": {
+    "placeholders": {
+      "verb": {},
+      "reason": {}
+    }
+  },
+  "visitorBatchRejectTitle": "Batch Reject ({count})",
+  "@visitorBatchRejectTitle": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchRejectDescription": "The rejection reason will be shared with {count} visitors; please describe the problem.",
+  "@visitorBatchRejectDescription": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchRejectConfirm": "Confirm Reject",
+  "visitorBatchSubjectLabel": "visitor applications",
+  "visitorBatchForwardNoneSelected": "All selected applications are already with their hosts; nothing to forward",
+  "visitorBatchForwardTitle": "Batch Forward to Hosts ({count})",
+  "@visitorBatchForwardTitle": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchForwardMessage": "The {count} selected applications will be forwarded to their hosts; after confirmation they return to this queue for your final approval.",
+  "@visitorBatchForwardMessage": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchForwardSkippedNote": " ({count} more already with their hosts, skipped)",
+  "@visitorBatchForwardSkippedNote": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchForwardConfirm": "Confirm Batch Forward",
+  "visitorBatchForwardResponsibility": "On confirmation, forwarding the {count} selected applications will be recorded under your account.",
+  "@visitorBatchForwardResponsibility": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchApproveButton": "Approve ({count})",
+  "@visitorBatchApproveButton": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchForwardButton": "Forward ({count})",
+  "@visitorBatchForwardButton": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorBatchRejectButton": "Reject ({count})",
+  "@visitorBatchRejectButton": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "visitorApprovalDoneApprove": "Visitor application approved",
+  "visitorApprovalDoneReject": "Visitor application rejected",
+  "visitorApprovalDoneForward": "Forwarded to the host for confirmation",
+  "visitorApprovalDoneFallback": "Action completed",
+  "visitorApprovalApproveNoticeLabel": "Visitor Approval",
+  "visitorApprovalApproveNoticeDesc": "On confirmation your account and the decision are recorded; you are responsible for this entry approval.",
+  "visitorApprovalRejectNoticeLabel": "Visitor Rejection",
+  "visitorApprovalRejectNoticeDesc": "On confirmation your account and the rejection are recorded; you are responsible for this decision.",
+  "myVisitorsConfirmDone": "Host confirmed; the application is back with HR",
+  "myVisitorsRejectDone": "Host rejected",
+  "myVisitorsBatchNoneSelected": "None of the selected applications await your confirmation",
+  "myVisitorsBatchTitle": "Batch Confirm ({count})",
+  "@myVisitorsBatchTitle": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "myVisitorsBatchMessage": "Each of the {count} selected visitors will be confirmed as hosted; applications then return to HR for final approval.",
+  "@myVisitorsBatchMessage": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "myVisitorsBatchSkippedNote": " ({count} more not awaiting your confirmation, skipped)",
+  "@myVisitorsBatchSkippedNote": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "myVisitorsBatchConfirm": "Confirm",
+  "myVisitorsBatchResult": "{count} visitors confirmed as hosted",
+  "@myVisitorsBatchResult": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "myVisitorsBatchIncomplete": "Batch confirmation did not fully complete: {reason}",
+  "@myVisitorsBatchIncomplete": {
+    "placeholders": {
+      "reason": {}
+    }
+  },
+  "myVisitorsBatchButton": "Confirm ({count})",
+  "@myVisitorsBatchButton": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "myVisitorsStatusColInfo": "Shows only items awaiting your confirmation by default; the header filter switches to forwarded / approved / rejected (pushed to the backend)."
 }

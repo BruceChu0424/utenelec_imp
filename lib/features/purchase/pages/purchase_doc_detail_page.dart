@@ -783,7 +783,14 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
             : null,
         badge: widget.docType == PurchaseDocType.request && d.status == 1
             ? null
-            : PurchaseStatusBadge(status: d.status, closed: d.closed),
+            : PurchaseStatusBadge(
+                status: d.status,
+                closed: d.closed,
+                // 订货单在审/退回期间按财务审批投影显示，避免误显「草稿」。
+                financeApproval: widget.docType == PurchaseDocType.order
+                    ? d.financeApproval
+                    : null,
+              ),
       ),
     ];
     return Card(

@@ -8,8 +8,6 @@ import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.Previ
 import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.PreviewRequest;
 import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.features.production.execution.ProductionExecutionBatch;
-import com.uten.imp.features.production.execution.ProductionDrawRequest;
-import com.uten.imp.features.production.execution.ProductionDrawRequestService;
 import com.uten.imp.features.production.execution.ProductionExecutionSegmentService;
 import com.uten.imp.features.production.execution.SegmentRouteConfirmRequest;
 import com.uten.imp.features.production.execution.SegmentTransitionRequest;
@@ -40,14 +38,17 @@ import static com.uten.imp.features.production.analysis.MaterialAnalysisContract
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * 开工路线确认门控与到货进展通知(V599 / ADR-091)的用户口径回归：
+ * 开工路线自动识别与到货进展通知(V599→V606 / ADR-091 批注)的用户口径回归：
  *
  * <ol>
- *   <li>未确认路线时所有开工侧动作(开工/批量开工/领料申请/分批提交/持续生产开工/重核)被服务端拒绝；</li>
- *   <li>系统不替车间做决定：到货驱动的齐套自动提升被抑制，确认「齐套生产」那一刻同事务补跑提升；</li>
- *   <li>「分批生产」路线：根段不再被自动提升，拆批后批次段落生即 FULL_KIT、剩余段继承 BATCH；</li>
- *   <li>「持续生产」路线的竞态关闭：仓库料全到齐也保住 WAITING，「部分开工 · 持续生产」入口不被顶掉；</li>
- *   <li>路线一经动过(有领料单/报工/预留)即冻结，不能改选；</li>
+ *   <li>路线在创建事务内按事实自动识别——「确认生产路线」步骤已删除：
+ *       无同车间直送子件 → FULL_KIT；有 → CONTINUOUS；零料直制段恒 FULL_KIT；</li>
+ *   <li>FULL_KIT 段到货即自动提升、开工/领料不再被任何确认门拦截；</li>
+ *   <li>CONTINUOUS 段的竞态保持关闭：仓库料全到齐也保住 WAITING，
+ *       「部分开工 · 持续生产」不再要求先确认路线(未动过同事务切路线)；</li>
+ *   <li>「分批领料」动作驱动：不要求先确认 BATCH，拆批后批次段=FULL_KIT、剩余段=BATCH；</li>
+ *   <li>路线冻结尺不变：动过(领料单/报工/预留)后不能改路线、不能切持续生产；
+ *       手工改路线通道(confirmRoute)保留且同值幂等；</li>
  *   <li>真实写入库存的到货给还在等待的车间工单发「到货进展」聚合卡(经 outbox 投递)。</li>
  * </ol>
  */
@@ -70,7 +71,6 @@ class ProductionExecutionRouteGateEndToEndTest {
     @Autowired MaterialAnalysisService analyses;
     @Autowired MaterialAnalysisCommandService commands;
     @Autowired ProductionExecutionSegmentService segments;
-    @Autowired ProductionDrawRequestService drawRequests;
     @Autowired ProductionExecutionBatchService batches;
     @Autowired ChainNoticeService chainNotices;
     @Autowired StockDocService stock;
@@ -88,82 +88,59 @@ class ProductionExecutionRouteGateEndToEndTest {
     }
 
     @Test
-    void unconfirmedRouteBlocksEveryStartSideAction() {
-        Case c = create("rg-block", true, false);
+    void fullKitRootIsAutoIdentifiedPromotesAndStartsWithoutAnyConfirmation() {
+        // 不下达子件计划：根段没有同车间直送子件 → 自动识别为 FULL_KIT。
+        Case c = create("rg-kit", false);
         fixture.loginAs(c.workerUser());
-        // 零料直制子段落生即 READY，但未确认路线同样不能开工。
-        ApiException childStart = assertThrows(ApiException.class, () -> segments.start(
-                c.childPlan(), c.childSegment(),
-                new SegmentTransitionRequest(version(c.childSegment()), "rg-child-start-" + c.childSegment())));
-        assertTrue(childStart.getMessage().contains("请先确认生产路线"), childStart.getMessage());
-        // 根段：开工/持续生产/分批/领料/重核全被路线门拦下。
-        ApiException start = assertThrows(ApiException.class, () -> segments.start(
-                c.plan(), c.segment(),
-                new SegmentTransitionRequest(version(c.segment()), "rg-root-start-" + c.segment())));
-        assertTrue(start.getMessage().contains("请先确认生产路线"), start.getMessage());
-        ApiException continuous = assertThrows(ApiException.class, () -> segments.startContinuousSupply(
-                c.plan(), c.segment(),
-                new SegmentTransitionRequest(version(c.segment()), "rg-root-cont-" + c.segment())));
-        assertTrue(continuous.getMessage().contains("请先确认生产路线"), continuous.getMessage());
-        ApiException split = assertThrows(ApiException.class, () -> batches.submit(
-                new ProductionExecutionBatch.SubmitRequest(
-                        c.segment(), version(c.segment()), BigDecimal.ONE,
-                        "0".repeat(64), "rg-root-split-" + c.segment())));
-        assertTrue(split.getMessage().contains("请先确认生产路线"), split.getMessage());
-        ApiException draw = assertThrows(ApiException.class, () -> drawRequests.submit(
-                new ProductionDrawRequest.SubmitRequest(
-                        List.of(new ProductionDrawRequest.Item(c.segment(), version(c.segment()))),
-                        "rg-root-draw-" + c.segment(), "1".repeat(64))));
-        assertTrue(draw.getMessage().contains("请先确认生产路线"), draw.getMessage());
-        ApiException recheck = assertThrows(ApiException.class, () -> segments.recheckMaterial(
-                c.plan(), c.segment(),
-                new SegmentTransitionRequest(version(c.segment()), "rg-root-recheck-" + c.segment())));
-        assertTrue(recheck.getMessage().contains("请先确认生产路线"), recheck.getMessage());
-        assertEquals("WAITING", status(c.segment()));
-    }
-
-    @Test
-    void systemDoesNotPromoteUntilFullKitRouteIsConfirmedAndConfirmPromotesInPlace() {
-        Case c = create("rg-kit", true, true);
-        receive(c, c.material(), c.leaf(), "100");
-        assertEquals("WAITING", status(c.segment()),
-                "未确认路线：系统不替车间做齐套提升");
-        assertEquals(0, drawCount(c.segment()), "未确认路线不产生领料单");
-        // 放行谓词真值表(唯一口径 fn_execution_route_allows_auto_promote)。
-        assertFalse(allowsAutoPromote(c.segment()), "NULL 路线抑制自动提升");
-
-        fixture.loginAs(c.workerUser());
-        var view = segments.confirmRoute(c.plan(), c.segment(),
-                new SegmentRouteConfirmRequest(version(c.segment()), "rg-kit-route-" + c.segment(), "FULL_KIT"));
-        assertEquals("FULL_KIT", db.queryForObject(
-                "SELECT start_route FROM production_execution_segments WHERE id=?", String.class, c.segment()));
+        assertEquals("FULL_KIT", route(c.segment()), "纯仓库供料段创建即自动识别为齐套路线");
         assertNotNull(db.queryForObject(
                 "SELECT route_confirmed_at FROM production_execution_segments WHERE id=?",
-                java.sql.Timestamp.class, c.segment()), "确认时间落库");
-        assertEquals("READY", view.status(), "确认齐套路线时物料已齐：同事务补跑提升");
-        assertTrue(drawCount(c.segment()) >= 1, "提升就建领料单");
+                java.sql.Timestamp.class, c.segment()), "识别时间随创建事务落库");
         assertTrue(allowsAutoPromote(c.segment()), "FULL_KIT 放行自动提升");
 
-        // 路线已动过(有领料单)：改分批被拒。
-        ApiException frozen = assertThrows(ApiException.class, () -> segments.confirmRoute(
-                c.plan(), c.segment(),
-                new SegmentRouteConfirmRequest(version(c.segment()), "rg-kit-change-" + c.segment(), "BATCH")));
-        assertTrue(frozen.getMessage().contains("更改"), frozen.getMessage());
+        // 料到齐 → 自动提升建领料单 → 直接开工：全程没有 confirmRoute。
+        receive(c, c.material(), c.leaf(), "100");
+        assertEquals("READY", status(c.segment()), "到货即自动提升，不再等人工确认");
+        assertTrue(drawCount(c.segment()) >= 1, "提升就建领料单");
+        var started = segments.start(c.plan(), c.segment(),
+                new SegmentTransitionRequest(version(c.segment()), "rg-kit-start-" + c.segment()));
+        assertEquals("IN_PROGRESS", started.status(), "开工不被任何路线确认门拦截");
     }
 
     @Test
-    void batchRouteSuppressesPromotionAndSplitChildrenAreBornConfirmed() {
-        Case c = create("rg-batch", true, true);
+    void directSupplyRootIsAutoIdentifiedContinuousAndSurvivesFullWarehouseArrival() {
+        // 先下达并开工子件计划(同车间在产) → 根段的子件需求可由本车间直送 → 自动 CONTINUOUS。
+        Case c = create("rg-cont", true);
         fixture.loginAs(c.workerUser());
-        segments.confirmRoute(c.plan(), c.segment(),
-                new SegmentRouteConfirmRequest(version(c.segment()), "rg-batch-route-" + c.segment(), "BATCH"));
-        assertFalse(allowsAutoPromote(c.segment()), "BATCH 根段不被自动提升：等车间来拆批");
-        receive(c, c.material(), c.leaf(), "100");
-        assertEquals("WAITING", status(c.segment()), "料到齐也不提升，分批路线自己拆");
+        assertTrue(routeContinuousEligible(c.segment()), "同车间有在产子件工单：直送资格成立");
+        assertEquals("CONTINUOUS", route(c.segment()), "创建事务自动识别为持续生产路线");
+        assertFalse(allowsAutoPromote(c.segment()),
+                "持续生产未开工：仓库料先到也不把段顶成 READY(V595 竞态关闭)");
+        // 子件全部直送 100：即使料全齐，段仍保持 WAITING 等车间按持续生产开工。
+        transfer(c, "100");
+        assertEquals("WAITING", status(c.segment()));
+        assertTrue(Boolean.TRUE.equals(db.queryForObject(
+                "SELECT fn_can_start_continuous_supply(?)", Boolean.class, c.segment())));
+        // 不做任何路线确认，直接部分开工：未动过的工单同事务把路线切到 CONTINUOUS。
+        var started = segments.startContinuousSupply(c.plan(), c.segment(),
+                new SegmentTransitionRequest(version(c.segment()), "rg-cont-start-" + c.segment()));
+        assertEquals("IN_PROGRESS", started.status());
+        assertEquals("CONTINUOUS", route(c.segment()), "开工事务内路线已是持续生产");
+        assertTrue(allowsAutoPromote(c.segment()), "持续生产置位后仓库需求恢复自动提升");
+    }
+
+    @Test
+    void splitIsActionDrivenWithoutPriorBatchConfirmation() {
+        // 点「分批领料」本身就是选择分批(V606)：FULL_KIT 根段不先确认 BATCH 也能拆。
+        Case c = create("rg-batch", false);
+        fixture.loginAs(c.workerUser());
+        assertEquals("FULL_KIT", route(c.segment()));
+        receive(c, c.material(), c.leaf(), "40");
+        assertEquals("WAITING", status(c.segment()), "只到 40/100：不齐套不提升");
 
         var preview = batches.preview(new ProductionExecutionBatch.PreviewRequest(
                 c.segment(), version(c.segment()), null));
-        qty("100", preview.maxReadyQty());
+        qty("40", preview.maxReadyQty());
         var result = batches.submit(new ProductionExecutionBatch.SubmitRequest(
                 c.segment(), preview.expectedVersion(), preview.quantity(),
                 preview.fingerprint(), "rg-batch-split-" + c.segment()));
@@ -178,48 +155,58 @@ class ProductionExecutionRouteGateEndToEndTest {
                     "SELECT start_route FROM production_execution_segments WHERE id=?",
                     String.class, result.remainingSegmentId()), "剩余段继承分批路线");
         }
-        // 谱系事件账记了 ROUTE_CONFIRMED(操作人可审计)。
-        assertEquals(1, db.queryForObject("""
+        // 自动识别与动作驱动切换都不产生 ROUTE_CONFIRMED 事件(不是人的确认决定)。
+        assertEquals(0, db.queryForObject("""
                 SELECT count(*) FROM production_execution_segment_events
                 WHERE execution_segment_id=? AND action='ROUTE_CONFIRMED'
                 """, Integer.class, c.segment()));
     }
 
     @Test
-    void continuousRouteSurvivesFullWarehouseArrival() {
-        Case c = create("rg-cont", false, true);
+    void touchedSegmentCannotSwitchRouteOrStartContinuous() {
+        Case c = create("rg-frozen", false);
+        receive(c, c.material(), c.leaf(), "100");
         fixture.loginAs(c.workerUser());
-        assertTrue(routeContinuousEligible(c.segment()), "同车间有在产子件工单：持续生产路线可选");
-        segments.confirmRoute(c.plan(), c.segment(),
-                new SegmentRouteConfirmRequest(version(c.segment()), "rg-cont-route-" + c.segment(), "CONTINUOUS"));
-        assertFalse(allowsAutoPromote(c.segment()),
-                "持续生产未开工：仓库料先到也不把段顶成 READY(V595 竞态关闭)");
-        // 子件全部直送 100：即使料全齐，段仍保持 WAITING 等车间按持续生产开工。
-        transfer(c, "100");
-        assertEquals("WAITING", status(c.segment()));
-        assertTrue(Boolean.TRUE.equals(db.queryForObject(
-                "SELECT fn_can_start_continuous_supply(?)", Boolean.class, c.segment())));
-        var started = segments.startContinuousSupply(c.plan(), c.segment(),
-                new SegmentTransitionRequest(version(c.segment()), "rg-cont-start-" + c.segment()));
-        assertEquals("IN_PROGRESS", started.status());
-        assertTrue(allowsAutoPromote(c.segment()), "持续生产置位后仓库需求恢复自动提升");
+        assertEquals("READY", status(c.segment()), "自动提升后已有领料单=动过");
+        // 动过后不能改选持续生产(开工侧同口径)。
+        ApiException continuous = assertThrows(ApiException.class, () -> segments.startContinuousSupply(
+                c.plan(), c.segment(),
+                new SegmentTransitionRequest(version(c.segment()), "rg-frozen-cont-" + c.segment())));
+        assertTrue(continuous.getMessage().contains("不能切换"), continuous.getMessage());
+        // 动过后手工改路线同样被拒(冻结尺不变)。
+        ApiException frozen = assertThrows(ApiException.class, () -> segments.confirmRoute(
+                c.plan(), c.segment(),
+                new SegmentRouteConfirmRequest(version(c.segment()), "rg-frozen-change-" + c.segment(), "BATCH")));
+        assertTrue(frozen.getMessage().contains("只能在等待物料阶段") || frozen.getMessage().contains("更改"),
+                frozen.getMessage());
     }
 
     @Test
-    void wrongRouteChoiceIsRejectedByTheServer() {
-        // 零料直制段(无子件)选分批必被拒：服务端与弹窗选项同口径校验。
-        Case zero = create("rg-zero", false, false);
-        fixture.loginAs(zero.workerUser());
+    void manualOverrideSurvivesAndSameValueConfirmIsIdempotent() {
+        // 自动识别错边时的人工纠偏出口保留：未动过的段可改选；同值重复确认幂等。
+        Case c = create("rg-override", true);
+        fixture.loginAs(c.workerUser());
+        assertEquals("CONTINUOUS", route(c.segment()));
+        // 改成分批(未动过)。
+        segments.confirmRoute(c.plan(), c.segment(),
+                new SegmentRouteConfirmRequest(version(c.segment()), "rg-override-batch-" + c.segment(), "BATCH"));
+        assertEquals("BATCH", route(c.segment()));
+        assertFalse(allowsAutoPromote(c.segment()), "BATCH 根段不被自动提升：等车间来拆批");
+        // 同值重复确认：幂等成功，不报「只能在等待物料阶段」。
+        segments.confirmRoute(c.plan(), c.segment(),
+                new SegmentRouteConfirmRequest(version(c.segment()), "rg-override-same-" + c.segment(), "BATCH"));
+        assertEquals("BATCH", route(c.segment()));
+        // 零料直制段(无子件)选分批必被拒：override 校验与弹窗选项同口径。
         ApiException batchOnZero = assertThrows(ApiException.class, () -> segments.confirmRoute(
-                zero.childPlan(), zero.childSegment(),
-                new SegmentRouteConfirmRequest(version(zero.childSegment()), "rg-zero-batch-" + zero.childSegment(), "BATCH")));
+                c.childPlan(), c.childSegment(),
+                new SegmentRouteConfirmRequest(version(c.childSegment()), "rg-override-zero-" + c.childSegment(), "BATCH")));
         assertTrue(batchOnZero.getMessage().contains("分批") || batchOnZero.getMessage().contains("齐套"),
                 batchOnZero.getMessage());
     }
 
     @Test
     void arrivalProgressCardFollowsTheWaitingSegmentFacts() {
-        Case c = create("rg-notice", true, true);
+        Case c = create("rg-notice", false);
         db.update("DELETE FROM notices WHERE source_event='PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED'");
         receive(c, c.material(), c.leaf(), "40");
         // OTHER_IN(人工库存调整)与收货审核都不是到货进展的触发面：只有 IQC 确认入库与
@@ -250,11 +237,10 @@ class ProductionExecutionRouteGateEndToEndTest {
                   AND n.content LIKE '%还缺%'
                 """, Integer.class, c.workerUser()) >= 1,
                 "车间收到「到了多少+还差什么」的聚合卡");
-        // 确认路线并齐套提升后段不再等待：同一事件再投递不重复发卡。
+        // 剩余到齐 → FULL_KIT 自动提升(无需确认)：段不再等待，同一事件再投递不重复发卡。
         fixture.loginAs(c.workerUser());
         receive(c, c.material(), c.leaf(), "60");
-        segments.confirmRoute(c.plan(), c.segment(),
-                new SegmentRouteConfirmRequest(version(c.segment()), "rg-notice-route-" + c.segment(), "FULL_KIT"));
+        assertEquals("READY", status(c.segment()), "自动识别的齐套路线到齐即提升");
         db.update("DELETE FROM notices WHERE source_event='PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED'");
         deliverArrival(c.segment(), payload);
         // 段已齐套提升：系统正常的「物料齐套」状态卡允许出现，但不得再有「到货进展」卡。
@@ -285,8 +271,12 @@ class ProductionExecutionRouteGateEndToEndTest {
             UUID leaf, UUID planItem) {
     }
 
-    /** 父件(自制) → 唯一子件(自制零料直制)；withMaterial=true 时子件即采购子件 B 一起挂在父件下。 */
-    private Case create(String tag, boolean withBuyMaterial, boolean confirmChild) {
+    /**
+     * 父件(自制) → 唯一子件(自制零料直制)。issueChild=true 时先下达并开工子件计划
+     * (同车间在产) → 根段需求可直送 → 自动识别 CONTINUOUS；false 时不下达子件 →
+     * 根段纯仓库供料 → 自动识别 FULL_KIT。
+     */
+    private Case create(String tag, boolean issueChild) {
         var w = fixture.seedWorld(tag);
         fixture.loginAs(w.superAdminUserId());
         UUID parent = UUID.randomUUID(), child = UUID.randomUUID();
@@ -322,27 +312,27 @@ class ProductionExecutionRouteGateEndToEndTest {
                                 row.goodsId().equals(parent) || row.goodsId().equals(child) ? "MAKE" : "BUY", null))
                         .toList()));
         view = analyses.detail(view.analysisId());
-        UUID childLineId = view.flatMaterials().stream()
-                .filter(row -> row.goodsId().equals(child)).findFirst().orElseThrow().materialLineId();
-        var childResult = commands.issueWorkshopPlans(view.analysisId(), new IssueWorkshopPlansRequest(
-                view.version(), view.fingerprint(), "rg-child-" + tag, w.warehouseId(),
-                BusinessTime.today(), BusinessTime.today().plusDays(10), true,
-                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(
-                        childLineId, null, new BigDecimal("100"),
-                        BusinessTime.today(), BusinessTime.today().plusDays(10),
-                        workshop, null, worker, null, null))));
-        UUID childPlan = childResult.plans().getFirst().planId();
-        UUID childSegment = childResult.plans().getFirst().segmentIds().getFirst();
-        assertEquals("READY", status(childSegment), "零料直制子件任务直接可开工");
-        // 子件先开工(后续直送/候选都要求「同车间在产」)；rg-zero 要留一个未确认的零料段。
-        if (confirmChild) {
+        UUID childPlan = null;
+        UUID childSegment = null;
+        if (issueChild) {
+            UUID childLineId = view.flatMaterials().stream()
+                    .filter(row -> row.goodsId().equals(child)).findFirst().orElseThrow().materialLineId();
+            var childResult = commands.issueWorkshopPlans(view.analysisId(), new IssueWorkshopPlansRequest(
+                    view.version(), view.fingerprint(), "rg-child-" + tag, w.warehouseId(),
+                    BusinessTime.today(), BusinessTime.today().plusDays(10), true,
+                    List.of(new IssueWorkshopPlansRequest.IssuePlanLine(
+                            childLineId, null, new BigDecimal("100"),
+                            BusinessTime.today(), BusinessTime.today().plusDays(10),
+                            workshop, null, worker, null, null))));
+            childPlan = childResult.plans().getFirst().planId();
+            childSegment = childResult.plans().getFirst().segmentIds().getFirst();
+            assertEquals("READY", status(childSegment), "零料直制子件任务直接可开工");
+            // 子件开工(后续直送/候选都要求「同车间在产」)；路线已自动识别，无需确认。
             fixture.loginAs(workerUser);
-            segments.confirmRoute(childPlan, childSegment,
-                    new SegmentRouteConfirmRequest(version(childSegment), "rg-child-open-route-" + childSegment, "FULL_KIT"));
             segments.start(childPlan, childSegment,
                     new SegmentTransitionRequest(version(childSegment), "rg-child-open-start-" + childSegment));
+            fixture.loginAs(w.superAdminUserId());
         }
-        fixture.loginAs(w.superAdminUserId());
 
         view = analyses.detail(view.analysisId());
         var rootResult = commands.issueWorkshopPlans(view.analysisId(), new IssueWorkshopPlansRequest(
@@ -413,6 +403,11 @@ class ProductionExecutionRouteGateEndToEndTest {
         line.setAmountLocal(line.getAmountOriginal());
         request.setItems(List.of(line));
         stock.approve(stock.create(request).getId());
+    }
+
+    private String route(UUID segmentId) {
+        return db.queryForObject(
+                "SELECT start_route FROM production_execution_segments WHERE id=?", String.class, segmentId);
     }
 
     private boolean allowsAutoPromote(UUID segmentId) {

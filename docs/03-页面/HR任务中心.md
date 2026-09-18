@@ -28,6 +28,9 @@ v2 解决 v1「四块平铺一页、内容太多、没有快捷操作、多人�
 | 事务办理 | 4 个入口卡（图标 + 计数 + 口径说明）→ 子页 |
 | 数据补录提示 | 入职满一年仍未登记转正日期的人数（V210 回填后应为 0） |
 
+> 2026-09-18 UI 统一收口：主页与子页加载态统一 `UtenSkeletonList` 骨架屏（替代居中转圈），
+> 主页/窄屏子页区块卡片统一 `UtenCard`（统计磁贴、事务入口、快捷祝福瓦片、开关卡）。
+
 ### 子页（`/hr/tasks/:type`）：统一表格 + 多选批量（2026-09-10）
 
 宽屏主体是 `MasterDataTableView<HrTaskItem>`（`Key('hr-task-table')`）；窄屏（compact）
@@ -57,6 +60,8 @@ v2 解决 v1「四块平铺一页、内容太多、没有快捷操作、多人�
 
   单次上限 50 人（`kHrTaskBatchLimit`），超限提示分批；批量结束后
   `hrTaskSummaryProvider.reloadSilently()` 同步工作台/部门徽标。
+  「批量登记转正」选日期弹窗 2026-09-18 起迁移公共 `UtenDialog`（按钮/居中/限高随全仓
+  弹窗规范；日期按钮 Key `hr-task-batch-confirm-date` 与文案不变）。
 - 转正口径 = 入职 + 3 个月（`HrTaskService.PROBATION_MONTHS`）；试用期员工调 `/confirm`
   （写 `employment_history` confirm 事件）；服务端回 409（已是正式员工但未登记转正日期）时
   前端自动改为 `PUT /{id}` 补登 `confirmedAt`。

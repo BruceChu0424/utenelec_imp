@@ -92,7 +92,7 @@ class StrictJsonConsumerTest(unittest.TestCase):
             )
 
     def test_unknown_channel_field_is_rejected_by_exact_schema(self) -> None:
-        version = "v2026.08.14-1"
+        version = "v1.4.0"
         channel = {
             "channel": "candidate",
             "commitSha": "a" * 40,
@@ -103,7 +103,7 @@ class StrictJsonConsumerTest(unittest.TestCase):
             },
             "product": "uten-imp",
             "publishedAtUtc": "2026-08-14T00:00:00Z",
-            "releaseSequence": 20260814001,
+            "releaseSequence": 100001004000,
             "schemaVersion": 1,
             "signingKeyId": "SHA256:" + "A" * 43,
             "unexpected": True,

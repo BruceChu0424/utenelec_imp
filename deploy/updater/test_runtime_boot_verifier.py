@@ -59,7 +59,7 @@ def manifest() -> dict[str, object]:
             }
         ],
         "releaseSequence": 7,
-        "version": "v2026.08.12-7",
+        "version": "v1.2.6",
     }
 
 
@@ -122,7 +122,7 @@ class RuntimeAuthorityTests(unittest.TestCase):
             "releaseSequence": 7,
             "schemaVersion": 1,
             "verifiedAtUtc": "2026-08-12T00:00:00Z",
-            "version": "v2026.08.12-7",
+            "version": "v1.2.6",
         }
 
     def test_live_database_and_release_must_match_authority(self) -> None:
@@ -147,7 +147,7 @@ class RuntimeAuthorityTests(unittest.TestCase):
             "flywayMigrationSetSha256": "b" * 64,
             "manifestSha256": "d" * 64,
             "releaseSequence": 7,
-            "version": "v2026.08.12-7",
+            "version": "v1.2.6",
         }
         boot._validate_active(active, manifest(), "d" * 64)
         active["releaseSequence"] = 8
@@ -175,7 +175,7 @@ class RuntimeAuthorityTests(unittest.TestCase):
             "releaseSequence": 7,
             "runtimeContractId": contract[0]["contractId"],
             "runtimeContractSha256": contract[1],
-            "version": "v2026.08.12-7",
+            "version": "v1.2.6",
         }
         authority = {
             "commitSha": "a" * 40,
@@ -186,7 +186,7 @@ class RuntimeAuthorityTests(unittest.TestCase):
             "runtimeContractSha256": contract[1],
             "schemaVersion": 1,
             "verifiedAtUtc": "2026-08-12T00:00:00Z",
-            "version": "v2026.08.12-7",
+            "version": "v1.2.6",
         }
         with mock.patch.object(boot, "_require_root_file"), mock.patch.object(
             boot, "_sha256", return_value="7" * 64
@@ -237,7 +237,7 @@ class TransactionAuthorizationTests(unittest.TestCase):
             "mode": "activation",
             "releaseSequence": 7,
             "schemaVersion": 1,
-            "version": "v2026.08.12-7",
+            "version": "v1.2.6",
         }
 
     @mock.patch.object(boot, "_operation_lock_is_held_by", return_value=True)
@@ -346,7 +346,7 @@ class RuntimeModeTests(unittest.TestCase):
     @mock.patch.object(
         boot,
         "_verified_current_release",
-        return_value=(Path("/opt/uten-imp/releases/v2026.08.12-7"), manifest(), "d" * 64),
+        return_value=(Path("/opt/uten-imp/releases/v1.2.6"), manifest(), "d" * 64),
     )
     @mock.patch.object(boot, "_load_release_guard", return_value=object())
     @mock.patch.object(boot, "_verify_data_mount")
@@ -403,7 +403,7 @@ class RuntimeModeTests(unittest.TestCase):
     @mock.patch.object(
         boot,
         "_verified_current_release",
-        return_value=(Path("/opt/uten-imp/releases/v2026.08.12-7"), manifest(), "d" * 64),
+        return_value=(Path("/opt/uten-imp/releases/v1.2.6"), manifest(), "d" * 64),
     )
     @mock.patch.object(boot, "_load_release_guard", return_value=object())
     @mock.patch.object(boot, "_verify_data_mount")
@@ -444,7 +444,7 @@ class RuntimeModeTests(unittest.TestCase):
     @mock.patch.object(
         boot,
         "_verified_current_release",
-        return_value=(Path("/opt/uten-imp/releases/v2026.08.12-7"), manifest(), "d" * 64),
+        return_value=(Path("/opt/uten-imp/releases/v1.2.6"), manifest(), "d" * 64),
     )
     @mock.patch.object(boot, "_load_release_guard", return_value=object())
     @mock.patch.object(boot, "_verify_data_mount")

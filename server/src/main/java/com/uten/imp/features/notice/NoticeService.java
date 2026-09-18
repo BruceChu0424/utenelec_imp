@@ -930,13 +930,13 @@ public class NoticeService {
         return noticeRepo.countUnreadBySourceEvents(requireStaffId(), events, reviewAudience.workshopScope(requireStaff()));
     }
 
-    /** 按业务事件来源批量标记已读（如打开订单进度页清空完工徽章）。 */
+    /** 按业务事件来源批量标记已读（如打开订单进度页清空完工徽章）。返回实际置读条数。 */
     @Transactional
-    public void markReadBySourceEvents(List<String> events) {
-        if (events == null || events.isEmpty()) return;
+    public int markReadBySourceEvents(List<String> events) {
+        if (events == null || events.isEmpty()) return 0;
         UUID userId = requireStaffId();
         tx.bind();
-        stateRepo.markVisibleReadBySourceEvents(userId, events);
+        return stateRepo.markVisibleReadBySourceEvents(userId, events);
     }
 
     /**
@@ -1177,6 +1177,9 @@ public class NoticeService {
     /**
      * 办结撤回：审核通过/驳回/取消等业务落点按 (aggregateKind, aggregateId)
      * 批量 resolve 全部接收人的待审通知（幂等，仅未办结行）。返回受影响行数。
+     *
+     * <p>2026-09-18 口径：办结即已读——撤回的同时把各接收人的这些通知置已读，
+     * 已办结的通知不再以未读形式滞留通知页/角标（task_completed_at 语义不受影响）。
      */
     @Transactional
     public int resolveReviewNotices(
@@ -1189,8 +1192,11 @@ public class NoticeService {
         String safeReason = reason == null || reason.isBlank()
                 ? "COMPLETED"
                 : reason.strip();
-        return noticeRepo.resolveReviewPendingByAggregate(
-                aggregateKind.strip(), aggregateId, safeReason);
+        String kind = aggregateKind.strip();
+        int resolved = noticeRepo.resolveReviewPendingByAggregate(
+                kind, aggregateId, safeReason);
+        stateRepo.markReadForAggregateRecipients(kind, aggregateId);
+        return resolved;
     }
 
     /**

@@ -21,13 +21,15 @@ void main() {
   ) async {
     await tester.pumpWidget(_app(const FinanceHubPage(), const {}));
     await tester.pumpAndSettle();
-    expect(find.text('IQC 不合格退回与贷项'), findsNothing);
+    expect(find.text('业务审核中心'), findsNothing);
 
+    // 2026-09-18 合并：IQC 退回队列并入「业务审核中心」卡（页内分段）。
     await tester.pumpWidget(
       _app(const FinanceHubPage(), const {Perm.procurementIqcRejectionView}),
     );
     await tester.pumpAndSettle();
-    expect(find.text('IQC 不合格退回与贷项'), findsOneWidget);
+    expect(find.text('业务审核中心'), findsOneWidget);
+    expect(find.text('IQC 不合格退回与贷项'), findsNothing);
     expect(find.text('订货审批任务'), findsNothing);
   });
 

@@ -21,6 +21,8 @@ class PendingInspectionReceipt {
     this.firstReceivedAt,
     this.lastReceivedAt,
     this.preStockedItemCount = 0,
+    this.preStockedWarehouseNames,
+    this.preStockedPlaces,
   });
 
   final String receiptType; // PURCHASE / SUBCONTRACT
@@ -37,6 +39,13 @@ class PendingInspectionReceipt {
 
   /// 先入库后质检(V596)：已上架待检的明细行数；>0 时页面顶部标红提示到库位检验。
   final int preStockedItemCount;
+
+  /// 已上架行的去重仓名清单（2026-09-18，服务端 string_agg）：待检队列「仓库」列
+  /// 直接给出到哪验货；未上架（货在待检区）为 null。
+  final String? preStockedWarehouseNames;
+
+  /// 已上架行的去重库位清单（同上）：待检队列「库位号」列。
+  final String? preStockedPlaces;
 
   bool get isSubcontract => receiptType == 'SUBCONTRACT';
 
@@ -57,6 +66,8 @@ class PendingInspectionReceipt {
         lastReceivedAt: json['lastReceivedAt'] as String?,
         preStockedItemCount:
             (json['preStockedItemCount'] as num?)?.toInt() ?? 0,
+        preStockedWarehouseNames: json['preStockedWarehouseNames'] as String?,
+        preStockedPlaces: json['preStockedPlaces'] as String?,
       );
 }
 

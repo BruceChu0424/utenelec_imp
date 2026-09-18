@@ -134,6 +134,16 @@ List<String>? requiredAnyPermFor(String location) {
     // 批准/驳回动作由服务端 approve/reject 独立分权 + 实时审核资格。
     return const [Perm.financeOrderApprovalView];
   }
+  // 业务审核中心：任一审核队列权限即可进入（页内分段再按各自权限显隐；
+  // 须在下方 /finance/ 单据段兜底之前声明，否则 'audits' 段会 fail-closed 404）。
+  if (location == RouteName.financeAudits) {
+    return const [
+      Perm.salesOrderFinanceView,
+      Perm.financeShipmentAudit,
+      Perm.financeOrderApprovalView,
+      Perm.procurementIqcRejectionView,
+    ];
+  }
   if (location == '/finance/sales-order-changes' ||
       location == '/finance/sales-order-confirmations' ||
       location.startsWith('/finance/sales-order-confirmations/')) {
@@ -672,6 +682,8 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.visitorApprove];
   }
   if (location == '/my-visitors') return const [Perm.visitorHostConfirm];
+  // 黑名单管理页独立权限（须在 /security/ 通配之前判定）。
+  if (location == '/security/blacklist') return const [Perm.visitorBlacklist];
   if (location == '/security/scan' || location.startsWith('/security/')) {
     return const [Perm.visitorVerify];
   }

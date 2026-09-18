@@ -98,6 +98,24 @@ class VisitorApplicationPaginationTest {
     }
 
     @Test
+    void mineSpecificationSupportsCommaSeparatedStatusSet() {
+        UUID visitorId = UUID.randomUUID();
+        when(currentUser.id()).thenReturn(Optional.of(visitorId));
+        stubPage(0);
+
+        applicationService.listMine("pending, hostReviewing", 1, 20);
+
+        Specification<VisitorApplication> specification = capturedSpecification();
+        CriteriaFixture criteria = new CriteriaFixture();
+        specification.toPredicate(criteria.root, criteria.query, criteria.builder);
+
+        verify(criteria.builder).equal(criteria.visitorAccountId, visitorId);
+        verify(criteria.status).in(List.of("pending", "hostReviewing"));
+        // 多状态口径不落到单状态 equal 分支
+        verify(criteria.builder, never()).equal(eq(criteria.status), any());
+    }
+
+    @Test
     void approvalDefaultsToPendingStatesAndUsesServerPage() {
         AuthUser staff = mock(AuthUser.class);
         when(staff.isVisitor()).thenReturn(false);
@@ -312,7 +330,10 @@ class VisitorApplicationPaginationTest {
             when(root.<String>get("status")).thenReturn(status);
             when(builder.equal(any(), any())).thenReturn(mock(Predicate.class));
             when(builder.and(any(Predicate[].class))).thenReturn(mock(Predicate.class));
+            when(builder.and(any(Predicate.class), any(Predicate.class)))
+                    .thenReturn(mock(Predicate.class));
             when(status.in(any(Object[].class))).thenReturn(mock(Predicate.class));
+            when(status.in(any(java.util.Collection.class))).thenReturn(mock(Predicate.class));
         }
     }
 }

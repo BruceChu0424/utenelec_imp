@@ -280,18 +280,25 @@ public class ProductionExecutionSegmentService {
         requireVersion(segment, request.expectedVersion());
         requireActivePlan(segment);
         boolean firstConfirmation = segment.startRoute() == null;
-        if (!firstConfirmation) {
+        // V606 同值幂等：路线已由创建事务自动识别，再「确认成同一条」不是新决定——
+        // 不要求 WAITING/未动过(已提升的段重复确认是合法的空操作)；改值仍走严格门。
+        boolean sameRoute = !firstConfirmation
+                && Objects.equals(segment.startRoute(), request.route());
+        if (!firstConfirmation && !sameRoute) {
             if (!ProductionExecutionSegment.STATUS_WAITING.equals(segment.status())) {
                 throw conflict("开工路线只能在等待物料阶段确认或更改");
             }
-            if (!Objects.equals(segment.startRoute(), request.route())
-                    && !Boolean.TRUE.equals(em.createNativeQuery(
+            if (!Boolean.TRUE.equals(em.createNativeQuery(
                             "SELECT fn_can_change_execution_route(:id)")
                             .setParameter("id", segmentId).getSingleResult())) {
                 throw conflict("工单已产生领料单、报工或预留，开工路线不能更改");
             }
         }
-        validateRouteChoice(segment, request.route());
+        if (!sameRoute) {
+            validateRouteChoice(segment, request.route());
+        }
+        // lock_version 由 trg_validate_production_execution_segment 触发器对每次
+        // UPDATE 强制 +1（V155），语句无需（也不应）手工推进——与 assign() 同约定。
         int updated = em.createNativeQuery("""
                         UPDATE production_execution_segments
                         SET start_route = :route,
@@ -306,6 +313,11 @@ public class ProductionExecutionSegmentService {
                 .setParameter("expectedVersion", request.expectedVersion())
                 .executeUpdate();
         requireUpdated(updated);
+        // 到货进展卡的下一步提示带着路线语境（「请先确认生产路线…」），路线一经
+        // 确认即办结（ADR-091 §2.3，与开工/领料/分批同一聚合办结点）。放在补跑
+        // 提升之前：FULL_KIT 就地齐套的提升会紧接着重发「物料齐套·去领料」新卡。
+        chainNotice.resolveProductionWorkshopTasks(
+                List.of(segmentId), "ROUTE_CONFIRMED");
         if (kitCandidate
                 && ProductionExecutionSegment.STATUS_WAITING.equals(segment.status())
                 && segment.autoPromoteWhenReady()) {
@@ -356,15 +368,13 @@ public class ProductionExecutionSegmentService {
     }
 
     /**
-     * 开工路线门控(V599)：齐套开工/批量开工/领料申请共用——未确认路线一律拒绝；
-     * 已确认「分批生产」的工单不能走齐套链；「持续生产」路线的工单须先按持续生产开工
+     * 开工路线门控(V599)：齐套开工/批量开工/领料申请共用。V606 起路线由创建事务
+     * 自动识别，NULL 只可能是历史脏数据——按齐套放行(不阻塞车间)；已确认
+     * 「分批生产」的工单不能走齐套链；「持续生产」路线的工单须先按持续生产开工
      * (混合链直送冻结、仓库料领齐后再点普通开工)。
      */
     private void requireRouteForKitAction(LockedSegment segment, String actionLabel) {
         String route = segment.startRoute();
-        if (route == null) {
-            throw conflict("请先确认生产路线——「" + actionLabel + "」需要工单先选定齐套/分批/持续生产之一");
-        }
         if (ROUTE_BATCH.equals(route)) {
             throw conflict("本工单已确认为「分批生产」路线，请用「分批领料」按批办理，「" + actionLabel + "」不可用");
         }
@@ -373,24 +383,9 @@ public class ProductionExecutionSegmentService {
         }
     }
 
-    private void requireExactRoute(
-            LockedSegment segment, String requiredRoute, String actionLabel) {
-        String route = segment.startRoute();
-        if (route == null) {
-            throw conflict("请先确认生产路线——「" + actionLabel + "」需要工单先选定齐套/分批/持续生产之一");
-        }
-        if (!requiredRoute.equals(route)) {
-            throw conflict("本工单已确认为「" + routeWord(route) + "」路线，「" + actionLabel
-                    + "」不可用；如需更改，请在等待物料且未领料时重新确认生产路线");
-        }
-    }
-
     /** 重新核对备料=齐套提升：分批/未开工的持续生产路线各自有专属视图，不走这里。 */
     private void requireRouteForRecheck(LockedSegment segment) {
         String route = segment.startRoute();
-        if (route == null) {
-            throw conflict("请先确认生产路线，再核对备料");
-        }
         if (ROUTE_BATCH.equals(route)) {
             throw conflict("分批生产路线不走齐套核对，请在分批领料核对页查看当前可生产量");
         }
@@ -437,11 +432,7 @@ public class ProductionExecutionSegmentService {
         tx.bind();
         requireTransitionRequest(request);
         LockedSegment segment = lock(planId, segmentId);
-        // 防御性对称(V599)：派工也是开工侧动作，未确认路线的段不该被派工(正常路径中
-        // READY+未确认不可达——提升被路线门抑制，零料段落生 READY 但开工有同样的门)。
-        if (segment.startRoute() == null) {
-            throw conflict("请先确认生产路线——派工与开工一样需要工单先选定齐套/分批/持续生产之一");
-        }
+        // V606 路线自动识别后不再有「未确认」段挡派工；此处不再做 NULL 检查。
         // 复用上面已锁的段：不再走 transition() 二次加锁(少一次锁查询，也让
         // 单测的 lock+replay 两条桩序列保持稳定)。
         return applyTransition(prepareTransition(
@@ -907,7 +898,15 @@ public class ProductionExecutionSegmentService {
         if (replay != null) return replay;
         requireVersion(segment, request.expectedVersion());
         requireActivePlan(segment);
-        requireExactRoute(segment, ROUTE_CONTINUOUS, "部分开工 · 持续生产");
+        // 路线自动识别配套(V606)：点「部分开工 · 持续生产」就是选择持续生产——
+        // 未动过(无领料单/报工/预留/供给钉)的工单在下方同一条 UPDATE 里把路线
+        // 切到 CONTINUOUS；已动过的按原路线口径拒绝，不替用户改主意。
+        if (!ROUTE_CONTINUOUS.equals(segment.startRoute())
+                && !Boolean.TRUE.equals(em.createNativeQuery(
+                        "SELECT fn_can_change_execution_route(:id)")
+                .setParameter("id", segmentId).getSingleResult())) {
+            throw conflict("本工单已产生领料单、报工或预留，不能切换为「持续生产」路线");
+        }
         if (!ProductionExecutionSegment.STATUS_WAITING.equals(segment.status())) {
             throw conflict("只有等待物料的工单可以按「部分开工 · 持续生产」开工，请刷新后重试");
         }
@@ -938,7 +937,9 @@ public class ProductionExecutionSegmentService {
         }
         int flagged = em.createNativeQuery("""
                         UPDATE production_execution_segments
-                        SET continuous_supply = TRUE
+                        SET continuous_supply = TRUE,
+                            start_route = 'CONTINUOUS',
+                            route_confirmed_at = now()
                         WHERE id = :id
                           AND lock_version = :expectedVersion
                           AND status = 'WAITING'

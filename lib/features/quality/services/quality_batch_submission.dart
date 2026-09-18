@@ -3,8 +3,8 @@ import 'package:uuid/uuid.dart';
 import '../../warehouse/repositories/procurement_inspection_repository.dart';
 import '../repositories/production_fqc_repository.dart';
 
-/// One receipt stays atomic on the server. Across receipts, keep the exact
-/// accepted report and advance only after a successful acknowledgement.
+/// One receipt stays atomic on the server. Across receipts, each lane keeps the
+/// exact accepted report and only its own acknowledgement advances that receipt.
 class QualityReceiptSubmission {
   QualityReceiptSubmission({
     required this.receiptType,
@@ -31,26 +31,39 @@ class QualityBatchSubmission {
        fqcInspectionIds = List.unmodifiable(fqcInspectionIds.toSet()),
        fqcIdempotencyKey = 'fqc-batch-approval-${const Uuid().v4()}';
 
+  /// 2026-09-18 用户口径「批量提交超级慢」：收货单走最多 4 条并行通道提交，
+  /// 每张单仍是服务端一个独立原子事务（冻结命令 + 幂等键不变）。服务端的
+  /// 行锁/库存锁/来源预锁全部按稳定顺序获取，多用户同时提交本就是既有场景。
+  static const int _sendLanes = 4;
+
   final List<QualityReceiptSubmission> receipts;
   final List<String> fqcInspectionIds;
   final String? reason;
   final String fqcIdempotencyKey;
-  int _nextReceipt = 0;
+  final Set<int> _acknowledged = <int>{};
   bool _fqcAcknowledged = false;
   bool _running = false;
 
-  int get completedReceiptCount => _nextReceipt;
-  int get remainingReceiptCount => receipts.length - _nextReceipt;
+  int get completedReceiptCount => _acknowledged.length;
+  int get remainingReceiptCount => receipts.length - _acknowledged.length;
   int get iqcLineCount =>
       receipts.fold(0, (count, receipt) => count + receipt.items.length);
   bool get complete =>
-      _nextReceipt == receipts.length &&
+      _acknowledged.length == receipts.length &&
       (fqcInspectionIds.isEmpty || _fqcAcknowledged);
-  Iterable<String> get acknowledgedIqcIds => receipts
-      .take(_nextReceipt)
-      .expand((receipt) => receipt.items.map((item) => item.inspectionItemId));
-  String get currentLabel =>
-      _nextReceipt < receipts.length ? receipts[_nextReceipt].label : '自制产成品检验';
+  Iterable<String> get acknowledgedIqcIds => [
+    for (var i = 0; i < receipts.length; i++)
+      if (_acknowledged.contains(i))
+        ...receipts[i].items.map((item) => item.inspectionItemId),
+  ];
+
+  /// 报错口径：最靠前的未确认收货单；全部确认后才轮到自制产成品。
+  String get currentLabel {
+    for (var i = 0; i < receipts.length; i++) {
+      if (!_acknowledged.contains(i)) return receipts[i].label;
+    }
+    return '自制产成品检验';
+  }
 
   Future<void> send({
     required ProcurementInspectionRepository iqc,
@@ -60,16 +73,39 @@ class QualityBatchSubmission {
     if (_running) throw StateError('同一检验报告不能并发提交');
     _running = true;
     try {
-      while (_nextReceipt < receipts.length) {
-        final receipt = receipts[_nextReceipt];
-        await iqc.decideBatch(
-          receiptType: receipt.receiptType,
-          receiptId: receipt.receiptId,
-          items: receipt.items,
-          reason: reason,
-        );
-        _nextReceipt++;
-        onProgress?.call();
+      final pending = [
+        for (var i = 0; i < receipts.length; i++)
+          if (!_acknowledged.contains(i)) i,
+      ];
+      // 一张单失败不再连坐取消其余单：通道全部跑完后按报告顺序抛最早失败，
+      // 未确认的单重试时原样重发（串行时代的快速失败在并行下只会白丢进度）。
+      final failures = <int, Object>{};
+      var next = 0;
+      Future<void> worker() async {
+        while (next < pending.length) {
+          final index = pending[next++];
+          final receipt = receipts[index];
+          try {
+            await iqc.decideBatch(
+              receiptType: receipt.receiptType,
+              receiptId: receipt.receiptId,
+              items: receipt.items,
+              reason: reason,
+            );
+            _acknowledged.add(index);
+            onProgress?.call();
+          } catch (error) {
+            failures[index] = error;
+          }
+        }
+      }
+
+      await Future.wait([
+        for (var i = 0; i < _sendLanes && i < pending.length; i++) worker(),
+      ]);
+      if (failures.isNotEmpty) {
+        final earliest = failures.keys.reduce((a, b) => a < b ? a : b);
+        throw failures[earliest]!;
       }
       if (fqcInspectionIds.isNotEmpty && !_fqcAcknowledged) {
         await fqc.passAll(

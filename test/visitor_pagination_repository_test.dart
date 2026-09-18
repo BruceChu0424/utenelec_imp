@@ -67,13 +67,12 @@ void main() {
       final repository = DioVisitorRepository(
         _api((request) {
           requests.add(request);
-          final status = request.queryParameters['status'] as String;
           final page = request.queryParameters['page'] as int;
           return _pageJson(
             page: page,
             size: 100,
-            total: status == 'pending' ? 101 : 1,
-            totalPages: status == 'pending' ? 2 : 1,
+            total: page == 1 ? 101 : 1,
+            totalPages: page == 1 ? 2 : 1,
           );
         }),
         SecureStorage(const FlutterSecureStorage()),
@@ -81,17 +80,14 @@ void main() {
 
       final applications = await repository.activeApplications();
 
-      expect(applications, hasLength(5));
+      // 后端多状态一次取全活跃集：每页一个请求，状态集固定。
+      expect(applications, hasLength(2));
       expect(
         requests.map((request) => request.queryParameters['status']).toSet(),
-        {'pending', 'hostReviewing', 'approved', 'checkedIn'},
+        {'pending,hostReviewing,approved,checkedIn'},
       );
       expect(
-        requests.where(
-          (request) =>
-              request.queryParameters['status'] == 'pending' &&
-              request.queryParameters['page'] == 2,
-        ),
+        requests.where((request) => request.queryParameters['page'] == 2),
         hasLength(1),
       );
       expect(
@@ -100,6 +96,33 @@ void main() {
       );
     },
   );
+  test('blacklist endpoints hit canonical paths with reason body', () async {
+    final requests = <RequestOptions>[];
+    final repository = VisitorStaffRepository(
+      _api((request) {
+        requests.add(request);
+        return {
+          'items': <Map<String, dynamic>>[],
+          'page': 1,
+          'size': 20,
+          'total': 0,
+          'totalPages': 0,
+        };
+      }),
+    );
+
+    await repository.blacklist('visitor-1', reason: '冒用凭证');
+    await repository.unblacklist('visitor-1');
+    final page = await repository.blacklistPage();
+
+    expect(requests[0].path, '/security/blacklist/visitor-1');
+    expect(requests[0].data, {'reason': '冒用凭证'});
+    expect(requests[1].path, '/security/blacklist/visitor-1');
+    expect(requests[1].method, 'DELETE');
+    expect(requests[2].path, '/security/blacklist');
+    expect(requests[2].queryParameters, {'page': 1, 'size': 20});
+    expect(page.total, 0);
+  });
 }
 
 ApiClient _api(Object? Function(RequestOptions request) responder) {

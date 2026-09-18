@@ -673,6 +673,22 @@ class NoticeServiceTest {
         service.resolveReviewNotices("SALES_ORDER", aggregateId, null);
         verify(noticeRepository).resolveReviewPendingByAggregate(
                 "SALES_ORDER", aggregateId, "COMPLETED");
+        // 办结即已读（2026-09-18 口径）：每次撤回都同步按聚合把各接收人置已读，
+        // 已办结的通知不再以未读形式滞留通知页与角标。
+        verify(stateRepository, times(2))
+                .markReadForAggregateRecipients("SALES_ORDER", aggregateId);
+    }
+
+    @Test
+    void markReadBySourceEventsReturnsClearedCountAndSkipsEmpty() {
+        assertEquals(0, service.markReadBySourceEvents(List.of()));
+        assertEquals(0, service.markReadBySourceEvents(null));
+        verify(stateRepository, never()).markVisibleReadBySourceEvents(any(), any());
+
+        List<String> events = List.of("PRODUCTION_FINISHED_INBOUND");
+        when(stateRepository.markVisibleReadBySourceEvents(userId, events)).thenReturn(7);
+
+        assertEquals(7, service.markReadBySourceEvents(events));
     }
 
     @Test

@@ -80,8 +80,8 @@ function metadata(version, sequence, commit = 'a'.repeat(40)) {
 
 test('shows a banner when only signed application release metadata changes', async () => {
   const result = await runChecker({
-    baseline: 'v2026.08.11-1',
-    remote: metadata('v2026.08.11-2', 20260811002),
+    baseline: 'v1.1.0',
+    remote: metadata('v1.1.1', 100001001001),
   });
 
   assert.equal(result.fetchCount, 1);
@@ -90,8 +90,8 @@ test('shows a banner when only signed application release metadata changes', asy
 
 test('does not show a banner for the page release itself', async () => {
   const result = await runChecker({
-    baseline: 'v2026.08.11-2',
-    remote: metadata('v2026.08.11-2', 20260811002),
+    baseline: 'v1.1.1',
+    remote: metadata('v1.1.1', 100001001001),
   });
 
   assert.equal(result.fetchCount, 1);
@@ -101,7 +101,7 @@ test('does not show a banner for the page release itself', async () => {
 test('an unstamped development page never polls or prompts', async () => {
   const result = await runChecker({
     baseline: '__UTEN_RELEASE_VERSION__',
-    remote: metadata('v2026.08.11-2', 20260811002),
+    remote: metadata('v1.1.1', 100001001001),
   });
 
   assert.equal(result.fetchCount, 0);
@@ -110,8 +110,8 @@ test('an unstamped development page never polls or prompts', async () => {
 
 test('rejects malformed or unsigned-looking metadata', async () => {
   const result = await runChecker({
-    baseline: 'v2026.08.11-1',
-    remote: { version: 'v2026.08.11-2' },
+    baseline: 'v1.1.0',
+    remote: { version: 'v1.1.1' },
   });
 
   assert.equal(result.fetchCount, 1);

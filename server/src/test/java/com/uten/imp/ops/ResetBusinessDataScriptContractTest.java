@@ -348,7 +348,7 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(598, 555)")
                 .contains("(599, 556)")
                 .contains("(600, 557)")
-                .contains("V507/469、V508/470及V511至V600完整目录")
+                .contains("V507/469、V508/470及V511至V602完整目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")

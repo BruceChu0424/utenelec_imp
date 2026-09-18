@@ -119,6 +119,9 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
   bool _openAbove = false;
   double _maxHeight = 320;
 
+  /// 浮层宽度 = 字段实测宽（打开时测得；120~480 夹紧）。
+  double _fieldWidth = 240;
+
   /// 当前值的展示文本（孤儿值兜底显原值）。
   String get _display {
     if (widget.value == null) return '';
@@ -141,9 +144,13 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
       _openAbove = up > down;
       final avail = (_openAbove ? up : down) - 8;
       _maxHeight = avail.clamp(120.0, 320.0);
+      // 弹层与字段同宽（2026-09-18 用户口径：点开的列表应该和框一样宽）；
+      // 极窄字段保底 120，超宽表单字段封顶 480，超出部分仍可内部省略。
+      _fieldWidth = box.size.width.clamp(120.0, 480.0);
     } else {
       _openAbove = false;
       _maxHeight = 320;
+      _fieldWidth = 240;
     }
     _searchCtl = TextEditingController();
     _searchFocus = FocusNode();
@@ -195,6 +202,12 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
             applyAutofillHint(
               UtenInputDecoration(
                 InputDecoration(
+                  // 紧凑形态（2026-09-18 用户口径：表格内下拉太高）——isDense +
+                  // 收窄内边距，收起时与同行文本格等高；非 dense 走主题默认。
+                  isDense: widget.dense,
+                  contentPadding: widget.dense
+                      ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
+                      : null,
                   label: widget.label == null
                       ? null
                       : fieldLabel(
@@ -272,10 +285,8 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
               borderRadius: BorderRadius.circular(8),
               clipBehavior: Clip.antiAlias,
               child: Container(
-                constraints: BoxConstraints(
-                  maxHeight: _maxHeight,
-                  maxWidth: 300,
-                ),
+                width: _fieldWidth,
+                constraints: BoxConstraints(maxHeight: _maxHeight),
                 child: StatefulBuilder(
                   builder: (ctx, setOverlayState) {
                     final q = _searchCtl?.text.trim().toLowerCase() ?? '';
@@ -451,7 +462,6 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
     return InkWell(
       onTap: onTap,
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 300),
         padding: EdgeInsets.only(
           left: UtenSpacing.s12 + indent,
           right: UtenSpacing.s12,

@@ -553,6 +553,9 @@ abstract final class ApiEndpoints {
   static const visitorLogin = '/visitor/auth/login';
   static const visitorRefresh = '/visitor/auth/refresh';
   static const visitorLogout = '/visitor/auth/logout';
+
+  /// 冷启动会话校验（访客主体；401 时拦截器自动走刷新流程）。
+  static const visitorMe = '/visitor/me';
   static const visitorDirectoryDepartments = '/visitor/directory/departments';
   static const visitorDirectoryEmployees = '/visitor/directory/employees';
   static const visitorApplicationsMine = '/visitor/applications/mine';
@@ -573,6 +576,10 @@ abstract final class ApiEndpoints {
       '/visitor-approval/$id/host-confirm';
   static const securityVerify = '/security/verify';
   static String securityCheckIn(String id) => '/security/check-in/$id';
+
+  /// 访客黑名单（visitor:blacklist）：列表分页 / 拉黑（原因必填）/ 解除。
+  static const securityBlacklist = '/security/blacklist';
+  static String securityBlacklistById(String id) => '/security/blacklist/$id';
 
   // 个人信息修改
   static const authVerifyPassword = '/auth/verify-password';

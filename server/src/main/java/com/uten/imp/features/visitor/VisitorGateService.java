@@ -1,12 +1,20 @@
 package com.uten.imp.features.visitor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.features.auth.model.UserAccountRepository;
+import com.uten.imp.features.org.employee.Employee;
+import com.uten.imp.features.org.employee.EmployeeRepository;
+import com.uten.imp.features.visitor.dto.VisitorScanDto.BlacklistListItem;
 import com.uten.imp.features.visitor.dto.VisitorScanDto.VisitorVerifyResponse;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,9 +23,14 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.util.Base64;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
-/** 保安门岗：扫码/短码核验（验签判绿/红）、签到、拉黑，及 QR/短码签发。 */
+/** 保安门岗：扫码/短码核验（验签判绿/红）、签到、拉黑/解除/黑名单列表，及 QR/短码签发。 */
 @Service
 @RequiredArgsConstructor
 public class VisitorGateService {
@@ -32,6 +45,9 @@ public class VisitorGateService {
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final ObjectMapper objectMapper;
+    private final AuditService audit;
+    private final UserAccountRepository userRepo;
+    private final EmployeeRepository employeeRepo;
 
     @Transactional
     public VisitorVerifyResponse verify(String qrToken, String passcode) {
@@ -92,15 +108,96 @@ public class VisitorGateService {
         return green(app);
     }
 
-    /** H4：拉黑访客（blocked → JwtAuthFilter 即时拒绝）。 */
+    /** H4/V603：拉黑访客（blocked → JwtAuthFilter 即时拒绝；原因/时间/操作人落库 + 审计）。 */
     @Transactional
-    public void blacklist(UUID visitorId) {
+    public void blacklist(UUID visitorId, String reason) {
+        UUID actorId = guard.requireStaff();
         tx.bind();
-        guard.requireStaff();
         VisitorAccount acc = accountRepo.findAndLockById(visitorId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        if ("blocked".equals(acc.getStatus())) {
+            throw new ApiException(ErrorCode.BUSINESS, "该访客已在黑名单中");
+        }
         acc.setStatus("blocked");
+        acc.setBlockedReason(reason == null ? null : reason.trim());
+        acc.setBlockedAt(OffsetDateTime.now());
+        acc.setBlockedBy(actorId);
         accountRepo.save(acc);
+        audit.logCommitted(visitorId, acc.getVisitorNo(), "visitor_blacklist",
+                "visitor_account", visitorId.toString(),
+                acc.getBlockedReason(), null);
+    }
+
+    /** 解除拉黑：账号回 active、清运营字段；行级历史由 fn_audit 触发器留痕。 */
+    @Transactional
+    public void unblacklist(UUID visitorId) {
+        UUID actorId = guard.requireStaff();
+        tx.bind();
+        VisitorAccount acc = accountRepo.findAndLockById(visitorId)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+        if (!"blocked".equals(acc.getStatus())) {
+            throw new ApiException(ErrorCode.BUSINESS, "该访客不在黑名单中");
+        }
+        acc.setStatus("active");
+        acc.setBlockedReason(null);
+        acc.setBlockedAt(null);
+        acc.setBlockedBy(null);
+        accountRepo.save(acc);
+        audit.logCommitted(visitorId, acc.getVisitorNo(), "visitor_unblacklist",
+                "visitor_account", visitorId.toString(), "success", null);
+    }
+
+    /** 黑名单管理页列表（blocked 账号分页，批量装配操作人姓名，避免逐行查询）。 */
+    @Transactional(readOnly = true)
+    public PageResponse<BlacklistListItem> blacklistPage(int page, int size) {
+        guard.requireStaff();
+        Pageable pageable = VisitorApplicationService.visitorPageable(page, size);
+        Page<VisitorAccount> result = accountRepo.findBlacklisted(pageable);
+        Map<UUID, String> operatorNames = operatorNames(result.getContent());
+        return new PageResponse<>(
+                result.getContent().stream()
+                        .map(acc -> new BlacklistListItem(
+                                acc.getId(),
+                                acc.getVisitorNo(),
+                                acc.getName(),
+                                acc.getPhoneEnc() == null ? null : tx.decrypt(acc.getPhoneEnc()),
+                                acc.getBlockedReason(),
+                                acc.getBlockedAt(),
+                                acc.getBlockedBy() == null ? null
+                                        : operatorNames.get(acc.getBlockedBy())))
+                        .toList(),
+                pageable.getPageNumber() + 1,
+                pageable.getPageSize(),
+                result.getTotalElements(),
+                result.getTotalPages());
+    }
+
+    /** blockedBy(users.id) → 员工姓名，两次批量查询（users → employees）。 */
+    private Map<UUID, String> operatorNames(List<VisitorAccount> accounts) {
+        Set<UUID> userIds = accounts.stream()
+                .map(VisitorAccount::getBlockedBy)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (userIds.isEmpty()) {
+            return Map.of();
+        }
+        var users = userRepo.findAllById(userIds);
+        Set<UUID> employeeIds = users.stream()
+                .map(user -> user.getEmployeeId())
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (employeeIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, String> byEmployee = employeeRepo.findAllById(employeeIds).stream()
+                .collect(Collectors.toMap(Employee::getId, Employee::getFullName, (a, b) -> a));
+        return users.stream()
+                .filter(user -> user.getEmployeeId() != null
+                        && byEmployee.containsKey(user.getEmployeeId()))
+                .collect(Collectors.toMap(
+                        user -> user.getId(),
+                        user -> byEmployee.get(user.getEmployeeId()),
+                        (a, b) -> a));
     }
 
     /** QR, short code and final admission share current database authority. */
@@ -172,18 +269,21 @@ public class VisitorGateService {
     private VisitorVerifyResponse green(VisitorApplication app) {
         String[] host = mapper.hostInfo(app);
         return new VisitorVerifyResponse(true, "green", "ok",
-                app.getId(), app.getVisitorName(), app.getVisitPurpose(),
-                host[0], tx.decrypt(app.getPlateNoEnc()), app.getPlannedVisitAt(), app.getCheckInAt());
+                app.getId(), app.getVisitorAccountId(), app.getVisitorName(),
+                app.getVisitPurpose(), host[0], tx.decrypt(app.getPlateNoEnc()),
+                app.getPlannedVisitAt(), app.getCheckInAt());
     }
 
     private VisitorVerifyResponse red(String reason, VisitorApplication app) {
         if (app == null) {
-            return new VisitorVerifyResponse(false, "red", reason, null, null, null, null, null, null, null);
+            return new VisitorVerifyResponse(false, "red", reason,
+                    null, null, null, null, null, null, null, null);
         }
         String[] host = mapper.hostInfo(app);
         return new VisitorVerifyResponse(false, "red", reason,
-                app.getId(), app.getVisitorName(), app.getVisitPurpose(),
-                host[0], tx.decrypt(app.getPlateNoEnc()), app.getPlannedVisitAt(), app.getCheckInAt());
+                app.getId(), app.getVisitorAccountId(), app.getVisitorName(),
+                app.getVisitPurpose(), host[0], tx.decrypt(app.getPlateNoEnc()),
+                app.getPlannedVisitAt(), app.getCheckInAt());
     }
 
     record QrPayload(UUID aid, long exp) {}

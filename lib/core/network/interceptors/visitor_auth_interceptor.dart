@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 
 import '../../security/secure_storage.dart';
+import '../api_endpoints.dart';
 import '../network_policy.dart';
 import '../visitor_session_event_bus.dart';
 import 'token_refresh_result.dart';
@@ -91,7 +92,7 @@ class VisitorAuthInterceptor extends Interceptor {
       }
       final dio = _dioFactory();
       final resp = await dio.post<dynamic>(
-        '/visitor/auth/refresh',
+        ApiEndpoints.visitorRefresh,
         data: {'refreshToken': refresh},
       );
       final data = resp.data;
@@ -120,7 +121,7 @@ class VisitorAuthInterceptor extends Interceptor {
     } catch (error, stackTrace) {
       final result = TokenRefreshResult.unavailable(
         DioException(
-          requestOptions: RequestOptions(path: '/visitor/auth/refresh'),
+          requestOptions: RequestOptions(path: ApiEndpoints.visitorRefresh),
           error: error,
           stackTrace: stackTrace,
         ),

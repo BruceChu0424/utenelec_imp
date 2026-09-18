@@ -1,10 +1,13 @@
 // 访客会话 Provider（visitor 主体，独立于员工 sessionProvider）。
-// 状态：guest 未登录 / active 已登录。令牌存 SecureStorage(visitor.*)；启动凭 token 恢复（解码 JWT 拿 visitorNo）。
+// 状态：guest 未登录 / active 已登录。令牌存 SecureStorage(visitor.*)；启动凭 token
+// 恢复——先调 /visitor/me 服务端校验（令牌过期时拦截器自动刷新，刷新被拒则触发
+// 会话失效），网络不可用等临时失败降级为本地解码 JWT，不打断离线访客。
 
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/network/api_exception.dart';
 import '../../../core/network/visitor_session_event_bus.dart';
 import '../../../core/security/secure_storage.dart';
 import '../models/visitor.dart';
@@ -40,9 +43,36 @@ class VisitorSessionNotifier extends Notifier<VisitorSessionState> {
   Future<void> _restore() async {
     final token = await _storage.getVisitorAccessToken();
     if (token == null || token.isEmpty) return;
+    try {
+      // 服务端校验：令牌过期先走拦截器刷新，刷新被拒会清存储并广播过期；
+      // 成功则用服务器资料激活会话（姓名等可能已在别处更新）。
+      final me = await _repo.me();
+      state = VisitorSessionState(
+        status: VisitorAuthStatus.active,
+        visitor: me,
+      );
+      return;
+    } on ApiException catch (e) {
+      // 401/403/404：令牌或账号已失效（拦截器已处理过期广播），结束恢复。
+      final definitive =
+          e.httpStatus == 401 ||
+          e.httpStatus == 403 ||
+          e.code == 'UNAUTHORIZED' ||
+          e.code == 'FORBIDDEN';
+      if (definitive) {
+        await _storage.clearVisitorTokens();
+        return;
+      }
+      // 其它业务错误按临时失败处理，降级本地解码。
+    } catch (_) {
+      // 网络不可用等：降级本地解码，离线访客不被误登出。
+    }
     final v = _decodeVisitor(token);
     if (v != null) {
       state = VisitorSessionState(status: VisitorAuthStatus.active, visitor: v);
+    } else {
+      // 本地令牌已损坏：清掉避免每次冷启动都走无效恢复。
+      await _storage.clearVisitorTokens();
     }
   }
 

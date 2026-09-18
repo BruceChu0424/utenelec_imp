@@ -43,6 +43,33 @@ class ProductionExecutionSegmentControllerTest {
     }
 
     @Test
+    void confirmRouteUsesViewPlusStartAndDelegatesTheExactRequest()
+            throws Exception {
+        ProductionExecutionSegmentService service =
+                mock(ProductionExecutionSegmentService.class);
+        ProductionExecutionSegmentController controller =
+                new ProductionExecutionSegmentController(service);
+        UUID planId = UUID.randomUUID();
+        UUID segmentId = UUID.randomUUID();
+        SegmentRouteConfirmRequest request = new SegmentRouteConfirmRequest(
+                5L, "route-confirm-key-0001", "FULL_KIT");
+
+        controller.confirmRoute(planId, segmentId, request);
+        verify(service).confirmRoute(planId, segmentId, request);
+
+        // ADR-091：与领料申请/分批提交同门槛 view+start（权限零新增）。
+        Method method = ProductionExecutionSegmentController.class
+                .getDeclaredMethod(
+                        "confirmRoute",
+                        UUID.class, UUID.class, SegmentRouteConfirmRequest.class);
+        assertThat(method.getAnnotation(PostMapping.class).value())
+                .containsExactly("/{segmentId}/confirm-route");
+        assertThat(method.getAnnotation(PreAuthorize.class).value())
+                .isEqualTo("hasAuthority('production_execution:view')"
+                        + " and hasAuthority('production_execution:start')");
+    }
+
+    @Test
     void batchStartRequestEnforcesNestedFieldsAndOneHundredItemLimit() {
         try (var factory = Validation.buildDefaultValidatorFactory()) {
             var validator = factory.getValidator();

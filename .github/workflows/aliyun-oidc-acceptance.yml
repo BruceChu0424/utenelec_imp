@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       expected_release_ref:
-        description: Exact protected tag ref, for example refs/tags/v2026.08.12-1
+        description: Exact protected tag ref, for example refs/tags/v1.2.0
         required: true
         type: string
 
@@ -32,7 +32,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$CONFIRMATION" = READ_ONLY_OIDC_ACCEPTANCE
-          [[ "$EXPECTED_RELEASE_REF" =~ ^refs/tags/v[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[1-9][0-9]{0,2}$ ]]
+          [[ "$EXPECTED_RELEASE_REF" =~ ^refs/tags/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           test "$RELEASE_REF" = "$EXPECTED_RELEASE_REF"
           test "$RELEASE_REF_TYPE" = tag
           test "$RELEASE_REF_PROTECTED" = true

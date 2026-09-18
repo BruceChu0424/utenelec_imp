@@ -588,7 +588,7 @@ INTERNAL_TEST_APPLICATION_ENV_VALIDATION_OUTPUT = (
     "Local attachments are pinned to /data/uten-imp/attachments and require the independent storage preflight.",
 )
 INTERNAL_TEST_APPROVAL_RE = re.compile(r"CHG-[A-Z0-9][A-Z0-9._-]{5,95}")
-INTERNAL_TEST_VERSION_RE = re.compile(r"v\d{4}\.\d{2}\.\d{2}-[1-9]\d{0,2}")
+INTERNAL_TEST_VERSION_RE = re.compile(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
 INTERNAL_TEST_TRANSACTION_RE = re.compile(
     r"internal-test-db-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{12}"
 )

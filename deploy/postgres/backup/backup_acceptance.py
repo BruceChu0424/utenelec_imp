@@ -82,7 +82,7 @@ TRUSTED_RELEASE_ALLOWED_SIGNERS = Path(
     "/etc/uten-imp-release-trust/release-allowed-signers"
 )
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
-VERSION = re.compile(r"^v\d{4}\.\d{2}\.\d{2}-[1-9]\d{0,2}$")
+VERSION = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 REFERENCE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{2,127}$")
 FILENAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{2,127}\.json$")
 WAL = re.compile(r"^[0-9A-F]{24}$")
@@ -631,7 +631,7 @@ def main() -> int:
         if not REFERENCE.fullmatch(args.approval_reference):
             raise ContractError("approval reference is not canonical")
         if not VERSION.fullmatch(args.target_version):
-            raise ContractError("target version must match vYYYY.MM.DD-N")
+            raise ContractError("target version must match vMAJOR.MINOR.PATCH")
         if not args.flyway_head_version.isdigit() or args.flyway_migration_count < 1:
             raise ContractError("signed Flyway head/count is invalid")
         if not SHA256.fullmatch(args.flyway_migration_set_sha256):

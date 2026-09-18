@@ -28,7 +28,18 @@ import '../providers/procurement_inbound_count_providers.dart';
 import '../repositories/procurement_inbound_repository.dart';
 
 class FinanceArrivalExceptionTasksPage extends ConsumerStatefulWidget {
-  const FinanceArrivalExceptionTasksPage({super.key});
+  const FinanceArrivalExceptionTasksPage({
+    super.key,
+    this.embedded = false,
+    this.refreshTick = 0,
+  });
+
+  /// 嵌入「业务审核中心」分段时为 true——去掉本页 AppBar 与内容容器
+  /// （外层提供标题/刷新/容器）。
+  final bool embedded;
+
+  /// 外层（业务审核中心）触发的刷新信号；数值变化时重拉当前页。
+  final int refreshTick;
 
   @override
   ConsumerState<FinanceArrivalExceptionTasksPage> createState() =>
@@ -46,6 +57,14 @@ class _FinanceArrivalExceptionTasksPageState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+  }
+
+  @override
+  void didUpdateWidget(FinanceArrivalExceptionTasksPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.refreshTick != oldWidget.refreshTick) {
+      _load(_result?.page ?? 1);
+    }
   }
 
   Future<void> _load(int page) async {
@@ -82,6 +101,18 @@ class _FinanceArrivalExceptionTasksPageState
   @override
   Widget build(BuildContext context) {
     final result = _result;
+    final body = SafeArea(
+      child: _loading && result == null
+          ? const UtenSkeletonList()
+          : _error != null && result == null
+          ? UtenEmpty.error(
+              message: _error,
+              actionLabel: '重新加载',
+              onAction: () => _load(1),
+            )
+          : _buildList(result),
+    );
+    if (widget.embedded) return body;
     return Scaffold(
       appBar: UtenAppBar(
         title: '超量到货审批',
@@ -98,17 +129,7 @@ class _FinanceArrivalExceptionTasksPageState
           ),
         ],
       ),
-      body: SafeArea(
-        child: _loading && result == null
-            ? const UtenSkeletonList()
-            : _error != null && result == null
-            ? UtenEmpty.error(
-                message: _error,
-                actionLabel: '重新加载',
-                onAction: () => _load(1),
-              )
-            : _buildList(result),
-      ),
+      body: body,
     );
   }
 
@@ -123,58 +144,61 @@ class _FinanceArrivalExceptionTasksPageState
           totalPages: 1,
         );
     // 2026-09-15 宽度口径（用户反馈）：弃 narrow（1120 两侧大留白），
-    // 改默认容器对齐新建销售订货单页。
-    return UtenContentContainer(
-      child: RefreshIndicator(
-        onRefresh: () => _load(result.page),
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-          children: [
-            _FinanceTaskSummary(total: result.total),
-            if (_error != null) ...[
-              const SizedBox(height: UtenSpacing.s12),
-              Text(
-                '刷新失败：$_error',
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            ],
-            const SizedBox(height: UtenSpacing.s16),
-            if (result.items.isEmpty)
-              const SizedBox(
-                height: 380,
-                child: UtenEmpty(
-                  icon: Icons.task_alt_rounded,
-                  message: '目前没有待审批的超量到货',
-                  description: '财务部门持权人员及被点名授权的员工均可在此处理到货超量审批。',
-                ),
-              )
-            else
-              for (var i = 0; i < result.items.length; i++) ...[
-                _FinanceTaskCard(
-                  key: Key('finance-arrival-task-${result.items[i].id}'),
-                  task: result.items[i],
-                  onOpen: () => context.push(
-                    RoutePath.financeArrivalException(result.items[i].id),
-                  ),
-                ),
-                if (i != result.items.length - 1)
-                  const SizedBox(height: UtenSpacing.s12),
-              ],
-            if (result.totalPages > 1) ...[
-              const SizedBox(height: UtenSpacing.s20),
-              _Pager(
-                page: result.page,
-                totalPages: result.totalPages,
-                loading: _loading,
-                onPage: _load,
-              ),
-            ],
-            const SizedBox(height: UtenSpacing.s24),
+    // 改默认容器对齐新建销售订货单页。嵌入形态不复套容器（业务审核中心已提供），
+    // 只保留下拉刷新与列表本体。
+    final listView = RefreshIndicator(
+      onRefresh: () => _load(result.page),
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: widget.embedded
+            ? const EdgeInsets.only(bottom: UtenSpacing.s16)
+            : const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+        children: [
+          _FinanceTaskSummary(total: result.total),
+          if (_error != null) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            Text(
+              '刷新失败：$_error',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
           ],
-        ),
+          const SizedBox(height: UtenSpacing.s16),
+          if (result.items.isEmpty)
+            const SizedBox(
+              height: 380,
+              child: UtenEmpty(
+                icon: Icons.task_alt_rounded,
+                message: '目前没有待审批的超量到货',
+                description: '财务部门持权人员及被点名授权的员工均可在此处理到货超量审批。',
+              ),
+            )
+          else
+            for (var i = 0; i < result.items.length; i++) ...[
+              _FinanceTaskCard(
+                key: Key('finance-arrival-task-${result.items[i].id}'),
+                task: result.items[i],
+                onOpen: () => context.push(
+                  RoutePath.financeArrivalException(result.items[i].id),
+                ),
+              ),
+              if (i != result.items.length - 1)
+                const SizedBox(height: UtenSpacing.s12),
+            ],
+          if (result.totalPages > 1) ...[
+            const SizedBox(height: UtenSpacing.s20),
+            _Pager(
+              page: result.page,
+              totalPages: result.totalPages,
+              loading: _loading,
+              onPage: _load,
+            ),
+          ],
+          const SizedBox(height: UtenSpacing.s24),
+        ],
       ),
     );
+    if (widget.embedded) return listView;
+    return UtenContentContainer(child: listView);
   }
 }
 

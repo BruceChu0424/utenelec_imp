@@ -16,6 +16,7 @@ class SecurityVerifyResult {
     required this.color,
     required this.reason,
     this.applicationId,
+    this.visitorId,
     this.visitorName,
     this.visitPurpose,
     this.hostName,
@@ -26,8 +27,11 @@ class SecurityVerifyResult {
 
   final bool valid;
   final String color; // green / red
-  final String reason; // ok / invalid / expired / used / rejected
+  final String reason; // ok / invalid / expired / used / rejected / blocked
   final String? applicationId;
+
+  /// 访客账号 id（红结果定位访客发起拉黑用；凭据无效时为 null）。
+  final String? visitorId;
   final String? visitorName;
   final String? visitPurpose;
   final String? hostName;
@@ -41,6 +45,7 @@ class SecurityVerifyResult {
         color: (j['color'] ?? '').toString(),
         reason: (j['reason'] ?? '').toString(),
         applicationId: j['applicationId']?.toString(),
+        visitorId: j['visitorId']?.toString(),
         visitorName: j['visitorName'] as String?,
         visitPurpose: j['visitPurpose'] as String?,
         hostName: j['hostName'] as String?,
@@ -51,6 +56,40 @@ class SecurityVerifyResult {
         checkInAt: j['checkInAt'] is String
             ? ChinaDateTime.tryParse(j['checkInAt'] as String)
             : null,
+      );
+}
+
+/// 黑名单列表项（管理页）。
+class VisitorBlacklistItem {
+  const VisitorBlacklistItem({
+    required this.id,
+    required this.visitorNo,
+    required this.name,
+    this.phone,
+    this.blockedReason,
+    this.blockedAt,
+    this.blockedByName,
+  });
+
+  final String id;
+  final String visitorNo;
+  final String name;
+  final String? phone;
+  final String? blockedReason;
+  final DateTime? blockedAt;
+  final String? blockedByName;
+
+  factory VisitorBlacklistItem.fromJson(Map<String, dynamic> j) =>
+      VisitorBlacklistItem(
+        id: (j['id'] ?? '').toString(),
+        visitorNo: (j['visitorNo'] ?? '').toString(),
+        name: (j['name'] ?? '').toString(),
+        phone: j['phone'] as String?,
+        blockedReason: j['blockedReason'] as String?,
+        blockedAt: j['blockedAt'] is String
+            ? ChinaDateTime.tryParse(j['blockedAt'] as String)
+            : null,
+        blockedByName: j['blockedByName'] as String?,
       );
 }
 
@@ -179,6 +218,32 @@ class VisitorStaffRepository {
   Future<SecurityVerifyResult> checkIn(String appId) async {
     final r = await _api.post(ApiEndpoints.securityCheckIn(appId));
     return SecurityVerifyResult.fromJson(r);
+  }
+
+  // —— 黑名单（visitor:blacklist）——
+  /// 拉黑访客账号：原因必填（≤200 字），后端同事务写 blocked_* 并审计。
+  Future<void> blacklist(String visitorId, {required String reason}) async {
+    await _api.post(
+      ApiEndpoints.securityBlacklistById(visitorId),
+      body: {'reason': reason},
+    );
+  }
+
+  /// 解除拉黑：账号回 active，可重新登录/申请；历史申请状态不变。
+  Future<void> unblacklist(String visitorId) async {
+    await _api.delete(ApiEndpoints.securityBlacklistById(visitorId));
+  }
+
+  /// 黑名单分页列表（拉黑时间新者优先）。
+  Future<PagedResult<VisitorBlacklistItem>> blacklistPage({
+    int page = 1,
+    int size = 20,
+  }) async {
+    final response = await _api.get(
+      ApiEndpoints.securityBlacklist,
+      query: {'page': page, 'size': size},
+    );
+    return PagedResult.fromJson(response, VisitorBlacklistItem.fromJson);
   }
 }
 

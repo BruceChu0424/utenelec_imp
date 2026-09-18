@@ -6,6 +6,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -13,7 +14,10 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/permissions.dart';
 import 'visitor_check_result_page.dart';
 
 class SecurityScanPage extends ConsumerStatefulWidget {
@@ -64,8 +68,13 @@ class _SecurityScanPageState extends ConsumerState<SecurityScanPage> {
   }
 
   void _manualGo() {
+    final l10n = AppLocalizations.of(context);
     final t = _manualCtl.text.trim();
-    if (t.isEmpty) return;
+    // 通行码固定 6 位数字：先在前端拦住误触，后端查不到码只会返回红色「无效」。
+    if (!RegExp(r'^\d{6}$').hasMatch(t)) {
+      context.appError(l10n.securityPasscodeInvalid);
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => VisitorCheckResultPage(passcode: t),
@@ -78,7 +87,21 @@ class _SecurityScanPageState extends ConsumerState<SecurityScanPage> {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: UtenAppBar(title: l10n.securityTitle, showBackButton: true),
+      appBar: UtenAppBar(
+        title: l10n.securityTitle,
+        showBackButton: true,
+        actions: [
+          // 黑名单管理入口（visitor:blacklist 显隐；路由另有守卫兜底）。
+          if (ref
+              .watch(currentPermissionsProvider)
+              .contains(Perm.visitorBlacklist))
+            IconButton(
+              icon: const Icon(Icons.block_rounded),
+              tooltip: l10n.securityBlacklistTitle,
+              onPressed: () => context.go(RouteName.securityBlacklist),
+            ),
+        ],
+      ),
       // 局部 SelectionArea：扫码页说明文字可框选复制（准则 §3.4）。
       body: SelectionArea(
         child: Stack(

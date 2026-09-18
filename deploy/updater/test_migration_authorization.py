@@ -63,14 +63,14 @@ class MigrationAuthorizationTest(unittest.TestCase):
             "markerPath": str(migration.ACTIVATION_IN_PROGRESS_MARKER),
             "markerSha256": marker_sha,
             "nonce": nonce,
-            "releaseSequence": 20260812001,
+            "releaseSequence": 100001002000,
             "schemaVersion": 1,
-            "targetPath": "/opt/uten-imp/releases/v2026.08.12-1",
+            "targetPath": "/opt/uten-imp/releases/v1.2.0",
             "transactionEvidencePath": (
                 f"/var/lib/uten-imp-release/migration-evidence/"
                 f"activation-{marker_sha}-{nonce}"
             ),
-            "version": "v2026.08.12-1",
+            "version": "v1.2.0",
         }
 
     def manifest(self) -> dict[str, object]:
@@ -78,8 +78,8 @@ class MigrationAuthorizationTest(unittest.TestCase):
             "commitSha": "b" * 40,
             "flywayHeadVersion": "255",
             "flywayMigrationSetSha256": "c" * 64,
-            "releaseSequence": 20260812001,
-            "version": "v2026.08.12-1",
+            "releaseSequence": 100001002000,
+            "version": "v1.2.0",
         }
 
     def test_valid_grant_binds_boot_marker_signed_current_and_live_issuer(self) -> None:
@@ -177,7 +177,7 @@ class MigrationAuthorizationTest(unittest.TestCase):
             migration,
             "_verified_current_release",
             return_value=(
-                Path("/opt/uten-imp/releases/v2026.08.11-1"),
+                Path("/opt/uten-imp/releases/v1.1.0"),
                 self.manifest(),
                 str(authorization["manifestSha256"]),
             ),

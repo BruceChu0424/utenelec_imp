@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Canonical future release version (vYYYY.MM.DD-N)
+        description: Canonical future release version (vMAJOR.MINOR.PATCH)
         required: true
         type: string
       expected_main_sha:

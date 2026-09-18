@@ -37,6 +37,8 @@ import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/purchase_doc_config.dart';
 import '../models/purchase_doc.dart';
+import '../widgets/purchase_status_badge.dart'
+    show purchaseOrderDisplayBadgeType;
 import '../../../shared/providers/master_name_provider.dart';
 import '../repositories/purchase_repository.dart';
 
@@ -206,28 +208,17 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
       return '计划已下达';
     }
     if (widget.docType == PurchaseDocType.order) {
-      return switch (item.financeApproval?.status) {
-        'PENDING' => '等待财务审核',
-        'REJECTED' => '财务退回',
-        'APPROVED' => '财务已通过',
-        'DRAFT' => '待提交财务',
-        _ => purchaseStatusLabel(item.status),
-      };
+      return purchaseOrderDisplayLabel(item.status, item.financeApproval);
     }
     return purchaseStatusLabel(item.status);
   }
 
-  /// 状态徽章语义（与 [_statusLabel] 同一分支）：订货单财务态 等待财务审核=警告黄 /
-  /// 财务退回=危险红 / 财务已通过=成功绿 / 待提交财务=中性；其余按单据 0/1/-1。
+  /// 状态徽章语义（与 [_statusLabel] 同一分支）：订货单走财务审批投影
+  /// （等待财务审核=警告 / 退回=危险 / 已通过=成功 / 待提交=中性），
+  /// 其余按单据 0/1/-1/2。映射与详情页共用 purchase_status_badge.dart。
   UtenStatusBadgeType _statusBadgeType(PurchaseDocListItem item) {
     if (widget.docType == PurchaseDocType.order) {
-      return switch (item.financeApproval?.status) {
-        'PENDING' => UtenStatusBadgeType.warning,
-        'REJECTED' => UtenStatusBadgeType.danger,
-        'APPROVED' => UtenStatusBadgeType.success,
-        'DRAFT' => UtenStatusBadgeType.neutral,
-        _ => docStatusBadgeType(item.status),
-      };
+      return purchaseOrderDisplayBadgeType(item.status, item.financeApproval);
     }
     return docStatusBadgeType(item.status);
   }

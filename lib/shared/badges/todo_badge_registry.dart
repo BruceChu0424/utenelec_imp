@@ -441,9 +441,10 @@ bool _can(TodoWatch watch, String permission) =>
 
 // ============================ 已知切片（不登记，避免双计）============================
 //
-// · 钱流「销售订单修改」卡：与「销售订单财务确认」卡同一批单据的两个队列切片
-//   （salesOrderFinanceQueueCountProvider(changesOnly)）。登记的是总数
-//   [TodoEntry.financeSalesOrderConfirmation]，两张卡各自显示自己的队列数但都不进累加。
+// · 业务审核中心「订单修改确认」分段：与「销售订单确认」分段同一批单据的两个
+//   队列切片（salesOrderFinanceQueueCountProvider(changesOnly)）。登记的是总数
+//   [TodoEntry.financeSalesOrderConfirmation]，两个分段各自显示自己的队列数但
+//   都不进累加（2026-09-18 起队列卡合并为 hub 一张「业务审核中心」卡）。
 //
 // · 仓库三张任务中心卡的卡面角标是「卡内各分段之和」，分段本身不单独登记。
 //

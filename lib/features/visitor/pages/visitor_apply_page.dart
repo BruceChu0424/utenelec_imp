@@ -187,6 +187,12 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
       setState(() => _error = l10n.visitorApplyValidatePurpose);
       return;
     }
+    // 开车来访时车牌前端先拦（后端 submit 同样必填，这里是提前反馈）。
+    final plate = _plateCtl.text.trim().replaceAll(' ', '');
+    if (_hasVehicle && plate.isEmpty) {
+      setState(() => _error = l10n.visitorApplyValidatePlate);
+      return;
+    }
     if (_hostId == null) {
       setState(() => _error = l10n.visitorApplyValidateHost);
       return;
@@ -209,7 +215,7 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
             : _companyCtl.text.trim(),
         'visitPurpose': _purposeCtl.text.trim(),
         'hasVehicle': _hasVehicle,
-        'plateNo': _hasVehicle ? _plateCtl.text.trim() : null,
+        'plateNo': _hasVehicle ? plate : null,
         'hostEmployeeId': _hostId,
         'hostDepartmentId': _deptId,
         'plannedVisitAt': ChinaDateTime.wallTimeToUtc(
@@ -243,7 +249,7 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
           if (_submitting)
             UtenBusyOverlay(
               title: l10n.visitorApplyTitle,
-              description: '正在提交访客申请，请勿重复提交或离开本页。',
+              description: l10n.visitorApplySubmittingOverlay,
             ),
           Expanded(
             child: SingleChildScrollView(
@@ -330,7 +336,7 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                             treeOverride: deptTree.valueOrNull ?? const [],
                             enabled: deptTree.hasValue,
                             label: l10n.visitorApplyDept,
-                            hint: '请选择接待部门',
+                            hint: l10n.visitorApplyDeptHint,
                             onChanged: (sel) => setState(() {
                               // 换部门后接待人候选变化，清空已选接待人。
                               _deptId = sel.isEmpty ? null : sel.first.id;
@@ -360,8 +366,8 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                             },
                             label: l10n.visitorApplyHost,
                             required: true,
-                            hint: '请选择被访人',
-                            sheetTitle: '选择被访人',
+                            hint: l10n.visitorApplyHostHint,
+                            sheetTitle: l10n.visitorApplyHostSheetTitle,
                             departmentName: _deptName,
                             onChanged: (item) =>
                                 setState(() => _hostId = item?.id),

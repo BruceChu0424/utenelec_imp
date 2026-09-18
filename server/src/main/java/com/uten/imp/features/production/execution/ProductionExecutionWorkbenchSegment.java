@@ -65,5 +65,7 @@ public record ProductionExecutionWorkbenchSegment(
         /** 可重新确认生产路线(V599)：WAITING 且未动过(无领料单/报工/供给钉/预留)。 */
         boolean routeChangeable,
         /** 存在可由本车间直送供给的子件(V599)：持续生产路线的候选项。 */
-        boolean routeContinuousEligible) {
+        boolean routeContinuousEligible,
+        /** 路线记忆(2026-09-18)：同产品最近一次确认的开工路线；未确认工单的下拉预填默认。 */
+        String suggestedStartRoute) {
 }

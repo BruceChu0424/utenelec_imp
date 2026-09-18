@@ -292,6 +292,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Visit time must be later than now';
 
   @override
+  String get visitorApplyValidatePlate =>
+      'Plate number is required when visiting by car';
+
+  @override
   String get visitorApplyDuplicateTime =>
       'You already have an active visit at this time';
 
@@ -396,6 +400,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get securityPasscodeHint => 'Enter the 6-digit pass code';
+
+  @override
+  String get securityPasscodeInvalid =>
+      'Please enter the 6-digit numeric pass code';
 
   @override
   String get visitorPasscodeLabel => 'Pass code';
@@ -3465,4 +3473,302 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get productionBatchNoAdditionalMaterials =>
       'No additional materials are needed; arrange production using the existing material sources.';
+
+  @override
+  String get securityReasonBlocked => 'Blacklisted: entry denied';
+
+  @override
+  String get securityBlacklistTitle => 'Visitor Blacklist';
+
+  @override
+  String get securityBlacklistEmpty => 'No blacklisted visitors';
+
+  @override
+  String get securityBlacklistColNo => 'Visitor No.';
+
+  @override
+  String get securityBlacklistColName => 'Name';
+
+  @override
+  String get securityBlacklistColPhone => 'Phone';
+
+  @override
+  String get securityBlacklistColReason => 'Reason';
+
+  @override
+  String get securityBlacklistColAt => 'Blocked At';
+
+  @override
+  String get securityBlacklistColBy => 'By';
+
+  @override
+  String get securityBlacklistAction => 'Blacklist Visitor';
+
+  @override
+  String get securityBlacklistNoticeLabel => 'Visitor Blacklist';
+
+  @override
+  String get securityBlacklistNoticeDesc =>
+      'Once blacklisted, the visitor immediately loses login and entry access; the action and reason are audited.';
+
+  @override
+  String get securityBlacklistReasonLabel => 'Reason';
+
+  @override
+  String get securityBlacklistReasonHint => 'Reason is required';
+
+  @override
+  String get securityBlacklistDone => 'Visitor blacklisted';
+
+  @override
+  String get securityBlacklistRemove => 'Remove from Blacklist';
+
+  @override
+  String get securityBlacklistRemoveConfirm =>
+      'Remove this visitor from the blacklist? They can log in and apply again; existing applications keep their status.';
+
+  @override
+  String get securityBlacklistRemoveDone => 'Removed from blacklist';
+
+  @override
+  String get entryStaffSubtitle =>
+      'Sign in with your staff account to enter the workspace';
+
+  @override
+  String get entryVisitorSubtitle =>
+      'Visitors register with a phone code for quick entry';
+
+  @override
+  String get visitorColName => 'Name';
+
+  @override
+  String get visitorColPurpose => 'Purpose';
+
+  @override
+  String get visitorColHost => 'Host';
+
+  @override
+  String get visitorColPlannedVisit => 'Planned Visit';
+
+  @override
+  String get visitorColStatus => 'Status';
+
+  @override
+  String get visitorColCompany => 'Company';
+
+  @override
+  String get visitorColVisitorName => 'Visitor Name';
+
+  @override
+  String get visitorColHostDepartment => 'Host Department';
+
+  @override
+  String get visitorApplySubmittingOverlay =>
+      'Submitting your application. Please do not resubmit or leave this page.';
+
+  @override
+  String get visitorApplyDeptHint => 'Select the host department';
+
+  @override
+  String get visitorApplyHostHint => 'Select the person to visit';
+
+  @override
+  String get visitorApplyHostSheetTitle => 'Select the person to visit';
+
+  @override
+  String visitorSettingsPortalTag(Object app) {
+    return '$app · Visitor';
+  }
+
+  @override
+  String get visitorApprovalHostDeptColInfo =>
+      'Department snapshot of the host at apply time; the header filter pushes hostDepartmentId to the backend.';
+
+  @override
+  String visitorBatchLimitError(int limit, int count) {
+    return 'A single batch handles at most $limit items; please split it (currently $count)';
+  }
+
+  @override
+  String visitorBatchApproveTitle(int count) {
+    return 'Batch Approve ($count)';
+  }
+
+  @override
+  String visitorBatchApproveMessage(int count) {
+    return 'Each of the $count selected applications will be approved one by one; approval issues the entry QR code. To double-check hosts and purposes, open details by double-clicking a row.';
+  }
+
+  @override
+  String get visitorBatchApproveConfirm => 'Confirm Batch Approve';
+
+  @override
+  String get visitorBatchActionLabel => 'Visitor Approval';
+
+  @override
+  String visitorBatchApproveResponsibility(int count) {
+    return 'On confirmation, the selected $count applications will be recorded under your account as approver.';
+  }
+
+  @override
+  String get visitorBatchVerbApprove => 'approved';
+
+  @override
+  String get visitorBatchVerbReject => 'rejected';
+
+  @override
+  String get visitorBatchVerbForward => 'forwarded';
+
+  @override
+  String visitorBatchResult(Object verb, int count) {
+    return '$count applications $verb';
+  }
+
+  @override
+  String visitorBatchResultFailures(int count) {
+    return ', $count failed';
+  }
+
+  @override
+  String visitorBatchResultSkipped(int count) {
+    return ', $count skipped';
+  }
+
+  @override
+  String visitorBatchIncomplete(Object verb, Object reason) {
+    return 'Batch $verb did not fully complete: $reason';
+  }
+
+  @override
+  String visitorBatchRejectTitle(int count) {
+    return 'Batch Reject ($count)';
+  }
+
+  @override
+  String visitorBatchRejectDescription(int count) {
+    return 'The rejection reason will be shared with $count visitors; please describe the problem.';
+  }
+
+  @override
+  String get visitorBatchRejectConfirm => 'Confirm Reject';
+
+  @override
+  String get visitorBatchSubjectLabel => 'visitor applications';
+
+  @override
+  String get visitorBatchForwardNoneSelected =>
+      'All selected applications are already with their hosts; nothing to forward';
+
+  @override
+  String visitorBatchForwardTitle(int count) {
+    return 'Batch Forward to Hosts ($count)';
+  }
+
+  @override
+  String visitorBatchForwardMessage(int count) {
+    return 'The $count selected applications will be forwarded to their hosts; after confirmation they return to this queue for your final approval.';
+  }
+
+  @override
+  String visitorBatchForwardSkippedNote(int count) {
+    return ' ($count more already with their hosts, skipped)';
+  }
+
+  @override
+  String get visitorBatchForwardConfirm => 'Confirm Batch Forward';
+
+  @override
+  String visitorBatchForwardResponsibility(int count) {
+    return 'On confirmation, forwarding the $count selected applications will be recorded under your account.';
+  }
+
+  @override
+  String visitorBatchApproveButton(int count) {
+    return 'Approve ($count)';
+  }
+
+  @override
+  String visitorBatchForwardButton(int count) {
+    return 'Forward ($count)';
+  }
+
+  @override
+  String visitorBatchRejectButton(int count) {
+    return 'Reject ($count)';
+  }
+
+  @override
+  String get visitorApprovalDoneApprove => 'Visitor application approved';
+
+  @override
+  String get visitorApprovalDoneReject => 'Visitor application rejected';
+
+  @override
+  String get visitorApprovalDoneForward =>
+      'Forwarded to the host for confirmation';
+
+  @override
+  String get visitorApprovalDoneFallback => 'Action completed';
+
+  @override
+  String get visitorApprovalApproveNoticeLabel => 'Visitor Approval';
+
+  @override
+  String get visitorApprovalApproveNoticeDesc =>
+      'On confirmation your account and the decision are recorded; you are responsible for this entry approval.';
+
+  @override
+  String get visitorApprovalRejectNoticeLabel => 'Visitor Rejection';
+
+  @override
+  String get visitorApprovalRejectNoticeDesc =>
+      'On confirmation your account and the rejection are recorded; you are responsible for this decision.';
+
+  @override
+  String get myVisitorsConfirmDone =>
+      'Host confirmed; the application is back with HR';
+
+  @override
+  String get myVisitorsRejectDone => 'Host rejected';
+
+  @override
+  String get myVisitorsBatchNoneSelected =>
+      'None of the selected applications await your confirmation';
+
+  @override
+  String myVisitorsBatchTitle(int count) {
+    return 'Batch Confirm ($count)';
+  }
+
+  @override
+  String myVisitorsBatchMessage(int count) {
+    return 'Each of the $count selected visitors will be confirmed as hosted; applications then return to HR for final approval.';
+  }
+
+  @override
+  String myVisitorsBatchSkippedNote(int count) {
+    return ' ($count more not awaiting your confirmation, skipped)';
+  }
+
+  @override
+  String get myVisitorsBatchConfirm => 'Confirm';
+
+  @override
+  String myVisitorsBatchResult(int count) {
+    return '$count visitors confirmed as hosted';
+  }
+
+  @override
+  String myVisitorsBatchIncomplete(Object reason) {
+    return 'Batch confirmation did not fully complete: $reason';
+  }
+
+  @override
+  String myVisitorsBatchButton(int count) {
+    return 'Confirm ($count)';
+  }
+
+  @override
+  String get myVisitorsStatusColInfo =>
+      'Shows only items awaiting your confirmation by default; the header filter switches to forwarded / approved / rejected (pushed to the backend).';
 }

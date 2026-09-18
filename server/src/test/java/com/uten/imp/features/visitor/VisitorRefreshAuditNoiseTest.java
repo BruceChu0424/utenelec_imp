@@ -9,6 +9,7 @@ import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.features.visitor.dto.VisitorAuthDto;
 import com.uten.imp.security.JwtService;
 import com.uten.imp.security.LoginRateLimiter;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.Test;
 
@@ -81,6 +82,7 @@ class VisitorRefreshAuditNoiseTest {
                 mock(VisitorRefreshCompromiseService.class),
                 mock(EmployeeSensitiveRepository.class),
                 jwt,
+                mock(SecurityContextCurrentUser.class),
                 mock(TxSessionVars.class),
                 mock(SmsProperties.class),
                 audit,

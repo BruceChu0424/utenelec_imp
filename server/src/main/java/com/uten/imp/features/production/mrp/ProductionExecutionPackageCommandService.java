@@ -210,6 +210,24 @@ public class ProductionExecutionPackageCommandService {
         List<ProductionMaterialDemand> demands = demandDrafts.isEmpty()
                 ? List.of()
                 : ledger.createDemands(begin.planningPackage(), demandDrafts);
+        // 开工路线自动识别(V606，取代 V599 手工确认门)：需求落库后按事实定路线——
+        // WAITING 且有可由本车间直送供给的子件 → CONTINUOUS(保住持续生产入口不被
+        // 齐套自动提升顶掉)；否则 FULL_KIT(零料段 / 下达即齐套 / 纯仓库供料)。
+        // 分批路线不由创建时识别：点「分批领料」即选择分批。
+        if (!segmentDrafts.isEmpty()) {
+            em.flush();
+            em.createNativeQuery("""
+                            UPDATE production_execution_segments segment
+                            SET start_route = fn_auto_execution_start_route(segment.id),
+                                route_confirmed_at = now()
+                            WHERE segment.start_route IS NULL
+                              AND NOT segment.is_deleted
+                              AND segment.id IN (:ids)
+                            """)
+                    .setParameter("ids", segmentDrafts.stream()
+                            .map(draft -> draft.segment().getId()).toList())
+                    .executeUpdate();
+        }
         Map<UUID, List<ProductionMaterialDemand>> demandsBySegment =
                 demands.stream().collect(Collectors.groupingBy(
                         ProductionMaterialDemand::getExecutionSegmentId,

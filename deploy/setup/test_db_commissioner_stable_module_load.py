@@ -235,7 +235,7 @@ class CommissionerStableModuleLoadTest(unittest.TestCase):
             def __exit__(self, *_arguments):
                 return False
 
-        version = "v2026.08.12-1"
+        version = "v1.2.0"
         with tempfile.TemporaryDirectory() as directory:
             snapshot = Path(directory) / "snapshot"
             snapshot.mkdir()

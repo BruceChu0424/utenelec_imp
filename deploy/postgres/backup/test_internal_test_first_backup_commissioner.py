@@ -161,7 +161,7 @@ class FakeProducer:
 
     def __init__(self):
         self.authority = {
-            "binding": {"version": "v2026.08.14-1"},
+            "binding": {"version": "v1.4.0"},
             "onboarding": {
                 "databaseIdentity": {"systemIdentifier": "123", "timeline": 1}
             },

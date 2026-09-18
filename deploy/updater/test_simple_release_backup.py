@@ -22,7 +22,7 @@ class SimpleReleaseBackupTest(unittest.TestCase):
         script = ("set -euo pipefail\numask 022\nlog() { :; }\n"
                   "date() { printf 20260912-000000; }\n"
                   "runuser() { " + producer + "; }\n" + backup_helper() + "\n" +
-                  (command or 'create_database_backup v2026.09.12-4'))
+                  (command or 'create_database_backup v1.33.3'))
         return subprocess.run([bash_path(), "-c", script], env=env,
                               capture_output=True, text=True, encoding="utf-8", check=False)
 
@@ -31,7 +31,7 @@ class SimpleReleaseBackupTest(unittest.TestCase):
             directory = Path(temp) / "backups"
             directory.mkdir(mode=0o755)
             result = self.run_backup(directory, command=(
-                'create_database_backup v2026.09.12-4\n'
+                'create_database_backup v1.33.3\n'
                 'test "$(umask)" = 0022'))
             self.assertEqual(result.returncode, 0, result.stderr)
             dump = next(directory.glob("*.dump"))

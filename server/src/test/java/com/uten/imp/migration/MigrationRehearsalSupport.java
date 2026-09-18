@@ -23,17 +23,20 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Shared, fail-closed reconciliation rules for synthetic and real-clone migration rehearsals. */
-final class MigrationRehearsalSupport {
+public final class MigrationRehearsalSupport {
 
     // 迁移头与迁移数：直接从 classpath 的 db/migration 目录推导（2026-09-16 起），
     // 目录本身就是唯一事实源——新增迁移不再需要改这里（历史上"594/551 忘同步"
     // 曾连炸四轮：b971674f/dfb07ebd/6bb5715e 等）。
-    // 同一耦合仍靠人肉同步的两处（各有自己的闸门测试兜底）：
+    // 剩余靠人肉同步的两处（各有自己的闸门测试兜底）：
     //   - ops/reset_business_data.sql 的 (installed_rank, version) fail-closed 白名单
-    //     （BusinessDataResetSqlContractTest 会在漏改时报出该补的行）；
+    //     （BusinessDataResetSqlContractTest 会对账目录全量版本对并在漏改时报出该补的行）；
     //   - docs/数据迁移/README.md 的头版本说明（LegacyMigrationSafetyContractTest 锁）。
-    static final String CURRENT_HEAD_VERSION;
-    static final int CURRENT_MIGRATION_COUNT;
+    public static final String CURRENT_HEAD_VERSION;
+    public static final int CURRENT_MIGRATION_COUNT;
+
+    /** Sorted version numbers of every V*__*.sql found on the test classpath. */
+    private static final java.util.List<Integer> MIGRATION_FILE_VERSIONS = new java.util.ArrayList<>();
 
     static {
         try {
@@ -48,8 +51,10 @@ final class MigrationRehearsalSupport {
                     if (!matcher.matches()) {
                         continue;
                     }
+                    int version = Integer.parseInt(matcher.group(1));
                     count++;
-                    head = Math.max(head, Integer.parseInt(matcher.group(1)));
+                    MIGRATION_FILE_VERSIONS.add(version);
+                    head = Math.max(head, version);
                 }
             } catch (IOException failure) {
                 throw new IllegalStateException("无法枚举 db/migration 目录", failure);
@@ -64,6 +69,31 @@ final class MigrationRehearsalSupport {
             throw new IllegalStateException(
                     "推导迁移头失败：测试 classpath 必须以目录形式暴露 db/migration", failure);
         }
+    }
+
+    /**
+     * 目录里版本号 {@code <= version} 的迁移文件个数——即 Flyway 迁到
+     * {@code version} 后 {@code flyway_schema_history} 里应有的成功条数
+     * （跳号版本不存在文件，天然数不进去）。ops 白名单版本对的第二个数、
+     * 分段升级的基线条数都以它为准，不再靠人记。
+     */
+    public static int migrationFileCountUpTo(int version) {
+        int total = 0;
+        for (int fileVersion : MIGRATION_FILE_VERSIONS) {
+            if (fileVersion <= version) {
+                total++;
+            }
+        }
+        return total;
+    }
+
+    /**
+     * 从 {@code fromVersion}（含）升级到当前目录头应执行的迁移条数。
+     * PreplanFutureTransferForwardMigrationPostgresTest 的计数断言用它推导，
+     * 新增迁移时不再需要"+1"（目录变了，推导值自动跟着变）。
+     */
+    public static int expectedMigrationsAfter(int fromVersion) {
+        return CURRENT_MIGRATION_COUNT - migrationFileCountUpTo(fromVersion);
     }
 
     /** Reviewed post-V238 system/evidence row-count mutations on pre-existing tables. */
@@ -255,13 +285,13 @@ final class MigrationRehearsalSupport {
                 """);
     }
 
-    static int successfulMigrationCount(Connection connection) throws SQLException {
+    public static int successfulMigrationCount(Connection connection) throws SQLException {
         return Math.toIntExact(scalarLong(connection, """
                 SELECT count(*) FROM flyway_schema_history WHERE success
                 """));
     }
 
-    static String latestSuccessfulVersion(Connection connection) throws SQLException {
+    public static String latestSuccessfulVersion(Connection connection) throws SQLException {
         return scalarText(connection, """
                 SELECT version
                 FROM flyway_schema_history

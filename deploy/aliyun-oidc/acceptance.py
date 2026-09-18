@@ -262,7 +262,7 @@ def write_acceptance(metadata: dict[str, Any], evidence: Path, confirmation: str
         raise PolicyError("evidence directory must not already exist")
     evidence.mkdir(mode=0o700, parents=False)
     nonce = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    immutable_key = f"{config['keyPrefix']}releases/v2099.01.01-1/{nonce}.txt"
+    immutable_key = f"{config['keyPrefix']}releases/v2.0.0/{nonce}.txt"
     common = [
         "--endpoint", config["ossEndpoint"], "--region", config["ossRegion"],
         "--addressing-style", "virtual", "--bucket", config["bucket"], "--key", immutable_key,

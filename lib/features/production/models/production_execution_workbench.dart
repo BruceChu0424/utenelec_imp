@@ -201,6 +201,7 @@ class ProductionExecutionWorkbenchSegment {
     this.canConfirmRoute = false,
     this.routeChangeable = false,
     this.routeContinuousEligible = false,
+    this.suggestedStartRoute,
     this.salesOrderNos,
     this.workshopDepartmentId,
     this.workshopName,
@@ -286,6 +287,10 @@ class ProductionExecutionWorkbenchSegment {
 
   /// 存在可由本车间直送供给的子件(V599)：持续生产路线的候选项。
   final bool routeContinuousEligible;
+
+  /// 路线记忆(2026-09-18 用户口径「下次默认选择上次选择的」)：同产品最近一次
+  /// 确认的开工路线；未确认工单的下拉预填默认（不在当前收窄选项里时回落齐套）。
+  final String? suggestedStartRoute;
 
   /// 路线的中文短名(V599)：齐套生产 / 分批生产 / 持续生产；未确认为空。
   String get startRouteLabel => switch (startRoute) {
@@ -379,6 +384,7 @@ class ProductionExecutionWorkbenchSegment {
     canConfirmRoute: json['canConfirmRoute'] == true,
     routeChangeable: json['routeChangeable'] == true,
     routeContinuousEligible: json['routeContinuousEligible'] == true,
+    suggestedStartRoute: json['suggestedStartRoute'] as String?,
   );
 }
 

@@ -98,7 +98,7 @@ class RetentionManagerTest(unittest.TestCase):
         )
 
     def release(self, kind: str, sequence: int, age: int = 700000) -> dict[str, object]:
-        version = f"v2026.08.{sequence:02d}-1"
+        version = f"v1.{sequence}.0"
         return {
             "ageSeconds": age,
             "bytes": sequence,
@@ -222,7 +222,7 @@ class RetentionManagerTest(unittest.TestCase):
     def test_tree_validation_rejects_symlink_and_hardlink(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             parent = Path(temporary)
-            tree = parent / "v2026.08.11-1"
+            tree = parent / "v1.1.0"
             tree.mkdir()
             target = tree / "payload"
             target.write_text("payload", encoding="utf-8")
@@ -257,7 +257,7 @@ class RetentionManagerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             quarantine = Path(temporary)
             transaction = "20260812T000000Z-" + "d" * 32
-            version = "v2026.08.11-1"
+            version = "v1.1.0"
             residue = quarantine / f"{transaction}-candidate-{version}"
             residue.mkdir()
             (residue / "partial").write_text("evidence", encoding="utf-8")
@@ -274,7 +274,7 @@ class RetentionManagerTest(unittest.TestCase):
             self.assertTrue(any("evidence-driven recovery" in item for item in blockers))
 
     def test_database_recovery_receipt_version_is_retention_protected(self) -> None:
-        target_version = "v2026.08.11-1"
+        target_version = "v1.1.0"
         receipt_value = {
             "approvalReference": "CHANGE-1234",
             "completedAtUtc": "2026-08-12T00:00:00Z",
@@ -315,7 +315,7 @@ class RetentionManagerTest(unittest.TestCase):
             self.assertTrue(observations["databaseReceipts"][0]["valid"])
 
     def test_completed_recovery_commit_and_receipt_are_validated_together(self) -> None:
-        target = "v2026.08.12-1"
+        target = "v1.2.0"
         sequence = self.manager.release_guard.version_sequence(target)
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -359,7 +359,7 @@ class RetentionManagerTest(unittest.TestCase):
                 "originalBootEnablement": boot_map,
                 "previousFlywayHeadVersion": "254",
                 "previousFlywayMigrationSetSha256": "f" * 64,
-                "previousVersion": "v2026.08.11-1",
+                "previousVersion": "v1.1.0",
                 "reason": "activation-commit-failed",
                 "recoveryRequired": True,
                 "schemaVersion": 1,
@@ -490,7 +490,7 @@ class RetentionManagerTest(unittest.TestCase):
                 "planSha256": "8" * 64,
                 "schemaVersion": 1,
                 "status": "contained-no-start-no-marker-clear",
-                "subjectVersion": "v2026.08.12-1",
+                "subjectVersion": "v1.2.0",
                 "transactionDirectory": str(remain),
             }
             remain_path = remain / "remain-contained-receipt.json"
@@ -502,11 +502,11 @@ class RetentionManagerTest(unittest.TestCase):
                 "originalBootEnablement": {
                     unit: True for unit in self.manager.release_updater.BOOT_UNITS
                 },
-                "previousVersion": "v2026.08.11-1",
-                "releaseSequence": 20260812001,
+                "previousVersion": "v1.1.0",
+                "releaseSequence": 100001002000,
                 "schemaVersion": 1,
                 "startedAtUtc": "2026-08-12T01:01:00Z",
-                "version": "v2026.08.12-1",
+                "version": "v1.2.0",
             }
             activation_raw = (
                 json.dumps(activation, sort_keys=True, indent=2) + "\n"
@@ -595,7 +595,7 @@ class RetentionManagerTest(unittest.TestCase):
             ):
                 protected, blockers, observations = self.manager.recovery_references()
                 self.assertEqual(blockers, [])
-                self.assertIn("v2026.08.12-1", protected)
+                self.assertIn("v1.2.0", protected)
                 self.assertTrue(all(item["valid"] for item in observations["transactions"]))
 
                 extra = interrupted / "start-authorization.precontainment.json"
@@ -637,7 +637,7 @@ class RetentionManagerTest(unittest.TestCase):
             quarantine = root / "quarantine"
             candidates.mkdir()
             quarantine.mkdir(mode=0o700)
-            version = "v2026.08.11-1"
+            version = "v1.1.0"
             source = candidates / version
             source.mkdir()
             (source / "payload").write_text("payload", encoding="utf-8")

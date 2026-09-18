@@ -115,6 +115,12 @@ void main() {
     final api = _BatchArrivalApi();
     await _openBatchPage(tester, api: api);
 
+    // 2026-09-18 明细默认全选：先点表头清空选择，右键目标行时选中集才只剩它
+    //（菜单计数 (1)）；移出后再回选全部剩余行提交。
+    await tester.tap(
+      find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate),
+    );
+    await tester.pump();
     final removedPlace = _placeField(_itemB);
     final gesture = await tester.startGesture(
       tester.getCenter(find.text('两极插套')),
@@ -130,6 +136,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(removedPlace, findsNothing);
     expect(find.textContaining('这些行仍在待登记送检'), findsOneWidget);
+    await tester.tap(
+      find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate),
+    );
+    await tester.pump();
 
     _pressSubmit(tester);
     await tester.pumpAndSettle();
@@ -169,7 +179,16 @@ void main() {
     );
 
     // B 行手改库位后提交：确认弹窗拦一道，确认后按单分组提交。
+    // 2026-09-18 默认全选会让行内改库位整批落值：先清空选择改 B 行，再回选全部。
+    await tester.tap(
+      find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate),
+    );
+    await tester.pump();
     await tester.enterText(_placeField(_itemB), 'CP-B-02');
+    await tester.tap(
+      find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate),
+    );
+    await tester.pump();
     _pressSubmit(tester);
     await tester.pumpAndSettle();
     expect(api.lastPostPath, isNull);
@@ -220,12 +239,9 @@ void main() {
     );
     // 2026-09-12 表头上方「全选/统一设置成品仓/统一填写库位/移出」按钮全撤：
     // 全选走表头复选框，批量填库位走右键菜单。
+    // 2026-09-18 明细默认全选，无需再点表头（再点反而会清空选择）。
     expect(find.text('全选'), findsNothing);
     expect(find.text('统一填写库位(0)'), findsNothing);
-    await tester.tap(
-      find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate),
-    );
-    await tester.pump();
     final gesture = await tester.startGesture(
       tester.getCenter(find.text('三极插套')),
       kind: PointerDeviceKind.mouse,
@@ -258,6 +274,13 @@ void main() {
       isFalse,
     );
 
+    // 右键菜单动作完成后选择集被清空（避免残留高亮）：回选全部行再提交
+    //（2026-09-18 提交集=勾选集）。
+    await tester.tap(
+      find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate),
+    );
+    await tester.pump();
+
     _pressSubmit(tester);
     await tester.pumpAndSettle();
     await tester.tap(find.text('确认登记并送检'));
@@ -283,6 +306,13 @@ void main() {
     await _openBatchPage(tester, api: api);
     await tester.pumpAndSettle();
 
+    // 2026-09-18 默认全选会让逐行选仓整批落值：先清空选择再做单行操作，
+    // 全部行就位后回选全部再提交。
+    await tester.tap(
+      find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate),
+    );
+    await tester.pump();
+
     // 报工 A 两行分别选不同仓；报工 B 的行也分配好仓与库位（不参与冲突）。
     // 2026-09-12 表头默认仓下拉已撤：未选行格内文案为「必选 · 点击选择」。
     await tester.tap(find.text('必选 · 点击选择').first);
@@ -301,6 +331,11 @@ void main() {
     await tester.enterText(_placeField(_itemA), 'CP-A-01');
     await tester.enterText(_placeField(_itemA2), 'CP-A-02');
     await tester.enterText(_placeField(_itemB), 'CP-B-01');
+    // 回选全部行（提交集=勾选集）。
+    await tester.tap(
+      find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate),
+    );
+    await tester.pump();
     // 校验先于确认弹窗：同一报工单跨仓直接被拦下。
     _pressSubmit(tester);
     await tester.pump();

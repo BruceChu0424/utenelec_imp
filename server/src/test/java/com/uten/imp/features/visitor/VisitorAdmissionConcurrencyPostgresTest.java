@@ -2,7 +2,9 @@ package com.uten.imp.features.visitor;
 
 import com.uten.imp.features.notice.HrNoticeService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.HostConfirmRequest;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorApproveRequest;
@@ -100,7 +102,8 @@ class VisitorAdmissionConcurrencyPostgresTest {
         var service = new VisitorApplicationService(applications, steps, accounts,
                 mock(EmployeeRepository.class), mapper, tx, hrNotice, current);
         var guard = new VisitorGuard(current);
-        gate = new VisitorGateService(applications, accounts, service, mapper, guard, tx, current, new ObjectMapper());
+        gate = new VisitorGateService(applications, accounts, service, mapper, guard, tx, current, new ObjectMapper(),
+                mock(AuditService.class), mock(UserAccountRepository.class), mock(EmployeeRepository.class));
         approvals = new VisitorHrApprovalService(applications, service, gate, guard, tx, hrNotice);
         host = new VisitorHostConfirmService(applications, service, current, tx, hrNotice);
         transactions.executeWithoutResult(status -> {
@@ -155,7 +158,7 @@ class VisitorAdmissionConcurrencyPostgresTest {
     void blacklistWinsAgainstWaitingAdmissionWithoutChangingTheApplicationHistory() throws Exception {
         inTransaction(this::approve);
         try (var executor = Executors.newFixedThreadPool(2); Connection blocker = lockAccount()) {
-            Future<?> blacklist = executor.submit(() -> transactions.executeWithoutResult(s -> gate.blacklist(accountId)));
+            Future<?> blacklist = executor.submit(() -> transactions.executeWithoutResult(s -> gate.blacklist(accountId, "并发测试拉黑")));
             assertBlocked(blacklist);
             Future<?> admission = executor.submit(() -> inTransaction(() -> gate.checkIn(applicationId)));
             assertBlocked(admission);
@@ -174,7 +177,7 @@ class VisitorAdmissionConcurrencyPostgresTest {
         try (var executor = Executors.newFixedThreadPool(2); Connection blocker = lockAccount()) {
             Future<?> admission = executor.submit(() -> inTransaction(() -> gate.checkIn(applicationId)));
             assertBlocked(admission);
-            Future<?> blacklist = executor.submit(() -> transactions.executeWithoutResult(s -> gate.blacklist(accountId)));
+            Future<?> blacklist = executor.submit(() -> transactions.executeWithoutResult(s -> gate.blacklist(accountId, "并发测试拉黑")));
             assertBlocked(blacklist);
             blocker.commit();
             admission.get(10, TimeUnit.SECONDS);

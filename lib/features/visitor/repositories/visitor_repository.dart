@@ -5,6 +5,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/security/secure_storage.dart';
 import '../../../shared/models/paged_result.dart';
+import '../models/visitor.dart';
 import '../models/visitor_application.dart';
 import '../network/visitor_api_client.dart';
 
@@ -83,6 +84,10 @@ class DeptDirItem {
 abstract class VisitorRepository {
   Future<String?> sendCode(String phone);
   Future<VisitorLoginResult> login(String phone, String code);
+
+  /// 冷启动会话校验：令牌/账号有效返回当前资料，401（刷新也被拒）抛
+  /// ApiException，由会话层结束本地恢复的会话。
+  Future<Visitor> me();
   Future<void> logout();
   Future<PagedResult<VisitorApplication>> myApplications({
     String? status,
@@ -129,6 +134,12 @@ class DioVisitorRepository implements VisitorRepository {
   }
 
   @override
+  Future<Visitor> me() async {
+    final r = await _api.get(ApiEndpoints.visitorMe);
+    return Visitor.fromJson(r);
+  }
+
+  @override
   Future<void> logout() async {
     final refresh = await _storage.getVisitorRefreshToken();
     if (refresh != null && refresh.isNotEmpty) {
@@ -159,14 +170,9 @@ class DioVisitorRepository implements VisitorRepository {
 
   @override
   Future<List<VisitorApplication>> activeApplications() async {
-    const statuses = ['pending', 'hostReviewing', 'approved', 'checkedIn'];
-    final groups = await Future.wait(statuses.map(_allApplicationsForStatus));
-    return groups.expand((applications) => applications).toList();
-  }
-
-  Future<List<VisitorApplication>> _allApplicationsForStatus(
-    String status,
-  ) async {
+    // 后端 status 支持逗号分隔多状态：一次分页请求取全活跃集
+    //（pending/hostReviewing/approved/checkedIn；rejected/cancelled 不算）。
+    const status = 'pending,hostReviewing,approved,checkedIn';
     const size = 100;
     final items = <VisitorApplication>[];
     var page = 1;

@@ -4,6 +4,10 @@
 > 见 [`deploy/simple/RUNBOOK.zh-CN.md`](../simple/RUNBOOK.zh-CN.md)。本清单（组织 ruleset/Environment/OIDC）
 > 是旧链要求，仅作未来多人团队的加固参考。
 
+> **2026-09-18 订正**：发布版本号已改为语义化 `vMAJOR.MINOR.PATCH`（规则见仓库 README
+>「版本号规则」）。本文正文中的 `vYYYY.MM.DD-N` 为历史写法；若按本清单重建 tag 保护规则，
+> pattern 应匹配语义化 tag（如 `v*`）。
+
 > **日期**：2026-08-15（Asia/Shanghai）
 > **当前 checkout 对应仓库**：`BruceChu0424/uten_imp`；若转移到最终 Organization，必须先更新本清单、
 > OIDC policy config、Environment 和全部读回证据，再允许发布

@@ -111,7 +111,7 @@ wait_health() {
 do_check() {
   local latest active staged sig_ok tmp key path sum
   latest=$(oss_get "LATEST.txt" | tr -d '[:space:]') || die "无法读取 LATEST.txt"
-  [[ "$latest" =~ ^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[0-9]{1,3}$ ]] \
+  [[ "$latest" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
     || die "LATEST.txt 内容非法：$latest"
   active=$(current_version)
   [ "$latest" = "$active" ] && { log "已最新（$active）"; return 0; }
@@ -185,7 +185,7 @@ create_database_backup() {
 # ------------------------------------------------------------- activate ----
 do_activate() {
   local version=$1 mode=${2:-auto} prev prev_ver code_only backup_file rc
-  [[ "$version" =~ ^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[0-9]{1,3}$ ]] \
+  [[ "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
     || die "版本号非法：$version"
   [ -d "$RELEASES_DIR/$version" ] || die "版本未暂存：$RELEASES_DIR/$version"
   verify_sums "$RELEASES_DIR/$version"
@@ -251,7 +251,7 @@ release_versions() {
     [ -d "$directory" ] || continue
     version=${directory%/}
     version=${version##*/}
-    [[ "$version" =~ ^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[0-9]{1,3}$ ]] || continue
+    [[ "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || continue
     printf '%s\n' "$version"
   done | sort -V
 }
@@ -272,7 +272,7 @@ prune_old() {
     log "跳过清理：无法核对 current 运行目录"
     return 0
   }
-  [[ "$active" =~ ^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[0-9]{1,3}$ && "$actual" = "$active" ]] || {
+  [[ "$active" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ && "$actual" = "$active" ]] || {
     log "跳过清理：版本记录与 current 运行目录不一致"
     return 0
   }

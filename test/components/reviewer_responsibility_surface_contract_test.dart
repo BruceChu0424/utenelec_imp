@@ -47,8 +47,10 @@ void main() {
         "actionLabel: '工资审核驳回'",
       ],
       'lib/features/visitor_approval/pages/visitor_approval_detail_page.dart': [
-        "actionLabel: '访客审批通过'",
-        "actionLabel: '访客审批拒绝'",
+        // 2026-09-18 起该页标签走 l10n（arb 值仍为 访客审批通过/拒绝），
+        // 契约锚点跟随源码形态。
+        'actionLabel: l10n.visitorApprovalApproveNoticeLabel',
+        'actionLabel: l10n.visitorApprovalRejectNoticeLabel',
       ],
       'lib/features/finance/widgets/finance_asset_detail.dart': [
         '_assetReviewerActions',

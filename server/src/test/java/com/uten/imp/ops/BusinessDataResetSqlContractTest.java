@@ -370,7 +370,15 @@ class BusinessDataResetSqlContractTest {
                 .contains("(598, 555)")
                 .contains("(599, 556)")
                 .contains("(600, 557)")
-                .contains("V507/469、V508/470及V511至V602完整目录");
+                // V601 通知已读回填 / V602 路线记忆索引：不加表（557→559）。
+                .contains("(601, 558)")
+                .contains("(602, 559)")
+                // V603 访客黑名单三列：不加表（559→560）；V604 未发布跳号。
+                .contains("(603, 560)")
+                // V605 直送资格收紧 / V606 路线自动识别：只换函数+回填，不加表（560→562）。
+                .contains("(605, 561)")
+                .contains("(606, 562)")
+                .contains("V507/469、V508/470及V511至V606完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);

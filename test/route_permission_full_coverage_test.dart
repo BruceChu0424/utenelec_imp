@@ -87,7 +87,7 @@ void _collect(RouteBase base, String parent, List<String> out) {
 /// 断言精确计数：新增路由必须同步改代码守卫 + 本处计数 + 文档数字，
 /// 防止「文档说 180、实际已 190」的静默漂移。
 /// 192 = 191 + ADR-088 物料分析关联销售订货单只读货品清单页。
-const _expectedGuardedCount = 193;
+const _expectedGuardedCount = 195;
 const _expectedExemptCount = 19;
 
 void main() {

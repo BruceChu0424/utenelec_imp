@@ -820,12 +820,12 @@ void main() {
 /// 未确认路线时开工侧入口全部隐藏；确认弹窗三选一后按路线过滤清单。
 void routeConfirmationTests() {
   // V606 用户口径「不用确认路线这个操作了，自动识别生产路线」：路线由服务端在
-  // 创建事务内自动识别（有本车间直送子件=持续生产；否则齐套），点「分批生产
-  // 领料 / 部分开工·持续生产」本身就是选择对应路线（服务端对未动过的工单同事务
-  // 切换）。确认步骤、下拉草稿、色标竖线与「确认路线/批量设置路线」按钮全部
-  // 退役；路线列=只读徽章（四轮配色），改选只剩「重新确认生产路线」单行纠偏。
+  // 创建事务内自动识别（有本车间直送子件=持续生产；否则齐套）赋**默认值**，车间
+  // 在格内**下拉直接改选即生效**（V606 二改：可选、免确认——没有草稿、没有
+  // 「确认路线」按钮），多选勾选后可「批量设置路线」一次改一批；动过的行冻结为
+  // 只读徽章。
 
-  testWidgets('auto-identified route is a read-only badge without confirm UI', (
+  testWidgets('route cell is an editable dropdown; no confirm affordances', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
@@ -842,7 +842,7 @@ void routeConfirmationTests() {
           }),
           productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
             // 自动识别后的典型行：路线已由服务端赋好（有直送子件→CONTINUOUS），
-            // 未动过可纠偏；不再有「未确认」形态。
+            // 未动过可随时改选。
             _repository(
               withWaitingRow: true,
               startRoute: 'CONTINUOUS',
@@ -863,23 +863,28 @@ void routeConfirmationTests() {
     await selectFilterSegment(tester, '等待物料');
     await tester.pumpAndSettle();
     final row = _frozenRowOf('产品 C');
-    // 路线列=只读徽章（无下拉、无色标竖线）；等待方式按已识别路线区分。
+    // 路线列=可编辑下拉 + 路线色竖线，当前显示自动识别的「持续生产」；
+    // 等待方式按已识别路线区分。
     expect(
       find.descendant(of: row, matching: find.text('持续生产')),
       findsOneWidget,
     );
     expect(
       find.byKey(const ValueKey('workshop-route-dropdown-segment-c')),
-      findsNothing,
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('workshop-route-bar-segment-c')),
+      findsOneWidget,
     );
     expect(find.text('等待直送料 · 持续生产'), findsOneWidget);
-    // 确认流程整体退役：两个路线按钮不再渲染（任何计数下）。
+    // 确认流程退役：没有「确认路线」按钮（任何计数下）；批量设置只在多选时出现。
     expect(find.byKey(const Key('workshop-confirm-routes')), findsNothing);
     expect(find.byKey(const Key('workshop-batch-set-routes')), findsNothing);
     expect(find.textContaining('确认路线('), findsNothing);
-    // 行右键菜单：纠偏通道在（未动过），没有「确认生产路线」主操作。
+    // 行右键菜单没有路线条目（下拉就是改选入口）。
     await _rightClick(tester, find.text('产品 C'));
-    expect(_menuEntry('重新确认生产路线'), findsOneWidget);
+    expect(_menuEntry('重新确认生产路线'), findsNothing);
     expect(_menuEntry('确认生产路线'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -1061,7 +1066,7 @@ void routeConfirmationTests() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('manual override from row menu submits with busy overlay', (
+  testWidgets('changing the route dropdown submits immediately with overlay', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
@@ -1079,7 +1084,8 @@ void routeConfirmationTests() {
             Perm.productionExecutionStart,
           }),
           productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
-            // 自动识别错边的人工纠偏：未动过的持续生产行改回齐套。
+            // 自动识别为持续生产（有直送子件），车间下拉直接改回齐套——选中即
+            // 提交，无确认步骤。
             _repository(
               withWaitingRow: true,
               startRoute: 'CONTINUOUS',
@@ -1100,17 +1106,13 @@ void routeConfirmationTests() {
     await tester.pumpAndSettle();
     await selectFilterSegment(tester, '等待物料');
     await tester.pumpAndSettle();
-    await _rightClick(tester, find.text('产品 C'));
-    await tester.tap(_menuEntry('重新确认生产路线'));
+    // 打开格内下拉，选「齐套生产」——没有弹窗、没有确认按钮，直接提交。
+    await tester.tap(
+      find.byKey(const ValueKey('workshop-route-dropdown-segment-c')),
+    );
     await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
-    await tester.tap(
-      find.byKey(const ValueKey('workshop-route-option-FULL_KIT-segment-c')),
-    );
-    await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey('workshop-route-submit-segment-c')),
-    );
+    expect(find.byType(AlertDialog), findsNothing);
+    await tester.tap(find.text('齐套生产').last);
     // 提交停在门上：全屏加载卡可见（卡片转圈动画在跑，不能用 pumpAndSettle 等它）。
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
@@ -1121,9 +1123,72 @@ void routeConfirmationTests() {
     expect(find.text('正在确认生产路线'), findsOneWidget);
     planRepository.confirmGate!.complete();
     await tester.pumpAndSettle();
-    // 完成即撤遮罩；纠偏提交落地。
+    // 完成即撤遮罩；改选已提交（选中即生效）。
     expect(find.byKey(const Key('workshop-route-confirm-busy')), findsNothing);
     expect(planRepository.confirmedRoutes, [('segment-c', 'FULL_KIT')]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('multi-select batch-set applies the route immediately', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final router = _router();
+    addTearDown(router.dispose);
+    final planRepository = _FakePlanRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          isSuperAdminProvider.overrideWithValue(false),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.productionExecutionView,
+            Perm.productionExecutionStart,
+          }),
+          productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+            // a=READY 齐套行（只进齐套链勾选）；c=未动过可改选——表头全选后
+            // 批量设置路线(1)出现，面板选「分批生产」即逐单提交。
+            _repository(
+              withWaitingRow: true,
+              routeChangeable: true,
+              routeContinuousEligible: true,
+            ),
+          ),
+          productionPlanRepositoryProvider.overrideWithValue(planRepository),
+        ],
+        child: MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await selectFilterSegment(tester, '等待物料');
+    await tester.pumpAndSettle();
+    // 未多选：批量设置路线不显示。
+    expect(find.byKey(const Key('workshop-batch-set-routes')), findsNothing);
+    final header = find.byWidgetPredicate(
+      (widget) => widget is Checkbox && widget.tristate,
+    );
+    await tester.tap(header);
+    await tester.pumpAndSettle();
+    // 多选后出现（a 已是齐套且未动过也可改选；此处只有 c 一行可改选并计入）。
+    expect(find.textContaining('批量设置路线('), findsOneWidget);
+    await tester.tap(find.textContaining('批量设置路线('));
+    await tester.pumpAndSettle();
+    expect(find.text('批量设置生产路线'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('workshop-route-batch-field')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('分批生产').last);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('按当前可齐套的数量拆批'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('workshop-route-batch-apply')));
+    await tester.pumpAndSettle();
+    // 选中即生效：可改选且事实允许的行直接提交，没有确认按钮。
+    expect(planRepository.confirmedRoutes, contains(('segment-c', 'BATCH')));
+    expect(find.textContaining('确认路线('), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

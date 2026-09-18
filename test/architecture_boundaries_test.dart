@@ -76,6 +76,9 @@ void main() {
     'sales->employee',
     'sales->notice',
     'sales->report',
+    // 2026-09-18：安全黑名单页复用 basic_data 的 MasterDataTableView 表格壳
+    // （同 quality->basic_data，组件升位到 lib/components 后一并删除）。
+    'security->basic_data',
     'security->visitor',
     'shell->dashboard',
     'shell->notice',

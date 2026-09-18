@@ -37,7 +37,7 @@ STABLE_ALLOWED_SIGNERS = Path(
 UPDATER_SCRIPT = Path("/opt/uten-imp/updater/release_updater.py")
 UPDATER_GROUP = "uten-imp-updater"
 RELEASE_GUARD_SHA256 = (
-    "e90a29ce786e4fdc2f6eeec278170b072a745b183a5f0e6fdbe5ca622d2bf812"
+    "13ba46848a4e27bed3d1597d3ee707214c68bbc60c93e5196106e13bcbbaacc6"
 )
 MAX_JSON_BYTES = 4 * 1024 * 1024
 AUTHORIZATION_TTL_SECONDS = 120

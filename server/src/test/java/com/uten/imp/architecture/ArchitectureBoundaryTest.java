@@ -92,6 +92,10 @@ class ArchitectureBoundaryTest {
             "org->admin",
             "visitor->admin",
             "visitor->org",
+            // 2026-09-18：访客黑名单运营元数据（V603）——VisitorGateService 拉黑/解除
+            // 需要按 blocked_by 校验并回填操作人，读 features.auth 的 UserAccountRepository
+            // （只读跨查，与 visitor->admin/org 同构，ADR-017 登记边）。
+            "visitor->auth",
             // 2026-08-07：统一任务并发认领（ADR-023）show-as-locked 守卫接入协作 feature——
             // 费用审批/销售审核/采购分解/仓库单据编辑依赖 features.common.taskclaim 的
             // TaskClaimService 做重复操作服务端兜底（UX 层；正确性底线仍是各 feature 的悲观锁+状态守卫）。

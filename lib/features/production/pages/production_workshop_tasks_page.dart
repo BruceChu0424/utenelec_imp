@@ -25,6 +25,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -137,11 +138,26 @@ class _ProductionWorkshopTasksPageState
     if (task.routeContinuousEligible && task.routeChangeable) 'CONTINUOUS',
   ];
 
-  /// 首列勾选门：齐套链批量动作（批量领料 / 批量开工）原有口径。V604 路线自动
-  /// 识别后勾选不再承载路线确认（「确认路线(N)/批量设置路线」按钮随确认步骤退役）。
+  /// 该行的生产路线当前可否改选（与格内下拉同一谓词）：路线由服务端创建事务
+  /// 自动识别赋好，未动过（WAITING 且无领料/报工/预留）随时可改，动过即冻结。
+  bool _routeSettableTask(ProductionExecutionWorkbenchSegment task) =>
+      _isPreparing &&
+      _canStart &&
+      (task.startRoute == null || task.routeChangeable);
+
+  /// 首列勾选门：齐套链批量动作（批量领料 / 批量开工）∪ 路线可改选行（多选后
+  /// 「批量设置路线」可一次改一批）。
   bool _kitSelectableTask(ProductionExecutionWorkbenchSegment task) =>
       _routeAllowsKitActions(task) &&
       (_canRequestDrawTask(task) || _canStartTask(task));
+
+  /// 「批量设置路线」的作用范围与计数：勾选中 ∩ 路线可改选。
+  int get _routeSettableCount => _items
+      .where(
+        (task) =>
+            _selected.contains(task.segmentId) && _routeSettableTask(task),
+      )
+      .length;
 
   static const _routeIcons = {
     'FULL_KIT': Icons.checklist_rounded,
@@ -253,15 +269,6 @@ class _ProductionWorkshopTasksPageState
             onTap: () => _recheckMaterials(task),
           ),
         ),
-      if (_isPreparing && task.routeChangeable && task.startRoute != null)
-        _NextStep(
-          item: UtenMenuItem(
-            label: '重新确认生产路线',
-            icon: Icons.alt_route_rounded,
-            enabled: !busy,
-            onTap: () => _confirmRoute(task),
-          ),
-        ),
       if (_isPreparing &&
           (!_canStartTask(task) || !_routeAllowsKitActions(task)))
         _NextStep(
@@ -292,35 +299,223 @@ class _ProductionWorkshopTasksPageState
     ProductionExecutionWorkbenchSegment task,
   ) => _nextSteps(task).map((step) => step.item).toList(growable: false);
 
-  /// 「生产路线」格(V604)：只读徽章——路线由服务端在创建事务内**自动识别**
-  /// （有本车间直送供给的子件=持续生产；否则齐套生产；点「分批领料」即选分批），
-  /// 不再有下拉草稿与确认步骤。冻结原因悬停可见；自动识别错边时，未动过的
-  /// 工单从行右键菜单「重新确认生产路线」人工纠偏（服务端 confirm-route 保留）。
+  /// 「生产路线」格(V606 二改：可选、免确认)：路线由服务端在创建事务内**自动识别**
+  /// 赋默认值（有本车间直送供给的子件=持续生产；否则齐套生产），车间在格内下拉
+  /// **直接改选即生效**——没有草稿、没有确认按钮，改一下就提交（多选时联动提交
+  /// 全部勾选行）。未动过的工单随时可改；动过（领料单/报工/预留）即冻结，只读
+  /// 徽章悬停说明原因。
   Widget _routeCell(ProductionExecutionWorkbenchSegment task) {
-    if (task.startRoute == null) {
-      return Tooltip(
-        message: '生产路线待识别（正常情况下创建时已自动识别），请刷新',
-        child: Text(
-          '待识别',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+    final editable =
+        _canStart &&
+        !_navigating &&
+        !_loading &&
+        (task.startRoute == null || task.routeChangeable);
+    if (!editable) {
+      if (task.startRoute == null) {
+        return Tooltip(
+          message: '生产路线待识别（正常情况下创建时已自动识别），请刷新',
+          child: Text(
+            '待识别',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
+        );
+      }
+      return Tooltip(
+        message: '路线已冻结：本工单已产生领料单、报工或预留（或已开工），不能再更改生产路线',
+        child: UtenStatusBadge(
+          label: task.startRouteLabel,
+          type: _routeBadgeType(task.startRoute),
+          icon: _routeIcons[task.startRoute],
         ),
       );
     }
-    final frozen = !task.routeChangeable;
-    return Tooltip(
-      message: frozen
-          ? '路线已冻结：本工单已产生领料单、报工或预留（或已开工），不能再更改生产路线'
-          : '系统按工单事实自动识别：有本车间直送供给的子件=持续生产，否则齐套生产；'
-                '点「分批生产领料」即选择分批。未领料/未报工前可在右键菜单'
-                '「重新确认生产路线」人工改选',
-      child: UtenStatusBadge(
-        label: task.startRouteLabel,
-        type: _routeBadgeType(task.startRoute),
-        icon: _routeIcons[task.startRoute],
+    final current = task.startRoute ?? 'FULL_KIT';
+    return Row(
+      children: [
+        // 路线色标竖线（五轮口径「圆点太小，弄成竖线」）：跟随当前路线配色。
+        Container(
+          key: ValueKey('workshop-route-bar-${task.segmentId}'),
+          width: 8,
+          height: 16,
+          decoration: BoxDecoration(
+            color: _routeDotColor(context, current),
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        const SizedBox(width: UtenSpacing.s4),
+        Expanded(
+          child: UtenDropdownField(
+            key: ValueKey('workshop-route-dropdown-${task.segmentId}'),
+            dense: true,
+            value: current,
+            allowClear: false,
+            items: [
+              for (final option in _routeOptions(task))
+                UtenDropdownItem(
+                  value: option,
+                  label: _routeOptionMeta[option]?.$1 ?? option,
+                ),
+              // 当前路线后来不在收窄选项里（如持续生产的直送资格消失）：
+              // 保标签可见但不作为新选项，仍可改选其它路线。
+              if (task.startRoute != null &&
+                  !_routeOptions(task).contains(task.startRoute))
+                UtenDropdownItem(
+                  value: task.startRoute!,
+                  label:
+                      _routeOptionMeta[task.startRoute]?.$1 ??
+                      task.startRouteLabel,
+                  visible: false,
+                ),
+            ],
+            onChanged: (chosen) => _onRouteSelected(task, chosen),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 路线下拉改选：**选中即提交**（V606 二改，无确认步骤）。
+  /// - 改的是**勾选中**的行 → 一次提交全部勾选中「路线可改选且事实允许该路线」
+  ///   的行（多选联动，跳过不允许的并提示）；
+  /// - 改的是未勾选的行 → 只提交这一行；
+  /// - 提交期间全屏加载遮罩；部分失败保留首个原因提示。
+  Future<void> _onRouteSelected(
+    ProductionExecutionWorkbenchSegment task,
+    String? chosen,
+  ) async {
+    if (chosen == null || chosen == task.startRoute) return;
+    if (!_routeOptions(task).contains(chosen)) return;
+    if (_navigating || _loading) return;
+    if (!_canStart) {
+      context.appWarning('缺少开工权限(production_execution:start)，不能改选生产路线');
+      return;
+    }
+    final targets = _selected.contains(task.segmentId)
+        ? _items
+              .where(
+                (t) => _selected.contains(t.segmentId) && _routeSettableTask(t),
+              )
+              .toList(growable: false)
+        : [task];
+    final applicable = targets
+        .where(
+          (t) => t.startRoute != chosen && _routeOptions(t).contains(chosen),
+        )
+        .toList(growable: false);
+    final skipped = targets.length - applicable.length;
+    if (applicable.isEmpty) {
+      if (skipped > 0) {
+        final label = _routeOptionMeta[chosen]?.$1 ?? chosen;
+        context.appInfo('$skipped 个勾选工单的事实不允许「$label」或路线已冻结，未改');
+      }
+      return;
+    }
+    await _submitRoutes(applicable, chosen);
+    if (skipped > 0 && mounted) {
+      final label = _routeOptionMeta[chosen]?.$1 ?? chosen;
+      context.appInfo('$skipped 个勾选工单的事实不允许「$label」或路线已冻结，未改');
+    }
+  }
+
+  /// 逐单串行提交路线改选（选中即生效）：全屏加载遮罩盖全程，部分失败提示首个
+  /// 原因并保留已成功的行；完成后整页刷新。
+  Future<void> _submitRoutes(
+    List<ProductionExecutionWorkbenchSegment> targets,
+    String route,
+  ) async {
+    if (targets.isEmpty) return;
+    setState(() {
+      _navigating = true;
+      _confirmingRoutes = true;
+    });
+    var applied = 0;
+    String? firstError;
+    try {
+      for (final task in targets) {
+        try {
+          await ref
+              .read(productionPlanRepositoryProvider)
+              .confirmExecutionSegmentRoute(
+                task.planId,
+                task.segmentId,
+                expectedVersion: task.lockVersion,
+                route: route,
+              );
+          applied += 1;
+        } catch (error) {
+          firstError ??= productionErrorMessage(
+            error,
+            fallback: '改选生产路线失败，请刷新后重试',
+          );
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _navigating = false;
+          _confirmingRoutes = false;
+        });
+      }
+    }
+    if (!mounted) return;
+    final label = _routeOptionMeta[route]?.$1 ?? route;
+    if (applied > 0) {
+      context.appSuccess(
+        applied == 1 ? '已改选生产路线：$label' : '已把 $applied 个工单的生产路线改为「$label」',
+      );
+    }
+    if (firstError != null) {
+      context.appError(
+        '部分工单路线未改成功（已改 $applied / ${targets.length}）：$firstError',
+        force: true,
+      );
+    }
+    await _load();
+  }
+
+  /// 多选行「批量设置生产路线」（V606 二改，选中即提交）：勾选 ≥2 行 → 面板里选
+  /// 一条路线 → 一次提交所有**路线可改选且事实允许该路线**的行；事实不允许的行
+  /// 跳过并计数提示。没有草稿、没有确认按钮，选完即生效。
+  Future<void> _batchSetRoutes() async {
+    if (!_canStart || _navigating || _loading) return;
+    final targets = _items
+        .where(
+          (task) =>
+              _selected.contains(task.segmentId) && _routeSettableTask(task),
+        )
+        .toList(growable: false);
+    if (targets.isEmpty) return;
+    final union = <String>{};
+    for (final task in targets) {
+      union.addAll(_routeOptions(task));
+    }
+    final options = [
+      for (final route in const ['FULL_KIT', 'BATCH', 'CONTINUOUS'])
+        if (union.contains(route)) route,
+    ];
+    final chosen = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => _RouteBatchSetSheet(
+        key: const Key('workshop-route-batch-sheet'),
+        count: targets.length,
+        options: options,
       ),
     );
+    if (chosen == null || !mounted) return;
+    final applicable = targets
+        .where(
+          (t) => t.startRoute != chosen && _routeOptions(t).contains(chosen),
+        )
+        .toList(growable: false);
+    final skipped = targets.length - applicable.length;
+    await _submitRoutes(applicable, chosen);
+    if (skipped > 0 && mounted) {
+      final label = _routeOptionMeta[chosen]?.$1 ?? chosen;
+      context.appInfo('$skipped 个勾选工单的事实不允许「$label」或路线已冻结，未改');
+    }
   }
 
   /// 实物领齐后才能开工；齐套但未发料走独立的领料申请。
@@ -358,16 +553,16 @@ class _ProductionWorkshopTasksPageState
           '可查看物料进度，办理请联系车间负责人';
     }
     if (task.startRoute == 'BATCH') {
-      return '本工单已确认为「分批生产」路线：请点「分批生产领料」，按当前可齐套的数量切一批办理；'
+      return '本工单的生产路线是「分批生产」：请点「分批生产领料」，按当前可齐套的数量切一批办理；'
           '剩余数量等后续到货继续分批';
     }
     if (task.startRoute == 'CONTINUOUS' && !task.continuousSupply) {
       // 混合链序列（ADR-089）：直送子件到一部分 → 部分开工 → 仓库料领料 → 开工；
       // 采购/委外子件不参与直送前提（V605 收紧）。真等不来直送时给出改路逃生口。
-      return '本工单已确认为「持续生产」路线：每种同车间直送的子件都需要先送到一部分，'
+      return '本工单的生产路线是「持续生产」：每种同车间直送的子件都需要先送到一部分，'
           '才能点「部分开工 · 持续生产」开工；开工后仓库物料（采购/委外子件）走领料，'
           '领齐后再开工。若这单的子件其实都从仓库领（采购/委外，没有本车间直送），'
-          '请在未领料前点「重新确认生产路线」改回齐套生产';
+          '请在未领料前把「生产路线」下拉改回齐套生产';
     }
     if (task.canSplitBatch && task.canStartContinuous) {
       return '本任务尚未全部齐套：子件由本车间直送的，可点「部分开工 · 持续生产」先开工、'
@@ -474,11 +669,10 @@ class _ProductionWorkshopTasksPageState
     }
   }
 
-  /// 等待物料首列勾选门(V606)：勾选只服务齐套链批量动作（批量领料/批量开工，
-  /// 路线自动识别后不再有路线确认批量）。不满足的行维持带原因的锁图标。
-  /// 生产中分类仍是可报工行才可勾选。
+  /// 等待物料首列勾选门(V606 二改)：勾选承载齐套链批量动作（批量领料/批量开工）
+  /// ∪ 路线可改选行（多选后「批量设置路线」一次改一批）。生产中仍是可报工行可勾选。
   bool _selectableTask(ProductionExecutionWorkbenchSegment task) => _isPreparing
-      ? _kitSelectableTask(task)
+      ? _kitSelectableTask(task) || _routeSettableTask(task)
       : task.segmentStatus == 'IN_PROGRESS' && task.canBatchReport;
 
   /// 「批量领料」的计数与提交目标（同一谓词）：勾选中 ∩ 齐套链路线放行 ∩ 可提交领料。
@@ -604,175 +798,6 @@ class _ProductionWorkshopTasksPageState
       if (mounted) context.appApiError(error);
     } finally {
       if (mounted) setState(() => _navigating = false);
-    }
-  }
-
-  /// 「重新确认生产路线」(V606 人工纠偏通道)：路线由创建事务自动识别，这里只在
-  /// 识别错边时给未动过的工单一个三选一改选弹窗（行右键菜单/详情弹窗入口）。
-  /// 改值仍受服务端 WAITING+未动过 校验；提交盖全屏加载遮罩。
-  Future<void> _confirmRoute(ProductionExecutionWorkbenchSegment task) async {
-    if (!_canStart) {
-      context.appWarning('缺少开工权限(production_execution:start)，不能改选生产路线');
-      return;
-    }
-    if (_navigating || _loading) return;
-    final options = _routeOptions(task);
-    if (options.length == 1) {
-      // 只剩齐套可选时直接确认，不给只有一个选项的假选择。
-      await _submitRoute(task, 'FULL_KIT');
-      return;
-    }
-    // 预选当前已识别的路线（改选从现状出发）。
-    var selected = task.startRoute ?? 'FULL_KIT';
-    if (!options.contains(selected)) {
-      selected = options.first;
-    }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          key: ValueKey('workshop-route-confirm-${task.segmentId}'),
-          title: Text(task.startRoute == null ? '确认生产路线' : '重新确认生产路线'),
-          content: SizedBox(
-            width: 560,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${task.segmentCode} · ${task.productName ?? '—'}\n'
-                  '先定路线，再走对应的开工流程；路线在领料/报工前可重新确认。',
-                ),
-                for (final option in options)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: UtenSpacing.s4,
-                    ),
-                    child: InkWell(
-                      key: ValueKey(
-                        'workshop-route-option-$option-${task.segmentId}',
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () => setDialogState(() => selected = option),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: selected == option
-                                ? Theme.of(dialogContext).colorScheme.primary
-                                : Theme.of(dialogContext).dividerColor,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        padding: const EdgeInsets.all(UtenSpacing.s12),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(
-                              selected == option
-                                  ? Icons.radio_button_checked
-                                  : Icons.radio_button_off,
-                              color: selected == option
-                                  ? Theme.of(dialogContext).colorScheme.primary
-                                  : Theme.of(dialogContext).hintColor,
-                            ),
-                            const SizedBox(width: UtenSpacing.s12),
-                            Icon(
-                              _routeIcons[option] ?? Icons.alt_route_rounded,
-                              size: 20,
-                              color: _routeDotColor(dialogContext, option),
-                            ),
-                            const SizedBox(width: UtenSpacing.s8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _routeOptionMeta[option]?.$1 ?? option,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(height: UtenSpacing.s4),
-                                  Text(
-                                    _routeOptionMeta[option]?.$2 ?? '',
-                                    style: Theme.of(
-                                      dialogContext,
-                                    ).textTheme.bodySmall,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('取消'),
-            ),
-            FilledButton.icon(
-              key: ValueKey('workshop-route-submit-${task.segmentId}'),
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              icon: const Icon(Icons.alt_route_rounded),
-              label: const Text('确认路线'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    await _submitRoute(task, selected);
-  }
-
-  /// 人工纠偏提交（V606）：路线自动识别错边时的「重新确认生产路线」单行通道。
-  /// 提交期间盖全屏加载遮罩（[_confirmingRoutes] 通道）。
-  Future<void> _submitRoute(
-    ProductionExecutionWorkbenchSegment task,
-    String route,
-  ) async {
-    setState(() {
-      _navigating = true;
-      _confirmingRoutes = true;
-    });
-    try {
-      final result = await ref
-          .read(productionPlanRepositoryProvider)
-          .confirmExecutionSegmentRoute(
-            task.planId,
-            task.segmentId,
-            expectedVersion: task.lockVersion,
-            route: route,
-          );
-      if (!mounted) return;
-      const labels = {
-        'FULL_KIT': '齐套生产',
-        'BATCH': '分批生产',
-        'CONTINUOUS': '持续生产',
-      };
-      if (route == 'FULL_KIT' && result.status == 'READY') {
-        context.appSuccess('已改选生产路线：齐套生产；物料已齐套，可提交领料汇总，领齐后开工');
-      } else if (route == 'BATCH') {
-        context.appSuccess('已改选生产路线：分批生产；物料到一部分就可以点「分批生产领料」切第一批');
-      } else if (route == 'CONTINUOUS') {
-        context.appSuccess('已改选生产路线：持续生产；直送子件到一部分后可点「部分开工 · 持续生产」');
-      } else {
-        context.appSuccess('已改选生产路线：${labels[route] ?? route}');
-      }
-      await _load();
-    } catch (error) {
-      if (mounted) context.appApiError(error);
-    } finally {
-      if (mounted) {
-        setState(() {
-          _navigating = false;
-          _confirmingRoutes = false;
-        });
-      }
     }
   }
 
@@ -1016,13 +1041,6 @@ class _ProductionWorkshopTasksPageState
               onPressed: () => Navigator.of(dialogContext).pop('material'),
               child: Text(_materialUsageLabel(task)),
             ),
-          if (_isPreparing && _canStart && task.routeChangeable)
-            FilledButton.icon(
-              key: ValueKey('workshop-detail-route-${task.segmentId}'),
-              onPressed: () => Navigator.of(dialogContext).pop('route'),
-              icon: const Icon(Icons.alt_route_rounded),
-              label: const Text('重新确认生产路线'),
-            ),
           if (_canStart &&
               _isPreparing &&
               _routeAllowsKitActions(task) &&
@@ -1062,8 +1080,6 @@ class _ProductionWorkshopTasksPageState
     );
     if (!mounted || action == null) return;
     switch (action) {
-      case 'route':
-        await _confirmRoute(task);
       case 'draw':
         await _requestDraw([task]);
       case 'batch':
@@ -1433,9 +1449,24 @@ class _ProductionWorkshopTasksPageState
                           },
                           batchActionsBuilder: (_, ids) => [
                             if (_isPreparing) ...[
-                              // V606 路线自动识别：「批量设置路线 / 确认路线」按钮随
-                              // 确认步骤一起退役——勾选只服务批量领料 / 批量开工；
-                              // 改选路线走行右键菜单「重新确认生产路线」单行纠偏。
+                              // V606 二改（可选、免确认）：多选（≥2 勾选）且有可
+                              // 改选行才显示「批量设置路线」——面板选一条路线，
+                              // 选中即逐单提交（无确认按钮）。单选行直接改格内
+                              // 下拉即可，按钮没有意义。
+                              if (_selected.length >= 2 &&
+                                  _routeSettableCount >= 1)
+                                UtenButton(
+                                  key: const Key('workshop-batch-set-routes'),
+                                  type: UtenButtonType.secondary,
+                                  icon: Icons.done_all_rounded,
+                                  onPressed:
+                                      _loading ||
+                                          _navigating ||
+                                          _routeSettableCount == 0
+                                      ? null
+                                      : _batchSetRoutes,
+                                  child: Text('批量设置路线($_routeSettableCount)'),
+                                ),
                               UtenButton(
                                 type: UtenButtonType.danger,
                                 icon: Icons.move_to_inbox_rounded,
@@ -1560,22 +1591,22 @@ class _ProductionWorkshopTasksPageState
             : badge;
       },
     ),
-    // V606 用户口径「不用确认路线这个操作了，自动识别生产路线」：「生产路线」列
-    // 改为**只读徽章**——服务端在创建事务内自动识别（有本车间直送子件=持续生产；
-    // 否则齐套生产；点「分批生产领料」即选分批）。识别错边时未动过的工单可从
-    // 行右键菜单/详情弹窗「重新确认生产路线」人工纠偏。
-    // 「生产中」「历史任务」无此列——开工后路线已冻结。
+    // V606 二改 用户口径「生产路线可以选择，不用去确认路线」：默认值由服务端在
+    // 创建事务内自动识别（有本车间直送子件=持续生产；否则齐套生产），车间在格内
+    // **下拉直接改选即生效**（无草稿、无确认按钮，多选联动一次改一批）；动过的行
+    // 冻结为只读徽章。「生产中」「历史任务」无此列——开工后路线已冻结。
     if (status == 'PREPARING')
       MasterColumnDef(
         key: 'route',
         label: '生产路线',
         width: 210,
         info:
-            '生产路线由系统按工单事实自动识别，无需确认：有本车间直送供给的子件'
-            '=持续生产（直送子件到一批投一批，只开一次工、数量按报工结）；'
-            '否则=齐套生产（全部子件到齐一次领料开工）；点「分批生产领料」'
-            '本身就是选择分批（按当前可齐套量切批，剩余到货继续拆）。'
-            '未领料/未报工前可在右键菜单「重新确认生产路线」人工改选（动过即冻结）。',
+            '生产路线默认由系统按工单事实自动识别：有本车间直送供给的子件=持续生产'
+            '（直送子件到一批投一批，只开一次工、数量按报工结）；否则=齐套生产'
+            '（全部子件到齐一次领料开工）；点「分批生产领料」本身就是选择分批'
+            '（按当前可齐套量切批，剩余到货继续拆）。在格内下拉**直接改选即生效**，'
+            '无需确认；多选勾选后也可「批量设置路线」一次改一批。'
+            '未领料/未报工前随时可改，动过即冻结。',
         value: (task) => task.startRouteLabel,
         cellBuilder: (_, task) => _routeCell(task),
       ),
@@ -1654,5 +1685,113 @@ class _NextStep {
   final bool primary;
 }
 
-/// 「批量设置生产路线」底部面板已随 V606 路线自动识别退役（确认步骤删除，
-/// 改选走「重新确认生产路线」单行纠偏）。
+/// 「批量设置生产路线」底部面板（V606 二改，选中即提交）：勾选 N 行后一次选一条
+/// 路线，**选完即逐单提交**（没有草稿、没有确认按钮）；选定路线的完整说明随选择
+/// 实时展示，确认前看得清后果。
+class _RouteBatchSetSheet extends StatefulWidget {
+  const _RouteBatchSetSheet({
+    super.key,
+    required this.count,
+    required this.options,
+  });
+
+  final int count;
+  final List<String> options;
+
+  @override
+  State<_RouteBatchSetSheet> createState() => _RouteBatchSetSheetState();
+}
+
+class _RouteBatchSetSheetState extends State<_RouteBatchSetSheet> {
+  String? _chosen;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final meta = _chosen == null
+        ? null
+        : _ProductionWorkshopTasksPageState._routeOptionMeta[_chosen];
+    return Padding(
+      padding: EdgeInsets.only(
+        left: UtenSpacing.s16,
+        right: UtenSpacing.s16,
+        top: UtenSpacing.s16,
+        // 键盘/输入法弹出时让面板跟着上移（与其它底部面板同款）。
+        bottom: MediaQuery.of(context).viewInsets.bottom + UtenSpacing.s16,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('批量设置生产路线', style: theme.textTheme.titleMedium),
+          const SizedBox(height: UtenSpacing.s4),
+          Text(
+            '将为勾选的 ${widget.count} 个工单中可改选的行直接改选同一条路线（选完即生效，'
+            '无需再确认）；工单事实不允许该路线的行会自动跳过。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          UtenDropdownField(
+            key: const Key('workshop-route-batch-field'),
+            label: '生产路线',
+            required: true,
+            allowClear: false,
+            value: _chosen,
+            hintText: '请选择要批量设置的路线',
+            items: [
+              for (final option in widget.options)
+                UtenDropdownItem(
+                  value: option,
+                  label:
+                      _ProductionWorkshopTasksPageState
+                          ._routeOptionMeta[option]
+                          ?.$1 ??
+                      option,
+                ),
+            ],
+            onChanged: (value) => setState(() => _chosen = value),
+          ),
+          if (meta != null) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  _ProductionWorkshopTasksPageState._routeIcons[_chosen],
+                  size: 16,
+                  color: _ProductionWorkshopTasksPageState._routeDotColor(
+                    context,
+                    _chosen,
+                  ),
+                ),
+                const SizedBox(width: UtenSpacing.s4),
+                Expanded(
+                  child: Text(
+                    '${meta.$1}：${meta.$2}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: UtenSpacing.s16),
+          Align(
+            alignment: Alignment.centerRight,
+            child: UtenButton(
+              key: const Key('workshop-route-batch-apply'),
+              type: UtenButtonType.danger,
+              onPressed: _chosen == null
+                  ? null
+                  : () => Navigator.of(context).pop(_chosen),
+              child: const Text('应用到勾选工单'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
